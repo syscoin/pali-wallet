@@ -3032,7 +3032,7 @@ test('connection transactions use real SDK signing and durable shared submission
   let loseResponse = false, pendingNonce = '0x0';
   let assertBundleAdmission: ((hash: string) => Promise<void>) | undefined;
   let f!: Awaited<ReturnType<typeof readyAccounts>>;
-  const fetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async function connectionFixtureFetch(_url, init) {
+  const fetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async function connectionFixtureFetch(_url, init): Promise<Response> {
     const payload = JSON.parse(String(init?.body));
     if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async request =>
       (await connectionFixtureFetch(_url, { ...init, body: JSON.stringify(request) })).json())));
@@ -3116,7 +3116,7 @@ test('connection transactions use real SDK signing and durable shared submission
 
 for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject', 'lock'] as const) test(`connection account selection publishes real authority context before ${outcome}`, async () => {
   const submitted: string[] = [];
-  const connectionFetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async function accountSelectionFixtureFetch(_url, init) {
+  const connectionFetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async function accountSelectionFixtureFetch(_url, init): Promise<Response> {
     const payload = JSON.parse(String(init?.body));
     if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async request =>
       (await accountSelectionFixtureFetch(_url, { ...init, body: JSON.stringify(request) })).json())));
