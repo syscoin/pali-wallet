@@ -118,6 +118,8 @@ function setup() {
       if (method === 'eth_getBalance')
         return '0x' + (await provider.getBalance()).toString(16);
       if (method === 'eth_maxPriorityFeePerGas') return '0x1';
+      if (method === 'eth_gasPrice')
+        return '0x' + (await provider.getGasPrice()).toString(16);
       throw new Error('Unexpected synthetic RPC');
     }),
     getGasPrice: jest.fn(async () => BigInt(5)),

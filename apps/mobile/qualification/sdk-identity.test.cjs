@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
 const { composeQualificationSdkIdentity, assertQualificationSdkIdentity, QUALIFICATION_SDK_IDENTITY_STAGE } = require('../scripts/qualificationSdkIdentity.ts');
 
-const version = '2.1.13';
+const version = '2.1.14';
 const quick = `quickcrypto.1.1.9.source.${'a'.repeat(40)}.sha256.${'b'.repeat(64)}`;
 
 test('qualification identity binds the exact official package and any native candidate', () => {

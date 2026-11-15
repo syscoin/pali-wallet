@@ -214,6 +214,12 @@ export function createNativeSmartOperation(
         account.address,
         assertCurrent
       );
+      // Deployment can land while preparation runs. Keep its first observation
+      // separate so the operation's later admission reads the chain again.
+      const deploymentState = intent.kind === 'deploy'
+        ? await withEvmReadPhase(rawProvider, assertCurrent, provider =>
+            readSmartAccountDeploymentState({ account, chainId, provider, assertCurrent }))
+        : undefined;
       return withEvmReadPhase(rawProvider, assertCurrent, async (scopedProvider) => {
         const pending = createSmartAccountPendingState(scopedProvider, ports.pendingRecords, chainId, account.address, assertCurrent);
         const provider = pending.provider;
@@ -263,7 +269,7 @@ export function createNativeSmartOperation(
         const infrastructure = projectSmartAccountInfrastructureObservation(chainId, codes);
         if (!infrastructure) throw new Error('Invalid smart account infrastructure response');
         assertSmartAccountInfrastructureReady(infrastructure);
-        const state = await readSmartAccountDeploymentState({
+        const state = deploymentState ?? await readSmartAccountDeploymentState({
           account,
           chainId,
           provider,

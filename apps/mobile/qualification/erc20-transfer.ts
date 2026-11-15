@@ -302,12 +302,13 @@ export async function qualifyNativeErc20Transfer(
           !init.body.includes('Pali#1:') &&
           ++requests <= 64
       );
-      const body = JSON.parse(init.body) as {
+      const payload: unknown = JSON.parse(init.body);
+      const respond = async (body: {
         jsonrpc: string;
         id: number;
         method: string;
         params: unknown[];
-      };
+      }): Promise<Response> => {
       // Transfer and receipt readers each own a request-ID sequence. Echo the
       // initiating ID; uniqueness across these separate clients is not required.
       expect(
@@ -412,6 +413,7 @@ export async function qualifyNativeErc20Transfer(
       guard();
       return {
         ok: true,
+        status: 200,
         headers: {
           get: (name: string) =>
             name === 'content-type'
@@ -422,6 +424,26 @@ export async function qualifyNativeErc20Transfer(
         },
         text: async () => text,
       } as unknown as Response;
+      };
+      if (Array.isArray(payload)) {
+        expect(payload.length > 0 && payload.length <= 40);
+        expect(payload.every(request => request && typeof request === 'object' &&
+          request.method !== 'eth_sendRawTransaction'));
+        const values = await Promise.all(payload.map(async request => {
+          const response = await respond(request);
+          return JSON.parse(await response.text());
+        }));
+        guard();
+        const text = JSON.stringify(values);
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: (name: string) => name === 'content-type'
+            ? 'application/json' : name === 'content-length' ? String(text.length) : null },
+          text: async () => text,
+        } as unknown as Response;
+      }
+      return respond(payload as Parameters<typeof respond>[0]);
     },
   });
   const controller = new NativeTransfers(authority, () => wrapped, { rpc });

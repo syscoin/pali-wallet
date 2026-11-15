@@ -598,29 +598,39 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           },
         ],
       ] as const) {
-        mark(label + ':review');
-        const id = await startRequest(eoaApp, 'eth_sendTransaction', [
-          { from: payer, ...request },
-        ]);
-        const sent = await approve(wallet.context, eoaApp, id, async () =>
-          mark(label + ':confirm')
-        );
-        mark(label + ':acknowledged');
-        output[label + ':receipt'] = await receipt(sent.result);
+        await wallet.step(label + ' approval', async (capture) => {
+          mark(label + ':review');
+          const id = await startRequest(eoaApp, 'eth_sendTransaction', [
+            { from: payer, ...request },
+          ]);
+          const sent = await approve(
+            wallet.context,
+            eoaApp,
+            id,
+            async (popup) => {
+              await capture(popup);
+              mark(label + ':confirm');
+            }
+          );
+          mark(label + ':acknowledged');
+          output[label + ':receipt'] = await receipt(sent.result);
+        });
       }
-      expect(
-        BigInt(
-          await localRpc(chain.url, 'eth_call', [
-            {
-              to: token,
-              data: erc20Abi.encodeFunctionData('balanceOf', [recipient]),
-            },
-            'latest',
-          ])
-        )
-      ).toBe(BigInt(40000));
       await eoaApp.close();
       await wallet.gotoRoute('#/home');
+      await wallet.step('verify final recipient token balance', async () => {
+        expect(
+          BigInt(
+            await localRpc(chain.url, 'eth_call', [
+              {
+                to: token,
+                data: erc20Abi.encodeFunctionData('balanceOf', [recipient]),
+              },
+              'latest',
+            ])
+          )
+        ).toBe(BigInt(40000));
+      });
     }
     if (
       !process.env.PALI_RPC_NO_MULTICALL &&
