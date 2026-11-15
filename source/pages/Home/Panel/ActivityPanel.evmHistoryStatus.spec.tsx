@@ -223,6 +223,40 @@ beforeEach(() => {
       }));
     }),
   };
+  provider.send = jest.fn(async (method: string, params: unknown[]) => {
+    if (method === 'eth_chainId')
+      return '0x' + BigInt(network.chainId).toString(16);
+    if (method === 'eth_blockNumber') return '0x64';
+    if (method === 'eth_getTransactionCount') return '0x0';
+    if (method === 'eth_getBlockByNumber')
+      return {
+        ...(
+          await provider.sendBatch(method, [
+            [params[0] === 'latest' ? '0x64' : params[0], params[1]],
+          ])
+        )[0],
+        hash:
+          '0x' +
+          BigInt(params[0] === 'latest' ? 100 : (params[0] as string))
+            .toString(16)
+            .padStart(64, '0'),
+        parentHash:
+          '0x' +
+          (
+            BigInt(params[0] === 'latest' ? 100 : (params[0] as string)) -
+            BigInt(1)
+          )
+            .toString(16)
+            .padStart(64, '0'),
+      };
+    throw new Error('Unexpected history RPC ' + method);
+  });
+  provider.readMany = jest.fn(
+    (requests: readonly { method: string; params: unknown[] }[]) =>
+      Promise.allSettled(
+        requests.map(({ method, params }) => provider.send(method, params))
+      )
+  );
   manager = TransactionsManager();
   manager.utils.clearCache();
   mockWallet = Object.create(MainController.prototype);
