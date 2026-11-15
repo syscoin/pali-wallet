@@ -706,7 +706,7 @@ describe('SmartAccountController smart account execution fees', () => {
     );
   });
 
-  it('reuses the gas-tank credit estimate for the outer transaction', async () => {
+  it('defers gas-tank coverage to the owned payer quote', async () => {
     const { controller, estimateGas, sendAndSaveEthTransaction } =
       buildController();
     controller.getActiveSmartAccount.mockReturnValue({
@@ -716,9 +716,6 @@ describe('SmartAccountController smart account execution fees', () => {
         deploymentGasPayer: gasPayer,
       },
     });
-    controller.assertZkSysGasTankCoversTransaction = jest
-      .fn()
-      .mockResolvedValue(BigNumber.from('143280'));
     const userOperation = buildUserOperation();
     userOperation.gasFees = encodeSmartAccountGasFees({
       maxFeePerGas: 0,
@@ -734,12 +731,9 @@ describe('SmartAccountController smart account execution fees', () => {
       userOperation,
     });
 
-    expect(
-      controller.assertZkSysGasTankCoversTransaction
-    ).toHaveBeenCalledTimes(1);
-    expect(estimateGas).not.toHaveBeenCalled();
+    expect(estimateGas).toHaveBeenCalledTimes(1);
     expect(sendAndSaveEthTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ gasLimit: '143280' }),
+      expect.not.objectContaining({ gasLimit: expect.anything() }),
       false,
       { id: gasPayer.id, type: gasPayer.type },
       expect.any(Object),
@@ -747,16 +741,13 @@ describe('SmartAccountController smart account execution fees', () => {
     );
   });
 
-  it('checks tank credit at the exact legacy price and reuses that outer estimate', async () => {
+  it('preserves the exact legacy price for the payer quote without another tank estimate', async () => {
     const { controller, estimateGas, sendAndSaveEthTransaction } =
       buildController();
     controller.getActiveSmartAccount.mockReturnValue({
       account: { address: ACCOUNT_ADDRESS, id: 9 },
       metadata: { chainId: 57057, deploymentGasPayer: gasPayer },
     });
-    controller.assertZkSysGasTankCoversTransaction = jest
-      .fn()
-      .mockResolvedValue(BigNumber.from('143280'));
     const userOperation = buildUserOperation();
     userOperation.gasFees = encodeSmartAccountGasFees({
       maxFeePerGas: 0,
@@ -769,14 +760,12 @@ describe('SmartAccountController smart account execution fees', () => {
       signature: '0x1234',
       userOperation,
     });
-    expect(controller.assertZkSysGasTankCoversTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ gasPrice: '13', maxFeePerGas: '13' }),
-      expect.anything()
+    expect(estimateGas).toHaveBeenCalledTimes(1);
+    expect(estimateGas).toHaveBeenCalledWith(
+      expect.objectContaining({ gasPrice: '13' })
     );
-    expect(estimateGas).not.toHaveBeenCalled();
     expect(sendAndSaveEthTransaction.mock.calls[0][0]).toMatchObject({
       gasPrice: '13',
-      gasLimit: '143280',
     });
     expect(sendAndSaveEthTransaction.mock.calls[0][1]).toBe(true);
   });

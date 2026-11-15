@@ -33,6 +33,7 @@ import {
   estimateSmartAccountUserOpGas,
   toPaliSmartAccount,
 } from 'utils/smartAccount';
+import * as executionMetadata from 'utils/smartAccount/executionMetadata';
 
 import SmartAccountController from './index';
 
@@ -252,6 +253,87 @@ describe('smart-account execution approval context', () => {
     controller.getWalletGasPayerCandidates = jest.fn(() => []);
     controller.getWalletGasPayerAccount = jest.fn().mockResolvedValue(payer);
     controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
+  });
+
+  it('uses freshly observed deployment and caches hydrated metadata under the exact context', async () => {
+    state.vault.accounts.SmartAccount[7].smartAccount = {
+      ...metadata,
+      isDeployed: false,
+    };
+    const hydrate = jest
+      .spyOn(executionMetadata, 'readSmartAccountValidatorMetadata')
+      .mockResolvedValue(metadata as any);
+    controller.assertInfrastructureSupported = jest.fn(() => {
+      throw Error('Unrelated infrastructure unavailable');
+    });
+    try {
+      const first = await prepare();
+      expect(first.userOperation.initCode).toBe('0x');
+      expect(hydrate).toHaveBeenCalledTimes(1);
+      expect(
+        provider.send.mock.calls.filter(
+          ([method, params]) =>
+            method === 'eth_getCode' && params[0] === ADDRESS
+        )
+      ).toHaveLength(1);
+      const cachedTimestamp = controller.hydratedMetadataCache.get(
+        `execution:1:${ADDRESS.toLowerCase()}`
+      ).timestamp;
+      await prepare();
+      expect(hydrate).toHaveBeenCalledTimes(1);
+      expect(
+        controller.hydratedMetadataCache.get(
+          `execution:1:${ADDRESS.toLowerCase()}`
+        ).timestamp
+      ).toBe(cachedTimestamp);
+      expect(controller.assertInfrastructureSupported).not.toHaveBeenCalled();
+      expect(() =>
+        controller.reuseSmartAccountExecutions(calls, 7, {
+          executionContextId: first.executionContextId,
+          expectedContext,
+        })
+      ).not.toThrow();
+      generation++;
+      await controller.prepareSmartAccountExecutions(calls, 7);
+      expect(hydrate).toHaveBeenCalledTimes(2);
+    } finally {
+      hydrate.mockRestore();
+    }
+  });
+
+  it('empty live account code retains full infrastructure checks despite deployed metadata', async () => {
+    const sendBefore = provider.send.getMockImplementation();
+    provider.send.mockImplementation((method, params) =>
+      method === 'eth_getCode' ? '0x' : sendBefore(method, params)
+    );
+    controller.assertInfrastructureSupported = jest.fn(() => {
+      throw Error('Missing infrastructure');
+    });
+    await expect(prepare()).rejects.toThrow('Missing infrastructure');
+    expect(controller.assertInfrastructureSupported).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('does not cache a hydrated deployment when the owned phase changes', async () => {
+    state.vault.accounts.SmartAccount[7].smartAccount = {
+      ...metadata,
+      isDeployed: false,
+    };
+    const hydrate = jest
+      .spyOn(executionMetadata, 'readSmartAccountValidatorMetadata')
+      .mockImplementation(async () => {
+        generation++;
+        return metadata as any;
+      });
+    try {
+      await expect(prepare()).rejects.toThrow(
+        'PALI_TRANSACTION_CONTEXT_CHANGED'
+      );
+      expect(controller.hydratedMetadataCache.size).toBe(0);
+      expect(controller.executionContexts.size).toBe(0);
+    } finally {
+      hydrate.mockRestore();
+    }
   });
 
   it('reuses the exact retained candidate without repeating preparation reads', async () => {

@@ -113,7 +113,9 @@ export async function localRpc(
   return body.result;
 }
 
-export async function startLocalChains() {
+export async function startLocalChains(
+  chains: readonly (typeof LOCAL_CHAINS)[number][] = LOCAL_CHAINS
+) {
   const children: ChildProcess[] = [];
   const proxies: https.Server[] = [];
   fs.mkdirSync(E2E_CONFIG.artifactsDir, { recursive: true });
@@ -152,7 +154,7 @@ export async function startLocalChains() {
       socket.setTimeout(500, () => finish(false));
     });
   try {
-    for (const chain of LOCAL_CHAINS) {
+    for (const chain of chains) {
       // Never attach to or kill an RPC owned by another task.
       for (const port of [chain.port, chain.backendPort]) {
         if (await occupied(port))

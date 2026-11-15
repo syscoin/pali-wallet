@@ -14,7 +14,7 @@ const network = createNativeNetwork({ id: 'selected', name: 'Selected', kind: 'e
   rpcUrl: 'https://selected.example', symbol: 'ETH', decimals: 18, testnet: false });
 const scope: NativeNotificationScope = { id: 'native:hd:60:0:selected', accountId: 'hd:60:0', accountType: 'HDAccount', accountAddress: owner, network, guardian: false };
 const uint = (value: bigint | number) => `0x${BigInt(value).toString(16).padStart(64, '0')}`;
-const abi = new Interface(['function balanceOfBatch(address[],uint256[]) view returns (uint256[])']);
+const abi = new Interface(['function balanceOfBatch(address[],uint256[]) view returns (uint256[])', 'function balanceOf(address,uint256) view returns (uint256)']);
 type Wire = { id: number; method: string; params: any[] };
 
 function fixture(inventory: NativeTokenInventory, multicall = false) {
@@ -22,20 +22,21 @@ function fixture(inventory: NativeTokenInventory, multicall = false) {
   const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
   const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
   const aggregate = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
-  const requests: Wire[] = [], urls: string[] = [], loads: NativeTokenPortfolioScope[] = [];
-  let current = true, invalidateOnFetch = false, failToken = false;
+  const requests: Wire[] = [], widths: number[] = [], urls: string[] = [], loads: NativeTokenPortfolioScope[] = [];
+  let current = true, invalidateOnFetch = false, failToken = false, failedCollection: string | undefined;
   const read = createScopedPortfolioAssetReader({
     async load(target, check) { check(); loads.push(target); return inventory; },
     async fetch(url, init) {
       const body = JSON.parse(String(init.body)) as Wire | Wire[];
       const rows = Array.isArray(body) ? body : [body];
+      widths.push(rows.length);
       const responses = rows.map(request => {
       requests.push(request); urls.push(url);
       if (invalidateOnFetch) current = false;
       let result: unknown;
       if (request.method === 'eth_chainId') result = '0x1';
       else if (request.method === 'eth_getBlockByNumber') result = { number: '0x10', hash: '0x' + 'a'.repeat(64) };
-      else if (request.method === 'eth_getCode') result = multicall ? runtime : '0x6000';
+      else if (request.method === 'eth_getCode') result = request.params[0] === failedCollection ? '0x' : multicall ? runtime : '0x6000';
       else if (request.method === 'eth_call') {
         const call = request.params[0] as { to: string; data: string };
         assert.equal(request.params[1], '0x10');
@@ -44,7 +45,7 @@ function fixture(inventory: NativeTokenInventory, multicall = false) {
           (entry: { callData: string }) => ({ success: true, returnData: uint(entry.callData === '0x313ce567' ? 6 : 1234567) }))])
           : selector === '0x313ce567' ? uint(failToken ? 18 : 6)
           : selector === '0x01ffc9a7' ? uint(1)
-          : selector === '0x4e1273f4' ? abi.encodeFunctionResult('balanceOfBatch', [[5]])
+          : selector === '0x4e1273f4' ? abi.encodeFunctionResult('balanceOfBatch', [abi.decodeFunctionData('balanceOfBatch', call.data)[1].map(() => 5)])
           : selector === '0x00fdd58e' ? uint(0)
           : uint(call.to === collectionAddress ? 3 : 1234567);
       } else assert.fail('No discovery or transaction RPC is permitted');
@@ -54,8 +55,8 @@ function fixture(inventory: NativeTokenInventory, multicall = false) {
     },
   });
   const check = () => { if (!current) throw Error('Changed visible scope'); };
-  return { read: () => read(scope, new AbortController().signal, check), requests, urls, loads,
-    invalidateOnFetch() { invalidateOnFetch = true; }, failToken() { failToken = true; } };
+  return { read: () => read(scope, new AbortController().signal, check), requests, widths, urls, loads,
+    invalidateOnFetch() { invalidateOnFetch = true; }, failToken() { failToken = true; }, failCollection(address: string) { failedCollection = address; } };
 }
 
 test('saved assets read only the requested visible account and endpoint using existing anchored readers', async () => {
@@ -106,4 +107,97 @@ for (const multicall of [false, true]) test(`repeated scoped snapshots retain en
   assert.equal(f.requests.length, multicall ? 5 : 44);
   f.invalidateOnFetch();
   await assert.rejects(f.read(), /Changed visible scope/);
+});
+
+test('ten saved ERC721 collections share one canonical observation and isolate failed collections', async () => {
+  const collectibles = Array.from({ length: 10 }, (_, index) => ({ contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`, tokenStandard: 'ERC-721' as const }));
+  const f = fixture({ revision: 1, items: [], collectibles });
+  const healthy = await f.read();
+  assert(healthy.collectibles.every(row => row.status === 'available'));
+  assert.equal(f.requests.length, 34);
+  f.requests.length = 0;
+  f.failCollection(collectibles[3]!.contractAddress);
+  const result = await f.read();
+  assert.equal(result.collectibles.filter(row => row.status === 'available').length, 9);
+  assert.equal(result.collectibles[3]!.status, 'error');
+  assert.equal(f.requests.filter(row => row.method === 'eth_chainId').length, 2);
+  assert.equal(f.requests.filter(row => row.method === 'eth_getBlockByNumber').length, 2);
+  assert.equal(f.requests.filter(row => row.method === 'eth_getCode').length, 10);
+  assert.equal(f.requests.length, 32);
+});
+
+test('ten saved ERC1155 IDs share contract code, negative probe and balanceOfBatch', async () => {
+  const collectibles = Array.from({ length: 10 }, (_, tokenId) => ({ contractAddress: collectionAddress, tokenStandard: 'ERC-1155' as const, tokenId: String(tokenId) }));
+  const f = fixture({ revision: 1, items: [], collectibles });
+  const result = await f.read();
+  assert(result.collectibles.every(row => row.status === 'available' && row.units === '5'));
+  assert.equal(f.requests.length, 7);
+  assert.equal(f.requests.filter(row => row.method === 'eth_getCode').length, 1);
+  assert.equal(f.requests.filter(row => row.method === 'eth_call' && row.params[0].data.startsWith('0x4e1273f4')).length, 1);
+  assert.equal(f.widths.length, 5);
+});
+
+for (const failure of ['content-type', 'authority'] as const) test(`scoped NFT ${failure} rejection cancels the streaming body and fetch`, async () => {
+  let current = true, cancelled = 0;
+  let fetchSignal: AbortSignal | undefined;
+  const read = createScopedPortfolioAssetReader({
+    async load() { return { revision: 1, items: [], collectibles: [{ contractAddress: collectionAddress, tokenStandard: 'ERC-721' }] }; },
+    async fetch(_url, init) {
+      fetchSignal = init.signal as AbortSignal;
+      if (failure === 'authority') current = false;
+      return new Response(new ReadableStream({ cancel() { cancelled++; } }), { headers: { 'content-type': failure === 'content-type' ? 'text/html' : 'application/json' } });
+    },
+  });
+  const result = read(scope, new AbortController().signal, () => { if (!current) throw Error('retired'); });
+  if (failure === 'authority') await assert.rejects(result);
+  else assert.equal((await result).collectibles[0]!.status, 'error');
+  assert.equal(cancelled, 1);
+  assert.equal(fetchSignal?.aborted, true);
+});
+
+
+test('grouped ERC1155 fallback isolates one failed ID under the same selected block', async () => {
+  const collectibles = ['1', '2', '3'].map(tokenId => ({ contractAddress: collectionAddress, tokenStandard: 'ERC-1155' as const, tokenId }));
+  const calls: string[] = [];
+  const read = createScopedPortfolioAssetReader({
+    async load() { return { revision: 1, items: [], collectibles }; },
+    async fetch(_url, init) {
+      const payload = JSON.parse(String(init.body));
+      const rows = Array.isArray(payload) ? payload : [payload];
+      const replies = rows.map((request: Wire) => {
+        let result: unknown = '0x6000';
+        let error: { code: number; message: string } | undefined;
+        if (request.method === 'eth_chainId') result = '0x1';
+        else if (request.method === 'eth_getBlockByNumber') result = { number: '0x10', hash: `0x${'ab'.repeat(32)}` };
+        else if (request.method === 'eth_call') {
+          assert.equal(request.params[1], '0x10');
+          const decoded = abi.parseTransaction(request.params[0]);
+          assert(decoded);
+          calls.push(decoded.name);
+          if (decoded.name === 'balanceOfBatch' || decoded.args[1] === 2n)
+            error = { code: -32000, message: 'Read unavailable' };
+          else result = uint(['1', '3'].includes(String(decoded.args[1])) ? 5 : 0);
+        }
+        return { jsonrpc: '2.0', id: request.id, ...(error ? { error } : { result }) };
+      });
+      return Response.json(Array.isArray(payload) ? replies : replies[0]);
+    },
+  });
+  const result = await read(scope, new AbortController().signal, () => undefined);
+  assert.deepEqual(result.collectibles.map(row => [row.status, row.units]), [
+    ['available', '5'], ['error', null], ['available', '5'],
+  ]);
+  assert.equal(calls.filter(method => method === 'balanceOfBatch').length, 1);
+  assert.equal(calls.filter(method => method === 'balanceOf').length, 4);
+});
+
+
+test('the maximum saved ERC1155 group fits one bounded balanceOfBatch response', async () => {
+  const collectibles = Array.from({ length: 256 }, (_, id) => ({ contractAddress: collectionAddress,
+    tokenStandard: 'ERC-1155' as const, tokenId: String(id) }));
+  const f = fixture({ revision: 1, items: [], collectibles });
+  const result = await f.read();
+  assert.equal(result.collectibles.length, 256);
+  assert(result.collectibles.every(row => row.status === 'available' && row.units === '5'));
+  assert.equal(f.requests.length, 7);
 });

@@ -73,6 +73,75 @@ afterEach(() => {
   global.fetch = originalFetch;
 });
 
+it('expires token market data independently of descriptive metadata and shares a refresh', async () => {
+  network.coingeckoPlatformId = 'ethereum';
+  const controller = EvmAssetsController();
+  const fetch = jest.mocked(retryableFetch);
+  fetch.mockResolvedValue(
+    response({
+      symbol: 'TST',
+      ['market_data']: { ['current_price']: { usd: 11 } },
+    }) as any
+  );
+  expect(
+    (await controller.getOnlyMarketData(TOKEN))?.market_data.current_price.usd
+  ).toBe(11);
+  jest.advanceTimersByTime(299999);
+  expect(
+    (await controller.getOnlyMarketData(TOKEN))?.market_data.current_price.usd
+  ).toBe(11);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  jest.advanceTimersByTime(1);
+  const pending = deferred();
+  fetch.mockReturnValueOnce(pending.promise);
+  const first = controller.getOnlyMarketData(TOKEN);
+  const second = controller.getOnlyMarketData(TOKEN);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  pending.resolve(
+    response({
+      symbol: 'TST',
+      ['market_data']: { ['current_price']: { usd: 22 } },
+    })
+  );
+  const values = await Promise.all([first, second]);
+  expect(values.map((value) => value?.market_data.current_price.usd)).toEqual([
+    22, 22,
+  ]);
+});
+
+it('enhanced token details refresh market prices while reusing descriptive metadata', async () => {
+  network.coingeckoPlatformId = 'ethereum';
+  (contractChecker as jest.Mock).mockResolvedValue({ type: 'ERC-20' });
+  (getTokenStandardMetadata as jest.Mock).mockResolvedValue({
+    tokenSymbol: 'TST',
+    decimals: 6,
+    balance: '1000000',
+  });
+  const quote = (price: number) => ({
+    symbol: 'TST',
+    ['market_data']: { ['current_price']: { usd: price } },
+  });
+  jest.mocked(retryableFetch).mockResolvedValue(response(quote(11)) as any);
+  const controller = EvmAssetsController();
+  const first = await controller.getTokenDetailsWithMarketData(
+    TOKEN,
+    ACCOUNT,
+    {} as any
+  );
+  expect(first?.market_data.current_price.usd).toBe(11);
+  expect(first?.isVerified).toBe(true);
+  jest.advanceTimersByTime(300000);
+  jest.mocked(retryableFetch).mockResolvedValue(response(quote(22)) as any);
+  const second = await controller.getTokenDetailsWithMarketData(
+    TOKEN,
+    ACCOUNT,
+    {} as any
+  );
+  expect(second?.market_data.current_price.usd).toBe(22);
+  expect(contractChecker).toHaveBeenCalledTimes(1);
+  expect(retryableFetch).toHaveBeenCalledTimes(2);
+});
+
 describe('ERC20 shared metadata boundary', () => {
   const load = (
     overrides: Record<string, unknown> = {},

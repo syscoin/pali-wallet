@@ -1,4 +1,5 @@
-import { JsonRpcReadClient, RpcReadError } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
+import { createBoundedRpcFetch } from './boundedRpcFetch.ts';
+import { JsonRpcReadClient, RpcReadCapabilities, RpcReadError } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
 import { RpcResponseIntegrityError } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
 import { AUTOMATIC_FEE, chooseEvmFees, snapshotEvmFeeChoice, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice.ts';
 import { DAPP_PUBLIC_RPC_METHODS, normalizeDappRpcRequest, type DappPublicRpcMethod, type DappPublicRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
@@ -12,7 +13,7 @@ import type { Transaction } from 'ethers/transaction';
 import { encodeNftTransferData, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import { normalizeNftExecutionRevert } from '../../../../source/shared/nftReads.ts';
 import { snapshotNftTransferSelection, type NftTransferRequest, type NftTransferSelection } from './nftTransferAdmission.ts';
-import { boundedResponseText, cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
+import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
 import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type NativeNetworkRegistration } from './networkContext.ts';
 import { assembleFeeQuote, checkedReadHash, EvmTransferReadError, guardedRead, readOwnData,
   EvmAutomaticNonceUnresolved, matchesSendNonce, rejectRead, snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotReplacementTransfer, snapshotUnsignedTransfer, units } from './evmFeeContracts.ts';
@@ -30,6 +31,7 @@ import { type EvmFeeFunding, captureNativeEvmFeeCoverage, assertEvmFeeEstimateAp
 import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
 import type { EvmReplacementRates, EvmSignedRetirementReadMethod } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
+import { createSmartAccountInfrastructureReader, SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
 export type { EvmDappPreparedQuote, EvmDappTransactionRequest } from '../../../../source/shared/evmDappPreparation.ts';
 
 const RETIREMENT_METHODS: Readonly<Record<EvmSignedRetirementReadMethod, true>> = Object.freeze({
@@ -126,11 +128,15 @@ export class EvmTransferReadRpc {
   private readonly timeoutMs: number;
   private readonly monotonicMilliseconds: () => number;
   private sequence = 0;
+  private readonly capabilities: RpcReadCapabilities;
   private readonly nftQuotes = new WeakMap<EvmNftPreparedQuote, 'prepared' | 'requoted'>();
+  private readonly readInfrastructure: ReturnType<typeof createSmartAccountInfrastructureReader>;
   /** Custom clocks must be monotonic milliseconds with one stable origin, never Date.now(). */
-  constructor(id: EvmNetworkId | NativeNetworkRegistration, options: { fetch?: (url: string, init: RequestInit) => Promise<Response>; timeoutMs?: number; monotonicMilliseconds?: () => number } = {}) {
+  constructor(id: EvmNetworkId | NativeNetworkRegistration, options: { fetch?: (url: string, init: RequestInit) => Promise<Response>; timeoutMs?: number; monotonicMilliseconds?: () => number; capabilities?: RpcReadCapabilities; infrastructureReader?: ReturnType<typeof createSmartAccountInfrastructureReader> } = {}) {
     this.network = typeof id === 'string' ? getNativeNetwork(id) : snapshotNativeNetwork(id);
-    this.fetcher = options.fetch ?? ((url, init) => fetch(url, init));
+    this.readInfrastructure = options.infrastructureReader ?? createSmartAccountInfrastructureReader();
+    this.capabilities = options.capabilities ?? new RpcReadCapabilities(this.network.rpcUrl);
+    this.fetcher = createBoundedRpcFetch(options.fetch ?? ((url, init) => fetch(url, init)));
     this.timeoutMs = options.timeoutMs ?? 12000;
     this.monotonicMilliseconds = options.monotonicMilliseconds ?? (() => Math.floor(performance.now()));
     if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs < 1 || this.timeoutMs > 30000) throw new Error('Invalid read timeout');
@@ -139,9 +145,11 @@ export class EvmTransferReadRpc {
     guardedRead(guard);
     if (external.aborted) return rejectRead('CANCELLED');
     const controller = new AbortController();
+    let responseFailure: unknown;
     const nft = scope === 'nft-quote';
     const boundedContractCode = nft || scope === 'smart-account';
     const smartCallReverts = new WeakSet<Error>();
+    const unsupportedPriorityErrors = new WeakSet<Error>();
     const expectedUrl = scope ? new URL(this.network.rpcUrl).href : undefined;
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
@@ -160,15 +168,20 @@ export class EvmTransferReadRpc {
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }), signal: controller.signal,
         credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer',
       }), controller.signal);
-      guardedRead(guard);
-      if (expectedUrl && (response.redirected ||
-          (response.url && new URL(response.url).href !== expectedUrl))) {
-        cancelResponseBody(response);
-        return rejectRead('PROFILE_CHANGED');
+      try {
+        guardedRead(guard);
+        if (expectedUrl && (response.redirected ||
+            (response.url && new URL(response.url).href !== expectedUrl)))
+          return rejectRead('PROFILE_CHANGED');
+        if (!response.ok) return rejectRead('UNAVAILABLE');
+        const contentType = response.headers.get('content-type');
+        if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType)) return rejectRead('INVALID_RESPONSE');
+      } catch (error) {
+        responseFailure = error;
+        controller.abort();
+        try { await response.body?.cancel(); } catch { /* Keep the primary refusal. */ }
+        throw error;
       }
-      if (!response.ok) return rejectRead('UNAVAILABLE');
-      const contentType = response.headers.get('content-type');
-      if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType)) return rejectRead('INVALID_RESPONSE');
       const limit = limitFor(method);
       const text = await cancellable(boundedResponseText(response, controller.signal, limit), controller.signal);
       guardedRead(guard);
@@ -186,8 +199,11 @@ export class EvmTransferReadRpc {
           throw new EthereumRpcErrorHandler(Number(error.code), error.message, typeof error.data === 'string' ? error.data : undefined);
         }
         // Only an explicit unsupported priority-fee method reaches the SDK's bounded history fallback.
-        if (method === 'eth_maxPriorityFeePerGas' && (error.code === -32601 || error.code === 4200))
-          throw Object.assign(new Error('Unsupported priority fee RPC'), { code: error.code });
+        if (method === 'eth_maxPriorityFeePerGas' && (error.code === -32601 || error.code === 4200)) {
+          const unsupported = Object.assign(new Error('Unsupported priority fee RPC'), { code: error.code });
+          unsupportedPriorityErrors.add(unsupported);
+          throw unsupported;
+        }
         if (method === 'eth_call') {
           if (scope === 'smart-account' && params[0] && typeof params[0] === 'object') {
             const to = Object.getOwnPropertyDescriptor(params[0], 'to')?.value;
@@ -205,6 +221,7 @@ export class EvmTransferReadRpc {
       return result.result;
     };
     const batch = new JsonRpcReadClient(this.network.rpcUrl, {
+      capabilities: this.capabilities,
       signal: controller.signal, timeoutMs: this.timeoutMs, recoverResponse: false, maxConcurrency: 4,
       maxBatchItems: 40, maxResponseBytes: 2 * 1024 * 1024,
       requestInit: { credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer' },
@@ -212,35 +229,55 @@ export class EvmTransferReadRpc {
         guardedRead(guard);
         if (url !== this.network.rpcUrl) return rejectRead('PROFILE_CHANGED');
         const response = await this.fetcher(url, init);
-        guardedRead(guard);
-        if (response.redirected || (response.url && new URL(response.url).href !== new URL(this.network.rpcUrl).href)) {
-          cancelResponseBody(response); return rejectRead('PROFILE_CHANGED');
+        try {
+          guardedRead(guard);
+          if (response.redirected || (response.url && new URL(response.url).href !== new URL(this.network.rpcUrl).href))
+            return rejectRead('PROFILE_CHANGED');
+          const type = response.headers.get('content-type');
+          if (type && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(type))
+            return rejectRead('INVALID_RESPONSE');
+          return response;
+        } catch (error) {
+          responseFailure = error;
+          controller.abort();
+          try { await response.body?.cancel(); } catch { /* Keep the primary refusal. */ }
+          throw error;
         }
-        const type = response.headers.get('content-type');
-        if (type && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(type))
-          return rejectRead('INVALID_RESPONSE');
-        return response;
       },
     });
+    const readFailure = (error: unknown): never => {
+      guardedRead(guard);
+      if (error instanceof EvmTransferReadError) throw error;
+      if (controller.signal.aborted) return rejectRead('CANCELLED');
+      if (error instanceof Error && (smartCallReverts.has(error) || unsupportedPriorityErrors.has(error))) throw error;
+      if (error instanceof RpcResponseIntegrityError) return rejectRead('INVALID_RESPONSE');
+      if (scope === 'dapp-rpc' && error instanceof EthereumRpcErrorHandler) throw error;
+      if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'number')
+        return rejectRead('INVALID_RESPONSE');
+      return rejectRead('UNAVAILABLE');
+    };
     const read: Reader = Object.assign(async (method: Method, params: readonly unknown[]) => {
       if (controller.signal.aborted) return rejectRead('CANCELLED');
-      if (scope === 'dapp-rpc') return resultValue(await request(method, params), method, params);
       guardedRead(guard);
       if (!METHODS.includes(method)) return rejectRead('INVALID_INPUT');
       try {
+        if (scope === 'dapp-rpc') return resultValue(await request(method, params), method, params);
         const result = await batch.read(method, params, { signal: controller.signal, maxResponseBytes: limitFor(method) });
         guardedRead(guard);
         if (controller.signal.aborted) return rejectRead('CANCELLED');
         return result;
       } catch (error) {
-        if (error instanceof RpcReadError) return resultValue({ error }, method, params);
-        throw error;
+        if (error instanceof RpcReadError) {
+          try { return resultValue({ error }, method, params); }
+          catch (error) { return readFailure(error); }
+        }
+        return readFailure(error);
       }
     }, {
       signal: controller.signal,
       many: async (requests: readonly { method: Method; params: readonly unknown[] }[]) => {
         guardedRead(guard);
-        const results = await batch.readMany(requests, { signal: controller.signal });
+        const results = await batch.readMany(requests, { signal: controller.signal }).catch(readFailure);
         guardedRead(guard);
         if (controller.signal.aborted) return rejectRead('CANCELLED');
         return results.map((result, index): PromiseSettledResult<unknown> => {
@@ -251,10 +288,12 @@ export class EvmTransferReadRpc {
               return { status: 'rejected', reason: new EvmTransferReadError('INVALID_RESPONSE') };
             return result;
           }
-          if (!(result.reason instanceof RpcReadError)) return result;
           try {
-            return { status: 'fulfilled', value: resultValue({ error: result.reason }, requests[index]!.method, requests[index]!.params) };
+            if (result.reason instanceof RpcReadError)
+              return { status: 'fulfilled', value: resultValue({ error: result.reason }, requests[index]!.method, requests[index]!.params) };
+            readFailure(result.reason);
           } catch (error) { return { status: 'rejected', reason: error }; }
+          return result;
         });
       },
       assertCurrent: () => { guardedRead(guard); if (controller.signal.aborted) rejectRead('CANCELLED'); },
@@ -266,21 +305,17 @@ export class EvmTransferReadRpc {
       return result;
     } catch (error) {
       guardedRead(guard);
-      if (controller.signal.aborted) return rejectRead('CANCELLED');
-      // Only bounded explicit reverts normalized by this operation retain their
-      // call evidence for shared NFT verification. Transport errors stay opaque.
-      if (error instanceof Error && smartCallReverts.has(error)) throw error;
+      if (responseFailure) throw responseFailure;
       if (error instanceof EvmTransferReadError) throw error;
-      if (error instanceof RpcResponseIntegrityError) return rejectRead('INVALID_RESPONSE');
-      if (scope === 'dapp-rpc' && error instanceof EthereumRpcErrorHandler) throw error;
+      if (controller.signal.aborted) return rejectRead('CANCELLED');
       if (error instanceof EvmAssetStateError) {
         if (nft) return rejectRead(error.code === 'INSUFFICIENT_ASSET' ? 'INSUFFICIENT_NFT_BALANCE'
           : error.code === 'TRANSFER_REJECTED' ? 'NFT_TRANSFER_REJECTED' : error.code);
         throw error;
       }
-      if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'number')
-        return rejectRead('INVALID_RESPONSE');
-      return rejectRead('UNAVAILABLE');
+      // RPC errors are normalized by read/readMany before entering application
+      // callbacks. Preserve their own domain exceptions without matching text.
+      throw error;
     } finally {
       controller.abort(); batch.destroy(); clearTimeout(timer); external.removeEventListener('abort', abort);
     }
@@ -375,14 +410,17 @@ export class EvmTransferReadRpc {
       await this.checkSmartAccountInfrastructure(read);
     }, 'smart-account');
   }
-  private async observeSmartAccountInfrastructure(read: Reader) {
-    const { projectSmartAccountInfrastructureObservation,
-      SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } = await import('../../../../source/utils/smartAccount/infrastructureObservation.ts');
-    const outcomes = await read.many(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => ({ method: 'eth_getCode' as const, params: [address, 'latest'] })));
-    const codes = outcomes.map(result => { if (result.status === 'rejected') throw result.reason; return result.value; });
-    const status = projectSmartAccountInfrastructureObservation(Number(this.network.chainId), codes);
-    if (!status) return rejectRead('INVALID_RESPONSE');
-    return status;
+  private observeSmartAccountInfrastructure(read: Reader) {
+    return this.readInfrastructure({
+      chainId: Number(this.network.chainId), url: this.network.rpcUrl,
+      provider: { send: (method, params) => read(method as Method, params),
+        verifyConfiguredChainId: () => this.checkChain(read) },
+      assertCurrent: read.assertCurrent,
+      readCodes: async block => {
+        const outcomes = await read.many(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => ({ method: 'eth_getCode' as const, params: [address, block] })));
+        return outcomes.map(result => { if (result.status === 'rejected') throw result.reason; return result.value; });
+      },
+    });
   }
   private async checkSmartAccountInfrastructure(read: Reader): Promise<void> {
     const { assertSmartAccountInfrastructureReady } = await import('../../../../source/utils/smartAccount/infrastructureObservation.ts');
@@ -390,9 +428,7 @@ export class EvmTransferReadRpc {
   }
   readSmartAccountInfrastructureStatus(signal: AbortSignal, guard: () => void) {
     return this.operation(signal, guard, async read => {
-      await this.checkChain(read);
       const result = await this.observeSmartAccountInfrastructure(read);
-      await this.checkChain(read);
       return result;
     }, 'smart-account');
   }

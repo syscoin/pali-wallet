@@ -161,4 +161,35 @@ describe('network native balance cache', () => {
     expect(account.balances.ethereum).toBe('12.5');
     expect(getFreshNativeBalance(account, network)).toBeNull();
   });
+
+  it('never restores or publishes another endpoint balance for the same chain', () => {
+    const first = evmNetwork(1),
+      second = { ...first, url: 'https://other-rpc.example' };
+    let state = vaultReducer(undefined, { type: 'test/init' });
+    state = vaultReducer(state, setNetworkChange({ activeNetwork: first }));
+    state = vaultReducer(
+      state,
+      setAccountBalanceForNetwork({
+        balance: '9',
+        id: 0,
+        network: first,
+        type: KeyringAccountType.HDAccount,
+      })
+    );
+    state = vaultReducer(state, setNetworkChange({ activeNetwork: second }));
+    expect(getHdAccount(state).balances.ethereum).toBe(-1);
+    expect(getFreshNativeBalance(getHdAccount(state), second)).toBeNull();
+    state = vaultReducer(
+      state,
+      setAccountBalanceForNetwork({
+        balance: '12',
+        id: 0,
+        network: first,
+        type: KeyringAccountType.HDAccount,
+      })
+    );
+    expect(getHdAccount(state).balances.ethereum).toBe(-1);
+    state = vaultReducer(state, setNetworkChange({ activeNetwork: first }));
+    expect(getHdAccount(state).balances.ethereum).toBe('12');
+  });
 });

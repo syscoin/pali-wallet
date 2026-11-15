@@ -17,6 +17,7 @@ import {
   NativePortfolioController,
   sameNativePortfolioAccount,
   type NativePortfolioAccount,
+  type NativePortfolioSnapshot,
   type PublicCustodySource,
 } from '../portfolio/nativePortfolio';
 import type { BalanceReader } from '../core/watchOnlyAuthority';
@@ -106,6 +107,7 @@ export function NativeSmartAccountSend({
   onChangeAsset,
   initialRecipient,
   availableNative,
+  nativeBalance,
   onViewTransaction,
 }: {
   ledgerConnection?: NativeLedgerConnectionView;
@@ -130,6 +132,7 @@ export function NativeSmartAccountSend({
   onChangeAsset?(draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: Erc20Metadata): void;
   initialRecipient?: string;
   availableNative?: string;
+  nativeBalance?: NativePortfolioSnapshot | null;
   onViewTransaction?(hash: string): void;
 }) {
   useNativeTranslation();
@@ -138,11 +141,15 @@ export function NativeSmartAccountSend({
     () => new NativePortfolioController(source, reader),
     [source, reader]
   );
-  const balance = useSyncExternalStore(
-    portfolio.subscribe,
-    portfolio.getSnapshot,
-    portfolio.getSnapshot
+  const sharedNativeBalance = nativeBalance !== undefined;
+  const localBalance = useSyncExternalStore(
+    sharedNativeBalance ? emptySubscribe : portfolio.subscribe,
+    sharedNativeBalance ? emptyInventory : portfolio.getSnapshot,
+    sharedNativeBalance ? emptyInventory : portfolio.getSnapshot
   );
+  const balance = nativeBalance ?? localBalance;
+  const latestBalance = useRef(balance);
+  useLayoutEffect(() => { latestBalance.current = balance; }, [balance]);
   const inventory = useSyncExternalStore(
     tokenView?.subscribe ?? emptySubscribe,
     tokenView?.getSnapshot ?? emptyInventory,
@@ -151,12 +158,12 @@ export function NativeSmartAccountSend({
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   useLayoutEffect(
     () =>
-      collectible
+      collectible || (!token && sharedNativeBalance)
         ? undefined
         : token
         ? tokenView?.connect()
         : portfolio.connect(),
-    [portfolio, token, tokenView, collectible]
+    [portfolio, token, tokenView, collectible, sharedNativeBalance]
   );
   useLayoutEffect(() => !token && !collectible && assetPickerOpen && !assetChoices ? tokenView?.connect() : undefined,
     [token, collectible, assetPickerOpen, assetChoices, tokenView]);
@@ -168,12 +175,12 @@ export function NativeSmartAccountSend({
   const symbol = token?.symbol ?? context.symbol;
   const displayedBalance = token
     ? nativeTokenAvailableAmount(token, account, inventory)
-    : balance.status === 'available' && balance.units !== null && sameNativePortfolioAccount(balance.account, account)
+    : balance?.status === 'available' && balance.units !== null && sameNativePortfolioAccount(balance.account, account)
     ? formatBaseUnits(balance.units, context.decimals)
     : null;
   const loadingBalance = token
     ? selectedToken?.status === 'loading'
-    : balance.status === 'loading';
+    : balance?.status === 'loading';
   const shownAvailableBalance = hideBalances && typeof displayedBalance === 'string' ? HIDDEN_BALANCE : displayedBalance;
   const availableBalanceLabel = typeof displayedBalance === 'string'
     ? t('mobile.sendAssetViews.utxo.availableAmount', { amount: shownAvailableBalance, symbol })
@@ -438,9 +445,9 @@ export function NativeSmartAccountSend({
       }} />
   ) : (
     <Button title={maximum ? t("mobile.portfolioCopy.maxSelected") : t('send.max')} variant="secondary" size="compact"
-      disabled={busy || displayedBalance === null || !balance.units || BigInt(balance.units) <= BigInt(0)}
+      disabled={busy || displayedBalance === null || !balance?.units || BigInt(balance.units) <= BigInt(0)}
       onPress={() => {
-        if (!owner.current.active || owner.current.busy || displayedBalance === null || !balance.units || portfolio.getSnapshot() !== balance) return;
+        if (!owner.current.active || owner.current.busy || displayedBalance === null || !balance?.units || latestBalance.current !== balance || (!sharedNativeBalance && portfolio.getSnapshot() !== balance)) return;
         closeScanner(); setMaximum(true); setAmount(formatBaseUnits(balance.units, context.decimals));
       }} />
   );

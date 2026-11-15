@@ -331,7 +331,12 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
     approved?.expiresAtMonotonicMilliseconds ??
     now + EVM_FEE_APPROVAL_LIFETIME_MS;
   const approval = captureEvmFeeApproval(transaction, ports.scope, expiry);
-  const coverage = await resolveEvmFeeFunding(ports.funding, approval, check);
+  const coverage = await resolveEvmFeeFunding(
+    ports.funding,
+    approval,
+    check,
+    ports.gasPolicy.kind === 'estimate' ? executionGas : undefined
+  );
   try {
     assertEvmFeeEstimateApproved(
       approval,

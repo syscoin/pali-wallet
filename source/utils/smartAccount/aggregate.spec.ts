@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 import { Interface } from 'utils/ethersV6Compat';
 import { hexZeroPad } from 'utils/ethersV6Compat';
 import { keccak256 } from 'utils/ethersV6Compat';
@@ -19,6 +22,14 @@ import {
   getPaliInfrastructureContracts,
   getZkSysGasTankAddress,
 } from './deployment';
+
+const creation = fs
+  .readFileSync(path.join(__dirname, 'deployment.ts'), 'utf8')
+  .match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1];
+const MULTICALL_RUNTIME = `0x${creation.slice(
+  2 + 0x20 * 2,
+  2 + (0x20 + 0xee0) * 2
+)}`;
 
 const TEST_INTERFACE = new Interface([
   'function getValue() view returns (uint256)',
@@ -59,7 +70,7 @@ describe('smart account RPC aggregation', () => {
     );
     const provider = {
       call: jest.fn().mockResolvedValue(aggregateResponse),
-      getCode: jest.fn().mockResolvedValue('0x60806040'),
+      getCode: jest.fn().mockResolvedValue(MULTICALL_RUNTIME),
       sendBatch: jest.fn(),
     };
 
@@ -89,7 +100,7 @@ describe('smart account RPC aggregation', () => {
     );
     const provider = {
       call: jest.fn().mockResolvedValue(aggregateResponse),
-      getCode: jest.fn().mockResolvedValue('0x60806040'),
+      getCode: jest.fn().mockResolvedValue(MULTICALL_RUNTIME),
       sendBatch: jest.fn(),
     };
 
@@ -152,7 +163,7 @@ describe('smart account RPC aggregation', () => {
   it('caches positive Multicall3 resolution per chain', async () => {
     const provider = {
       call: jest.fn(),
-      getCode: jest.fn().mockResolvedValue('0x60806040'),
+      getCode: jest.fn().mockResolvedValue(MULTICALL_RUNTIME),
       sendBatch: jest.fn(),
     };
 
@@ -181,7 +192,7 @@ describe('smart account RPC aggregation', () => {
 
     const first = resolveMulticall3Address(provider as any, 7);
     const second = resolveMulticall3Address(provider as any, 7);
-    releaseProbe('0x60806040');
+    releaseProbe(MULTICALL_RUNTIME);
 
     const [firstAddress, secondAddress] = await Promise.all([first, second]);
     expect(firstAddress).toBe(PALI_MULTICALL3_CANONICAL_ADDRESS);
@@ -196,6 +207,7 @@ describe('smart account RPC aggregation', () => {
     });
     // Stale probe: started before deployment, sees no code anywhere.
     const staleProvider = {
+      _getConnection: () => ({ url: 'https://same.example' }),
       call: jest.fn(),
       getCode: jest.fn().mockReturnValue(staleGate),
       sendBatch: jest.fn(),
@@ -207,8 +219,9 @@ describe('smart account RPC aggregation', () => {
 
     // Fresh probe after deployment finds the contract.
     const freshProvider = {
+      _getConnection: () => ({ url: 'https://same.example' }),
       call: jest.fn(),
-      getCode: jest.fn().mockResolvedValue('0x60806040'),
+      getCode: jest.fn().mockResolvedValue(MULTICALL_RUNTIME),
       sendBatch: jest.fn(),
     };
     const freshAddress = await resolveMulticall3Address(
@@ -221,14 +234,7 @@ describe('smart account RPC aggregation', () => {
     // fresh positive cache entry.
     releaseStaleProbe('0x');
     await stalePromise;
-    const cachedAddress = await resolveMulticall3Address(
-      {
-        call: jest.fn(),
-        getCode: jest.fn().mockResolvedValue('0x'),
-        sendBatch: jest.fn(),
-      } as any,
-      8
-    );
+    const cachedAddress = await resolveMulticall3Address(freshProvider, 8);
     expect(cachedAddress).toBe(PALI_MULTICALL3_CANONICAL_ADDRESS);
   });
 
@@ -238,7 +244,7 @@ describe('smart account RPC aggregation', () => {
       call: jest.fn(),
       getCode: jest.fn(async (address: string) => {
         if (address.toLowerCase() === infraAddress.toLowerCase()) {
-          return '0x60806040';
+          return MULTICALL_RUNTIME;
         }
         return '0x';
       }),
@@ -247,6 +253,71 @@ describe('smart account RPC aggregation', () => {
 
     const resolved = await resolveMulticall3Address(provider as any, 6);
     expect(resolved).toBe(infraAddress);
+  });
+
+  it('isolates negative, positive and in-flight capability evidence by endpoint', async () => {
+    let endpoint = 'https://a.example';
+    const provider = {
+      _getConnection: () => ({ url: endpoint }),
+      call: jest.fn(),
+      getCode: jest.fn().mockResolvedValue('0x'),
+    };
+    expect(await resolveMulticall3Address(provider, 1)).toBeNull();
+    endpoint = 'https://b.example';
+    provider.getCode.mockResolvedValue(MULTICALL_RUNTIME);
+    expect(await resolveMulticall3Address(provider, 1)).toBe(
+      PALI_MULTICALL3_CANONICAL_ADDRESS
+    );
+    endpoint = 'https://a.example';
+    expect(await resolveMulticall3Address(provider, 1)).toBeNull();
+    expect(provider.getCode).toHaveBeenCalledTimes(3);
+    const recreated = {
+      ...provider,
+      getCode: jest.fn().mockResolvedValue(MULTICALL_RUNTIME),
+    };
+    expect(await resolveMulticall3Address(recreated, 1)).toBe(
+      PALI_MULTICALL3_CANONICAL_ADDRESS
+    );
+    expect(recreated.getCode).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects nonempty runtime impostors and reprobes expired positive evidence', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(1000);
+    const provider = {
+      call: jest.fn(),
+      getCode: jest.fn().mockResolvedValue('0x1234'),
+    };
+    expect(await resolveMulticall3Address(provider, 1)).toBeNull();
+    jest.spyOn(Date, 'now').mockReturnValue(302000);
+    provider.getCode.mockResolvedValue(MULTICALL_RUNTIME);
+    expect(await resolveMulticall3Address(provider, 1)).toBe(
+      PALI_MULTICALL3_CANONICAL_ADDRESS
+    );
+    jest.spyOn(Date, 'now').mockReturnValue(603000);
+    provider.getCode.mockResolvedValue('0x');
+    expect(await resolveMulticall3Address(provider, 1)).toBeNull();
+    jest.restoreAllMocks();
+  });
+
+  it('discards a probe whose provider endpoint changed before it completed', async () => {
+    let endpoint = 'https://old.example';
+    let resolve!: (value: string) => void;
+    const provider = {
+      _getConnection: () => ({ url: endpoint }),
+      call: jest.fn(),
+      getCode: jest.fn().mockReturnValue(
+        new Promise<string>((done) => {
+          resolve = done;
+        })
+      ),
+    };
+    const pending = resolveMulticall3Address(provider, 1);
+    endpoint = 'https://new.example';
+    resolve(MULTICALL_RUNTIME);
+    expect(await pending).toBeNull();
+    provider.getCode.mockResolvedValue('0x');
+    expect(await resolveMulticall3Address(provider, 1)).toBeNull();
+    expect(provider.getCode).toHaveBeenCalledTimes(3);
   });
 
   it('registers the official Multicall3 creation bytecode as optional infrastructure', () => {

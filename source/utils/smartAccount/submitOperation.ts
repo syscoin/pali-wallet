@@ -84,7 +84,6 @@ export type SmartAccountSubmitHost<
     context: IEvmTransactionContext,
     id?: number
   ): void;
-  assertGasTankCoversTransaction(params: any): Promise<BigNumber>;
   assertSmartAccountExecutionContext(id: string): void;
   chainId: number;
   ensureDeploymentPrefund(
@@ -309,20 +308,6 @@ async function submitOwnedSmartAccountOperation<
       Boolean(getZkSysGasTankAddress(active.metadata.chainId)) &&
       signedUserOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES;
     let outerGasLimit: BigNumber | undefined;
-    if (usesZkSysGasTank) {
-      outerGasLimit = await host.assertGasTankCoversTransaction({
-        chainId: active.metadata.chainId,
-        gasPayerAddress: gasPayer.address,
-        gasPrice: legacyGasPrice,
-        maxFeePerGas: legacyGasPrice ?? params.maxFeePerGas,
-        transaction: {
-          data: callData,
-          to: entryPointAddress,
-          value: '0x0',
-        },
-      });
-      assertCurrent();
-    }
     // Self-funded first-UserOp deployment: an op carrying initCode validates
     // before anything executes, so the counterfactual account must already
     // cover the EntryPoint prefund.
@@ -363,9 +348,8 @@ async function submitOwnedSmartAccountOperation<
     }
     // A supplied legacy price must reach the actual handleOps preflight;
     // estimation must not validate a different fee model from publication.
-    // Existing EIP-1559 estimation stays fee-less. Tank mode reuses its exact
-    // preflight, and the resolved gas limit avoids a second signer estimate.
-    if (!outerGasLimit && initCode && initCode !== '0x') {
+    // Tank coverage uses the payer quote's exact execution estimate and fresh credit.
+    if (!usesZkSysGasTank && initCode && initCode !== '0x') {
       const provider = host.provider;
       if (!provider) {
         throw new Error(PROVIDER_UNAVAILABLE_ERROR);

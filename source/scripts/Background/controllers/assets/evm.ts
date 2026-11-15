@@ -93,6 +93,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
       timestamp: number;
     }
   >();
+  const marketDataCache = new Map<
+    string,
+    { details: any; timestamp: number }
+  >();
 
   // Cache for CoinGecko ID detection results
   const coinGeckoDetectionCache = new Map<
@@ -935,93 +939,28 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddress: string,
     w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenDetails | null> => {
-    // Check cache first for enhanced data
     const context = metadataContext();
-    const currentPlatform = getCurrentNetworkPlatform();
-    const cacheKey = `${context.key}:${contractAddress.toLowerCase()}:enhanced`;
-    const cached = tokenDetailsCache.get(cacheKey);
-    const now = Date.now();
-
     try {
-      // Get basic details and fresh balance
       const detailsWithBalance = await getTokenDetailsWithBalance(
         contractAddress,
         walletAddress,
         w3Provider
       );
       if (!detailsWithBalance || !contextIsCurrent(context.key)) return null;
-
-      // Check if we have cached enhanced market data
-      if (cached && now - cached.timestamp < TOKEN_DETAILS_CACHE_DURATION) {
-        console.log(
-          `[EvmAssetsController] Using cached market data for ${contractAddress}`
-        );
-        // Cached metadata must not supply a balance after a failed fresh read.
-        const details = { ...cached.details };
-        if (detailsWithBalance.balance === undefined) delete details.balance;
-        else details.balance = detailsWithBalance.balance;
-        if (detailsWithBalance.rawBalance !== undefined) {
-          details.rawBalance = detailsWithBalance.rawBalance;
-          details.decimals = detailsWithBalance.decimals;
-        }
-        return details;
-      }
-
-      // Try to enhance with CoinGecko market data
-      try {
-        if (currentPlatform) {
-          // Check if token exists in CoinGecko
-          const response = await retryableFetch(
-            `https://api.coingecko.com/api/v3/coins/${currentPlatform}/contract/${contractAddress}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
-          );
-
-          if (response.ok) {
-            const coinGeckoData = await response.json();
-            if (!contextIsCurrent(context.key)) return null;
-
-            // Clean CoinGecko symbol before merging
-            if (coinGeckoData.symbol) {
-              coinGeckoData.symbol = cleanTokenSymbol(coinGeckoData.symbol);
-            }
-
-            // Merge CoinGecko data with our token details
-            const enhancedDetails = {
-              ...coinGeckoData, // All CoinGecko fields (with cleaned symbol)
-              ...detailsWithBalance, // Our wallet-specific data (symbol, decimals, balance, etc.)
-              isVerified: true,
-            };
-            // Only the wallet's on-chain read supplies atomic units.
-            if (detailsWithBalance.rawBalance === undefined)
-              delete enhancedDetails.rawBalance;
-
-            console.log(
-              `[EvmAssetsController] Enhanced ${detailsWithBalance.tokenStandard} token ${contractAddress} with CoinGecko market data`
-            );
-
-            // Both balance representations come from a fresh read.
-            const cacheableData = { ...enhancedDetails };
-            delete cacheableData.balance;
-            delete cacheableData.rawBalance;
-            tokenDetailsCache.set(cacheKey, {
-              details: cacheableData,
-              timestamp: now,
-            });
-
-            return enhancedDetails;
-          }
-        }
-      } catch (coinGeckoError) {
-        console.warn(
-          `[EvmAssetsController] Failed to fetch CoinGecko market data for ${contractAddress}:`,
-          coinGeckoError
-        );
-      }
-
-      // Return basic details with balance if market data fails
-      console.log(
-        `[EvmAssetsController] No market data available for ${contractAddress}, returning basic details with balance`
-      );
-      return contextIsCurrent(context.key) ? detailsWithBalance : null;
+      const marketData = await getOnlyMarketData(contractAddress);
+      if (!contextIsCurrent(context.key)) return null;
+      if (!marketData) return detailsWithBalance;
+      const enhancedDetails = {
+        ...marketData,
+        ...detailsWithBalance,
+        isVerified: true,
+      };
+      // Only the fresh on-chain read may supply a balance.
+      if (detailsWithBalance.balance === undefined)
+        delete enhancedDetails.balance;
+      if (detailsWithBalance.rawBalance === undefined)
+        delete enhancedDetails.rawBalance;
+      return enhancedDetails;
     } catch (error) {
       console.error(
         '[EvmAssetsController] Error getting token details with market data:',
@@ -1044,10 +983,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
     const cacheKey = `${
       context.key
     }:${contractAddress.toLowerCase()}:marketonly`;
-    const cached = tokenDetailsCache.get(cacheKey);
+    const cached = marketDataCache.get(cacheKey);
     const now = Date.now();
 
-    if (cached && now - cached.timestamp < TOKEN_DETAILS_CACHE_DURATION) {
+    if (cached && now - cached.timestamp < PRICE_CACHE_DURATION) {
       console.log(
         `[EvmAssetsController] Using cached market data for ${contractAddress}`
       );
@@ -1095,7 +1034,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
           );
 
           // Cache the market data
-          tokenDetailsCache.set(cacheKey, {
+          marketDataCache.set(cacheKey, {
             details: marketData,
             timestamp: now,
           });

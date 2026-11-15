@@ -2,7 +2,10 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { captureSmartAccountCallsIdentity } from '../../../../shared/dappCallsStatus.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../shared/evmFeeGuard';
-import { readFreshEvmState } from '../../../../shared/evmReadPhase';
+import {
+  readFreshEvmState,
+  withEvmReadPhase,
+} from '../../../../shared/evmReadPhase';
 import { createSmartAccountRawSigningIntent } from '../../../../utils/smartAccount/ownerSigningIntent.ts';
 import { buildSmartAccountUserOpSigningIntent } from '../../../../utils/smartAccount/userOperationHash.ts';
 import {
@@ -140,7 +143,6 @@ import {
   selectSmartAccountGasPayer,
   readSmartAccountNativeBalances,
   canUseSmartAccountGasTank,
-  assertSmartAccountGasTankCredit,
   ensureSmartAccountDeploymentPrefund,
 } from 'utils/smartAccount/payerPolicy';
 import {
@@ -331,7 +333,14 @@ class SmartAccountController {
   private readonly pendingDeploymentAddresses = new Set<string>();
   private readonly hydratedMetadataCache = new Map<
     string,
-    { metadata: ISmartAccountMetadata; timestamp: number }
+    {
+      executionContext?: ReturnType<
+        SmartAccountController['infrastructureContext']
+      >;
+      metadata: ISmartAccountMetadata;
+      sourceMetadata?: ISmartAccountMetadata;
+      timestamp: number;
+    }
   >();
   private readonly inflightHydrations = new Map<
     string,
@@ -1680,16 +1689,6 @@ class SmartAccountController {
       ? await this.getHydratedSmartAccountById(accountId as number)
       : await this.getHydratedActiveSmartAccount();
     assertContext();
-    if (
-      useCachedMetadata &&
-      active.metadata.isDeployed &&
-      !hasUsableSmartAccountAuthMetadata(active.metadata)
-    ) {
-      active = Number.isInteger(accountId)
-        ? await this.getHydratedSmartAccountById(accountId as number)
-        : await this.getHydratedActiveSmartAccount();
-      assertContext();
-    }
     if (active.metadata.chainId !== snapshot.chainId)
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
@@ -1703,58 +1702,116 @@ class SmartAccountController {
       active.account.address,
       assertContext
     );
-    const pending = createSmartAccountPendingState(
+    const sourceMetadata = active.metadata;
+    let hydratedMetadata: ISmartAccountMetadata | undefined;
+    const prepared = await withEvmReadPhase(
       rawProvider,
-      pendingRecords,
-      snapshot.chainId,
-      active.account.address,
-      assertContext
-    );
-    const provider = pending.provider;
-    const useDeployedCachedMetadata =
-      useCachedMetadata &&
-      active.metadata.isDeployed &&
-      hasUsableSmartAccountAuthMetadata(active.metadata);
-    if (!useDeployedCachedMetadata) {
-      await this.assertInfrastructureSupported(snapshot, assertContext);
-      assertContext();
-    }
-    const prepared = await prepareSmartAccountOperation({
-      account: { ...active.account, smartAccount: active.metadata },
-      chainId: snapshot.chainId,
-      executions: params,
-      feeOverrides,
-      knownDeployed: useDeployedCachedMetadata,
-      provider,
-      pending,
-      assertCurrent: assertContext,
-      selectGasPayer: async (gasEstimate, maxFeePerGas) => {
-        const primaryGasPayer = this.getWalletGasPayerCandidates(
-          active.metadata.deploymentGasPayer
-        )[0];
-        const useGasTank = primaryGasPayer
-          ? await this.canUseZkSysGasTankForSmartAccountTx(provider, {
-              chainId: active.metadata.chainId,
-              gasEstimate,
-              gasPayerAddress: primaryGasPayer.address,
-              maxFeePerGas,
-            })
-          : false;
-        assertContext();
-        const gasPayer = useGasTank
-          ? {
-              address: primaryGasPayer.address,
-              id: primaryGasPayer.id,
-              type: primaryGasPayer.type,
-            }
-          : await this.getWalletGasPayerAccount(
-              provider,
+      assertContext,
+      async (scopedProvider) => {
+        const pending = createSmartAccountPendingState(
+          scopedProvider,
+          pendingRecords,
+          snapshot.chainId,
+          active.account.address,
+          assertContext
+        );
+        const provider = pending.provider;
+        const deployed =
+          (await readSmartAccountDeploymentState({
+            account: { ...active.account, smartAccount: active.metadata },
+            chainId: snapshot.chainId,
+            provider,
+            assertCurrent: assertContext,
+          })) === 'deployed';
+        if (
+          deployed &&
+          (!active.metadata.isDeployed ||
+            !hasUsableSmartAccountAuthMetadata(active.metadata))
+        ) {
+          const key = `execution:${this.getHydrationKey(active.account)}`;
+          const cached = this.hydratedMetadataCache.get(key);
+          const reusable =
+            cached &&
+            cached.sourceMetadata === sourceMetadata &&
+            cached.executionContext &&
+            this.sameInfrastructureContext(cached.executionContext, snapshot) &&
+            Date.now() - cached.timestamp < HYDRATED_METADATA_TTL_MS;
+          active = {
+            ...active,
+            metadata: reusable
+              ? cached.metadata
+              : await readSmartAccountValidatorMetadata({
+                  account: { ...active.account, smartAccount: active.metadata },
+                  chainId: snapshot.chainId,
+                  provider,
+                  assertCurrent: assertContext,
+                }),
+          };
+          assertContext();
+          if (!reusable) hydratedMetadata = active.metadata;
+        }
+        const useDeployedMetadata =
+          deployed &&
+          active.metadata.isDeployed &&
+          hasUsableSmartAccountAuthMetadata(active.metadata);
+        if (!useDeployedMetadata) {
+          await this.assertInfrastructureSupported(snapshot, assertContext);
+          assertContext();
+        }
+        return prepareSmartAccountOperation({
+          account: { ...active.account, smartAccount: active.metadata },
+          chainId: snapshot.chainId,
+          executions: params,
+          feeOverrides,
+          knownDeployed: useDeployedMetadata,
+          provider,
+          pending,
+          assertCurrent: assertContext,
+          selectGasPayer: async (gasEstimate, maxFeePerGas) => {
+            const primaryGasPayer = this.getWalletGasPayerCandidates(
               active.metadata.deploymentGasPayer
-            );
-        assertContext();
-        return { gasPayer, useGasTank };
-      },
-    });
+            )[0];
+            const useGasTank = primaryGasPayer
+              ? await this.canUseZkSysGasTankForSmartAccountTx(provider, {
+                  chainId: active.metadata.chainId,
+                  gasEstimate,
+                  gasPayerAddress: primaryGasPayer.address,
+                  maxFeePerGas,
+                })
+              : false;
+            assertContext();
+            const gasPayer = useGasTank
+              ? {
+                  address: primaryGasPayer.address,
+                  id: primaryGasPayer.id,
+                  type: primaryGasPayer.type,
+                }
+              : await this.getWalletGasPayerAccount(
+                  provider,
+                  active.metadata.deploymentGasPayer
+                );
+            assertContext();
+            return { gasPayer, useGasTank };
+          },
+        });
+      }
+    );
+    assertContext();
+    // Publish only after the read phase has passed its final chain/owner checks.
+    if (hydratedMetadata) {
+      const key = `execution:${this.getHydrationKey(active.account)}`;
+      this.hydratedMetadataCache.delete(key);
+      this.hydratedMetadataCache.set(key, {
+        executionContext: snapshot,
+        metadata: hydratedMetadata,
+        sourceMetadata,
+        timestamp: Date.now(),
+      });
+      if (this.hydratedMetadataCache.size > 128)
+        this.hydratedMetadataCache.delete(
+          this.hydratedMetadataCache.keys().next().value!
+        );
+    }
     const { actionHash, userOperation } = prepared;
     assertContext();
     for (const [id, context] of this.executionContexts)
@@ -1779,7 +1836,13 @@ class SmartAccountController {
         })),
         feeOverrides,
       }),
-      pending,
+      pending: createSmartAccountPendingState(
+        rawProvider,
+        pendingRecords,
+        snapshot.chainId,
+        active.account.address,
+        assertContext
+      ),
     });
     return { ...prepared, accountId: active.account.id, executionContextId };
   }
@@ -1886,8 +1949,6 @@ class SmartAccountController {
           ),
         getLocalNativeExecutionRecipients: (executions) =>
           this.getLocalNativeExecutionRecipients(executions),
-        assertGasTankCoversTransaction: (request) =>
-          this.assertZkSysGasTankCoversTransaction(request, pending.provider),
         ensureDeploymentPrefund: (...args) =>
           this.ensureSmartAccountDeploymentPrefund(...args, pending.provider),
         sendTransaction: (...args) =>
@@ -1909,19 +1970,6 @@ class SmartAccountController {
     }
   ) {
     return canUseSmartAccountGasTank(provider, params);
-  }
-
-  private async assertZkSysGasTankCoversTransaction(
-    params: {
-      chainId: number;
-      gasPayerAddress: string;
-      gasPrice?: string;
-      maxFeePerGas?: string;
-      transaction: { data?: string; to: string; value?: string };
-    },
-    provider: any
-  ) {
-    return assertSmartAccountGasTankCredit(provider, params);
   }
 
   /**

@@ -60,7 +60,11 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
 
   // Generate unique key for request deduplication
   const getCacheKey = useCallback(() => {
-    const networkKey = `${activeNetwork.kind}-${activeNetwork.chainId}`;
+    const networkKey = JSON.stringify([
+      activeNetwork.kind,
+      activeNetwork.chainId,
+      activeNetwork.url,
+    ]);
     return `${accountType}-${account.id}-${account.address}-${networkKey}`;
   }, [
     account.address,
@@ -68,6 +72,7 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     accountType,
     activeNetwork.chainId,
     activeNetwork.kind,
+    activeNetwork.url,
   ]);
 
   // Check if we can make a request based on rate limiting

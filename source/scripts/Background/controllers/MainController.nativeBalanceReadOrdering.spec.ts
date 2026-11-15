@@ -1,6 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 
 import { getController } from '..';
+import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import vaultReducer, {
   setAccountPropertyByIdAndType,
   setNetworkChange,
@@ -142,6 +143,7 @@ beforeEach(() => {
   CustomJsonRpcProvider.mockImplementation(() => receiptProvider);
   controller = Object.create(MainController.prototype);
   Object.assign(controller, {
+    rpcReadCapabilities: createRpcReadCapabilitiesOwner(),
     nativeBalanceRevision: 0,
     networkRequestGeneration: 0,
     balanceLoadingRequestId: 0,

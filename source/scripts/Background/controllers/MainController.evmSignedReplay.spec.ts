@@ -700,6 +700,30 @@ it('fresh explicit replay uses exact stored bytes and consumes its confirmation 
   expect(provider._send).toHaveBeenCalledTimes(5);
 });
 
+it('does not poll while a reviewed replay waits for confirmation', async () => {
+  const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+  expect(prepared.status).toBe('review');
+  const readsBeforeConfirmation = provider.send.mock.calls.length;
+  const chainReadsBeforeConfirmation = provider._send.mock.calls.length;
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(provider.send).toHaveBeenCalledTimes(readsBeforeConfirmation);
+  expect(provider._send).toHaveBeenCalledTimes(chainReadsBeforeConfirmation);
+  await expect(
+    wallet.confirmEvmSignedReplay(prepared.review.id)
+  ).resolves.toEqual({
+    status: 'submitted',
+    hash: entry.hash,
+  });
+  expect(provider.send.mock.calls.map(([method]) => method)).toEqual([
+    'eth_getTransactionReceipt',
+    'eth_getTransactionCount',
+    'eth_getTransactionReceipt',
+    'eth_getTransactionCount',
+    'eth_sendRawTransaction',
+  ]);
+  expect(provider._send).toHaveBeenCalledTimes(5);
+});
+
 it('refuses the exact provider send when final shared replay admission fails', async () => {
   const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
   expect(prepared.status).toBe('review');
@@ -1968,7 +1992,7 @@ describe('worker-owned token state at review and initial held POST', () => {
             const activeAuthority = {
               nonce: 0,
               signal: active.signal,
-              assertCurrent: () => {},
+              assertCurrent: () => undefined,
             };
             send.mockImplementationOnce(async () => {
               throw failure;

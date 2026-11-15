@@ -1,3 +1,6 @@
+import { createBoundedRpcFetch } from './boundedRpcFetch.ts';
+import { createSmartAccountInfrastructureReader } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
+import { createRpcReadCapabilitiesOwner } from '../../../../source/shared/rpcReadCapabilities.ts';
 import { buildSmartAccountBuiltinInstall, assertSmartAccountBuiltinInstallApplied, type SmartAccountAuthenticatorPurpose } from '../../../../source/utils/smartAccount/moduleCommands.ts';
 import { isAccountCompatibleWithNetwork } from '../../../../source/utils/accountCompatibility.ts';
 import type { PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
@@ -468,6 +471,9 @@ export function createKeyringRuntimeFactory(
     async open(): Promise<KeyringRuntime> {
       await dependencies.ensureCryptoReady();
       const storage = await dependencies.openStorage();
+      const transferFetch = createBoundedRpcFetch(dependencies.connectionFetch ?? walletFetch);
+      const transferReadCapabilities = createRpcReadCapabilitiesOwner();
+      const infrastructureReader = createSmartAccountInfrastructureReader();
       let storageRetired = false;
       let infrastructureSettlementFault = false;
       try {
@@ -1291,7 +1297,7 @@ export function createKeyringRuntimeFactory(
                 assertCurrent();
                 if (!input.readPhase) throw new KeyringRuntimeError('CANCELLED');
                 const network = getNativeNetwork(capturedCatalogue.active.networkId, capturedCatalogue.networks);
-                const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+                const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
                 const provider = createNativeSmartAccountProvider(network, rpc, contextSignal, assertCurrent, input.readPhase);
                 await assertSmartAdmission(provider, record.hash, snapshot);
                 assertCurrent();
@@ -1328,7 +1334,7 @@ export function createKeyringRuntimeFactory(
             throw new KeyringRuntimeError('INVALID_INPUT');
           const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
           const fetch = dependencies.connectionFetch ?? walletFetch;
-          const rpc = new EvmTransferReadRpc(network, { fetch });
+          const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
           const sender = new NativeTransferRpc({ registration: network, fetch });
           const planner = createNativeAutomaticNoncePlanner(signedRecords, hardwareSigner
             ? {get keyring() {check(); return transactionRecordKeyring(hardwareSigner.keyring(), check);}, assertCurrent: check}
@@ -2412,7 +2418,7 @@ export function createKeyringRuntimeFactory(
             };
             check();
             const proofs = createNativeNoteMaintenanceProofs({ network, signal, assertCurrent: check,
-              rpc: new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch }) });
+              rpc: new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch }) });
             return notes.bindMaintenance(session, proofs);
           }, authentication);
         const openNoteMaintenance: NonNullable<KeyringRuntime['openNoteMaintenance']> = (signal, guard, authentication) =>
@@ -2495,8 +2501,8 @@ export function createKeyringRuntimeFactory(
                 acknowledgement,
                 ownedPool.readNote
               );
-              const rpc = new EvmTransferReadRpc(network, {
-                fetch: dependencies.connectionFetch ?? walletFetch,
+              const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl),
+                fetch: transferFetch,
               });
               const planner = createNativeAutomaticNoncePlanner(
                 signedRecords,
@@ -4279,7 +4285,7 @@ export function createKeyringRuntimeFactory(
             contextSignal.addEventListener('abort', abort, { once: true });
             try {
               check(); await dataBinding(captured, check); check();
-              const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+              const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
               const provider = createNativeSmartAccountProvider(network, rpc, request.signal, check);
               const metadata = await readSmartAccountValidatorMetadata({ account: account as IKeyringAccountState & { smartAccount: NonNullable<IKeyringAccountState['smartAccount']> },
                 chainId: Number(network.chainId), provider, assertCurrent: check });
@@ -4332,7 +4338,7 @@ export function createKeyringRuntimeFactory(
                 state.accounts.SmartAccount[selected.index] !== account) throw new KeyringRuntimeError('CANCELLED');
           };
           check(); await dataBinding(captured, check); check();
-          const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+          const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
           const status = await rpc.readGuardianRecoveryStatus(account.address, signal, check);
           check();
           if (status.status !== 'observed') throw new KeyringRuntimeError('NOT_READY');
@@ -4459,7 +4465,7 @@ export function createKeyringRuntimeFactory(
             handoff = localSmartHandoffs.resumeInfrastructure(localEntry(saved.action, scope, saved.expiresAt), snapshotNativeInfrastructureLocalAction, saved);
             getNativeInfrastructureContinuation(handoff);
           }
-          const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+          const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
           controller = infrastructure.open({
             network, payer: identity, assertCurrent: check,
             createSigningHandoff(context: NativeInfrastructureHandoffCapture) {
@@ -4785,8 +4791,8 @@ export function createKeyringRuntimeFactory(
               requireSmartAccountAddressIdentity(account, Number(network.chainId));
               for (const assertRoleCurrent of roleChecks) assertRoleCurrent();
             };
-            const rpc = new EvmTransferReadRpc(network, {
-              fetch: dependencies.connectionFetch ?? walletFetch,
+            const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl),
+              fetch: transferFetch,
             });
             const provider = createNativeSmartAccountProvider(
               network,
@@ -5345,7 +5351,7 @@ export function createKeyringRuntimeFactory(
                   state.accounts.SmartAccount[selected.index] !== account) throw new KeyringRuntimeError('CANCELLED');
             };
             check();
-            const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+            const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
             const pendingRecords = await signedRecords.captureSmartAccountPendingRecords(
               { keyring: transactionRecordKeyring(ring, check), assertCurrent: check }, network.chainId, account.address);
             check();
@@ -5602,7 +5608,7 @@ export function createKeyringRuntimeFactory(
                 const state = await inspectGuardianRemoval(operationSignal, assertCurrent);
                 if (state.status !== 'retry-ready') throw new Error('GUARDIAN_REMOVAL_PENDING');
               }
-              const result = await new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch })
+              const result = await new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch })
                 .readGuardianRecoveryStatus(address, operationSignal, assertCurrent);
               check(); checkGuard(assertCurrent);
               const currentPolicy = result.status === 'observed' ? result.observation : null;
@@ -5713,7 +5719,7 @@ export function createKeyringRuntimeFactory(
             check();
             const network = getNativeNetwork(snapshot.active.networkId, snapshot.networks);
             requireSmartAccountAddressIdentity(account, Number(network.chainId));
-            const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+            const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
             const provider = createNativeSmartAccountProvider(network, rpc, signal, check);
             await provider.verifyConfiguredChainId(); check();
             const result = await preflightCustomValidatorInstall(provider, { address, chainId: Number(network.chainId), metadata: account.smartAccount });
@@ -5882,7 +5888,7 @@ export function createKeyringRuntimeFactory(
                   const request = new AbortController();
                   try {
                     check();
-                    const rates = await new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch }).feeRecommendations(request.signal, check);
+                    const rates = await new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch }).feeRecommendations(request.signal, check);
                     check(); capturedFees = snapshotEvmFeeChoice({ kind: 'custom', ...chooseEvmFees(rates, feeChoice) });
                   } finally { request.abort(); }
                 }
@@ -6294,8 +6300,8 @@ export function createKeyringRuntimeFactory(
                         (entry) => entry.chainId === String(chainId)
                       );
                       if (!network) return null;
-                      const rpc = new EvmTransferReadRpc(network, {
-                        fetch: dependencies.connectionFetch ?? walletFetch,
+                      const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl),
+                        fetch: transferFetch,
                       });
                       return {
                         async getBlockHash(blockNumber) {
@@ -6629,8 +6635,8 @@ export function createKeyringRuntimeFactory(
                       chainId: Number(network.chainId),
                       request,
                     });
-                    const rpc = new EvmTransferReadRpc(network, {
-                      fetch: dependencies.connectionFetch ?? walletFetch,
+                    const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl),
+                      fetch: transferFetch,
                     });
                     const provider = createNativeSmartAccountProvider(
                       network,
@@ -7422,7 +7428,7 @@ export function createKeyringRuntimeFactory(
                   if (signal.aborted || local.chainId !== scope.network.chainId || local.address !== scope.address ||
                       local.walletFingerprint !== scope.walletFingerprint || local.accountId !== scope.accountId)
                     throw new KeyringRuntimeError('CANCELLED');
-                  const rpc = new EvmTransferReadRpc(scope.network, { fetch: dependencies.connectionFetch ?? walletFetch });
+                  const rpc = new EvmTransferReadRpc(scope.network, { infrastructureReader, capabilities: transferReadCapabilities.get(scope.network.registrationHash, scope.network.rpcUrl), fetch: transferFetch });
                   if (local.smartAccount) return observeSmartAccountOperations({ chainId: local.chainId, hash: local.hash,
                     account: local.address, nonce: local.nonce, ...local.smartAccount },
                     (method, params) => rpc.retirementRead(method, params, signal, guard), guard);
@@ -7457,7 +7463,7 @@ export function createKeyringRuntimeFactory(
                 const source = retained ?? saved?.archived.find(item => item.hash === hash);
                 const record = source ? { ...source, recipient: source.recipient ?? scope.address } : undefined;
                 if (!record?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
-                const rpc = new EvmTransferReadRpc(scope.network, { fetch: dependencies.connectionFetch ?? walletFetch });
+                const rpc = new EvmTransferReadRpc(scope.network, { infrastructureReader, capabilities: transferReadCapabilities.get(scope.network.registrationHash, scope.network.rpcUrl), fetch: transferFetch });
                 const observation = await observeSmartAccountOperations({ chainId, hash, account: address, nonce: record.nonce, ...record.smartAccount },
                   (method, params) => rpc.retirementRead(method, params, signal, guard), guard);
                 guard();
@@ -7604,7 +7610,7 @@ export function createKeyringRuntimeFactory(
               };
               if (selected.type === 'SmartAccount') {
                 let lifetime = new AbortController();
-                const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+                const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
                 const replay = createSmartAccountSignedReplay(signedRecords, () => {
                   const ownedLifetime = lifetime;
                   const current = () => { check(); if (ownedLifetime.signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };

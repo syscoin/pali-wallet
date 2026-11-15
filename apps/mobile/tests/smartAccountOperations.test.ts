@@ -66,7 +66,7 @@ function nativeSubmitHost(f: ReturnType<typeof fixture>, prepared: Awaited<Retur
     chainId, provider: f.provider, pending: f.pending, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
     getExecutionContext: () => ({ accountId: 0, userOperation: prepared.userOperation }),
     getSmartAccountById: () => ({ account: f.account, metadata: f.metadata }),
-    getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [], assertGasTankCoversTransaction: async () => BigNumber.from(100000),
+    getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [],
     ensureDeploymentPrefund: async () => { throw new Error('Unexpected deployment prefund'); },
     sendTransaction: send, invalidateMetadata() {},
   };
@@ -360,12 +360,30 @@ function payerSelectionFixture() {
   return { wallet, watched, signer, preferred };
 }
 
-test('funded watch-only imports are excluded before selecting a real payer', async () => {
+test('watch-only imports are excluded and cold selection uses HD zero without probing unrelated signers', async () => {
   const f = payerSelectionFixture();
   const payer = await selectSmartAccountGasPayer(f.wallet, {}, f.preferred);
-  assert.deepEqual(payer, { id: f.signer.id, type: 'Imported', address: f.signer.address });
+  assert.deepEqual(payer, { id: 0, type: 'HDAccount', address: owner });
   assert.deepEqual(getSmartAccountGasPayerCandidates(f.wallet, f.preferred).map(candidate => candidate.address),
     [owner, f.signer.address]);
+});
+
+test('explicit gas payer selection never queries other imported addresses', async () => {
+  const f = payerSelectionFixture();
+  const reads: string[] = [];
+  const selected = { id: f.signer.id, type: 'Imported' as KeyringAccountType, address: f.signer.address };
+  const provider = {
+    async getBalance(address: string) { reads.push(address); return 0; },
+    async getFeeData() { return { gasPrice: 1 }; },
+    async estimateGas(tx: { from: string }) { reads.push(tx.from); return 21000; },
+  };
+  assert.deepEqual(await selectSmartAccountGasPayer(f.wallet, provider, selected), selected);
+  assert.deepEqual(reads, []);
+  await assert.rejects(selectSmartAccountGasPayer(f.wallet, provider, selected, { to: owner }), /PALI_NATIVE_GAS_REQUIRED/);
+  assert.deepEqual(reads, [selected.address, selected.address]);
+  const withoutDefault = { ...f.wallet, accounts: { ...f.wallet.accounts, HDAccount: {} } };
+  await assert.rejects(selectSmartAccountGasPayer(withoutDefault, provider), /local EVM account is required/);
+  assert.deepEqual(reads, [selected.address, selected.address]);
 });
 
 test('a pinned watch-only payer is rejected instead of switching after consent', async () => {
@@ -398,7 +416,7 @@ test('portable deployment preserves prefund acknowledgement if handleOps submiss
     chainId, provider: f.provider, pending: f.pending, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
     getExecutionContext: () => ({ accountId: 0, userOperation: prepared.userOperation }),
     getSmartAccountById: () => ({ account: f.account, metadata: f.metadata }),
-    getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [], assertGasTankCoversTransaction: async () => BigNumber.from(100000),
+    getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [],
     ensureDeploymentPrefund: (...args) => ensureSmartAccountDeploymentPrefund(f.provider, send, ...args),
     sendTransaction: send, invalidateMetadata() {},
   }, () => undefined), (error: any) => error.transactionNotBroadcast === false && error.transactionHash === undefined);

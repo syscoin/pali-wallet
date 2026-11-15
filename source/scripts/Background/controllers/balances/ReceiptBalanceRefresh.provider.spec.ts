@@ -29,6 +29,9 @@ it.each([0, 255, '255'])('uses scoped RPC at %s decimals', async (decimals) => {
       return {
         ok: true,
         status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () =>
+          JSON.stringify({ jsonrpc: '2.0', id: request.id, result }),
         json: async () => ({ jsonrpc: '2.0', id: request.id, result }),
       } as Response;
     });
@@ -61,7 +64,9 @@ it.each([0, 255, '255'])('uses scoped RPC at %s decimals', async (decimals) => {
     expect(
       calls.every(
         ({ url, init }) =>
-          url === 'https://rpc.test' && init.signal === abort.signal
+          url === 'https://rpc.test' &&
+          init.signal instanceof AbortSignal &&
+          !init.signal.aborted
       )
     ).toBe(true);
     expect(calls[1].request.params).toEqual([A, '0x14']);
@@ -81,8 +86,13 @@ it('actually aborts a pending installed-provider fetch without retrying', async 
     1
   );
   let transportSignal: AbortSignal | undefined;
+  let didFetch!: () => void;
+  const fetched = new Promise<void>((resolve) => {
+    didFetch = resolve;
+  });
   const fetch = jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
     transportSignal = init!.signal as AbortSignal;
+    didFetch();
     return new Promise((_resolve, reject) => {
       transportSignal!.addEventListener(
         'abort',
@@ -93,9 +103,14 @@ it('actually aborts a pending installed-provider fetch without retrying', async 
   });
   try {
     const pending = provider.send('eth_blockNumber', []);
-    expect(transportSignal).toBe(abort.signal);
+    const rejected = expect(pending).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    await fetched;
+    expect(transportSignal!.aborted).toBe(false);
     abort.abort();
-    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    await rejected;
+    expect(transportSignal!.aborted).toBe(true);
     expect(fetch).toHaveBeenCalledTimes(1);
   } finally {
     provider.destroy();

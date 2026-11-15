@@ -48,7 +48,6 @@ import {
   type SmartAccountSubmitHost,
 } from '../../../../source/utils/smartAccount/submitOperation.ts';
 import {
-  assertSmartAccountGasTankCredit,
   canUseSmartAccountGasTank,
   ensureSmartAccountDeploymentPrefund,
   getSmartAccountGasPayerCandidates,
@@ -272,25 +271,31 @@ export function createNativeSmartOperation(
             assertCurrent
           );
         }
-        const infrastructure = await readInfrastructureCodes({
-          chainId, url: ports.network.rpcUrl, provider, assertCurrent,
-          readCodes: async blockTag => {
-            const codeResults = await provider.readMany(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => ({
-              method: 'eth_getCode', params: [address, blockTag],
-            })));
-            return codeResults.map((result: PromiseSettledResult<unknown>) => {
-              if (result.status === 'rejected') throw result.reason;
-              return result.value;
-            });
-          },
-        });
-        assertSmartAccountInfrastructureReady(infrastructure);
         const state = deploymentState ?? await readSmartAccountDeploymentState({
           account,
           chainId,
           provider,
           assertCurrent,
         });
+        const ordinaryTransfer = ['native-transfer', 'native-max', 'erc20-transfer', 'nft-transfer', 'dapp-call', 'dapp-batch'].includes(intent.kind);
+        const deployedTransfer = ordinaryTransfer && state === 'deployed' && metadata.isDeployed && hasUsableSmartAccountAuthMetadata(metadata);
+        // A deployed transfer uses its observed account and installed validator.
+        // Deployment and management retain the complete infrastructure check.
+        if (!deployedTransfer) {
+          const infrastructure = await readInfrastructureCodes({
+            chainId, url: ports.network.rpcUrl, provider, assertCurrent,
+            readCodes: async blockTag => {
+              const codeResults = await provider.readMany(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => ({
+                method: 'eth_getCode', params: [address, blockTag],
+              })));
+              return codeResults.map((result: PromiseSettledResult<unknown>) => {
+                if (result.status === 'rejected') throw result.reason;
+                return result.value;
+              });
+            },
+          });
+          assertSmartAccountInfrastructureReady(infrastructure);
+        }
         if (state === 'deployed' && intent.kind === 'deploy') {
           await ports.markDeployed(assertCurrent);
           assertCurrent();
@@ -664,8 +669,6 @@ export function createNativeSmartOperation(
                 options
               ),
             getLocalNativeExecutionRecipients: () => [],
-            assertGasTankCoversTransaction: (request) =>
-              assertSmartAccountGasTankCredit(provider, request),
             ensureDeploymentPrefund: (...args) =>
               ensureSmartAccountDeploymentPrefund(provider, send, ...args),
             sendTransaction: send,

@@ -287,6 +287,9 @@ beforeEach(async () => {
     return {
       ok: true,
       status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () =>
+        JSON.stringify(Array.isArray(body) ? responses : responses[0]),
       json: async () => (Array.isArray(body) ? responses : responses[0]),
     } as Response;
   }) as any;

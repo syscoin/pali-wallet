@@ -8,19 +8,21 @@ export const NATIVE_BALANCE_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CACHED_NETWORKS_PER_ACCOUNT = 25;
 
 export const getNativeBalanceCacheKey = (
-  network: Pick<INetwork, 'chainId' | 'kind'>
-): string => `${network.kind}:${network.chainId}`;
+  network: Pick<INetwork, 'chainId' | 'kind' | 'url'>
+): string =>
+  JSON.stringify([network.kind, Number(network.chainId), network.url]);
 
 export const isSameBalanceNetwork = (
-  first: Pick<INetwork, 'chainId' | 'kind'>,
-  second: Pick<INetwork, 'chainId' | 'kind'>
+  first: Pick<INetwork, 'chainId' | 'kind' | 'url'>,
+  second: Pick<INetwork, 'chainId' | 'kind' | 'url'>
 ): boolean =>
   first.kind === second.kind &&
-  Number(first.chainId) === Number(second.chainId);
+  Number(first.chainId) === Number(second.chainId) &&
+  first.url === second.url;
 
 export const getFreshNativeBalance = (
   account: Pick<IKeyringAccountState, 'nativeBalanceCache'>,
-  network: Pick<INetwork, 'chainId' | 'kind'>,
+  network: Pick<INetwork, 'chainId' | 'kind' | 'url'>,
   now = Date.now()
 ): INativeBalanceCacheEntry | null => {
   const entry = account.nativeBalanceCache?.[getNativeBalanceCacheKey(network)];
@@ -33,7 +35,7 @@ export const getFreshNativeBalance = (
 
 export const updateNativeBalanceCache = (
   cache: IKeyringAccountState['nativeBalanceCache'],
-  network: Pick<INetwork, 'chainId' | 'kind'>,
+  network: Pick<INetwork, 'chainId' | 'kind' | 'url'>,
   balance: number | string,
   updatedAt = Date.now()
 ): Record<string, INativeBalanceCacheEntry> => {

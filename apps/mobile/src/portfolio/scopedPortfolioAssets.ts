@@ -4,8 +4,8 @@ import { parseErc20Units, type Erc20Metadata } from '../../../../source/shared/e
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import { snapshotNativeNetwork } from '../custody/networkContext.ts';
 import type { NativeNotificationScope } from '../notifications/types.ts';
-import { createErc20Reader, createSelectedNftReadOperation } from './erc20ReadRpc.ts';
-import { createNftOwnershipReader } from './nftOwnershipReadRpc.ts';
+import { createErc20Reader, createSelectedNftPortfolioReadOperation } from './erc20ReadRpc.ts';
+import { normalizeNftExecutionRevert, verifyERC1155OwnershipHelper } from '../../../../source/shared/nftReads.ts';
 import { MAX_NATIVE_TOKENS, snapshotSavedCollectible, type NativeTokenInventory, type NativeTokenPortfolioScope, type SavedCollectible } from './tokenRegistry.ts';
 import { parseErc20Metadata } from './erc20Metadata.ts';
 
@@ -28,6 +28,8 @@ export function createScopedPortfolioAssetReader(ports: {
 }) {
   const registrations = new Map<string, ReturnType<typeof snapshotNativeNetwork>>();
   const erc20 = createErc20Reader({ fetch: ports.fetch,
+    registrations: () => [...registrations.values()] });
+  const nft = createSelectedNftPortfolioReadOperation({ fetch: ports.fetch,
     registrations: () => [...registrations.values()] });
   return async (
     input: NativeNotificationScope,
@@ -53,18 +55,6 @@ export function createScopedPortfolioAssetReader(ports: {
       throw new Error('Invalid saved portfolio assets');
     const metadata = inventory.items.map(parseErc20Metadata);
     const collectibles = (inventory.collectibles ?? []).map(snapshotSavedCollectible);
-    const options = {
-      registrations: () => { check(); return [network]; },
-      fetch: async (url: string, init: RequestInit) => {
-        check();
-        if (url !== network.rpcUrl) throw new Error('Portfolio endpoint changed');
-        const response = await ports.fetch(url, init);
-        check();
-        return response;
-      },
-    };
-    const ownership = createNftOwnershipReader(options);
-    const collection = createSelectedNftReadOperation(options);
     const work: (() => Promise<void>)[] = [];
     const tokenRows: PortfolioAssetSnapshot['tokens'][number][] = new Array(metadata.length);
     const collectibleRows: PortfolioAssetSnapshot['collectibles'][number][] = new Array(collectibles.length);
@@ -83,26 +73,59 @@ export function createScopedPortfolioAssetReader(ports: {
           tokenRows[index] = Object.freeze({ metadata: token, status: 'error', units: null });
       }
     });
-    for (const [index, saved] of collectibles.entries()) work.push(async () => {
+    if (collectibles.length) work.push(async () => {
       check();
       try {
-        const units = saved.tokenStandard === 'ERC-1155'
-          ? (await ownership({ networkId: network.id, owner: scope.accountAddress, ...saved }, signal, check)).units
-          : await collection(network.id, scope.accountAddress, saved.contractAddress, signal, check,
-            async ({ holder, call }) => {
-              const supported = await call(collectionInterface.encodeFunctionData('supportsInterface', ['0x80ac58cd']));
-              if (supported.kind !== 'result' || supported.data !== `0x${'0'.repeat(63)}1`)
-                throw new Error('Saved collection support unavailable');
-              const balance = await call(collectionInterface.encodeFunctionData('balanceOf', [holder]));
-              if (balance.kind !== 'result' || !/^0x[0-9a-fA-F]{64}$/.test(balance.data))
-                throw new Error('Saved collection balance unavailable');
-              return parseErc20Units(BigInt(balance.data));
-            });
-        check();
-        collectibleRows[index] = Object.freeze({ collectible: saved, status: 'available', units: parseErc20Units(units) });
+        await nft(network.id, scope.accountAddress, collectibles.map(saved => saved.contractAddress), signal, check, async ({ holder, call }) => {
+          const groups = new Map<string, { saved: SavedCollectible; index: number }[]>();
+          for (const [index, saved] of collectibles.entries()) {
+            const key = `${saved.contractAddress}:${saved.tokenStandard}`;
+            const group = groups.get(key) ?? [];
+            group.push({ saved, index }); groups.set(key, group);
+          }
+          const readGroup = async (group: { saved: SavedCollectible; index: number }[]) => {
+            const first = group[0]!.saved;
+            try {
+              if (first.tokenStandard === 'ERC-1155') {
+                const holdings = await verifyERC1155OwnershipHelper(first.contractAddress, holder, group.map(row => {
+                  if (row.saved.tokenStandard !== 'ERC-1155') throw new Error('Saved collectible standard changed');
+                  return row.saved.tokenId;
+                }), {
+                  async call({ to, data }) {
+                    if (to !== first.contractAddress || typeof data !== 'string') throw new Error('Saved collectible target changed');
+                    const outcome = await call(first.contractAddress, data);
+                    if (outcome.kind === 'result') return outcome.data;
+                    throw normalizeNftExecutionRevert(outcome.error, { to, data }) ?? new Error('Saved balance unavailable');
+                  },
+                });
+                check();
+                for (const [position, row] of group.entries()) {
+                  const holding = holdings[position];
+                  collectibleRows[row.index] = Object.freeze({ collectible: row.saved,
+                    status: holding?.verified ? 'available' : 'error',
+                    units: holding?.verified && holding.rawBalance !== undefined ? parseErc20Units(holding.rawBalance) : null });
+                }
+              } else {
+                const supported = await call(first.contractAddress, collectionInterface.encodeFunctionData('supportsInterface', ['0x80ac58cd']));
+                if (supported.kind !== 'result' || supported.data !== `0x${'0'.repeat(63)}1`)
+                  throw new Error('Saved collection support unavailable');
+                const balance = await call(first.contractAddress, collectionInterface.encodeFunctionData('balanceOf', [holder]));
+                if (balance.kind !== 'result' || !/^0x[0-9a-fA-F]{64}$/.test(balance.data))
+                  throw new Error('Saved collection balance unavailable');
+                check();
+                for (const row of group) collectibleRows[row.index] = Object.freeze({ collectible: row.saved, status: 'available', units: parseErc20Units(BigInt(balance.data)) });
+              }
+            } catch {
+              check();
+              for (const row of group) collectibleRows[row.index] = Object.freeze({ collectible: row.saved, status: 'error', units: null });
+            }
+          };
+          const grouped = [...groups.values()];
+          for (let offset = 0; offset < grouped.length; offset += 4) await Promise.all(grouped.slice(offset, offset + 4).map(readGroup));
+        });
       } catch {
         check();
-        collectibleRows[index] = Object.freeze({ collectible: saved, status: 'error', units: null });
+        for (const [index, saved] of collectibles.entries()) collectibleRows[index] = Object.freeze({ collectible: saved, status: 'error', units: null });
       }
     });
     // Bound transport concurrency; each reader retains its own anchored block.

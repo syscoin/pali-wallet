@@ -647,8 +647,12 @@ describe('native fee affordability before estimation', () => {
   test('verified fee credit still supports an empty native balance and performs estimation', async () => {
     const f = fixture();
     f.ports.balance = async () => BigInt(0);
-    const verify = jest.fn(async (approval) =>
-      BigInt(approval.maximumFeeUnits)
+    const verify = jest.fn(
+      async (approval, guard: () => void, executionGas?: bigint) => {
+        guard();
+        expect(executionGas).toBe(BigInt(21000));
+        return BigInt(approval.maximumFeeUnits);
+      }
     );
     f.ports.funding = createOwnedEvmFeeFunding(verify);
     const quote = await prepareEvmDappQuote(
@@ -656,6 +660,7 @@ describe('native fee affordability before estimation', () => {
       f.ports
     );
     expect(verify).toHaveBeenCalledTimes(1);
+    expect(verify.mock.calls[0][2]).toBe(BigInt(21000));
     expect(quote.coveredFeeUnits).toBe(quote.maximumFeeUnits);
     expect(
       f.requests.filter(({ method }) => method === 'eth_estimateGas')

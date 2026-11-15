@@ -350,6 +350,37 @@ describe.each(['Ledger', 'Trezor'] as const)(
       }
     );
 
+    it('keeps RPC work bounded across a delayed device confirmation', async () => {
+      const entered = deferred<void>();
+      const resume = deferred<void>();
+      const original = device.getMockImplementation()!;
+      device.mockImplementationOnce(async (unsigned: string) => {
+        entered.resolve();
+        await resume.promise;
+        return original(unsigned);
+      });
+      const sending = send();
+      await finishDelay();
+      await entered.promise;
+      const nonceReads = provider.getTransactionCount.mock.calls.length;
+      const chainReads = provider.verifyConfiguredChainId.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(10000);
+      expect(provider.getTransactionCount).toHaveBeenCalledTimes(nonceReads);
+      expect(provider.verifyConfiguredChainId).toHaveBeenCalledTimes(
+        chainReads
+      );
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      resume.resolve();
+      await sending;
+      expect(device).toHaveBeenCalledTimes(1);
+      expect(provider.getTransactionCount).toHaveBeenCalledTimes(1);
+      expect(
+        provider.verifyConfiguredChainId.mock.calls.length
+      ).toBeLessThanOrEqual(3);
+      expect(provider.verifyConfiguredChainId).toHaveBeenLastCalledWith(true);
+      expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+    });
+
     it('rejects a valid signature from the wrong device account before broadcast', async () => {
       const otherWallet = new Wallet(`0x${'33'.repeat(32)}`);
       device.mockImplementationOnce(async (unsigned: string) =>

@@ -460,6 +460,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
       const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
       if (present) missingInfrastructure.delete(address); else missingInfrastructure.add(address);
+      observedHead = { number: `0x${(BigInt(observedHead.number) + 1n).toString(16)}`, hash: `0x${(BigInt(observedHead.hash) + 1n).toString(16).padStart(64, '0')}` };
     },
     advanceHead() { observedHead = { number: '0x11', hash: '0x' + 'bb'.repeat(32) }; },
     infrastructureResponseLost() { failInfrastructureBroadcast = true; },
@@ -1638,7 +1639,7 @@ test('Smart Activity speeds up the exact outer transaction using its original lo
   } finally { operation?.dispose(); transfers?.dispose(); await f.close(); }
 });
 
-test('native Smart preparations reuse canonical infrastructure code and refresh it on the next block', async () => {
+test('native unhydrated preparations retain canonical infrastructure cache checks', async () => {
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
@@ -1658,8 +1659,39 @@ test('native Smart preparations reuse canonical infrastructure code and refresh 
     assert.equal(codeBatches(), 1, 'same-head second operation reuses only infrastructure code');
     f.advanceHead();
     await prepare();
-    assert.equal(codeBatches(), 2, 'new canonical head fetches every infrastructure code again');
+    assert.equal(codeBatches(), 2, 'unhydrated account still checks all infrastructure at a new head');
     assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const deployed of [true, false]) for (const maximum of [true, false]) test(`native transfer observes deployment before choosing infrastructure policy (deployed=${deployed},maximum=${maximum})`, async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Infrastructure policy' });
+    f.fundedSmart(); f.guardianStatus('no-policy');
+    const prepare = async () => {
+      operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', maximum ? { kind: 'maximum' } : { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+      await operation.prepare();
+    };
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    await prepare();
+    assert.equal(operation!.getSnapshot().phase, 'authorize');
+    operation!.dispose(); operation = undefined;
+    f.infrastructureCode('slhDsaValidator', false);
+    if (!deployed) { f.deployed(); f.undeployed(); }
+    f.advanceHead(); f.rpcBatches.length = 0;
+    await prepare();
+    const catalogueReads = f.rpcBatches.filter(batch => batch.length === SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.length && batch.every(method => method === 'eth_getCode')).length;
+    if (deployed) {
+      assert.equal(operation!.getSnapshot().phase, 'authorize', JSON.stringify(operation!.getSnapshot()));
+      assert.equal(catalogueReads, 0);
+    } else {
+      assert.equal(operation!.getSnapshot().phase, 'failed');
+      assert.equal(catalogueReads, 1, 'empty account code requires the complete deployment catalogue');
+    }
+    assert.equal(f.submitted.length, 0);
+    assert.equal(f.signatures.length, 0);
   } finally { operation?.dispose(); await f.close(); }
 });
 

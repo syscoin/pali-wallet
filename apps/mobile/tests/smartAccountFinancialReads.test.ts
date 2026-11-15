@@ -102,9 +102,31 @@ test('financial observations share within one owned phase and retire with it', a
   assert.deepEqual(f.calls.map(call => call.method), ['eth_call', 'eth_getBalance', 'eth_call']);
   await assert.rejects(escaped.readSmartAccountFinancialState(0n), /phase ended/);
   await state.withReadPhase(async phase => { await phase.readNonce(0n); });
-  assert.equal(f.calls.length, 6);
+  assert.equal(f.calls.length, 4);
   current = false;
   await assert.rejects(state.withReadPhase(async phase => phase.readNonce(0n)), /revoked/);
+});
+
+test('zero-value pending admission fetches only its nonce and retires at the phase boundary', async () => {
+  const { createSmartAccountPendingState } = await import('../../../source/utils/smartAccount/pendingState.ts');
+  const { ERC7579_MODE_SINGLE_DEFAULT } = await import('../../../source/utils/smartAccount/account.ts');
+  const { paliSmartAccountInterface } = await import('../../../source/utils/smartAccount/contracts.ts');
+  const f = fixture();
+  const provider = { ...f.provider, verifyConfiguredChainId: async () => undefined };
+  const state = createSmartAccountPendingState(provider, {
+    profileId: '0x' + '33'.repeat(32), read: async () => [],
+  }, 1, account, () => undefined);
+  const operation = { sender: account, nonce: '0', callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+    ERC7579_MODE_SINGLE_DEFAULT, `0x${'22'.repeat(20)}${'0'.repeat(64)}`,
+  ]) } as Parameters<typeof state.assertNonce>[0];
+  await state.withReadPhase(async phase => {
+    await phase.assertNonce(operation);
+    await phase.readNonce(0n);
+  });
+  assert.equal(f.calls.length, 1);
+  assert.equal(paliEntryPointInterface.parseTransaction({ data: f.calls[0]!.params[0].data })?.name, 'getNonce');
+  await state.withReadPhase(async phase => phase.assertNonce(operation));
+  assert.equal(f.calls.length, 2);
 });
 
 

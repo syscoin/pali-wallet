@@ -69,7 +69,10 @@ import {
   paliEntryPointInterface,
   paliSmartAccountInterface,
 } from 'utils/smartAccount/contracts';
-import { ensureSmartAccountDeploymentPrefund } from 'utils/smartAccount/payerPolicy';
+import {
+  createSmartAccountGasTankFunding,
+  ensureSmartAccountDeploymentPrefund,
+} from 'utils/smartAccount/payerPolicy';
 import { createSmartAccountPendingState } from 'utils/smartAccount/pendingState';
 import { submitSmartAccountOperation } from 'utils/smartAccount/submitOperation';
 
@@ -88,7 +91,7 @@ const block = {
 };
 let mockState: any;
 
-function fixture() {
+function fixture(chainId = 57) {
   Object.defineProperty(globalThis, 'crypto', {
     configurable: true,
     value: webcrypto,
@@ -98,7 +101,7 @@ function fixture() {
       isBitcoinBased: false,
       activeAccount: { id: 2, type: KeyringAccountType.SmartAccount },
       activeNetwork: {
-        chainId: 57,
+        chainId,
         kind: 'ethereum',
         url: 'https://rpc.invalid',
         slip44: 60,
@@ -214,7 +217,7 @@ function fixture() {
       account: { id: 0, type: 'HDAccount', address: signer.address },
       network: {
         kind: 'ethereum',
-        chainId: 57,
+        chainId,
         url: 'https://rpc.invalid',
         slip44: 60,
       },
@@ -251,7 +254,7 @@ function fixture() {
     wallet: { ethereumTransaction: keyring.ethereumTransaction },
   } as any);
   const request = {
-    chainId: 57,
+    chainId,
     from: signer.address,
     to: receiver,
     data: '0x1234',
@@ -306,6 +309,53 @@ function fixture() {
 
 afterEach(() => jest.restoreAllMocks());
 
+it.each(['signing', 'persistence', 'unchanged'] as const)(
+  'checks fresh tank credit after %s with one compatible estimate per phase',
+  async (stage) => {
+    const f = fixture(57057);
+    f.setBalance(BigInt(0));
+    let credit = BigInt(1000000);
+    const read = f.provider.send.getMockImplementation()!;
+    f.provider.send.mockImplementation(async (method, params) => {
+      if (method === 'eth_call')
+        return '0x' + credit.toString(16).padStart(64, '0');
+      return read(method, params);
+    });
+    const fundingProvider = {
+      call: async () => '0x' + credit.toString(16).padStart(64, '0'),
+      estimateGas: jest.fn(async () => {
+        throw new Error('Duplicate tank estimate');
+      }),
+      getFeeData: jest.fn(async () => {
+        throw new Error('Unused fee data');
+      }),
+    };
+    const to = getPaliEntryPointAddress(57057);
+    const funding = createSmartAccountGasTankFunding(
+      fundingProvider,
+      { chainId: 57057, payer: signer.address, to, data: '0x1234', value: '0' },
+      () => undefined
+    );
+    if (stage === 'signing')
+      f.onSigned(() => {
+        credit = BigInt(0);
+      });
+    if (stage === 'persistence')
+      f.onPersisted(() => {
+        credit = BigInt(0);
+      });
+    const work = f.submit(funding, { ...f.request, chainId: 57057, to });
+    if (stage === 'unchanged') await expect(work).resolves.toBeDefined();
+    else
+      await expect(work).rejects.toMatchObject({
+        transactionNotBroadcast: true,
+      });
+    expect(fundingProvider.estimateGas).not.toHaveBeenCalled();
+    expect(fundingProvider.getFeeData).not.toHaveBeenCalled();
+    expect(f.broadcast).toHaveBeenCalledTimes(stage === 'unchanged' ? 1 : 0);
+  }
+);
+
 it('refuses an unfunded EOA payer even when the selected Smart account has funds', async () => {
   const f = fixture();
   f.setBalance(BigInt(0));
@@ -350,10 +400,16 @@ it('retains the selected Smart account while signing a funded EOA payer with the
 
 it('does not reject its own newly persisted handleOps row as an unrelated pending operation', async () => {
   const f = fixture();
+  const execution = encodeERC7579Executions([
+    { target: receiver, value: '0', data: '0x' },
+  ]);
   const operation = buildSmartAccountUserOperation({
     sender: smart,
     nonce: '0',
-    callData: '0x',
+    callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+      execution.mode,
+      execution.executionCalldata,
+    ]),
     initCode: '0x',
     accountGasLimits: '0x' + '00'.repeat(32),
     gasFees: '0x' + '00'.repeat(32),
@@ -907,9 +963,6 @@ it.each(['signing', 'persistence', 'unchanged'] as const)(
         ensureDeploymentPrefund: fund,
         sendTransaction: async () => {
           throw new Error('Reached handleOps');
-        },
-        assertGasTankCoversTransaction: async () => {
-          throw new Error('Unexpected gas tank');
         },
       },
       () => undefined

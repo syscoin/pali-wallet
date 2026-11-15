@@ -119,7 +119,7 @@ describe('guardian recovery provider numeric boundaries', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it('normalizes individual bigint balances after a batched-read failure and selects the funded payer', async () => {
+  it('retains the designated payer without disclosing a funded imported account', async () => {
     state.vault.accounts[KeyringAccountType.Imported][0] = {
       address: SECOND_PAYER,
       id: 0,
@@ -131,12 +131,13 @@ describe('guardian recovery provider numeric boundaries', () => {
     provider.getBalance.mockImplementation(async (address: string) =>
       BigInt(address === PAYER ? 41999 : 42000)
     );
+    await expect(submit()).rejects.toThrow('PALI_NATIVE_GAS_REQUIRED');
+    expect(provider.sendBatch).not.toHaveBeenCalled();
+    expect(provider.getBalance.mock.calls).toEqual([[PAYER]]);
+    expect(send).not.toHaveBeenCalled();
+    provider.getBalance.mockResolvedValue(BigInt(42000));
     await expect(submit()).resolves.toMatchObject({ operation });
-    expect(provider.sendBatch).toHaveBeenCalledWith('eth_getBalance', [
-      [PAYER, 'latest'],
-      [SECOND_PAYER, 'latest'],
-    ]);
-    expect(send.mock.calls[0][2]).toMatchObject({ address: SECOND_PAYER });
+    expect(send.mock.calls[0][2]).toMatchObject({ address: PAYER });
     expect(send).toHaveBeenCalledTimes(1);
   });
 

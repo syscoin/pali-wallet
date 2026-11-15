@@ -584,3 +584,22 @@ test('independent observations reuse only the selected endpoint batch capability
   await reader.readBalance('ethereum', holder, metadata, signal());
   assert.deepEqual(widths, [1, 1, 1, 1, 1, 1]);
 });
+
+test('a failed buffered body holds physical capacity until its cancellation settles', async () => {
+  let opened = 0;
+  const releases: (() => void)[] = [];
+  const reader = createErc20Reader({ fetch: async () => {
+    opened++;
+    return { ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => { throw Error('broken body'); },
+      body: { cancel: () => new Promise<void>(resolve => releases.push(resolve)) },
+    } as unknown as Response;
+  } });
+  const controllers = Array.from({ length: 8 }, () => new AbortController());
+  const work = Promise.allSettled(controllers.map(controller => reader.readBalance('ethereum', holder, metadata, controller.signal)));
+  for (let index = 0; index < 10; index++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(opened, 4);
+  controllers.forEach(controller => controller.abort());
+  await work;
+  releases.forEach(release => release());
+});

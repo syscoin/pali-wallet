@@ -61,13 +61,21 @@ export const NATIVE_EVM_FEE_FUNDING: EvmFeeFunding = Object.freeze({
 });
 const fundingVerifiers = new WeakMap<
   EvmFeeFunding,
-  (approval: EvmFeeApproval, guard: () => void) => Promise<bigint>
+  (
+    approval: EvmFeeApproval,
+    guard: () => void,
+    executionGas?: bigint
+  ) => Promise<bigint>
 >();
 const issuedCoverage = new WeakMap<EvmFeeCoverage, EvmFeeApproval>();
 
 /** Host-private funding capability. Callers must bind the verifier to its exact owned operation. */
 export function createOwnedEvmFeeFunding(
-  verify: (approval: EvmFeeApproval, guard: () => void) => Promise<bigint>
+  verify: (
+    approval: EvmFeeApproval,
+    guard: () => void,
+    executionGas?: bigint
+  ) => Promise<bigint>
 ): EvmFeeFunding {
   const funding = Object.freeze({ kind: 'verified-credit' as const });
   fundingVerifiers.set(funding, verify);
@@ -85,14 +93,16 @@ export function captureNativeEvmFeeCoverage(
 export async function resolveEvmFeeFunding(
   funding: EvmFeeFunding,
   approval: EvmFeeApproval,
-  guard: () => void
+  guard: () => void,
+  executionGas?: bigint
 ): Promise<EvmFeeCoverage> {
   assertSynchronousEvmFeeGuard(guard);
   if (funding === NATIVE_EVM_FEE_FUNDING)
     return captureNativeEvmFeeCoverage(approval);
   const verify = fundingVerifiers.get(funding);
   if (!verify) throw new Error('EVM fee funding is unavailable');
-  const covered = await verify(approval, guard);
+  if (executionGas !== undefined) boundedQuantity(executionGas);
+  const covered = await verify(approval, guard, executionGas);
   assertSynchronousEvmFeeGuard(guard);
   if (boundedQuantity(covered) > BigInt(approval.maximumFeeUnits))
     throw new Error('Invalid EVM fee coverage');

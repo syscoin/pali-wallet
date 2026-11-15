@@ -2010,7 +2010,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'token' || sendTarget?.kind === 'collectible') && canSendSmart && openSmartSend && snapshot.account && publicSource && balanceReader && transferView)
     return <NativeSmartAccountSend key={sendTarget.kind === 'token' ? sendTarget.token.contractAddress : sendTarget.kind}
       feeRecommendations={signal => transferView.feeRecommendations(signal)}
-      assetChoices={accountPortfolio?.cachedAssets(snapshot.account.network)?.tokens} availableNative={sendAvailable}
+      assetChoices={accountPortfolio?.cachedAssets(snapshot.account.network)?.tokens} availableNative={sendAvailable} nativeBalance={sendBalance}
       initialRecipient={sendDraft?.form?.kind === 'evm' ? sendDraft.form.recipient : undefined}
       onChangeAsset={sendTarget.kind === 'native' || sendTarget.kind === 'token' ? changeSendAsset : undefined}
       ledgerConnection={ledgerConnection ?? undefined} recipientResolver={recipientResolver} account={{ ...snapshot.account, revision: snapshot.revision }} source={publicSource} reader={balanceReader} tokenView={tokenView ?? undefined} token={sendTarget.kind === 'token' ? sendTarget.token : undefined} collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} onViewTransaction={viewCompletedTransaction} />;

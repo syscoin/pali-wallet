@@ -15,7 +15,9 @@ import {
 import { readSmartAccountNativeBalances } from './payerPolicy.ts';
 
 /** Read the signed single execution, never caller-supplied review metadata. */
-function nativeValue(operation: SmartAccountPackedUserOperation): BigNumber {
+export function getSmartAccountNativeValue(
+  operation: SmartAccountPackedUserOperation
+): BigNumber {
   const [mode, execution] = paliSmartAccountInterface.decodeFunctionData(
     'execute',
     operation.callData
@@ -48,7 +50,7 @@ export async function assertSmartAccountNativeSpendability({
   const check = () => assertSynchronousEvmFeeGuard(assertCurrent);
   check();
   const operation = { ...userOperation };
-  const value = nativeValue(operation);
+  const value = getSmartAccountNativeValue(operation);
   if (value.isZero()) return;
   const requiredPrefund = getSmartAccountUserOpRequiredPrefund(operation);
   const financial =

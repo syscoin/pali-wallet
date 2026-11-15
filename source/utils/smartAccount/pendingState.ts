@@ -12,9 +12,12 @@ import {
   paliEntryPointInterface,
 } from './contracts.ts';
 import {
-  readSmartAccountFinancialState,
+  readSmartAccountBalances,
+  readSmartAccountNonce,
+  type SmartAccountBalances,
   type SmartAccountFinancialState,
 } from './financialReads.ts';
+import { getSmartAccountNativeValue } from './nativeSpendability.ts';
 import { SMART_ACCOUNT_PENDING_STATE } from './pendingStateError.ts';
 import type { EvmAutoNonceSnapshot } from '../../shared/evmAutoNonce.ts';
 import type { SmartAccountPendingRecords } from '../../wallet/evmSignedRecords.ts';
@@ -103,29 +106,33 @@ export function createSmartAccountPendingState(
       throw new Error('Invalid smart account RPC data');
     return value;
   };
-  const financialReads = new Map<string, Promise<SmartAccountFinancialState>>();
+  const nonceReads = new Map<string, Promise<string>>();
+  let balances: Promise<SmartAccountBalances> | undefined;
+  const nonceState = (key: bigint) => {
+    const identity = key.toString();
+    let result = nonceReads.get(identity);
+    if (!result) {
+      result = readSmartAccountNonce({ send: read }, chainId, account, key);
+      nonceReads.set(identity, result);
+    }
+    return result;
+  };
   const financialState = async (key: bigint) => {
     check();
     await provider.verifyConfiguredChainId(true);
     check();
-    const identity = key.toString();
-    let result = financialReads.get(identity);
-    if (!result) {
-      result = readSmartAccountFinancialState(
-        { send: read },
-        chainId,
-        account,
-        key
-      ).then((value) => {
-        check();
-        return value;
-      });
-      financialReads.set(identity, result);
-    }
-    const observed = await result;
+    const nonce = nonceState(key);
+    balances ??= readSmartAccountBalances({ send: read }, chainId, account);
+    const [observedNonce, observedBalances] = await Promise.all([
+      nonce,
+      balances,
+    ]);
     await provider.verifyConfiguredChainId(true);
     check();
-    return observed;
+    return Object.freeze({
+      nonce: observedNonce,
+      ...observedBalances,
+    }) satisfies SmartAccountFinancialState;
   };
   const pendingProvider = new Proxy(Object.create(null), {
     get(_target, property) {
@@ -156,7 +163,11 @@ export function createSmartAccountPendingState(
       return typeof value === 'function' ? value.bind(provider) : value;
     },
   });
-  const readNonce = async (key: bigint, fresh: boolean): Promise<string> => {
+  const readNonce = async (
+    key: bigint,
+    fresh: boolean,
+    includeBalances = false
+  ): Promise<string> => {
     await verify();
     if (key < BigInt(0) || key >= BigInt(1) << BigInt(192))
       throw new Error('Invalid smart account nonce key');
@@ -170,7 +181,11 @@ export function createSmartAccountPendingState(
     if (response !== undefined && !/^0x[0-9a-f]{64}$/i.test(response))
       throw new Error('Invalid smart account nonce response');
     const nonce = phaseScoped
-      ? BigInt((await financialState(key)).nonce)
+      ? BigInt(
+          includeBalances
+            ? (await financialState(key)).nonce
+            : await nonceState(key)
+        )
       : BigInt(
           paliEntryPointInterface
             .decodeFunctionResult('getNonce', response!)[0]
@@ -213,7 +228,13 @@ export function createSmartAccountPendingState(
   const assertNonce = async (operation: SmartAccountPackedUserOperation) => {
     if (getAddress(operation.sender) !== account) throw unavailable();
     const nonce = BigInt(operation.nonce);
-    if ((await readNonce(nonce >> BigInt(64), true)) !== operation.nonce)
+    if (
+      (await readNonce(
+        nonce >> BigInt(64),
+        true,
+        phaseScoped && !getSmartAccountNativeValue(operation).isZero()
+      )) !== operation.nonce
+    )
       throw unavailable();
     check();
   };

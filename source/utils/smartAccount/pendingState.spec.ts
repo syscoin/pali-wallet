@@ -2,8 +2,15 @@ import { prepareEvmDappQuote } from '../../shared/evmDappPreparation';
 import { NATIVE_EVM_FEE_FUNDING } from '../../shared/evmFeeApproval';
 import { readFreshEvmState } from '../../shared/evmReadPhase';
 
-import type { SmartAccountPackedUserOperation } from './account';
-import { getPaliEntryPointAddress, paliEntryPointInterface } from './contracts';
+import {
+  ERC7579_MODE_SINGLE_DEFAULT,
+  type SmartAccountPackedUserOperation,
+} from './account';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from './contracts';
 import {
   createSmartAccountPendingState,
   SMART_ACCOUNT_PENDING_STATE,
@@ -83,7 +90,14 @@ function fixture() {
   };
 }
 const operation = (nonce: string) =>
-  ({ sender: account, nonce } as SmartAccountPackedUserOperation);
+  ({
+    sender: account,
+    nonce,
+    callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+      ERC7579_MODE_SINGLE_DEFAULT,
+      payer + '0'.repeat(64),
+    ]),
+  } as SmartAccountPackedUserOperation);
 
 it.each([false, true])(
   'verifies canonicality after retained-revert reconciliation, reorg=%s',

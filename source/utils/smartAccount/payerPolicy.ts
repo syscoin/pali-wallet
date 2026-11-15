@@ -16,10 +16,7 @@ import {
 } from './contracts.ts';
 import { getZkSysGasTankAddress } from './deploymentMetadata.ts';
 import type { SmartAccountUserOpGasEstimate } from './gas.ts';
-import {
-  hasGuardianRecoveryNotReadyRevert,
-  hasNativeGasFailure,
-} from './operationErrors.ts';
+import { hasNativeGasFailure } from './operationErrors.ts';
 import type {
   SmartAccountSubmissionChecks,
   SmartAccountSubmitHost,
@@ -83,8 +80,10 @@ export async function assertSmartAccountGasTankCredit(
     gasPayerAddress,
     maxFeePerGas,
     transaction,
+    executionGas,
   }: {
     chainId: number;
+    executionGas?: bigint;
     gasPayerAddress: string;
     gasPrice?: string;
     maxFeePerGas?: string;
@@ -101,13 +100,15 @@ export async function assertSmartAccountGasTankCredit(
     throw new Error(ZKSYS_GAS_TANK_REQUIRED_ERROR);
   }
   const [gasLimit, rawCredit, feeData] = await Promise.all([
-    provider.estimateGas({
-      data: transaction.data || '0x',
-      from: gasPayerAddress,
-      ...(gasPrice !== undefined ? { gasPrice } : {}),
-      to: transaction.to,
-      value: transaction.value || '0x0',
-    }),
+    executionGas === undefined
+      ? provider.estimateGas({
+          data: transaction.data || '0x',
+          from: gasPayerAddress,
+          ...(gasPrice !== undefined ? { gasPrice } : {}),
+          to: transaction.to,
+          value: transaction.value || '0x0',
+        })
+      : Promise.resolve(BigNumber.from(executionGas)),
     new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider).creditOf(
       gasPayerAddress
     ),
@@ -157,43 +158,46 @@ export function createSmartAccountGasTankFunding(
   )
     throw new Error('Invalid sponsored Smart account transaction');
   let reviewed: string | undefined;
-  return createOwnedEvmFeeFunding(async (approval, assertCurrent) => {
-    const check = () => {
-      assertSynchronousEvmFeeGuard(assertOwner);
-      assertSynchronousEvmFeeGuard(assertCurrent);
-    };
-    check();
-    const transaction = approval.transaction;
-    if (
-      transaction.chainId !== String(bound.chainId) ||
-      transaction.from !== bound.payer ||
-      transaction.to !== bound.to ||
-      transaction.data !== bound.data ||
-      transaction.value !== '0'
-    )
-      throw new Error('Sponsored transaction changed');
-    const identity = JSON.stringify(transaction);
-    if (reviewed !== undefined && reviewed !== identity)
-      throw new Error('Sponsored transaction changed');
-    reviewed = identity;
-    await assertSmartAccountGasTankCredit(provider, {
-      chainId: bound.chainId,
-      gasPayerAddress: bound.payer,
-      maxFeePerGas:
-        transaction.type === 2
-          ? transaction.maxFeePerGas
-          : transaction.gasPrice,
-      ...(transaction.type === 2 ? {} : { gasPrice: transaction.gasPrice }),
-      transaction: {
-        data: transaction.data,
-        to: bound.to,
-        value: '0',
-        gasLimit: transaction.gasLimit,
-      },
-    });
-    check();
-    return BigInt(approval.maximumFeeUnits);
-  });
+  return createOwnedEvmFeeFunding(
+    async (approval, assertCurrent, executionGas) => {
+      const check = () => {
+        assertSynchronousEvmFeeGuard(assertOwner);
+        assertSynchronousEvmFeeGuard(assertCurrent);
+      };
+      check();
+      const transaction = approval.transaction;
+      if (
+        transaction.chainId !== String(bound.chainId) ||
+        transaction.from !== bound.payer ||
+        transaction.to !== bound.to ||
+        transaction.data !== bound.data ||
+        transaction.value !== '0'
+      )
+        throw new Error('Sponsored transaction changed');
+      const identity = JSON.stringify(transaction);
+      if (reviewed !== undefined && reviewed !== identity)
+        throw new Error('Sponsored transaction changed');
+      reviewed = identity;
+      await assertSmartAccountGasTankCredit(provider, {
+        chainId: bound.chainId,
+        gasPayerAddress: bound.payer,
+        maxFeePerGas:
+          transaction.type === 2
+            ? transaction.maxFeePerGas
+            : transaction.gasPrice,
+        executionGas,
+        ...(transaction.type === 2 ? {} : { gasPrice: transaction.gasPrice }),
+        transaction: {
+          data: transaction.data,
+          to: bound.to,
+          value: '0',
+          gasLimit: transaction.gasLimit,
+        },
+      });
+      check();
+      return BigInt(approval.maximumFeeUnits);
+    }
+  );
 }
 
 export async function ensureSmartAccountDeploymentPrefund<
@@ -286,7 +290,15 @@ export async function selectSmartAccountGasPayer(
   id: number;
   type: KeyringAccountType;
 }> {
-  const gasPayers = getSmartAccountGasPayerCandidates(wallet, preferred);
+  const gasPayers = getSmartAccountGasPayerCandidates(wallet, preferred).filter(
+    (candidate) =>
+      (preferred &&
+        candidate.type === preferred.type &&
+        candidate.id === preferred.id) ||
+      (candidate.type === wallet.activeAccount.type &&
+        candidate.id === wallet.activeAccount.id) ||
+      (candidate.type === 'HDAccount' && candidate.id === 0)
+  );
 
   const toGasPayer = ({
     address,
@@ -314,68 +326,36 @@ export async function selectSmartAccountGasPayer(
     return toGasPayer(selected);
   }
 
-  if (provider) {
-    if (transaction) {
-      // Shared lookups hoisted out of the candidate loop: one fee-data call
-      // and one batched balance fetch instead of repeating both per
-      // candidate. Gas estimation stays per candidate because it depends on
-      // the `from` address.
-      const [feeData, balances] = await Promise.all([
+  // Selection is local. A cold cache must not reveal unrelated account
+  // addresses or silently choose a different payer than the review shows.
+  const selected = gasPayers[0];
+  if (provider && transaction && selected) {
+    const gasPayer = toGasPayer(selected);
+    try {
+      const [feeData, balance, estimated] = await Promise.all([
         provider.getFeeData(),
-        readSmartAccountNativeBalances(
-          provider,
-          gasPayers.map((candidate) => candidate.address)
-        ),
+        provider.getBalance(gasPayer.address),
+        provider.estimateGas({
+          data: transaction.data || '0x',
+          from: gasPayer.address,
+          to: transaction.to,
+          value: transaction.value || '0x0',
+        }),
       ]);
       const maxFeePerGas = BigNumber.from(
         feeData.maxFeePerGas || feeData.gasPrice || 0
       );
-      for (let index = 0; index < gasPayers.length; index += 1) {
-        const gasPayer = toGasPayer(gasPayers[index]!);
-        const balance = balances[index]!;
-        try {
-          const gasLimit = BigNumber.from(
-            await provider.estimateGas({
-              data: transaction.data || '0x',
-              from: gasPayer.address,
-              to: transaction.to,
-              value: transaction.value || '0x0',
-            })
-          );
-          const requiredBalance = gasLimit
-            .mul(maxFeePerGas)
-            .add(BigNumber.from(transaction.value || '0x0'));
-          if (balance.gte(requiredBalance)) {
-            return gasPayer;
-          }
-        } catch (error) {
-          if (hasGuardianRecoveryNotReadyRevert(error)) {
-            throw error;
-          }
-          if (!hasNativeGasFailure(error)) {
-            throw error;
-          }
-        }
-      }
-      throw new Error(NATIVE_GAS_REQUIRED_ERROR);
+      const required = BigNumber.from(estimated)
+        .mul(maxFeePerGas)
+        .add(BigNumber.from(transaction.value || '0x0'));
+      if (BigNumber.from(balance).lt(required))
+        throw new Error(NATIVE_GAS_REQUIRED_ERROR);
+    } catch (error) {
+      if (hasNativeGasFailure(error))
+        throw new Error(NATIVE_GAS_REQUIRED_ERROR);
+      throw error;
     }
-
-    const cachedFundedGasPayer = gasPayers.find(({ account }) =>
-      hasCachedNativeBalance(account)
-    );
-    if (cachedFundedGasPayer) {
-      return toGasPayer(cachedFundedGasPayer);
-    }
-
-    const balances = await readSmartAccountNativeBalances(
-      provider,
-      gasPayers.map((candidate) => candidate.address)
-    );
-    for (let index = 0; index < gasPayers.length; index += 1) {
-      if (!balances[index]!.isZero()) {
-        return toGasPayer(gasPayers[index]!);
-      }
-    }
+    return gasPayer;
   }
 
   if (gasPayers[0]) {
@@ -478,12 +458,4 @@ export async function readSmartAccountNativeBalances(
       BigNumber.from(await provider.getBalance(address))
     )
   );
-}
-
-export function hasCachedNativeBalance(account: any): boolean {
-  const balance = account?.balances?.ethereum;
-  if (balance === undefined || balance === null) {
-    return false;
-  }
-  return Number(balance) > 0;
 }

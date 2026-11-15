@@ -102,6 +102,7 @@ import {
   readBlockbookNativeQuote,
 } from '../../../shared/nativeCoinQuotes';
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
+import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import {
   filterSmartAccountNativeRecipientOperations,
   isSmartAccountNativeRecipient,
@@ -825,6 +826,7 @@ class MainController {
 
   // Persistent providers for reading blockchain data (survives lock/unlock)
   private persistentProviders = new Map<string, CustomJsonRpcProvider>();
+  private readonly rpcReadCapabilities = createRpcReadCapabilitiesOwner();
   private persistentProviderAbortControllers = new Map<
     string,
     AbortController
@@ -843,7 +845,8 @@ class MainController {
     const provider = new CustomJsonRpcProvider(
       abortController.signal,
       url,
-      chainId
+      chainId,
+      { capabilities: this.rpcReadCapabilities.get(String(chainId), url) }
     );
     this.persistentProviders.set(providerKey, provider);
     this.persistentProviderAbortControllers.set(providerKey, abortController);
@@ -13794,7 +13797,13 @@ class MainController {
     const provider = new CustomJsonRpcProvider(
       signal,
       network.url,
-      network.chainId
+      network.chainId,
+      {
+        capabilities: this.rpcReadCapabilities.get(
+          JSON.stringify([network.chainId, network.kind, network.slip44]),
+          network.url
+        ),
+      }
     );
     let disposed = false;
     const dispose = () => {
@@ -15911,6 +15920,7 @@ class MainController {
     // Clear the map
     this.persistentProviders.clear();
     this.persistentProviderAbortControllers.clear();
+    this.rpcReadCapabilities.clear();
   }
   /**
    * Get current network platform - delegates to EvmAssetsController

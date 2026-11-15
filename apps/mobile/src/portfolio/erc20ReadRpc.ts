@@ -1,3 +1,4 @@
+import { createBoundedRpcFetch } from '../custody/boundedRpcFetch.ts';
 import { createErc20BalanceBatch } from '../../../../source/shared/erc20BalanceBatch.ts';
 import {
   ERC20_TEXT_LIMITS,
@@ -16,7 +17,7 @@ import type {
   EvmNetworkId,
   NativeNetworkRegistration,
 } from '../custody/networkContext.ts';
-import { cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
+import { parseRpcQuantity } from '../platformRpc.ts';
 import {
   JsonRpcReadClient,
   RpcReadCapabilities,
@@ -194,92 +195,13 @@ function codeResult(value: unknown): void {
 }
 
 /** Fixed read-only methods, bounded calls and one deadline per observation. */
-function createReadOperation(options: ReadOptions) {
+function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024) {
   const fetcher = options.fetch ?? ((url, init) => fetch(url, init));
   const timeoutMs = options.timeoutMs ?? 12_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000)
     throw new Error('Invalid RPC timeout');
   const capabilities = new Map<string, RpcReadCapabilities>();
-  let active = 0;
-  const waiting: { admit(): void; cancel(): void }[] = [];
-  const acquire = (signal: AbortSignal) =>
-    new Promise<void>((resolve, reject) => {
-      const ticket = {
-        admit() {
-          signal.removeEventListener('abort', ticket.cancel);
-          active++;
-          resolve();
-        },
-        cancel() {
-          const index = waiting.indexOf(ticket);
-          if (index >= 0) waiting.splice(index, 1);
-          reject(new Erc20ReadError('CANCELLED'));
-        },
-      };
-      if (signal.aborted) ticket.cancel();
-      else if (active < 4) ticket.admit();
-      else if (waiting.length >= 16) reject(new Erc20ReadError('UNAVAILABLE'));
-      else {
-        waiting.push(ticket);
-        signal.addEventListener('abort', ticket.cancel, { once: true });
-      }
-    });
-  const boundedFetch: FetchLike = async (url, init) => {
-    await acquire(init.signal as AbortSignal);
-    let released = false;
-    const release = () => {
-      if (released) return;
-      released = true;
-      active--;
-      waiting.shift()?.admit();
-    };
-    try {
-      if (init.signal?.aborted) return fail('CANCELLED');
-      const response = await fetcher(url, init);
-      const body = response.body;
-      let text: Promise<string> | undefined;
-      const consumeText = () => text ??= response.text().finally(release);
-      const wrappedBody = body
-        ? {
-            async cancel(reason?: unknown) {
-              try { await body.cancel(reason); } finally { release(); }
-            },
-            ...(typeof body.getReader === 'function'
-              ? { getReader() {
-                  const reader = body.getReader();
-                  return {
-                    async read() {
-                      try {
-                        // The SDK always cancels in finally. Retain the slot
-                        // through that cleanup, including an EOF response.
-                        return await reader.read();
-                      } catch (error) {
-                        try { await reader.cancel(); } finally { release(); }
-                        throw error;
-                      }
-                    },
-                    async cancel(reason?: unknown) {
-                      try { await reader.cancel(reason); } finally { release(); }
-                    },
-                    releaseLock() { reader.releaseLock(); },
-                  };
-                } }
-              : {}),
-          }
-        : { async cancel() { await consumeText(); } };
-      return new Proxy(response, {
-        get(target, property) {
-          if (property === 'body') return wrappedBody;
-          if (property === 'text') return consumeText;
-          const value = Reflect.get(target, property, target);
-          return typeof value === 'function' ? value.bind(target) : value;
-        },
-      });
-    } catch (error) {
-      release();
-      throw error;
-    }
-  };
+  const boundedFetch = createBoundedRpcFetch(fetcher);
 
   async function operation<T>(
     networkId: EvmNetworkId,
@@ -351,7 +273,8 @@ function createReadOperation(options: ReadOptions) {
             return fail('INVALID_RESPONSE');
           return response;
         } catch (error) {
-          cancelResponseBody(response);
+          abort();
+          try { await response.body?.cancel(); } catch { /* Keep the primary refusal. */ }
           throw error;
         }
       },
@@ -361,7 +284,7 @@ function createReadOperation(options: ReadOptions) {
         ? 512 * 1024
         : method === 'eth_getCode'
         ? CODE_BYTES * 2 + 512
-        : 16 * 1024;
+        : maximumCallBytes;
     const read = (async (
       method: Method,
       params: readonly unknown[],
@@ -635,6 +558,47 @@ type SelectedNftReadOptions = Required<
 export type ScopedCallOutcome =
   | Readonly<{ kind: 'result'; data: string }>
   | Readonly<{ kind: 'rpc-error'; error: unknown }>;
+
+/** One anchored selected-account observation for bounded saved NFT groups. */
+export function createSelectedNftPortfolioReadOperation(options: SelectedNftReadOptions) {
+  // A 256-item balanceOfBatch result includes two ABI header words.
+  const operation = createReadOperation(options, 32 * 1024);
+  return async <T>(networkId: EvmNetworkId, owner: string, addresses: readonly string[], signal: AbortSignal,
+    guard: () => void, work: (scope: Readonly<{ holder: string; call(target: string, data: string): Promise<ScopedCallOutcome> }>) => Promise<T>): Promise<T> => {
+    if (!addresses.length || addresses.length > 256) return fail('INVALID_INPUT');
+    const targets = new Set(addresses.map(contract));
+    const network = snapshotNativeNetwork(getNativeNetwork(networkId, options.registrations()));
+    const assertCurrent = () => {
+      const result: unknown = guard();
+      if (result !== undefined) {
+        if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined);
+        fail('CANCELLED');
+      }
+      if (snapshotNativeNetwork(getNativeNetwork(networkId, options.registrations())).registrationHash !== network.registrationHash)
+        fail('CANCELLED');
+    };
+    return operation(networkId, owner, signal, async (read, block, holder) => {
+      const codes = new Map<string, Promise<void>>();
+      let calls = 0;
+      return work({ holder, async call(target, data) {
+        target = contract(target);
+        if (!targets.has(target) || ++calls > addresses.length * 3 || typeof data !== 'string' ||
+            data.length < 10 || data.length > 34000 || !/^0x(?:[0-9a-fA-F]{2})+$/.test(data)) return fail('INVALID_INPUT');
+        let code = codes.get(target);
+        if (!code) { code = read('eth_getCode', [target, block]).then(codeResult); codes.set(target, code); }
+        await code;
+        try {
+          const value = await read('eth_call', [{ to: target, data }, block], true);
+          if (typeof value !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(value)) return fail('INVALID_RESPONSE');
+          return { kind: 'result', data: value };
+        } catch (error) {
+          if (error instanceof ScopedCallRpcError) return { kind: 'rpc-error', error: error.value };
+          throw error;
+        }
+      } });
+    }, { network, assertCurrent }, true);
+  };
+}
 
 /** Internal host seam with one selected contract and no caller-supplied block or RPC method. */
 export function createSelectedNftReadOperation(
