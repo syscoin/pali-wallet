@@ -15,6 +15,11 @@ import { E2E_CONFIG } from '../harness/config';
 import { startDappServer } from '../harness/dappServer';
 import { PaliWallet } from '../harness/pali';
 import {
+  assertRpcCapabilityProbes,
+  assertRpcTrafficBudget,
+  countRpcTraffic,
+} from '../harness/rpcTrafficBudget';
+import {
   startLocalChains,
   localRpc,
   LOCAL_CHAINS,
@@ -181,12 +186,20 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       item.status = response.status();
       bodies.push(
         (async () => {
-          item.responseBytes = (
-            await response.body().catch(() => Buffer.alloc(0))
-          ).length;
+          try {
+            item.responseBytes = (await response.body()).length;
+          } catch (error) {
+            item.responseFailure = String(error);
+          }
           item.finished = Date.now();
         })()
       );
+    });
+    wallet.context.on('requestfailed', (request) => {
+      const item = observations.get(request);
+      if (!item) return;
+      item.requestFailure = request.failure()?.errorText ?? 'Request failed';
+      item.finished = Date.now();
     });
     await wallet.context.route('**/*', async (route) => {
       const request = route.request();
@@ -221,6 +234,8 @@ test('RPC budget and receipts for local wallet transfers', async () => {
             }),
           });
         }
+        if (phase.startsWith('public-reads:'))
+          await new Promise((resolve) => setTimeout(resolve, 75));
         const rows = Array.isArray(raw) ? raw : [raw];
         const replies = await Promise.all(
           rows.map(async (row) => {
@@ -776,6 +791,69 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           return app;
         }
       );
+      await wallet.step(
+        'measure public reads delivered through separate browser events',
+        async () => {
+          const blockTag = await localRpc(chain.url, 'eth_blockNumber', []);
+          for (const identical of [false, true]) {
+            const name = identical
+              ? 'public-reads:identical'
+              : 'public-reads:distinct';
+            mark(name);
+            const start = performance.now();
+            const values = await app.evaluate(
+              async ({ same, tag, base }) => {
+                const channel = new MessageChannel();
+                const pending: Promise<unknown>[] = [];
+                return await new Promise<unknown[]>((resolve, reject) => {
+                  channel.port1.onmessage = ({ data: index }) => {
+                    const address = same
+                      ? base
+                      : `0x${(index + 1).toString(16).padStart(40, '0')}`;
+                    pending.push(
+                      (window as any).__paliConformanceProvider.request({
+                        method: 'eth_getBalance',
+                        params: [address, tag],
+                      })
+                    );
+                    if (pending.length === 4) {
+                      channel.port1.close();
+                      channel.port2.close();
+                      Promise.all(pending).then(resolve, reject);
+                    }
+                  };
+                  for (let index = 0; index < 4; index++)
+                    channel.port2.postMessage(index);
+                });
+              },
+              { same: identical, tag: blockTag, base: payer }
+            );
+            await Promise.all(bodies);
+            const rows = output.requests.filter(
+              (row: any) =>
+                row.phase === name && row.methods.includes('eth_getBalance')
+            );
+            const accepted = rows.filter(
+              (row: any) => !row.batchCapabilityProbe
+            );
+            expect(values).toHaveLength(4);
+            expect(accepted.flatMap((row: any) => row.methods)).toHaveLength(
+              identical ? 1 : 4
+            );
+            if (identical) expect(accepted).toHaveLength(1);
+            else
+              expect(accepted.length).toBeLessThanOrEqual(
+                process.env.PALI_RPC_REJECT_BATCH ? 4 : 3
+              );
+            output[name] = {
+              ...countRpcTraffic(rows),
+              elapsedMs: performance.now() - start,
+              injectedResponseDelayMs: 75,
+            };
+          }
+          mark('public-reads:complete');
+        }
+      );
       const dappSend = async (label: string, request: Record<string, string>) =>
         wallet!.step(label + ' approval', async (capture) => {
           mark(label + ':review');
@@ -1056,8 +1134,14 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           }
           if (prefund) {
             formLimits.deployment = [10, 10];
+            const finalBroadcast = Math.max(
+              ...output.broadcasts
+                .filter((row: any) => row.phase === 'prefund:confirm')
+                .map((row: any) => row.at)
+            );
             const rows = output.requests.filter(
-              (row: any) => row.phase === 'prefund:confirm'
+              (row: any) =>
+                row.phase === 'prefund:confirm' && row.started <= finalBroadcast
             );
             expect(
               rows.reduce(
@@ -1129,18 +1213,17 @@ test('RPC budget and receipts for local wallet transfers', async () => {
               // The endpoint's 30-second capability expires independently of
               // the UI stage. Concurrent probes can precede the first refusal.
               // Keep every refused probe in total traffic.
-              const probes = rows.filter(
-                (row: any) => row.batchCapabilityProbe
+              assertRpcCapabilityProbes(rows, phaseName);
+              assertRpcTrafficBudget(
+                rows,
+                {
+                  methods: methods + 4 * 40,
+                  posts: posts + 4,
+                  requestBytes: 32 * 1024,
+                  responseBytes: (stage === 'confirm' ? 128 : 256) * 1024,
+                },
+                phaseName
               );
-              if (probes.length) {
-                const firstRefusal = Math.min(
-                  ...probes.map((probe: any) => probe.finished ?? probe.started)
-                );
-                expect(
-                  probes.every((probe: any) => probe.started <= firstRefusal),
-                  phaseName + ' probes must precede the first refusal'
-                ).toBe(true);
-              }
               const work = rows.filter((row: any) => !row.batchCapabilityProbe);
               expect(
                 work.reduce(
@@ -1171,6 +1254,71 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           }
         }
       );
+    }
+    if (!process.env.PALI_RPC_REFERENCE) {
+      await wallet.step('verify whole-journey RPC traffic', async () => {
+        await expect
+          .poll(
+            () =>
+              output.requests.every((row: any) => row.finished !== undefined),
+            { timeout: 10000 }
+          )
+          .toBe(true);
+        await Promise.all(bodies);
+        const extended = process.env.PALI_RPC_EXTENDED === '1';
+        const large = extended && includeErc1155;
+        const fallback = Boolean(
+          process.env.PALI_RPC_NO_MULTICALL || process.env.PALI_RPC_REJECT_BATCH
+        );
+        const maximum = prefund
+          ? {
+              methods: 400,
+              posts: 300,
+              requestBytes: 128 * 1024,
+              responseBytes: 1536 * 1024,
+            }
+          : gasTank
+          ? {
+              methods: 320,
+              posts: 260,
+              requestBytes: 96 * 1024,
+              responseBytes: 1536 * 1024,
+            }
+          : large
+          ? {
+              methods: fallback ? 1320 : 1220,
+              posts: fallback ? 1320 : 1000,
+              requestBytes: 384 * 1024,
+              responseBytes: 4 * 1024 * 1024,
+            }
+          : extended
+          ? {
+              methods: 1250,
+              posts: 1250,
+              requestBytes: 384 * 1024,
+              responseBytes: 4 * 1024 * 1024,
+            }
+          : {
+              methods: 350,
+              posts: 310,
+              requestBytes: 96 * 1024,
+              responseBytes: 1536 * 1024,
+            };
+        assertRpcTrafficBudget(output.requests, maximum, 'whole journey');
+        const probes = output.requests.filter(
+          (row: any) => row.batchCapabilityProbe
+        );
+        expect(
+          probes.length,
+          'whole journey capability probes'
+        ).toBeLessThanOrEqual(32);
+        expect(
+          probes.reduce((sum: number, row: any) => sum + row.methods.length, 0),
+          'whole journey capability methods'
+        ).toBeLessThanOrEqual(256);
+        output.totalTraffic = countRpcTraffic(output.requests);
+        output.capabilityProbeTraffic = countRpcTraffic(probes);
+      });
     }
     await wallet.step('capture final wallet state', async () => {
       await page.screenshot({

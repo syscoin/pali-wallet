@@ -398,8 +398,10 @@ it('recommends and displays a fresh automatic nonce before retrying a definite f
     resolveQuote = resolve;
   });
   mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
-    if (path.join('.') === 'wallet.getRecommendedEvmNonce')
-      return ++quoteCount === 1 ? 0 : heldQuote;
+    if (path.join('.') === 'wallet.reviewDappEvmFee') {
+      const nonce = ++quoteCount === 1 ? 0 : await heldQuote;
+      return reviewedDappFeeFixture({ ...args[0], nonce });
+    }
     if (path.join('.') === 'wallet.sendAndSaveEthTransaction') {
       const attempts = mockEmitter.mock.calls.filter(
         ([route]) => route.join('.') === 'wallet.sendAndSaveEthTransaction'
@@ -455,10 +457,13 @@ it('keeps a failed nonce refresh explicit and separates Retry from the confirmat
   const previous = mockEmitter.getMockImplementation()!;
   let quotes = 0;
   mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
-    if (path.join('.') === 'wallet.getRecommendedEvmNonce') {
+    if (path.join('.') === 'wallet.reviewDappEvmFee') {
       quotes += 1;
       if (quotes === 2) throw new Error('temporary read outage');
-      return quotes === 1 ? 0 : 1;
+      return reviewedDappFeeFixture({
+        ...args[0],
+        nonce: quotes === 1 ? 0 : 1,
+      });
     }
     if (path.join('.') === 'wallet.sendAndSaveEthTransaction') {
       throw Object.assign(new Error('conflict'), {
@@ -502,7 +507,7 @@ it.each([
     const previous = mockEmitter.getMockImplementation()!;
     let quotes = 0;
     mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
-      if (path.join('.') === 'wallet.getRecommendedEvmNonce' && ++quotes === 1)
+      if (path.join('.') === 'wallet.reviewDappEvmFee' && ++quotes === 1)
         throw Object.assign(new Error('legacy nonce guard'), {
           code,
           transactionNotBroadcast: true,

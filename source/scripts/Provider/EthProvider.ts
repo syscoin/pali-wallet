@@ -288,6 +288,16 @@ export const EthProvider = (host: string, context: IEnhancedRequestContext) => {
       ]);
     };
     const identity = sourceIdentity();
+    const sender = context.originalRequest.sender;
+    const scope = sender.documentId
+      ? JSON.stringify([
+          host,
+          identity,
+          sender.tab?.id,
+          sender.frameId,
+          sender.documentId,
+        ])
+      : Symbol();
     const assertCurrent = () => {
       assertRequestActive(signal);
       if (
@@ -301,13 +311,7 @@ export const EthProvider = (host: string, context: IEnhancedRequestContext) => {
     return executeDappRpcRequest(request, {
       assertCurrent,
       request: (query) =>
-        readPublicRpc(
-          provider,
-          JSON.stringify([host, identity]),
-          query,
-          signal,
-          assertCurrent
-        ),
+        readPublicRpc(provider, scope, query, signal, assertCurrent),
       verifyPersonalMessage: (message, signature) =>
         ethereumTransaction.verifyPersonalMessage(message, signature),
     });

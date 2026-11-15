@@ -1421,9 +1421,10 @@ function localTransferRpc(networkId: TransferTestNetwork = 'ethereum', selected:
   let included = false;
   let reading: { method: string; entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
   let gate: { entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
-  const rpc = new NativeTransferRpc({ networkId, registration: selected, fetch: async (url, init) => {
+  const rpc = new NativeTransferRpc({ networkId, registration: selected, fetch: async function fixtureFetch(url, init): Promise<Response> {
     assert.equal(url, selected.rpcUrl);
     const body = JSON.parse(String(init.body));
+    if (Array.isArray(body)) return Response.json(await Promise.all(body.map(async row => (await fixtureFetch(url, { ...init, body: JSON.stringify(row) })).json())));
     requests.push(structuredClone({ method: body.method, params: body.params }));
     if (reading && reading.method === body.method) { const current = reading; current.entered.resolve(); await current.released.promise; }
     let result: unknown;

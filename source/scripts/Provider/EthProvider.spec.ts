@@ -905,3 +905,125 @@ describe('EthProvider transaction admission', () => {
     });
   });
 });
+
+it.each([
+  'origin',
+  'account',
+  'network',
+  'registration',
+  'session',
+  'document',
+  'frame',
+  'tab',
+  'provider',
+  'missing-document',
+])('keeps held identical public reads isolated across %s', async (change) => {
+  (getUnrestrictedMethods as jest.Mock).mockReturnValue(['eth_getBalance']);
+  const releases: Array<(value: PromiseSettledResult<unknown>[]) => void> = [];
+  const readMany = jest.fn(
+    () =>
+      new Promise<PromiseSettledResult<unknown>[]>((resolve) =>
+        releases.push(resolve)
+      )
+  );
+  wallet.ethereumTransaction.web3Provider = { send: jest.fn(), readMany };
+  const firstContext = readContext();
+  firstContext.originalRequest.sender = {
+    documentId: 'first',
+    frameId: 0,
+    tab: { id: 1 },
+  } as chrome.runtime.MessageSender;
+  if (change === 'missing-document')
+    delete firstContext.originalRequest.sender.documentId;
+  const first = EthProvider(HOST, firstContext).unrestrictedRPCMethods(
+    'eth_getBalance',
+    [FROM, 'latest']
+  );
+  const firstResult = first.catch((error) => error);
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  const secondContext = readContext();
+  secondContext.originalRequest.sender = {
+    ...firstContext.originalRequest.sender,
+  };
+  if (change === 'account')
+    vault.activeAccount = { ...vault.activeAccount, id: 1 };
+  if (change === 'network')
+    vault.activeNetwork = {
+      ...vault.activeNetwork,
+      url: 'https://second.invalid',
+    };
+  if (change === 'registration')
+    vault.activeNetwork = { ...vault.activeNetwork, id: 'registered-again' };
+  if (change === 'session') sessionGenerationMock.mockReturnValue(2);
+  if (change === 'document')
+    secondContext.originalRequest.sender.documentId = 'second';
+  if (change === 'frame') secondContext.originalRequest.sender.frameId = 1;
+  if (change === 'tab')
+    secondContext.originalRequest.sender.tab = { id: 2 } as chrome.tabs.Tab;
+  if (change === 'provider')
+    wallet.ethereumTransaction.web3Provider = { send: jest.fn(), readMany };
+  const second = EthProvider(
+    change === 'origin' ? 'https://other.invalid' : HOST,
+    secondContext
+  ).unrestrictedRPCMethods('eth_getBalance', [FROM, 'latest']);
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  expect(readMany).toHaveBeenCalledTimes(2);
+  releases.forEach((resolve) =>
+    resolve([{ status: 'fulfilled', value: '0x1' }])
+  );
+  await expect(second).resolves.toBe('0x1');
+  const result = await firstResult;
+  if (
+    ['account', 'network', 'registration', 'session', 'provider'].includes(
+      change
+    )
+  )
+    expect(result).toMatchObject({ code: 4100 });
+  else expect(result).toBe('0x1');
+});
+
+it('retires an old document subscriber while a new document completes independently', async () => {
+  (getUnrestrictedMethods as jest.Mock).mockReturnValue(['eth_getBalance']);
+  const replies: Array<(value: PromiseSettledResult<unknown>[]) => void> = [];
+  const readMany = jest.fn(
+    (_requests: readonly unknown[], _options: { signal: AbortSignal }) =>
+      new Promise<PromiseSettledResult<unknown>[]>((resolve) => {
+        expect(_requests).toHaveLength(1);
+        expect(_options.signal.aborted).toBe(false);
+        replies.push(resolve);
+      })
+  );
+  wallet.ethereumTransaction.web3Provider = { send: jest.fn(), readMany };
+  const firstContext = readContext();
+  firstContext.originalRequest.sender = {
+    documentId: 'old',
+    frameId: 0,
+    tab: { id: 1 },
+  } as chrome.runtime.MessageSender;
+  const first = EthProvider(HOST, firstContext).unrestrictedRPCMethods(
+    'eth_getBalance',
+    [FROM, 'latest']
+  );
+  const rejected = expect(first).rejects.toMatchObject({ code: 4001 });
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  requestLifetime.abort();
+  await rejected;
+  expect(readMany.mock.calls[0]![1].signal.aborted).toBe(true);
+  requestLifetime = new AbortController();
+  const nextContext = readContext();
+  nextContext.originalRequest.sender = {
+    documentId: 'new',
+    frameId: 0,
+    tab: { id: 1 },
+  } as chrome.runtime.MessageSender;
+  const next = EthProvider(HOST, nextContext).unrestrictedRPCMethods(
+    'eth_getBalance',
+    [FROM, 'latest']
+  );
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  replies.forEach((resolve) =>
+    resolve([{ status: 'fulfilled', value: '0x1' }])
+  );
+  await expect(next).resolves.toBe('0x1');
+  expect(readMany).toHaveBeenCalledTimes(2);
+});

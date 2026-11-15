@@ -2,8 +2,10 @@ import { isReadOnlyRpcMethod } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport
 
 import {
   classifyDappRpcMethod,
+  normalizeDappRpcRequest,
   type DappPublicRpcRequest,
 } from '../../shared/dappRpcReads';
+import { assertJsonWorkBudget } from '../../utils/requestPayloadBudget';
 import {
   assertRequestActive,
   requestCancelledError,
@@ -16,23 +18,36 @@ type Provider = {
   ) => Promise<PromiseSettledResult<unknown>[]>;
   send(method: string, params: unknown[]): Promise<unknown>;
 };
-type PendingRead = {
+type Subscriber = {
   check(): void;
-  reject(error: unknown): void;
-  request: DappPublicRpcRequest;
-  resolve(value: unknown): void;
-  signal: AbortSignal;
+  settle(result: PromiseSettledResult<unknown>): void;
 };
-const queues = new WeakMap<Provider, Map<string, PendingRead[]>>();
+type PendingRead = {
+  batch?: { controller: AbortController; reads: PendingRead[] };
+  key: string;
+  request: DappPublicRpcRequest;
+  subscribers: Set<Subscriber>;
+};
+type Scope = {
+  queued: PendingRead[];
+  reads: Map<string, PendingRead>;
+  timer?: ReturnType<typeof setTimeout>;
+};
+type Owner = { scopes: Map<string | symbol, Scope>; subscribers: number };
+const owners = new WeakMap<Provider, Owner>();
+// Collect adjacent IPC events without extending the collection window on arrival.
+const COLLECTION_MS = 4;
+const MAX_SUBSCRIBERS = 128;
 
-/** Co-batch public queries from one selected context; each request retains its own lifetime. */
+/** Join outstanding exact public reads within one selected document and wallet context. */
 export function readPublicRpc(
   provider: Provider,
-  scope: string,
+  scopeKey: string | symbol,
   request: DappPublicRpcRequest,
   signal: AbortSignal,
   check: () => void
 ): Promise<unknown> {
+  assertRequestActive(signal);
   check();
   if (
     !provider.readMany ||
@@ -40,87 +55,158 @@ export function readPublicRpc(
     !isReadOnlyRpcMethod(request.method)
   )
     return provider.send(request.method, [...request.params]);
-  let owned = queues.get(provider);
-  if (!owned) {
-    owned = new Map();
-    queues.set(provider, owned);
+  const normalized = normalizeDappRpcRequest(request.method, request.params);
+  const key = JSON.stringify(normalized, (_name, value) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((name) => [name, value[name]])
+        )
+      : value
+  );
+  let owner = owners.get(provider);
+  if (!owner) {
+    owner = { scopes: new Map(), subscribers: 0 };
+    owners.set(provider, owner);
   }
-  let pending = owned.get(scope);
-  if (!pending) {
-    pending = [];
-    owned.set(scope, pending);
-    const captured = pending;
-    queueMicrotask(() => {
-      if (owned!.get(scope) === captured) owned!.delete(scope);
-      void flush(provider, captured);
-    });
-  }
-  if (pending.length >= 128)
+  if (owner.subscribers >= MAX_SUBSCRIBERS)
     return Promise.reject(new Error('Too many public reads'));
+  let scope = owner.scopes.get(scopeKey);
+  if (!scope) {
+    scope = { reads: new Map(), queued: [] };
+    owner.scopes.set(scopeKey, scope);
+  }
+  let read = scope.reads.get(key);
+  if (!read) {
+    read = { key, request: normalized, subscribers: new Set() };
+    scope.reads.set(key, read);
+    scope.queued.push(read);
+    if (scope.timer === undefined) {
+      const captured = scope;
+      scope.timer = setTimeout(() => {
+        captured.timer = undefined;
+        const queued = captured.queued;
+        captured.queued = [];
+        void flush(provider, queued, () =>
+          retireScope(owner!, scopeKey, captured)
+        );
+      }, COLLECTION_MS);
+    }
+  }
+  const capturedRead = read;
+  const capturedScope = scope;
+  const capturedOwner = owner;
   return new Promise((resolve, reject) => {
-    const cancel = () => reject(requestCancelledError());
+    const subscriber: Subscriber = {
+      check: () => {
+        assertRequestActive(signal);
+        check();
+      },
+      settle: (result) => {
+        if (!capturedRead.subscribers.delete(subscriber)) return;
+        signal.removeEventListener('abort', cancel);
+        capturedOwner.subscribers--;
+        if (!capturedRead.subscribers.size) {
+          if (capturedScope.reads.get(key) === capturedRead)
+            capturedScope.reads.delete(key);
+          const batch = capturedRead.batch;
+          if (!batch) {
+            const index = capturedScope.queued.indexOf(capturedRead);
+            if (index >= 0) capturedScope.queued.splice(index, 1);
+          }
+          if (batch?.reads.every((item) => !item.subscribers.size))
+            batch.controller.abort();
+          retireScope(capturedOwner, scopeKey, capturedScope);
+        }
+        if (result.status === 'rejected') reject(result.reason);
+        else resolve(result.value);
+      },
+    };
+    const cancel = () =>
+      subscriber.settle({
+        status: 'rejected',
+        reason: requestCancelledError(),
+      });
+    capturedRead.subscribers.add(subscriber);
+    capturedOwner.subscribers++;
     signal.addEventListener('abort', cancel, { once: true });
     if (signal.aborted) cancel();
-    const finish = (error: unknown, value?: unknown) => {
-      signal.removeEventListener('abort', cancel);
-      if (error !== undefined) reject(error);
-      else resolve(value);
-    };
-    pending!.push({
-      request,
-      signal,
-      check,
-      resolve: (value) => finish(undefined, value),
-      reject: (error) => finish(error),
-    });
   });
 }
 
-async function flush(provider: Provider, queued: PendingRead[]): Promise<void> {
-  const live = queued.filter((row) => {
-    try {
-      assertRequestActive(row.signal);
-      row.check();
-      return true;
-    } catch (error) {
-      row.reject(error);
-      return false;
+function retireScope(owner: Owner, key: string | symbol, scope: Scope): void {
+  if (scope.reads.size) return;
+  if (scope.timer !== undefined) clearTimeout(scope.timer);
+  scope.queued = [];
+  if (owner.scopes.get(key) === scope) owner.scopes.delete(key);
+}
+
+async function flush(
+  provider: Provider,
+  queued: PendingRead[],
+  retire: () => void
+): Promise<void> {
+  const live = queued.filter((read) => {
+    for (const subscriber of [...read.subscribers]) {
+      try {
+        subscriber.check();
+      } catch (reason) {
+        subscriber.settle({ status: 'rejected', reason });
+      }
     }
+    return read.subscribers.size > 0;
   });
   if (!live.length) return;
-  const controller = new AbortController();
-  const cancelUnused = () => {
-    if (live.every((row) => row.signal.aborted)) controller.abort();
-  };
-  live.forEach((row) =>
-    row.signal.addEventListener('abort', cancelUnused, { once: true })
-  );
+  const batch = { controller: new AbortController(), reads: live };
+  live.forEach((read) => {
+    read.batch = batch;
+  });
   try {
     const results = await provider.readMany!(
-      live.map((row) => row.request),
-      { signal: controller.signal }
+      live.map((read) => read.request),
+      { signal: batch.controller.signal }
     );
     if (!Array.isArray(results) || results.length !== live.length)
       throw new Error('Invalid public RPC response');
-    live.forEach((row, index) => {
+    live.forEach((read, index) => {
+      const result = results[index]!;
+      let serialized: string | undefined;
+      let failure: PromiseRejectedResult | undefined;
       try {
-        assertRequestActive(row.signal);
-        row.check();
-        const result = results[index]!;
         if (result.status === 'rejected') throw result.reason;
         if (result.status !== 'fulfilled')
           throw new Error('Invalid public RPC response');
-        row.resolve(result.value);
+        assertJsonWorkBudget(result.value);
+        if (result.value && typeof result.value === 'object')
+          serialized = JSON.stringify(result.value);
       } catch (error) {
-        row.reject(error);
+        failure = { status: 'rejected', reason: error };
+      }
+      for (const subscriber of [...read.subscribers]) {
+        try {
+          subscriber.check();
+          subscriber.settle(
+            failure ?? {
+              status: 'fulfilled',
+              value:
+                serialized === undefined
+                  ? (result as PromiseFulfilledResult<unknown>).value
+                  : JSON.parse(serialized),
+            }
+          );
+        } catch (reason) {
+          subscriber.settle({ status: 'rejected', reason });
+        }
       }
     });
-  } catch (error) {
-    live.forEach((row) => row.reject(error));
+  } catch (reason) {
+    live.forEach((read) => {
+      for (const subscriber of [...read.subscribers])
+        subscriber.settle({ status: 'rejected', reason });
+    });
   } finally {
-    live.forEach((row) =>
-      row.signal.removeEventListener('abort', cancelUnused)
-    );
-    controller.abort();
+    batch.controller.abort();
+    retire();
   }
 }

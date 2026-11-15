@@ -1,4 +1,6 @@
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
+import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring/cjs/providers.js';
+import { MessageChannel } from 'node:worker_threads';
 
 import DAppController from '../DAppController';
 import { waitForExternalWalletClosure } from '../externalWalletCreation';
@@ -408,3 +410,116 @@ it.each(['while queued', 'after dequeue'])(
     expect(popupPromise).not.toHaveBeenCalled();
   }
 );
+
+it.each([false, true])(
+  'batches actual message-delivered public reads, identical=%s',
+  async (identical) => {
+    jest.useRealTimers();
+    const wire: any[] = [];
+    const provider = new CustomJsonRpcProvider(
+      new AbortController().signal,
+      'https://offline-rpc.invalid',
+      1,
+      {
+        fetch: async (_url, init) => {
+          const body = JSON.parse(init.body as string);
+          wire.push(body);
+          const rows = Array.isArray(body) ? body : [body];
+          const results = rows.map((row: any) => ({
+            jsonrpc: '2.0',
+            id: row.id,
+            result: '0x2a',
+          }));
+          return Response.json(Array.isArray(body) ? results : results[0]);
+        },
+      }
+    );
+    mockController.wallet.ethereumTransaction.web3Provider = provider;
+    const channel = new MessageChannel();
+    const reads: Promise<unknown>[] = [];
+    try {
+      await new Promise<void>((resolve) => {
+        channel.port1.on('message', (index: number) => {
+          reads.push(
+            request('eth_getBalance', READ_HOST, 1, [
+              `0x${(identical ? 1 : index + 1).toString(16).padStart(40, '0')}`,
+              'latest',
+            ])
+          );
+          if (reads.length === 4) resolve();
+        });
+        for (let index = 0; index < 4; index++)
+          channel.port2.postMessage(index);
+      });
+      expect(await Promise.all(reads)).toEqual([
+        '0x2a',
+        '0x2a',
+        '0x2a',
+        '0x2a',
+      ]);
+      expect(wire).toHaveLength(1);
+      expect(Array.isArray(wire[0]) ? wire[0].length : 1).toBe(
+        identical ? 1 : 4
+      );
+      expect(popupPromise).not.toHaveBeenCalled();
+    } finally {
+      channel.port1.close();
+      channel.port2.close();
+      provider.destroy();
+      jest.useFakeTimers();
+    }
+  }
+);
+
+it('joins identical message events while the original RPC reply remains held', async () => {
+  jest.useRealTimers();
+  const started = deferred<void>();
+  const reply = deferred<void>();
+  const wire: any[] = [];
+  const provider = new CustomJsonRpcProvider(
+    new AbortController().signal,
+    'https://offline-rpc.invalid',
+    1,
+    {
+      fetch: async (_url, init) => {
+        const body = JSON.parse(init.body as string);
+        wire.push(body);
+        started.resolve();
+        await reply.promise;
+        const rows = Array.isArray(body) ? body : [body];
+        const results = rows.map((row: any) => ({
+          jsonrpc: '2.0',
+          id: row.id,
+          result: '0x2a',
+        }));
+        return Response.json(Array.isArray(body) ? results : results[0]);
+      },
+    }
+  );
+  mockController.wallet.ethereumTransaction.web3Provider = provider;
+  const channel = new MessageChannel();
+  const reads: Promise<unknown>[] = [];
+  const events = deferred<void>();
+  channel.port1.on('message', () => {
+    reads.push(request('eth_getBalance', READ_HOST, 1, [ACCOUNT, 'latest']));
+    if (reads.length === 4) events.resolve();
+  });
+  try {
+    channel.port2.postMessage(0);
+    await started.promise;
+    for (let index = 1; index < 4; index++) channel.port2.postMessage(index);
+    await events.promise;
+    await new Promise((resolve) => setTimeout(resolve, 8));
+    expect(wire).toHaveLength(1);
+    expect(Array.isArray(wire[0]) ? wire[0].length : 1).toBe(1);
+    reply.resolve();
+    expect(await Promise.all(reads)).toEqual(['0x2a', '0x2a', '0x2a', '0x2a']);
+    expect(wire).toHaveLength(1);
+  } finally {
+    reply.resolve();
+    channel.port1.close();
+    channel.port2.close();
+    provider.destroy();
+    jest.useFakeTimers();
+  }
+});

@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring/cjs/providers.js';
+import { MessageChannel } from 'node:worker_threads';
 
 import { readPublicRpc } from './publicRpcBatch';
 
@@ -85,7 +86,7 @@ it('keeps independent request cancellation and copies results through caller pol
     second.signal,
     check
   );
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 8));
   first.abort();
   await rejected;
   expect(provider.readMany.mock.calls[0][1].signal.aborted).toBe(false);
@@ -117,7 +118,7 @@ it('aborts the physical batch after its last subscriber cancels', async () => {
     check
   );
   const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 8));
   controller.abort();
   await rejected;
   expect(provider.readMany.mock.calls[0][1].signal.aborted).toBe(true);
@@ -192,4 +193,278 @@ it('rejects a malformed batch count and does not publish after context changes',
     )
   ).rejects.toThrow('context changed');
   expect(provider.send).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  'collects separate message events and joins identical reads (%s)',
+  async (identical) => {
+    const wire: any[] = [];
+    const provider = new CustomJsonRpcProvider(
+      new AbortController().signal,
+      'https://rpc.invalid',
+      1,
+      {
+        fetch: async (_url, init) => {
+          const body = JSON.parse(init.body as string);
+          const rows = Array.isArray(body) ? body : [body];
+          wire.push(body);
+          const results = rows.map((row: any) => ({
+            jsonrpc: '2.0',
+            id: row.id,
+            result: '0x1',
+          }));
+          return Response.json(Array.isArray(body) ? results : results[0]);
+        },
+      }
+    );
+    const channel = new MessageChannel();
+    const pending: Promise<unknown>[] = [];
+    try {
+      await new Promise<void>((resolve) => {
+        channel.port1.on('message', (index: number) => {
+          pending.push(
+            readPublicRpc(
+              provider,
+              'document',
+              request(identical ? 0 : index),
+              new AbortController().signal,
+              check
+            )
+          );
+          if (pending.length === 4) resolve();
+        });
+        for (let index = 0; index < 4; index++)
+          channel.port2.postMessage(index);
+      });
+      expect(await Promise.all(pending)).toEqual(['0x1', '0x1', '0x1', '0x1']);
+      expect(wire).toHaveLength(1);
+      expect(Array.isArray(wire[0]) ? wire[0].length : 1).toBe(
+        identical ? 1 : 4
+      );
+    } finally {
+      channel.port1.close();
+      channel.port2.close();
+      provider.destroy();
+    }
+  }
+);
+
+it('joins held reads after collection, clones each result and retires completed values', async () => {
+  let release!: (value: PromiseSettledResult<unknown>[]) => void;
+  const provider = {
+    send: jest.fn(),
+    readMany: jest.fn(
+      () =>
+        new Promise<PromiseSettledResult<unknown>[]>((resolve) => {
+          release = resolve;
+        })
+    ),
+  };
+  const first = readPublicRpc(
+    provider,
+    'selected',
+    request(1),
+    new AbortController().signal,
+    check
+  );
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  const second = readPublicRpc(
+    provider,
+    'selected',
+    request(1),
+    new AbortController().signal,
+    check
+  );
+  const source = { values: ['original'] };
+  release([{ status: 'fulfilled', value: source }]);
+  const values = (await Promise.all([first, second])) as (typeof source)[];
+  values[0]!.values[0] = 'changed';
+  expect(values[1]).toEqual({ values: ['original'] });
+  expect(source).toEqual({ values: ['original'] });
+  expect(provider.readMany).toHaveBeenCalledTimes(1);
+  provider.readMany.mockResolvedValueOnce([
+    { status: 'fulfilled', value: 'fresh' },
+  ]);
+  await expect(
+    readPublicRpc(
+      provider,
+      'selected',
+      request(1),
+      new AbortController().signal,
+      check
+    )
+  ).resolves.toBe('fresh');
+  expect(provider.readMany).toHaveBeenCalledTimes(2);
+});
+
+it('detaches one identical subscriber without cancelling a surviving subscriber', async () => {
+  let release!: (value: PromiseSettledResult<unknown>[]) => void;
+  const provider = {
+    send: jest.fn(),
+    readMany: jest.fn(
+      (_requests: readonly unknown[], _options: { signal: AbortSignal }) =>
+        new Promise<PromiseSettledResult<unknown>[]>((resolve) => {
+          expect(_requests).toHaveLength(1);
+          expect(_options.signal.aborted).toBe(false);
+          release = resolve;
+        })
+    ),
+  };
+  const controller = new AbortController();
+  const first = readPublicRpc(
+    provider,
+    'selected',
+    request(1),
+    controller.signal,
+    check
+  );
+  const rejected = expect(first).rejects.toMatchObject({ code: 4001 });
+  const second = readPublicRpc(
+    provider,
+    'selected',
+    request(1),
+    new AbortController().signal,
+    check
+  );
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  controller.abort();
+  await rejected;
+  expect(provider.readMany.mock.calls[0]![1].signal.aborted).toBe(false);
+  release([{ status: 'fulfilled', value: '0x1' }]);
+  await expect(second).resolves.toBe('0x1');
+  expect(provider.readMany.mock.calls[0]![0]).toHaveLength(1);
+});
+
+it('keeps every call field and block selector in the join key', async () => {
+  const provider = {
+    send: jest.fn(),
+    readMany: jest.fn(async (rows: readonly unknown[]) =>
+      rows.map(() => ({ status: 'fulfilled' as const, value: '0x' }))
+    ),
+  };
+  const transaction = {
+    to: address(1),
+    from: address(2),
+    data: '0x1234',
+    value: '0x1',
+    gas: '0x5208',
+    gasPrice: '0x1',
+  };
+  const requests = [
+    { ...transaction },
+    {
+      gasPrice: '0x1',
+      gas: '0x5208',
+      value: '0x1',
+      data: '0x1234',
+      from: address(2),
+      to: address(1),
+    },
+    ...Object.entries({
+      to: address(3),
+      from: address(4),
+      data: '0xabcd',
+      value: '0x2',
+      gas: '0x5300',
+      gasPrice: '0x2',
+    }).map(([field, value]) => ({ ...transaction, [field]: value })),
+  ].map((call) => ({
+    method: 'eth_call' as const,
+    params: [call, 'latest'],
+  }));
+  requests.push({ method: 'eth_call', params: [transaction, 'pending'] });
+  const calls = requests.map((query) =>
+    readPublicRpc(
+      provider,
+      'selected',
+      query,
+      new AbortController().signal,
+      check
+    )
+  );
+  await Promise.all(calls);
+  expect(provider.readMany).toHaveBeenCalledTimes(1);
+  expect(provider.readMany.mock.calls[0]![0]).toHaveLength(requests.length - 1);
+});
+
+it('starts at most one bounded collection interval and excludes cancelled queued requests', async () => {
+  jest.useFakeTimers();
+  const provider = {
+    send: jest.fn(),
+    readMany: jest.fn(async (rows: readonly unknown[]) =>
+      rows.map(() => ({ status: 'fulfilled' as const, value: '0x1' }))
+    ),
+  };
+  try {
+    const cancelled = new AbortController();
+    const first = readPublicRpc(
+      provider,
+      'selected',
+      request(0),
+      cancelled.signal,
+      check
+    );
+    const rejected = expect(first).rejects.toMatchObject({ code: 4001 });
+    cancelled.abort();
+    await rejected;
+    const second = readPublicRpc(
+      provider,
+      'selected',
+      request(1),
+      new AbortController().signal,
+      check
+    );
+    await jest.advanceTimersByTimeAsync(3);
+    const third = readPublicRpc(
+      provider,
+      'selected',
+      request(2),
+      new AbortController().signal,
+      check
+    );
+    expect(provider.readMany).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1);
+    expect(await Promise.all([second, third])).toEqual(['0x1', '0x1']);
+    expect(provider.readMany).toHaveBeenCalledTimes(1);
+    expect(provider.readMany.mock.calls[0]![0]).toHaveLength(2);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('bounds retained subscribers across scope keys and frees capacity after cancellation', async () => {
+  const provider = { send: jest.fn(), readMany: jest.fn(async () => []) };
+  const controllers = Array.from({ length: 128 }, () => new AbortController());
+  const pending = controllers.map((controller, index) =>
+    readPublicRpc(
+      provider,
+      `scope-${index}`,
+      request(1),
+      controller.signal,
+      check
+    ).catch((error) => error)
+  );
+  await expect(
+    readPublicRpc(
+      provider,
+      'overflow',
+      request(1),
+      new AbortController().signal,
+      check
+    )
+  ).rejects.toThrow('Too many public reads');
+  controllers.forEach((controller) => controller.abort());
+  await Promise.all(pending);
+  provider.readMany.mockResolvedValueOnce([
+    { status: 'fulfilled', value: '0x1' },
+  ] as never);
+  await expect(
+    readPublicRpc(
+      provider,
+      'fresh',
+      request(1),
+      new AbortController().signal,
+      check
+    )
+  ).resolves.toBe('0x1');
 });

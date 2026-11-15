@@ -473,6 +473,58 @@ test('twenty distinct concurrent public reads use one bounded batch after identi
   assert.deepEqual(envelopes.map(rows => rows.length), [1, 20]);
 });
 
+test('valid large public results survive aggregate response limits without changing member requests', async () => {
+  const calls: { method: string; params: unknown[] }[] = [];
+  const value = `0x${'ab'.repeat(307264)}`;
+  const host = createNativeDappRpcReadHost({ registration: () => registration,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const input = JSON.parse(String(init.body));
+      const requests = Array.isArray(input) ? input : [input];
+      calls.push(...requests);
+      const responses = requests.map(request => ({ jsonrpc: '2.0', id: request.id,
+        result: request.method === 'eth_chainId' ? '0x1' : value }));
+      return Response.json(Array.isArray(input) ? responses.reverse() : responses[0]);
+    } });
+  const requests = Array.from({ length: 4 }, (_, index) => normalizeDappRpcRequest('eth_call', [
+    { to: `0x${(index + 1).toString(16).padStart(40, '0')}`, data: '0x12345678' }, '0x100',
+  ]));
+  const results = await Promise.all(requests.map(request => host.read(request, new AbortController().signal, () => {})));
+  assert.equal(results.length, 4);
+  results.forEach(result => assert.equal(typeof result === 'string' && result === value, true));
+  assert.equal(calls.filter(call => call.method === 'eth_chainId').length, 1);
+  for (const call of calls.filter(call => call.method === 'eth_call'))
+    assert(requests.some(request => JSON.stringify(request.params) === JSON.stringify(call.params)));
+  assert(calls.length <= 9, 'One split reissues each of the four original members at most once');
+});
+
+test('aggregate splitting preserves a method error and isolates an oversized logical result', async () => {
+  const value = `0x${'ab'.repeat(307264)}`;
+  const host = createNativeDappRpcReadHost({ registration: () => registration,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const input = JSON.parse(String(init.body));
+      const requests = Array.isArray(input) ? input : [input];
+      const responses = requests.map(request => {
+        if (request.method === 'eth_chainId') return { jsonrpc: '2.0', id: request.id, result: '0x1' };
+        if (request.params[0].to.endsWith('4'))
+          return { jsonrpc: '2.0', id: request.id, error: { code: 3, message: 'execution reverted', data: '0x1234' } };
+        return { jsonrpc: '2.0', id: request.id, result: request.params[0].to.endsWith('3') ? `0x${'ab'.repeat(600000)}` : value };
+      });
+      return Response.json(Array.isArray(input) ? responses.reverse() : responses[0]);
+    } });
+  const results = await Promise.allSettled(Array.from({ length: 4 }, (_, index) => host.read(
+    normalizeDappRpcRequest('eth_call', [{ to: `0x${(index + 1).toString(16).padStart(40, '0')}` }, '0x100']),
+    new AbortController().signal, () => {})));
+  for (const result of results.slice(0, 2)) {
+    assert.equal(result.status, 'fulfilled');
+    if (result.status === 'fulfilled') assert.equal(result.value === value, true);
+  }
+  assert.equal(results[2]!.status, 'rejected');
+  const reverted = results[3]!;
+  assert.equal(reverted.status, 'rejected');
+  if (reverted.status === 'rejected') assert.deepEqual(
+    [reverted.reason.code, reverted.reason.message, reverted.reason.data], [3, 'execution reverted', '0x1234']);
+});
+
 test('a public batch rechecks an identity lease that expires while its response is pending', async () => {
   let time = 1, chain = '0x1';
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();

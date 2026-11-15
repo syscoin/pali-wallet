@@ -37,7 +37,9 @@ const budget = {
   // Keep normal wallet startup caps fixed and allow 12.15 MB for this feature.
   // Provider-owned write cancellation and bounded response decoding add about
   // 2 KB to the package. Allow 5 KB for this shared transport protection.
-  package: 12155000,
+  // Bounded public-read coalescing and response splitting add about 2 KB.
+  // Allow 5 KB for these transport changes; all startup caps stay fixed.
+  package: 12160000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
