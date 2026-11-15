@@ -216,6 +216,13 @@ it('keeps unavailable-worker progress outside guards while unmounting a cached s
       <p>Cached synthetic plaintext</p>
     </AppLayout>
   );
+  expect(
+    screen.queryByText(en.components.walletServiceReconnecting)
+  ).toBeNull();
+  expect(
+    screen.queryByText('Cached synthetic plaintext')
+  ).not.toBeInTheDocument();
+  act(() => jest.advanceTimersByTime(500));
   const status = screen
     .getByText(en.components.walletServiceReconnecting)
     .closest('[role="status"]')!;
@@ -226,6 +233,68 @@ it('keeps unavailable-worker progress outside guards while unmounting a cached s
     screen.queryByText('Cached synthetic plaintext')
   ).not.toBeInTheDocument();
   expect(screen.getByRole('navigation').closest('[inert]')).toBeNull();
+});
+
+it.each(['/send/eth', '/send/sys'])(
+  'preserves the form at %s during a brief focus recheck without flashing recovery feedback',
+  (path) => {
+    mockPath = path;
+    mockUnavailable = true;
+    const view = render(
+      <AppLayout>
+        <input aria-label="Amount" defaultValue="0.01" />
+      </AppLayout>
+    );
+    const amount = screen.getByDisplayValue('0.01');
+    expect(amount.closest('[inert]')).not.toBeNull();
+    expect(
+      screen.queryByText(en.components.walletServiceReconnecting)
+    ).toBeNull();
+    act(() => jest.advanceTimersByTime(499));
+    mockUnavailable = false;
+    view.rerender(
+      <AppLayout>
+        <input aria-label="Amount" defaultValue="0.01" />
+      </AppLayout>
+    );
+    expect(screen.getByDisplayValue('0.01')).toBe(amount);
+    expect(amount.closest('[inert]')).toBeNull();
+    expect(
+      screen.queryByText(en.components.walletServiceReconnecting)
+    ).toBeNull();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  }
+);
+
+it('starts a fresh reconnect delay when a status check interrupts an existing refresh', () => {
+  mockPath = '/send/eth';
+  const content = <input aria-label="Amount" defaultValue="0.01" />;
+  const view = render(<AppLayout>{content}</AppLayout>);
+  advance();
+  expect(screen.getByText(slowText)).toBeVisible();
+
+  mockUnavailable = true;
+  view.rerender(<AppLayout>{content}</AppLayout>);
+  expect(
+    screen.queryByText(en.components.walletServiceReconnecting)
+  ).toBeNull();
+  expect(screen.getByDisplayValue('0.01').closest('[inert]')).not.toBeNull();
+  act(() => jest.advanceTimersByTime(499));
+  expect(
+    screen.queryByText(en.components.walletServiceReconnecting)
+  ).toBeNull();
+  act(() => jest.advanceTimersByTime(1));
+  expect(
+    screen.getByText(en.components.walletServiceReconnecting)
+  ).toBeVisible();
+
+  mockUnavailable = false;
+  view.rerender(<AppLayout>{content}</AppLayout>);
+  expect(
+    screen.queryByText(en.components.walletServiceReconnecting)
+  ).toBeNull();
+  expect(screen.getByDisplayValue('0.01').closest('[inert]')).toBeNull();
+  expect(screen.queryByText(slowText)).toBeNull();
 });
 
 it.each(['/send/eth', '/send/sys'])(

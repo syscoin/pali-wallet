@@ -74,6 +74,9 @@ describe('bounded loading overlay', () => {
   });
 
   it('shows service recovery without ever covering navigation', () => {
+    expect(render(true, true)).toBeNull();
+    effect!();
+    jest.advanceTimersByTime(500);
     const progress = render(true, true);
     expect(progress.props.role).toBe('status');
     expect(progress.props.className).toContain('pointer-events-none');

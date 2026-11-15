@@ -238,6 +238,70 @@ const refreshBalance = async (balance: string | undefined) => {
 };
 const saved = () => mockSave.mock.calls.at(-1)?.[2];
 
+it('silently refreshes on popup reopen while preserving the displayed balance and manual draft', async () => {
+  const pending: Array<() => void> = [];
+  const defaultEmitter = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path: string[], params: unknown[]) => {
+    if (path.at(-1) !== 'refreshActiveAccountBalances')
+      return defaultEmitter(path, params);
+    return new Promise<void>((resolve) => pending.push(resolve));
+  });
+  const renderSend = () =>
+    render(
+      <Provider store={mockStore}>
+        <SendSys />
+      </Provider>
+    );
+  const balanceRow = () =>
+    screen.getByText('components.yourBalance').parentElement!;
+  const finishRefresh = async (index: number, balance: string) => {
+    await act(async () => {
+      mockStore.dispatch(
+        setAccountPropertyByIdAndType({
+          id: ACCOUNT.id,
+          type: KeyringAccountType.HDAccount,
+          property: 'balances',
+          value: { syscoin: balance, ethereum: '0' },
+        })
+      );
+      pending[index]();
+    });
+  };
+
+  const first = renderSend();
+  const user = userEvent.setup();
+  await fill(user);
+  expect(pending).toHaveLength(1);
+  expect(balanceRow()).toHaveTextContent('1.25');
+  expect(amount()).toHaveValue(0.5);
+  await finishRefresh(0, '1.5');
+  expect(balanceRow()).toHaveTextContent('1.5');
+  expect(amount()).toHaveValue(0.5);
+  await waitFor(() => expect(saved()?.formValues.amount).toBe('0.5'));
+  const routeState = mockNavigate.mock.calls.at(-1)![1].state;
+  first.unmount();
+
+  mockLocation = { pathname: '/send/sys', state: routeState };
+  renderSend();
+  expect(pending).toHaveLength(2);
+  expect(balanceRow()).toHaveTextContent('1.5');
+  expect(amount()).toHaveValue(0.5);
+  expect(screen.getByPlaceholderText('send.receiver')).toHaveValue(
+    'synthetic-recipient'
+  );
+  await finishRefresh(1, '2.0');
+  expect(balanceRow()).toHaveTextContent('2.0');
+  expect(amount()).toHaveValue(0.5);
+  expect(
+    mockEmitter.mock.calls
+      .filter(([path]) => path.at(-1) === 'refreshActiveAccountBalances')
+      .map(([, params]) => params)
+  ).toEqual([
+    [{ includeAssets: true, showLoading: false }],
+    [{ includeAssets: true, showLoading: false }],
+  ]);
+});
+
 it.each([undefined, null, '', ' ', NaN, Infinity, 'broken'])(
   'keeps an unknown balance %p selectable without replacing a manual amount with zero',
   async (balance) => {

@@ -10,6 +10,7 @@ interface IPageLoadingOverlayProps {
 }
 
 export const MAX_BLOCKING_LOADING_MS = 2000;
+export const RECONNECT_FEEDBACK_MS = 500;
 
 const spinnerClass = 'animate-spin rounded-full border-brand-royalbluemedium';
 
@@ -32,7 +33,10 @@ export const PageLoadingOverlay = memo(
       if (!isLoading) return;
 
       const spinnerTimer = setTimeout(() => setShowSpinner(true), 150);
-      const overlayTimer = setTimeout(() => setShowOverlay(true), 500);
+      const overlayTimer = setTimeout(
+        () => setShowOverlay(true),
+        RECONNECT_FEEDBACK_MS
+      );
       const slowTimer = setTimeout(
         () => setIsSlow(true),
         MAX_BLOCKING_LOADING_MS
@@ -44,7 +48,10 @@ export const PageLoadingOverlay = memo(
       };
     }, [isLoading]);
 
-    if (!isLoading || (!nonBlocking && !showSpinner && !showOverlay))
+    if (
+      !isLoading ||
+      (nonBlocking ? !showOverlay : !showSpinner && !showOverlay)
+    )
       return null;
 
     const status = message || t('buttons.loading');
