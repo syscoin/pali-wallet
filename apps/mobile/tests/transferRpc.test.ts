@@ -4,7 +4,8 @@ import test from 'node:test';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { keccak256 } from 'ethers/crypto';
-import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import { NativeTransferRpc, captureNativeOwnedDappAdmission } from '../src/custody/transferRpc.ts';
+import { snapshotPreparedEvmTransaction, serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { assertEvmCancellationNonceReady } from '../../../source/shared/evmCancellationPayer.ts';
 import { EvmReplayError, type EvmReplayDispatchAdmission } from '../../../source/wallet/evmSignedReplay.ts';
 const sender = Wallet.fromPhrase(
@@ -44,6 +45,44 @@ function fixture(overrides: Record<string, unknown> = {}, scalarOnly = false) {
   });
   return { rpc, calls };
 }
+
+test('owned dapp admission delegates identity to its exact one-use host preflight', async () => {
+  const transaction = snapshotPreparedEvmTransaction({ from: sender.address, to: recipient,
+    chainId: '1', nonce: '0', data: '0x', value: '1', gasLimit: '21000', type: 0, gasPrice: '101' });
+  const raw = await sender.signTransaction(Transaction.from(serializePreparedEvmTransaction(transaction)));
+  const hash = keccak256(raw), f = fixture({ eth_sendRawTransaction: hash });
+  let finalChecks = 0;
+  const admit = async (send: () => Promise<string>, preflight?: () => Promise<void>) => {
+    await preflight?.();
+    finalChecks++;
+    return send();
+  };
+  const token = captureNativeOwnedDappAdmission(f.rpc, admit, hash);
+  await assert.rejects(f.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined, {}), { code: 'REVIEW_REQUIRED' });
+  assert.equal(f.calls.length, 0);
+  assert.equal(await f.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined, token), hash);
+  assert.equal(finalChecks, 1);
+  assert.deepEqual(f.calls.map(call => call.method), ['eth_sendRawTransaction']);
+  await assert.rejects(f.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined, token), { code: 'REVIEW_REQUIRED' });
+  assert.equal(f.calls.length, 1);
+  const defaultRpc = fixture({ eth_sendRawTransaction: hash });
+  assert.equal(await defaultRpc.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined), hash);
+  assert.deepEqual(defaultRpc.calls.map(call => call.method), ['eth_chainId', 'eth_sendRawTransaction']);
+});
+
+test('owned dapp identity cannot authorize a different sender and still respects final refusal', async () => {
+  const transaction = snapshotPreparedEvmTransaction({ from: sender.address, to: recipient,
+    chainId: '1', nonce: '0', data: '0x', value: '1', gasLimit: '21000', type: 0, gasPrice: '101' });
+  const raw = await sender.signTransaction(Transaction.from(serializePreparedEvmTransaction(transaction)));
+  const hash = keccak256(raw), f = fixture({ eth_sendRawTransaction: hash });
+  const admit = async (_send: () => Promise<string>, preflight?: () => Promise<void>) => { await preflight?.(); throw new Error('late wrong chain'); };
+  const other = fixture();
+  const foreign = captureNativeOwnedDappAdmission(other.rpc, admit, hash);
+  await assert.rejects(f.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined, foreign), { code: 'REVIEW_REQUIRED' });
+  const token = captureNativeOwnedDappAdmission(f.rpc, admit, hash);
+  await assert.rejects(f.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined, token), /late wrong chain/);
+  assert.equal(f.calls.length, 0);
+});
 test('new cancellation preserves a saved legacy nonce and rejects unsupported original types before RPC', async () => {
   const legacy = await sender.signTransaction({
     type: 0, chainId: 1, nonce: 1, to: recipient, value: 1,

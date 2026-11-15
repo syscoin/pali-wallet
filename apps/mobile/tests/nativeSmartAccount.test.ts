@@ -6322,7 +6322,7 @@ for (const sponsored of [false, true]) test(`counted native warm Smart payer pha
     operation.confirmPayer(review.id); await sending;
     assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
     assert.equal(f.submitted.length, 1);
-    assert.deepEqual(measure(), { methods: 53, http: sponsored ? 39 : 36, chains: 11 });
+    assert.deepEqual(measure(), { methods: 52, http: sponsored ? 38 : 35, chains: 10 });
     console.log('NATIVE_PHASE_COUNTS', JSON.stringify({ sponsored, preparation, payerReview, confirmation: delta(confirmed), total: measure() }));
   } finally { operation?.dispose(); await f.close(); }
 });
@@ -6365,7 +6365,7 @@ for (const codeBytes of [1, 20 * 1024]) test(`counted native Smart asset payer p
     const counts = { methods: f.calls.length,
       http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
       chains: f.calls.filter(method => method === 'eth_chainId').length };
-    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 32 : 34, http: standard === 'ERC20' ? 22 : 26, chains: 5 });
+    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 31 : 33, http: standard === 'ERC20' ? 21 : 25, chains: 4 });
     console.log('NATIVE_ASSET_CONFIRM_COUNTS', JSON.stringify({ standard, ...counts }));
   } finally { operation?.dispose(); await f.close(); }
 });

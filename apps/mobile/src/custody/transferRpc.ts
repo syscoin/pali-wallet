@@ -53,6 +53,24 @@ export type NativeReplacementOriginal = Readonly<{
 type NativeReplacementQuote = NativeTransferQuote & Readonly<{ original: NativeReplacementOriginal }>;
 type NativeCancellationQuote = EvmCancellationQuote & Readonly<{ original: NativeReplacementOriginal }>;
 
+export type NativeOwnedDappAdmission = Readonly<object>;
+const ownedDappAdmissions = new WeakMap<NativeOwnedDappAdmission, {
+  sender: NativeTransferRpc;
+  admit: AdmitEvmSignedDispatch<string>;
+  hash: string;
+}>();
+
+/** Issued only by the host whose exact signed-record preflight verifies the endpoint. */
+export function captureNativeOwnedDappAdmission(
+  sender: NativeTransferRpc,
+  admit: AdmitEvmSignedDispatch<string>,
+  hash: string
+): NativeOwnedDappAdmission {
+  const token = Object.freeze({});
+  ownedDappAdmissions.set(token, { sender, admit, hash: checkedHash(hash) });
+  return token;
+}
+
 /** A fee replacement must retain the authenticated original execution. */
 export function assertSpeedUpEnvelope(
   original: NativeReplacementOriginal,
@@ -717,7 +735,7 @@ export class NativeTransferRpc {
   /** Dapp calldata uses the same bounded transport and durable SDK admission. */
   broadcastDapp(rawTransaction: string, expectedHash: string, transaction: PreparedEvmTransaction,
     signal: AbortSignal, admit: AdmitEvmSignedDispatch<string>, assertCurrent: () => void,
-    onBroadcast: (hash: string) => void): Promise<string> {
+    onBroadcast: (hash: string) => void, ownedAdmission?: NativeOwnedDappAdmission): Promise<string> {
     const hash = checkedHash(expectedHash);
     if (typeof admit !== 'function' || typeof onBroadcast !== 'function')
       return Promise.reject(new NativeTransferRpcError('REVIEW_REQUIRED'));
@@ -730,6 +748,12 @@ export class NativeTransferRpc {
           signed.chainId !== BigInt(this.context.chainId) || signed.from?.toLowerCase() !== transaction.from.toLowerCase() ||
           signed.unsignedSerialized !== serializePreparedEvmTransaction(transaction)) return invalid();
     } catch { return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE')); }
+    if (ownedAdmission) {
+      const owner = ownedDappAdmissions.get(ownedAdmission);
+      ownedDappAdmissions.delete(ownedAdmission);
+      if (!owner || owner.sender !== this || owner.admit !== admit || owner.hash !== hash)
+        return Promise.reject(new NativeTransferRpcError('REVIEW_REQUIRED'));
+    }
     return this.operation(signal, async (local) => {
       let dispatched = false;
       const check = () => { if (local.aborted) throw new NativeTransferRpcError('CANCELLED'); guardedRead(assertCurrent); };
@@ -743,7 +767,11 @@ export class NativeTransferRpc {
             if (checkedHash(value) !== hash) return invalid();
             return hash;
           });
-        }, async () => { check(); await this.checkChain(local); check(); });
+        }, async () => {
+          check();
+          if (!ownedAdmission) await this.checkChain(local);
+          check();
+        });
       } catch (error) {
         if (!dispatched) throw new PreDispatchRejection(error);
         throw error;

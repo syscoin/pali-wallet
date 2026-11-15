@@ -193,7 +193,7 @@ import { NativeUtxoNetworkConflictError, type NativeAccountRequest, type NativeA
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import { NativeTransferError, type NativeTransferDispatchValidation, type NativeReplacementApproval, type NativeTransferRuntime } from './transfers.ts';
 import { assertTransferIntentEnvelope, equalTransferIntent, snapshotErc20TransferIntent, snapshotNativeAssetTransferIntent, type NativeAssetTransferIntent } from './transferIntent.ts';
-import { NativeTransferRpc, assertSpeedUpEnvelope } from './transferRpc.ts';
+import { NativeTransferRpc, assertSpeedUpEnvelope, captureNativeOwnedDappAdmission } from './transferRpc.ts';
 import { readOwnData, snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotReplacementTransfer, snapshotUnsignedTransfer, unsignedTransferBytes } from './evmFeeContracts.ts';
 import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
 import { NativeTokenRegistry, snapshotSavedCollectible } from '../portfolio/tokenRegistry.ts';
@@ -1437,7 +1437,10 @@ export function createKeyringRuntimeFactory(
                     metadata?.smartAccountExecution === true && typeof assertSmartAdmission === 'function'))
                   await validateSigningAndBroadcast();
                 guard();
-                return sender.broadcastDapp(rawTransaction, signed.hash, transaction, signal, admit, guard, onBroadcast);
+                const ownedAdmission = !hardwareSigner && finalAdmissionIncludesAssets === true &&
+                  typeof assertSmartAdmission === 'function' && typeof verifyDispatch === 'function'
+                  ? captureNativeOwnedDappAdmission(sender, admit, signed.hash) : undefined;
+                return sender.broadcastDapp(rawTransaction, signed.hash, transaction, signal, admit, guard, onBroadcast, ownedAdmission);
               };
               const work = hardwareSigner
                 ? sdk.submitSignedHardwareEvmTransaction<string>(signed.rawTransaction, broadcast, boundary, undefined,
