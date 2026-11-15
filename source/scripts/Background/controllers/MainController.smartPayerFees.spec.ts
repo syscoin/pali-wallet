@@ -10,12 +10,15 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 }));
 jest.mock('@sidhujag/sysweb3-keyring/cjs/evm-fees.js', () => ({
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/evm-fees.js'),
-  getEvmFeeData: async (provider) => ({
-    gasPrice: BigInt(3),
-    maxFeePerGas: BigInt(3),
-    maxPriorityFeePerGas: BigInt(1),
-    baseFeePerGas: (await provider.getBlock()).baseFeePerGas,
-  }),
+  getEvmFeeData: async (provider) => {
+    const { baseFeePerGas } = await provider.getBlock();
+    return {
+      gasPrice: BigInt(3),
+      maxFeePerGas: BigInt(3),
+      maxPriorityFeePerGas: BigInt(1),
+      ...(baseFeePerGas === null ? {} : { baseFeePerGas }),
+    };
+  },
 }));
 jest.mock('utils/evmCallBlacklist', () => ({
   getBlacklistTargetsForEvmCallWithContractType: jest.fn(async () => []),
@@ -645,28 +648,55 @@ it('routes deployment prefunding through the same payer checks', async () => {
   expect(f.send).not.toHaveBeenCalled();
 });
 
-it('discovers fees for a funded deployment prefund without supplied fee fields', async () => {
+it.each([false, true])(
+  'discovers deployment prefund fees, legacy=%s',
+  async (legacy) => {
+    const f = fixture();
+    if (legacy) {
+      const read = f.provider.send.getMockImplementation()!;
+      f.provider.send.mockImplementation(async (method, params) =>
+        method === 'eth_getBlockByNumber'
+          ? { ...block, baseFeePerGas: null }
+          : read(method, params)
+      );
+    }
+    await f.submit(
+      NATIVE_EVM_FEE_FUNDING,
+      {
+        chainId: 57,
+        from: signer.address,
+        to: smart,
+        value: '100',
+      } as any,
+      { smartAccountDeploymentPrefund: true } as any
+    );
+    expect(f.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: smart,
+        value: '100',
+        ...(legacy
+          ? { gasPrice: '3' }
+          : { maxFeePerGas: '3', maxPriorityFeePerGas: '1' }),
+      }),
+      legacy,
+      expect.objectContaining({ mode: 'reviewed-generic' })
+    );
+    expect(f.records.append).toHaveBeenCalledTimes(1);
+    expect(f.broadcast).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('rejects an unfunded deployment prefund after discovering fees', async () => {
   const f = fixture();
-  await f.submit(
-    NATIVE_EVM_FEE_FUNDING,
-    {
-      chainId: 57,
-      from: signer.address,
-      to: smart,
-      value: '100',
-    } as any,
-    { smartAccountDeploymentPrefund: true } as any
-  );
-  expect(f.send).toHaveBeenCalledWith(
-    expect.objectContaining({
-      to: smart,
-      value: '100',
-      maxFeePerGas: '3',
-      maxPriorityFeePerGas: '1',
-    }),
-    false,
-    expect.objectContaining({ mode: 'reviewed-generic' })
-  );
-  expect(f.records.append).toHaveBeenCalledTimes(1);
-  expect(f.broadcast).toHaveBeenCalledTimes(1);
+  f.setBalance(BigInt(0));
+  await expect(
+    f.submit(
+      NATIVE_EVM_FEE_FUNDING,
+      { chainId: 57, from: signer.address, to: smart, value: '100' } as any,
+      { smartAccountDeploymentPrefund: true } as any
+    )
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
 });
