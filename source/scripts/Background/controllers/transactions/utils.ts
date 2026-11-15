@@ -46,7 +46,9 @@ export const getFormattedEvmTransactionResponse = async (
 };
 
 const HISTORY_READ_TIMEOUT_MS = 20000;
-const HISTORY_CACHE_TTL_MS = 60000;
+// Keep immutable bodies across the manager's one-minute display-result expiry.
+// Every reuse still verifies the cached anchor against the current chain.
+const HISTORY_CACHE_TTL_MS = 5 * 60000;
 const HISTORY_CACHE_BLOCKS = 64;
 const HISTORY_CACHE_BYTES = 8 * 1024 * 1024;
 

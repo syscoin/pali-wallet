@@ -1,6 +1,24 @@
+import TransactionsManager from './index';
 import { findUserTxsInProviderByBlocksRange } from './utils';
 
 let scope: any;
+let mockPollingEvmTransactions: (...args: any[]) => Promise<any>;
+jest.mock('scripts/Background', () => ({
+  getController: () => ({
+    wallet: { ethereumTransaction: { web3Provider: {} } },
+  }),
+}));
+jest.mock('./evm', () => ({
+  __esModule: true,
+  default: () => ({
+    pollingEvmTransactions: (...args: any[]) =>
+      mockPollingEvmTransactions(...args),
+  }),
+}));
+jest.mock('./syscoin', () => ({ __esModule: true, default: () => ({}) }));
+jest.mock('utils/transactionUtils', () => ({
+  isTransactionInBlock: (tx: any) => Boolean(tx.blockNumber),
+}));
 jest.mock('state/store', () => ({
   __esModule: true,
   default: { getState: () => ({ vault: scope }) },
@@ -162,10 +180,44 @@ it('aborts stalled reads at the total deadline and on provider cancellation', as
   expect(jest.getTimerCount()).toBe(0);
 });
 
-it('refreshes expired bodies and rejects a chain change before accepting cached observations', async () => {
+it('reuses immutable bodies after the manager display cache expires and rejects a changed canonical anchor', async () => {
+  const f = fixture();
+  const manager = TransactionsManager();
+  manager.utils.clearCache();
+  mockPollingEvmTransactions = () => f.scan();
+  const poll = () =>
+    manager.utils.updateTransactionsFromCurrentAccount(
+      { address: 'quiet-history-owner' } as any,
+      false,
+      scope.activeNetwork.url,
+      { ethereum: { 1: [] } } as any,
+      true
+    );
+  await poll();
+  expect(f.fullReads()).toHaveLength(11);
+  f.provider.readMany.mockClear();
+  await poll();
+  expect(f.provider.readMany).not.toHaveBeenCalled();
+  await jest.advanceTimersByTimeAsync(61000);
+  await poll();
+  expect(f.fullReads()).toHaveLength(0);
+  const refreshed = f.provider.readMany.mock.calls.flatMap(([calls]) => calls);
+  expect(
+    refreshed.filter(({ method }) => method === 'eth_chainId')
+  ).toHaveLength(2);
+  expect(
+    refreshed.filter(({ method }) => method === 'eth_getBlockByNumber')
+  ).toHaveLength(2);
+  f.reorg();
+  await jest.advanceTimersByTimeAsync(61000);
+  await poll();
+  expect(f.fullReads()).toHaveLength(11);
+});
+
+it('expires inactive body retention and rejects a chain change before accepting cached observations', async () => {
   const f = fixture();
   await f.scan();
-  await jest.advanceTimersByTimeAsync(60000);
+  await jest.advanceTimersByTimeAsync(5 * 60000);
   await f.scan();
   expect(f.fullReads()).toHaveLength(22);
   const original = f.provider.readMany.getMockImplementation()!;
