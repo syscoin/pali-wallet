@@ -26,7 +26,6 @@ import {
   getEthRpc,
   INetwork,
   clearRpcCaches,
-  retryableFetch,
   validateEvmRpcBatch,
   getNetworkConfig,
 } from '@sidhujag/sysweb3-network';
@@ -108,6 +107,7 @@ import {
   readBlockbookNativeQuote,
 } from '../../../shared/nativeCoinQuotes';
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
+import { readPublicJson } from '../../../shared/publicMarketRead';
 import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import {
   filterSmartAccountNativeRecipientOperations,
@@ -304,7 +304,6 @@ import {
 } from 'utils/accountCompatibility';
 import {
   AsyncMutex,
-  fiatPriceMutex,
   networkSwitchMutex,
   accountSwitchMutex,
   walletPersistenceMutex,
@@ -724,6 +723,8 @@ class MainController {
   private smartOwnerInvalidators?: Set<() => void>;
   private utxoWalletReviewKey?: Promise<CryptoKey>;
   private activeUtxoReads?: Set<AbortController>;
+  private activeSelectedBalanceReads?: Set<AbortController>;
+  private activeFiatReads?: Set<AbortController>;
   private utxoFeeCache?: { fee: number; observedAt: number; url: string };
   private fiatQuoteGeneration = 0;
   private fiatPreferenceGeneration = 0;
@@ -3818,6 +3819,8 @@ class MainController {
 
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
+    this.activeSelectedBalanceReads?.forEach((owner) => owner.abort());
+    this.activeFiatReads?.forEach((owner) => owner.abort());
     this.localPasskeyControllers?.forEach((controller) => {
       void controller.dispose();
     });
@@ -5157,6 +5160,7 @@ class MainController {
       () => walletGeneration === this.walletStateGeneration
     );
     this.fiatPreferenceGeneration += 1;
+    this.activeFiatReads?.forEach((owner) => owner.abort());
     if (generation !== this.fiatQuoteGeneration) return;
     void this.setFiat().catch((error) =>
       console.error('[MainController] Failed to refresh saved currency:', error)
@@ -5166,70 +5170,64 @@ class MainController {
   public async setFiat(currency?: string): Promise<void> {
     const generation = this.fiatQuoteGeneration;
     const preferenceGeneration = this.fiatPreferenceGeneration;
-    // Use AsyncMutex for cross-context synchronization
-    // This ensures only one price update runs at a time across all contexts
-    return fiatPriceMutex.runExclusive(async () => {
-      if (
-        generation !== this.fiatQuoteGeneration ||
-        preferenceGeneration !== this.fiatPreferenceGeneration
-      )
-        return;
-      if (!currency) {
-        const storeCurrency = store.getState().price.fiat.asset;
-        currency = storeCurrency || 'usd';
-      } else if (currency !== store.getState().price.fiat.asset) {
-        // Quote-only callers still clear any amount in the previous units.
-        store.dispatch(
-          setPrices({ asset: currency, available: false, price: 0 })
-        );
-      }
-
-      const { activeNetwork, isBitcoinBased } = store.getState().vault;
-      const id = getNetworkChain(isBitcoinBased);
-      const networkKey = fiatNetworkKey(activeNetwork);
-      const priceSource = () =>
-        isBitcoinBased
-          ? undefined
-          : store.getState().vaultGlobal?.networks?.ethereum?.[
-              activeNetwork.chainId
-            ]?.coingeckoId;
-      const sourceId = priceSource();
-      const isCurrent = () =>
-        generation === this.fiatQuoteGeneration &&
-        preferenceGeneration === this.fiatPreferenceGeneration &&
-        currency === store.getState().price.fiat.asset &&
-        networkKey === fiatNetworkKey(store.getState().vault.activeNetwork) &&
-        sourceId === priceSource();
-
-      // Use optimized price fetching instead of large coinsList
-      console.log(
-        'Using optimized price fetching for network:',
-        activeNetwork.chainId
+    const session = this.walletSessionGeneration;
+    currency = currency || store.getState().price.fiat.asset || 'usd';
+    if (currency !== store.getState().price.fiat.asset) {
+      this.activeFiatReads?.forEach((owner) => owner.abort());
+      store.dispatch(
+        setPrices({ asset: currency, available: false, price: 0 })
       );
-
+    }
+    const { activeNetwork, isBitcoinBased } = store.getState().vault;
+    const id = getNetworkChain(isBitcoinBased);
+    const networkKey = fiatNetworkKey(activeNetwork);
+    const priceSource = () =>
+      isBitcoinBased
+        ? undefined
+        : store.getState().vaultGlobal?.networks?.ethereum?.[
+            activeNetwork.chainId
+          ]?.coingeckoId;
+    const sourceId = priceSource();
+    const owner = new AbortController();
+    (this.activeFiatReads ??= new Set()).add(owner);
+    const isCurrent = () =>
+      !owner.signal.aborted &&
+      session === this.walletSessionGeneration &&
+      generation === this.fiatQuoteGeneration &&
+      preferenceGeneration === this.fiatPreferenceGeneration &&
+      currency === store.getState().price.fiat.asset &&
+      networkKey === fiatNetworkKey(store.getState().vault.activeNetwork) &&
+      sourceId === priceSource();
+    const unsubscribe = store.subscribe(() => {
+      if (!isCurrent()) owner.abort();
+    });
+    try {
+      if (!isCurrent()) return;
       let priceData: {
         available?: boolean;
         price: number;
         priceChange24h?: number;
       };
       try {
-        if (id === INetworkType.Syscoin) {
-          priceData = await this.getUtxoPriceData(activeNetwork.url, currency);
-        } else if (id === INetworkType.Ethereum) {
+        if (id === INetworkType.Syscoin)
+          priceData = await this.getUtxoPriceData(
+            activeNetwork.url,
+            currency,
+            owner.signal
+          );
+        else if (id === INetworkType.Ethereum)
           priceData = await this.getTokenPriceData(
             activeNetwork.chainId,
-            currency
+            currency,
+            owner.signal
           );
-        } else {
-          return;
-        }
+        else return;
       } catch (error) {
         if (!isCurrent()) return;
         if (id === INetworkType.Ethereum)
           logError('Failed to retrieve asset price - EVM', '', error);
         priceData = { available: false, price: 0 };
       }
-      // An unabortable quote must not price another network or wallet session.
       if (!isCurrent()) return;
       store.dispatch(
         setPrices({
@@ -5239,7 +5237,11 @@ class MainController {
           priceChange24h: priceData.priceChange24h,
         })
       );
-    });
+    } finally {
+      unsubscribe();
+      owner.abort();
+      this.activeFiatReads.delete(owner);
+    }
   }
 
   public setHasEthProperty(exist: boolean) {
@@ -7080,6 +7082,7 @@ class MainController {
     }
     this.assertWalletReadyForSigning();
     const requestGeneration = ++this.networkRequestGeneration;
+    this.activeFiatReads?.forEach((owner) => owner.abort());
     this.postSwitchHistorySave = undefined;
     const isCurrent = () => requestGeneration === this.networkRequestGeneration;
     const assertCurrent = () => {
@@ -7269,10 +7272,8 @@ class MainController {
     });
   }
 
-  public async getRpc(data: EvmRpcDraft, retryCount = 0): Promise<INetwork> {
+  public async getRpc(data: EvmRpcDraft): Promise<INetwork> {
     if (data.isSyscoinRpc) throw new Error('Use explicit UTXO registration');
-    const MAX_RETRIES = 3;
-    const INITIAL_RETRY_DELAY = 1000; // 1 second
 
     try {
       const ethRpcResult = await withWalletBackend(data.url, () =>
@@ -7285,10 +7286,7 @@ class MainController {
 
       return result as INetwork;
     } catch (error: any) {
-      console.error(
-        `[MainController] getRpc error (attempt ${retryCount + 1}):`,
-        error
-      );
+      console.error('[MainController] getRpc error:', error);
 
       // Check for authentication errors - don't retry these
       if (
@@ -7308,23 +7306,6 @@ class MainController {
         error.message?.includes('quality assurance')
       ) {
         throw error; // Pass through the quality error message
-      }
-
-      // Check for rate limiting and other retryable errors
-      if (
-        retryCount < MAX_RETRIES &&
-        (error.message?.includes('429') ||
-          error.message?.includes('503') ||
-          error.message?.includes('Too many requests') ||
-          error.message?.includes('Service Unavailable') ||
-          error.message?.includes('Failed to fetch') ||
-          error.message?.includes('NetworkError') ||
-          error.message?.includes('timeout'))
-      ) {
-        const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
-        console.log(`[MainController] Retrying getRpc after ${delay}ms...`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        return this.getRpc(data, retryCount + 1);
       }
 
       // Pass through the actual error message
@@ -12908,10 +12889,12 @@ class MainController {
 
     const lifetime = new AbortController();
     if (isBitcoinBased) (this.activeUtxoReads ??= new Set()).add(lifetime);
+    (this.activeSelectedBalanceReads ??= new Set()).add(lifetime);
     const assertCurrent = () => {
       const latest = store.getState().vault;
       if (
         lifetime.signal.aborted ||
+        !isCurrent() ||
         networkRequest !== this.networkRequestGeneration ||
         latest.activeNetwork.chainId !== activeNetwork.chainId ||
         latest.activeNetwork.kind !== activeNetwork.kind ||
@@ -13021,12 +13004,14 @@ class MainController {
     return balancePromise.finally(() => {
       lifetime.abort();
       this.activeUtxoReads?.delete(lifetime);
+      this.activeSelectedBalanceReads?.delete(lifetime);
     });
   }
 
   private cancelActiveBalanceUpdate(): void {
     // Retire the subscriber before another request can own its loading state.
     this.balanceLoadingRequestId += 1;
+    this.activeSelectedBalanceReads?.forEach((owner) => owner.abort());
     this.cancellablePromises.balancePromise?.cancel();
     this.cancellablePromises.balancePromise = null;
 
@@ -16162,7 +16147,10 @@ class MainController {
 
   private async persistTokenMutation(
     expectedScope: IWalletNavigationScope,
-    prepare: () =>
+    prepare: (
+      signal: AbortSignal,
+      assertCurrent: () => void
+    ) =>
       | (() => ReturnType<typeof setAccountAssets>)
       | Promise<() => ReturnType<typeof setAccountAssets>>
   ) {
@@ -16179,14 +16167,19 @@ class MainController {
       this.assertAssetMutationContext(expectedScope);
     };
     assertCurrent();
-    const mutation = await prepare();
-    assertCurrent();
-    this.resetAutoLockTimer();
-    await persistAssetMutation(
-      mutation,
-      assertCurrent,
-      () => generation === this.walletStateGeneration
-    );
+    const lifetime = this.captureSmartOwnerLifetime(assertCurrent, null);
+    try {
+      const mutation = await prepare(lifetime.signal, lifetime.assertCurrent);
+      lifetime.assertCurrent();
+      this.resetAutoLockTimer();
+      await persistAssetMutation(
+        mutation,
+        lifetime.assertCurrent,
+        () => generation === this.walletStateGeneration
+      );
+    } finally {
+      lifetime.dispose();
+    }
   }
 
   public async saveTokenInfo(
@@ -16197,10 +16190,13 @@ class MainController {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
     if (token?.chainId !== activeNetwork.chainId)
       throw new Error('Asset network changed. Please try again.');
-    return this.persistTokenMutation(expectedScope, () =>
+    return this.persistTokenMutation(expectedScope, (signal, assertCurrent) =>
       !isBitcoinBased || token.contractAddress
         ? this.account.eth.prepareTokenAddition(token)
-        : this.account.sys.prepareTokenAddition(token)
+        : this.account.sys.prepareTokenAddition(token, {
+            signal,
+            assertCurrent,
+          })
     );
   }
 
@@ -16274,8 +16270,16 @@ class MainController {
   /**
    * Get fiat price data for network native token - delegates to EvmAssetsController
    */
-  public async getTokenPriceData(chainId: number, currency?: string) {
-    return await this.evmAssetsController.getTokenPriceData(chainId, currency);
+  public async getTokenPriceData(
+    chainId: number,
+    currency?: string,
+    signal?: AbortSignal
+  ) {
+    return await this.evmAssetsController.getTokenPriceData(
+      chainId,
+      currency,
+      signal
+    );
   }
 
   /**
@@ -16283,7 +16287,8 @@ class MainController {
    */
   private async getUtxoPriceData(
     networkUrl: string,
-    currency = 'usd'
+    currency = 'usd',
+    signal: AbortSignal = new AbortController().signal
   ): Promise<{
     available: boolean;
     price: number;
@@ -16303,10 +16308,14 @@ class MainController {
 
     try {
       const activeNetworkURL = ensureTrailingSlash(networkUrl);
-      const response = await retryableFetch(
-        `${activeNetworkURL}${BLOCKBOOK_TICKER_PATH}`
+      const body = await readPublicJson(
+        fetch,
+        `${activeNetworkURL}${BLOCKBOOK_TICKER_PATH}`,
+        16 * 1024,
+        signal
       );
-      const result = readBlockbookNativeQuote(await response.json(), currency);
+      if (signal.aborted) throw new Error('Quote context changed');
+      const result = readBlockbookNativeQuote(body, currency);
       if (result) {
         // Preserve the existing zero-quote noncache policy.
         if (result.price !== 0)
@@ -16326,6 +16335,7 @@ class MainController {
       );
       return { available: false, price: 0 };
     } catch (error) {
+      if (signal.aborted) throw error;
       console.error(
         `[MainController] Error fetching UTXO price from ${networkUrl}:`,
         error

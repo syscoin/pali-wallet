@@ -1,7 +1,6 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
-import { retryableFetch } from '@sidhujag/sysweb3-network';
 import {
   act,
   cleanup,
@@ -30,6 +29,7 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockStore.getState(),
+    subscribe: (fn: () => void) => mockStore.subscribe(fn),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
 }));
@@ -37,10 +37,6 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
   CustomJsonRpcProvider: jest.fn(),
   PsbtUtils: {},
-}));
-jest.mock('@sidhujag/sysweb3-network', () => ({
-  ...jest.requireActual('@sidhujag/sysweb3-network'),
-  retryableFetch: jest.fn(),
 }));
 jest.mock('utils/syscoinPsbtValues', () => ({}));
 jest.mock('scripts/Background', () => ({
@@ -150,7 +146,7 @@ const prepare = (kind: INetworkType, firstWireValue: string) => {
     UTXO_PRICE_CACHE_DURATION: 300000,
   });
   let wireValue = firstWireValue;
-  jest.mocked(retryableFetch).mockImplementation(async (url: any) => {
+  jest.mocked(global.fetch).mockImplementation(async (url: any) => {
     if (kind === INetworkType.Ethereum) {
       expect(String(url)).toBe(
         'https://api.coingecko.com/api/v3/simple/price?ids=synthetic-native&vs_currencies=eur&include_24hr_change=true'
@@ -167,7 +163,11 @@ const prepare = (kind: INetworkType, firstWireValue: string) => {
         : `{"rates":{${fields}}}`;
     // Exercise the real readers on JSON-decoded wire data, including a valid
     // JSON number whose magnitude is not finite in JavaScript.
-    return { ok: true, json: async () => JSON.parse(body) } as Response;
+    return {
+      ok: true,
+      headers: { get: () => null },
+      text: async () => body,
+    } as unknown as Response;
   });
   return {
     wallet,
@@ -183,6 +183,7 @@ const prepare = (kind: INetworkType, firstWireValue: string) => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  global.fetch = jest.fn();
   jest.spyOn(console, 'error').mockImplementation();
   jest.spyOn(console, 'log').mockImplementation();
   jest.spyOn(console, 'warn').mockImplementation();
@@ -262,7 +263,7 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
         expect(await screen.findByText('--')).toBeVisible();
         setWireValue('13');
         await act(async () => wallet.setFiat('eur'));
-        expect(retryableFetch).toHaveBeenCalledTimes(2);
+        expect(global.fetch).toHaveBeenCalledTimes(2);
         expect(mockStore.getState().price.fiat.price).toBe(13);
         expect(mockStore.getState().price.fiat.available).toBe(true);
         expect(screen.queryByText('Quote crashed balance display')).toBeNull();
@@ -280,10 +281,10 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       now += 299999;
       expect((await read()).price).toBe(13);
       expect((await read()).available).toBe(true);
-      expect(retryableFetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
       now += 1;
       expect((await read()).price).toBe(17);
-      expect(retryableFetch).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
     it('retains optional price-change metadata on a valid quote', async () => {
@@ -304,7 +305,7 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       expect((await read()).price).toBe(
         kind === INetworkType.Ethereum ? 0 : 13
       );
-      expect(retryableFetch).toHaveBeenCalledTimes(
+      expect(global.fetch).toHaveBeenCalledTimes(
         kind === INetworkType.Ethereum ? 1 : 2
       );
     });
@@ -315,16 +316,19 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
         const { wallet } = prepare(kind, '13');
         if (failure === 'transport failure') {
           jest
-            .mocked(retryableFetch)
+            .mocked(global.fetch)
             .mockRejectedValueOnce(new Error('Synthetic quote refusal'));
         } else {
-          jest.mocked(retryableFetch).mockResolvedValueOnce({
+          jest.mocked(global.fetch).mockResolvedValueOnce({
             ok: true,
-            json: async () =>
-              kind === INetworkType.Ethereum
-                ? { 'synthetic-native': { usd: 4 } }
-                : { rates: { usd: 4 } },
-          } as Response);
+            headers: { get: () => null },
+            text: async () =>
+              JSON.stringify(
+                kind === INetworkType.Ethereum
+                  ? { 'synthetic-native': { usd: 4 } }
+                  : { rates: { usd: 4 } }
+              ),
+          } as unknown as Response);
         }
         await wallet.setFiat('eur');
         expect(mockStore.getState().price.fiat).toEqual({
@@ -342,7 +346,7 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
           price: 13,
         });
         expect(await screen.findByText('26 EUR')).toBeVisible();
-        expect(retryableFetch).toHaveBeenCalledTimes(2);
+        expect(global.fetch).toHaveBeenCalledTimes(2);
       }
     );
   }

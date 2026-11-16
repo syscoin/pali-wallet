@@ -14,22 +14,45 @@ class RetryableResponse extends Error {
   }
 }
 
+function retryNotBefore(value: string | null): number {
+  if (!value) return 0;
+  const text = value.trim();
+  if (/^\d+$/.test(text)) {
+    const seconds = Number(text);
+    return Number.isSafeInteger(seconds) &&
+      seconds <= Number.MAX_SAFE_INTEGER / 1000
+      ? Date.now() + seconds * 1000
+      : Infinity;
+  }
+  if (
+    !/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(
+      text
+    )
+  )
+    return 0;
+  const date = Date.parse(text);
+  return Number.isFinite(date) ? Math.max(Date.now(), date) : 0;
+}
+
 /** Retry only read responses, inside the caller's existing ownership and time budget. */
 export async function fetchUtxoRead(
   transport: (input: string, initOptions: RequestInit) => Promise<Response>,
   url: string,
   init: RequestInit,
-  assertCurrent: () => void
+  assertCurrent: () => void,
+  deadline = Date.now() + 12_000
 ): Promise<Response> {
   const signal = init.signal;
   if (
     typeof url !== 'string' ||
     init.method !== 'GET' ||
     !signal ||
-    (init.body !== undefined && init.body !== null)
+    (init.body !== undefined && init.body !== null) ||
+    !Number.isFinite(deadline)
   )
     throw new Error('Invalid Blockbook read request');
   const request = Object.freeze({ ...init, method: 'GET', signal });
+  let notBefore = 0;
   const check = () => {
     checkAborted(signal);
     assertCurrent();
@@ -40,6 +63,25 @@ export async function fetchUtxoRead(
       async () => {
         try {
           check();
+          const wait = notBefore - Date.now();
+          if (Date.now() >= deadline || notBefore >= deadline)
+            throw new Error('Blockbook read unavailable');
+          if (wait > 0) {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            try {
+              await abortable(
+                new Promise<void>((resolve) => {
+                  timer = setTimeout(resolve, wait);
+                }),
+                signal
+              );
+            } finally {
+              clearTimeout(timer);
+            }
+            check();
+          }
+          if (Date.now() >= deadline)
+            throw new Error('Blockbook read unavailable');
           const pending = transport(url, request).then((response) => {
             try {
               check();
@@ -59,7 +101,10 @@ export async function fetchUtxoRead(
             throw error;
           }
           if (response.status === 429 || response.status === 503) {
+            notBefore = retryNotBefore(response.headers.get('retry-after'));
             cancelResponseBody(response);
+            if (notBefore >= deadline)
+              throw new Error('Blockbook read unavailable');
             throw new RetryableResponse(response.status);
           }
           return response;

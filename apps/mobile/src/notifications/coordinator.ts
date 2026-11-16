@@ -17,7 +17,7 @@ export class NativeNotificationCoordinator {
     store: NotificationStore; delivery: NotificationDelivery;
     normalize(scope: NativeNotificationScope): NativeNotificationScope;
     factScope(scope: NativeNotificationScope): ActivityNotificationScope;
-    read(scope: NativeNotificationScope, previous: ActivityNotificationBaseline | null, signal: AbortSignal, guard: () => void): Promise<{ transactions: readonly unknown[]; guardianObservation?: GuardianRecoveryObservation; historyReadSucceeded: boolean }>;
+    read(scope: NativeNotificationScope, previous: ActivityNotificationBaseline | null, signal: AbortSignal, guard: () => void): Promise<{ transactions: readonly unknown[]; guardianObservation?: GuardianRecoveryObservation; historyReadSucceeded: boolean; historyReadComplete?: boolean }>;
     randomId(): string; now?: () => number;
   };
   constructor(ports: NativeNotificationCoordinator['ports']) { this.ports = ports; }

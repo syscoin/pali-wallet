@@ -622,6 +622,10 @@ export const SendTransaction = () => {
     [validatedDataTxWithoutType, toAddressForProvider, effectiveApprovalData]
   );
   const isSmartAccountApproval = Boolean(activeAccount.isSmartAccount);
+  const hasGenericSoftwareAdmission =
+    !isSmartAccountApproval &&
+    !activeAccount.isLedgerWallet &&
+    !activeAccount.isTrezorWallet;
   const genericFeeRequestKey = JSON.stringify([
     approvedContext,
     currentApprovalWalletContextKey,
@@ -936,14 +940,16 @@ export const SendTransaction = () => {
 
     let balance = Number(activeAccount?.balances?.ethereum || 0);
 
-    try {
-      const refreshedBalance = (await controllerEmitter(
-        ['wallet', 'refreshActiveAccountBalances'],
-        [{ includeAssets: false }]
-      )) as { nativeBalance: string };
-      balance = Number(refreshedBalance.nativeBalance || 0);
-    } catch (error) {
-      console.error('Failed to refresh balance before sending:', error);
+    if (!hasGenericSoftwareAdmission) {
+      try {
+        const refreshedBalance = (await controllerEmitter(
+          ['wallet', 'refreshActiveAccountBalances'],
+          [{ includeAssets: false }]
+        )) as { nativeBalance: string };
+        balance = Number(refreshedBalance.nativeBalance || 0);
+      } catch (error) {
+        console.error('Failed to refresh balance before sending:', error);
+      }
     }
 
     const canUsePasskeyGasPayer =
@@ -1298,15 +1304,16 @@ export const SendTransaction = () => {
         if (!toAddressForProvider && toRaw.toLowerCase().endsWith('.eth')) {
           return; // wait until resolvedTo is ready
         }
-        await controllerEmitter(
-          ['wallet', 'refreshActiveAccountBalances'],
-          [
-            {
-              includeAssets: false,
-              targetEvmTokenContractAddress: targetedErc20ContractAddress,
-            },
-          ]
-        );
+        if (!hasGenericSoftwareAdmission)
+          await controllerEmitter(
+            ['wallet', 'refreshActiveAccountBalances'],
+            [
+              {
+                includeAssets: false,
+                targetEvmTokenContractAddress: targetedErc20ContractAddress,
+              },
+            ]
+          );
         if (
           isSmartAccountApproval &&
           customFee.isCustom &&
@@ -1577,6 +1584,7 @@ export const SendTransaction = () => {
     ensResolutionFailed,
     targetedErc20ContractAddress,
     isSmartAccountApproval,
+    hasGenericSoftwareAdmission,
     smartAccountFeeOverrides,
     smartAccountQuoteKey,
     feeQuoteRevision,

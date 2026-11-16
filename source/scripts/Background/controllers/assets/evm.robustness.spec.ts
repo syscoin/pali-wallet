@@ -46,6 +46,7 @@ const response = (data: any, status = 200) => ({
   status,
   headers: { get: () => null },
   json: async () => data,
+  text: async () => JSON.stringify(data),
 });
 const deferred = () => {
   let resolve!: (value: any) => void;
@@ -744,11 +745,11 @@ it('coalesces concurrent native price reads by market identity and currency', as
     },
   }));
   const held = deferred();
-  (retryableFetch as jest.Mock).mockReturnValue(held.promise);
+  (global.fetch as jest.Mock).mockReturnValue(held.promise);
   const controller = EvmAssetsController();
   const first = controller.getTokenPriceData(1, 'usd');
   const second = controller.getTokenPriceData(10, 'usd');
-  expect(retryableFetch).toHaveBeenCalledTimes(1);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
   held.resolve(response({ ethereum: { usd: 12, eur: 11 } }));
   expect(await first).toEqual({
     available: true,
@@ -757,9 +758,9 @@ it('coalesces concurrent native price reads by market identity and currency', as
   });
   expect(await second).toEqual(await first);
   await controller.getTokenPriceData(1, 'usd');
-  expect(retryableFetch).toHaveBeenCalledTimes(1);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
   await controller.getTokenPriceData(1, 'eur');
-  expect(retryableFetch).toHaveBeenCalledTimes(2);
+  expect(global.fetch).toHaveBeenCalledTimes(2);
 });
 
 it('does not cache a failed native price read or hold later retries behind it', async () => {
@@ -768,7 +769,7 @@ it('does not cache a failed native price read or hold later retries behind it', 
     vaultGlobal: { networks: { ethereum: { 1: { coingeckoId: 'ethereum' } } } },
   }));
   const controller = EvmAssetsController();
-  (retryableFetch as jest.Mock)
+  (global.fetch as jest.Mock)
     .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValue(response({ ethereum: { usd: 5 } }));
   expect(await controller.getTokenPriceData(1, 'usd')).toEqual({
@@ -776,7 +777,7 @@ it('does not cache a failed native price read or hold later retries behind it', 
     price: 0,
   });
   expect((await controller.getTokenPriceData(1, 'usd')).price).toBe(5);
-  expect(retryableFetch).toHaveBeenCalledTimes(2);
+  expect(global.fetch).toHaveBeenCalledTimes(2);
 });
 
 it('passes the stable provider identity separately from the active asset read owner', async () => {

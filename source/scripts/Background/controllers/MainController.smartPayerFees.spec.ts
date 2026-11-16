@@ -970,7 +970,8 @@ it.each(['signing', 'persistence', 'unchanged'] as const)(
         getLocalNativeExecutionRecipients: () => [],
         invalidateMetadata: () => undefined,
         ensureDeploymentPrefund: fund,
-        sendTransaction: async () => {
+        sendTransaction: async (transaction) => {
+          expect(transaction).not.toHaveProperty('gasLimit');
           throw new Error('Reached handleOps');
         },
       },

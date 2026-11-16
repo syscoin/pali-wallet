@@ -186,6 +186,26 @@ it('silently rebases on account, endpoint or chain changes and rejects corrupted
   ).toEqual(first.baseline);
 });
 
+it('processes partial history only after a valid same-scope baseline and retains absent identities', () => {
+  const partial = poll(null, [incoming], { historyReadComplete: false });
+  expect(partial.baseline.historyInitialized).toBe(false);
+  expect(partial.facts).toEqual([]);
+  const first = poll(null, []);
+  const observed = poll(first.baseline, [incoming], {
+    historyReadComplete: false,
+  });
+  expect(observed.facts).toHaveLength(1);
+  const absent = poll(observed.baseline, [], { historyReadComplete: false });
+  expect(absent.baseline.transactions).toEqual(observed.baseline.transactions);
+  expect(poll(absent.baseline, [incoming]).facts).toEqual([]);
+  expect(
+    poll(first.baseline, [incoming], {
+      historyReadComplete: false,
+      scope: { ...scope, networkKey: 'other' },
+    }).facts
+  ).toEqual([]);
+});
+
 it('suppresses newly discovered old pages while preserving a tracked pending confirmation', () => {
   const first = poll(null, [{ ...incoming, blockNumber: 10, status: 1 }]);
   expect(

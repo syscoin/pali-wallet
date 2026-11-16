@@ -133,7 +133,8 @@ async function readRetainedJson(
   url: string,
   signal: AbortSignal,
   assertCurrent: () => void,
-  maxBytes: number
+  maxBytes: number,
+  deadline: number
 ): Promise<unknown> {
   const response = await fetchUtxoRead(
     fetch,
@@ -147,7 +148,8 @@ async function readRetainedJson(
       cache: 'no-store',
       referrerPolicy: 'no-referrer',
     },
-    assertCurrent
+    assertCurrent,
+    deadline
   );
   try {
     assertCurrent();
@@ -207,6 +209,7 @@ export function observeRetainedUtxo({
       const abort = () => controller.abort();
       signal.addEventListener('abort', abort, { once: true });
       const timeout = setTimeout(abort, STATUS_TIMEOUT_MS);
+      const deadline = Date.now() + STATUS_TIMEOUT_MS;
       const owned = controller.signal;
       const guard = () => {
         assertCurrent();
@@ -228,7 +231,14 @@ export function observeRetainedUtxo({
               (url !== statusUrl && url !== genesisUrl)
             )
               throw new Error('Invalid retained UTXO identity read');
-            return readRetainedJson(fetch, url, owned, guard, IDENTITY_BYTES);
+            return readRetainedJson(
+              fetch,
+              url,
+              owned,
+              guard,
+              IDENTITY_BYTES,
+              deadline
+            );
           },
         });
         if (verified.coin.hashGenesisBlock !== retained.owner.genesisHash)
@@ -239,7 +249,8 @@ export function observeRetainedUtxo({
           statusUrl + 'tx/' + retained.txid,
           owned,
           verified.assertCurrent,
-          STATUS_BYTES
+          STATUS_BYTES,
+          deadline
         );
       } finally {
         clearTimeout(timeout);
@@ -301,6 +312,7 @@ export function submitRetainedUtxo({
         checkAborted(signal);
       };
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let deadline = 0;
       let statusUrl: string;
       let descriptorPrepared = false;
       let stage:
@@ -347,6 +359,7 @@ export function submitRetainedUtxo({
             assertCurrent();
             stage = 'status';
             timer = setTimeout(abort, IDENTITY_TIMEOUT_MS);
+            deadline = Date.now() + IDENTITY_TIMEOUT_MS;
             return retained;
           },
           async readJson(url, ownerSignal) {
@@ -364,7 +377,8 @@ export function submitRetainedUtxo({
               url,
               signal,
               assertCurrent,
-              IDENTITY_BYTES
+              IDENTITY_BYTES,
+              deadline
             );
             stage = isStatus ? 'genesis' : 'ready';
             return body;

@@ -1,5 +1,3 @@
-import axios from 'axios';
-
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { KeyringAccountType } from 'types/network';
 
@@ -11,10 +9,6 @@ let mockState: any;
 jest.mock('state/store', () => ({
   __esModule: true,
   default: { getState: () => mockState },
-}));
-jest.mock('axios', () => ({
-  __esModule: true,
-  default: { get: jest.fn() },
 }));
 
 const TYPE = KeyringAccountType.HDAccount;
@@ -79,9 +73,10 @@ const invalidContainers = [
 
 beforeEach(() => {
   jest.clearAllMocks();
+  global.fetch = jest.fn();
   mockState = { vault: fixture() };
   jest
-    .mocked(axios.get)
+    .mocked(global.fetch)
     .mockRejectedValue(new Error('Unexpected metadata read'));
 });
 
@@ -132,7 +127,7 @@ describe.each(controllers)('$label asset container boundaries', (scenario) => {
       await expect(
         scenario.create().prepareTokenAddition(scenario.token as any)
       ).rejects.toThrow(error);
-      expect(axios.get).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     }
   );
 
@@ -242,7 +237,7 @@ it('keeps exact EVM tokenId removal and does not canonicalize stored aliases', (
 
 it('validates SPT admission before metadata IO and later uses the latest captured target', async () => {
   let finish!: (value: any) => void;
-  jest.mocked(axios.get).mockImplementation(
+  jest.mocked(global.fetch).mockImplementation(
     () =>
       new Promise((resolve) => {
         finish = resolve;
@@ -254,11 +249,16 @@ it('validates SPT admission before metadata IO and later uses the latest capture
     ...spt(),
     description: 'https://ipfs.io/ipfs/public-metadata',
   } as any);
-  expect(axios.get).toHaveBeenCalledTimes(1);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
   const survivor = spt(2);
   mockState.vault.activeAccount = { id: 1, type: TYPE };
   mockState.vault.accountAssets[TYPE][0].syscoin = [survivor];
-  finish({ data: { image: 'https://image.synthetic.invalid/public.png' } });
+  finish({
+    ok: true,
+    headers: { get: () => null },
+    text: async () =>
+      JSON.stringify({ image: 'https://image.synthetic.invalid/public.png' }),
+  });
   const add = await preparing;
   const action = add();
   expect(action.payload.accountId).toBe(0);

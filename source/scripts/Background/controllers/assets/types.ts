@@ -155,7 +155,8 @@ export interface IEvmAssetsController {
   // CoinGecko-based token functionality
   getTokenPriceData: (
     chainId: number,
-    currency?: string
+    currency?: string,
+    signal?: AbortSignal
   ) => Promise<{
     available: boolean;
     price: number;

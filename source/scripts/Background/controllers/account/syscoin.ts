@@ -1,23 +1,16 @@
-import axios from 'axios';
 import isEmpty from 'lodash/isEmpty';
 
+import { readPublicJson } from '../../../../shared/publicMarketRead';
 import store from 'state/store';
 import { setAccountAssets } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
 
 import { getAccountAssets, requireAssetArray } from './getAccountAssets';
 
-const config = {
-  headers: {
-    'X-User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
-  },
-  withCredentials: true,
-};
-
 export interface ISysAccountController {
   prepareTokenAddition: (
-    token: ITokenSysProps
+    token: ITokenSysProps,
+    owner?: { assertCurrent(): void; signal: AbortSignal }
   ) => Promise<() => ReturnType<typeof setAccountAssets>>;
   prepareTokenRemoval: (
     assetGuid: string
@@ -28,7 +21,17 @@ export interface ISysAccountController {
 const SysAccountController = (
   setAddress: () => Promise<string>
 ): ISysAccountController => {
-  const prepareTokenAddition = async (token: ITokenSysProps) => {
+  const prepareTokenAddition = async (
+    token: ITokenSysProps,
+    owner?: { assertCurrent(): void; signal: AbortSignal }
+  ) => {
+    const signal = owner?.signal ?? new AbortController().signal;
+    const check = () => {
+      owner?.assertCurrent();
+      if (signal.aborted)
+        throw new Error('Asset context changed. Please try again.');
+    };
+    check();
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
     const activeAccountAssets = getAccountAssets(accountAssets, activeAccount);
@@ -49,12 +52,25 @@ const SysAccountController = (
       image: '',
     };
     if (!isEmpty(ipfsUrl)) {
-      const { data } = await axios.get(ipfsUrl, config);
-
-      assetInfos.image = data && data.image ? data.image : '';
+      try {
+        const data = await readPublicJson(fetch, ipfsUrl, 64 * 1024, signal);
+        check();
+        if (
+          data &&
+          typeof data === 'object' &&
+          typeof (data as { image?: unknown }).image === 'string'
+        ) {
+          const image = (data as { image: string }).image;
+          if (image.length <= 2048) assetInfos.image = image;
+        }
+      } catch {
+        check();
+      }
     }
 
+    check();
     return () => {
+      check();
       // Metadata and storage can outlive other updates. Always merge into the
       // latest target list and recheck duplicates at each commit boundary.
       const currentAssets = requireAssetArray(

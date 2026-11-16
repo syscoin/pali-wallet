@@ -11,8 +11,6 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   PsbtUtils: {},
 }));
 
-import axios from 'axios';
-
 import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
 import store from 'state/store';
 import * as storeModule from 'state/store';
@@ -250,7 +248,7 @@ it('rechecks an SPT import after optional metadata awaits before dispatching', a
   state.vault.isBitcoinBased = true;
   state.vault.activeNetwork.kind = INetworkType.Syscoin;
   let finish!: (value: unknown) => void;
-  jest.spyOn(axios, 'get').mockImplementationOnce(
+  jest.spyOn(global, 'fetch').mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         finish = resolve;
@@ -266,7 +264,11 @@ it('rechecks an SPT import after optional metadata awaits before dispatching', a
   );
   const rejected = expect(importing).rejects.toThrow('Asset context changed');
   change('slip44');
-  finish({ data: { image: 'https://image.invalid' } });
+  finish({
+    ok: true,
+    headers: { get: () => null },
+    text: async () => JSON.stringify({ image: 'https://image.invalid' }),
+  });
   await rejected;
   expect(store.dispatch).not.toHaveBeenCalled();
   expect(persistence).not.toHaveBeenCalled();
@@ -286,7 +288,7 @@ describe('SPT imports with delayed metadata', () => {
   beforeEach(() => {
     state.vault.isBitcoinBased = true;
     state.vault.activeNetwork.kind = INetworkType.Syscoin;
-    jest.spyOn(axios, 'get').mockImplementationOnce(
+    jest.spyOn(global, 'fetch').mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           finish = resolve;
@@ -297,7 +299,11 @@ describe('SPT imports with delayed metadata', () => {
   it('retains sequential additions after a healthy metadata response', async () => {
     const scope = getWalletNavigationScope();
     const first = wallet.saveTokenInfo(token('first', true), scope);
-    finish({ data: { image: 'https://image.invalid' } });
+    finish({
+      ok: true,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ image: 'https://image.invalid' }),
+    });
     await first;
     await wallet.saveTokenInfo(token('second'), scope);
     expect(guids()).toEqual(['123457', 'first', 'second']);
@@ -308,7 +314,7 @@ describe('SPT imports with delayed metadata', () => {
     const scope = getWalletNavigationScope();
     const first = wallet.saveTokenInfo(token('first', true), scope);
     await wallet.saveTokenInfo(token('second'), scope);
-    finish({ data: {} });
+    finish({ ok: true, headers: { get: () => null }, text: async () => '{}' });
     await first;
     expect(getWalletNavigationScope()).toEqual(scope);
     expect(guids()).toEqual(['123457', 'second', 'first']);
@@ -319,7 +325,7 @@ describe('SPT imports with delayed metadata', () => {
     const scope = getWalletNavigationScope();
     const first = wallet.saveTokenInfo(token('first', true), scope);
     await wallet.deleteTokenInfo('123457', 5700, undefined, scope);
-    finish({ data: {} });
+    finish({ ok: true, headers: { get: () => null }, text: async () => '{}' });
     await first;
     expect(getWalletNavigationScope()).toEqual(scope);
     expect(guids()).toEqual(['first']);
@@ -331,7 +337,7 @@ describe('SPT imports with delayed metadata', () => {
     const first = wallet.saveTokenInfo(token('same', true), scope);
     const rejected = expect(first).rejects.toThrow('Token already exists');
     await wallet.saveTokenInfo(token('same'), scope);
-    finish({ data: {} });
+    finish({ ok: true, headers: { get: () => null }, text: async () => '{}' });
     await rejected;
     expect(guids()).toEqual(['123457', 'same']);
     // Both reach admission; the second factory refuses the duplicate before
@@ -340,3 +346,59 @@ describe('SPT imports with delayed metadata', () => {
     expect(store.dispatch).toHaveBeenCalledTimes(1);
   });
 });
+
+it.each(['http-error', 'invalid-image', 'timeout'] as const)(
+  'imports validated SPT metadata when optional image enrichment has %s',
+  async (failure) => {
+    state.vault.isBitcoinBased = true;
+    state.vault.activeNetwork.kind = INetworkType.Syscoin;
+    let physical!: AbortSignal;
+    let cancelled = false;
+    const fetcher = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async (_url, init) => {
+        physical = init!.signal as AbortSignal;
+        if (failure === 'http-error')
+          return new Response('{}', { status: 404 });
+        if (failure === 'invalid-image')
+          return new Response('{"image":42}', { status: 200 });
+        return new Response(
+          new ReadableStream({
+            cancel() {
+              cancelled = true;
+            },
+          })
+        );
+      });
+    if (failure === 'timeout')
+      jest.useFakeTimers({ doNotFake: ['setImmediate'] });
+    try {
+      const adding = wallet.saveTokenInfo(
+        {
+          ...sptAsset,
+          assetGuid: 'optional',
+          description: 'https://ipfs.io/ipfs/optional',
+        },
+        getWalletNavigationScope()
+      );
+      if (failure === 'timeout') {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        await jest.advanceTimersByTimeAsync(8001);
+      }
+      await adding;
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(
+        state.vault.accountAssets[TYPE][0].syscoin.find(
+          (asset: any) => asset.assetGuid === 'optional'
+        )
+      ).toMatchObject({ image: '' });
+      expect(persistence).toHaveBeenCalledTimes(1);
+      if (failure === 'timeout') {
+        expect(physical.aborted).toBe(true);
+        expect(cancelled).toBe(true);
+      }
+    } finally {
+      if (failure === 'timeout') jest.useRealTimers();
+    }
+  }
+);

@@ -444,9 +444,11 @@ export function detectActivityNotifications({
   transactions,
   guardianObservation,
   historyReadSucceeded = true,
+  historyReadComplete = true,
   observedAt = Date.now(),
 }: {
   guardianObservation?: GuardianRecoveryObservation;
+  historyReadComplete?: boolean;
   historyReadSucceeded?: boolean;
   observedAt?: number;
   previous: ActivityNotificationBaseline | null;
@@ -485,6 +487,7 @@ export function detectActivityNotifications({
   let snapshots = priorTransactions;
   if (
     historyReadSucceeded &&
+    (historyReadComplete || historyInitialized) &&
     Array.isArray(transactions) &&
     transactions.length <= MAX_HISTORY
   ) {

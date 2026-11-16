@@ -71,6 +71,7 @@ function openUtxoTransport(endpoint: string, options: Readonly<{ fetch: UtxoFetc
   const abort = () => controller.abort(); external.addEventListener('abort', abort, { once: true });
   if (external.aborted) controller.abort();
   const timer = setTimeout(abort, options.timeoutMs);
+  const deadline = Date.now() + options.timeoutMs;
   const close = () => { controller.abort(); clearTimeout(timer); external.removeEventListener('abort', abort); };
   const check = () => {
     if (failure) throw failure;
@@ -94,7 +95,7 @@ function openUtxoTransport(endpoint: string, options: Readonly<{ fetch: UtxoFetc
       const response = await Promise.resolve().then(() => fetchUtxoRead(options.fetch, url, {
         method: 'GET', headers: { Accept: 'application/json' }, signal: controller.signal,
         credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer',
-      }, check));
+      }, check, deadline));
       check();
       const discard = () => { try { void response.body?.cancel().catch(() => undefined); } catch { /* Best effort. */ } };
       if (!response.ok) { discard(); return utxoFailure('UNAVAILABLE'); }

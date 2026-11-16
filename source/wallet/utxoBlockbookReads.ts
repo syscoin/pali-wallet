@@ -80,6 +80,7 @@ export function createOwnedUtxoBlockbookRead(
     const cancel = () => controller.abort();
     signal.addEventListener('abort', cancel, { once: true });
     const timeout = setTimeout(cancel, READ_TIMEOUT_MS);
+    const deadline = Date.now() + READ_TIMEOUT_MS;
     try {
       check();
       const response = await fetchUtxoRead(
@@ -93,7 +94,8 @@ export function createOwnedUtxoBlockbookRead(
           referrerPolicy: 'no-referrer',
           signal: controller.signal,
         },
-        check
+        check,
+        deadline
       );
       check();
       if (response.redirected || response.url !== url) {

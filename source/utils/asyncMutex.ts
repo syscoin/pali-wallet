@@ -45,7 +45,6 @@ export class AsyncMutex {
 
 // Global mutexes for specific operations
 export const updateMutex = new AsyncMutex();
-export const fiatPriceMutex = new AsyncMutex();
 export const networkSwitchMutex = new AsyncMutex();
 export const fiatAlarmMutex = new AsyncMutex();
 export const pollingMutex = new AsyncMutex();

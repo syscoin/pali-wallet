@@ -30,8 +30,8 @@ import {
   hasInvisibleOwnedTokenName,
   projectOwnedNftRow,
 } from '../../../../shared/ownedNftRow';
+import { readPublicJson } from '../../../../shared/publicMarketRead';
 import { BatchBalanceController } from '../balances/BatchBalanceController';
-import { Queue } from '../transactions/queue';
 import { getController } from 'scripts/Background';
 import store from 'state/store';
 import {
@@ -44,7 +44,11 @@ import { Contract } from 'utils/ethersV6Compat';
 import { fetchOwnedTokenRows, TokenDiscoveryError } from 'utils/tokenDiscovery';
 
 import { IEvmAssetsController, type AssetReadOwner } from './types';
-import { ownedAssetProvider, validateAndManageUserAssets } from './utils';
+import {
+  batchAssetCalls,
+  ownedAssetProvider,
+  validateAndManageUserAssets,
+} from './utils';
 
 // SYSCOIN: Shared across short-lived polling controllers; never hammer an
 // unavailable discovery endpoint. This does not block on-chain balance reads.
@@ -78,11 +82,6 @@ const EvmAssetsController = (): IEvmAssetsController => {
       data: { available: boolean; price: number; priceChange24h?: number };
       timestamp: number;
     }
-  >();
-
-  const pendingPriceData = new Map<
-    string,
-    Promise<{ available: boolean; price: number; priceChange24h?: number }>
   >();
 
   // Cache for token details
@@ -326,7 +325,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
    */
   const getTokenPriceData = async (
     chainId: number,
-    currency = 'usd'
+    currency = 'usd',
+    signal: AbortSignal = new AbortController().signal
   ): Promise<{
     available: boolean;
     price: number;
@@ -355,46 +355,27 @@ const EvmAssetsController = (): IEvmAssetsController => {
       return cached.data;
     }
 
-    const active = pendingPriceData.get(cacheKey);
-    if (active) return active;
-    const request = (async () => {
-      try {
-        const priceResponse = await retryableFetch(
-          coinGeckoNativeQuoteUrl(network.coingeckoId, currency)
-        );
-        if (priceResponse.ok) {
-          const result = readCoinGeckoNativeQuote(
-            await priceResponse.json(),
-            network.coingeckoId,
-            currency
-          );
-          if (result) {
-            priceDataCache.set(cacheKey, { data: result, timestamp: now });
-            console.log(
-              `[EvmAssetsController] Fetched and cached price data for ${network.coingeckoId}`
-            );
-            return result;
-          }
-        }
-
-        console.warn(
-          `[EvmAssetsController] Failed to fetch price for ${network.coingeckoId}`
-        );
-        return { available: false, price: 0 };
-      } catch (error) {
-        console.error(
-          `[EvmAssetsController] Error fetching price for chain ${chainId}:`,
-          error
-        );
-        return { available: false, price: 0 };
-      }
-    })();
-    pendingPriceData.set(cacheKey, request);
     try {
-      return await request;
-    } finally {
-      if (pendingPriceData.get(cacheKey) === request)
-        pendingPriceData.delete(cacheKey);
+      const body = await readPublicJson(
+        fetch,
+        coinGeckoNativeQuoteUrl(network.coingeckoId, currency),
+        16 * 1024,
+        signal
+      );
+      if (signal.aborted) throw new Error('Quote context changed');
+      const result = readCoinGeckoNativeQuote(
+        body,
+        network.coingeckoId,
+        currency
+      );
+      if (result) {
+        priceDataCache.set(cacheKey, { data: result, timestamp: Date.now() });
+        return result;
+      }
+      return { available: false, price: 0 };
+    } catch (error) {
+      if (signal.aborted) throw error;
+      return { available: false, price: 0 };
     }
   };
 
@@ -559,6 +540,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Handle NFTs separately (they need different ABI calls)
     let updatedNftAssets: ITokenEthProps[] = [];
     if (nftAssets.length > 0) {
+      const nftProvider = batchAssetCalls(w3Provider);
       // Separate ERC-721 and ERC-1155 tokens for different processing
       const erc721Assets = nftAssets.filter(
         (asset) => (asset.tokenStandard || 'ERC-721') === 'ERC-721'
@@ -569,6 +551,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       // Process ERC-1155 tokens with batching by contract address
       const updatedErc1155Assets: ITokenEthProps[] = [];
+      const erc1155Reads: Promise<ITokenEthProps[]>[] = [];
       if (erc1155Assets.length > 0) {
         // Group ERC-1155 tokens by contract address for batch calls
         const erc1155ByContract = new Map<string, ITokenEthProps[]>();
@@ -589,47 +572,51 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         // Process each contract's tokens in batch
         for (const [contractAddress, contractAssets] of erc1155ByContract) {
-          owner?.assertCurrent();
-          try {
-            const tokenIds = contractAssets.map((asset) => asset.tokenId!);
-            const ownershipInfo = await verifyERC1155OwnershipHelper(
-              contractAddress,
-              account.address,
-              tokenIds,
-              w3Provider
-            );
-
-            owner?.assertCurrent();
-            console.log(
-              `[EvmAssetsController] Batch updated ${ownershipInfo.length} ERC-1155 tokens from ${contractAddress}`
-            );
-
-            // Map results back to assets
-            contractAssets.forEach((asset, index) => {
-              const info = ownershipInfo[index];
-              if (info && info.verified) {
-                const updated = {
-                  ...asset,
-                  balance: info.balance,
-                  rawBalance: info.rawBalance,
-                };
-                onBalanceRead?.(updated);
-                updatedErc1155Assets.push(updated);
-              } else {
-                console.warn(
-                  `[EvmAssetsController] Failed to verify ERC-1155 token ${contractAddress}#${asset.tokenId}`
+          erc1155Reads.push(
+            (async () => {
+              owner?.assertCurrent();
+              try {
+                const tokenIds = contractAssets.map((asset) => asset.tokenId!);
+                const ownershipInfo = await verifyERC1155OwnershipHelper(
+                  contractAddress,
+                  account.address,
+                  tokenIds,
+                  nftProvider
                 );
-                updatedErc1155Assets.push(asset); // Keep unchanged
+
+                owner?.assertCurrent();
+                console.log(
+                  `[EvmAssetsController] Batch updated ${ownershipInfo.length} ERC-1155 tokens from ${contractAddress}`
+                );
+
+                // Map results back to assets
+                return contractAssets.map((asset, index) => {
+                  const info = ownershipInfo[index];
+                  if (info && info.verified) {
+                    const updated = {
+                      ...asset,
+                      balance: info.balance,
+                      rawBalance: info.rawBalance,
+                    };
+                    onBalanceRead?.(updated);
+                    return updated;
+                  } else {
+                    console.warn(
+                      `[EvmAssetsController] Failed to verify ERC-1155 token ${contractAddress}#${asset.tokenId}`
+                    );
+                    return asset;
+                  }
+                });
+              } catch (error) {
+                console.error(
+                  `[EvmAssetsController] Error batch updating ERC-1155 tokens from ${contractAddress}:`,
+                  error
+                );
+                // Add all assets unchanged on error
+                return contractAssets;
               }
-            });
-          } catch (error) {
-            console.error(
-              `[EvmAssetsController] Error batch updating ERC-1155 tokens from ${contractAddress}:`,
-              error
-            );
-            // Add all assets unchanged on error
-            updatedErc1155Assets.push(...contractAssets);
-          }
+            })()
+          );
         }
       }
 
@@ -641,17 +628,14 @@ const EvmAssetsController = (): IEvmAssetsController => {
         members.push(asset);
         erc721ByContract.set(key, members);
       });
-      const queue = new Queue(3);
-      for (const collection of erc721ByContract.values()) {
-        queue.execute(async () => {
-          owner?.assertCurrent();
-          await new Promise((resolve) => setTimeout(resolve, 100));
+      const erc721Reads = [...erc721ByContract.values()].map(
+        async (collection) => {
           owner?.assertCurrent();
           try {
             const contract = new Contract(
               collection[0].contractAddress,
               getErc21Abi(),
-              w3Provider
+              nftProvider
             );
             const result = await contract.balanceOf(account.address);
             owner?.assertCurrent();
@@ -671,11 +655,15 @@ const EvmAssetsController = (): IEvmAssetsController => {
             );
             return collection;
           }
-        });
-      }
-      const erc721Results = await queue.done();
+        }
+      );
+      const [erc1155Results, erc721Results] = await Promise.all([
+        Promise.all(erc1155Reads),
+        Promise.all(erc721Reads),
+      ]);
       owner?.assertCurrent();
-      const updatedErc721Assets = erc721Results.flatMap(({ result }) => result);
+      updatedErc1155Assets.push(...erc1155Results.flat());
+      const updatedErc721Assets = erc721Results.flat();
 
       // Combine ERC-721 and ERC-1155 results
       updatedNftAssets = [...updatedErc1155Assets, ...updatedErc721Assets];

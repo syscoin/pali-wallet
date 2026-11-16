@@ -1777,12 +1777,15 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     assert.equal(f.submitted.length, 0);
     assert.equal(ready.authorization!.initCode === '0x', alreadyDeployed);
     const pending = operation.authorize(ready.revision);
+    const estimatesBeforeAuthorize = f.estimatedSenders.length;
     for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
       await new Promise(resolve => setTimeout(resolve, 5));
     const review = operation.getSnapshot().payerReview;
     assert(review, JSON.stringify(operation.getSnapshot()));
     assert.equal(review.transaction.from, payer);
     assert.equal(review.purpose, 'submit-operation');
+    // The generic payer quote is the sole initial outer estimate.
+    assert.equal(f.estimatedSenders.length - estimatesBeforeAuthorize, 1);
     assert.equal(f.submitted.length, 0);
     let submissionAtWire = false;
     f.onBroadcast(() => { submissionAtWire = operation!.getSnapshot().userOperationSubmissionStarted; });

@@ -15,16 +15,13 @@ type ClientReads = { active: number; pending: Map<string, PendingRead> };
 const clients = new WeakMap<FetchLike, ClientReads>();
 const MAX_PENDING_MARKET_READS = 64;
 
-/** Share only identical public market requests. Wallet identifiers never enter this map. */
+/** The market entry point accepts only public CoinGecko coin URLs. */
 export function readPublicMarketJson(
   fetcher: FetchLike,
   url: string,
   bytes: number,
   owner: AbortSignal
 ): Promise<unknown> {
-  if (owner.aborted) return Promise.reject(new Error('Market read cancelled'));
-  if (!Number.isSafeInteger(bytes) || bytes < 1 || bytes > 2 * 1024 * 1024)
-    return Promise.reject(new Error('Invalid market response limit'));
   const parsed = new URL(url);
   if (
     parsed.origin !== 'https://api.coingecko.com' ||
@@ -34,6 +31,23 @@ export function readPublicMarketJson(
     !/^\/api\/v3\/coins\//.test(parsed.pathname)
   )
     return Promise.reject(new Error('Invalid market URL'));
+  return readPublicJson(fetcher, url, bytes, owner);
+}
+
+/** Share fixed public market/metadata URLs by URL and size, with independent owners.
+ * Callers supply no wallet account identifiers in these requests. */
+export function readPublicJson(
+  fetcher: FetchLike,
+  url: string,
+  bytes: number,
+  owner: AbortSignal
+): Promise<unknown> {
+  if (owner.aborted) return Promise.reject(new Error('Market read cancelled'));
+  if (!Number.isSafeInteger(bytes) || bytes < 1 || bytes > 2 * 1024 * 1024)
+    return Promise.reject(new Error('Invalid market response limit'));
+  const parsed = new URL(url);
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.hash)
+    return Promise.reject(new Error('Invalid public JSON URL'));
   let client = clients.get(fetcher);
   if (!client) {
     client = { pending: new Map(), active: 0 };

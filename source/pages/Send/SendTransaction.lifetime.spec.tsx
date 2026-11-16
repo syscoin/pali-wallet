@@ -337,6 +337,30 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+it.each(['held', 'failed'])(
+  'ordinary EOA quote and Confirm ignore a %s display refresh',
+  async (status) => {
+    const invoke = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path, args, ...rest) => {
+      if (path[1] === 'refreshActiveAccountBalances')
+        return status === 'held'
+          ? new Promise(() => undefined)
+          : Promise.reject(Error('Display unavailable'));
+      return invoke(path, args, ...rest);
+    });
+    await prepare();
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    expect(mockEmitter).not.toHaveBeenCalledWith(
+      ['wallet', 'refreshActiveAccountBalances'],
+      expect.anything()
+    );
+    const submission = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    );
+    expect(submission?.[1][4].genericReviewId).toBe('lifetime-fee-1');
+  }
+);
+
 it.each([false, true])(
   're-quotes an edited gas limit without retaining the original gas alias (legacy %s)',
   async (legacy) => {
@@ -1799,10 +1823,6 @@ it.each([true, false])(
 
 it('a stale Cancel callback cannot close an active SendTransaction submission', async () => {
   await prepare();
-  let finishRefresh!: (value: any) => void;
-  mockEmitter.mockImplementationOnce(
-    () => new Promise((resolve) => (finishRefresh = resolve))
-  );
   mockEmitter.mockImplementationOnce(() => new Promise(() => undefined));
   const cancel = mockButtonHandlers['buttons.cancel'];
   const confirm = mockButtonHandlers['buttons.confirm'];
@@ -1813,7 +1833,6 @@ it('a stale Cancel callback cannot close an active SendTransaction submission', 
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockGet).not.toHaveBeenCalled();
   expect(mockClose).not.toHaveBeenCalled();
-  await act(async () => finishRefresh({ nativeBalance: '1' }));
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'sendAndSaveEthTransaction'],
     expect.any(Array),
@@ -2142,9 +2161,7 @@ describe('SendTransaction error close lifetimes', () => {
 
   it('does not offer a second submission after a controller timeout', async () => {
     await prepare();
-    mockEmitter
-      .mockResolvedValueOnce({ nativeBalance: '1' })
-      .mockRejectedValueOnce(Error('Network request timed out'));
+    mockEmitter.mockRejectedValueOnce(Error('Network request timed out'));
     await act(async () => mockButtonHandlers['buttons.confirm']());
     const timer = closeTimer(4000);
     mockEmitter.mockClear();
@@ -2159,6 +2176,7 @@ describe('SendTransaction error close lifetimes', () => {
   it.each(['hardware cancellation', 'device locked', 'blind signing disabled'])(
     'keeps an ambiguous %s non-retryable but allows dismissal',
     async (message) => {
+      mockState.vault.accounts.HDAccount[0].isLedgerWallet = true;
       const view = await prepare();
       mockHandleTransactionError.mockReturnValueOnce(true);
       mockEmitter

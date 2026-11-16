@@ -70,6 +70,61 @@ export const ownedAssetProvider = (
   });
 };
 
+/** Collect independent Contract calls in this refresh through the owned reader. */
+export const batchAssetCalls = (
+  provider: CustomJsonRpcProvider
+): CustomJsonRpcProvider => {
+  if (
+    typeof provider.readMany !== 'function' ||
+    typeof provider.getRpcTransaction !== 'function'
+  )
+    return provider;
+  let pending: Array<{
+    params: unknown[];
+    reject(error: unknown): void;
+    resolve(value: unknown): void;
+  }> = [];
+  const flush = async () => {
+    const calls = pending;
+    pending = [];
+    if (!calls.length) return;
+    try {
+      const results = await provider.readMany(
+        calls.map(({ params }) => ({ method: 'eth_call', params }))
+      );
+      if (results.length !== calls.length)
+        throw new Error('Asset response unavailable');
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') calls[index].resolve(result.value);
+        else calls[index].reject(result.reason);
+      });
+    } catch (error) {
+      calls.forEach((call) => call.reject(error));
+    }
+  };
+  return new Proxy(provider, {
+    get(target, key) {
+      if (key === 'call')
+        return (transaction: Parameters<CustomJsonRpcProvider['call']>[0]) =>
+          new Promise((resolve, reject) => {
+            pending.push({
+              params: [
+                target.getRpcTransaction(transaction),
+                transaction.blockTag ?? 'latest',
+              ],
+              resolve,
+              reject,
+            });
+            if (pending.length === 1) queueMicrotask(() => void flush());
+            // Bound each collection wave using the existing reader's normal size.
+            if (pending.length === 40) void flush();
+          });
+      const value = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+};
+
 export const canCommitAssetUpdate = ({
   account,
   allowBalanceChanges = false,

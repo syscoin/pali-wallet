@@ -50,7 +50,6 @@ import type {
 import type { IEvmTransactionContext } from '../evmTransactionContext.ts';
 const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
 const SMART_ACCOUNT_SIGNATURE_ERROR = 'PALI_SMART_ACCOUNT_SIGNATURE_ERROR';
-const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
 export type SmartAccountSubmitParams = {
   accountId: number;
   executionCalldata?: string;
@@ -362,7 +361,6 @@ async function submitOwnedSmartAccountOperation<
     const usesZkSysGasTank =
       Boolean(getZkSysGasTankAddress(active.metadata.chainId)) &&
       signedUserOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES;
-    let outerGasLimit: BigNumber | undefined;
     // Self-funded first-UserOp deployment: an op carrying initCode validates
     // before anything executes, so the counterfactual account must already
     // cover the EntryPoint prefund.
@@ -402,25 +400,6 @@ async function submitOwnedSmartAccountOperation<
       );
       assertCurrent();
     }
-    // A supplied legacy price must reach the actual handleOps preflight;
-    // estimation must not validate a different fee model from publication.
-    // Tank coverage uses the payer quote's exact execution estimate and fresh credit.
-    if (!usesZkSysGasTank && initCode && initCode !== '0x') {
-      const provider = host.provider;
-      if (!provider) {
-        throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-      }
-      outerGasLimit = BigNumber.from(
-        await provider.estimateGas({
-          data: callData,
-          from: gasPayer.address,
-          ...(legacyGasPrice !== undefined ? { gasPrice: legacyGasPrice } : {}),
-          to: entryPointAddress,
-          value: '0x0',
-        })
-      );
-      assertCurrent();
-    }
     assertCurrent();
     financialSubmissionAttempted = true;
     handleOpsStarted = true;
@@ -429,7 +408,6 @@ async function submitOwnedSmartAccountOperation<
         chainId: active.metadata.chainId,
         data: callData,
         from: gasPayer.address,
-        ...(outerGasLimit ? { gasLimit: outerGasLimit.toString() } : {}),
         ...(legacyGasPrice !== undefined
           ? { gasPrice: legacyGasPrice }
           : params.maxFeePerGas && params.maxPriorityFeePerGas

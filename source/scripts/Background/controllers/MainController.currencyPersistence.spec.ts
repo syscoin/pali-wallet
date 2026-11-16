@@ -211,7 +211,7 @@ describe('currency preference durable completion', () => {
         available: false,
         price: 0,
       });
-      expect(calls).toEqual(['usd']);
+      expect(calls).toEqual(['usd', 'eur']);
       oldQuote.resolve({ price: 11 });
       await refreshing;
       await flush();
@@ -256,7 +256,7 @@ describe('currency preference durable completion', () => {
       await finishTurn();
       expect(eurAcknowledged).toBe(true);
       expect(gbpAcknowledged).toBe(true);
-      expect(calls).toEqual(['eur']);
+      expect(calls).toEqual(['eur', 'gbp']);
       expect(store.getState().price.fiat).toEqual({
         asset: 'gbp',
         available: false,
@@ -336,12 +336,13 @@ describe('currency preference durable completion', () => {
       usdQuote.resolve({ price: 12 });
       await original;
       await flush();
-      expect(calls).toEqual(['usd', 'gbp']);
+      expect(calls).toEqual(['usd', 'eur', 'gbp']);
       expect(store.getState().price.fiat).toEqual({
         asset: 'gbp',
         available: false,
         price: 0,
       });
+      eurQuote.resolve({ price: 99 });
       gbpQuote.resolve({ price: 25 });
       await finishRefreshes();
       expect(store.getState().price.fiat).toEqual({
@@ -395,7 +396,7 @@ describe('currency preference durable completion', () => {
       });
       await finishTurn();
       expect(thirdAcknowledged).toBe(true);
-      expect(calls).toEqual(['eur']);
+      expect(calls).toEqual(['eur', 'gbp', 'eur']);
       expect(store.getState().price.fiat).toEqual({
         asset: 'eur',
         available: false,
@@ -414,7 +415,7 @@ describe('currency preference durable completion', () => {
       await finishTurn();
       // Currency equality alone would admit 27 here. Only the new EUR epoch
       // may publish; the intervening queued GBP quote must not even start.
-      expect(calls).toEqual(['eur', 'eur']);
+      expect(calls).toEqual(['eur', 'gbp', 'eur']);
       expect(store.getState().price.fiat).toEqual({
         asset: 'eur',
         available: false,

@@ -546,3 +546,43 @@ it('stops the retired account HTTP retry through the real balance manager and SJ
     jest.useRealTimers();
   }
 });
+
+it('retires every overlapping selected balance owner before account departure', async () => {
+  const barrier = deferred<void>();
+  const addressReads: string[] = [];
+  const signals: AbortSignal[] = [];
+  readBalance.mockImplementation(async (account, _utxo, _url, owner) => {
+    signals.push(owner.signal);
+    await barrier.promise;
+    owner.assertCurrent();
+    addressReads.push(account.address);
+    return '5';
+  });
+  const first = directRead().catch(() => undefined);
+  const second = directRead().catch(() => undefined);
+  expect(signals).toHaveLength(2);
+  await controller.setAccount(1, type);
+  expect(signals.every((signal) => signal.aborted)).toBe(true);
+  barrier.resolve();
+  await Promise.all([first, second]);
+  expect(addressReads).toEqual([]);
+  expect(mockStore.getState().vault.accounts[type][0].balances.ethereum).toBe(
+    -1
+  );
+});
+
+it('checks the captured native read version before dispatching an address read', async () => {
+  const barrier = deferred<void>();
+  const addressReads: string[] = [];
+  readBalance.mockImplementation(async (account, _utxo, _url, owner) => {
+    await barrier.promise;
+    owner.assertCurrent();
+    addressReads.push(account.address);
+    return '5';
+  });
+  const pending = directRead().catch(() => undefined);
+  controller.nativeBalanceRevision++;
+  barrier.resolve();
+  await pending;
+  expect(addressReads).toEqual([]);
+});
