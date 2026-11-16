@@ -37,7 +37,7 @@ function fixture() {
     requestPermissionsAsync(options: unknown) { requests++; requestedOptions.push(options); return pending.promise; },
     async setNotificationChannelAsync(name: string, options: unknown) { channels.push({ name, options }); },
     setNotificationHandler() {}, addNotificationResponseReceivedListener() {},
-    async getLastNotificationResponseAsync() { return null; }, async clearLastNotificationResponseAsync() {},
+    getLastNotificationResponse() { return null; }, clearLastNotificationResponse() {},
     async cancelScheduledNotificationAsync() {}, async dismissNotificationAsync() {},
   };
   const permission = evaluate<PermissionModule>('../src/notifications/permission.native.ts', {

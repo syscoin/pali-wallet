@@ -52,6 +52,7 @@ export function NetworkFeeSheet(props: Props) {
     props.onClose();
   };
   const [kind, setKind] = useState<FeePriority | 'custom'>(props.choice.kind);
+  const customFieldsPristine = useRef(props.choice.kind !== 'custom');
   const initial =
     props.mode === 'evm' && props.choice.kind === 'custom'
       ? props.choice
@@ -83,7 +84,7 @@ export function NetworkFeeSheet(props: Props) {
       .then((value) => {
         if (!current) return;
         setRates(value);
-        if (props.choice.kind !== 'custom') {
+        if (customFieldsPristine.current) {
           setPrice(
             typeof value === 'string'
               ? value
@@ -145,6 +146,7 @@ export function NetworkFeeSheet(props: Props) {
         value={value}
         keyboardType={integer ? 'number-pad' : 'decimal-pad'}
         onChangeText={(value) => {
+          customFieldsPristine.current = false;
           setError(null);
           update(
             integer
@@ -253,6 +255,7 @@ export function NetworkFeeSheet(props: Props) {
                 variant={custom ? 'primary' : 'secondary'}
                 disabled={props.mode === 'evm' && !evm}
                 onPress={() => {
+                  customFieldsPristine.current = false;
                   setKind('custom');
                   setError(null);
                 }}

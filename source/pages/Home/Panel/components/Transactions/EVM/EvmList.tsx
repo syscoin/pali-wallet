@@ -45,6 +45,7 @@ import {
   buildEvmMinedNonceIndex,
   buildEvmTransactionHashIndex,
   getEvmSettlementStatus,
+  hasEvmExecutionSucceeded,
   hasEvmCancellationIntent,
   evmSettlementLabel,
   evmSettlementClass,
@@ -817,7 +818,7 @@ export const EvmTransactionsList = ({
     paginationContext,
     currentAccountTransactions?.ethereum?.[chainId],
     'hash',
-    (tx) => getEvmSettlementStatus(tx, chainId) === 'confirmed'
+    (tx) => hasEvmExecutionSucceeded(tx, chainId)
   );
 
   const getTxOptions = useCallback(

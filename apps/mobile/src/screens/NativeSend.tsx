@@ -1063,10 +1063,10 @@ export function NativeSend({
                 onClose={() => setAssetPickerOpen(false)} onSelect={next => {
                   if (busy || !lifetime.current.alive) return;
                   setAssetPickerOpen(false);
-                  onChangeAsset(Object.freeze({ kind: 'evm', recipient, amount, nonce, tokenId, max: maximum, advanced }), next);
+                  onChangeAsset(Object.freeze({ kind: 'evm', recipient, amount, nonce, tokenId, max: maximum, advanced, feeChoice: snapshotEvmFeeChoice(feeChoice) }), next);
                 }} /> : <SendNetworkCard context={capturedContext} disabled={busy} onChange={onChangeNetwork ? () => {
                   if (busy || !lifetime.current.alive) return;
-                  closeScanner(); onChangeNetwork(Object.freeze({ kind: 'evm', recipient, amount, nonce, tokenId, max: maximum, advanced }));
+                  closeScanner(); onChangeNetwork(Object.freeze({ kind: 'evm', recipient, amount, nonce, tokenId, max: maximum, advanced, feeChoice: snapshotEvmFeeChoice(feeChoice) }));
                 } : undefined} />}
               {draftNotice && <Text accessibilityLiveRegion="polite" style={styles.muted}>{draftNotice}</Text>}
               <NativeSendInput

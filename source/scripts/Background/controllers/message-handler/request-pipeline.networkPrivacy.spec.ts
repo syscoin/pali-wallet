@@ -124,18 +124,20 @@ describe.each([false, true])(
     });
 
     it.each(cases)(
-      '%s omits only the private API URL on %s',
+      '%s omits private backend endpoints on %s',
       async (method, kind) => {
         const network = { ...networkFor(kind), apiUrl: API_URL };
         select(network);
         const before = mockStore.getState();
-        const expected = networkFor(kind);
+        const { url: _url, ...expected } = networkFor(kind);
+        void _url;
         expect(mockController.dapp.isConnected(HOST)).toBe(false);
 
         const result = await request(method);
 
         expect(result).toEqual(expected);
         expect(result).not.toHaveProperty('apiUrl');
+        expect(result).not.toHaveProperty('url');
         expect(JSON.stringify(result)).not.toContain('synthetic-secret');
         expect(mockStore.getState()).toBe(before);
         expect(before.vault.activeNetwork).toEqual(network);
@@ -154,7 +156,9 @@ it.each(cases)(
   async (method, kind) => {
     const network = networkFor(kind);
     select(network);
-    expect(await request(method)).toEqual(network);
+    const { url: _url, ...expected } = network;
+    void _url;
+    expect(await request(method)).toEqual(expected);
     expect(mockStore.getState().vault.activeNetwork).toEqual(network);
     expect(popupPromise).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
@@ -199,7 +203,6 @@ it('projects the real custom-RPC producer without exposing its explorer API key'
   const result = await request('wallet_getNetwork');
 
   expect(result).toEqual({
-    url: rpcUrl,
     default: false,
     label: 'Synthetic custom network',
     explorer: 'https://public-explorer.synthetic.invalid/',
@@ -227,12 +230,41 @@ it.each([
     expect(result).not.toHaveProperty('apiUrl');
     expect(JSON.stringify(result)).not.toContain('synthetic-secret');
     if (kind === INetworkType.Syscoin) {
-      expect(result.blockExplorerURL).toBe(network.url);
+      expect(result.blockExplorerURL).toBeNull();
     } else {
       expect(result.chainId).toBe('0x7a69');
     }
     expect(mockStore.getState().vault.activeNetwork.apiUrl).toBe(API_URL);
     expect(popupPromise).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  }
+);
+
+it.each([
+  'https://rpc.example/private-path-key',
+  'https://rpc.example/?apikey=private-query-key',
+  'https://user:private-password@rpc.example/',
+])(
+  'keeps the full backend URL private across public network and provider projections: %s',
+  async (url) => {
+    const network = {
+      ...networkFor(INetworkType.Syscoin),
+      url,
+      apiUrl: API_URL,
+    };
+    select(network);
+    const response = await request('wallet_getNetwork');
+    expect(response).toMatchObject({
+      chainId: network.chainId,
+      currency: network.currency,
+      explorer: network.explorer,
+    });
+    expect(response).not.toHaveProperty('url');
+    expect(response).not.toHaveProperty('apiUrl');
+    const provider = await request('wallet_getSysProviderState');
+    expect(provider.blockExplorerURL).toBeNull();
+    expect(JSON.stringify([response, provider])).not.toContain('private-');
+    expect(mockStore.getState().vault.activeNetwork).toEqual(network);
     expect(fetch).not.toHaveBeenCalled();
   }
 );

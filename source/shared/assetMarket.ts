@@ -22,6 +22,17 @@ const positive = (value: unknown): number | null =>
 export const validMarketId = (value: unknown): value is string =>
   typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,127}$/.test(value);
 
+/** Coin details expose daily performance separately for each denomination. */
+export function marketChangeForCurrency(
+  market: unknown,
+  currency: string
+): number | null {
+  const change = record(
+    record(market)?.price_change_percentage_24h_in_currency
+  )?.[currency.toLowerCase()];
+  return typeof change === 'number' && Number.isFinite(change) ? change : null;
+}
+
 /** Six units contain the four-unit marker plus its one-unit outer stroke. */
 export const ASSET_MARKET_CHART = Object.freeze({
   width: 300,

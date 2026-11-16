@@ -80,7 +80,10 @@ async function notify() {
   if (!alertsEnabled || settingsEpoch !== epoch) return;
   // Persist before delivery: repeated background wakes must not repeatedly notify.
   await AsyncStorage.setItem(NOTICE_KEY, id);
-  if (!alertsEnabled || settingsEpoch !== epoch) return;
+  if (!alertsEnabled || settingsEpoch !== epoch) {
+    if (await AsyncStorage.getItem(NOTICE_KEY) === id) await AsyncStorage.removeItem(NOTICE_KEY);
+    return;
+  }
   try {
     await Notifications.scheduleNotificationAsync({ identifier: id, content: {
       title: release.severity === 'critical' ? 'Important Pali security update' : 'Pali update available',

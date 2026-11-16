@@ -16,7 +16,8 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import type { NativeRecipientResolver, NativeRecipientResolution } from '../src/portfolio/nativeRecipientResolver.ts';
-import type { NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
+import { sendDraftForNetwork, type NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import type { NativeOperationCredential } from '../src/custody/types.ts';
 import { formatBaseUnits, parseDecimalAmount } from '../src/core/amounts.ts';
 import { normalizeDecimalInput } from '../../../source/shared/decimalInput.ts';
@@ -325,7 +326,7 @@ test('network Change captures unsigned form text without preparing or authorizin
   editSend(f, 'Amount in ETH', '1.234567890123456789');
   one(f.render(), 'SendNetworkCard').props.onChange();
   assert.equal(captured.length, 1);
-  assert.deepEqual(JSON.parse(JSON.stringify(captured[0])), { kind: 'evm', recipient: '0x2222222222222222222222222222222222222222', amount: '1.234567890123456789', nonce: '', tokenId: '', max: false, advanced: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(captured[0])), { kind: 'evm', recipient: '0x2222222222222222222222222222222222222222', amount: '1.234567890123456789', nonce: '', tokenId: '', max: false, advanced: false, feeChoice: { kind: 'automatic' } });
   assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []); f.dispose();
 });
 
@@ -853,4 +854,37 @@ for (const operation of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`T
     assert(f.counts().cancels > 0);
     assert.equal(f.signatures(), 0);
   } finally { f.dispose(); }
+});
+
+
+for (const choice of [
+  { kind: 'custom', type: 2, maxFeePerGas: '25000000000', maxPriorityFeePerGas: '1000000000' },
+  { kind: 'high' },
+] as const) test(`NFT picker Cancel/remount preserves ${choice.kind} fees and a real network change resets them`, async () => {
+  let captured: Extract<NativeUnsignedSendDraft, { kind: 'evm' }> | undefined;
+  const collectible: SavedCollectible = { contractAddress: '0x' + '33'.repeat(20), tokenStandard: 'ERC-721' };
+  const initialDraft = { recipient: '0x' + '22'.repeat(20), amount: '1', nonce: '', tokenId: '7', max: false, advanced: false, feeChoice: choice };
+  const f = setup(undefined, undefined, undefined, draft => { captured = draft; });
+  f.seedDraft(initialDraft, collectible); f.snapshot.phase = 'idle';
+  try {
+    assert(button(f.render(), `Network Fee · ${choice.kind === 'custom' ? 'Custom' : 'High'}`));
+    one(f.render(), 'SendNetworkCard').props.onChange();
+    assert(captured); assert(Object.isFrozen(captured)); assert(Object.isFrozen(captured.feeChoice));
+    assert.deepEqual(captured.feeChoice, choice);
+    assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []);
+  } finally { f.dispose(); }
+  const returned = setup();
+  try {
+    returned.seedDraft(captured!, collectible); returned.snapshot.phase = 'idle';
+    assert(button(returned.render(), `Network Fee · ${choice.kind === 'custom' ? 'Custom' : 'High'}`));
+    reviewSend(returned); await settle();
+    assert.deepEqual(returned.selectedFees, [choice]);
+  } finally { returned.dispose(); }
+  const changed = setup();
+  try {
+    const reset = sendDraftForNetwork(captured!, getNativeNetwork('syscoin-nevm'));
+    assert.equal(reset.feeChoice, undefined);
+    changed.seedDraft(reset as NativeSendInitialDraft); changed.snapshot.phase = 'idle';
+    assert(button(changed.render(), 'Network Fee · Automatic'));
+  } finally { changed.dispose(); }
 });

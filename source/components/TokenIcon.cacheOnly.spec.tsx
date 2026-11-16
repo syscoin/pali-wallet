@@ -63,6 +63,33 @@ const transfer = createAssetTransferDisplay(
   )!
 );
 const originalFetch = globalThis.fetch;
+const png = Uint8Array.from(
+  Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=',
+    'base64'
+  )
+);
+const imageResponse = (mime = 'image/png', bytes = png): Response => {
+  let sent = false;
+  const cancel = async () => undefined;
+  return {
+    ok: true,
+    headers: {
+      get: (name: string) => (name === 'content-type' ? mime : null),
+    },
+    body: {
+      cancel,
+      getReader: () => ({
+        cancel,
+        read: async () => {
+          if (sent) return { done: true };
+          sent = true;
+          return { done: false, value: bytes };
+        },
+      }),
+    },
+  } as unknown as Response;
+};
 
 beforeEach(() => {
   clearTokenIconCache();
@@ -102,13 +129,7 @@ afterEach(() => {
 });
 
 async function cache(url = logo, mime = 'image/png') {
-  const fetcher = jest.fn(
-    async () =>
-      ({
-        ok: true,
-        blob: async () => new Blob(['cached image'], { type: mime }),
-      } as Response)
-  );
+  const fetcher = jest.fn(async () => imageResponse(mime));
   globalThis.fetch = fetcher;
   await preloadTokenIcons([url]);
   expect(fetcher).toHaveBeenCalledTimes(1);
@@ -231,12 +252,7 @@ it('joins an existing ordinary icon request without starting another fetch', asy
   );
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(raster(review)).toBeNull();
-  await act(async () =>
-    finish({
-      ok: true,
-      blob: async () => new Blob(['icon'], { type: 'image/png' }),
-    } as Response)
-  );
+  await act(async () => finish(imageResponse()));
   await waitFor(() => expect(raster(review)).not.toBeNull());
   expect(fetch).toHaveBeenCalledTimes(1);
   ordinary.unmount();
@@ -261,12 +277,7 @@ it.each(['unmount', 'scope'])(
       review.rerender(
         <TokenIcon cacheOnly identity={{ ...identity, chainId: 2 }} />
       );
-    await act(async () =>
-      finish({
-        ok: true,
-        blob: async () => new Blob(['icon'], { type: 'image/png' }),
-      } as Response)
-    );
+    await act(async () => finish(imageResponse()));
     await waitFor(() => expect(raster(ordinary)).not.toBeNull());
     expect(raster(review)).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -274,7 +285,7 @@ it.each(['unmount', 'scope'])(
 );
 
 it.each(['image/svg+xml', 'text/html'])(
-  'does not render cached %s bytes in approval mode',
+  'rejects unsupported %s without caching an approval image',
   async (mime) => {
     const fetcher = await cache(logo, mime);
     const view = render(
@@ -293,19 +304,15 @@ it('ignores an untrusted saved URL even when another screen previously cached it
   expect(fetcher).not.toHaveBeenCalled();
 });
 
-it('does not render a remote URL fallback cached by ordinary icon mode', async () => {
-  const fetcher = jest.fn(
-    async () =>
-      ({
-        ok: true,
-        blob: async () => new Blob(['x'.repeat(262145)], { type: 'image/png' }),
-      } as Response)
+it('does not cache a remote URL fallback after an oversized ordinary icon response', async () => {
+  const fetcher = jest.fn(async () =>
+    imageResponse('image/png', new Uint8Array(262145))
   );
   globalThis.fetch = fetcher;
   const ordinary = render(<TokenIcon logo={logo} />);
-  await waitFor(() =>
-    expect(ordinary.container.querySelector('img')).toHaveAttribute('src', logo)
-  );
+  await act(async () => preloadTokenIcons([logo]));
+  expect(ordinary.container.querySelector(`img[src="${logo}"]`)).toBeNull();
+  expect(raster(ordinary)).toBeNull();
   fetcher.mockClear();
   ordinary.rerender(<TokenIcon cacheOnly identity={identity} logo={logo} />);
   expect(ordinary.container.querySelector(`img[src="${logo}"]`)).toBeNull();

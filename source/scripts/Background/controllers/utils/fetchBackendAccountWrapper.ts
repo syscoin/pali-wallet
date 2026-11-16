@@ -1,5 +1,10 @@
 import * as sys from 'syscoinjs-lib';
 
+import {
+  boundedResponseText,
+  cancelResponseBody,
+} from '../../../../shared/boundedHttp';
+
 type AccountRequest = {
   abortController: AbortController;
   details: string;
@@ -11,6 +16,7 @@ type AccountRequest = {
 };
 const requestCache = new Map<string, AccountRequest>();
 const REQUEST_TIMEOUT_MS = 30_000;
+const ACCOUNT_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 const cancelled = () =>
   Object.assign(new Error('Request was cancelled'), { name: 'AbortError' });
@@ -152,19 +158,59 @@ export const fetchBackendAccountCached = async (
       {
         signal: abortController.signal,
         fetch: async (url: string, init: RequestInit) => {
+          const requested = new URL(url);
+          if (
+            !['http:', 'https:'].includes(requested.protocol) ||
+            requested.username ||
+            requested.password ||
+            requested.hash
+          )
+            throw new Error('Invalid Blockbook endpoint');
           const response = await fetch(url, {
             ...init,
             signal: abortController.signal,
+            credentials: 'omit',
+            redirect: 'error',
+            cache: 'no-store',
+            referrerPolicy: 'no-referrer',
           });
-          if (abortController.signal.aborted) {
-            try {
-              await response.body?.cancel();
-            } catch {
-              /* Preserve cancellation. */
+          try {
+            if (abortController.signal.aborted) throw cancelled();
+            if (
+              response.redirected ||
+              (response.status >= 300 && response.status < 400) ||
+              (response.url && new URL(response.url).href !== requested.href)
+            )
+              throw new Error('Blockbook response endpoint changed');
+            if (!response.ok) {
+              cancelResponseBody(response);
+              return response;
             }
-            throw cancelled();
+            const text = await boundedResponseText(
+              response,
+              abortController.signal,
+              ACCOUNT_RESPONSE_BYTES
+            );
+            if (abortController.signal.aborted) throw cancelled();
+            let data: unknown;
+            try {
+              data = JSON.parse(text);
+            } catch {
+              // The SDK matches error text for retries. Keep body content out of it.
+              throw new Error('Invalid Blockbook response');
+            }
+            // The pinned SDK consumes only these fields; its parser receives
+            // data admitted through the byte limit and the same physical owner.
+            return {
+              ok: response.ok,
+              status: response.status,
+              statusText: response.statusText,
+              json: async () => data,
+            };
+          } catch (error) {
+            cancelResponseBody(response);
+            throw error;
           }
-          return response;
         },
       }
     )

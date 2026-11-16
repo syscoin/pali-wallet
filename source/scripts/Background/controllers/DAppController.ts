@@ -126,6 +126,7 @@ const DAppController = (
     getNetwork() {
       const network = { ...store.getState().vault.activeNetwork };
       delete network.apiUrl;
+      delete network.url;
       return network;
     },
   };

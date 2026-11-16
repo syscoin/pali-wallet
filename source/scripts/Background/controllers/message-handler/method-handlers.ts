@@ -454,7 +454,7 @@ export class WalletMethodHandler implements IMethodHandler {
               wallet.isUnlocked() && isBitcoinBased
                 ? account?.xpub || null
                 : null,
-            blockExplorerURL: isBitcoinBased ? activeNetwork.url : null,
+            blockExplorerURL: null,
             isUnlocked: wallet.isUnlocked(),
             isBitcoinBased,
           };

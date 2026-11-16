@@ -96,6 +96,10 @@ export function knownAssetIcon(identity: AssetIconIdentity): Artwork | null {
   return key ? knownArtwork[key]?.artwork ?? null : null;
 }
 
+/** Remote artwork uses the same raster formats accepted by approval views. */
+export const isAssetIconMimeType = (value: unknown): value is string =>
+  typeof value === 'string' && /^image\/(?:png|jpeg|webp)$/i.test(value);
+
 /** CoinGecko image metadata is optional and restricted to its raster CDN paths. */
 export function trustedAssetIconUri(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 2048) return null;

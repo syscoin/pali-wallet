@@ -148,6 +148,19 @@ export const isEvmStalePendingNonce = (
   );
 };
 
+/** Block inclusion alone does not establish successful EVM execution. */
+export const hasEvmExecutionSucceeded = (tx: any, chainId: number): boolean => {
+  if (
+    (tx?.chainId !== undefined && integer(tx.chainId) !== chainId) ||
+    !isTransactionInBlock(tx)
+  )
+    return false;
+  const receiptStatus = integer(tx?.txreceipt_status);
+  if (receiptStatus === 0 || receiptStatus === 1) return receiptStatus === 1;
+  if (typeof tx?.success === 'boolean') return tx.success;
+  return tx?.isError === '0' || tx?.isError === 0 || tx?.isError === false;
+};
+
 export const getEvmSettlementStatus = (
   tx: any,
   chainId: number,

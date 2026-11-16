@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { marketChangeForCurrency } from '../../../../../shared/assetMarket';
 import {
   FiExternalLink as ExternalLinkIcon,
   RiFileCopyLine as CopyIcon,
@@ -162,6 +163,7 @@ export const EvmAssetDetails = ({
 
   // Get user's preferred currency
   const userCurrency = (fiat.asset || 'usd').toLowerCase();
+  const change24h = marketChangeForCurrency(marketData, userCurrency);
   const currencySymbol = getSymbolFromCurrency(userCurrency.toUpperCase());
 
   const hasEnhancedData = hasMarketValue(
@@ -204,16 +206,14 @@ export const EvmAssetDetails = ({
                 6
               )}
             </span>
-            {Number.isFinite(marketData?.price_change_percentage_24h) && (
+            {change24h !== null && (
               <span
                 className={`text-sm ${
-                  marketData.price_change_percentage_24h >= 0
-                    ? 'text-green-500'
-                    : 'text-red-500'
+                  change24h >= 0 ? 'text-green-500' : 'text-red-500'
                 }`}
               >
-                {marketData.price_change_percentage_24h >= 0 ? '+' : ''}
-                {marketData.price_change_percentage_24h.toFixed(2)}% (24h)
+                {change24h >= 0 ? '+' : ''}
+                {change24h.toFixed(2)}% (24h)
               </span>
             )}
           </div>

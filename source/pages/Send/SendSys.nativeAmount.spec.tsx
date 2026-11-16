@@ -297,3 +297,45 @@ it('still retires a pending native quote after the raw amount is edited', async 
   });
   expect(confirmations()).toHaveLength(0);
 });
+
+it.each(['0.25', '0.00000001', '90071992.54740993'])(
+  'submits a focused fractional amount %s through native form validation',
+  async (amount) => {
+    render(<SendSys />);
+    const input = screen.getByPlaceholderText(
+      'send.amount'
+    ) as HTMLInputElement;
+    await act(async () => input.focus());
+    await fillAmount(amount);
+    expect(document.activeElement).toBe(input);
+    expect(input.validity.stepMismatch).toBe(false);
+    await act(async () => input.form!.requestSubmit());
+    await waitFor(() => expect(confirmations()).toHaveLength(1));
+    expect(estimateCalls()).toHaveLength(1);
+    expect(estimateCalls()[0][1][0].amount).toBe(amount);
+  }
+);
+
+it.each([
+  ['0', 'send.invalidAmount'],
+  ['-1', 'send.invalidAmount'],
+  ['0.000000001', 'send.invalidAmount'],
+  ['100000000.00000001', 'send.insufficientFunds'],
+])(
+  'keeps exact validation for invalid native amount %s',
+  async (amount, error) => {
+    render(<SendSys />);
+    await fillAmount(amount);
+    await act(async () => {
+      await expect(mockForm.validateFields()).rejects.toEqual(
+        expect.objectContaining({
+          errorFields: expect.arrayContaining([
+            expect.objectContaining({ errors: [error] }),
+          ]),
+        })
+      );
+    });
+    expect(estimateCalls()).toHaveLength(0);
+    expect(confirmations()).toHaveLength(0);
+  }
+);

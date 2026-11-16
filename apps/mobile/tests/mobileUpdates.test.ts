@@ -23,9 +23,10 @@ function fixture(options: { ios?: boolean; severity?: string; store?: string | n
     availability: { status: 'published' } }] : [])] });
   let permission = true, failRead = false, registered = false, interval = 0;
   let hold: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  let noticeWriteHold: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>> } | undefined;
   let backgroundHold: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>> } | undefined;
   const store = { getItem: async (key: string) => { if (failRead) { failRead = false; throw Error('read failed'); } return data.get(key) ?? null; },
-    setItem: async (key: string, value: string) => { data.set(key, value); },
+    setItem: async (key: string, value: string) => { data.set(key, value); if (key === 'pali.update-notice.v1' && noticeWriteHold) { const gate = noticeWriteHold; noticeWriteHold = undefined; gate.entered.resolve(); await gate.release.promise; } },
     removeItem: async (key: string) => { data.delete(key); } };
   const notifications = { IosAuthorizationStatus: { PROVISIONAL: 3 }, AndroidImportance: { DEFAULT: 3 },
     async getPermissionsAsync() { if (hold) { const item = hold; hold = undefined; await item.promise; } return { granted: permission }; },
@@ -66,6 +67,7 @@ function fixture(options: { ios?: boolean; severity?: string; store?: string | n
     failReadOnce() { failRead = true; },
     permission(value: boolean) { permission = value; },
     holdPermission() { hold = Promise.withResolvers<void>(); return hold; },
+    holdNoticeWrite() { return noticeWriteHold = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() }; },
     holdBackground() { return backgroundHold = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() }; },
   };
 }
@@ -149,4 +151,25 @@ test('cold background invocations throttle release I/O without changing worker c
   await cold.runMobileUpdateBackground(); assert.equal(cold.reads, 0);
   // Foreground entry still loads the badge even when background I/O is throttled.
   await cold.mobileUpdates.check(); assert.equal(cold.reads, 1);
+});
+
+
+test('opt-out during notice persistence forgets the unsent marker and allows one later opted-in delivery', async () => {
+  const f = fixture(), gate = f.holdNoticeWrite();
+  const checking = f.mobileUpdates.check(); await gate.entered.promise;
+  await f.mobileUpdates.setAlerts(false); gate.release.resolve(); await checking;
+  assert.equal(f.posts, 0); assert.equal(f.data.has('pali.update-notice.v1'), false);
+  await f.mobileUpdates.setAlerts(true); await f.mobileUpdates.check(true);
+  assert.equal(f.posts, 1); assert.equal(f.mobileUpdates.getSnapshot().alertsEnabled, true);
+  await f.mobileUpdates.check(true); f.advance(); await f.mobileUpdates.check();
+  assert.equal(f.posts, 1);
+});
+
+test('retired unsent notice cleanup preserves another marker written before its continuation', async () => {
+  const f = fixture(), gate = f.holdNoticeWrite();
+  const checking = f.mobileUpdates.check(); await gate.entered.promise;
+  await f.mobileUpdates.setAlerts(false);
+  const newer = 'pali-update-android-6.0.0-3'; f.data.set('pali.update-notice.v1', newer);
+  gate.release.resolve(); await checking;
+  assert.equal(f.posts, 0); assert.equal(f.data.get('pali.update-notice.v1'), newer);
 });

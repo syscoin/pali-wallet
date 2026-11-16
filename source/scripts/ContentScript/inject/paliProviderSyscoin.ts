@@ -478,7 +478,7 @@ export class PaliInpageProviderSys extends BaseProvider {
               allTokens.map(async (t: any) => {
                 const assetInfo = (await this.request({
                   method: 'wallet_getSysAssetMetadata',
-                  params: [t.token, this._sysState.blockExplorerURL],
+                  params: [t.token],
                 })) as ISysAssetMetadata | null;
 
                 // Return the asset info with the symbol as-is (Syscoin 5 uses plain text)
@@ -535,7 +535,7 @@ export class PaliInpageProviderSys extends BaseProvider {
           }
           return this.request({
             method: 'wallet_getSysAssetMetadata',
-            params: [assetGuid, this._sysState.blockExplorerURL],
+            params: [assetGuid],
           });
         },
       },

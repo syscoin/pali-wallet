@@ -162,6 +162,33 @@ afterEach(() => {
 });
 
 const LOGO = 'https://icons.synthetic.invalid/public-token.png';
+const png = Uint8Array.from(
+  Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=',
+    'base64'
+  )
+);
+const imageResponse = (ok = true, bytes = png): Response => {
+  let sent = false;
+  const cancel = async () => undefined;
+  return {
+    ok,
+    headers: {
+      get: (name: string) => (name === 'content-type' ? 'image/png' : null),
+    },
+    body: {
+      cancel,
+      getReader: () => ({
+        cancel,
+        read: async () => {
+          if (sent) return { done: true };
+          sent = true;
+          return { done: false, value: bytes };
+        },
+      }),
+    },
+  } as unknown as Response;
+};
 const display = () =>
   render(
     <Provider store={mockStore}>
@@ -179,21 +206,9 @@ const display = () =>
       </MemoryRouter>
     </Provider>
   );
-const installImage = (ok: boolean, validImage = false) => {
+const installImage = (ok: boolean) => {
   global.fetch = jest.fn(async (url: string) => {
-    if (url === LOGO)
-      return {
-        ok,
-        blob: async () =>
-          new Blob(
-            [
-              validImage
-                ? '<svg xmlns="http://www.w3.org/2000/svg"></svg>'
-                : '<html>upstream image unavailable</html>',
-            ],
-            { type: validImage ? 'image/svg+xml' : 'text/html' }
-          ),
-      } as Response;
+    if (url === LOGO) return imageResponse(ok);
     expect(url).toBe(
       `https://api.coingecko.com/api/v3/coins/ethereum/contract/${CONTRACT}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
     );
@@ -231,7 +246,7 @@ it.each([false, true])(
     await waitFor(() =>
       expect(image).toHaveAttribute(
         'src',
-        expect.stringContaining('data:text/html;')
+        expect.stringContaining('data:image/png;')
       )
     );
     fireEvent.error(image);
@@ -243,13 +258,13 @@ it.each([false, true])(
   }
 );
 it('retains a successful current image', async () => {
-  installImage(true, true);
+  installImage(true);
   display();
   const image = await screen.findByAltText('SYN');
   await waitFor(() =>
     expect(image).toHaveAttribute(
       'src',
-      expect.stringContaining('data:image/svg+xml;')
+      expect.stringContaining('data:image/png;')
     )
   );
   fireEvent.load(image);
@@ -281,23 +296,17 @@ it('caches a native decode failure and permits a fresh read after the existing c
 
   clock.mockReturnValue(now + 5 * 60_000 + 1);
   const fetchMarket = jest.mocked(fetch).getMockImplementation()!;
-  jest.mocked(fetch).mockImplementation(async (...args) =>
-    args[0] === LOGO
-      ? ({
-          ok: true,
-          blob: async () =>
-            new Blob(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], {
-              type: 'image/svg+xml',
-            }),
-        } as Response)
-      : fetchMarket(...args)
-  );
+  jest
+    .mocked(fetch)
+    .mockImplementation(async (...args) =>
+      args[0] === LOGO ? imageResponse() : fetchMarket(...args)
+    );
   display();
   const recovered = await screen.findByAltText('SYN');
   await waitFor(() =>
     expect(recovered).toHaveAttribute(
       'src',
-      expect.stringContaining('data:image/svg+xml;')
+      expect.stringContaining('data:image/png;')
     )
   );
   fireEvent.load(recovered);
@@ -307,36 +316,21 @@ it('caches a native decode failure and permits a fresh read after the existing c
   ).toHaveLength(2);
 });
 
-it('uses fallback after a large direct-URL image fails decoding', async () => {
-  global.fetch = jest.fn(
-    async () =>
-      ({
-        ok: true,
-        blob: async () =>
-          new Blob(['x'.repeat(256 * 1024 + 1)], { type: 'text/plain' }),
-      } as Response)
-  ) as typeof fetch;
+it('uses fallback for an oversized streamed image without a direct-URL retry', async () => {
+  global.fetch = jest.fn(async () =>
+    imageResponse(true, new Uint8Array(256 * 1024 + 1))
+  );
   const view = render(<TokenIcon logo={LOGO} symbol="DIRECT" />);
-  const image = await screen.findByAltText('DIRECT');
-  expect(image).toHaveAttribute('src', LOGO);
-  fireEvent.error(image);
+  expect(await screen.findByText('D', { exact: true })).toBeInTheDocument();
   expect(view.container.querySelector('img')).toBeNull();
-  expect(screen.getByText('D', { exact: true })).toBeInTheDocument();
+  expect(screen.queryByAltText('DIRECT')).toBeNull();
+  expect(fetch).toHaveBeenCalledTimes(1);
 });
 
 it.each([false, true])(
   'ignores an old native image error after a later success, ABA=%s',
   async (aba) => {
-    global.fetch = jest.fn(
-      async () =>
-        ({
-          ok: true,
-          blob: async () =>
-            new Blob(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], {
-              type: 'image/svg+xml',
-            }),
-        } as Response)
-    ) as typeof fetch;
+    global.fetch = jest.fn(async () => imageResponse());
     const next = LOGO + '?second';
     const view = render(<TokenIcon logo={LOGO} symbol="FIRST" />);
     const first = await screen.findByAltText('FIRST');
@@ -358,16 +352,7 @@ it.each([false, true])(
 );
 
 it('does not poison a cached image when an old node reports an error after unmount', async () => {
-  global.fetch = jest.fn(
-    async () =>
-      ({
-        ok: true,
-        blob: async () =>
-          new Blob(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], {
-            type: 'image/svg+xml',
-          }),
-      } as Response)
-  ) as typeof fetch;
+  global.fetch = jest.fn(async () => imageResponse());
   const view = render(<TokenIcon logo={LOGO} symbol="CURRENT" />);
   const departed = await screen.findByAltText('CURRENT');
   view.unmount();
@@ -375,19 +360,13 @@ it('does not poison a cached image when an old node reports an error after unmou
   render(<TokenIcon logo={LOGO} symbol="CURRENT" />);
   expect(await screen.findByAltText('CURRENT')).toHaveAttribute(
     'src',
-    expect.stringContaining('data:image/svg+xml;')
+    expect.stringContaining('data:image/png;')
   );
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
 it('retains native failure handling under StrictMode effect replay', async () => {
-  global.fetch = jest.fn(
-    async () =>
-      ({
-        ok: true,
-        blob: async () => new Blob(['not an image'], { type: 'text/plain' }),
-      } as Response)
-  ) as typeof fetch;
+  global.fetch = jest.fn(async () => imageResponse());
   render(
     <React.StrictMode>
       <TokenIcon logo={LOGO} symbol="STRICT" />
@@ -397,27 +376,21 @@ it('retains native failure handling under StrictMode effect replay', async () =>
   expect(screen.getByText('S', { exact: true })).toBeInTheDocument();
 });
 
-it.each(['direct URL', 'FileReader', 'preload'])(
+it.each(['rejected oversized body', 'FileReader', 'preload'])(
   'preserves the cache boundary and existing-key failure with %s insertion',
   async (insertion) => {
     const urls = Array.from(
       { length: 201 },
       (_, index) => `${LOGO}?cache-boundary=${index}`
     );
-    const largeBlob = new Blob(['x'.repeat(256 * 1024 + 1)]);
-    const smallBlob = new Blob(['<svg xmlns="http://www.w3.org/2000/svg"/>'], {
-      type: 'image/svg+xml',
-    });
-    global.fetch = jest.fn(
-      async (url) =>
-        ({
-          ok: true,
-          blob: async () =>
-            url === urls[200] && insertion !== 'direct URL'
-              ? smallBlob
-              : largeBlob,
-        } as Response)
-    ) as typeof fetch;
+    global.fetch = jest.fn(async (url) =>
+      imageResponse(
+        true,
+        url === urls[200] && insertion === 'rejected oversized body'
+          ? new Uint8Array(256 * 1024 + 1)
+          : png
+      )
+    );
     const full = render(
       <>
         {urls.slice(0, 200).map((logo, index) => (
@@ -432,21 +405,31 @@ it.each(['direct URL', 'FileReader', 'preload'])(
     full.unmount();
 
     const first = render(<TokenIcon logo={urls[0]} symbol="FIRST" />);
-    expect(await screen.findByAltText('FIRST')).toHaveAttribute('src', urls[0]);
+    expect(await screen.findByAltText('FIRST')).toHaveAttribute(
+      'src',
+      expect.stringContaining('data:image/png;')
+    );
     expect(fetch).toHaveBeenCalledTimes(200);
     first.unmount();
 
     if (insertion === 'preload') await preloadTokenIcons([urls[200]]);
     else {
       const next = render(<TokenIcon logo={urls[200]} symbol="NEXT" />);
-      await screen.findByAltText('NEXT');
+      if (insertion === 'rejected oversized body') {
+        expect(
+          await screen.findByText('N', { exact: true })
+        ).toBeInTheDocument();
+        expect(
+          next.container.querySelector(`img[src="${urls[200]}"]`)
+        ).toBeNull();
+      } else await screen.findByAltText('NEXT');
       next.unmount();
     }
     expect(fetch).toHaveBeenCalledTimes(201);
     const retained = render(<TokenIcon logo={urls[1]} symbol="RETAINED" />);
     expect(await screen.findByAltText('RETAINED')).toHaveAttribute(
       'src',
-      urls[1]
+      expect.stringContaining('data:image/png;')
     );
     expect(fetch).toHaveBeenCalledTimes(201);
     retained.unmount();
@@ -454,7 +437,7 @@ it.each(['direct URL', 'FileReader', 'preload'])(
     render(<TokenIcon logo={urls[0]} symbol="EVICTED" />);
     expect(await screen.findByAltText('EVICTED')).toHaveAttribute(
       'src',
-      urls[0]
+      expect.stringContaining('data:image/png;')
     );
     expect(fetch).toHaveBeenCalledTimes(202);
   }

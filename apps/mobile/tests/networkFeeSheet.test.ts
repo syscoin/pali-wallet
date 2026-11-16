@@ -8,7 +8,7 @@ import { languageMessages } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
-async function fixture(language = 'en', unavailable = false) {
+async function fixture(language = 'en', unavailable = false, options: { mode?: 'evm' | 'utxo'; choice?: fees.EvmFeeChoice | fees.UtxoFeeChoice; load?(signal: AbortSignal): Promise<fees.EvmFeeRates | string> } = {}) {
   const i18n = createInstance(); await i18n.init({ lng: language, resources: { [language]: { translation: languageMessages(language) } }, fallbackLng: false });
   const screen = screenFixture(new URL('../src/screens/NetworkFeeSheet.tsx', import.meta.url), 'NetworkFeeSheet', {
     'react-native': { KeyboardAvoidingView: 'KeyboardAvoidingView', Modal: 'Modal', ScrollView: 'ScrollView', View: 'View', StyleSheet: { create: (value: unknown) => value }, Platform: { OS: 'ios' } },
@@ -21,8 +21,8 @@ async function fixture(language = 'en', unavailable = false) {
     './IdleActivityBoundary': { IdleTextInput: 'Input' },
   }, { AbortController });
   const selected: unknown[] = []; let request: AbortSignal | undefined;
-  const props = { mode: 'evm', choice: fees.AUTOMATIC_FEE,
-    load: async (signal: AbortSignal) => { request = signal; if (unavailable) throw Error('offline'); return { type: 2, maxFeePerGas: '2000000000', maxPriorityFeePerGas: '1000000000' }; },
+  const props = { mode: options.mode ?? 'evm', choice: options.choice ?? fees.AUTOMATIC_FEE,
+    load: async (signal: AbortSignal) => { request = signal; if (unavailable) throw Error('offline'); if (options.load) return options.load(signal); if (options.mode === 'utxo') return '2'; return { type: 2, maxFeePerGas: '2000000000', maxPriorityFeePerGas: '1000000000' }; },
     onApply: (choice: unknown) => selected.push(choice), onClose() {} };
   const render = () => screen.render(props);
   render(); await tick();
@@ -54,4 +54,39 @@ test('closing a fee sheet retires its read and late Apply cannot publish', async
   assert(apply); assert.equal(f.request()?.aborted, false);
   f.screen.close(); assert.equal(f.request()?.aborted, true);
   apply.props.onPress(); assert.deepEqual(f.selected, []);
+});
+
+
+test('a late UTXO recommendation preserves a custom rate through Apply', async () => {
+  const recommendation = Promise.withResolvers<string>();
+  const f = await fixture('en', false, { mode: 'utxo', load: () => recommendation.promise });
+  try {
+    f.press('mobile.feeChoice.custom');
+    const field = () => screenElements(f.render()).find(node => node.type === 'Input')!;
+    field().props.onChangeText('25');
+    recommendation.resolve('2'); await tick();
+    assert.equal(field().props.value, '25');
+    f.press('mobile.feeChoice.apply');
+    assert.deepEqual(f.selected, [{ kind: 'custom', satPerVbyte: '25' }]);
+  } finally { f.screen.close(); }
+});
+
+test('an initial custom UTXO rate remains selected after recommendations load', async () => {
+  const f = await fixture('en', false, { mode: 'utxo', choice: { kind: 'custom', satPerVbyte: '25' } });
+  try {
+    assert.equal(screenElements(f.render()).find(node => node.type === 'Input')!.props.value, '25');
+    f.press('mobile.feeChoice.apply');
+    assert.deepEqual(f.selected, [{ kind: 'custom', satPerVbyte: '25' }]);
+  } finally { f.screen.close(); }
+});
+
+test('an untouched UTXO field is seeded and preserves an edit after loading', async () => {
+  const f = await fixture('en', false, { mode: 'utxo' });
+  try {
+    f.press('mobile.feeChoice.custom');
+    const input = screenElements(f.render()).find(node => node.type === 'Input')!;
+    assert.equal(input.props.value, '2'); input.props.onChangeText('25');
+    f.press('mobile.feeChoice.apply');
+    assert.deepEqual(f.selected, [{ kind: 'custom', satPerVbyte: '25' }]);
+  } finally { f.screen.close(); }
 });

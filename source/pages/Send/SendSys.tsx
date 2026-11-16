@@ -1208,6 +1208,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                   name="amount"
                   id="with-max-button"
                   type="number"
+                  step="any"
                   placeholder={t('send.amount')}
                   onBlur={handleFieldBlur}
                 />

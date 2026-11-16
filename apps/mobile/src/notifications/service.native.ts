@@ -56,10 +56,12 @@ export const nativeActivityNotifications = new NativeNotificationCoordinator({ s
   normalize: normalizeNotificationScope, factScope: notificationFactScope, read: createNotificationReader(), randomId });
 
 // Notifications contain an opaque lookup ID only. Never interpret an OS payload as a route.
+let responseRevision = 0;
 function receiveResponse(response: Notifications.NotificationResponse | null) {
   if (!response || response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
   const request = response.notification.request;
   if (request.identifier !== request.content.data?.eventId) return;
+  responseRevision++;
   nativeActivityNotifications.recordTap(request.identifier);
 }
 Notifications.setNotificationHandler({
@@ -78,9 +80,12 @@ Notifications.setNotificationHandler({
 Notifications.addNotificationResponseReceivedListener(receiveResponse);
 const load = nativeActivityNotifications.load.bind(nativeActivityNotifications);
 nativeActivityNotifications.load = async () => {
+  const revision = responseRevision;
   await load();
-  receiveResponse(await Notifications.getLastNotificationResponseAsync());
-  await Notifications.clearLastNotificationResponseAsync();
+  // A historical getter cannot replace a tap received after loading began.
+  if (revision !== responseRevision) return;
+  receiveResponse(Notifications.getLastNotificationResponse());
+  Notifications.clearLastNotificationResponse();
 };
 
 export async function runNotificationBackgroundTask(signal: AbortSignal): Promise<void> {

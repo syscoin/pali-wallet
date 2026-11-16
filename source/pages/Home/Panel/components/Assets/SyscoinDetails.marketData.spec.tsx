@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+import '@testing-library/jest-dom';
 import { act, render, screen } from '@testing-library/react';
 import React from 'react';
 
@@ -86,6 +87,8 @@ const market = (price: number) => ({
     current_price: { usd: price },
     // eslint-disable-next-line camelcase
     price_change_percentage_24h: 0,
+    // eslint-disable-next-line camelcase
+    price_change_percentage_24h_in_currency: { usd: 0 },
   },
 });
 beforeEach(() => {
@@ -231,6 +234,7 @@ it.each([undefined, null, NaN, Infinity])(
           current_price: { usd: 55 },
           // eslint-disable-next-line camelcase
           price_change_percentage_24h: change,
+          price_change_percentage_24h_in_currency: { usd: change },
         },
       }),
     });
@@ -256,6 +260,9 @@ it.each([
   const data = market(55);
   // eslint-disable-next-line camelcase
   data.market_data.price_change_percentage_24h = change as number;
+  // eslint-disable-next-line camelcase
+  data.market_data.price_change_percentage_24h_in_currency.usd =
+    change as number;
   mockFetch.mockResolvedValue({ ok: true, json: async () => data });
   render(<SyscoinAssetDetails id={asset.assetGuid} />);
   await act(async () => undefined);
@@ -405,3 +412,31 @@ describe('focused Close visibility after asynchronous market changes', () => {
     }
   });
 });
+
+/* eslint-disable camelcase -- Exact CoinGecko response fields. */
+it.each([true, false])(
+  'matches price and daily change to selected currency, globalPresent=%s',
+  async (globalPresent) => {
+    const data = {
+      market_data: {
+        current_price: { usd: 100, eur: 90 },
+        ...(globalPresent ? { price_change_percentage_24h: -1 } : {}),
+        price_change_percentage_24h_in_currency: { usd: -1, eur: 2 },
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, json: async () => data });
+    const view = render(<SyscoinAssetDetails id={asset.assetGuid} />);
+    await act(async () => undefined);
+    expect(screen.getByText('-1.00% (24h)')).toHaveClass('text-red-500');
+    mockState.price.fiat.asset = 'eur';
+    view.rerender(<SyscoinAssetDetails id={asset.assetGuid} />);
+    expect(screen.getByText('€90')).toBeTruthy();
+    expect(screen.getByText('+2.00% (24h)')).toHaveClass('text-green-500');
+    expect(screen.queryByText('-1.00% (24h)')).toBeNull();
+    delete (data.market_data.price_change_percentage_24h_in_currency as any)
+      .eur;
+    view.rerender(<SyscoinAssetDetails id={asset.assetGuid} />);
+    expect(screen.queryByText('+2.00% (24h)')).toBeNull();
+    expect(screen.queryByText('-1.00% (24h)')).toBeNull();
+  }
+);

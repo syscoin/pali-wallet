@@ -79,13 +79,13 @@ const refresh = () =>
     isPolling: true,
   });
 const reply = (...rows: any[]) =>
-  fetchSpy.mockResolvedValue({
-    ok: true,
-    json: async () =>
-      JSON.parse(
-        JSON.stringify({ address: 'zpub-fixture', tokensAsset: rows })
-      ),
-  });
+  fetchSpy.mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({ address: 'zpub-fixture', tokensAsset: rows }),
+        { headers: { 'content-type': 'application/json' } }
+      )
+  );
 
 beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation();

@@ -759,6 +759,12 @@ describe('origin-scoped provider data', () => {
       symbol: 'SPT',
     });
     expect(fetchMetadata).toHaveBeenCalledWith('123', 'https://rpc.example');
+    fetchMetadata.mockClear();
+    context.originalRequest.params = ['123'];
+    await expect(new WalletMethodHandler().handle(context)).resolves.toEqual({
+      symbol: 'SPT',
+    });
+    expect(fetchMetadata).toHaveBeenCalledWith('123', 'https://rpc.example');
   });
 
   it('returns assets for the origin-connected account, not the globally active account', async () => {
