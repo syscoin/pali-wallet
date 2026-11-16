@@ -12895,10 +12895,6 @@ class MainController {
       if (
         lifetime.signal.aborted ||
         !isCurrent() ||
-        networkRequest !== this.networkRequestGeneration ||
-        latest.activeNetwork.chainId !== activeNetwork.chainId ||
-        latest.activeNetwork.kind !== activeNetwork.kind ||
-        latest.activeNetwork.url !== activeNetwork.url ||
         (isBitcoinBased
           ? latest.accounts[activeAccount.type]?.[activeAccount.id]?.xpub !==
             currentAccount.xpub
