@@ -203,3 +203,70 @@ it('keeps a scalar Contract runner without provider transport helpers usable', a
   expect(result[0].rawBalance).toBe('5');
   expect(call).toHaveBeenCalledTimes(1);
 });
+
+it.each(['ERC-721', 'ERC-1155'] as const)(
+  'uses the candidate SDK metadata runner for %s without repeated interface or holder reads',
+  async (standard) => {
+    const metadata = new Interface([
+      'function supportsInterface(bytes4) view returns (bool)',
+      'function name() view returns (string)',
+      'function symbol() view returns (string)',
+    ]);
+    const methods: string[] = [];
+    const abort = new AbortController();
+    const provider = new CustomJsonRpcProvider(
+      abort.signal,
+      'https://nft-rpc.test',
+      1
+    );
+    const fetch = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async (_url, init) => {
+        const input = JSON.parse(String(init!.body));
+        const rows = Array.isArray(input) ? input : [input];
+        const responses = rows.map((request) => {
+          let result: string;
+          if (request.method === 'eth_chainId') result = '0x1';
+          else if (request.method === 'eth_getCode') result = '0x6000';
+          else {
+            expect(request.method).toBe('eth_call');
+            const call = metadata.parseTransaction(request.params[0])!;
+            methods.push(call.name);
+            result = metadata.encodeFunctionResult(call.fragment, [
+              call.name === 'name'
+                ? 'Collection'
+                : call.name === 'symbol'
+                ? 'ITEM'
+                : call.args[0] ===
+                  (standard === 'ERC-721' ? '0x80ac58cd' : '0xd9b67a26'),
+            ]);
+          }
+          return { jsonrpc: '2.0', id: request.id, result };
+        });
+        return Response.json(Array.isArray(input) ? responses : responses[0]);
+      });
+    try {
+      const result = await EvmAssetsController().getTokenDetails(
+        address(77),
+        ownerAddress,
+        provider
+      );
+      expect(result).toMatchObject({
+        name: 'Collection',
+        symbol: 'ITEM',
+        tokenStandard: standard,
+        isNft: true,
+        chainId: 1,
+      });
+      expect(methods).toEqual(
+        standard === 'ERC-721'
+          ? ['supportsInterface', 'name', 'symbol']
+          : ['supportsInterface', 'supportsInterface', 'name', 'symbol']
+      );
+    } finally {
+      abort.abort();
+      provider.destroy();
+      fetch.mockRestore();
+    }
+  }
+);

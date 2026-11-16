@@ -11,8 +11,9 @@ import { formatBaseUnits } from '../src/core/amounts.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
 import { NativeActivity, type NativeActivityRuntime } from '../src/activity/nativeActivity.ts';
+import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
 import { activityAssetIcon } from '../src/activity/assetIcon.ts';
-import { getEvmTransactionDisplayInfo } from '../../../source/shared/evmTransactionDisplay.ts';
+import { getEvmTransactionDisplayInfo, type EvmDisplayTokenMetadata } from '../../../source/shared/evmTransactionDisplay.ts';
 import { mapEvmExplorerTokenTransfer, mapEvmExplorerTransaction } from '../../../source/shared/evmHistory.ts';
 import { activityRowDirection, matchesActivityView, zeroOnlyActivity } from '../src/activity/activityFiltering.ts';
 import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
@@ -237,6 +238,67 @@ function all(value: unknown): Element[] {
   return [node, ...node.children.flat(Infinity).flatMap(all)];
 }
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+async function indexedHistory(body: Record<string, unknown> | null, event?: Record<string, unknown>, assets: readonly EvmDisplayTokenMetadata[] = []) {
+  const scope = createActivityScope('a'.repeat(64), 'hd:60:0', '0x' + '22'.repeat(20), 'ethereum');
+  const requests: string[] = [];
+  const explorer = new ActivityExplorerReader(async (url, init) => {
+    assert.equal(init.body, undefined, 'list history never starts RPC'); requests.push(url);
+    return Response.json({ status: '1', message: 'OK', result: new URL(url).searchParams.get('action') === 'tokentx' ? event ? [event] : [] : body ? [body] : [] });
+  });
+  const runtime: NativeActivityRuntime = {
+    async load(check) { check(); return { scope, locals: [], assets, saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false } }; },
+    async saveCache(_scope, _rows, check) { check(); }, async saveView(_scope, _view, check) { check(); },
+  };
+  const controller = new NativeActivity({ getSnapshot: () => ({ phase: 'ready', revision: 1 }), subscribe: () => () => {} }, () => runtime,
+    explorer, { async read() { throw Error('No detail RPC expected'); } });
+  await controller.refresh();
+  return { controller, requests };
+}
+
+test('saved scoped metadata supplies the shared ERC20 amount while another chain remains unknown', async () => {
+  const owner = '0x' + '22'.repeat(20), recipient = '0x' + '33'.repeat(20), contract = '0x' + '44'.repeat(20);
+  const body = { hash, from: owner, to: contract, value: '0', blockNumber: '123', timeStamp: '1700000000', nonce: '0', isError: '0',
+    input: id('transfer(address,uint256)').slice(0, 10) + AbiCoder.defaultAbiCoder().encode(['address', 'uint256'], [recipient, '2000000']).slice(2) };
+  const event = { ...body, to: recipient, contractAddress: contract, value: '2000000', tokenSymbol: 'USDC', tokenDecimal: '6' };
+  for (const scenario of [{ chainId: 1, eventOnly: false }, { chainId: 137, eventOnly: false }, { chainId: 137, eventOnly: true }]) {
+    const { controller, requests } = await indexedHistory(scenario.eventOnly ? null : body, event,
+      [{ chainId: scenario.chainId, contractAddress: contract, decimals: 6, symbol: 'USDC' }]);
+    const f = fixture(undefined, false, { controller, externallyConnected: true });
+    try {
+      const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+      const row = controller.getSnapshot().rows[0]!;
+      const preview = list.props.renderItem({ item: row, index: 0 });
+      if (scenario.chainId === 1 || scenario.eventOnly) {
+        assert.equal(preview.props.amount, '-2 USDC'); assert.equal(preview.props.title, 'Sent');
+        assert.match(preview.props.label, /2(?:\.0+)? USDC/);
+      } else { assert.equal(preview.props.amount, ''); assert.equal(row.display?.hasUnknownDecimals, true); }
+      assert.equal(requests.length, 2);
+    } finally { f.dispose(); }
+  }
+});
+
+test('native-to-token swaps retain the displayed ETH debit and Received filtering preserves genuine self transfers', async () => {
+  const owner = '0x' + '22'.repeat(20), router = '0x' + '33'.repeat(20), pool = '0x' + '44'.repeat(20), contract = '0x' + '55'.repeat(20);
+  for (const kind of ['swap', 'ordinary', 'self'] as const) {
+    const body = { hash, from: owner, to: kind === 'self' ? owner : router, value: '1000000000000000000',
+      blockNumber: '123', timeStamp: '1700000000', nonce: '0', isError: '0',
+      input: kind === 'swap' ? id('swapExactETHForTokens(uint256,address[],address,uint256)').slice(0, 10) +
+        AbiCoder.defaultAbiCoder().encode(['uint256', 'address[]', 'address', 'uint256'], ['0', [router, contract], owner, '2000000000']).slice(2) : '0x' };
+    const event = { ...body, from: pool, to: owner, contractAddress: contract, value: '2000000', tokenSymbol: 'USDC', tokenDecimal: '6' };
+    const { controller, requests } = await indexedHistory(body, kind === 'swap' ? event : undefined);
+    const f = fixture(undefined, false, { controller, externallyConnected: true });
+    try {
+      let list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+      const preview = list.props.renderItem({ item: controller.getSnapshot().rows[0], index: 0 });
+      assert.equal(preview.props.title, kind === 'self' ? 'Self transfer' : 'Sent');
+      assert.equal(preview.props.amount, kind === 'self' ? '1 ETH' : '-1 ETH');
+      await controller.setView({ filter: 'received' });
+      list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+      assert.equal(list.props.data.length, kind === 'self' ? 1 : 0);
+      assert.equal(requests.length, 2);
+    } finally { f.dispose(); }
+  }
+});
 test('an already loaded indexed transaction opens without waiting for saved inventory', async () => {
   const owner = '0x' + '22'.repeat(20);
   const scope = createActivityScope('a'.repeat(64), 'hd:60:0', owner, 'ethereum');
@@ -489,6 +551,8 @@ test('Smart Activity details show the observed outer network fee and its actual 
     { retainedObservation: observation, indexed: {}, indexedStatus: 'pending', expected: '0.000000000000042 ETH' },
     { retainedObservation: observation, observation: { ...base.observation, status: 'confirmed', block: { hash: blockHash, number: '2' }, feeUnits: null }, expected: 'Actual fee not verified' },
     { retainedObservation: observation, observation: { ...base.observation, status: 'confirmed', block: { hash: blockHash, number: '2' }, feeUnits: '1' }, expected: '0.000000000000000001 ETH' },
+    { observation: { ...base.observation, status: 'unknown', block: { hash: blockHash, number: '3000000' }, feeUnits: '21000000000000' }, expected: '0.000021 ETH' },
+    { observation: { ...base.observation, status: 'unknown', block: null, feeUnits: '21000000000000' }, expected: 'Actual fee not verified' },
   ]) {
     const { expected, ...fields } = scenario, f = fixture();
     try {

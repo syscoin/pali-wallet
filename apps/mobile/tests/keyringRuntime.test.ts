@@ -2270,6 +2270,8 @@ test('scoped portfolio inventory reads only the selected account on an inactive 
     const activitySnapshot = await activity.load(() => undefined);
     assert.equal(activitySnapshot.scope.network.id, 'base');
     assert.equal(activitySnapshot.scope.address, ADDRESS);
+    assert.deepEqual(activitySnapshot.assets, [{ chainId: Number(base.chainId), ...baseToken }]);
+    assert.deepEqual((await f.runtime.activity!.load(() => undefined)).assets, [{ chainId: 1, ...ethToken }]);
     assert.equal(f.authority.getSnapshot(), before);
     assert.deepEqual([...f.disk.records], records);
     await assert.rejects(f.runtime.tokens!.loadScoped!({ ...target, accountId: 'hd:60:1' }, () => undefined), /CANCELLED/);

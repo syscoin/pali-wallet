@@ -64,6 +64,33 @@ test('canonical success and revert are observed without finalized RPC calls', as
   }
 });
 
+test('historical root receipts retain canonical placement and fee without an invented execution outcome', async () => {
+  const stateRoot = `0x${'d'.repeat(64)}`;
+  const historical = receipt({ status: undefined, root: stateRoot, blockNumber: '0x2dc6c0', effectiveGasPrice: '0x3b9aca00' });
+  const f = fixture(call => call.method === 'eth_getTransactionReceipt' ? historical :
+    call.method === 'eth_getTransactionByHash' ? tx({ blockNumber: historical.blockNumber }) : undefined);
+  const result = await f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'));
+  assert.equal(result?.status, 'unknown');
+  assert.deepEqual(result?.block, { hash: BLOCK, number: '3000000' });
+  assert.equal(result?.feeUnits, '21000000000000');
+  assert.equal(formatBaseUnits(result!.feeUnits!, 18), '0.000021');
+  assert.equal(f.calls.length, 5);
+  const legacy = fixture(call => call.method === 'eth_getTransactionReceipt' ? receipt({ status: undefined, root: stateRoot, type: '0x0' }) : undefined);
+  assert.equal((await legacy.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum')))?.status, 'unknown');
+  for (const type of ['0x1', '0x2', '0x3', '0x4', null]) {
+    const typed = fixture(call => call.method === 'eth_getTransactionReceipt' ? receipt({ status: undefined, root: stateRoot, type }) : undefined);
+    await assert.rejects(typed.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum')), { code: 'INVALID_RESPONSE' });
+  }
+  for (const root of [undefined, null, '0x1234', `0x${'z'.repeat(64)}`]) {
+    const invalid = fixture(call => call.method === 'eth_getTransactionReceipt' ? receipt({ status: undefined, root }) : undefined);
+    await assert.rejects(invalid.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum')), { code: 'INVALID_RESPONSE' });
+  }
+  const reorg = fixture(call => call.method === 'eth_getTransactionReceipt' ? historical :
+    call.method === 'eth_getTransactionByHash' ? tx({ blockNumber: historical.blockNumber }) :
+    call.method === 'eth_getBlockByNumber' ? { number: historical.blockNumber, hash: FINAL_BLOCK } : undefined);
+  await assert.rejects(reorg.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum')), { code: 'CONTEXT_CHANGED' });
+});
+
 test('only a canonical block containing the exact receipt hash supplies sibling inclusion evidence', async () => {
   for (const transactions of [undefined, [], [HASH], [BLOCK, FINAL_BLOCK, HASH], [BLOCK, FINAL_BLOCK, BLOCK]]) {
     const f = fixture(call => call.method === 'eth_getBlockByNumber'

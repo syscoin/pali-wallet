@@ -197,6 +197,8 @@ export class NativeNotificationCoordinator {
       const permission = await this.ports.delivery.permission(false);
       this.publish({ permission });
       if (permission !== 'granted') { await this.disableAll(); return; }
+      // Already queued notices must get time before slow public reads use the run budget.
+      await this.deliverPending(controller.signal);
       const work = await this.transact((doc) => {
         const sorted = [...doc.scopes].sort((a, b) => a.scope.id.localeCompare(b.scope.id));
         const count = Math.min(sorted.length, NOTIFICATION_LIMITS.scopesPerRun);
@@ -240,32 +242,35 @@ export class NativeNotificationCoordinator {
           if (this.inflight.get(entry.scope.id) === active) this.inflight.delete(entry.scope.id);
         }
       }
-      // Persist the attempt before entering the OS: process interruption may lose one notice,
-      // but never replays a historical event. Do not hold a DB lock across OS callbacks:
-      // the foreground presentation handler itself revalidates the same enrollment.
-      const pending = await this.transact((doc) => doc.events.filter((event) => !event.attempted).map((event) => event.id));
-      for (const id of pending) {
-        if (controller.signal.aborted) break;
-        const claimed = await this.transact((doc) => {
-          const event = doc.events.find((entry) => entry.id === id);
-          if (!event || event.attempted || !doc.scopes.some((entry) => entry.scope.id === event.scopeId && entry.generation === event.generation)) return false;
-          event.attempted = true;
-          return true;
-        });
-        if (!claimed) continue;
-        if (controller.signal.aborted) aborted();
-        if (!(await this.shouldPresent(id))) continue;
-        try { await this.ports.delivery.post(id); }
-        finally {
-          // Disable/removal may win while the OS call is pending. Cancel both
-          // queued and already-presented forms before allowing the task to end.
-          if (!(await this.shouldPresent(id).catch(() => false))) await this.ports.delivery.remove(id);
-        }
-      }
+      await this.deliverPending(controller.signal);
       const keep = await this.transact((doc) => doc.events.map((event) => event.id));
       await this.ports.delivery.prune(keep);
       this.publish({ lastRunAt: this.now() });
       await this.refresh();
     } finally { clearTimeout(timer); external?.removeEventListener('abort', abort); controller.abort(); }
+  }
+  private async deliverPending(signal: AbortSignal) {
+    // Persist the attempt before entering the OS: process interruption may lose one notice,
+    // but never replays a historical event. Do not hold a DB lock across OS callbacks:
+    // the foreground presentation handler itself revalidates the same enrollment.
+    const pending = await this.transact((doc) => doc.events.filter((event) => !event.attempted).map((event) => event.id));
+    for (const id of pending) {
+      if (signal.aborted) break;
+      const claimed = await this.transact((doc) => {
+        const event = doc.events.find((entry) => entry.id === id);
+        if (!event || event.attempted || !doc.scopes.some((entry) => entry.scope.id === event.scopeId && entry.generation === event.generation)) return false;
+        event.attempted = true;
+        return true;
+      });
+      if (!claimed) continue;
+      if (signal.aborted) aborted();
+      if (!(await this.shouldPresent(id))) continue;
+      try { await this.ports.delivery.post(id); }
+      finally {
+        // Disable/removal may win while the OS call is pending. Cancel both
+        // queued and already-presented forms before allowing the task to end.
+        if (!(await this.shouldPresent(id).catch(() => false))) await this.ports.delivery.remove(id);
+      }
+    }
   }
 }

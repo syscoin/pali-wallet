@@ -243,3 +243,41 @@ test('previously enabled unsupported scopes remain loadable and removable', asyn
   await h.coordinator.disableScope(unsupported.id);
   assert.deepEqual(h.coordinator.getSnapshot().enabledScopeIds, []); assert.equal(h.registered, false);
 });
+
+
+test('queued alerts deliver before repeated slow account reads exhaust the unchanged run budget', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = harness(), scopes = Array.from({ length: 4 }, (_, index) => scope(`watch:${index}`));
+  await h.coordinator.enable(scopes, () => undefined, { requestPermission: true });
+  h.hook(async (value, signal) => {
+    h.rows(value.id === scopes[0]!.id ? [transfer()] : []);
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(done, 8000);
+      const cancel = () => { clearTimeout(timer); reject(Error('Read cancelled')); };
+      function done() { signal.removeEventListener('abort', cancel); resolve(); }
+      signal.addEventListener('abort', cancel, { once: true });
+    });
+  });
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  const finishSlowRun = async (run: Promise<void>) => {
+    await settle();
+    for (const ms of [8000, 8000, 8000, 1000]) { t.mock.timers.tick(ms); await settle(); }
+    await run;
+  };
+  await finishSlowRun(h.coordinator.runForeground());
+  assert.equal(h.posted.length, 0);
+  const queued = h.document.events[0]!;
+  assert.equal(queued.scopeId, scopes[0]!.id); assert.equal(queued.attempted, false);
+  const cancelled = new AbortController(); cancelled.abort();
+  const readCount = h.reads.length;
+  await h.coordinator.run(cancelled.signal);
+  assert.equal(h.document.events[0]!.attempted, false);
+  assert.equal(h.posted.length, 0); assert.equal(h.reads.length, readCount);
+  const retry = h.coordinator.runForeground(); await settle();
+  assert.deepEqual(h.posted, [queued.id], 'durable delivery gets time before another slow read');
+  await finishSlowRun(retry);
+  await finishSlowRun(h.coordinator.runForeground());
+  assert.deepEqual(h.posted, [queued.id], 'successive slow runs never duplicate the notice');
+  assert.equal(h.document.events[0]!.attempted, true);
+  assert.equal(h.coordinator.getSnapshot().status, 'ready');
+});

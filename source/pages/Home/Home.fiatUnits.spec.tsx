@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
 
@@ -9,9 +9,17 @@ import EvmAssetsController from 'scripts/Background/controllers/assets/evm';
 import MainController from 'scripts/Background/controllers/MainController';
 import { CancellablePromises } from 'scripts/Background/controllers/promises/cancellablesPromises';
 import price, { setPrices } from 'state/price';
-import vault from 'state/vault';
+import vault, {
+  setAccountBalanceForNetwork,
+  setAccountBalances,
+  setNetworkChange,
+} from 'state/vault';
 import vaultGlobal from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import {
+  getFreshNativeBalance,
+  NATIVE_BALANCE_CACHE_TTL_MS,
+} from 'utils/nativeBalanceCache';
 
 import { Home } from './Home';
 
@@ -201,6 +209,75 @@ const show = async (balance: string, currency: string) => {
         ?.textContent,
   };
 };
+
+it('keeps native availability bound to the selected endpoint while restoring its own fresh cache', async () => {
+  const { view } = await show('12.34', 'usd');
+  const otherEndpoint = {
+    ...network,
+    url: 'https://other-quote.synthetic.invalid',
+  };
+  const balance = () =>
+    view.container.querySelector('#home-balance')?.textContent;
+  const send = () => screen.getByRole('button', { name: 'buttons.send' });
+  expect(balance()).toBe('12.34');
+  act(() =>
+    mockStore.dispatch(setNetworkChange({ activeNetwork: otherEndpoint }))
+  );
+  const account = mockStore.getState().vault.accounts.HDAccount[0];
+  expect(account.balances.ethereum).toBe(-1);
+  expect(getFreshNativeBalance(account, otherEndpoint)).toBeNull();
+  expect(balance()).toBeUndefined();
+  expect(view.container.querySelector('#home-balance-pending')).not.toBeNull();
+  expect(send()).toBeDisabled();
+  act(() => mockStore.dispatch(setNetworkChange({ activeNetwork: network })));
+  expect(balance()).toBe('12.34');
+  expect(send()).not.toBeDisabled();
+  act(() =>
+    mockStore.dispatch(setNetworkChange({ activeNetwork: otherEndpoint }))
+  );
+  act(() =>
+    mockStore.dispatch(
+      setAccountBalanceForNetwork({
+        network: otherEndpoint,
+        id: 0,
+        type: KeyringAccountType.HDAccount,
+        balance: '0',
+      })
+    )
+  );
+  expect(balance()).toBe('0');
+  expect(view.container.querySelector('#home-balance-pending')).toBeNull();
+  expect(send()).not.toBeDisabled();
+});
+
+it('preserves healthy same-endpoint refresh continuity only within the canonical cache lifetime', async () => {
+  const { view } = await show('12.34', 'usd');
+  const balance = () =>
+    view.container.querySelector('#home-balance')?.textContent;
+  act(() =>
+    mockStore.dispatch(setAccountBalances({ ethereum: -1, syscoin: -1 }))
+  );
+  expect(balance()).toBe('12.34');
+  expect(
+    screen.getByRole('button', { name: 'buttons.send' })
+  ).not.toBeDisabled();
+  act(() =>
+    mockStore.dispatch(
+      setAccountBalanceForNetwork({
+        network,
+        id: 0,
+        type: KeyringAccountType.HDAccount,
+        balance: '12.34',
+        updatedAt: Date.now() - NATIVE_BALANCE_CACHE_TTL_MS,
+      })
+    )
+  );
+  act(() =>
+    mockStore.dispatch(setAccountBalances({ ethereum: -1, syscoin: -1 }))
+  );
+  expect(balance()).toBeUndefined();
+  expect(screen.getByRole('button', { name: 'buttons.send' })).toBeDisabled();
+});
 
 it.each([
   ['1000000', 'usd', '$125K USD'],

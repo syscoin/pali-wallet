@@ -68,8 +68,13 @@ export function AssetMarketCard({ asset }: { asset: AssetMarketReference }) {
     const index = assetMarketIndexAt(x, chartWidth.current, prices.length);
     if (index !== null) select(index);
   };
-  // The seven-day sparkline has no per-sample timestamps; report its relative day only.
-  const selectedPosition = selected === null ? null : t('mobile.chartInteraction.historyDay', { day: 1 + Math.floor(selected / Math.max(1, prices.length - 1) * 6) });
+  const timestampAt = (index: number) => {
+    const timestamp = data?.priceTimestamps?.[index];
+    return timestamp === undefined ? null : new Date(timestamp).toLocaleString(locale, {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+  };
+  const selectedPosition = selected === null ? null : timestampAt(selected);
   return <Card style={s.card} testID="asset-market-card">
     <View style={s.heading}><Text style={s.label}>{t('mobile.portfolioCopy.marketPrice')}</Text><Text style={s.caption}>{t('mobile.portfolioCopy.sevenDays')}</Text></View>
     {preference.status === 'unavailable' || preference.status === 'unsupported' ? <Text style={s.caption}>{t('mobile.portfolioCopy.chooseCurrency')}</Text>
@@ -81,7 +86,7 @@ export function AssetMarketCard({ asset }: { asset: AssetMarketReference }) {
         accessibilityLabel={t('mobile.chartInteraction.priceHistory')}
         accessibilityHint={`${t('mobile.portfolioCopy.priceRange', { minimum: format(plot.minimum), maximum: format(plot.maximum) })}. ${t('mobile.chartInteraction.inspectHint')}`}
         accessibilityValue={{ min: 1, max: prices.length, now: (selected ?? prices.length - 1) + 1,
-          text: `${format(prices[selected ?? prices.length - 1]!)}, ${selectedPosition ?? t('mobile.chartInteraction.historyDay', { day: 7 })}` }}
+          text: [format(prices[selected ?? prices.length - 1]!), timestampAt(selected ?? prices.length - 1)].filter(Boolean).join(', ') }}
         accessibilityActions={[{ name: 'increment', label: t('mobile.chartInteraction.nextPrice') }, { name: 'decrement', label: t('mobile.chartInteraction.previousPrice') }]}
         onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'increment') select((selected ?? prices.length - 1) + 1); else if (event.nativeEvent.actionName === 'decrement') select((selected ?? prices.length - 1) - 1); }}
         onLayout={event => { const width = event.nativeEvent.layout.width; if (Number.isFinite(width) && width > 0) chartWidth.current = width; }}

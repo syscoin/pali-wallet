@@ -303,19 +303,33 @@ export type EvmHistoryDirection = 'sent' | 'received' | 'self' | 'unknown';
 export function getEvmHistoryDirection(
   tx: {
     from?: string | null;
+    historySource?: unknown;
     to?: string | null;
     tokenRecipient?: string | null;
+    tokenTransfer?: unknown;
+    value?: unknown;
   },
   owner: string,
   transfers: readonly { from: string; to: string }[] = []
 ): EvmHistoryDirection {
   const address = owner.toLowerCase();
+  // A return in another asset cannot turn the rendered native debit into self.
+  // Token-event placeholders carry token units in value, not a native payment.
+  const value = String(tx.value ?? '0');
+  const nativePayment =
+    tx.historySource !== EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer &&
+    !tx.tokenTransfer &&
+    /^(?:0x[0-9a-f]+|\d+)$/i.test(value) &&
+    !/^(?:0x)?0+$/i.test(value);
   const outgoing =
     tx.from?.toLowerCase() === address ||
-    transfers.some((event) => event.from.toLowerCase() === address);
+    (!nativePayment &&
+      transfers.some((event) => event.from.toLowerCase() === address));
   const incoming =
-    (tx.tokenRecipient || tx.to)?.toLowerCase() === address ||
-    transfers.some((event) => event.to.toLowerCase() === address);
+    (nativePayment ? tx.to : tx.tokenRecipient || tx.to)?.toLowerCase() ===
+      address ||
+    (!nativePayment &&
+      transfers.some((event) => event.to.toLowerCase() === address));
   return outgoing && incoming
     ? 'self'
     : outgoing
@@ -335,6 +349,7 @@ export function belongsToEvmHistoryAccount(
 ): boolean {
   return (
     getEvmHistoryDirection(tx, owner) !== 'unknown' ||
+    tx.tokenRecipient?.toLowerCase() === owner.toLowerCase() ||
     tx.smartAccountExecutionFrom?.toLowerCase?.() === owner.toLowerCase()
   );
 }

@@ -56,6 +56,14 @@ const discoveryCooldowns = new Map<string, number>();
 const DISCOVERY_COOLDOWN_MS = 60_000;
 const MAX_DISCOVERY_ENDPOINTS = 64;
 
+const metadataRunner = (provider: CustomJsonRpcProvider) => ({
+  provider: null,
+  call: provider.call.bind(provider),
+  ...(typeof provider.readMany === 'function'
+    ? { readMany: provider.readMany.bind(provider) }
+    : {}),
+});
+
 const coolDownDiscovery = (key: string, retryAfterMs = 0) => {
   discoveryCooldowns.delete(key);
   discoveryCooldowns.set(
@@ -779,7 +787,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
           // For NFTs, use NFT-specific metadata function
           const nftMetadata = await getNftStandardMetadata(
             contractAddress,
-            w3Provider
+            metadataRunner(w3Provider),
+            contractType === 'ERC-721' ? 'ERC-721' : 'ERC-1155'
           );
 
           basicTokenDetails = {
@@ -1236,7 +1245,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
         // First get NFT metadata (name/symbol) using proper NFT ABI
         const nftMetadata = await getNftStandardMetadata(
           contractAddress,
-          w3Provider
+          metadataRunner(w3Provider),
+          'ERC-721'
         );
 
         // Then get balance using ERC-721 specific balance function

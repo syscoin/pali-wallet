@@ -101,6 +101,52 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+it.each([
+  undefined,
+  null,
+  {},
+  { ...metadata, symbol: '' },
+  { ...metadata, decimals: 9 },
+  { ...metadata, decimals: undefined },
+])(
+  'does not cache failed or invalid metadata %j across a fresh validation retry',
+  async (failed) => {
+    mockMetadata.mockResolvedValueOnce(failed);
+    await expect(validate()).resolves.toBeNull();
+    await expect(validate()).resolves.toMatchObject({
+      assetGuid: GUID,
+      symbol: metadata.symbol,
+      decimals: 2,
+    });
+    expect(mockMetadata).toHaveBeenCalledTimes(2);
+    await expect(validate()).resolves.toMatchObject({ assetGuid: GUID });
+    expect(mockMetadata).toHaveBeenCalledTimes(2);
+  }
+);
+
+it('retains successful metadata for its normal TTL and isolates endpoint cache entries', async () => {
+  const now = Date.now();
+  const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+  await expect(controller.getAssetCached(NETWORK.url, GUID)).resolves.toEqual(
+    metadata
+  );
+  await expect(controller.getAssetCached(NETWORK.url, GUID)).resolves.toEqual(
+    metadata
+  );
+  expect(mockMetadata).toHaveBeenCalledTimes(1);
+  await controller.getAssetCached(
+    'https://second-blockbook.synthetic.invalid/',
+    GUID
+  );
+  expect(mockMetadata).toHaveBeenCalledTimes(2);
+  clock.mockReturnValue(now + 24 * 60 * 60_000 - 1);
+  await controller.getAssetCached(NETWORK.url, GUID);
+  expect(mockMetadata).toHaveBeenCalledTimes(2);
+  clock.mockReturnValue(now + 24 * 60 * 60_000 + 1);
+  await controller.getAssetCached(NETWORK.url, GUID);
+  expect(mockMetadata).toHaveBeenCalledTimes(3);
+});
+
 it('discovery rejects a partial inventory and preserves an exact retried balance', async () => {
   mockInventory.mockResolvedValueOnce({
     address: ACCOUNT.xpub,

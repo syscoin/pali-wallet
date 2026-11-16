@@ -66,7 +66,7 @@ const loadLanguage = async (lng: string): Promise<any> => {
     return loadedLanguages[lng];
   } catch (error) {
     console.error(`[i18n] Failed to load language ${lng}:`, error);
-    return enTranslations;
+    throw error;
   }
 };
 

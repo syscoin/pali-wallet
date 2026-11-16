@@ -92,8 +92,11 @@ export function createNativeAssetMarketReader(
         : null;
       const observed = await quote;
       if (request.signal.aborted || !observed) return null;
-      const result = history
-        ? Object.freeze({ ...observed, data: Object.freeze({ ...observed.data, prices: Object.freeze(await history) }) })
+      const samples = history ? await history : null;
+      const result = samples
+        ? Object.freeze({ ...observed, data: Object.freeze({ ...observed.data,
+          prices: Object.freeze(samples.map(point => point.price)),
+          priceTimestamps: Object.freeze(samples.map(point => point.timestamp)) }) })
         : observed;
       if (pending.get(key)?.controller === request && pending.get(key)?.subscribers) {
         if (observed !== cachedQuote) {

@@ -84,7 +84,7 @@ type Receipt = Readonly<{
   from: string;
   to: string | null;
   block: Readonly<{ hash: string; number: string; transactionIndex: string }>;
-  succeeded: boolean;
+  succeeded: boolean | null;
   events: readonly ActivityTransferEvent[];
   feeUnits: string | null;
   identity: string;
@@ -206,8 +206,12 @@ function readReceipt(
     number: quantity(raw.blockNumber).toString(),
     transactionIndex: quantity(raw.transactionIndex).toString(),
   });
-  const status = quantity(raw.status);
-  if (status !== 0n && status !== 1n) return fail('INVALID_RESPONSE');
+  const status = raw.status === undefined || raw.status === null ? null : quantity(raw.status);
+  // Pre-EIP-658 receipts expose a post-state root, not an execution outcome.
+  const stateRoot = status === null ? hash(raw.root) : undefined;
+  if (status === null && raw.type !== undefined && quantity(raw.type) !== 0n)
+    return fail('INVALID_RESPONSE');
+  if (status !== null && status !== 0n && status !== 1n) return fail('INVALID_RESPONSE');
   if (!Array.isArray(raw.logs) || raw.logs.length > MAX_LOGS)
     return fail('INVALID_RESPONSE');
   const events: ActivityTransferEvent[] = [];
@@ -271,14 +275,14 @@ function readReceipt(
     from,
     to,
     block,
-    succeeded: status === 1n,
+    succeeded: status === null ? null : status === 1n,
     events: Object.freeze(events),
     feeUnits,
     identity: JSON.stringify([
       from,
       to,
       block,
-      status.toString(),
+      status === null ? stateRoot : status.toString(),
       feeUnits,
       [...indices].sort((a, b) => (BigInt(a[0]) < BigInt(b[0]) ? -1 : 1)),
     ]),
@@ -851,7 +855,7 @@ export class ActivityReceiptReader {
               hash: included.hash,
               number: included.number,
             }),
-            status: receipt.succeeded ? 'confirmed' : 'reverted',
+            status: receipt.succeeded === null ? 'unknown' : receipt.succeeded ? 'confirmed' : 'reverted',
             events: receipt.events,
             feeUnits: receipt.feeUnits,
             ...(included.transactionIndex === undefined

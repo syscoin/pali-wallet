@@ -8,6 +8,7 @@ export type AssetMarket = Readonly<{
   low24h: number | null;
   marketCap: number | null;
   price: number;
+  priceTimestamps?: readonly number[];
   prices: readonly number[];
   updatedAt: number;
 }>;
@@ -110,7 +111,10 @@ export function assetMarketHistoryUrl(id: string, currency: string): string {
   return `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=${currency}&days=7`;
 }
 
-const samplePrices = (prices: readonly number[]): readonly number[] =>
+type MarketHistoryPoint = Readonly<{ price: number; timestamp: number }>;
+const samplePrices = (
+  prices: readonly MarketHistoryPoint[]
+): readonly MarketHistoryPoint[] =>
   Object.freeze(
     prices.filter(
       (_, index) =>
@@ -123,7 +127,7 @@ const samplePrices = (prices: readonly number[]): readonly number[] =>
 export function readAssetMarketHistory(
   body: unknown,
   now: number
-): readonly number[] {
+): readonly MarketHistoryPoint[] {
   const raw = record(body)?.prices;
   if (
     !Number.isFinite(now) ||
@@ -133,7 +137,7 @@ export function readAssetMarketHistory(
   )
     return [];
   let previous = -1;
-  const prices: number[] = [];
+  const prices: MarketHistoryPoint[] = [];
   for (const point of raw) {
     if (
       !Array.isArray(point) ||
@@ -146,7 +150,7 @@ export function readAssetMarketHistory(
     )
       return [];
     previous = point[0];
-    prices.push(point[1]);
+    prices.push(Object.freeze({ timestamp: point[0], price: point[1] }));
   }
   return previous < now - 86_400_000 ? [] : samplePrices(prices);
 }

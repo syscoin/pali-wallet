@@ -19,6 +19,11 @@ test('qualification identity binds the exact official package and any native can
     assert.throws(() => assertQualificationSdkIdentity(actual, version, quick));
   assert.throws(() => assertQualificationSdkIdentity(identity, version));
   assert.throws(() => assertQualificationSdkIdentity(identity, version, `${quick}0`));
+  const sdk = `sysweb3.${'c'.repeat(40)}.sha256.${'d'.repeat(64)}`;
+  const overlaid = composeQualificationSdkIdentity(version, quick, sdk);
+  assert.doesNotThrow(() => assertQualificationSdkIdentity(overlaid, version, quick, sdk));
+  assert.throws(() => assertQualificationSdkIdentity(overlaid, version, quick));
+  assert.throws(() => assertQualificationSdkIdentity(overlaid, version, quick, `${sdk}0`));
 });
 
 test('qualification identities reject coercion, empty values and malformed components', () => {

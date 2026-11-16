@@ -174,32 +174,41 @@ function blockIdentity(
     return fail('INVALID_RESPONSE');
   }
 }
-/** Admit the ABI offset and length before allocating or decoding string bytes. */
+/** Admit bounded dynamic strings or exact legacy bytes32 before decoding text. */
 function textResult(value: unknown, field: 'name' | 'symbol'): string {
   const maximum = ERC20_TEXT_LIMITS[field].bytes;
   if (
     typeof value !== 'string' ||
     value.length > 2 + (64 + Math.ceil(maximum / 32) * 32) * 2 ||
     !/^0x[0-9a-fA-F]+$/.test(value) ||
-    value.length < 130 ||
     (value.length - 2) % 64 !== 0
   )
     return fail('INVALID_RESPONSE');
-  if (BigInt(`0x${value.slice(2, 66)}`) !== 32n)
-    return fail('INVALID_RESPONSE');
-  const length = BigInt(`0x${value.slice(66, 130)}`);
-  if (length < 1n || length > BigInt(maximum)) return fail('INVALID_RESPONSE');
-  const bytesLength = Number(length);
-  const padded = Math.ceil(bytesLength / 32) * 32;
-  if (
-    value.length !== 2 + (64 + padded) * 2 ||
-    !/^0*$/.test(value.slice(130 + bytesLength * 2))
-  )
-    return fail('INVALID_RESPONSE');
+  let offset: number;
+  let bytesLength: number;
+  if (value.length === 66) {
+    // bytes32 metadata is right-padded with NUL bytes. Embedded NULs and other
+    // invalid text still fail the same UTF-8 and import text checks below.
+    offset = 2;
+    bytesLength = value.slice(2).replace(/(?:00)+$/, '').length / 2;
+  } else {
+    if (value.length < 130 || BigInt(`0x${value.slice(2, 66)}`) !== 32n)
+      return fail('INVALID_RESPONSE');
+    const length = BigInt(`0x${value.slice(66, 130)}`);
+    if (length < 1n || length > BigInt(maximum)) return fail('INVALID_RESPONSE');
+    bytesLength = Number(length);
+    offset = 130;
+    const padded = Math.ceil(bytesLength / 32) * 32;
+    if (
+      value.length !== 2 + (64 + padded) * 2 ||
+      !/^0*$/.test(value.slice(offset + bytesLength * 2))
+    )
+      return fail('INVALID_RESPONSE');
+  }
   const bytes = new Uint8Array(bytesLength);
   for (let index = 0; index < bytes.length; index++)
     bytes[index] = Number.parseInt(
-      value.slice(130 + index * 2, 132 + index * 2),
+      value.slice(offset + index * 2, offset + 2 + index * 2),
       16
     );
   try {

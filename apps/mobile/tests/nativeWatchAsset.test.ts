@@ -103,6 +103,7 @@ async function fixture(type: DappWatchAssetRequest['type'] = 'ERC721') {
     symbol = 'OBSERVED',
     active = true;
   const calls: string[] = [];
+  let rejectHolder = false;
   const observe = createNativeWatchAssetObserver({
     registrations: () => catalogue.networks,
     async fetch(url, init) {
@@ -136,8 +137,10 @@ async function fixture(type: DappWatchAssetRequest['type'] = 'ERC721') {
           result = abi.encodeFunctionResult(parsed.name, [symbol]);
         else if (parsed.name === 'decimals')
           result = abi.encodeFunctionResult(parsed.name, [18]);
-        else if (parsed.name === 'balanceOf')
+        else if (parsed.name === 'balanceOf') {
+          if (rejectHolder && String(parsed.args[0]).toLowerCase() === address.toLowerCase()) throw new Error('Holder balance unavailable');
           result = abi.encodeFunctionResult(parsed.name, [0]);
+        }
         else assert.fail('Unexpected contract read');
       } else assert.fail('Unexpected RPC');
       return { jsonrpc: '2.0', id: wire.id, result };
@@ -174,6 +177,7 @@ async function fixture(type: DappWatchAssetRequest['type'] = 'ERC721') {
     registry,
     scope,
     calls,
+    rejectHolder: () => { rejectHolder = true; },
     storage,
     signal,
     check,
@@ -219,6 +223,9 @@ for (const type of ['ERC721', 'ERC1155', 'ERC20'] as const) {
     const f = await fixture(type);
     t.after(() => f.close());
     const prepared = await f.prepare();
+    const prepareCalls = [...f.calls];
+    assert.equal(prepareCalls.filter(name => name === 'supportsInterface').length, type === 'ERC721' ? 1 : 2);
+    assert.equal(prepareCalls.filter(name => name === 'balanceOf').length, type === 'ERC20' ? 1 : 0);
     assert.equal(
       await f.storage.keyringStorage.get(NATIVE_TOKEN_REGISTRY_KEY),
       undefined
@@ -319,5 +326,20 @@ test('a competing registry revision is preserved rather than overwritten', async
   assert.deepEqual((await f.registry.load(f.scope, () => undefined)).items, [
     other,
   ]);
+  prepared.dispose();
+});
+
+
+test('ERC20 watch metadata remains available when the unused holder balance fails', async (t) => {
+  const f = await fixture('ERC20');
+  t.after(() => f.close());
+  f.rejectHolder();
+  const prepared = await f.prepare();
+  const count = f.calls.length;
+  assert.equal(f.calls.filter(name => name === 'balanceOf').length, 1);
+  const result = await prepared.commit(f.check, () => assert.fail('Unexpected network switch'));
+  result.assertCurrent();
+  assert(f.calls.length > count, 'commit must perform a fresh observation');
+  assert.equal(f.calls.filter(name => name === 'balanceOf').length, 2);
   prepared.dispose();
 });

@@ -96,6 +96,17 @@ const SysAssetsControler = (): ISysAssetsController => {
       `[SysAssetsController] Fetching fresh asset data for ${assetGuid}`
     );
     const assetData = await getAsset(networkUrl, assetGuid);
+    // The SDK resolves undefined on transport failure. Only successful metadata
+    // may consume the long cache TTL; a user retry must reach a recovered node.
+    if (
+      !assetData ||
+      typeof assetData.symbol !== 'string' ||
+      !assetData.symbol ||
+      !Number.isInteger(assetData.decimals) ||
+      assetData.decimals < 0 ||
+      assetData.decimals > 8
+    )
+      return null;
 
     // Cache the result
     assetCache.set(cacheKey, {

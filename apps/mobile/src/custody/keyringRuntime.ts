@@ -3582,7 +3582,7 @@ export function createKeyringRuntimeFactory(
           if (target) locals = locals.map(local => inspectionOnly(local, true));
           const inventory = await tokens.load({ walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
             address: scope.address, network: scope.network.id, chainId: scope.network.chainId, registrationHash: scope.network.registrationHash }, guard); guard();
-          return { scope, locals, assets: inventory.items, saved: { ...saved,
+          return { scope, locals, assets: inventory.items.map(item => ({ chainId: Number(scope.network.chainId), ...item })), saved: { ...saved,
             archived: type === 'SmartAccount' || target ? saved.archived.map(local => inspectionOnly(local, !!target)) : saved.archived,
             truncated: saved.truncated || recent.truncated } };
         };

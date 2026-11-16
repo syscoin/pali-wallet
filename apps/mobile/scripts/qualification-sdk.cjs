@@ -12,11 +12,26 @@ function readQualificationSdkPin(root) {
   const pkg = readJson(path.join(root, 'package.json'));
   const version = pkg.dependencies[name];
   const quickCryptoIdentity = readQuickCryptoSentryIdentity(root);
+  const sysweb3Identity = readSysweb3OverlayIdentity(root);
   return {
     version,
-    identity: composeQualificationSdkIdentity(version, quickCryptoIdentity),
+    identity: composeQualificationSdkIdentity(version, quickCryptoIdentity, sysweb3Identity),
     ...(quickCryptoIdentity ? { quickCryptoIdentity } : {}),
+    ...(sysweb3Identity ? { sysweb3Identity } : {}),
   };
+}
+
+function readSysweb3OverlayIdentity(root) {
+  const pkg = readJson(path.join(root, 'package.json'));
+  if (pkg.paliSysweb3Overlay === undefined) {
+    if (pkg.scripts?.postinstall?.includes('apply-sysweb3-overlay'))
+      throw Error('SDK overlay requires qualification provenance');
+    return undefined;
+  }
+  const { identity, verifySysweb3Overlay } = require(path.resolve(root, '../../scripts/apply-sysweb3-overlay.cjs'));
+  if (pkg.paliSysweb3Overlay !== identity) throw Error('SDK overlay provenance mismatch');
+  verifySysweb3Overlay(root);
+  return identity;
 }
 
 function verifyInstalledQualificationSdk(root, pin) {

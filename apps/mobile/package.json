@@ -2,6 +2,7 @@
   "name": "@pali/mobile",
   "version": "5.0.0",
   "private": true,
+  "paliSysweb3Overlay": "sysweb3.7659c4a33041b30494eaaf11c35b29910d7e2901.sha256.b29362865186c9777505786d9e14b6a606ad0c09334ca7a810c94c5b0ff60b51",
   "main": "index.ts",
   "scripts": {
     "start": "EXPO_NO_TELEMETRY=1 expo start",
@@ -18,7 +19,7 @@
     "test:faucet-ui": "playwright test --config playwright.faucet.config.ts",
     "test:recovery-ui": "node scripts/build-native-recovery-ui.cjs && playwright test --config playwright.recovery.config.ts",
     "lint": "eslint . --max-warnings 0",
-    "postinstall": "node ../../scripts/apply-walletconnect-terminal.cjs && node ../../scripts/apply-quickcrypto-sentry.cjs"
+    "postinstall": "node ../../scripts/apply-walletconnect-terminal.cjs && node ../../scripts/apply-quickcrypto-sentry.cjs && node ../../scripts/apply-sysweb3-overlay.cjs"
   },
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",

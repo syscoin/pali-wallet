@@ -25,6 +25,8 @@ const abiText = (value: string) => {
       .padEnd(Math.ceil(bytes.length / 32) * 64, '0')
   );
 };
+const abiBytes32 = (value: string) =>
+  `0x${Buffer.from(value, 'utf8').toString('hex').padEnd(64, '0')}`;
 const json = (id: number, result: unknown) =>
   new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), {
     headers: { 'Content-Type': 'application/json' },
@@ -60,6 +62,59 @@ function readerWith(rewrite?: (request: Request) => unknown) {
   });
   return { reader, requests, posts: () => posts };
 }
+
+for (const legacy of ['name', 'symbol', 'both'] as const) {
+  test(`import accepts bounded legacy bytes32 ${legacy} metadata at the existing read boundary`, async () => {
+    const expected = { ...metadata, name: 'Maker', symbol: 'MKR' };
+    const { reader, requests } = readerWith(request => {
+      if (request.method !== 'eth_call') return result(request);
+      const selector = request.params[0].data.slice(0, 10);
+      if (selector === '0x06fdde03')
+        return legacy === 'symbol' ? abiText(expected.name) : abiBytes32(expected.name);
+      if (selector === '0x95d89b41')
+        return legacy === 'name' ? abiText(expected.symbol) : abiBytes32(expected.symbol);
+      return result(request);
+    });
+    assert.deepEqual(await reader.readToken('ethereum', holder, contractAddress, new AbortController().signal), {
+      metadata: expected, units: ((1n << 256n) - 1n).toString(),
+    });
+    assert.equal(requests.filter(({ request }) => request.method === 'eth_call').length, 4);
+  });
+}
+
+test('legacy bytes32 permits bounded full-width and UTF-8 metadata with no alternate RPCs', async () => {
+  for (const text of ['N'.repeat(32), '雪MKR']) {
+    const { reader, requests } = readerWith(request =>
+      request.method === 'eth_call' && ['0x06fdde03', '0x95d89b41'].includes(request.params[0].data.slice(0, 10))
+        ? abiBytes32(text) : result(request)
+    );
+    const actual = await reader.readToken('ethereum', holder, contractAddress, new AbortController().signal);
+    assert.equal(actual.metadata.name, text);
+    assert.equal(actual.metadata.symbol, text);
+    assert.equal(requests.length, 9);
+  }
+});
+
+test('legacy metadata rejects malformed size, padding, UTF-8 and invalid text for either field', async () => {
+  const invalid = [
+    '0x' + '00'.repeat(32),
+    '0x' + 'ff'.repeat(32),
+    '0x' + '610062'.padEnd(64, '0'),
+    abiBytes32(' '),
+    abiBytes32('MKR\u202e'),
+    abiBytes32('MKR\u0001'),
+    '0x' + '61'.repeat(31),
+    '0x' + '61'.repeat(33),
+  ];
+  for (const selector of ['0x06fdde03', '0x95d89b41']) {
+    for (const data of invalid) {
+      const { reader } = readerWith(request =>
+        request.method === 'eth_call' && request.params[0].data.slice(0, 10) === selector ? data : result(request)
+      );
+      await assert.rejects(reader.readToken('ethereum', holder, contractAddress, new AbortController().signal), { code: 'INVALID_RESPONSE' });
+    }
+  }
+});
 test('import verifies chain first and batches nine bounded reads into four envelopes at one block', async () => {
   const { reader, requests, posts } = readerWith();
   const actual = await reader.readToken(

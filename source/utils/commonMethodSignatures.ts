@@ -226,7 +226,7 @@ export const getTransactionTypeLabel = (
   tx: { dataBytes?: number; input?: string; to?: string; value?: string | any },
   isSent: boolean
 ): string => {
-  if (!tx.to || tx.to === '0x0000000000000000000000000000000000000000') {
+  if (!tx.to) {
     return 'Contract Deploy';
   }
 

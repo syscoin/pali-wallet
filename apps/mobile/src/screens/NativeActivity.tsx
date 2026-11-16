@@ -175,7 +175,7 @@ export function nativeActivityRowPresentation(row: ActivityRow, context: {
 function fee(row: ActivityRow, symbol: string): string {
   try {
     const units = row.unavailable ? undefined : row.observation
-      ? row.observation.block && (row.observation.status === 'confirmed' || row.observation.status === 'reverted')
+      ? row.observation.block
         ? row.observation.feeUnits : undefined
       : row.retainedObservation?.status === 'mined'
         ? row.retainedObservation.feeUnits : undefined;

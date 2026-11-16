@@ -26,9 +26,10 @@ const history = (prices: number[] = [7700, 8080]) => ({
 });
 
 test('requested-currency history accepts ordered finite samples and rejects malformed or stale history', () => {
-  assert.deepEqual(readAssetMarketHistory(history(), now), [7700, 8080]);
+  assert.deepEqual(readAssetMarketHistory(history(), now), [{ timestamp: now - 60000, price: 7700 }, { timestamp: now, price: 8080 }]);
   const sampled = readAssetMarketHistory(history(Array.from({ length: 1024 }, (_, index) => index)), now);
-  assert(sampled.length <= 241); assert.equal(sampled[0], 0); assert.equal(sampled.at(-1), 1023);
+  assert(sampled.length <= 241); assert.equal(sampled[0]?.price, 0); assert.equal(sampled.at(-1)?.price, 1023);
+  for (const point of sampled) assert.equal(point.timestamp, now - (1023 - point.price) * 60000);
   for (const value of [null, {}, { prices: [] }, history([1]), history(Array(1025).fill(1)),
     { prices: [[now, 1], [now, 2]] }, { prices: [[now, 1], [now - 1, 2]] },
     { prices: [[now - 1, 1], [now, NaN]] }, { prices: [[now - 1, 1], [now, -1]] },

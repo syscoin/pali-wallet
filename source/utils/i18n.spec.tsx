@@ -86,6 +86,8 @@ describe('synchronous translation registration before wallet rendering', () => {
     jest.dontMock('i18next');
     jest.dontMock('react-i18next');
     jest.dontMock('assets/locales/de.json');
+    jest.dontMock('assets/locales/fr.json');
+    jest.dontMock('assets/locales/ru.json');
   });
 
   it('keeps real hooks stable across delayed storage, early rerenders and lazy locale restoration', async () => {
@@ -126,6 +128,57 @@ describe('synchronous translation registration before wallet rendering', () => {
     );
     expect(chromeStorage.setItem).not.toHaveBeenCalled();
     expect(errorLog).not.toHaveBeenCalled();
+  });
+
+  it('rejects a failed locale chunk without registering fallback English and retries the recovered chunk', async () => {
+    let unavailable = true;
+    const loads = jest.fn();
+    jest.doMock('assets/locales/fr.json', () => {
+      loads();
+      if (unavailable)
+        throw new Error('Packaged French dictionary unavailable');
+      return jest.requireActual('assets/locales/fr.json');
+    });
+    const { instance, changeLanguage } = loadTranslations();
+    await act(async () => resolveLanguage('en'));
+    await expect(changeLanguage('fr')).rejects.toThrow(
+      'Packaged French dictionary unavailable'
+    );
+    expect(instance.language).toBe('en');
+    expect(instance.t('buttons.next')).toBe(enTranslations.buttons.next);
+    expect(instance.hasResourceBundle('fr', 'translation')).toBe(false);
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    unavailable = false;
+    await changeLanguage('fr');
+    expect(loads).toHaveBeenCalledTimes(2);
+    expect(instance.language).toBe('fr');
+    expect(instance.t('buttons.next')).toBe(
+      jest.requireActual('assets/locales/fr.json').buttons.next
+    );
+    expect(chromeStorage.setItem).toHaveBeenCalledWith('language', 'fr');
+  });
+
+  it('retains usable English after a failed startup chunk and permits an explicit retry', async () => {
+    let unavailable = true;
+    const loads = jest.fn();
+    jest.doMock('assets/locales/ru.json', () => {
+      loads();
+      if (unavailable)
+        throw new Error('Packaged Russian dictionary unavailable');
+      return jest.requireActual('assets/locales/ru.json');
+    });
+    const { instance, changeLanguage } = loadTranslations();
+    await act(async () => resolveLanguage('ru'));
+    await waitFor(() => expect(errorLog).toHaveBeenCalled());
+    expect(instance.language).toBe('en');
+    expect(instance.hasResourceBundle('ru', 'translation')).toBe(false);
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    unavailable = false;
+    await changeLanguage('ru');
+    expect(loads).toHaveBeenCalledTimes(2);
+    expect(instance.t('buttons.next')).toBe(
+      jest.requireActual('assets/locales/ru.json').buttons.next
+    );
   });
 
   it('retains English without rewriting an unsupported stored locale', async () => {
