@@ -230,6 +230,124 @@ describe('coherent Smart history materialization', () => {
     ).toEqual([]);
     expect(dispatchMock).not.toHaveBeenCalled();
   });
+  it.each([true, false])(
+    'keeps coverage unresolved only for malformed relevant logs (relevant=%s)',
+    async (relevant) => {
+      const log = buildUserOpEventLog(true);
+      const provider = buildProvider({
+        getLogs: jest.fn(async () => [
+          { ...log, data: '0x00', ...(relevant ? {} : { address: GAS_PAYER }) },
+        ]),
+      });
+      expect(
+        await fetchSmartAccountUserOpTransactions(
+          provider as any,
+          vaultState.accounts.SmartAccount[0],
+          ACCOUNT_TYPE,
+          CHAIN_ID
+        )
+      ).toEqual([]);
+      if (relevant) expect(dispatchMock).not.toHaveBeenCalled();
+      else expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(100));
+    }
+  );
+  it('retries a corrected relevant log on the next poll after malformed data', async () => {
+    const provider = buildProvider({
+      getLogs: jest
+        .fn()
+        .mockResolvedValueOnce([{ ...buildUserOpEventLog(true), data: '0x' }])
+        .mockResolvedValue([buildUserOpEventLog(true)]),
+    });
+    const account = vaultState.accounts.SmartAccount[0];
+    expect(
+      await fetchSmartAccountUserOpTransactions(
+        provider as any,
+        account,
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      )
+    ).toEqual([]);
+    expect(dispatchMock).not.toHaveBeenCalled();
+    provider.getBlockNumber.mockResolvedValue(101);
+    expect(
+      (
+        await fetchSmartAccountUserOpTransactions(
+          provider as any,
+          account,
+          ACCOUNT_TYPE,
+          CHAIN_ID
+        )
+      ).map((tx) => tx.hash)
+    ).toEqual([TX_HASH]);
+    expect(provider.getLogs.mock.calls[1][0].fromBlock).toBe(0);
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(101));
+  });
+  it('ignores unrelated malformed evidence alongside a healthy relevant event', async () => {
+    const provider = buildProvider({
+      getLogs: jest.fn(async () => [
+        { ...buildUserOpEventLog(true), data: '0x', address: GAS_PAYER },
+        buildUserOpEventLog(true),
+      ]),
+    });
+    const rows = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    expect(rows.map((tx) => tx.hash)).toEqual([TX_HASH]);
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(100));
+  });
+  it('preserves healthy members while malformed relevant evidence holds coverage', async () => {
+    const provider = buildProvider({
+      getLogs: jest.fn(async () => [
+        {
+          ...buildUserOpEventLog(true),
+          transactionHash: USER_OP_HASH,
+          data: '0x',
+        },
+        buildUserOpEventLog(true),
+      ]),
+    });
+    const rows = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    expect(rows.map((tx) => tx.hash)).toEqual([TX_HASH]);
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+  it.each([true, false])(
+    'retains the canonical sibling regardless of stale same-height order (staleFirst=%s)',
+    async (staleFirst) => {
+      const other = `0x${'ef'.repeat(32)}`;
+      const logs = [
+        { ...buildUserOpEventLog(true), blockHash: USER_OP_HASH },
+        { ...buildUserOpEventLog(true), transactionHash: other },
+      ];
+      const provider = buildProvider({
+        getLogs: jest.fn(async () => (staleFirst ? logs : [...logs].reverse())),
+        send: jest.fn(async (method, params) =>
+          method === 'eth_getTransactionByHash'
+            ? {
+                ...rawOuterTransaction,
+                hash: params[0],
+                blockHash: params[0] === TX_HASH ? USER_OP_HASH : BLOCK_HASH,
+              }
+            : { number: '0x5', hash: BLOCK_HASH, timestamp: '0x60' }
+        ),
+      });
+      const rows = await fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      );
+      expect(rows.map((row) => row.hash)).toEqual([other]);
+      expect(dispatchMock).not.toHaveBeenCalled();
+    }
+  );
   it('advances covered backfill when an optional tip detail remains unavailable', async () => {
     const provider = buildProvider({
       getBlockNumber: jest.fn(async () => 200000),

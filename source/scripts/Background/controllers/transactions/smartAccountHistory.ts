@@ -392,7 +392,20 @@ export const fetchSmartAccountUserOpTransactions = async (
   const logBlockHashByTxHash = new Map<string, string>();
   const logBlockNumberByTxHash = new Map<string, number>();
   const conflictingHashes = new Set<string>();
+  let coveredLogsComplete = true;
   for (const log of logs) {
+    if (
+      String(log?.address).toLowerCase() !== filter.address.toLowerCase() ||
+      String(log?.topics?.[0]).toLowerCase() !==
+        USER_OP_EVENT_TOPIC.toLowerCase() ||
+      String(log?.topics?.[2]).toLowerCase() !==
+        String(filter.topics[2]).toLowerCase() ||
+      log?.removed
+    )
+      continue;
+    const height = Number(log.blockNumber);
+    const requiresCoverage =
+      !Number.isSafeInteger(height) || height <= coveredToBlock;
     try {
       const parsed = decodeSmartAccountUserOperationEvent(log);
       if (
@@ -400,7 +413,7 @@ export const fetchSmartAccountUserOpTransactions = async (
         String(log.address).toLowerCase() !== filter.address.toLowerCase() ||
         log.removed
       )
-        continue;
+        throw new Error('Invalid scoped UserOperation event');
       const key = log.transactionHash.toLowerCase();
       if (
         !/^0x[0-9a-f]{64}$/.test(key) ||
@@ -410,7 +423,7 @@ export const fetchSmartAccountUserOpTransactions = async (
         typeof log.blockHash !== 'string' ||
         !/^0x[0-9a-f]{64}$/i.test(log.blockHash)
       )
-        continue;
+        throw new Error('Invalid scoped UserOperation placement');
       const success = parsed.success;
       if (
         logBlockHashByTxHash.has(key) &&
@@ -427,7 +440,7 @@ export const fetchSmartAccountUserOpTransactions = async (
         logBlockNumberByTxHash.set(key, Number(log.blockNumber));
       }
     } catch {
-      // Topic filter guarantees the event type; decode failures are skipped.
+      if (requiresCoverage) coveredLogsComplete = false;
     }
   }
 
@@ -456,7 +469,7 @@ export const fetchSmartAccountUserOpTransactions = async (
   );
 
   let fetchedTransactions: IEvmTransactionResponse[] = [];
-  let allDetailsFetched = true;
+  let allDetailsFetched = coveredLogsComplete;
   const overlapStart = hasCursor
     ? fromBlock
     : Math.max(0, latestBlock - REORG_SAFETY_BLOCKS);
@@ -539,13 +552,8 @@ export const fetchSmartAccountUserOpTransactions = async (
     const timestampByBlock = new Map<string, number>();
     const canonicalHashByBlock = new Map<string, string>();
     blocks.forEach((block: any, index: number) => {
-      const tx = minedTransactions.find(
-        (candidate) => candidate.blockNumber === uniqueBlockNumbers[index]
-      );
       if (
-        tx &&
-        Number(block?.number) === Number(tx.blockNumber) &&
-        String(block?.hash).toLowerCase() === tx.blockHash?.toLowerCase() &&
+        Number(block?.number) === Number(uniqueBlockNumbers[index]) &&
         /^0x[0-9a-f]{64}$/i.test(String(block?.hash)) &&
         typeof block.timestamp === 'string' &&
         /^0x[0-9a-f]+$/i.test(block.timestamp) &&

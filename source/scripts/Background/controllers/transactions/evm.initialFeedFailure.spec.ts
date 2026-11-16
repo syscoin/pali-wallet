@@ -256,6 +256,50 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+it('retires a held pagination hint before starting explorer requests through MainController', async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  provider.readMany.mockImplementationOnce(
+    async (requests: any[], options: any) => {
+      expect(requests).toEqual([
+        { method: 'eth_getTransactionCount', params: [OWNER, 'latest'] },
+      ]);
+      expect(options.signal.aborted).toBe(false);
+      entered();
+      await held;
+      expect(options.signal.aborted).toBe(true);
+      return [{ status: 'fulfilled', value: '0x1' }];
+    }
+  );
+  mockStore.dispatch({
+    type: 'vault/setActiveAccountProperty',
+    payload: {
+      property: 'evmTxCountByChainId',
+      value: { [network.chainId]: 0 },
+    },
+  });
+  const result = settle(
+    mockWallet.updateUserTransactionsState({
+      isBitcoinBased: false,
+      activeNetwork: network,
+      isPolling: true,
+    })
+  );
+  await started;
+  mockWallet.cancellablePromises.transactionPromise.cancel();
+  expect((await result).status).toBe('rejected');
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(reads).toEqual([]);
+  expect(provider.signal.aborted).toBe(false);
+});
+
 it('accepts validated empty base and token feeds', async () => {
   const result = await EvmTransactionsController().fetchTransactionsFromAPI(
     OWNER,
@@ -274,7 +318,11 @@ it('preserves a healthy empty token fallback after the base feed fails', async (
       network.chainId,
       network.apiUrl
     )
-  ).resolves.toEqual({ transactions: [], error: undefined, hasMore: false });
+  ).resolves.toEqual({
+    transactions: [],
+    error: 'Explorer transaction history unavailable',
+    hasMore: false,
+  });
 });
 
 it('preserves received token rows and provenance after the base feed fails', async () => {
@@ -284,7 +332,7 @@ it('preserves received token rows and provenance after the base feed fails', asy
     network.chainId,
     network.apiUrl
   );
-  expect(result.error).toBeUndefined();
+  expect(result.error).toBe('Explorer transaction history unavailable');
   expect(result.transactions).toEqual([
     expect.objectContaining({
       hash: TOKEN_HASH,

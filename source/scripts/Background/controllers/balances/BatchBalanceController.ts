@@ -6,6 +6,8 @@ import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { resolveMulticall3Address } from 'utils/smartAccount';
 
+import type { AssetReadOwner } from '../assets/types';
+
 // Minimal ERC20 ABI for balance queries
 const ERC20_BALANCE_ABI = [
   {
@@ -53,7 +55,10 @@ type TokenBalances = Map<string, ReturnType<typeof formatErc20Balance>>;
 export class BatchBalanceController {
   private provider: CustomJsonRpcProvider;
 
-  constructor(provider: CustomJsonRpcProvider) {
+  constructor(
+    provider: CustomJsonRpcProvider,
+    private readonly owner?: AssetReadOwner
+  ) {
     this.provider = provider;
   }
 
@@ -65,6 +70,7 @@ export class BatchBalanceController {
     tokens: ITokenEthProps[],
     userAddress: string
   ): Promise<TokenBalances> {
+    this.owner?.assertCurrent();
     const balances: TokenBalances = new Map();
 
     // If no tokens, return empty
@@ -76,10 +82,12 @@ export class BatchBalanceController {
       // Resolve the canonical Multicall3 deployment, or the Pali CREATE2
       // infrastructure deployment on chains without it (cached per chain).
       const network = await this.provider.getNetwork();
+      this.owner?.assertCurrent();
       const multicallAddress = await resolveMulticall3Address(
         this.provider,
         Number(network.chainId)
       );
+      this.owner?.assertCurrent();
       if (!multicallAddress) {
         return this.fallbackToRpcReads(tokens, userAddress);
       }
@@ -112,6 +120,7 @@ export class BatchBalanceController {
         `[BatchBalanceController] Fetching ${tokens.length} token balances in single call`
       );
       const results = await multicall.aggregate3(calls);
+      this.owner?.assertCurrent();
 
       // Process results
       results.forEach((result: any, index: number) => {
@@ -142,6 +151,7 @@ export class BatchBalanceController {
       );
       return balances;
     } catch (error) {
+      this.owner?.assertCurrent();
       console.error('[BatchBalanceController] Multicall failed:', error);
       // Fall back to individual calls
       return this.fallbackToRpcReads(tokens, userAddress);
@@ -153,6 +163,7 @@ export class BatchBalanceController {
     tokens: ITokenEthProps[],
     userAddress: string
   ): Promise<TokenBalances> {
+    this.owner?.assertCurrent();
     const balances: TokenBalances = new Map();
     const requests = tokens.flatMap((token) => {
       try {
@@ -182,8 +193,10 @@ export class BatchBalanceController {
     });
     if (!requests.length) return balances;
     const results = await this.provider.readMany(
-      requests.map(({ method, params }) => ({ method, params }))
+      requests.map(({ method, params }) => ({ method, params })),
+      this.owner ? { signal: this.owner.signal } : undefined
     );
+    this.owner?.assertCurrent();
     results.forEach((result, index) => {
       if (result.status === 'rejected') return;
       try {

@@ -11,7 +11,49 @@ import { IAccountAssets } from 'state/vault/types';
 import { IKeyringAccountState, INetwork, INetworkType } from 'types/network';
 import { ITokenEthProps } from 'types/tokens';
 
-import { ISysTokensAssetReponse } from './types';
+import { ISysTokensAssetReponse, type AssetReadOwner } from './types';
+import type { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+
+/** Keep contract reads attached to this refresh without retiring the shared provider. */
+export const ownedAssetProvider = (
+  provider: CustomJsonRpcProvider,
+  owner?: AssetReadOwner
+): CustomJsonRpcProvider => {
+  if (!owner) return provider;
+  const read = async <T>(work: () => Promise<T>): Promise<T> => {
+    owner.assertCurrent();
+    const result = await work();
+    owner.assertCurrent();
+    return result;
+  };
+  const request = (method: string, params: any[]) =>
+    read(async () => {
+      const [result] = await provider.readMany([{ method, params }], {
+        signal: owner.signal,
+      });
+      if (!result) throw new Error('Asset response unavailable');
+      if (result.status === 'rejected') throw result.reason;
+      return result.value;
+    });
+  return new Proxy(provider, {
+    get(target, key) {
+      if (key === 'signal') return owner.signal;
+      if (key === 'call')
+        return (transaction: Parameters<CustomJsonRpcProvider['call']>[0]) =>
+          request('eth_call', [
+            target.getRpcTransaction(transaction),
+            transaction.blockTag ?? 'latest',
+          ]);
+      if (key === 'getCode')
+        return (address: string) => request('eth_getCode', [address, 'latest']);
+      if (key === 'readMany')
+        return (requests: Parameters<CustomJsonRpcProvider['readMany']>[0]) =>
+          read(() => target.readMany(requests, { signal: owner.signal }));
+      const value = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+};
 
 export const canCommitAssetUpdate = ({
   account,

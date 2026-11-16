@@ -1,6 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 
 import { notificationManager } from '..';
+import { markEvmHistoryIncomplete } from '../../../shared/evmHistory';
 import vaultReducer, { setActiveAccount, setActiveNetwork } from 'state/vault';
 import vaultGlobalReducer, {
   setTransactionHistoryStatus,
@@ -175,6 +176,27 @@ it('commits history without treating an unknown receipt outcome as a confirmed a
   expect(rows().map(({ hash }: any) => hash)).toContain(recent.hash);
   expect(notificationManager.notifyTransaction).not.toHaveBeenCalled();
 });
+
+it.each([false, true])(
+  'keeps healthy partial history visible with an error status (empty=%s)',
+  async (empty) => {
+    fetchHistory.mockResolvedValue(
+      markEvmHistoryIncomplete(empty ? [] : [existing, recent])
+    );
+    await refresh();
+    expect(rows().map(({ hash }: any) => hash)).toEqual(
+      empty ? [existing.hash] : [existing.hash, recent.hash]
+    );
+    expect(
+      mockStore.getState().vaultGlobal.transactionHistoryStatus.state
+    ).toBe('error');
+    fetchHistory.mockResolvedValue([existing, recent]);
+    await refresh();
+    expect(
+      mockStore.getState().vaultGlobal.transactionHistoryStatus.state
+    ).toBe('ready');
+  }
+);
 
 it('commits a later-discovered historical transaction without replaying an old alert', async () => {
   fetchHistory.mockResolvedValue([existing, { ...recent, timestamp: 9 }]);

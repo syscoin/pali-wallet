@@ -1,3 +1,5 @@
+import { markEvmHistoryIncomplete } from '../../../../shared/evmHistory';
+
 import TransactionsManager from './index';
 
 const mockEvmPolling = jest.fn();
@@ -91,6 +93,19 @@ it('reuses the cache for an unchanged account, RPC and API', async () => {
   const first = await read();
   expect(await read()).toBe(first);
   expect(mockEvmPolling).toHaveBeenCalledTimes(1);
+});
+
+it('publishes partial history without caching it as complete', async () => {
+  const partial = markEvmHistoryIncomplete([{ hash: 'base', blockNumber: 1 }]);
+  const complete = [
+    { hash: 'base', blockNumber: 1 },
+    { hash: 'token', blockNumber: 2 },
+  ];
+  mockEvmPolling.mockResolvedValueOnce(partial).mockResolvedValueOnce(complete);
+  expect(await read()).toBe(partial);
+  expect(await read()).toBe(complete);
+  expect(await read()).toBe(complete);
+  expect(mockEvmPolling).toHaveBeenCalledTimes(2);
 });
 
 it('separates completed results for chain changes at the same URLs and for new read scopes', async () => {

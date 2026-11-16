@@ -9,7 +9,11 @@ import { ITokenEthProps } from 'types/tokens';
 
 import EvmAssetsController from './evm';
 import SysAssetsController from './syscoin';
-import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
+import {
+  IAssetsManager,
+  IAssetsManagerUtilsResponse,
+  AssetReadOwner,
+} from './types';
 
 const AssetsManager = (): IAssetsManager => {
   const updateAssetsFromCurrentAccount = async (
@@ -19,7 +23,8 @@ const AssetsManager = (): IAssetsManager => {
     networkChainId: number,
     web3Provider: CustomJsonRpcProvider,
     currentAssets: IAccountAssets,
-    onBalanceRead?: (token: ITokenEthProps) => void
+    onBalanceRead?: (token: ITokenEthProps) => void,
+    owner?: AssetReadOwner
   ): Promise<IAssetsManagerUtilsResponse> => {
     switch (isBitcoinBased) {
       case true:
@@ -63,7 +68,8 @@ const AssetsManager = (): IAssetsManager => {
           networkChainId,
           web3Provider,
           currentAssets.ethereum || [],
-          onBalanceRead
+          onBalanceRead,
+          owner
         );
 
         return {

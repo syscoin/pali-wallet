@@ -1,6 +1,16 @@
 import { isTransactionInBlock as isHistoryTransactionInBlock } from './transactionBlockStatus.ts';
 
 const orphanedPlacement = Symbol('orphanedPlacement');
+const incompleteHistory = Symbol('incompleteHistory');
+
+export const markEvmHistoryIncomplete = <T>(transactions: T[]): T[] =>
+  Object.defineProperty(transactions, incompleteHistory, { value: true });
+
+export const isEvmHistoryIncomplete = (transactions: unknown): boolean =>
+  Array.isArray(transactions) &&
+  (transactions as unknown[] & { [incompleteHistory]?: true })[
+    incompleteHistory
+  ] === true;
 
 /** Carry a checked old placement only through this in-memory history merge. */
 export const markEvmHistoryOrphaned = <

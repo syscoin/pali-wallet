@@ -136,7 +136,10 @@ export interface IEvmTransactionsController {
     address: string,
     chainId: number,
     apiUrl?: string,
-    includePending?: boolean
+    includePending?: boolean,
+    web3Provider?: CustomJsonRpcProvider,
+    isCurrentRead?: () => boolean,
+    signal?: AbortSignal
   ) => Promise<{
     error?: string;
     hasMore?: boolean;

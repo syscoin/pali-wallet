@@ -387,9 +387,10 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
   };
 
   const setupDurableReplacement = async (
-    firstPost?: (signed: Transaction) => Promise<void>
+    firstPost?: (signed: Transaction) => Promise<void>,
+    legacy = true
   ) => {
-    setSignedOriginal(true, 0, 25_000);
+    setSignedOriginal(legacy, legacy ? 0 : 2, 25_000);
     useActualLifecycle = true;
     const payer = { id: 3, type: KeyringAccountType.HDAccount };
     mockState.vault.activeAccount = payer;
@@ -428,6 +429,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       CHAIN
     );
     const posts: Transaction[] = [];
+    let balance = BigInt('1000000000');
+    const reads: string[] = [];
     const fixtureFetch = async (url, init): Promise<Response> => {
       expect(url).toBe('https://offline.example');
       const payload = JSON.parse(init!.body as string);
@@ -445,9 +448,19 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         });
       }
       const { jsonrpc, method, id, params } = payload;
+      reads.push(method);
       let result: unknown;
       if (method === 'eth_chainId') result = `0x${CHAIN.toString(16)}`;
       else if (method === 'eth_getTransactionCount') result = '0x8';
+      else if (method === 'eth_getBalance')
+        result = `0x${balance.toString(16)}`;
+      else if (method === 'eth_getBlockByNumber')
+        result = {
+          number: '0x64',
+          hash: `0x${'71'.repeat(32)}`,
+          gasLimit: '0x1c9c380',
+          baseFeePerGas: '0x96',
+        };
       else if (method === 'eth_getCode') result = '0x';
       else if (method === 'eth_sendRawTransaction') {
         const signed = Transaction.from(params[0]);
@@ -468,6 +481,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       baseFeePerGas: BigNumber.from(baseFee),
     }));
     provider.getNetwork = jest.fn(async () => ({ chainId: BigInt(CHAIN) }));
+    provider.getBalance = jest.fn(async () => BigNumber.from(balance));
     provider.readMany = rpc.readMany.bind(rpc);
     provider.send = rpc.send.bind(rpc);
     provider.sendTransaction = jest.fn(async (raw: string) => {
@@ -478,12 +492,84 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       journal,
       journalSession,
       posts,
+      reads,
+      setBalance(value: bigint) {
+        balance = value;
+      },
       setBaseFee(value: number) {
         baseFee = value;
       },
       dispose: () => rpc.destroy(),
     };
   };
+
+  it.each(
+    [true, false].flatMap((legacy) =>
+      ['before-confirm', 'before-persist', 'after-persist', 'healthy'].map(
+        (boundary) => ({ legacy, boundary })
+      )
+    )
+  )(
+    'checks ordinary replacement affordability at dispatch ($boundary, legacy $legacy)',
+    async ({ legacy, boundary }) => {
+      const { journal, journalSession, posts, reads, setBalance, dispose } =
+        await setupDurableReplacement(undefined, legacy);
+      try {
+        const walletScope = getWalletNavigationScope();
+        const preview = await wallet.speedUpEvmTransaction(
+          ORIGINAL,
+          legacy,
+          CHAIN,
+          PAYER,
+          { previewOnly: true, walletScope }
+        );
+        if (boundary === 'before-confirm') setBalance(BigInt(0));
+        const append = journal.append.bind(journal);
+        jest.spyOn(journal, 'append').mockImplementation(async (...args) => {
+          if (boundary === 'before-persist') setBalance(BigInt(0));
+          const entry = await append(...args);
+          if (boundary === 'after-persist') setBalance(BigInt(0));
+          return entry;
+        });
+        reads.length = 0;
+        const result = await wallet.speedUpEvmTransaction(
+          ORIGINAL,
+          legacy,
+          CHAIN,
+          PAYER,
+          { approvedMaximumFee: preview.maximumFee, walletScope }
+        );
+        const entries = await journal.listSender(
+          journalSession,
+          String(CHAIN),
+          PAYER
+        );
+        if (boundary === 'healthy') {
+          expect(result).toMatchObject({ isSpeedUp: true });
+          expect(posts).toHaveLength(1);
+          expect(entries).toHaveLength(1);
+          expect(posts[0]!.nonce).toBe(8);
+          expect(posts[0]!.value).toBe(BigInt(7));
+          expect(posts[0]!.data).toBe('0x1234');
+          expect(posts[0]!.gasLimit).toBe(BigInt(30_000));
+        } else {
+          expect(result).toMatchObject({ isSpeedUp: false });
+          expect(posts).toHaveLength(0);
+          expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+        }
+        if (boundary !== 'before-confirm') {
+          expect(
+            reads.filter((method) => method === 'eth_getBalance')
+          ).toHaveLength(2);
+          expect(
+            reads.filter((method) => method === 'eth_getBlockByNumber')
+          ).toHaveLength(boundary === 'healthy' ? 2 : 1);
+        }
+      } finally {
+        dispose();
+      }
+    }
+  );
 
   it.each([false, true])(
     'blocks the spending replacement after durable Cancel with a held ACK (already persisted: %s)',

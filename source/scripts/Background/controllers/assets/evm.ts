@@ -43,8 +43,8 @@ import { formatUnits, isAddress } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { fetchOwnedTokenRows, TokenDiscoveryError } from 'utils/tokenDiscovery';
 
-import { IEvmAssetsController } from './types';
-import { validateAndManageUserAssets } from './utils';
+import { IEvmAssetsController, type AssetReadOwner } from './types';
+import { ownedAssetProvider, validateAndManageUserAssets } from './utils';
 
 // SYSCOIN: Shared across short-lived polling controllers; never hammer an
 // unavailable discovery endpoint. This does not block on-chain balance reads.
@@ -505,9 +505,12 @@ const EvmAssetsController = (): IEvmAssetsController => {
     currentNetworkChainId: number,
     w3Provider: CustomJsonRpcProvider,
     accountAssets: ITokenEthProps[],
-    onBalanceRead?: (token: ITokenEthProps) => void
+    onBalanceRead?: (token: ITokenEthProps) => void,
+    owner?: AssetReadOwner
   ): Promise<ITokenEthProps[]> => {
+    owner?.assertCurrent();
     if (isEmpty(accountAssets)) return [];
+    w3Provider = ownedAssetProvider(w3Provider, owner);
 
     // Filter assets for current network
     const currentNetworkAssets = accountAssets.filter(
@@ -531,13 +534,14 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Use BatchBalanceController for regular ERC-20 tokens
     let updatedRegularTokens: ITokenEthProps[] = [];
     if (regularTokens.length > 0) {
-      const batchController = new BatchBalanceController(w3Provider);
+      const batchController = new BatchBalanceController(w3Provider, owner);
 
       const balances = await batchController.getBatchTokenBalances(
         regularTokens,
         account.address
       );
 
+      owner?.assertCurrent();
       updatedRegularTokens = regularTokens.map((token) => {
         const balance = balances.get(token.contractAddress.toLowerCase());
         if (balance === undefined) return token;
@@ -580,6 +584,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         // Process each contract's tokens in batch
         for (const [contractAddress, contractAssets] of erc1155ByContract) {
+          owner?.assertCurrent();
           try {
             const tokenIds = contractAssets.map((asset) => asset.tokenId!);
             const ownershipInfo = await verifyERC1155OwnershipHelper(
@@ -589,6 +594,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
               w3Provider
             );
 
+            owner?.assertCurrent();
             console.log(
               `[EvmAssetsController] Batch updated ${ownershipInfo.length} ERC-1155 tokens from ${contractAddress}`
             );
@@ -633,7 +639,9 @@ const EvmAssetsController = (): IEvmAssetsController => {
       const queue = new Queue(3);
       for (const collection of erc721ByContract.values()) {
         queue.execute(async () => {
+          owner?.assertCurrent();
           await new Promise((resolve) => setTimeout(resolve, 100));
+          owner?.assertCurrent();
           try {
             const contract = new Contract(
               collection[0].contractAddress,
@@ -641,6 +649,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
               w3Provider
             );
             const result = await contract.balanceOf(account.address);
+            owner?.assertCurrent();
             const rawBalance = parseErc20Units(result).toString();
             const balance = Number(rawBalance);
             if (!Number.isFinite(balance))
@@ -660,6 +669,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         });
       }
       const erc721Results = await queue.done();
+      owner?.assertCurrent();
       const updatedErc721Assets = erc721Results.flatMap(({ result }) => result);
 
       // Combine ERC-721 and ERC-1155 results
@@ -673,6 +683,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       ...otherNetworkAssets,
     ];
 
+    owner?.assertCurrent();
     return validateAndManageUserAssets(
       true,
       allUpdatedAssets,

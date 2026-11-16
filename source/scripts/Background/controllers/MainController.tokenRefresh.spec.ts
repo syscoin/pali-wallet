@@ -84,6 +84,7 @@ import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilit
 import { KeyringAccountType } from 'types/network';
 import { Contract } from 'utils/ethersV6Compat';
 
+import AssetsManager from './assets';
 import { ReceiptBalanceRefresh } from './balances/ReceiptBalanceRefresh';
 import MainController from './MainController';
 import { CancellablePromises } from './promises/cancellablesPromises';
@@ -1584,3 +1585,67 @@ it('fails closed after an absent key was targeted then evicted, without starving
   expect(state.vault.accountAssets[type][0].ethereum[1].balance).toBe(26);
   expect(controller.targetedBalanceVersions.size).toBe(512);
 });
+
+it.each([
+  'healthy',
+  'non-active',
+  'cancelled',
+  'account',
+  'network',
+  'session',
+] as const)(
+  'owns queued collection reads through the actual assets manager (%s)',
+  async (mode) => {
+    const tokens = Array.from({ length: 9 }, (_, index) => ({
+      ...asset(`0x${(index + 1).toString(16).padStart(40, '0')}`),
+      isNft: true,
+      tokenStandard: 'ERC-721',
+      tokenId: '1',
+    }));
+    state.vault.accountAssets[type][0].ethereum = tokens;
+    state.vault.accounts[type][1] = { address: U };
+    if (mode === 'non-active') state.vault.activeAccount = { type, id: 1 };
+    const requestedAccount = { type, id: 0 };
+    controller.walletSessionGeneration = 0;
+    controller.networkRequestGeneration = 0;
+    controller.assertWalletReadyForSigning = () => undefined;
+    controller.assetsManager = AssetsManager();
+    const releases: Array<() => void> = [];
+    balanceOf.mockImplementation(
+      () =>
+        new Promise<bigint>((resolve) => {
+          if (balanceOf.mock.calls.length <= 3)
+            releases.push(() => resolve(BigInt(9)));
+          else resolve(BigInt(9));
+        })
+    );
+    const pending = controller.updateAssetsFromCurrentAccount({
+      activeAccount: requestedAccount,
+      activeNetwork: state.vault.activeNetwork,
+      isBitcoinBased: false,
+      isPolling: true,
+    });
+    const outcome = pending.catch((error: unknown) => error);
+    await jest.advanceTimersByTimeAsync(100);
+    expect(balanceOf).toHaveBeenCalledTimes(3);
+    if (mode === 'cancelled')
+      controller.cancellablePromises.assetsPromise.cancel();
+    else if (mode === 'account') state.vault.activeAccount = { type, id: 1 };
+    else if (mode === 'network')
+      state.vault.activeNetwork = {
+        ...state.vault.activeNetwork,
+        url: 'https://other.test',
+      };
+    else if (mode === 'session') controller.walletSessionGeneration++;
+    releases.forEach((release) => release());
+    await jest.advanceTimersByTimeAsync(400);
+    await outcome;
+    const healthy = mode === 'healthy' || mode === 'non-active';
+    expect(balanceOf).toHaveBeenCalledTimes(healthy ? 9 : 3);
+    expect(
+      state.vault.accountAssets[type][0].ethereum.every(
+        (token: any) => token.balance === (healthy ? 9 : 5)
+      )
+    ).toBe(true);
+  }
+);

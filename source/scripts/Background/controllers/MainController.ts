@@ -62,7 +62,10 @@ import {
   formatErc20Balance,
   parseErc20Units,
 } from '../../../shared/erc20';
-import { availableEvmNativeBalance } from '../../../shared/evmAutoNonce';
+import {
+  availableEvmNativeBalance,
+  availableEvmReplacementBalance,
+} from '../../../shared/evmAutoNonce';
 import {
   assertEvmCancellationPayerReady,
   isEvmEmptySelfCall,
@@ -84,8 +87,10 @@ import {
 import {
   assertEvmFeeApprovalCurrent,
   assertEvmFeeRefreshApproved,
+  EvmFeeBalanceError,
 } from '../../../shared/evmFeeApproval';
 import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
+import { isEvmHistoryIncomplete } from '../../../shared/evmHistory';
 import {
   readFreshEvmState,
   withEvmReadPhase,
@@ -2373,10 +2378,65 @@ class MainController {
     return createEvmSignedRecordLifecycle(records, session, {
       retirementReadForChain,
       replacement,
-      preflight: async (record, assertDispatchCurrent) => {
+      preflight: async (record, assertDispatchCurrent, snapshot) => {
         if (context.operation === 'speed-up') {
           const transaction = Transaction.from(record.rawTransaction);
-          if (!isEvmEmptySelfCall(transaction)) return;
+          if (!isEvmEmptySelfCall(transaction)) {
+            await withEvmReadPhase(
+              replacementProvider,
+              assertDispatchCurrent,
+              async (phase) => {
+                const block = await readNativeEvmReviewBlock(
+                  phase,
+                  assertDispatchCurrent
+                );
+                const tag = `0x${BigInt(block.number).toString(16)}`;
+                const [latest, pending, canonicalBalance, pendingBalance] =
+                  await Promise.all([
+                    phase.send('eth_getTransactionCount', [payer, tag]),
+                    phase.send('eth_getTransactionCount', [payer, 'pending']),
+                    phase.send('eth_getBalance', [payer, tag]),
+                    phase.send('eth_getBalance', [payer, 'pending']),
+                  ]);
+                const feePerGas =
+                  transaction.maxFeePerGas ?? transaction.gasPrice;
+                if (feePerGas === null)
+                  throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+                const { total } = getEvmTransferCost(
+                  transaction.value,
+                  transaction.gasLimit,
+                  feePerGas
+                );
+                const available = await availableEvmReplacementBalance(
+                  snapshot,
+                  String(context.network.chainId),
+                  payer,
+                  Number(readEvmRpcQuantity(latest)),
+                  Number(readEvmRpcQuantity(pending)),
+                  transaction.nonce,
+                  total,
+                  {
+                    canonical: readEvmRpcQuantity(canonicalBalance),
+                    pending: readEvmRpcQuantity(pendingBalance),
+                  },
+                  assertDispatchCurrent
+                );
+                if (total > available) throw new EvmFeeBalanceError();
+                const current = await readFreshEvmState(
+                  phase,
+                  'eth_getBlockByNumber',
+                  [tag, false]
+                );
+                if (
+                  readEvmRpcHash(current?.hash) !== block.hash ||
+                  readEvmRpcQuantity(current?.number).toString() !==
+                    block.number
+                )
+                  throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+              }
+            );
+            return;
+          }
           if (!isEvmProtectedEmptySelfCall(transaction, context.operation))
             throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
         }
@@ -9446,7 +9506,7 @@ class MainController {
                 })
               );
               this.transactionUpdateCommitId = requestId;
-              setHistoryStatus('ready');
+              setHistoryStatus(isEvmHistoryIncomplete(txs) ? 'error' : 'ready');
 
               const historySave = this.postSwitchHistorySave;
               if (historySave && !isBitcoinBased) {
@@ -9500,7 +9560,7 @@ class MainController {
                   activeAccount.id
                 ]?.ethereum?.[activeNetwork.chainId] || []
               );
-              setHistoryStatus('ready');
+              setHistoryStatus(isEvmHistoryIncomplete(txs) ? 'error' : 'ready');
             }
 
             if (!isBitcoinBased) {
@@ -12404,6 +12464,31 @@ class MainController {
     }
 
     const requestId = ++this.assetUpdateRequestId;
+    const generation = this.walletSessionGeneration;
+    const networkGeneration = this.networkRequestGeneration;
+    const navigation = getWalletNavigationScope();
+    const lifetime = new AbortController();
+    let capturedProvider: CustomJsonRpcProvider | undefined;
+    const assertCurrent = () => {
+      const latest = store.getState().vault;
+      const currentNavigation = getWalletNavigationScope();
+      const target = latest.accounts[activeAccount.type]?.[activeAccount.id];
+      if (
+        lifetime.signal.aborted ||
+        generation !== this.walletSessionGeneration ||
+        networkGeneration !== this.networkRequestGeneration ||
+        requestId !== this.assetUpdateRequestId ||
+        navigation.account !== currentNavigation.account ||
+        navigation.network !== currentNavigation.network ||
+        target?.address !== currentAccount.address ||
+        target?.xpub !== currentAccount.xpub ||
+        (capturedProvider &&
+          this.ethereumTransaction?.web3Provider !== capturedProvider)
+      ) {
+        lifetime.abort();
+        throw new Error('Asset context changed');
+      }
+    };
     const successfulBalanceReads = new Map<string, ITokenEthProps>();
     const { accounts, accountAssets } = store.getState().vault;
 
@@ -12443,6 +12528,10 @@ class MainController {
           try {
             // Safe access to transaction objects with error handling
             const web3Provider = this.ethereumTransaction?.web3Provider;
+            if (!isBitcoinBased) {
+              capturedProvider = web3Provider;
+              assertCurrent();
+            }
 
             let updatedAssets =
               await this.assetsManager.utils.updateAssetsFromCurrentAccount(
@@ -12453,7 +12542,10 @@ class MainController {
                 web3Provider,
                 currentAssets,
                 (token) =>
-                  successfulBalanceReads.set(tokenBalanceKey(token), token)
+                  successfulBalanceReads.set(tokenBalanceKey(token), token),
+                isBitcoinBased
+                  ? undefined
+                  : { signal: lifetime.signal, assertCurrent }
               );
             const latestVault = store.getState().vault;
             const latestAccount =
@@ -12574,12 +12666,15 @@ class MainController {
 
     this.cancellablePromises.setPromise(PromiseTargets.ASSETS, {
       assetsPromise,
-      cancel,
+      cancel: () => {
+        lifetime.abort();
+        cancel();
+      },
     });
     this.cancellablePromises.runPromise(PromiseTargets.ASSETS);
 
     // Return the promise so callers can wait for it to complete
-    return assetsPromise;
+    return assetsPromise.finally(() => lifetime.abort());
   }
 
   public updateUserNativeBalance({

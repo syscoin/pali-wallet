@@ -1,5 +1,7 @@
 import { retryableFetch } from '@sidhujag/sysweb3-network';
 
+import { isEvmHistoryIncomplete } from '../../../../shared/evmHistory';
+
 import EvmTransactionsController from './evm';
 
 const OWNER = `0x${'11'.repeat(20)}`;
@@ -79,8 +81,18 @@ const deferred = <T>() => {
   });
   return { promise, resolve };
 };
-const poll = (provider: any = {}) =>
-  EvmTransactionsController().pollingEvmTransactions(provider, true);
+const poll = (
+  provider: any = {},
+  current?: () => boolean,
+  signal?: AbortSignal
+) =>
+  EvmTransactionsController().pollingEvmTransactions(
+    provider,
+    true,
+    false,
+    current,
+    signal
+  );
 const routeReplies = (
   pending: () => Promise<Response>,
   beforeReply: () => Promise<unknown> = async () => undefined
@@ -137,6 +149,7 @@ it('keeps native, token and pending history when all feeds are healthy', async (
   ]);
   expect(mockVault.accounts.HDAccount[0].evmTxCountByChainId[CHAIN]).toBe(7);
   expect(mockActions).toHaveLength(1);
+  expect(isEvmHistoryIncomplete(result)).toBe(false);
 });
 
 it('retains confirmed history when the optional pending fetch rejects', async () => {
@@ -190,6 +203,70 @@ it('does not write the old owner nonce probe onto the newly selected owner', asy
   await result;
   expect(mockVault.accounts.HDAccount[1].evmTxCountByChainId[CHAIN]).toBe(17);
 });
+
+it('starts no explorer requests after its held pagination hint is retired', async () => {
+  const count = deferred<number>();
+  const owner = new AbortController();
+  mockVault.accounts.HDAccount[0].evmTxCountByChainId[CHAIN] = 0;
+  routeReplies(async () => response([]));
+  const result = poll(
+    { getTransactionCount: jest.fn(() => count.promise) },
+    () => !owner.signal.aborted,
+    owner.signal
+  );
+  owner.abort();
+  count.resolve(9);
+  await expect(result).rejects.toThrow('History context changed');
+  expect(retryableFetch).not.toHaveBeenCalled();
+  expect(mockActions).toHaveLength(0);
+});
+
+it('binds all healthy explorer requests to their history owner', async () => {
+  const owner = new AbortController();
+  mockVault.accounts.HDAccount[0].evmTxCountByChainId[CHAIN] = 0;
+  routeReplies(async () => response([]));
+  await poll(
+    { getTransactionCount: jest.fn(async () => 9) },
+    () => true,
+    owner.signal
+  );
+  expect(retryableFetch).toHaveBeenCalledTimes(3);
+  const signal = jest.mocked(retryableFetch).mock.calls[0][1]?.signal;
+  expect(signal?.aborted).toBe(false);
+  for (const [, options] of jest.mocked(retryableFetch).mock.calls)
+    expect(options?.signal).toBe(signal);
+});
+
+it.each(['headers', 'body'])(
+  'keeps the explorer deadline through %s consumption',
+  async (stage) => {
+    jest.useFakeTimers();
+    let observed!: AbortSignal;
+    const held = (signal: AbortSignal) =>
+      new Promise<never>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('aborted')), {
+          once: true,
+        });
+      });
+    jest
+      .mocked(retryableFetch)
+      .mockImplementation(async (endpoint, options) => {
+        observed = options!.signal!;
+        if (new URL(String(endpoint)).searchParams.get('action') !== 'txlist')
+          return response([]);
+        if (stage === 'headers') return held(observed);
+        return { ...response([]), json: () => held(observed) };
+      });
+    try {
+      const result = poll().catch((error) => error);
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(observed.aborted).toBe(true);
+      expect(await result).toBeInstanceOf(Error);
+    } finally {
+      jest.useRealTimers();
+    }
+  }
+);
 
 it('keeps probing and using pending transactions after a malformed optional reply', async () => {
   let pendingReads = 0;
@@ -264,7 +341,7 @@ it('updates healthy matching-account probe hints without dropping another chain 
   expect(mockActions).toHaveLength(2);
 });
 
-it.each(['txlist', 'tokentx'])(
+it.each(['txlist'])(
   'still surfaces malformed JSON in the required %s feed',
   async (requiredAction) => {
     routeReplies(async () => response([]));
@@ -286,5 +363,31 @@ it.each(['txlist', 'tokentx'])(
         return original(endpoint, options);
       });
     await expect(poll()).rejects.toThrow('Required feed malformed');
+  }
+);
+
+it.each(['json', 'http', 'schema', 'api'])(
+  'retains healthy base and pending history when the optional token feed fails (%s)',
+  async (failure) => {
+    routeReplies(async () => response([transaction('c')]));
+    const original = jest.mocked(retryableFetch).getMockImplementation()!;
+    jest.mocked(retryableFetch).mockImplementation(async (endpoint, options) =>
+      new URL(String(endpoint)).searchParams.get('action') === 'tokentx'
+        ? ({
+            ok: failure !== 'http',
+            status: failure === 'http' ? 503 : 200,
+            json: async () => {
+              if (failure === 'json') throw SyntaxError('Malformed token JSON');
+              return failure === 'api'
+                ? { status: '0', result: 'Rate limit' }
+                : { status: '1', result: 'invalid' };
+            },
+          } as Response)
+        : original(endpoint, options)
+    );
+    const result = await poll();
+    expect(result.map((tx) => tx.hash).sort()).toEqual([hash('a'), hash('c')]);
+    expect(isEvmHistoryIncomplete(result)).toBe(true);
+    expect(Object.keys(result)).toEqual(['0', '1']);
   }
 );

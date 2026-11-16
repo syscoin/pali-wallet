@@ -1,5 +1,6 @@
 import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 
+import { isEvmHistoryIncomplete } from '../../../../shared/evmHistory';
 import { getController } from 'scripts/Background';
 import store from 'state/store';
 import { IAccountTransactions } from 'state/vault/types';
@@ -167,6 +168,7 @@ const TransactionsManager = (): ITransactionsManager => {
         // This prevents caching stale confirmation data
         if (
           !hasUnconfirmedTxs &&
+          !isEvmHistoryIncomplete(result) &&
           canPublish() &&
           transactionCacheOwners.get(cacheKey) === cacheOwner
         ) {
