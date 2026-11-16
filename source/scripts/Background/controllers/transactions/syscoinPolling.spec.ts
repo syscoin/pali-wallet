@@ -233,7 +233,15 @@ describe('SysTransactionController rapid polling', () => {
             HDAccount: { 1: { syscoin: { [CHAIN_ID]: [] } } },
           },
         };
-        await controller.pollingSysTransactions('zpub-account-b', networkUrl);
+        const second = controller.pollingSysTransactions(
+          'zpub-account-b',
+          networkUrl
+        );
+        if (failure === 'AbortError') {
+          await expect(second).rejects.toMatchObject({ name: 'AbortError' });
+        } else {
+          await second;
+        }
         vaultState = buildVaultState(first);
         const restored = await controller.pollingSysTransactions(
           'zpub-account-a',
@@ -247,7 +255,9 @@ describe('SysTransactionController rapid polling', () => {
         ).toEqual([
           ['zpub-account-a', 'details=txsummary&pageSize=30'],
           ['zpub-account-b', 'details=txsummary&pageSize=30'],
-          ['zpub-account-b', 'details=txs&pageSize=30'],
+          ...(failure === 'AbortError'
+            ? []
+            : [['zpub-account-b', 'details=txs&pageSize=30']]),
           ['zpub-account-a', 'details=txsummary&pageSize=30'],
         ]);
         expect(getSyscoinNativeTransferAmount(restored[0], full)).toEqual({

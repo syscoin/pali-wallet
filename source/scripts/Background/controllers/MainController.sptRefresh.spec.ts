@@ -138,7 +138,12 @@ it('commits a valid SPT balance through the real refresh pipeline', async () => 
     'https://synthetic-blockbook.invalid/',
     'zpub-fixture',
     'details=tokenBalances&tokens=used',
-    true
+    true,
+    undefined,
+    expect.objectContaining({
+      signal: expect.any(AbortSignal),
+      fetch: expect.any(Function),
+    })
   );
   expect(currentToken()).toMatchObject({
     balance: '7.0',
