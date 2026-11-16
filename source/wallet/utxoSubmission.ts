@@ -32,6 +32,7 @@ type UtxoSubmissionRequest = Readonly<{
   record: UtxoDurableSubmission;
   records: UtxoSignedRecords;
   session: UtxoRecordSession;
+  signal?: AbortSignal;
 }>;
 
 type SubmissionAuthority = Parameters<
@@ -399,7 +400,14 @@ export function submitRetainedUtxo({
 }
 
 async function submitUtxo(
-  { record: candidate, records, session, fetch, intent }: UtxoSubmissionRequest,
+  {
+    record: candidate,
+    records,
+    session,
+    fetch,
+    intent,
+    signal,
+  }: UtxoSubmissionRequest,
   dispatch: (
     record: UtxoDurableSubmission,
     authority: SubmissionAuthority
@@ -408,12 +416,20 @@ async function submitUtxo(
   const record = snapshotUtxoSubmission(candidate);
   const { rawTransaction, txid, url, owner } = record;
   const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) abort();
+  const assertCurrent = () => {
+    checkAborted(controller.signal);
+    session.assertCurrent();
+  };
   let timer: ReturnType<typeof setTimeout> | undefined;
   let admitted = false;
   let preparing = false;
   let attempted = false;
   let admissionFailure: unknown;
   try {
+    assertCurrent();
     const ack = await records.admit(
       session,
       record,
@@ -421,9 +437,10 @@ async function submitUtxo(
       (prepare, release) =>
         dispatch(record, {
           signal: controller.signal,
-          assertCurrent: session.assertCurrent,
+          assertCurrent,
           async prepare(received) {
             try {
+              assertCurrent();
               if (
                 preparing ||
                 received.url !== url ||
@@ -452,7 +469,8 @@ async function submitUtxo(
             )
               throw new Error('Invalid owned UTXO POST');
             // Revocation after dispatch does not erase a matching network ACK.
-            session.assertCurrent();
+            assertCurrent();
+            signal?.removeEventListener('abort', abort);
             attempted = true;
             timer = setTimeout(() => controller.abort(), ACK_TIMEOUT_MS);
             const pending = post(fetch, url, rawTransaction, controller.signal);
@@ -505,6 +523,7 @@ async function submitUtxo(
       admitted ? txid : undefined
     );
   } finally {
+    signal?.removeEventListener('abort', abort);
     if (timer !== undefined) clearTimeout(timer);
     controller.abort();
   }

@@ -469,15 +469,19 @@ export function createNativeUtxoSend(
         if (review !== selected) throw new CustodyRuntimeError('CANCELLED');
         review = undefined;
         const currentSession = { ...session, assertCurrent: check };
-        if ('retained' in selected)
-          return submitProtected(selected.retained.outpoints,check,transport=>submitRetainedUtxo({
-            record: selected.retained,
-            sender: sdk,
-            records,
-            session: currentSession,
-            fetch:transport,
-          }));
         try {
+          if ('retained' in selected) {
+            const controller = new AbortController();
+            readController = controller;
+            return await submitProtected(selected.retained.outpoints,check,transport=>submitRetainedUtxo({
+              record: selected.retained,
+              sender: sdk,
+              records,
+              session: currentSession,
+              signal: controller.signal,
+              fetch:transport,
+            }));
+          }
           await assertUnprotected(selected.binding.review.outpoints,check);
           const read = await ownedRead(check);
           const signed = await authorization.sign(receipt,
@@ -500,6 +504,7 @@ export function createNativeUtxoSend(
             sender,
             records,
             session: currentSession,
+            signal: readController?.signal,
             fetch:transport,
           }));
         } finally {

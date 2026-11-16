@@ -14,6 +14,8 @@ export { abortable, boundedCatalogueResponseText, boundedResponseText, cancelRes
 const REQUEST_TIMEOUT_MS = 12_000;
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
+export class NativeBalanceMethodError extends Error {}
+
 export function parseRpcQuantity(value: unknown): bigint {
   if (
     typeof value !== 'string' ||
@@ -24,7 +26,7 @@ export function parseRpcQuantity(value: unknown): bigint {
   return BigInt(value);
 }
 
-export function parseRpcResult(text: string, expectedId: number): bigint {
+export function parseRpcResult(text: string, expectedId: number, nativeBalance = false): bigint {
   if (
     typeof text !== 'string' ||
     text.length > MAX_RESPONSE_BYTES ||
@@ -41,6 +43,11 @@ export function parseRpcResult(text: string, expectedId: number): bigint {
   if (!body || typeof body !== 'object' || Array.isArray(body))
     throw new Error('Invalid JSON-RPC response');
   const record = body as Record<string, unknown>;
+  if (nativeBalance && record.jsonrpc === '2.0' && record.id === expectedId &&
+      !Object.hasOwn(record, 'result') && record.error && typeof record.error === 'object' &&
+      Number.isInteger((record.error as { code?: unknown }).code) &&
+      typeof (record.error as { message?: unknown }).message === 'string')
+    throw new NativeBalanceMethodError('Native balance is unavailable');
   if (
     record.jsonrpc !== '2.0' ||
     record.id !== expectedId ||
@@ -108,7 +115,7 @@ export function createBalanceReader(
         }
         const text = await boundedResponseText(response, controller.signal);
         checkAborted(controller.signal);
-        return parseRpcResult(text, id);
+        return parseRpcResult(text, id, method === 'eth_getBalance');
       }
 
       try {

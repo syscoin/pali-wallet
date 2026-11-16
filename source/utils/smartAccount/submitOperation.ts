@@ -28,6 +28,7 @@ import {
   snapshotSmartAccountExpectedErc20Transfers,
   type SmartAccountExpectedErc20Transfer,
 } from './erc20Transfer.ts';
+import { assertSmartAccountExecutionGas } from './gas.ts';
 import {
   hasNativeGasFailure,
   hasSmartAccountSignatureFailure,
@@ -299,6 +300,13 @@ async function submitOwnedSmartAccountOperation<
           expectedErc20Transfers: params.expectedErc20Transfers,
           assertCurrent,
         });
+        if (currentSignedHash && signedUserOperation.initCode === '0x')
+          await assertSmartAccountExecutionGas(
+            phase.provider,
+            signedUserOperation,
+            active.metadata.chainId,
+            assertCurrent
+          );
         assertCurrent();
       },
       assertAssetState: (provider) =>

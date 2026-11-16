@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AccountPortfolioController } from '../src/portfolio/accountPortfolio.ts';
 import { createPortfolioFilter } from '../src/portfolio/portfolioFilter.ts';
+import { NativeBalanceMethodError } from '../src/platformRpc.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import type { PublicCustodySource } from '../src/portfolio/nativePortfolio.ts';
 import type { NotificationChoice } from '../src/notifications/choices.ts';
@@ -22,6 +23,7 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
   let tokenQuoteHeld: Promise<void> | undefined;
   let rejectPrices = false, includeCollectible = false, activeQuotes = 0, maximumQuotes = 0;
   const unavailableNetworks = new Set<string>();
+  const failedNativeMethods = new Set<string>();
   const quoteSignals: AbortSignal[] = [];
   const price = async (kind: 'native' | 'token', choice: NotificationChoice, currency: string, signal: AbortSignal) => {
     prices.push(`${kind}:${choice.scope.network.id}`); quoteSignals.push(signal);
@@ -35,7 +37,7 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
   const preference = createPortfolioFilter({ get: async () => saved, set: async value => { saved = value; } });
   const make = (filter = preference) => {
     const model = new AccountPortfolioController({ source, choices: () => choices, filter,
-      reader: { async readBalance(network, address) { reads.push(`${network}:${address}`); await held; if (unavailableNetworks.has(network)) throw Error('Network offline'); return { chainId: Number(getNativeNetwork(network).chainId), units: '1000000000000000000' }; } },
+      reader: { async readBalance(network, address) { reads.push(`${network}:${address}`); await held; if (unavailableNetworks.has(network)) throw Error('Network offline'); if (failedNativeMethods.has(network)) throw new NativeBalanceMethodError(); return { chainId: Number(getNativeNetwork(network).chainId), units: '1000000000000000000' }; } },
       async assets(scope, _signal, check) { check(); tokens.push(`${scope.network.id}:${scope.accountId}`); return {
         tokens: Array.from({ length: tokenCount }, (_, index) => ({ metadata: { contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`, name: 'Saved token', symbol: 'TOK', decimals: tokenDecimals }, status: 'available' as const, units: tokenDecimals === 255 ? '1' : '250' })),
         collectibles: includeCollectible ? [{ collectible: { contractAddress: '0x' + 'ab'.repeat(20), tokenStandard: 'ERC-721' as const }, status: 'available' as const, units: '1' }] : [] }; },
@@ -49,6 +51,7 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
     holdQuote(value: Promise<void>) { quoteHeld = value; },
     holdTokenQuote(value: Promise<void>) { tokenQuoteHeld = value; },
     rejectPrices() { rejectPrices = true; },
+    rejectNativeBalance(id: string) { failedNativeMethods.add(id); },
     offline(id: string) { unavailableNetworks.add(id); },
     includeCollectible() { includeCollectible = true; },
     select(index: number) { selected = index; revision++; for (const listener of listeners) listener(); },
@@ -350,4 +353,18 @@ test('account changes abort held quotes and old results cannot price the new own
     held.resolve(); await settle();
     assert.strictEqual(model.getSnapshot(), current);
   } finally { held.resolve(); stop(); }
+});
+
+test('a verified native balance method error retains healthy token holdings and partial value', async () => {
+  const f = fixture(); f.rejectNativeBalance('ethereum');
+  const model = f.make(), stop = model.connect();
+  try {
+    await settle();
+    const snapshot = model.getSnapshot();
+    assert.equal(snapshot.rows[0]?.status, 'error');
+    assert.equal(snapshot.rows[0]?.units, null);
+    assert.equal(snapshot.rows[0]?.tokens[0]?.units, '250');
+    assert.equal(snapshot.knownValue, 5);
+    assert.equal(snapshot.partial, true);
+  } finally { stop(); }
 });

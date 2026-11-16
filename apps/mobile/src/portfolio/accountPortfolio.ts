@@ -4,6 +4,7 @@ import type { FiatCurrency } from '../core/fiatPreference.ts';
 import type { PublicCustodySource } from './nativePortfolio.ts';
 import type { NotificationChoice } from '../notifications/choices.ts';
 import type { NativeNotificationScope } from '../notifications/types.ts';
+import { NativeBalanceMethodError } from '../platformRpc.ts';
 import { formatTokenUnits, type Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import type { SavedCollectible } from './tokenRegistry.ts';
 import { abortable } from '../../../../source/shared/boundedHttp.ts';
@@ -84,10 +85,12 @@ export class AccountPortfolioController {
     let value = 0, known = false, partial = false;
     const real = next.rows.filter(row => !('testnet' in row.choice.scope.network && row.choice.scope.network.testnet));
     for (const row of real) {
-      if (row.status !== 'available' || row.units === null) { partial = true; continue; }
-      const amount = Number(formatBaseUnits(row.units, row.decimals));
-      if (amount === 0) known = true;
-      else if (row.price !== null && Number.isFinite(amount * row.price)) { value += amount * row.price; known = true; } else partial = true;
+      if (row.status !== 'available' || row.units === null) partial = true;
+      else {
+        const amount = Number(formatBaseUnits(row.units, row.decimals));
+        if (amount === 0) known = true;
+        else if (row.price !== null && Number.isFinite(amount * row.price)) { value += amount * row.price; known = true; } else partial = true;
+      }
       if (!row.assetsAvailable) partial = true;
       for (const token of row.tokens) {
         if (token.status !== 'available' || token.units === null) { partial = true; continue; }
@@ -219,23 +222,30 @@ export class AccountPortfolioController {
         const choice = choices[index++]!, key = scopeKey(choice), original = this.cache.get(key) ?? this.blank(choice);
         try {
           check(); this.cache.set(key, { ...original, status: 'loading' }); this.synchronize();
-          const raw = await this.ports.reader.readBalance(choice.scope.network.id, choice.scope.accountAddress, request.signal);
-          if (String(raw.chainId) !== choice.scope.network.chainId) throw Error('Wrong network');
-          assertBaseUnits(raw.units); const units = raw.units;
+          let units: string | null = null;
+          try {
+            const raw = await this.ports.reader.readBalance(choice.scope.network.id, choice.scope.accountAddress, request.signal);
+            if (String(raw.chainId) !== choice.scope.network.chainId) throw Error('Wrong network');
+            assertBaseUnits(raw.units);
+            units = raw.units;
+          } catch (error) {
+            if (!(error instanceof NativeBalanceMethodError)) throw error;
+          }
           check();
-          this.cache.set(key, { ...original, status: 'available', units, updatedAt: (this.ports.now ?? Date.now)(), price: null, tokens: [], collectibles: [], assetsAvailable: false });
+          const status = units === null ? 'error' : 'available';
+          this.cache.set(key, { ...original, status, units, updatedAt: (this.ports.now ?? Date.now)(), price: null, tokens: [], collectibles: [], assetsAvailable: false });
           this.synchronize();
           let assets: PortfolioAssets = { tokens: [], collectibles: [] }, assetsAvailable = false;
           if (this.ports.assets) {
             try { assets = await this.ports.assets(choice.scope, request.signal, check); assetsAvailable = true; } catch { check(); }
           }
           check();
-          this.cache.set(key, { choice, status: 'available', units, decimals: original.decimals, updatedAt: (this.ports.now ?? Date.now)(), price: null,
+          this.cache.set(key, { choice, status, units, decimals: original.decimals, updatedAt: (this.ports.now ?? Date.now)(), price: null,
             tokens: assets.tokens.map(token => ({ ...token, price: null })), collectibles: assets.collectibles, assetsAvailable });
           this.synchronize();
         } catch {
           if (request.signal.aborted || this.generation !== generation) return;
-          this.cache.set(key, { ...original, status: 'error' }); this.synchronize();
+          this.cache.set(key, { ...this.blank(choice), status: 'error' }); this.synchronize();
         }
       }
     };
@@ -269,9 +279,9 @@ export class AccountPortfolioController {
     };
     for (const { choice } of this.state.rows) {
       const key = scopeKey(choice), row = this.cache.get(key);
-      if (!row || row.status !== 'available' || 'testnet' in choice.scope.network && choice.scope.network.testnet) continue;
+      if (!row || 'testnet' in choice.scope.network && choice.scope.network.testnet) continue;
       const nativePrice = this.ports.nativePrice, tokenPrice = this.ports.tokenPrice;
-      if (row.units !== '0' && nativePrice) queue(() => nativePrice(choice, currency, request.signal), price => {
+      if (row.status === 'available' && row.units !== null && row.units !== '0' && nativePrice) queue(() => nativePrice(choice, currency, request.signal), price => {
         this.cache.set(key, { ...this.cache.get(key)!, price });
       });
       if (tokenPrice) row.tokens.forEach((token, tokenIndex) => {

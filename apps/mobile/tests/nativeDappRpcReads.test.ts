@@ -7,7 +7,7 @@ import { createNativeNetwork } from '../src/custody/networkContext.ts';
 import { classifyDappRpcMethod, executeDappRpcRequest, normalizeDappRpcRequest } from '../../../source/shared/dappRpcReads.ts';
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js';
 import { Wallet } from 'ethers/wallet';
-import { Signature } from 'ethers/crypto';
+import { keccak256, Signature } from 'ethers/crypto';
 import { getBytes } from 'ethers/utils';
 import { DAPP_RESPONSE_LIMITS } from '../../../source/utils/requestPayloadBudget.ts';
 
@@ -16,7 +16,7 @@ const json = (id: number, value: Record<string, unknown>) => new Response(JSON.s
 const HASH = `0x${'22'.repeat(32)}`;
 const NODE_PUBLIC_CASES = [
   ['eth_maxPriorityFeePerGas', [], '0x77359400'],
-  ['eth_coinbase', [], `0x${'33'.repeat(20)}`], ['web3_sha3', ['0Xabcd'], HASH],
+  ['eth_coinbase', [], `0x${'33'.repeat(20)}`],
   ['eth_getFilterChanges', ['0x0000aBcD'], []], ['eth_getFilterLogs', ['opaque-filter-ID'], []],
   ['eth_newBlockFilter', [], 'opaque-block-filter'], ['eth_newFilter', [{ topics: [null] }], '0x0000aBcD'],
   ['eth_newPendingTransactionFilter', [true], 'opaque-pending-filter'], ['eth_uninstallFilter', ['0x0000aBcD'], false],
@@ -288,6 +288,21 @@ test('local recovery retains source/abort guards and cannot leak onto the HTTP-o
   await assert.rejects(host.read(request, lifetime.signal, () => {}), /CONTEXT_CHANGED/);
   await assert.rejects(new EvmTransferReadRpc(registration, { fetch: async () => { throw Error('Must not fetch'); } })
     .dappRequest(request, new AbortController().signal, () => {}), /INVALID_INPUT/);
+});
+
+test('local hashing works offline without a chain probe and preserves request cancellation', async () => {
+  const lifetime = new AbortController();
+  let fetches = 0;
+  const host = createNativeDappRpcReadHost({ registration: () => registration,
+    verifyPersonalMessage() { throw Error('Must not recover'); },
+    async fetch() { fetches++; throw Error('Offline'); } });
+  for (const value of ['0Xabcd', '', '0x']) {
+    const request = normalizeDappRpcRequest('web3_sha3', [value]);
+    assert.equal(await host.read(request, lifetime.signal, () => {}), keccak256(`0x${value.slice(2)}`));
+  }
+  lifetime.abort();
+  await assert.rejects(host.read(normalizeDappRpcRequest('web3_sha3', ['0x']), lifetime.signal, () => {}), /CONTEXT_CHANGED/);
+  assert.equal(fetches, 0);
 });
 
 test('twenty sequential display queries share one identity check and expiry refreshes it', async () => {

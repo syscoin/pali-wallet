@@ -173,13 +173,23 @@ const runner = {
     if (transaction.to.toLowerCase() === multicallAddress) {
       expect(multicallDeployed).toBe(true);
       const { args } = multicallAbi.parseTransaction(transaction)!;
-      const [[target, allowFailure, data]] = args[0];
-      expect(target.toLowerCase()).toBe(CONTRACT);
-      expect(allowFailure).toBe(true);
-      expect(data).toBe(ABI.encodeFunctionData('balanceOf', [OWNER]));
+      const calls = args[0];
+      expect(calls).toHaveLength(2);
+      for (const [target, allowFailure] of calls) {
+        expect(target.toLowerCase()).toBe(CONTRACT);
+        expect(allowFailure).toBe(true);
+      }
+      expect(calls[0][2]).toBe(ABI.encodeFunctionData('decimals'));
+      expect(calls[1][2]).toBe(ABI.encodeFunctionData('balanceOf', [OWNER]));
       reads.push({ name: 'aggregate3' });
       return multicallAbi.encodeFunctionResult('aggregate3', [
         [
+          {
+            success: true,
+            returnData: ABI.encodeFunctionResult('decimals', [
+              fungibleDecimals,
+            ]),
+          },
           {
             success: !unavailable,
             returnData: unavailable

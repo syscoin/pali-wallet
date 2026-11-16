@@ -128,6 +128,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let observedThreshold = 1;
   let smartGuardianMetadata: { address: string; owners: string[]; threshold: number; compositeThreshold?: number; deployed: boolean } | undefined;
   const estimatedSenders: string[] = [];
+  let innerGasEstimate = '0x186a0';
   let composite: { threshold: number; ecdsaFirst: boolean; children?: string[] } | undefined;
   const customValidators = new Map<string, { installed: boolean; compatible: boolean }>();
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
@@ -208,7 +209,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
               assert.equal(op.nonce & ((1n << 64n) - 1n), BigInt(sequence) + externalSmartNonce, 'handleOps must estimate against matching pending state');
             }
           }
-          result = '0x186a0';
+          result = call.from?.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() ? innerGasEstimate : '0x186a0';
         }
         else if (request.method === 'eth_getTransactionByHash') {
           const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
@@ -481,6 +482,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; },
     transferRpc: new NativeTransferRpc({ registration: getNativeNetwork('ethereum'), fetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init) }),
     get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
+    increaseInnerGas() { innerGasEstimate = '0x493e0'; },
     get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
       const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
@@ -6325,8 +6327,39 @@ for (const sponsored of [false, true]) test(`counted native warm Smart payer pha
     operation.confirmPayer(review.id); await sending;
     assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
     assert.equal(f.submitted.length, 1);
-    assert.deepEqual(measure(), { methods: 52, http: sponsored ? 38 : 35, chains: 10 });
+    assert.deepEqual(measure(), { methods: 53, http: sponsored ? 39 : 36, chains: 10 });
     console.log('NATIVE_PHASE_COUNTS', JSON.stringify({ sponsored, preparation, payerReview, confirmation: delta(confirmed), total: measure() }));
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`Smart final admission refuses a larger inner estimate after ${boundary}`, async () => {
+  let afterPersist: (() => void) | undefined;
+  const f = await fixture({ after(kind, sql) {
+    if (kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records')) afterPersist?.();
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Inner gas admission' });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    f.mutateSelectedSmart(account => {
+      account.smartAccount!.isDeployed = true;
+      account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(Number(account.smartAccount!.chainId), 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
+    });
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview;
+    assert(review, JSON.stringify(operation.getSnapshot()));
+    if (boundary === 'payer-signing') f.onPayerSignature(f.increaseInnerGas);
+    else afterPersist = f.increaseInnerGas;
+    operation.confirmPayer(review.id); await sending;
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.payerSignatures.length, 1);
+    assert.equal(f.submitted.length, 0);
+    const identity = (await f.storage.recovery.readIdentity())!.root!;
+    assert.equal(inspectEvmSignedBundle((await f.storage.signedRecords.read(identity.profileId))!, identity.profileId).transactions, 1);
   } finally { operation?.dispose(); await f.close(); }
 });
 
@@ -6368,7 +6401,7 @@ for (const codeBytes of [1, 20 * 1024]) test(`counted native Smart asset payer p
     const counts = { methods: f.calls.length,
       http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
       chains: f.calls.filter(method => method === 'eth_chainId').length };
-    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 31 : 33, http: standard === 'ERC20' ? 21 : 25, chains: 4 });
+    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 32 : 34, http: standard === 'ERC20' ? 22 : 26, chains: 4 });
     console.log('NATIVE_ASSET_CONFIRM_COUNTS', JSON.stringify({ standard, ...counts }));
   } finally { operation?.dispose(); await f.close(); }
 });

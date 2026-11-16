@@ -523,8 +523,8 @@ for (const width of [400, 320]) {
           await expect(sign).toBeEnabled();
           expect(entryPointDepositReads.length).toBeGreaterThan(0);
           await expect(refresh).toHaveCount(0);
-          // Exact known ECDSA fixture:311000 gas units at3gwei maximum.
-          await expect(maximumFee).toHaveText('0.000933 tsys');
+          // The zkSYS fixture retains the full estimate: 332,000 gas at 3 gwei.
+          await expect(maximumFee).toHaveText('0.000996 tsys');
           await expect(
             popup.getByText(en.send.calculating, { exact: true })
           ).toHaveCount(0);

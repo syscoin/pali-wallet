@@ -1,10 +1,12 @@
 import { Network } from 'ethers/providers';
 
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { BigNumber } from '../ethersV6Compat.ts';
 
+import type { SmartAccountPackedUserOperation } from './account.ts';
+import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts.ts';
 import type { ISmartAccountMetadata } from '../../types/network.ts';
 import type { Provider } from '../ethersV6Compat.ts';
-import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts.ts';
 
 // ---------------------------------------------------------------------------
 // Shared UserOperation gas estimator (ERC-4337 / EntryPoint v0.9).
@@ -205,61 +207,94 @@ export const getSmartAccountValidatorProfile = (
   };
 };
 
-/**
- * Estimates the execution-phase gas for a userOp by simulating the
- * EntryPoint -> account execute call. Returns the limit including margin.
- */
-export const estimateSmartAccountCallGasLimit = async (
+type SmartExecutionGasInput = {
+  callData: string;
+  chainId?: number;
+  entryPointAddress?: string;
+  sender: string;
+};
+
+/** Transaction intrinsic is excluded only for the qualified chain model. */
+async function readSmartAccountExecutionGas(
   provider: Provider,
   {
     callData,
     chainId,
     entryPointAddress = PALI_ENTRYPOINT_V09_ADDRESS,
-    isDeployed,
     sender,
-  }: {
-    callData: string;
-    chainId?: number;
-    entryPointAddress?: string;
-    isDeployed: boolean;
-    sender: string;
-  }
-): Promise<number> => {
-  if (!isDeployed) {
-    return SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT;
-  }
-  try {
-    const estimate = await provider.estimateGas({
-      data: callData,
-      from: entryPointAddress,
-      to: sender,
-    });
-    // Mainnet and Hoodi retain ordinary transaction intrinsic pricing through
-    // Fusaka. Sepolia's activated Glamsterdam and unqualified EVM/L2 models
-    // retain the full transaction estimate until their model is qualified.
-    // https://blog.ethereum.org/2026/10/22/glamsterdam-hoodi-delay
-    // Under EIP-7623, estimate = max(intrinsic + execution, calldata floor).
-    // Subtracting only ordinary intrinsic preserves an execution upper bound;
-    // subtracting the floor would erase execution when the floor dominates.
-    const intrinsic =
-      chainId === 1 || chainId === 560048
-        ? Network.from(chainId).computeIntrinsicGas({
+  }: SmartExecutionGasInput
+): Promise<bigint> {
+  if (typeof callData !== 'string' || !/^0x(?:[0-9a-f]{2})*$/i.test(callData))
+    throw new Error('Invalid smart account execution calldata');
+  const estimate = await provider.estimateGas({
+    data: callData,
+    from: entryPointAddress,
+    to: sender,
+  });
+  const encoded =
+    typeof estimate === 'bigint' ? estimate.toString() : estimate?.toString();
+  if (typeof encoded !== 'string' || !/^(?:0|[1-9][0-9]*)$/.test(encoded))
+    throw new Error('Invalid smart account execution gas estimate');
+  const estimated = BigInt(encoded);
+  // Mainnet and Hoodi retain ordinary transaction intrinsic pricing through
+  // Fusaka. Sepolia's activated Glamsterdam and unqualified EVM/L2 models
+  // retain the full transaction estimate until their model is qualified.
+  // https://blog.ethereum.org/2026/10/22/glamsterdam-hoodi-delay
+  // Under EIP-7623, estimate = max(intrinsic + execution, calldata floor).
+  // Removing only ordinary intrinsic preserves an execution upper bound.
+  const intrinsic =
+    chainId === 1 || chainId === 560048
+      ? BigInt(
+          Network.from(chainId).computeIntrinsicGas({
             to: sender,
             data: callData,
           })
-        : 0;
-    const estimated = estimate.toNumber();
-    if (!Number.isSafeInteger(estimated) || estimated < intrinsic)
-      return SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT;
-    const inner = estimated - intrinsic;
+        )
+      : BigInt(0);
+  if (estimated < intrinsic || estimated > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new Error('Invalid smart account execution gas estimate');
+  return estimated - intrinsic;
+}
+
+/** Recheck the exact signed execution budget without quote fallback or a new margin. */
+export async function assertSmartAccountExecutionGas(
+  provider: Provider,
+  userOperation: SmartAccountPackedUserOperation,
+  chainId: number,
+  assertCurrent: () => void
+): Promise<void> {
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  if (!/^0x[0-9a-f]{64}$/i.test(userOperation.accountGasLimits))
+    throw new Error('Invalid signed smart account gas limits');
+  const signed = BigInt('0x' + userOperation.accountGasLimits.slice(34));
+  if (signed === BigInt(0))
+    throw new Error('Invalid signed smart account gas limits');
+  const required = await readSmartAccountExecutionGas(provider, {
+    callData: userOperation.callData,
+    chainId,
+    sender: userOperation.sender,
+  });
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  if (required > signed)
+    throw new Error(
+      'Smart account execution gas changed. Review the operation again.'
+    );
+}
+
+/** Estimate the execution budget plus margin. Undeployed or unavailable quotes use the existing fallback. */
+export const estimateSmartAccountCallGasLimit = async (
+  provider: Provider,
+  { isDeployed, ...input }: SmartExecutionGasInput & { isDeployed: boolean }
+): Promise<number> => {
+  if (!isDeployed) return SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT;
+  try {
+    const inner = Number(await readSmartAccountExecutionGas(provider, input));
     const margin = Math.min(
       Math.max(Math.floor(inner / 10), CALL_GAS_MARGIN_MIN),
       CALL_GAS_MARGIN_MAX
     );
     return inner + margin;
-  } catch (error) {
-    // Estimation reverts bubble up at submission time with a clearer error;
-    // here we fall back so signing flows can still present the op.
+  } catch {
     return SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT;
   }
 };

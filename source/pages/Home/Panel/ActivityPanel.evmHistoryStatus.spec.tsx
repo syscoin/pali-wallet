@@ -32,6 +32,8 @@ afterEach(() => {
     expect(method).not.toHaveBeenCalled();
 });
 
+import { AbstractProvider } from 'ethers/providers';
+
 import '@testing-library/jest-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import {
@@ -211,6 +213,10 @@ beforeEach(() => {
     middleware: (defaults) => defaults({ serializableCheck: false }),
   });
   provider = {
+    _wrapTransactionResponse: Reflect.get(
+      AbstractProvider.prototype,
+      '_wrapTransactionResponse'
+    ),
     getTransactionCount: jest.fn().mockResolvedValue(0),
     getBlockNumber: jest.fn().mockResolvedValue(100),
     sendBatch: jest.fn(async (method: string, params: any[]) => {
@@ -519,7 +525,20 @@ it.each([
             timestamp: '0x6553f100',
             transactions:
               height === txBlock
-                ? [{ ...transaction, blockNumber: number, nonce: '0x1' }]
+                ? [
+                    {
+                      ...transaction,
+                      blockNumber: number,
+                      nonce: '0x1',
+                      gas: '0x5208',
+                      gasPrice: '0x1',
+                      type: '0x0',
+                      v: '0x1b',
+                      r: `0x${'01'.padStart(64, '0')}`,
+                      s: `0x${'02'.padStart(64, '0')}`,
+                      transactionIndex: '0x0',
+                    },
+                  ]
                 : [],
           };
         });

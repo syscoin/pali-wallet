@@ -235,7 +235,7 @@ test('public sync progress reports the shared verified result without extra requ
   assert.deepEqual(statuses.at(-1), result);
   assert.equal(result.leafCount, data.leafCount);
   assert.equal(result.blockNumber, data.asOfBlockNumber);
-  assert.equal(provider.requests.length, 17, 'progress observes memory without new network reads');
+  assert.equal(provider.requests.length, 13, 'progress observes memory without new network reads');
   unsubscribe();
   const observed = statuses.length;
   await sync.clear();
@@ -291,7 +291,7 @@ test('explicit native sync verifies the same root and two anchors and reads note
   const refresh = sync.refresh();
   assert.equal(sync.refresh(), refresh);
   assert.equal((await refresh).phase, 'ready');
-  assert.equal(provider.requests.length, 17);
+  assert.equal(provider.requests.length, 13);
   assert.equal(provider.requests.filter((kind) => kind === 'block').length, 4);
   assert.equal(
     provider.requests.filter((kind) => kind === 'chainId').length,
@@ -318,7 +318,7 @@ test('explicit native sync verifies the same root and two anchors and reads note
   const path = await lease.getPath(0);
   assert.equal(path.pathElements.length, 20);
   assert.equal(path.pathElements[0], data.leaves[1]);
-  assert.equal(provider.requests.length, 17);
+  assert.equal(provider.requests.length, 13);
   assert.deepEqual(provider.released, provider.requests);
   owner.abort();
   assert.throws(() => lease.assertSnapshotCurrent(lease.snapshot), {
@@ -359,7 +359,7 @@ test('index progress never auto-polls and only an explicit second refresh reads 
   assert.deepEqual(await sync.readNote(note), { phase: 'waiting' });
   assert.equal(provider.requests.length, 1);
   assert.equal((await sync.refresh()).phase, 'ready');
-  assert.equal(provider.requests.length, 18);
+  assert.equal(provider.requests.length, 14);
   await sync.dispose();
 });
 
@@ -530,7 +530,7 @@ test('the snapshot handle fully releases before the first sequential anchor can 
   assert.deepEqual(provider.requests, [
     'snapshot',
     ...anchorOrder,
-    ...anchorOrder,
+    'chainId', 'block', 'block', 'isKnownRoot',
   ]);
   assert.deepEqual(provider.released, provider.requests);
   await sync.dispose();
@@ -783,7 +783,7 @@ test('an elapsed owner cannot publish the verified cache after the final RPC dec
   let readAtDeadline: unknown;
   const provider = fixture(snapshot(), {
     async release(kind, count) {
-      if (kind === 'isKnownRoot' && count === 17) {
+      if (kind === 'isKnownRoot' && count === 13) {
         clock = 45_001;
         try {
           sync.getStatus();
@@ -796,7 +796,7 @@ test('an elapsed owner cannot publish the verified cache after the final RPC dec
   const { sync } = create(provider.transport);
   await assert.rejects(sync.refresh(), { message: 'privacy_cancelled' });
   assert.equal(readAtDeadline, 'privacy_cancelled');
-  assert.equal(provider.requests.length, 17);
+  assert.equal(provider.requests.length, 13);
   assert.equal(sync.getStatus().phase, 'idle');
   assert.deepEqual(await sync.readNote(note), { phase: 'waiting' });
   await assert.rejects(sync.readSnapshot(poolId), {

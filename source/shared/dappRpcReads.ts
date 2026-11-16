@@ -1,4 +1,5 @@
 import { getAddress } from 'ethers/address';
+import { keccak256 } from 'ethers/crypto';
 
 import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.ts';
 import { normalizeNftTokenId } from '../utils/nftTokenId.ts';
@@ -42,7 +43,7 @@ export const DAPP_RPC_METHOD_CLASSIFICATION = Object.freeze({
   net_peerCount: 'node-query',
   personal_ecRecover: 'local-verification',
   eth_coinbase: 'node-query',
-  web3_sha3: 'node-query',
+  web3_sha3: 'local-verification',
   eth_getFilterLogs: 'node-query',
   eth_getFilterChanges: 'node-control',
   eth_newBlockFilter: 'node-control',
@@ -497,15 +498,18 @@ export async function executeDappRpcRequest(
   const request = normalizeDappRpcRequest(input.method, input.params);
   let result: unknown;
   try {
-    result =
-      classifyDappRpcMethod(request.method) === 'local-verification'
-        ? getAddress(
-            ports.verifyPersonalMessage(
-              request.params[0] as string,
-              request.params[1] as string
-            )
-          )
-        : await ports.request(request);
+    if (request.method === 'web3_sha3') {
+      result = keccak256(bytes(request.params[0] || '0x'));
+    } else if (request.method === 'personal_ecRecover') {
+      result = getAddress(
+        ports.verifyPersonalMessage(
+          request.params[0] as string,
+          request.params[1] as string
+        )
+      );
+    } else {
+      result = await ports.request(request);
+    }
   } finally {
     assertSynchronousEvmFeeGuard(() => ports.assertCurrent());
   }

@@ -60,11 +60,29 @@ const object = (value: unknown): Record<string, unknown> =>
     : invalid();
 
 /** Optional receipt display fields; present values must fit the native unit domain. */
-export function readEvmReceiptFeeUnits(value: unknown): string | null {
+export function readEvmReceiptFeeUnits(
+  value: unknown,
+  chainId: string
+): string | null {
   const receipt = object(value);
   if (receipt.gasUsed === undefined || receipt.effectiveGasPrice === undefined)
     return null;
-  const fee = quantity(receipt.gasUsed) * quantity(receipt.effectiveGasPrice);
+  let fee = quantity(receipt.gasUsed) * quantity(receipt.effectiveGasPrice);
+  if (chainId === '8453' || chainId === '84532') {
+    // Base receipts expose the L1 data charge separately from execution gas.
+    // A receipt with an operator charge needs a fork-aware total.
+    try {
+      if (
+        quantity(receipt.operatorFeeScalar ?? '0x0') !== BigInt(0) ||
+        quantity(receipt.operatorFeeConstant ?? '0x0') !== BigInt(0)
+      )
+        return null;
+      fee += quantity(receipt.l1Fee);
+      if (fee >= BigInt(1) << BigInt(256)) return null;
+    } catch {
+      return null;
+    }
+  }
   if (fee >= BigInt(1) << BigInt(256)) invalid();
   return fee.toString();
 }
@@ -238,7 +256,7 @@ export async function observeEvmTransaction(
   void nonce;
   let feeUnits: string | undefined;
   try {
-    feeUnits = readEvmReceiptFeeUnits(receipt) ?? undefined;
+    feeUnits = readEvmReceiptFeeUnits(receipt, input.chainId) ?? undefined;
   } catch {
     /* Optional display metadata cannot invalidate the canonical outcome. */
   }

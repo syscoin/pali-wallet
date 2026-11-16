@@ -83,6 +83,7 @@ export function createOwnedSnapshotAnchor(
   let closed = false;
   let pending = false;
   let passes = 0;
+  const historical = new Map<PrivacyAnchorRead, string>();
   const timer = setTimeout(close, timeoutMs);
   signal.addEventListener('abort', close, { once: true });
   if (signal.aborted) close();
@@ -116,6 +117,9 @@ export function createOwnedSnapshotAnchor(
 
   async function read(kind: PrivacyAnchorRead) {
     check();
+    // The first complete pass verifies these scalar results against the frozen
+    // snapshot and its canonical hash. Chain, block and root membership stay fresh.
+    if (passes === 1 && historical.has(kind)) return historical.get(kind);
     const id = ++ownedRequestId;
     const handle = prepare(binding, kind, id, ownerAbort.signal);
     const release = handle.release.bind(handle);
@@ -131,7 +135,21 @@ export function createOwnedSnapshotAnchor(
       check();
       if (response.redirected || (response.url && response.url !== rpcUrl))
         throw new Error('privacy_rpc_unavailable');
-      return await readPrivacyRpcResponse(response, id, kind === 'block');
+      const result = await readPrivacyRpcResponse(
+        response,
+        id,
+        kind === 'block'
+      );
+      if (
+        passes === 0 &&
+        typeof result === 'string' &&
+        (kind === 'nextIndex' ||
+          kind === 'getLastRoot' ||
+          kind === 'levels' ||
+          kind === 'denomination')
+      )
+        historical.set(kind, result);
+      return result;
     } finally {
       ownerAbort.signal.removeEventListener('abort', abortRead);
       await drain();

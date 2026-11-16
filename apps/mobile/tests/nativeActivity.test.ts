@@ -16,7 +16,7 @@ const hash = (index: number) => `0x${index.toString(16).padStart(64, '0')}`;
 const candidate = (index: number, block = 1000 - index, tokenHint = false, fields: Record<string, unknown> = {}): DiscoveredActivityCandidate => {
   const raw = { hash: hash(index), from: OWNER, to: OTHER, value: '1', blockNumber: String(block), confirmations: block > 0 ? '1' : '0', timeStamp: String(1700000000 - index), nonce: String(index), isError: '0', input: '0x', ...fields };
   const indexed = tokenHint ? mapEvmExplorerTokenTransfer({ ...raw, contractAddress: TOKEN, tokenSymbol: 'FIX', tokenDecimal: '18' }, 1) : mapEvmExplorerTransaction(raw, 1);
-  return { hash: hash(index), blockNumber: String(block), timestamp: 1700000000000 - index * 1000, tokenHint, indexed };
+  return { hash: hash(index), blockNumber: String(block), timestamp: 1700000000000 - index * 1000, tokenHint, indexed, ...(tokenHint ? { tokenEvent: raw } : {}) };
 };
 const cachedCandidate = (row: ActivityCandidate): ActivityCandidate => ({ hash: row.hash, blockNumber: row.blockNumber, timestamp: row.timestamp, tokenHint: row.tokenHint });
 const observation = (id: string, owner = OWNER, status: ActivityTransactionObservation['status'] = 'confirmed'): ActivityTransactionObservation => ({
@@ -775,7 +775,7 @@ test('load-more preserves cursors, deduplicates boundary rows and keeps the save
 
 test('duplicate-only ERC20 pages can advance to older transactions within the bounded request budget', async () => {
   const explorer = new FakeExplorer(({ feed, page }) => feed === 'txlist' ? [] : page <= 2
-    ? Array.from({ length: 20 }, () => candidate(1, 100, true)) : [candidate(2, 99, true)]);
+    ? Array.from({ length: 20 }, (_, index) => candidate(1, 100, true, { logIndex: String(page * 20 + index) })) : [candidate(2, 99, true)]);
   const f = fixture({ explorer });
   await f.controller.refresh();
   assert.deepEqual(new Set(f.controller.getSnapshot().rows.map((row) => row.hash)), new Set([hash(1), hash(2)]));
@@ -784,7 +784,7 @@ test('duplicate-only ERC20 pages can advance to older transactions within the bo
 
 test('event-heavy token history can continue across more than ten bounded load actions', async () => {
   const explorer = new FakeExplorer(({ feed, page }) => feed === 'txlist' ? [] : page <= 80
-    ? Array.from({ length: 20 }, () => candidate(Math.ceil(page / 20), 1000 - Math.ceil(page / 20), true)) : []);
+    ? Array.from({ length: 20 }, (_, index) => candidate(Math.ceil(page / 20), 1000 - Math.ceil(page / 20), true, { logIndex: String(page * 20 + index) })) : []);
   const f = fixture({ explorer });
   await f.controller.refresh();
   let actions = 0;
@@ -833,7 +833,9 @@ test('repeated full ordinary pages remain bounded and never imply completed hist
   await f.controller.refresh(); await f.controller.loadMore();
   assert.equal(f.controller.getSnapshot().rows.length, 20);
   assert.equal(f.controller.getSnapshot().hasMore, true);
-  assert(explorer.pages.length <= 8, 'each action has at most six page requests');
+  assert.equal(f.controller.getSnapshot().error, 'feed-unavailable');
+  await f.controller.loadMore();
+  assert.deepEqual(explorer.pages.filter(call => call.feed === 'txlist').map(call => call.page), [1, 2, 2]);
 });
 
 test('a failed older page is retried at the same cursor and retains the current list', async () => {

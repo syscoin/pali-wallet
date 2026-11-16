@@ -1,6 +1,7 @@
 import { getAddress } from 'ethers/address';
 import { observeEvmTransaction, readEvmReceiptFeeUnits, type EvmObservationRequest, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
-import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
+import { boundedResponseText, cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
+import { createBoundedRpcFetch } from '../custody/boundedRpcFetch.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 
 const TRANSFER_TOPIC =
@@ -193,7 +194,8 @@ function topicAddress(value: string): string {
 function readReceipt(
   value: unknown,
   expectedHash: string,
-  owner: string
+  owner: string,
+  chainId: string
 ): Receipt {
   const raw = object(value);
   if (hash(raw.transactionHash) !== expectedHash)
@@ -260,7 +262,7 @@ function readReceipt(
     BigInt(left.logIndex) < BigInt(right.logIndex) ? -1 : 1
   );
   let feeUnits: string | null = null;
-  try { feeUnits = readEvmReceiptFeeUnits(raw); }
+  try { feeUnits = readEvmReceiptFeeUnits(raw, chainId); }
   catch { return fail('INVALID_RESPONSE'); }
   const from = address(raw.from),
     to = raw.to === null ? null : address(raw.to);
@@ -323,7 +325,7 @@ export class ActivityReceiptReader {
       timeoutMs?: number;
     } = {}
   ) {
-    this.fetcher = options.fetch ?? ((url, init) => fetch(url, init));
+    this.fetcher = createBoundedRpcFetch(options.fetch ?? ((url, init) => fetch(url, init)));
     this.timeoutMs = options.timeoutMs ?? 12000;
     if (
       !Number.isSafeInteger(this.timeoutMs) ||
@@ -560,7 +562,8 @@ export class ActivityReceiptReader {
                       const receipt = readReceipt(
                         rawReceipt,
                         expected.hash,
-                        expected.from
+                        expected.from,
+                        expected.chainId
                       );
                       assertPair(tx, receipt);
                       const block = detailsCovered ? readBlock(rawBlock) : readBlock(await read(
@@ -730,7 +733,7 @@ export class ActivityReceiptReader {
               feeUnits: null,
             });
           }
-          const receipt = readReceipt(rawReceipt, expectedHash, owner);
+          const receipt = readReceipt(rawReceipt, expectedHash, owner, registration.chainId);
           // A transaction can become mined between the two parallel reads.
           if (!transaction.block) {
             rawTransaction = await read('eth_getTransactionByHash', [
@@ -826,15 +829,20 @@ export class ActivityReceiptReader {
           requestController.signal
         );
         check();
-        if (!response.ok) return fail('UNAVAILABLE');
+        if (!response.ok) {
+          cancelResponseBody(response);
+          return fail('UNAVAILABLE');
+        }
         const contentType = response.headers.get('content-type');
         if (
           contentType &&
           !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(
             contentType
           )
-        )
+        ) {
+          cancelResponseBody(response);
           return fail('INVALID_RESPONSE');
+        }
         const limit =
           method === 'eth_getBlockByNumber'
             ? MAX_BLOCK_BYTES

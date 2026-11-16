@@ -1157,6 +1157,46 @@ it('blocks genesis and POST when wallet authority expires during the status requ
   expect(c.cas).toHaveBeenCalledTimes(1);
 });
 
+it.each(['GET', 'POST'])(
+  'links cancellation only before dispatch when replay is held in %s',
+  async (method) => {
+    const c = await retainedFixture();
+    const controller = new AbortController();
+    const entered = deferred(),
+      release = deferred();
+    const transport = c.fetch.getMockImplementation()!;
+    let heldSignal: AbortSignal | null | undefined;
+    c.fetch.mockImplementation(async (requestUrl, init) => {
+      if (init?.method === method) {
+        heldSignal = init.signal;
+        entered.finish();
+        await release.promise;
+      }
+      return transport(requestUrl, init);
+    });
+    const pending = submitRetainedUtxo({
+      ...c,
+      record: c.transaction,
+      signal: controller.signal,
+    });
+    try {
+      await Promise.race([entered.promise, pending]);
+      controller.abort();
+      expect(heldSignal?.aborted).toBe(method === 'GET');
+      if (method === 'GET') {
+        await expect(pending).rejects.toMatchObject(noPost);
+        expect(c.fetch.mock.calls.map(([, init]) => init?.method)).toEqual([
+          'GET',
+        ]);
+      }
+    } finally {
+      release.finish();
+    }
+    if (method === 'POST')
+      await expect(pending).resolves.toEqual({ txid: c.transaction.txid });
+  }
+);
+
 it('ends a held original-route read at its deadline even if the transport does not settle', async () => {
   const c = await retainedFixture();
   const entered = deferred(),

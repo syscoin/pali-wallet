@@ -1,4 +1,5 @@
 import { isReadOnlyRpcMethod } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
+import { keccak256 } from 'ethers/crypto';
 
 jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
 jest.mock('state/store', () => ({
@@ -61,7 +62,6 @@ const HASH = `0x${'44'.repeat(32)}`;
 const NODE_PUBLIC_CASES = [
   ['eth_coinbase', [], OTHER_FROM],
   ['eth_maxPriorityFeePerGas', [], '0x77359400'],
-  ['web3_sha3', ['0Xabcd'], HASH],
   ['eth_getFilterChanges', ['0x0000aBcD'], []],
   ['eth_getFilterLogs', ['opaque-filter-ID'], []],
   ['eth_newBlockFilter', [], 'opaque-block-filter'],
@@ -315,6 +315,20 @@ describe('EthProvider public RPC admission and errors', () => {
     expect(rpc.send).not.toHaveBeenCalled();
     expect(popupMock).not.toHaveBeenCalled();
   });
+
+  it.each(['0Xabcd', '', '0x'])(
+    'hashes %j locally without a node request',
+    async (input) => {
+      (getUnrestrictedMethods as jest.Mock).mockReturnValue(['web3_sha3']);
+      await expect(
+        EthProvider(HOST, readContext()).unrestrictedRPCMethods('web3_sha3', [
+          input,
+        ])
+      ).resolves.toBe(keccak256(`0x${input.slice(2)}`));
+      expect(rpc.send).not.toHaveBeenCalled();
+      expect(popupMock).not.toHaveBeenCalled();
+    }
+  );
 
   it('requires an explicit request lifetime before public read execution', async () => {
     (getUnrestrictedMethods as jest.Mock).mockReturnValue(['net_listening']);

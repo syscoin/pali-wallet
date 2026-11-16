@@ -8,16 +8,16 @@ const expected = { chainId: '1', hash, from, to, nonce: '0' };
 const receipt = { transactionHash: hash, from, to, status: '0x1', blockNumber: '0x2', blockHash };
 
 test('receipt fees preserve exact quantities including zero and reject malformed or overflowing products', () => {
-  assert.equal(readEvmReceiptFeeUnits({ gasUsed: '0x5208', effectiveGasPrice: '0x2' }), '42000');
-  assert.equal(readEvmReceiptFeeUnits({ gasUsed: '0x0', effectiveGasPrice: '0xffff' }), '0');
-  assert.equal(readEvmReceiptFeeUnits({ gasUsed: '0x1', effectiveGasPrice: '0x' + 'f'.repeat(64) }), ((1n << 256n) - 1n).toString());
-  assert.equal(readEvmReceiptFeeUnits({ gasUsed: '0x5208' }), null);
+  assert.equal(readEvmReceiptFeeUnits({ gasUsed: '0x5208', effectiveGasPrice: '0x2' }, '1'), '42000');
+  assert.equal(readEvmReceiptFeeUnits({ gasUsed: '0x0', effectiveGasPrice: '0xffff' }, '1'), '0');
+  assert.equal(readEvmReceiptFeeUnits({ gasUsed: '0x1', effectiveGasPrice: '0x' + 'f'.repeat(64) }, '1'), ((1n << 256n) - 1n).toString());
+  assert.equal(readEvmReceiptFeeUnits({ gasUsed: '0x5208' }, '1'), null);
   for (const fields of [
     { gasUsed: '0x00', effectiveGasPrice: '0x1' },
     { gasUsed: 21000, effectiveGasPrice: '0x1' },
     { gasUsed: '0x1', effectiveGasPrice: null },
     { gasUsed: '0x2', effectiveGasPrice: '0x' + 'f'.repeat(64) },
-  ]) assert.throws(() => readEvmReceiptFeeUnits(fields), { code: 'INVALID_RESPONSE' });
+  ]) assert.throws(() => readEvmReceiptFeeUnits(fields, '1'), { code: 'INVALID_RESPONSE' });
 });
 
 test('canonical observation carries fee from its existing receipt without an additional read', async () => {

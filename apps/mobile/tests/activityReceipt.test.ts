@@ -22,10 +22,10 @@ const receipt = (fields: Record<string, unknown> = {}) => ({ transactionHash: HA
   blockHash: BLOCK, blockNumber: '0x50', transactionIndex: '0x2', status: '0x1', logs: [],
   gasUsed: '0x5208', effectiveGasPrice: '0xa', ...fields });
 type Call = { method: string; params: unknown[]; signal: AbortSignal };
-function fixture(override?: (call: Call) => unknown | Promise<unknown>, timeoutMs?: number) {
+function fixture(override?: (call: Call) => unknown | Promise<unknown>, timeoutMs?: number, network = getNativeNetwork('ethereum')) {
   const calls: Call[] = [];
   const reader = new ActivityReceiptReader({ timeoutMs, fetch: async (url, init) => {
-    assert.equal(url, getNativeNetwork('ethereum').rpcUrl);
+    assert.equal(url, network.rpcUrl);
     assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error'); assert.equal(init.cache, 'no-store');
     const input = JSON.parse(String(init.body));
     const call = { method: input.method, params: input.params, signal: init.signal } as Call;
@@ -34,12 +34,12 @@ function fixture(override?: (call: Call) => unknown | Promise<unknown>, timeoutM
     let result = override ? await override(call) : undefined;
     if (result instanceof Response) return result;
     if (result === undefined) {
-      if (call.method === 'eth_chainId') result = '0x1';
+      if (call.method === 'eth_chainId') result = `0x${BigInt(network.chainId).toString(16)}`;
       else if (call.method === 'eth_getTransactionByHash') result = tx();
       else if (call.method === 'eth_getTransactionReceipt') result = receipt();
       else if (call.method === 'eth_getBlockByNumber') result = call.params[0] === 'finalized' || call.params[0] === '0x60'
         ? { number: '0x60', hash: FINAL_BLOCK, timestamp: '0x6553f164' }
-        : { number: call.params[0], hash: BLOCK, timestamp: '0x6553f100' };
+        : { number: call.params[0], hash: BLOCK, timestamp: '0x6553f100', gasLimit: '0x1c9c380' };
     }
     return new Response(JSON.stringify({ jsonrpc: '2.0', id: input.id, result }), { headers: { 'content-type': 'application/json' } });
   } });
@@ -278,9 +278,10 @@ test('an unavailable detail body does not discard a healthy automatic receipt', 
 
 test('cancelled detail consumers neither start nor retain extra body work', async () => {
   const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  const bodyStarted = Promise.withResolvers<void>();
   const f = fixture(async call => {
     if (call.method === 'eth_getTransactionReceipt') { started.resolve(); await held.promise; }
-    if (call.method === 'eth_getTransactionByHash') return new Promise(() => undefined);
+    if (call.method === 'eth_getTransactionByHash') { bodyStarted.resolve(); return new Promise(() => undefined); }
     if (call.method === 'eth_getBlockByNumber') return { number: '0x50', hash: BLOCK, gasLimit: '0x1c9c380' };
   });
   const automatic = f.reader.observe({ chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' }, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope');
@@ -290,6 +291,7 @@ test('cancelled detail consumers neither start nor retain extra body work', asyn
   assert.equal(f.calls.some(call => call.method === 'eth_getTransactionByHash'), false);
   const detail = new AbortController();
   const rejected = assert.rejects(f.reader.read(HASH, OWNER, detail.signal, () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'CANCELLED' });
+  await bodyStarted.promise;
   detail.abort(); await rejected;
   const body = f.calls.find(call => call.method === 'eth_getTransactionByHash')!;
   assert.equal(body.signal.aborted, true);
@@ -472,4 +474,46 @@ test('last detail cancellation after automatic completion releases its owned bod
   assert.equal((await f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope'))?.status, 'confirmed');
   assert.equal(bodies, 2);
   assert.equal(f.calls.filter(call => call.method === 'eth_getTransactionReceipt').length, 2);
+});
+
+test('Base details and retained observations include verified L1 fee without extra reads', async () => {
+  const network = getNativeNetwork('base');
+  for (const [fields, total] of [
+    [{ l1Fee: '0x186a0' }, '310000'],
+    [{ l1Fee: '0x0' }, '210000'],
+    [{ l1Fee: 'invalid' }, null],
+    [{ l1Fee: '0x186a0', operatorFeeScalar: '0x1' }, null],
+  ] as const) {
+    const f = fixture(call => call.method === 'eth_getTransactionReceipt' ? receipt(fields) : undefined, undefined, network);
+    const detail = await f.reader.read(HASH, OWNER, signal(), () => {}, network);
+    assert.equal(detail?.status, 'confirmed');
+    assert.equal(detail?.feeUnits, total);
+    const observed = await f.reader.observe({ chainId: network.chainId, from: OWNER, to: OTHER, hash: HASH, nonce: '1' }, signal(), () => {}, network, 'owner');
+    assert.equal(observed.status, 'mined');
+    if (observed.status === 'mined') assert.equal(observed.feeUnits, total ?? undefined);
+  }
+});
+
+test('retired Activity reads keep physical slots until an ignored abort drains', async () => {
+  const held = Promise.withResolvers<void>(), fourStarted = Promise.withResolvers<void>();
+  let calls = 0;
+  const f = fixture(async () => {
+    calls++;
+    if (calls === 4) fourStarted.resolve();
+    if (calls <= 4) await held.promise;
+  });
+  const registration = getNativeNetwork('ethereum');
+  const old = Array.from({ length: 4 }, () => new AbortController());
+  const retired = old.map(owner => assert.rejects(
+    f.reader.read(HASH, OWNER, owner.signal, () => {}, registration), { code: 'CANCELLED' }
+  ));
+  await fourStarted.promise;
+  old.forEach(owner => owner.abort());
+  await Promise.all(retired);
+  const next = f.reader.read(HASH, OWNER, signal(), () => {}, registration);
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls, 4);
+  } finally { held.resolve(); }
+  assert.equal((await next)?.status, 'confirmed');
 });

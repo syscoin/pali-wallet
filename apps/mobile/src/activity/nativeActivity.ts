@@ -438,8 +438,15 @@ export class NativeActivity {
         );
         guard();
         const fingerprint = JSON.stringify(
-          rows.map((r) => [r.hash, r.blockNumber])
+          rows.map((row) => JSON.stringify([
+            row.hash,
+            row.blockNumber,
+            row.tokenEvent?.logIndex,
+            row.indexed.tokenTransfer,
+          ])).sort()
         );
+        if (rows.length === ACTIVITY_PAGE_SIZE && fingerprint === feed.fingerprint)
+          throw new Error('Explorer page did not advance');
         // The same shared source-priority merge keeps real transaction bodies
         // ahead of token-event placeholders. All indexed facts remain transient.
         for (const row of rows) if (row.tokenEvent && !this.tokenEvents.has(row.hash)) this.tokenEvents.set(row.hash, row.tokenEvent);
