@@ -95,8 +95,11 @@ test('RPC budget and receipts for local wallet transfers', async () => {
     phase = next;
     output.markers.push({ phase, at: Date.now() });
   };
-  const waitForReadSettlement = () =>
-    expect
+  const waitForReadSettlement = (completeSubmittedFlow = false) => {
+    // A receipt can be visible before the already-scheduled four-second rapid
+    // poll starts. Keep that work in this flow's home/acknowledged phase.
+    const notBefore = Date.now() + (completeSubmittedFlow ? 4250 : 0);
+    return expect
       .poll(
         () => {
           const requests = output.requests;
@@ -106,11 +109,16 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           const lastStarted = requests.length
             ? requests[requests.length - 1].started
             : 0;
-          return settled && Date.now() - lastStarted >= 250;
+          return (
+            settled &&
+            Date.now() >= notBefore &&
+            Date.now() - lastStarted >= 250
+          );
         },
         { timeout: 10000 }
       )
       .toBe(true);
+  };
   const receipt = async (hash: string) => {
     let result: any;
     await expect
@@ -138,7 +146,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         { timeout: 15000 }
       )
       .toBe(true);
-    await waitForReadSettlement();
+    await waitForReadSettlement(true);
   };
   try {
     Object.assign(E2E_CONFIG, {
@@ -608,7 +616,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         await expect(
           page.getByText('Confirmed', { exact: true }).first()
         ).toBeVisible({ timeout: 15000 });
-        await waitForReadSettlement();
+        await waitForReadSettlement(true);
       });
     await send('deployment');
     await wallet.step(
