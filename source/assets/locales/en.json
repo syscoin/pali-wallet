@@ -336,7 +336,9 @@
     "congratulations": "Congratulations",
     "youWalletWas": "Your wallet was successfully imported.",
     "youHaveNoNfts": "You have no NFTs.",
-    "noIndexedActivity": "No activity found. NFT and internal transfers may not appear here."
+    "noIndexedActivity": "No activity found. NFT and internal transfers may not appear here.",
+    "savedActivityUnavailable": "Saved activity could not be loaded.",
+    "retrySavedActivity": "Retry saved activity"
   },
   "titles": {
     "assetDetails": "ASSET DETAILS",
@@ -1443,7 +1445,8 @@
     "firstAccessTitle": "Grab ${{token}} with our faucet to begin experiencing the {{network}} network!",
     "firstAccessDescription": "You can get {{token}} per wallet address every 24h.",
     "grabTokens": "Go to Faucet",
-    "rateLimited": "The faucet is rate limiting requests. Visit the faucet for more information."
+    "rateLimited": "The faucet is rate limiting requests. Visit the faucet for more information.",
+    "requestTimedOut": "Request timed out. Check your balance before requesting tokens again."
   },
   "nftDetails": {
     "information": "NFT Information",

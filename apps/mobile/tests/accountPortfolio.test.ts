@@ -393,3 +393,47 @@ test('last known balances survive an outage and clear on a confirmed endpoint ch
     assert.equal(f.tokens.length, 1);
   } finally { stop(); }
 });
+
+test('a failed portfolio filter stays unavailable across source updates and explicit Refresh retries only that prerequisite', async () => {
+  const f = fixture(); let loads = 0, failed = true;
+  const model = f.make({ async load() { loads++; if (failed) throw Error('Preference unavailable'); return 'base'; }, async save() {} });
+  const stop = model.connect();
+  try {
+    model.getSnapshot(); await settle();
+    assert.equal(loads, 1); assert.equal(model.getSnapshot().status, 'unavailable');
+    f.select(0); await settle(); assert.equal(model.getSnapshot().status, 'unavailable');
+    assert.deepEqual(f.reads, []); assert.deepEqual(f.tokens, []); assert.deepEqual(f.prices, []);
+    failed = false; await Promise.all([model.refresh(), model.refresh()]); await settle();
+    assert.equal(loads, 2); assert.equal(model.getSnapshot().filter, 'base'); assert.equal(model.getSnapshot().status, 'ready');
+    assert.deepEqual(f.reads, [`base:${f.accounts[0]!.address}`]); assert.deepEqual(f.tokens, ['base:hd:60:0']);
+  } finally { stop(); }
+});
+
+test('pending portfolio preference reads are joined and never broaden IO during an account change', async () => {
+  const f = fixture(), pending = Promise.withResolvers<string>(); let loads = 0;
+  const model = f.make({ load() { loads++; return pending.promise; }, async save() {} }), stop = model.connect();
+  try {
+    const retry = model.refresh(); f.select(14); await settle();
+    assert.equal(loads, 1); assert.equal(model.getSnapshot().status, 'loading');
+    assert.deepEqual(f.reads, []); assert.deepEqual(f.tokens, []); assert.deepEqual(f.prices, []);
+    pending.resolve('base'); await retry; await settle();
+    assert.equal(loads, 1); assert.deepEqual(f.reads, [`base:${f.accounts[14]!.address}`]);
+    assert.equal(model.getSnapshot().filter, 'base');
+  } finally { stop(); }
+});
+
+test('repeated preference failures remain retryable and a retired retry cannot replace a reconnected selection', async () => {
+  const f = fixture(); let load: () => Promise<string> = async () => { throw Error('Preference unavailable'); }, loads = 0;
+  const model = f.make({ load() { loads++; return load(); }, async save() {} });
+  let stop = model.connect();
+  try {
+    await settle(); await model.refresh(); f.select(0); await settle();
+    assert.equal(loads, 2); assert.equal(model.getSnapshot().status, 'unavailable'); assert.deepEqual(f.reads, []);
+    const held = Promise.withResolvers<string>(); load = () => held.promise;
+    const retired = model.refresh(); await settle(); stop();
+    load = async () => 'base'; stop = model.connect(); await settle();
+    held.resolve('all'); await retired; await settle();
+    assert.equal(model.getSnapshot().filter, 'base');
+    assert.deepEqual(f.reads, [`base:${f.accounts[0]!.address}`]);
+  } finally { stop(); }
+});

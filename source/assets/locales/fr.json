@@ -336,7 +336,9 @@
     "congratulations": "Félicitations !",
     "youWalletWas": "Votre portefeuille a été importé avec succès",
     "youHaveNoNfts": "Vous n'avez pas de NFT.",
-    "noIndexedActivity": "Aucune activité trouvée. Certains transferts, notamment de NFT ou internes, peuvent ne pas apparaître ici."
+    "noIndexedActivity": "Aucune activité trouvée. Certains transferts, notamment de NFT ou internes, peuvent ne pas apparaître ici.",
+    "savedActivityUnavailable": "Impossible de charger l’activité enregistrée.",
+    "retrySavedActivity": "Réessayer l’activité enregistrée"
   },
   "titles": {
     "assetDetails": "Détails de l'actif",
@@ -1443,7 +1445,8 @@
     "firstAccessTitle": "Obtenez des ${{token}} avec notre robinet pour commencer à découvrir le réseau {{network}} !",
     "firstAccessDescription": "Vous pouvez obtenir {{token}} par adresse de portefeuille toutes les 24 heures.",
     "grabTokens": "Aller au Faucet",
-    "rateLimited": "Le faucet limite les requêtes. Consultez le faucet pour plus d’informations."
+    "rateLimited": "Le faucet limite les requêtes. Consultez le faucet pour plus d’informations.",
+    "requestTimedOut": "La demande a expiré. Vérifiez votre solde avant de demander à nouveau des jetons."
   },
   "nftDetails": {
     "information": "Informations sur le NFT",

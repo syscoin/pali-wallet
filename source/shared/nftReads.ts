@@ -68,6 +68,26 @@ function captureNftExecutionRevert(
       data = parsed.data;
     }
     if (!isBoundedRevertData(data)) return undefined;
+    if (normalized) {
+      // Ethers can label an incompatible RPC error CALL_EXCEPTION based only
+      // on its wording. When it retains the original error, admit that evidence
+      // through the same raw-code/data checks instead of trusting the label.
+      const info = Object.getOwnPropertyDescriptor(error, 'info');
+      if (info) {
+        if (
+          !Object.prototype.hasOwnProperty.call(info, 'value') ||
+          info.value === null ||
+          typeof info.value !== 'object'
+        )
+          return undefined;
+        const original = captureNftExecutionRevert(
+          ownValue(info.value, 'error'),
+          tx,
+          false
+        );
+        if (!original || ownValue(original, 'data') !== data) return undefined;
+      }
+    }
     return makeError('execution reverted', 'CALL_EXCEPTION', {
       action: 'call',
       data,

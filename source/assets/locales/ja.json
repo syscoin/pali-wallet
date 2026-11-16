@@ -336,7 +336,9 @@
     "congratulations": "おめでとう！",
     "youWalletWas": "ウォレットのインポートに成功しました",
     "youHaveNoNfts": "NFTはありません。",
-    "noIndexedActivity": "アクティビティは見つかりませんでした。NFTや内部転送はここに表示されない場合があります。"
+    "noIndexedActivity": "アクティビティは見つかりませんでした。NFTや内部転送はここに表示されない場合があります。",
+    "savedActivityUnavailable": "保存されたアクティビティを読み込めませんでした。",
+    "retrySavedActivity": "保存されたアクティビティを再読み込み"
   },
   "titles": {
     "assetDetails": "資産詳細",
@@ -1443,7 +1445,8 @@
     "firstAccessTitle": "フォーセットで ${{token}} を取得して {{network}} ネットワークの体験を始めましょう！",
     "firstAccessDescription": "ウォレットアドレスごとに24時間ごとに{{token}}を取得できます。",
     "grabTokens": "フォーセットに移動",
-    "rateLimited": "フォーセットはリクエストを制限しています。詳しくはフォーセットをご確認ください。"
+    "rateLimited": "フォーセットはリクエストを制限しています。詳しくはフォーセットをご確認ください。",
+    "requestTimedOut": "リクエストがタイムアウトしました。再度トークンを受け取る前に残高を確認してください。"
   },
   "nftDetails": {
     "information": "NFT 情報",

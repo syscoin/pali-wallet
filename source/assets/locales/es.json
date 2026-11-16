@@ -336,7 +336,9 @@
     "congratulations": "¡Felicitaciones!",
     "youWalletWas": "Tu billetera se importó con éxito.",
     "youHaveNoNfts": "No tienes NFTs.",
-    "noIndexedActivity": "No se encontró actividad. Es posible que las transferencias de NFT e internas no aparezcan aquí."
+    "noIndexedActivity": "No se encontró actividad. Es posible que las transferencias de NFT e internas no aparezcan aquí.",
+    "savedActivityUnavailable": "No se pudo cargar la actividad guardada.",
+    "retrySavedActivity": "Reintentar actividad guardada"
   },
   "titles": {
     "assetDetails": "Detalles del activo",
@@ -1443,7 +1445,8 @@
     "firstAccessTitle": "¡Obtén ${{token}} con nuestro faucet para comenzar a experimentar la red {{network}}!",
     "firstAccessDescription": "Puedes obtener {{token}} por dirección de billetera cada 24h.",
     "grabTokens": "Ir al Faucet",
-    "rateLimited": "El faucet está limitando las solicitudes. Visita el faucet para obtener más información."
+    "rateLimited": "El faucet está limitando las solicitudes. Visita el faucet para obtener más información.",
+    "requestTimedOut": "La solicitud agotó el tiempo de espera. Comprueba tu saldo antes de solicitar más tokens."
   },
   "nftDetails": {
     "information": "Información del NFT",

@@ -19,6 +19,8 @@ export type NotificationSnapshot = Readonly<{
   permission: 'unknown' | 'granted' | 'denied';
   background: 'unknown' | 'available' | 'restricted' | 'unsupported';
   pendingEventId: string | null;
+  /** In-memory identity of an explicit tap, including another tap on the same event. */
+  tapRevision?: number;
   lastRunAt: number | null;
 }>;
 export type NotificationPermissionResult = 'granted' | 'denied' | null;

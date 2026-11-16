@@ -336,7 +336,9 @@
     "congratulations": "恭喜！",
     "youWalletWas": "您的钱包已成功导入",
     "youHaveNoNfts": "您没有 NFT。",
-    "noIndexedActivity": "未找到活动。NFT 和内部转账可能不会显示在此处。"
+    "noIndexedActivity": "未找到活动。NFT 和内部转账可能不会显示在此处。",
+    "savedActivityUnavailable": "无法加载已保存的活动。",
+    "retrySavedActivity": "重试加载已保存的活动"
   },
   "titles": {
     "assetDetails": "资产详情",
@@ -1443,7 +1445,8 @@
     "firstAccessTitle": "使用我们的水龙头获取 ${{token}} 开始体验 {{network}} 网络！",
     "firstAccessDescription": "您可以每24小时每个钱包地址获得{{token}}。",
     "grabTokens": "前往水龙头",
-    "rateLimited": "水龙头正在限制请求。请访问水龙头了解更多信息。"
+    "rateLimited": "水龙头正在限制请求。请访问水龙头了解更多信息。",
+    "requestTimedOut": "请求超时。再次领取代币前，请先检查余额。"
   },
   "nftDetails": {
     "information": "NFT 信息",

@@ -1,7 +1,7 @@
 import { findRegisteredEvmNetwork } from '../../../../source/shared/evmNetworks.ts';
 import { assetMarketHistoryUrl, assetMarketUrl, readAssetMarket, readAssetMarketHistory, readTokenMarketId, tokenMarketIdentityUrl, type AssetMarket, type AssetMarketPurpose } from '../../../../source/shared/assetMarket.ts';
 import { getDefaultUTXONetworks } from '../../../../source/utils/defaultNetworks.ts';
-import { findUtxoNetwork } from '../core/utxoNetworks.ts';
+import { findUtxoNetwork, resolveUtxoNetwork, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { isFiatCurrency, type FiatCurrency } from '../core/fiatPreference.ts';
 import { findKnownNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
@@ -9,7 +9,7 @@ import { readPublicMarketJson } from '../../../../source/shared/publicMarketRead
 import { rememberNativeAssetIcon } from './assetIconCache.ts';
 
 export type AssetMarketReference = Readonly<{
-  kind: 'native' | 'token'; networkId: string; registration?: NativeNetworkRegistration | null; contractAddress?: string;
+  kind: 'native' | 'token'; networkId: string; registration?: NativeNetworkRegistration | UtxoNetwork | null; contractAddress?: string;
 }>;
 export type AssetMarketSource = Readonly<{ kind: 'native'; id: string } | { kind: 'token'; platform: string; contract: string }>;
 /** Reader-local monotonic expiry, separate from the provider's updatedAt. */
@@ -18,17 +18,23 @@ export const nativeAssetMarketNow = () => performance.now();
 /** Reuse only images accompanying the existing verified, registered market read. */
 export function rememberNativeAssetMarketIcon(asset: AssetMarketReference, data: AssetMarket): void {
   if (asset.kind !== 'token' || !data.iconUri || !asset.contractAddress || !nativeAssetMarketSource(asset)) return;
-  const network = findKnownNativeNetwork(asset.networkId, asset.registration);
+  const network = findKnownNativeNetwork(asset.networkId, asset.registration?.kind === 'utxo' ? undefined : asset.registration);
   if (!network) return;
   rememberNativeAssetIcon({ kind: 'evm', chainId: network.chainId, contractAddress: asset.contractAddress }, network.registrationHash, data.iconUri);
 }
 export function nativeAssetMarketSource(asset: AssetMarketReference): AssetMarketSource | null {
-  const utxo = findUtxoNetwork(asset.networkId);
+  let utxo = findUtxoNetwork(asset.networkId);
+  if (asset.registration?.kind === 'utxo') {
+    try {
+      utxo = resolveUtxoNetwork(asset.registration);
+      if (utxo.id !== asset.networkId) return null;
+    } catch { return null; }
+  }
   if (utxo) {
     const id = getDefaultUTXONetworks()[utxo.chainId]?.coingeckoId;
     return asset.kind === 'native' && !utxo.testnet && id ? { kind: 'native', id } : null;
   }
-  const known = findKnownNativeNetwork(asset.networkId, asset.registration);
+  const known = findKnownNativeNetwork(asset.networkId, asset.registration?.kind === 'utxo' ? undefined : asset.registration);
   if (!known || known.testnet) return null;
   const metadata = findRegisteredEvmNetwork(known)?.network;
   if (asset.kind === 'native') return metadata?.coingeckoId ? { kind: 'native', id: metadata.coingeckoId } : null;

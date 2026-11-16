@@ -8,6 +8,9 @@ export const emptyNotificationDocument = (): NotificationDocument => ({ scopes: 
 const aborted = () => { throw new Error('Notification work expired'); };
 // Foreground/background coordinators share the same physical OS delivery owner.
 const taskSync = new WeakMap<NotificationDelivery, Promise<void>>();
+// Permission observations and explicit grants share one owner across both runtimes.
+const permissionOwners = new WeakMap<NotificationDelivery, object>();
+const supersededPermission = new Error('Notification permission changed');
 
 /** The injected reader has only public read capabilities, never a live wallet controller. */
 export class NativeNotificationCoordinator {
@@ -46,11 +49,15 @@ export class NativeNotificationCoordinator {
     return work;
   }
   async load() {
+    const permissionOwner = {};
+    permissionOwners.set(this.ports.delivery, permissionOwner);
+    const current = () => { if (permissionOwners.get(this.ports.delivery) !== permissionOwner) throw supersededPermission; };
     try {
       const permission = await this.ports.delivery.permission(false);
       const background = await this.ports.delivery.backgroundStatus();
+      current();
       this.publish({ permission, background });
-      if (permission !== 'granted') await this.disableAll();
+      if (permission !== 'granted') await this.revoke(() => true, current);
       else {
         const ids = await this.transact((doc) => doc.events.map((event) => event.id));
         await this.ports.delivery.prune(ids);
@@ -58,6 +65,7 @@ export class NativeNotificationCoordinator {
         await this.syncTask();
       }
     } catch {
+      if (permissionOwners.get(this.ports.delivery) !== permissionOwner) return;
       this.publish({ status: 'unavailable' });
       // Corrupt/unreadable enrollment cannot authorize an old OS notification.
       await Promise.allSettled([this.ports.delivery.prune([]), this.syncTask()]);
@@ -75,6 +83,7 @@ export class NativeNotificationCoordinator {
     })) throw new Error('Alerts are unavailable for this account and network');
     const permission = await this.ports.delivery.permission(options.requestPermission, options.onPermissionPresentation);
     check();
+    if (permission === 'granted') permissionOwners.set(this.ports.delivery, {});
     this.publish({ permission });
     if (permission !== 'granted') throw new Error('Allow notifications in device settings to enable alerts');
     await this.ports.store.initialize();
@@ -150,7 +159,7 @@ export class NativeNotificationCoordinator {
     await this.syncTask();
     if (this.snapshot.pendingEventId && !keep.includes(this.snapshot.pendingEventId)) this.publish({ pendingEventId: null });
   }
-  recordTap(id: unknown) { if (typeof id === 'string' && /^pali-alert-[0-9a-f]{32}$/.test(id)) this.publish({ pendingEventId: id }); }
+  recordTap(id: unknown) { if (typeof id === 'string' && /^pali-alert-[0-9a-f]{32}$/.test(id)) this.publish({ pendingEventId: id, tapRevision: (this.snapshot.tapRevision ?? 0) + 1 }); }
   async getPendingOwner(): Promise<Readonly<{ accountId: string; accountType: string }> | null> {
     const id = this.snapshot.pendingEventId;
     if (!id) return null;
@@ -200,6 +209,9 @@ export class NativeNotificationCoordinator {
     return this.running;
   }
   private async poll(external?: AbortSignal) {
+    const permissionOwner = {};
+    permissionOwners.set(this.ports.delivery, permissionOwner);
+    const current = () => { if (permissionOwners.get(this.ports.delivery) !== permissionOwner) throw supersededPermission; };
     const controller = new AbortController();
     const abort = () => controller.abort();
     external?.addEventListener('abort', abort, { once: true });
@@ -207,8 +219,9 @@ export class NativeNotificationCoordinator {
     const timer = setTimeout(abort, NOTIFICATION_LIMITS.runMs);
     try {
       const permission = await this.ports.delivery.permission(false);
+      current();
       this.publish({ permission });
-      if (permission !== 'granted') { await this.disableAll(); return; }
+      if (permission !== 'granted') { await this.revoke(() => true, current); return; }
       // Already queued notices must get time before slow public reads use the run budget.
       await this.deliverPending(controller.signal);
       const work = await this.transact((doc) => {
@@ -259,6 +272,8 @@ export class NativeNotificationCoordinator {
       await this.ports.delivery.prune(keep);
       this.publish({ lastRunAt: this.now() });
       await this.refresh();
+    } catch (error) {
+      if (error !== supersededPermission) throw error;
     } finally { clearTimeout(timer); external?.removeEventListener('abort', abort); controller.abort(); }
   }
   private async deliverPending(signal: AbortSignal) {

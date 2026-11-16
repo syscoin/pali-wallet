@@ -514,6 +514,19 @@ export const EvmTransactionDetailsEnhanced = ({
   ]);
   const [decodedTxData, setDecodedTxData] =
     useContextualState<IDecodedTx | null>(decodeScope, null);
+  // An incidental rerender must not retry a failed read. A deliberate revisit
+  // or a different payload gets a fresh attempt without caching that failure.
+  const decodeAttempt = useRef({
+    scope: decodeScope,
+    failed: false,
+    pending: null as Promise<IDecodedTx | null> | null,
+  });
+  if (decodeAttempt.current.scope !== decodeScope)
+    decodeAttempt.current = {
+      scope: decodeScope,
+      failed: false,
+      pending: null,
+    };
   const candidate = winnerLookup.settled
     ? winnerLookup.candidate
     : replacementWinner;
@@ -682,7 +695,10 @@ export const EvmTransactionDetailsEnhanced = ({
   // Effect to decode transaction data when we have transaction data
   useEffect(() => {
     let cancelled = false;
-    const isCurrent = () => !cancelled && scopeRef.current === scope;
+    const isCurrent = () =>
+      !cancelled &&
+      scopeRef.current === scope &&
+      decodeAttempt.current.scope === decodeScope;
     const processTransactionDecoding = async () => {
       // Check cache first
       const cached = decodedTxCache.get(decodeScope);
@@ -692,6 +708,7 @@ export const EvmTransactionDetailsEnhanced = ({
         setDecodedTxData(cached.data);
         return;
       }
+      if (decodeAttempt.current.failed) return;
 
       const currentTransaction = transactionTx;
 
@@ -700,6 +717,7 @@ export const EvmTransactionDetailsEnhanced = ({
           const mergedTx = currentTransaction;
 
           let decodedData: IDecodedTx | null = null;
+          let completed = true;
 
           // Always decode transactions with input data to get full parameter details
           // This ensures we show decoded data even if transactionDisplayInfo isn't ready yet
@@ -720,12 +738,14 @@ export const EvmTransactionDetailsEnhanced = ({
           } else {
             // Always decode transactions with input data to get full details
             try {
-              decodedData = (await controllerEmitter(
+              decodeAttempt.current.pending ??= controllerEmitter(
                 ['wallet', 'decodeEvmTransactionData'],
                 [mergedTx]
-              )) as IDecodedTx;
+              ) as Promise<IDecodedTx | null>;
+              decodedData = await decodeAttempt.current.pending;
             } catch (decodeError) {
               console.error('Failed to decode transaction data:', decodeError);
+              completed = false;
               // Fallback based on what we know
               if (transactionDisplayInfo?.isErc20Transfer) {
                 decodedData = {
@@ -741,18 +761,22 @@ export const EvmTransactionDetailsEnhanced = ({
           }
 
           if (!isCurrent()) return;
-          // Cache the result
-          decodedTxCache.set(decodeScope, {
-            data: decodedData,
-            timestamp: now,
-          });
-
-          if (decodedTxCache.size > 100)
-            decodedTxCache.delete(decodedTxCache.keys().next().value);
+          decodeAttempt.current.pending = null;
+          decodeAttempt.current.failed = !completed;
+          if (completed) {
+            decodedTxCache.set(decodeScope, {
+              data: decodedData,
+              timestamp: now,
+            });
+            if (decodedTxCache.size > 100)
+              decodedTxCache.delete(decodedTxCache.keys().next().value);
+          }
           setDecodedTxData(decodedData);
         } catch (error) {
           if (isCurrent()) {
             console.error('Error decoding transaction:', error);
+            decodeAttempt.current.pending = null;
+            decodeAttempt.current.failed = true;
             setDecodedTxData(null);
           }
         }

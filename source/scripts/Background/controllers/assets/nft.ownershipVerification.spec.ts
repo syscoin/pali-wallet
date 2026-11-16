@@ -637,6 +637,71 @@ it('a plain CALL_EXCEPTION with null data cannot verify an NFT', async () => {
   expect(decode).not.toHaveBeenCalled();
 });
 
+it.each([3, -32000, -32603, -32601, -32005, 4200])(
+  'keeps raw and ethers-normalized admission consistent for original RPC code %s',
+  async (code) => {
+    const data = abi721.encodeFunctionData('ownerOf', [42]);
+    const raw = { code, message: 'execution reverted', data: '0x' };
+    const supported = code === 3 || code === -32000;
+    expect(
+      Boolean(normalizeNftExecutionRevert(raw, { to: CONTRACT, data }))
+    ).toBe(supported);
+    const call = jest.fn(async (tx: TransactionRequest) => {
+      if (call.mock.calls.length === 1) throw callError(tx.data!, raw);
+      return abi721.encodeFunctionResult('ownerOf', [OWNER]);
+    });
+    expect(
+      await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], { call })
+    ).toEqual([
+      { tokenId: '7', balance: supported ? 1 : 0, verified: supported },
+    ]);
+    expect(call).toHaveBeenCalledTimes(supported ? 2 : 1);
+  }
+);
+
+it.each([
+  'info accessor',
+  'error accessor',
+  'missing original',
+  'different data',
+])(
+  'refuses unusable original RPC evidence on normalized errors: %s',
+  async (kind) => {
+    const read = jest.fn(() => ({
+      code: 3,
+      message: 'execution reverted',
+      data: '0x',
+    }));
+    const error = Object.assign(new Error('execution reverted'), {
+      code: 'CALL_EXCEPTION',
+      data: '0x',
+      info: {
+        error: {
+          code: 3,
+          message: 'execution reverted',
+          data:
+            kind === 'different data'
+              ? abi721.encodeErrorResult('ERC721NonexistentToken', [42])
+              : '0x',
+        },
+      } as any,
+    });
+    if (kind === 'info accessor')
+      Object.defineProperty(error, 'info', { get: read });
+    if (kind === 'error accessor')
+      Object.defineProperty(error.info, 'error', { get: read });
+    if (kind === 'missing original') delete error.info.error;
+    const call = jest.fn(async () => {
+      throw error;
+    });
+    expect(
+      await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], { call })
+    ).toEqual([{ tokenId: '7', balance: 0, verified: false }]);
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(read).not.toHaveBeenCalled();
+  }
+);
+
 function sdkRunner721(
   probe: Pick<JsonRpcError, 'error'> | { result: string } | Error,
   status = 200

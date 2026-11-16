@@ -33,10 +33,12 @@ const row = (byte: string) => ({
 });
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((r, fail) => {
     resolve = r;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 const flush = async () => {
   await act(async () => {
@@ -174,6 +176,134 @@ test('a failed later local read leaves retained history available', async () => 
   mockEmitter.mockRejectedValue(new Error('read unavailable'));
   await act(async () => result.current.loadMore());
   expect(result.current.transactions[0].hash).toBe(hash('1'));
+  expect(result.current.loading).toBe(false);
+  expect(result.current.unavailable).toBe(true);
+});
+
+test('a failed first read stays unavailable across rerenders without an automatic retry loop', async () => {
+  jest.useFakeTimers();
+  try {
+    mockEmitter.mockRejectedValue(new Error('Read unavailable'));
+    const { result, rerender } = renderHook(() =>
+      useSavedEvmTransactions(true, 'a:network')
+    );
+    await flush();
+    expect(result.current.unavailable).toBe(true);
+    expect(result.current.loading).toBe(false);
+    rerender();
+    await act(async () => jest.advanceTimersByTimeAsync(60000));
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+    mockEmitter.mockResolvedValueOnce({
+      transactions: [row('1')],
+      nextCursor: null,
+    });
+    await act(async () => result.current.retry());
+    expect(result.current.transactions[0].hash).toBe(hash('1'));
+    expect(result.current.unavailable).toBe(false);
+    expect(mockEmitter).toHaveBeenCalledTimes(2);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('an explicit local page retry preserves its failed cursor, successful rows and thirty-row request', async () => {
+  mockEmitter.mockResolvedValueOnce({
+    transactions: [row('1')],
+    nextCursor: hash('1'),
+  });
+  const { result } = renderHook(() =>
+    useSavedEvmTransactions(true, 'a:network')
+  );
+  await flush();
+  mockEmitter.mockRejectedValueOnce(new Error('Older page unavailable'));
+  await act(async () => result.current.loadMore());
+  expect(result.current.unavailable).toBe(true);
+  expect(result.current.hasMore).toBe(true);
+  mockEmitter.mockResolvedValueOnce({
+    transactions: [row('2')],
+    nextCursor: null,
+  });
+  await act(async () => result.current.retry());
+  expect(mockEmitter.mock.calls.slice(-2).map(([, args]) => args)).toEqual([
+    [hash('1'), 30],
+    [hash('1'), 30],
+  ]);
+  expect(result.current.transactions.map((tx) => tx.hash)).toEqual([
+    hash('1'),
+    hash('2'),
+  ]);
+  expect(result.current.unavailable).toBe(false);
+  expect(result.current.hasMore).toBe(false);
+});
+
+test.each([
+  undefined,
+  {},
+  { transactions: [], nextCursor: undefined },
+  { transactions: Array(31).fill(row('1')), nextCursor: null },
+])(
+  'treats an unusable bounded page as unavailable rather than successful empty: %j',
+  async (page) => {
+    mockEmitter.mockResolvedValueOnce(page);
+    const { result } = renderHook(() =>
+      useSavedEvmTransactions(true, 'a:network')
+    );
+    await flush();
+    expect(result.current.unavailable).toBe(true);
+    expect(result.current.transactions).toEqual([]);
+  }
+);
+
+test.each(['success', 'failure'])(
+  'late retry %s cannot publish into a newer A-B-A visit or after unmount',
+  async (outcome) => {
+    const held = deferred<any>();
+    mockEmitter.mockRejectedValueOnce(new Error('Initial unavailable'));
+    const { result, rerender, unmount } = renderHook(
+      ({ scope }) => useSavedEvmTransactions(true, scope),
+      { initialProps: { scope: 'a:network' } }
+    );
+    await flush();
+    const staleRetry = result.current.retry;
+    mockEmitter.mockReturnValueOnce(held.promise);
+    let retry!: Promise<void>;
+    act(() => {
+      retry = result.current.retry();
+    });
+    mockEmitter.mockResolvedValue({ transactions: [], nextCursor: null });
+    rerender({ scope: 'b:network' });
+    rerender({ scope: 'a:network' });
+    await flush();
+    await act(async () => {
+      if (outcome === 'success')
+        held.resolve({ transactions: [row('1')], nextCursor: null });
+      else held.reject(new Error('Retired read unavailable'));
+    });
+    await retry;
+    expect(result.current.transactions).toEqual([]);
+    expect(result.current.unavailable).toBe(false);
+    const calls = mockEmitter.mock.calls.length;
+    await act(async () => staleRetry());
+    expect(mockEmitter).toHaveBeenCalledTimes(calls);
+    const retiredRetry = result.current.retry;
+    unmount();
+    await retiredRetry();
+    expect(mockEmitter).toHaveBeenCalledTimes(calls);
+  }
+);
+
+test('disabling saved history retires an exposed retry even when the account/network scope is unchanged', async () => {
+  mockEmitter.mockRejectedValueOnce(new Error('Read unavailable'));
+  const { result, rerender } = renderHook(
+    ({ enabled }) => useSavedEvmTransactions(enabled, 'a:network'),
+    { initialProps: { enabled: true } }
+  );
+  await flush();
+  const retry = result.current.retry;
+  rerender({ enabled: false });
+  await retry();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(result.current.unavailable).toBe(false);
   expect(result.current.loading).toBe(false);
 });
 

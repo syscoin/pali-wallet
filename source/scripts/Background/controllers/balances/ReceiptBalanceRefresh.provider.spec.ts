@@ -19,7 +19,12 @@ it.each([0, 255, '255'])('uses scoped RPC at %s decimals', async (decimals) => {
     .spyOn(global, 'fetch')
     .mockImplementation(async (url, init) => {
       const request = JSON.parse(init!.body as string);
-      calls.push({ url, init, request });
+      calls.push({
+        url,
+        init,
+        request,
+        abortedAtDispatch: init!.signal?.aborted,
+      });
       const result =
         request.method === 'eth_blockNumber'
           ? '0x14'
@@ -37,7 +42,7 @@ it.each([0, 255, '255'])('uses scoped RPC at %s decimals', async (decimals) => {
     });
   try {
     expect(calls).toHaveLength(0); // no constructor polling or network detection
-    expect(provider.configuredChainId).toBe(1);
+    expect(provider.configuredChainId).toBe(BigInt(1));
     await provider.send('eth_blockNumber', []);
     await provider.getBalance(A, 20);
     expect(
@@ -63,12 +68,14 @@ it.each([0, 255, '255'])('uses scoped RPC at %s decimals', async (decimals) => {
     ]);
     expect(
       calls.every(
-        ({ url, init }) =>
+        ({ url, init, abortedAtDispatch }) =>
           url === 'https://rpc.test' &&
           init.signal instanceof AbortSignal &&
-          !init.signal.aborted
+          abortedAtDispatch === false
       )
     ).toBe(true);
+    expect(abort.signal.aborted).toBe(false);
+    expect(provider.signal.aborted).toBe(false);
     expect(calls[1].request.params).toEqual([A, '0x14']);
     expect(calls[2].request.params[1]).toBe('0x14');
   } finally {

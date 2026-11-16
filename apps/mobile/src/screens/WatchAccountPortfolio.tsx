@@ -137,7 +137,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
           {snapshot.balance.status === 'error' && <Notice title={t('mobile.activityViews.watchAccountPortfolio.couldNotLoadYourBalance')} body={t('mobile.activityViews.watchAccountPortfolio.yourAddressIsStillAvailableRefreshToTryAgain')} tone="amber" />}
           <Button title={t('buttons.receive')} icon="arrow-down-left" size="compact" onPress={receive} />
           {mode === 'asset' ? <>
-            <AssetMarketCard asset={{ kind: 'native', networkId: network.id, registration: network.kind === 'evm' ? getNativeNetwork(network.id) : undefined }} />
+            <AssetMarketCard asset={{ kind: 'native', networkId: network.id, registration: quoteNetwork }} />
             <Card style={s.identity}><Text style={s.label}>{account.name}</Text><CopyableAddress address={address} style={s.address} disabled={busy} onCopy={() => void publicAction('copy')} /></Card>
           </> : <View style={s.assetList}>
             <Text accessibilityRole="header" style={s.assetHeading}>{t('buttons.assets')}</Text>

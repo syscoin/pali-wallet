@@ -82,13 +82,14 @@ export const useFaucetComponentStates = () => {
     active: true,
     scope,
     revision: 0,
-    request: null as object | null,
+    request: null as AbortController | null,
   });
   const [state, setState] = useState({ ...initialState, revision: 0 });
   // Do not render an old success/error while the scope-change effect catches up.
   if (owner.current.scope !== scope) {
     owner.current.scope = scope;
     owner.current.revision += 1;
+    owner.current.request?.abort();
     owner.current.request = null;
   }
   const currentState =
@@ -102,6 +103,7 @@ export const useFaucetComponentStates = () => {
       if (next !== owner.current.scope) {
         owner.current.scope = next;
         owner.current.revision += 1;
+        owner.current.request?.abort();
         owner.current.request = null;
         setState({ ...initialState, revision: owner.current.revision });
       }
@@ -109,6 +111,7 @@ export const useFaucetComponentStates = () => {
     return () => {
       unsubscribe();
       owner.current.active = false;
+      owner.current.request?.abort();
       owner.current.request = null;
     };
   }, []);
@@ -145,7 +148,7 @@ export const useFaucetComponentStates = () => {
       live.scope !== scope
     )
       return;
-    const request = {};
+    const request = new AbortController();
     const revision = owner.current.revision;
     owner.current.request = request;
     const isCurrent = () =>
@@ -155,11 +158,15 @@ export const useFaucetComponentStates = () => {
       getFaucetContext(store.getState()).scope === scope;
     setState({ ...initialState, revision, isLoading: true });
     try {
-      const data = await claimFaucet(activeNetwork.chainId, account.address);
+      const data = await claimFaucet(
+        activeNetwork.chainId,
+        account.address,
+        request.signal
+      );
       if (!isCurrent()) return;
       // claimFaucet returns Axios errors; preserve the response status before
       // converting other failed responses to the existing message path.
-      if (data?.response?.status === 429) throw data;
+      if (data instanceof Error || data?.response?.status === 429) throw data;
       if (!data?.data?.status) {
         const message = data?.data?.message || data?.message;
         throw Object.assign(new Error(message || 'Unknown error'), {
@@ -196,6 +203,10 @@ export const useFaucetComponentStates = () => {
           errorMessage:
             error?.response?.status === 429
               ? t('faucet.rateLimited')
+              : ['PALI_FAUCET_TIMEOUT', 'ECONNABORTED', 'ETIMEDOUT'].includes(
+                  error?.code
+                )
+              ? t('faucet.requestTimedOut')
               : error.message && error.code !== 'PALI_FAUCET_NO_MESSAGE'
               ? error.message
               : t('send.failed'),

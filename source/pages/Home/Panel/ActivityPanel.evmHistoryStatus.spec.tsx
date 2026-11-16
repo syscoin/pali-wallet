@@ -277,6 +277,12 @@ beforeEach(() => {
     networkRequestGeneration: 0,
     cancellablePromises: new CancellablePromises(),
     transactionsManager: manager,
+    // This fixture owns explorer availability; saved-summary storage has its
+    // independent failure/retry suite and supplies a successful empty page here.
+    getSavedEvmTransactions: jest.fn().mockResolvedValue({
+      transactions: [],
+      nextCursor: null,
+    }),
     reconcileLocalPendingEvmSmartAccountTransactions: jest
       .fn()
       .mockResolvedValue(undefined),

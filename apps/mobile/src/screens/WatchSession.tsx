@@ -117,7 +117,7 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
     } catch { /* Keep enrollment while a full, current public catalogue is unavailable. */ }
   }, [authority, snapshot.status, snapshot.generation, snapshot.accounts, viewLock.phase]);
   useEffect(() => {
-    const eventId = notifications.pendingEventId, attemptKey = `${eventId}:${liveScope}`;
+    const eventId = notifications.pendingEventId, tapRevision = notifications.tapRevision, attemptKey = `${eventId}:${tapRevision}:${liveScope}`;
     if (!eventId || !liveScope || autoLockScope || shell.immersive || notificationTransition.current ||
         lastNotificationAttempt.current === attemptKey || AppState.currentState !== 'active') return;
     const token = {};
@@ -162,10 +162,10 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
     })().catch(() => undefined).finally(() => {
       if (notificationTransition.current !== token) return;
       notificationTransition.current = null;
-      const pending = nativeActivityNotifications.getSnapshot().pendingEventId;
-      if (lifetime.current.alive && pending && pending !== eventId) setNotificationWake(value => value + 1);
+      const pending = nativeActivityNotifications.getSnapshot();
+      if (lifetime.current.alive && pending.pendingEventId && (pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision)) setNotificationWake(value => value + 1);
     });
-  }, [notifications.pendingEventId, notificationWake, liveScope, autoLockScope, shell.immersive, authority, currentScope, restoreRoot]);
+  }, [notifications.pendingEventId, notifications.tapRevision, notificationWake, liveScope, autoLockScope, shell.immersive, authority, currentScope, restoreRoot]);
   if (viewLock.phase !== 'unlocked') return null;
   if (autoLockScope !== null && autoLockScope === liveScope) return <AutoLockSettings mode="watch" lockUnavailable={lockUnavailable} onBack={() => { if (currentScope() === autoLockScope) setAutoLockScope(null); }} save={async (expected, minutes, signal, authentication, check) => {
     const captured = liveScope;

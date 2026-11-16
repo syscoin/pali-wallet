@@ -323,3 +323,15 @@ test('all-network and filtered Activity use the shared status summary without du
     }
   } finally { f.close(); }
 });
+
+test('unavailable portfolio prerequisites keep the existing Refresh control enabled', () => {
+  const f = fixture('wallet');
+  try {
+    f.setActivity({ status: 'unavailable', filter: null, refreshing: false, rows: [] });
+    const refresh = f.nodes(f.render()).find(node => node.type === 'IconButton' && node.props.icon === 'refresh');
+    assert(refresh); assert.equal(refresh.props.disabled, false);
+    assert(f.nodes(f.render()).some(node => node.props.accessibilityLabel === 'Choose network filter, Unavailable network'));
+    f.setActivity({ status: 'loading' });
+    assert.equal(f.nodes(f.render()).find(node => node.type === 'IconButton' && node.props.icon === 'refresh')!.props.disabled, true);
+  } finally { f.close(); }
+});

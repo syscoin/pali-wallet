@@ -336,7 +336,9 @@
     "congratulations": "Glückwunsch!",
     "youWalletWas": "Ihre Wallet wurde erfolgreich importiert",
     "youHaveNoNfts": "Du hast keine NFTs.",
-    "noIndexedActivity": "Keine Aktivitäten gefunden. NFT- und interne Transfers werden hier möglicherweise nicht angezeigt."
+    "noIndexedActivity": "Keine Aktivitäten gefunden. NFT- und interne Transfers werden hier möglicherweise nicht angezeigt.",
+    "savedActivityUnavailable": "Gespeicherte Aktivitäten konnten nicht geladen werden.",
+    "retrySavedActivity": "Gespeicherte Aktivitäten erneut laden"
   },
   "titles": {
     "assetDetails": "ASSET-DETAILS",
@@ -1443,7 +1445,8 @@
     "firstAccessTitle": "Holen Sie sich ${{token}} mit unserem Faucet, um das {{network}} Netzwerk zu erleben!",
     "firstAccessDescription": "Sie können {{token}} pro Wallet-Adresse alle 24 Stunden erhalten.",
     "grabTokens": "Zum Faucet gehen",
-    "rateLimited": "Der Faucet begrenzt Anfragen. Weitere Informationen finden Sie beim Faucet."
+    "rateLimited": "Der Faucet begrenzt Anfragen. Weitere Informationen finden Sie beim Faucet.",
+    "requestTimedOut": "Zeitüberschreitung der Anfrage. Prüfe dein Guthaben, bevor du erneut Tokens anforderst."
   },
   "nftDetails": {
     "information": "NFT-Informationen",

@@ -61,6 +61,7 @@ export class AccountPortfolioController {
   private filterIntent = 0;
   private filterPending = false;
   private filterFailed = false;
+  private filterRead: Promise<void> | null = null;
   private owner = '';
   private cache = new Map<string, AccountPortfolioRow>();
   private readonly ports: Ports;
@@ -144,21 +145,42 @@ export class AccountPortfolioController {
     this.publish({ currency, rows: this.state.rows.map(row => ({ ...row, price: null, tokens: row.tokens.map(token => ({ ...token, price: null })) })) });
     if (this.connection && this.state.filter !== null && !this.request) void this.refreshQuotes();
   }
+  private loadFilter(): Promise<void> {
+    if (!this.connection || this.filterPending) return Promise.resolve();
+    if (this.filterRead) return this.filterRead;
+    const connection = this.connection, intent = this.filterIntent;
+    const current = () => this.connection === connection && this.filterIntent === intent && !this.filterPending;
+    this.request?.abort(); this.quoteRequest?.abort(); this.generation++;
+    this.filterFailed = false;
+    this.state = { ...this.state, filter: null };
+    const read = Promise.resolve().then(async () => {
+      if (!current()) return;
+      const filter = await this.ports.filter.load();
+      if (!current()) return;
+      this.filterFailed = false;
+      this.state = { ...this.state, filter };
+      if (this.synchronize()) void this.refresh();
+    }).catch(() => {
+      if (!current()) return;
+      this.filterFailed = true;
+      this.publish({ status: 'unavailable', rows: [], refreshing: false });
+    }).finally(() => { if (this.filterRead === read) this.filterRead = null; });
+    this.filterRead = read;
+    this.publish({ status: 'loading', rows: [], refreshing: false });
+    return read;
+  }
   connect = () => {
     this.unsubscribe?.(); this.request?.abort(); this.quoteRequest?.abort();
+    this.filterIntent++; this.filterPending = false; this.filterFailed = false; this.filterRead = null;
     const connection = {}; this.connection = connection;
     const changed = () => { if (this.connection === connection && this.synchronize() && this.state.filter !== null && !this.filterPending && !this.filterFailed) void this.refresh(); };
     this.unsubscribe = this.ports.source.subscribe(changed);
     this.state = { ...empty(), currency: this.state.currency };
-    void this.ports.filter.load().then(filter => {
-      if (this.connection !== connection) return;
-      if (!this.filterPending) this.filterFailed = false;
-      this.state = { ...this.state, filter };
-      if (this.synchronize()) void this.refresh();
-    }).catch(() => { if (this.connection === connection) this.publish({ status: 'unavailable' }); });
+    void this.loadFilter();
     return () => {
       if (this.connection !== connection) return;
-      this.connection = null; this.generation++; this.request?.abort(); this.quoteRequest?.abort(); this.request = null;
+      this.connection = null; this.generation++; this.filterIntent++; this.filterPending = false; this.filterRead = null;
+      this.request?.abort(); this.quoteRequest?.abort(); this.request = null;
       this.unsubscribe?.(); this.unsubscribe = null;
       // Keep only the separately owner-checked source-sheet cache; no detached
       // view may render the departing account's observations.
@@ -168,17 +190,18 @@ export class AccountPortfolioController {
   async selectFilter(filter: string) {
     if (!this.connection || filter !== 'all' && !this.state.choices.some(choice => choice.scope.network.id === filter)) return;
     this.request?.abort(); this.quoteRequest?.abort(); this.generation++;
-    const intent = ++this.filterIntent;
+    const intent = ++this.filterIntent, connection = this.connection;
+    this.filterRead = null;
     this.filterPending = true;
     try {
       await this.ports.filter.save(filter);
-      if (this.filterIntent !== intent) return;
+      if (this.connection !== connection || this.filterIntent !== intent) return;
       this.filterPending = false;
       this.filterFailed = false;
       this.state = { ...this.state, filter };
       if (this.connection && this.synchronize()) await this.refresh();
     } catch (error) {
-      if (this.filterIntent === intent) {
+      if (this.connection === connection && this.filterIntent === intent) {
         this.filterPending = false;
         this.filterFailed = true;
         this.publish({ status: 'unavailable', rows: [], refreshing: false });
@@ -204,7 +227,8 @@ export class AccountPortfolioController {
     return row?.assetsAvailable ? { tokens: row.tokens, collectibles: row.collectibles } : undefined;
   }
   refresh = async () => {
-    if (!this.connection || this.state.filter === null || this.filterPending || this.filterFailed) return;
+    if (!this.connection || this.filterPending) return;
+    if (this.state.filter === null || this.filterFailed) { await this.loadFilter(); return; }
     const current = this.synchronize(); if (!current) return;
     this.request?.abort(); this.quoteRequest?.abort(); const request = new AbortController(); this.request = request;
     const generation = ++this.generation, filter = this.state.filter;

@@ -178,8 +178,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
             )
               return null;
 
-            const precision = token.decimals ?? 18;
-            const raw = token.balance ?? '0';
+            const precision = token.decimals;
+            const raw = token.balance;
             const amount = formatErc20Balance(
               typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0
                 ? String(raw)

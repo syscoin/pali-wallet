@@ -268,3 +268,79 @@ it('matches the backend data-before-input precedence when decoding', async () =>
   await expectRecipient();
   expect(screen.getByText(/Method:Transfer/)).toBeTruthy();
 });
+
+it('does not cache a transient decoder failure and retries on the next deliberate visit', async () => {
+  const log = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  let now = Date.now();
+  const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+  try {
+    mockDecode.mockRejectedValue(new Error('Synthetic decoder unavailable'));
+    const { body, hash, view } = mountWithDelayedBody(INPUT);
+    await act(async () => body.resolve(summary(hash, INPUT)));
+    await waitFor(() => expect(mockDecode).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('decoded-output').textContent).toBe('');
+    const updated = summary(hash, INPUT, { confirmations: 4 });
+    mockHistory = [updated];
+    view.rerender(
+      <EvmTransactionDetailsEnhanced hash={hash} tx={updated as any} />
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockDecode).toHaveBeenCalledTimes(1);
+    view.unmount();
+    now += 60_000;
+    mockDecode.mockImplementation(decode);
+    const restored = render(
+      <EvmTransactionDetailsEnhanced hash={hash} tx={updated as any} />
+    );
+    await expectRecipient();
+    expect(mockDecode).toHaveBeenCalledTimes(2);
+    restored.unmount();
+    now += 60_000;
+    render(<EvmTransactionDetailsEnhanced hash={hash} tx={updated as any} />);
+    await expectRecipient();
+    expect(mockDecode).toHaveBeenCalledTimes(2);
+  } finally {
+    clock.mockRestore();
+    log.mockRestore();
+  }
+});
+
+it('keeps a successfully completed unsupported decode cached', async () => {
+  mockDecode.mockResolvedValue(null);
+  const { body, hash, view } = mountWithDelayedBody(INPUT);
+  await act(async () => body.resolve(summary(hash, INPUT)));
+  await waitFor(() => expect(mockDecode).toHaveBeenCalledTimes(1));
+  view.unmount();
+  mockDecode.mockImplementation(decode);
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={hash}
+      tx={summary(hash, INPUT) as any}
+    />
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(mockDecode).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId('decoded-output').textContent).toBe('');
+});
+
+it('allows a changed payload to decode after the prior payload failed in the same view', async () => {
+  const log = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    mockDecode.mockImplementation((tx) =>
+      tx.input === INPUT
+        ? Promise.reject(new Error('Synthetic decoder unavailable'))
+        : decode(tx)
+    );
+    const { body, hash } = mountWithDelayedBody(INPUT);
+    await waitFor(() => expect(mockDecode).toHaveBeenCalledTimes(1));
+    await act(async () => body.resolve(summary(hash, OTHER_INPUT)));
+    await expectRecipient(OTHER);
+    expect(mockDecode).toHaveBeenCalledTimes(2);
+  } finally {
+    log.mockRestore();
+  }
+});

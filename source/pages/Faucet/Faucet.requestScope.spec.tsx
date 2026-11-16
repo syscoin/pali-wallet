@@ -34,6 +34,7 @@ import vaultGlobalReducer, {
   startSwitchNetwork,
 } from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
+import { claimFaucet, FAUCET_REQUEST_TIMEOUT_MS } from 'utils/faucet';
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 let mockStore: any;
@@ -474,7 +475,11 @@ it.each([false, true])(
     const finish = deferred();
     request();
     expect(axios.get).toHaveBeenCalledWith(
-      `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${account.address}`
+      `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${account.address}`,
+      expect.objectContaining({
+        timeout: FAUCET_REQUEST_TIMEOUT_MS,
+        signal: expect.any(AbortSignal),
+      })
     );
     await finish();
     expect(screen.getByText(HASH)).toBeTruthy();
@@ -640,7 +645,11 @@ it('healthy: matching network/address success keeps the exact hash, wording and 
   const finish = deferred();
   request();
   expect(axios.get).toHaveBeenCalledWith(
-    `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${A}`
+    `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${A}`,
+    expect.objectContaining({
+      timeout: FAUCET_REQUEST_TIMEOUT_MS,
+      signal: expect.any(AbortSignal),
+    })
   );
   await finish();
   expect(
@@ -803,7 +812,11 @@ it('healthy: a completed supported-network change before request uses the latest
   const finish = deferred();
   request();
   expect(axios.get).toHaveBeenCalledWith(
-    `https://chains.tools/api/faucet/claim?networkKey=rollux-mainnet&walletAddress=${A}`
+    `https://chains.tools/api/faucet/claim?networkKey=rollux-mainnet&walletAddress=${A}`,
+    expect.objectContaining({
+      timeout: FAUCET_REQUEST_TIMEOUT_MS,
+      signal: expect.any(AbortSignal),
+    })
   );
   await finish();
   expect(
@@ -825,7 +838,11 @@ it('healthy: a completed account change before request targets the newly display
   const finish = deferred();
   request();
   expect(axios.get).toHaveBeenCalledWith(
-    `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${B}`
+    `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${B}`,
+    expect.objectContaining({
+      timeout: FAUCET_REQUEST_TIMEOUT_MS,
+      signal: expect.any(AbortSignal),
+    })
   );
   await finish();
   expect(screen.getByText(HASH)).toBeTruthy();
@@ -853,7 +870,11 @@ it('desired: a pending prior-network success is not attributed to the newly sele
   await finish();
   expect(screen.getByTestId('pathname').textContent).toBe('/faucet');
   expect(axios.get).toHaveBeenCalledWith(
-    `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${A}`
+    `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${A}`,
+    expect.objectContaining({
+      timeout: FAUCET_REQUEST_TIMEOUT_MS,
+      signal: expect.any(AbortSignal),
+    })
   );
   expect(
     screen.queryByText('Some $SYS has just been sent to your Rollux wallet.')
@@ -978,7 +999,11 @@ it('keeps a new account request pending when an older account response arrives',
   await currentFinish({ data: { data: { status: true, hash: currentHash } } });
   expect(screen.getByText(currentHash)).toBeTruthy();
   expect(axios.get).toHaveBeenLastCalledWith(
-    `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${B}`
+    `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${B}`,
+    expect.objectContaining({
+      timeout: FAUCET_REQUEST_TIMEOUT_MS,
+      signal: expect.any(AbortSignal),
+    })
   );
 });
 
@@ -1152,3 +1177,77 @@ it.each([
     expect(mockAlarms).not.toHaveBeenCalled();
   }
 );
+
+it('bounds a stalled claim, cancels its physical request and ignores late success without another claim', async () => {
+  await mount();
+  const finish = deferred();
+  const open = jest.spyOn(window, 'open').mockImplementation(() => null);
+  jest.useFakeTimers();
+  try {
+    request();
+    const config = (axios.get as jest.Mock).mock.calls[0][1];
+    expect(config.timeout).toBe(FAUCET_REQUEST_TIMEOUT_MS);
+    expect(config.signal.aborted).toBe(false);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(FAUCET_REQUEST_TIMEOUT_MS - 1);
+    });
+    expect(screen.queryByRole('button', { name: 'Go to Faucet' })).toBeNull();
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1);
+    });
+    expect(config.signal.aborted).toBe(true);
+    expect(
+      screen.getByText(mockTranslate('faucet.requestTimedOut'))
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Go to Faucet' })).toBeTruthy();
+    await finish();
+    expect(screen.queryByText(HASH)).toBeNull();
+    expect(
+      screen.getByText(mockTranslate('faucet.requestTimedOut'))
+    ).toBeTruthy();
+    expect(mockEmitter).not.toHaveBeenCalledWith([
+      'callGetLatestUpdateForAccount',
+    ]);
+    expect(mockAlarms).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Faucet' }));
+    expect(open).toHaveBeenCalledWith(
+      'https://faucet.syscoin.org',
+      '_blank',
+      'noopener,noreferrer'
+    );
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  } finally {
+    jest.useRealTimers();
+    open.mockRestore();
+  }
+});
+
+it.each(['account', 'network', 'unmount'])(
+  'physically cancels a pending faucet request on %s departure',
+  async (departure) => {
+    await mount();
+    const finish = deferred();
+    request();
+    const signal = (axios.get as jest.Mock).mock.calls[0][1].signal;
+    if (departure === 'account') await selectAccountB();
+    else if (departure === 'network') await publishNetwork(ROLLUX);
+    else fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(signal.aborted).toBe(true);
+    await finish();
+    expect(screen.queryByText(HASH)).toBeNull();
+    expect(mockEmitter).not.toHaveBeenCalledWith([
+      'callGetLatestUpdateForAccount',
+    ]);
+    expect(mockAlarms).not.toHaveBeenCalled();
+  }
+);
+
+it('does not initiate a faucet claim for an already-cancelled caller', async () => {
+  const caller = new AbortController();
+  caller.abort();
+  await expect(claimFaucet(5700, A, caller.signal)).resolves.toMatchObject({
+    code: 'PALI_FAUCET_CANCELLED',
+  });
+  expect(axios.get).not.toHaveBeenCalled();
+});

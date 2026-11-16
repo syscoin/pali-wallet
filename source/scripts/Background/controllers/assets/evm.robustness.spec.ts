@@ -345,6 +345,11 @@ describe('discovery availability is not an empty wallet', () => {
         result: [
           { ...base, decimals: 0, balance: 0 },
           { ...base, decimals: '255', balance: '1' },
+          { ...base, decimals: '6', balance: '1000000' },
+          { ...base, balance: '1000000' },
+          { ...base, decimals: null, balance: '1000000' },
+          { ...base, decimals: 6 },
+          { ...base, decimals: 6, balance: null },
           { ...base, decimals: 256, balance: '1' },
           { ...base, decimals: -1, balance: '1' },
           { ...base, decimals: 1.5, balance: '1' },
@@ -358,6 +363,7 @@ describe('discovery availability is not an empty wallet', () => {
     ).resolves.toMatchObject([
       { decimals: 0, balance: 0, rawBalance: '0' },
       { decimals: 255, balance: 1e-255, rawBalance: '1' },
+      { decimals: 6, balance: 1, rawBalance: '1000000' },
     ]);
   });
   it.each([

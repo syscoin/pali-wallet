@@ -336,7 +336,9 @@
     "congratulations": "축하합니다!",
     "youWalletWas": "지갑을 성공적으로 가져왔습니다",
     "youHaveNoNfts": "NFT가 없습니다.",
-    "noIndexedActivity": "활동을 찾을 수 없습니다. NFT 및 내부 전송은 여기에 표시되지 않을 수 있습니다."
+    "noIndexedActivity": "활동을 찾을 수 없습니다. NFT 및 내부 전송은 여기에 표시되지 않을 수 있습니다.",
+    "savedActivityUnavailable": "저장된 활동을 불러오지 못했습니다.",
+    "retrySavedActivity": "저장된 활동 다시 시도"
   },
   "titles": {
     "assetDetails": "자산 상세정보",
@@ -1443,7 +1445,8 @@
     "firstAccessTitle": "수도꼭지로 ${{token}}을 받아 {{network}} 네트워크를 경험해 보세요!",
     "firstAccessDescription": "지갑 주소당 24시간마다 {{token}}을 받을 수 있습니다.",
     "grabTokens": "수도꼭지로 이동",
-    "rateLimited": "수도꼭지에서 요청을 제한하고 있습니다. 자세한 내용은 수도꼭지를 확인하세요."
+    "rateLimited": "수도꼭지에서 요청을 제한하고 있습니다. 자세한 내용은 수도꼭지를 확인하세요.",
+    "requestTimedOut": "요청 시간이 초과되었습니다. 토큰을 다시 요청하기 전에 잔액을 확인하세요."
   },
   "nftDetails": {
     "information": "NFT 정보",
