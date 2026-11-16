@@ -252,23 +252,39 @@ test('wrapper timeout terminates an ignoring command and its owned child process
   if (fs.existsSync(pids)) owned = JSON.parse(fs.readFileSync(pids, 'utf8'));
   assert.equal(result.status, 137, result.stderr);
   assert.equal(owned.length, 2);
+  const states = new Map();
   const live = (pid) => {
     try {
       process.kill(pid, 0);
     } catch (error) {
-      if (error.code === 'ESRCH') return false;
+      if (error.code === 'ESRCH') {
+        states.set(pid, { exists: false });
+        return false;
+      }
       throw error;
     }
-    const state = spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], {
+    const state = spawnSync('ps', ['-o', 'stat=,ppid=,pgid=,args=', '-p', String(pid)], {
       encoding: 'utf8',
+    });
+    states.set(pid, {
+      exists: true,
+      status: state.status,
+      error: state.error?.code,
+      stdout: state.stdout,
+      stderr: state.stderr,
     });
     if (state.status === 0 && /^\s*Z/.test(state.stdout)) return false;
     return true;
   };
   for (let i = 0; i < 40 && owned.some(live); i++)
     await new Promise((resolve) => setTimeout(resolve, 25));
+  const stopped = owned.map((pid) => !live(pid));
   assert(
-    owned.every((pid) => !live(pid)),
-    'No timed-out parent or child may remain running'
+    stopped.every(Boolean),
+    `No timed-out parent or child may remain running: ${JSON.stringify({
+      timeout: nativeTimeout,
+      states: Object.fromEntries(states),
+      wrapperStderr: result.stderr,
+    })}`
   );
 });
