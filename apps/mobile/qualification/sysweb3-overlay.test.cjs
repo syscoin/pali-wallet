@@ -134,3 +134,41 @@ test('nested SDK copies cannot shadow the verified shared transport', () => {
     assert.equal(fs.readFileSync(f.file(), 'utf8'), 'original keyring');
   } finally { f.close(); }
 });
+
+test('declared SDK consumers cannot load a foreign shared transport before overlay writes', () => {
+  const f = fixture();
+  try {
+    const consumer = '@sidhujag/sysweb3-consumer';
+    const directory = path.join(f.root, 'foreign', consumer);
+    fs.mkdirSync(path.join(directory, 'node_modules/@sidhujag/sysweb3-network'), { recursive: true });
+    fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ name: consumer,
+      dependencies: { '@sidhujag/sysweb3-network': '1.0.0' } }));
+    fs.writeFileSync(path.join(directory, 'node_modules/@sidhujag/sysweb3-network/package.json'),
+      JSON.stringify({ name: '@sidhujag/sysweb3-network', version: '1.0.0' }));
+    fs.symlinkSync(directory, path.join(f.root, 'node_modules', consumer));
+    fs.writeFileSync(path.join(f.root, 'package.json'), JSON.stringify({ paliSysweb3Overlay: f.identity,
+      dependencies: { [consumer]: '1.0.0' } }));
+    assert.throws(() => f.applySysweb3Overlay(f.root), /shadowed dependency/);
+    assert.equal(fs.readFileSync(f.file(), 'utf8'), 'original keyring');
+  } finally { f.close(); }
+});
+
+test('Webpack-only ancestor shadows cannot bypass Node resolution verification', () => {
+  const f = fixture();
+  try {
+    const foreign = path.join(f.root, 'foreign-node-modules');
+    const packageFile = '@sidhujag/sysweb3-network/package.json';
+    fs.mkdirSync(path.dirname(path.join(foreign, packageFile)), { recursive: true });
+    fs.writeFileSync(path.join(foreign, packageFile), JSON.stringify({ name: '@sidhujag/sysweb3-network', version: '1.0.0' }));
+    const shadow = path.join(f.root, 'node_modules/node_modules');
+    fs.symlinkSync(foreign, shadow);
+    const issuer = path.dirname(f.file('keyring'));
+    assert.equal(require.resolve(packageFile, { paths: [issuer] }), fs.realpathSync(path.join(f.root, 'node_modules', packageFile)));
+    assert.notEqual(fs.realpathSync(path.join(shadow, packageFile)), fs.realpathSync(path.join(f.root, 'node_modules', packageFile)));
+    assert.throws(() => f.applySysweb3Overlay(f.root), /shadowed dependency/);
+    assert.equal(fs.readFileSync(f.file(), 'utf8'), 'original keyring');
+    fs.unlinkSync(shadow);
+    f.applySysweb3Overlay(f.root);
+    assert.equal(f.verifySysweb3Overlay(f.root), f.identity);
+  } finally { f.close(); }
+});
