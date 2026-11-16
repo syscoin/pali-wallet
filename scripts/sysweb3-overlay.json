@@ -2,8 +2,8 @@
   "source": {
     "repository": "https://github.com/sidhujag/sysweb3",
     "pullRequest": "https://github.com/sidhujag/sysweb3/pull/119",
-    "commit": "7659c4a33041b30494eaaf11c35b29910d7e2901",
-    "tree": "36fbaba443a4f72bc4672587c7c3a7bdc77b92fa",
+    "commit": "f6503bd5424c198de85d66881b252a91c0a5cb19",
+    "tree": "1b523adb945457585cb3b8794fddd7d725acea1a",
     "compiler": "typescript@5.9.3",
     "node": "v26.12.1",
     "build": [
@@ -16,11 +16,11 @@
   },
   "payload": {
     "file": "sysweb3-overlay.deflate",
-    "sha256": "db7ac47191bfe364c293a92ee0d259e8fe313852e3a915898fdf648d729a5a5a",
-    "bytes": 1800057,
-    "decodedSha256": "c3685b1fac6ac1642f515f82780cd850e507f5b159672535709a5652b3ec22e9",
-    "files": 58,
-    "compressedBytes": 341058
+    "sha256": "752315a917cfc9d7815dd417dcafab1c10ea54ba81573bbd46fe0133a352628a",
+    "bytes": 1921604,
+    "decodedSha256": "4e632ff23c2f56871b37f3be24fef0c08cae257a684fd38c2c37c3f4f7e43b74",
+    "files": 74,
+    "compressedBytes": 368205
   },
   "packages": [
     {
@@ -871,16 +871,16 @@
         {
           "path": "cjs/types.js",
           "before": "466f9d46adce78e6eeb75c699d8cca7918d9afc49f369b427568ce6873b6df46",
-          "after": "466f9d46adce78e6eeb75c699d8cca7918d9afc49f369b427568ce6873b6df46",
+          "after": "93c412652c0edb5e6f5570ac6e6474797cf2d72e536fc39613d19c377be5b25d",
           "beforeBytes": 989,
-          "bytes": 989
+          "bytes": 925
         },
         {
           "path": "cjs/types.js.map",
           "before": "a60cede34895139fae25cf3d14cd9a9edd1c86262179e111f2caba23ad480780",
-          "after": "a60cede34895139fae25cf3d14cd9a9edd1c86262179e111f2caba23ad480780",
+          "after": "da0c638efc4813abc590c0dd1dd073f5290dab691aacbff035e978847a3dd221",
           "beforeBytes": 435,
-          "bytes": 435
+          "bytes": 422
         },
         {
           "path": "cjs/utils.js",
@@ -899,14 +899,14 @@
         {
           "path": "cjs/utils/derivation-paths.js",
           "before": "ae1ec8a1a383f2e3937f9370a8d62a3f4c912388946294ead08467652846a9ea",
-          "after": "ae1ec8a1a383f2e3937f9370a8d62a3f4c912388946294ead08467652846a9ea",
+          "after": "4deeba671ceccf93d9aa5aa7f1a94d22c587c07f1eea09a63d8761a0f1c9f600",
           "beforeBytes": 4495,
-          "bytes": 4495
+          "bytes": 4509
         },
         {
           "path": "cjs/utils/derivation-paths.js.map",
           "before": "aec2bc0c11c473f6616c2fcd2c70c9bdf168be40022bb511b2dbf0e34be7d23a",
-          "after": "aec2bc0c11c473f6616c2fcd2c70c9bdf168be40022bb511b2dbf0e34be7d23a",
+          "after": "589deff62f1320f475b87d52c0437b44c7c62c9a0391e8caa72294611f50a9ec",
           "beforeBytes": 2697,
           "bytes": 2697
         },
@@ -941,14 +941,14 @@
         {
           "path": "cjs/utils/psbt-account-scope.js",
           "before": "78f1ff929a27a779884b8267abbae5efa3cf0cd5dfbd0d6eb8f5050648ae8a19",
-          "after": "78f1ff929a27a779884b8267abbae5efa3cf0cd5dfbd0d6eb8f5050648ae8a19",
+          "after": "d52d0aa48c24d98e56ba51164d37e33e411569d417266d5ea218837ded39ccbc",
           "beforeBytes": 16303,
-          "bytes": 16303
+          "bytes": 16311
         },
         {
           "path": "cjs/utils/psbt-account-scope.js.map",
           "before": "51c2ae55174deb5ba29a95b2768175dc92d509ec6ccb5e216dfe5e2976e48283",
-          "after": "51c2ae55174deb5ba29a95b2768175dc92d509ec6ccb5e216dfe5e2976e48283",
+          "after": "cea295fe9709de1c0f9c4e8165f34000a525770e8ad1ecbc5956382ece18c41f",
           "beforeBytes": 11808,
           "bytes": 11808
         },
@@ -1375,14 +1375,14 @@
         {
           "path": "esm/ledger/dmk-utxo.js",
           "before": "3a70c1cbb95dc3a4ddf774a1793c87a5f331054a48684472af0a28c1b7186bd1",
-          "after": "3a70c1cbb95dc3a4ddf774a1793c87a5f331054a48684472af0a28c1b7186bd1",
+          "after": "5b465afce60aedd61927a69a4f08021044db8924ea424283abf55df376692e79",
           "beforeBytes": 14603,
-          "bytes": 14603
+          "bytes": 14619
         },
         {
           "path": "esm/ledger/dmk-utxo.js.map",
           "before": "728a8a0e9aa479765500e813d44322f7c421c81114b6b6c60867a68ce59c833b",
-          "after": "728a8a0e9aa479765500e813d44322f7c421c81114b6b6c60867a68ce59c833b",
+          "after": "6c49c422931b7d8bc2fd2d05ba269392f9872ed341456b2ca4e09be465a67cdd",
           "beforeBytes": 12962,
           "bytes": 12962
         },
@@ -1767,28 +1767,28 @@
         {
           "path": "esm/types.js",
           "before": "b99a0d35a2f8549159c19455701866166dadac3601bd32838a13522c36673588",
-          "after": "b99a0d35a2f8549159c19455701866166dadac3601bd32838a13522c36673588",
+          "after": "030529a782a32fa3f3d8003f2b24575f514e21b7c0cc728c0adb40cdf8e5591b",
           "beforeBytes": 794,
-          "bytes": 794
+          "bytes": 736
         },
         {
           "path": "esm/types.js.map",
           "before": "84f1f70ed54ad72d76ec2cfd82136fed0c80472147f5b0b2bef1b713ccb02fb0",
-          "after": "84f1f70ed54ad72d76ec2cfd82136fed0c80472147f5b0b2bef1b713ccb02fb0",
+          "after": "defe0f9446d4d6dc6edae5a27cb3479e15eee2e8706e44f75669f36b48b574d0",
           "beforeBytes": 480,
-          "bytes": 480
+          "bytes": 437
         },
         {
           "path": "esm/utils/derivation-paths.js",
           "before": "3836c24122acecddda059ef49ddd054d6c87b5ec2f8071793a9b2abab1b2f80c",
-          "after": "3836c24122acecddda059ef49ddd054d6c87b5ec2f8071793a9b2abab1b2f80c",
+          "after": "27b2a7197a46fc8c9b94a4e7e6f4a5e5892f2946b89aabe27037a751a8bcab38",
           "beforeBytes": 4054,
-          "bytes": 4054
+          "bytes": 4072
         },
         {
           "path": "esm/utils/derivation-paths.js.map",
           "before": "5e0d95d0315029fa076bb72588e25d1353fd0f69edb60d79d05ba085bbd13cec",
-          "after": "5e0d95d0315029fa076bb72588e25d1353fd0f69edb60d79d05ba085bbd13cec",
+          "after": "e5c261e5da82ca506b7a051429f4a4215c0e276b98d6561f56ac947487e6757a",
           "beforeBytes": 2687,
           "bytes": 2687
         },
@@ -1823,14 +1823,14 @@
         {
           "path": "esm/utils/psbt-account-scope.js",
           "before": "1438ab92772d39cddd7ed358d599ebba5cd3b5ed8ebbf595be85d957ff42530a",
-          "after": "1438ab92772d39cddd7ed358d599ebba5cd3b5ed8ebbf595be85d957ff42530a",
+          "after": "3179e60b0cafed69e321b748fe31fe17fbf7141d8cebf48adca904d4ae71a878",
           "beforeBytes": 14353,
-          "bytes": 14353
+          "bytes": 14369
         },
         {
           "path": "esm/utils/psbt-account-scope.js.map",
           "before": "05e5eea6135f12f55bdf6d00bf2e4bc54c1f9b40a30babb87b40944ddaed3cc5",
-          "after": "05e5eea6135f12f55bdf6d00bf2e4bc54c1f9b40a30babb87b40944ddaed3cc5",
+          "after": "4c354d236003bdfbf7f279cc08d075d64cc486296c147e830de74f4359b9a64b",
           "beforeBytes": 11905,
           "bytes": 11905
         },
@@ -2348,9 +2348,9 @@
         {
           "path": "types/types.d.ts",
           "before": "7d4fe88c972dd16470365175569ab53da2a3873ba64088cd583c760ec53cf794",
-          "after": "7d4fe88c972dd16470365175569ab53da2a3873ba64088cd583c760ec53cf794",
+          "after": "8ad627b95115b5a3205bb3adb046ae4c70c08f20477ff41619445dcba921a4dc",
           "beforeBytes": 19335,
-          "bytes": 19335
+          "bytes": 19291
         },
         {
           "path": "types/utils.d.ts",
@@ -2383,9 +2383,9 @@
         {
           "path": "types/utils/psbt-account-scope.d.ts",
           "before": "619c29a9618f39f573a9a1fb119c0baa0e00985d3756e833a09a91a2cf8bef00",
-          "after": "619c29a9618f39f573a9a1fb119c0baa0e00985d3756e833a09a91a2cf8bef00",
+          "after": "b14a803301414079f192b046f463d22975b7219d5f5fa8e38d4476105ba401c6",
           "beforeBytes": 767,
-          "bytes": 767
+          "bytes": 772
         },
         {
           "path": "types/utils/psbt.d.ts",
@@ -2572,9 +2572,9 @@
         {
           "path": "package.json",
           "before": "22a359b667e646b66b42a6d23945c868ad5a897732d834d64991fffb1b9174b5",
-          "after": "210eef73e925c05940399a2fc75ab53beb4b477cf1bf8beb789ffab35fde644e",
+          "after": "0885dc8b428ae270d68b61607b4e1ee6be46768c3e64a58a12517b2a8c641b6f",
           "beforeBytes": 998,
-          "bytes": 1304
+          "bytes": 1433
         },
         {
           "path": "types/coin-utils.d.ts",
