@@ -83,8 +83,9 @@ type Read = ((
   many(
     requests: readonly ReadRequest[]
   ): Promise<PromiseSettledResult<unknown>[]>;
-  scoped(signal: AbortSignal, timeoutMs: number, cancel: () => void): Read;
+  scoped(signal: AbortSignal, timeoutMs: number, cancel: () => void, concurrency?: number): Read;
   signal: AbortSignal;
+  canBatch(): boolean;
 };
 type CapturedScope = Readonly<{
   network: NativeNetworkRegistration;
@@ -309,9 +310,10 @@ function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024)
     const makeRead = (
       childSignal = controller.signal,
       childTimeout = operationTimeoutMs,
-      childAbort?: () => void
+      childAbort?: () => void,
+      concurrency = 1
     ): Read => {
-      const client = childAbort ? createClient(1, childAbort, childSignal) : batch;
+      const client = childAbort ? createClient(concurrency, childAbort, childSignal) : batch;
       const read = (async (
         method: Method,
         params: readonly unknown[],
@@ -362,8 +364,9 @@ function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024)
         });
       };
       read.signal = controller.signal;
-      read.scoped = (signal, timeout, cancel) =>
-        makeRead(signal, timeout, cancel);
+      read.canBatch = () => capability!.getBatchLimit(40) > 1;
+      read.scoped = (signal, timeout, cancel, concurrency) =>
+        makeRead(signal, timeout, cancel, concurrency);
       return read;
     };
     const read = makeRead();
@@ -509,6 +512,14 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
         aggregateByNetwork.set(key, aggregate);
         if (aggregateByNetwork.size > 16) aggregateByNetwork.delete(aggregateByNetwork.keys().next().value!);
       }
+      const timeout = Math.min(
+        30_000,
+        Math.max(
+          options.timeoutMs ?? 12_000,
+          Math.ceil(selected.length / 4) * 6_000 + 4_000
+        )
+      );
+      const workDeadline = Date.now() + timeout - 2_000;
       return operation(
         network,
         address,
@@ -522,9 +533,73 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
             method: 'eth_call' as const,
             params: [{ to: call.target, data: call.data }, block],
           }));
-          const observations = selected.length > 1
-            ? await aggregate!({ read, readMany: read.many }, calls, block)
-            : await read.many(requests);
+          // Token work expires before the shared canonical checks. Scalar-only
+          // endpoints give each token its own lifetime, so one stalled getter
+          // cannot consume the healthy tokens' observation budget.
+          const scoped = async <T>(
+            work: (scopedRead: Read) => Promise<T>,
+            concurrency = 1
+          ) => {
+            const remaining = Math.min(6_000, workDeadline - Date.now());
+            if (remaining <= 0) return fail('UNAVAILABLE');
+            const controller = new AbortController();
+            const cancel = () => controller.abort();
+            read.signal.addEventListener('abort', cancel, { once: true });
+            if (read.signal.aborted) cancel();
+            const timer = setTimeout(cancel, remaining);
+            try {
+              return await work(
+                read.scoped(controller.signal, remaining, cancel, concurrency)
+              );
+            } finally {
+              clearTimeout(timer);
+              read.signal.removeEventListener('abort', cancel);
+              controller.abort();
+            }
+          };
+          const observations: PromiseSettledResult<unknown>[] = new Array(
+            calls.length
+          );
+          if (read.canBatch()) {
+            try {
+              const values = await scoped(
+                (groupRead) =>
+                  selected.length > 1
+                    ? aggregate!(
+                        { read: groupRead, readMany: groupRead.many },
+                        calls,
+                        block
+                      )
+                    : groupRead.many(requests),
+                4
+              );
+              observations.splice(0, observations.length, ...values);
+            } catch {
+              check(read.signal);
+            }
+          }
+          let next = 0;
+          const worker = async () => {
+            while (next < selected.length) {
+              const index = next++;
+              if (observations[index * 2] && observations[index * 2 + 1])
+                continue;
+              try {
+                const values = await scoped((groupRead) =>
+                  groupRead.many(requests.slice(index * 2, index * 2 + 2))
+                );
+                observations[index * 2] = values[0]!;
+                observations[index * 2 + 1] = values[1]!;
+              } catch (reason) {
+                check(read.signal);
+                observations[index * 2] = { status: 'rejected', reason };
+                observations[index * 2 + 1] = { status: 'rejected', reason };
+              }
+            }
+          };
+          await Promise.all(
+            Array.from({ length: Math.min(4, selected.length) }, worker)
+          );
           return Object.freeze(
             selected.map((token, index): Erc20BalanceResult => {
               const precision = observations[index * 2]!;
@@ -547,7 +622,8 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
           );
         },
         { network: registration, assertCurrent },
-        true
+        true,
+        timeout
       );
     },
     readBalance: async (

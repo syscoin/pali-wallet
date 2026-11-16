@@ -120,20 +120,12 @@ export function createErc20BalanceBatch(clock = () => performance.now()) {
         } catch {
           // A broken aggregate must not hide other tokens in its chunk.
           // The transport keeps the same deadline, selector and limits.
-          const fallback: PromiseSettledResult<unknown>[] = [];
-          for (let offset = 0; offset < chunk.length; offset += 4)
-            fallback.push(
-              ...(await Promise.allSettled(
-                chunk
-                  .slice(offset, offset + 4)
-                  .map((call) =>
-                    read.read('eth_call', [
-                      { to: call.target, data: call.data },
-                      block,
-                    ])
-                  )
-              ))
-            );
+          const fallback = await read.readMany(
+            chunk.map((call) => ({
+              method: 'eth_call',
+              params: [{ to: call.target, data: call.data }, block],
+            }))
+          );
           results.push(fallback);
         }
       }

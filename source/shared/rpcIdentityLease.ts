@@ -61,7 +61,7 @@ export function createRpcIdentityLease(
       }
       const observed = pending;
       observed.users++;
-      let abort: () => void;
+      let abort!: () => void;
       try {
         await new Promise<void>((resolve, reject) => {
           abort = () => reject(cancelled());

@@ -631,3 +631,181 @@ test('a failed buffered body holds physical capacity until its cancellation sett
   await work;
   releases.forEach(release => release());
 });
+
+for (const scenario of [
+  'scalar-stall',
+  'scalar-unresponsive',
+  'scalar-750',
+  'canonical-change',
+  'chain-change',
+] as const) {
+  test(`saved ERC20 groups retain healthy rows and final validation (${scenario})`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+    const tokens = Array.from(
+      { length: scenario === 'scalar-750' ? 40 : 10 },
+      (_, index) => ({
+        ...metadata,
+        contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+      })
+    );
+    let finalBlocks = 0,
+      chains = 0;
+    const reader = createErc20Reader({
+      fetch: async (_url, init) => {
+        const payload = JSON.parse(String(init.body)) as Request | Request[];
+        if (Array.isArray(payload))
+          return Response.json({
+            jsonrpc: '2.0',
+            id: null,
+            error: { code: -32600, message: 'Batch unsupported' },
+          });
+        const request = payload;
+        if (
+          scenario.startsWith('scalar-') &&
+          scenario !== 'scalar-750' &&
+          request.method === 'eth_call' &&
+          request.params[0].to === tokens[0]!.contractAddress &&
+          request.params[0].data.startsWith('0x70a08231')
+        ) {
+          return new Promise<Response>((_resolve, reject) => {
+            if (scenario === 'scalar-unresponsive') return;
+            init.signal!.addEventListener(
+              'abort',
+              () => reject(new Error('stalled token aborted')),
+              { once: true }
+            );
+          });
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, scenario === 'scalar-750' ? 750 : 50)
+        );
+        let value = result(request);
+        if (
+          request.method === 'eth_chainId' &&
+          ++chains === 2 &&
+          scenario === 'chain-change'
+        )
+          value = '0x2';
+        if (
+          request.method === 'eth_getBlockByNumber' &&
+          request.params[0] === '0x123'
+        ) {
+          finalBlocks++;
+          if (scenario === 'canonical-change')
+            value = { number: '0x123', hash: '0x' + 'b'.repeat(64) };
+        }
+        return json(request.id, value);
+      },
+    });
+    let complete = false;
+    const pending = reader.readBalances!(
+      'ethereum',
+      holder,
+      tokens,
+      new AbortController().signal
+    )
+      .then(
+        (value) => ({ value }),
+        (error) => ({ error })
+      )
+      .finally(() => {
+        complete = true;
+      });
+    for (let elapsed = 0; !complete && elapsed < 35000; elapsed += 50) {
+      await new Promise((resolve) => setImmediate(resolve));
+      t.mock.timers.tick(50);
+    }
+    assert(complete, 'bounded refresh must finish');
+    const outcome = await pending;
+    assert.equal(finalBlocks, 1);
+    assert.equal(chains, 2);
+    if ('error' in outcome) {
+      assert(
+        ['canonical-change', 'chain-change'].includes(scenario),
+        String(outcome.error)
+      );
+      assert.equal(
+        outcome.error.code,
+        scenario === 'chain-change' ? 'WRONG_CHAIN' : 'INVALID_RESPONSE'
+      );
+    } else {
+      assert(!['canonical-change', 'chain-change'].includes(scenario));
+      assert.equal(
+        outcome.value.filter((row) => row.status === 'available').length,
+        scenario === 'scalar-750' ? tokens.length : tokens.length - 1
+      );
+    }
+  });
+}
+
+for (const broken of ['revert', 'malformed'] as const) {
+  test(`broken Multicall ${broken} preserves direct batching for twenty tokens`, async () => {
+    const { Interface } = await import('ethers/abi');
+    const { readFileSync } = await import('node:fs');
+    const deployment = readFileSync(
+      new URL(
+        '../../../source/utils/smartAccount/deployment.ts',
+        import.meta.url
+      ),
+      'utf8'
+    );
+    const creation = deployment.match(
+      /const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/
+    )![1]!;
+    const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
+    const aggregate = new Interface([
+      'function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)',
+    ]);
+    const requests: Request[] = [];
+    let posts = 0;
+    const reader = createErc20Reader({
+      fetch: async (_url, init) => {
+        posts++;
+        const payload = JSON.parse(String(init.body)) as Request | Request[];
+        const rows = Array.isArray(payload) ? payload : [payload];
+        const replies = rows.map((request) => {
+          requests.push(request);
+          if (
+            request.method === 'eth_call' &&
+            request.params[0].data.startsWith(
+              aggregate.getFunction('aggregate3')!.selector
+            )
+          ) {
+            return broken === 'revert'
+              ? {
+                  jsonrpc: '2.0',
+                  id: request.id,
+                  error: { code: -32000, message: 'execution reverted' },
+                }
+              : { jsonrpc: '2.0', id: request.id, result: '0x00' };
+          }
+          return {
+            jsonrpc: '2.0',
+            id: request.id,
+            result:
+              request.method === 'eth_getCode' ? runtime : result(request),
+          };
+        });
+        return Response.json(Array.isArray(payload) ? replies : replies[0]);
+      },
+    });
+    const tokens = Array.from({ length: 20 }, (_, index) => ({
+      ...metadata,
+      contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+    }));
+    const balances = await reader.readBalances!(
+      'ethereum',
+      holder,
+      tokens,
+      new AbortController().signal
+    );
+    assert(balances.every((balance) => balance.status === 'available'));
+    assert.equal(requests.length, 46);
+    assert.equal(posts, 5);
+    assert(
+      requests
+        .filter((request) => request.method === 'eth_call')
+        .every((request) => request.params[1] === '0x123')
+    );
+  });
+}
