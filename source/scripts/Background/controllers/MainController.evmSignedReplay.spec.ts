@@ -467,7 +467,7 @@ it('normal shared SDK submission rejects a network request epoch change after pe
 });
 
 it.each([false, true])(
-  'checks a direct empty self fee replacement only when self=%s',
+  'uses the final funds phase or empty-self code check when self=%s',
   async (self) => {
     const replacement = self
       ? await signer.signTransaction({
@@ -492,9 +492,18 @@ it.each([false, true])(
       () => undefined,
       () => lifecycle
     );
+    const phaseChecks = jest.fn(async () => {
+      expect(await provider.liveChainRead()).toBe('0x7b');
+    });
+    Object.assign(provider, { verifyConfiguredChainId: phaseChecks });
     provider.send.mockImplementation(async (method) => {
       if (method === 'eth_getTransactionCount') return '0x0';
       if (method === 'eth_getCode') return '0xef0100' + '33'.repeat(20);
+      if (method === 'eth_getBalance') return '0x100000';
+      if (method === 'eth_getBlockByNumber') return {
+        number: '0x1', hash: '0x' + '55'.repeat(32),
+        baseFeePerGas: '0x1', gasLimit: '0x100000',
+      };
       throw Error('Unexpected RPC');
     });
     const dispatch = jest.fn(async (bytes: string) => {
@@ -516,8 +525,16 @@ it.each([false, true])(
       expect(dispatch).not.toHaveBeenCalled();
     } else {
       await expect(submit).resolves.toBe(entry.hash);
-      expect(provider.liveChainRead).not.toHaveBeenCalled();
-      expect(provider.send).not.toHaveBeenCalled();
+      expect(phaseChecks).toHaveBeenCalledTimes(2);
+      expect(provider.liveChainRead).toHaveBeenCalledTimes(2);
+      expect(provider.send.mock.calls.map(([method]) => method)).toEqual([
+        'eth_getBlockByNumber',
+        'eth_getTransactionCount',
+        'eth_getTransactionCount',
+        'eth_getBalance',
+        'eth_getBalance',
+        'eth_getBlockByNumber',
+      ]);
       expect(dispatch).toHaveBeenCalledTimes(1);
     }
   }
