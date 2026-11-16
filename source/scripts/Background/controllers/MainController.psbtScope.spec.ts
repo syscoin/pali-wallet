@@ -792,7 +792,7 @@ describe('PSBT approval context', () => {
         expect(review.feeSatoshis).toBe('1000');
         if (scenario === 'bridge' || scenario === 'external') {
           expect(review.outputs[1]).toEqual({
-            address: Buffer.from(data).toString('hex'),
+            script: { kind: 'data', hex: Buffer.from(data).toString('hex') },
             amountSatoshis: '0',
           });
           expect(review.outputs[0]).not.toHaveProperty('asset');

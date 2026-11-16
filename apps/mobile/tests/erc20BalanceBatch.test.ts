@@ -118,7 +118,7 @@ test('unrecognized runtime uses bounded direct getters at the same block', async
   assert.equal(probes, 2);
 });
 
-test('arbitrary calls and unanchored selectors never enter aggregation', async () => {
+test('arbitrary calls and pending selectors never enter aggregation', async () => {
   let touched = false;
   const reader = {
     async read() {
@@ -139,7 +139,7 @@ test('arbitrary calls and unanchored selectors never enter aggregation', async (
     /Invalid token balance getter/
   );
   await assert.rejects(
-    createErc20BalanceBatch()(reader, calls, 'latest'),
+    createErc20BalanceBatch()(reader, calls, 'pending'),
     /Invalid token balance block/
   );
   assert.equal(touched, false);

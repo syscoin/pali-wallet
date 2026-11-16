@@ -4,8 +4,12 @@ import fs from 'fs';
 import path from 'path';
 
 import { getSmartAccountUserOpRequiredPrefund } from '../../source/utils/smartAccount/account';
-import { paliEntryPointInterface } from '../../source/utils/smartAccount/contracts';
 import {
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from '../../source/utils/smartAccount/contracts';
+import {
+  getPaliCanonicalEntryPointAddress,
   getPaliInfrastructureContracts,
   getZkSysGasTankAddress,
   PALI_CREATE2_DEPLOYER_ADDRESS,
@@ -40,7 +44,7 @@ import { startUtxoFixtureServer } from '../harness/utxoFixture';
 // PALI_RPC_GAS_TANK=1 adds synthetic creditOf coverage on local chain 57057.
 // PALI_RPC_PREFUND=1 registers an unfunded account through two real transactions.
 // PALI_RPC_NO_MULTICALL=1 and PALI_RPC_REJECT_BATCH=1 qualify fallback readers.
-// The ordinary configuration caps warm-send work at 33 methods in 22 HTTP requests.
+// Deployed Smart-send limits allow one separately checked final estimate of signed execution.
 // PALI_RPC_REFERENCE=1 disables this cap for historical-artifact comparisons.
 test('RPC budget and receipts for local wallet transfers', async () => {
   test.setTimeout(240000);
@@ -195,6 +199,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
               phase,
               hash: Transaction.from(row.params[0]).hash,
               at: Date.now(),
+              requestIndex: output.requests.length,
             });
         output.requests.push(item);
         observations.set(request, item);
@@ -1172,11 +1177,11 @@ test('RPC budget and receipts for local wallet transfers', async () => {
             const finalBroadcast = Math.max(
               ...output.broadcasts
                 .filter((row: any) => row.phase === 'prefund:confirm')
-                .map((row: any) => row.at)
+                .map((row: any) => row.requestIndex)
             );
             const rows = output.requests.filter(
-              (row: any) =>
-                row.phase === 'prefund:confirm' && row.started <= finalBroadcast
+              (row: any, index: number) =>
+                row.phase === 'prefund:confirm' && index <= finalBroadcast
             );
             expect(
               rows.reduce(
@@ -1234,17 +1239,46 @@ test('RPC budget and receipts for local wallet transfers', async () => {
             for (const stage of ['form', 'review', 'confirm']) {
               const phaseName = label + ':' + stage;
               const rows = output.requests.filter(
-                (request: any) =>
+                (request: any, index: number) =>
                   request.phase === phaseName &&
-                  (stage !== 'confirm' || request.started <= broadcast.at)
+                  (stage !== 'confirm' || index <= broadcast.requestIndex)
               );
               if (!rows.length && stage !== 'confirm') continue;
-              const [methods, posts] =
+              const [baselineMethods, baselinePosts] =
                 stage === 'confirm'
                   ? limits[label]!
                   : stage === 'form'
                   ? formLimits[label]!
                   : reviewLimits[label]!;
+              const finalExecutionCheck =
+                stage === 'confirm' &&
+                label !== 'deployment' &&
+                !label.startsWith('eoa-');
+              if (finalExecutionCheck) {
+                const selector =
+                  paliSmartAccountInterface.getFunction('execute')!.selector;
+                const entryPoint = getPaliCanonicalEntryPointAddress(
+                  chain.chainId
+                ).toLowerCase();
+                const estimates = rows.flatMap((row: any) =>
+                  row.methods.flatMap((method: string, index: number) => {
+                    const tx = row.params[index]?.[0];
+                    return method === 'eth_estimateGas' &&
+                      tx?.from?.toLowerCase() === entryPoint &&
+                      tx?.to?.toLowerCase() === account.toLowerCase() &&
+                      tx?.data?.startsWith(selector)
+                      ? [row]
+                      : [];
+                  })
+                );
+                expect(
+                  estimates,
+                  phaseName + ' final signed execution estimate'
+                ).toHaveLength(1);
+                expect(estimates[0].methods).toEqual(['eth_estimateGas']);
+              }
+              const methods = baselineMethods + Number(finalExecutionCheck);
+              const posts = baselinePosts + Number(finalExecutionCheck);
               // The endpoint's 30-second capability expires independently of
               // the UI stage. Concurrent probes can precede the first refusal.
               // Keep every refused probe in total traffic.
@@ -1374,7 +1408,9 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         (entry: any) => entry.phase === name
       );
       const beforeBroadcast = broadcast
-        ? rows.filter((row: any) => row.started <= broadcast.at)
+        ? output.requests
+            .slice(0, broadcast.requestIndex + 1)
+            .filter((row: any) => row.phase === name)
         : rows;
       const intervals = beforeBroadcast
         .map((row: any) => ({

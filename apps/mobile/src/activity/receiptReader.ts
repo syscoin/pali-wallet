@@ -1,6 +1,7 @@
+import { JsonRpcReadClient, RpcReadCapabilities } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
 import { getAddress } from 'ethers/address';
 import { observeEvmTransaction, readEvmReceiptFeeUnits, type EvmObservationRequest, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
-import { boundedResponseText, cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
+import { boundedResponseText, cancelResponseBody, parseRpcQuantity, utf8ByteLength } from '../platformRpc.ts';
 import { createBoundedRpcFetch } from '../custody/boundedRpcFetch.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 
@@ -319,6 +320,7 @@ export class ActivityReceiptReader {
   private readonly timeoutMs: number;
   private sequence = 0;
   private readonly pending = new Map<string, SharedReceipt>();
+  private readonly capabilities = new Map<string, RpcReadCapabilities>();
   constructor(
     options: {
       fetch?: (url: string, init: RequestInit) => Promise<Response>;
@@ -394,12 +396,94 @@ export class ActivityReceiptReader {
     });
   }
 
+  retainedWave(registration: NativeNetworkRegistration, scope: string, lifetime: AbortSignal, guard: () => void) {
+    registration = snapshotNativeNetwork(registration);
+    const endpoint = registration.rpcUrl;
+    const capabilityKey = JSON.stringify([registration.registrationHash, endpoint]);
+    let capabilities = this.capabilities.get(capabilityKey);
+    if (!capabilities) {
+      capabilities = new RpcReadCapabilities(endpoint);
+      this.capabilities.set(capabilityKey, capabilities);
+      if (this.capabilities.size > 16) this.capabilities.delete(this.capabilities.keys().next().value!);
+    }
+    const client = new JsonRpcReadClient(endpoint, {
+      capabilities,
+      timeoutMs: this.timeoutMs,
+      maxBatchItems: 2,
+      maxResponseBytes: 2 * MAX_BLOCK_BYTES,
+      requestInit: { credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer' },
+      fetch: async (url, init) => {
+        guardCurrent(guard);
+        if (lifetime.aborted || url !== endpoint) return fail('CANCELLED');
+        const response = await this.fetcher(url, init);
+        const contentType = response.headers.get('content-type');
+        if (lifetime.aborted || response.redirected || (response.url && response.url !== endpoint) ||
+            (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType))) {
+          cancelResponseBody(response);
+          return fail('INVALID_RESPONSE');
+        }
+        return response;
+      },
+    });
+    type Job = {
+      method: Method;
+      params: readonly unknown[];
+      promise: Promise<unknown>;
+      resolve(value: unknown): void;
+      reject(reason: unknown): void;
+    };
+    const queue = new Map<string, Job>();
+    const recurring = new Map<string, Promise<unknown>>();
+    const limit = (method: Method) => method === 'eth_getBlockByNumber' ? MAX_BLOCK_BYTES
+      : method === 'eth_getTransactionReceipt' ? MAX_RECEIPT_BYTES : 16 * 1024;
+    const flush = async () => {
+      const jobs = [...queue.values()];
+      queue.clear();
+      try {
+        guardCurrent(guard);
+        const results = await client.readMany(jobs.map(({ method, params }) => ({ method, params })), {
+          signal: lifetime,
+          maxResponseBytes: jobs.reduce((bytes, job) => bytes + limit(job.method), 0),
+        });
+        for (const [index, job] of jobs.entries()) {
+          const result = results[index]!;
+          if (result.status === 'rejected') job.reject(result.reason);
+          else {
+            if (utf8ByteLength(JSON.stringify(result.value)) > limit(job.method))
+              job.reject(new ActivityReceiptError('INVALID_RESPONSE'));
+            else job.resolve(result.value);
+          }
+        }
+      } catch (error) {
+        for (const job of jobs) job.reject(error);
+      }
+    };
+    const read = (method: Method, params: readonly unknown[], final: boolean) => {
+      const key = JSON.stringify([final, method, params]);
+      const reusable = !final && method !== 'eth_getTransactionReceipt';
+      const prior = recurring.get(key) ?? queue.get(key)?.promise;
+      if (prior) return prior;
+      let resolve!: Job['resolve'], reject!: Job['reject'];
+      const promise = new Promise<unknown>((accept, decline) => { resolve = accept; reject = decline; });
+      if (!queue.size) queueMicrotask(() => void flush());
+      // A final identity check can only join work that has yet to dispatch.
+      queue.set(key, { method, params, promise, resolve, reject });
+      if (reusable) recurring.set(key, promise);
+      return promise;
+    };
+    return {
+      observe: (request: EvmObservationRequest) => this.observe(request, lifetime, guard, registration, scope, read),
+      close: () => client.destroy(),
+    };
+  }
+
   observe(
     input: EvmObservationRequest,
     external: AbortSignal,
     guard: () => void,
     registration: NativeNetworkRegistration,
-    scope: string
+    scope: string,
+    wave?: (method: Method, params: readonly unknown[], final: boolean) => Promise<unknown>
   ): Promise<EvmTransactionObservation> {
     registration = snapshotNativeNetwork(registration);
     guardCurrent(guard);
@@ -532,7 +616,11 @@ export class ActivityReceiptReader {
                     current.closing = true;
                     detailsCovered = transactionResult !== undefined;
                   }
-                  const value = await read(method, params);
+                  assertCurrent();
+                  const value = wave
+                    ? await cancellable(wave(method, params, method === 'eth_chainId' && chainReads > 1), controller.signal)
+                    : await read(method, params);
+                  assertCurrent();
                   if (method === 'eth_getTransactionReceipt')
                     rawReceipt = value;
                   if (method === 'eth_getBlockByNumber') rawBlock = value;

@@ -23,6 +23,7 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
   let tokenQuoteHeld: Promise<void> | undefined;
   let rejectPrices = false, includeCollectible = false, activeQuotes = 0, maximumQuotes = 0;
   const unavailableNetworks = new Set<string>();
+  const wrongChains = new Set<string>();
   const failedNativeMethods = new Set<string>();
   const quoteSignals: AbortSignal[] = [];
   const price = async (kind: 'native' | 'token', choice: NotificationChoice, currency: string, signal: AbortSignal) => {
@@ -37,7 +38,7 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
   const preference = createPortfolioFilter({ get: async () => saved, set: async value => { saved = value; } });
   const make = (filter = preference) => {
     const model = new AccountPortfolioController({ source, choices: () => choices, filter,
-      reader: { async readBalance(network, address) { reads.push(`${network}:${address}`); await held; if (unavailableNetworks.has(network)) throw Error('Network offline'); if (failedNativeMethods.has(network)) throw new NativeBalanceMethodError(); return { chainId: Number(getNativeNetwork(network).chainId), units: '1000000000000000000' }; } },
+      reader: { async readBalance(network, address) { reads.push(`${network}:${address}`); await held; if (unavailableNetworks.has(network)) throw Error('Network offline'); if (failedNativeMethods.has(network)) throw new NativeBalanceMethodError(); return { chainId: wrongChains.has(network) ? 999 : Number(getNativeNetwork(network).chainId), units: '1000000000000000000' }; } },
       async assets(scope, _signal, check) { check(); tokens.push(`${scope.network.id}:${scope.accountId}`); return {
         tokens: Array.from({ length: tokenCount }, (_, index) => ({ metadata: { contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`, name: 'Saved token', symbol: 'TOK', decimals: tokenDecimals }, status: 'available' as const, units: tokenDecimals === 255 ? '1' : '250' })),
         collectibles: includeCollectible ? [{ collectible: { contractAddress: '0x' + 'ab'.repeat(20), tokenStandard: 'ERC-721' as const }, status: 'available' as const, units: '1' }] : [] }; },
@@ -53,6 +54,7 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
     rejectPrices() { rejectPrices = true; },
     rejectNativeBalance(id: string) { failedNativeMethods.add(id); },
     offline(id: string) { unavailableNetworks.add(id); },
+    wrongChain(id: string) { unavailableNetworks.delete(id); wrongChains.add(id); },
     includeCollectible() { includeCollectible = true; },
     select(index: number) { selected = index; revision++; for (const listener of listeners) listener(); },
     lock() { phase = 'locked'; revision++; for (const listener of listeners) listener(); } };
@@ -366,5 +368,25 @@ test('a verified native balance method error retains healthy token holdings and 
     assert.equal(snapshot.rows[0]?.tokens[0]?.units, '250');
     assert.equal(snapshot.knownValue, 5);
     assert.equal(snapshot.partial, true);
+  } finally { stop(); }
+});
+
+test('last known balances survive an outage and clear on a confirmed endpoint chain mismatch', async () => {
+  const f = fixture('ethereum', ['ethereum']), model = f.make(), stop = model.connect();
+  try {
+    await settle();
+    const original = model.getSnapshot().rows[0]!;
+    f.offline('ethereum'); await model.refresh();
+    const stale = model.getSnapshot().rows[0]!;
+    assert.equal(stale.status, 'error');
+    assert.equal(stale.units, original.units);
+    assert.equal(stale.updatedAt, original.updatedAt);
+    assert.equal(model.getSnapshot().knownValue, null);
+    f.wrongChain('ethereum'); await model.refresh();
+    const wrongChain = model.getSnapshot().rows[0]!;
+    assert.equal(wrongChain.status, 'error');
+    assert.equal(wrongChain.units, null);
+    assert.equal(wrongChain.updatedAt, null);
+    assert.equal(f.tokens.length, 1);
   } finally { stop(); }
 });

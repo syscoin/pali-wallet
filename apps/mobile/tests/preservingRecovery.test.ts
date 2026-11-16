@@ -1897,6 +1897,8 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     let send = await f.runtime.openUtxoSend!(current);
     const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }), { method: 'device' });
     assert.equal(txid, posted?.txid);
+    const identity = ['/api/v2/', '/api/v2/block-index/0'];
+    assert.deepEqual(observationPaths.splice(0), [...identity, ...identity, ...identity]);
     const observation = ['/api/v2/', '/api/v2/block-index/0', `/api/v2/tx/${txid}`];
     assert.equal(await send.check(txid), 'seen');
     assert.deepEqual(observationPaths, observation);

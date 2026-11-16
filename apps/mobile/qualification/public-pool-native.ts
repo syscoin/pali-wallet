@@ -4,7 +4,7 @@ import { hashPair } from '../../../source/utils/privacy/merkle.ts';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
 import { createNativePrivacyPoolSync, type OwnedPrivacyPullTransport } from '../src/privacy/nativePrivacyPoolSync.ts';
 import {
-  PUBLIC_POOL_ANCHOR_READS, PUBLIC_POOL_BATCHES, PUBLIC_POOL_BLOCK, PUBLIC_POOL_ID, PUBLIC_POOL_LEAVES,
+  PUBLIC_POOL_ANCHOR_READS, PUBLIC_POOL_RECHECK_READS, PUBLIC_POOL_BATCHES, PUBLIC_POOL_BLOCK, PUBLIC_POOL_ID, PUBLIC_POOL_LEAVES,
   PUBLIC_POOL_PATH_DIGESTS, PUBLIC_POOL_ROOT, publicPoolAnchorPath, type PublicPoolLaunch,
 } from './public-pool-contract.ts';
 
@@ -22,6 +22,7 @@ export async function qualifyNativePublicPool({
   let batches = 0;
   const ids = new Set<number>();
   const anchorReads = PUBLIC_POOL_ANCHOR_READS.length;
+  const reads = [...PUBLIC_POOL_ANCHOR_READS, ...PUBLIC_POOL_RECHECK_READS];
   const sync = createNativePrivacyPoolSync({
     network, poolId: PUBLIC_POOL_ID, lifetime,
     service: { origin: serviceOrigin, assertCurrent() { check(!lifetime.aborted); } },
@@ -32,8 +33,7 @@ export async function qualifyNativePublicPool({
       },
       prepareAnchor(binding, read, id, signal) {
         const offset = ids.size;
-        check(gets === 1 && !ids.has(id) && offset < anchorReads * 2 &&
-          PUBLIC_POOL_ANCHOR_READS[offset % anchorReads] === read &&
+        check(gets === 1 && !ids.has(id) && offset < reads.length && reads[offset] === read &&
           batches === (offset < anchorReads ? 0 : PUBLIC_POOL_BATCHES));
         ids.add(id);
         return transport.prepareAnchor(binding, read, id, signal);
@@ -49,7 +49,7 @@ export async function qualifyNativePublicPool({
     if (status.phase !== 'ready')
       throw Error(`PUBLIC_POOL_QUALIFICATION_FAILED:${status.phase}:${status.errorCode ?? 'unknown'}`);
     check(status.blockNumber === PUBLIC_POOL_BLOCK && status.leafCount === PUBLIC_POOL_LEAVES &&
-      gets === 1 && ids.size === anchorReads * 2 && batches === PUBLIC_POOL_BATCHES);
+      gets === 1 && ids.size === reads.length && batches === PUBLIC_POOL_BATCHES);
     const access = await sync.readSnapshot(PUBLIC_POOL_ID);
     check(access.snapshot.root === PUBLIC_POOL_ROOT);
     const pathDigests: string[] = [];

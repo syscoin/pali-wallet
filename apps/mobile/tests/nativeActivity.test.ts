@@ -1165,3 +1165,89 @@ test('overlapping automatic and explicit local Activity reads share one receipt 
     assert.equal(methods.length, 5); assert.equal(methods.filter(method => method === 'eth_getTransactionReceipt').length, 1);
   } finally { held.resolve(); model.connect()(); }
 });
+
+for (const mode of ['mined', 'missing', 'reorg', 'wrong hash', 'scalar', 'wrong chain', 'cancelled'] as const)
+  test(`paired retained Activity reads share verified RPC work (${mode})`, async () => {
+    const base = fixture(), locals = [base.local(1, 'submitted'), base.local(2, 'submitted')];
+    const scope = createActivityScope(FP, 'hd:60:0', OWNER, 'ethereum');
+    const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+    const batches: string[][] = [];
+    let receiptSignal: AbortSignal | null | undefined;
+    const blockHash = hash(555);
+    const receipts = new ActivityReceiptReader({ fetch: async (_url, init) => {
+      const input = JSON.parse(String(init.body));
+      const requests = Array.isArray(input) ? input : [input];
+      batches.push(requests.map(request => request.method));
+      if (mode === 'scalar' && Array.isArray(input))
+        return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch unsupported' } });
+      if (mode === 'cancelled' && requests.some(request => request.method === 'eth_getTransactionReceipt')) {
+        receiptSignal = init.signal;
+        started.resolve();
+        await held.promise;
+      }
+      const rows = requests.map(request => {
+        let result: unknown;
+        switch (request.method) {
+          case 'eth_chainId': result = mode === 'wrong chain' ? '0x2' : '0x1'; break;
+          case 'eth_getTransactionCount': result = '0x0'; break;
+          case 'eth_getBlockByNumber':
+            result = { number: '0x50', hash: blockHash, gasLimit: '0x1c9c380' };
+            break;
+          case 'eth_getTransactionReceipt':
+            result = mode === 'missing' ? null : {
+              transactionHash: mode === 'wrong hash' && request.params[0] === locals[1]!.hash
+                ? locals[0]!.hash : request.params[0],
+              from: OWNER, to: OTHER, status: '0x1', blockNumber: '0x50',
+              blockHash: mode === 'reorg' && request.params[0] === locals[1]!.hash ? hash(777) : blockHash,
+            };
+            break;
+          default: assert.fail(request.method);
+        }
+        return { jsonrpc: '2.0', id: request.id, result };
+      });
+      return Response.json(Array.isArray(input) ? rows.reverse() : rows[0]);
+    } });
+    const runtime: NativeActivityRuntime = {
+      async load() { return { scope, locals, saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false } }; },
+      async observeLocal(record, check, _signal, observe) {
+        check(); assert(observe);
+        return observe({ chainId: '1', from: OWNER, to: OTHER, hash: record.hash, nonce: String(record.nonce) });
+      },
+      async saveCache() {}, async saveView() {},
+    };
+    const model = new NativeActivity(source(), () => runtime, new FakeExplorer(), receipts);
+    try {
+      await model.refresh();
+      if (mode === 'cancelled') {
+        await started.promise; model.invalidate(); held.resolve();
+        assert.equal(receiptSignal?.aborted, true);
+        assert.equal(model.getSnapshot().rows.length, 0);
+        assert.deepEqual(batches, [['eth_chainId'], ['eth_getTransactionReceipt', 'eth_getTransactionReceipt']]);
+        return;
+      }
+      await until(() => model.getSnapshot().rows.length === 2 &&
+        model.getSnapshot().rows.every(row => row.retainedObservation || row.unavailable));
+      const rows = model.getSnapshot().rows;
+      if (mode === 'wrong chain') {
+        assert(rows.every(row => row.unavailable));
+        assert.deepEqual(batches, [['eth_chainId']]);
+        return;
+      }
+      assert.equal(rows.find(row => row.hash === locals[0]!.hash)?.retainedObservation?.status, mode === 'missing' ? 'missing' : 'mined');
+      const sibling = rows.find(row => row.hash === locals[1]!.hash);
+      if (mode === 'reorg' || mode === 'wrong hash') assert.equal(sibling?.unavailable, true);
+      else assert.equal(sibling?.retainedObservation?.status, mode === 'missing' ? 'missing' : 'mined');
+      const expected = [
+        ['eth_chainId'], ['eth_getTransactionReceipt', 'eth_getTransactionReceipt'],
+        [mode === 'missing' ? 'eth_getTransactionCount' : 'eth_getBlockByNumber'], ['eth_chainId'],
+      ];
+      if (mode === 'scalar') expected.splice(2, 0, ['eth_getTransactionReceipt'], ['eth_getTransactionReceipt']);
+      assert.deepEqual(batches, expected);
+      if (mode === 'mined' || mode === 'scalar') {
+        await model.refresh();
+        await until(() => model.getSnapshot().rows.every(row => row.retainedObservation?.status === 'mined'));
+        const second = mode === 'scalar' ? expected.filter(group => group.length === 1) : expected;
+        assert.deepEqual(batches, [...expected, ...second]);
+      }
+    } finally { held.resolve(); model.invalidate(); }
+  });

@@ -424,6 +424,7 @@ test('connection UTXO public reads use the real SDK and reject a retired owner a
 
 test('connection external PSBT runtime captures the selected account and aborts held prevout reads before a facade exists', async () => {
   const { getUtxoNetwork } = await import('../src/core/utxoNetworks.ts');
+  const { metadata } = await import('./publicWatchFixtures.ts');
   const [{ utils }, { PsbtUtils }] = await Promise.all([
     import('syscoinjs-lib'), import('@sidhujag/sysweb3-keyring/cjs/utils/psbt.js'),
   ]);
@@ -439,6 +440,11 @@ test('connection external PSBT runtime captures the selected account and aborts 
     calls++; const url = String(input);
     assert.equal(observed.isUnlocked(), false, 'PSBT prevout and derivation reads must finish before signing key release');
     assert.equal(init?.method, 'GET'); assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error');
+    if (url === `${network.endpoint}/api/v2/` || url === `${network.endpoint}/api/v2/block-index/0`) {
+      const response = Response.json(url.endsWith('/api/v2/') ? metadata(network.id) : { blockHash: network.genesisHash });
+      Object.defineProperty(response, 'url', { value: url });
+      return response;
+    }
     if (url === `${network.endpoint}/api/v2/xpub/${accountXpub}?tokens=used&details=tokens`) {
       const response = Response.json({ tokens: [{ name: accountAddress, path: "m/84'/0'/0'/0/0" }] });
       Object.defineProperty(response, 'url', { value: url }); return response;

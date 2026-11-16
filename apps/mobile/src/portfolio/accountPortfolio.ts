@@ -4,7 +4,7 @@ import type { FiatCurrency } from '../core/fiatPreference.ts';
 import type { PublicCustodySource } from './nativePortfolio.ts';
 import type { NotificationChoice } from '../notifications/choices.ts';
 import type { NativeNotificationScope } from '../notifications/types.ts';
-import { NativeBalanceMethodError } from '../platformRpc.ts';
+import { NativeBalanceChainMismatchError, NativeBalanceMethodError } from '../platformRpc.ts';
 import { formatTokenUnits, type Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import type { SavedCollectible } from './tokenRegistry.ts';
 import { abortable } from '../../../../source/shared/boundedHttp.ts';
@@ -225,7 +225,7 @@ export class AccountPortfolioController {
           let units: string | null = null;
           try {
             const raw = await this.ports.reader.readBalance(choice.scope.network.id, choice.scope.accountAddress, request.signal);
-            if (String(raw.chainId) !== choice.scope.network.chainId) throw Error('Wrong network');
+            if (String(raw.chainId) !== choice.scope.network.chainId) throw new NativeBalanceChainMismatchError('Wrong network');
             assertBaseUnits(raw.units);
             units = raw.units;
           } catch (error) {
@@ -243,9 +243,13 @@ export class AccountPortfolioController {
           this.cache.set(key, { choice, status, units, decimals: original.decimals, updatedAt: (this.ports.now ?? Date.now)(), price: null,
             tokens: assets.tokens.map(token => ({ ...token, price: null })), collectibles: assets.collectibles, assetsAvailable });
           this.synchronize();
-        } catch {
+        } catch (error) {
           if (request.signal.aborted || this.generation !== generation) return;
-          this.cache.set(key, { ...this.blank(choice), status: 'error' }); this.synchronize();
+          const row = this.blank(choice);
+          this.cache.set(key, error instanceof NativeBalanceChainMismatchError
+            ? { ...row, status: 'error' }
+            : { ...row, status: 'error', units: original.units, decimals: original.decimals, updatedAt: original.updatedAt });
+          this.synchronize();
         }
       }
     };

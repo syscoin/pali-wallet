@@ -18,6 +18,7 @@ export const PUBLIC_POOL_PATH_DIGESTS = Object.freeze([
 export const PUBLIC_POOL_ANCHOR_READS = Object.freeze([
   'chainId', 'block', 'nextIndex', 'getLastRoot', 'levels', 'denomination', 'block', 'isKnownRoot',
 ] as const);
+export const PUBLIC_POOL_RECHECK_READS = Object.freeze(['chainId', 'block', 'block', 'isKnownRoot'] as const);
 
 export const PUBLIC_POOL_FAILURE_FILE = 'pali-native-public-pool-failure.json';
 export const PUBLIC_POOL_FAILURE_BYTES = 256;

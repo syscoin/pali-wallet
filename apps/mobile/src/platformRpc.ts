@@ -15,6 +15,7 @@ const REQUEST_TIMEOUT_MS = 12_000;
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
 export class NativeBalanceMethodError extends Error {}
+export class NativeBalanceChainMismatchError extends Error {}
 
 export function parseRpcQuantity(value: unknown): bigint {
   if (
@@ -122,7 +123,7 @@ export function createBalanceReader(
         // Do not send even a public account address before checking the endpoint's chain.
         const chainId = await call('eth_chainId', []);
         if (chainId !== BigInt(network.chainId))
-          throw new Error('Balance endpoint is on a different network');
+          throw new NativeBalanceChainMismatchError('Balance endpoint is on a different network');
         const units = await call('eth_getBalance', [
           canonicalAddress,
           'latest',

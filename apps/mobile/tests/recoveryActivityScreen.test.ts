@@ -423,7 +423,7 @@ test('Smart Activity details show the observed outer network fee and its actual 
     { retainedObservation: { status: 'missing', latestNonce: '0' }, expected: 'Actual fee not verified' },
     { retainedObservation: observation, observation: base.observation, expected: 'Actual fee not verified' },
     { retainedObservation: observation, unavailable: true, expected: 'Actual fee not verified' },
-    { retainedObservation: observation, indexed: {}, indexedStatus: 'pending', expected: 'Actual fee not verified' },
+    { retainedObservation: observation, indexed: {}, indexedStatus: 'pending', expected: '0.000000000000042 ETH' },
     { retainedObservation: observation, observation: { ...base.observation, status: 'confirmed', block: { hash: blockHash, number: '2' }, feeUnits: null }, expected: 'Actual fee not verified' },
     { retainedObservation: observation, observation: { ...base.observation, status: 'confirmed', block: { hash: blockHash, number: '2' }, feeUnits: '1' }, expected: '0.000000000000000001 ETH' },
   ]) {
@@ -431,7 +431,7 @@ test('Smart Activity details show the observed outer network fee and its actual 
     try {
       const tree = await openFixtureRow(f, { ...base, observation: undefined, local, ...fields });
       const detail = all(tree).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
-      assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.networkFee')).value, expected);
+      assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.networkFee')).value, expected, JSON.stringify(fields));
       assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('transactions.feePayer')).value, payer);
     } finally { f.dispose(); }
   }

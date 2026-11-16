@@ -122,7 +122,7 @@ export type ActivityLifecycle = {
   subscribe(listener: () => void): () => void;
 };
 export type ActivityExplorerPort = Pick<ActivityExplorerReader, 'page'>;
-export type ActivityReceiptPort = Pick<ActivityReceiptReader, 'read'> & Partial<Pick<ActivityReceiptReader, 'observe'>>;
+export type ActivityReceiptPort = Pick<ActivityReceiptReader, 'read'> & Partial<Pick<ActivityReceiptReader, 'observe' | 'retainedWave'>>;
 export type EvmActivityReaders = Readonly<{
   explorer: ActivityExplorerPort;
   receipts: ActivityReceiptPort;
@@ -827,32 +827,40 @@ export class NativeActivity {
     for (const local of candidates) if (!work.seen.has(local.hash)) {
       work.seen.add(local.hash); work.queue.push(local);
     }
-    const run = async () => {
-      work.workers++;
-      try { while (work.queue.length && !work.lifetime.signal.aborted) {
-        const local = work.queue.shift()!;
+    const pump = () => {
+      const count = Math.min(2 - work.workers, work.queue.length);
+      if (count <= 0 || work.lifetime.signal.aborted) return;
+      const lifetime = work.lifetime.signal;
+      const wave = count > 1
+        ? this.receipts.retainedWave?.(scope.network, this.receiptScope(scope, generation), lifetime, guard)
+        : undefined;
+      const observe = wave?.observe ?? this.retainedObserver(scope, generation, lifetime, guard);
+      let remaining = count;
+      const run = async (local: LocalActivityRecord) => {
         try {
           guard();
-          const observation = await runtime.observeLocal!(
-            local,
-            guard,
-            work.lifetime.signal,
-            this.retainedObserver(scope, generation, work.lifetime.signal, guard)
-          );
+          const observation = await runtime.observeLocal!(local, guard, lifetime, observe);
           guard();
           this.retainedObservations.set(local.hash, observation);
           this.unavailable.delete(local.hash);
         } catch {
           try { guard(); } catch { return; }
-          // Keep the record, but do not describe an unavailable read as unconfirmed.
           // A concurrent successful detail read still owns its current evidence.
           if (!this.observations.has(local.hash) && !this.retainedObservations.has(local.hash))
             this.unavailable.add(local.hash);
         }
         if (generation === this.generation) this.renderRows();
-      } } finally { work.workers--; }
+      };
+      work.workers += count;
+      for (const local of work.queue.splice(0, count)) {
+        void run(local).finally(() => {
+          work.workers--;
+          if (--remaining === 0) wave?.close();
+          pump();
+        });
+      }
     };
-    while (work.workers < 2 && work.queue.length && !work.lifetime.signal.aborted) void run();
+    pump();
   }
 
   async setView(update: Partial<ActivityViewState>): Promise<void> {
