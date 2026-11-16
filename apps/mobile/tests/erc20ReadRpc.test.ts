@@ -738,7 +738,7 @@ for (const scenario of [
   });
 }
 
-for (const broken of ['revert', 'malformed'] as const) {
+for (const broken of ['revert', 'malformed', 'healthy-scalar'] as const) {
   test(`broken Multicall ${broken} preserves direct batching for twenty tokens`, async () => {
     const { Interface } = await import('ethers/abi');
     const { readFileSync } = await import('node:fs');
@@ -762,7 +762,8 @@ for (const broken of ['revert', 'malformed'] as const) {
       fetch: async (_url, init) => {
         posts++;
         const payload = JSON.parse(String(init.body)) as Request | Request[];
-        const rows = Array.isArray(payload) ? payload : [payload];
+        if (broken === 'healthy-scalar' && Array.isArray(payload)) return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch unsupported' } });
+      const rows = Array.isArray(payload) ? payload : [payload];
         const replies = rows.map((request) => {
           requests.push(request);
           if (
@@ -771,7 +772,11 @@ for (const broken of ['revert', 'malformed'] as const) {
               aggregate.getFunction('aggregate3')!.selector
             )
           ) {
-            return broken === 'revert'
+            if (broken === 'healthy-scalar') {
+            const calls = aggregate.decodeFunctionData('aggregate3', request.params[0].data)[0];
+            return { jsonrpc: '2.0', id: request.id, result: aggregate.encodeFunctionResult('aggregate3', [Array.from(calls, (call: { callData: string }) => ({ success: true, returnData: call.callData === '0x313ce567' ? uint(18) : uint(5) }))]) };
+          }
+          return broken === 'revert'
               ? {
                   jsonrpc: '2.0',
                   id: request.id,
@@ -800,8 +805,8 @@ for (const broken of ['revert', 'malformed'] as const) {
       new AbortController().signal
     );
     assert(balances.every((balance) => balance.status === 'available'));
-    assert.equal(requests.length, 46);
-    assert.equal(posts, 5);
+    assert.equal(requests.length, broken === 'healthy-scalar' ? 6 : 46);
+    assert.equal(posts, broken === 'healthy-scalar' ? 7 : 5);
     assert(
       requests
         .filter((request) => request.method === 'eth_call')

@@ -557,49 +557,37 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
               controller.abort();
             }
           };
-          const observations: PromiseSettledResult<unknown>[] = new Array(
-            calls.length
-          );
-          if (read.canBatch()) {
-            try {
-              const values = await scoped(
-                (groupRead) =>
-                  selected.length > 1
-                    ? aggregate!(
-                        { read: groupRead, readMany: groupRead.many },
-                        calls,
-                        block
-                      )
-                    : groupRead.many(requests),
-                4
-              );
-              observations.splice(0, observations.length, ...values);
-            } catch {
-              check(read.signal);
-            }
-          }
-          let next = 0;
-          const worker = async () => {
-            while (next < selected.length) {
-              const index = next++;
-              if (observations[index * 2] && observations[index * 2 + 1])
-                continue;
-              try {
-                const values = await scoped((groupRead) =>
-                  groupRead.many(requests.slice(index * 2, index * 2 + 2))
-                );
-                observations[index * 2] = values[0]!;
-                observations[index * 2 + 1] = values[1]!;
-              } catch (reason) {
-                check(read.signal);
-                observations[index * 2] = { status: 'rejected', reason };
-                observations[index * 2 + 1] = { status: 'rejected', reason };
+          const readDirect = async (direct: readonly ReadRequest[]) => {
+            if (read.canBatch()) return scoped(groupRead => groupRead.many(direct), 4);
+            const results: PromiseSettledResult<unknown>[] = new Array(direct.length);
+            let next = 0;
+            const worker = async () => {
+              while (next < direct.length) {
+                const index = next;
+                next += 2;
+                try {
+                  const values = await scoped(groupRead => groupRead.many(direct.slice(index, index + 2)));
+                  results[index] = values[0]!;
+                  if (index + 1 < direct.length) results[index + 1] = values[1]!;
+                } catch (reason) {
+                  check(read.signal);
+                  results[index] = { status: 'rejected', reason };
+                  if (index + 1 < direct.length) results[index + 1] = { status: 'rejected', reason };
+                }
               }
-            }
+            };
+            await Promise.all(Array.from({ length: Math.min(4, Math.ceil(direct.length / 2)) }, worker));
+            return results;
           };
-          await Promise.all(
-            Array.from({ length: Math.min(4, selected.length) }, worker)
-          );
+          let observations: PromiseSettledResult<unknown>[];
+          try {
+            observations = selected.length > 1
+              ? await scoped(groupRead => aggregate!({ read: groupRead, readMany: groupRead.many, readDirect }, calls, block), 4)
+              : await readDirect(requests);
+          } catch {
+            check(read.signal);
+            observations = await readDirect(requests);
+          }
           return Object.freeze(
             selected.map((token, index): Erc20BalanceResult => {
               const precision = observations[index * 2]!;

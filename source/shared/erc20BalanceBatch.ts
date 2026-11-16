@@ -20,6 +20,12 @@ type Reader = Readonly<{
     method: 'eth_getCode' | 'eth_call',
     params: readonly unknown[]
   ): Promise<unknown>;
+  readDirect?(
+    requests: readonly Readonly<{
+      method: 'eth_call';
+      params: readonly unknown[];
+    }>[]
+  ): Promise<PromiseSettledResult<unknown>[]>;
   readMany(
     requests: readonly Readonly<{
       method: 'eth_call';
@@ -120,7 +126,7 @@ export function createErc20BalanceBatch(clock = () => performance.now()) {
         } catch {
           // A broken aggregate must not hide other tokens in its chunk.
           // The transport keeps the same deadline, selector and limits.
-          const fallback = await read.readMany(
+          const fallback = await (read.readDirect ?? read.readMany)(
             chunk.map((call) => ({
               method: 'eth_call',
               params: [{ to: call.target, data: call.data }, block],
@@ -132,7 +138,7 @@ export function createErc20BalanceBatch(clock = () => performance.now()) {
       return results.flat();
     }
 
-    return read.readMany(
+    return (read.readDirect ?? read.readMany)(
       calls.map((call) => ({
         method: 'eth_call',
         params: [{ to: call.target, data: call.data }, block],
