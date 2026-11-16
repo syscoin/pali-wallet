@@ -232,6 +232,7 @@ async function prepareOperation({
   const validatorProfile = getSmartAccountValidatorProfile(metadata);
   const gasEstimate = await estimateSmartAccountUserOpGas(provider, {
     callData,
+    chainId,
     childValidatorCount: validatorProfile.childValidatorCount,
     entryPointAddress,
     isDeployed: deployed,

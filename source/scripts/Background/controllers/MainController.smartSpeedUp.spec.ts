@@ -1571,6 +1571,17 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     provider.getTransaction.mockResolvedValue(wrongTransaction);
     provider.getTransactionReceipt = jest.fn().mockResolvedValue(null);
     provider.getBlockNumber = jest.fn().mockResolvedValue(123);
+    provider.signal = new AbortController().signal;
+    provider._getConnection = () => ({
+      url: mockState.vault.activeNetwork.url,
+    });
+    provider.readMany = jest.fn(async (requests) =>
+      requests.map(({ method, params }) => {
+        if (method !== 'eth_chainId' || params.length)
+          throw new Error('Unexpected identity read');
+        return { status: 'fulfilled', value: `0x${CHAIN.toString(16)}` };
+      })
+    );
 
     await expect(
       wallet.getEvmTransactionFromProvider(ORIGINAL)

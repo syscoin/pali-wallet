@@ -159,6 +159,16 @@ test('selected ERC721 uses the registered endpoint and one block for exact probe
   }
 });
 
+for (const reportedOwner of [owner, other]) test(`bounded nested revert evidence permits the selected NFT read for ${reportedOwner}`, async () => {
+  const f = fixture({ reportedOwner, rewrite(wire, reply) {
+    if (wire.method !== 'eth_call' || !reply.error) return reply;
+    return { ...reply, error: { ...reverted, data: { data: reverted.data, message: 'execution reverted' } } };
+  } });
+  assert.deepEqual(await f.read(selection, signal(), current), { tokenId, units: reportedOwner === owner ? '1' : '0' });
+  assert.equal(f.requests.filter(({ wire }) => wire.method === 'eth_call').length, 2);
+  assert.equal(f.posts(), 5);
+});
+
 test('successful different ERC721 owner and exact ERC1155 amounts retain their meaning', async () => {
   assert.deepEqual(
     await fixture({ reportedOwner: other }).read(selection, signal(), current),

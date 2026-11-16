@@ -306,3 +306,85 @@ for (const standard of ['ERC-721', 'ERC-1155', 'ERC-1155 fallback'] as const) te
   }
   assert.equal((await pending).collectibles[0]!.status, 'available');
 });
+
+test('mixed saved assets share one identity and canonical block envelope', async () => {
+  const collectible = { contractAddress: collectionAddress, tokenStandard: 'ERC-721' as const };
+  const f = fixture({ revision: 1, items: [token], collectibles: [collectible] });
+  const result = await f.read();
+  assert.equal(result.tokens[0]?.status, 'available'); assert.equal(result.collectibles[0]?.status, 'available');
+  assert.equal(f.requests.filter(row => row.method === 'eth_chainId').length, 2);
+  assert.equal(f.requests.filter(row => row.method === 'eth_getBlockByNumber').length, 2);
+  assert.equal(f.requests.length, 9); assert.equal(f.widths.length, 4);
+});
+
+for (const failure of ['precision', 'code', 'canonical', 'chain'] as const) test(`mixed portfolio keeps its shared final barrier and member isolation (${failure})`, async () => {
+  const collectible = { contractAddress: collectionAddress, tokenStandard: 'ERC-721' as const };
+  let chainReads = 0;
+  const requests: Wire[] = [];
+  const read = createScopedPortfolioAssetReader({
+    async load() { return { revision: 1, items: [token], collectibles: [collectible] }; },
+    async fetch(_url, init) {
+      const payload = JSON.parse(String(init.body)) as Wire | Wire[];
+      const rows = Array.isArray(payload) ? payload : [payload]; requests.push(...rows);
+      const replies = rows.map(row => ({ jsonrpc: '2.0', id: row.id, result:
+        row.method === 'eth_chainId' ? (++chainReads > 1 && failure === 'chain' ? '0x2' : '0x1') :
+        row.method === 'eth_getBlockByNumber' ? { number: '0x10', hash: '0x' + (failure === 'canonical' && row.params[0] !== 'latest' ? 'b' : 'a').repeat(64) } :
+        row.method === 'eth_getCode' ? failure === 'code' ? '0x' : '0x6000' :
+        uint(row.params[0].data === '0x313ce567' ? failure === 'precision' ? 18 : 6 : row.params[0].data.startsWith('0x01ffc9a7') ? 1 : 123) }));
+      return Response.json(Array.isArray(payload) ? replies : replies[0]);
+    },
+  });
+  const result = await read(scope, new AbortController().signal, () => {});
+  assert.equal(result.tokens[0]?.status, ['precision', 'canonical', 'chain'].includes(failure) ? 'error' : 'available');
+  assert.equal(result.collectibles[0]?.status, ['code', 'canonical', 'chain'].includes(failure) ? 'error' : 'available');
+  assert.equal(chainReads, 2);
+  assert.equal(requests.filter(row => row.method === 'eth_getBlockByNumber').length, 2);
+});
+
+for (const stalled of ['token', 'collection'] as const) test(`mixed portfolio preserves the healthy family when ${stalled} stalls`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const signals: AbortSignal[] = [];
+  const read = createScopedPortfolioAssetReader({
+    async load() { return { revision: 1, items: [token], collectibles: [{ contractAddress: collectionAddress, tokenStandard: 'ERC-721' }] }; },
+    async fetch(_url, init) {
+      const payload = JSON.parse(String(init.body)) as Wire | Wire[];
+      const rows = Array.isArray(payload) ? payload : [payload];
+      if (rows.some(row => row.params[0] === (stalled === 'collection' ? collectionAddress : token.contractAddress) || row.params[0]?.to === (stalled === 'collection' ? collectionAddress : token.contractAddress))) {
+        signals.push(init.signal!);
+        return new Promise<Response>((_resolve, reject) => init.signal!.addEventListener('abort', () => reject(Error('cancelled')), { once: true }));
+      }
+      const replies = rows.map(row => ({ jsonrpc: '2.0', id: row.id, result:
+        row.method === 'eth_chainId' ? '0x1' : row.method === 'eth_getBlockByNumber' ? { number: '0x10', hash: '0x' + 'a'.repeat(64) } :
+        row.method === 'eth_getCode' ? '0x6000' : uint(row.params[0].data === '0x313ce567' ? 6 : row.params[0].data.startsWith('0x01ffc9a7') ? 1 : 123) }));
+      return Response.json(Array.isArray(payload) ? replies : replies[0]);
+    },
+  });
+  let settled = false;
+  const pending = read(scope, new AbortController().signal, () => {}).finally(() => { settled = true; });
+  for (let elapsed = 0; !settled && elapsed < 15000; elapsed += 50) { await new Promise(resolve => setImmediate(resolve)); t.mock.timers.tick(50); }
+  const result = await pending;
+  assert.equal(result.tokens[0]?.status, stalled === 'token' ? 'error' : 'available');
+  assert.equal(result.collectibles[0]?.status, stalled === 'collection' ? 'error' : 'available');
+  assert(signals.every(signal => signal.aborted));
+});
+
+test('a retired mixed portfolio phase cannot be reused by another operation or account', async () => {
+  const { createErc20Reader, createPortfolioReadOperation } = await import('../src/portfolio/erc20ReadRpc.ts');
+  let retained: import('../src/portfolio/erc20ReadRpc.ts').PortfolioReadPhase | undefined;
+  const fetch = async (_url: string, init: RequestInit) => {
+    const payload = JSON.parse(String(init.body)) as Wire | Wire[];
+    const rows = Array.isArray(payload) ? payload : [payload];
+    const replies = rows.map(row => ({ jsonrpc: '2.0', id: row.id, result: row.method === 'eth_chainId' ? '0x1' :
+      row.method === 'eth_getBlockByNumber' ? { number: '0x10', hash: '0x' + 'a'.repeat(64) } : uint(row.params[0].data === '0x313ce567' ? 6 : 123) }));
+    return Response.json(Array.isArray(payload) ? replies : replies[0]);
+  };
+  const options = { fetch, registrations: () => [network] }, parent = createPortfolioReadOperation(options), reader = createErc20Reader(options);
+  const signal = new AbortController().signal;
+  await parent(network.id, owner, 2, signal, () => {}, async phase => {
+    retained = phase;
+    const values = await reader.readBalances!(network.id, owner, [token], signal, () => {}, phase);
+    assert.equal(values[0]?.status, 'available');
+    await assert.rejects(reader.readBalances!(network.id, collectionAddress, [token], signal, () => {}, phase), { code: 'INVALID_INPUT' });
+  });
+  await assert.rejects(reader.readBalances!(network.id, owner, [token], signal, () => {}, retained), { code: 'INVALID_INPUT' });
+});

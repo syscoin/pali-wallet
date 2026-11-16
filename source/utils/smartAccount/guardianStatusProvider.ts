@@ -9,18 +9,27 @@ const READ_METHODS = new Set([
 ]);
 
 /** Reuse settled SDK reads; explicit groups always observe fresh remote chain identity. */
-export const guardianStatusProvider = (provider: {
-  readMany?: (
-    requests: GuardianRpcRequest[]
-  ) => Promise<PromiseSettledResult<unknown>[]>;
-}) => {
+export const guardianStatusProvider = (
+  provider: {
+    readMany?: (
+      requests: GuardianRpcRequest[],
+      options?: { signal?: AbortSignal }
+    ) => Promise<PromiseSettledResult<unknown>[]>;
+  },
+  signal?: AbortSignal
+) => {
   const readMany = async (requests: GuardianRpcRequest[]) => {
+    signal?.throwIfAborted();
     if (!requests.length) return [];
     if (!provider.readMany)
       throw new Error('Live guardian recovery batch transport unavailable');
     if (requests.some(({ method }) => !READ_METHODS.has(method)))
       throw new Error('Unsupported guardian recovery read');
-    const results = await provider.readMany(requests);
+    const results = await provider.readMany(
+      requests,
+      signal ? { signal } : undefined
+    );
+    signal?.throwIfAborted();
     if (
       !Array.isArray(results) ||
       results.length !== requests.length ||

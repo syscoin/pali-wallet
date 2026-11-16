@@ -1,4 +1,5 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+import { Network } from 'ethers/providers';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import isEmpty from 'lodash/isEmpty';
@@ -225,25 +226,40 @@ export const findUserTxsInProviderByBlocksRange = async (
       if (retainedBytes > HISTORY_CACHE_BYTES) break;
       retained.set(block.number, block);
     }
+    const transactions = window.flatMap((block) =>
+      block.transactions
+        .filter((tx) => tx?.from || tx?.to)
+        .map((tx) => {
+          // Full-block RPC objects use the same legacy/signature normalization
+          // as getTransaction, before assigning this verified display scope.
+          const normalized = Reflect.apply(
+            Reflect.get(provider, '_wrapTransactionResponse'),
+            provider,
+            [tx, Network.from(chainId)]
+          );
+          if (
+            (normalized.chainId && normalized.chainId !== chainId) ||
+            (normalized.signature.legacyChainId &&
+              normalized.signature.legacyChainId !== chainId)
+          )
+            throw new Error('History transaction network changed');
+          return {
+            ...tx,
+            chainId: Number(chainId),
+            confirmations: tx.blockNumber
+              ? Math.max(0, tip.number - historyNumber(tx.blockNumber))
+              : 0,
+            timestamp: block.timestamp,
+            nonce: normalized.nonce,
+            type: normalized.type,
+          };
+        })
+    );
     historyScans.set(provider, {
       scope,
       updatedAt: Date.now(),
       blocks: retained,
     });
-    const transactions = window.flatMap((block) =>
-      block.transactions
-        .filter((tx) => tx?.from || tx?.to)
-        .map((tx) => ({
-          ...tx,
-          chainId: Number(tx.chainId),
-          confirmations: tx.blockNumber
-            ? Math.max(0, tip.number - historyNumber(tx.blockNumber))
-            : 0,
-          timestamp: block.timestamp,
-          nonce:
-            typeof tx.nonce === 'string' ? historyNumber(tx.nonce) : tx.nonce,
-        }))
-    );
     const { activeAccount, accountTransactions } = store.getState().vault;
     const existing =
       accountTransactions?.[activeAccount.type]?.[activeAccount.id]?.ethereum?.[

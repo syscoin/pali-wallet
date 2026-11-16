@@ -332,7 +332,7 @@ export function createNativeWalletControllers() {
           if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
           return connection.verifyPersonalMessage(message, signature);
         } });
-      const walletReads = createNativeWalletReadHost({ fetch: walletFetch,
+      const walletReads = createNativeWalletReadHost({ fetch: walletFetch, reads,
         network: () => {
           if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
           return connection.context().network.kind === 'syscoin' ? syscoin.registration() : readRegistration();

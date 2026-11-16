@@ -1,3 +1,5 @@
+import { JsonRpcProvider } from 'ethers/providers';
+
 import { selectEvmHistoryRepresentatives } from '../../../../shared/evmHistory';
 
 import TransactionsManager from './index';
@@ -36,6 +38,10 @@ const fixture = () => {
   const abort = new AbortController();
   const provider = {
     signal: abort.signal,
+    _wrapTransactionResponse: Reflect.get(
+      JsonRpcProvider.prototype,
+      '_wrapTransactionResponse'
+    ),
     readMany: jest.fn(async (requests: any[], options: any) => {
       if (stalled)
         return new Promise<any[]>((_, reject) => {
@@ -60,8 +66,15 @@ const fixture = () => {
               ? [
                   {
                     hash: hash(number + 100),
-                    from: 'owner',
-                    to: 'other',
+                    from: '0x' + '11'.repeat(20),
+                    to: '0x' + '22'.repeat(20),
+                    gas: '0x5208',
+                    gasPrice: '0x1',
+                    value: '0x0',
+                    input: '0x',
+                    r: '0x' + '01'.padStart(64, '0'),
+                    s: '0x' + '02'.padStart(64, '0'),
+                    v: '0x25',
                     chainId: '0x1',
                     blockNumber: hex(number),
                     nonce: '0x0',

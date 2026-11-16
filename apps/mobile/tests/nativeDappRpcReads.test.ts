@@ -44,6 +44,15 @@ test('RPC execution errors retain the exact revert code, message and hex data', 
   await assert.rejects(host.read(normalizeDappRpcRequest('eth_call', [{ to: `0x${'11'.repeat(20)}` }]), new AbortController().signal, () => {}), { code: 3, message: 'execution reverted', data: '0x1234' });
 });
 
+test('bounded long revert messages retain their code and ABI data', async () => {
+  const message = 'execution reverted: ' + 'long contract reason '.repeat(20), data = '0x1234';
+  const rpc = new EvmTransferReadRpc(registration, { fetch: async (_url, init) => {
+    const row = JSON.parse(String(init.body));
+    return json(row.id, row.method === 'eth_chainId' ? { result: '0x1' } : { error: { code: 3, message, data } });
+  } });
+  await assert.rejects(rpc.dappRequest(normalizeDappRpcRequest('eth_call', [{ to: `0x${'11'.repeat(20)}` }]), new AbortController().signal, () => {}), { code: 3, message, data });
+});
+
 test('large supported fee history passes the scalar and joined public host boundaries', async () => {
   const result = { oldestBlock: '0x1', baseFeePerGas: Array(1025).fill('0x1'), gasUsedRatio: Array(1024).fill(0.5), reward: Array.from({ length: 1024 }, () => Array(10).fill('0x1')) };
   const calls: string[] = [];

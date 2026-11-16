@@ -183,6 +183,11 @@ export interface ISmartAccountControllerDependencies {
     chainId: number,
     assertCurrent: () => void
   ): Promise<GuardianRecoveryTransactionRecords>;
+  captureReadLifetime?: (assertCurrent: () => void) => {
+    assertCurrent(): void;
+    dispose(): void;
+    signal: AbortSignal;
+  };
   captureSmartAccountPendingRecords(
     chainId: number,
     address: string,
@@ -354,7 +359,10 @@ class SmartAccountController {
     string,
     {
       context: ReturnType<SmartAccountController['infrastructureContext']>;
+      lifetime: { assertCurrent(): void; dispose(): void; signal: AbortSignal };
       promise: ReturnType<typeof readGuardianRecoveryObservation>;
+      settled: boolean;
+      subscribers: number;
     }
   >();
   private readonly explicitHydrations = new Map<
@@ -2070,13 +2078,16 @@ class SmartAccountController {
     throw new Error('Guardian setup is handled by recovery module templates');
   }
 
-  public async getSmartAccountGuardianRecoveryStatus(params: {
-    account: string;
-    guardian?: string;
-    guardianApproval?: 'ecdsa' | 'contract';
-    intent?: GuardianRecoveryIntent;
-    knownOperationId?: string;
-  }): Promise<
+  public async getSmartAccountGuardianRecoveryStatus(
+    params: {
+      account: string;
+      guardian?: string;
+      guardianApproval?: 'ecdsa' | 'contract';
+      intent?: GuardianRecoveryIntent;
+      knownOperationId?: string;
+    },
+    signal?: AbortSignal
+  ): Promise<
     GuardianRecoveryObservation & { recoveryTransactionHash?: string | null }
   > {
     const context = this.infrastructureContext();
@@ -2124,34 +2135,107 @@ class SmartAccountController {
       throw new Error('Invalid guardian recovery operation ID');
     const key = `${account.toLowerCase()}:${knownOperationId || ''}`;
     for (const [pendingKey, entry] of this.guardianObservations) {
-      if (!this.sameInfrastructureContext(context, entry.context))
+      if (!this.sameInfrastructureContext(context, entry.context)) {
+        entry.lifetime.dispose();
         this.guardianObservations.delete(pendingKey);
+      }
     }
-    const current = this.guardianObservations.get(key);
-    if (current) return current.promise;
-    const entry = {
-      context,
-      promise: null as ReturnType<typeof readGuardianRecoveryObservation>,
-    };
-    entry.promise = this.readFreshGuardianRecoveryStatus(
-      context,
-      account,
-      knownOperationId,
-      () => this.assertInfrastructureContext(context)
-    ).finally(() => {
-      if (this.guardianObservations.get(key) === entry)
-        this.guardianObservations.delete(key);
+    if (signal?.aborted)
+      throw signal.reason ?? new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    let entry = this.guardianObservations.get(key);
+    if (!entry || entry.lifetime.signal.aborted) {
+      const lifetime = this.guardianReadLifetime(() =>
+        this.assertInfrastructureContext(context)
+      );
+      const current = {
+        context,
+        lifetime,
+        subscribers: 0,
+        settled: false,
+        promise: null as ReturnType<typeof readGuardianRecoveryObservation>,
+      };
+      current.promise = this.readFreshGuardianRecoveryStatus(
+        context,
+        account,
+        knownOperationId,
+        lifetime.assertCurrent,
+        lifetime.signal
+      ).finally(() => {
+        current.settled = true;
+        lifetime.dispose();
+        if (this.guardianObservations.get(key) === current)
+          this.guardianObservations.delete(key);
+      });
+      this.guardianObservations.set(key, current);
+      entry = current;
+    }
+    const observed = entry;
+    observed.subscribers++;
+    return new Promise((resolve, reject) => {
+      let finished = false;
+      const complete = (work: () => void) => {
+        if (finished) return;
+        finished = true;
+        signal?.removeEventListener('abort', cancel);
+        observed.lifetime.signal.removeEventListener('abort', retire);
+        if (--observed.subscribers === 0) observed.lifetime.dispose();
+        work();
+      };
+      const cancel = () =>
+        complete(() =>
+          reject(signal?.reason ?? new Error(EVM_TRANSACTION_CONTEXT_CHANGED))
+        );
+      const retire = () => {
+        if (!observed.settled)
+          complete(() => reject(new Error(EVM_TRANSACTION_CONTEXT_CHANGED)));
+      };
+      signal?.addEventListener('abort', cancel, { once: true });
+      observed.lifetime.signal.addEventListener('abort', retire, {
+        once: true,
+      });
+      observed.promise.then(
+        (value) =>
+          complete(() => {
+            try {
+              this.assertInfrastructureContext(context);
+              resolve(structuredClone(value));
+            } catch (error) {
+              reject(error);
+            }
+          }),
+        (error) => complete(() => reject(error))
+      );
+      if (signal?.aborted) cancel();
+      else if (observed.lifetime.signal.aborted) retire();
     });
-    this.guardianObservations.set(key, entry);
-    return entry.promise;
+  }
+
+  private guardianReadLifetime(assertCurrent: () => void) {
+    if (this.deps.captureReadLifetime)
+      return this.deps.captureReadLifetime(assertCurrent);
+    // The extension supplies session retirement in addition to this read lifetime.
+    const controller = new AbortController();
+    return {
+      signal: controller.signal,
+      assertCurrent: () => {
+        assertCurrent();
+        if (controller.signal.aborted)
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      },
+      dispose: () => controller.abort(),
+    };
   }
 
   private readFreshGuardianRecoveryStatus(
     context: ReturnType<SmartAccountController['infrastructureContext']>,
     account: string,
     knownOperationId: string | undefined,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    signal?: AbortSignal
   ) {
+    const lifetime = signal
+      ? undefined
+      : this.guardianReadLifetime(assertCurrent);
     return readGuardianRecoveryObservation({
       account,
       chainId: context.chainId,
@@ -2160,9 +2244,12 @@ class SmartAccountController {
         'guardian-recovery'
       ),
       knownOperationId,
-      provider: guardianStatusProvider(context.provider),
-      assertCurrent,
-    });
+      provider: guardianStatusProvider(
+        context.provider,
+        signal ?? lifetime!.signal
+      ),
+      assertCurrent: lifetime?.assertCurrent ?? assertCurrent,
+    }).finally(() => lifetime?.dispose());
   }
 
   public async getSmartAccountGuardianRemovalStatus(

@@ -196,9 +196,9 @@ export class EvmTransferReadRpc {
         if (Object.hasOwn(result, 'result')) return rejectRead('INVALID_RESPONSE');
         const error = object(result.error);
         if (scope === 'dapp-rpc') {
-          if (!Number.isInteger(error.code) || Number(error.code) < -2147483648 || Number(error.code) > 2147483647 || typeof error.message !== 'string' || !error.message || error.message.length > 256) return rejectRead('INVALID_RESPONSE');
+          if (!Number.isInteger(error.code) || Number(error.code) < -2147483648 || Number(error.code) > 2147483647 || typeof error.message !== 'string' || !error.message) return rejectRead('INVALID_RESPONSE');
           assertPublicResponseBudget(error);
-          const response = serializePublicRpcError(error, 256);
+          const response = serializePublicRpcError(error);
           throw new EthereumRpcErrorHandler(response.code, response.message, response.data);
         }
         // Only an explicit unsupported priority-fee method reaches the SDK's bounded history fallback.

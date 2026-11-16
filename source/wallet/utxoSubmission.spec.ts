@@ -910,6 +910,71 @@ async function retainedFixture() {
   return { ...c, sender, transaction, selected, fetch };
 }
 
+it.each(['healthy', 'wrong-genesis', 'cancelled'])(
+  'published SDK checks retained identity after 24 seconds of authenticated journal admission: %s',
+  async (outcome) => {
+    const c = await retainedFixture();
+    const entered = deferred(),
+      release = deferred();
+    const storageRead = c.storage.read;
+    let reads = 0,
+      current = true,
+      wrongGenesis = false;
+    const session = {
+      ...c.session,
+      assertCurrent() {
+        if (!current) throw Error('Wallet changed');
+      },
+    };
+    jest.spyOn(c.storage, 'read').mockImplementation(async () => {
+      if (++reads === 2) {
+        entered.finish();
+        await release.promise;
+      }
+      return storageRead();
+    });
+    const transport = c.fetch.getMockImplementation()!;
+    c.fetch.mockImplementation((requestUrl, init) =>
+      requestUrl === savedGenesis
+        ? Promise.resolve(
+            identityResponse(savedGenesis, {
+              blockHash: wrongGenesis ? '0'.repeat(64) : btcGenesis,
+            })
+          )
+        : transport(requestUrl, init)
+    );
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+    try {
+      const pending = submitRetainedUtxo({
+        ...c,
+        session,
+        sender: c.sender,
+        record: c.transaction,
+      });
+      const checked =
+        outcome === 'healthy'
+          ? expect(pending).resolves.toEqual({ txid: c.transaction.txid })
+          : expect(pending).rejects.toMatchObject(noPost);
+      await entered.promise;
+      expect(c.fetch).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(24_000);
+      wrongGenesis = outcome === 'wrong-genesis';
+      current = outcome !== 'cancelled';
+      release.finish();
+      await checked;
+      expect(
+        c.fetch.mock.calls.filter(([, init]) => init?.method === 'POST')
+      ).toHaveLength(outcome === 'healthy' ? 1 : 0);
+      expect(
+        c.fetch.mock.calls.filter(([, init]) => init?.method === 'GET')
+      ).toHaveLength(outcome === 'cancelled' ? 0 : 2);
+    } finally {
+      release.finish();
+      jest.useRealTimers();
+    }
+  }
+);
+
 it('verifies the original prefixed route and dispatches exact bytes under the replay lease', async () => {
   const c = await retainedFixture();
   const checking = deferred(),
@@ -947,6 +1012,72 @@ it('verifies the original prefixed route and dispatches exact bytes under the re
     body: c.transaction.rawTransaction,
   });
 });
+
+it.each(['published', 'candidate'])(
+  'finishes durable admission before the %s SDK final identity pair',
+  async (order) => {
+    const c = await retainedFixture();
+    const entered = deferred(),
+      release = deferred();
+    const readStorage = c.storage.read;
+    let reads = 0;
+    jest.spyOn(c.storage, 'read').mockImplementation(async () => {
+      if (++reads === 2) {
+        entered.finish();
+        await release.promise;
+      }
+      return readStorage();
+    });
+    let wrongGenesis = false;
+    const transport = c.fetch.getMockImplementation()!;
+    c.fetch.mockImplementation(async (requestUrl, init) =>
+      requestUrl === savedGenesis
+        ? identityResponse(savedGenesis, {
+            blockHash: wrongGenesis ? '0'.repeat(64) : btcGenesis,
+          })
+        : transport(requestUrl, init)
+    );
+    const sender: ReplaySender = {
+      async replayRetainedTransaction(txid, authority) {
+        const retained = await authority.readRetained(c.selected, txid);
+        if (!retained) throw Error('Missing retained record');
+        if (order === 'candidate') await authority.prepare(retained);
+        const verified = await verifyOwnedUtxoRpc(savedBase, {
+          ...authority,
+          backendChain: 'main',
+          registration: c.selected,
+        });
+        const { result } = await syscoinUtils.sendRawTransaction(
+          savedBase,
+          retained.rawTransaction,
+          undefined,
+          {
+            ...authority,
+            assertCurrent: verified.assertCurrent,
+            ...(order === 'candidate'
+              ? { prepare: async () => undefined }
+              : {}),
+          }
+        );
+        return { txid: result };
+      },
+    };
+    const pending = submitRetainedUtxo({ ...c, sender, record: c.transaction });
+    const rejected = expect(pending).rejects.toMatchObject(noPost);
+    await entered.promise;
+    expect(c.fetch).not.toHaveBeenCalled();
+    wrongGenesis = true;
+    release.finish();
+    await rejected;
+    expect(c.fetch.mock.calls.map(([requestUrl]) => requestUrl)).toEqual([
+      savedStatus,
+      savedGenesis,
+    ]);
+    expect(await c.records.list(c.session, c.transaction.owner)).toEqual([
+      { txid: c.transaction.txid, accepted: false },
+    ]);
+  }
+);
 
 it.each(['wrong URL', 'redirect', 'wrong genesis', 'oversized body'] as const)(
   'rejects %s during the saved route check before admission or POST',
@@ -1068,9 +1199,7 @@ it.each([false, true])(
     await expect(
       submitRetainedUtxo({ ...c, record: reviewed })
     ).rejects.toMatchObject(noPost);
-    expect(c.fetch.mock.calls.map(([requestUrl]) => requestUrl)).toEqual(
-      staleRead ? [savedStatus, savedGenesis] : []
-    );
+    expect(c.fetch.mock.calls.map(([requestUrl]) => requestUrl)).toEqual([]);
     expect(
       await c.records.readExact(
         c.session,

@@ -121,6 +121,15 @@ beforeEach(() => {
     },
   };
   provider = {
+    signal: new AbortController().signal,
+    _getConnection: () => ({ url: 'https://rpc.test' }),
+    readMany: jest.fn(async (requests) =>
+      requests.map(({ method }) => {
+        if (method !== 'eth_chainId')
+          throw new Error(`Unexpected identity read ${method}`);
+        return { status: 'fulfilled', value: '0x1' };
+      })
+    ),
     getBalance: jest.fn().mockResolvedValue(BigInt('1000000000000000000')),
     send: jest.fn().mockResolvedValue('0xb'),
   };
@@ -513,7 +522,7 @@ it('waits for the actual receipt height when a different RPC backend reports an 
   expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
 });
 
-it('keeps an in-flight transaction detail lookup on its original provider after a network change', async () => {
+it('retires an in-flight transaction detail lookup after a network change', async () => {
   const hash = `0x${'dd'.repeat(32)}`;
   const originalProvider = provider;
   let resolveTransaction!: (value: any) => void;
@@ -539,6 +548,8 @@ it('keeps an in-flight transaction detail lookup on its original provider after 
   });
 
   const lookup = controller.getEvmTransactionFromProvider(hash);
+  await jest.advanceTimersByTimeAsync(0);
+  expect(originalProvider.getTransaction).toHaveBeenCalledWith(hash);
   provider = {
     getTransactionReceipt: jest.fn().mockResolvedValue({
       blockNumber: 50,
@@ -559,18 +570,10 @@ it('keeps an in-flight transaction detail lookup on its original provider after 
   });
 
   const transaction = await lookup;
-  expect(transaction).toMatchObject({
-    hash,
-    chainId: 1,
-    blockNumber: 10,
-    balanceRefreshBlockNumber: 11,
-    confirmations: 2,
-    timestamp: 1000,
-    success: true,
-  });
-  expect(originalProvider.getTransactionReceipt).toHaveBeenCalledWith(hash);
-  expect(originalProvider.getBlockNumber).toHaveBeenCalledTimes(1);
-  expect(originalProvider.getBlock).toHaveBeenCalledWith(10);
+  expect(transaction).toBeNull();
+  expect(originalProvider.getTransactionReceipt).not.toHaveBeenCalled();
+  expect(originalProvider.getBlockNumber).not.toHaveBeenCalled();
+  expect(originalProvider.getBlock).not.toHaveBeenCalled();
   expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
   expect(provider.getBlockNumber).not.toHaveBeenCalled();
   expect(provider.getBlock).not.toHaveBeenCalled();

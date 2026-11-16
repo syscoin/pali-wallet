@@ -35,7 +35,8 @@ export interface Erc20Reader {
     address: string,
     tokens: readonly Erc20Metadata[],
     signal: AbortSignal,
-    assertCurrent?: () => void
+    assertCurrent?: () => void,
+    phase?: PortfolioReadPhase
   ): Promise<readonly Erc20BalanceResult[]>;
   readToken(
     network: EvmNetworkId,
@@ -92,6 +93,42 @@ type CapturedScope = Readonly<{
   network: NativeNetworkRegistration;
   assertCurrent(): void;
 }>;
+
+export type PortfolioReadPhase = Readonly<{ kind: 'portfolio' }>;
+const portfolioPhases = new WeakMap<PortfolioReadPhase, {
+  network: NativeNetworkRegistration; holder: string; read: Read; block: string;
+  signal: AbortSignal; check(): void;
+}>();
+async function inPortfolioPhase<T>(phase: PortfolioReadPhase, network: NativeNetworkRegistration,
+  holder: string, signal: AbortSignal, guard: () => void,
+  work: (read: Read, block: string, holder: string) => Promise<T>): Promise<T> {
+  const owned = portfolioPhases.get(phase);
+  if (!owned || owned.network.registrationHash !== network.registrationHash ||
+    owned.network.rpcUrl !== network.rpcUrl || owned.holder !== normalizePublicAddress(holder, network.id) || owned.signal !== signal)
+    return fail('INVALID_INPUT');
+  owned.check(); guard();
+  const value = await work(owned.read, owned.block, owned.holder);
+  owned.check(); guard();
+  return value;
+}
+
+/** One identity/header envelope for a mixed saved-asset snapshot. */
+export function createPortfolioReadOperation(options: SelectedNftReadOptions) {
+  const operation = createReadOperation(options, 32 * 1024);
+  return async <T>(networkId: EvmNetworkId, address: string, count: number, signal: AbortSignal,
+    guard: () => void, work: (phase: PortfolioReadPhase) => Promise<T>): Promise<T> => {
+    if (!Number.isSafeInteger(count) || count < 1 || count > 256) return fail('INVALID_INPUT');
+    const network = snapshotNativeNetwork(getNativeNetwork(networkId, options.registrations()));
+    const timeout = Math.min(30_000, Math.max(options.timeoutMs ?? 12_000, Math.ceil(count / 4) * 6_000 + 4_000));
+    return operation(networkId, address, signal, async (read, block, holder) => {
+      const phase: PortfolioReadPhase = Object.freeze({ kind: 'portfolio' });
+      portfolioPhases.set(phase, { network, holder, read, block, signal, check: () => { check(read.signal); guard(); } });
+      try { return await work(phase); }
+      finally { portfolioPhases.delete(phase); }
+    }, { network, assertCurrent: guard }, true, timeout);
+  };
+}
+
 
 class ScopedCallRpcError extends Error {
   readonly value: unknown;
@@ -214,7 +251,8 @@ function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024)
     work: (read: Read, block: string, holder: string) => Promise<T>,
     scope?: CapturedScope,
     batchedEnvelope = false,
-    operationTimeoutMs = timeoutMs
+    operationTimeoutMs = timeoutMs,
+    phase?: PortfolioReadPhase
   ): Promise<T> {
     check(external);
     let network: ReturnType<typeof getNativeNetwork>;
@@ -227,6 +265,7 @@ function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024)
     } catch {
       return fail('INVALID_INPUT');
     }
+    if (phase) return inPortfolioPhase(phase, network, holder, external, scope?.assertCurrent ?? (() => undefined), work);
     const controller = new AbortController();
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
@@ -494,7 +533,8 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
       address: string,
       tokens: readonly Erc20Metadata[],
       signal: AbortSignal,
-      assertCurrent: () => void = () => undefined
+      assertCurrent: () => void = () => undefined,
+      phase?: PortfolioReadPhase
     ) => {
       if (!Array.isArray(tokens) || tokens.length > 256)
         return fail('INVALID_INPUT');
@@ -611,7 +651,8 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
         },
         { network: registration, assertCurrent },
         true,
-        timeout
+        timeout,
+        phase
       );
     },
     readBalance: async (
@@ -679,7 +720,8 @@ export function createSelectedNftPortfolioReadOperation(options: SelectedNftRead
           work: (call: NftPortfolioCall) => Promise<V>
         ): Promise<V>;
       }>
-    ) => Promise<T>
+    ) => Promise<T>,
+    phase?: PortfolioReadPhase
   ): Promise<T> => {
     if (!addresses.length || addresses.length > 256)
       return fail('INVALID_INPUT');
@@ -809,7 +851,8 @@ export function createSelectedNftPortfolioReadOperation(options: SelectedNftRead
       },
       { network, assertCurrent },
       true,
-      timeout
+      timeout,
+      phase
     );
   };
 }

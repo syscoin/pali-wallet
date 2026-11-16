@@ -116,6 +116,8 @@ async function fixture(
   );
   const broadcasts: string[] = [];
   const provider = {
+    signal: new AbortController().signal,
+    _getConnection: () => ({ url: 'https://rpc.synthetic.invalid' }),
     readMany: jest.fn(async (requests) =>
       Promise.allSettled(
         requests.map(({ method, params }) => provider.send(method, params))

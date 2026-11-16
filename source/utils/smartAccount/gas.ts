@@ -1,7 +1,9 @@
-import type { ISmartAccountMetadata } from '../../types/network.ts';
-import { BigNumber } from '../ethersV6Compat.ts';
-import type { Provider } from '../ethersV6Compat.ts';
+import { Network } from 'ethers/providers';
 
+import { BigNumber } from '../ethersV6Compat.ts';
+
+import type { ISmartAccountMetadata } from '../../types/network.ts';
+import type { Provider } from '../ethersV6Compat.ts';
 import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts.ts';
 
 // ---------------------------------------------------------------------------
@@ -16,8 +18,8 @@ import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts.ts';
 //      failing entirely.
 //
 // callGasLimit:        eth_estimateGas (from = EntryPoint, to = sender,
-//                      data = execute calldata) + a margin capped below the
-//                      penalty threshold so the penalty can never trigger.
+//                      data = execute calldata), less qualified transaction
+//                      overhead, plus a bounded execution margin.
 // verificationGasLimit: static per-validator table. Limits are inside the
 //                      signed userOpHash, so they cannot be tuned after
 //                      signing. Unused verification gas is neither charged
@@ -39,13 +41,9 @@ export const SMART_ACCOUNT_PRE_VERIFICATION_GAS = 50_000;
  */
 export const SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS = 130_000;
 
-// eth_estimateGas includes the 21k intrinsic transaction cost, which the
-// inner EntryPoint -> account call never pays.
-const TX_INTRINSIC_GAS = 21_000;
-
 // callGasLimit headroom: covers state drift between estimation and
-// inclusion. Capped below the penalty threshold (with the intrinsic-gas
-// overshoot accounted for) so unused gas stays penalty-free.
+// inclusion. A transaction calldata floor can leave additional conservative
+// allowance in the estimate even after ordinary intrinsic gas is removed.
 const CALL_GAS_MARGIN_MIN = 12_000;
 const CALL_GAS_MARGIN_MAX = 35_000;
 
@@ -215,11 +213,13 @@ export const estimateSmartAccountCallGasLimit = async (
   provider: Provider,
   {
     callData,
+    chainId,
     entryPointAddress = PALI_ENTRYPOINT_V09_ADDRESS,
     isDeployed,
     sender,
   }: {
     callData: string;
+    chainId?: number;
     entryPointAddress?: string;
     isDeployed: boolean;
     sender: string;
@@ -234,7 +234,24 @@ export const estimateSmartAccountCallGasLimit = async (
       from: entryPointAddress,
       to: sender,
     });
-    const inner = Math.max(estimate.toNumber() - TX_INTRINSIC_GAS, 0);
+    // Mainnet and Hoodi retain ordinary transaction intrinsic pricing through
+    // Fusaka. Sepolia's activated Glamsterdam and unqualified EVM/L2 models
+    // retain the full transaction estimate until their model is qualified.
+    // https://blog.ethereum.org/2026/10/22/glamsterdam-hoodi-delay
+    // Under EIP-7623, estimate = max(intrinsic + execution, calldata floor).
+    // Subtracting only ordinary intrinsic preserves an execution upper bound;
+    // subtracting the floor would erase execution when the floor dominates.
+    const intrinsic =
+      chainId === 1 || chainId === 560048
+        ? Network.from(chainId).computeIntrinsicGas({
+            to: sender,
+            data: callData,
+          })
+        : 0;
+    const estimated = estimate.toNumber();
+    if (!Number.isSafeInteger(estimated) || estimated < intrinsic)
+      return SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT;
+    const inner = estimated - intrinsic;
     const margin = Math.min(
       Math.max(Math.floor(inner / 10), CALL_GAS_MARGIN_MIN),
       CALL_GAS_MARGIN_MAX
@@ -251,6 +268,7 @@ export const estimateSmartAccountUserOpGas = async (
   provider: Provider,
   {
     callData,
+    chainId,
     childValidatorCount = 0,
     entryPointAddress,
     isDeployed,
@@ -259,6 +277,7 @@ export const estimateSmartAccountUserOpGas = async (
     validatorKind,
   }: {
     callData: string;
+    chainId?: number;
     childValidatorCount?: number;
     entryPointAddress?: string;
     isDeployed: boolean;
@@ -269,6 +288,7 @@ export const estimateSmartAccountUserOpGas = async (
 ): Promise<SmartAccountUserOpGasEstimate> => {
   const callGasLimit = await estimateSmartAccountCallGasLimit(provider, {
     callData,
+    chainId,
     entryPointAddress,
     isDeployed,
     sender,

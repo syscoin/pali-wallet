@@ -301,6 +301,7 @@ export function submitRetainedUtxo({
       };
       let timer: ReturnType<typeof setTimeout> | undefined;
       let statusUrl: string;
+      let descriptorPrepared = false;
       let stage:
         | 'journal'
         | 'checking'
@@ -336,6 +337,13 @@ export function submitRetainedUtxo({
             // The journal validates the canonical /api/v2/sendtx/ suffix. Only its
             // two adjacent identity paths can use the read port for this replay.
             statusUrl = retained.url.slice(0, -'sendtx/'.length);
+            // Finish durable admission here so both SDK call orders verify only afterward.
+            await authority.prepare({
+              url: retained.url,
+              txid: retained.txid,
+              rawTransaction: retained.rawTransaction,
+            });
+            assertCurrent();
             stage = 'status';
             timer = setTimeout(abort, IDENTITY_TIMEOUT_MS);
             return retained;
@@ -362,11 +370,23 @@ export function submitRetainedUtxo({
           },
           async prepare(descriptor) {
             assertCurrent();
-            if (stage !== 'ready')
+            if (
+              descriptorPrepared ||
+              (stage !== 'ready' && stage !== 'status') ||
+              descriptor.url !== record.url ||
+              descriptor.txid !== record.txid ||
+              descriptor.rawTransaction !== record.rawTransaction
+            )
+              throw new Error('Retained UTXO route or descriptor changed');
+            descriptorPrepared = true;
+          },
+          fetch(input, init) {
+            assertCurrent();
+            if (!descriptorPrepared || stage !== 'ready')
               throw new Error('Retained UTXO route was not verified');
             stage = 'admission';
             clearTimeout(timer);
-            await authority.prepare(descriptor);
+            return authority.fetch(input, init);
           },
         });
       } finally {

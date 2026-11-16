@@ -1,5 +1,8 @@
 import { Contract } from 'ethers/contract';
+import { JsonRpcApiProvider } from 'ethers/providers';
 import { hexlify, isCallException, isHexString, makeError } from 'ethers/utils';
+
+import { assertJsonWorkBudget } from '../utils/requestPayloadBudget.ts';
 
 type ContractRunner = NonNullable<Contract['runner']>;
 export type NftReadRunner = Required<Pick<ContractRunner, 'call'>> &
@@ -38,14 +41,33 @@ function captureNftExecutionRevert(
       (!normalized && !/^execution reverted(?:$|:)/i.test(message))
     )
       return undefined;
-    const data = ownValue(error, 'data');
+    let data = ownValue(error, 'data');
     const { to, data: calldata } = tx;
     if (
-      !isBoundedRevertData(data) ||
+      data === undefined ||
       typeof to !== 'string' ||
       typeof calldata !== 'string'
     )
       return undefined;
+    if (!normalized) {
+      const raw = { code, message, data };
+      assertJsonWorkBudget(raw, 16 * 1024, 16, 256);
+      const parsed = JsonRpcApiProvider.prototype.getRpcError(
+        {
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'eth_call',
+          params: [{ to, data: calldata }],
+        },
+        {
+          id: 1,
+          error: raw as { code: number; data: unknown; message: string },
+        }
+      );
+      if (!isCallException(parsed)) return undefined;
+      data = parsed.data;
+    }
+    if (!isBoundedRevertData(data)) return undefined;
     return makeError('execution reverted', 'CALL_EXCEPTION', {
       action: 'call',
       data,

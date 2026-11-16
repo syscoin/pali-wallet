@@ -103,7 +103,6 @@ import {
   readEvmRpcQuantity,
 } from '../../../shared/evmTransactionObservation';
 import { getEvmTransferCost } from '../../../shared/evmTransferCost';
-import { observeGuardianActivity } from '../../../shared/guardianActivityObservation';
 import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
@@ -134,7 +133,6 @@ import {
   getWalletNavigationScope,
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
-import { guardianStatusProvider } from '../../../utils/smartAccount/guardianStatusProvider';
 import { signSmartAccountOwnerIntent } from '../../../utils/smartAccount/ownerSigning.ts';
 import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
 import {
@@ -537,6 +535,7 @@ import {
   CancellablePromises,
   PromiseTargets,
 } from './promises/cancellablesPromises';
+import { ensureEvmDisplayIdentity } from './providers/evmDisplayIdentity';
 import { patchFetchWithPaliHeaders } from './providers/patchFetchWithPaliHeaders';
 import { withUtxoRpcVerification } from './providers/utxoRpcVerification';
 import { withWalletBackend } from './providers/walletHttpIdentity';
@@ -1197,6 +1196,12 @@ class MainController {
     this.balancesManager = BalancesManager();
     this.cancellablePromises = new CancellablePromises();
     this.smartAccount = new SmartAccountController({
+      captureReadLifetime: (assertCurrent) =>
+        this.captureSmartOwnerLifetime(
+          assertCurrent,
+          null,
+          Date.now() + 12_000
+        ),
       getEthereumTransaction: () => this.ethereumTransaction,
       captureGuardianRecoveryTransactions: (chainId, assertCurrent) =>
         this.captureGuardianRecoveryTransactions(chainId, assertCurrent),
@@ -9301,15 +9306,13 @@ class MainController {
         namespace,
         scope,
         isCurrent,
-        read: (knownOperationId) =>
-          observeGuardianActivity({
-            scope,
+        read: (knownOperationId) => {
+          assertCurrent();
+          return this.smartAccount.getSmartAccountGuardianRecoveryStatus({
+            account: scope.accountAddress,
             knownOperationId,
-            assertCurrent,
-            provider: guardianStatusProvider(
-              this.getOrCreatePersistentProvider(network.chainId, network.url)
-            ),
-          }),
+          });
+        },
         deliver: (fact) => notificationManager.notifyActivity(fact, isCurrent),
       });
     })()
@@ -15877,7 +15880,33 @@ class MainController {
       // Keep every read on the provider that started this lookup, even if the
       // active network changes while the transaction request is in flight.
       const provider = this.ethereumTransaction.web3Provider;
+      const { chainId, url } = store.getState().vault.activeNetwork;
+      const session = this.walletSessionGeneration;
+      const generation = this.walletStateGeneration;
+      const check = () => {
+        const current = store.getState().vault.activeNetwork;
+        if (
+          this.ethereumTransaction.web3Provider !== provider ||
+          this.walletSessionGeneration !== session ||
+          this.walletStateGeneration !== generation ||
+          current.chainId !== chainId ||
+          current.url !== url
+        )
+          throw new Error('History context changed');
+      };
+      const verify = async () => {
+        check();
+        await ensureEvmDisplayIdentity(
+          provider,
+          chainId,
+          provider.signal,
+          String(session)
+        );
+        check();
+      };
+      await verify();
       const tx = await provider.getTransaction(hash);
+      check();
       if (!tx || tx.hash?.toLowerCase() !== hash.toLowerCase()) return null;
 
       let receipt = null;
@@ -15889,8 +15918,10 @@ class MainController {
         );
       }
 
+      check();
       // Pending transactions have zero confirmations without a head lookup.
       const latestBlock = receipt ? await provider.getBlockNumber() : 0;
+      check();
       const blockNumber = receipt
         ? this.convertHexValue(receipt.blockNumber, 'number')
         : null;
@@ -15903,6 +15934,7 @@ class MainController {
       if (receipt) {
         try {
           const block = await provider.getBlock(receipt.blockNumber);
+          check();
           assertEvmReceiptCoherence(
             {
               hash,
@@ -15928,6 +15960,13 @@ class MainController {
         ? this.convertHexValue(receipt.status, 'number') === 1
         : null;
 
+      await verify();
+      if (
+        (tx.chainId && BigInt(tx.chainId) !== BigInt(chainId)) ||
+        (tx.signature?.legacyChainId &&
+          tx.signature.legacyChainId !== BigInt(chainId))
+      )
+        throw new Error('History transaction network changed');
       // Return transaction in the same format as API (normalize for Enhanced component)
       return {
         hash: tx.hash,
@@ -15942,7 +15981,7 @@ class MainController {
         blockHash: receipt ? receipt.blockHash : null,
         timestamp: timestamp,
         confirmations,
-        chainId: this.convertHexValue(tx.chainId, 'number'),
+        chainId,
         data: tx.data,
         input: tx.data,
         gasPrice: this.convertHexValue(tx.gasPrice),

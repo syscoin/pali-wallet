@@ -593,7 +593,7 @@ it('a thrown descriptor trap cannot hand an unchecked exception to ethers', asyn
   expect(makeError).not.toHaveBeenCalled();
 });
 
-it('the exported raw normalizer preserves the real call for one ethers decode', async () => {
+it('the exported raw normalizer preserves the real call through ethers normalization and ABI decode', async () => {
   const decode = jest.spyOn(AbiCoder, 'getBuiltinCallException');
   const calldata = abi721.encodeFunctionData('ownerOf', [42]);
   const data = abi721.encodeErrorResult('Error', ['ERC721: invalid token ID']);
@@ -607,7 +607,7 @@ it('the exported raw normalizer preserves the real call for one ethers decode', 
     data,
     transaction: { to: CONTRACT, data: calldata },
   });
-  expect(decode).not.toHaveBeenCalled();
+  expect(decode).toHaveBeenCalledTimes(1);
   const call = jest.fn(async (tx: TransactionRequest) => {
     if (call.mock.calls.length === 1) {
       expect(tx.data).toBe(calldata);
@@ -619,7 +619,7 @@ it('the exported raw normalizer preserves the real call for one ethers decode', 
   expect(
     await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], { call })
   ).toEqual([{ tokenId: '7', balance: 1, verified: true }]);
-  expect(decode).toHaveBeenCalledTimes(1);
+  expect(decode).toHaveBeenCalledTimes(2);
 });
 
 it('a plain CALL_EXCEPTION with null data cannot verify an NFT', async () => {

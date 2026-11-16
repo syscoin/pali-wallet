@@ -71,6 +71,8 @@ function fixture(
     requestAuthentication?: boolean;
     persistedRows?: ReadonlyMap<string, unknown>;
     walletReads?: boolean;
+    actualWalletReads?: NativeConnectionHost['walletReads'];
+    actualReads?: NativeConnectionHost['reads'];
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
@@ -256,7 +258,7 @@ function fixture(
     });
   };
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
-    ...(options.walletReads ? { walletReads: { async read(method: string, account: { id: string; address: string }, signal: AbortSignal, check: () => void) {
+    ...(options.actualWalletReads ? { walletReads: options.actualWalletReads } : options.walletReads ? { walletReads: { async read(method: string, account: { id: string; address: string }, signal: AbortSignal, check: () => void) {
       check(); walletReadRequests.push({ method, accountId: account.id, address: account.address });
       await readWait; check(); if (signal.aborted) throw Error('CANCELLED');
       return method === 'wallet_getTokens' ? { ethereum: [], syscoin: [] } : method === 'wallet_getBalance' ? 0 : '123';
@@ -307,7 +309,7 @@ function fixture(
         async approve() { current(); psbtApprovals.push(request); await psbtSignWait; current(); if (options.hardware === 'Trezor') handoff.beforeSignature(); return request.method === 'sys_sign' ? request.psbt : { txid: 'ef'.repeat(32) }; },
         dispose() { disposed = true; psbtDisposals++; } };
     } },
-    reads: { async read(request, signal, check) { readRequests.push(request); await readWait; check(); if (signal.aborted) throw new Error('ABORTED'); if (readError) throw readError; return '0x42'; } },
+    reads: options.actualReads ?? { async read(request, signal, check) { readRequests.push(request); await readWait; check(); if (signal.aborted) throw new Error('ABORTED'); if (readError) throw readError; return '0x42'; } },
     controls: {
       context: () => snapshot.phase === 'ready' ? ({ revision: snapshot.revision, catalogueRevision: snapshot.revision, activeAccountId: selectedAccountId, networkId: selectedUtxo ? 'syscoin' : 'ethereum', networkLabel: selectedUtxo ? 'Syscoin' : 'Ethereum', accounts: [
         { id: firstAccountId, index: 0, type: firstAccountType, address: ADDRESS, slip44: 60, label: 'Account 1' },
@@ -1925,6 +1927,8 @@ async function connectedFixture(
   options: {
     requestAuthentication?: boolean;
     walletReads?: boolean;
+    actualWalletReads?: NativeConnectionHost['walletReads'];
+    actualReads?: NativeConnectionHost['reads'];
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
@@ -2633,6 +2637,16 @@ test('authorized stateless reads forward a copied structured revert and preserve
     assert.deepEqual(f.responses.at(-1), { id: 11, result: { error: { code: 3, message: 'execution reverted', data } } });
     data.data = 'changed';
     assert.deepEqual(f.responses.at(-1), { id: 11, result: { error: { code: 3, message: 'execution reverted', data: { data: '0x1234', message: 'execution reverted' } } } });
+  } finally { await f.controller.dispose(); }
+});
+
+test('long public revert messages project to the display cap while retaining code and ABI data', async () => {
+  const f = await connectedFixture();
+  const message = 'execution reverted: ' + 'long contract reason '.repeat(20), data = '0x1234';
+  try {
+    f.failRead(new EthereumRpcErrorHandler(3, message, data));
+    await messageRequest(f, 'eth_call', [{ to: ADDRESS }], 11);
+    assert.deepEqual(f.responses.at(-1), { id: 11, result: { error: { code: 3, message: message.slice(0, 256), data } } });
   } finally { await f.controller.dispose(); }
 });
 
@@ -6180,4 +6194,30 @@ test('late remote completion cannot restore old grants after timeout, retry and 
     assert.deepEqual(f.view.getSnapshot().sessions, []);
     assert.deepEqual((await f.repository).bindings(), []);
   } finally { remote.resolve(); await f.controller.dispose(); context.mock.timers.reset(); }
+});
+
+
+for (const method of ['wallet_getBalance', 'wallet_estimateFee'] as const) test(`actual connection ${method} joins the selected public reader`, async () => {
+  const { createNativeDappRpcReadHost } = await import('../src/custody/dappRpcReads.ts');
+  const { createNativeWalletReadHost } = await import('../src/custody/dappWalletReads.ts');
+  const { getNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const network = getNativeNetwork('ethereum'), calls: string[] = [];
+  const fetch = async (_url: string, init: RequestInit) => {
+    const payload = JSON.parse(String(init.body));
+    const respond = (request: { method: string; id: number }) => {
+      calls.push(request.method);
+      return { jsonrpc: '2.0', id: request.id, result: request.method === 'eth_chainId' ? '0x1' : '0xde0b6b3a7640000' };
+    };
+    return Response.json(Array.isArray(payload) ? payload.map(respond) : respond(payload));
+  };
+  const reads = createNativeDappRpcReadHost({ registration: () => network, fetch, verifyPersonalMessage() { throw Error('unused'); } });
+  const walletReads = createNativeWalletReadHost({ reads, network: () => network, fetch, async loadTokens() { throw Error('unused'); }, cachedTokens: () => undefined, observeUtxo() {} });
+  const f = await connectedFixture({ walletReads: true, actualWalletReads: walletReads, actualReads: reads });
+  try {
+    for (const id of [99001, 99002]) f.event({ type: 'request', request: { freshness: 'fresh', id, session: f.session, method, params: [], chainId: 'eip155:1', expiresAt: Date.now() + 300000, verification: UNKNOWN } });
+    for (let attempt = 0; f.responses.length < 2 && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 2));
+    assert.equal(f.responses.length, 2);
+    assert.deepEqual(f.responses, [99001, 99002].map(id => ({ id, result: { result: method === 'wallet_getBalance' ? '1.0' : '1000000000000000000' } })));
+    assert.deepEqual(calls, ['eth_chainId', method === 'wallet_getBalance' ? 'eth_getBalance' : 'eth_gasPrice']);
+  } finally { reads.reset?.(); await f.controller.dispose(); }
 });

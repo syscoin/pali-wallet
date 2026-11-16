@@ -18,8 +18,8 @@ export function serializePublicRpcError(
   const response: Omit<IEthereumRpcErrorHandlerSerialized, 'stack'> = {
     code: Number.isSafeInteger(code) ? code : -32603,
     message:
-      typeof message === 'string' && message.length <= maxMessageLength
-        ? message
+      typeof message === 'string'
+        ? message.slice(0, maxMessageLength)
         : 'Internal error',
   };
   const data = property('data');

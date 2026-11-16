@@ -9,6 +9,8 @@ import { snapshotNativeNetwork } from '../custody/networkContext.ts';
 import type { NativeNotificationScope } from '../notifications/types.ts';
 import {
   createErc20Reader,
+  createPortfolioReadOperation,
+  type PortfolioReadPhase,
   createSelectedNftPortfolioReadOperation,
 } from './erc20ReadRpc.ts';
 import {
@@ -65,6 +67,7 @@ export function createScopedPortfolioAssetReader(ports: {
     fetch: ports.fetch,
     registrations: () => [...registrations.values()],
   });
+  const parent = createPortfolioReadOperation({ fetch: ports.fetch, registrations: () => [...registrations.values()] });
   return async (
     input: NativeNotificationScope,
     signal: AbortSignal,
@@ -111,186 +114,200 @@ export function createScopedPortfolioAssetReader(ports: {
     const collectibles = (inventory.collectibles ?? []).map(
       snapshotSavedCollectible
     );
-    const work: (() => Promise<void>)[] = [];
-    const tokenRows: PortfolioAssetSnapshot['tokens'][number][] = new Array(
-      metadata.length
-    );
-    const collectibleRows: PortfolioAssetSnapshot['collectibles'][number][] =
-      new Array(collectibles.length);
-    if (metadata.length)
-      work.push(async () => {
-        check();
-        try {
-          const results = await erc20.readBalances!(
-            network.id,
-            scope.accountAddress,
-            metadata,
-            signal,
-            check
-          );
+    const readAll = async (phase?: PortfolioReadPhase) => {
+      const work: (() => Promise<void>)[] = [];
+      const tokenRows: PortfolioAssetSnapshot['tokens'][number][] = new Array(
+        metadata.length
+      );
+      const collectibleRows: PortfolioAssetSnapshot['collectibles'][number][] =
+        new Array(collectibles.length);
+      if (metadata.length)
+        work.push(async () => {
           check();
-          for (const [index, token] of metadata.entries()) {
-            const result = results[index]!;
-            tokenRows[index] = Object.freeze({
-              metadata: token,
-              status: result.status,
-              units: result.units,
-            });
-          }
-        } catch {
-          check();
-          for (const [index, token] of metadata.entries())
-            tokenRows[index] = Object.freeze({
-              metadata: token,
-              status: 'error',
-              units: null,
-            });
-        }
-      });
-    if (collectibles.length)
-      work.push(async () => {
-        check();
-        try {
-          await nft(
-            network.id,
-            scope.accountAddress,
-            collectibles.map((saved) => saved.contractAddress),
-            signal,
-            check,
-            async ({ holder, withContract }) => {
-              const groups = new Map<
-                string,
-                { saved: SavedCollectible; index: number }[]
-              >();
-              for (const [index, saved] of collectibles.entries()) {
-                const key = `${saved.contractAddress}:${saved.tokenStandard}`;
-                const group = groups.get(key) ?? [];
-                group.push({ saved, index });
-                groups.set(key, group);
-              }
-              const readGroup = async (
-                group: { saved: SavedCollectible; index: number }[]
-              ) => {
-                const first = group[0]!.saved;
-                try {
-                  await withContract(first.contractAddress, async (call) => {
-                    if (first.tokenStandard === 'ERC-1155') {
-                      const holdings = await verifyERC1155OwnershipHelper(
-                        first.contractAddress,
-                        holder,
-                        group.map((row) => {
-                          if (row.saved.tokenStandard !== 'ERC-1155')
-                            throw new Error(
-                              'Saved collectible standard changed'
-                            );
-                          return row.saved.tokenId;
-                        }),
-                        {
-                          async call({ to, data }) {
-                            if (
-                              to !== first.contractAddress ||
-                              typeof data !== 'string'
-                            )
-                              throw new Error(
-                                'Saved collectible target changed'
-                              );
-                            const outcome = await call(data);
-                            if (outcome.kind === 'result') return outcome.data;
-                            throw (
-                              normalizeNftExecutionRevert(outcome.error, {
-                                to,
-                                data,
-                              }) ?? new Error('Saved balance unavailable')
-                            );
-                          },
-                        }
-                      );
-                      check();
-                      for (const [position, row] of group.entries()) {
-                        const holding = holdings[position];
-                        collectibleRows[row.index] = Object.freeze({
-                          collectible: row.saved,
-                          status: holding?.verified ? 'available' : 'error',
-                          units:
-                            holding?.verified &&
-                            holding.rawBalance !== undefined
-                              ? parseErc20Units(holding.rawBalance)
-                              : null,
-                        });
-                      }
-                    } else {
-                      const [supported, balance] = await call.many([
-                        collectionInterface.encodeFunctionData(
-                          'supportsInterface',
-                          ['0x80ac58cd']
-                        ),
-                        collectionInterface.encodeFunctionData('balanceOf', [
-                          holder,
-                        ]),
-                      ]);
-                      if (
-                        !supported ||
-                        supported.kind !== 'result' ||
-                        supported.data !== `0x${'0'.repeat(63)}1`
-                      )
-                        throw new Error('Saved collection support unavailable');
-                      if (
-                        !balance ||
-                        balance.kind !== 'result' ||
-                        !/^0x[0-9a-fA-F]{64}$/.test(balance.data)
-                      )
-                        throw new Error('Saved collection balance unavailable');
-                      check();
-                      for (const row of group)
-                        collectibleRows[row.index] = Object.freeze({
-                          collectible: row.saved,
-                          status: 'available',
-                          units: parseErc20Units(BigInt(balance.data)),
-                        });
-                    }
-                  });
-                } catch {
-                  check();
-                  for (const row of group)
-                    collectibleRows[row.index] = Object.freeze({
-                      collectible: row.saved,
-                      status: 'error',
-                      units: null,
-                    });
-                }
-              };
-              const grouped = [...groups.values()];
-              let next = 0;
-              await Promise.all(
-                Array.from(
-                  { length: Math.min(4, grouped.length) },
-                  async () => {
-                    while (next < grouped.length)
-                      await readGroup(grouped[next++]!);
-                  }
-                )
-              );
+          try {
+            const results = await erc20.readBalances!(
+              network.id,
+              scope.accountAddress,
+              metadata,
+              signal,
+              check,
+              phase
+            );
+            check();
+            for (const [index, token] of metadata.entries()) {
+              const result = results[index]!;
+              tokenRows[index] = Object.freeze({
+                metadata: token,
+                status: result.status,
+                units: result.units,
+              });
             }
-          );
-        } catch {
+          } catch {
+            check();
+            for (const [index, token] of metadata.entries())
+              tokenRows[index] = Object.freeze({
+                metadata: token,
+                status: 'error',
+                units: null,
+              });
+          }
+        });
+      if (collectibles.length)
+        work.push(async () => {
           check();
-          for (const [index, saved] of collectibles.entries())
-            collectibleRows[index] = Object.freeze({
-              collectible: saved,
-              status: 'error',
-              units: null,
-            });
-        }
-      });
-    // Bound transport concurrency; each reader retains its own anchored block.
-    for (let offset = 0; offset < work.length; offset += 4) {
+          try {
+            await nft(
+              network.id,
+              scope.accountAddress,
+              collectibles.map((saved) => saved.contractAddress),
+              signal,
+              check,
+              async ({ holder, withContract }) => {
+                const groups = new Map<
+                  string,
+                  { saved: SavedCollectible; index: number }[]
+                >();
+                for (const [index, saved] of collectibles.entries()) {
+                  const key = `${saved.contractAddress}:${saved.tokenStandard}`;
+                  const group = groups.get(key) ?? [];
+                  group.push({ saved, index });
+                  groups.set(key, group);
+                }
+                const readGroup = async (
+                  group: { saved: SavedCollectible; index: number }[]
+                ) => {
+                  const first = group[0]!.saved;
+                  try {
+                    await withContract(first.contractAddress, async (call) => {
+                      if (first.tokenStandard === 'ERC-1155') {
+                        const holdings = await verifyERC1155OwnershipHelper(
+                          first.contractAddress,
+                          holder,
+                          group.map((row) => {
+                            if (row.saved.tokenStandard !== 'ERC-1155')
+                              throw new Error(
+                                'Saved collectible standard changed'
+                              );
+                            return row.saved.tokenId;
+                          }),
+                          {
+                            async call({ to, data }) {
+                              if (
+                                to !== first.contractAddress ||
+                                typeof data !== 'string'
+                              )
+                                throw new Error(
+                                  'Saved collectible target changed'
+                                );
+                              const outcome = await call(data);
+                              if (outcome.kind === 'result') return outcome.data;
+                              throw (
+                                normalizeNftExecutionRevert(outcome.error, {
+                                  to,
+                                  data,
+                                }) ?? new Error('Saved balance unavailable')
+                              );
+                            },
+                          }
+                        );
+                        check();
+                        for (const [position, row] of group.entries()) {
+                          const holding = holdings[position];
+                          collectibleRows[row.index] = Object.freeze({
+                            collectible: row.saved,
+                            status: holding?.verified ? 'available' : 'error',
+                            units:
+                              holding?.verified &&
+                              holding.rawBalance !== undefined
+                                ? parseErc20Units(holding.rawBalance)
+                                : null,
+                          });
+                        }
+                      } else {
+                        const [supported, balance] = await call.many([
+                          collectionInterface.encodeFunctionData(
+                            'supportsInterface',
+                            ['0x80ac58cd']
+                          ),
+                          collectionInterface.encodeFunctionData('balanceOf', [
+                            holder,
+                          ]),
+                        ]);
+                        if (
+                          !supported ||
+                          supported.kind !== 'result' ||
+                          supported.data !== `0x${'0'.repeat(63)}1`
+                        )
+                          throw new Error('Saved collection support unavailable');
+                        if (
+                          !balance ||
+                          balance.kind !== 'result' ||
+                          !/^0x[0-9a-fA-F]{64}$/.test(balance.data)
+                        )
+                          throw new Error('Saved collection balance unavailable');
+                        check();
+                        for (const row of group)
+                          collectibleRows[row.index] = Object.freeze({
+                            collectible: row.saved,
+                            status: 'available',
+                            units: parseErc20Units(BigInt(balance.data)),
+                          });
+                      }
+                    });
+                  } catch {
+                    check();
+                    for (const row of group)
+                      collectibleRows[row.index] = Object.freeze({
+                        collectible: row.saved,
+                        status: 'error',
+                        units: null,
+                      });
+                  }
+                };
+                const grouped = [...groups.values()];
+                let next = 0;
+                await Promise.all(
+                  Array.from(
+                    { length: Math.min(4, grouped.length) },
+                    async () => {
+                      while (next < grouped.length)
+                        await readGroup(grouped[next++]!);
+                    }
+                  )
+                );
+              },
+              phase
+            );
+          } catch {
+            check();
+            for (const [index, saved] of collectibles.entries())
+              collectibleRows[index] = Object.freeze({
+                collectible: saved,
+                status: 'error',
+                units: null,
+              });
+          }
+        });
+      // Each asset family keeps independent work deadlines under the parent anchor.
+      for (let offset = 0; offset < work.length; offset += 4) {
+        check();
+        await Promise.all(work.slice(offset, offset + 4).map((read) => read()));
+      }
       check();
-      await Promise.all(work.slice(offset, offset + 4).map((read) => read()));
+      return Object.freeze({
+        tokens: Object.freeze(tokenRows),
+        collectibles: Object.freeze(collectibleRows),
+      });
+    };
+    if (!metadata.length || !collectibles.length) return readAll();
+    try {
+      return await parent(network.id, scope.accountAddress, metadata.length + collectibles.length, signal, check, readAll);
+    } catch {
+      check();
+      return Object.freeze({
+        tokens: Object.freeze(metadata.map(metadata => Object.freeze({ metadata, status: 'error' as const, units: null }))),
+        collectibles: Object.freeze(collectibles.map(collectible => Object.freeze({ collectible, status: 'error' as const, units: null }))),
+      });
     }
-    check();
-    return Object.freeze({
-      tokens: Object.freeze(tokenRows),
-      collectibles: Object.freeze(collectibleRows),
-    });
   };
 }
