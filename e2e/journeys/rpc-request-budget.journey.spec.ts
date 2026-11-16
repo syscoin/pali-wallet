@@ -126,6 +126,20 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       .toBe('0x1');
     return result;
   };
+  const waitForWalletReceipt = async (hash: string) => {
+    await expect
+      .poll(
+        () =>
+          output.requests.some(
+            (request: any) =>
+              request.finished !== undefined &&
+              request.confirmedReceiptHashes?.includes(hash.toLowerCase())
+          ),
+        { timeout: 15000 }
+      )
+      .toBe(true);
+    await waitForReadSettlement();
+  };
   try {
     Object.assign(E2E_CONFIG, {
       seedPhrase: TEST_DAPP_MNEMONIC,
@@ -187,7 +201,18 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       bodies.push(
         (async () => {
           try {
-            item.responseBytes = (await response.body()).length;
+            const body = await response.body();
+            item.responseBytes = body.length;
+            if (item.methods.includes('eth_getTransactionReceipt')) {
+              const raw = JSON.parse(body.toString());
+              const replies = Array.isArray(raw) ? raw : [raw];
+              item.confirmedReceiptHashes = replies
+                .map((reply) => reply.result)
+                .filter(
+                  (result) => result?.blockHash && result?.transactionHash
+                )
+                .map((result) => result.transactionHash.toLowerCase());
+            }
           } catch (error) {
             item.responseFailure = String(error);
           }
@@ -869,6 +894,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           });
           mark(label + ':acknowledged');
           output[label + ':receipt'] = await receipt(sent.result);
+          await waitForWalletReceipt(sent.result);
         });
       await dappSend('dapp-native', {
         to: recipient,
@@ -1016,6 +1042,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           );
           mark(label + ':acknowledged');
           output[label + ':receipt'] = await receipt(sent.result);
+          await waitForWalletReceipt(sent.result);
         });
       }
       await wallet.step(
