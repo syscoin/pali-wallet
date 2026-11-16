@@ -454,7 +454,7 @@ it('does not let a failed old endpoint read overwrite the new current ready stat
   mode = 'failed';
   hold = old.promise;
   const oldRead = fetchInitial();
-  const rejected = expect(oldRead).rejects.toThrow('Transaction API error');
+  const rejected = expect(oldRead).rejects.toThrow('History context changed');
   mockStore.dispatch(
     setActiveNetwork({ ...network, url: 'https://second.synthetic.invalid' })
   );
