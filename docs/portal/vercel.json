@@ -2,13 +2,23 @@
   "cleanUrls": true,
   "redirects": [
     {
+      "source": "/guide/v2/Update_Pali",
+      "destination": "/docs/users/upgrade-from-v1",
+      "permanent": true
+    },
+    {
+      "source": "/guide/v2/Errors",
+      "destination": "/docs/reference/error-codes",
+      "permanent": true
+    },
+    {
       "source": "/guide/v2",
-      "destination": "/privacy",
+      "destination": "/docs",
       "permanent": true
     },
     {
       "source": "/guide/v2/",
-      "destination": "/privacy",
+      "destination": "/docs",
       "permanent": true
     }
   ]

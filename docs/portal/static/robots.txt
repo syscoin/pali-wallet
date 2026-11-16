@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://docs.paliwallet.com/sitemap.xml
+Sitemap: https://docs.paliwallet.com/es/sitemap.xml
+Sitemap: https://docs.paliwallet.com/pt/sitemap.xml
+Sitemap: https://docs.paliwallet.com/fr/sitemap.xml
+Sitemap: https://docs.paliwallet.com/de/sitemap.xml
+Sitemap: https://docs.paliwallet.com/ru/sitemap.xml
+Sitemap: https://docs.paliwallet.com/zh/sitemap.xml
+Sitemap: https://docs.paliwallet.com/ja/sitemap.xml
+Sitemap: https://docs.paliwallet.com/ko/sitemap.xml
