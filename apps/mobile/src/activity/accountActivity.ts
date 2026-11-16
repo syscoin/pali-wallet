@@ -154,9 +154,9 @@ export class AccountActivityController {
           load: target.load.bind(target), saveCache: target.saveCache.bind(target), saveView: target.saveView.bind(target),
           ...(target.forScope ? { forScope: target.forScope.bind(target) } : {}),
           ...(target.loadSavedPending ? { loadSavedPending: target.loadSavedPending.bind(target) } : {}),
-          observeLocal: (record, guard, signal) => {
+          observeLocal: (record, guard, signal, observe) => {
             const current = guarded(guard);
-            return this.reads.run(signal, current, () => target.observeLocal!(record, current, signal));
+            return this.reads.run(signal, current, () => target.observeLocal!(record, current, signal, observe));
           },
         };
       }
@@ -168,10 +168,14 @@ export class AccountActivityController {
           return this.reads.run(signal, current, () => explorer.page(scope, feed, page, signal, current));
         },
       }, {
-        read: (hash, owner, signal, guard, network) => {
+        read: (hash, owner, signal, guard, network, sharingScope) => {
           const current = guarded(guard);
-          return this.reads.run(signal, current, () => receipts.read(hash, owner, signal, current, network));
+          return this.reads.run(signal, current, () => receipts.read(hash, owner, signal, current, network, sharingScope));
         },
+        ...(receipts.observe ? { observe: (request, signal, guard, network, sharingScope) => {
+          const current = guarded(guard);
+          return receipts.observe!(request, signal, current, network, sharingScope);
+        } } : {}),
       });
       const key = scopeKey(choice);
       const child: Child = { choice, controller, stop: () => undefined, unsubscribe: () => undefined };

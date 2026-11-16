@@ -297,6 +297,7 @@ type SharedReceipt = {
   expected: EvmObservationRequest;
   controller: AbortController;
   subscribers: Set<() => void>;
+  observation: Promise<EvmTransactionObservation>;
   promise: Promise<{
     observation: EvmTransactionObservation;
     detail: PromiseSettledResult<ActivityTransactionObservation | null>;
@@ -349,7 +350,7 @@ export class ActivityReceiptReader {
     entry: SharedReceipt,
     external: AbortSignal,
     guard: () => void,
-    result: (value: Awaited<SharedReceipt['promise']>) => T,
+    promise: Promise<T>,
     details = false
   ): Promise<T> {
     guardCurrent(guard);
@@ -375,12 +376,12 @@ export class ActivityReceiptReader {
       entry.subscribers.add(check);
       if (details) entry.detailSubscribers++;
       external.addEventListener('abort', abort, { once: true });
-      entry.promise.then(
+      promise.then(
         (value) =>
           finish(() => {
             try {
               check();
-              resolve(JSON.parse(JSON.stringify(result(value))));
+              resolve(JSON.parse(JSON.stringify(value)));
             } catch (error) {
               reject(error);
             }
@@ -452,10 +453,17 @@ export class ActivityReceiptReader {
         detailsRequested = true;
         return true;
       };
+      let resolveObservation!: (value: EvmTransactionObservation) => void;
+      let rejectObservation!: (error: unknown) => void;
+      const observation = new Promise<EvmTransactionObservation>((resolve, reject) => {
+        resolveObservation = resolve;
+        rejectObservation = reject;
+      });
       entry = {
         expected,
         controller,
         subscribers,
+        observation,
         detailSubscribers: 0,
         cancelDetails: () => {
           detailsRequested = false;
@@ -493,6 +501,8 @@ export class ActivityReceiptReader {
               let transaction:
                 | Promise<PromiseSettledResult<unknown>>
                 | undefined;
+              let transactionResult: PromiseSettledResult<unknown> | undefined;
+              let detailsCovered = false;
               requestDetails = () => {
                 if (current.closing) return false;
                 detailsRequested = true;
@@ -502,8 +512,8 @@ export class ActivityReceiptReader {
                   [expected.hash],
                   detailController.signal
                 ).then(
-                  (value) => ({ status: 'fulfilled' as const, value }),
-                  (reason) => ({ status: 'rejected' as const, reason })
+                  (value) => transactionResult = { status: 'fulfilled' as const, value },
+                  (reason) => transactionResult = { status: 'rejected' as const, reason }
                 );
                 return true;
               };
@@ -518,35 +528,7 @@ export class ActivityReceiptReader {
                   }
                   if (method === 'eth_chainId' && ++chainReads > 1) {
                     current.closing = true;
-                    if (transaction) {
-                      const result = await transaction;
-                      try {
-                        if (
-                          rawReceipt !== null &&
-                          result.status === 'fulfilled' &&
-                          (result.value === null ||
-                            !readTransaction(result.value, expected.hash).block)
-                        ) {
-                          transaction = read(
-                            'eth_getTransactionByHash',
-                            [expected.hash],
-                            detailController.signal
-                          ).then(
-                            (value) => ({
-                              status: 'fulfilled' as const,
-                              value,
-                            }),
-                            (reason) => ({
-                              status: 'rejected' as const,
-                              reason,
-                            })
-                          );
-                          await transaction;
-                        }
-                      } catch {
-                        /* Malformed detail data cannot invalidate the receipt observation. */
-                      }
-                    }
+                    detailsCovered = transactionResult !== undefined;
                   }
                   const value = await read(method, params);
                   if (method === 'eth_getTransactionReceipt')
@@ -556,12 +538,21 @@ export class ActivityReceiptReader {
                 },
                 assertCurrent
               );
+              resolveObservation(observation);
               let detail: PromiseSettledResult<ActivityTransactionObservation | null> =
                 { status: 'fulfilled', value: null };
               try {
                 if (transaction) {
-                  const result = await transaction;
+                  let result = await transaction;
                   if (result.status === 'rejected') throw result.reason;
+                  if (observation.status === 'mined' &&
+                    (result.value === null || !readTransaction(result.value, expected.hash).block)) {
+                    detailsCovered = false;
+                    result = await read('eth_getTransactionByHash', [expected.hash], detailController.signal).then(
+                      value => ({ status: 'fulfilled' as const, value }),
+                      reason => ({ status: 'rejected' as const, reason }));
+                    if (result.status === 'rejected') throw result.reason;
+                  }
                   const body = result.value;
                   if (body !== null) {
                     const tx = readTransaction(body, expected.hash);
@@ -572,7 +563,10 @@ export class ActivityReceiptReader {
                         expected.from
                       );
                       assertPair(tx, receipt);
-                      const block = readBlock(rawBlock);
+                      const block = detailsCovered ? readBlock(rawBlock) : readBlock(await read(
+                        'eth_getBlockByNumber', [tag(receipt.block.number), false], detailController.signal));
+                      if (block.hash !== receipt.block.hash || block.number !== receipt.block.number)
+                        fail('CONTEXT_CHANGED');
                       detail = {
                         status: 'fulfilled',
                         value: Object.freeze({
@@ -606,6 +600,8 @@ export class ActivityReceiptReader {
                     }
                   } else if (observation.status === 'mined')
                     fail('CONTEXT_CHANGED');
+                  if (!detailsCovered && quantity(await read('eth_chainId', [], detailController.signal)) !== BigInt(registration.chainId))
+                    fail('CONTEXT_CHANGED');
                 }
               } catch (error) {
                 detail = {
@@ -625,9 +621,9 @@ export class ActivityReceiptReader {
           current.closing = true;
           if (this.pending.get(key) === current) this.pending.delete(key);
         });
-      void current.promise.catch(() => undefined);
+      void current.promise.catch(rejectObservation);
     }
-    return this.subscribe(entry, external, guard, (value) => value.observation);
+    return this.subscribe(entry, external, guard, entry.observation);
   }
 
   async read(
@@ -662,10 +658,10 @@ export class ActivityReceiptReader {
           entry,
           external,
           guard,
-          (value) => {
+          entry.promise.then((value) => {
             if (value.detail.status === 'rejected') throw value.detail.reason;
             return value.detail.value;
-          },
+          }),
           true
         );
     }

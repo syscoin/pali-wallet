@@ -293,3 +293,58 @@ test('explorer pages, retained observations and detail receipts consume the same
   assert.equal(f.maximum(), 4);
   stop();
 });
+
+test('wallet account Activity composition shares automatic receipt work with explicit details', async () => {
+  const { ActivityReceiptReader } = await import('../src/activity/receiptReader.ts');
+  const network = networks[0]!, blockHash = '0x' + 'b'.repeat(64);
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  const methods: string[] = [];
+  const receipts = new ActivityReceiptReader({ fetch: async (_url, init) => {
+    const request = JSON.parse(String(init.body)); methods.push(request.method);
+    let result: unknown;
+    if (request.method === 'eth_chainId') result = '0x1';
+    else if (request.method === 'eth_getTransactionReceipt') {
+      started.resolve(); await held.promise;
+      result = { transactionHash: hash, from: owner, to: outsider, status: '0x1', blockNumber: '0x50', blockHash, transactionIndex: '0x0', logs: [] };
+    } else if (request.method === 'eth_getTransactionByHash') result = { hash, from: owner, to: outsider, value: '0x1', nonce: '0x1', blockHash, blockNumber: '0x50', transactionIndex: '0x0' };
+    else if (request.method === 'eth_getBlockByNumber') result = { number: '0x50', hash: blockHash, timestamp: '0x6553f100', gasLimit: '0x1c9c380' };
+    else throw Error(request.method);
+    return Response.json({ jsonrpc: '2.0', id: request.id, result });
+  } });
+  const scope = createActivityScope('b'.repeat(64), 'hd:60:0', owner, network);
+  const choice: NotificationChoice = { label: 'Account', networkName: network.name, symbol: network.symbol,
+    scope: { id: 'native:hd:60:0:ethereum', accountId: 'hd:60:0', accountType: 'HDAccount', accountAddress: owner, network, guardian: false } };
+  const source = { getSnapshot: () => ({ phase: 'ready', revision: 1, account: { address: owner, network: network.id } }) as any,
+    getCatalogue: () => ({ active: { accountId: 'hd:60:0', networkId: network.id }, revision: 1 }) as any,
+    subscribe: () => () => {} };
+  let persisted = 0;
+  const model = new AccountActivityController({ source, choices: () => [choice],
+    filter: { async load() { return 'all'; }, async save() {} },
+    runtime: () => ({
+      async load() { return { scope, saved: { archived: [], candidates: [], truncated: false, view: DEFAULT_ACTIVITY_VIEW },
+        locals: [{ walletFingerprint: 'b'.repeat(64), accountId: 'hd:60:0', address: owner, networkId: network.id,
+          registrationHash: network.registrationHash, chainId: network.chainId, hash, phase: 'submitted' as const,
+          nonce: 1, createdAt: 1000, recipient: outsider, amountUnits: '1', maximumFeeUnits: '21000' }] }; },
+      async observeLocal(record, check, signal, observe) {
+        const request = { chainId: network.chainId, from: owner, to: outsider, hash: record.hash, nonce: String(record.nonce) };
+        const result = observe ? await observe(request) : await receipts.observe(request, signal, check, network, 'runtime-owned');
+        check(); assert.equal(signal.aborted, false); persisted++; return result;
+      },
+      async saveCache() {}, async saveView() {},
+    }),
+    explorer: { async page() { return []; } }, receipts,
+  });
+  const stop = model.connect();
+  try {
+    await started.promise;
+    model.getNetwork(network.id)!.controller.inspect(hash);
+    await tick();
+    assert.equal(methods.filter(method => method === 'eth_getTransactionByHash').length, 1);
+    held.resolve(); await tick();
+    const row = model.findRow(network.id, hash)!.row;
+    assert.equal(row.retainedObservation?.status, 'mined');
+    assert.equal(row.observation?.status, 'confirmed');
+    assert.equal(persisted, 1);
+    assert.deepEqual(methods, ['eth_chainId', 'eth_getTransactionReceipt', 'eth_getTransactionByHash', 'eth_getBlockByNumber', 'eth_chainId']);
+  } finally { held.resolve(); stop(); }
+});

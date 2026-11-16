@@ -5,6 +5,7 @@ import test from 'node:test';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { EvmAutoNonceAcceptance } from '../../../source/shared/evmAutoNonce.ts';
+import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { signedRecordTestSession } from './signedRecordTestSession.ts';
@@ -359,6 +360,61 @@ for (const maximum of [false, true]) test(`explicit fees bind the initial ${maxi
   assert.deepEqual(updated.transaction, quote.transaction);
   base = '0xd';
   await assert.rejects(f.rpc.prepare({ from, to, value: quote.transaction.value, data: '0x' }, signal(), () => undefined, quote.transaction, undefined, emptyNoncePlanner), { code: 'REVIEW_REQUIRED' });
+});
+
+for (const type of [0, 2] as const) for (const maximum of [false, true]) test(`custom type ${type} ${maximum ? 'MAX' : 'native'} preparation needs no fee recommendations`, async () => {
+  const f = fixture(custom, call => {
+    if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)) throw Error('Fee recommendations unavailable');
+    if (call.method === 'eth_getBlockByNumber') return { number: call.params[0] === 'latest' ? '0x64' : call.params[0], hash: blockHash, baseFeePerGas: type === 0 ? null : '0x4', gasLimit: '0x1c9c380' };
+  });
+  const choice = type === 0 ? { kind: 'custom' as const, type, gasPrice: '12', gasLimit: '30000' }
+    : { kind: 'custom' as const, type, maxFeePerGas: '12', maxPriorityFeePerGas: '2', gasLimit: '30000' };
+  const quote = maximum ? await f.rpc.prepareMaximum(from, to, 0n, signal(), () => {}, undefined, emptyNoncePlanner, choice)
+    : await f.rpc.prepare({ from, to, value: '100', data: '0x' }, signal(), () => {}, undefined, undefined, emptyNoncePlanner, undefined, undefined, choice);
+  assert.equal(quote.transaction.type, type);
+  assert.equal(quote.transaction.gasLimit, '30000');
+  assert.equal(f.calls.some(call => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)), false);
+  assert(f.calls.some(call => call.method === 'eth_estimateGas'));
+});
+
+test('custom ERC20 preparation retains decimals and simulation checks without fee recommendations', async () => {
+  const contract = `0x${'33'.repeat(20)}`;
+  const f = fixture(custom, call => {
+    if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)) throw Error('Fee recommendations unavailable');
+    if (call.method === 'eth_getCode') return '0x6000';
+    if (call.method === 'eth_call') {
+      const tx = call.params[0] as { from?: string; data: string };
+      return tx.from ? '0x' : '0x' + (tx.data === '0x313ce567' ? 18 : 1000).toString(16).padStart(64, '0');
+    }
+  });
+  const quote = await f.rpc.prepare({ from, to: contract, value: '0', data: encodeErc20Transfer(to, '100') }, signal(), () => {}, undefined, undefined,
+    emptyNoncePlanner, { standard: 'ERC20', contractAddress: contract, amountUnits: '100' }, 18,
+    { kind: 'custom', type: 2, maxFeePerGas: '12', maxPriorityFeePerGas: '2', gasLimit: '30000' });
+  assert.equal(quote.assetBalanceUnits, '1000');
+  assert(f.calls.some(call => call.method === 'eth_call' && (call.params[0] as { data: string }).data === '0x313ce567'));
+  assert(f.calls.some(call => call.method === 'eth_call' && (call.params[0] as { from?: string }).from));
+  assert.equal(f.calls.some(call => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)), false);
+});
+
+for (const failure of ['wrong-type', 'base-fee', 'changed-block', 'gas-growth', 'funds'] as const) test(`custom fees preserve ${failure} refusal without recommendations`, async () => {
+  const f = fixture(custom, call => {
+    if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)) throw Error('Fee recommendations unavailable');
+    if (call.method === 'eth_getBlockByNumber') return { number: call.params[0] === 'latest' ? '0x64' : call.params[0], hash: failure === 'changed-block' && call.params[0] !== 'latest' ? hash : blockHash,
+      baseFeePerGas: failure === 'wrong-type' ? null : failure === 'base-fee' ? '0xd' : '0x4', gasLimit: '0x1c9c380' };
+    if (failure === 'gas-growth' && call.method === 'eth_estimateGas') return '0x9c40';
+    if (failure === 'funds' && call.method === 'eth_getBalance') return '0x1';
+  });
+  await assert.rejects(f.rpc.prepare({ from, to, value: '100', data: '0x' }, signal(), () => {}, undefined, undefined, emptyNoncePlanner, undefined, undefined,
+    { kind: 'custom', type: 2, maxFeePerGas: '12', maxPriorityFeePerGas: '2', gasLimit: '30000' }));
+  assert.equal(f.calls.some(call => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)), false);
+});
+
+test('automatic fees still require recommendations', async () => {
+  const f = fixture(custom, call => {
+    if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)) throw Error('Fee recommendations unavailable');
+  });
+  await assert.rejects(f.rpc.prepare({ from, to, value: '100', data: '0x' }, signal(), () => {}, undefined, undefined, emptyNoncePlanner));
+  assert(f.calls.some(call => call.method === 'eth_gasPrice'));
 });
 
 for (const [gasLimit, fee, balance] of [['21000', '12', '0xffffffffffff'], ['30000001', '12', '0xffffffffffff'], ['30000', '12000000000', '0x100']] as const) {

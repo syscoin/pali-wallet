@@ -999,11 +999,13 @@ export class EvmTransferReadRpc {
     if (assetState && assetState.balanceUnits < BigInt(assetState.asset.amountUnits)) throw new EvmAssetStateError('INSUFFICIENT_ASSET');
     if (manual && (!Number.isSafeInteger(nonceOverride) || nonceOverride < 0))
       return rejectRead('INVALID_INPUT');
+    if (feeChoice.kind === 'custom' && feeChoice.type !== (sampled.baseFee === null ? 0 : 2))
+      return rejectRead('INVALID_INPUT');
     const nonceState = this.sampleSendNonce(read, request.from, sampled, nonceOverride, automaticNonce, assetState);
     const [sample, balance, fees] = await Promise.all([
       nonceState,
       this.readSendBalance(read, request.from, sampled, nonceState),
-      approved ? undefined : this.feeData(read, sampled, signal),
+      approved || feeChoice.kind === 'custom' ? undefined : this.feeData(read, sampled, signal),
     ]);
     const { count: observed, nonce, state } = sample;
     read.assertCurrent();
@@ -1015,7 +1017,7 @@ export class EvmTransferReadRpc {
     const selectedRates = approved
       ? approved.type === 0 ? { type: 0 as const, gasPrice: approved.gasPrice }
         : { type: 2 as const, accessList: [], maxFeePerGas: approved.maxFeePerGas, maxPriorityFeePerGas: approved.maxPriorityFeePerGas }
-      : chooseEvmFees(fees!.baseFeePerGas === undefined ? { type: 0 as const, gasPrice: fees!.gasPrice.toString() }
+      : chooseEvmFees(feeChoice.kind === 'custom' ? feeChoice : fees!.baseFeePerGas === undefined ? { type: 0 as const, gasPrice: fees!.gasPrice.toString() }
         : { type: 2 as const, maxFeePerGas: fees!.maxFeePerGas.toString(), maxPriorityFeePerGas: fees!.maxPriorityFeePerGas.toString() }, feeChoice);
     const selectedFees = selectedRates.type === 2 ? { ...selectedRates, accessList: [] } : selectedRates;
     if (approved && (approved.nonce !== nonce.toString() || approved.from !== request.from || approved.to !== request.to || approved.value !== request.value || approved.data !== request.data)) return rejectRead('REVIEW_REQUIRED');

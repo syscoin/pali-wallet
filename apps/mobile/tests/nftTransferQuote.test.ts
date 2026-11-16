@@ -149,6 +149,20 @@ function fixture(options: {
 }
 const signal = () => new AbortController().signal;
 const current = () => undefined;
+
+for (const standard of ['ERC-721', 'ERC-1155'] as const) test(`custom ${standard} fees work when every recommendation is unavailable`, async () => {
+  const f = fixture({ rewrite(call, reply) {
+    return ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)
+      ? { error: { code: -32000, message: 'Fee recommendations unavailable' } } : reply;
+  } });
+  const selected = { ...selection, saved: standard === 'ERC-1155' ? { contractAddress: target, tokenStandard: standard, tokenId: max } : selection.saved };
+  const input = standard === 'ERC-721' ? request : { recipient, tokenId: max, amountUnits: '1' };
+  const quote = await f.rpc.prepareNft(selected, input, signal(), current, undefined, emptyNoncePlanner,
+    { kind: 'custom', type: 2, maxFeePerGas: '200', maxPriorityFeePerGas: '2', gasLimit: '40000' });
+  assert.equal(quote.envelope.gasLimit, '40000');
+  assert.equal(f.calls.some(call => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)), false);
+  assert(f.calls.some(call => call.method === 'eth_estimateGas'));
+});
 const admission = (rpc: NativeTransferRpc, approval: EvmNftPreparedQuote, assertCurrent = current, onDispatch = current) => {
   let validated = false;
   const inventorySignal = signal();
