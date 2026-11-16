@@ -1,7 +1,6 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
-import { retryableFetch } from '@sidhujag/sysweb3-network';
 import { act, cleanup, render } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
@@ -22,16 +21,13 @@ jest.mock('state/store', () => ({
   default: {
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
+    subscribe: (listener: () => void) => mockStore.subscribe(listener),
   },
 }));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
   CustomJsonRpcProvider: jest.fn(),
   PsbtUtils: {},
-}));
-jest.mock('@sidhujag/sysweb3-network', () => ({
-  ...jest.requireActual('@sidhujag/sysweb3-network'),
-  retryableFetch: jest.fn(),
 }));
 jest.mock('scripts/Background', () => ({
   getController: jest.fn(),
@@ -92,9 +88,6 @@ const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation();
-  globalThis.fetch = jest.fn(() => {
-    throw new Error('Real network is denied');
-  }) as any;
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value: { getItem: () => 'true' },
@@ -131,19 +124,26 @@ beforeEach(() => {
     middleware: (getDefault) => getDefault({ serializableCheck: false }),
   });
   quotes = { usd: 0.125, eur: 0.2, jpy: 0.01 };
-  jest.mocked(retryableFetch).mockImplementation(async (url: any) => {
+  globalThis.fetch = jest.fn(async (url, options) => {
     const requested = new URL(String(url));
     expect(requested.origin + requested.pathname).toBe(
       'https://api.coingecko.com/api/v3/simple/price'
     );
     expect(requested.searchParams.get('ids')).toBe('synthetic-native');
+    expect(options).toMatchObject({
+      method: 'GET',
+      credentials: 'omit',
+      redirect: 'error',
+    });
     const currency = requested.searchParams.get('vs_currencies')!;
     return {
       ok: true,
-      json: async () => ({
-        'synthetic-native': { [currency]: quotes[currency] },
-      }),
-    } as Response;
+      headers: { get: () => null },
+      text: async () =>
+        JSON.stringify({
+          'synthetic-native': { [currency]: quotes[currency] },
+        }),
+    } as unknown as Response;
   });
   balanceRead = jest.fn();
   wallet = Object.create(MainController.prototype);
@@ -166,7 +166,18 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
-  expect(globalThis.fetch).not.toHaveBeenCalled();
+  for (const [url, options] of jest.mocked(globalThis.fetch).mock.calls) {
+    const requested = new URL(String(url));
+    expect(requested.origin + requested.pathname).toBe(
+      'https://api.coingecko.com/api/v3/simple/price'
+    );
+    expect(requested.searchParams.get('ids')).toBe('synthetic-native');
+    expect(options).toMatchObject({
+      method: 'GET',
+      credentials: 'omit',
+      redirect: 'error',
+    });
+  }
   globalThis.fetch = originalFetch;
   jest.restoreAllMocks();
 });

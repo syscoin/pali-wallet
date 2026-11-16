@@ -19,6 +19,7 @@ jest.mock('state/store', () => ({
   default: {
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
+    subscribe: (listener: () => void) => mockStore.subscribe(listener),
   },
   // This adapter exercises the native prepare/assert/dispatch contract. It is
   // intentionally not evidence of browser storage durability.

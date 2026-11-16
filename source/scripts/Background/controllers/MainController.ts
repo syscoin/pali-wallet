@@ -674,6 +674,10 @@ class PrivateSubmissionError extends Error {
   }
 }
 
+type NativeBalanceUpdate =
+  | { status: 'updated' | 'skipped' }
+  | { error?: unknown; status: 'superseded' };
+
 class MainController {
   // Map of keyrings indexed by slip44
   private keyrings: Map<number, KeyringManager> = new Map();
@@ -12802,16 +12806,18 @@ class MainController {
     activeAccount,
     isPolling = false,
     showLoading = true,
+    callerIsCurrent = () => true,
   }: {
     activeAccount: {
       id: number;
       type: KeyringAccountType;
     };
     activeNetwork: INetwork;
+    callerIsCurrent?: () => boolean;
     isBitcoinBased: boolean;
     isPolling?: boolean;
     showLoading?: boolean;
-  }) {
+  }): Promise<NativeBalanceUpdate> {
     // Presentation is independent of polling: a silent foreground refresh
     // still requires the normal unlocked keyring. Only visible foreground
     // requests own a generation so a silent refresh cannot clear or orphan
@@ -12844,7 +12850,7 @@ class MainController {
         );
         // Clear loading state and return
         clearBalanceLoadingIfOwned();
-        return Promise.resolve();
+        return Promise.resolve({ status: 'skipped' });
       }
     }
 
@@ -12859,7 +12865,7 @@ class MainController {
         '[updateBalancesFromCurrentAccount] Active account not found'
       );
       clearBalanceLoadingIfOwned();
-      return Promise.resolve();
+      return Promise.resolve({ status: 'skipped' });
     }
 
     const nativeKey = `${this.accountBalanceKeyPrefix(
@@ -12878,6 +12884,7 @@ class MainController {
     const isCurrent = () => {
       const latestNetwork = store.getState().vault.activeNetwork;
       return (
+        callerIsCurrent() &&
         nativeRevision === this.nativeBalanceRevision &&
         networkRequest === this.networkRequestGeneration &&
         nativeReadIsCurrent() &&
@@ -12907,7 +12914,7 @@ class MainController {
     };
 
     const { currentPromise: balancePromise, cancel } =
-      this.cancellablePromises.createCancellablePromise<void>(
+      this.cancellablePromises.createCancellablePromise<NativeBalanceUpdate>(
         async (resolve, reject) => {
           // Track start time for latency measurement
           const startTime = Date.now();
@@ -12927,7 +12934,7 @@ class MainController {
 
             if (!isCurrent()) {
               clearBalanceLoadingIfOwned();
-              resolve();
+              resolve({ status: 'superseded' });
               return;
             }
 
@@ -12960,11 +12967,11 @@ class MainController {
 
             // Clear loading state on success only if we set it
             clearBalanceLoadingIfOwned();
-            resolve();
+            resolve({ status: 'updated' });
           } catch (error) {
             if (!isCurrent()) {
               clearBalanceLoadingIfOwned();
-              reject(error);
+              resolve({ status: 'superseded', error });
               return;
             }
             // Mark network quality as slow/poor on error
@@ -13035,16 +13042,19 @@ class MainController {
       throw new Error('Active account not found');
     }
 
-    await this.updateUserNativeBalance({
+    const balance = await this.updateUserNativeBalance({
       activeAccount,
       activeNetwork,
       isBitcoinBased,
       isPolling,
       showLoading,
     });
+    if (balance.status === 'superseded' && balance.error !== undefined) {
+      throw balance.error;
+    }
 
     let assetsUpdated = false;
-    if (includeAssets) {
+    if (balance.status !== 'superseded' && includeAssets) {
       try {
         await this.updateAssetsFromCurrentAccount({
           activeAccount,
@@ -13061,7 +13071,11 @@ class MainController {
       }
     }
 
-    if (!isBitcoinBased && targetEvmTokenContractAddress) {
+    if (
+      balance.status !== 'superseded' &&
+      !isBitcoinBased &&
+      targetEvmTokenContractAddress
+    ) {
       try {
         await this.refreshActiveEvmTokenBalance(targetEvmTokenContractAddress);
         assetsUpdated = true;
@@ -13245,13 +13259,16 @@ class MainController {
 
     // Await only native balance to drive latency/status indicator
     let balanceFailed = false;
+    let balanceSuperseded = false;
     try {
-      await this.updateUserNativeBalance({
+      const balance = await this.updateUserNativeBalance({
         isBitcoinBased,
         activeNetwork,
         activeAccount,
         isPolling,
+        callerIsCurrent: () => this.latestUpdate === update,
       });
+      balanceSuperseded = balance?.status === 'superseded';
       // Clear balance loading state if we set it earlier
       // Balance loading flag is managed by caller; no change here
     } catch (_err) {
@@ -13260,6 +13277,8 @@ class MainController {
 
     const latest = store.getState().vault;
     if (
+      balanceSuperseded ||
+      this.latestUpdate !== update ||
       session !== this.walletSessionGeneration ||
       networkRequest !== this.networkRequestGeneration ||
       latest.activeAccount.id !== activeAccount.id ||

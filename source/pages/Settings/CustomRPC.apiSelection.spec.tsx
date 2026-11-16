@@ -274,8 +274,9 @@ beforeEach(async () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ syscoin: { usd: 0.25 } }),
-      } as Response;
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ syscoin: { usd: 0.25 } }),
+      } as unknown as Response;
     }
     const allowed = [
       new URL(API_A),

@@ -1661,7 +1661,7 @@ it.each([
   'network',
   'session',
 ] as const)(
-  'owns queued collection reads through the actual assets manager (%s)',
+  'owns concurrent collection reads through the actual assets manager (%s)',
   async (mode) => {
     const tokens = Array.from({ length: 9 }, (_, index) => ({
       ...asset(`0x${(index + 1).toString(16).padStart(40, '0')}`),
@@ -1681,9 +1681,7 @@ it.each([
     balanceOf.mockImplementation(
       () =>
         new Promise<bigint>((resolve) => {
-          if (balanceOf.mock.calls.length <= 3)
-            releases.push(() => resolve(BigInt(9)));
-          else resolve(BigInt(9));
+          releases.push(() => resolve(BigInt(9)));
         })
     );
     const pending = controller.updateAssetsFromCurrentAccount({
@@ -1694,7 +1692,7 @@ it.each([
     });
     const outcome = pending.catch((error: unknown) => error);
     await jest.advanceTimersByTimeAsync(100);
-    expect(balanceOf).toHaveBeenCalledTimes(3);
+    expect(balanceOf).toHaveBeenCalledTimes(9);
     if (mode === 'cancelled')
       controller.cancellablePromises.assetsPromise.cancel();
     else if (mode === 'account') state.vault.activeAccount = { type, id: 1 };
@@ -1708,7 +1706,7 @@ it.each([
     await jest.advanceTimersByTimeAsync(400);
     await outcome;
     const healthy = mode === 'healthy' || mode === 'non-active';
-    expect(balanceOf).toHaveBeenCalledTimes(healthy ? 9 : 3);
+    expect(balanceOf).toHaveBeenCalledTimes(9);
     expect(
       state.vault.accountAssets[type][0].ethereum.every(
         (token: any) => token.balance === (healthy ? 9 : 5)

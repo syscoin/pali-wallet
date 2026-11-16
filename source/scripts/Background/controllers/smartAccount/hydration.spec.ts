@@ -447,8 +447,8 @@ describe('SmartAccountController smart account execution fees', () => {
     expect(broadcast).not.toHaveBeenCalled();
   });
 
-  it('still marks a failed estimate as prebroadcast when deployment prefunding made no send', async () => {
-    const { controller, estimateGas, sendAndSaveEthTransaction } =
+  it('still marks a failed payer estimate as prebroadcast when deployment prefunding made no send', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction, broadcast } =
       buildController();
     controller.ensureSmartAccountDeploymentPrefund = jest
       .fn()
@@ -468,7 +468,9 @@ describe('SmartAccountController smart account execution fees', () => {
       })
     ).rejects.toMatchObject({ transactionNotBroadcast: true });
     expect(controller.ensureSmartAccountDeploymentPrefund).toHaveBeenCalled();
-    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+    expect(estimateGas).toHaveBeenCalledTimes(1);
+    expect(broadcast).not.toHaveBeenCalled();
   });
 
   it.each(['balance decreased', 'transfer paused'])(
@@ -604,7 +606,7 @@ describe('SmartAccountController smart account execution fees', () => {
   it.each([false, true])(
     'does not relabel a failure after a prefund sender was entered (prefund returned=%s)',
     async (prefundReturned) => {
-      const { controller, estimateGas, sendAndSaveEthTransaction } =
+      const { controller, sendAndSaveEthTransaction, broadcast } =
         buildController();
       const error = new Error('RPC timed out');
       controller.ensureSmartAccountDeploymentPrefund = jest.fn(
@@ -613,7 +615,7 @@ describe('SmartAccountController smart account execution fees', () => {
           if (!prefundReturned) throw error;
         }
       );
-      estimateGas.mockRejectedValueOnce(error);
+      sendAndSaveEthTransaction.mockRejectedValueOnce(error);
 
       await expect(
         submitReviewed(controller, {
@@ -627,7 +629,10 @@ describe('SmartAccountController smart account execution fees', () => {
         })
       ).rejects.toBe(error);
       expect(error).not.toHaveProperty('transactionNotBroadcast');
-      expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+      expect(sendAndSaveEthTransaction).toHaveBeenCalledTimes(
+        prefundReturned ? 1 : 0
+      );
+      expect(broadcast).not.toHaveBeenCalled();
     }
   );
 

@@ -93,8 +93,12 @@ beforeEach(() => {
         accounts: {
           ...vault.accounts,
           [type]: {
-            0: { address, balances: { ethereum: -1 } },
-            1: { address: `0x${'22'.repeat(20)}`, balances: { ethereum: -1 } },
+            0: { id: 0, address, balances: { ethereum: -1 } },
+            1: {
+              id: 1,
+              address: `0x${'22'.repeat(20)}`,
+              balances: { ethereum: -1 },
+            },
           },
         },
         accountAssets: {
@@ -585,4 +589,129 @@ it('checks the captured native read version before dispatching an address read',
   barrier.resolve();
   await pending;
   expect(addressReads).toEqual([]);
+});
+
+it.each(['foreground', 'direct'])(
+  'preserves a newer successful %s read when an older foreground fails its freshness guard',
+  async (newer) => {
+    const old = deferred<void>();
+    readBalance
+      .mockImplementationOnce(async (_account, _utxo, _url, owner) => {
+        await old.promise;
+        owner.assertCurrent();
+        return '99';
+      })
+      .mockResolvedValueOnce('2');
+    const previous = refresh();
+    await (newer === 'foreground' ? refresh() : directRead());
+    const healthy = mockStore.getState().vaultGlobal;
+    expect(healthy.networkStatus).toBe('idle');
+    old.resolve();
+    await previous;
+    expect(mockStore.getState().vaultGlobal).toMatchObject({
+      networkStatus: healthy.networkStatus,
+      networkQuality: healthy.networkQuality,
+    });
+    expect(
+      mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances
+    ).toBe(false);
+    expect(mockStore.getState().vault.accounts[type][0].balances.ethereum).toBe(
+      '2'
+    );
+  }
+);
+
+it('preserves a newer successful account-card read when an older foreground fails its freshness guard', async () => {
+  const old = deferred<void>();
+  readBalance
+    .mockImplementationOnce(async (_account, _utxo, _url, owner) => {
+      await old.promise;
+      owner.assertCurrent();
+      return '99';
+    })
+    .mockResolvedValueOnce('2');
+  const previous = refresh();
+  await expect(
+    controller.getBalanceForAccount(
+      { ...mockStore.getState().vault.accounts[type][0], id: 0 },
+      type,
+      firstNetwork
+    )
+  ).resolves.toBe('2');
+  const healthy = mockStore.getState().vaultGlobal;
+  old.resolve();
+  await previous;
+  expect(mockStore.getState().vaultGlobal).toMatchObject({
+    networkStatus: healthy.networkStatus,
+    networkQuality: healthy.networkQuality,
+  });
+  expect(mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances).toBe(
+    false
+  );
+  expect(mockStore.getState().vault.accounts[type][0].balances.ethereum).toBe(
+    '2'
+  );
+});
+
+it('preserves a newer foreground failure when an older transport returns a successful result', async () => {
+  const old = deferred<string>();
+  readBalance
+    .mockReturnValueOnce(old.promise)
+    .mockRejectedValueOnce(new Error('Current RPC unavailable'));
+  const previous = refresh();
+  await refresh();
+  const failed = mockStore.getState().vaultGlobal;
+  expect(failed.networkStatus).toBe('error');
+  old.resolve('99');
+  await previous;
+  expect(mockStore.getState().vaultGlobal).toEqual(failed);
+  expect(mockStore.getState().vault.accounts[type][0].balances.ethereum).toBe(
+    -1
+  );
+});
+
+it('preserves a newer account-card failure when an older transport returns a successful result', async () => {
+  const old = deferred<string>();
+  const failure = new Error('Current RPC unavailable');
+  readBalance.mockReturnValueOnce(old.promise).mockRejectedValueOnce(failure);
+  const previous = refresh();
+  await expect(
+    controller.getBalanceForAccount(
+      { ...mockStore.getState().vault.accounts[type][0], id: 0 },
+      type,
+      firstNetwork
+    )
+  ).rejects.toBe(failure);
+  const beforeOld = mockStore.getState().vaultGlobal;
+  old.resolve('99');
+  await previous;
+  expect(mockStore.getState().vaultGlobal).toMatchObject({
+    networkStatus: beforeOld.networkStatus,
+    networkQuality: beforeOld.networkQuality,
+  });
+  expect(mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances).toBe(
+    false
+  );
+  expect(mockStore.getState().vault.accounts[type][0].balances.ethereum).toBe(
+    -1
+  );
+});
+
+it('returns the current balance without asset work after a superseded successful preflight', async () => {
+  const old = deferred<string>();
+  readBalance.mockReturnValueOnce(old.promise).mockResolvedValueOnce('2');
+  controller.updateAssetsFromCurrentAccount = jest.fn();
+  controller.refreshActiveEvmTokenBalance = jest.fn();
+  const previous = controller.refreshActiveAccountBalances({
+    includeAssets: true,
+    targetEvmTokenContractAddress: `0x${'33'.repeat(20)}`,
+  });
+  await directRead();
+  old.resolve('99');
+  await expect(previous).resolves.toEqual({
+    assetsUpdated: false,
+    nativeBalance: '2',
+  });
+  expect(controller.updateAssetsFromCurrentAccount).not.toHaveBeenCalled();
+  expect(controller.refreshActiveEvmTokenBalance).not.toHaveBeenCalled();
 });
