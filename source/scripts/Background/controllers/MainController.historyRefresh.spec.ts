@@ -10,6 +10,17 @@ import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrappe
 
 let mockStore: any;
 const mockTransport = jest.fn();
+let mockIndependentHistoryReads = false;
+jest.mock('./utils/fetchBackendAccountWrapper', () => {
+  const actual = jest.requireActual('./utils/fetchBackendAccountWrapper');
+  return {
+    ...actual,
+    fetchBackendAccountCached: (...args: any[]) =>
+      mockIndependentHistoryReads
+        ? mockTransport(...args)
+        : actual.fetchBackendAccountCached(...args),
+  };
+});
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {
@@ -122,6 +133,7 @@ const refresh = () =>
 beforeEach(() => {
   jest.clearAllMocks();
   mockTransport.mockReset();
+  mockIndependentHistoryReads = false;
   clearFetchBackendAccountCache();
   setHistory();
   controller = Object.create(MainController.prototype);
@@ -143,13 +155,20 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-it('shares identical in-flight requests inside the five-second transport window', async () => {
-  jest.spyOn(Date, 'now').mockReturnValue(1000);
+// These cases exercise MainController commit ordering after independent reads
+// have already been admitted. In-flight HTTP joining is covered separately.
+const independentHistoryReads = () => {
+  mockIndependentHistoryReads = true;
+};
+
+it('shares identical in-flight requests while a slow transport is still pending', async () => {
+  const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
   const response = deferred();
   mockTransport.mockReturnValue(response.promise);
   await controller.getLatestUpdateForCurrentAccount(true, true);
   const first =
     controller.cancellablePromises.transactionPromise.transactionPromise;
+  now.mockReturnValue(7000);
   await controller.getLatestUpdateForCurrentAccount(true, true);
   const second =
     controller.cancellablePromises.transactionPromise.transactionPromise;
@@ -159,7 +178,8 @@ it('shares identical in-flight requests inside the five-second transport window'
   expect(rows()[0].confirmations).toBe(1);
 });
 
-it('keeps a newer confirmation when a request beyond the transport window finishes last', async () => {
+it('keeps a newer confirmation when an independently admitted older read finishes last', async () => {
+  independentHistoryReads();
   const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
   const response = deferred();
   mockTransport
@@ -216,6 +236,7 @@ it.each([false, true])(
 it.each([false, true])(
   'accepts an older successful refresh after a newer forced read fails: %s',
   async (intervene) => {
+    independentHistoryReads();
     const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
     const response = deferred();
     mockTransport.mockReturnValueOnce(response.promise);
@@ -329,6 +350,7 @@ it('fetches full history for an explicit forced rapid read despite an unchanged 
 it.each(['older-first', 'newer-first'])(
   'keeps the newest successful history without duplicate notifications: %s',
   async (order) => {
+    independentHistoryReads();
     const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
     const old = deferred();
     const newer = deferred();
