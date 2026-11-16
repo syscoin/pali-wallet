@@ -489,11 +489,14 @@ export class ActivityReceiptReader {
             check,
             async (read, assertCurrent) => {
               let rawReceipt: unknown, rawBlock: unknown;
+              let identityAccepted = false;
               let transaction:
                 | Promise<PromiseSettledResult<unknown>>
                 | undefined;
               requestDetails = () => {
                 if (current.closing) return false;
+                detailsRequested = true;
+                if (!identityAccepted) return true;
                 transaction ??= read(
                   'eth_getTransactionByHash',
                   [expected.hash],
@@ -504,11 +507,15 @@ export class ActivityReceiptReader {
                 );
                 return true;
               };
-              if (detailsRequested) requestDetails();
               let chainReads = 0;
               const observation = await observeEvmTransaction(
                 expected,
                 async (method, params) => {
+                  // The shared observer requests account data only after accepting its first chain result.
+                  if (method !== 'eth_chainId' && !identityAccepted) {
+                    identityAccepted = true;
+                    if (detailsRequested) requestDetails();
+                  }
                   if (method === 'eth_chainId' && ++chainReads > 1) {
                     current.closing = true;
                     if (transaction) {

@@ -360,3 +360,40 @@ test('shared details refresh a pending body when the concurrent receipt becomes 
   assert.equal(f.calls.length, 6);
   assert.equal(f.calls.at(-1)?.method, 'eth_chainId');
 });
+
+for (const join of ['immediate', 'held-chain'] as const)
+test(`shared details wait for accepted initial identity (${join})`, async () => {
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  const f = fixture(async call => {
+    if (call.method === 'eth_chainId') { started.resolve(); await held.promise; return '0x2'; }
+  });
+  const automatic = assert.rejects(f.reader.observe({ chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' }, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'CONTEXT_CHANGED' });
+  if (join === 'held-chain') await started.promise;
+  const detail = assert.rejects(f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'CONTEXT_CHANGED' });
+  await started.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  const pendingMethods = f.calls.map(call => call.method);
+  held.resolve();
+  await Promise.all([automatic, detail]);
+  assert.deepEqual(pendingMethods, ['eth_chainId'], 'no hash or account request precedes accepted identity');
+  assert.deepEqual(f.calls.map(call => call.method), ['eth_chainId']);
+});
+
+test('an immediate detail subscriber starts its five-call graph after identity succeeds', async () => {
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  let identities = 0;
+  const f = fixture(async call => {
+    if (call.method === 'eth_chainId' && ++identities === 1) { started.resolve(); await held.promise; }
+    if (call.method === 'eth_getBlockByNumber') return { number: '0x50', hash: BLOCK, gasLimit: '0x1c9c380' };
+  });
+  const automatic = f.reader.observe({ chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' }, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope');
+  const detail = f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope');
+  await started.promise;
+  assert.deepEqual(f.calls.map(call => call.method), ['eth_chainId']);
+  held.resolve();
+  const [observed, full] = await Promise.all([automatic, detail]);
+  assert.equal(observed.status, 'mined');
+  assert.equal(full?.status, 'confirmed');
+  assert.equal(f.calls.length, 5);
+  assert.equal(f.calls.at(-1)?.method, 'eth_chainId');
+});
