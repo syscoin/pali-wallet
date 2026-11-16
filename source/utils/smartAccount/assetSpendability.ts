@@ -3,7 +3,7 @@ import { getAddress } from 'ethers/address';
 import { isCallException, isHexString } from 'ethers/utils';
 
 import { decodeAssetTransfer } from '../../shared/assetTransfer.ts';
-import { parseErc20Decimals, parseErc20Units } from '../../shared/erc20.ts';
+import { parseErc20Decimals } from '../../shared/erc20.ts';
 import {
   EvmAssetStateError,
   readEvmAssetBalance,
@@ -22,32 +22,11 @@ import {
   getPaliEntryPointAddress,
   paliSmartAccountInterface,
 } from './contracts.ts';
+import {
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from './erc20Transfer.ts';
 import { assertSmartAccountNativeSpendability } from './nativeSpendability.ts';
-
-export type SmartAccountExpectedErc20Transfer = Readonly<{
-  amountUnits: string;
-  contractAddress: string;
-  decimals: number;
-  recipient: string;
-}>;
-
-export function snapshotSmartAccountExpectedErc20Transfers(
-  transfers: readonly SmartAccountExpectedErc20Transfer[] | undefined
-): readonly SmartAccountExpectedErc20Transfer[] | undefined {
-  if (transfers === undefined) return undefined;
-  if (!Array.isArray(transfers) || transfers.length > 50)
-    throw new EvmAssetStateError('INVALID_INPUT');
-  return Object.freeze(
-    transfers.map((transfer) =>
-      Object.freeze({
-        contractAddress: getAddress(transfer.contractAddress),
-        recipient: getAddress(transfer.recipient),
-        amountUnits: parseErc20Units(transfer.amountUnits),
-        decimals: parseErc20Decimals(transfer.decimals),
-      })
-    )
-  );
-}
 
 export async function assertSmartAccountSpendability(
   input: Parameters<typeof assertSmartAccountAssetSpendability>[0]

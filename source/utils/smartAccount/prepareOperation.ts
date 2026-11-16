@@ -11,17 +11,17 @@ import {
 } from './account.ts';
 import { toPaliSmartAccount } from './adapter.ts';
 import { requireSmartAccountAddressIdentity } from './addressIdentity.ts';
-import {
-  assertSmartAccountSpendability,
-  snapshotSmartAccountExpectedErc20Transfers,
-  type SmartAccountExpectedErc20Transfer,
-} from './assetSpendability.ts';
+import { assertSmartAccountSpendability } from './assetSpendability.ts';
 import {
   getPaliEntryPointAddress,
   getPaliSmartAccountFactoryAddress,
   paliSmartAccountInterface,
 } from './contracts.ts';
 import { smartAccountDeploymentStateFromCode } from './deploymentState.ts';
+import {
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from './erc20Transfer.ts';
 import {
   estimateSmartAccountUserOpGas,
   getSmartAccountValidatorProfile,

@@ -17,9 +17,9 @@ import type { SmartAccountPendingRecords } from '../../../../source/wallet/evmSi
 import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import type { SmartAccountActivityIdentity } from '../../../../source/wallet/smartAccountActivity.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
-import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
+import { buildSmartAccountErc20Transfer, snapshotSmartAccountExpectedErc20Transfers } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
-import { assertSmartAccountSpendability, snapshotSmartAccountExpectedErc20Transfers } from '../../../../source/utils/smartAccount/assetSpendability.ts';
+import { assertSmartAccountSpendability } from '../../../../source/utils/smartAccount/assetSpendability.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
 import { buildGuardianPolicyExecutions } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';

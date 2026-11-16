@@ -14,10 +14,6 @@ import {
 
 import { getSmartAccountUserOpRequiredPrefund } from './account';
 import {
-  snapshotSmartAccountExpectedErc20Transfers,
-  type SmartAccountExpectedErc20Transfer,
-} from './assetSpendability';
-import {
   signSmartAccountActionHash as dispatchSmartAccountActionHash,
   type SmartAccountAuthenticatorPorts,
   type SmartAccountAuthenticatorSigningCallback,
@@ -25,6 +21,10 @@ import {
   type SmartAccountLocalEcdsaSigner,
   type SmartAccountSLHDSASigner,
 } from './authenticatorDispatch';
+import {
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from './erc20Transfer';
 import type { SmartAccountAuthenticatorSignature } from './signature';
 import { canUseReservedSLHDSASignature } from './slhDsaPurpose';
 import type { SmartAccountFeeQuote } from '../../shared/smartAccountFeeQuote';

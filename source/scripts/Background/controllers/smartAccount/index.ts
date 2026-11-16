@@ -78,17 +78,17 @@ import {
   SmartAccountAuthenticatorBuildResult,
   toPaliSmartAccount,
 } from 'utils/smartAccount';
-import {
-  assertSmartAccountSpendability,
-  snapshotSmartAccountExpectedErc20Transfers,
-  type SmartAccountExpectedErc20Transfer,
-} from 'utils/smartAccount/assetSpendability';
+import { assertSmartAccountSpendability } from 'utils/smartAccount/assetSpendability';
 import { deriveDefaultSmartAccount } from 'utils/smartAccount/bootstrap';
 import {
   getPaliInfrastructureContracts,
   type PaliInfrastructureContractId,
 } from 'utils/smartAccount/deployment';
 import { readSmartAccountDeploymentState } from 'utils/smartAccount/deploymentState';
+import {
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from 'utils/smartAccount/erc20Transfer';
 import {
   hasUsableSmartAccountAuthMetadata,
   readSmartAccountValidatorMetadata,

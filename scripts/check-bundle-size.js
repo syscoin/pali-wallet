@@ -43,7 +43,10 @@ const budget = {
   // checks add 5,978 measured bytes. Reserve 10 KB for these checked fixes.
   // Retained replacement admission, retired read ownership and bounded CCIP
   // add 6,974 bytes at e7555588 / SDK 5a3d3563. Reserve 10 KB for these fixes.
-  package: 12180000,
+  // Execution bounds, Smart precision, coherent history and UTXO ownership
+  // add 12,919 bytes at round 11. Reserve 15 KB after removing the UI import
+  // that pulled 93,768 unnecessary bytes into the package.
+  package: 12195000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

@@ -18,14 +18,16 @@ import { requireSmartAccountAddressIdentity } from './addressIdentity.ts';
 import {
   assertSmartAccountSpendability,
   assertSmartAccountAssetSpendability,
-  snapshotSmartAccountExpectedErc20Transfers,
-  type SmartAccountExpectedErc20Transfer,
 } from './assetSpendability.ts';
 import {
   getPaliEntryPointAddress,
   PALI_ENTRYPOINT_V09_ABI,
 } from './contracts.ts';
 import { getZkSysGasTankAddress } from './deploymentMetadata.ts';
+import {
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from './erc20Transfer.ts';
 import {
   hasNativeGasFailure,
   hasSmartAccountSignatureFailure,
