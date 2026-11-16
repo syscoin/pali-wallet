@@ -135,42 +135,86 @@ describe('fetchBackendAccountCached', () => {
   });
 
   it('does not share requests across different xpubs', async () => {
-    fetchBackendAccountMock.mockReturnValue(deferred().promise);
-
-    fetchBackendAccountCached(URL, XPUB, 'details=txs', true);
-    fetchBackendAccountCached(URL, 'zpubDIFFERENT', 'details=basic', true);
-
+    fetchBackendAccountMock.mockResolvedValue({ balance: '1' });
+    await Promise.all([
+      fetchBackendAccountCached(URL, XPUB, 'details=txs', true),
+      fetchBackendAccountCached(URL, 'zpubDIFFERENT', 'details=basic', true),
+    ]);
     expect(fetchBackendAccountMock).toHaveBeenCalledTimes(2);
   });
 
-  it('does not let an expired request remove its in-flight replacement', async () => {
+  it('keeps a slow request joined past the completed-result cache lifetime', async () => {
     jest.useFakeTimers();
-    jest.setSystemTime(1000);
-    const old = deferred();
-    const current = deferred();
-    fetchBackendAccountMock.mockReset();
-    fetchBackendAccountMock
-      .mockReturnValueOnce(old.promise)
-      .mockReturnValue(current.promise);
+    const held = deferred();
+    fetchBackendAccountMock.mockReturnValueOnce(held.promise);
     try {
       const first = fetchBackendAccountCached(URL, XPUB, 'details=txs', true);
-      jest.setSystemTime(7000);
+      await jest.advanceTimersByTimeAsync(6000);
       const second = fetchBackendAccountCached(URL, XPUB, 'details=txs', true);
-      old.resolve({ balance: 'old' });
-      await first;
-      await jest.advanceTimersByTimeAsync(100);
-      const shared = fetchBackendAccountCached(URL, XPUB, 'details=txs', true);
-      const callsWhileCurrentIsPending =
-        fetchBackendAccountMock.mock.calls.length;
-      current.resolve({ balance: 'current' });
-      expect(await Promise.all([second, shared])).toEqual([
-        { balance: 'current' },
-        { balance: 'current' },
+      expect(fetchBackendAccountMock).toHaveBeenCalledTimes(1);
+      held.resolve({ balance: '1' });
+      expect(await Promise.all([first, second])).toEqual([
+        { balance: '1' },
+        { balance: '1' },
       ]);
-      expect(callsWhileCurrentIsPending).toBe(2);
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('expires completed results after the short reuse lifetime', async () => {
+    jest.useFakeTimers();
+    fetchBackendAccountMock.mockResolvedValue({ balance: '1' });
+    try {
+      await fetchBackendAccountCached(URL, XPUB, 'details=basic', true);
+      await fetchBackendAccountCached(URL, XPUB, 'details=basic', true);
+      expect(fetchBackendAccountMock).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(100);
+      await fetchBackendAccountCached(URL, XPUB, 'details=basic', true);
+      expect(fetchBackendAccountMock).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('cancels subscribers independently and aborts physical work after the final subscriber leaves', async () => {
+    const held = deferred();
+    fetchBackendAccountMock.mockReturnValueOnce(held.promise);
+    const firstOwner = new AbortController(),
+      secondOwner = new AbortController();
+    const first = fetchBackendAccountCached(
+      URL,
+      XPUB,
+      'details=txs',
+      true,
+      firstOwner.signal
+    );
+    const second = fetchBackendAccountCached(
+      URL,
+      XPUB,
+      'details=txs',
+      true,
+      secondOwner.signal
+    );
+    const transport = fetchBackendAccountMock.mock.calls[0][5];
+    firstOwner.abort();
+    await expect(first).rejects.toHaveProperty('name', 'AbortError');
+    expect(transport.signal.aborted).toBe(false);
+    secondOwner.abort();
+    await expect(second).rejects.toHaveProperty('name', 'AbortError');
+    expect(transport.signal.aborted).toBe(true);
+    held.resolve({ balance: 'late' });
+  });
+
+  it('retires physical transport when the cache is explicitly cleared', async () => {
+    const held = deferred();
+    fetchBackendAccountMock.mockReturnValueOnce(held.promise);
+    const first = fetchBackendAccountCached(URL, XPUB, 'details=txs', true);
+    const transport = fetchBackendAccountMock.mock.calls[0][5];
+    clearFetchBackendAccountCache();
+    await expect(first).rejects.toHaveProperty('name', 'AbortError');
+    expect(transport.signal.aborted).toBe(true);
+    held.resolve({ balance: 'late' });
   });
 
   it('propagates a transport rejection without a second unhandled cleanup rejection', async () => {

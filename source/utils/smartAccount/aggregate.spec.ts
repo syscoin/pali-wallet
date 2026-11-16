@@ -179,6 +179,63 @@ describe('smart account RPC aggregation', () => {
     expect(provider.getCode).toHaveBeenCalledTimes(2);
   });
 
+  it.each([MULTICALL_RUNTIME, '0x'])(
+    'reuses completed capability observations across fresh read owners (%s)',
+    async (code) => {
+      const stable = {
+        _getConnection: () => ({ url: 'https://owned.example' }),
+      };
+      const probes = jest.fn().mockResolvedValue(code);
+      for (let iteration = 0; iteration < 3; iteration++) {
+        const owner = {
+          ...stable,
+          getCode: probes,
+          call: jest.fn(),
+          signal: new AbortController().signal,
+        };
+        await resolveMulticall3Address(owner, 1, stable as any);
+      }
+      expect(probes).toHaveBeenCalledTimes(code === '0x' ? 2 : 1);
+    }
+  );
+
+  it('keeps pending probes and cancellation with each read owner', async () => {
+    const stable = { _getConnection: () => ({ url: 'https://owned.example' }) };
+    const retired = new AbortController();
+    let release!: (code: string) => void;
+    const first = {
+      ...stable,
+      signal: retired.signal,
+      call: jest.fn(),
+      getCode: jest
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<string>((resolve) => {
+              release = resolve;
+            })
+        )
+        .mockResolvedValue('0x'),
+    };
+    const second = {
+      ...stable,
+      signal: new AbortController().signal,
+      call: jest.fn(),
+      getCode: jest.fn().mockResolvedValue(MULTICALL_RUNTIME),
+    };
+    const old = resolveMulticall3Address(first, 1, stable as any);
+    retired.abort();
+    expect(await resolveMulticall3Address(second, 1, stable as any)).toBe(
+      PALI_MULTICALL3_CANONICAL_ADDRESS
+    );
+    release('0x');
+    await old;
+    expect(await resolveMulticall3Address(second, 1, stable as any)).toBe(
+      PALI_MULTICALL3_CANONICAL_ADDRESS
+    );
+    expect(second.getCode).toHaveBeenCalledTimes(1);
+  });
+
   it('shares a single in-flight probe across concurrent cold-cache callers', async () => {
     let releaseProbe!: (code: string) => void;
     const probeGate = new Promise<string>((resolve) => {

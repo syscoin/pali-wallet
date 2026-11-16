@@ -34,6 +34,7 @@ export type AggregateCallResult =
   | { result?: undefined; success: false };
 
 type EthCallProvider = {
+  readonly signal?: AbortSignal;
   _getConnection?: () => { url: string };
   call: (transaction: { data: string; to: string }) => Promise<string>;
   getCode: (address: string) => Promise<string>;
@@ -115,9 +116,13 @@ const probeMulticall3Address = async (
  */
 export const resolveMulticall3Address = async (
   provider: EthCallProvider,
-  chainId: number
+  chainId: number,
+  capabilityProvider: EthCallProvider = provider
 ): Promise<string | null> => {
-  const key = scopeKey(provider, chainId);
+  const key = scopeKey(capabilityProvider, chainId);
+  // Completed observations belong to the stable endpoint. A live probe belongs
+  // to its current read owner and cannot inherit another owner's cancellation.
+  const probeKey = JSON.stringify([chainId, key, scopeKey(provider, chainId)]);
   const cached = multicall3AddressCache.get(key);
   if (cached) {
     if (Date.now() - cached.checkedAt < MULTICALL3_CACHE_TTL_MS) {
@@ -125,7 +130,7 @@ export const resolveMulticall3Address = async (
     }
   }
 
-  const inflight = inflightMulticall3Probes.get(key);
+  const inflight = inflightMulticall3Probes.get(probeKey);
   if (inflight) {
     return inflight;
   }
@@ -133,10 +138,14 @@ export const resolveMulticall3Address = async (
 
   const probe: Promise<string | null> = probeMulticall3Address(provider)
     .then((address) => {
-      if (scopeKey(provider, chainId) !== key) return null;
+      if (
+        provider.signal?.aborted ||
+        scopeKey(capabilityProvider, chainId) !== key
+      )
+        return null;
       // Only the still-current probe may write the cache; a probe detached
       // by clearMulticall3AddressCache() reflects pre-invalidation state.
-      if (inflightMulticall3Probes.get(key) === probe) {
+      if (inflightMulticall3Probes.get(probeKey) === probe) {
         multicall3AddressCache.set(key, {
           address,
           checkedAt: Date.now(),
@@ -149,11 +158,11 @@ export const resolveMulticall3Address = async (
       return address;
     })
     .finally(() => {
-      if (inflightMulticall3Probes.get(key) === probe) {
-        inflightMulticall3Probes.delete(key);
+      if (inflightMulticall3Probes.get(probeKey) === probe) {
+        inflightMulticall3Probes.delete(probeKey);
       }
     });
-  inflightMulticall3Probes.set(key, probe);
+  inflightMulticall3Probes.set(probeKey, probe);
   return probe;
 };
 

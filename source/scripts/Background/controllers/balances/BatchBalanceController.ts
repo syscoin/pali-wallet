@@ -57,7 +57,8 @@ export class BatchBalanceController {
 
   constructor(
     provider: CustomJsonRpcProvider,
-    private readonly owner?: AssetReadOwner
+    private readonly owner?: AssetReadOwner,
+    private readonly capabilityProvider = provider
   ) {
     this.provider = provider;
   }
@@ -85,7 +86,8 @@ export class BatchBalanceController {
       this.owner?.assertCurrent();
       const multicallAddress = await resolveMulticall3Address(
         this.provider,
-        Number(network.chainId)
+        Number(network.chainId),
+        this.capabilityProvider
       );
       this.owner?.assertCurrent();
       if (!multicallAddress) {

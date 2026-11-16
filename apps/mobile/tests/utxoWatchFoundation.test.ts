@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bech32, bech32m } from 'bech32';
+import { deriveDescriptorAddress } from '@sidhujag/sysweb3-keyring/cjs/utils/watch-descriptor.js';
 import { UTXO_NETWORKS, getUtxoNetwork, getUtxoSdkNetwork, mergeUtxoNetworks, projectUtxoRegistration, utxoRegistrationData, type UtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import { normalizeUtxoAddress } from '../src/core/utxoAddresses.ts';
 import { createUtxoBalanceReader, UtxoBalanceError, type UtxoBalanceErrorCode } from '../src/core/utxoBalanceReader.ts';
 import { getNetwork } from '../src/core/networks.ts';
 import { getDefaultUTXONetworks } from '../../../source/utils/defaultNetworks.ts';
-import { UTXO_ADDRESSES, XPUB, metadata } from './publicWatchFixtures.ts';
+import { UTXO_ADDRESSES, XPUB, KEY, metadata } from './publicWatchFixtures.ts';
 
 // Public BIP173 witness-program vector; no keys are generated or read.
 const PROGRAM = Uint8Array.from(Buffer.from('751e76e8199196d454941c45d1b3a323f1433bd6', 'hex'));
@@ -314,7 +315,7 @@ test('bounds every response, including lying content length, multibyte native te
     await assert.rejects(createUtxoBalanceReader(responses('bitcoin', [oversized])).readBalance('bitcoin', BTC, signal()), code('RESPONSE_TOO_LARGE'));
   }
   const fixture = responses('syscoin', [statusFor('syscoin'), { blockHash: getUtxoNetwork('syscoin').genesisHash },
-    { ...balanceFor('syscoin'), tokens: ['x'.repeat(32768)] }]);
+    { ...balanceFor('syscoin'), tokens: ['x'.repeat(256 * 1024)] }]);
   await assert.rejects(createUtxoBalanceReader(fixture).readBalance('syscoin', SYS, signal()), code('RESPONSE_TOO_LARGE'));
   const genesis = responses('bitcoin', [statusFor('bitcoin'), { blockHash: getUtxoNetwork('bitcoin').genesisHash, padding: 'x'.repeat(32768) }]);
   await assert.rejects(createUtxoBalanceReader(genesis).readBalance('bitcoin', BTC, signal()), code('RESPONSE_TOO_LARGE'));
@@ -394,4 +395,22 @@ test('reader requires an explicit function port and never falls back to ambient 
     createUtxoBalanceReader({ fetch: async () => { calls++; return json({}); } });
     assert.equal(calls, 0); assert.equal(getterCalls, 0);
   } finally { globalThis.fetch = original; }
+});
+
+for (const count of [100, 200, 1000]) test(`bounded account summary accepts ${count} real public child addresses and negative pending units`, async () => {
+  const tokens = Array.from({ length: count }, (_, index) => ({
+    type: 'XPUBAddress', name: deriveDescriptorAddress(`wpkh(${XPUB}/0/*)`, { kind: 'syscoin', slip44: 0, currency: 'BTC' } as never, { index }),
+    path: `m/84'/0'/0'/0/${index}`, transfers: 1, decimals: 8, balance: '12345', totalReceived: '12345', totalSent: '0',
+  }));
+  const summary = { address: KEY, balance: '12345', unconfirmedBalance: '-123', unconfirmedTxs: 2, tokens };
+  const bytes = Buffer.byteLength(JSON.stringify(summary));
+  assert.ok(bytes < 256 * 1024);
+  if (count >= 200) assert.ok(bytes > 32768);
+  const fixture = responses('bitcoin', [metadata('bitcoin'), { blockHash: getUtxoNetwork('bitcoin').genesisHash }, summary]);
+  const result = await createUtxoBalanceReader(fixture).readAccount('bitcoin', XPUB, signal());
+  assert.equal(result.confirmedUnits, '12345');
+  assert.equal(result.pendingDeltaUnits, '-123');
+  assert.equal(result.unconfirmedTransactions, 2);
+  assert.equal(fixture.calls.length, 3);
+  assert.ok(fixture.calls[2]!.url.endsWith('?details=tokenBalances&tokens=nonzero'));
 });

@@ -45,14 +45,14 @@ export function createUtxoBalanceReader(options: Readonly<{ fetch: UtxoFetch; ti
     } catch { return utxoFailure('INVALID_INPUT'); }
     let session: UtxoReadSession | undefined;
     try {
-      session = await openUtxoReadSession(network, checked, signal, false, undefined, undefined, assertCurrent);
+      session = await openUtxoReadSession(network, checked, signal, false, 320 * 1024, 32 * 1024, assertCurrent);
       const active = session, prefix = active.network.endpoint.replace(/\/$/, '');
       const summary = utxoObject(await syscoinUtils.fetchBackendAccount(prefix, canonical, 'details=tokenBalances&tokens=nonzero', isAccount, undefined, {
         signal,
         // SJS owns account routing. The native session owns cancellation, identity and size bounds.
         fetch: async (url: string, init: RequestInit) => {
           if (init.method !== 'GET' || init.signal !== signal || !url.startsWith(prefix + '/api/v2/')) return utxoFailure('INVALID_INPUT');
-          const body = await active.read(url.slice(prefix.length));
+          const body = await active.read(url.slice(prefix.length), false, 256 * 1024);
           return { ok: true, json: async () => body };
         },
       }));

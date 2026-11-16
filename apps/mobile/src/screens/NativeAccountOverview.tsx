@@ -79,11 +79,11 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   const detailCurrent = detail && detail.accountId === accountId && portfolio.source.getSnapshot().account?.network === detail.networkId;
   const pauseOverview = detail?.accountId === accountId;
   const currency = preference.status === 'ready' ? preference.currency : null;
+  useLayoutEffect(() => { controller.setCurrency(currency); }, [controller, currency]);
   useLayoutEffect(() => {
     if (preference.status === 'loading' || pauseOverview) return;
-    controller.setCurrency(currency);
     return controller.connect();
-  }, [controller, pauseOverview, preference.status, currency]);
+  }, [controller, pauseOverview, preference.status]);
   const closeDetail = useCallback(() => { lifetime.current.generation++; lifetime.current.busy = false; setBusy(false); setDetail(null); closeExternalDetail?.(); }, [closeExternalDetail]);
   const closeSheet = useCallback(() => { if (busy && sheet !== 'filter') cancelSelection?.(); closeDetail(); setSheet(null); }, [busy, sheet, cancelSelection, closeDetail]);
   useLayoutEffect(() => portfolio.navigation?.registerBack(() => {

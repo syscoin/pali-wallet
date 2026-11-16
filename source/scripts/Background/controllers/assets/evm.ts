@@ -510,6 +510,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
   ): Promise<ITokenEthProps[]> => {
     owner?.assertCurrent();
     if (isEmpty(accountAssets)) return [];
+    const capabilityProvider = w3Provider;
     w3Provider = ownedAssetProvider(w3Provider, owner);
 
     // Filter assets for current network
@@ -534,7 +535,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Use BatchBalanceController for regular ERC-20 tokens
     let updatedRegularTokens: ITokenEthProps[] = [];
     if (regularTokens.length > 0) {
-      const batchController = new BatchBalanceController(w3Provider, owner);
+      const batchController = new BatchBalanceController(
+        w3Provider,
+        owner,
+        capabilityProvider
+      );
 
       const balances = await batchController.getBatchTokenBalances(
         regularTokens,

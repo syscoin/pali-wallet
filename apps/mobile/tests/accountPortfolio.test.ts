@@ -169,6 +169,36 @@ test('currency changes clear old quotes before displaying the new currency', asy
   } finally { stop(); }
 });
 
+test('currency-only changes preserve all observed chain rows and request only quotes', async () => {
+  const f = fixture('ethereum', ['ethereum'], 2, 20), model = f.make(), stop = model.connect();
+  try {
+    await settle();
+    const observed = model.getSnapshot().rows.map(row => ({ units: row.units, updatedAt: row.updatedAt, tokens: row.tokens.map(token => token.units) }));
+    const chainCalls = [f.reads.length, f.tokens.length];
+    f.prices.length = 0;
+    model.setCurrency('eur'); await settle();
+    assert.deepEqual([f.reads.length, f.tokens.length], chainCalls);
+    assert.equal(f.prices.length, 21);
+    assert.deepEqual(model.getSnapshot().rows.map(row => ({ units: row.units, updatedAt: row.updatedAt, tokens: row.tokens.map(token => token.units) })), observed);
+    f.prices.length = 0;
+    model.setCurrency(null); await settle();
+    assert.deepEqual([f.reads.length, f.tokens.length], chainCalls);
+    assert.equal(f.prices.length, 0);
+    assert.equal(model.getSnapshot().rows[0]?.price, null);
+  } finally { stop(); }
+});
+
+test('changing fiat during a balance request does not retire the chain observation', async () => {
+  const f = fixture(), held = Promise.withResolvers<void>(); f.hold(held.promise);
+  const model = f.make(), stop = model.connect();
+  try {
+    await settle(); model.setCurrency('eur'); held.resolve(); await settle();
+    assert.equal(f.reads.length, 1);
+    assert.equal(model.getSnapshot().rows[0]?.status, 'available');
+    assert.equal(model.getSnapshot().rows[0]?.price, 20);
+  } finally { stop(); }
+});
+
 test('a late quote from the previous currency cannot repopulate the current total', async () => {
   const f = fixture(), held = Promise.withResolvers<void>(); f.holdQuote(held.promise);
   const model = f.make(), stop = model.connect();

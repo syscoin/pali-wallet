@@ -756,3 +756,38 @@ it('does not cache a failed native price read or hold later retries behind it', 
   expect((await controller.getTokenPriceData(1, 'usd')).price).toBe(5);
   expect(retryableFetch).toHaveBeenCalledTimes(2);
 });
+
+it('passes the stable provider identity separately from the active asset read owner', async () => {
+  const provider = {};
+  const owner = {
+    signal: new AbortController().signal,
+    assertCurrent: jest.fn(),
+  };
+  (BatchBalanceController as jest.Mock).mockImplementation(() => ({
+    getBatchTokenBalances: async () => new Map(),
+  }));
+  await EvmAssetsController().updateAllEvmTokens(
+    { address: ACCOUNT } as any,
+    1,
+    provider as any,
+    [
+      {
+        contractAddress: TOKEN,
+        chainId: 1,
+        decimals: 0,
+        isNft: false,
+        tokenSymbol: 'T',
+      },
+    ] as any,
+    undefined,
+    owner
+  );
+  expect(BatchBalanceController).toHaveBeenCalledWith(
+    expect.anything(),
+    owner,
+    provider
+  );
+  expect((BatchBalanceController as jest.Mock).mock.calls[0][0]).not.toBe(
+    provider
+  );
+});

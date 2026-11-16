@@ -1,32 +1,45 @@
 import * as sys from 'syscoinjs-lib';
 
-// Cache for in-flight requests to prevent duplicate network calls
-const requestCache = new Map<
-  string,
-  {
-    abortController?: AbortController;
-    details: string;
-    detailsLevel: number;
-    promise: Promise<any>;
-    scopeKey: string;
-    timestamp: number;
-  }
->();
-
-// Cache cleanup - remove entries older than 5 seconds
-const CACHE_TTL = 5000;
-const cleanupCache = () => {
-  const now = Date.now();
-  requestCache.forEach((entry, key) => {
-    if (now - entry.timestamp > CACHE_TTL) {
-      // Cancel any pending request before removing
-      if (entry.abortController) {
-        entry.abortController.abort();
-      }
-      requestCache.delete(key);
-    }
-  });
+type AccountRequest = {
+  abortController: AbortController;
+  details: string;
+  detailsLevel: number;
+  promise: Promise<any>;
+  scopeKey: string;
+  settled: boolean;
+  subscribers: number;
 };
+const requestCache = new Map<string, AccountRequest>();
+const REQUEST_TIMEOUT_MS = 30_000;
+
+const cancelled = () =>
+  Object.assign(new Error('Request was cancelled'), { name: 'AbortError' });
+
+function subscribe(entry: AccountRequest, signal?: AbortSignal): Promise<any> {
+  entry.subscribers++;
+  return new Promise((resolve, reject) => {
+    let finished = false;
+    const done = (complete: () => void) => {
+      if (finished) return;
+      finished = true;
+      signal?.removeEventListener('abort', abort);
+      entry.abortController.signal.removeEventListener('abort', abort);
+      entry.subscribers--;
+      if (!entry.settled && !entry.subscribers) entry.abortController.abort();
+      complete();
+    };
+    const abort = () => done(() => reject(cancelled()));
+    signal?.addEventListener('abort', abort, { once: true });
+    entry.abortController.signal.addEventListener('abort', abort, {
+      once: true,
+    });
+    if (signal?.aborted || entry.abortController.signal.aborted) abort();
+    entry.promise.then(
+      (value) => done(() => resolve(value)),
+      (error) => done(() => reject(error))
+    );
+  });
+}
 
 // Blockbook `details=` levels are strictly cumulative: every level includes the
 // summary fields (balance, unconfirmedBalance, txs, unconfirmedTxs, ...) that a
@@ -80,8 +93,7 @@ export const fetchBackendAccountCached = async (
   _parseData: boolean,
   signal?: AbortSignal
 ): Promise<any> => {
-  // Clean up old entries
-  cleanupCache();
+  if (signal?.aborted) throw cancelled();
 
   // Detect whether the identifier is an XPUB-like or descriptor; descriptors use xpub endpoint
   const looksLikeXpub = /^(xpub|tpub|zpub|vpub)/i.test(xpubOrAddress);
@@ -102,7 +114,9 @@ export const fetchBackendAccountCached = async (
     console.log(
       `[fetchBackendAccountWrapper] Using in-flight request for ${cacheKey}`
     );
-    return cachedEntry.promise;
+    if (!cachedEntry.abortController.signal.aborted)
+      return subscribe(cachedEntry, signal);
+    requestCache.delete(cacheKey);
   }
 
   // Level-aware reuse: a basic request only needs the summary fields, which every
@@ -112,66 +126,79 @@ export const fetchBackendAccountCached = async (
       if (
         entry.scopeKey === scopeKey &&
         entry.detailsLevel >= BASIC_LEVEL &&
-        entry.details !== 'txsummary'
+        entry.details !== 'txsummary' &&
+        !entry.abortController.signal.aborted
       ) {
         console.log(
           `[fetchBackendAccountWrapper] Satisfying basic request from in-flight higher-level request for ${scopeKey}`
         );
-        return entry.promise;
+        return subscribe(entry, signal);
       }
     }
   }
 
-  // Create abort controller for this request
   const abortController = new AbortController();
-
-  // If an external signal is provided, link it to our abort controller
-  if (signal) {
-    signal.addEventListener('abort', () => {
-      abortController.abort();
-    });
-  }
-
-  // Create new request and cache it
-  console.log(
-    `[fetchBackendAccountWrapper] Creating new request for ${cacheKey}`
-  );
-
+  const timer = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
   const requestPromise = sys.utils
-    .fetchBackendAccount(networkUrl, xpubOrAddress, requestOptions, isXpub)
-    .catch((error) => {
-      // If the request was aborted, throw a specific error
-      if (abortController.signal.aborted) {
-        throw new Error('Request was cancelled');
+    .fetchBackendAccount(
+      networkUrl,
+      xpubOrAddress,
+      requestOptions,
+      isXpub,
+      undefined,
+      {
+        signal: abortController.signal,
+        fetch: async (url: string, init: RequestInit) => {
+          const response = await fetch(url, {
+            ...init,
+            signal: abortController.signal,
+          });
+          if (abortController.signal.aborted) {
+            try {
+              await response.body?.cancel();
+            } catch {
+              /* Preserve cancellation. */
+            }
+            throw cancelled();
+          }
+          return response;
+        },
       }
-      throw error;
+    )
+    .then((value: any) => {
+      if (abortController.signal.aborted) throw cancelled();
+      return value;
     });
-
-  // Store the promise in cache with abort controller
-  requestCache.set(cacheKey, {
-    promise: requestPromise,
-    timestamp: Date.now(),
+  const entry: AccountRequest = {
     abortController,
     details,
     detailsLevel,
+    promise: requestPromise,
     scopeKey,
-  });
-
-  // Clean up cache entry after request completes
+    settled: false,
+    subscribers: 0,
+  };
+  requestCache.set(cacheKey, entry);
+  abortController.signal.addEventListener(
+    'abort',
+    () => {
+      clearTimeout(timer);
+      if (requestCache.get(cacheKey) === entry) requestCache.delete(cacheKey);
+    },
+    { once: true }
+  );
   void requestPromise
     .finally(() => {
-      // An expired request must not remove the replacement using its key.
+      clearTimeout(timer);
+      entry.settled = true;
+      // Only completed results have a short reuse lifetime. Pending work keeps
+      // its owner until completion, cancellation or its physical deadline.
       setTimeout(() => {
-        if (requestCache.get(cacheKey)?.promise === requestPromise)
-          requestCache.delete(cacheKey);
+        if (requestCache.get(cacheKey) === entry) requestCache.delete(cacheKey);
       }, 100);
     })
-    .catch(() => {
-      // The original promise still rejects to its caller; consume only the
-      // derived cleanup chain so it cannot produce another unhandled rejection.
-    });
-
-  return requestPromise;
+    .catch(() => undefined);
+  return subscribe(entry, signal);
 };
 
 // Export a function to clear all cached requests
