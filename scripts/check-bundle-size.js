@@ -41,7 +41,9 @@ const budget = {
   // Allow 5 KB for these transport changes; all startup caps stay fixed.
   // Endpoint identity leases, canonical history repair and public RPC envelope
   // checks add 5,978 measured bytes. Reserve 10 KB for these checked fixes.
-  package: 12170000,
+  // Retained replacement admission, retired read ownership and bounded CCIP
+  // add 6,974 bytes at e7555588 / SDK 5a3d3563. Reserve 10 KB for these fixes.
+  package: 12180000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
