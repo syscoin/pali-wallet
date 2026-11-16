@@ -14,6 +14,10 @@ import {
 
 import { getSmartAccountUserOpRequiredPrefund } from './account';
 import {
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from './assetSpendability';
+import {
   signSmartAccountActionHash as dispatchSmartAccountActionHash,
   type SmartAccountAuthenticatorPorts,
   type SmartAccountAuthenticatorSigningCallback,
@@ -88,6 +92,7 @@ const getSmartAccountSubmitJobKey = async ({
   accountAddress,
   accountId,
   executions,
+  expectedErc20Transfers,
   expectedContext,
   feeOverrides,
   approvedFeeQuote,
@@ -101,6 +106,7 @@ const getSmartAccountSubmitJobKey = async ({
   >;
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   feeOverrides?: SmartAccountFeeOverrides;
   smartAccount: ISmartAccountMetadata;
 }) =>
@@ -118,6 +124,7 @@ const getSmartAccountSubmitJobKey = async ({
         target: execution.target.toLowerCase(),
         value: execution.value,
       })),
+      expectedErc20Transfers: expectedErc20Transfers ?? null,
       expectedContext: expectedContext ?? null,
       feeOverrides: {
         gasPrice: feeOverrides?.gasPrice ?? null,
@@ -139,6 +146,7 @@ export type SubmitSmartAccountExecutionsParams = {
   controllerEmitter: ControllerEmitter;
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   feeOverrides?: SmartAccountFeeOverrides;
   onAssertionResolved?: () => void;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
@@ -169,6 +177,7 @@ export const prepareSmartAccountFeeQuote = async ({
   accountId,
   controllerEmitter,
   executions,
+  expectedErc20Transfers,
   expectedContext,
   feeOverrides,
   maximumGasUnits,
@@ -178,6 +187,7 @@ export const prepareSmartAccountFeeQuote = async ({
   controllerEmitter: ControllerEmitter;
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   feeOverrides?: SmartAccountFeeOverrides;
   maximumGasUnits?: string;
 }): Promise<SmartAccountFeeQuote> => {
@@ -215,7 +225,13 @@ export const prepareSmartAccountFeeQuote = async ({
     [
       executions,
       accountId,
-      { ...(expectedContext ? { expectedContext } : {}), feeOverrides },
+      {
+        ...(expectedContext ? { expectedContext } : {}),
+        feeOverrides,
+        expectedErc20Transfers: snapshotSmartAccountExpectedErc20Transfers(
+          expectedErc20Transfers
+        ),
+      },
     ],
     300000
   );
@@ -495,6 +511,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     authenticatorContexts,
     controllerEmitter,
     executions,
+    expectedErc20Transfers: suppliedExpectedTransfers,
     expectedContext,
     feeOverrides,
     approvedFeeQuote,
@@ -510,6 +527,9 @@ export const signAndSubmitSmartAccountExecutions = async (
     useCachedMetadata,
     waitForConfirmation,
   } = params;
+  const expectedErc20Transfers = snapshotSmartAccountExpectedErc20Transfers(
+    suppliedExpectedTransfers
+  );
   const validatorIdForJob =
     smartAccount.auth?.module || smartAccount.auth?.scheme;
   // An external approval owns its own context checks and durable submit marker.
@@ -521,6 +541,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         accountAddress,
         accountId,
         executions,
+        expectedErc20Transfers,
         expectedContext,
         feeOverrides,
         approvedFeeQuote,
@@ -548,6 +569,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         {
           ...(expectedContext ? { expectedContext } : {}),
           feeOverrides,
+          expectedErc20Transfers,
           useCachedMetadata: useCachedMetadataOverride,
           ...(retainedContextId
             ? { executionContextId: retainedContextId }
@@ -625,6 +647,7 @@ export const signAndSubmitSmartAccountExecutions = async (
       [
         {
           executionCalldata: prepared.executionCalldata,
+          expectedErc20Transfers,
           executions: prepared.executions,
           accountId: prepared.accountId,
           executionContextId: prepared.executionContextId,

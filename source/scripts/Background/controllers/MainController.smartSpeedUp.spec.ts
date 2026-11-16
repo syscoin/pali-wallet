@@ -93,7 +93,7 @@ const SMART = `0x${'22'.repeat(20)}`;
 const TARGET = `0x${'33'.repeat(20)}`;
 const REPLACEMENT = `0x${'55'.repeat(32)}`;
 const CHAIN = 5700;
-const APPROVED_MAXIMUM_FEE = '100000000000';
+const APPROVED_MAXIMUM_FEE = '100000000';
 const owner = { type: KeyringAccountType.SmartAccount, id: 7 };
 const signedOriginal = (
   legacy = false,
@@ -430,6 +430,9 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     );
     const posts: Transaction[] = [];
     let balance = BigInt('1000000000');
+    let pendingBalance: bigint | undefined;
+    let baseFee = 150;
+    let blockGasLimit = 30_000_000;
     const reads: string[] = [];
     const fixtureFetch = async (url, init): Promise<Response> => {
       expect(url).toBe('https://offline.example');
@@ -453,13 +456,16 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       if (method === 'eth_chainId') result = `0x${CHAIN.toString(16)}`;
       else if (method === 'eth_getTransactionCount') result = '0x8';
       else if (method === 'eth_getBalance')
-        result = `0x${balance.toString(16)}`;
+        result = `0x${(params[1] === 'pending'
+          ? pendingBalance ?? balance
+          : balance
+        ).toString(16)}`;
       else if (method === 'eth_getBlockByNumber')
         result = {
           number: '0x64',
           hash: `0x${'71'.repeat(32)}`,
-          gasLimit: '0x1c9c380',
-          baseFeePerGas: '0x96',
+          gasLimit: `0x${blockGasLimit.toString(16)}`,
+          baseFeePerGas: `0x${baseFee.toString(16)}`,
         };
       else if (method === 'eth_getCode') result = '0x';
       else if (method === 'eth_sendRawTransaction') {
@@ -474,10 +480,9 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       });
     };
     jest.spyOn(global, 'fetch').mockImplementation(fixtureFetch);
-    let baseFee = 150;
     provider.getGasPrice = jest.fn(async () => BigNumber.from(baseFee));
     provider.getBlock = jest.fn(async () => ({
-      gasLimit: BigNumber.from(30_000_000),
+      gasLimit: BigNumber.from(blockGasLimit),
       baseFeePerGas: BigNumber.from(baseFee),
     }));
     provider.getNetwork = jest.fn(async () => ({ chainId: BigInt(CHAIN) }));
@@ -496,8 +501,14 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       setBalance(value: bigint) {
         balance = value;
       },
+      setPendingBalance(value: bigint) {
+        pendingBalance = value;
+      },
       setBaseFee(value: number) {
         baseFee = value;
+      },
+      setBlockGasLimit(value: number) {
+        blockGasLimit = value;
       },
       dispose: () => rpc.destroy(),
     };
@@ -570,6 +581,180 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       }
     }
   );
+
+  it.each(
+    ['base-fee', 'block-gas-limit'].flatMap((constraint) =>
+      ['before-confirm', 'before-persist', 'after-persist', 'healthy'].map(
+        (boundary) => ({ constraint, boundary })
+      )
+    )
+  )(
+    'retains the reviewed execution bounds ($constraint, $boundary)',
+    async ({ constraint, boundary }) => {
+      const {
+        journal,
+        journalSession,
+        posts,
+        setBaseFee,
+        setBlockGasLimit,
+        dispose,
+      } = await setupDurableReplacement();
+      try {
+        setBaseFee(100);
+        setBlockGasLimit(30_010);
+        const walletScope = getWalletNavigationScope();
+        const preview = await wallet.speedUpEvmTransaction(
+          ORIGINAL,
+          true,
+          CHAIN,
+          PAYER,
+          { previewOnly: true, walletScope }
+        );
+        const invalidate = () =>
+          constraint === 'base-fee'
+            ? setBaseFee(125)
+            : setBlockGasLimit(29_990);
+        if (boundary === 'before-confirm') invalidate();
+        const append = journal.append.bind(journal);
+        jest.spyOn(journal, 'append').mockImplementation(async (...args) => {
+          if (boundary === 'before-persist') invalidate();
+          const entry = await append(...args);
+          if (boundary === 'after-persist') invalidate();
+          return entry;
+        });
+        const submission = wallet.speedUpEvmTransaction(
+          ORIGINAL,
+          true,
+          CHAIN,
+          PAYER,
+          {
+            approvedMaximumFee: preview.maximumFee,
+            walletScope,
+          }
+        );
+        if (boundary === 'before-confirm') {
+          await expect(submission).rejects.toThrow();
+          expect(posts).toHaveLength(0);
+          expect(
+            await journal.listSender(journalSession, String(CHAIN), PAYER)
+          ).toHaveLength(0);
+          return;
+        }
+        const result = await submission;
+        const entries = await journal.listSender(
+          journalSession,
+          String(CHAIN),
+          PAYER
+        );
+        expect(posts).toHaveLength(boundary === 'healthy' ? 1 : 0);
+        expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+        expect(result.isSpeedUp).toBe(boundary === 'healthy');
+      } finally {
+        dispose();
+      }
+    }
+  );
+
+  it.each(['before-confirm', 'before-persist', 'after-persist', 'healthy'])(
+    'checks canonical cancellation funds (%s)',
+    async (boundary) => {
+      const { journal, journalSession, posts, setBalance, dispose } =
+        await setupDurableReplacement();
+      try {
+        const walletScope = getWalletNavigationScope();
+        const preview = await wallet.cancelEvmTransaction(
+          ORIGINAL,
+          true,
+          8,
+          PAYER,
+          { chainId: CHAIN, walletScope },
+          { previewOnly: true }
+        );
+        if (boundary === 'before-confirm') setBalance(BigInt(0));
+        const append = journal.append.bind(journal);
+        jest.spyOn(journal, 'append').mockImplementation(async (...args) => {
+          if (boundary === 'before-persist') setBalance(BigInt(0));
+          const entry = await append(...args);
+          if (boundary === 'after-persist') setBalance(BigInt(0));
+          return entry;
+        });
+        const submission = wallet.cancelEvmTransaction(
+          ORIGINAL,
+          true,
+          8,
+          PAYER,
+          { chainId: CHAIN, walletScope },
+          { approvedMaximumFee: preview.maximumFee }
+        );
+        if (boundary === 'before-confirm')
+          await expect(submission).rejects.toThrow('Insufficient funds');
+        else expect((await submission).isCanceled).toBe(boundary === 'healthy');
+        const entries = await journal.listSender(
+          journalSession,
+          String(CHAIN),
+          PAYER
+        );
+        expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+        expect(posts).toHaveLength(boundary === 'healthy' ? 1 : 0);
+      } finally {
+        dispose();
+      }
+    }
+  );
+
+  it('refuses an unfunded cancellation preview without signing or persistence', async () => {
+    const { journal, journalSession, posts, setBalance, dispose } =
+      await setupDurableReplacement();
+    try {
+      setBalance(BigInt(0));
+      await expect(
+        wallet.cancelEvmTransaction(
+          ORIGINAL,
+          true,
+          8,
+          PAYER,
+          { chainId: CHAIN, walletScope: getWalletNavigationScope() },
+          { previewOnly: true }
+        )
+      ).rejects.toThrow('Insufficient funds');
+      expect(posts).toHaveLength(0);
+      expect(
+        await journal.listSender(journalSession, String(CHAIN), PAYER)
+      ).toHaveLength(0);
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+    } finally {
+      dispose();
+    }
+  });
+
+  it('retains canonical funding for cancellation when the pending balance is zero', async () => {
+    const { posts, setPendingBalance, dispose } =
+      await setupDurableReplacement();
+    try {
+      setPendingBalance(BigInt(0));
+      const walletScope = getWalletNavigationScope();
+      const preview = await wallet.cancelEvmTransaction(
+        ORIGINAL,
+        true,
+        8,
+        PAYER,
+        { chainId: CHAIN, walletScope },
+        { previewOnly: true }
+      );
+      const result = await wallet.cancelEvmTransaction(
+        ORIGINAL,
+        true,
+        8,
+        PAYER,
+        { chainId: CHAIN, walletScope },
+        { approvedMaximumFee: preview.maximumFee }
+      );
+      expect(result.isCanceled).toBe(true);
+      expect(posts).toHaveLength(1);
+    } finally {
+      dispose();
+    }
+  });
 
   it.each([false, true])(
     'blocks the spending replacement after durable Cancel with a held ACK (already persisted: %s)',

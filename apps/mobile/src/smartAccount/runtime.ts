@@ -19,7 +19,7 @@ import type { SmartAccountActivityIdentity } from '../../../../source/wallet/sma
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
-import { assertSmartAccountSpendability } from '../../../../source/utils/smartAccount/assetSpendability.ts';
+import { assertSmartAccountSpendability, snapshotSmartAccountExpectedErc20Transfers } from '../../../../source/utils/smartAccount/assetSpendability.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
 import { buildGuardianPolicyExecutions } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
@@ -169,6 +169,9 @@ export function createNativeSmartOperation(
     metadata = { ...metadata, customModules: [...(metadata.customModules ?? []).filter(record => record.address.toLowerCase() !== draft.address.toLowerCase()),
       { address: draft.address, name: draft.name, initData: draft.initData, moduleType: 1, compositeCompatible: false }] };
   }
+  const expectedErc20Transfers = intent.kind === 'erc20-transfer'
+    ? snapshotSmartAccountExpectedErc20Transfers([{ contractAddress: intent.token.contractAddress, recipient: intent.recipient, amountUnits: intent.amountUnits, decimals: intent.token.decimals }])
+    : undefined;
   const chainId = Number(ports.network.chainId);
   const nftIntent = intent.kind === 'nft-transfer' ? (() => {
     const { feeChoice: _choice, ...transfer } = intent;
@@ -351,6 +354,7 @@ export function createNativeSmartOperation(
               metadata.isDeployed &&
               hasUsableSmartAccountAuthMetadata(metadata),
             executions,
+            expectedErc20Transfers,
             ...(feeOverrides ? { feeOverrides } : intent.kind === 'dapp-call'
               ? {
                   // Match extension Smart submissions. EOA gas/gasLimit fields
@@ -475,6 +479,7 @@ export function createNativeSmartOperation(
           provider: current.provider,
           chainId,
           userOperation: prepared.userOperation,
+          expectedErc20Transfers,
           assertCurrent,
         });
       });
@@ -656,6 +661,7 @@ export function createNativeSmartOperation(
               return {
                 accountId: account.id,
                 gasPrice: prepared.gasPrice,
+                expectedErc20Transfers: prepared.expectedErc20Transfers,
                 userOperation: prepared.userOperation,
               };
             },

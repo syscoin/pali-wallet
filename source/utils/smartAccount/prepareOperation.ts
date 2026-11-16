@@ -11,7 +11,11 @@ import {
 } from './account.ts';
 import { toPaliSmartAccount } from './adapter.ts';
 import { requireSmartAccountAddressIdentity } from './addressIdentity.ts';
-import { assertSmartAccountSpendability } from './assetSpendability.ts';
+import {
+  assertSmartAccountSpendability,
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from './assetSpendability.ts';
 import {
   getPaliEntryPointAddress,
   getPaliSmartAccountFactoryAddress,
@@ -92,6 +96,7 @@ export async function prepareSmartAccountOperation({
   account,
   chainId,
   executions,
+  expectedErc20Transfers,
   feeOverrides = {},
   knownDeployed,
   pending,
@@ -104,6 +109,7 @@ export async function prepareSmartAccountOperation({
   assertCurrent(): void;
   chainId: number;
   executions: Array<{ data?: string; target: string; value: string }>;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   feeOverrides?: SmartAccountFeeOverrides;
   knownDeployed: boolean;
   pending: SmartAccountPendingState;
@@ -113,11 +119,15 @@ export async function prepareSmartAccountOperation({
     maxFeePerGas: BigNumber
   ): Promise<{ gasPayer: SmartAccountGasPayer; useGasTank: boolean }>;
 }) {
+  expectedErc20Transfers = snapshotSmartAccountExpectedErc20Transfers(
+    expectedErc20Transfers
+  );
   return pending.withReadPhase((phase) =>
     prepareOperation({
       account,
       chainId,
       executions,
+      expectedErc20Transfers,
       feeOverrides,
       knownDeployed,
       pending: phase,
@@ -132,6 +142,7 @@ async function prepareOperation({
   account,
   chainId,
   executions,
+  expectedErc20Transfers,
   feeOverrides = {},
   knownDeployed,
   provider,
@@ -295,6 +306,7 @@ async function prepareOperation({
     provider,
     chainId,
     userOperation,
+    expectedErc20Transfers,
     assertCurrent,
   });
   const actionHash = getSmartAccountUserOpHash(userOperation, chainId);
@@ -305,6 +317,7 @@ async function prepareOperation({
   }));
   return {
     actionHash,
+    ...(expectedErc20Transfers ? { expectedErc20Transfers } : {}),
     execution: orderedExecutions[0],
     executionCalldata: prepared.executionCalldata,
     executions: orderedExecutions,

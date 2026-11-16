@@ -18,6 +18,8 @@ import { requireSmartAccountAddressIdentity } from './addressIdentity.ts';
 import {
   assertSmartAccountSpendability,
   assertSmartAccountAssetSpendability,
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
 } from './assetSpendability.ts';
 import {
   getPaliEntryPointAddress,
@@ -50,6 +52,7 @@ export type SmartAccountSubmitParams = {
   executionContextId: string;
   executions?: SmartAccountExecution[];
   expectedContext?: IEvmTransactionContext;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   gasPayer?: {
     address: string;
     id: number;
@@ -103,6 +106,7 @@ export type SmartAccountSubmitHost<
   getExecutionContext(id: string):
     | {
         accountId: number;
+        expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
         gasPrice?: string;
         userOperation: SmartAccountPackedUserOperation;
       }
@@ -134,6 +138,9 @@ function snapshotSubmitParams(
   return Object.freeze({
     ...params,
     userOperation: Object.freeze({ ...params.userOperation }),
+    expectedErc20Transfers: snapshotSmartAccountExpectedErc20Transfers(
+      params.expectedErc20Transfers
+    ),
     ...(params.gasPayer
       ? { gasPayer: Object.freeze({ ...params.gasPayer }) }
       : {}),
@@ -213,6 +220,12 @@ async function submitOwnedSmartAccountOperation<
         !suppliedOperation ||
         !context.userOperation ||
         params.gasPrice !== context.gasPrice ||
+        JSON.stringify(params.expectedErc20Transfers) !==
+          JSON.stringify(
+            snapshotSmartAccountExpectedErc20Transfers(
+              context.expectedErc20Transfers
+            )
+          ) ||
         Object.entries(context.userOperation).some(
           ([key, value]) =>
             suppliedOperation[key as keyof SmartAccountPackedUserOperation] !==
@@ -281,6 +294,7 @@ async function submitOwnedSmartAccountOperation<
           provider: phase.provider,
           chainId: active.metadata.chainId,
           userOperation: signedUserOperation,
+          expectedErc20Transfers: params.expectedErc20Transfers,
           assertCurrent,
         });
         assertCurrent();
@@ -292,6 +306,7 @@ async function submitOwnedSmartAccountOperation<
             : host.provider,
           chainId: active.metadata.chainId,
           userOperation: signedUserOperation,
+          expectedErc20Transfers: params.expectedErc20Transfers,
           assertCurrent,
         }),
     };
@@ -324,6 +339,7 @@ async function submitOwnedSmartAccountOperation<
           provider: phase.provider,
           chainId: active.metadata.chainId,
           userOperation: signedUserOperation,
+          expectedErc20Transfers: params.expectedErc20Transfers,
           assertCurrent,
         });
       });

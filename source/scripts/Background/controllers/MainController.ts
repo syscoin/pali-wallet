@@ -87,6 +87,7 @@ import {
 import {
   assertEvmFeeApprovalCurrent,
   assertEvmFeeRefreshApproved,
+  assertEvmSpeedUpExecutable,
   EvmFeeBalanceError,
 } from '../../../shared/evmFeeApproval';
 import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
@@ -96,6 +97,7 @@ import {
   withEvmReadPhase,
 } from '../../../shared/evmReadPhase';
 import {
+  assertEvmReceiptCoherence,
   observeEvmTransaction,
   readEvmRpcHash,
   readEvmRpcQuantity,
@@ -489,7 +491,6 @@ import {
 import {
   assertExtensionRetainedCancellationFunds,
   assertExtensionRetainedCancellationReady,
-  assertLiveEvmReplacementChain,
   createExtensionEvmReplay,
   createExtensionEvmReplaySession,
   createExtensionRetainedCancellation,
@@ -2374,7 +2375,6 @@ class MainController {
     });
     // The capture starts before SDK RPC/signing; persistence observes any rejection.
     void replacement.catch(() => undefined);
-    const send = replacementProvider.send.bind(replacementProvider);
     return createEvmSignedRecordLifecycle(records, session, {
       retirementReadForChain,
       replacement,
@@ -2398,6 +2398,10 @@ class MainController {
                     phase.send('eth_getBalance', [payer, tag]),
                     phase.send('eth_getBalance', [payer, 'pending']),
                   ]);
+                assertEvmSpeedUpExecutable(transaction, latest, {
+                  gasLimit: block.gasLimit,
+                  baseFeePerGas: block.baseFee,
+                });
                 const feePerGas =
                   transaction.maxFeePerGas ?? transaction.gasPrice;
                 if (feePerGas === null)
@@ -2440,16 +2444,37 @@ class MainController {
           if (!isEvmProtectedEmptySelfCall(transaction, context.operation))
             throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
         }
-        await assertLiveEvmReplacementChain(
+        await withEvmReadPhase(
           replacementProvider,
-          context.network.chainId,
-          assertDispatchCurrent
-        );
-        await assertEvmCancellationPayerReady(
-          payer,
-          record.nonce,
-          (method, address, tag) => send(method, [address, tag]),
-          assertDispatchCurrent
+          assertDispatchCurrent,
+          async (phase) => {
+            const readiness = assertEvmCancellationPayerReady(
+              payer,
+              record.nonce,
+              (method, address, tag) => phase.send(method, [address, tag]),
+              assertDispatchCurrent
+            );
+            let affordability: Promise<void> | undefined;
+            if (context.operation === 'cancel') {
+              const transaction = Transaction.from(record.rawTransaction);
+              const feePerGas =
+                transaction.maxFeePerGas ?? transaction.gasPrice;
+              if (feePerGas === null)
+                throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+              const { maximumFee } = getEvmTransferCost(
+                transaction.value,
+                transaction.gasLimit,
+                feePerGas
+              );
+              affordability = assertExtensionRetainedCancellationFunds(
+                phase,
+                payer,
+                maximumFee,
+                assertDispatchCurrent
+              );
+            }
+            await Promise.all([readiness, affordability]);
+          }
         );
       },
     });
@@ -8849,7 +8874,14 @@ class MainController {
       assertCurrentContext
     );
     assertCurrentContext();
-    return await transactionController.cancelSentTransaction(
+    if (!previewOnly)
+      await assertExtensionRetainedCancellationFunds(
+        provider,
+        normalizedSignerAddress,
+        BigInt(approvedMaximumFee!),
+        assertCurrentContext
+      );
+    const result = await transactionController.cancelSentTransaction(
       txHash,
       isLegacy,
       fallbackNonce,
@@ -8865,6 +8897,14 @@ class MainController {
             }),
       }
     );
+    if (previewOnly && !result.error && result.maximumFee !== undefined)
+      await assertExtensionRetainedCancellationFunds(
+        provider,
+        normalizedSignerAddress,
+        BigInt(result.maximumFee),
+        assertCurrentContext
+      );
+    return result;
   }
 
   public async setEvmTransactionCancelSubmitted(
@@ -15801,14 +15841,26 @@ class MainController {
 
       // Get block timestamp for accurate timestamp (better than Date.now())
       let timestamp = Math.floor(Date.now() / 1000);
-      if (receipt && receipt.blockNumber) {
+      if (receipt) {
         try {
           const block = await provider.getBlock(receipt.blockNumber);
+          assertEvmReceiptCoherence(
+            {
+              hash,
+              from: tx.from,
+              to: tx.to,
+              blockHash: tx.blockHash,
+              blockNumber: tx.blockNumber,
+            },
+            receipt,
+            block
+          );
           timestamp = block ? block.timestamp : timestamp;
         } catch (blockError) {
           console.log(
             `Could not fetch block ${receipt.blockNumber} for timestamp`
           );
+          return null;
         }
       }
 

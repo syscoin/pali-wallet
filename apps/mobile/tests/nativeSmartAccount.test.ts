@@ -6463,3 +6463,83 @@ for (const codeBytes of standard === 'native' ? [1] : [1, 20 * 1024]) test(`coun
     console.log('NATIVE_EOA_COUNTS', JSON.stringify({ standard, preparation, confirm: measure() }));
   } finally { transfers.dispose(); await f.close(); }
 });
+
+
+for (const boundary of ['prepare', 'owner-signing', 'after-owner-signing', 'payer-review', 'payer-signing', 'payer-persistence'] as const)
+test(`Smart ERC20 reviewed precision rejects changes at ${boundary}`, async () => {
+  let changePrecision: (() => void) | undefined;
+  const f = await fixture({ after(kind, sql) {
+    if (boundary === 'payer-persistence' && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && changePrecision) {
+      changePrecision(); changePrecision = undefined;
+    }
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Precision admission' });
+    const token = { contractAddress: '0x5555555555555555555555555555555555555555', name: 'Token', symbol: 'TKN', decimals: 0 };
+    f.tokenBalance(token.contractAddress, 9n, 0);
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.add(registry.revision, token, () => undefined);
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'erc20', contractAddress: token.contractAddress, amount: '1' }, () => undefined, null);
+    const change = () => f.tokenBalance(token.contractAddress, 9n, 18);
+    if (boundary === 'prepare') change();
+    await operation.prepare();
+    if (boundary !== 'prepare') {
+      assert.equal(operation.getSnapshot().phase, 'authorize');
+      if (boundary === 'owner-signing') change();
+      if (boundary === 'after-owner-signing') f.onSignature(change);
+      const sending = operation.authorize(operation.getSnapshot().revision);
+      if (boundary !== 'owner-signing') {
+        for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+        const review = operation.getSnapshot().payerReview;
+        if (boundary.startsWith('payer-')) assert(review, JSON.stringify(operation.getSnapshot()));
+        if (boundary === 'payer-review') change();
+        if (boundary === 'payer-signing') f.onPayerSignature(change);
+        if (boundary === 'payer-persistence') changePrecision = change;
+        if (review) operation.confirmPayer(review.id);
+      }
+      await sending;
+    }
+    assert.equal(operation.getSnapshot().phase, 'failed', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 0);
+    assert.equal(f.signatures.length, boundary === 'prepare' || boundary === 'owner-signing' ? 0 : 1);
+    if (boundary === 'payer-signing' || boundary === 'payer-persistence') {
+      assert.equal(f.payerSignatures.length, 1);
+      const identity = (await f.storage.recovery.readIdentity())!.root!;
+      const retained = await f.storage.signedRecords.read(identity.profileId);
+      assert(retained); assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
+    }
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const count of [1, 10, 20]) test(`Smart ERC20 batch classification groups ${count} independent contracts`, async () => {
+  const f = await fixture({}, true);
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Counted asset batch' });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    f.mutateSelectedSmart(account => {
+      account.smartAccount!.isDeployed = true;
+      account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(1, 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
+    });
+    const contracts = Array.from({ length: count }, (_, i) => '0x' + (100 + i).toString(16).padStart(40, '0'));
+    contracts.forEach(contract => f.tokenBalance(contract, 9n, 18));
+    const host = await f.runtime.openConnectionHost(), selected = host.context().accounts.find(account => account.type === 'SmartAccount')!;
+    const origin = 'https://batch.example', bundleId = '0x0102', reservationId = 'reserved';
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType, chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: origin, date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({ account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant, network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration() }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    assert.equal(await host.calls.reserveSendCallsBundle(origin, bundleId, { atomic: true, smartAccount: true, chainId: 1 }, reservationId, selected.address), true);
+    const calls = contracts.map(to => ({ to, value: '0x0', data: new Interface(['function transfer(address,uint256)']).encodeFunctionData('transfer', ['0x2222222222222222222222222222222222222222', 1]) }));
+    const prepared = await host.prepareCalls({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', calls: { version: '2.0.0', from: selected.address, chainId: '0x1', atomicRequired: true, calls }, origin, bundleId, reservationId, approval }, () => undefined, null);
+    operation = prepared.operation;
+    f.calls.length = 0; f.rpcBatches.length = 0;
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+    const classification = f.rpcBatches.filter(batch => batch.length === count * 2 && batch.every(method => method === 'eth_call'));
+    assert.equal(classification.length, 1, JSON.stringify(f.rpcBatches));
+    const counts = { methods: f.calls.length, http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0) };
+    console.log('SMART_BATCH_CLASSIFICATION_COUNTS', JSON.stringify({ count, ...counts }));
+  } finally { operation?.dispose(); approval?.dispose(); await f.close(); }
+});

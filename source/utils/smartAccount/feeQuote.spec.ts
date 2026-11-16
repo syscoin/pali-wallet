@@ -62,6 +62,30 @@ describe('trusted smart-account fee quote', () => {
     expect(emitter.mock.calls[0][1][1]).toBe(19);
   });
 
+  it('captures wallet-authored precision before awaiting preparation', async () => {
+    const transfers = [
+      {
+        contractAddress: executions[0].target,
+        recipient: sender,
+        amountUnits: '1',
+        decimals: 6,
+      },
+    ];
+    const emitter = jest.fn().mockResolvedValue(prepared());
+    const result = prepareSmartAccountFeeQuote({
+      accountAddress: sender,
+      executions,
+      expectedErc20Transfers: transfers,
+      controllerEmitter: emitter,
+      feeOverrides: { gasPrice: '5' },
+    });
+    transfers[0].decimals = 18;
+    await result;
+    const captured = emitter.mock.calls[0][1][2].expectedErc20Transfers;
+    expect(captured[0].decimals).toBe(6);
+    expect(Object.isFrozen(captured[0])).toBe(true);
+  });
+
   it.each([
     [
       'sender',

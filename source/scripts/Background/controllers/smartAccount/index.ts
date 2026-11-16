@@ -78,7 +78,11 @@ import {
   SmartAccountAuthenticatorBuildResult,
   toPaliSmartAccount,
 } from 'utils/smartAccount';
-import { assertSmartAccountSpendability } from 'utils/smartAccount/assetSpendability';
+import {
+  assertSmartAccountSpendability,
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from 'utils/smartAccount/assetSpendability';
 import { deriveDefaultSmartAccount } from 'utils/smartAccount/bootstrap';
 import {
   getPaliInfrastructureContracts,
@@ -503,6 +507,7 @@ class SmartAccountController {
             provider: phase.provider,
             chainId: context.snapshot.chainId,
             userOperation: context.userOperation!,
+            expectedErc20Transfers: context.prepared?.expectedErc20Transfers,
             assertCurrent: () =>
               this.assertSmartAccountExecutionContext(executionContextId),
           }),
@@ -1653,6 +1658,7 @@ class SmartAccountController {
     accountId?: number,
     options: {
       expectedContext?: IEvmTransactionContext;
+      expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
       feeOverrides?: {
         gasPrice?: string;
         maxFeePerGas?: string;
@@ -1664,6 +1670,9 @@ class SmartAccountController {
     if (options.expectedContext)
       this.assertExpectedExecutionContext(options.expectedContext, accountId);
     const feeOverrides = { ...options.feeOverrides };
+    const expectedErc20Transfers = snapshotSmartAccountExpectedErc20Transfers(
+      options.expectedErc20Transfers
+    );
     const legacyGasPrice = getExplicitSmartAccountGasPrice(feeOverrides);
     const snapshot = this.infrastructureContext();
     const assertContext = () => {
@@ -1762,6 +1771,7 @@ class SmartAccountController {
           account: { ...active.account, smartAccount: active.metadata },
           chainId: snapshot.chainId,
           executions: params,
+          expectedErc20Transfers,
           feeOverrides,
           knownDeployed: useDeployedMetadata,
           provider,
@@ -1835,6 +1845,7 @@ class SmartAccountController {
           value: BigInt(value).toString(),
         })),
         feeOverrides,
+        expectedErc20Transfers,
       }),
       pending: createSmartAccountPendingState(
         rawProvider,
@@ -1853,6 +1864,7 @@ class SmartAccountController {
     options: {
       executionContextId: string;
       expectedContext?: IEvmTransactionContext;
+      expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
       feeOverrides?: {
         gasPrice?: string;
         maxFeePerGas?: string;
@@ -1871,6 +1883,9 @@ class SmartAccountController {
         value: BigInt(value).toString(),
       })),
       feeOverrides: options.feeOverrides || {},
+      expectedErc20Transfers: snapshotSmartAccountExpectedErc20Transfers(
+        options.expectedErc20Transfers
+      ),
     });
     if (
       !context.prepared ||
@@ -1936,7 +1951,12 @@ class SmartAccountController {
         getExecutionContext: (id) => {
           const context = this.executionContexts.get(id);
           return context?.userOperation
-            ? { ...context, userOperation: context.userOperation }
+            ? {
+                ...context,
+                userOperation: context.userOperation,
+                expectedErc20Transfers:
+                  context.prepared?.expectedErc20Transfers,
+              }
             : undefined;
         },
         getSmartAccountById: (id) => this.getSmartAccountById(id),

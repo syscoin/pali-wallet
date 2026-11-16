@@ -357,6 +357,48 @@ describe('smart-account execution approval context', () => {
     expect(provider.estimateGas).toHaveBeenCalledTimes(estimates);
   });
 
+  it('binds retained reuse to wallet-authored token precision', async () => {
+    const prepared = await prepare();
+    const transfers = [
+      {
+        contractAddress: TARGET,
+        recipient: OWNER,
+        amountUnits: '1',
+        decimals: 6,
+      },
+    ];
+    const context = controller.executionContexts.get(
+      prepared.executionContextId
+    );
+    context.prepared.expectedErc20Transfers = transfers;
+    context.executionIntent = JSON.stringify({
+      ...JSON.parse(context.executionIntent),
+      expectedErc20Transfers: transfers,
+    });
+    const options = {
+      executionContextId: prepared.executionContextId,
+      expectedContext,
+      expectedErc20Transfers: transfers,
+    };
+    expect(
+      controller.reuseSmartAccountExecutions(calls, 7, options)
+        .expectedErc20Transfers
+    ).toEqual(transfers);
+    expect(() =>
+      controller.reuseSmartAccountExecutions(calls, 7, {
+        ...options,
+        expectedErc20Transfers: undefined,
+      })
+    ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+    expect(() =>
+      controller.reuseSmartAccountExecutions(calls, 7, {
+        ...options,
+        expectedErc20Transfers: [{ ...transfers[0], decimals: 18 }],
+      })
+    ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it.each([
     [[{ target: OWNER, value: '0', data: '0x' }]],
     [[{ target: TARGET, value: '1', data: '0x' }]],

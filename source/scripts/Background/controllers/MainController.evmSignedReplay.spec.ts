@@ -80,6 +80,7 @@ let provider: {
   liveChainRead: jest.Mock;
   readMany: jest.Mock;
   send: jest.Mock;
+  verifyConfiguredChainId?: jest.Mock;
 };
 let raw: string;
 let entry: any;
@@ -571,6 +572,9 @@ it.each([1, 2])(
       () => undefined,
       () => lifecycle
     );
+    provider.verifyConfiguredChainId = jest.fn(async () => {
+      expect(await provider.liveChainRead()).toBe('0x7b');
+    });
     provider.send.mockImplementation(async (method) => {
       if (method === 'eth_getTransactionCount') return '0x0';
       if (method === 'eth_getCode') return '0x';
@@ -591,7 +595,7 @@ it.each([1, 2])(
       )
     ).resolves.toBe(hash);
     expect(dispatch).toHaveBeenCalledWith(replacement);
-    expect(provider.liveChainRead).toHaveBeenCalledTimes(1);
+    expect(provider.liveChainRead).toHaveBeenCalledTimes(2);
   }
 );
 
@@ -619,6 +623,9 @@ it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
       () => undefined,
       () => lifecycle
     );
+    provider.verifyConfiguredChainId = jest.fn(async () => {
+      expect(await provider.liveChainRead()).toBe('0x7b');
+    });
     const entered = deferred(),
       released = deferred();
     records.append.mockImplementationOnce(async () => {
@@ -641,6 +648,7 @@ it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
     provider.send.mockImplementation(async (method, [, tag]) => {
       if (method === 'eth_getTransactionCount')
         return blocked === 'consumed' ? '0x1' : '0x0';
+      if (method === 'eth_getBalance') return '0xffffff';
       expect(method).toBe('eth_getCode');
       return tag === blocked || (delegated && tag === 'latest')
         ? `0xef0100${'33'.repeat(20)}`
@@ -681,6 +689,7 @@ it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
     }
     expect(provider.send.mock.calls).toEqual([
       ['eth_getTransactionCount', [signer.address, 'latest']],
+      ['eth_getBalance', [signer.address, 'latest']],
       ...(blocked === 'consumed'
         ? []
         : [

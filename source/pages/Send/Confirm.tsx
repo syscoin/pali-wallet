@@ -936,6 +936,18 @@ export const SendConfirm = () => {
           accountId: activeAccountMeta.id,
           controllerEmitter,
           executions: [candidate],
+          ...(transactionType === TransactionType.ERC20
+            ? {
+                expectedErc20Transfers: [
+                  {
+                    contractAddress: basicTxValues.token.contractAddress,
+                    recipient: target,
+                    amountUnits: reviewedErc20Units!,
+                    decimals: basicTxValues.token.decimals,
+                  },
+                ],
+              }
+            : {}),
           feeOverrides: overrides,
         });
       };
@@ -1349,6 +1361,18 @@ export const SendConfirm = () => {
             }),
             controllerEmitter: submitEmitter,
             executions: [{ target, value, data }],
+            ...(transactionType === TransactionType.ERC20
+              ? {
+                  expectedErc20Transfers: [
+                    {
+                      contractAddress: basicTxValues.token.contractAddress,
+                      recipient: target,
+                      amountUnits: reviewedErc20Units!,
+                      decimals: basicTxValues.token.decimals,
+                    },
+                  ],
+                }
+              : {}),
             feeOverrides,
             approvedFeeQuote: smartAccountQuote,
             onPrepared: assertSmartAccountConfirmationCurrent,

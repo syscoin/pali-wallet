@@ -152,6 +152,7 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
       send: jest.fn(async (method: string) => {
         if (method === 'eth_getTransactionCount') return NONCE_HEX;
         if (method === 'eth_getCode') return '0x';
+        if (method === 'eth_getBalance') return '0xffffffffffffffffffffffff';
         return networkDenied();
       }),
       sendTransaction: networkDenied,
@@ -303,7 +304,7 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
     await expect(run()).rejects.toThrow(
       'Unable to verify a code-free cancellation payer'
     );
-    expect(provider.send).toHaveBeenCalledTimes(6);
+    expect(provider.send).toHaveBeenCalledTimes(7);
     expect(syntheticCredential).not.toHaveBeenCalled();
     expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
   });
