@@ -9,6 +9,28 @@ export class ExecutionSimulationUnsupportedError extends Error {
   }
 }
 
+const PAYER_PENDING_MESSAGE =
+  'An earlier fee-payer transaction must confirm before this action can continue. Wait for confirmation, then try again.';
+
+export class SmartAccountPayerPendingError extends Error {
+  readonly code = 'SMART_ACCOUNT_PAYER_PENDING';
+
+  constructor() {
+    super(PAYER_PENDING_MESSAGE);
+    this.name = 'SmartAccountPayerPendingError';
+  }
+}
+
+/** The popup transport may retain only the fixed message. Display guidance only. */
+export function isSmartAccountPayerPendingError(error: unknown): boolean {
+  if (error === PAYER_PENDING_MESSAGE) return true;
+  if (!error || typeof error !== 'object') return false;
+  return (
+    Object.getOwnPropertyDescriptor(error, 'message')?.value ===
+    PAYER_PENDING_MESSAGE
+  );
+}
+
 /** Only explicit method-unavailable codes qualify. Execution failures retain their cause. */
 export function normalizeExecutionSimulationError(error: unknown): unknown {
   if (error instanceof ExecutionSimulationUnsupportedError) return error;

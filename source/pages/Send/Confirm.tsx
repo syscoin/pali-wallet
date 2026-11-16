@@ -80,6 +80,7 @@ import {
 } from 'utils/smartAccount';
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { buildSmartAccountErc20Transfer } from 'utils/smartAccount/erc20Transfer';
+import { isSmartAccountPayerPendingError } from 'utils/smartAccount/executionSimulationError';
 import { prepareSmartAccountNativeMaximum } from 'utils/smartAccount/nativeMaximum';
 import { buildSmartAccountNftTransfer } from 'utils/smartAccount/nftTransfer';
 import { isSmartAccountPendingReviewError } from 'utils/smartAccountErrors';
@@ -993,7 +994,9 @@ export const SendConfirm = () => {
         const pendingReview = isSmartAccountPendingReviewError(error);
         setSmartAccountQuoteError({
           message: t(
-            pendingReview
+            isSmartAccountPayerPendingError(error)
+              ? 'send.smartAccountPayerPending'
+              : pendingReview
               ? 'send.smartAccountPendingReview'
               : 'send.unableToCalculateFees'
           ),

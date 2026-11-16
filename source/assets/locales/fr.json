@@ -593,6 +593,7 @@
     "calculating": "Calcul en cours...",
     "unableToLoad": "Impossible de charger",
     "smartAccountPendingReview": "Une transaction enregistrée du compte intelligent reste non résolue. Ouvrez Activité pour la consulter avant d’envoyer une autre transaction.",
+    "smartAccountPayerPending": "Une transaction précédente du payeur des frais doit être confirmée avant de continuer. Attendez la confirmation, puis réessayez.",
     "feeUnavailable": "Frais non disponibles",
     "plusGasFee": " + Frais de Gas",
     "plusNetworkFee": " + Frais de réseau",

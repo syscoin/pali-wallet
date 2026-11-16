@@ -93,6 +93,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const missingInfrastructure = new Set<string>();
   let failInfrastructureBroadcast = false;
   let initialEoaNonce = 0;
+  let externalPendingNonces = 0;
   let physicalStorageCloses = 0;
   const spendabilityReads = { native: 0, deposit: 0, token: 0 };
   const rpcBatches: string[][] = [];
@@ -194,7 +195,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             }
           }
         }
-        else if (request.method === 'eth_getTransactionCount') result = nonceReset ? '0x0' : `0x${(initialEoaNonce + (request.params[1] === 'pending' || readReceipts ? submitted.length : 0)).toString(16)}`;
+        else if (request.method === 'eth_getTransactionCount') result = nonceReset ? '0x0' : `0x${(initialEoaNonce + (request.params[1] === 'pending' ? externalPendingNonces : 0) + (request.params[1] === 'pending' || readReceipts ? submitted.length : 0)).toString(16)}`;
         else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? smartBalance : payerBalance;
         else if (request.method === 'eth_gasPrice') result = '0x2';
         else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
@@ -518,6 +519,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     advanceHead() { observedHead = { number: '0x11', hash: '0x' + 'bb'.repeat(32) }; },
     infrastructureResponseLost() { failInfrastructureBroadcast = true; },
     initialEoaNonce(value: number) { assert(Number.isSafeInteger(value) && value >= 0); initialEoaNonce = value; },
+    externalPayerPending(value: number) { externalPendingNonces = value; },
     smartGuardian(address: string, owners: string[], options: { compositeThreshold?: number; threshold?: number; deployed?: boolean } = {}) {
       smartGuardianMetadata = { address, owners: [...owners], threshold: options.threshold ?? 1, compositeThreshold: options.compositeThreshold, deployed: options.deployed ?? true };
     },
@@ -6346,6 +6348,27 @@ for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`sp
   } finally { operation?.dispose(); await f.close(); }
 });
 
+test('unknown pending payer transaction stops preparation before signing and can be retried after confirmation', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Pending payer' });
+    f.fundedSmart(); f.deployed(); f.externalPayerPending(1);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.match(operation.getSnapshot().error!, /earlier fee-payer transaction must confirm/);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.payerSignatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+    await operation.dispose();
+    f.initialEoaNonce(1); f.externalPayerPending(0);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
 for (const sponsored of [false, true]) test(`counted native warm Smart payer phases (${sponsored ? 'sponsored' : 'ordinary'})`, async () => {
   const f = await fixture({}, true);
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
@@ -6378,7 +6401,7 @@ for (const sponsored of [false, true]) test(`counted native warm Smart payer pha
     assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
     assert.equal(f.submitted.length, 1);
     // Includes one early simulation capability check and the exact canonical payer nonce.
-    assert.deepEqual(measure(), { methods: 55, http: sponsored ? 41 : 38, chains: 10 });
+    assert.deepEqual(measure(), { methods: 57, http: sponsored ? 42 : 39, chains: 10 });
     console.log('NATIVE_PHASE_COUNTS', JSON.stringify({ sponsored, preparation, payerReview, confirmation: delta(confirmed), total: measure() }));
   } finally { operation?.dispose(); await f.close(); }
 });

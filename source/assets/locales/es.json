@@ -593,6 +593,7 @@
     "calculating": "Calculando...",
     "unableToLoad": "No se puede cargar",
     "smartAccountPendingReview": "Una transacción guardada de la cuenta inteligente sigue sin resolverse. Abre Actividad para revisarla antes de enviar otra transacción.",
+    "smartAccountPayerPending": "Una transacción anterior de la cuenta que paga las comisiones debe confirmarse antes de continuar. Espera la confirmación y vuelve a intentarlo.",
     "feeUnavailable": "Tarifa no disponible",
     "plusGasFee": " + Tarifa de Gas",
     "plusNetworkFee": " + Comisión de red",

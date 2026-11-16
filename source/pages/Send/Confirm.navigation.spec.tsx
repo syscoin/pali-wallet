@@ -19,6 +19,7 @@ import {
   prepareSmartAccountFeeQuote,
   signAndSubmitSmartAccountExecutions,
 } from 'utils/smartAccount';
+import { SmartAccountPayerPendingError } from 'utils/smartAccount/executionSimulationError';
 
 import { SendConfirm } from './Confirm';
 
@@ -975,6 +976,26 @@ it.each([undefined, false, true])(
       screen.getByRole('button', { name: 'buttons.confirm' })
     ).toBeDisabled();
     expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each([
+  new SmartAccountPayerPendingError(),
+  new SmartAccountPayerPendingError().message,
+])(
+  'shows the payer wait message before signing and permits a fresh quote',
+  async (error) => {
+    prepareSmartAccountConfirmation();
+    (prepareSmartAccountFeeQuote as jest.Mock).mockRejectedValue(error);
+    render(<SendConfirm />);
+    await screen.findByText('send.smartAccountPayerPending');
+    expect(
+      screen.getByRole('button', { name: 'buttons.confirm' })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'send.refreshFeeQuote' })
+    ).toBeEnabled();
+    expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
   }
 );
 

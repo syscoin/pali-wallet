@@ -18,6 +18,7 @@ import { sanitizeSyscoinError } from 'utils/syscoinErrorSanitizer';
 import { UTXO_SIGNING_CONTEXT_CHANGED } from 'utils/utxoSigningContext';
 
 export { isSmartAccountPrefundError } from 'utils/smartAccountErrors';
+import { isSmartAccountPayerPendingError } from './smartAccount/executionSimulationError';
 
 /**
  * Error detection utilities for Pali wallet
@@ -358,6 +359,11 @@ export const handleTransactionError = (
   // Handle device locked
   if (isDeviceLockedError(error)) {
     alert.warning(t('settings.lockedDevice'));
+    return true;
+  }
+
+  if (isSmartAccountPayerPendingError(error)) {
+    alert.error(t('send.smartAccountPayerPending'));
     return true;
   }
 

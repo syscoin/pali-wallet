@@ -27,7 +27,7 @@ import {
   type prepareSmartAccountOperation,
 } from '../../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
-import { ExecutionSimulationUnsupportedError } from '../../../../source/utils/smartAccount/executionSimulationError.ts';
+import { ExecutionSimulationUnsupportedError, SmartAccountPayerPendingError } from '../../../../source/utils/smartAccount/executionSimulationError.ts';
 
 export type NativeSmartAccountResolvedIntent = (
   | Readonly<{ kind: 'deploy' }>
@@ -624,7 +624,7 @@ export class NativeSmartAccountOperation {
   private fail(preparationFailure?: 'INSUFFICIENT_ASSET', cause?: unknown) {
     if (this.disposed || this.snapshot.phase === 'complete') return;
     let simulationMessage: string | undefined;
-    if (cause instanceof ExecutionSimulationUnsupportedError) {
+    if (cause instanceof ExecutionSimulationUnsupportedError || cause instanceof SmartAccountPayerPendingError) {
       try { this.check(); simulationMessage = cause.message; } catch { /* Preserve lifecycle failure. */ }
     }
     this.prepared = null;

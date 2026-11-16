@@ -109,6 +109,9 @@ export type EvmSignedRecordStorage = {
 export type SmartAccountPendingRecords = Readonly<{
   profileId: string;
   read(fresh: boolean): Promise<readonly RetainedSmartAccountOperation[]>;
+  readPayerRecords?(
+    address: string
+  ): Promise<readonly EvmSignedRecordSummary[]>;
 }>;
 const mutationSerials = new WeakMap<EvmSignedRecordStorage, number>();
 
@@ -2075,6 +2078,8 @@ export class EvmSignedRecords {
     let cached: readonly RetainedSmartAccountOperation[] | undefined;
     return Object.freeze({
       profileId: id,
+      readPayerRecords: (payer: string) =>
+        this.listSender(session, chainId, payer),
       read: (fresh: boolean) =>
         this.exclusive(async () => {
           guard(session);

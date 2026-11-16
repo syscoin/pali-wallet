@@ -3,6 +3,7 @@ import { getAddress } from 'ethers/address';
 import { evmCallRequest } from '../../shared/evmEstimateRequest.ts';
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { withEvmReadPhase } from '../../shared/evmReadPhase.ts';
+import { readFreshEvmState } from '../../shared/evmReadPhase.ts';
 import { observeEvmTransaction } from '../../shared/evmTransactionObservation.ts';
 import { BigNumber } from '../ethersV6Compat.ts';
 
@@ -14,6 +15,7 @@ import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
 } from './contracts.ts';
+import { SmartAccountPayerPendingError } from './executionSimulationError.ts';
 import {
   readSmartAccountBalance,
   readSmartAccountDeposit,
@@ -254,6 +256,41 @@ export function createSmartAccountPendingState(
   };
   return Object.freeze({
     provider: pendingProvider,
+    async assertPayerPredecessors(payer: string) {
+      const from = getAddress(payer);
+      const [latest, pending] = await Promise.all([
+        read('eth_getTransactionCount', [from, 'latest']).then(rpcQuantity),
+        read('eth_getTransactionCount', [from, 'pending']).then(rpcQuantity),
+      ]);
+      check();
+      if (pending <= latest) return;
+      const retained = (await records.readPayerRecords?.(from)) ?? [];
+      check();
+      const known = new Set(
+        retained
+          .filter(
+            (entry) =>
+              entry.chainId === String(chainId) &&
+              entry.from.toLowerCase() === from.toLowerCase() &&
+              ['signed', 'attempted', 'submitted'].includes(entry.phase)
+          )
+          .map((entry) => BigInt(entry.nonce))
+      );
+      let missing = pending - latest > BigInt(16);
+      for (let nonce = latest; !missing && nonce < pending; nonce++)
+        missing = !known.has(nonce);
+      if (!missing) return;
+      // A predecessor may have mined while the grouped reads were in flight.
+      const current = rpcQuantity(
+        await readFreshEvmState(provider, 'eth_getTransactionCount', [
+          from,
+          'latest',
+        ])
+      );
+      check();
+      if (current >= pending) return;
+      throw new SmartAccountPayerPendingError();
+    },
     withReadPhase<T>(
       work: (state: SmartAccountPendingState) => Promise<T>
     ): Promise<T> {

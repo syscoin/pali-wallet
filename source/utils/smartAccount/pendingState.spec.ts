@@ -11,10 +11,12 @@ import {
   paliEntryPointInterface,
   paliSmartAccountInterface,
 } from './contracts';
+import { SmartAccountPayerPendingError } from './executionSimulationError';
 import {
   createSmartAccountPendingState,
   SMART_ACCOUNT_PENDING_STATE,
 } from './pendingState';
+import type { EvmSignedRecordSummary } from '../../wallet/evmSignedRecords';
 import type { RetainedSmartAccountOperation } from '../../wallet/smartAccountActivity';
 
 const account = `0x${'11'.repeat(20)}`;
@@ -352,4 +354,137 @@ it('requires a live chain verifier before reading or signing', async () => {
     'wrong chain'
   );
   expect(f.records.read).not.toHaveBeenCalled();
+});
+
+function payerFixture(latest: bigint, pending: bigint) {
+  const f = fixture();
+  let current = true;
+  const readPayerRecords = jest.fn(
+    async (): Promise<readonly EvmSignedRecordSummary[]> => []
+  );
+  const records = { ...f.records, readPayerRecords };
+  const state = createSmartAccountPendingState(
+    f.provider,
+    records,
+    1,
+    account,
+    () => {
+      // Exercise the same owning context as the existing fixture.
+      if (!current) throw new Error('retired');
+    }
+  );
+  let canonical = latest;
+  const send = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getTransactionCount') {
+      expect(params[0]).toBe(payer);
+      return `0x${(params[1] === 'pending' ? pending : canonical).toString(
+        16
+      )}`;
+    }
+    return send(method, params);
+  });
+  return {
+    ...f,
+    state,
+    readPayerRecords,
+    canonical(value: bigint) {
+      canonical = value;
+    },
+    retire() {
+      current = false;
+    },
+  };
+}
+
+const payerRecord = (
+  nonce: number,
+  changes: Partial<EvmSignedRecordSummary> = {}
+): EvmSignedRecordSummary => ({
+  chainId: '1',
+  from: payer,
+  nonce,
+  hash,
+  phase: 'submitted',
+  createdAt: 1,
+  operation: 'send',
+  signer: { id: 0, type: 'HDAccount' },
+  ...changes,
+});
+
+it('avoids journal reads when the payer has no external pending gap', async () => {
+  const f = payerFixture(BigInt(3), BigInt(3));
+  await expect(f.state.assertPayerPredecessors(payer)).resolves.toBeUndefined();
+  expect(f.readPayerRecords).not.toHaveBeenCalled();
+});
+
+it('blocks a missing payer predecessor and resolves after it confirms', async () => {
+  const f = payerFixture(BigInt(3), BigInt(4));
+  await expect(f.state.assertPayerPredecessors(payer)).rejects.toBeInstanceOf(
+    SmartAccountPayerPendingError
+  );
+  f.canonical(BigInt(4));
+  await expect(f.state.assertPayerPredecessors(payer)).resolves.toBeUndefined();
+  expect(f.readPayerRecords).toHaveBeenCalledTimes(1);
+});
+
+it('allows contiguous local payer records across native and Smart transactions', async () => {
+  const f = payerFixture(BigInt(3), BigInt(5));
+  f.readPayerRecords.mockResolvedValue([
+    payerRecord(3),
+    payerRecord(4, { phase: 'signed' }),
+  ]);
+  await expect(f.state.assertPayerPredecessors(payer)).resolves.toBeUndefined();
+  expect(f.readPayerRecords).toHaveBeenCalledWith(payer);
+});
+
+it.each([
+  { chainId: '2' },
+  { from: account },
+  { phase: 'confirmed' as const },
+  { nonce: 4 },
+])(
+  'does not fill a payer nonce gap with mismatched local records %j',
+  async (changes) => {
+    const f = payerFixture(BigInt(3), BigInt(4));
+    f.readPayerRecords.mockResolvedValue([payerRecord(3, changes)]);
+    await expect(f.state.assertPayerPredecessors(payer)).rejects.toBeInstanceOf(
+      SmartAccountPayerPendingError
+    );
+  }
+);
+
+it('rechecks confirmation after a missing predecessor is discovered', async () => {
+  const f = payerFixture(BigInt(3), BigInt(4));
+  f.readPayerRecords.mockImplementation(async () => {
+    f.canonical(BigInt(4));
+    return [];
+  });
+  await expect(f.state.assertPayerPredecessors(payer)).resolves.toBeUndefined();
+  expect(
+    f.provider.send.mock.calls.filter(
+      ([method]) => method === 'eth_getTransactionCount'
+    )
+  ).toHaveLength(3);
+});
+
+it('retires the early payer check after its context changes during journal access', async () => {
+  const f = payerFixture(BigInt(3), BigInt(4));
+  f.readPayerRecords.mockImplementation(async () => {
+    f.retire();
+    return [];
+  });
+  await expect(f.state.assertPayerPredecessors(payer)).rejects.toThrow(
+    'retired'
+  );
+});
+
+it('bounds a large payer gap even when every nonce has a local record', async () => {
+  const f = payerFixture(BigInt(0), BigInt(17));
+  f.readPayerRecords.mockResolvedValue(
+    Array.from({ length: 17 }, (_, nonce) => payerRecord(nonce))
+  );
+  await expect(f.state.assertPayerPredecessors(payer)).rejects.toBeInstanceOf(
+    SmartAccountPayerPendingError
+  );
 });

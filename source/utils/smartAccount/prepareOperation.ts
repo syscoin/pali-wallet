@@ -299,6 +299,8 @@ async function prepareOperation({
     maxFeePerGas
   );
   assertSynchronousEvmFeeGuard(assertCurrent);
+  await pending.assertPayerPredecessors(gasPayer.address);
+  assertSynchronousEvmFeeGuard(assertCurrent);
   const userOperation = buildSmartAccountUserOperation({
     accountGasLimits: encodeSmartAccountGasLimits({
       callGasLimit: gasEstimate.callGasLimit,

@@ -593,6 +593,7 @@
     "calculating": "Calculating...",
     "unableToLoad": "Unable to load",
     "smartAccountPendingReview": "A saved Smart Account transaction is unresolved. Open Activity to review it before sending another transaction.",
+    "smartAccountPayerPending": "An earlier fee-payer transaction must confirm before this action can continue. Wait for confirmation, then try again.",
     "feeUnavailable": "Fee unavailable",
     "plusGasFee": " + Gas Fee",
     "plusNetworkFee": " + Network Fee",

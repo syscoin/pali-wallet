@@ -593,6 +593,7 @@
     "calculating": "计算中...",
     "unableToLoad": "无法加载",
     "smartAccountPendingReview": "已保存的智能账户交易尚未解决。请先打开“活动”查看该交易，再发送其他交易。",
+    "smartAccountPayerPending": "费用支付账户的上一笔交易必须先确认，才能继续此操作。请等待确认后重试。",
     "feeUnavailable": "费用不可用",
     "plusGasFee": " + 燃气费",
     "plusNetworkFee": " + 网络手续费",

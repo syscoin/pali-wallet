@@ -1239,6 +1239,13 @@ test('RPC budget and receipts for local wallet transfers', async () => {
             limits['eoa-erc20'] = [34, 31];
             limits['eoa-dapp-erc20'] = [30, 25];
           }
+          // Pre-authorization payer availability uses two nonce reads in the
+          // existing phase. Scalar-only endpoints need two envelopes.
+          for (const label of Object.keys(reviewLimits)) {
+            if (label.startsWith('eoa-')) continue;
+            const [methods, posts] = reviewLimits[label];
+            reviewLimits[label] = [methods + 2, posts + (fallback ? 2 : 1)];
+          }
           const labels =
             process.env.PALI_RPC_EXTENDED === '1'
               ? Object.keys(limits)

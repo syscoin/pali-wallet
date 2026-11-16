@@ -16,6 +16,7 @@ import {
   EVM_ASSET_REVIEW_REQUIRED,
   EVM_SIGNED_STORAGE_FULL,
 } from './evmTransactionContext';
+import { SmartAccountPayerPendingError } from './smartAccount/executionSimulationError';
 import { sanitizeErrorMessage } from './syscoinErrorSanitizer';
 
 jest.mock('utils/index', () => ({ truncate: (text: string) => text }));
@@ -38,6 +39,15 @@ describe.each(Object.keys(resources))(
         interpolation: { escapeValue: true },
       })
     );
+    it('shows localized waiting guidance for an unknown payer predecessor', () => {
+      const alert = { error: jest.fn() };
+      const error = new SmartAccountPayerPendingError();
+      expect(handleTransactionError(error.message, alert, i18n.t)).toBe(true);
+      expect(alert.error).toHaveBeenCalledWith(
+        i18n.t('send.smartAccountPayerPending')
+      );
+    });
+
     it('routes a definite saved-nonce conflict to localized Activity guidance', () => {
       const alert = { error: jest.fn() };
       expect(

@@ -593,6 +593,7 @@
     "calculating": "計算中...",
     "unableToLoad": "読み込めません",
     "smartAccountPendingReview": "保存されたスマートアカウントの取引が未解決です。別の取引を送信する前に、アクティビティを開いて確認してください。",
+    "smartAccountPayerPending": "この操作を続行するには、手数料支払者の先行トランザクションが承認される必要があります。承認を待ってから、もう一度お試しください。",
     "feeUnavailable": "手数料が利用できません",
     "plusGasFee": " + ガス手数料",
     "plusNetworkFee": " + ネットワーク手数料",

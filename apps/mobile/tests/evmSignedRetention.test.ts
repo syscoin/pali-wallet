@@ -1119,6 +1119,24 @@ test('an elapsed deadline yields its group even before timeout callbacks run', a
 });
 
 
+test('Smart preparation reads only scoped payer summaries without opening signed payloads', async () => {
+  const f = fixture(), session = f.session();
+  await f.records.append(session, await signed(0, signer, '1'));
+  await f.records.append(session, await signed(0, otherSigner, '1'));
+  await f.records.append(session, await signed(0, signer, '2'));
+  const opened: string[] = [];
+  const decrypt = session.keyring.decryptPrivateRecord.bind(session.keyring);
+  session.keyring.decryptPrivateRecord = async input => { opened.push(input.recordId); return decrypt(input); };
+  const reader = await f.records.captureSmartAccountPendingRecords(session, '1', '0x1111111111111111111111111111111111111111');
+  const records = await reader.readPayerRecords!(signer.address);
+  assert.equal(records.length, 1);
+  assert.equal(records[0]!.from.toLowerCase(), signer.address.toLowerCase());
+  assert.equal(records[0]!.chainId, '1');
+  assert(opened.every(id => id === 'manifest'));
+  f.revoke();
+  await assert.rejects(async () => reader.readPayerRecords!(signer.address), /revoked/);
+});
+
 test('Smart nonce projection caches one owned snapshot and invalidates on writes, final refresh and lock', async () => {
   const f = fixture(), session = f.session();
   const smart = '0x1111111111111111111111111111111111111111';
