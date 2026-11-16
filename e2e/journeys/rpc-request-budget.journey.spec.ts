@@ -1296,8 +1296,29 @@ test('RPC budget and receipts for local wallet transfers', async () => {
                 ).toHaveLength(1);
                 expect(simulations[0].methods).toEqual(['eth_simulateV1']);
               }
-              const methods = baselineMethods + Number(finalExecutionCheck);
-              const posts = baselinePosts + Number(finalExecutionCheck);
+              // Dapp metadata reads can precede fee preparation by more
+              // than ethers' 250ms cache window on CI. Its fresh fee header is
+              // one extra read, without allowing unrelated RPC work to grow.
+              const freshFeeHeaders =
+                label.startsWith('dapp-') && stage === 'review'
+                  ? rows.filter(
+                      (row: any) =>
+                        row.methods.length === 1 &&
+                        row.methods[0] === 'eth_getBlockByNumber' &&
+                        row.params[0]?.[0] === 'latest' &&
+                        row.params[0]?.[1] === false
+                    )
+                  : [];
+              const feeHeaderAllowance = freshFeeHeaders.length > 1 ? 1 : 0;
+              expect(freshFeeHeaders.length).toBeLessThanOrEqual(2);
+              const methods =
+                baselineMethods +
+                Number(finalExecutionCheck) +
+                feeHeaderAllowance;
+              const posts =
+                baselinePosts +
+                Number(finalExecutionCheck) +
+                feeHeaderAllowance;
               // The endpoint's 30-second capability expires independently of
               // the UI stage. Concurrent probes can precede the first refusal.
               // Keep every refused probe in total traffic.
