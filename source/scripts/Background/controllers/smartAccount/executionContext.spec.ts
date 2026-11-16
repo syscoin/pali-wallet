@@ -202,6 +202,17 @@ describe('smart-account execution approval context', () => {
       }),
       send: jest.fn(async (method, params) => {
         if (method === 'eth_chainId') return '0x1';
+        if (method === 'eth_getTransactionCount') return '0x0';
+        if (method === 'eth_simulateV1') {
+          expect(params[0]).toEqual({
+            blockStateCalls: [{ calls: [] }],
+            validation: true,
+            returnFullTransactions: true,
+            traceTransfers: false,
+          });
+          expect(params[1]).toBe('latest');
+          return [{ calls: [], transactions: [] }];
+        }
         if (method === 'eth_getBlockByNumber')
           return { baseFeePerGas: pendingBaseFee };
         if (method === 'eth_getBalance') return '0xde0b6b3a7640000';

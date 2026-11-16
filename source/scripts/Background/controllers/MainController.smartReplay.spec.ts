@@ -53,6 +53,7 @@ import {
   paliEntryPointInterface,
   paliSmartAccountInterface,
 } from 'utils/smartAccount/contracts';
+import { getSmartAccountUserOpHash } from 'utils/smartAccount/userOperationHash';
 
 import MainController from './MainController';
 import { CancellablePromises } from './promises/cancellablesPromises';
@@ -117,6 +118,7 @@ async function fixture(
   const broadcasts: string[] = [];
   const provider = {
     signal: new AbortController().signal,
+    verifyConfiguredChainId: jest.fn(async () => undefined),
     _getConnection: () => ({ url: 'https://rpc.synthetic.invalid' }),
     readMany: jest.fn(async (requests) =>
       Promise.allSettled(
@@ -129,6 +131,49 @@ async function fixture(
       if (method === 'eth_getTransactionReceipt') return null;
       if (method === 'eth_getBlockByNumber')
         return { number: '0x10', hash: blockHash, gasLimit: '0x100000' };
+      if (method === 'eth_simulateV1') {
+        const transactions = (params[0] as any).blockStateCalls[0].calls;
+        return [
+          {
+            number: '0x11',
+            parentHash: blockHash,
+            transactions: transactions.map((tx: any) => ({
+              ...tx,
+              input: tx.data,
+            })),
+            calls: transactions.map((tx: any) => {
+              if (
+                tx.to.toLowerCase() !==
+                getPaliEntryPointAddress(1).toLowerCase()
+              )
+                return { status: '0x1', gasUsed: '0x5208', logs: [] };
+              const [operations] = paliEntryPointInterface.decodeFunctionData(
+                'handleOps',
+                tx.data
+              );
+              return {
+                status: '0x1',
+                gasUsed: '0x186a0',
+                logs: operations.map((op: any) => ({
+                  address: tx.to,
+                  ...paliEntryPointInterface.encodeEventLog(
+                    paliEntryPointInterface.getEvent('UserOperationEvent')!,
+                    [
+                      getSmartAccountUserOpHash(op, 1),
+                      op.sender,
+                      '0x' + '00'.repeat(20),
+                      op.nonce,
+                      true,
+                      1,
+                      1,
+                    ]
+                  ),
+                })),
+              };
+            }),
+          },
+        ];
+      }
       if (method === 'eth_sendRawTransaction') {
         broadcasts.push(String(params[0]));
         return Transaction.from(String(params[0])).hash;
