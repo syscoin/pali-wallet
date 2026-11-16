@@ -46,7 +46,10 @@ const budget = {
   // Execution bounds, Smart precision, coherent history and UTXO ownership
   // add 12,919 bytes at round 11. Reserve 15 KB after removing the UI import
   // that pulled 93,768 unnecessary bytes into the package.
-  package: 12195000,
+  // Owned guardian observations, replay admission and legacy normalization
+  // add 2,823 measured bytes to the preceding candidate. Reserve 5 KB for
+  // these fixes while preserving all startup and RPC ceilings.
+  package: 12200000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
