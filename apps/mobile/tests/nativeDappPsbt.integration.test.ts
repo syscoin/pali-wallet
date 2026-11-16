@@ -14,7 +14,7 @@ import { withOwnedLedgerConnection } from '../src/hardware/withOwnedLedgerConnec
 import type { NativeLedgerTransport } from '../src/hardware/ownedLedgerTransport.ts';
 import { createOwnedUtxoBlockbookRead } from '../../../source/wallet/utxoBlockbookReads.ts';
 import { UtxoSignedRecords } from '../../../source/wallet/utxoSignedRecords.ts';
-import { submitRetainedUtxo } from '../../../source/wallet/utxoSubmission.ts';
+import { createNativeUtxoSend } from '../src/custody/utxoSend.ts';
 import { prepareNativeDappPsbt } from '../src/custody/dappPsbt.ts';
 import { getUtxoNetwork, getUtxoSdkNetwork } from '../src/core/utxoNetworks.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -28,7 +28,14 @@ const origin = 'https://exact-origin.example';
 
 for (const custody of ['HDAccount', 'Ledger'] as const) test(`${custody} native custody uses the installed SDK, encrypted SQLite admission and original-route saved-byte replay`, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'pali-native-psbt-'));
-  const storage = await SqliteWalletStorage.open(nodeConnection(join(directory, 'wallet.sqlite')).connection, digest, INSTALLATION, true);
+  let wrongGenesis = false, changeGenesisOnPersist = false;
+  const database = nodeConnection(join(directory, 'wallet.sqlite'), { after(kind, sql) {
+    if (changeGenesisOnPersist && kind === 'run' && sql.startsWith('INSERT INTO keyring_records')) {
+      changeGenesisOnPersist = false;
+      wrongGenesis = true;
+    }
+  } });
+  const storage = await SqliteWalletStorage.open(database.connection, digest, INSTALLATION, true);
   let deviceCalls = 0;
   const unavailable = async () => { throw Error('Unexpected device method'); };
   let transport: NativeLedgerTransport | undefined = {
@@ -79,7 +86,7 @@ for (const custody of ['HDAccount', 'Ledger'] as const) test(`${custody} native 
       const url = String(input); assert(url.startsWith(network.endpoint + '/'));
       const path = url.slice(network.endpoint.length); reads.push(`${init?.method} ${path}`);
       if (path === '/api/v2/') return reply(url, metadata(network));
-      if (path === '/api/v2/block-index/0') return reply(url, { blockHash: network.genesisHash });
+      if (path === '/api/v2/block-index/0') return reply(url, { blockHash: wrongGenesis ? 'ab'.repeat(32) : network.genesisHash });
       if (path === '/api/v2/estimatefee/1') return reply(url, { result: '0.00001024' });
       if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`) return reply(url, { tokens: [] });
       if (path === `/api/v2/utxo/${account.xpub}`) return reply(url, [{ txid: previous.getId(), vout: 0,
@@ -98,6 +105,12 @@ for (const custody of ['HDAccount', 'Ledger'] as const) test(`${custody} native 
     };
     const read = createOwnedUtxoBlockbookRead({ kind: 'wallet', xpub: account.xpub, address: account.address, url: network.endpoint }, lifetime.signal, guard, fetcher);
     const quote = await ring.syscoinTransaction.getEstimateSysTransactionFee({ amount: '0.0005', receivingAddress: recipient, txOptions: { rbf: true } }, read);
+    const candidate = PsbtUtils.fromPali(quote.psbt, sdkNetwork);
+    const memo = bitcoin.payments.embed({ data: [Buffer.from('synthetic memo')] }).output!;
+    const otherScript = Buffer.from([bitcoin.opcodes.OP_TRUE]);
+    candidate.addOutput({ script: memo, value: 0n });
+    candidate.addOutput({ script: otherScript, value: 1n });
+    quote.psbt = PsbtUtils.toPali(candidate);
     const ports = { network, scope: { profileId, account: { ...owner.account, address: account.address },
       network: { kind: 'syscoin' as const, currency: sdkNetwork.currency, chainId: sdkNetwork.chainId,
         slip44: sdkNetwork.slip44, genesisHash: network.genesisHash, url: sdkNetwork.url } },
@@ -108,6 +121,17 @@ for (const custody of ['HDAccount', 'Ledger'] as const) test(`${custody} native 
             () => ring.syscoinTransaction.signPSBT(...args))
           : ring.syscoinTransaction.signPSBT(...args) }, records, fetch: fetcher, collateral: null, sentry: null };
     const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
+    if (custody === 'HDAccount') {
+      wrongGenesis = true;
+      const start = reads.length;
+      await assert.rejects(prepareNativeDappPsbt({ method: 'sys_sign', origin, psbt: quote.psbt }, lifetime.signal, ports));
+      assert.deepEqual(reads.slice(start), ['GET /api/v2/', 'GET /api/v2/block-index/0']);
+      assert.equal(sign.mock.callCount(), 0);
+      wrongGenesis = false;
+      const wrongScope = { ...ports, scope: { ...ports.scope, network: { ...ports.scope.network, url: 'https://other.invalid' } } };
+      await assert.rejects(prepareNativeDappPsbt({ method: 'sys_sign', origin, psbt: quote.psbt }, lifetime.signal, wrongScope), /PSBT_CUSTODY_UNAVAILABLE/);
+      assert.equal(reads.length, start + 2);
+    }
     const signing = await prepareNativeDappPsbt({ method: 'sys_sign', origin, psbt: quote.psbt }, lifetime.signal, ports);
     assert.equal(sign.mock.callCount(), 0); assert.equal(postCount, 0);
     assert.equal(signing.review.origin, origin); assert(signing.review.outputs.some(output => output.address === recipient));
@@ -116,19 +140,55 @@ for (const custody of ['HDAccount', 'Ledger'] as const) test(`${custody} native 
     assert(PsbtUtils.fromPali(signed, sdkNetwork).extractTransaction().getId());
     assert.equal(sign.mock.callCount(), 1); assert.equal(postCount, 0);
     assert.deepEqual(signing.disposition(), { transactionNotBroadcast: true }); signing.dispose();
+    if (custody === 'HDAccount') {
+      const refusal = candidate.clone().setLocktime(1);
+      const refused = await prepareNativeDappPsbt({ method: 'sys_signAndSend', origin, psbt: PsbtUtils.toPali(refusal) }, lifetime.signal, ports);
+      changeGenesisOnPersist = true;
+      await assert.rejects(refused.approve());
+      assert.equal(wrongGenesis, true);
+      assert.equal(postCount, 0);
+      assert.deepEqual(reads.slice(-2), ['GET /api/v2/', 'GET /api/v2/block-index/0']);
+      assert.deepEqual(refused.disposition(), { transactionNotBroadcast: true });
+      refused.dispose();
+      wrongGenesis = false;
+    }
+    const beforeSend = sign.mock.callCount();
     const sending = await prepareNativeDappPsbt({ method: 'sys_signAndSend', origin, psbt: quote.psbt }, lifetime.signal, ports);
-    assert.equal(sign.mock.callCount(), 1); assert.equal(postCount, 0);
+    assert.equal(sign.mock.callCount(), beforeSend); assert.equal(postCount, 0);
     await assert.rejects(sending.approve(), error => !!error && typeof error === 'object' && 'code' in error && error.code === 'UTXO_SUBMISSION_UNKNOWN');
     const txid = bitcoin.Transaction.fromHex(retainedRaw).getId();
     assert.deepEqual(sending.disposition(), { transactionNotBroadcast: false, txid });
-    assert.equal(postCount, 1); assert.equal(sign.mock.callCount(), 2); sending.dispose();
+    assert.equal(postCount, 1); assert.equal(sign.mock.callCount(), beforeSend + 1); sending.dispose();
     const retained = await records.readExact(session, owner, txid); assert(retained);
-    const replay = await submitRetainedUtxo({ record: retained, records, session, sender: ring.syscoinTransaction, fetch: fetcher });
-    assert.equal(replay.txid, txid); assert.equal(postCount, 2); assert.equal(sign.mock.callCount(), 2);
+    const send = createNativeUtxoSend(network, ports.scope, session, ring.syscoinTransaction, records, fetcher,
+      async () => { throw Error('Unexpected address lookup'); }, null, {
+        authorize: async () => Object.freeze({}) as never,
+        sign: async () => { throw Error('Saved PSBT must not be re-signed'); },
+        release() {},
+      });
+    const review = await send.prepareRetry(txid);
+    assert.equal(review.feeSatoshis, sending.review.feeSatoshis);
+    assert.deepEqual(review.outputs, sending.review.outputs.map(output => ({
+      amountSatoshis: output.valueSatoshis,
+      ...(output.address ? { address: output.address } : {
+        script: { kind: output.scriptHex.startsWith('6a') ? 'data' : 'script', hex: output.scriptHex },
+      }),
+    })));
+    assert.equal(review.outputs.filter(output => output.script).length, 2);
+    if (custody === 'HDAccount') {
+      wrongGenesis = true;
+      const start = reads.length;
+      await assert.rejects(send.confirm(review, { method: 'device' }), error => !!error && typeof error === 'object' && 'code' in error && error.code === 'UTXO_SUBMISSION_NOT_DISPATCHED');
+      assert.deepEqual(reads.slice(start), ['GET /api/v2/', 'GET /api/v2/block-index/0']);
+      assert.equal(postCount, 1);
+      wrongGenesis = false;
+    }
+    const replay = await send.confirm(custody === 'HDAccount' ? await send.prepareRetry(txid) : review, { method: 'device' });
+    assert.equal(replay.txid, txid); assert.equal(postCount, 2); assert.equal(sign.mock.callCount(), beforeSend + 1);
     assert(reads.every(path => !path.includes('http')));
     const calls = reads.length; current = false;
     await assert.rejects(prepareNativeDappPsbt({ method: 'sys_sign', origin, psbt: quote.psbt }, lifetime.signal, ports));
-    assert.equal(reads.length, calls); assert.equal(sign.mock.callCount(), 2);
+    assert.equal(reads.length, calls); assert.equal(sign.mock.callCount(), beforeSend + 1);
     assert.equal(deviceCalls, custody === 'Ledger' ? 2 : 0);
     await new Promise<void>(resolve => setImmediate(resolve));
   } finally {

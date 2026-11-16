@@ -32,6 +32,105 @@ const tick = async () => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 };
 
+test('opening a saved token Send reads only its balance and precision', async () => {
+  const items = Array.from({ length: 20 }, (_, index) => ({
+    ...metadata,
+    contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+  }));
+  const token = items[0]!;
+  const requests: { method: string; params: any[] }[] = [];
+  let posts = 0;
+  const reader = createErc20Reader({ fetch: async (_url, init) => {
+    posts++;
+    const payload = JSON.parse(String(init.body));
+    const rows = Array.isArray(payload) ? payload : [payload];
+    const responses = rows.map(request => {
+      requests.push(request);
+      const result = request.method === 'eth_chainId' ? '0x1'
+        : request.method === 'eth_getBlockByNumber' ? { number: '0x1', hash: `0x${'11'.repeat(32)}` }
+        : request.method === 'eth_getCode' ? '0x'
+        : `0x${BigInt(request.params[0].data === '0x313ce567' ? 255 : 5).toString(16).padStart(64, '0')}`;
+      return { jsonrpc: '2.0', id: request.id, result };
+    });
+    return Response.json(Array.isArray(payload) ? responses : responses[0]);
+  } });
+  const f = fixture({ items, reader });
+  const network = getNativeNetwork('ethereum');
+  const close = f.model.connect({ account: { address: A, network: 'ethereum', revision: 1 }, token, registrationHash: network.registrationHash });
+  try {
+    for (let i = 0; i < 100 && f.model.getSnapshot().items[0]?.status !== 'available'; i++)
+      await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual({ methods: requests.length, posts }, { methods: 6, posts: 3 });
+    assert.deepEqual(requests.filter(row => row.method === 'eth_call').map(row => row.params[0].to), [token.contractAddress, token.contractAddress]);
+    assert.equal(f.model.getSnapshot().items[0]?.units, '5');
+    assert.equal(f.model.getSnapshot().selectedContract, token.contractAddress);
+  } finally { close(); }
+});
+
+test('switching selected Send to the full picker and back retires the prior reads', async () => {
+  const calls: { contract: string; signal: AbortSignal }[] = [];
+  const held = deferred<{ units: string }>();
+  const second = { ...metadata, contractAddress: B };
+  const f = fixture({ items: [metadata, second], reader: {
+    async readToken() { assert.fail('Send should never fetch token metadata'); },
+    async readBalance(_network, _address, token, signal) {
+      calls.push({ contract: token.contractAddress, signal });
+      return calls.length === 1 ? held.promise : { units: '5' };
+    },
+  } });
+  const selection = { account: { address: A, network: 'ethereum' as const, revision: 1 },
+    token: metadata, registrationHash: getNativeNetwork('ethereum').registrationHash };
+  const closeSelected = f.model.connect(selection);
+  await tick();
+  const closePicker = f.model.connect({ account: selection.account, registrationHash: selection.registrationHash });
+  try {
+    closeSelected();
+    assert.equal(calls[0]?.signal.aborted, true);
+    held.resolve({ units: '999' });
+    await tick();
+    assert.deepEqual(calls.map(call => call.contract), [metadata.contractAddress, metadata.contractAddress, B]);
+    assert.deepEqual(f.model.getSnapshot().items.map(item => item.units), ['5', '5']);
+    assert.equal(f.model.getSnapshot().selectedContract, undefined);
+    const closeNext = f.model.connect(selection);
+    try {
+      closePicker();
+      await tick();
+      assert.deepEqual(calls.map(call => call.contract), [metadata.contractAddress, metadata.contractAddress, B, metadata.contractAddress]);
+      assert.deepEqual(f.model.getSnapshot().items.map(item => item.units), ['5']);
+    } finally { closeNext(); }
+  } finally { closePicker(); }
+});
+
+test('selected Send rejects an obsolete registration and retires on account revision change', async () => {
+  const entered = deferred<AbortSignal>();
+  const held = deferred<{ units: string }>();
+  let reads = 0;
+  const f = fixture({ items: [metadata], reader: {
+    async readToken() { assert.fail('Send should never fetch token metadata'); },
+    async readBalance(_network, _address, _token, signal) {
+      reads++;
+      entered.resolve(signal);
+      return held.promise;
+    },
+  } });
+  const selection = { account: { address: A, network: 'ethereum' as const, revision: 1 },
+    token: metadata, registrationHash: getNativeNetwork('ethereum').registrationHash };
+  const obsolete = f.model.connect({ ...selection, registrationHash: 'retired-registration' });
+  assert.equal(reads, 0);
+  obsolete();
+  const close = f.model.connect(selection);
+  try {
+    const signal = await entered.promise;
+    f.change(A);
+    assert.equal(signal.aborted, true);
+    held.resolve({ units: '99' });
+    await tick();
+    assert.equal(reads, 1);
+    assert.equal(f.model.getSnapshot().status, 'unavailable');
+    assert.equal(f.model.getSnapshot().items.length, 0);
+  } finally { close(); }
+});
+
 for (const multicall of [false, true]) test(`the token screen batches twenty balances on connect and manual refresh (Multicall ${multicall})`, async () => {
   const { readFileSync } = await import('node:fs');
   const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');

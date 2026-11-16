@@ -878,6 +878,22 @@ export function createSelectedAssetReadOperation(
   return createSelectedContractReadOperation(options, 8);
 }
 
+export function parseScopedErc20Metadata(
+  contractAddress: string,
+  name: unknown,
+  symbol: unknown,
+  decimals: unknown,
+  balance: unknown
+): Erc20Metadata {
+  unitsResult(balance);
+  return parseErc20Metadata({
+    contractAddress,
+    name: textResult(name, 'name'),
+    symbol: textResult(symbol, 'symbol'),
+    decimals: decimalsResult(decimals),
+  });
+}
+
 function createSelectedContractReadOperation(
   options: SelectedNftReadOptions,
   maximumCalls: 2 | 8 | 12

@@ -473,6 +473,7 @@ export function createNativeWalletControllers() {
   );
   const stopTokenObservation = tokens.view.subscribe(() => {
     const value = tokens.view.getSnapshot(), catalogue = authority.getCatalogue(), state = authority.getSnapshot(), owner = runtime;
+    if (value.selectedContract) return;
     const network = catalogue?.networks.find(item => item.id === value.account?.network);
     if (!owner || !catalogue || !value.account || !network || state.revision !== value.account.revision ||
         state.account?.address !== value.account.address || catalogue.active.networkId !== value.account.network) return;

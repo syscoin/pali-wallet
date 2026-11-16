@@ -156,22 +156,28 @@ export function NativeSmartAccountSend({
     tokenView?.getSnapshot ?? emptyInventory
   );
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
-  useLayoutEffect(
-    () =>
-      collectible || (!token && sharedNativeBalance)
-        ? undefined
-        : token
-        ? tokenView?.connect()
-        : portfolio.connect(),
-    [portfolio, token, tokenView, collectible, sharedNativeBalance]
-  );
-  useLayoutEffect(() => !token && !collectible && assetPickerOpen && !assetChoices ? tokenView?.connect() : undefined,
-    [token, collectible, assetPickerOpen, assetChoices, tokenView]);
+  const readTokenInventory = assetPickerOpen && !assetChoices;
+  const { address: accountAddress, network: accountNetwork, revision: accountRevision } = account;
+  const { registrationHash } = context;
+  useLayoutEffect(() => !collectible && !token && !sharedNativeBalance ? portfolio.connect() : undefined,
+    [portfolio, token, collectible, sharedNativeBalance]);
+  useLayoutEffect(() => {
+    if (!readTokenInventory && !token) return;
+    return tokenView?.connect({
+      account: { address: accountAddress, network: accountNetwork, revision: accountRevision },
+      registrationHash, token: readTokenInventory ? undefined : token,
+    });
+  }, [readTokenInventory, tokenView, token, accountAddress, accountNetwork, accountRevision, registrationHash]);
+  const activeTokenSnapshot = sameNativePortfolioAccount(inventory?.account ?? null, account)
+    ? inventory : null;
   const selectedToken =
     token &&
-    inventory?.items.find(
+    activeTokenSnapshot?.items.find(
       (item) => item.metadata.contractAddress === token.contractAddress
     );
+  const pickerItems = assetChoices && activeTokenSnapshot?.selectedContract
+    ? assetChoices.map(item => item.metadata.contractAddress === selectedToken?.metadata.contractAddress ? selectedToken : item)
+    : activeTokenSnapshot?.status === 'ready' ? activeTokenSnapshot.items : assetChoices ?? [];
   const symbol = token?.symbol ?? context.symbol;
   const displayedBalance = token
     ? nativeTokenAvailableAmount(token, account, inventory)
@@ -179,7 +185,7 @@ export function NativeSmartAccountSend({
     ? formatBaseUnits(balance.units, context.decimals)
     : null;
   const loadingBalance = token
-    ? selectedToken?.status === 'loading'
+    ? activeTokenSnapshot?.status === 'loading' || selectedToken?.status === 'loading'
     : balance?.status === 'loading';
   const shownAvailableBalance = hideBalances && typeof displayedBalance === 'string' ? HIDDEN_BALANCE : displayedBalance;
   const availableBalanceLabel = typeof displayedBalance === 'string'
@@ -497,8 +503,8 @@ export function NativeSmartAccountSend({
           <Header title={collectible ? t("mobile.smartSendViews.sendCollectible") : t('mobile.smartSendViews.sendSymbol', { symbol })}
             subtitle={`${accountLabel} · ${context.name}${context.testnet ? " " + t("mobile.smartSendViews.testNetwork") : ''}`} onBack={userBack} />
           {onChangeAsset && !collectible ? <SendAssetSelector context={context} token={token} nativeAvailable={availableNative}
-            items={inventory?.status === 'ready' && sameNativePortfolioAccount(inventory.account, account) ? inventory.items : assetChoices ?? []}
-            loading={assetPickerOpen && !assetChoices && inventory?.status === 'loading'} unavailable={!assetChoices && inventory?.status === 'error'}
+            items={pickerItems}
+            loading={readTokenInventory && activeTokenSnapshot?.status === 'loading'} unavailable={readTokenInventory && activeTokenSnapshot?.status === 'error'}
             open={assetPickerOpen} busy={busy} onOpen={() => { if (!busy) { closeScanner(); setAssetPickerOpen(true); } }}
             onClose={() => setAssetPickerOpen(false)} onSelect={next => {
               if (busy) return;

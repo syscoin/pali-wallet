@@ -98,7 +98,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const rpcBatches: string[][] = [];
   let observedHead = { number: '0x10', hash: '0x' + 'aa'.repeat(32) };
   const tokens = new Map<string, { balance: bigint; decimals: number }>();
-  const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)']);
+  const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)', 'function name() view returns(string)', 'function symbol() view returns(string)', 'function supportsInterface(bytes4) view returns(bool)']);
   const nfts = new Map<string, { standard: 'ERC-721' | 'ERC-1155'; balance: bigint; owner: string }>();
   const assetCodes = new Map<string, string>();
   const nftInterface = new Interface(['function supportsInterface(bytes4) view returns(bool)', 'function ownerOf(uint256) view returns(address)',
@@ -283,7 +283,10 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           } else if (token) {
             const call = tokenInterface.parseTransaction({ data }); assert(call);
             if (call.name === 'balanceOf') spendabilityReads.token++;
-            if (call.name === 'decimals') result = tokenInterface.encodeFunctionResult(call.fragment, [token.decimals]);
+            if (call.name === 'supportsInterface') result = tokenInterface.encodeFunctionResult(call.fragment, [false]);
+            else if (call.name === 'name') result = tokenInterface.encodeFunctionResult(call.fragment, ['Token']);
+            else if (call.name === 'symbol') result = tokenInterface.encodeFunctionResult(call.fragment, ['TOK']);
+            else if (call.name === 'decimals') result = tokenInterface.encodeFunctionResult(call.fragment, [token.decimals]);
             else if (call.name === 'balanceOf') {
               assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.address.toLowerCase() === call.args[0].toLowerCase()));
               result = tokenInterface.encodeFunctionResult(call.fragment, [token.balance]);
@@ -6511,6 +6514,44 @@ test(`Smart ERC20 reviewed precision rejects changes at ${boundary}`, async () =
       assert(retained); assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
     }
   } finally { operation?.dispose(); await f.close(); }
+});
+
+test('Smart approval display observes a repeated token contract once per request', async () => {
+  const f = await fixture({}, true);
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Repeated display metadata' });
+    const contract = '0x' + '66'.repeat(20);
+    f.tokenBalance(contract, 9n, 18);
+    const host = await f.runtime.openConnectionHost();
+    const selected = host.context().accounts.find(account => account.type === 'SmartAccount')!;
+    const origin = 'https://metadata.example', bundleId = '0x0103', reservationId = 'metadata';
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType, chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: origin, date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({ account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant, network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration() }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    assert.equal(await host.calls.reserveSendCallsBundle(origin, bundleId, { atomic: true, smartAccount: true, chainId: 1 }, reservationId, selected.address), true);
+    const abi = new Interface(['function approve(address,uint256)', 'function transfer(address,uint256)']);
+    const calls = [{ to: contract, data: '0x12345678', value: '0x0' },
+      { to: contract, data: abi.encodeFunctionData('approve', ['0x' + '22'.repeat(20), 7]), value: '0x0' },
+      { to: contract, data: abi.encodeFunctionData('transfer', ['0x' + '33'.repeat(20), 8]), value: '0x0' }];
+    f.calls.length = 0; f.rpcBatches.length = 0;
+    const prepared = await host.prepareCalls({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', calls: { version: '2.0.0', from: selected.address, chainId: '0x1', atomicRequired: true, calls }, origin, bundleId, reservationId, approval }, () => undefined, null);
+    operation = prepared.operation;
+    assert.equal(f.calls.filter(method => method === 'eth_getCode').length, 1);
+    assert.equal(f.calls.filter(method => method === 'eth_chainId').length, 2);
+    assert.equal(f.calls.length, 11);
+    assert.equal(f.calls.length - f.rpcBatches.reduce((total, batch) => total + batch.length - 1, 0), 5);
+    assert.equal(prepared.batchApprovals?.[0], null);
+    assert.equal(prepared.batchApprovals?.[1]?.amountUnits, '7');
+    assert.equal(prepared.batchAssetTransfers?.[2]?.items[0]?.units, '8');
+    assert.equal(f.submitted.length, 0);
+    operation.dispose();
+    f.calls.length = 0; f.rpcBatches.length = 0;
+    const repeated = await host.prepareCalls({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', calls: { version: '2.0.0', from: selected.address, chainId: '0x1', atomicRequired: true, calls }, origin, bundleId, reservationId, approval }, () => undefined, null);
+    operation = repeated.operation;
+    assert.equal(f.calls.length, 11, 'a subsequent request must reobserve its own metadata');
+    assert.equal(f.calls.filter(method => method === 'eth_chainId').length, 2);
+  } finally { operation?.dispose(); approval?.dispose(); await f.close(); }
 });
 
 for (const count of [1, 10, 20]) test(`Smart ERC20 batch classification groups ${count} independent contracts`, async () => {

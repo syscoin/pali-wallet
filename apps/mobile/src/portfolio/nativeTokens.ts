@@ -87,6 +87,7 @@ const idleDiscovery: TokenDiscovery = Object.freeze({
 });
 export type NativeTokenSnapshot = Readonly<{
   account: NativePortfolioAccount | null;
+  selectedContract?: string;
   network?: Pick<NativeSendContext, 'name' | 'chainId' | 'symbol' | 'testnet'> | null;
   status: 'unavailable' | 'loading' | 'ready' | 'error';
   items: readonly NativeTokenItem[];
@@ -98,6 +99,11 @@ export type NativeTokenSnapshot = Readonly<{
   canEnumerateCollectible?: true;
   busy: boolean;
   error: string | null;
+}>;
+type TokenConnectionScope = Readonly<{
+  account: NativePortfolioAccount;
+  registrationHash: string;
+  token?: Erc20Metadata;
 }>;
 export type NativeTokenView = Readonly<
   Pick<
@@ -158,7 +164,7 @@ export class NativeTokens {
   readonly view: NativeTokenView = Object.freeze({
     getSnapshot: () => this.getSnapshot(),
     subscribe: (listener: () => void) => this.subscribe(listener),
-    connect: () => this.connect(),
+    connect: (scope?: TokenConnectionScope) => this.connect(scope),
     preview: (contract: string) => this.preview(contract),
     confirmPreview: () => this.confirmPreview(),
     cancelPreview: () => this.cancelPreview(),
@@ -179,7 +185,7 @@ export class NativeTokens {
   });
   private state = initial();
   private listeners = new Set<() => void>();
-  private connection: object | null = null;
+  private connection: Readonly<{ scope?: TokenConnectionScope }> | null = null;
   private unsubscribe: (() => void) | null = null;
   private epoch = 0;
   private request: Request | null = null;
@@ -297,7 +303,13 @@ export class NativeTokens {
     if (notify) this.emit();
   }
   private synchronize(notify: boolean): boolean {
-    const scope = this.connection ? this.readScope() : null;
+    let scope = this.connection ? this.readScope() : null;
+    const owner = this.connection?.scope;
+    if (owner && (
+      !scope || !sameNativePortfolioAccount(scope.account, owner.account) ||
+      scope.network.registrationHash !== owner.registrationHash
+    )) scope = null;
+    const token = owner?.token;
     const account = scope?.account ?? null;
     const registrationHash = scope?.network.registrationHash ?? null;
     const apiUrl = scope?.apiUrl ?? '';
@@ -317,6 +329,12 @@ export class NativeTokens {
       this.state = Object.freeze({
         ...initial(account),
         network: scope?.network ?? null,
+        ...(token && account ? {
+          selectedContract: token.contractAddress,
+          items: Object.freeze([Object.freeze({
+            metadata: token, status: 'unknown' as const, units: null, updatedAt: null,
+          })]),
+        } : {}),
         discovery: this.discoveryApi ? idleDiscovery : null,
         ...(canCheckCollectible ? { canCheckCollectible } : {}),
         ...(canEnumerateCollectible ? { canEnumerateCollectible } : {}),
@@ -339,9 +357,13 @@ export class NativeTokens {
       this.listeners.delete(listener);
     };
   };
-  connect = (): (() => void) => {
+  connect = (input?: TokenConnectionScope): (() => void) => {
     const old = this.unsubscribe;
-    const connection = {};
+    const connection = input ? { scope: Object.freeze({
+      account: Object.freeze({ ...input.account }),
+      registrationHash: input.registrationHash,
+      token: input.token ? parseErc20Metadata(input.token) : undefined,
+    }) } : {};
     this.connection = connection;
     this.unsubscribe = null;
     this.cancel();
@@ -740,6 +762,11 @@ export class NativeTokens {
       if (contract !== undefined) target = getAddress(contract);
     } catch {
       return;
+    }
+    const selected = this.connection?.scope?.token?.contractAddress;
+    if (selected) {
+      if (target && target !== selected) return;
+      target = selected;
     }
     if (
       target &&

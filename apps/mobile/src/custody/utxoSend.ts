@@ -19,7 +19,7 @@ import {
   prepareUtxoSignedBinding,
   utxoSubmissionUrl,
 } from '../../../../source/wallet/utxoSignedBinding.ts';
-import { reviewSavedUtxoOutputs } from '../../../../source/wallet/utxoSavedReview.ts';
+import { reviewSavedUtxoOutputs, type SavedUtxoReviewOutput } from '../../../../source/wallet/utxoSavedReview.ts';
 import {
   observeRetainedUtxo,
   reconcileRetainedUtxo,
@@ -39,7 +39,6 @@ import type {
   ISyscoinTransactions,
 } from '@sidhujag/sysweb3-keyring';
 import type {
-  ReviewedUtxoOutput,
   UtxoSignedScope,
   UtxoWalletPayment,
 } from '../../../../source/wallet/utxoSignedBinding.ts';
@@ -73,7 +72,7 @@ export type NativeUtxoReview = Readonly<{
   transactionOptions: UtxoTransactionOptions;
   assetDisplay?: NativeUtxoAsset;
   feeSatoshis: string;
-  outputs: readonly ReviewedUtxoOutput[];
+  outputs: readonly SavedUtxoReviewOutput[];
   retryProviderOrigin?: string;
   retryTxid?: string;
 }>;
@@ -428,40 +427,24 @@ export function createNativeUtxoSend(
         const transaction = syscoinUtils.bitcoinjs.Transaction.fromHex(
           retained.rawTransaction
         );
-        let outputs: ReviewedUtxoOutput[];
-        if (transaction.version === ALLOCATION_SEND_VERSION) {
+        const allocationSend = transaction.version === ALLOCATION_SEND_VERSION;
+        if (allocationSend) {
+          if (retained.operation !== 'wallet') throw new CustodyRuntimeError('NOT_READY');
           assertPlainAllocationSendData(transaction);
-          outputs = reviewSavedUtxoOutputs(
-            retained,
-            network.addressNetwork
-          ).flatMap((output) => {
-            if (output.script?.kind === 'data') return [];
-            if (!output.address) throw new CustodyRuntimeError('NOT_READY');
-            const asset = output.asset && Object.freeze(output.asset);
-            return [
-              Object.freeze({
-                address: output.address,
-                amountSatoshis: output.amountSatoshis,
-                ...(asset ? { asset } : {}),
-              }),
-            ];
-          });
-          if (!outputs.some((output) => output.asset))
+        }
+        let outputs = reviewSavedUtxoOutputs(retained, network.addressNetwork);
+        if (allocationSend) {
+          outputs = outputs.filter(output => output.script?.kind !== 'data');
+          if (outputs.some(output => !output.address) || !outputs.some(output => output.asset))
             throw new CustodyRuntimeError('NOT_READY');
-        } else {
-          outputs = transaction.outs.map(
-            (output: { script: Uint8Array; value: bigint }) =>
-              Object.freeze({
-                address: syscoinUtils.bitcoinjs.address.fromOutputScript(
-                  output.script,
-                  network.addressNetwork
-                ),
-                amountSatoshis: output.value.toString(),
-              })
-          );
+        }
+        for (const output of outputs) {
+          Object.freeze(output.asset);
+          Object.freeze(output.script);
+          Object.freeze(output);
         }
         const view = Object.freeze({
-          transactionOptions: reviewUtxoTransactionOptions(inspectUtxoRbf(transaction.ins), transaction.version === ALLOCATION_SEND_VERSION),
+          transactionOptions: reviewUtxoTransactionOptions(inspectUtxoRbf(transaction.ins), allocationSend),
           feeSatoshis: retained.feeSatoshis,
           outputs: Object.freeze(outputs),
           ...(retained.url !== utxoSubmissionUrl(scope.network.url)

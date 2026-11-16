@@ -6438,17 +6438,23 @@ export function createKeyringRuntimeFactory(
                 try {
                   const batchApprovals = [];
                   const batchAssetTransfers = [];
+                  const contractMetadata = new Map<string, Awaited<ReturnType<typeof readNativeApprovalMetadata>>>();
                   for (const call of calls.calls) {
-                    const metadata = (decodeApprovalData(call.data).isApproval || decodeAssetTransfer(call.data, call.to))
-                      ? await readNativeApprovalMetadata({
+                    let metadata: Awaited<ReturnType<typeof readNativeApprovalMetadata>>;
+                    if (decodeApprovalData(call.data).isApproval || decodeAssetTransfer(call.data, call.to)) {
+                      const contract = call.to!.toLowerCase();
+                      if (!contractMetadata.has(contract)) {
+                        contractMetadata.set(contract, await readNativeApprovalMetadata({
                           network,
                           owner: selected.address,
                           contract: call.to!,
                           signal: approval.signal,
                           assertCurrent: check,
                           fetch: dependencies.connectionFetch ?? walletFetch,
-                        })
-                      : undefined;
+                        }));
+                      }
+                      metadata = contractMetadata.get(contract);
+                    }
                     check();
                     batchApprovals.push(summarizeApproval(call.data, call.to!, metadata));
                     batchAssetTransfers.push(decodeAssetTransfer(call.data, call.to!, metadata));

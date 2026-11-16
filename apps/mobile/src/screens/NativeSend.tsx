@@ -271,11 +271,22 @@ export function NativeSend({
   const feeChoice = feeSelection.scope === feeScope && feeSelection.controller === controller ? feeSelection.choice : AUTOMATIC_FEE;
   const [feeDialog, setFeeDialog] = useState<{ scope: string; controller: NativeTransferView } | null>(null);
   const feeOpen = feeDialog?.scope === feeScope && feeDialog.controller === controller;
-  const readTokenInventory = !!token || assetPickerOpen && !assetChoices;
-  useLayoutEffect(
-    () => readTokenInventory ? tokenView?.connect() : undefined,
-    [readTokenInventory, tokenView]
-  );
+  const readTokenInventory = assetPickerOpen && !assetChoices;
+  const { address: accountAddress, network: accountNetwork, revision: accountRevision } = account;
+  const { registrationHash } = context;
+  useLayoutEffect(() => {
+    if (!readTokenInventory && !token) return;
+    return tokenView?.connect({
+      account: { address: accountAddress, network: accountNetwork, revision: accountRevision },
+      registrationHash, token: readTokenInventory ? undefined : token,
+    });
+  }, [readTokenInventory, tokenView, token, accountAddress, accountNetwork, accountRevision, registrationHash]);
+  const activeTokenSnapshot = sameNativePortfolioAccount(tokenSnapshot?.account ?? null, account)
+    ? tokenSnapshot : null;
+  const selectedToken = activeTokenSnapshot?.items.find(item => item.metadata.contractAddress === token?.contractAddress);
+  const pickerItems = assetChoices && activeTokenSnapshot?.selectedContract
+    ? assetChoices.map(item => item.metadata.contractAddress === selectedToken?.metadata.contractAddress ? selectedToken : item)
+    : activeTokenSnapshot?.status === 'ready' ? activeTokenSnapshot.items : assetChoices ?? [];
   const [maximum, setMaximum] = useState(initialDraft?.max ?? false);
   const [tokenDetails, setTokenDetails] = useState(false);
   const [receipt, setReceipt] = useState<Readonly<{ controller: NativeTransferView; hash: string; review: NativeTransferReview }> | null>(null);
@@ -722,7 +733,7 @@ export function NativeSend({
   const shownAvailableBalance = hideBalances && typeof availableBalanceAmount === 'string' ? HIDDEN_BALANCE : availableBalanceAmount;
   const availableBalanceLabel = typeof availableBalanceAmount === 'string'
     ? t('mobile.sendAssetViews.utxo.availableAmount', { amount: shownAvailableBalance, symbol: availableBalanceSymbol })
-    : `${t(token && tokenSnapshot?.status === 'loading' ? 'mobile.activityViews.nativeSptAssets.loadingBalance' : 'mobile.accountPortfolio.balanceUnavailable')} · ${availableBalanceSymbol}`;
+    : `${t(token && (activeTokenSnapshot?.status === 'loading' || selectedToken?.status === 'loading') ? 'mobile.activityViews.nativeSptAssets.loadingBalance' : 'mobile.accountPortfolio.balanceUnavailable')} · ${availableBalanceSymbol}`;
   const footer = review ? <>
               <Button
                 title={reviewCancellation ? t('mobile.sendAssetViews.evm.submitCancellation') : review.replacement ? t('mobile.sendAssetViews.evm.submitSpeedUp') : review.retry ? t('mobile.sendAssetViews.evm.resendSignedTransaction') : t('mobile.sendAssetViews.evm.confirmAndSend')}
@@ -1045,9 +1056,9 @@ export function NativeSend({
           ) : (
             <>
               {onChangeAsset && !draftCollectible ? <SendAssetSelector context={capturedContext} token={token} nativeAvailable={availableAmount}
-                items={tokenSnapshot?.status === 'ready' && sameNativePortfolioAccount(tokenSnapshot.account, account) ? tokenSnapshot.items : assetChoices ?? []}
-                loading={assetPickerOpen && !assetChoices && tokenSnapshot?.status === 'loading'}
-                unavailable={!assetChoices && tokenSnapshot?.status === 'error'} open={assetPickerOpen} busy={busy}
+                items={pickerItems}
+                loading={readTokenInventory && activeTokenSnapshot?.status === 'loading'}
+                unavailable={readTokenInventory && activeTokenSnapshot?.status === 'error'} open={assetPickerOpen} busy={busy}
                 onOpen={() => { if (!busy && lifetime.current.alive) { closeScanner(); setAssetPickerOpen(true); } }}
                 onClose={() => setAssetPickerOpen(false)} onSelect={next => {
                   if (busy || !lifetime.current.alive) return;

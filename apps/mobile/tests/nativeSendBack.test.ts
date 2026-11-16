@@ -27,8 +27,9 @@ type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; sett
 function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void, ledgerConnection?: { subscribe(listener: () => void): () => void; isConnected(): boolean }, localization = nativeTranslationFixture) {
   let initialDraft: NativeSendInitialDraft | undefined, collectible: SavedCollectible | undefined;
   let privacyHidden = false, availableAmount: string | undefined = '2';
-  let tokenConnections = 0;
-  const tokenView = { subscribe: () => () => {}, getSnapshot: () => ({ items: [], collectibles: [] }), connect() { tokenConnections++; return () => {}; } };
+  const tokenConnections: unknown[] = [];
+  let assetChoices: readonly unknown[] | undefined = onChangeAsset ? [] : undefined;
+  const tokenView = { subscribe: () => () => {}, getSnapshot: () => ({ items: [], collectibles: [] }), connect(selection?: unknown) { tokenConnections.push(selection); return () => {}; } };
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -129,9 +130,10 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     async recover() { if (recoveryFailure) throw recoveryFailure; }};
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,replacement,ledgerConnection,beforeClose,tokenView,recipientResolver,account,availableAmount,onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,replacement,ledgerConnection,beforeClose,tokenView,recipientResolver,account,availableAmount,onChangeNetwork,onChangeAsset,assetChoices,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
   return {render, privacy(hidden: boolean) { privacyHidden = hidden; }, available(value: string | undefined) { availableAmount = value; }, selectedFees, replacementRequests, seedReplacement(value: NonNullable<typeof replacement>) { replacement = value; }, renderInput: (props: unknown) => module.exports.NativeSendInput(props) as Element,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
-    tokenConnections: () => tokenConnections,
+    tokenConnections,
+    clearCachedAssets() { assetChoices = undefined; },
     seedDraft(draft: NativeSendInitialDraft, saved?: SavedCollectible) { initialDraft = draft; collectible = saved; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     failRecovery(message: string) { recoveryFailure = new Error(message); },
@@ -336,6 +338,30 @@ test('asset selector captures same-network unsigned text without preparing or au
   one(f.render(), 'SendAssetSelector').props.onSelect(asset);
   assert.equal((captured[0] as any[])[0].recipient, '0x2222222222222222222222222222222222222222');
   assert.equal((captured[0] as any[])[1], asset); assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []); f.dispose();
+});
+
+test('ERC20 Send uses its selected contract until the uncached asset picker opens', () => {
+  const token = { contractAddress: '0x' + '55'.repeat(20), decimals: 6, name: 'Token', symbol: 'TOK' };
+  const f = setup(token, undefined, undefined, undefined, undefined, () => undefined);
+  f.snapshot.phase = 'idle';
+  try {
+    const picker = () => one(f.render(), 'SendAssetSelector');
+    picker().props.onOpen();
+    const opened = picker();
+    assert.equal(opened.props.open, true);
+    assert.equal(f.tokenConnections.length, 1);
+    assert.equal((f.tokenConnections[0] as { token: unknown }).token, token);
+    opened.props.onClose();
+    f.clearCachedAssets();
+    picker().props.onOpen();
+    const uncached = picker();
+    assert.equal(f.tokenConnections.length, 2);
+    assert.equal((f.tokenConnections[1] as { token?: unknown }).token, undefined);
+    uncached.props.onClose();
+    picker();
+    assert.equal(f.tokenConnections.length, 3);
+    assert.equal((f.tokenConnections[2] as { token: unknown }).token, token);
+  } finally { f.dispose(); }
 });
 
 test('review has one primary action and Header Back returns to the unchanged draft', async () => {

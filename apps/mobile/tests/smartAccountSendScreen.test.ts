@@ -48,6 +48,10 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
   let account={ address: '0x1111111111111111111111111111111111111111', network: 'ethereum', revision: 1 };
   const balance = { account, status: 'available', units: '5000000000000000000' };
   const inventory = { status: 'ready', account, items: token ? [{ metadata: token, status: 'available', units: '100' }] : [] };
+  const tokenConnections: unknown[] = [];
+  const tokenView = token ? { subscribe: () => () => {}, connect(selection?: unknown) {
+    tokenConnections.push(selection); return () => {};
+  }, getSnapshot: () => inventory } : undefined;
   const events = new Map<string, (...args: any[]) => void>();
   let cameraPrompt = false, hardware: (() => boolean) | undefined, backs = 0;
   const cells: any[] = [],
@@ -177,8 +181,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
       accountLabel: 'Smart account',
       source: {},
       reader: {},
-      token, collectible, tokenView: token ? { subscribe: () => () => {}, connect: () => () => {},
-        getSnapshot: () => inventory } : undefined,
+      token, collectible, tokenView,
       onBack() { backs++; },
     }) as Element;
   };
@@ -199,6 +202,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
   return {
     render,
     balanceConnections: () => balanceConnections,
+    tokenConnections,
     shareBalance(units: string, stale = false) { nativeBalance = { ...balance, units, account: stale ? { ...account, revision: 0 } : account }; },
     privacy(hidden: boolean) { privacyHidden = hidden; },
     edit,
@@ -413,6 +417,8 @@ test('Smart token form presents the selected contract and routes exact decimal i
     const details = all(f.render()).find(node => node.type === 'Button' && node.props.title === 'Details'); assert(details); details.props.onPress();
     assert(all(f.render()).some(node => node.children.includes(token.contractAddress)));
     assert(all(f.render()).some(node => node.type === 'TokenMaximum'));
+    assert.equal(f.tokenConnections.length, 1);
+    assert.equal((f.tokenConnections[0] as { token: unknown }).token, token);
     f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
     const amount = '0.' + '0'.repeat(254) + '9';
     f.edit('Amount in EXACT', amount);
