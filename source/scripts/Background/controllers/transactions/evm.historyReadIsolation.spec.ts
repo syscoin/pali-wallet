@@ -1,3 +1,4 @@
+/* eslint-disable camelcase -- Ethereum RPC fixture fields. */
 import { retryableFetch } from '@sidhujag/sysweb3-network';
 
 import { isEvmHistoryIncomplete } from '../../../../shared/evmHistory';
@@ -150,6 +151,83 @@ it('keeps native, token and pending history when all feeds are healthy', async (
   expect(mockVault.accounts.HDAccount[0].evmTxCountByChainId[CHAIN]).toBe(7);
   expect(mockActions).toHaveLength(1);
   expect(isEvmHistoryIncomplete(result)).toBe(false);
+});
+
+it.each([
+  'transaction',
+  'receipt',
+  'header',
+  'from',
+  'to',
+  'height',
+  'healthy',
+])(
+  'publishes mined pending history only for coherent observations (%s)',
+  async (kind) => {
+    mockVault.activeNetwork.apiUrl = undefined;
+    mockVault.accountTransactions.HDAccount[0].ethereum[CHAIN] = [
+      {
+        hash: hash('a'),
+        from: OWNER,
+        to: RECIPIENT,
+        nonce: 8,
+        blockNumber: null,
+      },
+    ];
+    const tx = {
+      ...transaction('a'),
+      blockNumber: 123,
+      blockHash: hash('d'),
+      ...(kind === 'transaction' ? { hash: hash('b') } : {}),
+    };
+    const provider = {
+      getTransaction: jest.fn(async () => tx),
+      getTransactionReceipt: jest.fn(async () => ({
+        transactionHash: kind === 'receipt' ? hash('b') : hash('a'),
+        from: kind === 'from' ? OTHER_OWNER : OWNER,
+        to: kind === 'to' ? TOKEN : RECIPIENT,
+        blockNumber: kind === 'height' ? 124 : 123,
+        blockHash: hash('d'),
+        status: 1,
+      })),
+      getBlockNumber: jest.fn(async () => 124),
+      getBlock: jest.fn(async () => ({
+        number: 123,
+        hash: kind === 'header' ? hash('e') : hash('d'),
+        timestamp: 100,
+      })),
+    };
+    const scan = jest.requireMock('./utils').findUserTxsInProviderByBlocksRange;
+    scan.mockResolvedValue([]);
+    const result = await poll(provider);
+    expect(result.length).toBe(kind === 'healthy' ? 1 : 0);
+    if (kind === 'healthy')
+      expect(result[0]).toMatchObject({
+        hash: hash('a'),
+        blockNumber: 123,
+        txreceipt_status: '1',
+      });
+    expect(provider.getTransaction).toHaveBeenCalledTimes(1);
+    if (kind === 'healthy') {
+      expect(provider.getTransactionReceipt).toHaveBeenCalledTimes(1);
+      expect(provider.getBlock).toHaveBeenCalledTimes(1);
+      expect(provider.getBlockNumber).toHaveBeenCalledTimes(1);
+    }
+  }
+);
+
+it('preserves Smart discovery incompleteness through the final array merge', async () => {
+  const history = jest.requireMock('./smartAccountHistory');
+  history.fetchSmartAccountUserOpTransactions = jest.fn(async () =>
+    jest
+      .requireActual('../../../../shared/evmHistory')
+      .markEvmHistoryIncomplete([])
+  );
+  mockVault.accounts.HDAccount[0].isSmartAccount = true;
+  routeReplies(async () => response([]));
+  const result = await poll();
+  expect(result.length).toBeGreaterThan(0);
+  expect(isEvmHistoryIncomplete(result)).toBe(true);
 });
 
 it('retains confirmed history when the optional pending fetch rejects', async () => {

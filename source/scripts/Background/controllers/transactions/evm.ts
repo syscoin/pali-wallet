@@ -8,7 +8,9 @@ import {
   mergeEvmExplorerTransactions,
   explorerApiError,
   markEvmHistoryIncomplete,
+  isEvmHistoryIncomplete,
 } from '../../../../shared/evmHistory';
+import { assertEvmReceiptCoherence } from '../../../../shared/evmTransactionObservation';
 import store from 'state/store';
 import { setActiveAccountProperty } from 'state/vault';
 import { hasPositiveBalance } from 'utils/balance';
@@ -749,7 +751,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
               check();
               const tx = await web3Provider.getTransaction(pendingTx.hash);
               check();
-              if (tx) {
+              if (
+                tx &&
+                tx.hash?.toLowerCase() === pendingTx.hash.toLowerCase()
+              ) {
                 // If transaction is found and has a block number, it's confirmed
                 if (tx.blockNumber) {
                   const [block, latestBlock] = await Promise.all([
@@ -775,6 +780,17 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                   } catch (receiptError) {
                     console.log(`Could not fetch receipt for ${tx.hash}`);
                   }
+                  assertEvmReceiptCoherence(
+                    {
+                      hash: pendingTx.hash,
+                      from: tx.from,
+                      to: tx.to,
+                      blockHash: tx.blockHash,
+                      blockNumber: tx.blockNumber,
+                    },
+                    receipt,
+                    block
+                  );
 
                   return {
                     ...tx,
@@ -852,8 +868,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           signal
         );
         check();
+        incompleteHistory ||= isEvmHistoryIncomplete(userOpTransactions);
         rawTransactions = [...rawTransactions, ...userOpTransactions];
       } catch (error) {
+        incompleteHistory = true;
         console.warn(
           '[pollingEvmTransactions] Smart account user-op history fetch failed:',
           error

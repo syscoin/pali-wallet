@@ -1,5 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit';
 
+import { isEvmHistoryIncomplete } from '../../../../shared/evmHistory';
 import MainController from 'scripts/Background/controllers/MainController';
 import { CancellablePromises } from 'scripts/Background/controllers/promises/cancellablesPromises';
 import vaultReducer from 'state/vault';
@@ -254,6 +255,35 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   manager.utils.clearCache();
   jest.restoreAllMocks();
+});
+
+it('retries incomplete Smart discovery instead of caching empty history', async () => {
+  mockStore.getState().vault.accounts.HDAccount[0].isSmartAccount = true;
+  let fail = true;
+  const original = provider.readMany.getMockImplementation();
+  provider.readMany.mockImplementation(
+    async (requests: any[], options: any) => {
+      if (requests[0].method === 'eth_getLogs')
+        return [
+          {
+            status: fail ? 'rejected' : 'fulfilled',
+            ...(fail ? { reason: Error('offline') } : { value: [] }),
+          },
+        ];
+      if (requests[0].method === 'eth_blockNumber')
+        return [{ status: 'fulfilled', value: '0x64' }];
+      return original(requests, options);
+    }
+  );
+  expect(isEvmHistoryIncomplete(await update())).toBe(true);
+  fail = false;
+  expect(isEvmHistoryIncomplete(await update())).toBe(false);
+  await update();
+  expect(
+    provider.readMany.mock.calls.filter(
+      ([requests]) => requests[0].method === 'eth_getLogs'
+    )
+  ).toHaveLength(2);
 });
 
 it('retires a held pagination hint before starting explorer requests through MainController', async () => {

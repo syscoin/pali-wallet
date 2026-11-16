@@ -409,7 +409,7 @@ async function settleReplay(
     },
     getTransactionReceipt: async () => receipt,
     getBlockNumber: async () => 12,
-    getBlock: async () => ({ timestamp: 1000 }),
+    getBlock: async () => ({ number: 12, hash: blockHash, timestamp: 1000 }),
   });
   return receipt;
 }

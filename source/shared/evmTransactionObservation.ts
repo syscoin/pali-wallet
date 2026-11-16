@@ -69,6 +69,64 @@ export function readEvmReceiptFeeUnits(value: unknown): string | null {
   return fee.toString();
 }
 
+/** Correlate already-fetched raw or ethers-normalized receipt observations. */
+const normalizedQuantity = (input: unknown) =>
+  typeof input === 'bigint' ||
+  (typeof input === 'number' && Number.isSafeInteger(input) && input >= 0)
+    ? quantity(`0x${BigInt(input).toString(16)}`)
+    : quantity(input);
+type ReceiptIdentity = {
+  blockHash?: unknown;
+  blockNumber?: unknown;
+  from: string;
+  hash: string;
+  to: string | null;
+};
+export function assertEvmReceiptIdentity(
+  expected: ReceiptIdentity,
+  value: unknown
+) {
+  const receipt = object(value);
+  try {
+    if (
+      hash(receipt.transactionHash ?? receipt.hash) !== hash(expected.hash) ||
+      getAddress(receipt.from as string) !== getAddress(expected.from) ||
+      (receipt.to === null ? null : getAddress(receipt.to as string)) !==
+        (expected.to === null ? null : getAddress(expected.to))
+    )
+      invalid();
+  } catch {
+    invalid();
+  }
+}
+export function assertEvmReceiptCoherence(
+  expected: ReceiptIdentity,
+  value: unknown,
+  header: unknown
+) {
+  const receipt = object(value),
+    block = object(header);
+  assertEvmReceiptIdentity(expected, receipt);
+  try {
+    const number = normalizedQuantity(receipt.blockNumber),
+      blockHash = hash(receipt.blockHash);
+    const status = normalizedQuantity(receipt.status);
+    if (status !== BigInt(0) && status !== BigInt(1)) invalid();
+    if (
+      normalizedQuantity(block.number) !== number ||
+      hash(block.hash) !== blockHash ||
+      (expected.blockNumber !== undefined &&
+        normalizedQuantity(expected.blockNumber) !== number) ||
+      (expected.blockHash !== undefined &&
+        hash(expected.blockHash) !== blockHash)
+    )
+      invalid();
+    return { number, blockHash, status };
+  } catch {
+    return invalid();
+  }
+}
+
 /** One ordinary canonical-receipt observation, shared by both host transports. */
 export async function observeEvmTransaction(
   expected: EvmObservationRequest,
@@ -142,16 +200,7 @@ export async function observeEvmTransaction(
     });
   }
   const receipt = object(value);
-  try {
-    if (
-      hash(receipt.transactionHash) !== wantedHash ||
-      getAddress(receipt.from as string) !== from ||
-      (receipt.to === null ? null : getAddress(receipt.to as string)) !== to
-    )
-      invalid();
-  } catch {
-    invalid();
-  }
+  assertEvmReceiptIdentity({ hash: wantedHash, from, to }, receipt);
   const status = quantity(receipt.status),
     number = quantity(receipt.blockNumber),
     blockHash = hash(receipt.blockHash);

@@ -171,6 +171,10 @@ beforeEach(async () => {
     'synthetic-smart-history-password'
   );
   provider = {
+    send: async (method: string) => {
+      if (method === 'eth_chainId') return '0xa';
+      throw Error('Unexpected history read');
+    },
     getBlockNumber: jest.fn(async () => 100),
     getLogs: jest.fn(async (filter: any) => {
       filters.push(filter);

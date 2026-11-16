@@ -377,6 +377,46 @@ it('skips the head read while a directly observed transaction has no receipt', a
   expect(provider.getBlock).not.toHaveBeenCalled();
 });
 
+it.each(['receipt', 'header', 'from', 'height', 'healthy'])(
+  'requires coherent direct transaction details (%s)',
+  async (kind) => {
+    const hash = `0x${'ab'.repeat(32)}`,
+      blockHash = `0x${'cd'.repeat(32)}`;
+    provider.getTransaction = jest.fn(async () => ({
+      hash,
+      from: A,
+      to: T,
+      blockNumber: 10,
+      blockHash,
+      value: BigInt(0),
+      chainId: 1,
+      data: '0x',
+    }));
+    provider.getTransactionReceipt = jest.fn(async () => ({
+      transactionHash: kind === 'receipt' ? `0x${'ef'.repeat(32)}` : hash,
+      from: kind === 'from' ? U : A,
+      to: T,
+      blockNumber: kind === 'height' ? 11 : 10,
+      blockHash,
+      status: 1,
+    }));
+    provider.getBlockNumber = jest.fn(async () => 12);
+    provider.getBlock = jest.fn(async () => ({
+      number: 10,
+      hash: kind === 'header' ? `0x${'ef'.repeat(32)}` : blockHash,
+      timestamp: 1000,
+    }));
+    const result = await controller.getEvmTransactionFromProvider(hash);
+    if (kind === 'healthy')
+      expect(result).toMatchObject({ hash, blockNumber: 10, success: true });
+    else expect(result).toBeNull();
+    expect(provider.getTransaction).toHaveBeenCalledTimes(1);
+    expect(provider.getTransactionReceipt).toHaveBeenCalledTimes(1);
+    expect(provider.getBlock).toHaveBeenCalledTimes(1);
+    expect(provider.getBlockNumber).toHaveBeenCalledTimes(1);
+  }
+);
+
 it('carries actual router receipt Transfer logs through direct confirmation into targeted refresh', async () => {
   const hash = `0x${'aa'.repeat(32)}`;
   const router = `0x${'66'.repeat(20)}`;
@@ -402,12 +442,20 @@ it('carries actual router receipt Transfer logs through direct confirmation into
     data: '0x1234',
   });
   provider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    transactionHash: hash,
+    from: A,
+    to: router,
+    blockHash: `0x${'11'.repeat(32)}`,
     blockNumber: 10,
     status: 1,
     logs,
   });
   provider.getBlockNumber = jest.fn().mockResolvedValue(11);
-  provider.getBlock = jest.fn().mockResolvedValue({ timestamp: 1000 });
+  provider.getBlock = jest.fn().mockResolvedValue({
+    number: 10,
+    hash: `0x${'11'.repeat(32)}`,
+    timestamp: 1000,
+  });
   const transaction = await controller.getEvmTransactionFromProvider(hash);
   expect(transaction.logs).toBe(logs);
   expect(transaction.balanceRefreshBlockNumber).toBe(11);
@@ -434,12 +482,20 @@ it('waits for the actual receipt height when a different RPC backend reports an 
     data: '0x1234',
   });
   provider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    transactionHash: hash,
+    from: A,
+    to: T,
+    blockHash: `0x${'11'.repeat(32)}`,
     blockNumber: 10,
     status: 1,
     logs: [],
   });
   provider.getBlockNumber = jest.fn().mockResolvedValue(9);
-  provider.getBlock = jest.fn().mockResolvedValue({ timestamp: 1000 });
+  provider.getBlock = jest.fn().mockResolvedValue({
+    number: 10,
+    hash: `0x${'11'.repeat(32)}`,
+    timestamp: 1000,
+  });
   provider.send.mockResolvedValue('0x9');
 
   const transaction = await controller.getEvmTransactionFromProvider(hash);
@@ -467,12 +523,20 @@ it('keeps an in-flight transaction detail lookup on its original provider after 
     })
   );
   originalProvider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    transactionHash: hash,
+    from: A,
+    to: T,
+    blockHash: `0x${'11'.repeat(32)}`,
     blockNumber: 10,
     status: 1,
     logs: [],
   });
   originalProvider.getBlockNumber = jest.fn().mockResolvedValue(11);
-  originalProvider.getBlock = jest.fn().mockResolvedValue({ timestamp: 1000 });
+  originalProvider.getBlock = jest.fn().mockResolvedValue({
+    number: 10,
+    hash: `0x${'11'.repeat(32)}`,
+    timestamp: 1000,
+  });
 
   const lookup = controller.getEvmTransactionFromProvider(hash);
   provider = {

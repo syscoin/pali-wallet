@@ -82,6 +82,21 @@ beforeEach(() => {
   mockHint = 1;
 });
 
+it.each([
+  {},
+  { status: '1', result: {} },
+  { status: 'maintenance', result: [] },
+])('keeps invalid explorer envelopes retryable: %p', async (body) => {
+  replies(
+    { ok: true, status: 200, json: async () => body } as Response,
+    response([])
+  );
+  const result = await fetchPage();
+  expect(result.transactions).toBeNull();
+  expect(result.error).toBeTruthy();
+  expect(result.hasMore).toBeUndefined();
+});
+
 it.each([0, undefined])(
   'honors explicit Load More parameters when the ordinary-transaction hint is %p',
   async (hint) => {

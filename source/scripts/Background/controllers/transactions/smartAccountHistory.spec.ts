@@ -1,3 +1,4 @@
+/* eslint-disable camelcase -- Ethereum RPC fixture fields. */
 const dispatchMock = jest.fn();
 let vaultState: any;
 
@@ -16,6 +17,7 @@ jest.mock('state/vault', () => ({
   }),
 }));
 
+import { isEvmHistoryIncomplete } from '../../../../shared/evmHistory';
 import {
   PALI_ENTRYPOINT_V09_ADDRESS,
   paliEntryPointInterface,
@@ -67,21 +69,39 @@ const rawOuterTransaction = {
   value: '0x0',
 };
 
-const buildProvider = (overrides: Partial<Record<string, any>> = {}) => ({
-  getBlockNumber: jest.fn().mockResolvedValue(100),
-  getLogs: jest.fn().mockResolvedValue([buildUserOpEventLog(true)]),
-  send: jest.fn(async (method: string) => {
-    if (method === 'eth_getTransactionByHash') {
-      return rawOuterTransaction;
-    }
-    if (method === 'eth_getBlockByNumber') {
-      return { number: '0x5', hash: BLOCK_HASH, timestamp: '0x60' };
-    }
-    return null;
-  }),
+const buildProvider = (overrides: Partial<Record<string, any>> = {}) => {
+  const provider: any = {
+    getBlockNumber: jest.fn().mockResolvedValue(100),
+    getLogs: jest.fn().mockResolvedValue([buildUserOpEventLog(true)]),
+    send: jest.fn(async (method: string) => {
+      if (method === 'eth_chainId') return `0x${CHAIN_ID.toString(16)}`;
+      if (method === 'eth_getTransactionByHash') {
+        return rawOuterTransaction;
+      }
+      if (method === 'eth_getBlockByNumber') {
+        return { number: '0x5', hash: BLOCK_HASH, timestamp: '0x60' };
+      }
+      return null;
+    }),
 
-  ...overrides,
-});
+    ...overrides,
+  };
+  const send = provider.send;
+  provider.send = jest.fn(async (method, params) =>
+    method === 'eth_chainId'
+      ? overrides.identity?.() ?? `0x${CHAIN_ID.toString(16)}`
+      : send(method, params)
+  );
+  if (provider.readMany) {
+    const readMany = provider.readMany;
+    provider.readMany = jest.fn(async (requests, options) =>
+      requests.length === 1 && requests[0].method === 'eth_chainId'
+        ? [{ status: 'fulfilled', value: `0x${CHAIN_ID.toString(16)}` }]
+        : readMany(requests, options)
+    );
+  }
+  return provider;
+};
 
 const expectCursorDispatch = (block: number) =>
   expect.objectContaining({
@@ -111,6 +131,119 @@ describe('coherent Smart history materialization', () => {
       },
     };
   });
+  it('reports failed discovery as incomplete and healthy discovery as complete', async () => {
+    const provider = buildProvider({
+      getLogs: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValue([]),
+    });
+    const run = () =>
+      fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      );
+    expect(isEvmHistoryIncomplete(await run())).toBe(true);
+    expect(isEvmHistoryIncomplete(await run())).toBe(false);
+  });
+  it('renews remote identity after the lease expires before publishing rows or a cursor', async () => {
+    const clock = jest.spyOn(performance, 'now').mockReturnValue(0);
+    let chain = CHAIN_ID;
+    const provider = buildProvider({
+      identity: () => `0x${chain.toString(16)}`,
+      send: jest.fn(async (method) => {
+        if (method === 'eth_chainId') return `0x${chain.toString(16)}`;
+        return method === 'eth_getTransactionByHash'
+          ? rawOuterTransaction
+          : { number: '0x5', hash: BLOCK_HASH, timestamp: '0x60' };
+      }),
+    });
+    const run = () =>
+      fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      );
+    expect(await run()).toHaveLength(1);
+    dispatchMock.mockClear();
+    clock.mockReturnValue(60_000);
+    chain = 1;
+    await expect(run()).rejects.toThrow();
+    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(provider.getLogs).toHaveBeenCalledTimes(1);
+    expect(
+      provider.send.mock.calls.filter(([method]) => method === 'eth_chainId')
+    ).toHaveLength(2);
+    clock.mockRestore();
+  });
+  it('shares a warm identity but refuses a long scan crossing the lease after retargeting', async () => {
+    const clock = jest.spyOn(performance, 'now').mockReturnValue(0);
+    let chain = CHAIN_ID;
+    const provider = buildProvider({
+      identity: () => `0x${chain.toString(16)}`,
+      getLogs: jest.fn(async () => []),
+    });
+    const run = () =>
+      fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      );
+    await run();
+    clock.mockReturnValue(1000);
+    await run();
+    expect(
+      provider.send.mock.calls.filter(([method]) => method === 'eth_chainId')
+    ).toHaveLength(1);
+    dispatchMock.mockClear();
+    provider.getLogs.mockImplementationOnce(async () => {
+      clock.mockReturnValue(31_000);
+      chain = 1;
+      return [buildUserOpEventLog(true)];
+    });
+    await expect(run()).rejects.toThrow('History chain changed');
+    expect(dispatchMock).not.toHaveBeenCalled();
+    clock.mockRestore();
+  });
+  it.each(['missing', 'conflicting'])(
+    'does not bind an unmaterialized %s event outcome to cached placement',
+    async (kind) => {
+      const cached = {
+        ...rawOuterTransaction,
+        blockNumber: 5,
+        confirmations: 95,
+        smartAccountExecutionFrom: SMART_ACCOUNT,
+        txreceipt_status: '1',
+        isError: '0',
+      };
+      vaultState.accountTransactions.SmartAccount[0].ethereum[CHAIN_ID] = [
+        cached,
+      ];
+      const event = { ...buildUserOpEventLog(false), blockHash: USER_OP_HASH };
+      const provider = buildProvider({
+        getLogs: jest.fn(async () =>
+          kind === 'conflicting' ? [buildUserOpEventLog(false), event] : [event]
+        ),
+        send: jest.fn(async () => null),
+      });
+      const rows = await fetchSmartAccountUserOpTransactions(
+        provider,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      );
+      expect(rows[0]).toMatchObject({
+        blockHash: BLOCK_HASH,
+        txreceipt_status: '1',
+      });
+      expect((rows[0] as any).smartAccountOutcome).toBeUndefined();
+      expect(dispatchMock).not.toHaveBeenCalled();
+    }
+  );
   it.each(['hash', 'header', 'sender'] as const)(
     'rejects a contradictory %s without advancing coverage',
     async (mismatch) => {
@@ -387,7 +520,9 @@ describe('coherent Smart history materialization', () => {
         () => current
       )
     ).rejects.toThrow('History context changed');
-    expect(provider.send).not.toHaveBeenCalled();
+    expect(
+      provider.send.mock.calls.filter(([method]) => method !== 'eth_chainId')
+    ).toHaveLength(0);
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 });
@@ -516,6 +651,7 @@ describe('smart account EntryPoint log history', () => {
       CHAIN_ID
     );
     vaultState.accounts.SmartAccount[0] = { id: 0, address: GAS_PAYER };
+    await new Promise((resolve) => setImmediate(resolve));
     release(100);
     await read;
     expect(dispatchMock).not.toHaveBeenCalled();
@@ -538,7 +674,7 @@ describe('smart account EntryPoint log history', () => {
       CHAIN_ID,
       () => true
     );
-    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
     vaultState.accounts.SmartAccount[0] = {
       ...vaultState.accounts.SmartAccount[0],
       address: SMART_ACCOUNT.toUpperCase(),
@@ -568,7 +704,7 @@ describe('smart account EntryPoint log history', () => {
       CHAIN_ID,
       () => current
     );
-    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
     current = false;
     vaultState.accounts.SmartAccount[0] = { id: 0, address: SMART_ACCOUNT };
     release([]);
@@ -592,7 +728,7 @@ describe('smart account EntryPoint log history', () => {
       ACCOUNT_TYPE,
       CHAIN_ID
     );
-    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
     delete vaultState.accounts.SmartAccount[0];
     release([]);
     await read;
@@ -618,7 +754,9 @@ describe('smart account EntryPoint log history', () => {
       CHAIN_ID
     );
 
-    expect(provider.send).not.toHaveBeenCalled();
+    expect(
+      provider.send.mock.calls.filter(([method]) => method !== 'eth_chainId')
+    ).toHaveLength(0);
     expect(transactions).toHaveLength(1);
     expect((transactions[0] as any).confirmations).toBe(95);
   });
@@ -650,7 +788,9 @@ describe('smart account EntryPoint log history', () => {
     );
 
     // No refetch: block hash matches, only the status is corrected.
-    expect(provider.send).not.toHaveBeenCalled();
+    expect(
+      provider.send.mock.calls.filter(([method]) => method !== 'eth_chainId')
+    ).toHaveLength(0);
     expect(transactions).toHaveLength(1);
     const tx = transactions[0] as any;
     expect(tx.txreceipt_status).toBe('0');
@@ -969,7 +1109,9 @@ describe('smart account canonical overlap and adaptive ranges', () => {
       CHAIN_ID
     );
     expect(result[0].blockHash).toBe(BLOCK_HASH);
-    expect(provider.send).not.toHaveBeenCalled();
+    expect(
+      provider.send.mock.calls.filter(([method]) => method !== 'eth_chainId')
+    ).toHaveLength(0);
     expect(provider.getLogs).toHaveBeenCalledTimes(1);
     expect(dispatchMock).not.toHaveBeenCalled();
   });
@@ -1000,7 +1142,9 @@ describe('smart account canonical overlap and adaptive ranges', () => {
       blockNumber: 15000,
       blockHash: BLOCK_HASH,
     });
-    expect(provider.send).not.toHaveBeenCalled();
+    expect(
+      provider.send.mock.calls.filter(([method]) => method !== 'eth_chainId')
+    ).toHaveLength(0);
     expect(provider.getLogs).toHaveBeenCalledTimes(3);
     expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(10094));
   });
@@ -1098,7 +1242,9 @@ describe('smart account canonical overlap and adaptive ranges', () => {
       CHAIN_ID
     );
     expect(provider.getLogs).toHaveBeenCalledTimes(1);
-    expect(provider.send).not.toHaveBeenCalled();
+    expect(
+      provider.send.mock.calls.filter(([method]) => method !== 'eth_chainId')
+    ).toHaveLength(0);
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 });
@@ -1121,10 +1267,20 @@ it('retains healthy history details when one settled transaction read fails with
   let detailsAvailable = false;
   const readMany = jest.fn(async (requests) =>
     requests.map(({ method, params }) => {
+      if (method === 'eth_blockNumber')
+        return { status: 'fulfilled', value: '0x64' };
       if (method === 'eth_getBlockByNumber')
         return {
           status: 'fulfilled',
           value: { number: '0x5', hash: BLOCK_HASH, timestamp: '0x60' },
+        };
+      if (method === 'eth_getLogs')
+        return {
+          status: 'fulfilled',
+          value: [
+            buildUserOpEventLog(true),
+            { ...buildUserOpEventLog(true), transactionHash: otherHash },
+          ],
         };
       if (params[0] === otherHash && !detailsAvailable)
         return { status: 'rejected', reason: Error('detail unavailable') };
@@ -1148,12 +1304,14 @@ it('retains healthy history details when one settled transaction read fails with
     CHAIN_ID
   );
   expect(transactions.map((tx) => tx.hash)).toEqual([TX_HASH]);
-  expect(readMany).toHaveBeenCalledTimes(2);
-  expect(readMany.mock.calls[0][0]).toEqual([
+  expect(readMany).toHaveBeenCalledTimes(4);
+  expect(readMany.mock.calls[2][0]).toEqual([
     { method: 'eth_getTransactionByHash', params: [TX_HASH] },
     { method: 'eth_getTransactionByHash', params: [otherHash] },
   ]);
-  expect(provider.send).not.toHaveBeenCalled();
+  expect(
+    provider.send.mock.calls.filter(([method]) => method !== 'eth_chainId')
+  ).toHaveLength(0);
   expect(dispatchMock).not.toHaveBeenCalled();
   detailsAvailable = true;
   const retried = await fetchSmartAccountUserOpTransactions(
@@ -1164,5 +1322,7 @@ it('retains healthy history details when one settled transaction read fails with
   );
   expect(retried.map((tx) => tx.hash)).toEqual([TX_HASH, otherHash]);
   expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(100));
-  expect(provider.send).not.toHaveBeenCalled();
+  expect(
+    provider.send.mock.calls.filter(([method]) => method !== 'eth_chainId')
+  ).toHaveLength(0);
 });
