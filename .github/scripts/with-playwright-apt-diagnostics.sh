@@ -24,9 +24,11 @@ if { [ "$#" -eq 5 ] && [ "$1" = npx ] && [ "$2" = playwright ] && [ "$3" = insta
   ln -s "$script_dir/playwright-apt-sudo.sh" "$elevation_dir/sudo" || exit "$?"
   set -- env "PATH=$elevation_dir:$PATH" "$@"
 fi
+# Prefer GNU's process-group KILL handling when both implementations are installed.
+timeout_command="$(command -v gnutimeout || command -v timeout)"
 # This bounds unprivileged work. The scoped elevation shim and cache verifier
 # each install a root-owned deadline for their privileged APT descendants.
-if timeout --signal=TERM --kill-after=15s 600s "$@"; then
+if "$timeout_command" --signal=TERM --kill-after=15s 600s "$@"; then
   exit 0
 else
   command_status=$?
@@ -35,16 +37,16 @@ fi
 # Read-only evidence after failure. Never change DNS, apt trust or its sandbox,
 # and never replace the original failure with a diagnostic command's status.
 printf 'Apt/Playwright command failed with exit code %s; collecting DNS evidence\n' "$command_status"
-timeout --kill-after=2s 8s sudo -n namei -l /etc/resolv.conf
+"$timeout_command" --kill-after=2s 8s sudo -n namei -l /etc/resolv.conf
 for principal in root _apt; do
-  if timeout --kill-after=2s 8s sudo -n -u "$principal" test -r /etc/resolv.conf; then
+  if "$timeout_command" --kill-after=2s 8s sudo -n -u "$principal" test -r /etc/resolv.conf; then
     printf '%s can read /etc/resolv.conf\n' "$principal"
   else
     printf '%s resolver readability probe exit code: %s\n' "$principal" "$?"
   fi
   for host in azure.archive.ubuntu.com mirrors.kernel.org mirrors.edge.kernel.org archive.ubuntu.com security.ubuntu.com packages.microsoft.com; do
     printf 'DNS lookup as %s: %s\n' "$principal" "$host"
-    if timeout --kill-after=2s 8s sudo -n -u "$principal" getent ahosts "$host"; then
+    if "$timeout_command" --kill-after=2s 8s sudo -n -u "$principal" getent ahosts "$host"; then
       printf 'DNS lookup succeeded\n'
     else
       printf 'DNS lookup exit code: %s\n' "$?"

@@ -16,7 +16,9 @@ archives=("$archive_dir/"*.deb)
 if [ "${#archives[@]}" -eq 0 ]; then exit 0; fi
 # Bound both stalled transports and the complete metadata refresh. Run timeout
 # as root so it can terminate APT's privileged acquisition workers as well.
-sudo -n timeout --signal=TERM --kill-after=15s 300s apt-get update \
+timeout_command=timeout
+if [ -x /usr/bin/gnutimeout ]; then timeout_command=/usr/bin/gnutimeout; fi
+sudo -n "$timeout_command" --signal=TERM --kill-after=15s 300s apt-get update \
   -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 \
   -o Acquire::Retries=1 -o APT::Update::Error-Mode=any
 for archive in "${archives[@]}"; do
