@@ -177,3 +177,59 @@ describe('runtime provider request boundary', () => {
     }
   );
 });
+
+it('preserves bounded RPC error data without stacks or internal fields', async () => {
+  const data = { revert: '0x12345678', nested: [null, '0xab'] };
+  methodRequestMock.mockRejectedValueOnce(
+    Object.assign(new Error('execution reverted'), {
+      code: 3,
+      data,
+      secret: 'private',
+    })
+  );
+  const result = await onMessage(
+    { type: 'METHOD_REQUEST', data: { method: 'eth_call', params: [] } },
+    {
+      url: 'https://example.com/page',
+      origin: 'https://example.com',
+      tab: { id: 1 },
+      documentId: 'error-document',
+    } as chrome.runtime.MessageSender
+  );
+  expect(result).toEqual({
+    error: { code: 3, message: 'execution reverted', data },
+  });
+  expect(result.error.data).not.toBe(data);
+});
+
+it.each([
+  () => ({ huge: 'x'.repeat(1024 * 1024) }),
+  () => {
+    const cyclic: any = {};
+    cyclic.self = cyclic;
+    return cyclic;
+  },
+  () => new Error('private internal object'),
+])(
+  'omits invalid public error data without changing the RPC code',
+  async (invalid) => {
+    methodRequestMock.mockRejectedValueOnce(
+      Object.assign(new Error('execution reverted'), {
+        code: 3,
+        data: invalid(),
+      })
+    );
+    const result = await onMessage(
+      { type: 'METHOD_REQUEST', data: { method: 'eth_call', params: [] } },
+      {
+        url: 'https://example.com/page',
+        origin: 'https://example.com',
+        tab: { id: 1 },
+        documentId: 'error-document',
+      } as chrome.runtime.MessageSender
+    );
+    expect(result).toEqual({
+      error: { code: 3, message: 'execution reverted' },
+    });
+  }
+);

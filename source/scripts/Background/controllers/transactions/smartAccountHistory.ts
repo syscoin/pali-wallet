@@ -1,5 +1,6 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
+import { markEvmHistoryOrphaned } from '../../../../shared/evmHistory';
 import { decodeSmartAccountUserOperationEvent } from '../../../../utils/smartAccount/userOperationEvent';
 import store from 'state/store';
 import { setAccountPropertyByIdAndType } from 'state/vault';
@@ -35,6 +36,48 @@ const FALLBACK_SCAN_BLOCKS = 10_000;
 // cursor persists partial contiguous progress so successive polls walk the
 // remaining range up to the tip.
 const MAX_BACKFILL_CHUNKS_PER_POLL = 10;
+const RANGE_LIMIT_TTL_MS = 5 * 60_000;
+const rangeLimits = new Map<string, { expiresAt: number; span: number }>();
+
+const rangeLimitKey = (provider: CustomJsonRpcProvider, chainId: number) => {
+  try {
+    const url = provider._getConnection().url;
+    return typeof url === 'string' ? JSON.stringify([url, chainId]) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const isLogRangeFailure = (error: any): boolean => {
+  const status = error?.status ?? error?.info?.responseStatus;
+  const message = [
+    error?.message,
+    error?.shortMessage,
+    error?.error?.message,
+    error?.info?.error?.message,
+  ]
+    .filter((value) => typeof value === 'string')
+    .join(' ');
+  if (
+    error?.name === 'AbortError' ||
+    [401, 403, 429].includes(status) ||
+    /rate.?limit|too many requests|quota|unauthori[sz]ed|forbidden|authenticat|time.?out|timed out|abort|cancel/i.test(
+      message
+    )
+  )
+    return false;
+  return /block[ -]?range.{0,80}(?:limit|exceed|too (?:large|wide))|range (?:too (?:large|wide)|exceed)|(?:maximum|limited to).*blocks|query returned more than|too many (?:results|logs)|log response size exceeded/i.test(
+    message
+  );
+};
+
+const rememberRangeLimit = (key: string | undefined, span: number) => {
+  if (!key) return;
+  rangeLimits.delete(key);
+  rangeLimits.set(key, { expiresAt: Date.now() + RANGE_LIMIT_TTL_MS, span });
+  if (rangeLimits.size > 64)
+    rangeLimits.delete(rangeLimits.keys().next().value!);
+};
 
 type ScannedAccount = {
   address: string;
@@ -170,20 +213,26 @@ const scanLogsInChunks = async (
   provider: CustomJsonRpcProvider,
   filter: Record<string, unknown>,
   fromBlock: number,
-  latestBlock: number
-): Promise<{ coveredToBlock: number; logs: any[] } | null> => {
+  latestBlock: number,
+  initialSpan: number,
+  rangeKey?: string
+): Promise<{
+  allowTip: boolean;
+  coveredToBlock: number;
+  logs: any[];
+  span: number;
+} | null> => {
   const logs: any[] = [];
   let coveredToBlock = fromBlock - 1;
   let chunkStart = fromBlock;
+  let span = initialSpan;
+  let allowTip = true;
   for (
     let chunk = 0;
     chunk < MAX_BACKFILL_CHUNKS_PER_POLL && chunkStart <= latestBlock;
     chunk++
   ) {
-    const chunkEnd = Math.min(
-      chunkStart + FALLBACK_SCAN_BLOCKS - 1,
-      latestBlock
-    );
+    const chunkEnd = Math.min(chunkStart + span - 1, latestBlock);
     try {
       const chunkLogs = await provider.getLogs({
         ...filter,
@@ -191,9 +240,13 @@ const scanLogsInChunks = async (
         toBlock: chunkEnd,
       });
       logs.push(...chunkLogs);
-    } catch {
-      // Stop here to keep coverage contiguous; the next poll resumes from
-      // the persisted cursor.
+    } catch (error) {
+      if (isLogRangeFailure(error) && span > 1) {
+        span = Math.max(1, Math.floor(span / 2));
+        rememberRangeLimit(rangeKey, span);
+        continue;
+      }
+      allowTip = false;
       break;
     }
     coveredToBlock = chunkEnd;
@@ -202,7 +255,7 @@ const scanLogsInChunks = async (
   if (coveredToBlock < fromBlock) {
     return null;
   }
-  return { coveredToBlock, logs };
+  return { allowTip, coveredToBlock, logs, span };
 };
 
 export const fetchSmartAccountUserOpTransactions = async (
@@ -235,9 +288,19 @@ export const fetchSmartAccountUserOpTransactions = async (
   // Highest block contiguously covered from `fromBlock`; only this can be
   // persisted as the cursor without leaving gaps.
   let coveredToBlock = latestBlock;
+  const rangeKey = rangeLimitKey(provider, chainId);
+  const knownLimit = rangeKey ? rangeLimits.get(rangeKey) : undefined;
+  const learnedSpan =
+    knownLimit && knownLimit.expiresAt > Date.now()
+      ? knownLimit.span
+      : undefined;
   try {
+    if (learnedSpan && latestBlock - fromBlock + 1 > learnedSpan) {
+      throw new Error('Known block range limit');
+    }
     logs = await provider.getLogs(filter);
-  } catch {
+  } catch (error) {
+    if (!isLogRangeFailure(error)) return refreshedExisting;
     // Range-capped RPC: backfill in bounded chunks from the intended start
     // so older history is eventually indexed (partial contiguous progress
     // is persisted via the cursor), then peek at the tip window so fresh
@@ -246,7 +309,13 @@ export const fetchSmartAccountUserOpTransactions = async (
       provider,
       filter,
       fromBlock,
-      latestBlock
+      latestBlock,
+      learnedSpan ??
+        Math.min(
+          FALLBACK_SCAN_BLOCKS,
+          Math.max(1, Math.floor((latestBlock - fromBlock + 1) / 2))
+        ),
+      rangeKey
     );
     if (!chunked) {
       console.warn(
@@ -256,10 +325,10 @@ export const fetchSmartAccountUserOpTransactions = async (
     }
     logs = chunked.logs;
     coveredToBlock = chunked.coveredToBlock;
-    if (coveredToBlock < latestBlock) {
+    if (chunked.allowTip && coveredToBlock < latestBlock) {
       const tipFromBlock = Math.max(
         coveredToBlock + 1,
-        latestBlock - FALLBACK_SCAN_BLOCKS
+        latestBlock - chunked.span + 1
       );
       try {
         const tipLogs = await provider.getLogs({
@@ -318,6 +387,40 @@ export const fetchSmartAccountUserOpTransactions = async (
 
   let fetchedTransactions: IEvmTransactionResponse[] = [];
   let allDetailsFetched = true;
+  const overlapStart = hasCursor
+    ? fromBlock
+    : Math.max(0, latestBlock - REORG_SAFETY_BLOCKS);
+  const missing = refreshedExisting.filter(
+    (tx) =>
+      Number(tx.blockNumber) >= overlapStart &&
+      Number(tx.blockNumber) <= coveredToBlock &&
+      !successByTxHash.has(tx.hash.toLowerCase())
+  );
+  const missingHeights = Array.from(
+    new Set(missing.map((tx) => Number(tx.blockNumber)))
+  );
+  const canonicalBlocks = await readHistoryDetails(
+    provider,
+    'eth_getBlockByNumber',
+    missingHeights.map((height) => [`0x${height.toString(16)}`, false])
+  );
+  const canonicalByHeight = new Map(
+    missingHeights.map((height, index) => [height, canonicalBlocks[index]])
+  );
+  const orphaned = new Set<string>();
+  for (const tx of missing) {
+    const header = canonicalByHeight.get(Number(tx.blockNumber));
+    if (
+      !header ||
+      Number(header.number) !== Number(tx.blockNumber) ||
+      typeof header.hash !== 'string' ||
+      !/^0x[0-9a-f]{64}$/i.test(header.hash)
+    ) {
+      allDetailsFetched = false;
+    } else if (header.hash.toLowerCase() !== tx.blockHash?.toLowerCase()) {
+      orphaned.add(tx.hash.toLowerCase());
+    }
+  }
   if (hashesToFetch.length > 0) {
     const rawTransactions = (await readHistoryDetails(
       provider,
@@ -330,7 +433,8 @@ export const fetchSmartAccountUserOpTransactions = async (
     );
     // Logs only exist for mined transactions, so a null/unmined detail result
     // is a transient RPC failure; the dropped entry must be retried later.
-    allDetailsFetched = minedTransactions.length === hashesToFetch.length;
+    allDetailsFetched =
+      allDetailsFetched && minedTransactions.length === hashesToFetch.length;
 
     const uniqueBlockNumbers = Array.from(
       new Set(minedTransactions.map((tx) => tx.blockNumber as string))
@@ -415,6 +519,9 @@ export const fetchSmartAccountUserOpTransactions = async (
   // transaction, which mines successfully even when the inner user
   // operation reverted (UserOperationEvent success=false).
   const statusPatchedExisting = survivingExisting.map((tx: any) => {
+    if (orphaned.has(String(tx.hash).toLowerCase())) {
+      return markEvmHistoryOrphaned(tx);
+    }
     const success = successByTxHash.get(String(tx.hash).toLowerCase());
     if (success === undefined) {
       return tx;

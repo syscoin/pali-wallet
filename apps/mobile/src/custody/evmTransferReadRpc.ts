@@ -834,7 +834,7 @@ export class EvmTransferReadRpc {
     };
   }
 
-  /** Revalidate the selected nonce, spend budget and exact asset call under held admission. */
+  /** Revalidate the selected nonce, spend budget and exact execution under held admission. */
   verifyForDispatch(input: EvmUnsignedTransfer, signal: AbortSignal,
     guard: () => void, planner: NativeAutomaticNoncePlanner, asset?: EvmTransferAsset, nonceOverride?: number, nft?: NftTransferIntent): Promise<void> {
     const envelope = nft ? snapshotNftQuoteEnvelope(input, this.network, nft) : snapshotUnsignedTransfer(input, this.network);
@@ -851,18 +851,17 @@ export class EvmTransferReadRpc {
       const cost = getEvmTransferCost(BigInt(envelope.value), BigInt(envelope.gasLimit), BigInt(fee));
       if (cost.total > rawBalance)
         return rejectRead('INSUFFICIENT_BALANCE');
-      if (assetState) {
+      if (assetState)
         await simulateEvmAssetTransfer(read, assetState, envelope, nonceOverride === undefined ? 'automatic' : 'manual');
-        const estimatedGas = quantity(await read('eth_estimateGas', [evmEstimateRequest(envelope), sample.state]));
-        const approval = captureEvmFeeApproval(envelope, this.network.registrationHash, this.feeQuoteExpiry());
-        try {
-          assertEvmFeeEstimateApproved(approval, { balance: rawBalance,
-            estimatedGas, sampledBlockGasLimit: sampled.gasLimit,
-            ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval));
-        } catch (error) { return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED'); }
-        await this.assertAssetCanonical(read, assetState);
-      }
-      if (!assetState) await this.canonical(read, sampled);
+      const estimatedGas = quantity(await read('eth_estimateGas', [evmEstimateRequest(envelope), sample.state]));
+      const approval = captureEvmFeeApproval(envelope, this.network.registrationHash, this.feeQuoteExpiry());
+      try {
+        assertEvmFeeEstimateApproved(approval, { balance: rawBalance,
+          estimatedGas, sampledBlockGasLimit: sampled.gasLimit,
+          ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval));
+      } catch (error) { return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED'); }
+      if (assetState) await this.assertAssetCanonical(read, assetState);
+      else await this.canonical(read, sampled);
       await this.checkChain(read);
       read.assertCurrent();
     }, nft ? 'nft-quote' : 'endpoint');

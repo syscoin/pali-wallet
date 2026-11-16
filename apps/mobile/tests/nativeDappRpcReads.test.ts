@@ -14,6 +14,7 @@ const registration = createNativeNetwork({ id: 'ethereum', name: 'Ethereum', kin
 const json = (id: number, value: Record<string, unknown>) => new Response(JSON.stringify({ jsonrpc: '2.0', id, ...value }), { headers: { 'content-type': 'application/json' } });
 const HASH = `0x${'22'.repeat(32)}`;
 const NODE_PUBLIC_CASES = [
+  ['eth_maxPriorityFeePerGas', [], '0x77359400'],
   ['eth_coinbase', [], `0x${'33'.repeat(20)}`], ['web3_sha3', ['0Xabcd'], HASH],
   ['eth_getFilterChanges', ['0x0000aBcD'], []], ['eth_getFilterLogs', ['opaque-filter-ID'], []],
   ['eth_newBlockFilter', [], 'opaque-block-filter'], ['eth_newFilter', [{ topics: [null] }], '0x0000aBcD'],

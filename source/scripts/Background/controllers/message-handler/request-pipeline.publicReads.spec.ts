@@ -1,5 +1,6 @@
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring/cjs/providers.js';
+import { BrowserProvider } from 'ethers';
 import { MessageChannel } from 'node:worker_threads';
 
 import DAppController from '../DAppController';
@@ -167,7 +168,9 @@ beforeEach(() => {
   sessionGeneration = 1;
   // Only the RPC transport and approval UI are simulated; requests traverse
   // the real onMessage, registry, admission, middleware and provider handlers.
-  transport = jest.fn().mockResolvedValue('0x2a');
+  transport = jest.fn(async (method) =>
+    method === 'eth_chainId' ? '0x1' : '0x2a'
+  );
   mockController = {
     wallet: {
       isUnlocked: () => unlocked,
@@ -193,7 +196,9 @@ afterEach(() => {
 
 it('returns an idle public read through the actual provider transport', async () => {
   await expect(request('eth_blockNumber')).resolves.toBe('0x2a');
-  expect(transport).toHaveBeenCalledWith('eth_blockNumber', []);
+  expect(transport).toHaveBeenCalledWith('eth_blockNumber', [], {
+    signal: expect.any(AbortSignal),
+  });
   expect(popupPromise).not.toHaveBeenCalled();
 });
 
@@ -287,13 +292,17 @@ it('keeps authentication requests serialized and cancels the queued document wit
 
 it('keeps per-origin admission limits on simultaneous public reads', async () => {
   const reply = deferred<string>();
-  transport.mockReturnValue(reply.promise);
+  transport.mockImplementation((method) =>
+    method === 'eth_chainId' ? Promise.resolve('0x1') : reply.promise
+  );
   const reads = Array.from({ length: MAX_REQUESTS_PER_ORIGIN }, () =>
     request('eth_blockNumber')
   );
   try {
     await flush();
-    expect(transport).toHaveBeenCalledTimes(MAX_REQUESTS_PER_ORIGIN);
+    expect(
+      transport.mock.calls.filter(([method]) => method === 'eth_blockNumber')
+    ).toHaveLength(MAX_REQUESTS_PER_ORIGIN);
     await expect(request('eth_blockNumber')).resolves.toMatchObject({
       error: { code: -32005 },
     });
@@ -428,7 +437,7 @@ it.each([false, true])(
           const results = rows.map((row: any) => ({
             jsonrpc: '2.0',
             id: row.id,
-            result: '0x2a',
+            result: row.method === 'eth_chainId' ? '0x1' : '0x2a',
           }));
           return Response.json(Array.isArray(body) ? results : results[0]);
         },
@@ -457,8 +466,19 @@ it.each([false, true])(
         '0x2a',
         '0x2a',
       ]);
-      expect(wire).toHaveLength(1);
-      expect(Array.isArray(wire[0]) ? wire[0].length : 1).toBe(
+      expect(
+        wire.filter((body) =>
+          (Array.isArray(body) ? body : [body]).some(
+            (row) => row.method !== 'eth_chainId'
+          )
+        )
+      ).toHaveLength(1);
+      const dataWire = wire.find((body) =>
+        (Array.isArray(body) ? body : [body]).some(
+          (row) => row.method !== 'eth_chainId'
+        )
+      );
+      expect(Array.isArray(dataWire) ? dataWire.length : 1).toBe(
         identical ? 1 : 4
       );
       expect(popupPromise).not.toHaveBeenCalled();
@@ -484,13 +504,15 @@ it('joins identical message events while the original RPC reply remains held', a
       fetch: async (_url, init) => {
         const body = JSON.parse(init.body as string);
         wire.push(body);
-        started.resolve();
-        await reply.promise;
         const rows = Array.isArray(body) ? body : [body];
+        if (rows.some((row: any) => row.method !== 'eth_chainId')) {
+          started.resolve();
+          await reply.promise;
+        }
         const results = rows.map((row: any) => ({
           jsonrpc: '2.0',
           id: row.id,
-          result: '0x2a',
+          result: row.method === 'eth_chainId' ? '0x1' : '0x2a',
         }));
         return Response.json(Array.isArray(body) ? results : results[0]);
       },
@@ -510,16 +532,224 @@ it('joins identical message events while the original RPC reply remains held', a
     for (let index = 1; index < 4; index++) channel.port2.postMessage(index);
     await events.promise;
     await new Promise((resolve) => setTimeout(resolve, 8));
-    expect(wire).toHaveLength(1);
-    expect(Array.isArray(wire[0]) ? wire[0].length : 1).toBe(1);
+    expect(
+      wire.filter((body) =>
+        (Array.isArray(body) ? body : [body]).some(
+          (row) => row.method !== 'eth_chainId'
+        )
+      )
+    ).toHaveLength(1);
+    const dataWire = wire.find((body) =>
+      (Array.isArray(body) ? body : [body]).some(
+        (row) => row.method !== 'eth_chainId'
+      )
+    );
+    expect(Array.isArray(dataWire) ? dataWire.length : 1).toBe(1);
     reply.resolve();
     expect(await Promise.all(reads)).toEqual(['0x2a', '0x2a', '0x2a', '0x2a']);
-    expect(wire).toHaveLength(1);
+    expect(
+      wire.filter((body) =>
+        (Array.isArray(body) ? body : [body]).some(
+          (row) => row.method !== 'eth_chainId'
+        )
+      )
+    ).toHaveLength(1);
   } finally {
     reply.resolve();
     channel.port1.close();
     channel.port2.close();
     provider.destroy();
+    jest.useFakeTimers();
+  }
+});
+
+it('expires endpoint identity before accepting a wrong-chain public result', async () => {
+  let chain = '0x1';
+  transport.mockImplementation(async (method) =>
+    method === 'eth_chainId' ? chain : '0x11'
+  );
+  expect(
+    await request('eth_getBalance', READ_HOST, 1, [ACCOUNT, 'latest'])
+  ).toBe('0x11');
+  expect(
+    transport.mock.calls.filter(([method]) => method === 'eth_chainId')
+  ).toHaveLength(1);
+  expect(
+    await request('eth_getBalance', READ_HOST, 1, [ACCOUNT, 'latest'])
+  ).toBe('0x11');
+  expect(
+    transport.mock.calls.filter(([method]) => method === 'eth_chainId')
+  ).toHaveLength(1);
+  chain = '0x2';
+  await jest.advanceTimersByTimeAsync(30001);
+  expect(
+    await request('eth_getBalance', READ_HOST, 1, [ACCOUNT, 'latest'])
+  ).toMatchObject({ error: { code: 4901 } });
+  expect(
+    transport.mock.calls.filter(([method]) => method === 'eth_getBalance')
+  ).toHaveLength(2);
+});
+
+it('rechecks an expired lease before publishing a held result', async () => {
+  let chain = '0x1';
+  const held = deferred<string>();
+  const started = deferred<void>();
+  transport.mockImplementation(async (method) => {
+    if (method === 'eth_chainId') return chain;
+    started.resolve();
+    return held.promise;
+  });
+  const pending = request('eth_getBalance', READ_HOST, 1, [ACCOUNT, 'latest']);
+  await started.promise;
+  chain = '0x2';
+  await jest.advanceTimersByTimeAsync(30001);
+  held.resolve('0x22');
+  expect(await pending).toMatchObject({ error: { code: 4901 } });
+});
+
+it('retains RPC revert bytes through the full runtime pipeline', async () => {
+  const data = '0x12345678' + '00'.repeat(32);
+  transport.mockImplementation(async (method) => {
+    if (method === 'eth_chainId') return '0x1';
+    throw Object.assign(new Error('execution reverted'), { code: 3, data });
+  });
+  expect(
+    await request('eth_call', READ_HOST, 1, [
+      { to: ACCOUNT, data: '0x12345678' },
+    ])
+  ).toEqual({ error: { code: 3, message: 'execution reverted', data } });
+});
+
+it('routes priority fees through the full public pipeline and BrowserProvider', async () => {
+  transport.mockImplementation(async (method) => {
+    if (method === 'eth_chainId') return '0x1';
+    if (method === 'eth_gasPrice') return '0xb2d05e00';
+    if (method === 'eth_maxPriorityFeePerGas') return '0x77359400';
+    if (method === 'eth_getBlockByNumber')
+      return {
+        number: '0x1',
+        hash: '0x' + 'aa'.repeat(32),
+        parentHash: '0x' + 'bb'.repeat(32),
+        timestamp: '0x1',
+        nonce: '0x0000000000000000',
+        difficulty: '0x0',
+        gasLimit: '0x1c9c380',
+        gasUsed: '0x0',
+        miner: ACCOUNT,
+        extraData: '0x',
+        transactions: [],
+        baseFeePerGas: '0x3b9aca00',
+      };
+    throw Error('Unexpected fee method');
+  });
+  expect(await request('eth_maxPriorityFeePerGas')).toBe('0x77359400');
+  jest.useRealTimers();
+  const provider = new BrowserProvider({
+    request: async ({ method, params }) => {
+      if (method === 'eth_chainId') return '0x1';
+      const result = await request(method, READ_HOST, 1, params as any[]);
+      if (result?.error) throw result.error;
+      return result;
+    },
+  });
+  try {
+    const fees = await provider.getFeeData();
+    expect(fees.maxPriorityFeePerGas).toBe(BigInt(2000000000));
+    expect(fees.maxFeePerGas).toBe(BigInt(4000000000));
+  } finally {
+    provider.destroy();
+    jest.useFakeTimers();
+  }
+});
+
+it('invalidates warm identity when a fresh control verification fails', async () => {
+  let probes = 0;
+  transport.mockImplementation(async (method) => {
+    if (method === 'eth_chainId') {
+      if (++probes === 2)
+        throw Object.assign(new Error('temporarily unavailable'), {
+          code: -32005,
+        });
+      return '0x1';
+    }
+    return '0x2a';
+  });
+  await request('eth_blockNumber');
+  expect(await request('eth_newBlockFilter')).toMatchObject({
+    error: { code: -32005 },
+  });
+  await request('eth_blockNumber');
+  expect(probes).toBe(3);
+  expect(
+    transport.mock.calls.filter(([method]) => method === 'eth_newBlockFilter')
+  ).toHaveLength(0);
+});
+
+it('releases all closed-document control slots before obsolete responses settle', async () => {
+  const held = deferred<string>();
+  const signals: AbortSignal[] = [];
+  transport.mockImplementation(async (method, _params, options) => {
+    if (method === 'eth_chainId') return '0x1';
+    if (method === 'eth_newBlockFilter') {
+      signals.push(options.signal);
+      return held.promise;
+    }
+    return '0x2a';
+  });
+  const pending = Array.from({ length: MAX_REQUESTS_PER_ORIGIN }, () =>
+    request('eth_newBlockFilter')
+  );
+  await flush();
+  expect(signals).toHaveLength(MAX_REQUESTS_PER_ORIGIN);
+  closeTab(1);
+  for (const result of await Promise.all(pending))
+    expect(result).toMatchObject({ error: { code: 4001 } });
+  expect(signals.every((signal) => signal.aborted)).toBe(true);
+  expect(await request('eth_blockNumber', READ_HOST, 2)).toBe('0x2a');
+  held.resolve('old-filter');
+});
+
+it('physically cancels retired controls through the actual SDK without retiring the provider', async () => {
+  jest.useRealTimers();
+  const entered = deferred<void>();
+  const held = deferred<void>();
+  const signals: AbortSignal[] = [];
+  const provider = new CustomJsonRpcProvider(
+    new AbortController().signal,
+    'https://offline-rpc.invalid',
+    1,
+    {
+      fetch: async (_url, init) => {
+        const input = JSON.parse(init.body as string);
+        if (input.method === 'eth_newBlockFilter') {
+          signals.push(init.signal as AbortSignal);
+          if (signals.length === 4) entered.resolve();
+          await held.promise;
+        }
+        return Response.json({
+          jsonrpc: '2.0',
+          id: input.id,
+          result: input.method === 'eth_chainId' ? '0x1' : '0x2a',
+        });
+      },
+    }
+  );
+  mockController.wallet.ethereumTransaction.web3Provider = provider;
+  const pending = Array.from({ length: 4 }, () =>
+    request('eth_newBlockFilter')
+  );
+  try {
+    await entered.promise;
+    closeTab(1);
+    for (const result of await Promise.all(pending))
+      expect(result).toMatchObject({ error: { code: 4001 } });
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    held.resolve();
+    expect(await request('eth_blockNumber', READ_HOST, 2)).toBe('0x2a');
+  } finally {
+    held.resolve();
+    provider.destroy();
+    await Promise.all(pending);
     jest.useFakeTimers();
   }
 });

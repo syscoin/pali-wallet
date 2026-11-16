@@ -433,7 +433,7 @@ describe('smart account EntryPoint log history', () => {
       if (filter.fromBlock === 0 && filter.toBlock === 200_000) {
         throw new Error('range too large');
       }
-      if (filter.fromBlock === 190_000) {
+      if (filter.fromBlock === 190_001) {
         return [buildUserOpEventLog(true)];
       }
       return [];
@@ -453,7 +453,7 @@ describe('smart account EntryPoint log history', () => {
     // 1 full-range attempt + 10 chunks + 1 tip window.
     expect(getLogs).toHaveBeenCalledTimes(12);
     expect(getLogs).toHaveBeenLastCalledWith(
-      expect.objectContaining({ fromBlock: 190_000, toBlock: 200_000 })
+      expect.objectContaining({ fromBlock: 190_001, toBlock: 200_000 })
     );
     // Tip-window transactions are surfaced for display...
     expect(transactions).toHaveLength(1);
@@ -488,7 +488,7 @@ describe('smart account EntryPoint log history', () => {
     expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(9_999));
   });
 
-  it('covers a near-tip cursor with a single chunk on range-capped RPCs', async () => {
+  it('keeps the cursor when a near-tip scan fails for a non-range reason', async () => {
     const provider = buildProvider({
       getBlockNumber: jest.fn().mockResolvedValue(50_000),
       getLogs: jest
@@ -508,11 +508,8 @@ describe('smart account EntryPoint log history', () => {
       CHAIN_ID
     );
 
-    expect(provider.getLogs).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ fromBlock: 48_995, toBlock: 50_000 })
-    );
-    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(50_000));
+    expect(provider.getLogs).toHaveBeenCalledTimes(1);
+    expect(dispatchMock).not.toHaveBeenCalled();
   });
 
   it('does not advance the cursor when transaction details fail to load', async () => {
@@ -573,10 +570,226 @@ describe('smart account EntryPoint log history', () => {
       CHAIN_ID
     );
 
-    // The full-range attempt and the first backfill chunk both failed.
-    expect(provider.getLogs).toHaveBeenCalledTimes(2);
+    expect(provider.getLogs.mock.calls.length).toBeLessThanOrEqual(11);
     expect(transactions).toHaveLength(1);
     expect((transactions[0] as any).confirmations).toBe(95);
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('smart account canonical overlap and adaptive ranges', () => {
+  const cachedRow = () => ({
+    ...rawOuterTransaction,
+    blockNumber: 99,
+    confirmations: 1,
+    isError: '0',
+    // eslint-disable-next-line camelcase
+    txreceipt_status: '1',
+    smartAccountExecutionFrom: SMART_ACCOUNT,
+  });
+  beforeEach(() => {
+    dispatchMock.mockClear();
+    vaultState = {
+      accountTransactions: {
+        SmartAccount: { 0: { ethereum: { [CHAIN_ID]: [cachedRow()] } } },
+      },
+      accounts: {
+        SmartAccount: {
+          0: {
+            id: 0,
+            address: SMART_ACCOUNT,
+            smartAccountUserOpScanByChainId: { [CHAIN_ID]: 100 },
+          },
+        },
+      },
+    };
+  });
+
+  it.each(['changed', 'same', 'unavailable'] as const)(
+    'reconciles a disappeared overlap event using %s canonical evidence',
+    async (evidence) => {
+      const provider = buildProvider({
+        getBlockNumber: jest.fn(async () => 102),
+        getLogs: jest.fn(async () => []),
+        send: jest.fn(async (method, params) => {
+          expect(method).toBe('eth_getBlockByNumber');
+          expect(params).toEqual(['0x63', false]);
+          if (evidence === 'unavailable') throw Error('offline');
+          return {
+            number: '0x63',
+            hash: evidence === 'same' ? BLOCK_HASH : `0x${'ee'.repeat(32)}`,
+          };
+        }),
+      });
+      const result = await fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].hash).toBe(TX_HASH);
+      if (evidence === 'changed') {
+        expect(result[0]).toMatchObject({
+          blockNumber: null,
+          blockHash: null,
+          confirmations: 0,
+          status: 'pending',
+          isError: null,
+          // eslint-disable-next-line camelcase
+          txreceipt_status: null,
+        });
+      } else
+        expect(result[0]).toMatchObject({
+          blockNumber: 99,
+          blockHash: BLOCK_HASH,
+          confirmations: 3,
+        });
+      if (evidence === 'unavailable')
+        expect(dispatchMock).not.toHaveBeenCalled();
+      else expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(102));
+    }
+  );
+
+  it('does not reconcile cached rows outside a successfully covered overlap', async () => {
+    const provider = buildProvider({
+      getBlockNumber: jest.fn(async () => 102),
+      getLogs: jest.fn(async () => {
+        throw Error('rate limit');
+      }),
+    });
+    const result = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    expect(result[0].blockHash).toBe(BLOCK_HASH);
+    expect(provider.send).not.toHaveBeenCalled();
+    expect(provider.getLogs).toHaveBeenCalledTimes(1);
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps cached rows beyond contiguous coverage after a later chunk fails', async () => {
+    vaultState.accountTransactions.SmartAccount[0].ethereum[
+      CHAIN_ID
+    ][0].blockNumber = 15000;
+    vaultState.accounts.SmartAccount[0].smartAccountUserOpScanByChainId[
+      CHAIN_ID
+    ] = 100;
+    const provider = buildProvider({
+      getBlockNumber: jest.fn(async () => 30000),
+      getLogs: jest.fn(async (filter) => {
+        if (filter.fromBlock === 95 && filter.toBlock === 30000)
+          throw Error('block range too large');
+        if (filter.fromBlock > 95) throw Error('offline');
+        return [];
+      }),
+    });
+    const result = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    expect(result[0]).toMatchObject({
+      blockNumber: 15000,
+      blockHash: BLOCK_HASH,
+    });
+    expect(provider.send).not.toHaveBeenCalled();
+    expect(provider.getLogs).toHaveBeenCalledTimes(3);
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(10094));
+  });
+
+  it('adapts below a 5000-block range and reuses only that endpoint capability', async () => {
+    vaultState.accountTransactions.SmartAccount[0].ethereum[CHAIN_ID] = [];
+    const account = vaultState.accounts.SmartAccount[0];
+    account.smartAccountUserOpScanByChainId = {};
+    const getLogs = jest.fn(async (filter) => {
+      if (filter.toBlock - filter.fromBlock + 1 > 5000)
+        throw Object.assign(Error('block range exceeds limit'), {
+          code: -32005,
+        });
+      return filter.fromBlock <= 9999 && filter.toBlock >= 9999
+        ? [buildUserOpEventLog(true)]
+        : [];
+    });
+    const provider = buildProvider({
+      getBlockNumber: jest.fn(async () => 20000),
+      getLogs,
+      _getConnection: () => ({ url: 'https://range.example/rpc' }),
+    });
+    const result = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      account,
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    expect(result.map((tx) => tx.hash)).toEqual([TX_HASH]);
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(20000));
+    expect(getLogs.mock.calls.length).toBeLessThanOrEqual(11);
+    getLogs.mockClear();
+    await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      account,
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    expect(
+      getLogs.mock.calls.every(
+        ([filter]) => filter.toBlock - filter.fromBlock + 1 <= 5000
+      )
+    ).toBe(true);
+    getLogs.mockClear();
+    await fetchSmartAccountUserOpTransactions(
+      {
+        ...provider,
+        _getConnection: () => ({ url: 'https://other-range.example/rpc' }),
+      } as any,
+      account,
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    expect(getLogs.mock.calls[0][0]).toMatchObject({
+      fromBlock: 0,
+      toBlock: 20000,
+    });
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 300001);
+    try {
+      getLogs.mockClear();
+      await fetchSmartAccountUserOpTransactions(
+        provider as any,
+        account,
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      );
+      expect(getLogs.mock.calls[0][0]).toMatchObject({
+        fromBlock: 0,
+        toBlock: 20000,
+      });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it.each([
+    Object.assign(Error('rate limit exceeded'), { code: -32005 }),
+    Object.assign(Error('unauthorized block range'), { status: 401 }),
+    Object.assign(Error('cancelled block range'), { name: 'AbortError' }),
+  ])('does not split non-range failures %s', async (error) => {
+    const provider = buildProvider({
+      getLogs: jest.fn(async () => {
+        throw error;
+      }),
+    });
+    await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    expect(provider.getLogs).toHaveBeenCalledTimes(1);
+    expect(provider.send).not.toHaveBeenCalled();
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 });

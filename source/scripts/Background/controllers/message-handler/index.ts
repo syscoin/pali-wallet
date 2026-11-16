@@ -4,6 +4,7 @@ import { getController } from 'scripts/Background';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { matchAttestedDappOrigin } from 'utils/dappOrigin';
+import { assertJsonWorkBudget } from 'utils/requestPayloadBudget';
 
 import { getMethodConfig } from './method-registry';
 import { createRequestLifetime } from './request-lifetime';
@@ -56,12 +57,23 @@ export const onMessage = async (
         throw cleanErrorStack(ethErrors.rpc.methodNotFound());
     }
   } catch (error) {
-    return {
-      error: {
-        message: error.message || 'Internal error',
-        code: error.code || -32603,
-      },
+    const response: { code: number; data?: unknown; message: string } = {
+      message:
+        typeof error?.message === 'string' && error.message.length <= 4096
+          ? error.message
+          : 'Internal error',
+      code: Number.isSafeInteger(error?.code) ? error.code : -32603,
     };
+    const data = error && Object.getOwnPropertyDescriptor(error, 'data');
+    if (data && 'value' in data && data.value !== undefined) {
+      try {
+        assertJsonWorkBudget(data.value);
+        response.data = JSON.parse(JSON.stringify(data.value));
+      } catch {
+        // Malformed or oversized node data cannot cross the public boundary.
+      }
+    }
+    return { error: response };
   } finally {
     lifetime.dispose();
   }

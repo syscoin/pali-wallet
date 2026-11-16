@@ -62,13 +62,15 @@ it.each([
     );
   }
 );
-it.each(['web3_clientVersion', 'net_listening', 'net_peerCount'])(
-  '%s accepts exactly zero arguments',
-  (method) => {
-    expect(normalizeDappRpcRequest(method, undefined).params).toEqual([]);
-    expect(() => normalizeDappRpcRequest(method, [null])).toThrow();
-  }
-);
+it.each([
+  'web3_clientVersion',
+  'net_listening',
+  'net_peerCount',
+  'eth_maxPriorityFeePerGas',
+])('%s accepts exactly zero arguments', (method) => {
+  expect(normalizeDappRpcRequest(method, undefined).params).toEqual([]);
+  expect(() => normalizeDappRpcRequest(method, [null])).toThrow();
+});
 it.each([
   ['eth_getLogs', []],
   ['eth_getLogs', [{ topics: ['0x1'] }]],
@@ -211,12 +213,12 @@ it.each([false, true])(
 );
 it('classifies the exact unrestricted registry, including custom and unsupported methods, with no default forwarding', () => {
   const registry = getUnrestrictedMethods();
-  expect(registry).toHaveLength(47);
+  expect(registry).toHaveLength(48);
   expect(Object.keys(DAPP_RPC_METHOD_CLASSIFICATION).sort()).toEqual(
     [...registry].sort()
   );
-  expect(DAPP_PUBLIC_RPC_METHODS).toHaveLength(42);
-  expect(new Set(DAPP_PUBLIC_RPC_METHODS).size).toBe(42);
+  expect(DAPP_PUBLIC_RPC_METHODS).toHaveLength(43);
+  expect(new Set(DAPP_PUBLIC_RPC_METHODS).size).toBe(43);
   expect(
     Object.entries(DAPP_RPC_METHOD_CLASSIFICATION)
       .filter(([, kind]) => kind === 'custom')

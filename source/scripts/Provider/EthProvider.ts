@@ -311,7 +311,10 @@ export const EthProvider = (host: string, context: IEnhancedRequestContext) => {
     return executeDappRpcRequest(request, {
       assertCurrent,
       request: (query) =>
-        readPublicRpc(provider, scope, query, signal, assertCurrent),
+        readPublicRpc(provider, scope, query, signal, assertCurrent, {
+          key: identity,
+          chainId: store.getState().vault.activeNetwork.chainId,
+        }),
       verifyPersonalMessage: (message, signature) =>
         ethereumTransaction.verifyPersonalMessage(message, signature),
     });

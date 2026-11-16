@@ -39,7 +39,9 @@ const budget = {
   // 2 KB to the package. Allow 5 KB for this shared transport protection.
   // Bounded public-read coalescing and response splitting add about 2 KB.
   // Allow 5 KB for these transport changes; all startup caps stay fixed.
-  package: 12160000,
+  // Endpoint identity leases, canonical history repair and public RPC envelope
+  // checks add 5,978 measured bytes. Reserve 10 KB for these checked fixes.
+  package: 12170000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

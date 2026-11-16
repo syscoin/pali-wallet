@@ -13,6 +13,7 @@ import { assertSynchronousEvmFeeGuard } from './evmFeeGuard.ts';
 export const DAPP_RPC_METHOD_CLASSIFICATION = Object.freeze({
   eth_blockNumber: 'node-query',
   eth_gasPrice: 'node-query',
+  eth_maxPriorityFeePerGas: 'node-query',
   eth_protocolVersion: 'node-query',
   eth_syncing: 'node-query',
   eth_getBalance: 'node-query',
@@ -325,6 +326,7 @@ export function normalizeDappRpcRequest(
     [
       'eth_blockNumber',
       'eth_gasPrice',
+      'eth_maxPriorityFeePerGas',
       'eth_protocolVersion',
       'eth_syncing',
       'web3_clientVersion',

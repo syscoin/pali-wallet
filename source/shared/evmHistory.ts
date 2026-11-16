@@ -1,5 +1,28 @@
 import { isTransactionInBlock as isHistoryTransactionInBlock } from './transactionBlockStatus.ts';
 
+const orphanedPlacement = Symbol('orphanedPlacement');
+
+/** Carry a checked old placement only through this in-memory history merge. */
+export const markEvmHistoryOrphaned = <
+  T extends { blockHash?: string; blockNumber?: number }
+>(
+  transaction: T
+) => ({
+  ...transaction,
+  blockNumber: null,
+  blockHash: null,
+  confirmations: 0,
+  status: 'pending',
+  success: null,
+  isError: null,
+  // eslint-disable-next-line camelcase
+  txreceipt_status: null,
+  [orphanedPlacement]: {
+    blockHash: transaction.blockHash,
+    blockNumber: Number(transaction.blockNumber),
+  },
+});
+
 export const EVM_TRANSACTION_HISTORY_SOURCE = {
   ExplorerPending: 'explorer-pendingtxlist',
   ExplorerTokenTransfer: 'explorer-tokentx',
@@ -333,6 +356,14 @@ export const selectEvmHistoryRepresentatives = <
         String((existing as any).blockHash).toLowerCase() !==
           String((tx as any).blockHash).toLowerCase()
     );
+    const orphan = tx[orphanedPlacement];
+    const isOrphanedPlacement = Boolean(
+      sameTransaction &&
+        orphan &&
+        Number(existing.blockNumber) === orphan.blockNumber &&
+        String(existing.blockHash).toLowerCase() ===
+          String(orphan.blockHash).toLowerCase()
+    );
 
     // Update if: no existing tx, more confirmations, reorg replacement, or
     // transaction just got into a block
@@ -340,6 +371,7 @@ export const selectEvmHistoryRepresentatives = <
       !existing ||
       tx.confirmations > existing.confirmations ||
       isReorgReplacement ||
+      isOrphanedPlacement ||
       (existing &&
         !isHistoryTransactionInBlock(existing) &&
         isHistoryTransactionInBlock(tx));

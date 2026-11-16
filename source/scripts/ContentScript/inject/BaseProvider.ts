@@ -41,7 +41,7 @@ export interface RequestArguments {
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export interface JsonRpcSuccessStruct {
-  id: number;
+  id: number | string | null;
   jsonrpc: JsonRpcVersion;
   result: any;
 }
@@ -52,7 +52,7 @@ export interface JsonRpcSuccessStruct {
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export interface UnvalidatedJsonRpcRequest {
-  id?: number;
+  id?: number | string | null;
   method: string;
   params?: unknown;
 }
@@ -213,7 +213,7 @@ export class BaseProvider extends EventEmitter {
       try {
         result = await this.proxy('METHOD_REQUEST', payload);
         formatedResult = {
-          id: payload.id || 1,
+          id: payload.id === undefined ? 1 : payload.id,
           jsonrpc: '2.0' as JsonRpcVersion,
           result: result,
         };
@@ -231,14 +231,14 @@ export class BaseProvider extends EventEmitter {
             try {
               const requestResult = await this.proxy('METHOD_REQUEST', request);
               return {
-                id: request.id || 1,
+                id: request.id === undefined ? 1 : request.id,
                 jsonrpc: '2.0' as JsonRpcVersion,
                 result: requestResult,
               };
             } catch (requestError) {
               // Return error response for this specific request
               return {
-                id: request.id || 1,
+                id: request.id === undefined ? 1 : request.id,
                 jsonrpc: '2.0' as JsonRpcVersion,
                 error: requestError,
               };

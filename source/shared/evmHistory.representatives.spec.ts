@@ -2,8 +2,34 @@ import {
   mapEvmExplorerTokenTransfer,
   mapEvmExplorerTransaction,
   mergeEvmExplorerTransactions,
+  markEvmHistoryOrphaned,
   selectEvmHistoryRepresentatives,
 } from './evmHistory';
+
+it('replaces only the exact orphaned placement and preserves a concurrent remine', () => {
+  const mined = {
+    hash: `0x${'ab'.repeat(32)}`,
+    from: 'sender',
+    nonce: 1,
+    blockNumber: 99,
+    blockHash: `0x${'cd'.repeat(32)}`,
+    confirmations: 3,
+  };
+  const orphaned = markEvmHistoryOrphaned(mined);
+  expect(
+    selectEvmHistoryRepresentatives([mined, { ...orphaned }])[0]
+  ).toMatchObject({ blockNumber: null, confirmations: 0 });
+  const remined = {
+    ...mined,
+    blockNumber: 101,
+    blockHash: `0x${'ee'.repeat(32)}`,
+    confirmations: 1,
+  };
+  expect(selectEvmHistoryRepresentatives([remined, orphaned])).toEqual([
+    remined,
+  ]);
+  expect(JSON.stringify(orphaned)).not.toContain('orphanedPlacement');
+});
 
 const SENDER = `0x${'11'.repeat(20)}`;
 const OWNER = `0x${'22'.repeat(20)}`;

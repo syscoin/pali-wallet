@@ -1,3 +1,5 @@
+import { isReadOnlyRpcMethod } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
+
 jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -58,6 +60,7 @@ const HOST = 'https://transaction.test';
 const HASH = `0x${'44'.repeat(32)}`;
 const NODE_PUBLIC_CASES = [
   ['eth_coinbase', [], OTHER_FROM],
+  ['eth_maxPriorityFeePerGas', [], '0x77359400'],
   ['web3_sha3', ['0Xabcd'], HASH],
   ['eth_getFilterChanges', ['0x0000aBcD'], []],
   ['eth_getFilterLogs', ['opaque-filter-ID'], []],
@@ -77,7 +80,7 @@ const stateMock = store.getState as jest.Mock;
 const popupMock = popupPromise as jest.Mock;
 const decodeMock = decodeTransactionData as jest.Mock;
 const coordinateMock = requestCoordinator.coordinatePopupRequest as jest.Mock;
-const rpc = { getBlock: jest.fn(), send: jest.fn() };
+const rpc = { getBlock: jest.fn(), readMany: jest.fn(), send: jest.fn() };
 const connectedAccountMock = jest.fn();
 const sessionGenerationMock = jest.fn();
 let wallet: any;
@@ -110,6 +113,16 @@ beforeEach(() => {
   requestLifetime = new AbortController();
   (getUnrestrictedMethods as jest.Mock).mockReturnValue([]);
   rpc.getBlock.mockResolvedValue({ baseFeePerGas: '0x3b9aca00' });
+  rpc.readMany.mockImplementation(
+    (requests: readonly { method: string; params: unknown[] }[]) =>
+      Promise.allSettled(
+        requests.map((request) =>
+          request.method === 'eth_chainId'
+            ? Promise.resolve('0x1')
+            : rpc.send(request.method, [...request.params])
+        )
+      )
+  );
   popupMock.mockResolvedValue(HASH);
   decodeMock.mockResolvedValue({
     method: 'Contract Interaction',
@@ -208,7 +221,14 @@ describe('EthProvider public RPC admission and errors', () => {
         )
       ).toEqual(extensionResult);
       expect(rpc.send).toHaveBeenCalledTimes(1);
-      expect(rpc.send).toHaveBeenCalledWith(method, [...expected.params]);
+      expect(rpc.send).toHaveBeenCalledWith(
+        method,
+        [...expected.params],
+        ...(!isReadOnlyRpcMethod(String(method)) ||
+        classifyDappRpcMethod(String(method)) === 'node-control'
+          ? [expect.objectContaining({ signal: requestLifetime.signal })]
+          : [])
+      );
       expect(observed.map((value) => value.method)).toEqual([
         'eth_chainId',
         method,
@@ -311,10 +331,15 @@ describe('EthProvider public RPC admission and errors', () => {
     async (change) => {
       (getUnrestrictedMethods as jest.Mock).mockReturnValue(['eth_getLogs']);
       let release!: (value: unknown) => void;
+      let started!: () => void;
+      const dispatched = new Promise<void>((resolve) => {
+        started = resolve;
+      });
       rpc.send.mockImplementationOnce(
         () =>
           new Promise((resolve) => {
             release = resolve;
+            started();
           })
       );
       const reading = EthProvider(HOST, readContext()).unrestrictedRPCMethods(
@@ -324,6 +349,7 @@ describe('EthProvider public RPC admission and errors', () => {
       const rejected = expect(reading).rejects.toMatchObject({
         code: change === 'document' ? 4001 : 4100,
       });
+      await dispatched;
       if (change === 'network')
         vault.activeNetwork = {
           ...vault.activeNetwork,
@@ -920,11 +946,14 @@ it.each([
 ])('keeps held identical public reads isolated across %s', async (change) => {
   (getUnrestrictedMethods as jest.Mock).mockReturnValue(['eth_getBalance']);
   const releases: Array<(value: PromiseSettledResult<unknown>[]) => void> = [];
-  const readMany = jest.fn(
-    () =>
-      new Promise<PromiseSettledResult<unknown>[]>((resolve) =>
-        releases.push(resolve)
-      )
+  const readMany = jest.fn((requests: readonly { method: string }[]) =>
+    requests.every((request) => request.method === 'eth_chainId')
+      ? Promise.resolve(
+          requests.map(() => ({ status: 'fulfilled' as const, value: '0x1' }))
+        )
+      : new Promise<PromiseSettledResult<unknown>[]>((resolve) =>
+          releases.push(resolve)
+        )
   );
   wallet.ethereumTransaction.web3Provider = { send: jest.fn(), readMany };
   const firstContext = readContext();
@@ -967,7 +996,11 @@ it.each([
     secondContext
   ).unrestrictedRPCMethods('eth_getBalance', [FROM, 'latest']);
   await new Promise((resolve) => setTimeout(resolve, 8));
-  expect(readMany).toHaveBeenCalledTimes(2);
+  expect(
+    readMany.mock.calls.filter(
+      ([requests]) => requests[0]?.method !== 'eth_chainId'
+    )
+  ).toHaveLength(2);
   releases.forEach((resolve) =>
     resolve([{ status: 'fulfilled', value: '0x1' }])
   );
@@ -986,12 +1019,20 @@ it('retires an old document subscriber while a new document completes independen
   (getUnrestrictedMethods as jest.Mock).mockReturnValue(['eth_getBalance']);
   const replies: Array<(value: PromiseSettledResult<unknown>[]) => void> = [];
   const readMany = jest.fn(
-    (_requests: readonly unknown[], _options: { signal: AbortSignal }) =>
-      new Promise<PromiseSettledResult<unknown>[]>((resolve) => {
+    (
+      _requests: readonly { method: string }[],
+      _options: { signal: AbortSignal }
+    ) => {
+      if (_requests.every((request) => request.method === 'eth_chainId'))
+        return Promise.resolve(
+          _requests.map(() => ({ status: 'fulfilled' as const, value: '0x1' }))
+        );
+      return new Promise<PromiseSettledResult<unknown>[]>((resolve) => {
         expect(_requests).toHaveLength(1);
         expect(_options.signal.aborted).toBe(false);
         replies.push(resolve);
-      })
+      });
+    }
   );
   wallet.ethereumTransaction.web3Provider = { send: jest.fn(), readMany };
   const firstContext = readContext();
@@ -1008,7 +1049,11 @@ it('retires an old document subscriber while a new document completes independen
   await new Promise((resolve) => setTimeout(resolve, 8));
   requestLifetime.abort();
   await rejected;
-  expect(readMany.mock.calls[0]![1].signal.aborted).toBe(true);
+  expect(
+    readMany.mock.calls.find(
+      ([requests]) => requests[0]?.method !== 'eth_chainId'
+    )![1].signal.aborted
+  ).toBe(true);
   requestLifetime = new AbortController();
   const nextContext = readContext();
   nextContext.originalRequest.sender = {
@@ -1025,5 +1070,9 @@ it('retires an old document subscriber while a new document completes independen
     resolve([{ status: 'fulfilled', value: '0x1' }])
   );
   await expect(next).resolves.toBe('0x1');
-  expect(readMany).toHaveBeenCalledTimes(2);
+  expect(
+    readMany.mock.calls.filter(
+      ([requests]) => requests[0]?.method !== 'eth_chainId'
+    )
+  ).toHaveLength(2);
 });

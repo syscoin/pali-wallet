@@ -1,3 +1,4 @@
+import { createRpcIdentityLease } from '../../../../source/shared/rpcIdentityLease.ts';
 import { isReadOnlyRpcMethod } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
 import {
   classifyDappRpcMethod,
@@ -38,13 +39,11 @@ type ReadOwner = {
   key: string;
   controller: AbortController;
   rpc: EvmTransferReadRpc;
-  verifiedUntil: number;
-  verification?: { controller: AbortController; promise: Promise<void> };
+  identity: ReturnType<typeof createRpcIdentityLease>;
   pending: Map<string, SharedRead>;
   queued: QueuedRead[];
   collection?: ReturnType<typeof setTimeout>;
 };
-const IDENTITY_LEASE_MS = 30_000;
 // Collect neighboring bridge callbacks without restarting the timer on arrival.
 const COLLECTION_MS = 4;
 const cancelled = () => new Error('CONTEXT_CHANGED');
@@ -69,6 +68,7 @@ export function createNativeDappRpcReadHost(
     ]);
   const reset = () => {
     if (owner?.collection !== undefined) clearTimeout(owner.collection);
+    owner?.identity.invalidate();
     owner?.controller.abort();
     owner?.queued.splice(0).forEach(row => row.reject(new EvmTransferReadError('CANCELLED')));
     owner = undefined;
@@ -88,62 +88,39 @@ export function createNativeDappRpcReadHost(
     error: unknown,
     signal: AbortSignal
   ) => {
-    if (owner !== captured || error instanceof EthereumRpcErrorHandler) return;
+    if (owner !== captured || signal.aborted || error instanceof EthereumRpcErrorHandler) return;
     if (error instanceof EvmTransferReadError) {
       if (error.code === 'PROFILE_CHANGED') {
         reset();
         return;
       }
-      if (error.code === 'CANCELLED' && signal.aborted) return;
     }
-    captured.verifiedUntil = 0;
-    captured.verification?.controller.abort();
+    captured.identity.invalidate();
   };
   const capture = () => {
     const identity = key();
     if (!owner || owner.key !== identity) {
       reset();
-      owner = {
+      const next: ReadOwner = {
         key: identity,
         controller: new AbortController(),
         rpc: new EvmTransferReadRpc(
           snapshotNativeNetwork(ports.registration()),
           { fetch }
         ),
-        verifiedUntil: 0,
+        identity: createRpcIdentityLease(
+          async signal => next.rpc.verifyNetwork(signal, () => current(next)), now
+        ),
         pending: new Map(),
         queued: [],
       };
+      owner = next;
     }
     return owner;
   };
-  const verify = async (captured: ReadOwner) => {
+  const verify = async (captured: ReadOwner, signal: AbortSignal) => {
     current(captured);
-    const remaining = captured.verifiedUntil - now();
-    if (remaining > 0 && remaining <= IDENTITY_LEASE_MS) return;
-    let verification = captured.verification;
-    if (!verification || verification.controller.signal.aborted) {
-      const controller = new AbortController();
-      const abort = () => controller.abort();
-      captured.controller.signal.addEventListener('abort', abort, {
-        once: true,
-      });
-      const next = { controller, promise: Promise.resolve() };
-      captured.verification = next;
-      next.promise = captured.rpc
-        .verifyNetwork(controller.signal, () => current(captured))
-        .then(() => {
-          current(captured);
-          if (controller.signal.aborted) throw new EvmTransferReadError('CANCELLED');
-          captured.verifiedUntil = now() + IDENTITY_LEASE_MS;
-        })
-        .finally(() => {
-          captured.controller.signal.removeEventListener('abort', abort);
-          if (captured.verification === next) captured.verification = undefined;
-        });
-      verification = next;
-    }
-    await verification.promise;
+    await captured.identity.ensure(signal);
     current(captured);
   };
   const flushQueries = async (captured: ReadOwner) => {
@@ -166,7 +143,7 @@ export function createNativeDappRpcReadHost(
       current(captured);
       const results = await captured.rpc.dappReadBatch(live.map(row => row.request), lifetime.signal,
         () => current(captured));
-      await verify(captured);
+      await verify(captured, lifetime.signal);
       current(captured);
       results.forEach((result, index) => {
         const row = live[index]!;
@@ -183,7 +160,7 @@ export function createNativeDappRpcReadHost(
     }
   };
   const readQuery = async (captured: ReadOwner, request: DappPublicRpcRequest, controller: AbortController) => {
-    await verify(captured);
+    await verify(captured, controller.signal);
     current(captured);
     if (controller.signal.aborted) throw new EvmTransferReadError('CANCELLED');
     if ((request.method === 'eth_call' || request.method === 'eth_estimateGas') &&
@@ -191,7 +168,7 @@ export function createNativeDappRpcReadHost(
         BigInt((request.params[0] as { chainId: string }).chainId) !== BigInt(ports.registration().chainId))
       throw new EthereumRpcErrorHandler(-32602, 'Transaction chainId does not match selected chain');
     if (!isReadOnlyRpcMethod(request.method))
-      return captured.rpc.dappRequest(request, controller.signal, () => current(captured), () => verify(captured));
+      return captured.rpc.dappRequest(request, controller.signal, () => current(captured), () => verify(captured, controller.signal));
     return new Promise<unknown>((resolve, reject) => {
       captured.queued.push({ request, controller, resolve, reject });
       if (captured.collection === undefined) captured.collection = setTimeout(() => {
@@ -250,7 +227,6 @@ export function createNativeDappRpcReadHost(
           selected.controller.abort();
           if (captured.pending.get(requestKey) === selected)
             captured.pending.delete(requestKey);
-          if (!captured.pending.size) captured.verification?.controller.abort();
         }
         try {
           current(captured);

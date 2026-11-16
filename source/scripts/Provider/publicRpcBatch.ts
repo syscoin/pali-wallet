@@ -1,3 +1,4 @@
+import { RpcReadError } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
 import { isReadOnlyRpcMethod } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
 
 import {
@@ -6,6 +7,7 @@ import {
   publicRpcReadKey,
   type DappPublicRpcRequest,
 } from '../../shared/dappRpcReads';
+import { createRpcIdentityLease } from '../../shared/rpcIdentityLease';
 import { assertJsonWorkBudget } from '../../utils/requestPayloadBudget';
 import {
   assertRequestActive,
@@ -17,7 +19,11 @@ type Provider = {
     requests: readonly DappPublicRpcRequest[],
     options: { signal: AbortSignal }
   ) => Promise<PromiseSettledResult<unknown>[]>;
-  send(method: string, params: unknown[]): Promise<unknown>;
+  send(
+    method: string,
+    params: unknown[],
+    options?: { signal: AbortSignal }
+  ): Promise<unknown>;
 };
 type Subscriber = {
   check(): void;
@@ -34,7 +40,12 @@ type Scope = {
   reads: Map<string, PendingRead>;
   timer?: ReturnType<typeof setTimeout>;
 };
-type Owner = { scopes: Map<string | symbol, Scope>; subscribers: number };
+type Identity = { chainId: number; key: string };
+type Owner = {
+  identity?: { key: string; lease: ReturnType<typeof createRpcIdentityLease> };
+  scopes: Map<string | symbol, Scope>;
+  subscribers: number;
+};
 const owners = new WeakMap<Provider, Owner>();
 // Collect adjacent IPC events without extending the collection window on arrival.
 const COLLECTION_MS = 4;
@@ -46,16 +57,44 @@ export function readPublicRpc(
   scopeKey: string | symbol,
   request: DappPublicRpcRequest,
   signal: AbortSignal,
-  check: () => void
+  check: () => void,
+  identity?: Identity
 ): Promise<unknown> {
   assertRequestActive(signal);
   check();
+  if (identity) {
+    const lease = identityLease(provider, identity);
+    return withRequestSignal(signal, async () => {
+      try {
+        const control =
+          classifyDappRpcMethod(request.method) === 'node-control';
+        await lease.ensure(signal, control);
+        check();
+        const result = await readPublicRpc(
+          provider,
+          scopeKey,
+          request,
+          signal,
+          check
+        );
+        await lease.ensure(signal, control);
+        check();
+        return result;
+      } catch (error) {
+        if (!signal.aborted && !(error instanceof RpcReadError))
+          lease.invalidate();
+        throw error;
+      }
+    });
+  }
   if (
     !provider.readMany ||
     classifyDappRpcMethod(request.method) !== 'node-query' ||
     !isReadOnlyRpcMethod(request.method)
   )
-    return provider.send(request.method, [...request.params]);
+    return withRequestSignal(signal, () =>
+      provider.send(request.method, [...request.params], { signal })
+    );
   const normalized = normalizeDappRpcRequest(request.method, request.params);
   const key = publicRpcReadKey(normalized);
   let owner = owners.get(provider);
@@ -202,4 +241,54 @@ async function flush(
     batch.controller.abort();
     retire();
   }
+}
+
+function withRequestSignal<T>(
+  signal: AbortSignal,
+  work: () => Promise<T>
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const cancel = () => reject(requestCancelledError());
+    signal.addEventListener('abort', cancel, { once: true });
+    if (signal.aborted) {
+      signal.removeEventListener('abort', cancel);
+      cancel();
+    } else
+      void work()
+        .then(resolve, reject)
+        .finally(() => signal.removeEventListener('abort', cancel));
+  });
+}
+
+function identityLease(provider: Provider, identity: Identity) {
+  let owner = owners.get(provider);
+  if (!owner) {
+    owner = { scopes: new Map(), subscribers: 0 };
+    owners.set(provider, owner);
+  }
+  if (owner.identity?.key !== identity.key) {
+    owner.identity?.lease.invalidate();
+    const lease = createRpcIdentityLease(async (signal) => {
+      const [result] = provider.readMany
+        ? await provider.readMany(
+            [{ method: 'eth_chainId', params: [] }] as any,
+            { signal }
+          )
+        : await Promise.allSettled([
+            provider.send('eth_chainId', [], { signal }),
+          ]);
+      if (result.status === 'rejected') throw result.reason;
+      if (
+        typeof result.value !== 'string' ||
+        !/^0x[\da-f]+$/i.test(result.value) ||
+        BigInt(result.value) !== BigInt(identity.chainId)
+      )
+        throw Object.assign(
+          new Error('RPC chain does not match the selected network'),
+          { code: 4901 }
+        );
+    });
+    owner.identity = { key: identity.key, lease };
+  }
+  return owner.identity!.lease;
 }

@@ -373,3 +373,58 @@ for (const [gasLimit, fee, balance] of [['21000', '12', '0xffffffffffff'], ['300
     assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
   });
 }
+
+for (const type of [0, 2] as const) test(`native final admission validates exact execution and fee limits (type ${type})`, async () => {
+ let estimate = 22000;
+ let baseFee = '0x4';
+ let blockGasLimit = '0x1c9c380';
+ const f = fixture(custom, call => {
+  if (call.method === 'eth_getTransactionCount') return '0x0';
+  if (call.method === 'eth_estimateGas') return '0x' + estimate.toString(16);
+  if (call.method === 'eth_getBlockByNumber') return {
+   number: call.params[0] === 'latest' ? '0x64' : call.params[0], hash: blockHash,
+   gasLimit: blockGasLimit, ...(type === 2 ? { baseFeePerGas: baseFee } : {}),
+  };
+ });
+ const common = { from, to, chainId: custom.chainId, nonce: '0', value: '100', gasLimit: '25200', data: '0x' };
+ const envelope: EvmUnsignedTransfer = type === 0
+  ? { ...common, type, gasPrice: '10' }
+  : { ...common, type, accessList: [], maxFeePerGas: '10', maxPriorityFeePerGas: '2' };
+ const validate = () => f.rpc.verifyForDispatch(envelope, signal(), () => {}, emptyNoncePlanner);
+ assert.throws(() => f.rpc.verifyForDispatch({ ...envelope, value: '0' }, signal(), () => {}, emptyNoncePlanner), { code: 'INVALID_INPUT' });
+ assert.equal(f.calls.length, 0, 'ordinary zero-value transfers remain rejected before any RPC');
+ await validate();
+ const estimated = f.calls.filter(call => call.method === 'eth_estimateGas');
+ assert.equal(estimated.length, 1);
+ assert.deepEqual(estimated[0]!.params, [{ from, to, data: '0x', value: '0x64', nonce: '0x0',
+  chainId: '0x' + BigInt(custom.chainId).toString(16), type: type === 0 ? '0x0' : '0x2',
+  ...(type === 0 ? { gasPrice: '0xa' } : { accessList: [], maxFeePerGas: '0xa', maxPriorityFeePerGas: '0x2' }) }, 'pending']);
+ assert.equal(f.calls.some(call => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)), false);
+ estimate = 25201;
+ await assert.rejects(validate(), { code: 'REVIEW_REQUIRED' });
+ estimate = 22000;
+ blockGasLimit = '0x6000';
+ await assert.rejects(validate(), { code: 'REVIEW_REQUIRED' });
+ blockGasLimit = '0x1c9c380';
+ if (type === 2) {
+  baseFee = '0xb';
+  await assert.rejects(validate(), { code: 'REVIEW_REQUIRED' });
+ }
+});
+
+test('native final execution read preserves cancellation and canonical revalidation', async () => {
+ for (const revoke of [true, false]) {
+  let changed = false;
+  const f = fixture(custom, call => {
+   if (call.method === 'eth_getTransactionCount') return '0x0';
+   if (call.method === 'eth_estimateGas') changed = true;
+   if (!revoke && changed && call.method === 'eth_getBlockByNumber' && call.params[0] === '0x64')
+    return { number: '0x64', hash, gasLimit: '0x1c9c380', baseFeePerGas: '0x4' };
+   return undefined;
+  });
+  await assert.rejects(f.rpc.verifyForDispatch(transaction(custom), signal(), () => {
+   if (revoke && changed) throw Error('revoked');
+  }, emptyNoncePlanner), { code: revoke ? 'CANCELLED' : 'PROFILE_CHANGED' });
+  assert.equal(f.calls.some(call => call.method === 'eth_estimateGas'), true);
+ }
+});

@@ -231,6 +231,9 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
   let signatures = 0;
+  let afterSignature: (() => void) | undefined;
+  let afterSignedInsert: (() => void) | undefined;
+  const execution = { gas: '0x5208', reverts: false };
   let authentications = 0;
   let authenticationStorageFailure = false, clockOffset = 0;
   let authenticationGate: { entered(): void; release: Promise<void> } | null = null;
@@ -273,7 +276,9 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
       >
     ) {
       signatures++;
-      return super.signPreparedEvmTransaction(...args);
+      const signed = super.signPreparedEvmTransaction(...args);
+      afterSignature?.();
+      return signed;
     }
   }
   const base = createKeyringRuntimeFactory({ credentialPort: { ...credentialPort,
@@ -316,6 +321,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
         after: async (kind, sql) => {
           if (kind === 'all' && sql.includes('FROM evm_signed_records'))
             await pause('storage-read');
+          if (kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records')) afterSignedInsert?.();
           const current = journalGate;
           if (!current) return;
           if (
@@ -413,7 +419,9 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
       else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
       else if (request.method === 'eth_estimateGas') {
         await pause('requote');
-        result = '0x5208';
+        if (execution.reverts) return Response.json({ jsonrpc: '2.0', id: request.id,
+          error: { code: 3, message: 'execution reverted', data: '0x' } });
+        result = execution.gas;
       } else if (request.method === 'eth_getTransactionReceipt') {
         if (!largeReceipt.oversized) result = recovery?.receipt ?? null;
         else {
@@ -523,6 +531,9 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
       return tx;
     },
     setBalance(value: bigint) { nativeBalance = `0x${value.toString(16)}`; },
+    execution,
+    onSignature(callback: () => void) { afterSignature = callback; },
+    onSignedInsert(callback: () => void) { afterSignedInsert = callback; },
     recovery: largeReceipt,
     requests,
     replacement,
@@ -1839,5 +1850,70 @@ test('OS authorization reads the secret once per signed action and explicit Canc
     await f.transfers.confirm(review.id, { method: 'device' });
     assert.equal(credentialPort.secretReads, beforeRetry + 1);
     assert.equal(f.signatures, 1); assert.equal(f.broadcasts.length, 1);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['before-confirm', 'after-signature', 'after-storage'] as const)
+for (const failure of ['revert', 'gas-growth'] as const) test(`native final admission rejects ${failure} ${boundary} with SDK and SQLite`, async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    const review = f.transfers.getSnapshot().review!;
+    let changedAt = -1;
+    const changeExecution = () => {
+      changedAt = f.requests.length;
+      if (failure === 'revert') f.execution.reverts = true;
+      else f.execution.gas = '0x1e8480';
+    };
+    if (boundary === 'before-confirm') changeExecution();
+    else if (boundary === 'after-signature') f.onSignature(changeExecution);
+    else f.onSignedInsert(changeExecution);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), {
+      code: failure === 'revert' ? 'FAILED' : 'EXPIRED',
+    });
+    assert(changedAt >= 0, 'the selected signing/storage boundary was reached');
+    assert.equal(f.signatures, boundary === 'before-confirm' ? 0 : 1);
+    assert.equal(f.broadcasts.length, 0);
+    const finalEstimate = f.requests.slice(changedAt).find(request => request.method === 'eth_estimateGas');
+    assert(finalEstimate, 'the retained native envelope is checked after the change');
+    assert.equal((finalEstimate.params[0] as { to: string }).to.toLowerCase(), RECIPIENT.toLowerCase());
+    assert.equal((finalEstimate.params[0] as { data: string }).data, '0x');
+    if (boundary === 'after-storage') assert(await f.readDurableJournal(), 'signed bytes remain durable after refusal');
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['after-signature', 'after-storage'] as const) test(`native final admission rejects a raised base fee ${boundary}`, async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    const review = f.transfers.getSnapshot().review!;
+    const changeBaseFee = () => { f.replacement.baseFee = '0xffff'; };
+    if (boundary === 'after-signature') f.onSignature(changeBaseFee);
+    else f.onSignedInsert(changeBaseFee);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'EXPIRED' });
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 0);
+    assert(await f.readDurableJournal());
+  } finally { await f.close(); }
+});
+
+for (const type of [0, 2] as const) test(`native final admission retains approved bytes when execution gas grows within the margin (type ${type})`, async () => {
+  const f = await cancellationFixture(type);
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    const review = f.transfers.getSnapshot().review!;
+    f.onSignedInsert(() => { f.execution.gas = '0x6000'; });
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 1);
+    const signed = Transaction.from(f.broadcasts[0]!);
+    assert.equal(signed.type, type);
+    assert.equal(signed.gasLimit.toString(), review.gasLimit);
+    assert.equal((signed.gasPrice ?? signed.maxFeePerGas)!.toString(), review.maximumFeePerGas);
+    assert.equal(signed.maxPriorityFeePerGas?.toString() ?? null, review.priorityFeePerGas);
+    assert.equal(signed.to, review.recipient);
+    assert.equal(signed.value.toString(), review.amountUnits);
+    assert.equal(signed.data, '0x');
+    assert.equal(signed.nonce.toString(), review.nonce);
   } finally { await f.close(); }
 });
