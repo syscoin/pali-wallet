@@ -4,10 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { getSmartAccountUserOpRequiredPrefund } from '../../source/utils/smartAccount/account';
-import {
-  paliEntryPointInterface,
-  paliSmartAccountInterface,
-} from '../../source/utils/smartAccount/contracts';
+import { paliEntryPointInterface } from '../../source/utils/smartAccount/contracts';
 import {
   getPaliCanonicalEntryPointAddress,
   getPaliInfrastructureContracts,
@@ -1255,27 +1252,26 @@ test('RPC budget and receipts for local wallet transfers', async () => {
                 label !== 'deployment' &&
                 !label.startsWith('eoa-');
               if (finalExecutionCheck) {
-                const selector =
-                  paliSmartAccountInterface.getFunction('execute')!.selector;
                 const entryPoint = getPaliCanonicalEntryPointAddress(
                   chain.chainId
                 ).toLowerCase();
-                const estimates = rows.flatMap((row: any) =>
+                const simulations = rows.flatMap((row: any) =>
                   row.methods.flatMap((method: string, index: number) => {
-                    const tx = row.params[index]?.[0];
-                    return method === 'eth_estimateGas' &&
-                      tx?.from?.toLowerCase() === entryPoint &&
-                      tx?.to?.toLowerCase() === account.toLowerCase() &&
-                      tx?.data?.startsWith(selector)
+                    const calls =
+                      row.params[index]?.[0]?.blockStateCalls?.[0]?.calls;
+                    return method === 'eth_simulateV1' &&
+                      calls?.some(
+                        (tx: any) => tx.to?.toLowerCase() === entryPoint
+                      )
                       ? [row]
                       : [];
                   })
                 );
                 expect(
-                  estimates,
-                  phaseName + ' final signed execution estimate'
+                  simulations,
+                  phaseName + ' exact signed outer simulation'
                 ).toHaveLength(1);
-                expect(estimates[0].methods).toEqual(['eth_estimateGas']);
+                expect(simulations[0].methods).toEqual(['eth_simulateV1']);
               }
               const methods = baselineMethods + Number(finalExecutionCheck);
               const posts = baselinePosts + Number(finalExecutionCheck);
