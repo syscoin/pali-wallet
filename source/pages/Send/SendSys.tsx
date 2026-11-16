@@ -253,6 +253,16 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     // The isMaxSend flag tells the backend to subtract fees
   }, []);
 
+  const handleRawFeeChange = useCallback(
+    (fee: string) => {
+      feeWasChosen.current = true;
+      const values = { ...form.getFieldsValue(), fee };
+      formValuesRef.current = values;
+      void saveCurrentState(values);
+    },
+    [form, saveCurrentState]
+  );
+
   // ✅ OPTIMIZED: Fee fetching with proper dependencies
   useEffect(() => {
     const canApplyRecommendation = () =>
@@ -1222,6 +1232,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           recommend={feeRate}
           form={form}
           onFeeChange={handleFeeChange}
+          onRawFeeChange={handleRawFeeChange}
         />
 
         <div className="flex justify-between w-full">

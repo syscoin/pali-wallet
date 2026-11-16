@@ -143,6 +143,29 @@ describe('fee-rate submission validity', () => {
     expect(onFeeChange).not.toHaveBeenCalled();
     expect(form.validateFields).toHaveBeenCalledWith(['fee']);
   });
+
+  it.each(['0.0000000125390625', '', '-1', '0'])(
+    'reports raw draft edit %j separately from the validated numeric fee',
+    async (value) => {
+      const onRawFeeChange = jest.fn(),
+        onFeeChange = jest.fn();
+      render(
+        <Fee
+          disabled={false}
+          form={form}
+          onFeeChange={onFeeChange}
+          onRawFeeChange={onRawFeeChange}
+        />
+      );
+      onFeeChange.mockClear();
+      fireEvent.change(screen.getByRole('spinbutton'), { target: { value } });
+      expect(onRawFeeChange).toHaveBeenCalledWith(value);
+      if (Number(value) > 0)
+        expect(onFeeChange).toHaveBeenCalledWith(Number(value));
+      else expect(onFeeChange).not.toHaveBeenCalled();
+      await Promise.resolve();
+    }
+  );
   it('suppresses an unavailable fiat estimate while retaining the exact fee and validation', async () => {
     mockFiatAvailable = false;
     mockGetFiatAmount.mockReturnValue('0 USD');

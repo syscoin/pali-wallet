@@ -28,6 +28,7 @@ export function SendAssetSelector({ context, token, nativeAvailable, items, open
   const amountText = amount === undefined || amount === null ? '—' : token ? formatTokenUnits(amount, token.decimals) : amount;
   const options = [{ id: 'native', name: context.name, symbol: context.symbol, iconId: context.networkId, available: nativeAvailable },
     ...items.map(item => ({ id: item.metadata.contractAddress, name: item.metadata.name, symbol: item.metadata.symbol,
+      contractAddress: item.metadata.contractAddress,
       iconId: item.metadata.contractAddress, assetIcon: { kind: 'evm' as const, chainId: context.chainId, contractAddress: item.metadata.contractAddress, decimals: item.metadata.decimals }, iconRegistrationHash: context.registrationHash,
       available: item.units === null ? undefined : formatTokenUnits(item.units, item.metadata.decimals) }))]
     .filter(item => !query.trim() || `${item.name} ${item.symbol} ${item.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));

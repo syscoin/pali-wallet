@@ -33,6 +33,9 @@ const monitor = new WalletReleaseMonitor({ current: { platform, version, ...(Num
   },
 });
 let alertsEnabled = true;
+let alertsKnown = false, settingsPending = 0;
+let settingsTail = Promise.resolve();
+const canAlert = () => alertsKnown && alertsEnabled && settingsPending === 0;
 let permission: MobileUpdateSnapshot['permission'] = 'unknown';
 let snapshot: MobileUpdateSnapshot = Object.freeze({ ...monitor.getSnapshot(), alertsEnabled, permission });
 const listeners = new Set<() => void>();
@@ -44,8 +47,8 @@ monitor.subscribe(publish);
 let loaded: Promise<void> | undefined, pending: Promise<void> | undefined;
 let settingsEpoch = 0;
 const load = () => loaded ??= AsyncStorage.getItem(ALERTS_KEY)
-  .then(value => { alertsEnabled = value !== 'off'; publish(); })
-  .catch(error => { loaded = undefined; throw error; });
+  .then(value => { alertsEnabled = value !== 'off'; alertsKnown = true; publish(); })
+  .catch(error => { loaded = undefined; alertsKnown = false; throw error; });
 const granted = (value: Notifications.NotificationPermissionsStatus) => value.granted ||
   // eslint-disable-next-line import/namespace -- Expo re-exports its runtime enum.
   value.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
@@ -55,9 +58,9 @@ function syncBackground() {
   backgroundTail = backgroundTail.catch(() => undefined).then(async () => {
     if (!await TaskManager.isAvailableAsync()) return;
     const registered = await TaskManager.isTaskRegisteredAsync(UPDATE_BACKGROUND_TASK);
-    if (alertsEnabled && permission === 'granted') {
+    if (canAlert() && permission === 'granted') {
       const status = await BackgroundTask.getStatusAsync();
-      if (!registered && alertsEnabled && permission === 'granted' && status === BackgroundTask.BackgroundTaskStatus.Available)
+      if (!registered && canAlert() && permission === 'granted' && status === BackgroundTask.BackgroundTaskStatus.Available)
         await BackgroundTask.registerTaskAsync(UPDATE_BACKGROUND_TASK, { minimumInterval: WALLET_BACKGROUND_INTERVAL_MINUTES });
     } else if (registered) await BackgroundTask.unregisterTaskAsync(UPDATE_BACKGROUND_TASK);
   });
@@ -69,18 +72,18 @@ function noticeId() {
 }
 async function notify() {
   const release = monitor.getSnapshot().release;
-  if (!alertsEnabled || !release || release.severity === 'routine' || monitor.getSnapshot().status !== 'ready') return;
+  if (!canAlert() || !release || release.severity === 'routine' || monitor.getSnapshot().status !== 'ready') return;
   const epoch = settingsEpoch, id = noticeId()!;
   permission = granted(await Notifications.getPermissionsAsync()) ? 'granted' : 'denied'; publish();
-  if (permission !== 'granted' || !alertsEnabled || settingsEpoch !== epoch || await AsyncStorage.getItem(NOTICE_KEY) === id) return;
+  if (permission !== 'granted' || !canAlert() || settingsEpoch !== epoch || await AsyncStorage.getItem(NOTICE_KEY) === id) return;
   if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync(CHANNEL, {
     // eslint-disable-next-line import/namespace -- Expo publicly re-exports runtime enum.
     name: 'Pali updates', importance: Notifications.AndroidImportance.DEFAULT,
   });
-  if (!alertsEnabled || settingsEpoch !== epoch) return;
+  if (!canAlert() || settingsEpoch !== epoch) return;
   // Persist before delivery: repeated background wakes must not repeatedly notify.
   await AsyncStorage.setItem(NOTICE_KEY, id);
-  if (!alertsEnabled || settingsEpoch !== epoch) {
+  if (!canAlert() || settingsEpoch !== epoch) {
     if (await AsyncStorage.getItem(NOTICE_KEY) === id) await AsyncStorage.removeItem(NOTICE_KEY);
     return;
   }
@@ -95,7 +98,7 @@ async function notify() {
     if (await AsyncStorage.getItem(NOTICE_KEY) === id) await AsyncStorage.removeItem(NOTICE_KEY);
     throw error;
   }
-  if (!alertsEnabled || settingsEpoch !== epoch) {
+  if (!canAlert() || settingsEpoch !== epoch) {
     await Notifications.cancelScheduledNotificationAsync(id); await Notifications.dismissNotificationAsync(id);
   }
 }
@@ -117,22 +120,45 @@ export const mobileUpdates: MobileUpdateService = {
     return pending;
   },
   async setAlerts(enabled) {
-    await load();
-    if (enabled) permission = await requestNativeNotificationPermission();
-    ++settingsEpoch;
-    alertsEnabled = enabled;
-    await AsyncStorage.setItem(ALERTS_KEY, enabled ? 'on' : 'off'); publish();
-    await syncBackground();
-    if (!enabled) {
+    const epoch = ++settingsEpoch;
+    settingsPending++;
+    const writing = settingsTail.catch(() => undefined).then(async () => {
+      await load();
+      if (epoch !== settingsEpoch) return;
+      if (enabled) permission = await requestNativeNotificationPermission();
+      if (epoch !== settingsEpoch) return;
+      try { await AsyncStorage.setItem(ALERTS_KEY, enabled ? 'on' : 'off'); }
+      catch (error) {
+        // A rejected write may have committed. Only its current owner may
+        // reconcile acknowledged bytes; unreadable state cannot authorize alerts.
+        loaded = undefined; alertsKnown = false;
+        if (epoch === settingsEpoch) await load().catch(() => undefined);
+        throw error;
+      }
+      if (epoch === settingsEpoch) alertsEnabled = enabled;
+      else { loaded = undefined; alertsKnown = false; }
+    });
+    settingsTail = writing.catch(() => undefined);
+    const reconcile = async () => {
+      if (epoch !== settingsEpoch) return;
+      publish();
+      await syncBackground();
+      if (epoch !== settingsEpoch || !alertsKnown || alertsEnabled) return;
       const id = await AsyncStorage.getItem(NOTICE_KEY);
-      if (id) { await Notifications.cancelScheduledNotificationAsync(id); await Notifications.dismissNotificationAsync(id); }
-    }
+      if (epoch !== settingsEpoch || alertsEnabled || !id) return;
+      await Notifications.cancelScheduledNotificationAsync(id);
+      if (epoch === settingsEpoch && !alertsEnabled) await Notifications.dismissNotificationAsync(id);
+    };
+    await writing.finally(() => { settingsPending--; }).then(reconcile, async error => {
+      await reconcile().catch(() => undefined);
+      throw error;
+    });
   },
 };
 /** Expo shares one worker: retain the activity cadence, throttle only release I/O. */
 export async function runMobileUpdateBackground(): Promise<void> {
   await load();
-  if (!alertsEnabled) return;
+  if (!canAlert()) return;
   const previous = Number(await AsyncStorage.getItem(LAST_CHECK_KEY));
   const elapsed = Date.now() - previous;
   if (previous > 0 && elapsed >= 0 && elapsed < WALLET_RELEASE_AUTOMATIC_INTERVAL_MS) return;
@@ -141,7 +167,7 @@ export async function runMobileUpdateBackground(): Promise<void> {
 /** No URL or route is accepted from a notification payload. */
 export async function isReleaseUpdateNotification(id: string): Promise<boolean> {
   await load();
-  return alertsEnabled && /^pali-update-(?:android|ios)-[0-9.]+-\d+$/.test(id) && await AsyncStorage.getItem(NOTICE_KEY) === id;
+  return canAlert() && /^pali-update-(?:android|ios)-[0-9.]+-\d+$/.test(id) && await AsyncStorage.getItem(NOTICE_KEY) === id;
 }
 export function startMobileUpdateLifecycle(): () => void {
   const check = () => { if (AppState.currentState === 'active') void mobileUpdates.check().catch(() => undefined); };

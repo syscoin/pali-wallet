@@ -179,6 +179,61 @@ const enumeratedView = async () => {
   return view;
 };
 
+it.each([
+  'unchanged',
+  'different chip',
+  'chip round trip',
+  'manual edit',
+  'collection',
+  'unmount',
+])(
+  'associates delayed token-ID copy feedback with the captured selection: %s',
+  async (transition) => {
+    userEvent.setup();
+    let finish!: () => void;
+    const write = jest
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          })
+      );
+    try {
+      const view = await enumeratedView();
+      fireEvent.click(tokenIdCopy()!);
+      expect(write).toHaveBeenCalledWith('1');
+      if (transition === 'different chip' || transition === 'chip round trip') {
+        fireEvent.click(screen.getByRole('button', { name: '#2' }));
+        if (transition === 'chip round trip')
+          fireEvent.click(screen.getByRole('button', { name: '#1' }));
+      }
+      if (transition === 'manual edit') await changeManualCopyId();
+      if (transition === 'collection')
+        view.rerender(
+          <NftsDetails
+            nftData={{ ...nft, contractAddress: `0x${'cd'.repeat(20)}` }}
+          />
+        );
+      if (transition === 'unmount') view.unmount();
+      await act(async () => finish());
+      expect(mockAlert.info).toHaveBeenCalledTimes(
+        transition === 'unchanged' ? 1 : 0
+      );
+      expect(mockAlert.error).not.toHaveBeenCalled();
+    } finally {
+      write.mockRestore();
+    }
+  }
+);
+
+const changeManualCopyId = async () => {
+  fireEvent.change(screen.getByPlaceholderText('send.enterTokenId'), {
+    target: { value: '2' },
+  });
+  await act(async () => undefined);
+};
+
 it('reconciles an automatic ID removed by a complete ownership refresh and copies its replacement', async () => {
   userEvent.setup();
   const write = jest

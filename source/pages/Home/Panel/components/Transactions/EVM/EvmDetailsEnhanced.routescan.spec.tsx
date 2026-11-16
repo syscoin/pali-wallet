@@ -101,7 +101,7 @@ describe('transaction detail API compatibility', () => {
     expect(emitter).toHaveBeenCalledTimes(1);
     expect(emitter).toHaveBeenCalledWith(
       ['wallet', 'getEvmTransactionFromProvider'],
-      ['routescan-details-hash']
+      ['routescan-details-hash', true]
     );
   });
 
@@ -121,7 +121,10 @@ describe('transaction detail API compatibility', () => {
         ['wallet', 'getEvmTransactionFromAPI'],
         ['fallback-details-hash', 'https://custom-explorer.example/api'],
       ],
-      [['wallet', 'getEvmTransactionFromProvider'], ['fallback-details-hash']],
+      [
+        ['wallet', 'getEvmTransactionFromProvider'],
+        ['fallback-details-hash', true],
+      ],
     ]);
   });
 

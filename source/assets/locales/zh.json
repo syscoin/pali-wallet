@@ -335,7 +335,8 @@
     "ifYouHaveAHardWallet": "如果您有硬件钱包，现在就可以连接！",
     "congratulations": "恭喜！",
     "youWalletWas": "您的钱包已成功导入",
-    "youHaveNoNfts": "您没有 NFT。"
+    "youHaveNoNfts": "您没有 NFT。",
+    "noIndexedActivity": "未找到活动。NFT 和内部转账可能不会显示在此处。"
   },
   "titles": {
     "assetDetails": "资产详情",
@@ -1332,7 +1333,8 @@
         "erc721": "NFT 转移",
         "erc1155": "NFT 转移"
       }
-    }
+    },
+    "detailsUnavailable": "无法加载交易详情。请重试。"
   },
   "switchNetworkPage": {
     "chainFallback": "链 {{chainId}}",
@@ -3802,7 +3804,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "第 {{day}} 天，共 7 天",
       "priceHistory": "价格历史",
       "inspectHint": "向上或向下轻扫以切换价格数据点。",
       "nextPrice": "下一个价格",

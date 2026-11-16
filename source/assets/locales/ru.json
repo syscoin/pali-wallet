@@ -335,7 +335,8 @@
     "ifYouHaveAHardWallet": "Если у вас есть аппаратный кошелек, вы можете подключить его прямо сейчас!",
     "congratulations": "Поздравляем!",
     "youWalletWas": "Ваш кошелек успешно импортирован",
-    "youHaveNoNfts": "У вас нет NFT."
+    "youHaveNoNfts": "У вас нет NFT.",
+    "noIndexedActivity": "Операции не найдены. Переводы NFT и внутренние переводы могут не отображаться здесь."
   },
   "titles": {
     "assetDetails": "ДЕТАЛИ АКТИВА",
@@ -1332,7 +1333,8 @@
         "erc721": "Перевод NFT",
         "erc1155": "Перевод NFT"
       }
-    }
+    },
+    "detailsUnavailable": "Не удалось загрузить сведения о транзакции. Повторите попытку."
   },
   "switchNetworkPage": {
     "chainFallback": "Сеть {{chainId}}",
@@ -3802,7 +3804,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "День {{day}} из 7",
       "priceHistory": "История цены",
       "inspectHint": "Смахните вверх или вниз для перехода между точками цены.",
       "nextPrice": "Следующая цена",

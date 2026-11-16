@@ -598,3 +598,125 @@ test('SPT Z-DAG presentation follows fresh pending, inclusion and reorg observat
   }
   assert.equal(f.calls.length, 9, 'refresh performs only the existing three reads');
 });
+
+for (const added of [1, 20, 50]) test(`a refreshed terminal history retains an explicit bounded continuation after ${added} new transactions`, async () => {
+  let count = 100;
+  const f = fixture({ get count() { return count; }, replace(path, body) {
+    if (/^\/api\/v2\/(?:address|xpub)\//.test(path)) {
+      body.transactions = body.transactions.map((_row: unknown, index: number) => {
+        const id = count - (body.page - 1) * 20 - index;
+        return { ...tx(ID(id)), blockTime: 1700000000 + id };
+      });
+    }
+    return body;
+  } });
+  const a = authority(f); a.unlock(); const c = new UtxoActivity(a, () => true); c.activate();
+  try {
+    await settle(c); for (let page = 2; page <= 5; page++) await c.loadMore();
+    assert.equal(c.getSnapshot().rows.length, 100); assert.equal(c.getSnapshot().hasMore, false);
+    const requests = () => f.calls.filter(path => /^\/api\/v2\/(?:address|xpub)\//.test(path)).map(path => Number(new URL(path, 'https://local.invalid').searchParams.get('page')));
+    count += added; await c.refresh();
+    assert.deepEqual(requests(), [1, 2, 3, 4, 5, 1]);
+    assert.equal(c.getSnapshot().rows.length, 100); assert.equal(c.getSnapshot().hasMore, true);
+    assert.equal(c.getSnapshot().rows[0]?.txid, ID(count));
+    const observed = new Set(c.getSnapshot().rows.map(row => row.txid));
+    // An unchanged refresh must not erase an in-progress repair cursor.
+    await c.refresh();
+    const beforeAction = requests().length, beforeHttp = f.calls.length, beforeIds = new Set(c.getSnapshot().rows.map(row => row.txid));
+    const signals: AbortSignal[] = [], readPage = a.readUtxoActivityPage;
+    a.readUtxoActivityPage = (request, signal) => { signals.push(signal); return readPage(request, signal); };
+    await c.loadMore();
+    const actionPages = requests().slice(beforeAction);
+    assert(actionPages.length <= 5); assert.equal(f.calls.length - beforeHttp, actionPages.length * 3);
+    assert.equal(new Set(signals).size, 1, 'one explicit repair owns one pending signal');
+    assert(c.getSnapshot().rows.some(row => !beforeIds.has(row.txid)), 'one Older action reaches a usable row');
+    for (const row of c.getSnapshot().rows) observed.add(row.txid);
+    if (added <= 20) {
+      assert.deepEqual(actionPages, [2, 3, 4, 5, 6]);
+      assert(c.getSnapshot().rows.some(row => row.txid === ID(1)), 'one action restores the clipped terminal tail');
+    } else {
+      assert.deepEqual(actionPages, [2], 'a newly visible gap row stops bounded filling immediately');
+      await c.refresh(); await c.loadMore(); assert.equal(requests().at(-1), 3);
+    }
+    for (let turn = 0; c.getSnapshot().hasMore && turn < 12; turn++) {
+      for (const row of c.getSnapshot().rows) observed.add(row.txid);
+      await c.loadMore();
+      assert(c.getSnapshot().rows.length <= 100);
+      assert(c.getSnapshot().page - c.getSnapshot().firstPage < 5);
+    }
+    for (const row of c.getSnapshot().rows) observed.add(row.txid);
+    assert.equal(c.getSnapshot().hasMore, false); assert(observed.has(ID(1)));
+    for (let id = 101; id <= count; id++) assert(observed.has(ID(id)), `shifted transaction ${id} remains reachable`);
+    assert.equal(requests().at(-1), Math.ceil(count / 20));
+  } finally { c.dispose(); }
+});
+
+test('an unchanged terminal UTXO history keeps all loaded rows without extra continuation requests', async () => {
+  const f = fixture({ count: 100 }), a = authority(f); a.unlock(); const c = new UtxoActivity(a, () => true); c.activate();
+  try {
+    await settle(c); for (let page = 2; page <= 5; page++) await c.loadMore();
+    const ids = c.getSnapshot().rows.map(row => row.txid);
+    await c.refresh(); assert.deepEqual(c.getSnapshot().rows.map(row => row.txid), ids);
+    assert.equal(c.getSnapshot().hasMore, false); const calls = f.calls.length;
+    await c.loadMore(); assert.equal(f.calls.length, calls);
+  } finally { c.dispose(); }
+});
+
+test('small complete histories with an overlapping new prefix need no redundant repair reads', async () => {
+  let count = 23;
+  const f = fixture({ get count() { return count; }, replace(path, body) {
+    if (path.includes('/address/')) body.transactions = body.transactions.map((_row: unknown, index: number) => tx(ID(count - (body.page - 1) * 20 - index)));
+    return body;
+  } }), a = authority(f); a.unlock(); const c = new UtxoActivity(a, () => true); c.activate();
+  try {
+    await settle(c); await c.loadMore(); count++; await c.refresh();
+    assert.equal(c.getSnapshot().rows.length, 24); assert.equal(c.getSnapshot().hasMore, false);
+    const calls = f.calls.length; await c.loadMore(); assert.equal(f.calls.length, calls);
+  } finally { c.dispose(); }
+});
+
+test('all repair pages share one thirty-second deadline and preserve accepted progress on timeout', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1700000100000 });
+  let count = 100, repairing = false;
+  const f = fixture({ get count() { return count; }, async hold(path) {
+    if (repairing && path.includes('/address/')) await new Promise<void>(resolve => setTimeout(resolve, 16000));
+  }, replace(path, body) {
+    if (path.includes('/address/')) body.transactions = body.transactions.map((_row: unknown, index: number) => ({ ...tx(ID(count - (body.page - 1) * 20 - index)), blockTime: 1700000000 + count - (body.page - 1) * 20 - index }));
+    return body;
+  } }), a = authority(f); a.unlock(); const c = new UtxoActivity(a, () => true); c.activate();
+  const flush = async () => { for (let i = 0; i < 6; i++) await tick(); };
+  try {
+    await settle(c); for (let page = 2; page <= 5; page++) await c.loadMore();
+    count++; await c.refresh(); repairing = true;
+    const before = f.calls.length, pending = c.loadMore(); await flush();
+    t.mock.timers.tick(16000); await flush();
+    assert.equal(c.getSnapshot().status, 'loading');
+    t.mock.timers.tick(14000); await pending;
+    assert.equal(c.getSnapshot().status, 'stale'); assert.equal(c.getSnapshot().rows.length, 100);
+    assert.equal(c.getSnapshot().rows[0]?.txid, ID(101));
+    const pages = f.calls.slice(before).filter(path => path.includes('/address/')).map(path => Number(new URL(path, 'https://local.invalid').searchParams.get('page')));
+    assert.deepEqual(pages, [2, 3]);
+    assert(f.signals.every(signal => signal.aborted));
+    t.mock.timers.tick(16000); await flush(); assert.equal(c.getSnapshot().status, 'stale');
+  } finally { c.dispose(); t.mock.timers.reset(); }
+});
+
+test('a scope retirement during offset repair aborts the action without another page or late rows', async () => {
+  let count = 100, repairing = false;
+  const entered = gate(), held = gate();
+  const f = fixture({ get count() { return count; }, async hold(path) {
+    if (repairing && path.includes('/address/')) { entered.resolve(); await held.promise; }
+  }, replace(path, body) {
+    if (path.includes('/address/')) body.transactions = body.transactions.map((_row: unknown, index: number) => tx(ID(count - (body.page - 1) * 20 - index)));
+    return body;
+  } }), a = authority(f); a.unlock(); const c = new UtxoActivity(a, () => true); c.activate();
+  try {
+    await settle(c); for (let page = 2; page <= 5; page++) await c.loadMore();
+    count++; await c.refresh(); repairing = true;
+    const before = f.calls.length, pending = c.loadMore(); await entered.promise;
+    a.lock(); await pending;
+    assert.equal(c.getSnapshot().rows.length, 0); held.resolve(); await tick(); await tick();
+    assert.equal(c.getSnapshot().rows.length, 0);
+    assert.equal(f.calls.slice(before).filter(path => path.includes('/address/')).length, 1);
+  } finally { held.resolve(); c.dispose(); }
+});

@@ -32,8 +32,6 @@ afterEach(() => {
     expect(method).not.toHaveBeenCalled();
 });
 
-import { AbstractProvider } from 'ethers/providers';
-
 import '@testing-library/jest-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import {
@@ -43,6 +41,7 @@ import {
   render,
   screen,
 } from '@testing-library/react';
+import { AbstractProvider } from 'ethers/providers';
 import React from 'react';
 import { Provider } from 'react-redux';
 
@@ -315,11 +314,12 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-it('shows the ordinary empty state after healthy configured explorer feeds', async () => {
+it('qualifies NFT and internal-transfer coverage after healthy configured explorer feeds', async () => {
   await expect(fetchInitial()).resolves.toBeUndefined();
   expect(reads).toEqual(['txlist', 'pendingtxlist', 'tokentx']);
   await renderAfterSettleTime();
-  expect(screen.getByText('home.youHaveNoTxs')).toBeVisible();
+  expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
+  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
   expect(currentRows()).toEqual([]);
 });
 
@@ -329,7 +329,7 @@ it('keeps failed configured EVM history visibly retryable instead of claiming em
   expect(reads).toEqual(['txlist', 'pendingtxlist', 'tokentx']);
   expect(mockStore.getState().vaultGlobal.networkStatus).toBe('idle');
   await renderAfterSettleTime();
-  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+  expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
   expect(screen.getByText('send.unableToLoad')).toBeVisible();
   expect(screen.getByRole('button', { name: 'receive.retry' })).toBeEnabled();
   expect(currentRows()).toEqual([]);
@@ -341,7 +341,7 @@ it('preserves cached current-account rows when configured explorer history fails
   await expect(fetchInitial()).rejects.toThrow('Transaction API error');
   await renderAfterSettleTime();
   expect(screen.getByText(HASH)).toBeVisible();
-  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+  expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
   expect(currentRows()).toEqual([transaction]);
 });
 
@@ -356,7 +356,7 @@ it('shows incomplete history after a no-API RPC fallback returns no rows', async
     'role',
     'status'
   );
-  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+  expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
   expect(screen.queryByText('send.unableToLoad')).toBeNull();
   expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
 });
@@ -377,7 +377,7 @@ it('keeps an initial configured read pending past the balance-settle timer', asy
   expect(mockStore.getState().vaultGlobal.transactionHistoryStatus.state).toBe(
     'pending'
   );
-  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+  expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
   expect(
     screen.getByText('networkConnection.loadingTransactions')
   ).toBeVisible();
@@ -389,7 +389,7 @@ it('keeps an initial configured read pending past the balance-settle timer', asy
     pending.resolve();
     await read;
   });
-  expect(screen.getByText('home.youHaveNoTxs')).toBeVisible();
+  expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
   expect(mockStore.getState().vaultGlobal.transactionHistoryStatus.state).toBe(
     'ready'
   );
@@ -421,13 +421,13 @@ it('retries the current failed explorer read from its normal button and coalesce
     'pendingtxlist',
     'tokentx',
   ]);
-  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+  expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
   expect(screen.getByRole('button', { name: 'receive.retry' })).toBeDisabled();
   await act(async () => {
     pending.resolve();
     await retry;
   });
-  expect(screen.getByText('home.youHaveNoTxs')).toBeVisible();
+  expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
   expect(mockWallet.historyRetry).toBeUndefined();
 });
@@ -487,7 +487,7 @@ it('retains saved EVM rows and shows incomplete history without an explorer API'
     'role',
     'status'
   );
-  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+  expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
   expect(reads).toEqual([]);
 });
 
@@ -497,10 +497,10 @@ it('switches to scoped explorer loading and healthy empty state when an API is c
   expect(screen.getByText('home.historyMayBeIncomplete')).toBeVisible();
   act(() => mockStore.dispatch(setActiveNetwork(network)));
   expect(screen.queryByText('home.historyMayBeIncomplete')).toBeNull();
-  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+  expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
   jest.useRealTimers();
   await act(async () => fetchInitial());
-  expect(screen.getByText('home.youHaveNoTxs')).toBeVisible();
+  expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
   expect(screen.queryByText('home.historyMayBeIncomplete')).toBeNull();
   expect(reads).toEqual(['txlist', 'pendingtxlist', 'tokentx']);
 });
@@ -553,7 +553,7 @@ it.each([
       expect(screen.getByText(HASH)).toBeVisible();
     }
     expect(screen.getByText('home.historyMayBeIncomplete')).toBeVisible();
-    expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+    expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
     expect(reads).toEqual([]);
   }
 );

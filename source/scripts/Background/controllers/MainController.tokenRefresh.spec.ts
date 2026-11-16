@@ -426,6 +426,82 @@ it.each(['receipt', 'header', 'from', 'height', 'healthy'])(
   }
 );
 
+it.each([
+  'absent',
+  'pending',
+  'transport',
+  'receipt',
+  'mined without receipt',
+  'header',
+  'wrong identity',
+])(
+  'distinguishes unavailable detail reads from successful absence with opt-in errors (%s)',
+  async (kind) => {
+    const hash = `0x${'ab'.repeat(32)}`,
+      blockHash = `0x${'cd'.repeat(32)}`;
+    provider.getTransaction = jest.fn(async () => {
+      if (kind === 'transport')
+        throw new Error('https://rpc.test/private-token');
+      if (kind === 'absent') return null;
+      return {
+        hash: kind === 'wrong identity' ? `0x${'ef'.repeat(32)}` : hash,
+        from: A,
+        to: T,
+        value: BigInt(0),
+        chainId: 1,
+        data: '0x',
+        ...(kind === 'pending' ? {} : { blockNumber: 10, blockHash }),
+      };
+    });
+    provider.getTransactionReceipt = jest.fn(async () => {
+      if (kind === 'receipt') throw new Error('Synthetic receipt unavailable');
+      if (kind === 'pending' || kind === 'mined without receipt') return null;
+      return {
+        transactionHash: hash,
+        from: A,
+        to: T,
+        blockNumber: 10,
+        blockHash,
+        status: 1,
+      };
+    });
+    provider.getBlockNumber = jest.fn(async () => 12);
+    provider.getBlock = jest.fn(async () => {
+      if (kind === 'header') throw new Error('Synthetic header unavailable');
+      return { number: 10, hash: blockHash, timestamp: 1000 };
+    });
+    if (kind === 'absent') {
+      await expect(
+        controller.getEvmTransactionFromProvider(hash, true)
+      ).resolves.toBeNull();
+      expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+    } else if (kind === 'pending') {
+      await expect(
+        controller.getEvmTransactionFromProvider(hash, true)
+      ).resolves.toMatchObject({
+        hash,
+        status: 'pending',
+        blockNumber: null,
+        confirmations: 0,
+      });
+      expect(provider.getBlockNumber).not.toHaveBeenCalled();
+    } else {
+      await expect(
+        controller.getEvmTransactionFromProvider(hash, true)
+      ).rejects.toThrow('EVM_TRANSACTION_LOOKUP_UNAVAILABLE');
+      // Replay/replacement and existing generic callers retain their nullable API.
+      if (
+        kind === 'transport' ||
+        kind === 'header' ||
+        kind === 'wrong identity'
+      )
+        await expect(
+          controller.getEvmTransactionFromProvider(hash)
+        ).resolves.toBeNull();
+    }
+  }
+);
+
 it('carries actual router receipt Transfer logs through direct confirmation into targeted refresh', async () => {
   const hash = `0x${'aa'.repeat(32)}`;
   const router = `0x${'66'.repeat(20)}`;

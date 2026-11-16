@@ -332,8 +332,10 @@ export const EvmTransactionDetailsEnhanced = ({
     : detailsRead?.data ?? null;
   const [isLoadingDetails, setIsLoadingDetails] = useContextualState(
     scope,
-    false
+    Boolean(hash)
   );
+  const [lookupFailed, setLookupFailed] = useContextualState(scope, false);
+  const [lookupRetry, setLookupRetry] = useContextualState(scope, 0);
 
   // State for transaction display info - moved up to be available for useEffect dependencies
   const [transactionDisplayInfo, setTransactionDisplayInfo] =
@@ -614,10 +616,12 @@ export const EvmTransactionDetailsEnhanced = ({
           cached.observationAtRead === observation.token)
       ) {
         setDetailsRead(cached);
+        setIsLoadingDetails(false);
         return;
       }
 
       setIsLoadingDetails(true);
+      setLookupFailed(false);
       try {
         let enhancedData = null;
         // Routescan's Etherscan API has no Blockscout gettxinfo action.
@@ -636,7 +640,7 @@ export const EvmTransactionDetailsEnhanced = ({
         if (!usableLookup(enhancedData)) {
           enhancedData = await controllerEmitter(
             ['wallet', 'getEvmTransactionFromProvider'],
-            [hash]
+            [hash, true]
           );
         }
         if (!isCurrent()) return;
@@ -656,11 +660,13 @@ export const EvmTransactionDetailsEnhanced = ({
             observationAtRead,
           });
         } else {
+          setLookupFailed(enhancedData !== null);
           setDetailsRead(null);
         }
       } catch (error) {
         if (isCurrent()) {
           console.error('Failed to fetch enhanced transaction details:', error);
+          setLookupFailed(true);
           setDetailsRead(null);
         }
       } finally {
@@ -671,7 +677,7 @@ export const EvmTransactionDetailsEnhanced = ({
     return () => {
       cancelled = true;
     };
-  }, [hash, scope, refreshSupersededRead]);
+  }, [hash, scope, refreshSupersededRead, lookupRetry]);
 
   // Effect to decode transaction data when we have transaction data
   useEffect(() => {
@@ -1012,12 +1018,32 @@ export const EvmTransactionDetailsEnhanced = ({
     return (
       <>
         <div className="p-8 text-center">
-          <p className="text-brand-gray200 text-sm mb-4">
-            {t('transactions.transactionNotFoundOrPending')}
-          </p>
-          <p className="text-xs text-brand-gray400">
-            {t('transactions.transactionMayNotExistYet')}
-          </p>
+          {lookupFailed ? (
+            <>
+              <p role="alert" className="text-brand-gray200 text-sm mb-4">
+                {t('transactions.detailsUnavailable')}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (scopeRef.current === scope)
+                    setLookupRetry((value) => value + 1);
+                }}
+                className="w-full rounded-full border border-brand-royalbluemedium px-4 py-3 text-sm text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
+              >
+                {t('receive.retry')}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-brand-gray200 text-sm mb-4">
+                {t('transactions.transactionNotFoundOrPending')}
+              </p>
+              <p className="text-xs text-brand-gray400">
+                {t('transactions.transactionMayNotExistYet')}
+              </p>
+            </>
+          )}
         </div>
         <RetainedTransactionReplay
           key="retained-replay"

@@ -6,6 +6,8 @@ import { notificationCapabilities } from './capabilities.ts';
 export const NOTIFICATION_LIMITS = Object.freeze({ scopes: 64, events: 128, scopesPerRun: 8, runMs: 25000 });
 export const emptyNotificationDocument = (): NotificationDocument => ({ scopes: [], events: [], cursor: 0 });
 const aborted = () => { throw new Error('Notification work expired'); };
+// Foreground/background coordinators share the same physical OS delivery owner.
+const taskSync = new WeakMap<NotificationDelivery, Promise<void>>();
 
 /** The injected reader has only public read capabilities, never a live wallet controller. */
 export class NativeNotificationCoordinator {
@@ -32,6 +34,17 @@ export class NativeNotificationCoordinator {
     const enabledScopeIds = await this.transact((doc) => Object.freeze(doc.scopes.map((entry) => entry.scope.id)));
     this.publish({ status: 'ready', enabledScopeIds });
   }
+  private syncTask() {
+    const { delivery } = this.ports;
+    const work = (taskSync.get(delivery) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+      let enabled: boolean;
+      try { enabled = await this.transact(doc => doc.scopes.length > 0); }
+      catch (error) { await delivery.unregister(); throw error; }
+      if (enabled) await delivery.register(); else await delivery.unregister();
+    });
+    taskSync.set(delivery, work);
+    return work;
+  }
   async load() {
     try {
       const permission = await this.ports.delivery.permission(false);
@@ -42,13 +55,12 @@ export class NativeNotificationCoordinator {
         const ids = await this.transact((doc) => doc.events.map((event) => event.id));
         await this.ports.delivery.prune(ids);
         await this.refresh();
-        if (this.snapshot.enabledScopeIds.length) await this.ports.delivery.register();
-        else await this.ports.delivery.unregister();
+        await this.syncTask();
       }
     } catch {
       this.publish({ status: 'unavailable' });
       // Corrupt/unreadable enrollment cannot authorize an old OS notification.
-      await Promise.allSettled([this.ports.delivery.prune([]), this.ports.delivery.unregister()]);
+      await Promise.allSettled([this.ports.delivery.prune([]), this.syncTask()]);
     }
   }
   async enable(inputs: readonly NativeNotificationScope[], assertCurrent: () => void, options: NotificationEnableOptions) {
@@ -84,7 +96,7 @@ export class NativeNotificationCoordinator {
       check();
     }, check);
     check();
-    await this.ports.delivery.register();
+    await this.syncTask();
     check();
     await this.refresh();
     check();
@@ -135,7 +147,7 @@ export class NativeNotificationCoordinator {
     const keep = await this.transact((doc) => doc.events.map((event) => event.id));
     await this.ports.delivery.prune(keep);
     await this.refresh();
-    if (!this.snapshot.enabledScopeIds.length) await this.ports.delivery.unregister();
+    await this.syncTask();
     if (this.snapshot.pendingEventId && !keep.includes(this.snapshot.pendingEventId)) this.publish({ pendingEventId: null });
   }
   recordTap(id: unknown) { if (typeof id === 'string' && /^pali-alert-[0-9a-f]{32}$/.test(id)) this.publish({ pendingEventId: id }); }

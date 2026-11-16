@@ -335,7 +335,8 @@
     "ifYouHaveAHardWallet": "Se você possui uma carteira física, conecte-a agora!",
     "congratulations": "Parabéns!",
     "youWalletWas": "Sua carteira foi importada com sucesso",
-    "youHaveNoNfts": "Você não tem NFTs."
+    "youHaveNoNfts": "Você não tem NFTs.",
+    "noIndexedActivity": "Nenhuma atividade encontrada. Transferências de NFT e internas podem não aparecer aqui."
   },
   "titles": {
     "assetDetails": "Detalhes do ativo",
@@ -1332,7 +1333,8 @@
         "erc721": "Transferência de NFT",
         "erc1155": "Transferência de NFT"
       }
-    }
+    },
+    "detailsUnavailable": "Não foi possível carregar os detalhes da transação. Tente novamente."
   },
   "switchNetworkPage": {
     "chainFallback": "Rede {{chainId}}",
@@ -3802,7 +3804,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "Dia {{day}} de 7",
       "priceHistory": "Histórico de preços",
       "inspectHint": "Deslize para cima ou para baixo para percorrer as amostras de preço.",
       "nextPrice": "Próximo preço",

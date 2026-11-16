@@ -335,7 +335,8 @@
     "ifYouHaveAHardWallet": "ハードウェアウォレットをお持ちの場合は、今すぐ接続できます！",
     "congratulations": "おめでとう！",
     "youWalletWas": "ウォレットのインポートに成功しました",
-    "youHaveNoNfts": "NFTはありません。"
+    "youHaveNoNfts": "NFTはありません。",
+    "noIndexedActivity": "アクティビティは見つかりませんでした。NFTや内部転送はここに表示されない場合があります。"
   },
   "titles": {
     "assetDetails": "資産詳細",
@@ -1332,7 +1333,8 @@
         "erc721": "NFT 送信",
         "erc1155": "NFT 送信"
       }
-    }
+    },
+    "detailsUnavailable": "取引の詳細を読み込めませんでした。もう一度お試しください。"
   },
   "switchNetworkPage": {
     "chainFallback": "チェーン{{chainId}}",
@@ -3802,7 +3804,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "7日中{{day}}日目",
       "priceHistory": "価格履歴",
       "inspectHint": "上下にスワイプして価格の各時点を移動します。",
       "nextPrice": "次の価格",

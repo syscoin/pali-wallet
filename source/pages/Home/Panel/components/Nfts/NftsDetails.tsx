@@ -87,20 +87,17 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
   >([]);
   const [isLoadingTokenIds, setIsLoadingTokenIds] = useState(false);
   const [nftView, setNftView] = useHomeBrowsingState<{
+    explicitTokenId: string | null;
     manualTokenId: string;
     selectedTokenId: string | null;
   }>('nftView', nftScope, {
+    explicitTokenId: null,
     selectedTokenId: null,
     manualTokenId: '',
   });
   const { selectedTokenId, manualTokenId } = nftView;
-  const setSelectedTokenId = (tokenId: string | null) =>
-    setNftView((previous) => ({ ...previous, selectedTokenId: tokenId }));
-  const setManualTokenId = (tokenId: string) =>
-    setNftView((previous) => ({ ...previous, manualTokenId: tokenId }));
   // Explicit inspection survives ownership changes; automatic choices follow
   // complete enumeration results instead of retaining an ID that disappeared.
-  const explicitSelection = useRef<{ scope: string; tokenId: string | null }>();
   const reconcileSelection = (
     tokens: { balance: number; tokenId: string }[],
     complete: boolean
@@ -108,8 +105,8 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     setNftView((previous) => {
       if (
         previous.manualTokenId ||
-        (explicitSelection.current?.scope === nftScope &&
-          explicitSelection.current.tokenId === previous.selectedTokenId) ||
+        (previous.explicitTokenId &&
+          previous.explicitTokenId === previous.selectedTokenId) ||
         tokens.some((token) => token.tokenId === previous.selectedTokenId) ||
         (previous.selectedTokenId && !complete)
       )
@@ -247,9 +244,12 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   // Handle manual token ID input with debounced verification
   const handleManualTokenIdChange = (value: string) => {
-    explicitSelection.current = { scope: nftScope, tokenId: value || null };
-    setManualTokenId(value);
-    setSelectedTokenId(value || null);
+    setNftView((previous) => ({
+      ...previous,
+      explicitTokenId: null,
+      manualTokenId: value,
+      selectedTokenId: value || null,
+    }));
     setVerifiedTokenBalance(null);
     setVerificationError(null);
   };
@@ -273,6 +273,13 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     currentNft?.tokenStandard === 'ERC-1155'
       ? currentNft.tokenId || '' // ERC-1155 may not have tokenId during search
       : manualTokenId || selectedTokenId; // ERC-721 uses manual/selected
+  const copySelection = useRef({ id: displayTokenId, revision: 0 });
+  if (copySelection.current.id !== displayTokenId) {
+    copySelection.current = {
+      id: displayTokenId,
+      revision: copySelection.current.revision + 1,
+    };
+  }
 
   // Extract image URL with fallback logic similar to MetaMask
   const getNftImage = () => {
@@ -298,12 +305,18 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     };
   }, []);
 
-  const copy = async (value: string, successMessage: string) => {
+  const copy = async (
+    value: string,
+    successMessage: string,
+    selectionSensitive = false
+  ) => {
     const scope = nftScope;
+    const selection = copySelection.current.revision;
     const sequence = ++copySequenceRef.current;
     const isCurrent = () =>
       copyContextRef.current.active &&
       copyContextRef.current.scope === scope &&
+      (!selectionSensitive || copySelection.current.revision === selection) &&
       copySequenceRef.current === sequence;
     try {
       await navigator.clipboard.writeText(value);
@@ -371,12 +384,12 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                           key={token.tokenId}
                           type="button"
                           onClick={() => {
-                            explicitSelection.current = {
-                              scope: nftScope,
-                              tokenId: token.tokenId,
-                            };
-                            setSelectedTokenId(token.tokenId);
-                            setManualTokenId('');
+                            setNftView((previous) => ({
+                              ...previous,
+                              explicitTokenId: token.tokenId,
+                              selectedTokenId: token.tokenId,
+                              manualTokenId: '',
+                            }));
                           }}
                           className={`max-w-full break-all px-3 py-1.5 rounded-lg text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
                             selectedTokenId === token.tokenId && !manualTokenId
@@ -572,7 +585,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                       ? ellipsis(displayTokenId)
                       : displayTokenId,
                     `${t('buttons.copy')} ${t('send.tokenId')}`,
-                    () => void copy(displayTokenId, 'components.copied')
+                    () => void copy(displayTokenId, 'components.copied', true)
                   )}
 
                 {renderCopyRow(

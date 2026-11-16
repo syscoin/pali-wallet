@@ -27,10 +27,11 @@ function harness() {
   let promptHook: (() => Promise<void>) | undefined;
   let postHook: ((id: string) => Promise<void>) | undefined;
   let pruneHook: (() => Promise<void>) | undefined;
+  let unregisterHook: (() => Promise<void>) | undefined;
   const ports: ConstructorParameters<typeof NativeNotificationCoordinator>[0] = { store,
     delivery: {
       permission: async (request) => { if (request) { prompts++; await promptHook?.(); } return permission; }, backgroundStatus: async () => 'available',
-      register: async () => { registered = true; }, unregister: async () => { registered = false; },
+      register: async () => { registered = true; }, unregister: async () => { await unregisterHook?.(); registered = false; },
       post: async (id) => { posted.push(id); await postHook?.(id); }, remove: async (id) => { removed.push(id); },
       prune: async (keep) => { await pruneHook?.(); for (const id of posted) if (!keep.includes(id) && !removed.includes(id)) removed.push(id); },
     }, normalize: (value) => structuredClone(value),
@@ -44,9 +45,30 @@ function harness() {
     get initialized() { return initialized; },
     rows: (next: unknown[]) => { rows = next; }, permission: (next: typeof permission) => { permission = next; }, hook: (next: typeof readHook) => { readHook = next; },
     commitHook: (next: typeof commitHook) => { commitHook = next; }, promptHook: (next: typeof promptHook) => { promptHook = next; }, postHook: (next: typeof postHook) => { postHook = next; },
-    pruneHook: (next: typeof pruneHook) => { pruneHook = next; }, storageUnavailable: (next: boolean) => { storageUnavailable = next; } };
+    pruneHook: (next: typeof pruneHook) => { pruneHook = next; }, unregisterHook: (next: typeof unregisterHook) => { unregisterHook = next; }, storageUnavailable: (next: boolean) => { storageUnavailable = next; } };
 }
 const transfer = (hash = 'a', changes = {}) => ({ hash: '0x' + hash.repeat(64), from: external, to: address, ...changes });
+
+test('older OS cleanup cannot unregister a newer enrollment, including a second coordinator load', async () => {
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  h.unregisterHook(async () => { entered.resolve(); await release.promise; });
+  const disabling = h.coordinator.disableAll(); await entered.promise;
+  const loading = h.secondCoordinator().load();
+  const enabling = h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+  for (let turn = 0; turn < 10 && !h.document.scopes.length; turn++) await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(h.document.scopes.length, 1);
+  release.resolve(); await Promise.all([disabling, loading, enabling]);
+  assert.equal(h.registered, true); assert.equal(h.document.scopes.length, 1);
+  assert.deepEqual(h.posted, []);
+});
+
+test('settled disable remains absent and a later enable restores OS registration', async () => {
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+  await h.coordinator.disableAll(); assert.equal(h.registered, false); assert.equal(h.document.scopes.length, 0);
+  await h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+  assert.equal(h.registered, true); assert.equal(h.document.scopes.length, 1); assert.deepEqual(h.posted, []);
+});
 
 test('load does not prompt; enrollment baselines history and first external incoming movement into an empty account alerts', async () => {
   const h = harness(); await h.coordinator.load(); assert.equal(h.prompts, 0);

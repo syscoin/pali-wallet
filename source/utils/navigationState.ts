@@ -154,6 +154,7 @@ const STRING_KEYS = new Set([
   'searchValue',
   'sortByValue',
   'selectedTokenId',
+  'explicitTokenId',
   'manualTokenId',
   'cacheKey',
   'trustedSitesSearch',
@@ -210,6 +211,7 @@ const UI_KEYS = [
   'visibleCount',
   'restoreThroughPage',
   'selectedTokenId',
+  'explicitTokenId',
   'manualTokenId',
 ];
 const SCALAR_KEYS = [

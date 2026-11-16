@@ -426,7 +426,7 @@ it('restores a transaction absent from Redux by matching provider hash', async (
   );
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'getEvmTransactionFromProvider'],
-    [hash]
+    [hash, true]
   );
 });
 
@@ -445,7 +445,15 @@ it.each(['null', 'error', 'wrong-hash', 'partial'])(
           : { hash, gasUsed: '21000' }
       );
     render(<EvmTransactionDetailsEnhanced hash={hash} />);
-    await screen.findByText('transactions.transactionNotFoundOrPending');
+    await screen.findByText(
+      mode === 'null'
+        ? 'transactions.transactionNotFoundOrPending'
+        : 'transactions.detailsUnavailable'
+    );
+    if (mode !== 'null')
+      expect(
+        screen.getByRole('button', { name: 'receive.retry' })
+      ).toBeTruthy();
     await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(/Received/)).toBeNull();
     expect(mockDisplay).not.toHaveBeenCalled();
@@ -773,7 +781,10 @@ it('falls back from a partial hash-only explorer lookup to the full provider rec
       ['wallet', 'getEvmTransactionFromAPI'],
       [hash, 'https://explorer.example/api'],
     ],
-    [['wallet', 'getEvmTransactionFromProvider'], [hash]],
+    [
+      ['wallet', 'getEvmTransactionFromProvider'],
+      [hash, true],
+    ],
   ]);
 });
 
@@ -1411,7 +1422,8 @@ it('rejects a matching provider hash explicitly belonging to another chain', asy
   const hash = replacementHash('2');
   mockEmitter.mockResolvedValue(fullTx(hash, { chainId: 57 }));
   render(<EvmTransactionDetailsEnhanced hash={hash} />);
-  await screen.findByText('transactions.transactionNotFoundOrPending');
+  await screen.findByText('transactions.detailsUnavailable');
+  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeTruthy();
   expect(mockDisplay).not.toHaveBeenCalled();
 });
 

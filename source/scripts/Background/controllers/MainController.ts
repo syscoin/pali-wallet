@@ -15903,9 +15903,13 @@ class MainController {
   }
 
   /**
-   * Fetch individual EVM transaction details from blockchain (for networks without API)
+   * Fetch individual EVM transaction details from blockchain (for networks without API).
+   * Detail views opt into unavailable errors; existing generic callers remain nullable.
    */
-  public async getEvmTransactionFromProvider(hash: string) {
+  public async getEvmTransactionFromProvider(
+    hash: string,
+    reportUnavailable = false
+  ) {
     try {
       // Keep every read on the provider that started this lookup, even if the
       // active network changes while the transaction request is in flight.
@@ -15942,18 +15946,31 @@ class MainController {
         check
       );
       check();
-      if (!tx || tx.hash?.toLowerCase() !== hash.toLowerCase()) return null;
+      if (!tx) return null;
+      if (tx.hash?.toLowerCase() !== hash.toLowerCase()) {
+        if (reportUnavailable === true)
+          throw new Error('Transaction identity unavailable');
+        return null;
+      }
 
       let receipt = null;
       try {
         receipt = await provider.getTransactionReceipt(hash);
-      } catch {
+      } catch (error) {
+        if (reportUnavailable === true) throw error;
         console.log(
           `Transaction ${hash} receipt not available (likely pending)`
         );
       }
 
       check();
+      if (
+        reportUnavailable === true &&
+        !receipt &&
+        tx.blockNumber !== null &&
+        tx.blockNumber !== undefined
+      )
+        throw new Error('Mined transaction receipt unavailable');
       // Pending transactions have zero confirmations without a head lookup.
       const latestBlock = receipt ? await provider.getBlockNumber() : 0;
       check();
@@ -15983,6 +16000,7 @@ class MainController {
           );
           timestamp = block ? block.timestamp : timestamp;
         } catch (blockError) {
+          if (reportUnavailable === true) throw blockError;
           console.log(
             `Could not fetch block ${receipt.blockNumber} for timestamp`
           );
@@ -16068,6 +16086,8 @@ class MainController {
       };
     } catch (error) {
       console.error('Error fetching EVM transaction from provider:', error);
+      if (reportUnavailable === true)
+        throw new Error('EVM_TRANSACTION_LOOKUP_UNAVAILABLE');
       return null;
     }
   }

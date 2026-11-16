@@ -401,6 +401,27 @@ test('privacy masks Activity list quantities and accessibility labels but keeps 
   } finally { f.dispose(); }
 });
 
+test('common Activity accessibility labels retain localized direction with visible and hidden amounts', () => {
+  const owner = '0x' + '22'.repeat(20), other = '0x' + '33'.repeat(20);
+  for (const [from, to, movement] of [[owner, other, 'Sent'], [other, owner, 'Received'], [owner, owner, 'Self transfer'], [other, other, 'Activity']]) {
+    const row = { hash, checking: false, unavailable: false, observation: { from, to, status: 'confirmed', timestamp: 1700000000000,
+      valueUnits: '1000000000000000000', feeUnits: '21000', nonce: '0', block: { hash, number: '1' }, events: [] } };
+    const f = fixture();
+    try {
+      f.rows([row]);
+      for (const hidden of [false, true]) {
+        f.privacy(hidden);
+        const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+        const preview = list.props.renderItem({ item: row, index: 0 });
+        assert.equal(preview.props.title, movement);
+        assert(preview.props.label.startsWith(`${movement}. `));
+        assert.equal(preview.props.label.includes('ETH'), !hidden);
+        assert.equal(preview.props.label.includes('Amount hidden'), hidden);
+      }
+    } finally { f.dispose(); }
+  }
+});
+
 test('decoded ERC1155 batches retain total units and per-token quantities in Activity with privacy controls', async () => {
   const owner = '0x' + '22'.repeat(20), recipient = '0x' + '33'.repeat(20), contract = '0x' + '55'.repeat(20);
   const input = id('safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)').slice(0, 10) +

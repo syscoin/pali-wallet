@@ -68,6 +68,36 @@ const reset = () => {
 };
 beforeEach(reset);
 
+it('retains bounded NFT selection intent without restoring ownership evidence', () => {
+  const clean = sanitizeBrowsingState('/home/details', {
+    nftView: {
+      scope: 'account-network-collection',
+      value: {
+        selectedTokenId: '2',
+        explicitTokenId: '2',
+        manualTokenId: '',
+        verifiedTokenBalance: 99,
+        nftTokenIds: [{ tokenId: '2', balance: 99 }],
+      },
+    },
+  });
+  expect(clean.nftView.value).toEqual({
+    selectedTokenId: '2',
+    explicitTokenId: '2',
+    manualTokenId: '',
+  });
+  for (const explicitTokenId of [true, 2, {}, '2'.repeat(2049)]) {
+    expect(
+      sanitizeBrowsingState('/home/details', {
+        nftView: {
+          scope: 'current',
+          value: { selectedTokenId: '2', explicitTokenId },
+        },
+      }).nftView.value
+    ).toEqual({ selectedTokenId: '2' });
+  }
+});
+
 it('keeps only a transient RPC draft handle for detours and never stores it or endpoint text', async () => {
   const id = '12345678-1234-1234-1234-123456789abc';
   const input = {

@@ -54,6 +54,8 @@ export class AccountActivityController {
   private generation = 0;
   private filterIntent = 0;
   private pendingFilter: number | null = null;
+  private filterStatus: 'pending' | 'failed' | 'ready' = 'pending';
+  private filterRead: Promise<void> | null = null;
   private signature = '';
   private readonly reads = new ActivityReadConcurrency();
   private readonly ports: Ports;
@@ -67,7 +69,9 @@ export class AccountActivityController {
     if (!current || current.id !== this.state.accountId || JSON.stringify(current.choices) !== JSON.stringify(this.state.choices)) {
       this.stopChildren();
       this.state = Object.freeze({ ...initial(), view: this.state.view, filter: this.state.filter,
-        status: current ? 'loading' : 'unavailable', accountId: current?.id ?? null, choices: current?.choices ?? [] });
+        status: current && this.filterStatus !== 'failed' ? 'loading' : 'unavailable',
+        error: this.filterStatus === 'failed' ? this.state.error : null,
+        accountId: current?.id ?? null, choices: current?.choices ?? [] });
     }
     return this.state;
   };
@@ -107,6 +111,7 @@ export class AccountActivityController {
     for (const child of old) { child.unsubscribe(); child.stop(); }
   }
   private render() {
+    if (!this.connection || this.pendingFilter !== null || this.filterStatus !== 'ready' || this.state.filter === null) return;
     const values = [...this.children.values()];
     const rows = values.flatMap(child => child.controller.getSnapshot().rows.map(row => ({
       key: `${scopeKey(child.choice)}:${row.hash}`, choice: child.choice, row, controller: child.controller,
@@ -126,9 +131,11 @@ export class AccountActivityController {
     // Source updates cannot restart reads for the old filter while a new
     // preference is being persisted. Apply the latest saved intent first.
     if (this.pendingFilter !== null) return;
-    if (!this.connection || !context || this.state.filter === null) {
+    if (!this.connection || !context || this.filterStatus !== 'ready' || this.state.filter === null) {
       this.stopChildren();
-      this.emit({ status: this.state.filter === null ? 'loading' : 'unavailable', accountId: null, choices: [], rows: [], refreshing: false, loadingMore: false, hasMore: false });
+      this.emit({ status: context && this.filterStatus === 'pending' ? 'loading' : 'unavailable',
+        accountId: context?.id ?? null, choices: context?.choices ?? [], rows: [], refreshing: false, loadingMore: false, hasMore: false,
+        error: this.filterStatus === 'failed' ? this.state.error : null });
       return;
     }
     const visible = context.choices.filter(choice => this.state.filter === 'all' || choice.scope.network.id === this.state.filter);
@@ -196,30 +203,50 @@ export class AccountActivityController {
     }
     this.render();
   }
+  private loadFilter(): Promise<void> {
+    if (!this.connection || this.pendingFilter !== null) return Promise.resolve();
+    if (this.filterRead) return this.filterRead;
+    const connection = this.connection, intent = this.filterIntent;
+    this.filterStatus = 'pending';
+    const current = () => this.connection === connection && this.filterIntent === intent && this.pendingFilter === null;
+    const read = Promise.resolve().then(async () => {
+      if (!current()) return;
+      const filter = await this.ports.filter.load();
+      if (!current()) return;
+      this.filterStatus = 'ready';
+      this.state = Object.freeze({ ...this.state, filter }); this.rebuild();
+    }).catch(() => {
+      if (!current()) return;
+      this.filterStatus = 'failed';
+      this.emit({ status: 'unavailable', error: 'Activity network filter is unavailable.' });
+    }).finally(() => { if (this.filterRead === read) this.filterRead = null; });
+    this.filterRead = read;
+    this.emit({ status: 'loading', error: null });
+    return read;
+  }
   connect = () => {
     this.unsubscribe?.(); this.stopChildren();
-    this.pendingFilter = null; this.filterIntent++;
+    this.pendingFilter = null; this.filterIntent++; this.filterRead = null; this.filterStatus = 'pending';
     const connection = {}; this.connection = connection; this.state = Object.freeze({ ...initial(), view: this.state.view });
     this.unsubscribe = this.ports.source.subscribe(() => this.rebuild());
-    void this.ports.filter.load().then(filter => {
-      if (this.connection !== connection) return;
-      this.state = Object.freeze({ ...this.state, filter }); this.rebuild();
-    }).catch(() => { if (this.connection === connection) this.emit({ status: 'unavailable', error: 'Activity network filter is unavailable.' }); });
+    void this.loadFilter();
     return () => {
       if (this.connection !== connection) return;
-      this.connection = null; this.pendingFilter = null; this.filterIntent++;
+      this.connection = null; this.pendingFilter = null; this.filterIntent++; this.filterRead = null;
       this.unsubscribe?.(); this.unsubscribe = null; this.stopChildren(); this.emit({ ...initial(), view: this.state.view, status: 'unavailable' });
     };
   };
   async selectFilter(filter: string) {
     if (!this.connection || filter !== 'all' && !this.state.choices.some(choice => choice.scope.network.id === filter)) return;
     this.stopChildren(); const intent = ++this.filterIntent, connection = this.connection;
+    this.filterRead = null;
     this.pendingFilter = intent;
     this.emit({ rows: [], refreshing: false, loadingMore: false });
     try { await this.ports.filter.save(filter); }
     catch (error) {
       if (this.connection === connection && this.filterIntent === intent) {
         this.pendingFilter = null;
+        this.filterStatus = 'failed';
         // A failed write must not silently resume the former all-network view.
         this.state = Object.freeze({ ...this.state, filter: null });
         this.emit({ status: 'unavailable', partial: true, error: 'Activity network filter could not be saved.' });
@@ -228,6 +255,7 @@ export class AccountActivityController {
     }
     if (this.connection !== connection || this.filterIntent !== intent) return;
     this.pendingFilter = null;
+    this.filterStatus = 'ready';
     this.state = Object.freeze({ ...this.state, filter }); this.rebuild();
   }
   async setView(update: Partial<ActivityViewState>) {
@@ -237,6 +265,9 @@ export class AccountActivityController {
     await Promise.all([...this.children.values()].map(child => child.controller.setView(update)));
     this.render();
   }
-  refresh = async () => { await Promise.all([...this.children.values()].map(child => child.controller.refresh())); this.render(); };
+  refresh = async () => {
+    if (this.state.filter === null) { await this.loadFilter(); return; }
+    await Promise.all([...this.children.values()].map(child => child.controller.refresh())); this.render();
+  };
   loadMore = async () => { await Promise.all([...this.children.values()].filter(child => child.controller.getSnapshot().hasMore).map(child => child.controller.loadMore())); this.render(); };
 }
