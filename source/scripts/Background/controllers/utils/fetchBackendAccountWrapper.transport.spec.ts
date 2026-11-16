@@ -2,6 +2,8 @@ jest.mock('syscoinjs-lib', () => ({
   utils: jest.requireActual('syscoinjs-lib/utils'),
 }));
 
+import { createBlockbookAccountHistory } from '../../../../shared/blockbookAccountHistory';
+
 import {
   clearFetchBackendAccountCache,
   fetchBackendAccountCached,
@@ -101,5 +103,22 @@ it('the physical deadline rejects an uncooperative fetch and ignores its late re
   held.resolve({ body: { cancel } } as unknown as Response);
   await jest.advanceTimersByTimeAsync(1);
   expect(cancel).toHaveBeenCalledTimes(1);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+});
+
+it('cancelled account history does not restart through the txs fallback', async () => {
+  jest.useFakeTimers();
+  global.fetch = jest.fn(async () => new Response('', { status: 429 }));
+  const history = createBlockbookAccountHistory(fetchBackendAccountCached);
+  const pending = history.fetchAccountHistory(
+    url,
+    identifier,
+    'details=txsummary&pageSize=30'
+  );
+  const rejected = expect(pending).rejects.toHaveProperty('name', 'AbortError');
+  await jest.advanceTimersByTimeAsync(1);
+  clearFetchBackendAccountCache();
+  await rejected;
+  await jest.advanceTimersByTimeAsync(30_000);
   expect(global.fetch).toHaveBeenCalledTimes(1);
 });
