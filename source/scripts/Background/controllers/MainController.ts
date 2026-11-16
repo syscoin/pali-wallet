@@ -13937,17 +13937,34 @@ class MainController {
   private async withReceiptReadProvider<T>(
     signal: AbortSignal,
     network: INetwork,
-    read: (provider: CustomJsonRpcProvider) => Promise<T>
+    read: (provider: CustomJsonRpcProvider) => Promise<T>,
+    capabilityProvider?: CustomJsonRpcProvider
   ): Promise<T> {
+    const selected = store.getState().vault.activeNetwork;
+    const shared = (
+      capabilityProvider as
+        | (CustomJsonRpcProvider & {
+            readonly readCapabilities?: ReturnType<
+              typeof this.rpcReadCapabilities.get
+            >;
+          })
+        | undefined
+    )?.readCapabilities;
+    const capabilities =
+      shared?.url === network.url &&
+      capabilityProvider?._getConnection().url === network.url &&
+      selected.chainId === network.chainId &&
+      selected.url === network.url &&
+      selected.kind === network.kind &&
+      selected.slip44 === network.slip44
+        ? shared
+        : this.rpcReadCapabilities.get(String(network.chainId), network.url);
     const provider = new CustomJsonRpcProvider(
       signal,
       network.url,
       network.chainId,
       {
-        capabilities: this.rpcReadCapabilities.get(
-          JSON.stringify([network.chainId, network.kind, network.slip44]),
-          network.url
-        ),
+        capabilities,
       }
     );
     let disposed = false;
@@ -15426,7 +15443,12 @@ class MainController {
         if (originalProvider.signal.aborted) invalidate();
         if (authoritySignal?.aborted) cancel();
         if (abort.signal.aborted) throw abort.signal.reason;
-        return await this.withReceiptReadProvider(abort.signal, network, read);
+        return await this.withReceiptReadProvider(
+          abort.signal,
+          network,
+          read,
+          originalProvider
+        );
       } catch (error) {
         if (abort.signal.aborted) throw abort.signal.reason;
         throw error;
