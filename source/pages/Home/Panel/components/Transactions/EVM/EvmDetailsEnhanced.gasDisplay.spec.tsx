@@ -195,6 +195,9 @@ const renderProviderTransaction = async (
       type: 2,
     })),
     getTransactionReceipt: jest.fn(async () => ({
+      transactionHash: hash,
+      from: ACCOUNT,
+      to: TARGET,
       blockNumber: 42,
       blockHash: `0x${'33'.repeat(32)}`,
       gasUsed: BigInt(21000),
@@ -203,7 +206,11 @@ const renderProviderTransaction = async (
       logs: [],
     })),
     getBlockNumber: jest.fn(async () => 44),
-    getBlock: jest.fn(async () => ({ timestamp: 1700000000 })),
+    getBlock: jest.fn(async () => ({
+      number: 42,
+      hash: `0x${'33'.repeat(32)}`,
+      timestamp: 1700000000,
+    })),
   };
   Object.defineProperty(mockWallet, 'ethereumTransaction', {
     value: { web3Provider: provider },

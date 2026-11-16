@@ -112,11 +112,13 @@ describe('cancellation reviewed original admission', () => {
     keyring = {
       ethereumTransaction: {
         web3Provider: {
-          send: jest.fn(async (method) =>
-            method === 'eth_getTransactionCount'
-              ? `0x${NONCE.toString(16)}`
-              : '0x'
-          ),
+          send: jest.fn(async (method) => {
+            if (method === 'eth_getTransactionCount')
+              return `0x${NONCE.toString(16)}`;
+            if (method === 'eth_getBalance') return '0x100000000';
+            if (method === 'eth_getCode') return '0x';
+            throw new Error('Unexpected cancellation read ' + method);
+          }),
         },
         cancelSentTransaction: cancel,
       },
