@@ -1,3 +1,4 @@
+import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import { AUTOMATIC_FEE, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice.ts';
 import { serializePreparedEvmTransaction, snapshotEvmAccessList, type EvmAccessList, type PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { keccak256 } from 'ethers/crypto';
@@ -96,11 +97,13 @@ type NativeBroadcastAdmission = Readonly<
     }
   | {
       mode: 'cancel' | 'cancel-saved';
+      assertDispatchAdmission?: () => void;
       original: NativeReplacementOriginal;
       admit: AdmitEvmSignedDispatch<string>;
     }
   | {
       mode: 'speed-up';
+      assertDispatchAdmission?: () => void;
       original: NativeReplacementOriginal;
       intent?: Erc20TransferIntent;
       admit: AdmitEvmSignedDispatch<string>;
@@ -347,18 +350,18 @@ export class NativeTransferRpc {
     return { transaction, original };
   }
   async prepareCancellation(hash: string, rawTransaction: string, payer: string, signal: AbortSignal, guard: () => void,
-    rates: EvmReplacementRates): Promise<NativeCancellationQuote> {
-    return this.quoteCancellation('pending', hash, rawTransaction, payer, signal, guard, rates);
+    rates: EvmReplacementRates, approved?: EvmUnsignedTransfer): Promise<NativeCancellationQuote> {
+    return this.quoteCancellation('pending', hash, rawTransaction, payer, signal, guard, rates, approved);
   }
   async prepareSavedCancellation(hash: string, rawTransaction: string, payer: string, signal: AbortSignal, guard: () => void,
-    rates: EvmReplacementRates): Promise<NativeCancellationQuote> {
-    return this.quoteCancellation('saved', hash, rawTransaction, payer, signal, guard, rates);
+    rates: EvmReplacementRates, approved?: EvmUnsignedTransfer): Promise<NativeCancellationQuote> {
+    return this.quoteCancellation('saved', hash, rawTransaction, payer, signal, guard, rates, approved);
   }
   private async quoteCancellation(source: 'pending' | 'saved', hash: string, rawTransaction: string,
-    payer: string, signal: AbortSignal, guard: () => void, rates: EvmReplacementRates): Promise<NativeCancellationQuote> {
+    payer: string, signal: AbortSignal, guard: () => void, rates: EvmReplacementRates, approved?: EvmUnsignedTransfer): Promise<NativeCancellationQuote> {
     const { transaction, original } = this.authenticatedOriginal(hash, rawTransaction, payer);
     if (source === 'pending') await this.assertPendingOriginal(original, signal, guard);
-    const quote = await this.receiptRpc.prepareCancellation(transaction, rates, source, signal, guard)
+    const quote = await this.receiptRpc.prepareCancellation(transaction, rates, source, signal, guard, approved)
       .catch((error) => this.mapReadError(error));
     this.checkedQuote(quote);
     return Object.freeze({ ...quote, original });
@@ -458,7 +461,7 @@ export class NativeTransferRpc {
       } else if (envelope.data !== '0x') {
         throw new NativeTransferRpcError('REVIEW_REQUIRED');
       }
-      await this.receiptRpc.verifyForDispatch(envelope, signal, check, planner, asset, nonceOverride, collectible?.intent);
+      await this.receiptRpc.verifyForDispatch(envelope, signal, check, planner, asset, nonceOverride, collectible?.intent, intent?.token.decimals);
       if (collectible) this.receiptRpc.assertNftApproval(collectible, true);
       check();
     } catch (error) {
@@ -469,6 +472,18 @@ export class NativeTransferRpc {
         throw new NativeTransferRpcError('REVIEW_REQUIRED');
       this.mapReadError(error, collectible ? 'nft' : 'token');
     }
+  }
+  async verifyReplacementForDispatch(envelope: EvmUnsignedTransfer, signal: AbortSignal, guard: () => void,
+    snapshot: EvmAutoNonceSnapshot, intent?: Erc20TransferIntent, nft?: NftTransferIntent): Promise<void> {
+    try {
+      if (intent) assertTransferIntentEnvelope(envelope, intent);
+      const asset: EvmTransferAsset | undefined = nft ? {
+        standard: nft.tokenStandard === 'ERC-721' ? 'ERC721' : 'ERC1155', contractAddress: nft.contractAddress,
+        tokenId: nft.tokenId, amountUnits: nft.amountUnits,
+      } : intent ? { standard: 'ERC20', contractAddress: intent.token.contractAddress, amountUnits: intent.amountUnits } : undefined;
+      await this.receiptRpc.verifyReplacementForDispatch(envelope, signal, guard, snapshot, asset, intent?.token.decimals);
+      guard();
+    } catch (error) { guard(); this.mapReadError(error, nft ? 'nft' : 'token'); }
   }
   private async quoteToken(from: string, input: Erc20TransferIntent, signal: AbortSignal,
     readQuote: (intent: Erc20TransferIntent, signal: AbortSignal) => Promise<NativeTransferQuote>): Promise<NativeTransferQuote> {
@@ -500,7 +515,7 @@ export class NativeTransferRpc {
         admission.mode !== 'collectible' && admission.mode !== 'replay') ||
       ('assertDispatchAdmission' in admission && admission.assertDispatchAdmission !== undefined &&
         (typeof admission.assertDispatchAdmission !== 'function' ||
-          (admission.mode !== 'new-send' && admission.mode !== 'collectible'))) ||
+          !['new-send', 'collectible', 'speed-up', 'cancel', 'cancel-saved'].includes(admission.mode))) ||
       (admission.mode === 'collectible'
         ? !admission.approval || !admission.inventorySignal || typeof admission.onDispatch !== 'function' || typeof admission.assertDispatchAdmission !== 'function' ||
           typeof admission.assertCurrent !== 'function' || 'intent' in admission
@@ -517,8 +532,7 @@ export class NativeTransferRpc {
     )
       return Promise.reject(new NativeTransferRpcError('REVIEW_REQUIRED'));
     const mode = admission.mode;
-    const assertDispatchAdmission = admission.mode === 'new-send' || admission.mode === 'collectible'
-      ? admission.assertDispatchAdmission : undefined;
+    const assertDispatchAdmission = admission.mode !== 'replay' ? admission.assertDispatchAdmission : undefined;
     const nonceOverride = admission.mode === 'new-send' ? admission.nonceOverride : undefined;
     const hash = checkedHash(expectedHash);
     const replay = admission.mode === 'replay'
@@ -644,7 +658,7 @@ export class NativeTransferRpc {
         });
       };
       const preflight = async () => {
-        if (assertDispatchAdmission) {
+        if (assertDispatchAdmission && !original) {
           assertActive();
           protectedPreflightComplete = true;
           return;

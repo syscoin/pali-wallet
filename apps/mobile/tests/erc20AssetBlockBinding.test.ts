@@ -252,6 +252,6 @@ test('a healthy new block before held dispatch preserves the reviewed transfer',
   await f.rpc.verifyForDispatch(quote.transaction, new AbortController().signal, () => {}, f.automatic, undefined, quote.intent);
   const requests = f.requests.slice(start);
   assert.equal(requests.filter((r) => r.method === 'eth_getBlockByNumber' && r.params[0] === 'latest').length, 1);
-  assert.equal(requests.filter((r) => r.method === 'eth_call' && (r.params[0] as { data: string }).data === '0x313ce567').length, 0);
+  assert.equal(requests.filter((r) => r.method === 'eth_call' && (r.params[0] as { data: string }).data === '0x313ce567').length, 1);
   assert(requests.some((r) => r.method === 'eth_call' && r.params[1] === '0x124'));
 });

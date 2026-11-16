@@ -49,6 +49,7 @@ async function expectUnavailable(authority: NativeCustodyAuthority, action: () =
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const RECIPIENT = '0x1111111111111111111111111111111111111111';
+const TOKEN_CONTRACT = '0x5555555555555555555555555555555555555555';
 
 test('shared SDK and SQLite admit a different pending nonce and retain reorg predecessors across restart', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-native-send-'));
@@ -233,7 +234,8 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
   let signatures = 0;
   let afterSignature: (() => void) | undefined;
   let afterSignedInsert: (() => void) | undefined;
-  const execution = { gas: '0x5208', reverts: false };
+  const execution = { gas: '0x5208', reverts: false, feesUnavailable: false };
+  const token = { balance: 9n, decimals: 0 };
   let authentications = 0;
   let authenticationStorageFailure = false, clockOffset = 0;
   let authenticationGate: { entered(): void; release: Promise<void> } | null = null;
@@ -401,7 +403,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
           : null;
       } else if (request.method === 'eth_getCode') {
         if (signatures > 1 && request.params[1] === 'pending') await pause('cancellation-dispatch');
-        result = replacement.delegated ? `0xef0100${'33'.repeat(20)}` : '0x';
+        result = [TOKEN_CONTRACT, RECIPIENT].includes(request.params[0].toLowerCase()) ? '0x6000' : replacement.delegated ? `0xef0100${'33'.repeat(20)}` : '0x';
       }
       else if (request.method === 'eth_getTransactionCount') {
         result = largeReceipt.oversized
@@ -413,6 +415,19 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
           : recovery?.nonce ?? '0x0';
       } else if (request.method === 'eth_getBalance')
         result = nativeBalance;
+      else if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(request.method) && execution.feesUnavailable)
+        throw Error('Recommendation unavailable');
+      else if (request.method === 'eth_call') {
+        const data = request.params[0].data;
+        if (data.startsWith('0x6352211e')) {
+          if (BigInt('0x' + data.slice(10)) !== 7n) return Response.json({ jsonrpc: '2.0', id: request.id,
+            error: { code: 3, message: 'execution reverted', data: '0x' } });
+          result = '0x' + Wallet.fromPhrase(PHRASE).address.slice(2).toLowerCase().padStart(64, '0');
+        } else if (data.startsWith('0x4e1273f4')) {
+          result = new Interface(['function balanceOfBatch(address[],uint256[]) view returns(uint256[])'])
+            .encodeFunctionResult('balanceOfBatch', [[2n]]);
+        } else result = '0x' + BigInt(data === '0x313ce567' ? token.decimals : data.startsWith('0x70a08231') ? token.balance : data.startsWith('0x00fdd58e') ? 0 : 1).toString(16).padStart(64, '0');
+      }
       else if (request.method === 'eth_gasPrice') result = '0x2';
       else if (request.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
@@ -531,7 +546,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
       return tx;
     },
     setBalance(value: bigint) { nativeBalance = `0x${value.toString(16)}`; },
-    execution,
+    execution, token,
     onSignature(callback: () => void) { afterSignature = callback; },
     onSignedInsert(callback: () => void) { afterSignedInsert = callback; },
     recovery: largeReceipt,
@@ -1915,5 +1930,92 @@ for (const type of [0, 2] as const) test(`native final admission retains approve
     assert.equal(signed.value.toString(), review.amountUnits);
     assert.equal(signed.data, '0x');
     assert.equal(signed.nonce.toString(), review.nonce);
+  } finally { await f.close(); }
+});
+
+async function prepareTokenTransfer(f: Awaited<ReturnType<typeof cancellationFixture>>) {
+  const registry = await f.runtime.tokens!.load(() => undefined);
+  await f.runtime.tokens!.add(registry.revision, {
+    contractAddress: TOKEN_CONTRACT, name: 'Test token', symbol: 'TST', decimals: 0,
+  }, () => undefined);
+  await f.transfers.prepareToken(TOKEN_CONTRACT, RECIPIENT, '1');
+}
+
+for (const boundary of ['before-confirm', 'after-signature', 'after-storage'] as const)
+for (const asset of ['native', 'token'] as const) test(`replacement final admission rejects ${asset} loss ${boundary}`, async () => {
+  const f = await cancellationFixture();
+  try {
+    if (asset === 'token') await prepareTokenTransfer(f);
+    else await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    f.replacement.pending = true;
+    await f.transfers.prepareSpeedUp(f.transfers.getSnapshot().hash!);
+    const review = f.transfers.getSnapshot().review!;
+    let changed = false;
+    const lose = () => { changed = true; if (asset === 'token') f.token.balance = 0n; else f.setBalance(0n); };
+    if (boundary === 'before-confirm') lose();
+    else if (boundary === 'after-signature') f.onSignature(lose);
+    else f.onSignedInsert(lose);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), {
+      code: asset === 'token' ? 'INSUFFICIENT_TOKEN_BALANCE' : 'INSUFFICIENT_BALANCE',
+    });
+    assert(changed);
+    assert.equal(f.broadcasts.length, 1, 'only the original was broadcast');
+    assert.equal(f.signatures, boundary === 'before-confirm' ? 1 : 2);
+    const entries = JSON.parse((await f.readDurableJournal())!).entries;
+    assert.equal(entries.length, boundary === 'before-confirm' ? 1 : 2);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['before-confirm', 'after-signature', 'after-storage'] as const)
+test(`token final admission preserves reviewed precision ${boundary}`, async () => {
+  const f = await cancellationFixture();
+  try {
+    await prepareTokenTransfer(f);
+    const review = f.transfers.getSnapshot().review!;
+    const change = () => { f.token.decimals = 18; };
+    if (boundary === 'before-confirm') change();
+    else if (boundary === 'after-signature') f.onSignature(change);
+    else f.onSignedInsert(change);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'TOKEN_CHANGED' });
+    assert.equal(f.broadcasts.length, 0);
+    assert.equal(f.signatures, boundary === 'before-confirm' ? 0 : 1);
+    assert.equal(f.token.decimals, 18);
+  } finally { await f.close(); }
+});
+
+for (const source of ['pending', 'saved'] as const)
+test(`approved ${source} cancellation avoids recommendation dependencies`, async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    const originalHash = f.transfers.getSnapshot().hash!;
+    f.replacement.pending = source === 'pending';
+    if (source === 'pending') await f.transfers.prepareCancellation(originalHash);
+    else await f.transfers.prepareSavedCancellation(originalHash);
+    const review = f.transfers.getSnapshot().review!;
+    f.execution.feesUnavailable = true;
+    f.requests.length = 0;
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.broadcasts.length, 2);
+    const actual = Transaction.from(f.broadcasts[1]!);
+    assert.equal(actual.gasLimit.toString(), review.gasLimit);
+    assert.equal((actual.gasPrice ?? actual.maxFeePerGas)!.toString(), review.maximumFeePerGas);
+    assert.equal(f.requests.some(request => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(request.method)), false);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['after-signature', 'after-storage'] as const)
+test(`cancellation final admission rejects native balance loss ${boundary}`, async () => {
+  const f = await cancellationFixture();
+  try {
+    const { review } = await prepareSavedCancellation(f);
+    const lose = () => f.setBalance(0n);
+    if (boundary === 'after-signature') f.onSignature(lose); else f.onSignedInsert(lose);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'INSUFFICIENT_BALANCE' });
+    assert.equal(f.signatures, 2);
+    assert.equal(f.broadcasts.length, 1);
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, 2);
   } finally { await f.close(); }
 });

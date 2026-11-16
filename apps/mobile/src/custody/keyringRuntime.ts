@@ -1274,8 +1274,7 @@ export function createKeyringRuntimeFactory(
           };
           check();
           const requiresReplacement = context.operation === 'cancel' || context.operation === 'speed-up';
-          if (requiresReplacement !== (replacement !== undefined) || (replacement && verifyDispatch) ||
-              (!requiresReplacement && !verifyDispatch))
+          if (requiresReplacement !== (replacement !== undefined) || !verifyDispatch)
             throw new NativeTransferError('EXPIRED');
           const session = { keyring: transactionRecordKeyring(keyring, check), assertCurrent: check };
           const capturedCatalogue = catalogueSnapshot!;
@@ -1303,7 +1302,7 @@ export function createKeyringRuntimeFactory(
                 assertCurrent();
                 return plan;
               } : planner;
-              return verifyDispatch(ownedPlanner, assertCurrent);
+              return verifyDispatch(ownedPlanner, assertCurrent, snapshot);
             } : undefined,
           });
         }
@@ -7976,7 +7975,7 @@ export function createKeyringRuntimeFactory(
                   context,
                   check,
                   () => replacement
-                    ? capturePayerSubmission(context, replacementOwner(replacement).selected, check, replacementOwner(replacement).metadata, replacement.binding)
+                    ? capturePayerSubmission(context, replacementOwner(replacement).selected, check, replacementOwner(replacement).metadata, replacement.binding, verifyDispatch)
                     : captureSignedSubmission(context, check, intent?.kind === 'erc20-transfer' ? { intent } : undefined, undefined, verifyDispatch)
                 );
                 const tx = Transaction.from(rawTransaction);

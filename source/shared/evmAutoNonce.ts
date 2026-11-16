@@ -139,6 +139,64 @@ async function nativeReservations(
   return Object.freeze({ canonical: canonicalCost, pending: pendingCost });
 }
 
+/** Replacement alternatives share a nonce; retain other commitments and external pending debits. */
+export async function availableEvmReplacementBalance(
+  snapshot: EvmAutoNonceSnapshot,
+  chainId: string,
+  from: string,
+  latest: number,
+  pending: number,
+  candidateNonce: number,
+  candidateCost: bigint,
+  balances: Readonly<{ canonical: bigint; pending: bigint }>,
+  assertCurrent: () => void
+): Promise<bigint> {
+  assertCurrent();
+  if (
+    !validNonce(latest) ||
+    !validNonce(pending) ||
+    !validNonce(candidateNonce) ||
+    candidateNonce < latest ||
+    latest < snapshot.minimumNonce ||
+    typeof candidateCost !== 'bigint' ||
+    candidateCost < BigInt(0)
+  )
+    throw new EvmAssetStateError('REVIEW_REQUIRED');
+  const sender = from.toLowerCase();
+  let sameNonceMaximum = candidateCost;
+  const retained = [];
+  for (const entry of snapshot.retained) {
+    if (!sameSender(entry, chainId, sender)) continue;
+    if (entry.nonce !== candidateNonce) {
+      retained.push(entry);
+      continue;
+    }
+    const cost = await snapshot.readMaximumCost(entry.hash);
+    assertCurrent();
+    if (typeof cost !== 'bigint' || cost < BigInt(0))
+      throw new EvmAssetStateError('INVALID_RESPONSE');
+    if (cost > sameNonceMaximum) sameNonceMaximum = cost;
+  }
+  const reservations = await nativeReservations(
+    { ...snapshot, retained },
+    chainId,
+    sender,
+    latest,
+    pending,
+    assertCurrent
+  );
+  // The original's maximum fee is not proof of its actual pending debit.
+  // Keep the observed pending budget without crediting that maximum back.
+  return availableEvmNativeBalance(
+    balances,
+    {
+      canonical: reservations.canonical + sameNonceMaximum - candidateCost,
+      pending: reservations.pending,
+    },
+    pending < latest ? 'latest' : 'pending'
+  );
+}
+
 /** The host supplies fresh evidence from the same captured RPC endpoint. A
  * persisted `submitted` phase alone does not prove acknowledgement or sighting. */
 type AcceptedNonce = NonceIdentity &

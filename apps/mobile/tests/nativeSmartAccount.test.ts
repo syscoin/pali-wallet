@@ -6459,7 +6459,7 @@ for (const codeBytes of standard === 'native' ? [1] : [1, 20 * 1024]) test(`coun
       ? { methods: 12, http: 7, chains: 2 } : { methods: 17, http: 12, chains: 2 });
     assert.deepEqual(measure(), standard === 'native'
       ? { methods: 21, http: 13, chains: 4 }
-      : standard === 'ERC20' ? { methods: 30, http: 22, chains: 4 } : { methods: 31, http: 23, chains: 4 });
+      : { methods: 31, http: 23, chains: 4 });
     console.log('NATIVE_EOA_COUNTS', JSON.stringify({ standard, preparation, confirm: measure() }));
   } finally { transfers.dispose(); await f.close(); }
 });
