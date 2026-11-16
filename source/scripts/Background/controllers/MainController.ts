@@ -6992,26 +6992,12 @@ class MainController {
     }
   }
 
-  private isAccountCompatibleWithNetwork(
-    account: any,
-    type: KeyringAccountType,
-    network: INetwork
-  ): boolean {
-    return isAccountCompatibleWithNetwork(account, type, network);
-  }
-
-  private getFirstCompatibleAccountForNetwork(network: INetwork) {
-    const { accounts } = store.getState().vault;
-
-    return getFirstCompatibleAccountForNetwork(accounts, network);
-  }
-
   private async ensureActiveAccountCompatibleWithNetwork(
     network: INetwork
   ): Promise<boolean> {
     const { accounts, activeAccount } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
-    let fallbackAccount = this.isAccountCompatibleWithNetwork(
+    let fallbackAccount = isAccountCompatibleWithNetwork(
       currentAccount,
       activeAccount.type,
       network
@@ -7024,7 +7010,7 @@ class MainController {
       : null;
 
     if (!fallbackAccount) {
-      fallbackAccount = this.getFirstCompatibleAccountForNetwork(network);
+      fallbackAccount = getFirstCompatibleAccountForNetwork(accounts, network);
       if (fallbackAccount) {
         store.dispatch(
           setActiveAccount({
@@ -7051,11 +7037,7 @@ class MainController {
     for (const [host, dapp] of Object.entries(dapps)) {
       const dappAccount = accounts[dapp.accountType]?.[dapp.accountId];
       if (
-        this.isAccountCompatibleWithNetwork(
-          dappAccount,
-          dapp.accountType,
-          network
-        )
+        isAccountCompatibleWithNetwork(dappAccount, dapp.accountType, network)
       ) {
         continue;
       }
@@ -7304,16 +7286,12 @@ class MainController {
         );
       }
 
-      // Check for quality issues - don't retry these
+      // Preserve structured quality errors and ordinary error details.
       if (
         error.message?.includes('RPC response too fast') ||
-        error.message?.includes('quality assurance')
+        error.message?.includes('quality assurance') ||
+        error instanceof Error
       ) {
-        throw error; // Pass through the quality error message
-      }
-
-      // Pass through the actual error message
-      if (error instanceof Error) {
         throw error;
       }
 
@@ -12933,7 +12911,6 @@ class MainController {
               );
 
             if (!isCurrent()) {
-              clearBalanceLoadingIfOwned();
               resolve({ status: 'superseded' });
               return;
             }
@@ -12965,12 +12942,9 @@ class MainController {
               })
             );
 
-            // Clear loading state on success only if we set it
-            clearBalanceLoadingIfOwned();
             resolve({ status: 'updated' });
           } catch (error) {
             if (!isCurrent()) {
-              clearBalanceLoadingIfOwned();
               resolve({ status: 'superseded', error });
               return;
             }
@@ -12984,12 +12958,10 @@ class MainController {
               })
             );
 
-            // This flag represents an in-flight request, not network health. If
-            // it survives a rejected request, the app-wide loading overlay can
-            // intercept every click indefinitely. Network health is tracked by
-            // networkStatus/networkQuality instead.
-            clearBalanceLoadingIfOwned();
             reject(error);
+          } finally {
+            // Every outcome releases only the loading flag owned by this read.
+            clearBalanceLoadingIfOwned();
           }
         }
       );
@@ -13001,7 +12973,6 @@ class MainController {
         cancel();
       },
     });
-    this.cancellablePromises.runPromise(PromiseTargets.BALANCE);
 
     // Return the promise so callers can wait for it to complete
     return balancePromise.finally(() => {
@@ -13195,7 +13166,7 @@ class MainController {
       const networkType = isBitcoinBased ? 'syscoin' : 'ethereum';
       const chainTxs = transactions?.[networkType]?.[activeNetwork.chainId];
 
-      if (!Array.isArray(chainTxs) || chainTxs.length === 0) {
+      if (!Array.isArray(chainTxs)) {
         return null;
       }
 
@@ -14306,32 +14277,6 @@ class MainController {
     }
   }
 
-  private resolveNetworkConfiguration(
-    resolve: (value: {
-      chainId: string;
-      isBitcoinBased: boolean;
-      network: INetwork;
-      networkVersion: number;
-    }) => void,
-    {
-      chainId,
-      isBitcoinBased,
-      network,
-      networkVersion,
-    }: {
-      chainId: string;
-      isBitcoinBased: boolean;
-      network: INetwork;
-      networkVersion: number;
-    }
-  ) {
-    resolve({
-      chainId,
-      isBitcoinBased,
-      network,
-      networkVersion,
-    });
-  }
   private bindMethods() {
     const proto = Object.getPrototypeOf(this);
     for (const key of Object.getOwnPropertyNames(proto)) {
@@ -14414,7 +14359,7 @@ class MainController {
       const networkVersion = network.chainId;
 
       if (success) {
-        this.resolveNetworkConfiguration(resolve, {
+        resolve({
           chainId,
           isBitcoinBased,
           network,
