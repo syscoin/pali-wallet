@@ -381,12 +381,15 @@ test('last known balances survive an outage and clear on a confirmed endpoint ch
     assert.equal(stale.status, 'error');
     assert.equal(stale.units, original.units);
     assert.equal(stale.updatedAt, original.updatedAt);
+    assert.equal(stale.tokens[0]?.status, 'error');
+    assert.equal(stale.tokens[0]?.units, original.tokens[0]?.units);
     assert.equal(model.getSnapshot().knownValue, null);
     f.wrongChain('ethereum'); await model.refresh();
     const wrongChain = model.getSnapshot().rows[0]!;
     assert.equal(wrongChain.status, 'error');
     assert.equal(wrongChain.units, null);
     assert.equal(wrongChain.updatedAt, null);
+    assert.deepEqual(wrongChain.tokens, []);
     assert.equal(f.tokens.length, 1);
   } finally { stop(); }
 });

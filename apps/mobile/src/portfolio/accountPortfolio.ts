@@ -248,7 +248,8 @@ export class AccountPortfolioController {
           const row = this.blank(choice);
           this.cache.set(key, error instanceof NativeBalanceChainMismatchError
             ? { ...row, status: 'error' }
-            : { ...row, status: 'error', units: original.units, decimals: original.decimals, updatedAt: original.updatedAt });
+            : { ...row, status: 'error', units: original.units, decimals: original.decimals, updatedAt: original.updatedAt,
+                tokens: original.tokens.map(token => ({ ...token, status: 'error', price: null })) });
           this.synchronize();
         }
       }
