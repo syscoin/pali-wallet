@@ -33,7 +33,7 @@ test('retained collectible details show signed fields without a resend action at
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?retained-collectible');
   const row = page.getByRole('button', { name: /View transaction details/ });
-  await expect(row).toHaveAccessibleName(/^Collectible transfer, Submission unconfirmed\..*View transaction details$/);
+  await expect(row).toHaveAccessibleName(/^Sent\. Collectible transfer, Submission unconfirmed\..*View transaction details$/);
   const label = row.getByText('Collectible transfer', { exact: true });
   await expect(label).toBeInViewport();
   const labelBounds = await label.boundingBox();
@@ -96,7 +96,7 @@ for (const decimals of [0, 18, 19, 255]) {
     const row = page.getByRole('button', {
       name: new RegExp('PRECISE.*View transaction details'),
     });
-    await expect(row).toHaveAccessibleName(new RegExp(`^${exactAmount.replace('.', '\\.')}[,]`));
+    await expect(row).toHaveAccessibleName(new RegExp(`^Received\\. ${exactAmount.replace('.', '\\.')}[,]`));
     await row.click();
     await expect(
       page.getByText('Transaction details', { exact: true })

@@ -8,7 +8,7 @@ test('all-network Activity shows newest first, network badges and full accessibl
   const rows = page.locator('[data-testid^="account-activity-row-"]');
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toHaveAttribute('data-testid', `account-activity-row-base-${hash}`);
-  await expect(rows.nth(1)).toHaveAccessibleName(/1\.23456789 ETH, Confirmed.*Network: Ethereum/);
+  await expect(rows.nth(1)).toHaveAccessibleName(/^Received\. 1\.23456789 ETH, Confirmed.*Network: Ethereum/);
   await expect(rows.nth(0).getByText('Base', { exact: true })).toBeVisible();
   await expect(rows.nth(0).getByTestId('activity-network-icon-base')).toBeVisible();
   await expect(rows.nth(1).getByTestId('activity-network-icon-ethereum')).toBeVisible();
@@ -40,7 +40,7 @@ test('concrete and direction filters stay scoped, and hidden balances do not lea
   await expect(page.getByTestId(`account-activity-row-ethereum-${hash}`).getByText('Ethereum', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('activity-network-icon-ethereum')).toHaveCount(0);
   await page.evaluate(() => window.__allActivityFixture.hideBalances(true));
-  await expect(page.getByTestId(`account-activity-row-ethereum-${hash}`)).toHaveAccessibleName(/^Amount hidden, Confirmed/);
+  await expect(page.getByTestId(`account-activity-row-ethereum-${hash}`)).toHaveAccessibleName(/^Received\. Amount hidden, Confirmed/);
 });
 
 test('network icons and badges stay within a 320px Activity layout', async ({ page }, info) => {

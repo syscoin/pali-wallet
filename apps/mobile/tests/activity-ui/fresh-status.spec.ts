@@ -17,7 +17,7 @@ const rowLabel = async (page: Page, amount: string, status: string) => {
     const date = new Date(1700000000000);
     return `${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
   });
-  return `${amount}, ${status}. ${timestamp}. View transaction details`;
+  return `Sent. ${amount}, ${status}. ${timestamp}. View transaction details`;
 };
 const showDetails = (page: Page) => page.getByRole('button', { name: 'Details', exact: true }).click();
 
