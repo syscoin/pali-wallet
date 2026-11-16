@@ -169,8 +169,10 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
       {sheet === 'filter' || sheet === 'saved-networks' ? <NetworkSourceSheet purpose="filter" overContent busy={busy} selectedId={sheet === 'filter' ? snapshot.filter ?? '' : ''}
         error={error ? t('mobile.accountPortfolio.error') : undefined}
         title={sheet === 'saved-networks' ? t('mobile.activityViews.nativeActivity.savedPending') : undefined}
-        options={sheet === 'saved-networks' ? savedNetworks.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol }))
-          : [{ id: 'all', name: t('mobile.accountPortfolio.allNetworks'), symbol: '' }, ...snapshot.choices.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol }))]}
+        options={sheet === 'saved-networks' ? savedNetworks.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol,
+          chainId: 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' ? choice.scope.network.chainId : undefined }))
+          : [{ id: 'all', name: t('mobile.accountPortfolio.allNetworks'), symbol: '' }, ...snapshot.choices.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol,
+            chainId: 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' ? choice.scope.network.chainId : undefined }))]}
         onSelect={id => { if (sheet === 'saved-networks') openSavedPending(id); else void run(async check => { await controller.selectFilter(id); check(); setSheet(null); }); }} onClose={closeSheet} />
         : <View style={s.modal}><Card style={s.options}><Text style={s.emptyTitle}>{t('mobile.activityViews.nativeActivity.activityOptions')}</Text>
           {savedNetworks.length > 0 && <Button title={t('mobile.activityViews.nativeActivity.savedPending')} icon="clock" variant="secondary" onPress={() => {

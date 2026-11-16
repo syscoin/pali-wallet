@@ -140,10 +140,12 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   const sources = sourceRows.filter(entry => sheet !== 'send' || canSendChoice(entry.row.choice));
   const options: NetworkSourceOption[] = sheet === 'filter'
     ? [{ id: 'all', name: t('mobile.accountPortfolio.allNetworks'), symbol: '' }, ...snapshot.choices.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol,
+      chainId: 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' ? choice.scope.network.chainId : undefined,
       testnet: 'testnet' in choice.scope.network ? choice.scope.network.testnet : false,
       available: controller.cachedBalances().find(value => value.networkId === choice.scope.network.id)?.available }))]
     : sources.map(entry => ({ id: entry.id, name: entry.row.choice.networkName,
       iconId: entry.row.choice.scope.network.id, symbol: entry.row.choice.symbol,
+      chainId: 'kind' in entry.row.choice.scope.network && entry.row.choice.scope.network.kind === 'evm' ? entry.row.choice.scope.network.chainId : undefined,
       testnet: 'testnet' in entry.row.choice.scope.network && entry.row.choice.scope.network.testnet,
       available: entry.row.status === 'available' && entry.row.units !== null ? balance(entry.row) : undefined,
       loading: entry.row.status === 'loading' }));

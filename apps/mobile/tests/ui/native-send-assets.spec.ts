@@ -13,7 +13,7 @@ for (const width of [390, 320]) test(`saved asset search stays scoped and preser
   await expect(page.getByRole('radio')).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath(`send-asset-picker-${width}.png`), animations: 'disabled' });
-  await page.getByRole('radio', { name: 'USD Coin, USDC', exact: true }).click();
+  await page.getByRole('radio', { name: 'USD Coin, USDC, Contract Address: 0xabababababababababababababababababababab', exact: true }).click();
   await expect(page.getByLabel('Ethereum address', { exact: true })).toHaveValue('0x1111111111111111111111111111111111111111');
   await expect(page.getByLabel('Amount in USDC', { exact: true })).toHaveValue('');
   await expect(page.getByRole('heading', { name: 'Send USDC', exact: true })).toBeVisible();
@@ -29,6 +29,6 @@ test('hundreds of cached assets use a virtual list and search without expanding 
   expect(await page.getByRole('radio').count()).toBeLessThan(100);
   await page.getByLabel('Search saved assets', { exact: true }).fill('Saved token 299');
   await expect(page.getByRole('radio')).toHaveCount(1);
-  await expect(page.getByRole('radio', { name: 'Saved token 299, T299', exact: true })).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'Saved token 299, T299, Contract Address: 0x000000000000000000000000000000000000012c', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

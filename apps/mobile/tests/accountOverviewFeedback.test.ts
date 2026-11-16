@@ -28,7 +28,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
   const snapshot: any = { status: 'ready', filter: 'all', accountId: 'account-1', choices: [choice], rows: screen === 'wallet' ? [row] : [],
     refreshing: false, knownValue: failed ? null : 1005, partial: failed, currency: 'usd',
     view: { filter: 'all', showZero: false }, hasMore: false };
-  let rejectSelection = true, hidden = false, writes = 0, cursor = 0;
+  let rejectSelection = true, hidden = false, writes = 0, cursor = 0, savedNetworks = false;
   let selectionGate: Promise<void> | undefined;
   const cells: Cell[] = [], effects: (() => void)[] = [];
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
@@ -50,7 +50,8 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
   const native = { ...Object.fromEntries(['ActivityIndicator', 'FlatList', 'Modal', 'View'].map(name => [name, name])),
     AppState: { currentState: 'active' }, StyleSheet: { create: (value: unknown) => value } };
   const controller = { subscribe: () => () => undefined, getSnapshot: () => snapshot, connect: () => () => undefined,
-    setCurrency() {}, cachedBalances: () => [], findRow: () => undefined, getNetwork: () => undefined,
+    setCurrency() {}, cachedBalances: () => [], findRow: () => undefined,
+    getNetwork: () => savedNetworks ? { controller: { getSnapshot: () => ({ status: 'ready', canViewSavedPending: true }) } } : undefined,
     async selectFilter(value: string) { writes++; await selectionGate; if (rejectSelection) throw Error('Storage unavailable'); snapshot.filter = value; },
     async refresh() { throw Error('Activity unavailable'); },
   };
@@ -101,6 +102,11 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
   const modal = () => nodes(render()).find(node => node.type === 'Modal' && node.props.visible);
   return { render, nodes, modal, row,
     setActivity(value: Partial<typeof snapshot>) { Object.assign(snapshot, value); },
+    duplicateNetworks() {
+      snapshot.choices = ['31337', '31338'].map(chainId => ({ ...choice, networkName: 'Shared network', symbol: 'ABC',
+        scope: { ...choice.scope, id: `account-1:custom:${chainId}`, network: { ...choice.scope.network, id: `custom:${chainId}`, chainId } } }));
+      if (screen === 'wallet') snapshot.rows = snapshot.choices.map((next: typeof choice) => ({ ...row, choice: next }));
+    },
     setHidden(value: boolean) { hidden = value; },
     permitSelection() { rejectSelection = false; },
     holdSelection(value: Promise<void>) { selectionGate = value; },
@@ -109,16 +115,41 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     openFilter() { const label = screen === 'wallet' ? 'Choose network filter, All networks' : 'Activity network: All networks';
       nodes(render()).find(node => node.props.accessibilityLabel === label)!.props.onPress(); },
     openSource(title: 'Send' | 'Receive') { nodes(render()).find(node => node.type === 'Button' && node.props.title === title)!.props.onPress(); },
+    openSavedNetworks() {
+      savedNetworks = true;
+      nodes(render()).find(node => node.props.label === 'Activity options')!.props.onPress();
+      nodes(render()).find(node => node.type === 'Button' && node.props.title === 'Saved pending')!.props.onPress();
+    },
     failEarlierAction() { const tree = nodes(render());
       const action = screen === 'wallet' ? tree.find(node => String(node.props.accessibilityLabel).startsWith('ETH, Ethereum, '))
         : tree.find(node => node.props.label === 'Refresh activity');
       assert(action); action.props.onPress(); },
     hasScreenError() { return nodes(render()).some(node => node.props.accessibilityRole === 'alert' || node.type === 'Notice' && node.props.body === 'Activity could not be opened. Refresh and try again.'); },
-    chooseEthereum() { const choice = nodes(modal()).find(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === 'Ethereum, ETH');
+    chooseEthereum() { const choice = nodes(modal()).find(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === 'Ethereum, ETH, Chain ID 1');
       assert(choice); choice.props.onPress(); },
     close() { cells.forEach(value => value.cleanup?.()); },
   };
 }
+
+for (const [screen, purpose] of [['wallet', 'filter'], ['wallet', 'Send'], ['wallet', 'Receive'], ['activity', 'filter'], ['activity', 'saved']] as const)
+  test(`${screen} ${purpose} chooser preserves chain identity for identically named networks`, () => {
+    const f = fixture(screen);
+    try {
+      f.duplicateNetworks();
+      if (purpose === 'filter') f.openFilter();
+      else if (purpose === 'saved') f.openSavedNetworks();
+      else f.openSource(purpose);
+      const nodes = f.nodes(f.modal());
+      const choices = nodes.filter(node => node.props.accessibilityRole === 'radio' && String(node.props.accessibilityLabel).startsWith('Shared network, ABC'));
+      assert.equal(choices.length, 2);
+      for (const chainId of ['31337', '31338']) {
+        assert(choices.some(node => node.props.accessibilityLabel.includes(chainId)));
+        const identity = nodes.find(node => String(node.props.testID).startsWith('network-source-identity-') && node.children.join('') === `Chain ID ${chainId}`);
+        assert(identity, `the exact chain ID ${chainId} is visible`);
+      }
+      assert.equal(f.writes(), 0, 'opening an identity chooser does not select or query a network');
+    } finally { f.close(); }
+  });
 
 test('activity pagination waits for refresh and distinguishes an incomplete feed from older history', () => {
   const f = fixture('activity');

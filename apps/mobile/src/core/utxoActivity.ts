@@ -359,7 +359,7 @@ export class UtxoActivity {
   retryDetail = (): Promise<void> => this.state.detail ? this.selectDetail(this.state.detail.txid) : Promise.resolve();
   load = async (): Promise<void> => { await this.run('refresh'); };
   refresh = (): Promise<UtxoActivityConfirmation | undefined> => this.run('refresh', true);
-  loadMore = async (): Promise<void> => { if (this.state.status === 'ready' && this.state.hasMore) await this.run('older', false, true); };
+  loadMore = async (): Promise<void> => { if (this.state.status === 'ready' && this.state.hasMore) await this.run('older', false, this.olderContinuation !== null); };
   loadNewer = async (): Promise<void> => { if (this.state.status === 'ready' && this.state.hasNewer) await this.run('newer'); };
   private async run(mode: 'refresh' | 'older' | 'newer', indicate = false, fillOlder = false): Promise<UtxoActivityConfirmation | undefined> {
     if (this.pending || !this.isCurrent()) return;
@@ -425,7 +425,7 @@ export class UtxoActivity {
         if (!current()) return;
         const next: UtxoActivityState = { status: 'ready', context: owner, rows, detail: null, firstPage, page: lastPage,
           hasMore: mode === 'older' && !value.hasMore ? false : this.olderContinuation !== null || this.pages.get(lastPage)!.hasMore, hasNewer: firstPage > 1,
-          windowed: firstPage > 1 || this.olderContinuation !== null || flattened.length > UTXO_ACTIVITY_LIMITS.displayRows };
+          windowed: firstPage > 1 || flattened.length > UTXO_ACTIVITY_LIMITS.displayRows };
         const continueOlder = fillOlder && read + 1 < UTXO_ACTIVITY_LIMITS.windowPages && next.hasMore && !rows.some(row => !seen.has(row.txid));
         this.publish(continueOlder ? { ...next, status: 'loading' } : next);
         if (continueOlder) { before = next; page = this.olderContinuation ?? lastPage + 1; continue; }

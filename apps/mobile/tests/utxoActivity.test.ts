@@ -720,3 +720,30 @@ test('a scope retirement during offset repair aborts the action without another 
     assert.equal(f.calls.slice(before).filter(path => path.includes('/address/')).length, 1);
   } finally { held.resolve(); c.dispose(); }
 });
+
+test('ordinary Older requests remain one page even when changing indexer offsets repeat current rows', async () => {
+  const f = fixture({ count: 160, replace(path, body) {
+    if (path.includes('/address/') && body.page === 2) body.transactions = Array.from({ length: 20 }, (_, index) => tx(ID(index + 1)));
+    return body;
+  } }), a = authority(f); a.unlock(); const c = new UtxoActivity(a, () => true); c.activate();
+  try {
+    await settle(c); const before = f.calls.length; await c.loadMore();
+    assert.equal(f.calls.length - before, 3, 'one existing status/genesis/account-page read sequence');
+    assert.equal(c.getSnapshot().page, 2); assert.equal(c.getSnapshot().rows.length, 20);
+    assert.equal(c.getSnapshot().hasMore, true);
+  } finally { c.dispose(); }
+});
+
+test('an unclipped prefix repair retains forty rows without claiming a clipped page range', async () => {
+  let changed = false;
+  const f = fixture({ count: 23, replace(path, body) {
+    if (changed && path.includes('/address/')) body.transactions = body.transactions.map((row: any, index: number) => ({ ...row, txid: ID(1000 + index) }));
+    return body;
+  } }), a = authority(f); a.unlock(); const c = new UtxoActivity(a, () => true); c.activate();
+  try {
+    await settle(c); changed = true; await c.refresh();
+    assert.equal(c.getSnapshot().rows.length, 40);
+    assert.equal(c.getSnapshot().hasMore, true);
+    assert.equal(c.getSnapshot().windowed, false, 'the footer must remain forty transactions shown without a misleading Pages1–1 range');
+  } finally { c.dispose(); }
+});
