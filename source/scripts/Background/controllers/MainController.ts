@@ -133,6 +133,7 @@ import {
   getWalletNavigationScope,
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
+import { assertRetainedSmartAccountExecution } from '../../../utils/smartAccount/executionSimulation';
 import { signSmartAccountOwnerIntent } from '../../../utils/smartAccount/ownerSigning.ts';
 import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
 import {
@@ -1857,6 +1858,8 @@ class MainController {
           chainId: String(read.network.chainId),
           recordSession: { keyring: read.keyring, assertCurrent },
           assertCurrent,
+          runReadPhase: (check, work) =>
+            read.run((provider) => withEvmReadPhase(provider, check, work)),
           read: (method, params, assertReplayCurrent) =>
             read.run(async (provider) => {
               assertCurrent();
@@ -2490,6 +2493,14 @@ class MainController {
                   assertDispatchCurrent
                 );
                 if (total > available) throw new EvmFeeBalanceError();
+                await assertRetainedSmartAccountExecution(
+                  phase,
+                  record.rawTransaction,
+                  record.hash,
+                  context.network.chainId,
+                  snapshot,
+                  assertDispatchCurrent
+                );
                 const current = await readFreshEvmState(
                   phase,
                   'eth_getBlockByNumber',
@@ -11807,30 +11818,38 @@ class MainController {
       prepare: (request, assertCurrent, admission, approved) =>
         read.run((rawProvider) =>
           withEvmReadPhase(rawProvider, assertCurrent, async (provider) => {
-            // Once our exact signed row is persisted, the broad Smart-account
-            // pending gate includes it. Dispatch checks its envelope and payer
-            // nonce below; only pre-sign reviews use the no-predecessor gate.
-            if (payerDispatch?.saveOptions.assertPendingState) {
-              await payerDispatch.saveOptions.assertPendingState(
-                provider,
-                admission.kind === 'dispatch' ? admission.hash : undefined,
-                admission.kind === 'dispatch' ? admission.snapshot : undefined,
-                admission.kind === 'dispatch' ? admission.signedRaw : undefined
-              );
-              assertCurrent();
-            }
-            // Full Smart admission already checks assets in this same phase.
-            if (
-              !(
-                payerDispatch?.saveOptions.assertPendingState &&
-                payerDispatch.saveOptions.assertPendingStateIncludesAssets
-              ) &&
-              payerDispatch?.saveOptions.assertAssetState
-            ) {
-              await payerDispatch.saveOptions.assertAssetState(provider);
-              assertCurrent();
-            }
-            return prepareEvmDappQuote(
+            // Independent reads share this bounded phase. Both must finish before
+            // the quote can authorize signing or release the retained broadcast.
+            const pendingState = (async () => {
+              // Once our exact signed row is persisted, the broad Smart-account
+              // pending gate includes it. Dispatch checks its envelope and payer
+              // nonce below; only pre-sign reviews use the no-predecessor gate.
+              if (payerDispatch?.saveOptions.assertPendingState) {
+                await payerDispatch.saveOptions.assertPendingState(
+                  provider,
+                  admission.kind === 'dispatch' ? admission.hash : undefined,
+                  admission.kind === 'dispatch'
+                    ? admission.snapshot
+                    : undefined,
+                  admission.kind === 'dispatch'
+                    ? admission.signedRaw
+                    : undefined
+                );
+                assertCurrent();
+              }
+              // Full Smart admission already checks assets in this same phase.
+              if (
+                !(
+                  payerDispatch?.saveOptions.assertPendingState &&
+                  payerDispatch.saveOptions.assertPendingStateIncludesAssets
+                ) &&
+                payerDispatch?.saveOptions.assertAssetState
+              ) {
+                await payerDispatch.saveOptions.assertAssetState(provider);
+                assertCurrent();
+              }
+            })();
+            const quote = prepareEvmDappQuote(
               request,
               {
                 chainId: String(context.chainId),
@@ -11936,6 +11955,9 @@ class MainController {
               },
               approved
             );
+            const [prepared] = await Promise.all([quote, pendingState]);
+            assertCurrent();
+            return prepared;
           })
         ),
       send: async (

@@ -214,8 +214,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         else if (request.method === 'eth_simulateV1') {
           if (request.params[0].blockStateCalls[0].calls.length === 0) return Response.json({jsonrpc:'2.0', id:request.id, result:[{calls:[], transactions:[]}]});
           const calls = request.params[0].blockStateCalls[0].calls;
-          const parentResponse = await backend(network, {...init, body: JSON.stringify({jsonrpc:'2.0', id:request.id, method:'eth_getBlockByNumber', params:[request.params[1], false]})});
-          const simulationParent = (await parentResponse.json()).result;
+          const guardianParent = guardian && await guardian.fetch(network.rpcUrl, {
+            ...init,
+            body: JSON.stringify({jsonrpc:'2.0', id:request.id, method:'eth_getBlockByNumber', params:[request.params[1], false]}),
+          });
+          const simulationParent = guardianParent ? (await guardianParent.json()).result : observedHead;
           result = [{parentHash: simulationParent.hash, number: `0x${(BigInt(simulationParent.number)+1n).toString(16)}`,
             transactions: calls.map((call: any) => ({...call, input: call.data})),
             calls: calls.map((call: any) => {
@@ -505,6 +508,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     transferRpc: new NativeTransferRpc({ registration: getNativeNetwork('ethereum'), fetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init) }),
     get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
     increaseInnerGas() { innerGasEstimate = '0x493e0'; },
+    failInnerExecution() { innerGasEstimate = '0xffffffff'; },
     get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
       const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
@@ -4495,6 +4499,30 @@ async function connectLedgerSmart(f: Awaited<ReturnType<typeof readyLedgerSmartO
   await f.connection.start(); await f.connection.select(f.connection.getSnapshot().devices[0]!.id); await f.connection.finishConnection();
 }
 
+test('Smart speed-up refuses a frozen inner gas shortfall before broadcasting', async () => {
+  const owned = await readyLedgerSmartOwner(), { f } = owned;
+  let operation: NativeSmartAccountOperation | undefined, transfers: NativeTransfers | undefined;
+  try {
+    await connectLedgerSmart(owned); f.holdReceipts(); f.deployed();
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, null);
+    await operation.prepare();
+    const stop = operation.subscribe(() => { const review = operation!.getSnapshot().payerReview; if (review) operation!.confirmPayer(review.id); });
+    try { await operation.authorize(operation.getSnapshot().revision); } finally { stop(); }
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    const original = Transaction.from(f.submitted[0]!);
+    await operation.dispose(); operation = undefined;
+    transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    await transfers.prepareSpeedUp(original.hash!);
+    const review = transfers.getSnapshot().review; assert(review, JSON.stringify(transfers.getSnapshot()));
+    f.failInnerExecution();
+    const before = f.calls.filter(method => method === 'eth_simulateV1').length;
+    await assert.rejects(transfers.confirm(review.id, { method: 'device' }));
+    assert.equal(f.calls.filter(method => method === 'eth_simulateV1').length, before + 1, 'speed-up must simulate once');
+    assert.notEqual(transfers.getSnapshot().phase, 'pending', JSON.stringify(transfers.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+  } finally { await operation?.dispose(); transfers?.dispose(); await owned.close(); }
+});
+
 test('Smart fee replacement uses only the retained software payer despite a disconnected Ledger owner', async () => {
   const owned = await readyLedgerSmartOwner(), { f, device } = owned;
   let operation: NativeSmartAccountOperation | undefined, transfers: NativeTransfers | undefined;
@@ -6424,7 +6452,8 @@ for (const codeBytes of [1, 20 * 1024]) test(`counted native Smart asset payer p
     const counts = { methods: f.calls.length,
       http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
       chains: f.calls.filter(method => method === 'eth_chainId').length };
-    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 32 : 34, http: standard === 'ERC20' ? 22 : 26, chains: 4 });
+    // The final canonical check is fresh even when this phase already read its parent.
+    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 33 : 35, http: standard === 'ERC20' ? 23 : 27, chains: 4 });
     console.log('NATIVE_ASSET_CONFIRM_COUNTS', JSON.stringify({ standard, ...counts }));
   } finally { operation?.dispose(); await f.close(); }
 });

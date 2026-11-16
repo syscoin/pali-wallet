@@ -478,14 +478,14 @@ export class NativeTransferRpc {
     }
   }
   async verifyReplacementForDispatch(envelope: EvmUnsignedTransfer, signal: AbortSignal, guard: () => void,
-    snapshot: EvmAutoNonceSnapshot, intent?: Erc20TransferIntent, nft?: NftTransferIntent, mode: NativeReplacementMode = 'speed-up'): Promise<void> {
+    snapshot: EvmAutoNonceSnapshot, intent?: Erc20TransferIntent, nft?: NftTransferIntent, mode: NativeReplacementMode = 'speed-up', signedRaw?: string): Promise<void> {
     try {
       if (intent) assertTransferIntentEnvelope(envelope, intent);
       const asset: EvmTransferAsset | undefined = nft ? {
         standard: nft.tokenStandard === 'ERC-721' ? 'ERC721' : 'ERC1155', contractAddress: nft.contractAddress,
         tokenId: nft.tokenId, amountUnits: nft.amountUnits,
       } : intent ? { standard: 'ERC20', contractAddress: intent.token.contractAddress, amountUnits: intent.amountUnits } : undefined;
-      await this.receiptRpc.verifyReplacementForDispatch(envelope, signal, guard, snapshot, asset, intent?.token.decimals, mode);
+      await this.receiptRpc.verifyReplacementForDispatch(envelope, signal, guard, snapshot, asset, intent?.token.decimals, mode, signedRaw);
       guard();
     } catch (error) { guard(); this.mapReadError(error, nft ? 'nft' : 'token'); }
   }

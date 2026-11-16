@@ -1,4 +1,5 @@
 import { withEvmReadPhase } from '../../../../source/shared/evmReadPhase.ts';
+import { assertRetainedSmartAccountExecution } from '../../../../source/utils/smartAccount/executionSimulation.ts';
 import { createBoundedRpcFetch } from './boundedRpcFetch.ts';
 import { JsonRpcReadClient, RpcReadCapabilities, RpcReadError } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
 import { isReadOnlyRpcMethod, RpcResponseIntegrityError } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
@@ -10,7 +11,7 @@ import { privacyWithdrawalFees } from '../../../../source/utils/privacy/withdraw
 import { captureEvmGasPolicy, prepareEvmDappQuote, EvmDappReviewRequiredError, type EvmDappPreparedQuote, type EvmDappTransactionRequest, type EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
 import { getAddress } from 'ethers/address';
 import { getEvmFeeData, assertEvmGasLimit, planEvmCancellationFees, planEvmSpeedUpFees } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
-import type { Transaction } from 'ethers/transaction';
+import { Transaction } from 'ethers/transaction';
 import { encodeNftTransferData, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import { normalizeNftExecutionRevert } from '../../../../source/shared/nftReads.ts';
 import { snapshotNftTransferSelection, type NftTransferRequest, type NftTransferSelection } from './nftTransferAdmission.ts';
@@ -34,6 +35,7 @@ import type { CallsStatusPhase } from '../../../../source/wallet/dappCallsBundle
 import type { EvmReplacementRates, EvmSignedRetirementReadMethod } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 import { createSmartAccountInfrastructureReader, SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
+import { ExecutionSimulationUnsupportedError, normalizeExecutionSimulationError } from '../../../../source/utils/smartAccount/executionSimulationError.ts';
 export type { EvmDappPreparedQuote, EvmDappTransactionRequest } from '../../../../source/shared/evmDappPreparation.ts';
 
 const RETIREMENT_METHODS: Readonly<Record<EvmSignedRetirementReadMethod, true>> = Object.freeze({
@@ -48,6 +50,7 @@ const CODE_BYTES = 32 * 1024;
 export type NativeSmartAccountReadMethod = 'eth_getTransactionByHash' | 'eth_simulateV1' | 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getTransactionCount' | 'eth_getTransactionReceipt';
 export type NativeSmartAccountReadPhase = Readonly<{
   read(method: NativeSmartAccountReadMethod, params: readonly unknown[]): Promise<unknown>;
+  readFresh?(method: NativeSmartAccountReadMethod, params: readonly unknown[]): Promise<unknown>;
   readMany(requests: readonly { method: NativeSmartAccountReadMethod; params: readonly unknown[] }[]): Promise<PromiseSettledResult<unknown>[]>;
   feeData(): ReturnType<EvmTransferReadRpc['smartAccountFeeData']>;
   assertCurrent(): void;
@@ -202,6 +205,11 @@ export class EvmTransferReadRpc {
           const response = serializePublicRpcError(error);
           throw new EthereumRpcErrorHandler(response.code, response.message, response.data);
         }
+        if (method === 'eth_simulateV1') {
+          const simulationError = normalizeExecutionSimulationError(error);
+          if (simulationError instanceof ExecutionSimulationUnsupportedError)
+            throw simulationError;
+        }
         // Only an explicit unsupported priority-fee method reaches the SDK's bounded history fallback.
         if (method === 'eth_maxPriorityFeePerGas' && (error.code === -32601 || error.code === 4200)) {
           const unsupported = Object.assign(new Error('Unsupported priority fee RPC'), { code: error.code });
@@ -258,6 +266,7 @@ export class EvmTransferReadRpc {
       guardedRead(guard);
       if (error instanceof EvmTransferReadError || error instanceof EvmAssetStateError) throw error;
       if (controller.signal.aborted) return rejectRead('CANCELLED');
+      if (error instanceof ExecutionSimulationUnsupportedError) throw error;
       if (error instanceof Error && (smartCallReverts.has(error) || unsupportedPriorityErrors.has(error))) throw error;
       if (error instanceof RpcResponseIntegrityError) return rejectRead('INVALID_RESPONSE');
       if (scope === 'dapp-rpc' && error instanceof EthereumRpcErrorHandler) throw error;
@@ -457,6 +466,7 @@ export class EvmTransferReadRpc {
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
       const phase = Object.freeze({
+        readFresh: (method: NativeSmartAccountReadMethod, params: readonly unknown[]) => read(method, params),
         read: (method: NativeSmartAccountReadMethod, params: readonly unknown[]) => {
           if (!['eth_getTransactionByHash', 'eth_simulateV1', 'eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
             'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
@@ -867,6 +877,7 @@ export class EvmTransferReadRpc {
       assertCurrent: read.assertCurrent,
       readPhase: {
         read,
+        readFresh: read.fresh ?? read,
         readMany: read.many,
         feeData: () => this.feeData(read, sampled, read.signal),
         assertCurrent: read.assertCurrent,
@@ -924,7 +935,7 @@ export class EvmTransferReadRpc {
 
   /** Holdings and affordability for an exact retained replacement, without selecting a new nonce. */
   verifyReplacementForDispatch(input: EvmUnsignedTransfer, signal: AbortSignal, guard: () => void,
-    snapshot: EvmAutoNonceSnapshot, asset?: EvmTransferAsset, expectedDecimals?: number, mode: 'speed-up' | 'cancel' = 'speed-up'): Promise<void> {
+    snapshot: EvmAutoNonceSnapshot, asset?: EvmTransferAsset, expectedDecimals?: number, mode: 'speed-up' | 'cancel' = 'speed-up', signedRaw?: string): Promise<void> {
     const envelope = snapshotReplacementTransfer(input, this.network);
     if (mode === 'cancel' && !isEvmProtectedEmptySelfCall({ ...envelope, value: BigInt(envelope.value) }, 'cancel'))
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
@@ -953,6 +964,14 @@ export class EvmTransferReadRpc {
         assertEvmFeeEstimateApproved(approval, { balance, estimatedGas: BigInt(envelope.gasLimit), sampledBlockGasLimit: sampled.gasLimit,
           ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval));
       } catch (error) { return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED'); }
+      if (mode === 'speed-up' && signedRaw) {
+        const hash = Transaction.from(signedRaw).hash;
+        if (!hash) return rejectRead('INVALID_INPUT');
+        await assertRetainedSmartAccountExecution({
+          send: (method, params) => read(method as Method, params),
+          sendFresh: (method: string, params: unknown[]) => (read.fresh ?? read)(method as Method, params),
+        }, signedRaw, hash, Number(this.network.chainId), snapshot, read.assertCurrent);
+      }
       if (assetState) await this.assertAssetCanonical(read, assetState);
       else await this.canonical(read, sampled);
       await this.checkChain(read);
@@ -1139,6 +1158,7 @@ export class EvmTransferReadRpc {
           verifyConfiguredChainId: () => this.checkChain(read) }, read.assertCurrent, async provider => {
           const phase = Object.assign((method: Method, params: readonly unknown[]) => provider.send(method, [...params]), {
             signal: read.signal, assertCurrent: read.assertCurrent, many: provider.readMany,
+            fresh: (method: Method, params: readonly unknown[]) => provider.sendFresh(method, [...params]),
           }) as Reader;
           return prepareEvmDappQuote(request, {
             chainId: this.network.chainId,

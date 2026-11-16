@@ -1155,7 +1155,7 @@ export class NativeTransfers {
         const check = () => { guard(); assertAdmission(); };
         if (approved.replacement) {
           if (!snapshot) throw new NativeTransferError('EXPIRED');
-          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible, approved.replacement.mode);
+          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible, approved.replacement.mode, rawTransaction);
           check();
           dispatchVerified = true;
           return;

@@ -1,9 +1,7 @@
 import { Network } from 'ethers/providers';
 
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { BigNumber } from '../ethersV6Compat.ts';
 
-import type { SmartAccountPackedUserOperation } from './account.ts';
 import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts.ts';
 import type { ISmartAccountMetadata } from '../../types/network.ts';
 import type { Provider } from '../ethersV6Compat.ts';
@@ -254,31 +252,6 @@ async function readSmartAccountExecutionGas(
   if (estimated < intrinsic || estimated > BigInt(Number.MAX_SAFE_INTEGER))
     throw new Error('Invalid smart account execution gas estimate');
   return estimated - intrinsic;
-}
-
-/** Recheck the exact signed execution budget without quote fallback or a new margin. */
-export async function assertSmartAccountExecutionGas(
-  provider: Provider,
-  userOperation: SmartAccountPackedUserOperation,
-  chainId: number,
-  assertCurrent: () => void
-): Promise<void> {
-  assertSynchronousEvmFeeGuard(assertCurrent);
-  if (!/^0x[0-9a-f]{64}$/i.test(userOperation.accountGasLimits))
-    throw new Error('Invalid signed smart account gas limits');
-  const signed = BigInt('0x' + userOperation.accountGasLimits.slice(34));
-  if (signed === BigInt(0))
-    throw new Error('Invalid signed smart account gas limits');
-  const required = await readSmartAccountExecutionGas(provider, {
-    callData: userOperation.callData,
-    chainId,
-    sender: userOperation.sender,
-  });
-  assertSynchronousEvmFeeGuard(assertCurrent);
-  if (required > signed)
-    throw new Error(
-      'Smart account execution gas changed. Review the operation again.'
-    );
 }
 
 /** Estimate the execution budget plus margin. Undeployed or unavailable quotes use the existing fallback. */

@@ -49,7 +49,9 @@ const budget = {
   // Owned guardian observations, replay admission and legacy normalization
   // add 2,823 measured bytes to the preceding candidate. Reserve 5 KB for
   // these fixes while preserving all startup and RPC ceilings.
-  package: 12200000,
+  // Exact signed Smart simulation and final replay admission add about 2 KB
+  // to the 12.20 MB package. Reserve 10 KB; startup and RPC caps stay fixed.
+  package: 12210000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

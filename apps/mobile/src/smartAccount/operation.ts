@@ -27,6 +27,7 @@ import {
   type prepareSmartAccountOperation,
 } from '../../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
+import { ExecutionSimulationUnsupportedError } from '../../../../source/utils/smartAccount/executionSimulationError.ts';
 
 export type NativeSmartAccountResolvedIntent = (
   | Readonly<{ kind: 'deploy' }>
@@ -455,7 +456,7 @@ export class NativeSmartAccountOperation {
         // A late read cannot replace cancellation or a departed view's outcome.
         try { this.check(); preparationFailure = 'INSUFFICIENT_ASSET'; } catch { /* Preserve lifecycle failure. */ }
       }
-      this.fail(preparationFailure);
+      this.fail(preparationFailure, error);
     } finally {
       this.preparing = false;
       finish();
@@ -539,7 +540,7 @@ export class NativeSmartAccountOperation {
           payerReview: null,
         });
         await this.prepare();
-      } else this.fail();
+      } else this.fail(undefined, error);
     } finally {
       finish();
     }
@@ -620,8 +621,12 @@ export class NativeSmartAccountOperation {
       this.cancel();
     }
   }
-  private fail(preparationFailure?: 'INSUFFICIENT_ASSET') {
+  private fail(preparationFailure?: 'INSUFFICIENT_ASSET', cause?: unknown) {
     if (this.disposed || this.snapshot.phase === 'complete') return;
+    let simulationMessage: string | undefined;
+    if (cause instanceof ExecutionSimulationUnsupportedError) {
+      try { this.check(); simulationMessage = cause.message; } catch { /* Preserve lifecycle failure. */ }
+    }
     this.prepared = null;
     this.pendingPayer?.reject(new Error('SMART_OPERATION_EXPIRED'));
     this.pendingPayer = null;
@@ -631,7 +636,9 @@ export class NativeSmartAccountOperation {
       phase: 'failed',
       payerReview: null,
       preparationFailure: this.signingStarted ? undefined : preparationFailure,
-      error: this.signingStarted
+      error: simulationMessage
+        ? simulationMessage + (this.signingStarted ? ' Check the account and Activity before starting again.' : '')
+        : this.signingStarted
         ? 'Authorization ended. Check the account and Activity before starting again.'
         : 'This operation could not be prepared. Return to your account and try again.',
     });

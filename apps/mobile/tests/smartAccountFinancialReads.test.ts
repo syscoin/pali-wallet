@@ -200,3 +200,32 @@ test('zero-prefund financial reuse never hides a later required deposit', async 
     assert.equal(f.calls.filter(row => row.method === 'eth_getBalance').length, 1);
   });
 });
+
+test('native shared phase keeps the final parent check fresh after an exact simulation', async () => {
+  const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const { EvmTransferReadRpc } = await import('../src/custody/evmTransferReadRpc.ts');
+  const { createNativeSmartAccountProvider } = await import('../src/smartAccount/provider.ts');
+  const { withEvmReadPhase, readFreshEvmState } = await import('../../../source/shared/evmReadPhase.ts');
+  const network = createNativeNetwork({ id: 'fresh-simulation', chainId: '1', name: 'Fresh simulation', kind: 'evm', rpcUrl: 'https://fresh-simulation.invalid', slip44: 60, symbol: 'ETH', decimals: 18, testnet: true });
+  const initial = '0x' + '11'.repeat(32), replacement = '0x' + '22'.repeat(32);
+  let canonical = initial, blockReads = 0;
+  const rpc = new EvmTransferReadRpc(network, { fetch: async (_url, init) => {
+    const input = JSON.parse(String(init.body));
+    const rows = Array.isArray(input) ? input : [input];
+    const replies = rows.map(row => {
+      if (row.method === 'eth_chainId') return { jsonrpc: '2.0', id: row.id, result: '0x1' };
+      if (row.method === 'eth_simulateV1') { canonical = replacement; return { jsonrpc: '2.0', id: row.id, result: [] }; }
+      assert.equal(row.method, 'eth_getBlockByNumber');
+      blockReads++;
+      return { jsonrpc: '2.0', id: row.id, result: { number: '0xa', hash: canonical } };
+    });
+    return Response.json(Array.isArray(input) ? replies : replies[0]);
+  } });
+  const provider = createNativeSmartAccountProvider(network, rpc, new AbortController().signal, () => undefined);
+  await withEvmReadPhase(provider, () => undefined, async phase => {
+    assert.equal((await phase.send('eth_getBlockByNumber', ['0xa', false])).hash, initial);
+    await phase.send('eth_simulateV1', [{ blockStateCalls: [{ calls: [] }] }, '0xa']);
+    assert.equal((await readFreshEvmState(phase, 'eth_getBlockByNumber', ['0xa', false])).hash, replacement);
+  });
+  assert.equal(blockReads, 2);
+});

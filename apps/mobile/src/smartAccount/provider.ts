@@ -10,6 +10,7 @@ import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 type ReadMethod = Parameters<EvmTransferReadRpc['smartAccountRead']>[0];
 type NativeSmartAccountProvider = Readonly<{
   send(method: string, params: readonly unknown[]): Promise<unknown>;
+  sendFresh(method: string, params: readonly unknown[]): Promise<unknown>;
   readMany(
     requests: readonly { method: string; params: readonly unknown[] }[]
   ): Promise<PromiseSettledResult<unknown>[]>;
@@ -84,6 +85,11 @@ function smartAccountProvider(
     return output;
   };
   return {
+    sendFresh(method: string, params: readonly unknown[]) {
+      return phase?.readFresh
+        ? phase.readFresh(method as ReadMethod, params)
+        : read(method as ReadMethod, params);
+    },
     send(method: string, params: readonly unknown[]) {
       if (method === 'eth_getTransactionByHash') return read(method, params);
       if (

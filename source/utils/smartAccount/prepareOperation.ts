@@ -22,6 +22,7 @@ import {
   snapshotSmartAccountExpectedErc20Transfers,
   type SmartAccountExpectedErc20Transfer,
 } from './erc20Transfer.ts';
+import { normalizeExecutionSimulationError } from './executionSimulationError.ts';
 import {
   estimateSmartAccountUserOpGas,
   getSmartAccountValidatorProfile,
@@ -150,15 +151,20 @@ async function prepareOperation({
   selectGasPayer,
   assertCurrent,
 }: Parameters<typeof prepareSmartAccountOperation>[0]) {
-  await provider.send('eth_simulateV1', [
-    {
-      blockStateCalls: [{ calls: [] }],
-      validation: true,
-      returnFullTransactions: true,
-      traceTransfers: false,
-    },
-    'latest',
-  ]);
+  try {
+    await provider.send('eth_simulateV1', [
+      {
+        blockStateCalls: [{ calls: [] }],
+        validation: true,
+        returnFullTransactions: true,
+        traceTransfers: false,
+      },
+      'latest',
+    ]);
+  } catch (error) {
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    throw normalizeExecutionSimulationError(error);
+  }
   assertSynchronousEvmFeeGuard(assertCurrent);
   await pending.verify();
   feeOverrides = { ...feeOverrides };

@@ -2,7 +2,6 @@ import { BigNumber } from 'utils/ethersV6Compat';
 
 import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts';
 import {
-  assertSmartAccountExecutionGas,
   estimateSmartAccountCallGasLimit,
   estimateSmartAccountUserOpGas,
   getSmartAccountGasUnitsReserve,
@@ -393,106 +392,4 @@ describe('getSmartAccountGasUnitsReserve', () => {
       )
     );
   });
-});
-
-describe('signed Smart execution budget admission', () => {
-  const operation = (gas: bigint) => ({
-    sender: SENDER,
-    callData: CALL_DATA,
-    initCode: '0x',
-    nonce: '0',
-    accountGasLimits:
-      '0x' + '0'.repeat(32) + gas.toString(16).padStart(32, '0'),
-    preVerificationGas: '0',
-    gasFees: '0x' + '0'.repeat(64),
-    paymasterAndData: '0x',
-    signature: '0x',
-  });
-  it.each([1, 560048, 57057])(
-    'rejects growth on chain %i and accepts the exact execution budget',
-    async (chainId) => {
-      const overhead = chainId === 57057 ? 0 : 21064;
-      const provider = providerWithEstimate(overhead + 40000);
-      await expect(
-        assertSmartAccountExecutionGas(
-          provider,
-          operation(BigInt(39999)),
-          chainId,
-          () => undefined
-        )
-      ).rejects.toThrow('execution gas changed');
-      await expect(
-        assertSmartAccountExecutionGas(
-          provider,
-          operation(BigInt(40000)),
-          chainId,
-          () => undefined
-        )
-      ).resolves.toBeUndefined();
-      expect(provider.estimateGas).toHaveBeenCalledTimes(2);
-    }
-  );
-  it('does not apply quote fallback after a revert', async () => {
-    const failure = new Error('execution reverted');
-    await expect(
-      assertSmartAccountExecutionGas(
-        providerWithEstimate(failure),
-        operation(BigInt(250000)),
-        1,
-        () => undefined
-      )
-    ).rejects.toBe(failure);
-  });
-  it.each(['-1', '1.5', 'NaN', '9007199254740992', '21000'])(
-    'rejects invalid estimate %s without fallback',
-    async (value) => {
-      const provider = {
-        estimateGas: jest.fn(async () => ({ toString: () => value })),
-      };
-      await expect(
-        assertSmartAccountExecutionGas(
-          provider,
-          operation(BigInt(250000)),
-          1,
-          () => undefined
-        )
-      ).rejects.toThrow('Invalid smart account execution gas estimate');
-    }
-  );
-  it('checks ownership after a held estimate and cannot admit after retirement', async () => {
-    let current = true,
-      release!: (value: any) => void;
-    const provider = {
-      estimateGas: () =>
-        new Promise((resolve) => {
-          release = resolve;
-        }),
-    };
-    const pending = assertSmartAccountExecutionGas(
-      provider,
-      operation(BigInt(40000)),
-      1,
-      () => {
-        if (!current) throw new Error('retired');
-      }
-    );
-    current = false;
-    release(BigNumber.from(21065));
-    await expect(pending).rejects.toThrow('retired');
-  });
-  it.each(['0x', '0x' + '0'.repeat(64)])(
-    'rejects malformed or zero signed budget before RPC',
-    async (accountGasLimits) => {
-      const provider = providerWithEstimate(1);
-      await expect(
-        assertSmartAccountExecutionGas(
-          provider,
-          { ...operation(BigInt(1)), accountGasLimits },
-          1,
-          () => undefined
-        )
-      ).rejects.toThrow('Invalid signed');
-      expect(provider.estimateGas).not.toHaveBeenCalled();
-    }
-  );
 });

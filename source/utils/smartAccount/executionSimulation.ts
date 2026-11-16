@@ -8,12 +8,18 @@ import {
   type SmartAccountCallsIdentity,
 } from '../../shared/dappCallsStatus.ts';
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
+import { readFreshEvmState } from '../../shared/evmReadPhase.ts';
 import {
   readEvmRpcHash,
   readEvmRpcQuantity,
 } from '../../shared/evmTransactionObservation.ts';
 
 import type { SmartAccountPackedUserOperation } from './account.ts';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+} from './contracts.ts';
+import { normalizeExecutionSimulationError } from './executionSimulationError.ts';
 import type { EvmAutoNonceSnapshot } from '../../shared/evmAutoNonce.ts';
 
 type RpcTransaction = Readonly<
@@ -150,15 +156,21 @@ export async function assertSmartAccountExecutionSimulation(
   )
     throw requireExecutionEvidence();
 
-  const result = await simulate([
-    {
-      blockStateCalls: [{ calls: transactions }],
-      validation: true,
-      returnFullTransactions: true,
-      traceTransfers: false,
-    },
-    `0x${parent.number.toString(16)}`,
-  ]);
+  let result: unknown;
+  try {
+    result = await simulate([
+      {
+        blockStateCalls: [{ calls: transactions }],
+        validation: true,
+        returnFullTransactions: true,
+        traceTransfers: false,
+      },
+      `0x${parent.number.toString(16)}`,
+    ]);
+  } catch (error) {
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    throw normalizeExecutionSimulationError(error);
+  }
   assertSynchronousEvmFeeGuard(assertCurrent);
   if (!Array.isArray(result) || result.length !== 1)
     throw requireExecutionEvidence();
@@ -192,7 +204,10 @@ export async function assertSmartAccountExecutionSimulation(
 
 /** Check the actual signed execution after storage using the caller's fresh read phase. */
 export async function assertSignedSmartAccountExecution(
-  provider: { send(method: string, params: unknown[]): Promise<any> },
+  provider: {
+    send(method: string, params: unknown[]): Promise<any>;
+    sendFresh?(method: string, params: unknown[]): Promise<any>;
+  },
   rawTransaction: string,
   hash: string,
   operation: SmartAccountPackedUserOperation,
@@ -225,24 +240,37 @@ export async function assertSignedSmartAccountExecution(
           BigInt(entry.nonce) === nonce &&
           ['signed', 'attempted', 'submitted'].includes(entry.phase)
       ) ?? [];
-    if (candidates.length !== 1 || !snapshot?.readSignedTransaction)
-      throw requireExecutionEvidence();
-    const entry = candidates[0]!;
-    const predecessor = recoverExecutionSimulationEnvelope(
-      await snapshot.readSignedTransaction(entry.hash),
-      entry.hash
-    );
-    const observed = await provider.send('eth_getTransactionByHash', [
-      entry.hash,
-    ]);
-    assertSynchronousEvmFeeGuard(assertCurrent);
     if (
-      !observed ||
-      observed.hash?.toLowerCase() !== entry.hash.toLowerCase() ||
-      observed.blockHash !== null ||
-      observed.blockNumber !== null ||
-      !echoMatches(predecessor, observed)
+      !candidates.length ||
+      candidates.length > 16 ||
+      !snapshot?.readSignedTransaction
     )
+      throw requireExecutionEvidence();
+    // Replaced variants share a nonce. Only the exact variant currently accepted
+    // by this endpoint can supply the preceding execution state.
+    const observed = await Promise.all(
+      candidates.map(async (entry) => ({
+        entry,
+        transaction: await provider.send('eth_getTransactionByHash', [
+          entry.hash,
+        ]),
+      }))
+    );
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    const accepted = observed.filter(
+      ({ entry, transaction }) =>
+        transaction?.hash?.toLowerCase() === entry.hash.toLowerCase() &&
+        transaction.blockHash === null &&
+        transaction.blockNumber === null
+    );
+    if (accepted.length !== 1) throw requireExecutionEvidence();
+    const selected = accepted[0]!;
+    const predecessor = recoverExecutionSimulationEnvelope(
+      await snapshot.readSignedTransaction(selected.entry.hash),
+      selected.entry.hash
+    );
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    if (!echoMatches(predecessor, selected.transaction))
       throw requireExecutionEvidence();
     transactions.push(predecessor);
   }
@@ -258,11 +286,62 @@ export async function assertSignedSmartAccountExecution(
     transactions: [...transactions, target],
     simulate: (params) => provider.send('eth_simulateV1', [...params]),
   });
-  const canonical = await provider.send('eth_getBlockByNumber', [
+  const canonical = await readFreshEvmState(provider, 'eth_getBlockByNumber', [
     quantity(parentNumber),
     false,
   ]);
   assertSynchronousEvmFeeGuard(assertCurrent);
   if (readEvmRpcHash(canonical?.hash) !== readEvmRpcHash(parent.hash))
     throw requireExecutionEvidence();
+}
+
+/** Replacements and replay recover the already authorized operation from signed bytes. */
+export async function assertRetainedSmartAccountExecution(
+  provider: Parameters<typeof assertSignedSmartAccountExecution>[0],
+  rawTransaction: string,
+  hash: string,
+  chainId: number,
+  snapshot: EvmAutoNonceSnapshot | undefined,
+  assertCurrent: () => void
+) {
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  const transaction = Transaction.from(rawTransaction);
+  if (
+    transaction.to?.toLowerCase() !==
+      getPaliEntryPointAddress(chainId).toLowerCase() ||
+    transaction.data.slice(0, 10) !==
+      paliEntryPointInterface.getFunction('handleOps')!.selector
+  )
+    return;
+  const decoded = paliEntryPointInterface.decodeFunctionData(
+    'handleOps',
+    transaction.data
+  );
+  if (
+    decoded[0].length !== 1 ||
+    paliEntryPointInterface.encodeFunctionData('handleOps', decoded) !==
+      transaction.data
+  )
+    throw requireExecutionEvidence();
+  const item = decoded[0][0];
+  const operation: SmartAccountPackedUserOperation = {
+    sender: item.sender,
+    nonce: item.nonce.toString(),
+    initCode: item.initCode,
+    callData: item.callData,
+    accountGasLimits: item.accountGasLimits,
+    preVerificationGas: item.preVerificationGas.toString(),
+    gasFees: item.gasFees,
+    paymasterAndData: item.paymasterAndData,
+    signature: item.signature,
+  };
+  await assertSignedSmartAccountExecution(
+    provider,
+    rawTransaction,
+    hash,
+    operation,
+    chainId,
+    snapshot,
+    assertCurrent
+  );
 }

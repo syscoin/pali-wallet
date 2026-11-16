@@ -7608,6 +7608,8 @@ export function createKeyringRuntimeFactory(
                     account: { id: selected.index, address: selected.address }, chainId: network.chainId,
                     recordSession: { keyring: transactionRecordKeyring(keyring, current), assertCurrent: current },
                     assertCurrent: current,
+                    runReadPhase: (guard, work) => rpc.smartAccountReadPhase(ownedLifetime.signal, guard, phase =>
+                      work(createNativeSmartAccountProvider(network, rpc, ownedLifetime.signal, guard, phase))),
                     read: (method, params, guard) => rpc.retirementRead(method, params, ownedLifetime.signal, guard),
                     capturePayer(entry) {
                       current();

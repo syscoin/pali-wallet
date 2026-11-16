@@ -2,6 +2,7 @@ import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
 import { captureSmartAccountCallsIdentity } from '../../shared/dappCallsStatus';
+import { withEvmReadPhase } from '../../shared/evmReadPhase';
 
 import { buildSmartAccountUserOperation } from './account';
 import { paliEntryPointInterface } from './contracts';
@@ -10,6 +11,7 @@ import {
   assertSignedSmartAccountExecution,
   recoverExecutionSimulationEnvelope,
 } from './executionSimulation';
+import { ExecutionSimulationUnsupportedError } from './executionSimulationError';
 
 const payer = `0x${'11'.repeat(20)}`;
 const sender = `0x${'22'.repeat(20)}`;
@@ -71,6 +73,28 @@ it('observes the exact payer and fee shape at the captured parent', async () => 
     },
     '0xa',
   ]);
+});
+
+it('reports an unsupported simulation method without suppressing cancellation', async () => {
+  let active = true;
+  const run = () =>
+    assertSmartAccountExecutionSimulation({
+      parent,
+      identity,
+      operationEvent,
+      transactions: [transaction],
+      assertCurrent: () => {
+        if (!active) throw new Error('cancelled');
+      },
+      simulate: async () => {
+        throw Object.assign(new Error('Method unavailable'), { code: -32601 });
+      },
+    });
+  await expect(run()).rejects.toBeInstanceOf(
+    ExecutionSimulationUnsupportedError
+  );
+  active = false;
+  await expect(run()).rejects.toThrow('cancelled');
 });
 
 it.each([
@@ -262,15 +286,23 @@ it('keeps a queued transaction behind its exact retained predecessor', async () 
     phase: 'submitted' as const,
   };
   let current = true;
-  const send = jest.fn(async (method: string) => {
+  let ambiguous = false;
+  const replacedHash = `0x${'aa'.repeat(32)}`;
+  const send = jest.fn(async (method: string, params?: unknown[]) => {
     if (method === 'eth_getBlockByNumber')
       return { number: '0xa', hash: parent.hash };
     if (method === 'eth_getTransactionCount') return '0x0';
+    if (
+      method === 'eth_getTransactionByHash' &&
+      params?.[0] === replacedHash &&
+      !ambiguous
+    )
+      return null;
     if (method === 'eth_getTransactionByHash')
       return {
         ...predecessor,
         input: predecessor.data,
-        hash: firstHash,
+        hash: params?.[0],
         blockHash: null,
         blockNumber: null,
       };
@@ -312,6 +344,31 @@ it('keeps a queued transaction behind its exact retained predecessor', async () 
   expect(
     send.mock.calls.filter(([method]) => method === 'eth_simulateV1')
   ).toHaveLength(1);
+  const alternatives = {
+    ...snapshot,
+    retained: [{ ...retained, hash: replacedHash }, retained],
+  };
+  await assertSignedSmartAccountExecution(
+    { send },
+    last,
+    lastHash,
+    operation,
+    1,
+    alternatives,
+    () => undefined
+  );
+  ambiguous = true;
+  await expect(
+    assertSignedSmartAccountExecution(
+      { send },
+      last,
+      lastHash,
+      operation,
+      1,
+      alternatives,
+      () => undefined
+    )
+  ).rejects.toThrow('Unable to verify smart account execution');
   current = false;
   await expect(
     assertSignedSmartAccountExecution(
@@ -326,4 +383,57 @@ it('keeps a queued transaction behind its exact retained predecessor', async () 
       }
     )
   ).rejects.toThrow('cancelled');
+});
+
+it('rechecks the canonical parent after simulation even when that height was already read', async () => {
+  const signer = new Wallet(`0x${'11'.repeat(32)}`);
+  const raw = await signer.signTransaction({
+    type: 2,
+    chainId: 1,
+    to: identity.entryPoint,
+    nonce: 0,
+    data: transaction.data,
+    gasLimit: transaction.gas,
+    maxFeePerGas: 10,
+    maxPriorityFeePerGas: 1,
+  });
+  const hash = Transaction.from(raw).hash!;
+  const envelope = recoverExecutionSimulationEnvelope(raw, hash);
+  let currentHash = parent.hash;
+  const send = jest.fn(async (method: string) => {
+    if (method === 'eth_getBlockByNumber')
+      return { number: '0xa', hash: currentHash };
+    if (method === 'eth_getTransactionCount') return '0x0';
+    if (method === 'eth_simulateV1') {
+      currentHash = `0x${'55'.repeat(32)}`;
+      return [
+        {
+          ...makeBlock(true),
+          transactions: [{ ...envelope, input: envelope.data }],
+        },
+      ];
+    }
+    throw Error(method);
+  });
+  await expect(
+    withEvmReadPhase(
+      { send, verifyConfiguredChainId: async () => undefined },
+      () => undefined,
+      async (phase) => {
+        await phase.send('eth_getBlockByNumber', ['0xa', false]);
+        await assertSignedSmartAccountExecution(
+          phase,
+          raw,
+          hash,
+          operation,
+          1,
+          undefined,
+          () => undefined
+        );
+      }
+    )
+  ).rejects.toThrow('Unable to verify smart account execution');
+  expect(
+    send.mock.calls.filter(([method]) => method === 'eth_getBlockByNumber')
+  ).toHaveLength(3);
 });

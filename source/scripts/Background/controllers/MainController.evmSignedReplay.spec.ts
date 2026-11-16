@@ -45,6 +45,11 @@ import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import { blacklistService } from 'utils/security/blacklistService';
+import { buildSmartAccountUserOperation } from 'utils/smartAccount/account';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+} from 'utils/smartAccount/contracts';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -598,6 +603,82 @@ it.each([1, 2])(
     expect(provider.liveChainRead).toHaveBeenCalledTimes(2);
   }
 );
+
+it('rejects a Smart speed-up with failed frozen execution before broadcast', async () => {
+  const operation = buildSmartAccountUserOperation({
+    sender: receiver,
+    nonce: '0',
+    callData: '0x',
+  });
+  const replacement = await signer.signTransaction({
+    type: 2,
+    chainId: 123,
+    nonce: 0,
+    to: getPaliEntryPointAddress(123),
+    value: 0,
+    data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+      [operation],
+      signer.address,
+    ]),
+    gasLimit: 200000,
+    maxFeePerGas: 4,
+    maxPriorityFeePerGas: 2,
+  });
+  const speedUp = {
+    ...context,
+    operation: 'speed-up' as const,
+    originalHash: entry.hash,
+  };
+  const lifecycle = wallet.captureEvmSignedSubmission(keyring, speedUp);
+  const boundary = captureEvmSubmission(
+    speedUp,
+    () => undefined,
+    () => lifecycle
+  );
+  provider.verifyConfiguredChainId = jest.fn(async () => undefined);
+  provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getTransactionCount') return '0x0';
+    if (method === 'eth_getBalance') return '0x10000000';
+    if (method === 'eth_getBlockByNumber')
+      return {
+        number: '0x1',
+        hash: '0x' + '55'.repeat(32),
+        baseFeePerGas: '0x1',
+        gasLimit: '0x100000',
+      };
+    if (method === 'eth_simulateV1') {
+      const transactions = (params[0] as any).blockStateCalls[0].calls;
+      return [
+        {
+          number: '0x2',
+          parentHash: '0x' + '55'.repeat(32),
+          transactions: transactions.map((tx: any) => ({
+            ...tx,
+            input: tx.data,
+          })),
+          calls: [{ status: '0x0', gasUsed: '0x100', logs: [] }],
+        },
+      ];
+    }
+    throw Error('Unexpected RPC');
+  });
+  const dispatch = jest.fn(
+    async (bytes: string) => Transaction.from(bytes).hash!
+  );
+  await expect(
+    submitSignedEvmTransaction(
+      replacement,
+      ({ rawTransaction, admit }) => admit(() => dispatch(rawTransaction)),
+      boundary,
+      undefined,
+      Transaction.from(replacement).unsignedSerialized
+    )
+  ).rejects.toThrow('Unable to verify smart account execution');
+  expect(
+    provider.send.mock.calls.filter(([method]) => method === 'eth_simulateV1')
+  ).toHaveLength(1);
+  expect(dispatch).not.toHaveBeenCalled();
+});
 
 it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
   'handles %s after durable cancellation persistence through the installed SDK',
