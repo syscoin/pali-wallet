@@ -1380,7 +1380,13 @@ it.each([
       verifyConfiguredChainId: jest.fn(async () => undefined),
       send: jest.fn(async (method: string, params: unknown[]) => {
         if (method === 'eth_getBlockByNumber')
-          return { number: '0x10', hash: '0x' + 'a'.repeat(64) };
+          return {
+            number: '0x10',
+            hash: '0x' + 'a'.repeat(64),
+            gasLimit: '0x1c9c380',
+            baseFeePerGas: '0x1',
+          };
+        if (method === 'eth_estimateGas') return '0x5208';
         if (method === 'eth_getTransactionCount')
           return params[1] === 'pending' && change === 'pending count'
             ? '0x1'
@@ -1405,6 +1411,7 @@ it.each([
     wallet.captureFreshEvmRead = jest.fn(() => ({
       keyring: sdkKeyring,
       network: context.network,
+      overrides: {},
       assertCurrent: () => undefined,
       run: (work: (freshProvider: typeof rpc) => unknown) => work(rpc),
     }));

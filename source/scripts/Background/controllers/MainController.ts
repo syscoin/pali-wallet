@@ -2231,11 +2231,69 @@ class MainController {
           const feePerGas = signed.maxFeePerGas ?? signed.gasPrice;
           if (feePerGas === null)
             throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-          const { total } = getEvmTransferCost(
+          const { total, maximumFee } = getEvmTransferCost(
             signed.value,
             signed.gasLimit,
             feePerGas
           );
+          if (
+            context.operation === 'send' &&
+            signed.data === '0x' &&
+            signed.value > BigInt(0)
+          ) {
+            const native = captureReviewedNativeEvmTransfer(
+              {
+                from: record.from,
+                to: signed.to,
+                data: signed.data,
+                value: signed.value.toString(),
+                nonce: signed.nonce,
+                chainId: signed.chainId.toString(),
+                type: signed.type,
+                gasLimit: signed.gasLimit.toString(),
+                gasPrice: signed.gasPrice?.toString(),
+                maxFeePerGas: signed.maxFeePerGas?.toString(),
+                maxPriorityFeePerGas: signed.maxPriorityFeePerGas?.toString(),
+                accessList: signed.accessList,
+              },
+              signed.type === 0,
+              maximumFee.toString(),
+              record.from,
+              read.network.chainId,
+              read.overrides,
+              record.hash
+            );
+            await read.run((provider) =>
+              withEvmReadPhase(
+                provider,
+                assertDispatchCurrent,
+                async (phase) => {
+                  const block = await readNativeEvmReviewBlock(
+                    phase,
+                    assertDispatchCurrent
+                  );
+                  const plan = await this.inspectOrdinaryEvmNonce(
+                    read,
+                    record.from,
+                    {
+                      reviewed,
+                      snapshot,
+                      currentSignedHash: record.hash,
+                      assertCurrent: assertDispatchCurrent,
+                      quotePhase: { provider: phase, block },
+                    }
+                  );
+                  await recheckReviewedNativeEvmTransfer(
+                    native,
+                    phase,
+                    assertDispatchCurrent,
+                    plan
+                  );
+                }
+              )
+            );
+            return;
+          }
           await this.inspectOrdinaryEvmNonce(read, record.from, {
             reviewed,
             snapshot,
