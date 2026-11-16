@@ -39,7 +39,8 @@ const AssetsManager = (): IAssetsManager => {
           networkChainId,
           currentAssets.syscoin.filter(
             (asset) => asset.chainId === networkChainId
-          )
+          ),
+          owner
         );
 
         return {

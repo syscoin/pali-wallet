@@ -1,3 +1,7 @@
+jest.mock('syscoinjs-lib', () => ({
+  utils: jest.requireActual('syscoinjs-lib/utils'),
+}));
+
 import { configureStore } from '@reduxjs/toolkit';
 
 import vaultReducer, { setActiveNetwork } from 'state/vault';
@@ -7,8 +11,10 @@ import vaultGlobalReducer, {
 } from 'state/vaultGlobal';
 import { KeyringAccountType } from 'types/network';
 
+import BalancesManager from './balances';
 import MainController from './MainController';
 import { CancellablePromises } from './promises/cancellablesPromises';
+import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 
 let mockStore: any;
 jest.mock('state/store', () => ({
@@ -214,9 +220,9 @@ it('keeps a new same-chain account active when its switch cancels the old foregr
   expect(mockStore.getState().vaultGlobal.networkStatus).toBe('idle');
   old.resolve('99');
   await flushExecutor();
-  expect(mockStore.getState().vault.accounts[type][1].balances.ethereum).toBe(
-    -1
-  );
+  expect(
+    mockStore.getState().vault.accounts[type][1].balances.syscoin
+  ).toBeUndefined();
 });
 
 it('does not clear a new switch when an older overwritten balance wrapper resolves as stale', async () => {
@@ -427,4 +433,116 @@ it('keeps polling silent even when loading presentation is requested', async () 
   expect(mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances).toBe(
     false
   );
+});
+
+it('retires the selected UTXO balance subscriber during an account switch', async () => {
+  const utxoNetwork = {
+    ...firstNetwork,
+    kind: 'syscoin',
+    chainId: 57,
+    slip44: 57,
+  };
+  mockStore.dispatch(setActiveNetwork(utxoNetwork as any));
+  const accounts = mockStore.getState().vault.accounts;
+  mockStore.dispatch({
+    type: 'vault/setAccounts',
+    payload: {
+      ...accounts,
+      [type]: {
+        ...accounts[type],
+        0: {
+          ...accounts[type][0],
+          address: 'syscoin-account-a',
+          xpub: 'zpub-account-a',
+        },
+        1: {
+          ...accounts[type][1],
+          address: 'syscoin-account-b',
+          xpub: 'zpub-account-b',
+        },
+      },
+    },
+  });
+  let signal!: AbortSignal;
+  const held = deferred<string>();
+  readBalance.mockImplementation((_account, _utxo, _url, owner) => {
+    signal = owner.signal;
+    return held.promise;
+  });
+  const pending = controller.updateUserNativeBalance({
+    activeAccount: mockStore.getState().vault.activeAccount,
+    activeNetwork: utxoNetwork,
+    isBitcoinBased: true,
+    isPolling: true,
+  });
+  const rejected = expect(pending).rejects.toBeDefined();
+  expect(signal.aborted).toBe(false);
+  await controller.setAccount(1, type);
+  await rejected;
+  expect(signal.aborted).toBe(true);
+  held.resolve('99');
+  await flushExecutor();
+  expect(mockStore.getState().vault.accounts[type][1].balances.ethereum).toBe(
+    -1
+  );
+});
+
+it('stops the retired account HTTP retry through the real balance manager and SJS cache', async () => {
+  const originalFetch = global.fetch;
+  jest.useFakeTimers({ doNotFake: ['setImmediate'] });
+  const utxoNetwork = {
+    ...firstNetwork,
+    kind: 'syscoin',
+    chainId: 57,
+    slip44: 57,
+  };
+  mockStore.dispatch(setActiveNetwork(utxoNetwork as any));
+  const accounts = mockStore.getState().vault.accounts;
+  mockStore.dispatch({
+    type: 'vault/setAccounts',
+    payload: {
+      ...accounts,
+      [type]: {
+        0: {
+          ...accounts[type][0],
+          address: 'syscoin-account-a',
+          xpub: 'zpub-account-a',
+        },
+        1: {
+          ...accounts[type][1],
+          address: 'syscoin-account-b',
+          xpub: 'zpub-account-b',
+        },
+      },
+    },
+  });
+  let release!: (response: Response) => void;
+  let physical!: AbortSignal;
+  global.fetch = jest.fn(async (_url, init) => {
+    physical = init?.signal as AbortSignal;
+    return new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+  });
+  controller.balancesManager = BalancesManager();
+  try {
+    const pending = controller.updateUserNativeBalance({
+      activeAccount: mockStore.getState().vault.activeAccount,
+      activeNetwork: utxoNetwork,
+      isBitcoinBased: true,
+      isPolling: true,
+    });
+    const rejection = expect(pending).rejects.toBeDefined();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    await controller.setAccount(1, type);
+    await rejection;
+    expect(physical.aborted).toBe(true);
+    release(new Response('{}', { status: 429 }));
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  } finally {
+    clearFetchBackendAccountCache();
+    global.fetch = originalFetch;
+    jest.useRealTimers();
+  }
 });

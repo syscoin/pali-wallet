@@ -149,7 +149,8 @@ export async function availableEvmReplacementBalance(
   candidateNonce: number,
   candidateCost: bigint,
   balances: Readonly<{ canonical: bigint; pending: bigint }>,
-  assertCurrent: () => void
+  assertCurrent: () => void,
+  mode: 'replacement' | 'cancellation' = 'replacement'
 ): Promise<bigint> {
   assertCurrent();
   if (
@@ -162,6 +163,8 @@ export async function availableEvmReplacementBalance(
     candidateCost < BigInt(0)
   )
     throw new EvmAssetStateError('REVIEW_REQUIRED');
+  if (mode === 'cancellation' && candidateNonce !== latest)
+    throw new EvmAssetStateError('REVIEW_REQUIRED');
   const sender = from.toLowerCase();
   let sameNonceMaximum = candidateCost;
   const retained = [];
@@ -171,6 +174,7 @@ export async function availableEvmReplacementBalance(
       retained.push(entry);
       continue;
     }
+    if (mode === 'cancellation') continue;
     const cost = await snapshot.readMaximumCost(entry.hash);
     assertCurrent();
     if (typeof cost !== 'bigint' || cost < BigInt(0))
@@ -185,15 +189,15 @@ export async function availableEvmReplacementBalance(
     pending,
     assertCurrent
   );
-  // The original's maximum fee is not proof of its actual pending debit.
-  // Keep the observed pending budget without crediting that maximum back.
+  // Cancellation uses canonical funds after removing the superseded nonce.
+  // Other replacements keep pending funds without crediting an unproven original debit.
   return availableEvmNativeBalance(
     balances,
     {
       canonical: reservations.canonical + sameNonceMaximum - candidateCost,
       pending: reservations.pending,
     },
-    pending < latest ? 'latest' : 'pending'
+    mode === 'cancellation' || pending < latest ? 'latest' : 'pending'
   );
 }
 

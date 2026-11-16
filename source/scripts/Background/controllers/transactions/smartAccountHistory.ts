@@ -5,6 +5,7 @@ import {
   markEvmHistoryIncomplete,
   markEvmSmartOutcome,
 } from '../../../../shared/evmHistory';
+import { readEvmRpcQuantity } from '../../../../shared/evmTransactionObservation';
 import { createRpcIdentityLease } from '../../../../shared/rpcIdentityLease';
 import { decodeSmartAccountUserOperationEvent } from '../../../../utils/smartAccount/userOperationEvent';
 import store from 'state/store';
@@ -366,15 +367,17 @@ export const fetchSmartAccountUserOpTransactions = async (
     const scannedAccount = { id: account.id, address: account.address };
     const latestBlock = provider.readMany
       ? Number(
-          (
-            await readHistoryDetails(
-              provider,
-              'eth_blockNumber',
-              [[]],
-              check,
-              signal
-            )
-          )[0]
+          readEvmRpcQuantity(
+            (
+              await readHistoryDetails(
+                provider,
+                'eth_blockNumber',
+                [[]],
+                check,
+                signal
+              )
+            )[0]
+          )
         )
       : await provider.getBlockNumber();
     check();

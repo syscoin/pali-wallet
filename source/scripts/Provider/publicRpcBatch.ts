@@ -8,7 +8,7 @@ import {
   type DappPublicRpcRequest,
 } from '../../shared/dappRpcReads';
 import { createRpcIdentityLease } from '../../shared/rpcIdentityLease';
-import { assertJsonWorkBudget } from '../../utils/requestPayloadBudget';
+import { assertPublicResponseBudget } from '../../utils/requestPayloadBudget';
 import {
   assertRequestActive,
   requestCancelledError,
@@ -209,7 +209,7 @@ async function flush(
         if (result.status === 'rejected') throw result.reason;
         if (result.status !== 'fulfilled')
           throw new Error('Invalid public RPC response');
-        assertJsonWorkBudget(result.value);
+        assertPublicResponseBudget(result.value);
         if (result.value && typeof result.value === 'object')
           serialized = JSON.stringify(result.value);
       } catch (error) {

@@ -402,7 +402,7 @@ test('an endpoint chain change during the wire pending-nonce read prevents a new
       return send();
     },
   });
-  const rejected = assert.rejects(pending, { code: 'INVALID_RESPONSE' });
+  const rejected = assert.rejects(pending, { code: 'REVIEW_REQUIRED' });
   await nonceEntered.promise;
   chain = '0x2';
   nonceResponse.resolve('0x0');

@@ -11,6 +11,41 @@ import {
 
 const address = `0x${'11'.repeat(20)}`,
   hash = `0x${'22'.repeat(32)}`;
+
+it.each([10, 100])(
+  'returns a supported 1024-block fee history with %i percentiles',
+  async (percentiles) => {
+    const result = {
+      oldestBlock: '0x1',
+      baseFeePerGas: Array(1025).fill('0x1'),
+      gasUsedRatio: Array(1024).fill(0.5),
+      reward: Array.from({ length: 1024 }, () =>
+        Array(percentiles).fill('0x1')
+      ),
+    };
+    const request = jest.fn().mockResolvedValue(result);
+    await expect(
+      executeDappRpcRequest(
+        {
+          method: 'eth_feeHistory',
+          params: [
+            '0x400',
+            'latest',
+            Array.from({ length: percentiles }, (_, i) => i),
+          ],
+        },
+        {
+          assertCurrent() {},
+          request,
+          verifyPersonalMessage() {
+            throw Error('Unexpected signing');
+          },
+        }
+      )
+    ).resolves.toBe(result);
+    expect(request).toHaveBeenCalledTimes(1);
+  }
+);
 it.each([
   null,
   {},

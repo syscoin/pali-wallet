@@ -42,7 +42,7 @@ import {
   normalizeDappCapabilitiesRequest,
   projectDappCapabilities,
 } from '../../../../source/shared/dappCapabilities.ts';
-import { EthereumRpcErrorHandler } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
+import { EthereumRpcErrorHandler, serializePublicRpcError } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
 import {
   isDappMessageMethod,
   readDappMessageRequest,
@@ -1986,7 +1986,7 @@ export class NativeConnectionsController {
     const context = this.host!.context(), origin = wire.session.binding.origin;
     const grant = connection?.engine.get(origin);
     const account = grant && context.accounts.find(value => value.index === grant.accountId && value.type === grant.accountType);
-    const respond = (response: { result: unknown } | { error: { code: number; message: string; data?: string } }, check: () => void = () => this.check()) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => undefined);
+    const respond = (response: { result: unknown } | { error: { code: number; message: string; data?: unknown } }, check: () => void = () => this.check()) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => undefined);
     if (!connection || connection.session.binding.origin !== origin || !grant || !account || !context.unlocked || this.options.source.getSnapshot().phase !== 'ready' || !connection.engine.isConnected(origin)) return respond({ error: { code: 4100, message: 'Account is unavailable' } });
     const scope = this.chainScope(context), syscoin = isDappSyscoinRead(wire.method), walletRead = isDappWalletRead(wire.method);
     if (grant.chain !== scope.kind || grant.chainId !== scope.chainId || !walletRead && syscoin !== (scope.kind === 'syscoin')) return respond({ error: { code: 4901, message: 'Requested chain is not selected' } });
@@ -2016,7 +2016,7 @@ export class NativeConnectionsController {
       await respond({ result }, check);
     } catch (cause) {
       check();
-      await respond({ error: cause instanceof EthereumRpcErrorHandler ? { code: cause.code, message: cause.message.slice(0, 256), ...(typeof cause.data === 'string' ? { data: cause.data } : {}) } : { code: -32603, message: 'RPC read unavailable' } }, check);
+      await respond({ error: cause instanceof EthereumRpcErrorHandler ? serializePublicRpcError(cause, 256) : { code: -32603, message: 'RPC read unavailable' } }, check);
     } finally { clearTimeout(timer); lifetime.abort(); if (this.reads.get(key) === entry) this.reads.delete(key); finish(); }
   }
   private async respond(request: WalletConnectRequest) {

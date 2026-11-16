@@ -2,6 +2,7 @@ import { createBoundedRpcFetch } from '../custody/boundedRpcFetch.ts';
 import { createErc20BalanceBatch } from '../../../../source/shared/erc20BalanceBatch.ts';
 import {
   ERC20_TEXT_LIMITS,
+  parseErc20BalancePair,
   parseErc20Decimals,
   parseErc20Text,
   parseErc20Units,
@@ -595,13 +596,12 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
               try {
                 if (
                   precision.status !== 'fulfilled' ||
-                  balance.status !== 'fulfilled' ||
-                  decimalsResult(precision.value) !== token.decimals
+                  balance.status !== 'fulfilled'
                 )
                   return Object.freeze({ status: 'error', units: null });
                 return Object.freeze({
                   status: 'available',
-                  units: unitsResult(balance.value),
+                  units: parseErc20BalancePair(precision.value, balance.value, token.decimals),
                 });
               } catch {
                 return Object.freeze({ status: 'error', units: null });

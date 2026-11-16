@@ -12,6 +12,7 @@ import {
 
 export type AssetReadOwner = Readonly<{
   assertCurrent(): void;
+  identityContext?: string;
   signal: AbortSignal;
 }>;
 
@@ -53,7 +54,8 @@ export interface ISysAssetsController {
     xpub: string,
     networkUrl: string,
     networkChainId: number,
-    existingAssets?: ITokenSysProps[]
+    existingAssets?: ITokenSysProps[],
+    owner?: AssetReadOwner
   ) => Promise<ISysTokensAssetReponse[]>;
   getUserOwnedTokens: (xpub: string) => Promise<ISysTokensAssetReponse[]>;
   validateSPTOnly: (

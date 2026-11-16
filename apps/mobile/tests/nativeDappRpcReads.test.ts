@@ -9,6 +9,7 @@ import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions
 import { Wallet } from 'ethers/wallet';
 import { Signature } from 'ethers/crypto';
 import { getBytes } from 'ethers/utils';
+import { DAPP_RESPONSE_LIMITS } from '../../../source/utils/requestPayloadBudget.ts';
 
 const registration = createNativeNetwork({ id: 'ethereum', name: 'Ethereum', kind: 'evm', chainId: '1', slip44: 60, rpcUrl: 'https://rpc.example', symbol: 'ETH', decimals: 18, testnet: false });
 const json = (id: number, value: Record<string, unknown>) => new Response(JSON.stringify({ jsonrpc: '2.0', id, ...value }), { headers: { 'content-type': 'application/json' } });
@@ -41,6 +42,50 @@ test('RPC execution errors retain the exact revert code, message and hex data', 
     return json(request.id, request.method === 'eth_chainId' ? { result: '0x1' } : { error: { code: 3, message: 'execution reverted', data: '0x1234' } });
   } });
   await assert.rejects(host.read(normalizeDappRpcRequest('eth_call', [{ to: `0x${'11'.repeat(20)}` }]), new AbortController().signal, () => {}), { code: 3, message: 'execution reverted', data: '0x1234' });
+});
+
+test('large supported fee history passes the scalar and joined public host boundaries', async () => {
+  const result = { oldestBlock: '0x1', baseFeePerGas: Array(1025).fill('0x1'), gasUsedRatio: Array(1024).fill(0.5), reward: Array.from({ length: 1024 }, () => Array(10).fill('0x1')) };
+  const calls: string[] = [];
+  const fetcher = async (_url: string, init: RequestInit) => {
+    const input = JSON.parse(String(init.body)); const rows = Array.isArray(input) ? input : [input];
+    const output = rows.map(row => { calls.push(row.method); return { jsonrpc: '2.0', id: row.id, result: row.method === 'eth_chainId' ? '0x1' : result }; });
+    return Response.json(Array.isArray(input) ? output : output[0]);
+  };
+  const request = normalizeDappRpcRequest('eth_feeHistory', ['0x400', 'latest', Array.from({ length: 10 }, (_, i) => i)]);
+  const rpc = new EvmTransferReadRpc(registration, { fetch: fetcher });
+  assert.deepEqual(await rpc.dappRequest(request, new AbortController().signal, () => {}), result);
+  assert.deepEqual(calls, ['eth_chainId', 'eth_feeHistory', 'eth_chainId']);
+  calls.length = 0;
+  const host = createNativeDappRpcReadHost({ registration: () => registration, fetch: fetcher, verifyPersonalMessage() { throw Error('Unexpected recovery'); } });
+  try {
+    const [first, second] = await Promise.all([host.read(request, new AbortController().signal, () => {}), host.read(request, new AbortController().signal, () => {})]) as typeof result[];
+    assert.deepEqual(first, result); first!.reward[0]![0] = 'changed'; assert.deepEqual(second, result);
+    assert.deepEqual(calls, ['eth_chainId', 'eth_feeHistory']);
+  } finally { host.reset?.(); }
+});
+
+test('structured RPC errors survive scalar and mixed-batch mobile boundaries', async () => {
+  const data = { data: '0x1234', message: 'execution reverted' };
+  const fetcher = async (_url: string, init: RequestInit) => {
+    const input = JSON.parse(String(init.body)), rows = Array.isArray(input) ? input : [input];
+    const output = rows.map(row => ({ jsonrpc: '2.0', id: row.id, ...(row.method === 'eth_call' ? { error: { code: 3, message: 'execution reverted', data } } : { result: row.method === 'eth_chainId' ? '0x1' : '0x42' }) }));
+    return Response.json(Array.isArray(input) ? output : output[0]);
+  };
+  const request = normalizeDappRpcRequest('eth_call', [{ to: `0x${'11'.repeat(20)}` }]);
+  const rpc = new EvmTransferReadRpc(registration, { fetch: fetcher });
+  await assert.rejects(rpc.dappRequest(request, new AbortController().signal, () => {}), { code: 3, message: 'execution reverted', data });
+  const results = await rpc.dappReadBatch([request, normalizeDappRpcRequest('eth_blockNumber', [])], new AbortController().signal, () => {});
+  assert.equal(results[0]!.status, 'rejected');
+  assert.deepEqual((results[0] as PromiseRejectedResult).reason.data, data);
+  assert.deepEqual(results[1], { status: 'fulfilled', value: '0x42' });
+  const host = createNativeDappRpcReadHost({ registration: () => registration, fetch: fetcher, verifyPersonalMessage() { throw Error('Unexpected recovery'); } });
+  try {
+    const failed = assert.rejects(host.read(request, new AbortController().signal, () => {}), { code: 3, message: 'execution reverted', data });
+    const healthy = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
+    await failed;
+    assert.equal(await healthy, '0x42');
+  } finally { host.reset?.(); }
 });
 
 test('twenty valid RPC reverts preserve the verified identity lease', async () => {
@@ -575,7 +620,7 @@ test('one oversized logical result rejects only that batch member', async () => 
       const input = JSON.parse(String(init.body));
       const requests = Array.isArray(input) ? input : [input];
       const responses = requests.map(request => ({ jsonrpc: '2.0', id: request.id,
-        result: request.method === 'eth_chainId' ? '0x1' : request.method === 'eth_getLogs' ? Array(10001).fill(0) : '0x42' }));
+        result: request.method === 'eth_chainId' ? '0x1' : request.method === 'eth_getLogs' ? Array(DAPP_RESPONSE_LIMITS.nodes).fill(0) : '0x42' }));
       return Response.json(Array.isArray(input) ? responses : responses[0]);
     } });
   const oversized = host.read(normalizeDappRpcRequest('eth_getLogs', [{}]), new AbortController().signal, () => {});

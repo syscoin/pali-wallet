@@ -7,7 +7,7 @@ import type { AdmitEvmSignedDispatch } from '@sidhujag/sysweb3-keyring/cjs/trans
 import { Transaction } from 'ethers/transaction';
 import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError, isEvmEmptySelfCall, isEvmProtectedEmptySelfCall } from '../../../../source/shared/evmCancellationPayer.ts';
 import { assertEvmSpeedUpExecutable } from '../../../../source/shared/evmFeeApproval.ts';
-import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
+import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope, snapshotNftTransferIntent, encodeNftTransferData, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import { EVM_SIGNED_RECORD_LIMITS, type EvmReplacementRates } from '../../../../source/wallet/evmSignedRecords.ts';
 import { EvmReplayError, type EvmReplayDispatchAdmission, type EvmReplayDispatchContext } from '../../../../source/wallet/evmSignedReplay.ts';
 import { EvmObservationError, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
@@ -364,7 +364,7 @@ export class NativeTransferRpc {
     return Object.freeze({ ...quote, original });
   }
   async prepareSpeedUp(hash: string, rawTransaction: string, payer: string, signal: AbortSignal, guard: () => void,
-    rates: EvmReplacementRates, intent?: Erc20TransferIntent): Promise<NativeReplacementQuote> {
+    rates: EvmReplacementRates, intent?: Erc20TransferIntent, collectible?: NftTransferIntent): Promise<NativeReplacementQuote> {
     if (typeof rawTransaction !== 'string' || rawTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2)
       throw new NativeTransferRpcError('REVIEW_REQUIRED');
     const { transaction, original } = this.authenticatedOriginal(hash, rawTransaction, payer);
@@ -373,10 +373,15 @@ export class NativeTransferRpc {
     } catch { throw new NativeTransferRpcError('REVIEW_REQUIRED'); }
     await this.assertPendingOriginal(original, signal, guard);
     const capturedIntent = intent && snapshotErc20TransferIntent(intent);
-    const asset: EvmTransferAsset | undefined = capturedIntent && { standard: 'ERC20',
+    const nft = collectible && snapshotNftTransferIntent(collectible);
+    if (nft && (nft.chainId !== this.context.chainId || nft.from !== original.from || nft.contractAddress !== original.to ||
+      original.valueUnits !== '0' || encodeNftTransferData(nft).toLowerCase() !== original.data.toLowerCase()))
+      throw new NativeTransferRpcError('REVIEW_REQUIRED');
+    const asset: EvmTransferAsset | undefined = nft ? { standard: nft.tokenStandard === 'ERC-721' ? 'ERC721' : 'ERC1155',
+      contractAddress: nft.contractAddress, tokenId: nft.tokenId, amountUnits: nft.amountUnits } : capturedIntent && { standard: 'ERC20',
       contractAddress: capturedIntent.token.contractAddress, amountUnits: capturedIntent.amountUnits };
     const quote = await this.receiptRpc.prepareSpeedUp(transaction, rates, signal, guard, asset, capturedIntent?.token.decimals)
-      .catch((error) => this.mapReadError(error));
+      .catch((error) => this.mapReadError(error, nft ? 'nft' : 'token'));
     assertSpeedUpEnvelope(original, quote.transaction);
     return Object.freeze({ ...this.checkedQuote(quote), original, ...(capturedIntent ? { intent: capturedIntent, tokenBalanceUnits: quote.assetBalanceUnits! } : {}) });
   }
@@ -473,14 +478,14 @@ export class NativeTransferRpc {
     }
   }
   async verifyReplacementForDispatch(envelope: EvmUnsignedTransfer, signal: AbortSignal, guard: () => void,
-    snapshot: EvmAutoNonceSnapshot, intent?: Erc20TransferIntent, nft?: NftTransferIntent): Promise<void> {
+    snapshot: EvmAutoNonceSnapshot, intent?: Erc20TransferIntent, nft?: NftTransferIntent, mode: NativeReplacementMode = 'speed-up'): Promise<void> {
     try {
       if (intent) assertTransferIntentEnvelope(envelope, intent);
       const asset: EvmTransferAsset | undefined = nft ? {
         standard: nft.tokenStandard === 'ERC-721' ? 'ERC721' : 'ERC1155', contractAddress: nft.contractAddress,
         tokenId: nft.tokenId, amountUnits: nft.amountUnits,
       } : intent ? { standard: 'ERC20', contractAddress: intent.token.contractAddress, amountUnits: intent.amountUnits } : undefined;
-      await this.receiptRpc.verifyReplacementForDispatch(envelope, signal, guard, snapshot, asset, intent?.token.decimals);
+      await this.receiptRpc.verifyReplacementForDispatch(envelope, signal, guard, snapshot, asset, intent?.token.decimals, mode);
       guard();
     } catch (error) { guard(); this.mapReadError(error, nft ? 'nft' : 'token'); }
   }

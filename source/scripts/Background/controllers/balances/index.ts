@@ -5,19 +5,22 @@ import { getController } from 'scripts/Background';
 import EvmBalanceController from './evm';
 import SyscoinBalanceController from './syscoin';
 import { IBalancesManager } from './types';
+import type { AssetReadOwner } from '../assets/types';
 
 const BalancesManager = (): IBalancesManager => {
   const getBalanceUpdatedForAccount = async (
     currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
-    networkUrl: string
+    networkUrl: string,
+    owner?: AssetReadOwner
   ) => {
     switch (isBitcoinBased) {
       case true:
         const getSysBalance =
           await SyscoinBalanceController().getSysBalanceForAccount(
             currentAccount,
-            networkUrl
+            networkUrl,
+            owner
           );
         return getSysBalance;
 
@@ -35,7 +38,8 @@ const BalancesManager = (): IBalancesManager => {
         // Create EVM controller fresh with current provider
         const evmController = EvmBalanceController(web3Provider);
         const getEvmBalance = await evmController.getEvmBalanceForAccount(
-          currentAccount
+          currentAccount,
+          owner
         );
         return getEvmBalance;
     }

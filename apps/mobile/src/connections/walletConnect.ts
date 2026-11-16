@@ -1,5 +1,6 @@
 import {
   assertJsonWorkBudget,
+  assertPublicResponseBudget,
   assertProviderRequestBudget,
   DAPP_REQUEST_LIMITS,
 } from '../../../../source/utils/requestPayloadBudget.ts';
@@ -78,7 +79,7 @@ type EventName =
   | 'session_request_expire';
 type Reason = Readonly<{ code: number; message: string; data?: string }>;
 export type WalletConnectResponse = Readonly<
-  { result: unknown } | { error: Reason }
+  { result: unknown } | { error: Omit<Reason, 'data'> & { data?: unknown } }
 >;
 
 interface CoreClient {
@@ -1045,7 +1046,8 @@ export async function openWalletConnectTransport(options: {
           const key = `${binding.topic}:${checkedId(id)}`;
           const admitted = requests.get(key);
           if (!admitted || !matchesPending(binding, id, admitted)) return fail();
-          const result = copy(response, DAPP_REQUEST_LIMITS.bytes);
+          assertPublicResponseBudget(response);
+          const result = JSON.parse(JSON.stringify(response)) as WalletConnectResponse;
           const names = Object.keys(record(result));
           if (names.length !== 1 || !['result', 'error'].includes(names[0]!))
             return fail();
@@ -1072,7 +1074,8 @@ export async function openWalletConnectTransport(options: {
           handedOff = true;
           await client!.respond({
             topic: binding.topic,
-            response: { ...result, id, jsonrpc: '2.0' },
+            // The SDK forwards JSON data unchanged, while its declaration restricts it to strings.
+            response: { ...result, id, jsonrpc: '2.0' } as Parameters<SignClient['respond']>[0]['response'],
           });
           if (requests.get(key) === admitted) {
             requests.delete(key);

@@ -25,7 +25,75 @@ const abi = new Interface([
 ]);
 const balanceAbi = new Interface([
   'function balanceOf(address) view returns (uint256)',
+  'function decimals() view returns (uint8)',
 ]);
+
+it.each([true, false])(
+  'preserves unavailable precision mismatches in grouped reads (deployed=%s)',
+  async (deployed) => {
+    clearMulticall3AddressCache();
+    const provider = {
+      getNetwork: async () => ({ chainId: 1 }),
+      getCode: async () => (deployed ? runtime : '0x'),
+      call: async () =>
+        abi.encodeFunctionResult('aggregate3', [
+          [
+            {
+              success: true,
+              returnData: balanceAbi.encodeFunctionResult('decimals', [18]),
+            },
+            {
+              success: true,
+              returnData: balanceAbi.encodeFunctionResult('balanceOf', [
+                BigInt('1000000000000000000'),
+              ]),
+            },
+          ],
+        ]),
+      readMany: async (requests) =>
+        requests.map(({ params }) => ({
+          status: 'fulfilled',
+          value:
+            params[0].to.toLowerCase() ===
+            '0xca11bde05977b3631167028862be2a173976ca11'
+              ? abi.encodeFunctionResult('aggregate3', [
+                  [
+                    {
+                      success: true,
+                      returnData: balanceAbi.encodeFunctionResult('decimals', [
+                        18,
+                      ]),
+                    },
+                    {
+                      success: true,
+                      returnData: balanceAbi.encodeFunctionResult('balanceOf', [
+                        BigInt('1000000000000000000'),
+                      ]),
+                    },
+                  ],
+                ])
+              : params[0].data === balanceAbi.encodeFunctionData('decimals')
+              ? balanceAbi.encodeFunctionResult('decimals', [18])
+              : balanceAbi.encodeFunctionResult('balanceOf', [
+                  BigInt('1000000000000000000'),
+                ]),
+        })),
+    };
+    const result = await new BatchBalanceController(
+      provider as any
+    ).getBatchTokenBalances(
+      [
+        {
+          contractAddress: `0x${'12'.repeat(20)}`,
+          decimals: 6,
+          tokenSymbol: 'T',
+        },
+      ] as any,
+      `0x${'11'.repeat(20)}`
+    );
+    expect(result.size).toBe(0);
+  }
+);
 
 it.each([true, false])(
   'reuses endpoint capability across actual owned balance refreshes (deployed=%s)',
@@ -41,20 +109,24 @@ it.each([true, false])(
         return requests.map((request) => ({
           status: 'fulfilled',
           value:
-            request.method === 'eth_getCode'
+            request.method === 'eth_chainId'
+              ? '0x1'
+              : request.method === 'eth_getCode'
               ? deployed
                 ? runtime
                 : '0x'
               : deployed
               ? abi.encodeFunctionResult('aggregate3', [
-                  Array.from({ length: 4 }, () => ({
+                  Array.from({ length: 8 }, (_, index) => ({
                     success: true,
                     returnData: balanceAbi.encodeFunctionResult('balanceOf', [
-                      7,
+                      index % 2 === 0 ? 0 : 7,
                     ]),
                   })),
                 ])
-              : balanceAbi.encodeFunctionResult('balanceOf', [7]),
+              : balanceAbi.encodeFunctionResult('balanceOf', [
+                  request.params[0].data === '0x313ce567' ? 0 : 7,
+                ]),
         }));
       },
     };

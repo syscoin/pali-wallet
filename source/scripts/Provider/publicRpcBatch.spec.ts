@@ -11,6 +11,73 @@ const request = (index: number) => ({
 });
 const check = () => undefined;
 
+it('returns independent copies of a supported large public response in a mixed batch', async () => {
+  const value = {
+    oldestBlock: '0x1',
+    baseFeePerGas: Array(1025).fill('0x1'),
+    gasUsedRatio: Array(1024).fill(0.5),
+    reward: Array.from({ length: 1024 }, () => Array(10).fill('0x1')),
+  };
+  const request = {
+    method: 'eth_feeHistory' as const,
+    params: ['0x400', 'latest', Array.from({ length: 10 }, (_, i) => i)],
+  };
+  const wire: unknown[] = [];
+  const provider = new CustomJsonRpcProvider(
+    new AbortController().signal,
+    'https://rpc.invalid',
+    1,
+    {
+      fetch: async (_url, init) => {
+        const rows = JSON.parse(String(init.body));
+        wire.push(rows);
+        return Response.json(
+          rows.map((row: { id: number; method: string }) => ({
+            jsonrpc: '2.0',
+            id: row.id,
+            ...(row.method === 'eth_feeHistory'
+              ? { result: value }
+              : { error: { code: -32000, message: 'Unavailable' } }),
+          }))
+        );
+      },
+    }
+  );
+  try {
+    const first = readPublicRpc(
+      provider,
+      'selected',
+      request,
+      new AbortController().signal,
+      check
+    );
+    const second = readPublicRpc(
+      provider,
+      'selected',
+      request,
+      new AbortController().signal,
+      check
+    );
+    const failed = expect(
+      readPublicRpc(
+        provider,
+        'selected',
+        { method: 'eth_blockNumber', params: [] },
+        new AbortController().signal,
+        check
+      )
+    ).rejects.toThrow('Unavailable');
+    const results = (await Promise.all([first, second])) as (typeof value)[];
+    await failed;
+    results[0]!.reward[0]![0] = 'changed';
+    expect(results[1]).toEqual(value);
+    expect(wire).toHaveLength(1);
+    expect(wire[0]).toHaveLength(2);
+  } finally {
+    provider.destroy();
+  }
+});
+
 it('sends twenty distinct same-scope public reads in one actual SDK batch', async () => {
   const wire: unknown[] = [];
   const provider = new CustomJsonRpcProvider(

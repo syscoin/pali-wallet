@@ -205,3 +205,158 @@ test('external cancellation and a bounded deadline reject a fetch that never set
   const timed = new ActivityReceiptReader({ timeoutMs: 5, fetch: async () => new Promise(() => undefined) });
   await assert.rejects(timed.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum')), { code: 'CANCELLED' });
 });
+
+test('an overlapping retained observation and details share the exact receipt graph', async () => {
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  const f = fixture(async call => {
+    if (call.method === 'eth_getTransactionReceipt') { started.resolve(); await held.promise; }
+    if (call.method === 'eth_getBlockByNumber') return { number: '0x50', hash: BLOCK, timestamp: '0x6553f100', gasLimit: '0x1c9c380' };
+    return undefined;
+  });
+  const expected = { chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' };
+  const automatic = f.reader.observe(expected, signal(), () => undefined, getNativeNetwork('ethereum'), 'wallet/account/generation');
+  await started.promise;
+  const detail = f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'), 'wallet/account/generation');
+  held.resolve();
+  const [observed, details] = await Promise.all([automatic, detail]);
+  assert.equal(observed.status, 'mined'); assert.equal(details?.status, 'confirmed');
+  assert.deepEqual(f.calls.map(call => call.method), ['eth_chainId', 'eth_getTransactionReceipt', 'eth_getTransactionByHash', 'eth_getBlockByNumber', 'eth_chainId']);
+  await f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'), 'wallet/account/generation');
+  assert.equal(f.calls.filter(call => call.method === 'eth_getTransactionReceipt').length, 2, 'a completed observation cannot authorize a new detail read');
+});
+
+for (const cancel of ['automatic', 'detail'] as const)
+test(`receipt sharing keeps the other subscriber when ${cancel} cancels`, async () => {
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  const f = fixture(async call => {
+    if (call.method === 'eth_getTransactionReceipt') { started.resolve(); await held.promise; }
+    if (call.method === 'eth_getBlockByNumber') return { number: '0x50', hash: BLOCK, timestamp: '0x6553f100', gasLimit: '0x1c9c380' };
+    return undefined;
+  });
+  const a = new AbortController(), b = new AbortController();
+  const automatic = f.reader.observe({ chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' }, a.signal, () => undefined, getNativeNetwork('ethereum'), 'scope');
+  await started.promise;
+  const detail = f.reader.read(HASH, OWNER, b.signal, () => undefined, getNativeNetwork('ethereum'), 'scope');
+  const rejected = assert.rejects(cancel === 'automatic' ? automatic : detail, { code: 'CANCELLED' });
+  (cancel === 'automatic' ? a : b).abort(); await rejected;
+  assert.equal(f.calls.find(call => call.method === 'eth_getTransactionReceipt')!.signal.aborted, false);
+  held.resolve(); await (cancel === 'automatic' ? detail : automatic);
+  assert.equal(f.calls.filter(call => call.method === 'eth_getTransactionReceipt').length, 1);
+});
+
+test('shared observations reject altered retained identity and keep unrelated owners separate', async () => {
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  const f = fixture(async call => {
+    if (call.method === 'eth_getTransactionReceipt') { started.resolve(); await held.promise; }
+    if (call.method === 'eth_getBlockByNumber') return { number: '0x50', hash: BLOCK, gasLimit: '0x1c9c380' };
+  });
+  const expected = { chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' };
+  const automatic = f.reader.observe(expected, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope');
+  await started.promise;
+  await assert.rejects(f.reader.observe({ ...expected, nonce: '2' }, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'CONTEXT_CHANGED' });
+  await assert.rejects(f.reader.observe({ ...expected, to: TOKEN }, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'CONTEXT_CHANGED' });
+  const unrelated = f.reader.read(HASH, TOKEN, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope');
+  const rejected = assert.rejects(unrelated, { code: 'IRRELEVANT' });
+  held.resolve(); await Promise.all([automatic, rejected]);
+  assert.equal(f.calls.filter(call => call.method === 'eth_getTransactionReceipt').length, 2);
+});
+
+test('an unavailable detail body does not discard a healthy automatic receipt', async () => {
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  const f = fixture(async call => {
+    if (call.method === 'eth_getTransactionReceipt') { started.resolve(); await held.promise; }
+    if (call.method === 'eth_getTransactionByHash') throw Error('offline');
+    if (call.method === 'eth_getBlockByNumber') return { number: '0x50', hash: BLOCK, gasLimit: '0x1c9c380' };
+  });
+  const automatic = f.reader.observe({ chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' }, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope');
+  await started.promise;
+  const failed = assert.rejects(f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'UNAVAILABLE' });
+  held.resolve();
+  assert.equal((await automatic).status, 'mined'); await failed;
+  assert.equal(f.calls.length, 5);
+});
+
+test('cancelled detail consumers neither start nor retain extra body work', async () => {
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  const f = fixture(async call => {
+    if (call.method === 'eth_getTransactionReceipt') { started.resolve(); await held.promise; }
+    if (call.method === 'eth_getTransactionByHash') return new Promise(() => undefined);
+    if (call.method === 'eth_getBlockByNumber') return { number: '0x50', hash: BLOCK, gasLimit: '0x1c9c380' };
+  });
+  const automatic = f.reader.observe({ chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' }, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope');
+  await started.promise;
+  const cancelled = new AbortController(); cancelled.abort();
+  await assert.rejects(f.reader.read(HASH, OWNER, cancelled.signal, () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'CANCELLED' });
+  assert.equal(f.calls.some(call => call.method === 'eth_getTransactionByHash'), false);
+  const detail = new AbortController();
+  const rejected = assert.rejects(f.reader.read(HASH, OWNER, detail.signal, () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'CANCELLED' });
+  detail.abort(); await rejected;
+  const body = f.calls.find(call => call.method === 'eth_getTransactionByHash')!;
+  assert.equal(body.signal.aborted, true);
+  assert.equal(f.calls.find(call => call.method === 'eth_getTransactionReceipt')!.signal.aborted, false);
+  held.resolve(); assert.equal((await automatic).status, 'mined');
+});
+
+test('shared final identity failure rejects all live consumers', async () => {
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  let chains = 0;
+  const f = fixture(async call => {
+    if (call.method === 'eth_chainId') return ++chains === 1 ? '0x1' : '0x2';
+    if (call.method === 'eth_getTransactionReceipt') { started.resolve(); await held.promise; }
+    if (call.method === 'eth_getBlockByNumber') return { number: '0x50', hash: BLOCK, gasLimit: '0x1c9c380' };
+  });
+  const automatic = assert.rejects(f.reader.observe({ chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' }, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'CONTEXT_CHANGED' });
+  await started.promise;
+  const detail = assert.rejects(f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'CONTEXT_CHANGED' });
+  held.resolve(); await Promise.all([automatic, detail]);
+  assert.equal(f.calls.length, 5);
+});
+
+test('replacement work starts fresh after all shared subscribers cancel', async () => {
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  let receiptReads = 0;
+  const f = fixture(async call => {
+    if (call.method === 'eth_getTransactionReceipt' && ++receiptReads === 1) { started.resolve(); await held.promise; }
+    if (call.method === 'eth_getBlockByNumber') return { number: '0x50', hash: BLOCK, gasLimit: '0x1c9c380' };
+  });
+  const expected = { chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' };
+  const cancelled = new AbortController();
+  const first = f.reader.observe(expected, cancelled.signal, () => undefined, getNativeNetwork('ethereum'), 'scope');
+  await started.promise;
+  const rejected = assert.rejects(first, { code: 'CANCELLED' });
+  cancelled.abort();
+  const second = f.reader.observe(expected, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope');
+  await rejected;
+  assert.equal((await second).status, 'mined');
+  assert.equal(receiptReads, 2);
+  assert.equal(f.calls.find(call => call.method === 'eth_getTransactionReceipt')!.signal.aborted, true);
+  held.resolve();
+});
+
+test('rejected observer owners disclose no addresses and create no pending work', async () => {
+  const f = fixture(), expected = { chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' };
+  const cancelled = new AbortController(); cancelled.abort();
+  await assert.rejects(f.reader.observe(expected, cancelled.signal, () => undefined, getNativeNetwork('ethereum'), 'scope'), { code: 'CANCELLED' });
+  assert.throws(() => f.reader.observe(expected, signal(), () => { throw Error('retired'); }, getNativeNetwork('ethereum'), 'scope'), { code: 'CANCELLED' });
+  assert.equal(f.calls.length, 0);
+});
+
+test('shared details refresh a pending body when the concurrent receipt becomes mined', async () => {
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  let bodies = 0;
+  const f = fixture(async call => {
+    if (call.method === 'eth_getTransactionReceipt') { started.resolve(); await held.promise; }
+    if (call.method === 'eth_getTransactionByHash' && ++bodies === 1)
+      return tx({ blockHash: null, blockNumber: null, transactionIndex: null });
+    if (call.method === 'eth_getBlockByNumber') return { number: '0x50', hash: BLOCK, gasLimit: '0x1c9c380' };
+  });
+  const automatic = f.reader.observe({ chainId: '1', from: OWNER, to: OTHER, hash: HASH, nonce: '1' }, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope');
+  await started.promise;
+  const detail = f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'), 'scope');
+  held.resolve();
+  const [observed, full] = await Promise.all([automatic, detail]);
+  assert.equal(observed.status, 'mined'); assert.equal(full?.status, 'confirmed');
+  assert.equal(bodies, 2);
+  assert.equal(f.calls.length, 6);
+  assert.equal(f.calls.at(-1)?.method, 'eth_chainId');
+});

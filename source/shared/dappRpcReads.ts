@@ -3,7 +3,7 @@ import { getAddress } from 'ethers/address';
 import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.ts';
 import { normalizeNftTokenId } from '../utils/nftTokenId.ts';
 import {
-  assertJsonWorkBudget,
+  assertPublicResponseBudget,
   assertProviderRequestBudget,
 } from '../utils/requestPayloadBudget.ts';
 
@@ -509,6 +509,6 @@ export async function executeDappRpcRequest(
   } finally {
     assertSynchronousEvmFeeGuard(() => ports.assertCurrent());
   }
-  assertJsonWorkBudget(result);
+  assertPublicResponseBudget(result);
   return result;
 }

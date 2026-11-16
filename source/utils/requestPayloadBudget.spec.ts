@@ -1,10 +1,26 @@
 import {
   assertJsonWorkBudget,
+  assertPublicResponseBudget,
   assertProviderRequestBudget,
+  DAPP_RESPONSE_LIMITS,
   DAPP_REQUEST_LIMITS,
 } from './requestPayloadBudget';
 
 describe('dapp JSON work budget', () => {
+  it('bounds public response work separately while preserving request, byte and depth limits', () => {
+    const response = Array.from({ length: 12_000 }, () => 0);
+    expect(() => assertPublicResponseBudget(response)).not.toThrow();
+    expect(() => assertJsonWorkBudget(response)).toThrow('10000 values');
+    expect(() =>
+      assertPublicResponseBudget(new Array(DAPP_RESPONSE_LIMITS.nodes))
+    ).toThrow('values');
+    expect(() =>
+      assertPublicResponseBudget('x'.repeat(DAPP_RESPONSE_LIMITS.bytes))
+    ).toThrow('bytes');
+    let deep: unknown = null;
+    for (let i = 0; i <= DAPP_RESPONSE_LIMITS.depth; i++) deep = [deep];
+    expect(() => assertPublicResponseBudget(deep)).toThrow('depth');
+  });
   it('accepts ordinary requests without changing the data', () => {
     const request = {
       method: 'personal_sign',

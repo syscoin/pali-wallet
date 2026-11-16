@@ -1024,3 +1024,43 @@ it('replacement admission rejects a consumed nonce and ignores a different chain
     )
   ).rejects.toMatchObject({ code: 'REVIEW_REQUIRED' });
 });
+
+it('canonical cancellation excludes the original debit and retains other signed commitments', async () => {
+  const original = record(0, 'submitted');
+  const other = record(1, 'signed');
+  const fixture = acceptanceFixture([original, other]);
+  fixture.snapshot.readMaximumCost.mockImplementation(async (hash: string) =>
+    hash === original.hash ? BigInt(1000) : BigInt(50)
+  );
+  const available = await availableEvmReplacementBalance(
+    fixture.snapshot,
+    scope.chainId,
+    scope.from,
+    0,
+    1,
+    0,
+    BigInt(20),
+    { canonical: BigInt(100), pending: BigInt(0) },
+    () => undefined,
+    'cancellation'
+  );
+  expect(available).toBe(BigInt(50));
+  expect(fixture.snapshot.readMaximumCost).not.toHaveBeenCalledWith(
+    original.hash
+  );
+  expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledWith(other.hash);
+  await expect(
+    availableEvmReplacementBalance(
+      fixture.snapshot,
+      scope.chainId,
+      scope.from,
+      0,
+      2,
+      1,
+      BigInt(20),
+      { canonical: BigInt(100), pending: BigInt(100) },
+      () => undefined,
+      'cancellation'
+    )
+  ).rejects.toMatchObject({ code: 'REVIEW_REQUIRED' });
+});

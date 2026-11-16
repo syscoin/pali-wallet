@@ -122,6 +122,10 @@ it('enhanced token details refresh market prices while reusing descriptive metad
     ['market_data']: { ['current_price']: { usd: price } },
   });
   jest.mocked(retryableFetch).mockResolvedValue(response(quote(11)) as any);
+  (Contract as unknown as jest.Mock).mockImplementation(() => ({
+    decimals: async () => BigInt(6),
+    balanceOf: async () => BigInt(1000000),
+  }));
   const controller = EvmAssetsController();
   const first = await controller.getTokenDetailsWithMarketData(
     TOKEN,
@@ -547,6 +551,24 @@ it('deduplicates same-chain metadata but not a switched chain; old results canno
   expect(getTokenStandardMetadata).toHaveBeenCalledTimes(2);
 });
 
+it('reuses cold import metadata once and keeps balances out of the basic cache', async () => {
+  const controller = EvmAssetsController();
+  (contractChecker as jest.Mock).mockResolvedValue({ type: 'ERC-20' });
+  (getTokenStandardMetadata as jest.Mock).mockResolvedValue({
+    tokenSymbol: 'T',
+    decimals: 6,
+    balance: '1000000',
+  });
+  expect(
+    await controller.getTokenDetailsWithBalance(TOKEN, ACCOUNT, {} as any)
+  ).toMatchObject({ balance: 1, rawBalance: '1000000' });
+  expect(getTokenStandardMetadata).toHaveBeenCalledTimes(1);
+  expect(
+    await controller.getTokenDetails(TOKEN, ACCOUNT, {} as any)
+  ).toMatchObject({ balance: 0, decimals: 6 });
+  expect(getTokenStandardMetadata).toHaveBeenCalledTimes(1);
+});
+
 it('reports a successful unchanged balance read even when the legacy result is an empty update', async () => {
   (BatchBalanceController as jest.Mock).mockImplementation(() => ({
     getBatchTokenBalances: async () =>
@@ -790,4 +812,82 @@ it('passes the stable provider identity separately from the active asset read ow
   expect((BatchBalanceController as jest.Mock).mock.calls[0][0]).not.toBe(
     provider
   );
+});
+
+it('keeps cold import balances private to each concurrent holder and skips symbol on warm reads', async () => {
+  (contractChecker as jest.Mock).mockResolvedValue({ type: 'ERC-20' });
+  const pending = deferred();
+  (getTokenStandardMetadata as jest.Mock).mockReturnValue(pending.promise);
+  const balanceOf = jest.fn(async () => BigInt(2000000));
+  const decimals = jest.fn(async () => BigInt(6));
+  (Contract as unknown as jest.Mock).mockImplementation(() => ({
+    balanceOf,
+    decimals,
+  }));
+  const controller = EvmAssetsController();
+  const first = controller.getTokenDetailsWithBalance(
+    TOKEN,
+    ACCOUNT,
+    {} as any
+  );
+  const otherHolder = `0x${'22'.repeat(20)}`;
+  const second = controller.getTokenDetailsWithBalance(
+    TOKEN,
+    otherHolder,
+    {} as any
+  );
+  await Promise.resolve();
+  pending.resolve({ tokenSymbol: 'T', decimals: 6, balance: '1000000' });
+  expect((await first)?.rawBalance).toBe('1000000');
+  expect((await second)?.rawBalance).toBe('2000000');
+  expect(balanceOf).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledWith(otherHolder);
+  expect(decimals).toHaveBeenCalledTimes(1);
+  expect(getTokenStandardMetadata).toHaveBeenCalledTimes(1);
+});
+
+it('does not commit a grouped precision mismatch as a fresh balance', async () => {
+  const RealBatch = jest.requireActual(
+    '../balances/BatchBalanceController'
+  ).BatchBalanceController;
+  (BatchBalanceController as jest.Mock).mockImplementation(
+    (...args) => new RealBatch(...args)
+  );
+  const provider = {
+    getNetwork: async () => ({ chainId: 1 }),
+    getCode: async () => '0x',
+    readMany: async (requests) =>
+      requests.map((request) => ({
+        status: 'fulfilled',
+        value: `0x${BigInt(
+          request.params[0].data === '0x313ce567' ? 18 : '1000000000000000000'
+        )
+          .toString(16)
+          .padStart(64, '0')}`,
+      })),
+  };
+  const token = {
+    contractAddress: TOKEN,
+    chainId: 1,
+    balance: 7,
+    rawBalance: '7000000',
+    decimals: 6,
+    isNft: false,
+    tokenSymbol: 'T',
+  };
+  const onBalanceRead = jest.fn();
+  const result = await EvmAssetsController().updateAllEvmTokens(
+    { address: ACCOUNT } as any,
+    1,
+    provider as any,
+    [token],
+    onBalanceRead
+  );
+  expect(result).toEqual([]);
+  expect(onBalanceRead).not.toHaveBeenCalled();
+  expect(token).toMatchObject({
+    balance: 7,
+    rawBalance: '7000000',
+    decimals: 6,
+  });
 });

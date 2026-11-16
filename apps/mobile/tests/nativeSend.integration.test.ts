@@ -368,6 +368,8 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
   const broadcasts: string[] = [];
   let loseResponse = false;
   let nativeBalance = '0x10000000000000000';
+  let pendingBalance: string | undefined;
+  let ownsNft = true;
   const replacement = { pending: false, delegated: false, baseFee: '0x1', substituteHash: undefined as string | undefined };
   const largeReceipt = {
     oversized: false,
@@ -416,7 +418,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
             : '0x0'
           : recovery?.nonce ?? '0x0';
       } else if (request.method === 'eth_getBalance')
-        result = nativeBalance;
+        result = request.params[1] === 'pending' ? pendingBalance ?? nativeBalance : nativeBalance;
       else if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(request.method) && execution.feesUnavailable)
         throw Error('Recommendation unavailable');
       else if (request.method === 'eth_call') {
@@ -427,7 +429,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
         else if (data.startsWith('0x6352211e')) {
           if (BigInt('0x' + data.slice(10)) !== 7n) return Response.json({ jsonrpc: '2.0', id: request.id,
             error: { code: 3, message: 'execution reverted', data: '0x' } });
-          result = '0x' + Wallet.fromPhrase(PHRASE).address.slice(2).toLowerCase().padStart(64, '0');
+          result = '0x' + (ownsNft ? Wallet.fromPhrase(PHRASE).address : '0x' + '99'.repeat(20)).slice(2).toLowerCase().padStart(64, '0');
         } else if (data.startsWith('0x4e1273f4')) {
           result = new Interface(['function balanceOfBatch(address[],uint256[]) view returns(uint256[])'])
             .encodeFunctionResult('balanceOfBatch', [[2n]]);
@@ -551,6 +553,8 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
       return tx;
     },
     setBalance(value: bigint) { nativeBalance = `0x${value.toString(16)}`; },
+    setPendingBalance(value: bigint) { pendingBalance = `0x${value.toString(16)}`; },
+    loseNft() { ownsNft = false; },
     execution, token,
     onSignature(callback: () => void) { afterSignature = callback; },
     onSignedInsert(callback: () => void) { afterSignedInsert = callback; },
@@ -2075,5 +2079,42 @@ for (const asset of ['native', 'token'] as const) test(`counted SDK and SQLite $
     console.log('REPLACEMENT_CONFIRM_COUNTS', JSON.stringify({ asset, methods: f.requests.length, http: f.httpRequests - httpBefore,
       chains: f.requests.filter(request => request.method === 'eth_chainId').length,
       calls: f.requests.map(request => request.method) }));
+  } finally { await f.close(); }
+});
+
+
+for (const extra of [0n, 1000000n]) test(`Cancel remains affordable when the original debits pending balance (extra ${extra})`, async () => {
+  const f = await cancellationFixture();
+  try {
+    f.setBalance(1000000000075600n + extra);
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    f.replacement.pending = true; f.setPendingBalance(33600n + extra);
+    await f.transfers.prepareCancellation(f.transfers.getSnapshot().hash!);
+    const review = f.transfers.getSnapshot().review!;
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.broadcasts.length, 2);
+    const actual = Transaction.from(f.broadcasts[1]!);
+    assert.equal(actual.to, actual.from); assert.equal(actual.value, 0n);
+    assert.equal(actual.gasLimit.toString(), review.gasLimit);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['before-review', 'before-confirm'] as const)
+test(`NFT Speed Up rejects missing ownership ${boundary} before signing`, async () => {
+  const f = await cancellationFixture();
+  try {
+    const sender = Wallet.fromPhrase(PHRASE).address;
+    const data = new Interface(['function transferFrom(address,address,uint256)']).encodeFunctionData('transferFrom', [sender, RECIPIENT, 7]);
+    const original = await f.seedOriginal({ to: RECIPIENT, data, operation: 'erc721' });
+    if (boundary === 'before-review') f.loseNft();
+    if (boundary === 'before-review') await assert.rejects(f.transfers.prepareSpeedUp(original.hash!), { code: 'INSUFFICIENT_NFT_BALANCE' });
+    else {
+      await f.transfers.prepareSpeedUp(original.hash!);
+      const review = f.transfers.getSnapshot().review!; f.loseNft();
+      await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'INSUFFICIENT_NFT_BALANCE' });
+    }
+    assert.equal(f.signatures, 0); assert.equal(f.broadcasts.length, 1);
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, 1);
   } finally { await f.close(); }
 });

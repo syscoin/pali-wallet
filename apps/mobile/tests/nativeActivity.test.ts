@@ -1123,3 +1123,43 @@ test('Smart Activity inspects through the inner-operation observer and ignores o
   assert.equal(f.receipts.calls.length, 0);
   assert.equal(f.localReads.length, 1);
 });
+
+test('overlapping automatic and explicit local Activity reads share one receipt graph', async () => {
+  const base = fixture(), local = base.local(1, 'submitted');
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  const methods: string[] = [];
+  const blockHash = hash(555);
+  const receipts = new ActivityReceiptReader({ fetch: async (_url, init) => {
+    const request = JSON.parse(String(init.body)); methods.push(request.method);
+    let result: unknown;
+    if (request.method === 'eth_chainId') result = '0x1';
+    else if (request.method === 'eth_getTransactionReceipt') {
+      started.resolve(); await held.promise;
+      result = { transactionHash: local.hash, from: OWNER, to: OTHER, status: '0x0', blockNumber: '0x50', blockHash, transactionIndex: '0x0', logs: [] };
+    } else if (request.method === 'eth_getTransactionByHash') result = { hash: local.hash, from: OWNER, to: OTHER, value: '0x1', nonce: '0x1', blockHash, blockNumber: '0x50', transactionIndex: '0x0' };
+    else if (request.method === 'eth_getBlockByNumber') result = { number: '0x50', hash: blockHash, timestamp: '0x6553f100', gasLimit: '0x1c9c380' };
+    else throw Error(request.method);
+    return Response.json({ jsonrpc: '2.0', id: request.id, result });
+  } });
+  const state = source(), scope = createActivityScope(FP, 'hd:60:0', OWNER, 'ethereum');
+  let persisted = 0;
+  const runtime: NativeActivityRuntime = {
+    async load() { return { scope, locals: [local], saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false } }; },
+    async observeLocal(record, check, signal, observe) {
+      assert(observe); const result = await observe({ chainId: '1', from: OWNER, to: OTHER, hash: record.hash, nonce: String(record.nonce) });
+      check(); if (signal.aborted) throw Error('CANCELLED'); persisted++; return result;
+    },
+    async saveCache() {}, async saveView() {},
+  };
+  const model = new NativeActivity(state, () => runtime, new FakeExplorer(), receipts);
+  try {
+    await model.refresh(); await started.promise; model.inspect(local.hash);
+    await until(() => methods.includes('eth_getTransactionByHash'));
+    held.resolve();
+    await until(() => !!model.getSnapshot().rows[0]?.observation);
+    assert.equal(model.getSnapshot().rows[0]?.retainedObservation?.status, 'mined');
+    assert.equal(model.getSnapshot().rows[0]?.observation?.status, 'reverted');
+    assert.equal(persisted, 1);
+    assert.equal(methods.length, 5); assert.equal(methods.filter(method => method === 'eth_getTransactionReceipt').length, 1);
+  } finally { held.resolve(); model.connect()(); }
+});

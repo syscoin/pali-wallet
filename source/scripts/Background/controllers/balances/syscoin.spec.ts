@@ -129,7 +129,8 @@ describe('native Syscoin available balance', () => {
         networkUrl,
         account.xpub,
         'details=tokenBalances&tokens=nonzero',
-        true
+        true,
+        undefined
       );
     }
   );
@@ -220,7 +221,8 @@ describe('native Syscoin available balance', () => {
       networkUrl,
       account.xpub,
       'details=tokenBalances&tokens=nonzero',
-      true
+      true,
+      undefined
     );
   });
 

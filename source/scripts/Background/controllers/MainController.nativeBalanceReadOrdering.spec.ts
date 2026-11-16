@@ -32,6 +32,10 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   CustomJsonRpcProvider: jest.fn(),
   PsbtUtils: {},
 }));
+jest.mock('./providers/evmDisplayIdentity', () => ({
+  ensureEvmDisplayIdentity: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('..', () => ({
   getController: jest.fn(),
   notificationManager: { cleanup: jest.fn() },
@@ -133,8 +137,22 @@ beforeEach(() => {
   });
   provider = {
     getBalance: jest.fn().mockResolvedValue(BigInt('2000000000000000000')),
-    send: jest.fn(),
-  };
+    send: jest.fn(async (method, params) => {
+      if (method === 'eth_chainId') return '0x1644';
+      if (method === 'eth_getBalance')
+        return '0x' + (await provider.getBalance(params[0])).toString(16);
+      throw Error('Unexpected display read ' + method);
+    }),
+    getNetwork: async () => ({ chainId: 5700 }),
+    _getConnection: () => ({ url: network.url }),
+    readMany: async (requests: any[]) =>
+      Promise.all(
+        requests.map(async (request) => ({
+          status: 'fulfilled',
+          value: await provider.send(request.method, request.params),
+        }))
+      ),
+  } as any;
   receiptProvider = {
     getBalance: jest.fn().mockResolvedValue(BigInt('3000000000000000000')),
     send: jest.fn().mockResolvedValue('0xb'),
@@ -214,6 +232,7 @@ it('does not let a different account refresh invalidate an in-flight card', asyn
   const old = deferred<bigint>();
   provider.getBalance.mockReturnValueOnce(old.promise);
   const pending = cardRead(1);
+  await jest.advanceTimersByTimeAsync(0);
   await poll();
   old.resolve(BigInt('7000000000000000000'));
   await expect(pending).resolves.toBe('7.0');
@@ -225,6 +244,7 @@ it('does not overwrite a newer normal poll or stamp an old card result as fresh'
   const old = deferred<bigint>();
   provider.getBalance.mockReturnValueOnce(old.promise);
   const pending = cardRead();
+  await jest.advanceTimersByTimeAsync(0);
   await poll();
   expectBalance('2.0');
   const fresh = getFreshNativeBalance(account(), network);
@@ -239,6 +259,7 @@ it('does not overwrite a newer receipt-targeted native balance', async () => {
   const old = deferred<bigint>();
   provider.getBalance.mockReturnValueOnce(old.promise);
   const pending = cardRead();
+  await jest.advanceTimersByTimeAsync(0);
   controller.refreshBalancesAfterReceipt({
     from: A,
     to: `0x${'33'.repeat(20)}`,
@@ -262,6 +283,7 @@ it('makes a successful card read supersede an older normal poll of the same acco
   const old = deferred<bigint>();
   provider.getBalance.mockReturnValueOnce(old.promise);
   const pending = poll();
+  await jest.advanceTimersByTimeAsync(0);
   await expect(cardRead()).resolves.toBe('2.0');
   expectBalance('2.0');
   old.resolve(BigInt('1000000000000000000'));
@@ -278,7 +300,9 @@ it.each([false, true])(
       .mockReturnValueOnce(old.promise)
       .mockReturnValueOnce(latest.promise);
     const oldPoll = poll();
+    await jest.advanceTimersByTimeAsync(0);
     const currentCard = cardRead();
+    await jest.advanceTimersByTimeAsync(0);
     if (olderFirst) {
       old.resolve(BigInt('1000000000000000000'));
       await oldPoll;
@@ -303,7 +327,9 @@ it.each([false, true])(
       .mockReturnValueOnce(old.promise)
       .mockReturnValueOnce(latest.promise);
     const oldCard = cardRead();
+    await jest.advanceTimersByTimeAsync(0);
     const currentPoll = poll();
+    await jest.advanceTimersByTimeAsync(0);
     if (olderFirst) {
       old.resolve(BigInt('1000000000000000000'));
       await oldCard;
@@ -331,7 +357,9 @@ it.each([false, true])(
       (value: string) => ({ value, error: null as Error | null }),
       (error: Error) => ({ value: undefined, error })
     );
+    await jest.advanceTimersByTimeAsync(0);
     const currentCard = cardRead();
+    await jest.advanceTimersByTimeAsync(0);
     if (olderFirst) {
       old.resolve(BigInt('1000000000000000000'));
       await oldOutcome;
@@ -356,6 +384,7 @@ it('refuses a superseded card when the newer receipt read has no result yet', as
   provider.getBalance.mockReturnValueOnce(old.promise);
   receiptProvider.getBalance.mockReturnValueOnce(receipt.promise);
   const pending = cardRead();
+  await jest.advanceTimersByTimeAsync(0);
   const rejected = expect(pending).rejects.toThrow(
     'Balance request was superseded'
   );
@@ -382,6 +411,7 @@ it.each([false, true])(
     const old = deferred<bigint>();
     provider.getBalance.mockReturnValueOnce(old.promise);
     const pending = cardRead();
+    await jest.advanceTimersByTimeAsync(0);
     const rejected = expect(pending).rejects.toThrow();
     await controller.setActiveNetwork({
       ...network,
@@ -407,6 +437,7 @@ it('keeps a UTXO card bound to its stable xpub while the receiving address advan
   const summary = deferred<any>();
   jest.mocked(fetchBackendAccountCached).mockReturnValue(summary.promise);
   const pending = cardRead();
+  await jest.advanceTimersByTimeAsync(0);
   mockStore.dispatch(
     setAccountPropertyByIdAndType({
       id: 0,
@@ -423,7 +454,8 @@ it('keeps a UTXO card bound to its stable xpub while the receiving address advan
     utxoNetwork.url,
     'synthetic-public-account-a',
     'details=tokenBalances&tokens=nonzero',
-    true
+    true,
+    expect.any(AbortSignal)
   );
 });
 
@@ -442,6 +474,7 @@ it('shares the stable UTXO xpub version with a newer native poll after address r
     .mockReturnValueOnce(old.promise)
     .mockResolvedValueOnce({ balance: '600000000', unconfirmedBalance: '0' });
   const pending = cardRead();
+  await jest.advanceTimersByTimeAsync(0);
   mockStore.dispatch(
     setAccountPropertyByIdAndType({
       id: 0,

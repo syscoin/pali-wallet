@@ -1,3 +1,6 @@
+jest.mock('../providers/evmDisplayIdentity', () => ({
+  ensureEvmDisplayIdentity: jest.fn().mockResolvedValue(undefined),
+}));
 import { IAccountAssets } from 'state/vault/types';
 import { INetworkType } from 'types/network';
 
@@ -171,6 +174,7 @@ it('passes the asset owner through contract reads without destroying the shared 
   ]);
   const provider = {
     readMany,
+    getNetwork: async () => ({ chainId: 1 }),
     destroy: jest.fn(),
     getRpcTransaction: jest.fn((transaction) => transaction),
     call: jest.fn(),

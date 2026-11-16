@@ -1,5 +1,5 @@
 import { getAddress } from 'ethers/address';
-import { readEvmReceiptFeeUnits } from '../../../../source/shared/evmTransactionObservation.ts';
+import { observeEvmTransaction, readEvmReceiptFeeUnits, type EvmObservationRequest, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 
@@ -56,10 +56,11 @@ export class ActivityReceiptError extends Error {
 
 type Method =
   | 'eth_chainId'
+  | 'eth_getTransactionCount'
   | 'eth_getTransactionByHash'
   | 'eth_getTransactionReceipt'
   | 'eth_getBlockByNumber';
-type Read = (method: Method, params: readonly unknown[]) => Promise<unknown>;
+type Read = (method: Method, params: readonly unknown[], signal?: AbortSignal) => Promise<unknown>;
 type Block = Readonly<{
   hash: string;
   number: string;
@@ -292,6 +293,20 @@ function assertPair(transaction: Transaction, receipt: Receipt) {
     fail('CONTEXT_CHANGED');
 }
 
+type SharedReceipt = {
+  expected: EvmObservationRequest;
+  controller: AbortController;
+  subscribers: Set<() => void>;
+  promise: Promise<{
+    observation: EvmTransactionObservation;
+    detail: PromiseSettledResult<ActivityTransactionObservation | null>;
+  }>;
+  details(): boolean;
+  cancelDetails(): void;
+  detailSubscribers: number;
+  closing: boolean;
+};
+
 /** Indexed rows are hints; this adapter returns bounded observations from the selected registration’s EVM RPC. */
 export class ActivityReceiptReader {
   private readonly fetcher: (
@@ -300,6 +315,7 @@ export class ActivityReceiptReader {
   ) => Promise<Response>;
   private readonly timeoutMs: number;
   private sequence = 0;
+  private readonly pending = new Map<string, SharedReceipt>();
   constructor(
     options: {
       fetch?: (url: string, init: RequestInit) => Promise<Response>;
@@ -315,15 +331,306 @@ export class ActivityReceiptReader {
     )
       throw new Error('Invalid Activity timeout');
   }
+  private sharedKey(
+    scope: string,
+    registration: NativeNetworkRegistration,
+    value: string
+  ) {
+    return JSON.stringify([
+      scope,
+      registration.registrationHash,
+      registration.rpcUrl,
+      registration.chainId,
+      value.toLowerCase(),
+    ]);
+  }
+
+  private subscribe<T>(
+    entry: SharedReceipt,
+    external: AbortSignal,
+    guard: () => void,
+    result: (value: Awaited<SharedReceipt['promise']>) => T,
+    details = false
+  ): Promise<T> {
+    guardCurrent(guard);
+    if (external.aborted)
+      return Promise.reject(new ActivityReceiptError('CANCELLED'));
+    return new Promise((resolve, reject) => {
+      let finished = false;
+      const check = () => {
+        guardCurrent(guard);
+        if (external.aborted) fail('CANCELLED');
+      };
+      const finish = (work: () => void) => {
+        if (finished) return;
+        finished = true;
+        external.removeEventListener('abort', abort);
+        entry.subscribers.delete(check);
+        if (details && --entry.detailSubscribers === 0) entry.cancelDetails();
+        if (!entry.subscribers.size) entry.controller.abort();
+        work();
+      };
+      const abort = () =>
+        finish(() => reject(new ActivityReceiptError('CANCELLED')));
+      entry.subscribers.add(check);
+      if (details) entry.detailSubscribers++;
+      external.addEventListener('abort', abort, { once: true });
+      entry.promise.then(
+        (value) =>
+          finish(() => {
+            try {
+              check();
+              resolve(JSON.parse(JSON.stringify(result(value))));
+            } catch (error) {
+              reject(error);
+            }
+          }),
+        (error) => finish(() => reject(error))
+      );
+      if (external.aborted) abort();
+    });
+  }
+
+  observe(
+    input: EvmObservationRequest,
+    external: AbortSignal,
+    guard: () => void,
+    registration: NativeNetworkRegistration,
+    scope: string
+  ): Promise<EvmTransactionObservation> {
+    registration = snapshotNativeNetwork(registration);
+    guardCurrent(guard);
+    if (external.aborted)
+      return Promise.reject(new ActivityReceiptError('CANCELLED'));
+    const fields = ['chainId', 'from', 'to', 'hash', 'nonce'] as const;
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Reflect.ownKeys(input).length !== fields.length ||
+      fields.some((field) => {
+        const property = Object.getOwnPropertyDescriptor(input, field);
+        return !property?.enumerable || !('value' in property);
+      })
+    )
+      return Promise.reject(new ActivityReceiptError('INVALID_INPUT'));
+    let expected: EvmObservationRequest;
+    try {
+      if (
+        !/^[1-9][0-9]{0,77}$/.test(input.chainId) ||
+        !/^(0|[1-9][0-9]{0,77})$/.test(input.nonce) ||
+        BigInt(input.chainId) >= 1n << 256n ||
+        BigInt(input.nonce) >= 1n << 256n
+      )
+        fail('INVALID_INPUT');
+      expected = Object.freeze({
+        chainId: input.chainId,
+        from: address(input.from),
+        to: input.to === null ? null : address(input.to),
+        hash: hash(input.hash),
+        nonce: input.nonce,
+      });
+    } catch {
+      return Promise.reject(new ActivityReceiptError('INVALID_INPUT'));
+    }
+    if (expected.chainId !== registration.chainId)
+      return Promise.reject(new ActivityReceiptError('CONTEXT_CHANGED'));
+    const key = this.sharedKey(scope, registration, expected.hash);
+    let entry = this.pending.get(key);
+    if (
+      entry &&
+      (entry.expected.from !== expected.from ||
+        entry.expected.to !== expected.to ||
+        entry.expected.nonce !== expected.nonce)
+    )
+      return Promise.reject(new ActivityReceiptError('CONTEXT_CHANGED'));
+    if (!entry || entry.controller.signal.aborted || entry.closing) {
+      const controller = new AbortController();
+      const subscribers = new Set<() => void>();
+      let detailsRequested = false;
+      const detailController = new AbortController();
+      let requestDetails = () => {
+        detailsRequested = true;
+        return true;
+      };
+      entry = {
+        expected,
+        controller,
+        subscribers,
+        detailSubscribers: 0,
+        cancelDetails: () => {
+          detailsRequested = false;
+          detailController.abort();
+          current.closing = true;
+        },
+        closing: false,
+        details: () => requestDetails(),
+        promise: Promise.resolve(null as never),
+      };
+      const current = entry;
+      const check = () => {
+        if (controller.signal.aborted) fail('CANCELLED');
+        let active = false;
+        for (const subscriber of subscribers) {
+          try {
+            subscriber();
+            active = true;
+          } catch {
+            /* Another subscriber may still own this read. */
+          }
+        }
+        if (!active) fail('CANCELLED');
+      };
+      this.pending.set(key, current);
+      current.promise = Promise.resolve()
+        .then(() =>
+          this.operation(
+            registration,
+            controller.signal,
+            check,
+            async (read, assertCurrent) => {
+              let rawReceipt: unknown, rawBlock: unknown;
+              let transaction:
+                | Promise<PromiseSettledResult<unknown>>
+                | undefined;
+              requestDetails = () => {
+                if (current.closing) return false;
+                transaction ??= read(
+                  'eth_getTransactionByHash',
+                  [expected.hash],
+                  detailController.signal
+                ).then(
+                  (value) => ({ status: 'fulfilled' as const, value }),
+                  (reason) => ({ status: 'rejected' as const, reason })
+                );
+                return true;
+              };
+              if (detailsRequested) requestDetails();
+              let chainReads = 0;
+              const observation = await observeEvmTransaction(
+                expected,
+                async (method, params) => {
+                  if (method === 'eth_chainId' && ++chainReads > 1) {
+                    current.closing = true;
+                    if (transaction) {
+                      const result = await transaction;
+                      try {
+                        if (
+                          rawReceipt !== null &&
+                          result.status === 'fulfilled' &&
+                          (result.value === null ||
+                            !readTransaction(result.value, expected.hash).block)
+                        ) {
+                          transaction = read(
+                            'eth_getTransactionByHash',
+                            [expected.hash],
+                            detailController.signal
+                          ).then(
+                            (value) => ({
+                              status: 'fulfilled' as const,
+                              value,
+                            }),
+                            (reason) => ({
+                              status: 'rejected' as const,
+                              reason,
+                            })
+                          );
+                          await transaction;
+                        }
+                      } catch {
+                        /* Malformed detail data cannot invalidate the receipt observation. */
+                      }
+                    }
+                  }
+                  const value = await read(method, params);
+                  if (method === 'eth_getTransactionReceipt')
+                    rawReceipt = value;
+                  if (method === 'eth_getBlockByNumber') rawBlock = value;
+                  return value;
+                },
+                assertCurrent
+              );
+              let detail: PromiseSettledResult<ActivityTransactionObservation | null> =
+                { status: 'fulfilled', value: null };
+              try {
+                if (transaction) {
+                  const result = await transaction;
+                  if (result.status === 'rejected') throw result.reason;
+                  const body = result.value;
+                  if (body !== null) {
+                    const tx = readTransaction(body, expected.hash);
+                    if (observation.status === 'mined') {
+                      const receipt = readReceipt(
+                        rawReceipt,
+                        expected.hash,
+                        expected.from
+                      );
+                      assertPair(tx, receipt);
+                      const block = readBlock(rawBlock);
+                      detail = {
+                        status: 'fulfilled',
+                        value: Object.freeze({
+                          ...tx,
+                          timestamp: block.timestamp,
+                          block: observation.block,
+                          status: observation.outcome,
+                          events: receipt.events,
+                          feeUnits: receipt.feeUnits,
+                          ...(observation.transactionIndex === undefined
+                            ? {}
+                            : {
+                                transactionIndex: observation.transactionIndex,
+                              }),
+                        }),
+                      };
+                    } else {
+                      if (tx.from !== expected.from && tx.to !== expected.from)
+                        fail('IRRELEVANT');
+                      detail = {
+                        status: 'fulfilled',
+                        value: Object.freeze({
+                          ...tx,
+                          block: null,
+                          timestamp: null,
+                          status: tx.block ? 'unknown' : 'pending',
+                          events: [],
+                          feeUnits: null,
+                        }),
+                      };
+                    }
+                  } else if (observation.status === 'mined')
+                    fail('CONTEXT_CHANGED');
+                }
+              } catch (error) {
+                detail = {
+                  status: 'rejected',
+                  reason:
+                    error instanceof ActivityReceiptError
+                      ? error
+                      : new ActivityReceiptError('UNAVAILABLE'),
+                };
+              }
+              assertCurrent();
+              return { observation, detail };
+            }
+          )
+        )
+        .finally(() => {
+          current.closing = true;
+          if (this.pending.get(key) === current) this.pending.delete(key);
+        });
+      void current.promise.catch(() => undefined);
+    }
+    return this.subscribe(entry, external, guard, (value) => value.observation);
+  }
+
   async read(
     inputHash: string,
     inputOwner: string,
     external: AbortSignal,
     guard: () => void,
-    registration: NativeNetworkRegistration
+    registration: NativeNetworkRegistration,
+    sharingScope?: string
   ): Promise<ActivityTransactionObservation | null> {
-    registration = snapshotNativeNetwork(registration);
-    const endpoint = registration.rpcUrl;
     let expectedHash: string, owner: string;
     try {
       expectedHash = hash(inputHash);
@@ -334,6 +641,148 @@ export class ActivityReceiptReader {
     }
     guardCurrent(guard);
     if (external.aborted) return fail('CANCELLED');
+    if (sharingScope) {
+      const entry = this.pending.get(
+        this.sharedKey(sharingScope, registration, expectedHash)
+      );
+      if (
+        entry &&
+        entry.expected.from === owner &&
+        !entry.controller.signal.aborted &&
+        entry.details()
+      )
+        return this.subscribe(
+          entry,
+          external,
+          guard,
+          (value) => {
+            if (value.detail.status === 'rejected') throw value.detail.reason;
+            return value.detail.value;
+          },
+          true
+        );
+    }
+    return this.operation(
+      registration,
+      external,
+      guard,
+      async (read, check) => {
+        const checkChain = async () => {
+          if (
+            quantity(await read('eth_chainId', [])) !==
+            BigInt(registration.chainId)
+          )
+            fail('CONTEXT_CHANGED');
+        };
+        const canonical = async (block: Block | Receipt['block']) => {
+          const raw = await read('eth_getBlockByNumber', [
+            tag(block.number),
+            false,
+          ]);
+          const observed = readBlock(raw);
+          if (observed.hash !== block.hash || observed.number !== block.number)
+            fail('CONTEXT_CHANGED');
+          const index =
+            'transactionIndex' in block ? Number(block.transactionIndex) : NaN;
+          const transactions = object(raw).transactions;
+          return {
+            ...observed,
+            ...(Number.isSafeInteger(index) &&
+            index >= 0 &&
+            Array.isArray(transactions) &&
+            typeof transactions[index] === 'string' &&
+            transactions[index].toLowerCase() === expectedHash
+              ? { transactionIndex: index }
+              : {}),
+          };
+        };
+        try {
+          await checkChain();
+          let [rawTransaction, rawReceipt] = await Promise.all([
+            read('eth_getTransactionByHash', [expectedHash]),
+            read('eth_getTransactionReceipt', [expectedHash]),
+          ]);
+          check();
+          if (rawTransaction === null && rawReceipt !== null)
+            rawTransaction = await read('eth_getTransactionByHash', [
+              expectedHash,
+            ]);
+          if (rawTransaction === null) {
+            if (rawReceipt !== null) return fail('CONTEXT_CHANGED');
+            await checkChain();
+            return null;
+          }
+          let transaction = readTransaction(rawTransaction, expectedHash);
+          if (rawReceipt === null) {
+            if (transaction.from !== owner && transaction.to !== owner)
+              return fail('IRRELEVANT');
+            await checkChain();
+            check();
+            return Object.freeze({
+              ...transaction,
+              block: null,
+              timestamp: null,
+              status: transaction.block ? 'unknown' : 'pending',
+              events: Object.freeze([]),
+              feeUnits: null,
+            });
+          }
+          const receipt = readReceipt(rawReceipt, expectedHash, owner);
+          // A transaction can become mined between the two parallel reads.
+          if (!transaction.block) {
+            rawTransaction = await read('eth_getTransactionByHash', [
+              expectedHash,
+            ]);
+            if (rawTransaction === null) return fail('CONTEXT_CHANGED');
+            transaction = readTransaction(rawTransaction, expectedHash);
+          }
+          assertPair(transaction, receipt);
+          if (
+            transaction.from !== owner &&
+            transaction.to !== owner &&
+            receipt.events.length === 0
+          )
+            return fail('IRRELEVANT');
+          const included = await canonical(receipt.block);
+          await checkChain();
+          check();
+          return Object.freeze({
+            hash: expectedHash,
+            from: transaction.from,
+            to: transaction.to,
+            valueUnits: transaction.valueUnits,
+            nonce: transaction.nonce,
+            timestamp: included.timestamp,
+            block: Object.freeze({
+              hash: included.hash,
+              number: included.number,
+            }),
+            status: receipt.succeeded ? 'confirmed' : 'reverted',
+            events: receipt.events,
+            feeUnits: receipt.feeUnits,
+            ...(included.transactionIndex === undefined
+              ? {}
+              : { transactionIndex: included.transactionIndex }),
+          });
+        } catch (error) {
+          check();
+          if (error instanceof ActivityReceiptError) throw error;
+          return fail('UNAVAILABLE');
+        }
+      }
+    );
+  }
+
+  private async operation<T>(
+    registration: NativeNetworkRegistration,
+    external: AbortSignal,
+    guard: () => void,
+    work: (read: Read, check: () => void) => Promise<T>
+  ): Promise<T> {
+    registration = snapshotNativeNetwork(registration);
+    const endpoint = registration.rpcUrl;
+    guardCurrent(guard);
+    if (external.aborted) return fail('CANCELLED');
     const controller = new AbortController();
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
@@ -342,142 +791,83 @@ export class ActivityReceiptReader {
       guardCurrent(guard);
       if (controller.signal.aborted) fail('CANCELLED');
     };
-    const read: Read = async (method, params) => {
+    const read: Read = async (method, params, signal) => {
       check();
-      const id = ++this.sequence;
-      if (!Number.isSafeInteger(id)) return fail('UNAVAILABLE');
-      const response = await cancellable(
-        this.fetcher(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
-          signal: controller.signal,
-          credentials: 'omit',
-          redirect: 'error',
-          cache: 'no-store',
-          referrerPolicy: 'no-referrer',
-        }),
-        controller.signal
-      );
-      check();
-      if (!response.ok) return fail('UNAVAILABLE');
-      const contentType = response.headers.get('content-type');
-      if (
-        contentType &&
-        !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(
-          contentType
-        )
-      )
-        return fail('INVALID_RESPONSE');
-      const limit =
-        method === 'eth_getBlockByNumber'
-          ? MAX_BLOCK_BYTES
-          : method === 'eth_getTransactionReceipt'
-          ? MAX_RECEIPT_BYTES
-          : method === 'eth_getTransactionByHash'
-          ? MAX_TRANSACTION_BYTES
-          : 16 * 1024;
-      const text = await cancellable(
-        boundedResponseText(response, controller.signal, limit),
-        controller.signal
-      );
-      check();
-      let body: Record<string, unknown>;
-      try {
-        body = object(JSON.parse(text));
-      } catch {
-        return fail('INVALID_RESPONSE');
+      const requestController = signal ? new AbortController() : controller;
+      const abortRequest = () => requestController.abort();
+      if (signal) {
+        controller.signal.addEventListener('abort', abortRequest, {
+          once: true,
+        });
+        signal.addEventListener('abort', abortRequest, { once: true });
+        if (signal.aborted || controller.signal.aborted) abortRequest();
       }
-      if (
-        body.jsonrpc !== '2.0' ||
-        body.id !== id ||
-        Object.hasOwn(body, 'error') ||
-        !Object.hasOwn(body, 'result')
-      )
-        return fail('INVALID_RESPONSE');
-      return body.result;
-    };
-    const checkChain = async () => {
-      if (quantity(await read('eth_chainId', [])) !== BigInt(registration.chainId))
-        fail('CONTEXT_CHANGED');
-    };
-    const canonical = async (block: Block | Receipt['block']) => {
-      const raw = await read('eth_getBlockByNumber', [tag(block.number), false]);
-      const observed = readBlock(raw);
-      if (observed.hash !== block.hash || observed.number !== block.number)
-        fail('CONTEXT_CHANGED');
-      const index = 'transactionIndex' in block ? Number(block.transactionIndex) : NaN;
-      const transactions = object(raw).transactions;
-      return { ...observed, ...(Number.isSafeInteger(index) && index >= 0 && Array.isArray(transactions) &&
-        typeof transactions[index] === 'string' && transactions[index].toLowerCase() === expectedHash
-        ? { transactionIndex: index } : {}) };
+      try {
+        if (requestController.signal.aborted) return fail('CANCELLED');
+        const id = ++this.sequence;
+        if (!Number.isSafeInteger(id)) return fail('UNAVAILABLE');
+        const response = await cancellable(
+          this.fetcher(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+            signal: requestController.signal,
+            credentials: 'omit',
+            redirect: 'error',
+            cache: 'no-store',
+            referrerPolicy: 'no-referrer',
+          }),
+          requestController.signal
+        );
+        check();
+        if (!response.ok) return fail('UNAVAILABLE');
+        const contentType = response.headers.get('content-type');
+        if (
+          contentType &&
+          !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(
+            contentType
+          )
+        )
+          return fail('INVALID_RESPONSE');
+        const limit =
+          method === 'eth_getBlockByNumber'
+            ? MAX_BLOCK_BYTES
+            : method === 'eth_getTransactionReceipt'
+            ? MAX_RECEIPT_BYTES
+            : method === 'eth_getTransactionByHash'
+            ? MAX_TRANSACTION_BYTES
+            : 16 * 1024;
+        const text = await cancellable(
+          boundedResponseText(response, requestController.signal, limit),
+          requestController.signal
+        );
+        check();
+        let body: Record<string, unknown>;
+        try {
+          body = object(JSON.parse(text));
+        } catch {
+          return fail('INVALID_RESPONSE');
+        }
+        if (
+          body.jsonrpc !== '2.0' ||
+          body.id !== id ||
+          Object.hasOwn(body, 'error') ||
+          !Object.hasOwn(body, 'result')
+        )
+          return fail('INVALID_RESPONSE');
+        return body.result;
+      } finally {
+        if (signal) {
+          controller.signal.removeEventListener('abort', abortRequest);
+          signal.removeEventListener('abort', abortRequest);
+        }
+      }
     };
     try {
-      await checkChain();
-      let [rawTransaction, rawReceipt] = await Promise.all([
-        read('eth_getTransactionByHash', [expectedHash]),
-        read('eth_getTransactionReceipt', [expectedHash]),
-      ]);
-      check();
-      if (rawTransaction === null && rawReceipt !== null)
-        rawTransaction = await read('eth_getTransactionByHash', [expectedHash]);
-      if (rawTransaction === null) {
-        if (rawReceipt !== null) return fail('CONTEXT_CHANGED');
-        await checkChain();
-        return null;
-      }
-      let transaction = readTransaction(rawTransaction, expectedHash);
-      if (rawReceipt === null) {
-        if (transaction.from !== owner && transaction.to !== owner)
-          return fail('IRRELEVANT');
-        await checkChain();
-        check();
-        return Object.freeze({
-          ...transaction,
-          block: null,
-          timestamp: null,
-          status: transaction.block ? 'unknown' : 'pending',
-          events: Object.freeze([]),
-          feeUnits: null,
-        });
-      }
-      const receipt = readReceipt(rawReceipt, expectedHash, owner);
-      // A transaction can become mined between the two parallel reads.
-      if (!transaction.block) {
-        rawTransaction = await read('eth_getTransactionByHash', [expectedHash]);
-        if (rawTransaction === null) return fail('CONTEXT_CHANGED');
-        transaction = readTransaction(rawTransaction, expectedHash);
-      }
-      assertPair(transaction, receipt);
-      if (
-        transaction.from !== owner &&
-        transaction.to !== owner &&
-        receipt.events.length === 0
-      )
-        return fail('IRRELEVANT');
-      const included = await canonical(receipt.block);
-      await checkChain();
-      check();
-      return Object.freeze({
-        hash: expectedHash,
-        from: transaction.from,
-        to: transaction.to,
-        valueUnits: transaction.valueUnits,
-        nonce: transaction.nonce,
-        timestamp: included.timestamp,
-        block: Object.freeze({ hash: included.hash, number: included.number }),
-        status: receipt.succeeded ? 'confirmed' : 'reverted',
-        events: receipt.events,
-        feeUnits: receipt.feeUnits,
-        ...(included.transactionIndex === undefined ? {} : { transactionIndex: included.transactionIndex }),
-      });
-    } catch (error) {
-      check();
-      if (error instanceof ActivityReceiptError) throw error;
-      return fail('UNAVAILABLE');
+      return await work(read, check);
     } finally {
       clearTimeout(timer);
       controller.abort();

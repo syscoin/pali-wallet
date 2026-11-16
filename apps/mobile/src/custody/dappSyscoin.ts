@@ -4,7 +4,7 @@ import { projectDappSyscoinTransactions } from '../../../../source/shared/dappSy
 import { sentryDappCapabilities } from '../../../../source/shared/sentryDappCapabilities.ts';
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
 import { createBlockbookAccountHistory, readHistoryCount } from '../../../../source/shared/blockbookAccountHistory.ts';
-import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
+import { assertPublicResponseBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import type { NativeConnectionAccount } from '../connections/host.ts';
 import { findUtxoNetwork, getUtxoSdkNetwork, resolveUtxoNetwork, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier.ts';
@@ -66,7 +66,7 @@ export function createNativeDappSyscoinHost(ports: Readonly<{
                 fetch: async (url, identifier, query) => {
                   check(); if (url !== network.endpoint || identifier !== owner.xpub) throw new Error('CONTEXT_CHANGED');
                   const result = await session.read(`/api/v2/${account.kind === 'account' ? 'xpub' : 'address'}/${encodeURIComponent(identifier)}?${query}`, true);
-                  check(); assertJsonWorkBudget(result);
+                  check(); assertPublicResponseBudget(result);
                   const transactions = (result as { transactions?: unknown }).transactions;
                   if (transactions !== undefined && (!Array.isArray(transactions) || transactions.length > UTXO_ACTIVITY_LIMITS.pageSize)) throw new Error('Invalid history page');
                   return result;
@@ -78,7 +78,7 @@ export function createNativeDappSyscoinHost(ports: Readonly<{
               if (!data.transactions.length || totalPages !== null && page >= totalPages) break;
             }
             await session.verifyAnchor(); check();
-            const result = projectDappSyscoinTransactions([...rows.values()]); assertJsonWorkBudget(result);
+            const result = projectDappSyscoinTransactions([...rows.values()]); assertPublicResponseBudget(result);
             return request.method === 'sys_transaction' ? result.find(row => row.txid === request.params[0]) ?? null : result;
           } finally { session.close(); }
         }

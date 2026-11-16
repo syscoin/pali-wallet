@@ -9505,6 +9505,7 @@ class MainController {
                     namespace: this.walletStateGeneration ?? 0,
                     previousTransactions: previousTxs,
                     transactions: updatedTxs,
+                    historyReadSucceeded: !isEvmHistoryIncomplete(txs),
                     isCurrent: isCurrentRead,
                     deliver: (fact) =>
                       this.deliverActivityNotification(
@@ -9582,6 +9583,7 @@ class MainController {
                       activeAccount.id
                     ]?.ethereum?.[activeNetwork.chainId] || [],
                   transactions: [],
+                  historyReadSucceeded: !isEvmHistoryIncomplete(txs),
                   isCurrent: isCurrentRead,
                   deliver: (fact) =>
                     this.deliverActivityNotification(
@@ -12508,6 +12510,7 @@ class MainController {
     const networkGeneration = this.networkRequestGeneration;
     const navigation = getWalletNavigationScope();
     const lifetime = new AbortController();
+    if (isBitcoinBased) (this.activeUtxoReads ??= new Set()).add(lifetime);
     let capturedProvider: CustomJsonRpcProvider | undefined;
     const assertCurrent = () => {
       const latest = store.getState().vault;
@@ -12540,6 +12543,8 @@ class MainController {
     // Check if account exists before proceeding
     if (!currentAccount) {
       console.warn('[updateAssetsFromCurrentAccount] Active account not found');
+      this.activeUtxoReads?.delete(lifetime);
+      lifetime.abort();
       return Promise.resolve();
     }
 
@@ -12583,9 +12588,11 @@ class MainController {
                 currentAssets,
                 (token) =>
                   successfulBalanceReads.set(tokenBalanceKey(token), token),
-                isBitcoinBased
-                  ? undefined
-                  : { signal: lifetime.signal, assertCurrent }
+                {
+                  signal: lifetime.signal,
+                  assertCurrent,
+                  identityContext: String(this.walletSessionGeneration),
+                }
               );
             const latestVault = store.getState().vault;
             const latestAccount =
@@ -12714,7 +12721,10 @@ class MainController {
     this.cancellablePromises.runPromise(PromiseTargets.ASSETS);
 
     // Return the promise so callers can wait for it to complete
-    return assetsPromise.finally(() => lifetime.abort());
+    return assetsPromise.finally(() => {
+      lifetime.abort();
+      this.activeUtxoReads?.delete(lifetime);
+    });
   }
 
   public updateUserNativeBalance({
@@ -12808,8 +12818,26 @@ class MainController {
       );
     };
 
-    // No need to create a new provider - let the BalancesManager use its own provider
-    // The BalancesManager already handles EVM vs UTXO networks correctly
+    const lifetime = new AbortController();
+    if (isBitcoinBased) (this.activeUtxoReads ??= new Set()).add(lifetime);
+    const assertCurrent = () => {
+      const latest = store.getState().vault;
+      if (
+        lifetime.signal.aborted ||
+        networkRequest !== this.networkRequestGeneration ||
+        latest.activeNetwork.chainId !== activeNetwork.chainId ||
+        latest.activeNetwork.kind !== activeNetwork.kind ||
+        latest.activeNetwork.url !== activeNetwork.url ||
+        (isBitcoinBased
+          ? latest.accounts[activeAccount.type]?.[activeAccount.id]?.xpub !==
+            currentAccount.xpub
+          : latest.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
+            currentAccount.address)
+      ) {
+        lifetime.abort();
+        throw new Error('Balance context changed');
+      }
+    };
 
     const { currentPromise: balancePromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
@@ -12822,7 +12850,12 @@ class MainController {
               await this.balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
                 isBitcoinBased,
-                activeNetwork.url
+                activeNetwork.url,
+                {
+                  signal: lifetime.signal,
+                  assertCurrent,
+                  identityContext: String(this.walletSessionGeneration),
+                }
               );
 
             if (!isCurrent()) {
@@ -12889,18 +12922,22 @@ class MainController {
 
     this.cancellablePromises.setPromise(PromiseTargets.BALANCE, {
       balancePromise,
-      cancel,
+      cancel: () => {
+        lifetime.abort();
+        cancel();
+      },
     });
     this.cancellablePromises.runPromise(PromiseTargets.BALANCE);
 
     // Return the promise so callers can wait for it to complete
-    return balancePromise;
+    return balancePromise.finally(() => {
+      lifetime.abort();
+      this.activeUtxoReads?.delete(lifetime);
+    });
   }
 
   private cancelActiveBalanceUpdate(): void {
-    // Cancellation only rejects the wrapper; the underlying RPC can still
-    // settle later. Advance ownership first so that stale executor can no
-    // longer clear a newer request's loading state.
+    // Retire the subscriber before another request can own its loading state.
     this.balanceLoadingRequestId += 1;
     this.cancellablePromises.balancePromise?.cancel();
     this.cancellablePromises.balancePromise = null;
@@ -16681,12 +16718,33 @@ class MainController {
     )}native`;
     // A card read is newer work, not an observer of whichever poll finishes first.
     const readIsCurrent = this.beginTargetedBalanceRead(nativeKey);
-    const balance =
-      await this.balancesManager.utils.getBalanceUpdatedForAccount(
+    const assertReadCurrent = () => {
+      const latest = store.getState().vault;
+      if (
+        !isSameBalanceNetwork(latest.activeNetwork, activeNetwork) ||
+        latest.activeNetwork.url !== activeNetwork.url ||
+        nativeRevision !== this.nativeBalanceRevision ||
+        networkRequest !== this.networkRequestGeneration ||
+        (storedAccount.xpub
+          ? latest.accounts[resolvedType]?.[account.id]?.xpub !==
+            storedAccount.xpub
+          : latest.accounts[resolvedType]?.[account.id]?.address !==
+            storedAccount.address)
+      )
+        throw new Error('Balance context changed');
+    };
+    const balance = await this.withUtxoReadOwner(assertReadCurrent, (signal) =>
+      this.balancesManager.utils.getBalanceUpdatedForAccount(
         storedAccount,
         activeNetwork.kind === INetworkType.Syscoin,
-        activeNetwork.url
-      );
+        activeNetwork.url,
+        {
+          signal,
+          assertCurrent: assertReadCurrent,
+          identityContext: String(this.walletSessionGeneration),
+        }
+      )
+    );
 
     const latestState = store.getState().vault;
     if (

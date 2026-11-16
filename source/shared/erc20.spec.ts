@@ -1,4 +1,8 @@
-import { createErc20Policy, parseErc20ReadFields } from './erc20';
+import {
+  createErc20Policy,
+  parseErc20BalancePair,
+  parseErc20ReadFields,
+} from './erc20';
 
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 const metadata = () => ({
@@ -88,4 +92,33 @@ describe('shared ERC20 value policy', () => {
   ])('rejects malformed decoded read fields: %p', (input) => {
     expect(() => parseErc20ReadFields(input)).toThrow('Invalid ERC20 data');
   });
+});
+
+describe('grouped ERC20 precision and balance', () => {
+  const word = (value: string) =>
+    `0x${BigInt(value).toString(16).padStart(64, '0')}`;
+  it.each([0, 6, 18, 255, '6'])(
+    'accepts exact precision %s and units',
+    (decimals) => {
+      expect(
+        parseErc20BalancePair(word(String(decimals)), word('123'), decimals)
+      ).toBe('123');
+      expect(
+        parseErc20BalancePair(word(String(decimals)), word('0'), decimals)
+      ).toBe('0');
+    }
+  );
+  it.each([
+    [word('18'), word('1000000000000000000'), 6],
+    ['0x12', word('0'), 18],
+    [word('18'), '0x', 18],
+    [word('256'), word('1'), 256],
+  ])(
+    'rejects mismatched or malformed pairs',
+    (precision, balance, decimals) => {
+      expect(() => parseErc20BalancePair(precision, balance, decimals)).toThrow(
+        'Invalid ERC20 data'
+      );
+    }
+  );
 });

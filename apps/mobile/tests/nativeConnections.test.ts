@@ -2622,6 +2622,36 @@ test('authorized stateless reads normalize parameters and preserve EVM revert da
   } finally { await f.controller.dispose(); }
 });
 
+test('authorized stateless reads forward a copied structured revert and preserve an unrelated healthy result', async () => {
+  const f = await connectedFixture();
+  const data = { data: '0x1234', message: 'execution reverted' };
+  try {
+    await messageRequest(f, 'eth_blockNumber', [], 10);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: '0x42' } });
+    f.failRead(new EthereumRpcErrorHandler(3, 'execution reverted', data));
+    await messageRequest(f, 'eth_call', [{ to: ADDRESS }], 11);
+    assert.deepEqual(f.responses.at(-1), { id: 11, result: { error: { code: 3, message: 'execution reverted', data } } });
+    data.data = 'changed';
+    assert.deepEqual(f.responses.at(-1), { id: 11, result: { error: { code: 3, message: 'execution reverted', data: { data: '0x1234', message: 'execution reverted' } } } });
+  } finally { await f.controller.dispose(); }
+});
+
+for (const invalid of ['bytes', 'depth', 'object'] as const) test(`stateless errors omit invalid ${invalid} data and preserve the RPC code`, async () => {
+  const f = await connectedFixture();
+  let data: unknown = invalid === 'bytes' ? 'x'.repeat(1024 * 1024) : new Error('internal stack');
+  if (invalid === 'depth') {
+    data = null;
+    for (let i = 0; i < 33; i++) data = [data];
+  }
+  try {
+    const error = new EthereumRpcErrorHandler(3, 'execution reverted');
+    Object.assign(error, { data });
+    f.failRead(error);
+    await messageRequest(f, 'eth_call', [{ to: ADDRESS }], 11);
+    assert.deepEqual(f.responses.at(-1), { id: 11, result: { error: { code: 3, message: 'execution reverted' } } });
+  } finally { await f.controller.dispose(); }
+});
+
 for (const [method, params] of [
   ['eth_getLogs', [{ topics: [null] }]], ['eth_getProof', [ADDRESS, ['0XABC'], null]],
   ['web3_clientVersion', []], ['net_listening', []], ['net_peerCount', []],

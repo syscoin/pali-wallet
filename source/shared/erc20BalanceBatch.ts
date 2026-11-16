@@ -41,11 +41,12 @@ export function createErc20BalanceBatch(clock = () => performance.now()) {
   return async (
     read: Reader,
     calls: readonly Erc20BalanceCall[],
-    block: string
+    block: string,
+    resolvedAddress?: string | null
   ): Promise<PromiseSettledResult<unknown>[]> => {
     if (!calls.length) return [];
     if (calls.length > 512) throw new Error('Too many token balance reads');
-    if (!/^0x(?:0|[1-9a-f][a-f\d]*)$/i.test(block))
+    if (block !== 'latest' && !/^0x(?:0|[1-9a-f][a-f\d]*)$/i.test(block))
       throw new Error('Invalid token balance block');
     for (const call of calls) {
       if (
@@ -54,7 +55,8 @@ export function createErc20BalanceBatch(clock = () => performance.now()) {
       )
         throw new Error('Invalid token balance getter');
     }
-    if (clock() >= expires) verified = undefined;
+    if (resolvedAddress !== undefined) verified = resolvedAddress;
+    else if (clock() >= expires) verified = undefined;
     if (verified === undefined) {
       for (const address of [
         PALI_MULTICALL3_CANONICAL_ADDRESS,

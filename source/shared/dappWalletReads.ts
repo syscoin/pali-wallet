@@ -1,7 +1,7 @@
 import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.ts';
 import {
   assertProviderRequestBudget,
-  assertJsonWorkBudget,
+  assertPublicResponseBudget,
 } from '../utils/requestPayloadBudget.ts';
 
 import { formatTokenUnits } from './erc20.ts';
@@ -149,7 +149,7 @@ export function projectWalletTokens(
       (scope.family === 'ethereum' && scope.chainId === 0))
   )
     throw new EthereumRpcErrorHandler(-32603, 'Invalid token response chain');
-  assertJsonWorkBudget(value);
+  assertPublicResponseBudget(value);
   if (Array.isArray(value)) {
     if (value.length)
       throw new EthereumRpcErrorHandler(

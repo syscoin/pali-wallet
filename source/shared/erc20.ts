@@ -199,6 +199,29 @@ export function formatErc20Balance(
   };
 }
 
+/** Decode a grouped precision/balance observation against reviewed metadata. */
+export function parseErc20BalancePair(
+  precision: unknown,
+  balance: unknown,
+  expectedDecimals: string | number
+): string {
+  if (
+    typeof precision !== 'string' ||
+    !/^0x[0-9a-f]{64}$/i.test(precision) ||
+    typeof balance !== 'string' ||
+    !/^0x[0-9a-f]{64}$/i.test(balance) ||
+    parseErc20Decimals(BigInt(precision)) !==
+      parseErc20Decimals(
+        typeof expectedDecimals === 'string' &&
+          /^\d+$/.test(expectedDecimals.trim())
+          ? Number(expectedDecimals)
+          : expectedDecimals
+      )
+  )
+    return invalid();
+  return parseErc20Units(BigInt(balance));
+}
+
 /** Exact nonnegative decimal input, including zero allowances. */
 export function parseUnsignedTokenAmount(
   value: unknown,

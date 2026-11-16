@@ -6,6 +6,7 @@ import omit from 'lodash/omit';
 import sortBy from 'lodash/sortBy';
 import uniqWith from 'lodash/uniqWith';
 
+import { ensureEvmDisplayIdentity } from '../providers/evmDisplayIdentity';
 import store from 'state/store';
 import { IAccountAssets } from 'state/vault/types';
 import { IKeyringAccountState, INetwork, INetworkType } from 'types/network';
@@ -22,7 +23,21 @@ export const ownedAssetProvider = (
   if (!owner) return provider;
   const read = async <T>(work: () => Promise<T>): Promise<T> => {
     owner.assertCurrent();
+    const { chainId } = await provider.getNetwork();
+    await ensureEvmDisplayIdentity(
+      provider,
+      chainId,
+      owner.signal,
+      owner.identityContext
+    );
+    owner.assertCurrent();
     const result = await work();
+    await ensureEvmDisplayIdentity(
+      provider,
+      chainId,
+      owner.signal,
+      owner.identityContext
+    );
     owner.assertCurrent();
     return result;
   };

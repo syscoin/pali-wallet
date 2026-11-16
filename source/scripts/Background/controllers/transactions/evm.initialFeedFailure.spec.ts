@@ -286,6 +286,60 @@ it('retries incomplete Smart discovery instead of caching empty history', async 
   ).toHaveLength(2);
 });
 
+it.each(['rejected', 'null', 'genesis', 'healthy'])(
+  'requires a fulfilled valid Smart history head before caching (%s)',
+  async (head) => {
+    mockStore.getState().vault.accounts.HDAccount[0].isSmartAccount = true;
+    const original = provider.readMany.getMockImplementation();
+    let recover = false;
+    provider.readMany.mockImplementation(
+      async (requests: any[], options: any) => {
+        if (requests[0].method === 'eth_blockNumber')
+          return [
+            !recover && head === 'rejected'
+              ? { status: 'rejected', reason: Error('head unavailable') }
+              : {
+                  status: 'fulfilled',
+                  value: recover
+                    ? '0x64'
+                    : head === 'null'
+                    ? null
+                    : head === 'genesis'
+                    ? '0x0'
+                    : '0x64',
+                },
+          ];
+        if (requests[0].method === 'eth_getLogs')
+          return [{ status: 'fulfilled', value: [] }];
+        return original(requests, options);
+      }
+    );
+    const first = await update();
+    const failed = head === 'rejected' || head === 'null';
+    expect(isEvmHistoryIncomplete(first)).toBe(failed);
+    if (failed) {
+      expect(
+        mockStore.getState().vault.accounts.HDAccount[0]
+          .smartAccountUserOpScanByChainId
+      ).toBeUndefined();
+      expect(
+        provider.readMany.mock.calls.some(
+          ([calls]) => calls[0].method === 'eth_getLogs'
+        )
+      ).toBe(false);
+    } else {
+      expect(
+        mockStore.getState().vault.accounts.HDAccount[0]
+          .smartAccountUserOpScanByChainId
+      ).toEqual({ [network.chainId]: head === 'genesis' ? 0 : 100 });
+    }
+    const before = provider.readMany.mock.calls.length;
+    recover = true;
+    expect(isEvmHistoryIncomplete(await update())).toBe(false);
+    expect(provider.readMany.mock.calls.length > before).toBe(failed);
+  }
+);
+
 it('retires a held pagination hint before starting explorer requests through MainController', async () => {
   let release!: () => void;
   let entered!: () => void;

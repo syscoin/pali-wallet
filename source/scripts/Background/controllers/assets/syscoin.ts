@@ -13,7 +13,11 @@ import { ITokenSysProps, ISysAssetMetadata } from 'types/tokens';
 import { formatUnits } from 'utils/ethersV6Compat';
 
 import { ASSET_CACHE_DURATION, USER_TOKENS_CACHE_DURATION } from './constants';
-import { ISysAssetsController, ISysTokensAssetReponse } from './types';
+import {
+  ISysAssetsController,
+  ISysTokensAssetReponse,
+  type AssetReadOwner,
+} from './types';
 import { ensureTrailingSlash } from './utils';
 
 const projectHolding = (
@@ -261,19 +265,23 @@ const SysAssetsControler = (): ISysAssetsController => {
     xpubOrAddress: string,
     networkUrl: string,
     networkChainId: number,
-    existingAssets: ITokenSysProps[] = []
+    existingAssets: ITokenSysProps[] = [],
+    owner?: AssetReadOwner
   ): Promise<ISysTokensAssetReponse[]> => {
     if (!supportsSptUtxoChain(networkChainId)) return [];
     // Refresh persisted/imported assets from all used SPT entries so zero-balance
     // tokens still keep their historical sent/received counters.
     const requestOptions = 'details=tokenBalances&tokens=used';
 
+    owner?.assertCurrent();
     const accountData = await fetchBackendAccountCached(
       ensureTrailingSlash(networkUrl),
       xpubOrAddress,
       requestOptions,
-      true
+      true,
+      owner?.signal
     );
+    owner?.assertCurrent();
     const inventory = parseSptInventory(accountData, xpubOrAddress);
 
     // Update all manually imported tokens

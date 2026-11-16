@@ -33,7 +33,7 @@ import {
   getEvmSettlementStatus,
   type EvmSettlementStatus,
 } from '../../../../source/utils/evmReplacement.ts';
-import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
+import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeTokenPortfolioScope } from '../portfolio/tokenRegistry.ts';
 import { nativeLocalReplacementStatuses, nativeLocalReplacementWinnersToObserve } from './localReplacementStatus.ts';
 
@@ -60,7 +60,8 @@ export interface NativeActivityRuntime {
   observeLocal?(
     record: LocalActivityRecord,
     guard: () => void,
-    signal: AbortSignal
+    signal: AbortSignal,
+    observe?: (request: EvmObservationRequest) => Promise<EvmTransactionObservation>
   ): Promise<EvmTransactionObservation>;
   saveCache(
     scope: EvmActivityReadScope,
@@ -121,7 +122,7 @@ export type ActivityLifecycle = {
   subscribe(listener: () => void): () => void;
 };
 export type ActivityExplorerPort = Pick<ActivityExplorerReader, 'page'>;
-export type ActivityReceiptPort = Pick<ActivityReceiptReader, 'read'>;
+export type ActivityReceiptPort = Pick<ActivityReceiptReader, 'read'> & Partial<Pick<ActivityReceiptReader, 'observe'>>;
 export type EvmActivityReaders = Readonly<{
   explorer: ActivityExplorerPort;
   receipts: ActivityReceiptPort;
@@ -710,6 +711,13 @@ export class NativeActivity {
         : 'discovery-unavailable',
     });
   }
+  private receiptScope(scope: EvmActivityReadScope, generation: number) {
+    return JSON.stringify([generation, scope.key, scope.sourceId, scope.address]);
+  }
+  private retainedObserver(scope: EvmActivityReadScope, generation: number, signal: AbortSignal, guard: () => void) {
+    return this.receipts.observe ? (request: EvmObservationRequest) => this.receipts.observe!(
+      request, signal, guard, scope.network, this.receiptScope(scope, generation)) : undefined;
+  }
   private hydrate(hash?: string, page?: SavedPendingPage) {
     if (hash && (!this.checking.has(hash) || this.checking.get(hash)?.page !== page) &&
         !this.hydration.some((request) => request.hash === hash && request.page === page))
@@ -744,13 +752,13 @@ export class NativeActivity {
           if (!runtime?.observeLocal) throw new ActivityError('UNAVAILABLE');
           // The signed record already supplies the envelope. Use one owned
           // observation for status, without fetching the same receipt again.
-          const observation = await runtime.observeLocal(local, guard, signal);
+          const observation = await runtime.observeLocal(local, guard, signal, this.retainedObserver(scope, generation, signal, guard));
           guard();
           this.retainedObservations.set(hash, observation);
           this.unavailable.delete(hash);
           return;
         }
-        const observation = await this.receipts.read(hash, scope.address, signal, guard, scope.network);
+        const observation = await this.receipts.read(hash, scope.address, signal, guard, scope.network, this.receiptScope(scope, generation));
         guard();
         if (observation) {
           this.observations.set(hash, {
@@ -821,7 +829,8 @@ export class NativeActivity {
           const observation = await runtime.observeLocal!(
             local,
             guard,
-            work.lifetime.signal
+            work.lifetime.signal,
+            this.retainedObserver(scope, generation, work.lifetime.signal, guard)
           );
           guard();
           this.retainedObservations.set(local.hash, observation);

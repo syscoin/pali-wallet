@@ -7434,7 +7434,7 @@ export function createKeyringRuntimeFactory(
                   const saved = await activityHistory.load(scope, guard); guard();
                   return { ...page, records: page.records.filter(local => !saved.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')).map(local => inspectionOnly(local, true)) };
                 },
-                async observeLocal(local, assertCurrent, signal) {
+                async observeLocal(local, assertCurrent, signal, sharedObserve) {
                   const { scope, guard } = await activityContext(checked(assertCurrent), target);
                   if (signal.aborted || local.chainId !== scope.network.chainId || local.address !== scope.address ||
                       local.walletFingerprint !== scope.walletFingerprint || local.accountId !== scope.accountId)
@@ -7443,9 +7443,10 @@ export function createKeyringRuntimeFactory(
                   if (local.smartAccount) return observeSmartAccountOperations({ chainId: local.chainId, hash: local.hash,
                     account: local.address, nonce: local.nonce, ...local.smartAccount },
                     (method, params) => rpc.retirementRead(method, params, signal, guard), guard);
-                  return rpc.observation({ hash: local.hash, from: local.address,
+                  const expected = { hash: local.hash, from: local.address,
                     to: local.token?.contractAddress ?? local.collectibleTransfer?.contractAddress ?? local.recipient,
-                    nonce: String(local.nonce) }, signal, guard);
+                    nonce: String(local.nonce), chainId: scope.network.chainId };
+                  return sharedObserve ? sharedObserve(expected) : rpc.observation({ hash: expected.hash, from: expected.from, to: expected.to, nonce: expected.nonce }, signal, guard);
                 },
                 async saveCache(_scope, _candidates, check) { checked(check)(); },
                 async saveView(_scope, _view, check) { checked(check)(); },
@@ -7460,7 +7461,7 @@ export function createKeyringRuntimeFactory(
               const saved = await activityHistory.load(scope, guard); guard();
               return { ...page, records: page.records.filter(local => !saved.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')) };
             },
-            async observeLocal(local, assertCurrent, signal) {
+            async observeLocal(local, assertCurrent, signal, sharedObserve) {
               const { hash, chainId, address, walletFingerprint } = local;
               const { scope, guard, type } = await activityContext(assertCurrent);
               if (chainId !== scope.network.chainId || address !== scope.address || walletFingerprint !== scope.walletFingerprint || local.accountId !== scope.accountId)
@@ -7502,7 +7503,7 @@ export function createKeyringRuntimeFactory(
               try {
                 const result = await observeRetainedEvmTransaction(signedRecords, { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard },
                   scope.network.chainId, scope.address, hash,
-                  expected => observe(scope.network, expected, signal, guard), guard);
+                  expected => sharedObserve ? sharedObserve(expected) : observe(scope.network, expected, signal, guard), guard);
                 guard(); return result.observation;
               } catch (error) {
                 if (signedRecords.requiresReopen) {

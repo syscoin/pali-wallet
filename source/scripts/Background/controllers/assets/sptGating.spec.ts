@@ -45,7 +45,8 @@ describe('AssetsManager SPT gating by chain', () => {
       ACCOUNT.xpub,
       'https://blockbook.syscoin.org/',
       57,
-      CURRENT_ASSETS.syscoin
+      CURRENT_ASSETS.syscoin,
+      undefined
     );
     expect(result.syscoin).toEqual([
       { assetGuid: '123', balance: 2, chainId: 57 },

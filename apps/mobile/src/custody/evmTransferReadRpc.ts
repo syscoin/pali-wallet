@@ -4,8 +4,8 @@ import { JsonRpcReadClient, RpcReadCapabilities, RpcReadError } from '@sidhujag/
 import { isReadOnlyRpcMethod, RpcResponseIntegrityError } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
 import { AUTOMATIC_FEE, chooseEvmFees, snapshotEvmFeeChoice, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice.ts';
 import { classifyDappRpcMethod, DAPP_PUBLIC_RPC_METHODS, normalizeDappRpcRequest, type DappPublicRpcMethod, type DappPublicRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
-import { EthereumRpcErrorHandler } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
-import { assertJsonWorkBudget, DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
+import { EthereumRpcErrorHandler, serializePublicRpcError } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
+import { assertPublicResponseBudget, DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
 import { privacyWithdrawalFees } from '../../../../source/utils/privacy/withdrawalFees.ts';
 import { captureEvmGasPolicy, prepareEvmDappQuote, EvmDappReviewRequiredError, type EvmDappPreparedQuote, type EvmDappTransactionRequest, type EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
 import { getAddress } from 'ethers/address';
@@ -29,7 +29,7 @@ import { refineNativeEvmMaximum } from '../../../../source/shared/evmNativeMaxim
 import { evmEstimateRequest } from '../../../../source/shared/evmEstimateRequest.ts';
 import { type EvmFeeFunding, captureNativeEvmFeeCoverage, assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, EvmFeeBalanceError } from '../../../../source/shared/evmFeeApproval.ts';
-import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
+import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError, isEvmProtectedEmptySelfCall } from '../../../../source/shared/evmCancellationPayer.ts';
 import type { EvmReplacementRates, EvmSignedRetirementReadMethod } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 import { createSmartAccountInfrastructureReader, SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
@@ -197,8 +197,9 @@ export class EvmTransferReadRpc {
         const error = object(result.error);
         if (scope === 'dapp-rpc') {
           if (!Number.isInteger(error.code) || Number(error.code) < -2147483648 || Number(error.code) > 2147483647 || typeof error.message !== 'string' || !error.message || error.message.length > 256) return rejectRead('INVALID_RESPONSE');
-          assertJsonWorkBudget(error);
-          throw new EthereumRpcErrorHandler(Number(error.code), error.message, typeof error.data === 'string' ? error.data : undefined);
+          assertPublicResponseBudget(error);
+          const response = serializePublicRpcError(error, 256);
+          throw new EthereumRpcErrorHandler(response.code, response.message, response.data);
         }
         // Only an explicit unsupported priority-fee method reaches the SDK's bounded history fallback.
         if (method === 'eth_maxPriorityFeePerGas' && (error.code === -32601 || error.code === 4200)) {
@@ -389,7 +390,7 @@ export class EvmTransferReadRpc {
       await (verifyPublicIdentity ? verifyPublicIdentity(read.signal, read.assertCurrent) : this.checkChain(read));
       const result = await read(request.method, request.params);
       await (verifyPublicIdentity ? verifyPublicIdentity(read.signal, read.assertCurrent) : this.checkChain(read));
-      assertJsonWorkBudget(result);
+      assertPublicResponseBudget(result);
       return result;
     }, 'dapp-rpc');
   }
@@ -409,7 +410,7 @@ export class EvmTransferReadRpc {
       const results = await read.many(normalized);
       return results.map(result => {
         if (result.status === 'rejected') return result;
-        try { assertJsonWorkBudget(result.value); return result; }
+        try { assertPublicResponseBudget(result.value); return result; }
         catch (reason) { return { status: 'rejected', reason } as PromiseRejectedResult; }
       });
     }, 'dapp-rpc');
@@ -698,7 +699,7 @@ export class EvmTransferReadRpc {
       return Object.freeze({ transaction, balanceUnits: balance.toString(),
         maximumFeeUnits: approval.maximumFeeUnits, totalUnits: approval.maximumTotalUnits,
         ...(assetState ? { assetBalanceUnits: assetState.balanceUnits.toString() } : {}) });
-    }, 'endpoint');
+    }, asset && asset.standard !== 'ERC20' ? 'nft-quote' : 'endpoint');
   }
 
   /** One SDK fee policy serves live native/token preparation and exact-envelope requotes. */
@@ -898,8 +899,10 @@ export class EvmTransferReadRpc {
 
   /** Holdings and affordability for an exact retained replacement, without selecting a new nonce. */
   verifyReplacementForDispatch(input: EvmUnsignedTransfer, signal: AbortSignal, guard: () => void,
-    snapshot: EvmAutoNonceSnapshot, asset?: EvmTransferAsset, expectedDecimals?: number): Promise<void> {
+    snapshot: EvmAutoNonceSnapshot, asset?: EvmTransferAsset, expectedDecimals?: number, mode: 'speed-up' | 'cancel' = 'speed-up'): Promise<void> {
     const envelope = snapshotReplacementTransfer(input, this.network);
+    if (mode === 'cancel' && !isEvmProtectedEmptySelfCall({ ...envelope, value: BigInt(envelope.value) }, 'cancel'))
+      return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.readPhaseOperation(signal, guard, async read => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
@@ -920,7 +923,7 @@ export class EvmTransferReadRpc {
       const approval = captureEvmFeeApproval(envelope, this.network.registrationHash, this.feeQuoteExpiry());
       const balance = await availableEvmReplacementBalance(snapshot, this.network.chainId, envelope.from,
         Number(latest), Number(pending), Number(envelope.nonce), BigInt(approval.maximumTotalUnits),
-        { canonical: canonicalBalance, pending: pendingBalance }, read.assertCurrent);
+        { canonical: canonicalBalance, pending: pendingBalance }, read.assertCurrent, mode === 'cancel' ? 'cancellation' : 'replacement');
       try {
         assertEvmFeeEstimateApproved(approval, { balance, estimatedGas: BigInt(envelope.gasLimit), sampledBlockGasLimit: sampled.gasLimit,
           ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval));

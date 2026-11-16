@@ -61,7 +61,7 @@ const statusTag = (row: ActivityRow) => {
     return observation.status === 'confirmed'
       ? 'confirmed'
       : 'reverted';
-  if (!observation && !row.unavailable && !row.indexed && row.retainedObservation?.status === 'mined')
+  if (!observation && !row.unavailable && row.retainedObservation?.status === 'mined')
     return row.retainedObservation.outcome === 'confirmed' ? 'confirmed' : 'reverted';
   if (row.replacementStatus === 'replaced') return 'replaced';
   if (observation) return 'pending';
@@ -177,7 +177,7 @@ function fee(row: ActivityRow, symbol: string): string {
     const units = row.unavailable ? undefined : row.observation
       ? row.observation.block && (row.observation.status === 'confirmed' || row.observation.status === 'reverted')
         ? row.observation.feeUnits : undefined
-      : !row.indexed && row.retainedObservation?.status === 'mined'
+      : row.retainedObservation?.status === 'mined'
         ? row.retainedObservation.feeUnits : undefined;
     if (units !== null && units !== undefined)
       return `${formatBaseUnits(units, 18)} ${symbol}`;

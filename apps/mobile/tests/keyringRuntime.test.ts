@@ -1937,7 +1937,7 @@ for (const expensiveAfterReview of [false, true]) {
       }
       assert.equal(signatures, expensiveAfterReview ? 0 : 1);
       const estimates = network.requests.filter((request) => request.method === 'eth_estimateGas');
-      assert.equal(estimates.length, 2);
+      assert.equal(estimates.length, expensiveAfterReview ? 2 : 3);
       for (const request of estimates) {
         assert.equal(request.params[1], 'pending');
         assert.deepEqual(request.params[0], {

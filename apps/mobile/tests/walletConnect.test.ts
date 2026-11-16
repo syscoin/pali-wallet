@@ -370,6 +370,40 @@ async function request(
   return event.request;
 }
 
+test('public response transport admits supported structured results and retains bounded error data', async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options);
+  const pending = await request(f);
+  const result = { oldestBlock: '0x1', baseFeePerGas: Array(1025).fill('0x1'), gasUsedRatio: Array(1024).fill(0.5), reward: Array.from({ length: 1024 }, () => Array(100).fill('0x1')) };
+  try {
+    await transport.respond(pending.session.binding, pending.id, { result }, () => {}, () => {});
+    assert.deepEqual(f.responders, [{ topic: TOPIC, response: { id: pending.id, jsonrpc: '2.0', result } }]);
+  } finally { await transport.close(); }
+
+  const other = fixture(), errorTransport = await openWalletConnectTransport(other.options);
+  const failed = await request(other), data = { data: '0x1234', message: 'execution reverted' };
+  try {
+    await errorTransport.respond(failed.session.binding, failed.id, { error: { code: 3, message: 'execution reverted', data } }, () => {}, () => {});
+    data.data = 'changed';
+    assert.deepEqual(other.responders, [{ topic: TOPIC, response: { id: failed.id, jsonrpc: '2.0', error: { code: 3, message: 'execution reverted', data: { data: '0x1234', message: 'execution reverted' } } } }]);
+  } finally { await errorTransport.close(); }
+});
+
+for (const invalid of ['bytes', 'depth', 'nodes'] as const) test(`public response transport refuses excessive ${invalid} before handoff`, async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options);
+  const pending = await request(f);
+  let result: unknown = invalid === 'bytes' ? 'x'.repeat(1024 * 1024) : Array(131_072).fill(0);
+  if (invalid === 'depth') {
+    result = null;
+    for (let i = 0; i < 33; i++) result = [result];
+  }
+  let handedOff = false;
+  try {
+    await assert.rejects(transport.respond(pending.session.binding, pending.id, { result }, () => {}, () => { handedOff = true; }));
+    assert.equal(handedOff, false);
+    assert.deepEqual(f.responders, []);
+  } finally { await transport.close(); }
+});
+
 const PREPARE_SMART_ACCOUNT = 'wallet_prepareSmartAccount';
 const PREPARED_ADDRESS = '0x' + '22'.repeat(20);
 function enableSmartPreparation(f: ReturnType<typeof fixture>) {

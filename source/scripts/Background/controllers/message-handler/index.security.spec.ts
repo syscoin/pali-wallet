@@ -233,3 +233,24 @@ it.each([
     });
   }
 );
+
+it('never invokes public error data accessors or forwards internal fields', async () => {
+  const getter = jest.fn();
+  const error = Object.defineProperty(
+    Object.assign(new Error('execution reverted'), { code: 3 }),
+    'data',
+    { get: getter }
+  );
+  methodRequestMock.mockRejectedValueOnce(error);
+  const result = await onMessage(
+    { type: 'METHOD_REQUEST', data: { method: 'eth_call', params: [] } },
+    {
+      url: 'https://example.com/page',
+      origin: 'https://example.com',
+      tab: { id: 1 },
+      documentId: 'error-accessor',
+    } as chrome.runtime.MessageSender
+  );
+  expect(result).toEqual({ error: { code: 3, message: 'execution reverted' } });
+  expect(getter).not.toHaveBeenCalled();
+});

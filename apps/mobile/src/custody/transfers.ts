@@ -748,7 +748,7 @@ export class NativeTransfers {
         this.showReview(quote.transaction, undefined, context,
           { replacement: Object.freeze({ mode, source, original: quote.original, feePlan: quote.feePlan, binding: original.binding }) });
       } else {
-        const quote = await rpc.prepareSpeedUp(hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, assertCurrent, original.rates, original.intent);
+        const quote = await rpc.prepareSpeedUp(hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, assertCurrent, original.rates, original.intent, original.collectible);
         assertCurrent();
         this.showReview(quote.transaction, original.intent, context, { replacement: Object.freeze({ mode, original: quote.original, binding: original.binding }),
           replacementCollectible: original.collectible, smartAccount: original.smartAccount });
@@ -1086,7 +1086,7 @@ export class NativeTransfers {
           latest = mode === 'cancel'
             ? await rpc[replacement.source === 'saved' ? 'prepareSavedCancellation' : 'prepareCancellation'](
               original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, approved.transaction!)
-            : await rpc.prepareSpeedUp(original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, retained.intent);
+            : await rpc.prepareSpeedUp(original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, retained.intent, retained.collectible);
         } else if (collectible) {
           freshCollectible = await withNftInventorySignal(signal, collectible.inventorySignal, (owned) =>
             rpc.requoteNft(collectible.selection, collectible.quote, owned, guard, planner))
@@ -1155,7 +1155,7 @@ export class NativeTransfers {
         const check = () => { guard(); assertAdmission(); };
         if (approved.replacement) {
           if (!snapshot) throw new NativeTransferError('EXPIRED');
-          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible);
+          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible, approved.replacement.mode);
           check();
           dispatchVerified = true;
           return;

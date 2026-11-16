@@ -742,7 +742,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
   const getTokenDetails = async (
     contractAddress: string,
     walletAddress: string,
-    w3Provider: CustomJsonRpcProvider
+    w3Provider: CustomJsonRpcProvider,
+    observeErc20?: (
+      metadata: Awaited<ReturnType<typeof getTokenStandardMetadata>>
+    ) => void
   ): Promise<ITokenDetails | null> => {
     // Check cache first - no balance needed, so cache is more effective
     const context = metadataContext();
@@ -817,6 +820,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
             walletAddress,
             w3Provider
           );
+          observeErc20?.(metadata);
 
           basicTokenDetails = {
             id: `${contractAddress.toLowerCase()}-${context.chainId}`,
@@ -871,11 +875,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
   ): Promise<ITokenDetails | null> => {
     const context = metadataContext();
     try {
-      // Get basic details first (cached)
+      // This invocation alone may reuse the balance read while loading cold metadata.
+      let initialRead:
+        | Awaited<ReturnType<typeof getTokenStandardMetadata>>
+        | undefined;
       const basicDetails = await getTokenDetails(
         contractAddress,
         walletAddress,
-        w3Provider
+        w3Provider,
+        (metadata) => {
+          initialRead = metadata;
+        }
       );
       if (!basicDetails || !contextIsCurrent(context.key)) return null;
 
@@ -919,15 +929,20 @@ const EvmAssetsController = (): IEvmAssetsController => {
         return details;
       }
 
-      // For ERC-20 tokens, get fresh balance
-      const metadata = await getTokenStandardMetadata(
+      const token = new Contract(
         contractAddress,
-        walletAddress,
+        [
+          'function decimals() view returns (uint8)',
+          'function balanceOf(address) view returns (uint256)',
+        ],
         w3Provider
       );
-      const decimals = parseErc20Decimals(metadata.decimals ?? 18);
+      const [observedPrecision, observedBalance] = initialRead
+        ? [initialRead.decimals ?? 18, initialRead.balance]
+        : await Promise.all([token.decimals(), token.balanceOf(walletAddress)]);
+      const decimals = parseErc20Decimals(observedPrecision);
       const { balance, rawBalance } = formatErc20Balance(
-        metadata.balance,
+        observedBalance,
         decimals
       );
 

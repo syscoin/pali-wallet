@@ -205,6 +205,52 @@ it('commits a later-discovered historical transaction without replaying an old a
   expect(notificationManager.notifyTransaction).not.toHaveBeenCalled();
 });
 
+it.each(['incomplete', 'rejected', 'healthy', 'empty'])(
+  'uses only a successful history observation to establish alerts (%s)',
+  async (firstRead) => {
+    mockStore.dispatch({
+      type: 'vault/setAccountTransactions',
+      payload: {
+        accountType: type,
+        accountId: 0,
+        networkType: 'ethereum',
+        chainId: 5700,
+        transactions: [],
+      },
+    });
+    if (firstRead === 'rejected') {
+      fetchHistory.mockRejectedValueOnce(Error('offline'));
+      await expect(refresh()).rejects.toThrow('offline');
+    } else {
+      fetchHistory.mockResolvedValueOnce(
+        firstRead === 'incomplete'
+          ? markEvmHistoryIncomplete([])
+          : firstRead === 'empty'
+          ? []
+          : [
+              existing,
+              recent,
+              { ...recent, hash: `0x${'c'.repeat(64)}`, nonce: 12 },
+            ]
+      );
+      await refresh();
+    }
+    const historical = [
+      existing,
+      recent,
+      { ...recent, hash: `0x${'c'.repeat(64)}`, nonce: 12 },
+    ];
+    fetchHistory.mockResolvedValueOnce(historical);
+    await refresh();
+    expect(notificationManager.notifyTransaction).toHaveBeenCalledTimes(
+      firstRead === 'empty' ? 3 : 0
+    );
+    expect(controller.refreshBalancesAfterHistory).toHaveBeenCalledTimes(
+      firstRead === 'empty' ? 3 : 0
+    );
+  }
+);
+
 it('keeps cached EVM history when its reader returns an empty result', async () => {
   const scope = getWalletNavigationScope();
   fetchHistory.mockResolvedValue([]);

@@ -373,10 +373,14 @@ export function assertEvmFeeEstimateApproved(
   )
     throw new EvmFeeBalanceError();
   if (
-    transaction.type === 2 &&
-    (observed.baseFeePerGas === undefined ||
+    (transaction.type === 2 && observed.baseFeePerGas === undefined) ||
+    (observed.baseFeePerGas !== undefined &&
       boundedQuantity(observed.baseFeePerGas) >
-        BigInt(transaction.maxFeePerGas))
+        BigInt(
+          transaction.type === 0
+            ? transaction.gasPrice
+            : transaction.maxFeePerGas
+        ))
   )
     invalid('Reviewed EVM maximum fee is below the current base fee');
 }
