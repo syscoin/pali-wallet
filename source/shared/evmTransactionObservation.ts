@@ -68,6 +68,29 @@ export function readEvmReceiptFeeUnits(
   if (receipt.gasUsed === undefined || receipt.effectiveGasPrice === undefined)
     return null;
   let fee = quantity(receipt.gasUsed) * quantity(receipt.effectiveGasPrice);
+  const blobReceipt =
+    receipt.type !== undefined && quantity(receipt.type) === BigInt(3);
+  if (
+    blobReceipt ||
+    receipt.blobGasUsed !== undefined ||
+    receipt.blobGasPrice !== undefined
+  ) {
+    // Blob gas is charged independently of execution, including reverted calls.
+    if (!blobReceipt) return null;
+    try {
+      const used = quantity(receipt.blobGasUsed),
+        price = quantity(receipt.blobGasPrice);
+      if (
+        used === BigInt(0) ||
+        used % BigInt(131072) !== BigInt(0) ||
+        price === BigInt(0)
+      )
+        return null;
+      fee += used * price;
+    } catch {
+      return null;
+    }
+  }
   if (chainId === '8453' || chainId === '84532') {
     // Base receipts expose the L1 data charge separately from execution gas.
     // A receipt with an operator charge needs a fork-aware total.

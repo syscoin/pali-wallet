@@ -44,3 +44,64 @@ test('missing or malformed optional fee fields do not invalidate an otherwise ca
     assert.equal('feeUnits' in value, false);
   }
 });
+
+const blobFields = { type: '0x3', gasUsed: '0x5208', effectiveGasPrice: '0x3b9aca00', blobGasUsed: '0x20000', blobGasPrice: '0x3b9aca00' };
+
+test('qualified blob fees include execution and blob gas exactly for successful and reverted outcomes', async () => {
+  for (const [status, gasUsed, expectedFee] of [
+    ['0x1', '0x5208', '152072000000000'],
+    ['0x0', '0xc350', '181072000000000'],
+  ] as const) {
+    const methods: string[] = [];
+    const value = await observeEvmTransaction(expected, async method => {
+      methods.push(method);
+      return method === 'eth_chainId' ? '0x1'
+        : method === 'eth_getTransactionReceipt' ? { ...receipt, ...blobFields, status, gasUsed }
+          : { number: '0x2', hash: blockHash, gasLimit: '0x100000' };
+    }, () => undefined);
+    assert.equal(value.status, 'mined');
+    if (value.status !== 'mined') assert.fail('Expected canonical outcome');
+    assert.equal(value.outcome, status === '0x1' ? 'confirmed' : 'reverted');
+    assert.equal(value.feeUnits, expectedFee);
+    assert.deepEqual(methods, ['eth_chainId', 'eth_getTransactionReceipt', 'eth_getBlockByNumber', 'eth_chainId']);
+  }
+  assert.equal(readEvmReceiptFeeUnits({ type: '0x2', gasUsed: '0x5208', effectiveGasPrice: '0x3b9aca00' }, '1'), '21000000000000');
+  assert.equal(readEvmReceiptFeeUnits({ type: '0x2', gasUsed: '0x5208', effectiveGasPrice: '0x3b9aca00', l1Fee: '0x5af3107a4000' }, '8453'), '121000000000000');
+});
+
+test('incomplete or malformed blob components never masquerade as a complete execution-only fee', async () => {
+  for (const fields of [
+    { blobGasUsed: undefined }, { blobGasPrice: undefined },
+    { blobGasUsed: undefined, blobGasPrice: undefined },
+    { blobGasUsed: '0x0' }, { blobGasPrice: '0x0' }, { blobGasUsed: '0x1' },
+    { blobGasUsed: '0x020000' }, { blobGasPrice: '0x01' },
+    { blobGasUsed: 131072 }, { blobGasPrice: null },
+    { blobGasUsed: '0x1' + '0'.repeat(64) },
+    { blobGasPrice: '0x1' + '0'.repeat(64) },
+    { type: '0x2' }, { type: undefined },
+  ]) {
+    assert.equal(readEvmReceiptFeeUnits({ ...blobFields, ...fields }, '1'), null);
+    const value = await observeEvmTransaction(expected, async method => method === 'eth_chainId' ? '0x1'
+      : method === 'eth_getTransactionReceipt' ? { ...receipt, ...blobFields, ...fields }
+        : { number: '0x2', hash: blockHash, gasLimit: '0x100000' }, () => undefined);
+    assert.equal(value.status, 'mined');
+    assert.equal(value.status === 'mined' && value.outcome, 'confirmed');
+    assert.equal('feeUnits' in value, false);
+  }
+});
+
+test('blob fee products and complete totals remain inside uint256 without hiding a canonical outcome', async () => {
+  const maximum = (1n << 256n) - 1n;
+  for (const fields of [
+    { blobGasPrice: '0x' + maximum.toString(16) },
+    { gasUsed: '0x1', effectiveGasPrice: '0x' + maximum.toString(16), blobGasPrice: '0x1' },
+  ]) {
+    assert.throws(() => readEvmReceiptFeeUnits({ ...blobFields, ...fields }, '1'), { code: 'INVALID_RESPONSE' });
+    const value = await observeEvmTransaction(expected, async method => method === 'eth_chainId' ? '0x1'
+      : method === 'eth_getTransactionReceipt' ? { ...receipt, ...blobFields, ...fields }
+        : { number: '0x2', hash: blockHash, gasLimit: '0x100000' }, () => undefined);
+    assert.equal(value.status === 'mined' && value.outcome, 'confirmed');
+    assert.equal('feeUnits' in value, false);
+  }
+  assert.equal(readEvmReceiptFeeUnits({ ...blobFields, gasUsed: '0x1', effectiveGasPrice: '0x' + (maximum - 131072n).toString(16), blobGasPrice: '0x1' }, '1'), maximum.toString());
+});

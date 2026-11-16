@@ -6,6 +6,7 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { AbiCoder, id } from 'ethers';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
@@ -236,6 +237,34 @@ function all(value: unknown): Element[] {
   return [node, ...node.children.flat(Infinity).flatMap(all)];
 }
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+test('an already loaded indexed transaction opens without waiting for saved inventory', async () => {
+  const owner = '0x' + '22'.repeat(20);
+  const scope = createActivityScope('a'.repeat(64), 'hd:60:0', owner, 'ethereum');
+  const indexed = mapEvmExplorerTransaction({ hash, from: owner, to: '0x' + '33'.repeat(20), value: '1',
+    blockNumber: '123', timeStamp: '1700000000', nonce: '0', isError: '0', input: '0x' }, 1);
+  let savedReads = 0, detailReads = 0;
+  const held = new Promise<never>(() => {});
+  const runtime: NativeActivityRuntime = {
+    async load(check) { check(); return { scope, locals: [], saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false } }; },
+    async loadSavedPending() { savedReads++; return held; },
+    async saveCache(_scope, _rows, check) { check(); },
+    async saveView(_scope, _view, check) { check(); },
+  };
+  const controller = new NativeActivity({ getSnapshot: () => ({ phase: 'ready', revision: 1 }), subscribe: () => () => {} }, () => runtime,
+    { async page(_scope, feed) { return feed === 'txlist' ? [{ hash, blockNumber: '123', timestamp: 1700000000000, tokenHint: false, indexed }] : []; } },
+    { async read() { detailReads++; return null; } });
+  await controller.refresh();
+  const f = fixture(hash, true, { controller, detailOnly: true, externallyConnected: true });
+  try {
+    f.render();
+    await settle();
+    const tree = f.render();
+    assert.equal(savedReads, 0);
+    assert.equal(detailReads, 1);
+    assert(all(tree).some(node => node.type === 'TransactionDetailLayout'));
+  } finally { f.dispose(); }
+});
+
 test('actual Activity opens the saved record once and never replays it', async () => {
   const f = fixture(hash);
   try {
@@ -307,6 +336,40 @@ test('privacy masks Activity list quantities and accessibility labels but keeps 
     preview.props.onPress(); await settle();
     const detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
     assert.equal(detail.props.amount, '-1.25 ETH');
+  } finally { f.dispose(); }
+});
+
+test('decoded ERC1155 batches retain total units and per-token quantities in Activity with privacy controls', async () => {
+  const owner = '0x' + '22'.repeat(20), recipient = '0x' + '33'.repeat(20), contract = '0x' + '55'.repeat(20);
+  const input = id('safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)').slice(0, 10) +
+    AbiCoder.defaultAbiCoder().encode(['address', 'address', 'uint256[]', 'uint256[]', 'bytes'],
+      [owner, recipient, ['7', '8'], ['2', '5'], '0x']).slice(2);
+  const indexed = mapEvmExplorerTransaction({ hash, from: owner, to: contract, value: '0', input,
+    blockNumber: '123', timeStamp: '1700000000', nonce: '0', isError: '0' }, 1);
+  const display = await getEvmTransactionDisplayInfo(indexed, 'ETH', {
+    chainId: 1, assets: [{ chainId: 1, contractAddress: contract, isNft: true, tokenSymbol: 'ITEM' }],
+    lookupToken: async () => { throw Error('Batch summary must not initiate metadata reads'); },
+  });
+  const row = { hash, indexed, display, indexedStatus: 'confirmed', checking: false, unavailable: false };
+  const f = fixture();
+  try {
+    f.rows([row]);
+    const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    const preview = list.props.renderItem({ item: row, index: 0 });
+    assert.equal(preview.props.amount, '-7 ITEM');
+    assert(!preview.props.label.includes('0 ETH'));
+    preview.props.onPress(); await settle();
+    let detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+    assert.equal(detail.props.amount, '-7 ITEM');
+    assert.deepEqual(display.nftTransfers, [{ tokenId: '7', quantity: '2' }, { tokenId: '8', quantity: '5' }]);
+    for (const [tokenId, quantity] of [['7', '2'], ['8', '5']])
+      assert.equal(detail.props.rows.find((item: { label: string }) => item.label === `ITEM #${tokenId}`)?.value, quantity);
+    f.privacy(true);
+    detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+    for (const tokenId of ['7', '8'])
+      assert.equal(detail.props.rows.find((item: { label: string }) => item.label === `ITEM #${tokenId}`)?.value, '••••');
+    const hiddenList = all(f.render()).find(node => node.type === 'FlatList'); assert(hiddenList);
+    assert.equal(hiddenList.props.renderItem({ item: row, index: 0 }).props.amount, '••••');
   } finally { f.dispose(); }
 });
 

@@ -98,6 +98,27 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     setNftView((previous) => ({ ...previous, selectedTokenId: tokenId }));
   const setManualTokenId = (tokenId: string) =>
     setNftView((previous) => ({ ...previous, manualTokenId: tokenId }));
+  // Explicit inspection survives ownership changes; automatic choices follow
+  // complete enumeration results instead of retaining an ID that disappeared.
+  const explicitSelection = useRef<{ scope: string; tokenId: string | null }>();
+  const reconcileSelection = (
+    tokens: { balance: number; tokenId: string }[],
+    complete: boolean
+  ) =>
+    setNftView((previous) => {
+      if (
+        previous.manualTokenId ||
+        (explicitSelection.current?.scope === nftScope &&
+          explicitSelection.current.tokenId === previous.selectedTokenId) ||
+        tokens.some((token) => token.tokenId === previous.selectedTokenId) ||
+        (previous.selectedTokenId && !complete)
+      )
+        return previous;
+      const selected = tokens[0]?.tokenId ?? null;
+      return selected === previous.selectedTokenId
+        ? previous
+        : { ...previous, selectedTokenId: selected };
+    });
   const [hasMoreTokens, setHasMoreTokens] = useState(false);
   const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
   const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
@@ -120,6 +141,8 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
       currentNft.balance <= 0 ||
       currentNft.tokenStandard === 'ERC-1155'
     ) {
+      if (currentNft?.tokenStandard === 'ERC-721' && currentNft.balance <= 0)
+        reconcileSelection([], true);
       setIsLoadingTokenIds(false);
       return;
     }
@@ -139,9 +162,12 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
         const tokens = result?.tokens || [];
         setNftTokenIds(tokens);
         setHasMoreTokens(result?.hasMore || false);
-        if (tokens.length > 0 && !selectedTokenId && !manualTokenId) {
-          setSelectedTokenId(tokens[0].tokenId);
-        }
+        reconcileSelection(
+          tokens,
+          // Unsupported enumeration also returns an empty manual-entry list.
+          result?.hasMore === false &&
+            (tokens.length > 0 || result?.requiresManualEntry === false)
+        );
       } catch (error) {
         console.error('Error loading NFT token IDs:', error);
       } finally {
@@ -221,6 +247,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   // Handle manual token ID input with debounced verification
   const handleManualTokenIdChange = (value: string) => {
+    explicitSelection.current = { scope: nftScope, tokenId: value || null };
     setManualTokenId(value);
     setSelectedTokenId(value || null);
     setVerifiedTokenBalance(null);
@@ -344,6 +371,10 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                           key={token.tokenId}
                           type="button"
                           onClick={() => {
+                            explicitSelection.current = {
+                              scope: nftScope,
+                              tokenId: token.tokenId,
+                            };
                             setSelectedTokenId(token.tokenId);
                             setManualTokenId('');
                           }}

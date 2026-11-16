@@ -32,15 +32,33 @@ const source = () => {
     change(update: Partial<CustodySnapshot>) { state = { ...state, ...update, revision: state.revision + 1 }; for (const listener of listeners) listener(state); },
   };
 };
-type PageCall = { scope: ActivityScope; feed: ActivityFeed; page: number; signal: AbortSignal };
+type PageCall = { scope: ActivityScope; feed: ActivityFeed; page: number; signal: AbortSignal; guard: () => void };
 class FakeExplorer extends ActivityExplorerReader {
   readonly pages: PageCall[] = [];
   private readonly pageReply: (call: PageCall) => readonly DiscoveredActivityCandidate[] | Promise<readonly DiscoveredActivityCandidate[]>;
   constructor(pageReply: (call: PageCall) => readonly DiscoveredActivityCandidate[] | Promise<readonly DiscoveredActivityCandidate[]> = () => []) {
     super(async () => { throw Error('Unexpected real explorer fetch'); }); this.pageReply = pageReply;
   }
-  override async page(scope: ActivityScope, feed: ActivityFeed, page: number, signal: AbortSignal, _guard: () => void) {
-    const call = { scope, feed, page, signal }; this.pages.push(call); return this.pageReply(call);
+  override async page(scope: ActivityScope, feed: ActivityFeed, page: number, signal: AbortSignal, guard: () => void) {
+    const call = { scope, feed, page, signal, guard }; this.pages.push(call); return this.pageReply(call);
+  }
+}
+function boundedStalledExplorer() {
+  const signals: AbortSignal[] = [];
+  const reader = new ActivityExplorerReader(async (_url, init) => {
+    signals.push(init.signal as AbortSignal);
+    return new Promise<Response>((_resolve, reject) => {
+      init.signal!.addEventListener('abort', () => reject(Error('Transport cancelled')), { once: true });
+    });
+  });
+  const explorer = new FakeExplorer(call => reader.page({ ...call.scope, apiUrl: 'https://explorer.example/api' }, call.feed, call.page, call.signal, call.guard));
+  return { explorer, signals };
+}
+async function expireExplorerResponses(t: { mock: { timers: { tick(ms: number): void } } }) {
+  // Each admitted feed owns its real 12-second response deadline.
+  for (let feed = 0; feed < 2; feed++) {
+    t.mock.timers.tick(12_000);
+    for (let turn = 0; turn < 40; turn++) await Promise.resolve();
   }
 }
 type ReceiptCall = { hash: string; owner: string; signal: AbortSignal; guard: () => void };
@@ -559,20 +577,19 @@ for (const boundary of ['refresh', 'lock'] as const) test(`retired automatic fai
 });
 
 test('a needed terminal sibling remains observable after only explorer work times out', async t => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
   const base = fixture();
   const original = { ...base.local(1, 'submitted'), nonce: 7, transactionType: 2 };
   const winner = { ...base.local(2, 'confirmed'), nonce: 7, transactionType: 2 };
-  const explorer = new FakeExplorer(({ signal }) => new Promise((_resolve, reject) => {
-    signal.addEventListener('abort', () => reject(Error('timeout')), { once: true });
-  }));
+  const { explorer, signals } = boundedStalledExplorer();
   const f = fixture({ locals: [winner], explorer,
     loadSavedPending: async () => ({ records: [original], nextCursor: null }),
     observeLocal: async () => ({ status: 'mined', outcome: 'confirmed',
       block: { number: '42', hash: hash(42) }, transactionIndex: 0 }) });
   const refresh = f.controller.refresh();
   for (let turn = 0; turn < 20 && !explorer.pages.length; turn++) await Promise.resolve();
-  t.mock.timers.tick(30000); await refresh; t.mock.timers.reset();
+  await expireExplorerResponses(t); await refresh; t.mock.timers.reset();
+  assert.equal(signals.length, 2); assert(signals.every(signal => signal.aborted));
   assert.equal(f.localReads.length, 0);
   await f.controller.loadSavedPending();
   await until(() => f.controller.getSnapshot().savedPending?.rows[0]?.replacementStatus === 'replaced');
@@ -666,24 +683,24 @@ test('refresh persists recent discoveries ahead of old cached hints for an offli
 });
 
 test('cached fallback survives a timed-out page without implicit RPC hydration', async (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
   const receipts = new FakeReceipts();
   let timedOut = false;
-  const explorer = new FakeExplorer(({ feed, signal }) => timedOut
-    ? feed === 'txlist' ? [candidate(9), candidate(10)] : []
-    : new Promise((_resolve, reject) => {
-      signal.addEventListener('abort', () => reject(Error('timeout')), { once: true });
-    }));
+  const stalled = boundedStalledExplorer();
+  const explorer = new FakeExplorer(call => timedOut
+    ? call.feed === 'txlist' ? [candidate(9), candidate(10)] : []
+    : stalled.explorer.page(call.scope, call.feed, call.page, call.signal, call.guard));
   const f = fixture({ explorer, receipts, cached: [candidate(9)] });
   const refreshing = f.controller.refresh();
   for (let turn = 0; turn < 20 && explorer.pages.length === 0; turn++) await Promise.resolve();
   assert.equal(explorer.pages.length, 1);
-  t.mock.timers.tick(30000);
+  await expireExplorerResponses(t);
   await refreshing;
   for (let turn = 0; turn < 20; turn++) await Promise.resolve();
   assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash), [hash(9)]);
-  assert.equal(f.cacheWrites.length, 0);
-  assert.equal(f.controller.getSnapshot().error, 'load-incomplete');
+  assert.deepEqual(f.cacheWrites.at(-1)?.rows.map(row => row.hash), [hash(9)]);
+  assert.equal(f.controller.getSnapshot().error, 'feed-unavailable');
+  assert.equal(stalled.signals.length, 2); assert(stalled.signals.every(signal => signal.aborted));
   timedOut = true;
   await f.controller.loadMore();
   assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash).sort(), [hash(9), hash(10)].sort());
@@ -691,12 +708,10 @@ test('cached fallback survives a timed-out page without implicit RPC hydration',
 });
 
 test('Saved pending still pages and inspects after explorer timeout, then retires on lock', async (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
   const fixtureRecords = fixture();
   const first = fixtureRecords.local(2, 'submitted'), older = fixtureRecords.local(1, 'attempted');
-  const explorer = new FakeExplorer(({ signal }) => new Promise((_resolve, reject) => {
-    signal.addEventListener('abort', () => reject(Error('timeout')), { once: true });
-  }));
+  const { explorer, signals } = boundedStalledExplorer();
   const cursors: (string | undefined)[] = [];
   const held = deferred<EvmTransactionObservation>();
   let ownedChecks = 0;
@@ -722,10 +737,10 @@ test('Saved pending still pages and inspects after explorer timeout, then retire
   try {
     for (let turn = 0; turn < 20 && explorer.pages.length === 0; turn++) await Promise.resolve();
     assert.equal(explorer.pages.length, 1);
-    t.mock.timers.tick(30000);
+    await expireExplorerResponses(t);
     for (let turn = 0; turn < 20 && !f.controller.getSnapshot().error; turn++) await Promise.resolve();
-    assert.equal(f.controller.getSnapshot().error, 'load-incomplete');
-    assert.equal(explorer.pages[0]?.signal.aborted, true);
+    assert.equal(f.controller.getSnapshot().error, 'feed-unavailable');
+    assert.equal(signals.length, 2); assert(signals.every(signal => signal.aborted));
     t.mock.timers.reset();
 
     await f.controller.loadSavedPending();
@@ -739,7 +754,7 @@ test('Saved pending still pages and inspects after explorer timeout, then retire
     await until(() => f.controller.getSnapshot().savedPending?.rows[1]?.retainedObservation?.status === 'missing');
     assert.equal(detailSignal?.aborted, false);
     assert.notEqual(detailSignal, explorer.pages[0]?.signal);
-    assert.equal(explorer.pages.length, 1);
+    assert.equal(explorer.pages.length, 2);
     assert.equal(f.receipts.calls.length, 0);
 
     f.controller.inspect(older.hash);

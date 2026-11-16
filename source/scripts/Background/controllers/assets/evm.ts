@@ -39,7 +39,7 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
-import { formatUnits, isAddress } from 'utils/ethersV6Compat';
+import { isAddress } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { fetchOwnedTokenRows, TokenDiscoveryError } from 'utils/tokenDiscovery';
 
@@ -170,19 +170,14 @@ const EvmAssetsController = (): IEvmAssetsController => {
             )
               return null;
 
-            // Safely parse decimals: preserve 0, fallback to 18 only if missing/invalid
-            const parsed = Number(token.decimals);
-            const safeDecimals =
-              token.decimals === null || token.decimals === undefined
-                ? 18
-                : parsed;
-            if (
-              !Number.isInteger(safeDecimals) ||
-              safeDecimals < 0 ||
-              safeDecimals > 80
-            ) {
-              return null;
-            }
+            const precision = token.decimals ?? 18;
+            const raw = token.balance ?? '0';
+            const amount = formatErc20Balance(
+              typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0
+                ? String(raw)
+                : raw,
+              precision
+            );
 
             return {
               id: `${token.contractAddress.toLowerCase()}-${
@@ -191,10 +186,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
               symbol: cleanTokenSymbol(String(token.symbol || 'Unknown')),
               name: String(token.name || 'Unknown Token'),
               contractAddress: token.contractAddress,
-              balance: parseFloat(
-                formatUnits(token.balance || '0', safeDecimals)
-              ),
-              decimals: safeDecimals,
+              ...amount,
+              decimals: Number(precision),
               tokenStandard: tokenType,
             };
           } catch {
@@ -999,9 +992,16 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Check cache first
     const context = metadataContext();
     const currentPlatform = getCurrentNetworkPlatform();
+    if (!currentPlatform) {
+      const { activeNetwork } = store.getState().vault;
+      console.log(
+        `[EvmAssetsController] No platform ID configured for network: ${activeNetwork.label} (chainId: ${activeNetwork.chainId})`
+      );
+      return null;
+    }
     const cacheKey = `${
       context.key
-    }:${contractAddress.toLowerCase()}:marketonly`;
+    }:${currentPlatform}:${contractAddress.toLowerCase()}:marketonly`;
     const cached = marketDataCache.get(cacheKey);
     const now = Date.now();
 
@@ -1024,14 +1024,6 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Create the promise and store it
     const requestPromise = (async () => {
       try {
-        if (!currentPlatform) {
-          const { activeNetwork } = store.getState().vault;
-          console.log(
-            `[EvmAssetsController] No platform ID configured for network: ${activeNetwork.label} (chainId: ${activeNetwork.chainId})`
-          );
-          return null;
-        }
-
         // Only fetch market data from CoinGecko
         const response = await retryableFetch(
           `https://api.coingecko.com/api/v3/coins/${currentPlatform}/contract/${contractAddress}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
@@ -1039,7 +1031,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         if (response.ok) {
           const coinGeckoData = await response.json();
-          if (!contextIsCurrent(context.key)) return null;
+          if (
+            !contextIsCurrent(context.key) ||
+            getCurrentNetworkPlatform() !== currentPlatform
+          )
+            return null;
 
           // Clean the symbol and return in ITokenDetails format
           const marketData = {
@@ -1071,16 +1067,19 @@ const EvmAssetsController = (): IEvmAssetsController => {
           error
         );
         return null;
-      } finally {
-        // Clean up the pending request
-        pendingRequests.delete(pendingKey);
       }
     })();
 
     // Store the pending request
     pendingRequests.set(pendingKey, requestPromise);
 
-    return requestPromise;
+    // Even a synchronous transport failure must clean up after insertion.
+    try {
+      return await requestPromise;
+    } finally {
+      if (pendingRequests.get(pendingKey) === requestPromise)
+        pendingRequests.delete(pendingKey);
+    }
   };
 
   /**

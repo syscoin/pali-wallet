@@ -301,14 +301,19 @@ function NativeActivityContent({
     if (!target || snapshot.status !== 'ready' || !snapshot.scopeKey || arrival.current === target) return;
     arrival.current = target;
     const epoch = lifetime.current.epoch;
-    void controller.loadSavedPending().then(() => {
-      if (!initialHash || lifetime.current.epoch !== epoch || arrival.current !== target) return;
+    const selectLoaded = () => {
+      if (!initialHash || lifetime.current.epoch !== epoch || arrival.current !== target) return false;
       const current = controller.getSnapshot();
+      if (current.status !== 'ready' || current.scopeKey !== snapshot.scopeKey) return false;
       if (current.savedPending?.rows.some(row => row.hash === initialHash) || current.rows.some(row => row.hash === initialHash)) {
         setSelected(initialHash);
         controller.inspect(initialHash);
+        return true;
       }
-    }).catch(() => undefined);
+      return false;
+    };
+    if (selectLoaded()) return;
+    void controller.loadSavedPending().then(selectLoaded).catch(() => undefined);
   }, [controller, initialHash, savedPendingOnly, snapshot.scopeKey, snapshot.status]);
   const list = useRef<FlatList<ActivityRow>>(null);
   const listBounds = useRef<React.ComponentRef<typeof View>>(null);
@@ -686,6 +691,10 @@ function NativeActivityContent({
               { label: t('send.to'), value: recipient(chosen) ?? (chosen.indexed?.to === null || chosen.indexed?.to === '' || chosen.local?.recipient === null ? t('transactions.replay.creation') : t('mobile.activityViews.nativeActivity.notAvailable')),
                 actionLabel: t('mobile.activityViews.nativeActivity.copyRecipientAddress'), ...(recipient(chosen) ? { onPress: () => setCopyAddress(recipient(chosen)) } : {}) },
               { label: t('send.networkFee'), value: fee(chosen, snapshot.nativeSymbol ?? 'ETH') },
+              ...(chosen.display?.nftTransfers?.map(item => ({
+                label: `${chosen.display!.displaySymbol} #${item.tokenId}`,
+                value: hideBalances ? HIDDEN_BALANCE : item.quantity,
+              })) ?? []),
               ...(chosen.local?.smartAccount ? [{ label: t('transactions.feePayer'), value: chosen.local.smartAccount.payer,
                 actionLabel: t('transactions.copyAddress'), onPress: () => setCopyAddress(chosen.local!.smartAccount!.payer) }] : []),
               { label: t('send.transactionId'), value: chosen.hash },

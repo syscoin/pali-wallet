@@ -242,6 +242,36 @@ it('displays a reported zero price instead of hiding available market data', asy
   expect(screen.getByText('$0')).toBeTruthy();
 });
 
+it.each([
+  ['btc', 0.0000003, '₿3e-7'],
+  ['btc', 0.000001, '₿0.000001'],
+  ['btc', 0, '₿0.000000'],
+  ['usd', 0.02, '$0.020000'],
+])(
+  'uses the real price formatter for %s quote %s',
+  async (currency, quote, expected) => {
+    const formatUtils = jest.requireMock('utils/index');
+    const formatter = jest
+      .spyOn(formatUtils, 'formatCurrency')
+      .mockImplementation(jest.requireActual('utils/format').formatCurrency);
+    try {
+      mockState.price.fiat.asset = currency;
+      const data: any = market(Number(quote));
+      data['market_data']['current_price'] = { [currency]: quote };
+      data['market_data']['market_cap'] = { [currency]: 10 };
+      render(<EvmAssetDetails id={tokens[0].id} />);
+      await act(async () => pending.get(tokens[0].contractAddress)!(data));
+      const price = screen.getByText('tokens.currentPrice').parentElement!;
+      expect(price).toHaveTextContent(expected);
+      expect(formatter).toHaveBeenCalledWith(String(quote), 6, true);
+      expect(formatter).toHaveBeenCalledWith('10', 0);
+      if (Number(quote) > 0) expect(price).not.toHaveTextContent('₿0.000000');
+    } finally {
+      formatter.mockRestore();
+    }
+  }
+);
+
 it.each([undefined, null, NaN, Infinity])(
   'omits unavailable optional market values without hiding the price (%s)',
   async (value) => {

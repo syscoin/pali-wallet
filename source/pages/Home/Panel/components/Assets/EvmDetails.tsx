@@ -203,7 +203,8 @@ export const EvmAssetDetails = ({
               {currencySymbol || ''}
               {formatCurrency(
                 marketData.current_price[userCurrency].toString(),
-                6
+                6,
+                true
               )}
             </span>
             {change24h !== null && (

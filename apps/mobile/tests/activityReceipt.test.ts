@@ -494,6 +494,66 @@ test('Base details and retained observations include verified L1 fee without ext
   }
 });
 
+test('actual receipt details include blob charges on success and revert with the ordinary five-method graph', async () => {
+  for (const [status, gasUsed, expectedFee] of [
+    ['0x1', '0x5208', '152072000000000'],
+    ['0x0', '0xc350', '181072000000000'],
+  ] as const) {
+    const f = fixture(call => call.method === 'eth_getTransactionReceipt'
+      ? receipt({ type: '0x3', status, gasUsed, effectiveGasPrice: '0x3b9aca00', blobGasUsed: '0x20000', blobGasPrice: '0x3b9aca00' }) : undefined);
+    const detail = await f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'));
+    assert.equal(detail?.status, status === '0x1' ? 'confirmed' : 'reverted');
+    assert.equal(detail?.feeUnits, expectedFee);
+    assert.equal(formatBaseUnits(detail!.feeUnits!, 18), status === '0x1' ? '0.000152072' : '0.000181072');
+    assert.deepEqual(f.calls.map(call => call.method), ['eth_chainId', 'eth_getTransactionByHash', 'eth_getTransactionReceipt', 'eth_getBlockByNumber', 'eth_chainId']);
+  }
+  for (const [id, fields, expectedFee] of [
+    ['ethereum', {}, '21000000000000'],
+    ['base', { l1Fee: '0x5af3107a4000' }, '121000000000000'],
+  ] as const) {
+    const network = getNativeNetwork(id);
+    const f = fixture(call => call.method === 'eth_getTransactionReceipt'
+      ? receipt({ type: '0x2', gasUsed: '0x5208', effectiveGasPrice: '0x3b9aca00', ...fields }) : undefined, undefined, network);
+    const detail = await f.reader.read(HASH, OWNER, signal(), () => undefined, network);
+    assert.equal(detail?.status, 'confirmed');
+    assert.equal(detail?.feeUnits, expectedFee);
+    assert.equal(f.calls.length, 5);
+  }
+});
+
+test('blob receipts with incomplete or malformed fee components retain outcomes with an unavailable total', async () => {
+  for (const fields of [
+    { blobGasUsed: undefined }, { blobGasPrice: undefined },
+    { blobGasUsed: undefined, blobGasPrice: undefined },
+    { blobGasUsed: '0x0' }, { blobGasPrice: '0x0' },
+    { blobGasUsed: '0x1' }, { blobGasUsed: '0x020000' },
+    { blobGasPrice: null }, { blobGasUsed: 131072 },
+    { blobGasPrice: '0x1' + '0'.repeat(64) },
+  ]) {
+    const f = fixture(call => call.method === 'eth_getTransactionReceipt'
+      ? receipt({ type: '0x3', blobGasUsed: '0x20000', blobGasPrice: '0x3b9aca00', ...fields }) : undefined);
+    const detail = await f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'));
+    assert.equal(detail?.status, 'confirmed');
+    assert.equal(detail?.feeUnits, null);
+    assert.equal(f.calls.length, 5);
+  }
+});
+
+test('overflowing blob charges cannot produce a partial or truncated Activity fee', async () => {
+  const maximum = '0x' + 'f'.repeat(64);
+  const fees = { type: '0x3', blobGasUsed: '0x20000', blobGasPrice: '0x3b9aca00' };
+  for (const fields of [
+    { blobGasPrice: maximum },
+    { gasUsed: '0x1', effectiveGasPrice: maximum, blobGasPrice: '0x1' },
+  ]) {
+    const f = fixture(call => call.method === 'eth_getTransactionReceipt'
+      ? receipt({ ...fees, ...fields }) : undefined);
+    await assert.rejects(f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum')), { code: 'INVALID_RESPONSE' });
+    assert.equal(f.calls.filter(call => call.method === 'eth_getTransactionReceipt').length, 1);
+    assert.equal(f.calls.some(call => call.method === 'eth_getBlockByNumber'), false);
+  }
+});
+
 test('retired Activity reads keep physical slots until an ignored abort drains', async () => {
   const held = Promise.withResolvers<void>(), fourStarted = Promise.withResolvers<void>();
   let calls = 0;

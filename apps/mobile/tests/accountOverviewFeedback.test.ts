@@ -203,6 +203,23 @@ test('failed network observations retain their amounts, label them as last known
   } finally { f.close(); }
 });
 
+for (const purpose of ['Send', 'Receive'] as const)
+  for (const status of ['available', 'error', 'loading', 'unknown'] as const)
+    test(`${purpose} network source exposes an available balance only for an available observation (${status})`, () => {
+      const f = fixture('wallet');
+      try {
+        f.row.status = status;
+        f.openSource(purpose);
+        const nodes = f.nodes(f.modal());
+        const row = nodes.find(node => node.props.accessibilityRole === 'radio')!;
+        const balance = nodes.find(node => String(node.props.testID).startsWith('network-source-balance-'))!;
+        assert(row); assert(balance);
+        assert.deepEqual(balance.children, [status === 'available' ? '1 ETH available' : status === 'loading' ? 'Loading…' : '—']);
+        assert.equal(row.props.accessibilityHint, status === 'available' ? '1.0 ETH' : undefined);
+        assert.equal(f.row.units, '1000000000000000000', 'the last observation is retained without claiming availability');
+      } finally { f.close(); }
+    });
+
 test('an unavailable balance without a cached amount is not labelled as a last-known value', () => {
   const f = fixture('wallet', true);
   try {

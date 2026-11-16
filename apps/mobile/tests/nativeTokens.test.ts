@@ -1171,6 +1171,70 @@ for (const refresh of ['list', 'selected'] as const)
     disconnect();
   });
 
+for (const grouped of [false, true]) for (const duplicate of [false, true])
+  test(`token review preserves an in-flight ${grouped ? 'grouped' : 'scalar'} saved balance read (duplicate ${duplicate})`, async () => {
+    const pending = deferred<{ units: string }>();
+    const signals: AbortSignal[] = [];
+    const candidate = { ...metadata, contractAddress: '0x4444444444444444444444444444444444444444' };
+    let previews = 0;
+    const reader: Erc20Reader = {
+      async readToken() { previews++; return { metadata: candidate, units: '9' }; },
+      readBalance(_network, _account, _token, signal) { signals.push(signal); return pending.promise; },
+      ...(grouped ? { async readBalances(_network: string, _account: string, tokens: readonly typeof metadata[], signal: AbortSignal) {
+        signals.push(signal);
+        const result = await pending.promise;
+        return tokens.map(() => ({ status: 'available' as const, units: result.units }));
+      } } : {}),
+    };
+    const f = fixture({ items: [metadata, { ...metadata, contractAddress: B }], reader });
+    const disconnect = f.model.connect();
+    try {
+      await tick();
+      assert(f.model.getSnapshot().items.every(item => item.status === 'loading'));
+      await f.model.preview(duplicate ? metadata.contractAddress : candidate.contractAddress);
+      assert.equal(f.model.getSnapshot().previewStatus, duplicate ? 'error' : 'ready');
+      assert.equal(previews, duplicate ? 0 : 1);
+      assert(signals.every(signal => !signal.aborted));
+      assert(f.model.getSnapshot().items.every(item => item.status === 'loading'));
+      f.model.cancelPreview();
+      pending.resolve({ units: '42' });
+      await tick();
+      assert.deepEqual(f.model.getSnapshot().items.map(item => [item.status, item.units]), [
+        ['available', '42'], ['available', '42'],
+      ]);
+      assert.equal(signals.length, grouped ? 1 : 2);
+      assert.equal(f.mutations.length, 0);
+    } finally { disconnect(); pending.resolve({ units: '42' }); }
+  });
+
+test('cancelling metadata preview retires only its own request and scope changes still retire both', async () => {
+  const balance = deferred<{ units: string }>(), preview = deferred<{ metadata: typeof metadata; units: string }>();
+  let balanceSignal: AbortSignal | undefined, previewSignal: AbortSignal | undefined;
+  const candidate = { ...metadata, contractAddress: B };
+  const f = fixture({ items: [metadata], reader: {
+    readBalance(_network, _account, _token, signal) { balanceSignal = signal; return balance.promise; },
+    readToken(_network, _account, _contract, signal) { previewSignal = signal; return preview.promise; },
+  } });
+  const disconnect = f.model.connect();
+  try {
+    await tick();
+    const work = f.model.preview(B);
+    await tick();
+    f.model.cancelPreview();
+    assert.equal(previewSignal?.aborted, true);
+    assert.equal(balanceSignal?.aborted, false);
+    preview.resolve({ metadata: candidate, units: '9' });
+    await work;
+    assert.equal(f.model.getSnapshot().preview, null);
+    f.change(null);
+    assert.equal(balanceSignal?.aborted, true);
+    balance.resolve({ units: '42' });
+    await tick();
+    assert.equal(f.model.getSnapshot().status, 'unavailable');
+    assert.deepEqual(f.model.getSnapshot().items, []);
+  } finally { disconnect(); balance.resolve({ units: '42' }); preview.resolve({ metadata: candidate, units: '9' }); }
+});
+
 test('connection replay drains an old registry read before starting the new scope', async () => {
   const f = fixture();
   const hold = deferred<void>();

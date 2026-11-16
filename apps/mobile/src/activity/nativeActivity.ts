@@ -358,21 +358,16 @@ export class NativeActivity {
         });
         return;
       }
-      const timeout = setTimeout(() => {
-        if (generation === this.generation) this.request?.abort();
-      }, 30000);
-      try {
-        await this.fill(guard, signal);
-        guard();
-        await runtime.saveCache(
-          scope,
-          this.orderedCandidates().slice(0, 24).map(activityCandidateSummary),
-          guard
-        );
-        guard();
-      } finally {
-        clearTimeout(timeout);
-      }
+      // Each admitted explorer response owns its 12-second HTTP/body deadline;
+      // fill caps six reads. Account-wide queue wait must not consume that time.
+      await this.fill(guard, signal);
+      guard();
+      await runtime.saveCache(
+        scope,
+        this.orderedCandidates().slice(0, 24).map(activityCandidateSummary),
+        guard
+      );
+      guard();
       this.cachedFallback = false;
       this.refreshingRows = null;
       this.renderRows();

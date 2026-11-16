@@ -332,7 +332,8 @@ export const SyscoinAssetDetails = ({
                 {currencySymbol || ''}
                 {formatCurrency(
                   marketData.market_data.current_price[userCurrency].toString(),
-                  6
+                  6,
+                  true
                 )}
               </span>
               {change24h !== null && (

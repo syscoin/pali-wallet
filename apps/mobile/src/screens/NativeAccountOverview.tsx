@@ -145,7 +145,8 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     : sources.map(entry => ({ id: entry.id, name: entry.row.choice.networkName,
       iconId: entry.row.choice.scope.network.id, symbol: entry.row.choice.symbol,
       testnet: 'testnet' in entry.row.choice.scope.network && entry.row.choice.scope.network.testnet,
-      available: entry.row.units === null ? undefined : balance(entry.row) }));
+      available: entry.row.status === 'available' && entry.row.units !== null ? balance(entry.row) : undefined,
+      loading: entry.row.status === 'loading' }));
   const selectedNetwork = snapshot.choices.find(choice => choice.scope.network.id === snapshot.filter);
   const filterName = snapshot.filter === 'all' ? t('mobile.accountPortfolio.allNetworks') : selectedNetwork?.networkName ?? t(snapshot.filter ? 'mobile.accountPortfolio.unavailableNetwork' : 'buttons.loading');
   const filterAvailable = snapshot.filter === 'all' ? snapshot.choices.length > 0 : !!selectedNetwork;

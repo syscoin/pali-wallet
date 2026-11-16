@@ -8,6 +8,20 @@ import {
 } from './format';
 
 describe('Format', () => {
+  it.each(['0.0000003', '1e-18', '5e-324'])(
+    'keeps positive quote magnitude below the display step %s',
+    (value) => {
+      expect(formatCurrency(value, 6, true)).toBe(
+        Number(value).toExponential()
+      );
+      expect(Number(formatCurrency(value, 6, true))).toBe(Number(value));
+      expect(formatCurrency(value, 6)).toBe('0.000000');
+    }
+  );
+  it('preserves zero, threshold and ordinary quote formatting', () => {
+    for (const value of ['0', '0.000001', '0.02', '100'])
+      expect(formatCurrency(value, 6, true)).toBe(formatCurrency(value, 6));
+  });
   //* ellipsis
   it('should minify a string', () => {
     const input = 'alaksdjalsdkjlaskdj';

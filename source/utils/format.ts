@@ -72,7 +72,14 @@ export const formatMillionNumber = (num: number) =>
     minimumFractionDigits: 0,
   }).format(num);
 
-export const formatCurrency = (number: string, precision: number) => {
+export const formatCurrency = (
+  number: string,
+  precision: number,
+  preservePriceMagnitude = false
+) => {
+  const value = Number(number);
+  if (preservePriceMagnitude && value > 0 && value < 10 ** -precision)
+    return value.toExponential();
   if (Number(number) < 1e-6) {
     number = Number(number).toFixed(precision);
   }

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Request } from '@playwright/test';
 import { getNetworkConfig } from '@sidhujag/sysweb3-network';
 import { createHash } from 'crypto';
 import fs from 'fs';
@@ -215,6 +215,12 @@ for (const scenario of [
       method: string;
       url: string;
     }> = [];
+    const unavailableInventoryRequests = new WeakSet<Request>();
+    const observedUnavailableInventory = new WeakSet<Request>();
+    const cancelledUnavailableInventory: Array<{
+      method: string;
+      url: string;
+    }> = [];
     const forbiddenRequests: string[] = [];
     const pageErrors: string[] = [];
     const observations: Record<string, any> = {
@@ -269,10 +275,21 @@ for (const scenario of [
       });
       // Browser/platform connections caught by the launch-time deny proxy are
       // evidence-only. Unfulfilled HTTP from this wallet context is a distinct
-      // fixture failure and is asserted absent, never silently allowlisted.
+      // fixture failure. The bounded reader may release the body after this
+      // fixture's deliberate HTTP 500; admit only that exact observed response.
       const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
         if (isOfflineWalletReleaseAbort(request, releasePage)) return;
+        if (
+          request.failure()?.errorText === 'net::ERR_ABORTED' &&
+          observedUnavailableInventory.has(request)
+        ) {
+          cancelledUnavailableInventory.push({
+            method: request.method(),
+            url: request.url(),
+          });
+          return;
+        }
         const url = new URL(request.url());
         if (['http:', 'https:'].includes(url.protocol))
           unexpectedWalletHttpFailures.push({
@@ -289,13 +306,19 @@ for (const scenario of [
             `/api/v2/xpub/${fixture.utxo.userXpub}`,
             `/api/v2/address/${fixture.utxo.userAddress}`,
           ].includes(url.pathname)
-        )
+        ) {
+          if (
+            response.status() === 500 &&
+            unavailableInventoryRequests.has(response.request())
+          )
+            observedUnavailableInventory.add(response.request());
           actualHttpResponses.push({
             at: Date.now(),
             path: url.pathname,
             query: url.search,
             status: response.status(),
           });
+        }
       });
       await wallet.context.route(
         (url) => BLACKLIST_FEEDS.has(url.href),
@@ -421,6 +444,7 @@ for (const scenario of [
             lastSetupInventoryAt = at;
           const failed = isInventory && responseMode === 'unavailable';
           const statusCode = failed ? 500 : 200;
+          if (failed) unavailableInventoryRequests.add(request);
           reads.push({
             family: isInventory ? 'inventory' : 'account-summary',
             at,
@@ -912,6 +936,7 @@ for (const scenario of [
             status,
             reads,
             actualHttpResponses,
+            cancelledUnavailableInventory,
             blacklistReads,
             walletHttpReads,
             unexpectedWalletHttpFailures,

@@ -144,6 +144,37 @@ it('loads known-asset prices and permits a fresh attempt after leaving the asset
   }
 });
 
+it.each([
+  ['btc', 0.0000003, '₿3e-7'],
+  ['btc', 0.000001, '₿0.000001'],
+  ['btc', 0, '₿0.000000'],
+  ['usd', 0.02, '$0.020000'],
+])(
+  'uses the real price formatter for %s quote %s',
+  async (currency, quote, expected) => {
+    const formatUtils = jest.requireMock('utils/index');
+    const formatter = jest
+      .spyOn(formatUtils, 'formatCurrency')
+      .mockImplementation(jest.requireActual('utils/format').formatCurrency);
+    try {
+      mockState.price.fiat.asset = currency;
+      const data: any = market(Number(quote));
+      data['market_data']['current_price'] = { [currency]: quote };
+      data['market_data']['market_cap'] = { [currency]: 10 };
+      mockFetch.mockResolvedValue({ ok: true, json: async () => data });
+      render(<SyscoinAssetDetails id={asset.assetGuid} />);
+      await act(async () => undefined);
+      const price = screen.getByText('tokens.currentPrice').parentElement!;
+      expect(price).toHaveTextContent(expected);
+      expect(formatter).toHaveBeenCalledWith(String(quote), 6, true);
+      expect(formatter).toHaveBeenCalledWith('10', 0);
+      if (Number(quote) > 0) expect(price).not.toHaveTextContent('₿0.000000');
+    } finally {
+      formatter.mockRestore();
+    }
+  }
+);
+
 it('ignores the first visit response after leaving and returning to the same asset', async () => {
   const replies: ((value: any) => void)[] = [];
   mockFetch.mockImplementation(
@@ -234,6 +265,7 @@ it.each([undefined, null, NaN, Infinity])(
           current_price: { usd: 55 },
           // eslint-disable-next-line camelcase
           price_change_percentage_24h: change,
+          // eslint-disable-next-line camelcase
           price_change_percentage_24h_in_currency: { usd: change },
         },
       }),

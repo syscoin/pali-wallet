@@ -11,6 +11,7 @@ interface ITransactionHeaderProps {
     formattedValue?: string;
     hasUnknownDecimals?: boolean;
     isNft: boolean;
+    nftTransfers?: readonly Readonly<{ quantity: string; tokenId: string }>[];
     tokenId?: string;
   } | null;
   isLoading?: boolean;
@@ -55,6 +56,14 @@ export const TransactionHeader: React.FC<ITransactionHeaderProps> = ({
       <p className="min-w-0 max-w-full break-all text-center text-white text-base">
         {formatDisplayValue()}
       </p>
+      {displayInfo?.nftTransfers?.map((item, index) => (
+        <p
+          key={`${index}:${item.tokenId}`}
+          className="min-w-0 max-w-full break-all text-center text-brand-gray200 text-xs"
+        >
+          {item.quantity} {displayInfo.displaySymbol} #{item.tokenId}
+        </p>
+      ))}
       <div>{txStatus}</div>
       {isLoading && (
         <div className="flex justify-center py-4">

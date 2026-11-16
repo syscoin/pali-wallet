@@ -147,17 +147,18 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   const status = (row: UtxoActivityRow) => row.zdag ? t('transactions.zdagConfirmed') : row.block === null
     ? t('send.pending')
     : t('mobile.activityViews.utxoActivityScreen.confirmations', { count: row.observedConfirmations, block: row.block.height });
+  const nativeAmount = (row: UtxoActivityRow) => row.nativeTransfer
+    ? `${row.nativeTransfer.direction === 'sent' ? '−' : row.nativeTransfer.direction === 'received' ? '+' : ''}${units(row.nativeTransfer.amount)}`
+    : net(row.netUnits);
   const detailAmount = chosen?.hasAssetData
     ? assetQuantity(chosen) ?? t('mobile.activityViews.utxoActivityScreen.assetAmountUnavailable')
-    : chosen?.nativeTransfer
-      ? `${chosen.nativeTransfer.direction === 'sent' ? '−' : chosen.nativeTransfer.direction === 'received' ? '+' : ''}${units(chosen.nativeTransfer.amount)}`
-      : chosen ? net(chosen.netUnits) : '';
+    : chosen ? nativeAmount(chosen) : '';
   const exactDetailAmount = chosen?.hasAssetData
     ? assetQuantity(chosen, true) ?? t('mobile.activityViews.utxoActivityScreen.assetAmountUnavailable')
     : detailAmount;
   const rowDirection = (row: UtxoActivityRow): 'sent' | 'received' | 'self' | 'unknown' => row.hasAssetData
     ? row.assetAmount?.direction ?? 'unknown'
-    : row.nativeTransfer?.direction ?? (row.netUnits?.startsWith('-') ? 'sent' : row.netUnits && row.netUnits !== '0' ? 'received' : row.netUnits === '0' ? 'self' : 'unknown');
+    : row.nativeTransfer?.kind === 'self' ? 'self' : row.nativeTransfer?.direction ?? (row.netUnits?.startsWith('-') ? 'sent' : row.netUnits && row.netUnits !== '0' ? 'received' : row.netUnits === '0' ? 'self' : 'unknown');
   const rows = state.rows.filter(row => filter === 'all' || rowDirection(row) === filter || rowDirection(row) === 'self' || rowDirection(row) === 'unknown');
   const dateOf = (row: UtxoActivityRow) => row.block ? activityDate(row.block.timestamp === null ? null : row.block.timestamp * 1000) : { key: 'pending', label: t('send.pending'), time: '' };
   return <SafeAreaView edges={chosen ? ['top', 'bottom'] : ['top']} style={s.root}>
@@ -182,8 +183,8 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
           </View>}
           renderItem={({ item, index }) => {
             const date = dateOf(item), flow = rowDirection(item);
-            const fullAmount = item.hasAssetData ? assetQuantity(item) ?? t('mobile.activityViews.utxoActivityScreen.assetActivity') : net(item.netUnits);
-            const privateAmount = hideBalances && (item.hasAssetData ? assetQuantity(item) !== null : item.netUnits !== null);
+            const fullAmount = item.hasAssetData ? assetQuantity(item) ?? t('mobile.activityViews.utxoActivityScreen.assetActivity') : nativeAmount(item);
+            const privateAmount = hideBalances && (item.hasAssetData ? assetQuantity(item) !== null : !!item.nativeTransfer || item.netUnits !== null);
             const first = index === 0 || dateOf(rows[index - 1]!).key !== date.key;
             const last = index === rows.length - 1 || dateOf(rows[index + 1]!).key !== date.key;
             return <ActivityListRow testID={`watch-activity-row-${item.txid}`}
