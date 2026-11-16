@@ -24,6 +24,7 @@ import { getWalletNavigationScope } from 'utils/navigationState';
 import { AddToken } from './AddToken';
 
 jest.unmock('syscoinjs-lib');
+const { Response: HttpResponse } = jest.requireActual('node-fetch');
 
 let mockStore: any;
 let mockAssets: ReturnType<typeof SysAssetsController>;
@@ -259,7 +260,9 @@ beforeEach(() => {
   globalThis.fetch = jest.fn(async (input, init) => {
     expect(init?.method ?? 'GET').toBe('GET');
     const data = backendReply(String(input));
-    return { ok: true, status: 200, json: async () => data } as Response;
+    return new HttpResponse(JSON.stringify(data), {
+      headers: { 'content-type': 'application/json' },
+    }) as unknown as Response;
   });
   mockAssets = SysAssetsController();
   mockAccount = SysAccountController(() => {

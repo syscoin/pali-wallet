@@ -23,6 +23,7 @@ import { getWalletNavigationScope } from 'utils/navigationState';
 import { AddToken } from './AddToken';
 
 jest.unmock('syscoinjs-lib');
+const { Response: HttpResponse } = jest.requireActual('node-fetch');
 
 type InventoryMode = 'held' | 'empty' | 'unavailable';
 const locales = ['en', 'de', 'es', 'fr', 'ja', 'ko', 'pt', 'ru', 'zh'];
@@ -292,12 +293,11 @@ beforeEach(() => {
   globalThis.fetch = jest.fn(async (input, init) => {
     expect(init?.method ?? 'GET').toBe('GET');
     const reply = httpReply(String(input));
-    return {
-      ok: reply.status === 200,
+    return new HttpResponse(JSON.stringify(reply.data), {
       status: reply.status,
       statusText: reply.status === 200 ? 'OK' : 'Synthetic server error',
-      json: async () => reply.data,
-    } as Response;
+      headers: { 'content-type': 'application/json' },
+    }) as unknown as Response;
   });
   mockEmitter.mockImplementation(async ([, method]: string[], args: any[]) => {
     if (method === 'getUserOwnedTokens')

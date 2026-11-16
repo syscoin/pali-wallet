@@ -199,7 +199,10 @@ it.each([false, true])(
 );
 
 it('commits a later-discovered historical transaction without replaying an old alert', async () => {
-  fetchHistory.mockResolvedValue([existing, { ...recent, timestamp: 9 }]);
+  fetchHistory.mockResolvedValue([
+    existing,
+    { ...recent, blockNumber: 9, timestamp: 9 },
+  ]);
   await refresh();
   expect(rows().map(({ hash }: any) => hash)).toContain(recent.hash);
   expect(notificationManager.notifyTransaction).not.toHaveBeenCalled();
