@@ -6,6 +6,9 @@ const activityRows = (page: Page, amount: string) => page.getByRole('button', {
   name: new RegExp(`^${amount.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}, `),
 });
 const copyTransaction = (page: Page) => page.getByRole('button', { name: /^Copy transaction ID: [a-f0-9]{64}$/ });
+// Ordinary BTC fixtures spend 11 BTC, return 1 BTC as change and pay a 1 BTC fee:
+// transfer 9 BTC, native account change −10 BTC. SPT and unavailable amounts stay separate.
+const BTC_SENT_AMOUNT = '−9.0 BTC';
 const BTC_SENDER = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
 async function expectHydratedParticipants(detail: Locator) {
   // The compact summary has a From label before hydration. The expanded
@@ -59,7 +62,7 @@ test('actual WatchSession automatically loads account activity, preserves list a
   const calls = await page.evaluate(() => window.__watchFixture.activity.calls());
   expect(calls.some(url => url.includes('details=txsummary&page=1&pageSize=20'))).toBe(true);
   expect(calls.some(url => /\/tx\//.test(url))).toBe(false);
-  const row = activityRows(page, '−10.0 BTC').nth(5);
+  const row = activityRows(page, BTC_SENT_AMOUNT).nth(5);
   await row.scrollIntoViewIfNeeded();
   const scroll = await page.getByTestId('watch-activity-list').evaluate(element => element.scrollTop);
   await row.focus(); await row.press('Enter');
@@ -69,6 +72,7 @@ test('actual WatchSession automatically loads account activity, preserves list a
   await expect(page.getByText('Received by this account: 1.0 BTC', { exact: true })).toBeVisible();
   await expect(page.getByText('Spent from this account: 11.0 BTC', { exact: true })).toBeVisible();
   await expect(page.getByText('Whole transaction fee: 1.0 BTC', { exact: true })).toBeVisible();
+  await expect(page.getByText('Native account change: −10.0 BTC', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await copyTransaction(page).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(ID(6));
@@ -77,7 +81,7 @@ test('actual WatchSession automatically loads account activity, preserves list a
   await page.screenshot({ path: testInfo.outputPath('btc-watch-activity-detail.png'), fullPage: true });
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect.poll(() => page.getByTestId('watch-activity-list').evaluate(element => element.scrollTop)).toBe(scroll);
-  const bottomRow = activityRows(page, '−10.0 BTC').last();
+  const bottomRow = activityRows(page, BTC_SENT_AMOUNT).last();
   await bottomRow.scrollIntoViewIfNeeded();
   await page.getByTestId('watch-activity-list').evaluate(element => { element.scrollTop = element.scrollHeight; });
   const bottomScroll = await page.getByTestId('watch-activity-list').evaluate(element => element.scrollTop);
@@ -85,7 +89,7 @@ test('actual WatchSession automatically loads account activity, preserves list a
   await bottomRow.focus(); await bottomRow.press('Enter');
   await expect(page.getByRole('heading', { name: 'Transaction details', exact: true })).toBeVisible();
   await expandDetails(page);
-  await expect(activityRows(page, '−10.0 BTC')).toHaveCount(0);
+  await expect(activityRows(page, BTC_SENT_AMOUNT)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Refresh activity', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect.poll(() => page.getByTestId('watch-activity-list').evaluate(element => element.scrollTop)).toBe(bottomScroll);
@@ -113,7 +117,7 @@ test('seeded UTXO Activity uses the shared list and detail at 320 pixels', async
   await expect(page.getByText('Account 1 · Bitcoin', { exact: true })).toBeVisible();
   const calls = () => page.evaluate(() => window.__watchFixture.activity.calls());
   expect((await calls()).some(url => /\/api\/v2\/tx\//.test(url))).toBe(false);
-  const row = activityRows(page, '−10.0 BTC').first();
+  const row = activityRows(page, BTC_SENT_AMOUNT).first();
   await row.focus();
   await row.press('Enter');
   await expect(page.getByRole('heading', { name: 'Transaction details', exact: true })).toBeVisible();
@@ -164,7 +168,7 @@ test('a transient Blockbook failure retries the same read and returns to healthy
   await expect.poll(() => page.evaluate(() => window.__watchFixture.activity.calls().length)).toBe(before + 4);
   await expect(refresh).toBeEnabled();
   await load(page);
-  await expect(activityRows(page, '−10.0 BTC').first()).toBeVisible();
+  await expect(activityRows(page, BTC_SENT_AMOUNT).first()).toBeVisible();
   await expect(page.getByText('Activity unavailable', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Could not refresh activity', { exact: true })).toHaveCount(0);
   const retried = await page.evaluate((offset) => window.__watchFixture.activity.calls().slice(offset), before);
@@ -182,7 +186,7 @@ test('an explicit watch refresh shows one quiet confirmation result without extr
   const refresh = page.getByRole('button', { name: 'Refresh activity', exact: true });
   const calls = () => page.evaluate(() => window.__watchFixture.activity.calls());
   const firstPage = await calls();
-  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`)).toHaveAccessibleName(/^−10\.0 BTC, Pending\./);
+  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`)).toHaveAccessibleName(/^−9\.0 BTC, Pending\./);
   await expect(feedback).toHaveCount(0);
   await page.evaluate(() => window.__watchFixture.activity.mode('value'));
   await refresh.click();
@@ -203,14 +207,14 @@ test('an explicit watch refresh shows one quiet confirmation result without extr
 
   await page.evaluate(() => window.__watchFixture.activity.mode('pending'));
   await refresh.click();
-  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`)).toHaveAccessibleName(/^−10\.0 BTC, Pending\./);
+  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`)).toHaveAccessibleName(/^−9\.0 BTC, Pending\./);
   await page.evaluate(() => window.__watchFixture.activity.mode('error'));
   await refresh.click();
   await expect(page.getByText('Could not refresh activity', { exact: true })).toBeVisible();
   await expect(feedback).toHaveCount(0);
   await page.evaluate(() => window.__watchFixture.activity.mode('value'));
   await refresh.click();
-  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`)).toHaveAccessibleName(/^−10\.0 BTC, 11 confirmations · Block 190\./);
+  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`)).toHaveAccessibleName(/^−9\.0 BTC, 11 confirmations · Block 190\./);
   await expect(feedback).toHaveCount(0);
 });
 
@@ -228,14 +232,14 @@ test('leaving and reopening the same watch Activity cannot publish a late confir
   await expect(page.getByRole('heading', { name: 'Tools', exact: true })).toBeVisible();
   await page.evaluate(() => window.__watchFixture.activity.mode('value'));
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
-  await expect(row).toHaveAccessibleName(/^−10\.0 BTC, 11 confirmations · Block 190\./);
+  await expect(row).toHaveAccessibleName(/^−9\.0 BTC, 11 confirmations · Block 190\./);
   await page.evaluate(() => window.__watchFixture.activity.release());
   await expect.poll(() => page.evaluate(() => window.__watchFixture.activity.lateResponses())).toBe(1);
   await expect(feedback).toHaveCount(0);
 
   await page.evaluate(() => window.__watchFixture.activity.mode('pending'));
   await refresh.click();
-  await expect(row).toHaveAccessibleName(/^−10\.0 BTC, Pending\./);
+  await expect(row).toHaveAccessibleName(/^−9\.0 BTC, Pending\./);
   await page.evaluate(() => window.__watchFixture.activity.mode('value'));
   await refresh.click();
   await expect(feedback).toBeVisible();
@@ -245,7 +249,7 @@ test('leaving and reopening the same watch Activity cannot publish a late confir
   await page.evaluate(() => window.__watchFixture.focus());
   await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
-  await expect(row).toHaveAccessibleName(/^−10\.0 BTC, 11 confirmations · Block 190\./);
+  await expect(row).toHaveAccessibleName(/^−9\.0 BTC, 11 confirmations · Block 190\./);
   await expect(feedback).toHaveCount(0);
 });
 
@@ -262,7 +266,7 @@ test('leaving a slow request and Android focus loss revoke the active account hi
   await page.evaluate(() => window.__watchFixture.blur());
   await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
-  await expect(activityRows(page, '−10.0 BTC')).toHaveCount(0);
+  await expect(activityRows(page, BTC_SENT_AMOUNT)).toHaveCount(0);
   const blurred = await page.evaluate(() => window.__watchFixture.activity.calls().length);
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
   await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
@@ -279,7 +283,7 @@ test('narrow and scaled text keeps the active activity and detail usable', async
   await page.addStyleTag({ content: '[dir="auto"] { font-size: 22px !important; line-height: 1.45 !important; }' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   await page.screenshot({ path: testInfo.outputPath('btc-watch-activity-list-large-text.png'), fullPage: true });
-  await activityRows(page, '−10.0 BTC').first().click();
+  await activityRows(page, BTC_SENT_AMOUNT).first().click();
   await expect(copyTransaction(page)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   await page.screenshot({ path: testInfo.outputPath('btc-watch-activity-large-text.png'), fullPage: true });
@@ -294,11 +298,11 @@ test('narrow and scaled text keeps the active activity and detail usable', async
 test('pending copy completion stays bound to its transaction after detail navigation', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await open(page); await load(page); await delayClipboard(page);
-  await activityRows(page, '−10.0 BTC').first().click();
+  await activityRows(page, BTC_SENT_AMOUNT).first().click();
   await copyTransaction(page).click();
   expect(await page.evaluate(() => window.__activityDelayedCopy.calls)).toEqual([ID(1)]);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await activityRows(page, '−10.0 BTC').nth(1).click();
+  await activityRows(page, BTC_SENT_AMOUNT).nth(1).click();
   const copy = copyTransaction(page);
   // The old native action may still be draining; do not overlap clipboard writes.
   await expect(copy).toBeDisabled();
@@ -314,13 +318,13 @@ test('pending copy completion stays bound to its transaction after detail naviga
 test('pending copy drains and releases actions after refreshing the list', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await open(page); await load(page); await delayClipboard(page);
-  await activityRows(page, '−10.0 BTC').first().click();
+  await activityRows(page, BTC_SENT_AMOUNT).first().click();
   await copyTransaction(page).click();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Refresh activity', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Refresh activity', exact: true })).toBeEnabled();
   await page.evaluate(() => window.__activityDelayedCopy.release());
-  await activityRows(page, '−10.0 BTC').nth(1).click();
+  await activityRows(page, BTC_SENT_AMOUNT).nth(1).click();
   await expect(copyTransaction(page)).toBeEnabled();
   await expect(page.getByRole('button', { name: 'View on explorer', exact: true })).toBeEnabled();
   await expect(page.getByText('Transaction ID copied.', { exact: true })).toHaveCount(0);
@@ -333,7 +337,7 @@ test('pending copy drains and releases actions after refreshing the list', async
 
 test('pending placement and unknown account amounts are ordinary activity states', async ({ page }) => {
   await open(page, 'bitcoin', false, 'pending'); await load(page);
-  await activityRows(page, '−10.0 BTC').first().click();
+  await activityRows(page, BTC_SENT_AMOUNT).first().click();
   let detail = page.getByTestId('watch-activity-detail');
   await expandDetails(page);
   await expect(detail.getByText('Pending', { exact: true }).last()).toBeVisible();
@@ -341,8 +345,8 @@ test('pending placement and unknown account amounts are ordinary activity states
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.evaluate(() => window.__watchFixture.activity.mode('included'));
   await page.getByRole('button', { name: 'Refresh activity', exact: true }).click();
-  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`)).toHaveAccessibleName(/^−10\.0 BTC, 0 confirmations · Block 190\./);
-  await activityRows(page, '−10.0 BTC').first().click();
+  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`)).toHaveAccessibleName(/^−9\.0 BTC, 0 confirmations · Block 190\./);
+  await activityRows(page, BTC_SENT_AMOUNT).first().click();
   detail = page.getByTestId('watch-activity-detail');
   await expandDetails(page);
   await expect(detail.getByText('0 confirmations · Block 190', { exact: true }).last()).toBeVisible();
@@ -410,7 +414,7 @@ test('a pasted public account key loads account-wide history without exposing th
   expect(calls.some(url => /\/address\/|\/tx\//.test(url))).toBe(false);
   expect(await page.locator('body').innerText()).not.toMatch(/(?:xpub|zpub|wpkh\()/);
   expect(JSON.stringify(await page.evaluate(() => window.__watchFixture.accounts()))).not.toContain('pub6');
-  await activityRows(page, '−10.0 BTC').first().click();
+  await activityRows(page, BTC_SENT_AMOUNT).first().click();
   await expandDetails(page);
   await expect(page.getByText('BTC account history', { exact: true })).toBeVisible();
   expect(await page.locator('body').innerText()).not.toMatch(/(?:xpub|zpub|wpkh\()/);
@@ -554,7 +558,7 @@ test('selected details hydrate participants once and reuse the shared warm cache
   await open(page); await load(page);
   const rawCalls = () => page.evaluate(() => window.__watchFixture.activity.calls().filter(url => /\/api\/v2\/tx\//.test(url)).length);
   expect(await rawCalls()).toBe(0);
-  const first = activityRows(page, '−10.0 BTC').first();
+  const first = activityRows(page, BTC_SENT_AMOUNT).first();
   await first.click();
   const detail = page.getByTestId('watch-activity-detail');
   await expandDetails(page);
@@ -574,7 +578,7 @@ test('failed detail preserves compact facts and explicit retry succeeds', async 
   await page.setViewportSize({ width: 320, height: 740 });
   await open(page); await load(page);
   await page.evaluate(() => window.__watchFixture.activity.detail('error'));
-  await activityRows(page, '−10.0 BTC').first().click();
+  await activityRows(page, BTC_SENT_AMOUNT).first().click();
   const detail = page.getByTestId('watch-activity-detail');
   await expandDetails(page);
   await expect(detail.getByText('Couldn’t load full details.', { exact: true })).toBeVisible();
@@ -593,7 +597,7 @@ test('failed detail preserves compact facts and explicit retry succeeds', async 
 test('Back cancels only selected detail work and a fresh reorg observation may become pending', async ({ page }, testInfo) => {
   await open(page); await load(page);
   await page.evaluate(() => window.__watchFixture.activity.detail('slow'));
-  await activityRows(page, '−10.0 BTC').first().click();
+  await activityRows(page, BTC_SENT_AMOUNT).first().click();
   await expect(page.getByLabel('Loading transaction details', { exact: true })).toBeVisible();
   await expect.poll(async () => (await page.evaluate(() => window.__watchFixture.activity.calls())).filter(url => /\/api\/v2\/tx\//.test(url)).length).toBe(1);
   await page.screenshot({ path: testInfo.outputPath('utxo-detail-loading.png'), fullPage: true });
@@ -601,7 +605,7 @@ test('Back cancels only selected detail work and a fresh reorg observation may b
   await expect.poll(() => page.evaluate(() => window.__watchFixture.activity.cancelled())).toBe(1);
   await load(page);
   await page.evaluate(() => window.__watchFixture.activity.detail('reorg'));
-  await activityRows(page, '−10.0 BTC').first().click();
+  await activityRows(page, BTC_SENT_AMOUNT).first().click();
   const detail = page.getByTestId('watch-activity-detail');
   await expandDetails(page);
   await expect(detail.getByText('Pending', { exact: true }).last()).toBeVisible();
