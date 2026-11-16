@@ -45,16 +45,16 @@ const RETIREMENT_METHODS: Readonly<Record<EvmSignedRetirementReadMethod, true>> 
 const BLOCK_BYTES = 512 * 1024;
 const RECEIPT_BYTES = 1024 * 1024;
 const CODE_BYTES = 32 * 1024;
-export type NativeSmartAccountReadMethod = 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getTransactionCount' | 'eth_getTransactionReceipt';
+export type NativeSmartAccountReadMethod = 'eth_getTransactionByHash' | 'eth_simulateV1' | 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getTransactionCount' | 'eth_getTransactionReceipt';
 export type NativeSmartAccountReadPhase = Readonly<{
   read(method: NativeSmartAccountReadMethod, params: readonly unknown[]): Promise<unknown>;
   readMany(requests: readonly { method: NativeSmartAccountReadMethod; params: readonly unknown[] }[]): Promise<PromiseSettledResult<unknown>[]>;
   feeData(): ReturnType<EvmTransferReadRpc['smartAccountFeeData']>;
   assertCurrent(): void;
 }>;
-type Method = DappPublicRpcMethod | 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_getStorageAt' | 'eth_gasPrice' |
+type Method = 'eth_simulateV1' | DappPublicRpcMethod | 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_getStorageAt' | 'eth_gasPrice' |
   'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getTransactionReceipt' | 'eth_getTransactionCount' | 'eth_getTransactionByHash';
-const METHODS: readonly string[] = Object.freeze([...DAPP_PUBLIC_RPC_METHODS, 'eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call', 'eth_getStorageAt', 'eth_gasPrice',
+const METHODS: readonly string[] = Object.freeze(['eth_simulateV1', ...DAPP_PUBLIC_RPC_METHODS, 'eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call', 'eth_getStorageAt', 'eth_gasPrice',
   'eth_maxPriorityFeePerGas', 'eth_feeHistory', 'eth_getBalance', 'eth_estimateGas', 'eth_getTransactionReceipt', 'eth_getTransactionCount', 'eth_getTransactionByHash']);
 type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>) & {
   signal: AbortSignal;
@@ -157,7 +157,7 @@ export class EvmTransferReadRpc {
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(abort, this.timeoutMs);
-    const limitFor = (method: Method) => scope === 'dapp-rpc' ? DAPP_REQUEST_LIMITS.bytes
+    const limitFor = (method: Method) => method === 'eth_simulateV1' ? 2 * 1024 * 1024 : scope === 'dapp-rpc' ? DAPP_REQUEST_LIMITS.bytes
       : method === 'eth_getTransactionReceipt' ? RECEIPT_BYTES : method === 'eth_getBlockByNumber' ? BLOCK_BYTES
       : method === 'eth_getCode' ? CODE_BYTES * 2 + 512 : 16 * 1024;
     const request = async (method: Method, params: readonly unknown[]) => {
@@ -270,7 +270,7 @@ export class EvmTransferReadRpc {
       guardedRead(guard);
       if (!METHODS.includes(method)) return rejectRead('INVALID_INPUT');
       try {
-        if (scope === 'dapp-rpc') return resultValue(await request(method, params), method, params);
+        if (scope === 'dapp-rpc' || method === 'eth_simulateV1') return resultValue(await request(method, params), method, params);
         const result = await batch.read(method, params, { signal: controller.signal, maxResponseBytes: limitFor(method) });
         guardedRead(guard);
         if (controller.signal.aborted) return rejectRead('CANCELLED');
@@ -286,7 +286,9 @@ export class EvmTransferReadRpc {
       signal: controller.signal,
       many: async (requests: readonly { method: Method; params: readonly unknown[] }[]) => {
         guardedRead(guard);
-        const results = await batch.readMany(requests, { signal: controller.signal }).catch(readFailure);
+        const results = requests.some(request => request.method === 'eth_simulateV1')
+          ? await Promise.allSettled(requests.map(({method, params}) => read(method, params)))
+          : await batch.readMany(requests, { signal: controller.signal }).catch(readFailure);
         guardedRead(guard);
         if (controller.signal.aborted) return rejectRead('CANCELLED');
         return results.map((result, index): PromiseSettledResult<unknown> => {
@@ -438,9 +440,9 @@ export class EvmTransferReadRpc {
       });
     }, 'dapp-rpc');
   }
-  smartAccountRead(method: 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory',
+  smartAccountRead(method: 'eth_getTransactionByHash' | 'eth_simulateV1' | 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory',
     params: readonly unknown[], signal: AbortSignal, guard: () => void): Promise<unknown> {
-    const allowed = ['eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber', 'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'];
+    const allowed = ['eth_getTransactionByHash', 'eth_simulateV1', 'eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber', 'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'];
     if (!allowed.includes(method) || !Array.isArray(params) || params.length > 5)
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.operation(signal, guard, async (read) => {
@@ -456,14 +458,14 @@ export class EvmTransferReadRpc {
       await this.checkChain(read);
       const phase = Object.freeze({
         read: (method: NativeSmartAccountReadMethod, params: readonly unknown[]) => {
-          if (!['eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
+          if (!['eth_getTransactionByHash', 'eth_simulateV1', 'eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
             'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
             'eth_getTransactionCount', 'eth_getTransactionReceipt'].includes(method) || !Array.isArray(params) || params.length > 5)
             return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
           return read(method, params);
         },
         readMany: (requests: readonly { method: NativeSmartAccountReadMethod; params: readonly unknown[] }[]) => {
-          if (requests.some(request => !['eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
+          if (requests.some(request => !['eth_simulateV1', 'eth_getTransactionByHash', 'eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
             'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
             'eth_getTransactionCount', 'eth_getTransactionReceipt'].includes(request.method) || !Array.isArray(request.params) || request.params.length > 5))
             return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));

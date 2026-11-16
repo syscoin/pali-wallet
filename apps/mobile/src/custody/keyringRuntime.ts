@@ -1298,7 +1298,7 @@ export function createKeyringRuntimeFactory(
                 const network = getNativeNetwork(capturedCatalogue.active.networkId, capturedCatalogue.networks);
                 const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
                 const provider = createNativeSmartAccountProvider(network, rpc, contextSignal, assertCurrent, input.readPhase);
-                await assertSmartAdmission(provider, record.hash, snapshot);
+                await assertSmartAdmission(provider, record.hash, snapshot, record.rawTransaction);
                 assertCurrent();
                 return plan;
               } : planner;

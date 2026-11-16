@@ -150,6 +150,15 @@ async function prepareOperation({
   selectGasPayer,
   assertCurrent,
 }: Parameters<typeof prepareSmartAccountOperation>[0]) {
+  await provider.send('eth_simulateV1', [
+    {
+      blockStateCalls: [{ calls: [] }],
+      validation: true,
+      returnFullTransactions: true,
+      traceTransfers: false,
+    },
+    'latest',
+  ]);
   assertSynchronousEvmFeeGuard(assertCurrent);
   await pending.verify();
   feeOverrides = { ...feeOverrides };

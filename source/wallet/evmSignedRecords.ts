@@ -1888,6 +1888,8 @@ export class EvmSignedRecords {
           Object.freeze({ chainId, from, hash, nonce, phase })
         )
       ),
+      readSignedTransaction: async (hash: string) =>
+        (await readBudget(hash)).transaction.serialized,
       readMaximumCost: async (hash: string) =>
         (await readBudget(hash)).maximumCost,
       // The admission already authenticated this complete manifest while holding

@@ -10148,7 +10148,8 @@ class MainController {
       assertPendingState?: (
         provider?: any,
         currentSignedHash?: string,
-        admission?: EvmAutoNonceSnapshot
+        admission?: EvmAutoNonceSnapshot,
+        signedRaw?: string
       ) => Promise<void>;
       assertPendingStateIncludesAssets?: true;
       authorizeDapp?: () => void;
@@ -11787,7 +11788,12 @@ class MainController {
     };
     type Admission =
       | { kind: 'review' }
-      | { hash: string; kind: 'dispatch'; snapshot: EvmAutoNonceSnapshot };
+      | {
+          hash: string;
+          kind: 'dispatch';
+          signedRaw: string;
+          snapshot: EvmAutoNonceSnapshot;
+        };
     const initial: Admission = { kind: 'review' };
     let reviewId = '';
     let beforeDispatch: (() => Promise<void>) | undefined;
@@ -11808,7 +11814,8 @@ class MainController {
               await payerDispatch.saveOptions.assertPendingState(
                 provider,
                 admission.kind === 'dispatch' ? admission.hash : undefined,
-                admission.kind === 'dispatch' ? admission.snapshot : undefined
+                admission.kind === 'dispatch' ? admission.snapshot : undefined,
+                admission.kind === 'dispatch' ? admission.signedRaw : undefined
               );
               assertCurrent();
             }
@@ -11952,7 +11959,15 @@ class MainController {
           reviewId,
           expected,
           (record, guard, snapshot) =>
-            refresh({ kind: 'dispatch', snapshot, hash: record.hash }, guard),
+            refresh(
+              {
+                kind: 'dispatch',
+                snapshot,
+                hash: record.hash,
+                signedRaw: record.rawTransaction,
+              },
+              guard
+            ),
           callsMetadata
         );
         const work = this.sendAndSaveEthTransaction(

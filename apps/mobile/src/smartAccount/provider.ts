@@ -85,6 +85,7 @@ function smartAccountProvider(
   };
   return {
     send(method: string, params: readonly unknown[]) {
+      if (method === 'eth_getTransactionByHash') return read(method, params);
       if (
         method === 'eth_getTransactionReceipt' ||
         method === 'eth_getTransactionCount'

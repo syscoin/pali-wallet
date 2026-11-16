@@ -211,11 +211,33 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           }
           result = call.from?.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() ? innerGasEstimate : '0x186a0';
         }
+        else if (request.method === 'eth_simulateV1') {
+          if (request.params[0].blockStateCalls[0].calls.length === 0) return Response.json({jsonrpc:'2.0', id:request.id, result:[{calls:[], transactions:[]}]});
+          const calls = request.params[0].blockStateCalls[0].calls;
+          const parentResponse = await backend(network, {...init, body: JSON.stringify({jsonrpc:'2.0', id:request.id, method:'eth_getBlockByNumber', params:[request.params[1], false]})});
+          const simulationParent = (await parentResponse.json()).result;
+          result = [{parentHash: simulationParent.hash, number: `0x${(BigInt(simulationParent.number)+1n).toString(16)}`,
+            transactions: calls.map((call: any) => ({...call, input: call.data})),
+            calls: calls.map((call: any) => {
+              if (call.to.toLowerCase() !== getPaliEntryPointAddress(Number(network.chainId)).toLowerCase()) return {status:'0x1', gasUsed:'0x5208', logs:[]};
+              const [ops] = paliEntryPointInterface.decodeFunctionData('handleOps', call.data);
+              const op = ops[0];
+              const operation = {sender: op.sender, nonce: op.nonce.toString(), initCode: op.initCode, callData: op.callData,
+                accountGasLimits: op.accountGasLimits, preVerificationGas: op.preVerificationGas.toString(), gasFees: op.gasFees,
+                paymasterAndData: op.paymasterAndData, signature: op.signature};
+              const success = userOperationSuccess && BigInt(innerGasEstimate) <= (BigInt(op.accountGasLimits) & ((1n<<128n)-1n)) + BigInt(21000);
+              const event = paliEntryPointInterface.encodeEventLog(paliEntryPointInterface.getEvent('UserOperationEvent')!,
+                [getSmartAccountUserOpHash(operation, Number(network.chainId)), op.sender, '0x'+'00'.repeat(20), op.nonce, success, 100, 50]);
+              return {status: '0x1', gasUsed: '0x186a0', logs: [{...event, address: call.to}]};
+            })}];
+        }
         else if (request.method === 'eth_getTransactionByHash') {
           const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
           const transaction = raw ? Transaction.from(raw) : undefined;
           result = transaction ? { hash: transaction.hash, from: transaction.from, to: transaction.to, value: `0x${transaction.value.toString(16)}`,
-            nonce: `0x${transaction.nonce.toString(16)}`, blockNumber: null, blockHash: null, transactionIndex: null } : null;
+            nonce: `0x${transaction.nonce.toString(16)}`, input: transaction.data, chainId: `0x${transaction.chainId.toString(16)}`,
+            type: `0x${transaction.type!.toString(16)}`, gas: `0x${transaction.gasLimit.toString(16)}`,
+            ...(transaction.gasPrice === null ? { maxFeePerGas: `0x${transaction.maxFeePerGas!.toString(16)}`, maxPriorityFeePerGas: `0x${transaction.maxPriorityFeePerGas!.toString(16)}`, accessList: transaction.accessList } : {gasPrice: `0x${transaction.gasPrice.toString(16)}`}), blockNumber: null, blockHash: null, transactionIndex: null } : null;
         }
         else if (request.method === 'eth_getTransactionReceipt') {
           const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);

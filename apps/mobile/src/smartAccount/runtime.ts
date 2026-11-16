@@ -75,7 +75,7 @@ import { createSmartAccountInfrastructureReader, SMART_ACCOUNT_INFRASTRUCTURE_CO
 const infrastructureReaders = new WeakMap<SmartAccountPayerWallet, ReturnType<typeof createSmartAccountInfrastructureReader>>();
 
 type Response = { hash: string; wait(): Promise<unknown> };
-export type NativeSmartPayerAdmission = (provider: unknown, currentSignedHash?: string, admission?: EvmAutoNonceSnapshot) => Promise<void>;
+export type NativeSmartPayerAdmission = (provider: unknown, currentSignedHash?: string, admission?: EvmAutoNonceSnapshot, signedRaw?: string) => Promise<void>;
 export type NativeSmartOperationPorts = Readonly<{
   intent: NativeSmartAccountIntent;
   pendingRecords: SmartAccountPendingRecords;
@@ -580,7 +580,7 @@ export function createNativeSmartOperation(
           transactionMetadata?.smartAccountExecution === true && options.assertPendingStateIncludesAssets !== true
             ? options.assertAssetState : null,
           (transactionMetadata?.smartAccountDeploymentPrefund === true || transactionMetadata?.smartAccountExecution === true)
-            ? (provider, hash, admission) => options.assertPendingState(provider, hash, admission)
+            ? (provider, hash, admission, signedRaw) => options.assertPendingState(provider, hash, admission, signedRaw)
             : undefined,
           options.assertPendingStateIncludesAssets
         );

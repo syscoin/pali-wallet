@@ -7,6 +7,7 @@ import { evmCallRequest } from './evmEstimateRequest.ts';
 import { assertSynchronousEvmFeeGuard } from './evmFeeGuard.ts';
 
 const READ_METHODS = new Set([
+  'eth_simulateV1',
   'eth_chainId',
   'eth_blockNumber',
   'eth_getBlockByNumber',
@@ -105,6 +106,7 @@ export async function withEvmReadPhase<T>(
         active();
         const results = await bounded(
           source.readMany &&
+            !batch.some((item) => item.request.method === 'eth_simulateV1') &&
             !batch.some((item) => item.fresh && source.sendFresh)
             ? source.readMany(
                 batch.map(({ request }) => request),

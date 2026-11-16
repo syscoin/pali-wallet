@@ -17,6 +17,7 @@ export type EvmAutoNonceSnapshot = Readonly<{
   owner: string;
   readAssetDebit(hash: string, asset: EvmTransferAsset): Promise<bigint>;
   readMaximumCost(hash: string): Promise<bigint>;
+  readSignedTransaction?(hash: string): Promise<string>;
   readSmartAccountOperations?(
     chainId: string,
     address: string

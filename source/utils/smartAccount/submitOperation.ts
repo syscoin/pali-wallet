@@ -1,3 +1,5 @@
+import { Transaction } from 'ethers/transaction';
+
 import { NATIVE_EVM_FEE_FUNDING } from '../../shared/evmFeeApproval.ts';
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import {
@@ -28,7 +30,7 @@ import {
   snapshotSmartAccountExpectedErc20Transfers,
   type SmartAccountExpectedErc20Transfer,
 } from './erc20Transfer.ts';
-import { assertSmartAccountExecutionGas } from './gas.ts';
+import { assertSignedSmartAccountExecution } from './executionSimulation.ts';
 import {
   hasNativeGasFailure,
   hasSmartAccountSignatureFailure,
@@ -80,7 +82,8 @@ export type SmartAccountSubmissionChecks = {
   assertPendingState(
     provider?: any,
     currentSignedHash?: string,
-    admission?: EvmAutoNonceSnapshot
+    admission?: EvmAutoNonceSnapshot,
+    signedRaw?: string
   ): Promise<void>;
   readonly assertPendingStateIncludesAssets?: true;
 };
@@ -288,7 +291,12 @@ async function submitOwnedSmartAccountOperation<
     };
     const submissionChecks: SmartAccountSubmissionChecks = {
       assertPendingStateIncludesAssets: true,
-      async assertPendingState(provider, currentSignedHash, admission) {
+      async assertPendingState(
+        provider,
+        currentSignedHash,
+        admission,
+        signedRaw
+      ) {
         const phase = provider
           ? host.pending.onProvider(provider, currentSignedHash, admission)
           : host.pending;
@@ -300,13 +308,33 @@ async function submitOwnedSmartAccountOperation<
           expectedErc20Transfers: params.expectedErc20Transfers,
           assertCurrent,
         });
-        if (currentSignedHash && signedUserOperation.initCode === '0x')
-          await assertSmartAccountExecutionGas(
+        if (currentSignedHash) {
+          if (!signedRaw)
+            throw new Error('Missing signed smart account payer transaction');
+          const signed = Transaction.from(signedRaw);
+          // Deployment prefunding has its own signed admission and is not handleOps.
+          if (
+            signed.to?.toLowerCase() !== entryPointAddress.toLowerCase() ||
+            signed.data !== callData
+          ) {
+            if (
+              signed.to?.toLowerCase() ===
+                active.account.address.toLowerCase() &&
+              signed.data === '0x'
+            )
+              return;
+            throw new Error('Smart account payer transaction changed');
+          }
+          await assertSignedSmartAccountExecution(
             phase.provider,
+            signedRaw,
+            currentSignedHash,
             signedUserOperation,
             active.metadata.chainId,
+            admission,
             assertCurrent
           );
+        }
         assertCurrent();
       },
       assertAssetState: (provider) =>
