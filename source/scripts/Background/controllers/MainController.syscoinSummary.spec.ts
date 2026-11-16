@@ -26,7 +26,10 @@ jest.mock('scripts/Background', () => ({
 import SysAssetsController from './assets/syscoin';
 import SyscoinBalanceController from './balances/syscoin';
 import MainController from './MainController';
-import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
+import {
+  clearFetchBackendAccountCache,
+  fetchBackendAccountCached,
+} from './utils/fetchBackendAccountWrapper';
 
 const account = {
   id: 0,
@@ -190,3 +193,65 @@ it.each(['native', 'assets'])(
     await Promise.all([observedNative, observedAssets]);
   }
 );
+
+it('a changed foreground balance preserves its still-running background history read', async () => {
+  const network = {
+    chainId: 57,
+    kind: 'syscoin',
+    currency: 'sys',
+    url: 'https://blockbook.invalid',
+  };
+  const currentAccount = { ...account, balances: { syscoin: '0' } };
+  mockState = {
+    vault: {
+      accounts: { HDAccount: { 0: currentAccount } },
+      activeAccount: { type: 'HDAccount', id: 0 },
+      isBitcoinBased: true,
+      activeNetwork: network,
+      accountTransactions: { HDAccount: { 0: { syscoin: { 57: [] } } } },
+    },
+    vaultGlobal: { networkStatus: 'idle' },
+  };
+  let release!: (response: Response) => void;
+  let historySignal!: AbortSignal;
+  global.fetch = jest.fn(async (input, init) => {
+    if (String(input).includes('details=txsummary')) {
+      historySignal = init!.signal as AbortSignal;
+      return new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+    }
+    return Response.json(summary(false));
+  });
+  let history: Promise<unknown> | undefined;
+  const controller = Object.assign(Object.create(MainController.prototype), {
+    walletSessionGeneration: 0,
+    networkRequestGeneration: 0,
+    getActiveKeyring: () => ({ isUnlocked: () => true }),
+    transactionsManager: { utils: { clearCache: jest.fn() } },
+    updateAssetsFromCurrentAccount: async () => undefined,
+    updateUserTransactionsState: () => {
+      history = fetchBackendAccountCached(
+        network.url,
+        account.xpub,
+        'details=txsummary&pageSize=30',
+        true
+      );
+      void history.catch(() => undefined);
+      return history;
+    },
+    updateUserNativeBalance: async () => {
+      currentAccount.balances.syscoin =
+        await SyscoinBalanceController().getSysBalanceForAccount(
+          currentAccount as any,
+          network.url
+        );
+    },
+  });
+  expect(await controller.getLatestUpdateForCurrentAccount(false, true)).toBe(
+    true
+  );
+  expect(historySignal.aborted).toBe(false);
+  release(Response.json({ ...summary(false), transactions: [] }));
+  await expect(history).resolves.toMatchObject({ transactions: [] });
+});

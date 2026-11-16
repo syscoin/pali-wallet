@@ -253,6 +253,46 @@ describe('fetchBackendAccountCached', () => {
     held.resolve({ balance: 'late' });
   });
 
+  it('invalidates completed summaries while keeping pending history owned until explicit retirement', async () => {
+    const held = deferred();
+    fetchBackendAccountMock
+      .mockResolvedValueOnce({ balance: '1' })
+      .mockReturnValueOnce(held.promise);
+    await fetchBackendAccountCached(
+      URL,
+      XPUB,
+      'details=tokenBalances&tokens=used',
+      true
+    );
+    const history = fetchBackendAccountCached(
+      URL,
+      XPUB,
+      'details=txsummary',
+      true
+    );
+    const rejected = expect(history).rejects.toHaveProperty(
+      'name',
+      'AbortError'
+    );
+    const transport = fetchBackendAccountMock.mock.calls[1][5];
+    clearFetchBackendAccountCache(true);
+    expect(transport.signal.aborted).toBe(false);
+    fetchBackendAccountMock.mockResolvedValueOnce({ balance: '2' });
+    await expect(
+      fetchBackendAccountCached(
+        URL,
+        XPUB,
+        'details=tokenBalances&tokens=used',
+        true
+      )
+    ).resolves.toEqual({ balance: '2' });
+    expect(fetchBackendAccountMock).toHaveBeenCalledTimes(3);
+    clearFetchBackendAccountCache();
+    await rejected;
+    expect(transport.signal.aborted).toBe(true);
+    held.resolve({ transactions: [] });
+  });
+
   it('retires physical transport when the cache is explicitly cleared', async () => {
     const held = deferred();
     fetchBackendAccountMock.mockReturnValueOnce(held.promise);

@@ -13250,7 +13250,7 @@ class MainController {
         clearRpcCaches();
       }
       clearProviderCache();
-      clearFetchBackendAccountCache();
+      clearFetchBackendAccountCache(true);
     }
 
     return hasChanges;

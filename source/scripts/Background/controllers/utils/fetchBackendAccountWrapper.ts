@@ -204,13 +204,11 @@ export const fetchBackendAccountCached = async (
   return subscribe(entry, signal);
 };
 
-// Export a function to clear all cached requests
-export const clearFetchBackendAccountCache = () => {
-  // Cancel all pending requests
-  requestCache.forEach((entry) => {
-    if (entry.abortController) {
-      entry.abortController.abort();
-    }
-  });
-  requestCache.clear();
+/** Retiring a context cancels work; refreshing values only invalidates completed observations. */
+export const clearFetchBackendAccountCache = (completedOnly = false) => {
+  for (const [key, entry] of requestCache) {
+    if (completedOnly && !entry.settled) continue;
+    entry.abortController.abort();
+    requestCache.delete(key);
+  }
 };
