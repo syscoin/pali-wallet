@@ -51,7 +51,9 @@ const budget = {
   // these fixes while preserving all startup and RPC ceilings.
   // Exact signed Smart simulation and final replay admission add about 2 KB
   // to the 12.20 MB package. Reserve 10 KB; startup and RPC caps stay fixed.
-  package: 12210000,
+  // Bounded artwork/Blockbook responses and retained activity/disclosure fixes
+  // add 7,288 bytes at b36a1116b: 12,217,155 total. Startup/RPC caps stay fixed.
+  package: 12220000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
