@@ -550,6 +550,8 @@ beforeEach(() => {
   mockWallet.sendAndSaveTokenTransaction =
     mockWallet.sendAndSaveTokenTransaction.bind(mockWallet);
   (getController as jest.Mock).mockReturnValue({ wallet: mockWallet });
+  delete (mockState.vault.accounts.HDAccount[0] as any).isSmartAccount;
+  delete (mockState.vault.accounts.HDAccount[0] as any).smartAccount;
   mockSdkSend
     .mockReset()
     .mockResolvedValue({ hash: `0x${'44'.repeat(32)}`, nonce: 7 });
@@ -601,6 +603,7 @@ afterEach(() => {
         'sendAndSaveEthTransaction',
         'sendAndSaveTokenTransaction',
         'getRecommendedGasPrice',
+        'checkAddressBlacklist',
       ].includes(path.at(-1))
     )
   ).toBe(true);
@@ -665,6 +668,59 @@ async function readyToken(
 }
 const confirmToken = () =>
   screen.getByRole('button', { name: 'buttons.confirm' });
+
+it('keeps the ERC20 recipient separate from its execution target in Smart approval', async () => {
+  const { prepareSmartAccountFeeQuote, signAndSubmitSmartAccountExecutions } =
+    jest.requireMock('utils/smartAccount');
+  const account = mockState.vault.accounts.HDAccount[0] as any;
+  account.isSmartAccount = true;
+  account.smartAccount = {};
+  prepareSmartAccountFeeQuote.mockResolvedValue({
+    executionContextId: 'token-review',
+    maximumFeeWei: '1',
+    gasUnits: '1',
+    feePayer: { id: 0, type: 'HDAccount', address: account.address },
+  });
+  signAndSubmitSmartAccountExecutions.mockResolvedValue({ hash: retainedHash });
+  const previous = mockEmitter.getMockImplementation();
+  mockEmitter.mockImplementation((...args: any[]) =>
+    args[0].at(-1) === 'checkAddressBlacklist'
+      ? Promise.resolve({ isBlacklisted: false })
+      : previous?.(...args)
+  );
+  mockLocation.state.tx.transactionType = 'ERC20';
+  mockLocation.state.tx.tokenAmountUnits = '1000000000000000000';
+  mockLocation.state.tx.token = {
+    contractAddress: `0x${'33'.repeat(20)}`,
+    decimals: 18,
+    symbol: 'TEST',
+    name: 'Synthetic token',
+  };
+  mockLocation.state.tx.cachedGasData = {
+    maxFeePerGas: '0xb2d05e00',
+    maxPriorityFeePerGas: '0x00',
+  };
+  render(<SendConfirm />);
+  await waitFor(() => expect(confirmToken()).toBeEnabled());
+  fireEvent.click(confirmToken());
+  await waitFor(() =>
+    expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
+  );
+  const quote = prepareSmartAccountFeeQuote.mock.calls.at(-1)[0];
+  const submitted = signAndSubmitSmartAccountExecutions.mock.calls[0][0];
+  expect(submitted.expectedErc20Transfers).toEqual(
+    quote.expectedErc20Transfers
+  );
+  expect(submitted.expectedErc20Transfers[0]).toMatchObject({
+    contractAddress: mockLocation.state.tx.token.contractAddress,
+    recipient: syntheticRecipient,
+    amountUnits: '1000000000000000000',
+    decimals: 18,
+  });
+  expect(submitted.executions[0].target).toBe(
+    mockLocation.state.tx.token.contractAddress
+  );
+});
 
 it('preserves the localized pre-send blacklist refusal through the real token port', async () => {
   await readyToken(true);

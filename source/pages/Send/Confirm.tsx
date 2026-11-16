@@ -1366,7 +1366,7 @@ export const SendConfirm = () => {
                   expectedErc20Transfers: [
                     {
                       contractAddress: basicTxValues.token.contractAddress,
-                      recipient: target,
+                      recipient: destinationTo,
                       amountUnits: reviewedErc20Units!,
                       decimals: basicTxValues.token.decimals,
                     },
