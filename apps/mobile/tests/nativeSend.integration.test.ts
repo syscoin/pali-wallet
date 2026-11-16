@@ -235,7 +235,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
   let afterSignature: (() => void) | undefined;
   let afterSignedInsert: (() => void) | undefined;
   const execution = { gas: '0x5208', reverts: false, feesUnavailable: false };
-  const token = { balance: 9n, decimals: 0 };
+  const token = { balance: 9n, decimals: 0, paused: false };
   let authentications = 0;
   let authenticationStorageFailure = false, clockOffset = 0;
   let authenticationGate: { entered(): void; release: Promise<void> } | null = null;
@@ -382,13 +382,15 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
         canonicalHash: string;
       }
     | undefined;
+  let httpRequests = 0;
   const requests: { method: string; params: unknown[] }[] = [];
   const rpc = new NativeTransferRpc({
     networkId: 'ethereum',
-    fetch: async function fixtureFetch(_url, init): Promise<Response> {
+    fetch: async function fixtureFetch(_url, init, member = false): Promise<Response> {
+      if (!member) httpRequests++;
       const payload = JSON.parse(String(init.body));
       if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async row =>
-        (await fixtureFetch(_url, {...init, body: JSON.stringify(row)})).json())));
+        (await fixtureFetch(_url, {...init, body: JSON.stringify(row)}, true)).json())));
       const request = JSON.parse(String(init.body));
       requests.push(request);
       let result: unknown;
@@ -419,7 +421,10 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
         throw Error('Recommendation unavailable');
       else if (request.method === 'eth_call') {
         const data = request.params[0].data;
-        if (data.startsWith('0x6352211e')) {
+        if (data.startsWith('0xa9059cbb') && token.paused) return Response.json({ jsonrpc: '2.0', id: request.id,
+          error: { code: 3, message: 'execution reverted: paused', data: '0x' } });
+        if (['0x23b872dd', '0xf242432a', '0x42842e0e', '0xb88d4fde'].some(selector => data.startsWith(selector))) result = '0x';
+        else if (data.startsWith('0x6352211e')) {
           if (BigInt('0x' + data.slice(10)) !== 7n) return Response.json({ jsonrpc: '2.0', id: request.id,
             error: { code: 3, message: 'execution reverted', data: '0x' } });
           result = '0x' + Wallet.fromPhrase(PHRASE).address.slice(2).toLowerCase().padStart(64, '0');
@@ -551,6 +556,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
     onSignedInsert(callback: () => void) { afterSignedInsert = callback; },
     recovery: largeReceipt,
     requests,
+    get httpRequests() { return httpRequests; },
     replacement,
     get transfers() {
       return transfers;
@@ -2017,5 +2023,57 @@ test(`cancellation final admission rejects native balance loss ${boundary}`, asy
     assert.equal(f.signatures, 2);
     assert.equal(f.broadcasts.length, 1);
     assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, 2);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['before-confirm', 'after-signature', 'after-storage'] as const)
+test(`replacement final admission rejects paused token execution ${boundary}`, async () => {
+  const f = await cancellationFixture();
+  try {
+    await prepareTokenTransfer(f);
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    f.replacement.pending = true;
+    await f.transfers.prepareSpeedUp(f.transfers.getSnapshot().hash!);
+    const review = f.transfers.getSnapshot().review!;
+    let changedAt = -1;
+    const pauseToken = () => { changedAt = f.requests.length; f.token.paused = true; };
+    if (boundary === 'before-confirm') pauseToken();
+    else if (boundary === 'after-signature') f.onSignature(pauseToken);
+    else f.onSignedInsert(pauseToken);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'FAILED' });
+    assert(changedAt >= 0);
+    assert.equal(f.signatures, boundary === 'before-confirm' ? 1 : 2);
+    assert.equal(f.broadcasts.length, 1);
+    assert.equal(f.token.balance, 9n);
+    assert.equal(f.token.decimals, 0);
+    const simulation = f.requests.slice(changedAt).find(request => request.method === 'eth_call' &&
+      (request.params[0] as { data: string }).data.startsWith('0xa9059cbb'));
+    assert(simulation, 'the exact replacement is simulated after the pause');
+    const call = simulation.params[0] as { gas: string; nonce: string };
+    assert.equal(BigInt(call.gas).toString(), review.gasLimit);
+    assert.equal(BigInt(call.nonce).toString(), review.nonce);
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, boundary === 'before-confirm' ? 1 : 2);
+  } finally { await f.close(); }
+});
+
+for (const asset of ['native', 'token'] as const) test(`counted SDK and SQLite ${asset} replacement confirmation`, async () => {
+  const f = await cancellationFixture();
+  try {
+    if (asset === 'token') await prepareTokenTransfer(f);
+    else await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    f.replacement.pending = true;
+    await f.transfers.prepareSpeedUp(f.transfers.getSnapshot().hash!);
+    const review = f.transfers.getSnapshot().review!;
+    f.requests.length = 0;
+    const httpBefore = f.httpRequests;
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.broadcasts.length, 2);
+    assert.equal(f.requests.length, asset === 'native' ? 26 : 37);
+    assert.equal(f.httpRequests - httpBefore, asset === 'native' ? 22 : 31);
+    assert.equal(f.requests.filter(request => request.method === 'eth_chainId').length, 9);
+    console.log('REPLACEMENT_CONFIRM_COUNTS', JSON.stringify({ asset, methods: f.requests.length, http: f.httpRequests - httpBefore,
+      chains: f.requests.filter(request => request.method === 'eth_chainId').length,
+      calls: f.requests.map(request => request.method) }));
   } finally { await f.close(); }
 });

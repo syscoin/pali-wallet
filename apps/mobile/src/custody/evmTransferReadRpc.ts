@@ -642,13 +642,18 @@ export class EvmTransferReadRpc {
     });
   }
 
-  prepareSpeedUp(original: Transaction, rates: EvmReplacementRates, signal: AbortSignal, guard: () => void): Promise<EvmPreparedQuote> {
+  prepareSpeedUp(original: Transaction, rates: EvmReplacementRates, signal: AbortSignal, guard: () => void, asset?: EvmTransferAsset, expectedDecimals?: number): Promise<EvmPreparedQuote> {
     const { from, to, nonce, value, data, gasLimit, chainId } = original;
     if (!from || rates.type !== original.type || chainId.toString() !== this.network.chainId)
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      const assetState = asset && await readEvmAssetState(read, from, asset, { number: hex(BigInt(sampled.number)), hash: sampled.hash });
+      if (assetState) {
+        if (assetState.balanceUnits < BigInt(assetState.asset.amountUnits)) throw new EvmAssetStateError('INSUFFICIENT_ASSET');
+        if (expectedDecimals !== undefined) await this.assertTokenDecimals(read, assetState, expectedDecimals);
+      }
       const [rawBalance, rawNonce] = await Promise.all([
         read('eth_getBalance', [from, 'latest']),
         read('eth_getTransactionCount', [from, 'latest']),
@@ -685,10 +690,14 @@ export class EvmTransferReadRpc {
       } catch (error) {
         return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
       }
-      await this.canonical(read, sampled);
+      if (assetState) {
+        await simulateEvmAssetTransfer(read, assetState, transaction, 'manual');
+        await this.assertAssetCanonical(read, assetState);
+      } else await this.canonical(read, sampled);
       await this.checkChain(read);
       return Object.freeze({ transaction, balanceUnits: balance.toString(),
-        maximumFeeUnits: approval.maximumFeeUnits, totalUnits: approval.maximumTotalUnits });
+        maximumFeeUnits: approval.maximumFeeUnits, totalUnits: approval.maximumTotalUnits,
+        ...(assetState ? { assetBalanceUnits: assetState.balanceUnits.toString() } : {}) });
     }, 'endpoint');
   }
 
@@ -906,6 +915,7 @@ export class EvmTransferReadRpc {
       if (assetState) {
         if (expectedDecimals !== undefined) await this.assertTokenDecimals(read, assetState, expectedDecimals);
         await assertEvmAssetReservations(assetState, Number(envelope.nonce), snapshot, read.assertCurrent);
+        await simulateEvmAssetTransfer(read, assetState, envelope, 'manual');
       }
       const approval = captureEvmFeeApproval(envelope, this.network.registrationHash, this.feeQuoteExpiry());
       const balance = await availableEvmReplacementBalance(snapshot, this.network.chainId, envelope.from,

@@ -14,16 +14,13 @@ import { EvmObservationError, type EvmTransactionObservation } from '../../../..
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { ActivityReceiptError, ActivityReceiptReader } from '../activity/receiptReader.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
-import {
-  encodeErc20Transfer,
-  parseErc20Decimals,
-} from '../../../../source/shared/erc20.ts';
+import { encodeErc20Transfer } from '../../../../source/shared/erc20.ts';
 import {
   assertTransferIntentEnvelope,
   snapshotErc20TransferIntent,
   type Erc20TransferIntent,
 } from './transferIntent.ts';
-import { EvmAssetStateError, readEvmAssetState, assertEvmAssetStateCanonical, simulateEvmAssetTransfer, type EvmAssetReadMethod, type EvmTransferAsset } from '../../../../source/shared/evmAssetState.ts';
+import { EvmAssetStateError, type EvmTransferAsset } from '../../../../source/shared/evmAssetState.ts';
 import { EvmTransferReadRpc, type EvmCancellationQuote, type EvmNftPreparedQuote, type NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
 import { EvmAutomaticNonceUnresolved, EvmTransferReadError, guardedRead, matchesSendNonce, unsignedTransferBytes, type EvmUnsignedTransfer } from './evmFeeContracts.ts';
 import type { NftTransferRequest, NftTransferSelection } from './nftTransferAdmission.ts';
@@ -375,11 +372,13 @@ export class NativeTransferRpc {
       assertTransferIntentEnvelope({ chainId: this.context.chainId, to: original.to!, value: original.valueUnits, data: original.data }, intent);
     } catch { throw new NativeTransferRpcError('REVIEW_REQUIRED'); }
     await this.assertPendingOriginal(original, signal, guard);
-    const read = (local: AbortSignal) => this.receiptRpc.prepareSpeedUp(transaction, rates, local, guard);
-    const quote = await (intent ? this.quoteToken(payer, intent, signal, (_intent, local) => read(local)) : read(signal))
+    const capturedIntent = intent && snapshotErc20TransferIntent(intent);
+    const asset: EvmTransferAsset | undefined = capturedIntent && { standard: 'ERC20',
+      contractAddress: capturedIntent.token.contractAddress, amountUnits: capturedIntent.amountUnits };
+    const quote = await this.receiptRpc.prepareSpeedUp(transaction, rates, signal, guard, asset, capturedIntent?.token.decimals)
       .catch((error) => this.mapReadError(error));
     assertSpeedUpEnvelope(original, quote.transaction);
-    return Object.freeze({ ...this.checkedQuote(quote), original });
+    return Object.freeze({ ...this.checkedQuote(quote), original, ...(capturedIntent ? { intent: capturedIntent, tokenBalanceUnits: quote.assetBalanceUnits! } : {}) });
   }
   private mapReadError(error: unknown, asset: 'token' | 'nft' = 'token'): never {
     if (error instanceof EvmAssetStateError) {
@@ -484,24 +483,6 @@ export class NativeTransferRpc {
       await this.receiptRpc.verifyReplacementForDispatch(envelope, signal, guard, snapshot, asset, intent?.token.decimals);
       guard();
     } catch (error) { guard(); this.mapReadError(error, nft ? 'nft' : 'token'); }
-  }
-  private async quoteToken(from: string, input: Erc20TransferIntent, signal: AbortSignal,
-    readQuote: (intent: Erc20TransferIntent, signal: AbortSignal) => Promise<NativeTransferQuote>): Promise<NativeTransferQuote> {
-    const intent = snapshotErc20TransferIntent(input);
-    return this.operation(signal, async (owned) => {
-      const read = (method: EvmAssetReadMethod, params: readonly unknown[]) => this.call(method, params, owned);
-      await this.checkChain(owned);
-      const state = await readEvmAssetState(read, from, { standard: 'ERC20', contractAddress: intent.token.contractAddress, amountUnits: intent.amountUnits });
-      if (state.balanceUnits < BigInt(intent.amountUnits)) throw new NativeTransferRpcError('INSUFFICIENT_TOKEN_BALANCE');
-      const precision = await read('eth_call', [{ to: state.asset.contractAddress, data: '0x313ce567' }, state.number]);
-      if (typeof precision !== 'string' || !/^0x[0-9a-f]{64}$/i.test(precision)) return invalid();
-      if (parseErc20Decimals(BigInt(precision)) !== intent.token.decimals) throw new NativeTransferRpcError('TOKEN_CHANGED');
-      const quote = await readQuote(intent, owned);
-      await simulateEvmAssetTransfer(read, state, quote.transaction, 'manual');
-      await assertEvmAssetStateCanonical(read, state);
-      await this.checkChain(owned);
-      return Object.freeze({ ...this.checkedQuote(quote), intent, tokenBalanceUnits: state.balanceUnits.toString() });
-    }).catch((error) => this.mapReadError(error));
   }
   broadcast(
     rawTransaction: string,
@@ -692,7 +673,7 @@ export class NativeTransferRpc {
           protectedPreflightComplete = true;
           return;
         }
-        await this.checkChain(local);
+        if (!speedUp || !original) await this.checkChain(local);
         if (newSend) {
           const manual = nonceOverride !== undefined;
           const nonce = await this.call('eth_getTransactionCount', [newSend.from, manual ? 'latest' : 'pending'], local);
