@@ -76,7 +76,7 @@ export function isZksysQualificationReport(
     report.zksysSignatures === (report.phase === 'create' ? 1 : 0) &&
     report.zksysAuthorizations === (report.phase === 'create' ? 0 : 1) &&
     report.zksysInjectedBroadcasts === 1 &&
-    report.zksysFeeEstimates === (report.phase === 'create' ? 2 : 0) &&
+    report.zksysFeeEstimates === (report.phase === 'create' ? 3 : 0) &&
     report.zksysRestoredFromJournal === (report.phase === 'restart')
   );
 }
@@ -349,7 +349,8 @@ export async function qualifyNativeZksysTransfer(
         same([]);
         result = estimates === 0 ? '0x0' : '0x9';
       } else if (body.method === 'eth_estimateGas') {
-        expect(phase === 'create' && ++estimates <= 2);
+        // Review, pre-sign refresh, and post-storage admission each estimate exact bytes.
+        expect(phase === 'create' && ++estimates <= 3);
         same([
           {
             from: address,
@@ -468,7 +469,7 @@ export async function qualifyNativeZksysTransfer(
       signatures === (phase === 'create' ? 1 : 0) &&
         authorizations === (phase === 'create' ? 0 : 1) &&
         broadcasts === 1 &&
-        estimates === (phase === 'create' ? 2 : 0)
+        estimates === (phase === 'create' ? 3 : 0)
     );
     expect(retainedSignedEntries((await readSignedRecordEvidence(storage)).entries, olderAddresses) === olderRows);
     expect((await storage.getWalletFingerprint()) === fingerprint);

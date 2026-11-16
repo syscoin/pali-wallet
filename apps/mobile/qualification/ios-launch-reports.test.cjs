@@ -189,7 +189,7 @@ function passedReport() {
     nevmJournalContainerVersion: 1, nevmRestoredFromJournal: false,
     nativeZksysVerified: true, zksysAccountId: 'hd:60:4', zksysAccountIndex: 4, zksysAddress: '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA',
     zksysTransferHash: '0x' + '9'.repeat(64), zksysChainId: '57057', zksysJournalContainerVersion: 1, zksysSignatures: 1,
-    zksysAuthorizations: 0, zksysInjectedBroadcasts: 1, zksysFeeEstimates: 2, zksysRestoredFromJournal: false,
+    zksysAuthorizations: 0, zksysInjectedBroadcasts: 1, zksysFeeEstimates: 3, zksysRestoredFromJournal: false,
     ...importedEvidence() });
 }
 
