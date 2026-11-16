@@ -500,10 +500,13 @@ it.each([false, true])(
       if (method === 'eth_getTransactionCount') return '0x0';
       if (method === 'eth_getCode') return '0xef0100' + '33'.repeat(20);
       if (method === 'eth_getBalance') return '0x100000';
-      if (method === 'eth_getBlockByNumber') return {
-        number: '0x1', hash: '0x' + '55'.repeat(32),
-        baseFeePerGas: '0x1', gasLimit: '0x100000',
-      };
+      if (method === 'eth_getBlockByNumber')
+        return {
+          number: '0x1',
+          hash: '0x' + '55'.repeat(32),
+          baseFeePerGas: '0x1',
+          gasLimit: '0x100000',
+        };
       throw Error('Unexpected RPC');
     });
     const dispatch = jest.fn(async (bytes: string) => {
