@@ -31,6 +31,7 @@ let manager: ReturnType<typeof TransactionsManager>;
 const read = (
   options: {
     bypassCompleted?: boolean;
+    current?: () => boolean;
     force?: boolean;
     pending?: boolean;
     rapid?: boolean;
@@ -51,7 +52,7 @@ const read = (
     Boolean(options.rapid),
     Boolean(options.force),
     options.scope,
-    undefined,
+    options.current,
     options.bypassCompleted
   );
 
@@ -90,6 +91,42 @@ it('reuses the cache for an unchanged account, RPC and API', async () => {
   const first = await read();
   expect(await read()).toBe(first);
   expect(mockEvmPolling).toHaveBeenCalledTimes(1);
+});
+
+it('separates completed results for chain changes at the same URLs and for new read scopes', async () => {
+  const first = await read({ scope: 'old' });
+  mockVault.activeNetwork = { ...mockVault.activeNetwork, chainId: 5701 };
+  expect(await read({ scope: 'new' })).not.toBe(first);
+  const second = await read({ scope: 'new' });
+  expect(await read({ scope: 'replacement' })).not.toBe(second);
+  expect(mockEvmPolling).toHaveBeenCalledTimes(3);
+});
+
+it('does not publish a completed cache entry from a retired read', async () => {
+  const pending = deferred();
+  let current = true;
+  mockEvmPolling.mockReturnValueOnce(pending.promise);
+  const old = read({ scope: 'old', current: () => current });
+  current = false;
+  pending.resolve([{ hash: 'retired', blockNumber: 1 }]);
+  await old.catch(() => undefined);
+  const fresh = await read({ scope: 'new' });
+  expect('hash' in fresh[0] && fresh[0].hash).not.toBe('retired');
+  expect(mockEvmPolling).toHaveBeenCalledTimes(2);
+});
+
+it('does not cache a late result after the selected URL or account changes without a guard', async () => {
+  const old = deferred();
+  mockEvmPolling.mockReturnValueOnce(old.promise);
+  const pending = read();
+  mockVault.activeNetwork.url = 'https://replacement.example';
+  old.resolve([{ hash: 'retired-endpoint', blockNumber: 1 }]);
+  await pending;
+  mockVault.activeNetwork.url = rpc;
+  expect((await read())[0]).not.toEqual(
+    expect.objectContaining({ hash: 'retired-endpoint' })
+  );
+  expect(mockEvmPolling).toHaveBeenCalledTimes(2);
 });
 
 it('bypasses the cache for a pending transaction without changing the endpoint', async () => {
@@ -229,7 +266,7 @@ it.each([false, true])(
     expect(poll.mock.calls[1][2]).toBe(false);
     old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
     await Promise.all([forced, joined]);
-    expect(await read({ utxo })).toBe(fresh);
+    expect(await read({ utxo, scope: '1:1' })).toBe(fresh);
   }
 );
 
@@ -314,7 +351,7 @@ it.each([false, true])(
   }
 );
 
-it('keeps independent endpoint cache writers independent', async () => {
+it('rejects completed cache publication after its active endpoint changes', async () => {
   const old = deferred();
   const firstEndpoint = [{ hash: 'first-endpoint', blockNumber: 1 }];
   const secondEndpoint = [{ hash: 'second-endpoint', blockNumber: 2 }];
@@ -328,8 +365,8 @@ it('keeps independent endpoint cache writers independent', async () => {
   await first;
   expect(await read()).toBe(secondEndpoint);
   mockVault.activeNetwork.apiUrl = originalApi;
-  expect(await read()).toBe(firstEndpoint);
-  expect(mockEvmPolling).toHaveBeenCalledTimes(2);
+  expect(await read()).not.toBe(firstEndpoint);
+  expect(mockEvmPolling).toHaveBeenCalledTimes(3);
 });
 
 it.each([false, true])(

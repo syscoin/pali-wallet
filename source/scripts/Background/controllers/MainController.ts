@@ -9264,6 +9264,7 @@ class MainController {
       isBitcoinBased ? account?.xpub : account?.address?.toLowerCase();
     const accountIdentity = identityOf(currentAccount);
     const scope = getWalletNavigationScope();
+    const historyAbort = new AbortController();
     let cancelled = false;
     const isCurrentRead = () => {
       const latest = store.getState().vault;
@@ -9329,7 +9330,8 @@ class MainController {
                 forceRefresh,
                 `${session}:${networkRequest}`,
                 isCurrentRead,
-                bypassCompletedCache
+                bypassCompletedCache,
+                historyAbort.signal
               );
 
             const latestVault = store.getState().vault;
@@ -9538,6 +9540,7 @@ class MainController {
         )
           store.dispatch(setTransactionHistoryStatus(undefined));
         cancelled = true;
+        historyAbort.abort();
         cancel();
       },
     });

@@ -1,6 +1,7 @@
+import { selectEvmHistoryRepresentatives } from '../../../../shared/evmHistory';
+
 import TransactionsManager from './index';
 import { findUserTxsInProviderByBlocksRange } from './utils';
-
 let scope: any;
 let mockPollingEvmTransactions: (...args: any[]) => Promise<any>;
 jest.mock('scripts/Background', () => ({
@@ -128,6 +129,31 @@ it('invalidates bodies on a reorg and fills a deeper requested range', async () 
   await f.scan(10);
   expect(f.fullReads()).toHaveLength(22);
 });
+it('carries disproved EOA placements through the actual history merge', async () => {
+  const f = fixture();
+  const first = (await f.scan(1)).map((row) => ({
+    ...row,
+    blockHash: hash(Number(row.blockNumber)),
+    nonce: Number(row.blockNumber),
+  }));
+  scope.accountTransactions = { HDAccount: { 0: { ethereum: { 1: first } } } };
+  const original = f.provider.readMany.getMockImplementation()!;
+  f.reorg();
+  f.provider.readMany.mockImplementation(async (...args) => {
+    const rows = await original(...args);
+    return rows.map((row: any) =>
+      row.value?.transactions?.length
+        ? { ...row, value: { ...row.value, transactions: [] } }
+        : row
+    );
+  });
+  const next = await f.scan(1);
+  const merged = selectEvmHistoryRepresentatives([...first, ...next]);
+  expect(merged).toHaveLength(first.length);
+  expect(
+    merged.every((row) => row.confirmations === 0 && row.blockNumber === null)
+  ).toBe(true);
+});
 it('does not reuse another network or account scope', async () => {
   const f = fixture();
   await f.scan();
@@ -187,7 +213,7 @@ it('reuses immutable bodies after the manager display cache expires and rejects 
   mockPollingEvmTransactions = () => f.scan();
   const poll = () =>
     manager.utils.updateTransactionsFromCurrentAccount(
-      { address: 'quiet-history-owner' } as any,
+      { address: 'owner' } as any,
       false,
       scope.activeNetwork.url,
       { ethereum: { 1: [] } } as any,

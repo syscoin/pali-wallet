@@ -161,7 +161,8 @@ export interface IEvmTransactionsController {
     web3Provider: CustomJsonRpcProvider,
     isPolling?: boolean,
     isRapidPolling?: boolean,
-    isCurrentRead?: () => boolean
+    isCurrentRead?: () => boolean,
+    signal?: AbortSignal
   ) => Promise<IEvmTransactionResponse[]>;
   testExplorerApi: (
     apiUrl: string
@@ -269,7 +270,8 @@ export interface ITransactionsManagerUtils {
     forceRefresh?: boolean,
     requestScope?: string,
     isCurrentRead?: () => boolean,
-    bypassCompletedCache?: boolean
+    bypassCompletedCache?: boolean,
+    signal?: AbortSignal
   ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {

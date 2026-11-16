@@ -30,12 +30,14 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
     numBlocks: number,
     web3Provider: CustomJsonRpcProvider,
-    isCurrentRead?: () => boolean
+    isCurrentRead?: () => boolean,
+    signal?: AbortSignal
   ) => {
     const providerUserTxs = await findUserTxsInProviderByBlocksRange(
       web3Provider,
       numBlocks,
-      isCurrentRead
+      isCurrentRead,
+      signal
     );
 
     // Just return the raw transactions - let the caller handle processing
@@ -507,8 +509,14 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     web3Provider: CustomJsonRpcProvider,
     isPolling?: boolean,
     isRapidPolling?: boolean,
-    isCurrentRead?: () => boolean
+    isCurrentRead?: () => boolean,
+    signal?: AbortSignal
   ) => {
+    const check = () => {
+      if (signal?.aborted || (isCurrentRead && !isCurrentRead()))
+        throw new Error('History context changed');
+    };
+    check();
     // Guard: ensure web3Provider is valid before polling
     if (!web3Provider) {
       console.warn(
@@ -550,6 +558,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         true,
         web3Provider
       );
+      check();
 
       if (apiResult.transactions !== null) {
         console.log(
@@ -615,8 +624,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         rawTransactions = await getUserTransactionByDefaultProvider(
           blocksToScan,
           web3Provider,
-          isCurrentRead
+          isCurrentRead,
+          signal
         );
+        check();
       }
 
       // ENHANCEMENT: When no API is available, also check specific pending transactions
@@ -663,7 +674,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           // redundant per-tx block/height calls.
           const pendingTxPromises = pendingTxs.map(async (pendingTx: any) => {
             try {
+              check();
               const tx = await web3Provider.getTransaction(pendingTx.hash);
+              check();
               if (tx) {
                 // If transaction is found and has a block number, it's confirmed
                 if (tx.blockNumber) {
@@ -671,6 +684,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                     getBlockOnce(tx.blockNumber),
                     getLatestBlockOnce(),
                   ]);
+                  check();
                   const confirmations = Math.max(
                     0,
                     latestBlock - tx.blockNumber
@@ -681,6 +695,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                   let isSuccess = null;
                   try {
                     receipt = await web3Provider.getTransactionReceipt(tx.hash);
+                    check();
                     if (receipt) {
                       isSuccess =
                         receipt.status === 1 || receipt.status === '0x1';
@@ -755,13 +770,16 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     // persisted block cursor).
     if (isSmartAccount) {
       try {
+        check();
         const userOpTransactions = await fetchSmartAccountUserOpTransactions(
           web3Provider,
           currentAccount as any,
           activeAccount.type,
           currentNetworkChainId,
-          isCurrentRead
+          isCurrentRead,
+          signal
         );
+        check();
         rawTransactions = [...rawTransactions, ...userOpTransactions];
       } catch (error) {
         console.warn(
@@ -772,6 +790,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
 
     // Process all transactions consistently, regardless of source (API or RPC)
+    check();
     const processedTransactions =
       validateAndManageUserTransactions(rawTransactions);
     return processedTransactions as IEvmTransactionResponse[];

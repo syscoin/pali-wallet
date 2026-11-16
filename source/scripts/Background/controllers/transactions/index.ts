@@ -30,8 +30,21 @@ const TransactionsManager = (): ITransactionsManager => {
     }
   };
 
-  const getCacheKey = (account: string, networkUrl: string, apiUrl?: string) =>
-    `${account}:${networkUrl}${apiUrl ? `:${apiUrl}` : ''}`;
+  const getCacheKey = (
+    account: string,
+    networkUrl: string,
+    apiUrl?: string
+  ) => {
+    const { activeNetwork } = store.getState().vault;
+    return JSON.stringify([
+      account,
+      networkUrl,
+      apiUrl,
+      activeNetwork.chainId,
+      activeNetwork.kind,
+      activeNetwork.slip44,
+    ]);
+  };
 
   // Helper function to check if account has pending transactions based on passed transaction data
   const hasPendingTransactions = (
@@ -56,7 +69,8 @@ const TransactionsManager = (): ITransactionsManager => {
     forceRefresh?: boolean,
     requestScope?: string,
     isCurrentRead?: () => boolean,
-    bypassCompletedCache = false
+    bypassCompletedCache = false,
+    signal?: AbortSignal
   ) => {
     // Clear expired cache entries
     clearExpiredCache();
@@ -76,10 +90,28 @@ const TransactionsManager = (): ITransactionsManager => {
       activeNetworkUrl,
       isBitcoinBased ? undefined : activeNetwork.apiUrl
     );
+    const canPublish = () =>
+      !signal?.aborted &&
+      (!isCurrentRead || isCurrentRead()) &&
+      (!store.getState().vault.activeAccount ||
+        store.getState().vault.accounts?.[
+          store.getState().vault.activeAccount.type
+        ]?.[store.getState().vault.activeAccount.id]?.[
+          isBitcoinBased ? 'xpub' : 'address'
+        ] === currentAccount[isBitcoinBased ? 'xpub' : 'address']) &&
+      cacheKey ===
+        getCacheKey(
+          isBitcoinBased ? currentAccount.xpub : currentAccount.address,
+          store.getState().vault.activeNetwork.url,
+          isBitcoinBased
+            ? undefined
+            : store.getState().vault.activeNetwork.apiUrl
+        );
 
     const pendingRead = transactionCacheOwners.get(cacheKey);
     if (
       !forceRefresh &&
+      canPublish() &&
       pendingRead?.full &&
       pendingRead.scope === requestScope
     ) {
@@ -93,7 +125,12 @@ const TransactionsManager = (): ITransactionsManager => {
     // This ensures we always get fresh data when confirmations might have changed
     if (!forceRefresh && !bypassCompletedCache && !hasUnconfirmedTxs) {
       const cachedResult = transactionCache.get(cacheKey);
-      if (cachedResult && Date.now() - cachedResult.timestamp < CACHE_TTL) {
+      if (
+        cachedResult &&
+        cachedResult.scope === requestScope &&
+        canPublish() &&
+        Date.now() - cachedResult.timestamp < CACHE_TTL
+      ) {
         return cachedResult.data;
       }
     }
@@ -122,17 +159,20 @@ const TransactionsManager = (): ITransactionsManager => {
             web3Provider,
             isPolling,
             isRapidPolling && !forceRefresh,
-            isCurrentRead
+            isCurrentRead,
+            signal
           );
         }
         // Cache the result only if no pending transactions
         // This prevents caching stale confirmation data
         if (
           !hasUnconfirmedTxs &&
+          canPublish() &&
           transactionCacheOwners.get(cacheKey) === cacheOwner
         ) {
           transactionCache.set(cacheKey, {
             data: result,
+            scope: requestScope,
             timestamp: Date.now(),
           });
         }

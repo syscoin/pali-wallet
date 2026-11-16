@@ -101,30 +101,39 @@ type RawRpcTransaction = {
 const readHistoryDetails = async (
   provider: CustomJsonRpcProvider,
   method: string,
-  params: Array<any[]>
+  params: Array<any[]>,
+  check: () => void = () => undefined,
+  signal?: AbortSignal
 ): Promise<any[]> => {
+  check();
   if (params.length === 0) {
     return [];
   }
   if (typeof provider.readMany === 'function') {
     try {
       const results = await provider.readMany(
-        params.map((values) => ({ method, params: values }))
+        params.map((values) => ({ method, params: values })),
+        { signal }
       );
+      check();
       if (!Array.isArray(results) || results.length !== params.length)
         return params.map(() => null);
       return results.map((result) =>
         result?.status === 'fulfilled' ? result.value : null
       );
     } catch {
+      check();
       return params.map(() => null);
     }
   }
   const results: any[] = [];
   for (const param of params) {
     try {
+      check();
       results.push(await provider.send(method, param));
+      check();
     } catch {
+      check();
       results.push(null);
     }
   }
@@ -210,11 +219,11 @@ const persistScanCursor = (
  * null when not even the first chunk could be scanned.
  */
 const scanLogsInChunks = async (
-  provider: CustomJsonRpcProvider,
   filter: Record<string, unknown>,
   fromBlock: number,
   latestBlock: number,
   initialSpan: number,
+  readLogs: (query: any) => Promise<any[]>,
   rangeKey?: string
 ): Promise<{
   allowTip: boolean;
@@ -234,7 +243,7 @@ const scanLogsInChunks = async (
   ) {
     const chunkEnd = Math.min(chunkStart + span - 1, latestBlock);
     try {
-      const chunkLogs = await provider.getLogs({
+      const chunkLogs = await readLogs({
         ...filter,
         fromBlock: chunkStart,
         toBlock: chunkEnd,
@@ -263,10 +272,42 @@ export const fetchSmartAccountUserOpTransactions = async (
   account: ScannedAccount,
   accountType: KeyringAccountType,
   chainId: number,
-  isCurrentRead?: () => boolean
+  isCurrentRead?: () => boolean,
+  signal?: AbortSignal
 ): Promise<IEvmTransactionResponse[]> => {
+  const check = () => {
+    if (
+      signal?.aborted ||
+      provider.signal?.aborted ||
+      (isCurrentRead && !isCurrentRead())
+    )
+      throw new Error('History context changed');
+  };
+  const readLogs = async (filter: any) => {
+    check();
+    let result: unknown;
+    if (signal && provider.readMany) {
+      const normalized = {
+        ...filter,
+        fromBlock: `0x${filter.fromBlock.toString(16)}`,
+        toBlock: `0x${filter.toBlock.toString(16)}`,
+      };
+      const [logs] = await provider.readMany(
+        [{ method: 'eth_getLogs', params: [normalized] }],
+        { signal }
+      );
+      if (logs?.status === 'rejected') throw logs.reason;
+      if (logs?.status !== 'fulfilled') throw new Error('Invalid history logs');
+      result = logs.value;
+    } else result = await provider.getLogs(filter);
+    check();
+    if (!Array.isArray(result)) throw new Error('Invalid history logs');
+    return result;
+  };
+  check();
   const scannedAccount = { id: account.id, address: account.address };
   const latestBlock = await provider.getBlockNumber();
+  check();
   const refreshedExisting = refreshExistingConfirmations(
     account,
     accountType,
@@ -298,15 +339,15 @@ export const fetchSmartAccountUserOpTransactions = async (
     if (learnedSpan && latestBlock - fromBlock + 1 > learnedSpan) {
       throw new Error('Known block range limit');
     }
-    logs = await provider.getLogs(filter);
+    logs = await readLogs(filter);
   } catch (error) {
+    check();
     if (!isLogRangeFailure(error)) return refreshedExisting;
     // Range-capped RPC: backfill in bounded chunks from the intended start
     // so older history is eventually indexed (partial contiguous progress
     // is persisted via the cursor), then peek at the tip window so fresh
     // activity is visible immediately while the backfill catches up.
     const chunked = await scanLogsInChunks(
-      provider,
       filter,
       fromBlock,
       latestBlock,
@@ -315,6 +356,7 @@ export const fetchSmartAccountUserOpTransactions = async (
           FALLBACK_SCAN_BLOCKS,
           Math.max(1, Math.floor((latestBlock - fromBlock + 1) / 2))
         ),
+      readLogs,
       rangeKey
     );
     if (!chunked) {
@@ -331,12 +373,13 @@ export const fetchSmartAccountUserOpTransactions = async (
         latestBlock - chunked.span + 1
       );
       try {
-        const tipLogs = await provider.getLogs({
+        const tipLogs = await readLogs({
           ...filter,
           fromBlock: tipFromBlock,
         });
         logs = [...logs, ...tipLogs];
       } catch {
+        check();
         // Best effort only; the backfill cursor reaches these blocks later.
       }
     }
@@ -347,14 +390,41 @@ export const fetchSmartAccountUserOpTransactions = async (
   // sender in the bundle must have succeeded for the tx to show as success.
   const successByTxHash = new Map<string, boolean>();
   const logBlockHashByTxHash = new Map<string, string>();
+  const logBlockNumberByTxHash = new Map<string, number>();
+  const conflictingHashes = new Set<string>();
   for (const log of logs) {
     try {
       const parsed = decodeSmartAccountUserOperationEvent(log);
+      if (
+        parsed.sender.toLowerCase() !== account.address.toLowerCase() ||
+        String(log.address).toLowerCase() !== filter.address.toLowerCase() ||
+        log.removed
+      )
+        continue;
       const key = log.transactionHash.toLowerCase();
+      if (
+        !/^0x[0-9a-f]{64}$/.test(key) ||
+        !Number.isSafeInteger(Number(log.blockNumber)) ||
+        Number(log.blockNumber) < fromBlock ||
+        Number(log.blockNumber) > latestBlock ||
+        typeof log.blockHash !== 'string' ||
+        !/^0x[0-9a-f]{64}$/i.test(log.blockHash)
+      )
+        continue;
       const success = parsed.success;
+      if (
+        logBlockHashByTxHash.has(key) &&
+        (logBlockHashByTxHash.get(key) !==
+          String(log.blockHash).toLowerCase() ||
+          logBlockNumberByTxHash.get(key) !== Number(log.blockNumber))
+      ) {
+        conflictingHashes.add(key);
+        continue;
+      }
       successByTxHash.set(key, (successByTxHash.get(key) ?? true) && success);
       if (log.blockHash) {
         logBlockHashByTxHash.set(key, String(log.blockHash).toLowerCase());
+        logBlockNumberByTxHash.set(key, Number(log.blockNumber));
       }
     } catch {
       // Topic filter guarantees the event type; decode failures are skipped.
@@ -402,7 +472,9 @@ export const fetchSmartAccountUserOpTransactions = async (
   const canonicalBlocks = await readHistoryDetails(
     provider,
     'eth_getBlockByNumber',
-    missingHeights.map((height) => [`0x${height.toString(16)}`, false])
+    missingHeights.map((height) => [`0x${height.toString(16)}`, false]),
+    check,
+    signal
   );
   const canonicalByHeight = new Map(
     missingHeights.map((height, index) => [height, canonicalBlocks[index]])
@@ -425,16 +497,34 @@ export const fetchSmartAccountUserOpTransactions = async (
     const rawTransactions = (await readHistoryDetails(
       provider,
       'eth_getTransactionByHash',
-      hashesToFetch.map((hash) => [hash])
+      hashesToFetch.map((hash) => [hash]),
+      check,
+      signal
     )) as Array<RawRpcTransaction | null>;
     const minedTransactions = rawTransactions.filter(
-      (tx): tx is RawRpcTransaction =>
-        Boolean(tx && tx.blockNumber && tx.blockHash)
+      (tx, index): tx is RawRpcTransaction =>
+        Boolean(
+          tx &&
+            tx.hash?.toLowerCase() === hashesToFetch[index] &&
+            !conflictingHashes.has(hashesToFetch[index]) &&
+            Number(tx.blockNumber) ===
+              logBlockNumberByTxHash.get(hashesToFetch[index]) &&
+            tx.blockHash?.toLowerCase() ===
+              logBlockHashByTxHash.get(hashesToFetch[index])
+        )
     );
     // Logs only exist for mined transactions, so a null/unmined detail result
     // is a transient RPC failure; the dropped entry must be retried later.
+    const validHashes = new Set(
+      minedTransactions.map((tx) => tx.hash.toLowerCase())
+    );
     allDetailsFetched =
-      allDetailsFetched && minedTransactions.length === hashesToFetch.length;
+      allDetailsFetched &&
+      hashesToFetch.every(
+        (hash) =>
+          (logBlockNumberByTxHash.get(hash) ?? Infinity) > coveredToBlock ||
+          validHashes.has(hash)
+      );
 
     const uniqueBlockNumbers = Array.from(
       new Set(minedTransactions.map((tx) => tx.blockNumber as string))
@@ -442,46 +532,73 @@ export const fetchSmartAccountUserOpTransactions = async (
     const blocks = await readHistoryDetails(
       provider,
       'eth_getBlockByNumber',
-      uniqueBlockNumbers.map((blockNumber) => [blockNumber, false])
+      uniqueBlockNumbers.map((blockNumber) => [blockNumber, false]),
+      check,
+      signal
     );
     const timestampByBlock = new Map<string, number>();
+    const canonicalHashByBlock = new Map<string, string>();
     blocks.forEach((block: any, index: number) => {
-      if (block?.timestamp) {
+      const tx = minedTransactions.find(
+        (candidate) => candidate.blockNumber === uniqueBlockNumbers[index]
+      );
+      if (
+        tx &&
+        Number(block?.number) === Number(tx.blockNumber) &&
+        String(block?.hash).toLowerCase() === tx.blockHash?.toLowerCase() &&
+        /^0x[0-9a-f]{64}$/i.test(String(block?.hash)) &&
+        typeof block.timestamp === 'string' &&
+        /^0x[0-9a-f]+$/i.test(block.timestamp) &&
+        Number.isSafeInteger(Number(block.timestamp))
+      ) {
         timestampByBlock.set(
           uniqueBlockNumbers[index],
           parseInt(block.timestamp, 16)
         );
+        canonicalHashByBlock.set(
+          uniqueBlockNumbers[index],
+          String(block.hash).toLowerCase()
+        );
       }
     });
 
-    fetchedTransactions = minedTransactions.map((tx) => {
-      const blockNumber = parseInt(tx.blockNumber as string, 16);
-      const success = successByTxHash.get(tx.hash.toLowerCase()) !== false;
-      return {
-        blockHash: tx.blockHash,
-        blockNumber,
-        chainId,
-        confirmations: Math.max(0, latestBlock - blockNumber),
-        from: tx.from,
-        gas: tx.gas ? BigNumber.from(tx.gas).toString() : undefined,
-        gasPrice: tx.gasPrice
-          ? BigNumber.from(tx.gasPrice).toString()
-          : undefined,
-        hash: tx.hash,
-        input: tx.input,
-        isError: success ? '0' : '1',
-        nonce: parseInt(tx.nonce, 16),
-        smartAccountExecution: true,
-        smartAccountExecutionFrom: account.address,
-        timestamp:
-          timestampByBlock.get(tx.blockNumber as string) ||
-          Math.floor(Date.now() / 1000),
-        to: tx.to,
-        // eslint-disable-next-line camelcase
-        txreceipt_status: success ? '1' : '0',
-        value: BigNumber.from(tx.value || 0).toString(),
-      } as unknown as IEvmTransactionResponse;
-    });
+    fetchedTransactions = minedTransactions
+      .filter((tx) => {
+        if (
+          timestampByBlock.has(tx.blockNumber!) &&
+          canonicalHashByBlock.get(tx.blockNumber!) ===
+            tx.blockHash?.toLowerCase()
+        )
+          return true;
+        if (Number(tx.blockNumber) <= coveredToBlock) allDetailsFetched = false;
+        return false;
+      })
+      .map((tx) => {
+        const blockNumber = parseInt(tx.blockNumber as string, 16);
+        const success = successByTxHash.get(tx.hash.toLowerCase())!;
+        return {
+          blockHash: tx.blockHash,
+          blockNumber,
+          chainId,
+          confirmations: Math.max(0, latestBlock - blockNumber),
+          from: tx.from,
+          gas: tx.gas ? BigNumber.from(tx.gas).toString() : undefined,
+          gasPrice: tx.gasPrice
+            ? BigNumber.from(tx.gasPrice).toString()
+            : undefined,
+          hash: tx.hash,
+          input: tx.input,
+          isError: success ? '0' : '1',
+          nonce: parseInt(tx.nonce, 16),
+          smartAccountExecution: true,
+          smartAccountExecutionFrom: account.address,
+          timestamp: timestampByBlock.get(tx.blockNumber as string),
+          to: tx.to,
+          // eslint-disable-next-line camelcase
+          txreceipt_status: success ? '1' : '0',
+          value: BigNumber.from(tx.value || 0).toString(),
+        } as unknown as IEvmTransactionResponse;
+      });
   }
 
   // Advance the cursor only through the contiguously covered range and only
@@ -490,6 +607,7 @@ export const fetchSmartAccountUserOpTransactions = async (
   // would never be re-scanned once the cursor passes it. Tip-window logs
   // beyond coveredToBlock are display-only and never move the cursor.
   if (allDetailsFetched) {
+    check();
     persistScanCursor(
       scannedAccount,
       accountType,

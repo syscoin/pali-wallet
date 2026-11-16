@@ -75,7 +75,7 @@ const buildProvider = (overrides: Partial<Record<string, any>> = {}) => ({
       return rawOuterTransaction;
     }
     if (method === 'eth_getBlockByNumber') {
-      return { timestamp: '0x60' };
+      return { number: '0x5', hash: BLOCK_HASH, timestamp: '0x60' };
     }
     return null;
   }),
@@ -92,6 +92,187 @@ const expectCursorDispatch = (block: number) =>
       value: { [CHAIN_ID]: block },
     },
   });
+
+describe('coherent Smart history materialization', () => {
+  beforeEach(() => {
+    dispatchMock.mockClear();
+    vaultState = {
+      accountTransactions: {
+        SmartAccount: { 0: { ethereum: { [CHAIN_ID]: [] } } },
+      },
+      accounts: {
+        SmartAccount: {
+          0: {
+            id: 0,
+            address: SMART_ACCOUNT,
+            smartAccountUserOpScanByChainId: {},
+          },
+        },
+      },
+    };
+  });
+  it.each(['hash', 'header', 'sender'] as const)(
+    'rejects a contradictory %s without advancing coverage',
+    async (mismatch) => {
+      const provider = buildProvider({
+        getLogs: jest.fn(async () => [
+          {
+            ...buildUserOpEventLog(true),
+            ...(mismatch === 'sender'
+              ? {
+                  topics: [
+                    buildUserOpEventLog(true).topics[0],
+                    USER_OP_HASH,
+                    `0x${'00'.repeat(12)}${GAS_PAYER.slice(2)}`,
+                    `0x${'00'.repeat(32)}`,
+                  ],
+                }
+              : {}),
+          },
+        ]),
+        send: jest.fn(async (method) =>
+          method === 'eth_getTransactionByHash'
+            ? {
+                ...rawOuterTransaction,
+                hash: mismatch === 'hash' ? USER_OP_HASH : TX_HASH,
+              }
+            : {
+                number: '0x5',
+                hash: mismatch === 'header' ? USER_OP_HASH : BLOCK_HASH,
+                timestamp: '0x60',
+              }
+        ),
+      });
+      const rows = await fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      );
+      expect(rows).toEqual([]);
+      if (mismatch !== 'sender') expect(dispatchMock).not.toHaveBeenCalled();
+    }
+  );
+  it('retries unavailable block metadata without inventing mined time', async () => {
+    let available = false;
+    const provider = buildProvider({
+      send: jest.fn(async (method) =>
+        method === 'eth_getTransactionByHash'
+          ? rawOuterTransaction
+          : available
+          ? { number: '0x5', hash: BLOCK_HASH, timestamp: '0x60' }
+          : null
+      ),
+    });
+    expect(
+      await fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      )
+    ).toEqual([]);
+    expect(dispatchMock).not.toHaveBeenCalled();
+    available = true;
+    const rows = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    expect(rows[0].timestamp).toBe(96);
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(100));
+  });
+  it('validates every transaction against the canonical hash at a shared height', async () => {
+    const other = `0x${'ef'.repeat(32)}`;
+    const provider = buildProvider({
+      getLogs: jest.fn(async () => [
+        buildUserOpEventLog(true),
+        {
+          ...buildUserOpEventLog(true),
+          transactionHash: other,
+          blockHash: USER_OP_HASH,
+        },
+      ]),
+      send: jest.fn(async (method, params) =>
+        method === 'eth_getTransactionByHash'
+          ? {
+              ...rawOuterTransaction,
+              hash: params[0],
+              blockHash: params[0] === other ? USER_OP_HASH : BLOCK_HASH,
+            }
+          : { number: '0x5', hash: BLOCK_HASH, timestamp: '0x60' }
+      ),
+    });
+    const rows = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    expect(rows.map((row) => row.hash)).toEqual([TX_HASH]);
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+  it('does not overwrite a conflicting duplicate event placement', async () => {
+    const provider = buildProvider({
+      getLogs: jest.fn(async () => [
+        buildUserOpEventLog(true),
+        { ...buildUserOpEventLog(true), blockHash: USER_OP_HASH },
+      ]),
+    });
+    expect(
+      await fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      )
+    ).toEqual([]);
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+  it('advances covered backfill when an optional tip detail remains unavailable', async () => {
+    const provider = buildProvider({
+      getBlockNumber: jest.fn(async () => 200000),
+      getLogs: jest.fn(async (filter) => {
+        if (filter.toBlock - filter.fromBlock + 1 > 10000)
+          throw Error('block range too large');
+        return filter.fromBlock > 100000
+          ? [{ ...buildUserOpEventLog(true), blockNumber: 195000 }]
+          : [];
+      }),
+      send: jest.fn(async () => null),
+    });
+    expect(
+      await fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      )
+    ).toEqual([]);
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(99999));
+  });
+  it('stops after a retired log reply before requesting transaction details', async () => {
+    let current = true;
+    const provider = buildProvider({
+      getLogs: jest.fn(async () => {
+        current = false;
+        return [buildUserOpEventLog(true)];
+      }),
+    });
+    await expect(
+      fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID,
+        () => current
+      )
+    ).rejects.toThrow('History context changed');
+    expect(provider.send).not.toHaveBeenCalled();
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('smart account EntryPoint log history', () => {
   beforeEach(() => {
@@ -273,7 +454,7 @@ describe('smart account EntryPoint log history', () => {
     current = false;
     vaultState.accounts.SmartAccount[0] = { id: 0, address: SMART_ACCOUNT };
     release([]);
-    await read;
+    await expect(read).rejects.toThrow('History context changed');
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
@@ -434,13 +615,18 @@ describe('smart account EntryPoint log history', () => {
         throw new Error('range too large');
       }
       if (filter.fromBlock === 190_001) {
-        return [buildUserOpEventLog(true)];
+        return [{ ...buildUserOpEventLog(true), blockNumber: 195000 }];
       }
       return [];
     });
     const provider = buildProvider({
       getBlockNumber: jest.fn().mockResolvedValue(200_000),
       getLogs,
+      send: jest.fn(async (method) =>
+        method === 'eth_getTransactionByHash'
+          ? { ...rawOuterTransaction, blockNumber: '0x2f9b8' }
+          : { number: '0x2f9b8', hash: BLOCK_HASH, timestamp: '0x60' }
+      ),
     });
 
     const transactions = await fetchSmartAccountUserOpTransactions(
@@ -711,13 +897,18 @@ describe('smart account canonical overlap and adaptive ranges', () => {
           code: -32005,
         });
       return filter.fromBlock <= 9999 && filter.toBlock >= 9999
-        ? [buildUserOpEventLog(true)]
+        ? [{ ...buildUserOpEventLog(true), blockNumber: 9999 }]
         : [];
     });
     const provider = buildProvider({
       getBlockNumber: jest.fn(async () => 20000),
       getLogs,
       _getConnection: () => ({ url: 'https://range.example/rpc' }),
+      send: jest.fn(async (method) =>
+        method === 'eth_getTransactionByHash'
+          ? { ...rawOuterTransaction, blockNumber: '0x270f' }
+          : { number: '0x270f', hash: BLOCK_HASH, timestamp: '0x60' }
+      ),
     });
     const result = await fetchSmartAccountUserOpTransactions(
       provider as any,
@@ -813,7 +1004,10 @@ it('retains healthy history details when one settled transaction read fails with
   const readMany = jest.fn(async (requests) =>
     requests.map(({ method, params }) => {
       if (method === 'eth_getBlockByNumber')
-        return { status: 'fulfilled', value: { timestamp: '0x60' } };
+        return {
+          status: 'fulfilled',
+          value: { number: '0x5', hash: BLOCK_HASH, timestamp: '0x60' },
+        };
       if (params[0] === otherHash && !detailsAvailable)
         return { status: 'rejected', reason: Error('detail unavailable') };
       return {
