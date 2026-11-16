@@ -275,11 +275,27 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         const replies = await Promise.all(
           rows.map(async (row) => {
             try {
-              return {
-                jsonrpc: '2.0',
-                id: row.id,
-                result: await localRpc(chain.url, row.method, row.params || []),
-              };
+              const result = await localRpc(
+                chain.url,
+                row.method,
+                row.params || []
+              );
+              if (row.method === 'eth_simulateV1') {
+                // Anvil executes the supplied state but omits its canonical parent
+                // and returns the parent number. Normalize only these test metadata fields.
+                const parent = await localRpc(
+                  chain.url,
+                  'eth_getBlockByNumber',
+                  [row.params[1], false]
+                );
+                if (result.length === 1 && parent) {
+                  result[0].parentHash = parent.hash;
+                  result[0].number = `0x${(
+                    BigInt(parent.number) + BigInt(1)
+                  ).toString(16)}`;
+                }
+              }
+              return { jsonrpc: '2.0', id: row.id, result };
             } catch (error) {
               let rpcError: any;
               try {

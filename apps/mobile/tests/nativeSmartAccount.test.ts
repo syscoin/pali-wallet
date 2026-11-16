@@ -225,7 +225,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
               const operation = {sender: op.sender, nonce: op.nonce.toString(), initCode: op.initCode, callData: op.callData,
                 accountGasLimits: op.accountGasLimits, preVerificationGas: op.preVerificationGas.toString(), gasFees: op.gasFees,
                 paymasterAndData: op.paymasterAndData, signature: op.signature};
-              const success = userOperationSuccess && BigInt(innerGasEstimate) <= (BigInt(op.accountGasLimits) & ((1n<<128n)-1n)) + BigInt(21000);
+              const success = BigInt(innerGasEstimate) <= (BigInt(op.accountGasLimits) & ((1n<<128n)-1n)) + BigInt(21000);
               const event = paliEntryPointInterface.encodeEventLog(paliEntryPointInterface.getEvent('UserOperationEvent')!,
                 [getSmartAccountUserOpHash(operation, Number(network.chainId)), op.sender, '0x'+'00'.repeat(20), op.nonce, success, 100, 50]);
               return {status: '0x1', gasUsed: '0x186a0', logs: [{...event, address: call.to}]};
@@ -6349,7 +6349,8 @@ for (const sponsored of [false, true]) test(`counted native warm Smart payer pha
     operation.confirmPayer(review.id); await sending;
     assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
     assert.equal(f.submitted.length, 1);
-    assert.deepEqual(measure(), { methods: 53, http: sponsored ? 39 : 36, chains: 10 });
+    // Includes one early simulation capability check and the exact canonical payer nonce.
+    assert.deepEqual(measure(), { methods: 55, http: sponsored ? 41 : 38, chains: 10 });
     console.log('NATIVE_PHASE_COUNTS', JSON.stringify({ sponsored, preparation, payerReview, confirmation: delta(confirmed), total: measure() }));
   } finally { operation?.dispose(); await f.close(); }
 });
