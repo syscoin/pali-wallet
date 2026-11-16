@@ -30,6 +30,7 @@ import { evmEstimateRequest } from '../../../../source/shared/evmEstimateRequest
 import { type EvmFeeFunding, captureNativeEvmFeeCoverage, assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, EvmFeeBalanceError } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError, isEvmProtectedEmptySelfCall } from '../../../../source/shared/evmCancellationPayer.ts';
+import type { CallsStatusPhase } from '../../../../source/wallet/dappCallsBundles.ts';
 import type { EvmReplacementRates, EvmSignedRetirementReadMethod } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 import { createSmartAccountInfrastructureReader, SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
@@ -365,6 +366,28 @@ export class EvmTransferReadRpc {
     if (typeof method !== 'string' || !Object.hasOwn(RETIREMENT_METHODS, method))
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.operation(signal, guard, (read) => read(method, params), 'endpoint');
+  }
+  callsStatusPhase<T>(signal: AbortSignal, guard: () => void, work: (reads: CallsStatusPhase) => Promise<T>): Promise<T> {
+    return this.operation(signal, guard, async read => {
+      await this.checkChain(read);
+      const values = async (method: 'eth_getTransactionReceipt' | 'eth_getBlockByNumber', args: readonly unknown[][]) => {
+        const results = await read.many(args.map(params => ({ method, params })));
+        read.assertCurrent();
+        return results.map(result => result.status === 'fulfilled' ? result.value : null);
+      };
+      const result = await work({
+        receipts: hashes => values('eth_getTransactionReceipt', hashes.map(hash => [hash])),
+        blockHashes: async heights => (await values('eth_getBlockByNumber', heights.map(height => [height, false])))
+          .map((raw, index) => {
+            try {
+              const entry = object(raw);
+              return quantity(entry.number) === BigInt(heights[index]!) ? checkedReadHash(entry.hash) : null;
+            } catch { return null; }
+          }),
+      });
+      await this.checkChain(read);
+      return result;
+    }, 'endpoint');
   }
   /** The shared finalized-note verifier owns the surrounding chain and anchor checks. */
   noteMaintenanceRead(method: string, params: readonly unknown[], signal: AbortSignal, guard: () => void): Promise<unknown> {

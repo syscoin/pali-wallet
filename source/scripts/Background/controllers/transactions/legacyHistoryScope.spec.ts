@@ -27,7 +27,11 @@ const BLOCK = `0x${'bb'.repeat(32)}`;
 const FROM = `0x${'11'.repeat(20)}`;
 const TO = `0x${'22'.repeat(20)}`;
 let mockState: any;
-function fixture(chainId: string | null | undefined, v: string) {
+function fixture(
+  chainId: string | null | undefined,
+  v: string,
+  typeFour?: 'owner' | 'unrelated'
+) {
   const methods: string[] = [];
   const raw: any = {
     hash: HASH,
@@ -47,6 +51,24 @@ function fixture(chainId: string | null | undefined, v: string) {
     s: `0x${'02'.padStart(64, '0')}`,
   };
   if (chainId !== undefined) raw.chainId = chainId;
+  if (typeFour)
+    Object.assign(raw, {
+      type: '0x4',
+      accessList: [],
+      maxFeePerGas: '0x2',
+      maxPriorityFeePerGas: '0x1',
+      authorizationList: [
+        {
+          chainId: '0x1',
+          address: TO,
+          nonce: '0x0',
+          yParity: '0x2',
+          r: raw.r,
+          s: raw.s,
+        },
+      ],
+      ...(typeFour === 'unrelated' ? { from: '0x' + '44'.repeat(20) } : {}),
+    });
   let remoteChain = '0x1';
   const header = {
     number: '0x2a',
@@ -84,7 +106,7 @@ function fixture(chainId: string | null | undefined, v: string) {
               transactionIndex: '0x0',
               from: FROM,
               to: TO,
-              type: '0x0',
+              type: raw.type,
               status: '0x1',
               cumulativeGasUsed: '0x5208',
               gasUsed: '0x5208',
@@ -177,3 +199,33 @@ test('refuses a wrong endpoint before details disclose a hash and rejects protec
     protectedWrong.provider.destroy();
   }
 });
+
+test.each(['owner', 'unrelated'] as const)(
+  'canonical history isolates skipped authorization entries for %s transactions',
+  async (mode) => {
+    const f = fixture('0x1', '0x1', mode);
+    try {
+      await expect(f.provider.getTransaction(HASH)).rejects.toThrow(
+        'value.authorizationList'
+      );
+      const rows = await findUserTxsInProviderByBlocksRange(f.provider, 0);
+      expect(rows).toHaveLength(mode === 'owner' ? 1 : 0);
+      if (mode === 'owner') {
+        expect(rows[0]).toMatchObject({
+          type: 4,
+          hash: HASH,
+          authorizationList: [{ yParity: '0x2' }],
+        });
+        await expect(
+          f.wallet.getEvmTransactionFromProvider(HASH)
+        ).resolves.toMatchObject({
+          type: 4,
+          status: 'success',
+          blockNumber: 42,
+        });
+      }
+    } finally {
+      f.provider.destroy();
+    }
+  }
+);

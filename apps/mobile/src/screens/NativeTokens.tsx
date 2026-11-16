@@ -787,7 +787,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
   }>({ contractAddress: item?.contractAddress ?? '', tokenId: fixedId ?? '', tokenStandard: item?.tokenStandard ?? null });
   const currentDraft = useRef(draft);
   type Enumeration = { kind: 'idle' | 'loading' | 'error' } | {
-    kind: 'ready'; draft: typeof draft; tokenIds: readonly string[]; hasMore: boolean; method: 'enumeration' | 'manual'; totalOwned?: string;
+    kind: 'ready'; draft: typeof draft; tokenIds: readonly string[]; hasMore: boolean; partial?: boolean; method: 'enumeration' | 'manual'; totalOwned?: string;
   };
   const [enumeration, setEnumeration] = useState<Enumeration>({ kind: 'idle' });
   const enumerationRequest = useRef<AbortController | null>(null);
@@ -988,7 +988,8 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
             <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.chooseATokenIDToCheckOwnership')}</Text>
             {enumeration.tokenIds.map(tokenId => <Button key={tokenId} title={t('mobile.sendAssetViews.tokens.tokenId', { id: tokenId })} variant="secondary" size="compact"
               icon={draft.tokenId === tokenId ? 'check' : undefined} disabled={busy || result.kind === 'loading'} onPress={() => selectTokenId(enumeration, tokenId)} />)}
-            {enumeration.hasMore && <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.showingTheFirst10TokenIDsEnterAnotherTokenID')}</Text>}
+            {enumeration.partial ? <Text style={styles.muted}>{t('send.errorLoadingNfts')}</Text>
+              : enumeration.hasMore && <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.showingTheFirst10TokenIDsEnterAnotherTokenID')}</Text>}
           </>}
       </Card>}
     </>}

@@ -44,10 +44,22 @@ type MarketReadWork = {
   settled: boolean;
 };
 
-export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: AssetMarketPurpose, clock = nativeAssetMarketNow) {
+function createMarketCache() {
+  return {
+    tokenIds: new Map<string, { id: string; expiresAt: number }>(),
+    quotes: new Map<string, NativeAssetMarketResult>(),
+  };
+}
+
+export function createNativeAssetMarketReader(
+  fetch: WalletHttpFetch,
+  purpose: AssetMarketPurpose,
+  clock = nativeAssetMarketNow,
+  market = createMarketCache()
+) {
   if (purpose !== 'price' && purpose !== 'history') throw new Error('Invalid market purpose');
   const cache = new Map<string, NativeAssetMarketResult>();
-  const tokenIds = new Map<string, { id: string; expiresAt: number }>();
+  const { tokenIds, quotes } = market;
   const pending = new Map<string, MarketReadWork>();
   const tokenId = async (source: Extract<AssetMarketSource, { kind: 'token' }>, read: (url: string, limit: number) => Promise<unknown>, signal: AbortSignal) => {
     const key = JSON.stringify([source.platform, source.contract]);
@@ -66,20 +78,29 @@ export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: A
     try {
       const id = source.kind === 'native' ? source.id : await tokenId(source, read, request.signal);
       if (!id || request.signal.aborted) return null;
-      const quote = read(assetMarketUrl(id, currency), 64 * 1024);
+      const quoteKey = JSON.stringify([id, currency]);
+      const cachedQuote = quotes.get(quoteKey);
+      const quote = cachedQuote && cachedQuote.expiresAt > clock() && cachedQuote.expiresAt - clock() <= 300_000
+        ? Promise.resolve(cachedQuote)
+        : read(assetMarketUrl(id, currency), 64 * 1024).then(body => {
+          const data = readAssetMarket(body, id, currency, Date.now());
+          if (!data || request.signal.aborted) return null;
+          return Object.freeze({ data, expiresAt: clock() + 300_000 });
+        });
       const history = purpose === 'history'
         ? read(assetMarketHistoryUrl(id, currency), 128 * 1024).then(body => readAssetMarketHistory(body, Date.now())).catch(() => [])
         : null;
-      let data = readAssetMarket(await quote, id, currency, Date.now());
-      if (request.signal.aborted || !data) return null;
-      if (history) {
-        const prices = await history;
-        // The deadline can leave a valid quote available with no history. A
-        // canceled last subscriber never permits that result into the cache.
-        data = Object.freeze({ ...data, prices: Object.freeze(prices) });
-      }
-      const result = Object.freeze({ data, expiresAt: clock() + 300_000 });
+      const observed = await quote;
+      if (request.signal.aborted || !observed) return null;
+      const result = history
+        ? Object.freeze({ ...observed, data: Object.freeze({ ...observed.data, prices: Object.freeze(await history) }) })
+        : observed;
       if (pending.get(key)?.controller === request && pending.get(key)?.subscribers) {
+        if (observed !== cachedQuote) {
+          quotes.delete(quoteKey);
+          quotes.set(quoteKey, observed);
+          if (quotes.size > 24) quotes.delete(quotes.keys().next().value!);
+        }
         cache.delete(key); cache.set(key, result);
         if (cache.size > 24) cache.delete(cache.keys().next().value!);
       }
@@ -119,4 +140,21 @@ export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: A
       selected.promise.then(finish, () => finish(null));
     });
   };
+}
+
+export function createNativeAssetMarketReaders(fetch: WalletHttpFetch, clock = nativeAssetMarketNow) {
+  const market = createMarketCache();
+  return {
+    price: createNativeAssetMarketReader(fetch, 'price', clock, market),
+    history: createNativeAssetMarketReader(fetch, 'history', clock, market),
+  };
+}
+
+const marketReaders = new WeakMap<WalletHttpFetch, ReturnType<typeof createNativeAssetMarketReaders>>();
+export function nativeAssetMarketReaders(fetch: WalletHttpFetch) {
+  const existing = marketReaders.get(fetch);
+  if (existing) return existing;
+  const readers = createNativeAssetMarketReaders(fetch);
+  marketReaders.set(fetch, readers);
+  return readers;
 }

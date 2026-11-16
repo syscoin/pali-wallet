@@ -3,12 +3,12 @@ import { ActivityIndicator, AppState, Platform, StyleSheet, View } from 'react-n
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { ASSET_MARKET_CHART, assetMarketCoordinates, assetMarketIndexAt, assetMarketLine, type AssetMarket } from '../../../../source/shared/assetMarket.ts';
 import { useFiatCurrency } from '../platform/fiatPreferences.ts';
-import { walletFetch } from '../platform/http.ts';
+import { walletFetch } from '../platform/http';
 import { Button, Card, colors, Text } from '../ui';
-import { createNativeAssetMarketReader, nativeAssetMarketNow, nativeAssetMarketSource, rememberNativeAssetMarketIcon, type AssetMarketReference } from './nativeAssetMarket.ts';
+import { nativeAssetMarketReaders, nativeAssetMarketNow, nativeAssetMarketSource, rememberNativeAssetMarketIcon, type AssetMarketReference } from './nativeAssetMarket.ts';
 import { useNativeTranslation } from '../platform/localization';
 
-const read = createNativeAssetMarketReader(walletFetch, 'history');
+const read = nativeAssetMarketReaders(walletFetch).history;
 export function AssetMarketCard({ asset }: { asset: AssetMarketReference }) {
   const { t, i18n } = useNativeTranslation();
   const locale = i18n.resolvedLanguage ?? i18n.language;

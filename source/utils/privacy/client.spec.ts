@@ -1,6 +1,7 @@
 import { Interface, parseEther, toQuantity } from 'ethers';
 
 import {
+  createSnapshotAnchorVerifier,
   fetchPrivacySnapshot,
   readCompletionRpc,
   readWithdrawalRecoveryRpc,
@@ -385,6 +386,26 @@ test('independently checks block hash, leaf count, pool parameters and accepted 
   expect(calls.some((item) => item.method === 'eth_sendRawTransaction')).toBe(
     false
   );
+});
+
+test('shared extension verifier reuses only the admitted snapshot across two checks', async () => {
+  const fetch = mockRpc(),
+    verify = createSnapshotAnchorVerifier(),
+    rpcUrl = 'https://rpc.example/';
+  await verify(id, snapshot, rpcUrl, signal());
+  expect(fetch).toHaveBeenCalledTimes(8);
+  await verify(id, snapshot, rpcUrl, signal());
+  const final = fetch.mock.calls
+    .slice(8)
+    .map(([, init]) => JSON.parse(init.body).method);
+  expect(final).toEqual([
+    'eth_chainId',
+    'eth_getBlockByNumber',
+    'eth_getBlockByNumber',
+    'eth_call',
+  ]);
+  await verify(id, { ...snapshot }, rpcUrl, signal());
+  expect(fetch).toHaveBeenCalledTimes(20);
 });
 
 test('verifies busy block anchors whose transaction hashes exceed 64 KiB', async () => {

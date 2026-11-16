@@ -337,6 +337,7 @@ export async function discoverNftTokens(
 ): Promise<{
   hasMore?: boolean;
   method: 'enumeration' | 'manual' | 'api';
+  partial?: boolean;
   requiresManualEntry: boolean;
   tokens?: INftTokenInfo[];
   totalOwned?: string;
@@ -377,26 +378,25 @@ export async function discoverNftTokens(
           promises.push(contract.tokenOfOwnerByIndex!(ownerAddress, i));
         }
 
-        const tokenIds = await Promise.all(promises);
-        tokenIds.forEach((tokenId) => {
-          tokens.push({
-            tokenId: tokenId.toString(),
-            balance: 1, // ERC-721 tokens always have balance of 1
-            verified: true,
-          });
-        });
+        const seen = new Set<string>();
+        for (const result of await Promise.allSettled(promises)) {
+          if (result.status !== 'fulfilled') continue;
+          const tokenId = result.value.toString();
+          if (seen.has(tokenId)) continue;
+          seen.add(tokenId);
+          tokens.push({ tokenId, balance: 1, verified: true });
+        }
 
-        console.log(
-          `[NFT Utils] Enumerated ${tokens.length} of ${tokenCount} ERC-721 tokens`
-        );
-
-        return {
-          method: 'enumeration',
-          tokens,
-          requiresManualEntry: true, // Always allow manual entry
-          hasMore: tokenCount > limit,
-          totalOwned,
-        };
+        if (tokens.length) {
+          return {
+            method: 'enumeration',
+            tokens,
+            requiresManualEntry: true,
+            hasMore: tokenCount > limit,
+            ...(tokens.length !== limit ? { partial: true } : {}),
+            totalOwned,
+          };
+        }
       }
     } catch {
       console.error('[NFT Utils] ERC-721 enumeration failed');

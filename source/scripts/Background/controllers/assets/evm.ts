@@ -1148,7 +1148,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       );
 
       const result = (discovery.tokens || []) as any;
-      result.hasMore = discovery.hasMore || false;
+      result.hasMore = Boolean(discovery.hasMore || discovery.partial);
       result.requiresManualEntry = discovery.requiresManualEntry;
 
       return result;

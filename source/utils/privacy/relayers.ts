@@ -1,5 +1,10 @@
 import { ensNormalize, namehash, parseEther } from 'ethers';
 
+import {
+  boundedResponseText,
+  cancelResponseBody,
+} from '../../shared/boundedHttp.ts';
+
 import { getPrivacyPool, PRIVACY_POOLS } from './registry.ts';
 import type { PrivacyPoolId } from './types.ts';
 
@@ -322,33 +327,22 @@ function readStatus(value: unknown) {
   };
 }
 
-async function readJson(response: Response, maximum: number): Promise<unknown> {
-  const length = response.headers.get('content-length');
+async function readJson(
+  response: Response,
+  maximum: number,
+  signal: AbortSignal
+): Promise<unknown> {
   if (
     !response.body ||
     !/^application\/json(?:\s*;|$)/i.test(
       response.headers.get('content-type') || ''
-    ) ||
-    (length !== null && (!/^\d+$/.test(length) || Number(length) > maximum))
-  ) {
-    await response.body?.cancel().catch(() => undefined);
+    )
+  )
     throw invalid();
-  }
-  const reader = response.body.getReader(),
-    decoder = new TextDecoder('utf-8', { fatal: true });
-  let size = 0,
-    text = '';
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > maximum) throw invalid();
-      text += decoder.decode(value, { stream: true });
-    }
-    return JSON.parse(text + decoder.decode());
-  } finally {
-    await reader.cancel().catch(() => undefined);
+    return JSON.parse(await boundedResponseText(response, signal, maximum));
+  } catch {
+    throw invalid();
   }
 }
 
@@ -378,7 +372,7 @@ export function createPrivacyRelayerClient(
   const request = async <T>(
     url: string,
     maximum: number,
-    parse: (response: Response) => Promise<T>,
+    parse: (response: Response, signal: AbortSignal) => Promise<T>,
     signal?: AbortSignal
   ): Promise<T> => {
     if (signal?.aborted) throw new Error('privacy_relayer_cancelled');
@@ -410,25 +404,26 @@ export function createPrivacyRelayerClient(
             referrerPolicy: 'no-referrer',
             signal: abort.signal,
           });
-          if (abort.signal.aborted)
-            throw new Error('privacy_relayer_cancelled');
-          if (
-            response.redirected ||
-            response.type === 'opaque' ||
-            response.type === 'opaqueredirect' ||
-            (response.url && response.url !== url)
-          )
-            throw invalid();
-          if (response.status === 202)
-            throw new Error('privacy_relayer_directory_pending');
-          if (response.status !== 200)
-            throw new Error('privacy_relayer_unavailable');
-          const declared = response.headers.get('content-length');
-          if (declared && Number(declared) > maximum) {
-            await response.body?.cancel();
-            throw invalid();
+          try {
+            if (abort.signal.aborted)
+              throw new Error('privacy_relayer_cancelled');
+            if (
+              response.redirected ||
+              response.type === 'opaque' ||
+              response.type === 'opaqueredirect' ||
+              (response.url && response.url !== url)
+            )
+              throw invalid();
+            if (response.status === 202)
+              throw new Error('privacy_relayer_directory_pending');
+            if (response.status !== 200)
+              throw new Error('privacy_relayer_unavailable');
+            const declared = response.headers.get('content-length');
+            if (declared && Number(declared) > maximum) throw invalid();
+            return await parse(response, abort.signal);
+          } finally {
+            cancelResponseBody(response);
           }
-          return parse(response);
         })(),
       ]);
     } catch (error) {
@@ -441,6 +436,7 @@ export function createPrivacyRelayerClient(
     } finally {
       clearTimeout(timer!);
       remove();
+      abort.abort();
     }
   };
   return {
@@ -454,11 +450,11 @@ export function createPrivacyRelayerClient(
       const directory = await request(
         url,
         MAX_DIRECTORY_BYTES,
-        async (response) => {
+        async (response, requestSignal) => {
           if (response.headers.get('x-privacy-index-state') === 'stale')
             throw new Error('privacy_relayer_stale');
           const parsed = readDirectory(
-            await readJson(response, MAX_DIRECTORY_BYTES),
+            await readJson(response, MAX_DIRECTORY_BYTES, requestSignal),
             response.headers.get('x-privacy-index-state'),
             now()
           );
@@ -485,8 +481,10 @@ export function createPrivacyRelayerClient(
       return request(
         `${entry.endpoint}/status`,
         MAX_STATUS_BYTES,
-        async (response) => {
-          const status = readStatus(await readJson(response, MAX_STATUS_BYTES));
+        async (response, requestSignal) => {
+          const status = readStatus(
+            await readJson(response, MAX_STATUS_BYTES, requestSignal)
+          );
           assertDirectory(directory);
           if (
             !status.healthy ||

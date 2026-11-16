@@ -294,22 +294,30 @@ test('explorer pages, retained observations and detail receipts consume the same
   stop();
 });
 
-test('wallet account Activity composition shares automatic receipt work with explicit details', async () => {
+for (const paired of [false, true]) test(
+  paired ? 'wallet account Activity preserves the same-network receipt wave' : 'wallet account Activity composition shares automatic receipt work with explicit details',
+  async () => {
   const { ActivityReceiptReader } = await import('../src/activity/receiptReader.ts');
   const network = networks[0]!, blockHash = '0x' + 'b'.repeat(64);
   const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
-  const methods: string[] = [];
+  const hashes = paired ? [hash, '0x' + 'd'.repeat(64)] : [hash];
+  const batches: string[][] = [];
   const receipts = new ActivityReceiptReader({ fetch: async (_url, init) => {
-    const request = JSON.parse(String(init.body)); methods.push(request.method);
-    let result: unknown;
-    if (request.method === 'eth_chainId') result = '0x1';
-    else if (request.method === 'eth_getTransactionReceipt') {
-      started.resolve(); await held.promise;
-      result = { transactionHash: hash, from: owner, to: outsider, status: '0x1', blockNumber: '0x50', blockHash, transactionIndex: '0x0', logs: [] };
-    } else if (request.method === 'eth_getTransactionByHash') result = { hash, from: owner, to: outsider, value: '0x1', nonce: '0x1', blockHash, blockNumber: '0x50', transactionIndex: '0x0' };
-    else if (request.method === 'eth_getBlockByNumber') result = { number: '0x50', hash: blockHash, timestamp: '0x6553f100', gasLimit: '0x1c9c380' };
-    else throw Error(request.method);
-    return Response.json({ jsonrpc: '2.0', id: request.id, result });
+    const input = JSON.parse(String(init.body));
+    const requests = Array.isArray(input) ? input : [input];
+    batches.push(requests.map(request => request.method));
+    const replies = await Promise.all(requests.map(async request => {
+      let result: unknown;
+      if (request.method === 'eth_chainId') result = '0x1';
+      else if (request.method === 'eth_getTransactionReceipt') {
+        started.resolve(); await held.promise;
+        result = { transactionHash: request.params[0], from: owner, to: outsider, status: '0x1', blockNumber: '0x50', blockHash, transactionIndex: '0x0', logs: [] };
+      } else if (request.method === 'eth_getTransactionByHash') result = { hash, from: owner, to: outsider, value: '0x1', nonce: '0x1', blockHash, blockNumber: '0x50', transactionIndex: '0x0' };
+      else if (request.method === 'eth_getBlockByNumber') result = { number: '0x50', hash: blockHash, timestamp: '0x6553f100', gasLimit: '0x1c9c380' };
+      else throw Error(request.method);
+      return { jsonrpc: '2.0', id: request.id, result };
+    }));
+    return Response.json(Array.isArray(input) ? replies : replies[0]);
   } });
   const scope = createActivityScope('b'.repeat(64), 'hd:60:0', owner, network);
   const choice: NotificationChoice = { label: 'Account', networkName: network.name, symbol: network.symbol,
@@ -322,9 +330,9 @@ test('wallet account Activity composition shares automatic receipt work with exp
     filter: { async load() { return 'all'; }, async save() {} },
     runtime: () => ({
       async load() { return { scope, saved: { archived: [], candidates: [], truncated: false, view: DEFAULT_ACTIVITY_VIEW },
-        locals: [{ walletFingerprint: 'b'.repeat(64), accountId: 'hd:60:0', address: owner, networkId: network.id,
-          registrationHash: network.registrationHash, chainId: network.chainId, hash, phase: 'submitted' as const,
-          nonce: 1, createdAt: 1000, recipient: outsider, amountUnits: '1', maximumFeeUnits: '21000' }] }; },
+        locals: hashes.map((item, index) => ({ walletFingerprint: 'b'.repeat(64), accountId: 'hd:60:0', address: owner, networkId: network.id,
+          registrationHash: network.registrationHash, chainId: network.chainId, hash: item, phase: 'submitted' as const,
+          nonce: index + 1, createdAt: 1000, recipient: outsider, amountUnits: '1', maximumFeeUnits: '21000' })) }; },
       async observeLocal(record, check, signal, observe) {
         const request = { chainId: network.chainId, from: owner, to: outsider, hash: record.hash, nonce: String(record.nonce) };
         const result = observe ? await observe(request) : await receipts.observe(request, signal, check, network, 'runtime-owned');
@@ -337,14 +345,22 @@ test('wallet account Activity composition shares automatic receipt work with exp
   const stop = model.connect();
   try {
     await started.promise;
-    model.getNetwork(network.id)!.controller.inspect(hash);
-    await tick();
-    assert.equal(methods.filter(method => method === 'eth_getTransactionByHash').length, 1);
+    if (!paired) {
+      model.getNetwork(network.id)!.controller.inspect(hash);
+      await tick();
+      assert.equal(batches.flat().filter(method => method === 'eth_getTransactionByHash').length, 1);
+    }
     held.resolve(); await tick();
     const row = model.findRow(network.id, hash)!.row;
     assert.equal(row.retainedObservation?.status, 'mined');
-    assert.equal(row.observation?.status, 'confirmed');
-    assert.equal(persisted, 1);
-    assert.deepEqual(methods, ['eth_chainId', 'eth_getTransactionReceipt', 'eth_getTransactionByHash', 'eth_getBlockByNumber', 'eth_chainId']);
+    if (paired) {
+      assert.equal(model.findRow(network.id, hashes[1]!)?.row.retainedObservation?.status, 'mined');
+      assert.equal(persisted, 2);
+      assert.deepEqual(batches, [['eth_chainId'], ['eth_getTransactionReceipt', 'eth_getTransactionReceipt'], ['eth_getBlockByNumber'], ['eth_chainId']]);
+    } else {
+      assert.equal(row.observation?.status, 'confirmed');
+      assert.equal(persisted, 1);
+      assert.deepEqual(batches, [['eth_chainId'], ['eth_getTransactionReceipt'], ['eth_getTransactionByHash'], ['eth_getBlockByNumber'], ['eth_chainId']]);
+    }
   } finally { held.resolve(); stop(); }
 });

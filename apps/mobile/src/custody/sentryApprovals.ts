@@ -163,11 +163,16 @@ export function createNativeSentryApprovals(ports: Ports) {
       assertScope(request.scope);
       if (!isHostWalletAuthentication(request.authentication)) throw new Error('Native authentication is required');
       const prepared = new Map<string, Awaited<ReturnType<NativeSentryWalletAuthority['prepare']>>>();
-      for (const authority of request.walletAuthorities) {
+      const authorities = new Map(request.walletAuthorities.map(authority => [sentryAuthorityRequestId(authority), authority]));
+      await Promise.all([...authorities].map(async ([id, authority]) => {
         assertSynchronousEvmFeeGuard(request.assertCurrent);
-        prepared.set(sentryAuthorityRequestId(authority), await ports.walletAuthority.prepare(authority.address, authority.purpose));
+        const resolve = await ports.walletAuthority.prepare(authority.address, authority.purpose);
         assertScope(request.scope);
-      }
+        assertSynchronousEvmFeeGuard(request.assertCurrent);
+        prepared.set(id, resolve);
+      }));
+      assertScope(request.scope);
+      assertSynchronousEvmFeeGuard(request.assertCurrent);
       return ports.withSigningMaterial(request, async (seed, privateAccount) => {
         const resolved = new Map<string, { scheme: 'ecdsa'; secretKey: string } | undefined>();
         try {
@@ -227,6 +232,12 @@ export function createNativeSentryApprovals(ports: Ports) {
       assertScope(captured);
       return result;
     },
+    ...(ports.walletAuthority.hasMany ? { async hasWalletAuthorities(addresses, captured) {
+      assertScope(captured);
+      const result = await ports.walletAuthority.hasMany!(addresses);
+      assertScope(captured);
+      return result;
+    } } : {}),
     async runCrypto<T extends SentryCryptoResult>(
       job: Parameters<RunSentryCrypto>[0],
       assertRequest: () => void

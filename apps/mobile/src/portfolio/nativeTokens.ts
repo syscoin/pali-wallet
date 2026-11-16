@@ -620,7 +620,8 @@ export class NativeTokens {
         contractAddress, tokenStandard: 'ERC-721' }, request.signal, current), request.signal);
       current();
       if (!Array.isArray(result.tokenIds) || result.tokenIds.length > MAX_ENUMERATED_NFTS ||
-          typeof result.hasMore !== 'boolean' || !['enumeration', 'manual'].includes(result.method))
+          typeof result.hasMore !== 'boolean' || (result.partial !== undefined && typeof result.partial !== 'boolean') ||
+          !['enumeration', 'manual'].includes(result.method))
         throw new Erc20ReadError('INVALID_RESPONSE');
       let tokenIds: string[], totalOwned: string | undefined;
       try {
@@ -629,7 +630,7 @@ export class NativeTokens {
       }
       catch { throw new Erc20ReadError('INVALID_RESPONSE'); }
       return Object.freeze({ tokenIds: Object.freeze(tokenIds),
-        ...(totalOwned === undefined ? {} : { totalOwned }), hasMore: result.hasMore, method: result.method });
+        ...(totalOwned === undefined ? {} : { totalOwned }), hasMore: result.hasMore, ...(result.partial ? { partial: true } : {}), method: result.method });
     } finally {
       signal.removeEventListener('abort', stop);
       if (this.collectibleRequest === request) this.collectibleRequest = null;

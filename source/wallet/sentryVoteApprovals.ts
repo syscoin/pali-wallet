@@ -133,9 +133,7 @@ export class SharedSentryVoteApprovals {
         )
       : [];
     this.assertCurrent(scope, lifetime);
-    const nodes: SentryVoteApproval['nodes'] = [];
-    const missingNodes: string[] = [];
-    for (const requested of request.nodes) {
+    const candidates = request.nodes.map((requested) => {
       const node = context.nodes.find(
         (item) => item.proTxHash === requested.proTxHash
       )!;
@@ -145,40 +143,51 @@ export class SharedSentryVoteApprovals {
           item.uncompressed === node.votingKeyId
       )?.publicKey;
       const key = votingKeys.find((item) => item.publicKey === publicKey);
-      if (key)
-        nodes.push({
-          ...requested,
-          votingKeyId: node.votingKeyId,
-          keyId: key.id,
-          keyLabel: key.label,
-          publicKey: key.publicKey,
-        });
-      else {
-        const address = syscoinUtils.bitcoinjs.address.toBase58Check(
-          Buffer.from(node.votingKeyId, 'hex'),
-          SENTRY_NETWORKS[settings.network].encoding.pubKeyHash
-        );
-        if (!(await this.host.hasWalletAuthority(address, scope))) {
-          missingNodes.push(requested.proTxHash);
-          nodes.push({
-            ...requested,
-            votingKeyId: node.votingKeyId,
-            keyId: '',
-            keyLabel: '',
-            publicKey: '',
-          });
-          continue;
-        }
-        nodes.push({
-          ...requested,
-          votingKeyId: node.votingKeyId,
-          keyId: 'wallet-voting',
-          keyLabel: 'Selected wallet account',
-          publicKey: '',
-        });
-      }
+      const address = key
+        ? null
+        : syscoinUtils.bitcoinjs.address.toBase58Check(
+            Buffer.from(node.votingKeyId, 'hex'),
+            SENTRY_NETWORKS[settings.network].encoding.pubKeyHash
+          );
+      return { requested, node, key, address };
+    });
+    const addresses = [
+      ...new Set(
+        candidates.flatMap(({ address }) => (address ? [address] : []))
+      ),
+    ];
+    const available = new Map<string, boolean>();
+    if (addresses.length && this.host.hasWalletAuthorities) {
+      const matches = await this.host.hasWalletAuthorities(addresses, scope);
       this.assertCurrent(scope, lifetime);
+      if (matches.length !== addresses.length)
+        throw new Error('Invalid wallet authority result');
+      addresses.forEach((address, index) =>
+        available.set(address, matches[index] === true)
+      );
+    } else {
+      for (const address of addresses) {
+        available.set(
+          address,
+          await this.host.hasWalletAuthority(address, scope)
+        );
+        this.assertCurrent(scope, lifetime);
+      }
     }
+    const missingNodes: string[] = [];
+    const nodes: SentryVoteApproval['nodes'] = candidates.map(
+      ({ requested, node, key, address }) => {
+        const owned = address !== null && available.get(address) === true;
+        if (!key && !owned) missingNodes.push(requested.proTxHash);
+        return {
+          ...requested,
+          votingKeyId: node.votingKeyId,
+          keyId: key?.id ?? (owned ? 'wallet-voting' : ''),
+          keyLabel: key?.label ?? (owned ? 'Selected wallet account' : ''),
+          publicKey: key?.publicKey ?? '',
+        };
+      }
+    );
     // Key availability stays inside the approval; it is not a provider oracle.
     for (const [id, approval] of this.approvals)
       if (

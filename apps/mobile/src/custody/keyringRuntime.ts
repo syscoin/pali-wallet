@@ -6315,36 +6315,7 @@ export function createKeyringRuntimeFactory(
                         fetch: transferFetch,
                       });
                       return {
-                        async getBlockHash(blockNumber) {
-                          const signal = (contextReadLifetime ??=
-                            new AbortController()).signal;
-                          await rpc.verifyNetwork(signal, guard);
-                          const block = await rpc.retirementRead(
-                            'eth_getBlockByNumber',
-                            [blockNumber, false],
-                            signal,
-                            guard
-                          );
-                          await rpc.verifyNetwork(signal, guard);
-                          return block &&
-                            typeof block === 'object' &&
-                            'hash' in block
-                            ? String(block.hash)
-                            : null;
-                        },
-                        async getTransactionReceipt(hash) {
-                          const signal = (contextReadLifetime ??= new AbortController())
-                            .signal;
-                          await rpc.verifyNetwork(signal, guard);
-                          const receipt = await rpc.retirementRead(
-                            'eth_getTransactionReceipt',
-                            [hash],
-                            signal,
-                            guard
-                          );
-                          await rpc.verifyNetwork(signal, guard);
-                          return receipt;
-                        },
+                        run: work => rpc.callsStatusPhase((contextReadLifetime ??= new AbortController()).signal, guard, work),
                       };
                     },
                   },

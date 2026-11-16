@@ -551,6 +551,7 @@ import {
   ITransactionsManager,
   type UtxoActivityDetailsReply,
 } from './transactions/types';
+import { getHistoryTransaction } from './transactions/utils';
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 import type {
@@ -4390,23 +4391,12 @@ class MainController {
       },
       prepareFees: async (transaction, session) => {
         binding(session);
-        const read = this.captureFreshEvmRead(getWalletNavigationScope());
-        const check = () => {
-          session.assertCurrent();
-          read.assertCurrent();
-        };
+        const check = () => session.assertCurrent();
         check();
-        const plan = await this.inspectOrdinaryEvmNonce(
-          read,
-          session.context.account.address,
-          { assertCurrent: check }
-        );
-        check();
-        const walletNonce = reviewedExtensionNonce(plan.nonce, 'automatic');
         const prepared = await this.prepareGenericEvmFeeReview(
-          { ...transaction, nonce: walletNonce.nonce },
+          transaction,
           session.context,
-          walletNonce,
+          undefined,
           check,
           { assertCurrentContext: check },
           { kind: 'private-deposit', request: session }
@@ -15963,7 +15953,12 @@ class MainController {
         check();
       };
       await verify();
-      const tx = await provider.getTransaction(hash);
+      const tx = await getHistoryTransaction(
+        provider,
+        hash,
+        BigInt(chainId),
+        check
+      );
       check();
       if (!tx || tx.hash?.toLowerCase() !== hash.toLowerCase()) return null;
 

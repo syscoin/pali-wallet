@@ -303,6 +303,24 @@ async function fixture() {
   };
 }
 
+test('distinct voting addresses share one live inventory per phase', async () => {
+  const network = resolveUtxoNetwork('syscoin'), bitcoin = syscoinUtils.bitcoinjs;
+  const root = bitcoin.bip32.fromSeed(Buffer.alloc(32, 9), network.addressNetwork).derivePath("m/84'/57'/0'");
+  const addresses = [21, 22].map(index => bitcoin.payments.p2pkh({
+    pubkey: root.derive(0).derive(index).publicKey, network: network.addressNetwork,
+  }).address!);
+  let reads = 0;
+  const authority = createNativeSentryWalletAuthority({ account: { address: addresses[0]!, xpub: root.neutered().toBase58() },
+    accountId: 0, assertCurrent: current, hasPrivateMaterial: true, imported: false, network,
+    async readJson() { reads++; return { tokens: [21, 22].map(index => ({ path: `m/84'/57'/0'/0/${index}` })) }; },
+  });
+  assert.deepEqual(await authority.hasMany(addresses), [true, true]);
+  assert.equal(reads, 1);
+  const resolve = await Promise.all(addresses.map(address => authority.prepare(address, 'voting')));
+  assert(resolve.every(Boolean));
+  assert.equal(reads, 2);
+});
+
 test('real encrypted voting key signs the reviewed proposal; public facade and results contain no secret', async () => {
   const f = await fixture(),
     manager = f.adapter();

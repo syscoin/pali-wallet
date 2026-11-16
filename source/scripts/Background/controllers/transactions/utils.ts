@@ -1,5 +1,6 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
-import { Network } from 'ethers/providers';
+import { isError } from 'ethers';
+import { Network, type TransactionResponse } from 'ethers/providers';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import isEmpty from 'lodash/isEmpty';
@@ -46,6 +47,54 @@ export const getFormattedEvmTransactionResponse = async (
     tx as unknown as IEvmTransactionResponse
   );
 };
+
+function isTypeFour(transaction: { type?: unknown }) {
+  return transaction.type === 4 || transaction.type === '0x4';
+}
+
+/** Optional authorization entries are display metadata, never signing input. */
+function formatHistoryTransaction(
+  provider: CustomJsonRpcProvider,
+  transaction: unknown,
+  chainId: bigint
+): TransactionResponse {
+  const raw = transaction as { authorizationList?: unknown; type?: unknown };
+  const input = isTypeFour(raw)
+    ? { ...raw, authorizationList: undefined }
+    : raw;
+  return Reflect.apply(
+    Reflect.get(provider, '_wrapTransactionResponse'),
+    provider,
+    [input, Network.from(chainId)]
+  );
+}
+
+export async function getHistoryTransaction(
+  provider: CustomJsonRpcProvider,
+  hash: string,
+  chainId: bigint,
+  assertCurrent: () => void
+) {
+  try {
+    return await provider.getTransaction(hash);
+  } catch (error) {
+    if (
+      !isError(error, 'BAD_DATA') ||
+      !error.message.includes('value.authorizationList')
+    )
+      throw error;
+    assertCurrent();
+    const raw = await provider.send('eth_getTransactionByHash', [hash]);
+    assertCurrent();
+    if (
+      !raw ||
+      !isTypeFour(raw) ||
+      raw.hash?.toLowerCase() !== hash.toLowerCase()
+    )
+      throw error;
+    return formatHistoryTransaction(provider, raw, chainId);
+  }
+}
 
 const HISTORY_READ_TIMEOUT_MS = 20000;
 // Keep immutable bodies across the manager's one-minute display-result expiry.
@@ -108,8 +157,11 @@ export const findUserTxsInProviderByBlocksRange = async (
   if (store.getState().vault.isBitcoinBased) return [];
   if (!Number.isSafeInteger(numBlocks) || numBlocks < 0 || numBlocks > 1000)
     throw new Error('Invalid history block range');
+  const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+  const address = accounts[activeAccount.type]?.[activeAccount.id]?.address;
+  if (!address) return [];
   const scope = historyScope();
-  const chainId = BigInt(store.getState().vault.activeNetwork.chainId);
+  const chainId = BigInt(activeNetwork.chainId);
   const deadline = new AbortController();
   const abort = () => deadline.abort(provider.signal.reason);
   provider.signal?.addEventListener('abort', abort, { once: true });
@@ -228,15 +280,9 @@ export const findUserTxsInProviderByBlocksRange = async (
     }
     const transactions = window.flatMap((block) =>
       block.transactions
-        .filter((tx) => tx?.from || tx?.to)
+        .filter((tx) => tx && belongsToEvmHistoryAccount(tx, address))
         .map((tx) => {
-          // Full-block RPC objects use the same legacy/signature normalization
-          // as getTransaction, before assigning this verified display scope.
-          const normalized = Reflect.apply(
-            Reflect.get(provider, '_wrapTransactionResponse'),
-            provider,
-            [tx, Network.from(chainId)]
-          );
+          const normalized = formatHistoryTransaction(provider, tx, chainId);
           if (
             (normalized.chainId && normalized.chainId !== chainId) ||
             (normalized.signature.legacyChainId &&
@@ -260,7 +306,7 @@ export const findUserTxsInProviderByBlocksRange = async (
       updatedAt: Date.now(),
       blocks: retained,
     });
-    const { activeAccount, accountTransactions } = store.getState().vault;
+    const { accountTransactions } = store.getState().vault;
     const existing =
       accountTransactions?.[activeAccount.type]?.[activeAccount.id]?.ethereum?.[
         Number(chainId)

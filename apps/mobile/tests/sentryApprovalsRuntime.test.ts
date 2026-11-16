@@ -266,7 +266,7 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
   const collateral = new bitcoin.Transaction(); collateral.addInput(Buffer.alloc(32, 19), 0); collateral.addOutput(Buffer.from('51', 'hex'), BigInt(100000));
   const node = { proTxHash: 'a1'.repeat(32), operatorPublicKey: operator.publicKey, service: '127.0.0.1:8369',
     operatorPayoutScript: '51', nevmAddress: '', collateralOutpoint: { txid: collateral.getId(), vout: 0 } };
-  let funding: InstanceType<typeof bitcoin.Transaction>, address = '', xpub = '', posts = 0, roleSignatures = 0;
+  let funding: InstanceType<typeof bitcoin.Transaction>, address = '', xpub = '', posts = 0, roleSignatures = 0, fundingReads = 0, contextReads = 0;
   let held: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>>; signal?: AbortSignal } | undefined;
   t.mock.method(globalThis, 'fetch', () => { throw new Error('Ambient transport forbidden'); });
   const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
@@ -283,9 +283,10 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
       if (path === '/api/v2/') body = metadata(network);
       else if (path === '/api/v2/block-index/0') body = { blockHash: network.genesisHash };
       else if (path.endsWith('/context')) {
+        contextReads++;
         if (held) { const pending = held; pending.signal = init.signal!; pending.entered.resolve(); await pending.release.promise; }
         body = { chain, node };
-      } else if (path === `/api/v2/tx/${funding?.getId()}`) body = { hex: funding.toHex() };
+      } else if (path === `/api/v2/tx/${funding?.getId()}`) { fundingReads++; body = { hex: funding.toHex() }; }
       else if (path === `/api/v2/tx/${collateral.getId()}`) body = { hex: collateral.toHex() };
       else if (path === `/api/v2/xpub/${xpub}`) body = { tokens: [{ name: address, path: "m/84'/57'/0'/0/0" }] };
       else throw new Error(`Unexpected public route ${path}`);
@@ -328,6 +329,8 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
       return { result, child: { method: 'sys_sign' as const, origin, psbt: PsbtUtils.toPali(psbt) } };
     };
     const first = await authorize();
+    assert.equal(fundingReads, 1);
+    assert.equal(contextReads, 2, 'preparation and signing check mutable context independently');
     const prepared = await runtime.prepareConnectionPsbt(first.child, new AbortController().signal, checkGrant, softwarePsbtHandoff, null);
     assert.equal(prepared.review.sentry?.operation, 'updateService'); assert.equal(prepared.review.feeSatoshis, '1000');
     const signed = await prepared.approve(); assert('psbt' in signed);

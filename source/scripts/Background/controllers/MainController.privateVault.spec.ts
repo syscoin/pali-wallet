@@ -1232,6 +1232,7 @@ it('uses the shared automatic nonce planner when the RPC pending count lags loca
   );
   const review = await f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
   expect(review.nonce).toBe('8');
+  expect(f.wallet.inspectOrdinaryEvmNonce).toHaveBeenCalledTimes(1);
   await f.wallet.submitPrivacyDeposit(review.intentId);
   expect(f.wallet.sendAndSaveEthTransaction).toHaveBeenCalledWith(
     expect.objectContaining({ nonce: '8' }),

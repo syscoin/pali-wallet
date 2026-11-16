@@ -1583,7 +1583,10 @@ export const SendTransaction = () => {
     genericFeeKey,
   ]); // ensure we wait for resolved address
 
-  // Check for contract interaction with non-contract address
+  const verifiedTransferContract = assetTransfer?.standardVerified
+    ? assetTransfer.contract.toLowerCase()
+    : undefined;
+  // Check for contract interaction with non-contract address.
   useEffect(() => {
     const checkContract = async () => {
       // Only check once per transaction
@@ -1591,7 +1594,8 @@ export const SendTransaction = () => {
         hasCheckedContract ||
         !toAddressForProvider ||
         !dataTx?.data ||
-        isCheckingContract
+        isCheckingContract ||
+        verifiedTransferContract === toAddressForProvider.toLowerCase()
       ) {
         return;
       }
@@ -1645,6 +1649,7 @@ export const SendTransaction = () => {
     dataTx?.data,
     hasCheckedContract,
     initialLoading,
+    verifiedTransferContract,
   ]);
 
   useEffect(() => {

@@ -2,6 +2,7 @@ import { getAddress } from 'ethers/address';
 import { keccak256 } from 'ethers/crypto';
 import { toUtf8Bytes } from 'ethers/utils';
 import { activityNotificationScopeKey, type ActivityNotificationBaseline, type ActivityNotificationScope } from '../../../../source/shared/activityNotifications.ts';
+import { createRpcReadCapabilitiesOwner } from '../../../../source/shared/rpcReadCapabilities.ts';
 import { assertPublicWatchOnlyIdentifier } from '../../../../source/utils/watchOnlyIdentifier.ts';
 import { ActivityExplorerReader } from '../activity/explorerReader.ts';
 import { createActivityReadScope } from '../activity/types.ts';
@@ -41,6 +42,7 @@ export function notificationFactScope(scope: NativeNotificationScope): ActivityN
 }
 /** Reuses the wallet's existing bounded explorer, Blockbook and guardian RPC readers. */
 export function createNotificationReader() {
+  const capabilities = createRpcReadCapabilitiesOwner();
   const explorer = new ActivityExplorerReader(walletFetch);
   const utxo = createUtxoActivityReader({ fetch: walletFetch, timeoutMs: 10000 });
   return async (scope: NativeNotificationScope, previous: ActivityNotificationBaseline | null, signal: AbortSignal, guard: () => void) => {
@@ -59,7 +61,10 @@ export function createNotificationReader() {
       explorer.page(historyScope, 'tokentx', 1, signal, guard),
     ]).then((pages) => pages.flat().map((row) => row.indexed)) : Promise.reject(new Error('No registered activity explorer'));
     // This class is the existing read-only endpoint adapter; no authority, vault or signer is constructed.
-    const reader = scope.guardian ? new EvmTransferReadRpc(scope.network, { fetch: walletFetch, timeoutMs: 10000 }) : null;
+    const reader = scope.guardian ? new EvmTransferReadRpc(scope.network, {
+      fetch: walletFetch, timeoutMs: 10000,
+      capabilities: capabilities.get(scope.network.registrationHash, scope.network.rpcUrl),
+    }) : null;
     const operationId = previous?.guardian?.trackedOperationId;
     const guardian = reader ? (operationId ? reader.readGuardianRecoveryOperation(scope.accountAddress, operationId, signal, guard)
       : reader.readGuardianRecoveryStatus(scope.accountAddress, signal, guard)) : Promise.resolve(null);

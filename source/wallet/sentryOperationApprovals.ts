@@ -93,7 +93,8 @@ export class SharedSentryOperationApprovals {
   private async context(
     scope: SentryRequestScope,
     request: SentryOperationRequest | SentryManagementRequest,
-    lifetime: SentryRequestLifetime
+    lifetime: SentryRequestLifetime,
+    reviewedFunding?: readonly string[]
   ): Promise<{
     context: SentryManagementContext;
     settings: SentrySettings;
@@ -159,23 +160,34 @@ export class SharedSentryOperationApprovals {
       )
     )
       throw new Error('Sentry collateral cannot fund a service update');
-    const previousTransactions = await Promise.all(
-      inputIds(request).map(async (txid) => {
-        const tx = await this.host.readJson(
-          `${scope.network.url.replace(/\/$/, '')}/api/v2/tx/${txid}`,
-          2 * 1024 * 1024,
-          scope,
-          () => this.assertCurrent(scope, lifetime),
-          lifetime.signal
+    const ids = inputIds(request);
+    const previousTransactions = reviewedFunding
+      ? Array.from(reviewedFunding)
+      : await Promise.all(
+          ids.map(async (txid) => {
+            const tx = await this.host.readJson(
+              `${scope.network.url.replace(/\/$/, '')}/api/v2/tx/${txid}`,
+              2 * 1024 * 1024,
+              scope,
+              () => this.assertCurrent(scope, lifetime),
+              lifetime.signal
+            );
+            const raw = tx?.hex;
+            if (typeof raw !== 'string' || !/^(?:[0-9a-fA-F]{2})+$/.test(raw))
+              throw new Error(
+                'The selected Blockbook did not provide the raw funding transaction'
+              );
+            if (
+              syscoinUtils.bitcoinjs.Transaction.fromHex(raw).getId() !== txid
+            )
+              throw new Error(
+                'The funding transaction does not match a Sentry input'
+              );
+            return raw;
+          })
         );
-        const raw = tx?.hex;
-        if (typeof raw !== 'string' || !/^(?:[0-9a-fA-F]{2})+$/.test(raw))
-          throw new Error(
-            'The selected Blockbook did not provide the raw funding transaction'
-          );
-        return raw;
-      })
-    );
+    if (previousTransactions.length !== ids.length)
+      throw new Error('The funding transaction does not match a Sentry input');
     this.assertCurrent(scope, lifetime);
     return {
       settings,
@@ -363,7 +375,12 @@ export class SharedSentryOperationApprovals {
     );
     const scope = entry.scope;
     this.assertCurrent(scope, lifetime);
-    const fresh = await this.context(scope, entry.request, lifetime);
+    const fresh = await this.context(
+      scope,
+      entry.request,
+      lifetime,
+      entry.context.previousTransactions
+    );
     if (
       !isEqual(fresh.context, entry.context) ||
       fresh.settings.serviceUrl !== entry.serviceUrl
@@ -401,7 +418,8 @@ export class SharedSentryOperationApprovals {
         const fresh = await this.context(
           scope,
           publicApproval.request,
-          lifetime
+          lifetime,
+          pending.context.previousTransactions
         );
         assertPending();
         if (
@@ -550,18 +568,29 @@ export class SharedSentryOperationApprovals {
               if (
                 response.operation === 'updateService' ||
                 ('complete' in response && response.complete)
-              )
+              ) {
+                const feeRequest = {
+                  ...publicApproval.request,
+                  transactionHex: response.transactionHex,
+                };
+                if (
+                  !isEqual(
+                    inputIds(feeRequest),
+                    inputIds(publicApproval.request)
+                  )
+                )
+                  throw new Error(
+                    'Sentry funding inputs changed during signing'
+                  );
                 this.feeAuthorizations.remember({
                   parentId: params.id,
                   context: pending.context,
                   origin: publicApproval.origin,
-                  request: {
-                    ...publicApproval.request,
-                    transactionHex: response.transactionHex,
-                  },
+                  request: feeRequest,
                   scope,
                   serviceUrl: publicApproval.serviceUrl,
                 });
+              }
               return response;
             } finally {
               if (key) key.secretKey = '';

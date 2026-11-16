@@ -18,6 +18,22 @@ const token = {
   tokenQuantity: '9007199254740993',
 };
 
+test('Routescan stops after the suggestion cap with a validated next cursor', async () => {
+  let requests = 0;
+  const read = createOwnedTokenReader(async () => {
+    assert.equal(++requests, 1);
+    return Response.json({
+      items: [token, token, { ...token, chainId: 2 }, ...Array.from({ length: 20 }, (_, index) =>
+        ({ ...token, tokenAddress: contract(index + 10) }))],
+      link: { nextToken: 'next-page' },
+    });
+  });
+  const result = await read(scope, new Set([token.tokenAddress]), new AbortController().signal, current);
+  assert.equal(requests, 1);
+  assert.equal(result.tokens.length, 20);
+  assert.equal(result.limited, true);
+});
+
 test('registered Routescan request keeps provider cursors on the captured chain and returns only safe suggestions', async () => {
   const requests: URL[] = [];
   const reader = createOwnedTokenReader(async (url, init) => {

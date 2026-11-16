@@ -77,6 +77,7 @@ jest.mock('syscoinjs-lib', () => ({
     bitcoinjs: {
       Transaction: {
         fromHex: () => ({
+          getId: () => '44'.repeat(32),
           ins: [{ hash: Buffer.from('44'.repeat(32), 'hex'), index: 0 }],
         }),
       },

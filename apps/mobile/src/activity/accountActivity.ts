@@ -172,6 +172,9 @@ export class AccountActivityController {
           const current = guarded(guard);
           return this.reads.run(signal, current, () => receipts.read(hash, owner, signal, current, network, sharingScope));
         },
+        ...(receipts.retainedWave ? { retainedWave: (network, sharingScope, signal, guard) =>
+          receipts.retainedWave!(network, sharingScope, signal, guarded(guard)),
+        } : {}),
         ...(receipts.observe ? { observe: (request, signal, guard, network, sharingScope) => {
           const current = guarded(guard);
           return receipts.observe!(request, signal, current, network, sharingScope);

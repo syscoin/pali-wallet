@@ -116,7 +116,7 @@ beforeEach(() => {
     isBitcoinBased: false,
     activeNetwork: { chainId: 1, url: 'https://rpc.example/' },
     activeAccount: { type: 'HDAccount', id: 0 },
-    accounts: { HDAccount: { 0: { address: 'owner' } } },
+    accounts: { HDAccount: { 0: { address: '0x' + '11'.repeat(20) } } },
   };
 });
 afterEach(() => jest.useRealTimers());
@@ -226,7 +226,7 @@ it('reuses immutable bodies after the manager display cache expires and rejects 
   mockPollingEvmTransactions = () => f.scan();
   const poll = () =>
     manager.utils.updateTransactionsFromCurrentAccount(
-      { address: 'owner' } as any,
+      { address: scope.accounts.HDAccount[0].address } as any,
       false,
       scope.activeNetwork.url,
       { ethereum: { 1: [] } } as any,

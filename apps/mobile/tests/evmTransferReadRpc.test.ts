@@ -20,10 +20,11 @@ const request={hash,from,to,nonce:'0'};
 const signal=()=>new AbortController().signal;
 type Call={method:string;params:unknown[];signal:AbortSignal};
 function fixture(network=getNativeNetwork('ethereum'), override?:(call:Call)=>unknown|Promise<unknown>){
- const calls:Call[]=[];
- const fetcher = async(url: string,init: RequestInit): Promise<Response>=>{
+ const calls:Call[]=[], requests: string[][] = [];
+ const fetcher = async(url: string,init: RequestInit, record = true): Promise<Response>=>{
   const request = JSON.parse(String(init.body));
-  if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetcher(url, { ...init, body: JSON.stringify(row) })).json())));
+  if (record) requests.push((Array.isArray(request) ? request : [request]).map(row => row.method));
+  if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetcher(url, { ...init, body: JSON.stringify(row) }, false)).json())));
   assert.equal(url,network.rpcUrl);assert.equal(init.redirect,'error');assert.equal(init.credentials,'omit');
   const body=JSON.parse(String(init.body));const call={...body,signal:init.signal} as Call;calls.push(call);
   const inspect=(value:unknown):void=>{if(Array.isArray(value))value.forEach(inspect);else if(value&&typeof value==='object')Object.values(value).forEach(inspect);else if(typeof value==='string'&&/^0x[0-9a-f]+$/i.test(value)){let tx:Transaction|undefined;try{tx=Transaction.from(value)}catch{/* Not a transaction. */}assert.equal(tx?.isSigned()??false,false);}};
@@ -39,7 +40,7 @@ function fixture(network=getNativeNetwork('ethereum'), override?:(call:Call)=>un
    else throw Error('Unexpected read method '+call.method);
   }
   return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result}),{headers:{'content-type':'application/json'}});
- }; const rpc=new EvmTransferReadRpc(network,{monotonicMilliseconds:()=>1000,fetch:fetcher});return {rpc,calls};
+ }; const rpc=new EvmTransferReadRpc(network,{monotonicMilliseconds:()=>1000,fetch:fetcher});return {rpc,calls,requests};
 }
 
 for(const network of [...NATIVE_NETWORKS,custom])test(`${network.id} quotes the same exact unsigned envelope without chain profiles`,async()=>{
@@ -48,6 +49,21 @@ for(const network of [...NATIVE_NETWORKS,custom])test(`${network.id} quotes the 
  assert.equal(f.calls.filter(c=>c.method==='eth_estimateGas').length,1);
  assert.deepEqual(f.calls.find(c=>c.method==='eth_estimateGas')!.params,[{from,to,data:'0x',accessList:[],value:'0x64',maxFeePerGas:'0xa',maxPriorityFeePerGas:'0x2',type:'0x2',chainId:'0x'+BigInt(network.chainId).toString(16),nonce:'0x0'},'pending']);
  assert.equal(f.calls.some(c=>['eth_call','eth_getCode','eth_getStorageAt'].includes(c.method)||c.params.includes('finalized')),false);
+});
+
+test('calls status verifies one chain scope and batches the exact receipt hashes', async () => {
+  const hashes = Array.from({ length: 20 }, (_, index) => '0x' + (index + 1).toString(16).padStart(64, '0'));
+  const f = fixture(undefined, call => call.method === 'eth_getTransactionReceipt'
+    ? { transactionHash: call.params[0], blockHash, blockNumber: '0x50' } : undefined);
+  const result = await f.rpc.callsStatusPhase(signal(), () => undefined, async read => ({
+    receipts: await read.receipts(hashes), blocks: await read.blockHashes(['0x50']),
+  }));
+  assert.equal(result.receipts.length, 20);
+  assert.deepEqual(result.blocks, [blockHash]);
+  assert.deepEqual(f.requests, [
+    ['eth_chainId'], hashes.map(() => 'eth_getTransactionReceipt'), ['eth_getBlockByNumber'], ['eth_chainId'],
+  ]);
+  assert.deepEqual(f.calls.filter(call => call.method === 'eth_getTransactionReceipt').map(call => call.params[0]), hashes);
 });
 
 test('input snapshots survive mutation and A-B-A/async guards reject stale quote work',async()=>{

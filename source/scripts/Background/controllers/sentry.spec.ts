@@ -70,6 +70,7 @@ jest.mock('syscoinjs-lib', () => ({
       address: { toBase58Check: () => 'synthetic-owner-address' },
       Transaction: {
         fromHex: () => ({
+          getId: () => 'cd'.repeat(32),
           ins: [
             { hash: Buffer.from('cd'.repeat(32), 'hex').reverse(), index: 0 },
           ],

@@ -2,6 +2,7 @@ import { DEFAULT_PRIVACY_SERVICE_ORIGIN } from '../../shared/privacyServiceOrigi
 
 import {
   createPrivacyRpc,
+  createPrivacySnapshotAnchorVerifier,
   PRIVACY_POOL_ABI,
   readPrivacyPoolSnapshot,
   verifyPrivacySnapshotAnchor,
@@ -33,6 +34,8 @@ const requestJson: PrivacyJsonTransport = async (
   }
 };
 const rpc = createPrivacyRpc(requestJson);
+export const createSnapshotAnchorVerifier = () =>
+  createPrivacySnapshotAnchorVerifier(rpc);
 
 export function fetchPrivacySnapshot(
   poolId: PrivacyPoolId,

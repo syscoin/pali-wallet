@@ -20,6 +20,7 @@ type OwnedTokenDiscoveryIo = Readonly<{
   fetch(url: string, init: RequestInit, routescan: boolean): Promise<Response>;
   readJson(response: Response): Promise<unknown>;
   signal: AbortSignal;
+  stopTokenPages?(rows: readonly TokenRow[]): boolean;
 }>;
 type TokenResponse = {
   items?: unknown;
@@ -220,13 +221,18 @@ const requestRows = async (
         if (
           typeof cursor !== 'string' ||
           cursor.length > 4096 ||
-          cursors.has(cursor) ||
-          page === MAX_PAGES - 1
+          cursors.has(cursor)
         ) {
           throw new TokenDiscoveryError(
             'Token discovery pagination limit reached'
           );
         }
+        if (kind === 'erc20' && !includeNfts && owned?.stopTokenPages?.(rows))
+          return rows;
+        if (page === MAX_PAGES - 1)
+          throw new TokenDiscoveryError(
+            'Token discovery pagination limit reached'
+          );
         cursors.add(cursor);
         // Never follow provider-supplied URLs; cursors stay on the configured host.
         url.searchParams.set('next', cursor);

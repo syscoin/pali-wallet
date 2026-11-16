@@ -23,7 +23,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     network: { id: 'ethereum', kind: 'evm', chainId: '1', testnet: false },
   } };
   const row = { choice, status: failed ? 'error' : 'available', units: '1000000000000000000', decimals: 18,
-    price: 1000, tokens: [{ status: 'available', units: '250', price: 2,
+    price: 1000, tokens: [{ status: failed ? 'error' : 'available', units: '250', price: 2,
       metadata: { name: 'Saved token', symbol: 'TOK', contractAddress: tokenAddress, decimals: 2 } }], collectibles: [] };
   const snapshot: any = { status: 'ready', filter: 'all', accountId: 'account-1', choices: [choice], rows: screen === 'wallet' ? [row] : [],
     refreshing: false, knownValue: failed ? null : 1005, partial: failed, currency: 'usd',
@@ -210,6 +210,18 @@ test('an unavailable balance without a cached amount is not labelled as a last-k
     const text = f.nodes(f.render()).flatMap(node => node.children);
     assert.equal(text.filter(value => value === 'Balance unavailable').length, 2);
     assert(!text.includes('Last known balance'));
+  } finally { f.close(); }
+});
+
+test('a native balance failure does not mark a healthy token balance stale', () => {
+  const f = fixture('wallet', true);
+  try {
+    f.row.tokens[0]!.status = 'available';
+    const tree = f.nodes(f.render());
+    const labels = tree.map(node => node.props.accessibilityLabel);
+    assert(labels.includes('ETH, Ethereum, 1.0, Last known balance'));
+    assert(labels.includes('TOK, Ethereum, 2.5'));
+    assert(tree.flatMap(node => node.children).some(value => typeof value === 'string' && value.includes('5.00 USD')));
   } finally { f.close(); }
 });
 

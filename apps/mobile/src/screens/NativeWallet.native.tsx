@@ -56,7 +56,7 @@ import { AccountPortfolioController } from '../portfolio/accountPortfolio';
 import { AccountActivityController, type AccountActivityRow } from '../activity/accountActivity';
 import { portfolioFilter } from '../platform/portfolioFilter';
 import { createNativeCoinQuoteReader, nativeCoinQuoteSource } from '../portfolio/nativeCoinQuote';
-import { createNativeAssetMarketReader, nativeAssetMarketSource, rememberNativeAssetMarketIcon } from '../portfolio/nativeAssetMarket';
+import { nativeAssetMarketReaders, nativeAssetMarketSource, rememberNativeAssetMarketIcon } from '../portfolio/nativeAssetMarket';
 import type { NotificationChoice } from '../notifications/choices';
 import { sendDraftForNetwork, NETWORK_CHANGED_DRAFT_NOTICE, type NativeUnsignedSendDraft } from './sendNetworkDraft';
 import { publicSendContext, type PublicSendContext } from './publicSendDraft';
@@ -272,7 +272,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const accountPortfolio = useMemo(() => {
     const local = controllerOwner;
     if (!publicSource || !balanceReader || !local?.getNotificationChoices || !local.readPortfolioAssets) return null;
-    const readQuote = createNativeCoinQuoteReader(walletFetch), readMarket = createNativeAssetMarketReader(walletFetch, 'price');
+    const readQuote = createNativeCoinQuoteReader(walletFetch), readMarket = nativeAssetMarketReaders(walletFetch).price;
     const pendingQuotes = new Map<string, Promise<number | null>>();
     return new AccountPortfolioController({ source: publicSource, reader: balanceReader, choices: () => local.getNotificationChoices(), filter: portfolioFilter,
       assets: (scope, signal, check) => local.readPortfolioAssets(scope, signal, check),

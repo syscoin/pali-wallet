@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ASSET_MARKET_CHART, assetMarketCoordinates, assetMarketIndexAt, assetMarketHistoryUrl, assetMarketLine, assetMarketUrl, readAssetMarket, readAssetMarketHistory, readTokenMarketId } from '../../../source/shared/assetMarket.ts';
-import { createNativeAssetMarketReader, nativeAssetMarketSource } from '../src/portfolio/nativeAssetMarket.ts';
+import { createNativeAssetMarketReader, createNativeAssetMarketReaders, nativeAssetMarketSource } from '../src/portfolio/nativeAssetMarket.ts';
 
 const now = Date.now();
 const market = (extra = {}) => [{ id: 'ethereum', current_price: 2200, last_updated: new Date(now).toISOString(),
@@ -120,9 +120,31 @@ test('portfolio native and token pricing request no history in any display curre
       assert.deepEqual(data?.data.prices, []);
       assert.equal(await read(source, currency, new AbortController().signal), data);
     }
-    assert.equal(urls.length - before, source.kind === 'native' ? 2 : 3, 'Token identity is shared across currency quotes');
+    assert.equal(urls.length - before, source.kind === 'native' ? 2 : 1, 'Verified aliases reuse fresh quotes across matching market IDs');
   }
   assert.throws(() => createNativeAssetMarketReader(async () => Response.json([]), undefined as never));
+});
+
+test('price-to-chart navigation reuses market identity and quote without extending expiry', async () => {
+  let time = 1;
+  const urls: string[] = [], contract = '0x' + '11'.repeat(20);
+  const { price, history: chart } = createNativeAssetMarketReaders(async url => {
+    urls.push(url);
+    if (url.includes('/contract/')) return Response.json({ id: 'ethereum', platforms: { ethereum: contract } });
+    if (url.includes('/market_chart?')) return Response.json(history());
+    return Response.json(market());
+  }, () => time);
+  const source = { kind: 'token' as const, platform: 'ethereum', contract };
+  const signal = new AbortController().signal;
+  const first = await price(source, 'usd', signal);
+  assert.equal(urls.length, 2); assert.deepEqual(first?.data.prices, []);
+  time += 30_000;
+  const second = await chart(source, 'usd', signal);
+  assert.equal(urls.length, 3); assert.deepEqual(second?.data.prices, [7700, 8080]);
+  assert.equal(second?.expiresAt, first?.expiresAt);
+  time = first!.expiresAt;
+  assert.equal((await chart(source, 'usd', signal))?.data.price, 2200);
+  assert.equal(urls.length, 5);
 });
 
 test('AED history comes from the requested-currency endpoint and stays separate from cached USD', async () => {

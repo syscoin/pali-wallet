@@ -111,6 +111,19 @@ test('non-enumerable, empty and failed enumeration retain manual entry without f
     { tokenIds: [], totalOwned: maximum, hasMore: false, method: 'manual' });
 });
 
+test('a failed enumeration member keeps other candidates in order and indicates partial results', async () => {
+  const f = fixture({ rewrite(wire, reply) {
+    if (wire.method === 'eth_call') {
+      const call = abi.parseTransaction(wire.params[0] as { data: string });
+      if (call?.name === 'tokenOfOwnerByIndex' && call.args[1] === BigInt(4))
+        return { jsonrpc: '2.0', id: wire.id, error: { code: -32000, message: 'Unavailable' } };
+    }
+    return reply;
+  } });
+  assert.deepEqual(await f.read(selection, new AbortController().signal, () => undefined),
+    { tokenIds: ['0', maximum, '2', '3', '5', '6', '7', '8', '9'], totalOwned: maximum, hasMore: true, partial: true, method: 'enumeration' });
+});
+
 test('an unavailable collection balance remains absent rather than becoming zero', async () => {
   const f = fixture({ rewrite(wire, reply) {
     if (wire.method === 'eth_call' && abi.parseTransaction(wire.params[0] as { data: string })?.name === 'balanceOf')
