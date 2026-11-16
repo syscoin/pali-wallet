@@ -128,7 +128,7 @@ describe('native Syscoin available balance', () => {
       expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
         networkUrl,
         account.xpub,
-        'details=tokenBalances&tokens=nonzero',
+        'details=tokenBalances&tokens=used',
         true,
         undefined
       );
@@ -210,7 +210,7 @@ describe('native Syscoin available balance', () => {
       async (_url, _account, details) => ({
         balance: '9775331',
         unconfirmedTxs: 3,
-        ...(details === 'details=tokenBalances&tokens=nonzero'
+        ...(details === 'details=tokenBalances&tokens=used'
           ? { unconfirmedBalance: '-3227770' }
           : {}),
       })
@@ -220,7 +220,7 @@ describe('native Syscoin available balance', () => {
     expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
       networkUrl,
       account.xpub,
-      'details=tokenBalances&tokens=nonzero',
+      'details=tokenBalances&tokens=used',
       true,
       undefined
     );

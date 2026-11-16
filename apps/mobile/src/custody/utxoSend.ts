@@ -49,7 +49,7 @@ import type {
   UtxoSignedRecords,
 } from '../../../../source/wallet/utxoSignedRecords.ts';
 import {
-  hasUtxoEndpointOverride,
+  canonicalUtxoEndpoint,
   type UtxoNetwork,
 } from '../core/utxoNetworks.ts';
 import { verifySavedUtxoEndpoint } from '../core/utxoReadSession.ts';
@@ -158,8 +158,7 @@ export function createNativeUtxoSend(
     };
     return collateral ? collateral.registry.withSentryCollateralBroadcast(collateral.scope,send) : send(()=>undefined);
   };
-  const ownedEndpoint = hasUtxoEndpointOverride(network);
-  if (ownedEndpoint && scope.network.url !== network.endpoint)
+  if (canonicalUtxoEndpoint(scope.network.url) !== network.endpoint)
     throw new CustodyRuntimeError('NOT_READY');
   const verifyEndpoint = (signal: AbortSignal, assertCurrent: () => void) =>
     verifySavedUtxoEndpoint(
@@ -171,20 +170,18 @@ export function createNativeUtxoSend(
 
   // SDK prepare runs inside the shared journal's dispatch admission. Check
   // the saved endpoint after the bytes are durable and before SDK POST.
-  const sender: Pick<ISyscoinTransactions, 'sendTransaction'> = ownedEndpoint
-    ? {
-        sendTransaction(raw, authority) {
-          return sdk.sendTransaction(raw, {
-            ...authority,
-            async prepare(candidate) {
-              await authority.prepare(candidate);
-              await verifyEndpoint(authority.signal, authority.assertCurrent);
-              authority.assertCurrent();
-            },
-          });
+  const sender: Pick<ISyscoinTransactions, 'sendTransaction'> = {
+    sendTransaction(raw, authority) {
+      return sdk.sendTransaction(raw, {
+        ...authority,
+        async prepare(candidate) {
+          await authority.prepare(candidate);
+          await verifyEndpoint(authority.signal, authority.assertCurrent);
+          authority.assertCurrent();
         },
-      }
-    : sdk;
+      });
+    },
+  };
   const ownedRead = async (
     assertCurrent: () => void,
     reuseAddressDiscovery = false
@@ -192,7 +189,7 @@ export function createNativeUtxoSend(
     readController?.abort();
     const controller = new AbortController();
     readController = controller;
-    if (ownedEndpoint) await verifyEndpoint(controller.signal, assertCurrent);
+    await verifyEndpoint(controller.signal, assertCurrent);
     return createOwnedUtxoBlockbookRead(
       {
         kind: 'wallet',

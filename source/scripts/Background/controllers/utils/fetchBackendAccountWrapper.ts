@@ -71,7 +71,10 @@ const createScopeKey = (
   networkUrl: string,
   xpubOrAddress: string,
   isXpub: boolean
-): string => `${networkUrl}::${isXpub ? 'xpub' : 'addr'}::${xpubOrAddress}`;
+): string =>
+  `${networkUrl.replace(/\/$/, '')}::${
+    isXpub ? 'xpub' : 'addr'
+  }::${xpubOrAddress}`;
 
 // Create a unique key for the request
 const createRequestKey = (scopeKey: string, requestOptions: string): string =>

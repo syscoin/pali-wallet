@@ -55,6 +55,53 @@ describe('fetchBackendAccountCached', () => {
     expect(r2).toEqual({ balance: '1' });
   });
 
+  it('shares exactly one trailing-slash variant without merging distinct paths or queries', async () => {
+    const held = deferred();
+    fetchBackendAccountMock.mockReturnValue(held.promise);
+    const options = 'details=tokenBalances&tokens=used';
+    const requests = [
+      fetchBackendAccountCached(
+        'https://blockbook.test/root',
+        XPUB,
+        options,
+        true
+      ),
+      fetchBackendAccountCached(
+        'https://blockbook.test/root/',
+        XPUB,
+        options,
+        true
+      ),
+      fetchBackendAccountCached(
+        'https://blockbook.test/root//',
+        XPUB,
+        options,
+        true
+      ),
+      fetchBackendAccountCached(
+        'https://blockbook.test/other',
+        XPUB,
+        options,
+        true
+      ),
+      fetchBackendAccountCached(
+        'https://blockbook.test/root?key=one',
+        XPUB,
+        options,
+        true
+      ),
+      fetchBackendAccountCached(
+        'https://blockbook.test/root?key=two',
+        XPUB,
+        options,
+        true
+      ),
+    ];
+    expect(fetchBackendAccountMock).toHaveBeenCalledTimes(5);
+    held.resolve({ balance: '1' });
+    await Promise.all(requests);
+  });
+
   it('satisfies a basic request from an in-flight higher-level request (same xpub)', async () => {
     const d = deferred();
     fetchBackendAccountMock.mockReturnValueOnce(d.promise);

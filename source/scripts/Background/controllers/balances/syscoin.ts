@@ -15,8 +15,8 @@ const SyscoinBalanceController = (): ISysBalanceController => {
     owner?: AssetReadOwner
   ) => {
     // Blockbook basic summaries intentionally skip mempool aggregation.
-    // Match the asset query so native balance includes its signed pending delta.
-    const requestDetails = 'details=tokenBalances&tokens=nonzero';
+    // Share the full used-token summary with SPT reads, including signed pending deltas.
+    const requestDetails = 'details=tokenBalances&tokens=used';
 
     const xpubOrAddress = currentAccount.xpub || currentAccount.address;
     owner?.assertCurrent();

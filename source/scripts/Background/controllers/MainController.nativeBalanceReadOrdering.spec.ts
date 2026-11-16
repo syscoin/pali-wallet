@@ -453,7 +453,7 @@ it('keeps a UTXO card bound to its stable xpub while the receiving address advan
   expect(fetchBackendAccountCached).toHaveBeenCalledWith(
     utxoNetwork.url,
     'synthetic-public-account-a',
-    'details=tokenBalances&tokens=nonzero',
+    'details=tokenBalances&tokens=used',
     true,
     expect.any(AbortSignal)
   );
