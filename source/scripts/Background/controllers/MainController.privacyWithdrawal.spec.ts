@@ -151,16 +151,10 @@ function setup() {
     }),
     getBalance: jest.fn(async () => BigInt(65000000)),
   };
-  (provider as any)._send = jest.fn(
-    async ({
-      id,
-      method,
-      params,
-    }: {
-      id: number;
-      method: string;
-      params: unknown[];
-    }) => [{ jsonrpc: '2.0', id, result: await provider.send(method, params) }]
+  (provider as any).readMany = jest.fn(async (requests) =>
+    Promise.allSettled(
+      requests.map(({ method, params }) => provider.send(method, params))
+    )
   );
   const vault = {
     getWithdrawalAttempt: jest.fn(async (_id, session) => {
@@ -562,7 +556,11 @@ it('quotes a fresh pending nonce and rechecks it even while the actual SDK read 
   const live = new CustomJsonRpcProvider(
     new AbortController().signal,
     'https://synthetic.invalid',
-    1
+    1,
+    {
+      fetch: (url, init) =>
+        providerReadResponse(live, 'https://synthetic.invalid', url, init),
+    }
   );
   let pending = '0x7';
   const requests: string[] = [];
@@ -607,23 +605,42 @@ it('quotes a fresh pending nonce and rechecks it even while the actual SDK read 
   live.getGasPrice = jest.fn(async () => BigInt(5));
   const { wallet, host, vault } = setup();
   wallet.ethereumTransaction.web3Provider = live;
+  const settleCollected = async <T>(work: Promise<T>): Promise<T> => {
+    let settled = false;
+    void work.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      }
+    );
+    for (let round = 0; round < 20 && !settled; round++)
+      await jest.advanceTimersByTimeAsync(4);
+    expect(settled).toBe(true);
+    return work;
+  };
   try {
-    expect(await live.getTransactionCount(ADDRESS, 'pending')).toBe(7);
+    const initial = live.getTransactionCount(ADDRESS, 'pending');
+    await jest.advanceTimersByTimeAsync(4);
+    expect(await initial).toBe(7);
     pending = '0x8';
     expect(await live.getTransactionCount(ADDRESS, 'pending')).toBe(7); // Healthy cache control.
+    const nonceReads = () =>
+      requests.filter((method) => method === 'eth_getTransactionCount').length;
+    expect(nonceReads()).toBe(1);
     const quote = jest.spyOn(host, 'quoteDirectFees');
-    const review = await prepare(wallet);
+    const review = await settleCollected<{ intentId: string }>(prepare(wallet));
     expect(await quote.mock.results[0].value).toMatchObject({ nonce: '8' });
+    expect(nonceReads()).toBe(2);
     pending = '0x9';
     expect(await live.getTransactionCount(ADDRESS, 'pending')).toBe(7);
     await expect(
-      wallet.submitPrivacyWithdrawal(review.intentId)
+      settleCollected(wallet.submitPrivacyWithdrawal(review.intentId))
     ).rejects.toThrow();
     expect(vault.reserveWithdrawalAttempt).not.toHaveBeenCalled();
     expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
-    expect(
-      requests.filter((method) => method === 'eth_getTransactionCount')
-    ).toHaveLength(2);
+    expect(nonceReads()).toBe(3);
   } finally {
     live.destroy();
     jest.useRealTimers();
@@ -1408,29 +1425,29 @@ it.each([
   }
 );
 
-function installProviderReadFetch(provider: any, url: string) {
-  jest.spyOn(global, 'fetch').mockImplementation(async (address, init) => {
-    expect(String(address)).toBe(url);
-    const payload = JSON.parse(String(init!.body));
-    const requests = Array.isArray(payload) ? payload : [payload];
-    const responses = await provider.requestRpc(
-      requests,
-      Array.isArray(payload)
-    );
-    const correlated = responses.map((response, index) => ({
-      ...response,
-      jsonrpc: '2.0',
-      id: requests[index].id,
-    }));
-    const body = Array.isArray(payload) ? correlated : correlated[0];
-    return {
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      text: async () => JSON.stringify(body),
-      json: async () => body,
-    } as unknown as Response;
-  });
+async function providerReadResponse(
+  provider: any,
+  url: string,
+  address: unknown,
+  init: RequestInit
+) {
+  expect(String(address)).toBe(url);
+  const payload = JSON.parse(String(init.body));
+  const requests = Array.isArray(payload) ? payload : [payload];
+  const responses = await provider.requestRpc(requests, Array.isArray(payload));
+  const correlated = responses.map((response, index) => ({
+    ...response,
+    jsonrpc: '2.0',
+    id: requests[index].id,
+  }));
+  const body = Array.isArray(payload) ? correlated : correlated[0];
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    text: async () => JSON.stringify(body),
+    json: async () => body,
+  } as unknown as Response;
 }
 
 function cachedChainProvider() {
@@ -1440,7 +1457,11 @@ function cachedChainProvider() {
   const live = new CustomJsonRpcProvider(
     new AbortController().signal,
     'https://operator.example',
-    1
+    1,
+    {
+      fetch: (url, init) =>
+        providerReadResponse(live, 'https://operator.example', url, init),
+    }
   );
   let chain = '0x1';
   const methods: string[] = [];
@@ -1453,7 +1474,6 @@ function cachedChainProvider() {
       throw new Error('Unexpected synthetic RPC ' + method);
     })
   );
-  installProviderReadFetch(live, 'https://operator.example');
   live.estimateGas = jest.fn(async () => BigInt(100001));
   live.getFeeData = jest.fn(async () => ({
     maxFeePerGas: BigInt(100),

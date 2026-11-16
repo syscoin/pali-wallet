@@ -100,7 +100,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let opened = 0,
     disposed = 0,
     refreshes = 0;
-  const connectionFetch: typeof fetch = async (_url, init) => {
+  const connectionFetch: typeof fetch = async function fixtureFetch(_url, init): Promise<Response> {
     if (String(_url).startsWith('https://relay.example/')) {
       relayedPosts.push(JSON.parse(String(init?.body)));
       if (lost) throw Error('synthetic relayer response lost');
@@ -109,7 +109,10 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         { headers: { 'content-type': 'application/json' } }
       );
     }
-    const { id, method, params } = JSON.parse(String(init?.body));
+    const request = JSON.parse(String(init?.body));
+    if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row =>
+      (await fixtureFetch(_url, { ...init, body: JSON.stringify(row) })).json())));
+    const { id, method, params } = request;
     rpcMethods.push(method);
     await beforeRpc(method);
     let result: unknown;

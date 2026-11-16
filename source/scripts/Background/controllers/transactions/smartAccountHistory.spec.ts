@@ -79,7 +79,7 @@ const buildProvider = (overrides: Partial<Record<string, any>> = {}) => ({
     }
     return null;
   }),
-  sendBatch: jest.fn(),
+
   ...overrides,
 });
 
@@ -579,4 +579,65 @@ describe('smart account EntryPoint log history', () => {
     expect((transactions[0] as any).confirmations).toBe(95);
     expect(dispatchMock).not.toHaveBeenCalled();
   });
+});
+
+it('retains healthy history details when one settled transaction read fails without retrying the batch', async () => {
+  dispatchMock.mockClear();
+  const otherHash = `0x${'ef'.repeat(32)}`;
+  const account = {
+    address: SMART_ACCOUNT,
+    id: 0,
+    smartAccountUserOpScanByChainId: {},
+  };
+  vaultState = {
+    accountTransactions: {
+      SmartAccount: { 0: { ethereum: { [CHAIN_ID]: [] } } },
+    },
+    accounts: { SmartAccount: { 0: account } },
+    activeAccount: { id: 0, type: ACCOUNT_TYPE },
+  };
+  let detailsAvailable = false;
+  const readMany = jest.fn(async (requests) =>
+    requests.map(({ method, params }) => {
+      if (method === 'eth_getBlockByNumber')
+        return { status: 'fulfilled', value: { timestamp: '0x60' } };
+      if (params[0] === otherHash && !detailsAvailable)
+        return { status: 'rejected', reason: Error('detail unavailable') };
+      return {
+        status: 'fulfilled',
+        value: { ...rawOuterTransaction, hash: params[0] },
+      };
+    })
+  );
+  const provider = buildProvider({
+    getLogs: jest.fn(async () => [
+      buildUserOpEventLog(true),
+      { ...buildUserOpEventLog(true), transactionHash: otherHash },
+    ]),
+    readMany,
+  });
+  const transactions = await fetchSmartAccountUserOpTransactions(
+    provider as any,
+    account,
+    ACCOUNT_TYPE,
+    CHAIN_ID
+  );
+  expect(transactions.map((tx) => tx.hash)).toEqual([TX_HASH]);
+  expect(readMany).toHaveBeenCalledTimes(2);
+  expect(readMany.mock.calls[0][0]).toEqual([
+    { method: 'eth_getTransactionByHash', params: [TX_HASH] },
+    { method: 'eth_getTransactionByHash', params: [otherHash] },
+  ]);
+  expect(provider.send).not.toHaveBeenCalled();
+  expect(dispatchMock).not.toHaveBeenCalled();
+  detailsAvailable = true;
+  const retried = await fetchSmartAccountUserOpTransactions(
+    provider as any,
+    account,
+    ACCOUNT_TYPE,
+    CHAIN_ID
+  );
+  expect(retried.map((tx) => tx.hash)).toEqual([TX_HASH, otherHash]);
+  expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(100));
+  expect(provider.send).not.toHaveBeenCalled();
 });

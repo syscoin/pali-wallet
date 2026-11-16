@@ -31,7 +31,9 @@ test('network text uses the shared nonblank rule without truncating or changing 
 });
 type Call={method:string;params:any[];url:string;id:number};
 function fixture(network:NativeNetworkRegistration,options:{block?:number;missing?:boolean;consumed?:boolean;update?:(call:Call,result:unknown)=>unknown;onCall?:(call:Call)=>void}={}){
- const calls:Call[]=[];const fetcher=async(url:string,init:RequestInit)=>{
+ const calls:Call[]=[];const fetcher=async(url:string,init:RequestInit):Promise<Response>=>{
+  const payload=JSON.parse(String(init.body));
+  if(Array.isArray(payload))return Response.json(await Promise.all(payload.map(async row=>(await fetcher(url,{...init,body:JSON.stringify(row)})).json())));
   const call:Call={...JSON.parse(String(init.body)),url};calls.push(call);options.onCall?.(call);let result:unknown;
   switch(call.method){
    case 'eth_chainId':result='0x'+BigInt(network.chainId).toString(16);break;

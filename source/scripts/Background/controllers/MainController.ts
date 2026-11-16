@@ -13290,7 +13290,7 @@ class MainController {
       data: txUpdate.input ?? txUpdate.data,
     });
     const sharedReads = new Map<string, Promise<unknown>>();
-    let provider: Pick<CustomJsonRpcProvider, 'send' | '_send'> | undefined;
+    let provider: Pick<CustomJsonRpcProvider, 'send' | 'readMany'> | undefined;
     const isHandleOps = (transaction: any) => {
       try {
         return (

@@ -428,9 +428,23 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       CHAIN
     );
     const posts: Transaction[] = [];
-    jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
+    const fixtureFetch = async (url, init): Promise<Response> => {
       expect(url).toBe('https://offline.example');
-      const { jsonrpc, method, id, params } = JSON.parse(init!.body as string);
+      const payload = JSON.parse(init!.body as string);
+      if (Array.isArray(payload)) {
+        const responses = await Promise.all(
+          payload.map((row) =>
+            fixtureFetch(url, { ...init, body: JSON.stringify(row) }).then(
+              (reply) => reply.json()
+            )
+          )
+        );
+        return new Response(JSON.stringify(responses), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      const { jsonrpc, method, id, params } = payload;
       let result: unknown;
       if (method === 'eth_chainId') result = `0x${CHAIN.toString(16)}`;
       else if (method === 'eth_getTransactionCount') result = '0x8';
@@ -445,7 +459,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
-    });
+    };
+    jest.spyOn(global, 'fetch').mockImplementation(fixtureFetch);
     let baseFee = 150;
     provider.getGasPrice = jest.fn(async () => BigNumber.from(baseFee));
     provider.getBlock = jest.fn(async () => ({
@@ -453,7 +468,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       baseFeePerGas: BigNumber.from(baseFee),
     }));
     provider.getNetwork = jest.fn(async () => ({ chainId: BigInt(CHAIN) }));
-    provider._send = rpc._send.bind(rpc);
+    provider.readMany = rpc.readMany.bind(rpc);
     provider.send = rpc.send.bind(rpc);
     provider.sendTransaction = jest.fn(async (raw: string) => {
       const hash = await rpc.send('eth_sendRawTransaction', [raw]);
@@ -796,10 +811,15 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       provider.getTransaction.mockResolvedValue(null);
       provider.getGasPrice = jest.fn(async () => BigNumber.from(100));
       provider.getNetwork = jest.fn(async () => ({ chainId: BigInt(CHAIN) }));
-      provider._send = jest.fn(async ({ id, method }) => {
-        expect(method).toBe('eth_chainId');
-        return [{ jsonrpc: '2.0', id, result: `0x${CHAIN.toString(16)}` }];
-      });
+      provider.readMany = jest.fn(async (requests) =>
+        Promise.allSettled(
+          requests.map(({ method, params }) =>
+            method === 'eth_chainId'
+              ? `0x${CHAIN.toString(16)}`
+              : provider.send(method, params)
+          )
+        )
+      );
       let movedNonce = false;
       let mined = false;
       let balance = outcome === 'low-preview' ? '0x0' : '0xffffff';

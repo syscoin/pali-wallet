@@ -116,7 +116,11 @@ async function fixture(
   );
   const broadcasts: string[] = [];
   const provider = {
-    _send: jest.fn(async () => [{ jsonrpc: '2.0', id: 0, result: '0x1' }]),
+    readMany: jest.fn(async (requests) =>
+      Promise.allSettled(
+        requests.map(({ method, params }) => provider.send(method, params))
+      )
+    ),
     send: jest.fn(async (method: string, params: unknown[]) => {
       if (method === 'eth_chainId') return '0x1';
       if (method === 'eth_getTransactionCount') return '0x0';
@@ -762,7 +766,7 @@ it('keeps mined outer-only cancellation rows terminal without requiring a UserOp
     ['txreceipt_status']: '1',
     isCancel: true,
   });
-  expect(f.provider._send).not.toHaveBeenCalled();
+  expect(f.provider.readMany).not.toHaveBeenCalled();
 });
 
 it('does not replace a newer receipt with a delayed unknown inner result', async () => {

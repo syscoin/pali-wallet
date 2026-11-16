@@ -1,6 +1,6 @@
-import { decodeSmartAccountUserOperationEvent } from '../../../../utils/smartAccount/userOperationEvent';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
+import { decodeSmartAccountUserOperationEvent } from '../../../../utils/smartAccount/userOperationEvent';
 import store from 'state/store';
 import { setAccountPropertyByIdAndType } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
@@ -55,7 +55,7 @@ type RawRpcTransaction = {
   value: string;
 };
 
-const sendBatchOrSequential = async (
+const readHistoryDetails = async (
   provider: CustomJsonRpcProvider,
   method: string,
   params: Array<any[]>
@@ -63,11 +63,18 @@ const sendBatchOrSequential = async (
   if (params.length === 0) {
     return [];
   }
-  if (params.length > 1 && typeof provider.sendBatch === 'function') {
+  if (typeof provider.readMany === 'function') {
     try {
-      return await provider.sendBatch(method, params);
+      const results = await provider.readMany(
+        params.map((values) => ({ method, params: values }))
+      );
+      if (!Array.isArray(results) || results.length !== params.length)
+        return params.map(() => null);
+      return results.map((result) =>
+        result?.status === 'fulfilled' ? result.value : null
+      );
     } catch {
-      // Fall back to sequential requests below.
+      return params.map(() => null);
     }
   }
   const results: any[] = [];
@@ -312,7 +319,7 @@ export const fetchSmartAccountUserOpTransactions = async (
   let fetchedTransactions: IEvmTransactionResponse[] = [];
   let allDetailsFetched = true;
   if (hashesToFetch.length > 0) {
-    const rawTransactions = (await sendBatchOrSequential(
+    const rawTransactions = (await readHistoryDetails(
       provider,
       'eth_getTransactionByHash',
       hashesToFetch.map((hash) => [hash])
@@ -328,7 +335,7 @@ export const fetchSmartAccountUserOpTransactions = async (
     const uniqueBlockNumbers = Array.from(
       new Set(minedTransactions.map((tx) => tx.blockNumber as string))
     );
-    const blocks = await sendBatchOrSequential(
+    const blocks = await readHistoryDetails(
       provider,
       'eth_getBlockByNumber',
       uniqueBlockNumbers.map((blockNumber) => [blockNumber, false])

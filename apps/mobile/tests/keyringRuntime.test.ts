@@ -3363,7 +3363,9 @@ test('Trezor runtime uses shared allocation, preserves records on unlock and sig
     assert.equal(parsed.hash, signed.hash);
     assert.equal(runtime.trezor.getSnapshot(), runtime.trezor.getSnapshot());
     let broadcasts = 0;
-    const rpc = new NativeTransferRpc({ networkId: 'ethereum', fetch: async (_url, init) => {
+    const rpc = new NativeTransferRpc({ networkId: 'ethereum', fetch: async function hardwareTransferFetch(_url, init): Promise<Response> {
+      const payload = JSON.parse(String(init.body));
+      if(Array.isArray(payload))return Response.json(await Promise.all(payload.map(async row=>(await hardwareTransferFetch(_url,{...init,body:JSON.stringify(row)})).json())));
       const request = JSON.parse(String(init.body));
       const result = await (async () => {
         switch (request.method) {

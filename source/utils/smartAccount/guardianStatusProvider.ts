@@ -8,51 +8,37 @@ const READ_METHODS = new Set([
   'eth_getStorageAt',
 ]);
 
-/** Use the keyring's validated mixed-batch transport without its chain-ID cache. */
+/** Reuse settled SDK reads; explicit groups always observe fresh remote chain identity. */
 export const guardianStatusProvider = (provider: {
-  _send?: (
-    payload: Array<{
-      id: number;
-      jsonrpc: '2.0';
-      method: string;
-      params: unknown[];
-    }>
-  ) => Promise<unknown[]>;
+  readMany?: (
+    requests: GuardianRpcRequest[]
+  ) => Promise<PromiseSettledResult<unknown>[]>;
 }) => {
-  const batch = async (requests: GuardianRpcRequest[]) => {
+  const readMany = async (requests: GuardianRpcRequest[]) => {
     if (!requests.length) return [];
-    if (!provider._send)
+    if (!provider.readMany)
       throw new Error('Live guardian recovery batch transport unavailable');
     if (requests.some(({ method }) => !READ_METHODS.has(method)))
       throw new Error('Unsupported guardian recovery read');
-    const payload = requests.map((request, id) => ({
-      ...request,
-      id,
-      jsonrpc: '2.0' as const,
-    }));
-    const responses = await provider._send(payload);
-    // The pinned keyring transport correlates wire IDs and restores request
-    // order. Assert that contract here; never pair an unexpected reply by index.
+    const results = await provider.readMany(requests);
     if (
-      !Array.isArray(responses) ||
-      responses.length !== payload.length ||
-      responses.some((value, index) => {
-        const response = value as any;
-        return (
-          !response ||
-          response.jsonrpc !== '2.0' ||
-          response.id !== index ||
-          !Object.prototype.hasOwnProperty.call(response, 'result') ||
-          Object.prototype.hasOwnProperty.call(response, 'error')
-        );
-      })
+      !Array.isArray(results) ||
+      results.length !== requests.length ||
+      results.some(
+        (result) =>
+          !result ||
+          (result.status !== 'fulfilled' && result.status !== 'rejected')
+      )
     )
       throw new Error('Invalid guardian recovery batch response');
-    return responses.map((response: any) => response.result);
+    return results;
   };
   return {
-    batch,
-    send: async (method: GuardianRpcRequest['method'], params: unknown[]) =>
-      (await batch([{ method, params }]))[0],
+    readMany,
+    send: async (method: GuardianRpcRequest['method'], params: unknown[]) => {
+      const result = (await readMany([{ method, params }]))[0]!;
+      if (result.status === 'rejected') throw result.reason;
+      return result.value;
+    },
   };
 };

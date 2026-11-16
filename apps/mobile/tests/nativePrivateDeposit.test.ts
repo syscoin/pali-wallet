@@ -86,9 +86,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let opened = 0,
     disposed = 0,
     refreshes = 0;
-  const connectionFetch: typeof fetch = async (_url, init) => {
+  const connectionFetch: typeof fetch = async function fixtureFetch(_url, init): Promise<Response> {
     assert.equal(keyring.isUnlocked(), false, 'public RPC and broadcast never hold signing keys');
-    const { id, method, params } = JSON.parse(String(init?.body));
+    const request = JSON.parse(String(init?.body));
+    if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row =>
+      (await fixtureFetch(_url, { ...init, body: JSON.stringify(row) })).json())));
+    const { id, method, params } = request;
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';
     else if (method === 'eth_getBlockByNumber')

@@ -93,7 +93,10 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
     await authority.initialize();
     const rpc = new NativeTransferRpc({
       networkId: 'ethereum',
-      fetch: async (_url, init) => {
+      fetch: async function fixtureFetch(_url, init): Promise<Response> {
+      const payload = JSON.parse(String(init.body));
+      if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async row =>
+        (await fixtureFetch(_url, {...init, body: JSON.stringify(row)})).json())));
         const b = JSON.parse(String(init.body));
         let result: unknown;
         if (b.method === 'eth_chainId') result = '0x1';
@@ -374,7 +377,10 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
   const requests: { method: string; params: unknown[] }[] = [];
   const rpc = new NativeTransferRpc({
     networkId: 'ethereum',
-    fetch: async (_url, init) => {
+    fetch: async function fixtureFetch(_url, init): Promise<Response> {
+      const payload = JSON.parse(String(init.body));
+      if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async row =>
+        (await fixtureFetch(_url, {...init, body: JSON.stringify(row)})).json())));
       const request = JSON.parse(String(init.body));
       requests.push(request);
       let result: unknown;

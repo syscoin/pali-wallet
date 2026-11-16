@@ -76,7 +76,11 @@ let mockState: any;
 let wallet: any;
 let keyring: any;
 let records: any;
-let provider: { _send: jest.Mock; send: jest.Mock };
+let provider: {
+  liveChainRead: jest.Mock;
+  readMany: jest.Mock;
+  send: jest.Mock;
+};
 let raw: string;
 let entry: any;
 const observed = () => ({ entry, revision: 1 });
@@ -182,7 +186,16 @@ beforeEach(() => {
     reconcileMinedCancellation: jest.fn(async () => undefined),
   };
   provider = {
-    _send: jest.fn(async ({ id }) => [{ jsonrpc: '2.0', id, result: '0x7b' }]),
+    liveChainRead: jest.fn(async () => '0x7b'),
+    readMany: jest.fn(async (requests) =>
+      Promise.allSettled(
+        requests.map(({ method, params }) =>
+          method === 'eth_chainId'
+            ? provider.liveChainRead()
+            : provider.send(method, params)
+        )
+      )
+    ),
     send: jest.fn(async (method: string, params: unknown[]) => {
       if (method === 'eth_chainId') return '0x7b';
       if (method === 'eth_getTransactionReceipt') return null;
@@ -499,11 +512,11 @@ it.each([false, true])(
       await expect(submit).rejects.toThrow(
         'Unable to verify a code-free cancellation payer'
       );
-      expect(provider._send).toHaveBeenCalledTimes(1);
+      expect(provider.liveChainRead).toHaveBeenCalledTimes(1);
       expect(dispatch).not.toHaveBeenCalled();
     } else {
       await expect(submit).resolves.toBe(entry.hash);
-      expect(provider._send).not.toHaveBeenCalled();
+      expect(provider.liveChainRead).not.toHaveBeenCalled();
       expect(provider.send).not.toHaveBeenCalled();
       expect(dispatch).toHaveBeenCalledTimes(1);
     }
@@ -558,7 +571,7 @@ it.each([1, 2])(
       )
     ).resolves.toBe(hash);
     expect(dispatch).toHaveBeenCalledWith(replacement);
-    expect(provider._send).toHaveBeenCalledTimes(1);
+    expect(provider.liveChainRead).toHaveBeenCalledTimes(1);
   }
 );
 
@@ -697,17 +710,19 @@ it('fresh explicit replay uses exact stored bytes and consumes its confirmation 
   ).toBe(false);
   // Prepare and confirm each bracket observation with live chain reads.
   // Dispatch then checks the chain once more under admission.
-  expect(provider._send).toHaveBeenCalledTimes(5);
+  expect(provider.liveChainRead).toHaveBeenCalledTimes(5);
 });
 
 it('does not poll while a reviewed replay waits for confirmation', async () => {
   const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
   expect(prepared.status).toBe('review');
   const readsBeforeConfirmation = provider.send.mock.calls.length;
-  const chainReadsBeforeConfirmation = provider._send.mock.calls.length;
+  const chainReadsBeforeConfirmation = provider.liveChainRead.mock.calls.length;
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(provider.send).toHaveBeenCalledTimes(readsBeforeConfirmation);
-  expect(provider._send).toHaveBeenCalledTimes(chainReadsBeforeConfirmation);
+  expect(provider.liveChainRead).toHaveBeenCalledTimes(
+    chainReadsBeforeConfirmation
+  );
   await expect(
     wallet.confirmEvmSignedReplay(prepared.review.id)
   ).resolves.toEqual({
@@ -721,7 +736,7 @@ it('does not poll while a reviewed replay waits for confirmation', async () => {
     'eth_getTransactionCount',
     'eth_sendRawTransaction',
   ]);
-  expect(provider._send).toHaveBeenCalledTimes(5);
+  expect(provider.liveChainRead).toHaveBeenCalledTimes(5);
 });
 
 it('refuses the exact provider send when final shared replay admission fails', async () => {
@@ -804,7 +819,7 @@ it.each(['latest', 'pending', 'queued', 'consumed', 'ready'])(
           : 'Unable to verify a code-free cancellation payer'
       );
     // Both observations and the final admitted dispatch use the live chain.
-    expect(provider._send).toHaveBeenCalledTimes(5);
+    expect(provider.liveChainRead).toHaveBeenCalledTimes(5);
     expect(nonceReads).toBe(3);
     expect(
       provider.send.mock.calls.filter(([method]) => method === 'eth_getCode')
@@ -976,10 +991,8 @@ it('does not POST when an ordinary replay expires during the fresh chain check',
   const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
   expect(prepared.status).toBe('review');
   const reached = deferred(),
-    response = deferred<unknown[]>();
-  let requestId: number | undefined;
-  provider._send.mockImplementationOnce(async ({ id }) => {
-    requestId = id;
+    response = deferred<string>();
+  provider.liveChainRead.mockImplementationOnce(async () => {
     reached.resolve();
     return response.promise;
   });
@@ -993,7 +1006,7 @@ it('does not POST when an ordinary replay expires during the fresh chain check',
     ])
   ).toBe('preflight');
   jest.spyOn(replay, 'now').mockReturnValue(now + 90_001);
-  response.resolve([{ jsonrpc: '2.0', id: requestId, result: '0x7b' }]);
+  response.resolve('0x7b');
   await expect(confirmation).rejects.toThrow('EXPIRED');
   expect(
     provider.send.mock.calls.some(

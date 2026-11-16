@@ -15,7 +15,7 @@ import {
   consumeSignedEvmCapacityRefusal,
   type EvmSignedRecordStorage,
 } from '../../../source/wallet/evmSignedRecords.ts';
-import { ERC7579_MODE_SINGLE_DEFAULT } from '../../../source/utils/smartAccount/account.ts';
+import { ERC7579_MODE_SINGLE_DEFAULT, encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
 import { signedRecordTestSession } from './signedRecordTestSession.ts';
 
 Object.defineProperty(globalThis, 'crypto', {
@@ -1225,7 +1225,8 @@ test('signed Smart dispatch projects its authenticated journal inside the admiss
   const { createSmartAccountPendingState } = await import('../../../source/utils/smartAccount/pendingState.ts');
   const f = fixture(), session = f.session();
   const smart = '0x1111111111111111111111111111111111111111';
-  const operation = { sender: smart, nonce: '0', initCode: '0x', callData: '0x12345678',
+  const execution = encodeERC7579Executions([{ target: signer.address, value: '0', data: '0x' }]);
+  const operation = { sender: smart, nonce: '0', initCode: '0x', callData: paliSmartAccountInterface.encodeFunctionData('execute', [execution.mode, execution.executionCalldata]),
     accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1',
     gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03', paymasterAndData: '0x', signature: '0x1234' };
   const rawTransaction = await signer.signTransaction({ chainId: 1, nonce: 0, to: getPaliEntryPointAddress(1), gasLimit: 500000, gasPrice: 2,
@@ -1278,7 +1279,8 @@ test('admission Smart projection includes other payers from the authenticated fu
   const f = fixture(), session = f.session();
   const smart = '0x1111111111111111111111111111111111111111';
   const make = async (wallet: Wallet) => {
-    const operation = { sender: smart, nonce: '0', initCode: '0x', callData: '0x12345678',
+    const execution = encodeERC7579Executions([{ target: signer.address, value: '0', data: '0x' }]);
+    const operation = { sender: smart, nonce: '0', initCode: '0x', callData: paliSmartAccountInterface.encodeFunctionData('execute', [execution.mode, execution.executionCalldata]),
       accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1',
       gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03', paymasterAndData: '0x', signature: '0x1234' };
     const rawTransaction = await wallet.signTransaction({ chainId: 1, nonce: 0, to: getPaliEntryPointAddress(1), gasLimit: 500000, gasPrice: 2,

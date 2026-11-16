@@ -143,16 +143,10 @@ function depositFixture() {
   Object.defineProperty(provider, 'signal', {
     value: new AbortController().signal,
   });
-  (provider as any)._send = jest.fn(
-    async ({
-      id,
-      method,
-      params,
-    }: {
-      id: number;
-      method: string;
-      params: unknown[];
-    }) => [{ jsonrpc: '2.0', id, result: await provider.send(method, params) }]
+  (provider as any).readMany = jest.fn(async (requests) =>
+    Promise.allSettled(
+      requests.map(({ method, params }) => provider.send(method, params))
+    )
   );
   const vault = {
     prepareDepositNote: jest.fn(
@@ -547,7 +541,11 @@ it('uses fresh deposit nonce observations while the actual SDK read cache still 
   const provider = new CustomJsonRpcProvider(
     new AbortController().signal,
     'https://synthetic.invalid',
-    1
+    1,
+    {
+      fetch: (url, init) =>
+        providerReadResponse(provider, 'https://synthetic.invalid', url, init),
+    }
   );
   let nonce = '0x7';
   provider.requestRpc = jest.fn(
@@ -574,7 +572,6 @@ it('uses fresh deposit nonce observations while the actual SDK read cache still 
       value: response.result,
     }));
   });
-  installProviderReadFetch(provider, 'https://synthetic.invalid');
   provider.estimateGas = jest.fn(async () => BigInt(100000));
   provider.getFeeData = jest.fn(async () => ({
     maxFeePerGas: BigInt(100),
@@ -585,18 +582,37 @@ it('uses fresh deposit nonce observations while the actual SDK read cache still 
   const fake = depositFixture();
   const { wallet, vault } = fake;
   wallet.ethereumTransaction.web3Provider = provider;
+  const settleCollected = async <T>(work: Promise<T>): Promise<T> => {
+    let settled = false;
+    void work.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      }
+    );
+    for (let round = 0; round < 20 && !settled; round++)
+      await jest.advanceTimersByTimeAsync(4);
+    expect(settled).toBe(true);
+    return work;
+  };
   try {
     const address = store.getState().vault.accounts.HDAccount[0].address;
-    expect(await provider.getTransactionCount(address, 'pending')).toBe(7);
+    expect(
+      await settleCollected(provider.getTransactionCount(address, 'pending'))
+    ).toBe(7);
     nonce = '0x8';
     expect(await provider.getTransactionCount(address, 'pending')).toBe(7);
-    const review = await wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+    const review = await settleCollected<{ intentId: string; nonce: string }>(
+      wallet.preparePrivacyDeposit({ poolId: 'eth-1' })
+    );
     expect(review.nonce).toBe('8');
     nonce = '0x9';
     expect(await provider.getTransactionCount(address, 'pending')).toBe(7);
-    await expect(wallet.submitPrivacyDeposit(review.intentId)).rejects.toThrow(
-      'privacy_deposit_not_broadcast'
-    );
+    await expect(
+      settleCollected(wallet.submitPrivacyDeposit(review.intentId))
+    ).rejects.toThrow('privacy_deposit_not_broadcast');
     expect(vault.reserveDepositAttempt).toHaveBeenCalledTimes(1);
     expect(vault.clearUnbroadcastDepositAttempt).toHaveBeenCalledTimes(1);
     expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
@@ -1078,29 +1094,29 @@ it.each([
   }
 );
 
-function installProviderReadFetch(provider: any, url: string) {
-  jest.spyOn(global, 'fetch').mockImplementation(async (address, init) => {
-    expect(String(address)).toBe(url);
-    const payload = JSON.parse(String(init!.body));
-    const requests = Array.isArray(payload) ? payload : [payload];
-    const responses = await provider.requestRpc(
-      requests,
-      Array.isArray(payload)
-    );
-    const correlated = responses.map((response, index) => ({
-      ...response,
-      jsonrpc: '2.0',
-      id: requests[index].id,
-    }));
-    const body = Array.isArray(payload) ? correlated : correlated[0];
-    return {
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      text: async () => JSON.stringify(body),
-      json: async () => body,
-    } as unknown as Response;
-  });
+async function providerReadResponse(
+  provider: any,
+  url: string,
+  address: unknown,
+  init: RequestInit
+) {
+  expect(String(address)).toBe(url);
+  const payload = JSON.parse(String(init.body));
+  const requests = Array.isArray(payload) ? payload : [payload];
+  const responses = await provider.requestRpc(requests, Array.isArray(payload));
+  const correlated = responses.map((response, index) => ({
+    ...response,
+    jsonrpc: '2.0',
+    id: requests[index].id,
+  }));
+  const body = Array.isArray(payload) ? correlated : correlated[0];
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    text: async () => JSON.stringify(body),
+    json: async () => body,
+  } as unknown as Response;
 }
 
 function cachedChainProvider(
@@ -1112,7 +1128,11 @@ function cachedChainProvider(
   const live = new CustomJsonRpcProvider(
     new AbortController().signal,
     'https://operator.example',
-    1
+    1,
+    {
+      fetch: (url, init) =>
+        providerReadResponse(live, 'https://operator.example', url, init),
+    }
   );
   let chain = '0x1';
   const methods: string[] = [];
@@ -1139,7 +1159,6 @@ function cachedChainProvider(
       value: response.result,
     }));
   });
-  installProviderReadFetch(live, 'https://operator.example');
   live.estimateGas = jest.fn(async () => BigInt(100001));
   live.getFeeData = jest.fn(async () => ({
     maxFeePerGas: BigInt(100),
