@@ -276,7 +276,7 @@ test('initial EVM explorer failure recovers on the next ordinary alarm before fa
         await wallet!.ensureOnHome();
         await page.locator('#activity-btn').click();
         await expect(
-          page.getByText(en.home.youHaveNoTxs, { exact: true })
+          page.getByText(en.home.noIndexedActivity, { exact: true })
         ).toBeVisible();
         expect(historyReads).toEqual(
           expect.arrayContaining(
@@ -482,7 +482,7 @@ test('initial EVM explorer failure recovers on the next ordinary alarm before fa
           })
         ).toHaveCount(1);
         await expect(
-          page.getByText(en.home.youHaveNoTxs, { exact: true })
+          page.getByText(en.home.noIndexedActivity, { exact: true })
         ).toHaveCount(0);
         const audit = await worker.evaluate(
           () => (globalThis as any).__evmHistoryRecoveryAudit

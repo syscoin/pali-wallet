@@ -282,7 +282,7 @@ test('configured EVM history explains failed reads and retries the same account 
           if (!page.isClosed()) await capture(page);
         }
       });
-    const empty = page.getByText(en.home.youHaveNoTxs, { exact: true });
+    const empty = page.getByText(en.home.noIndexedActivity, { exact: true });
     const error = page.getByText(en.send.unableToLoad, { exact: true });
     const retry = page.getByRole('button', {
       name: en.receive.retry,
