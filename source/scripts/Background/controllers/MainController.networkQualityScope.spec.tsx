@@ -585,10 +585,12 @@ it('an explicit reconnect to the exact same endpoint preserves recent known late
 it('stale latency is cleared even for the same endpoint', async () => {
   await oldSlowRead();
   await advance(300001);
+  armHydration();
   act(() => {
     pendingSwitch = wallet.setActiveNetwork(OLD);
     void pendingSwitch!.catch(() => undefined);
   });
+  await waitForHydration();
   expect(store.getState().vaultGlobal.networkQuality).toBeUndefined();
 });
 
