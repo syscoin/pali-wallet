@@ -41,6 +41,7 @@ import { sameRecoverySnapshot } from '../src/storage/recoverySnapshot.ts';
 import { NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
 import type { DappGrant } from '../../../source/shared/dappTypes.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
+import { captureSmartAccountCallsIdentity } from '../../../source/shared/dappCallsStatus.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import { encrypt, recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
@@ -821,15 +822,45 @@ async function readySmartCreationAuthority(beforeAddress: () => Promise<void> = 
 
 test('native Smart saved replay uses its recorded payer and displays the inner transfer without reopening signing keys', async () => {
   const broadcasts: string[] = [];
+  const blockHash = '0x' + '44'.repeat(32);
+  let signedRaw: string;
+  let simulations = 0;
   const fetcher = async (_url: string, init: RequestInit) => {
-    const request = JSON.parse(String(init.body));
-    let result: unknown;
-    if (request.method === 'eth_chainId') result = '0x1';
-    else if (request.method === 'eth_getTransactionCount') result = '0x0';
-    else if (request.method === 'eth_getTransactionReceipt') result = null;
-    else if (request.method === 'eth_sendRawTransaction') { broadcasts.push(request.params[0]); result = Transaction.from(request.params[0]).hash; }
-    else throw Error(`Unexpected replay RPC: ${request.method}`);
-    return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { status: 200, headers: { 'content-type': 'application/json' } });
+    const payload = JSON.parse(String(init.body));
+    const reply = (request: { id: unknown; method: string; params: unknown[] }) => {
+      let result: unknown;
+      if (request.method === 'eth_chainId') result = '0x1';
+      else if (request.method === 'eth_getTransactionCount') {
+        assert.equal(String(request.params[0]).toLowerCase(), ADDRESS.toLowerCase());
+        assert(['latest', 'pending', '0x10'].includes(String(request.params[1])));
+        result = '0x0';
+      } else if (request.method === 'eth_getTransactionReceipt') result = null;
+      else if (request.method === 'eth_getBlockByNumber') {
+        assert(['latest', '0x10'].includes(String(request.params[0])));
+        assert.equal(request.params[1], false);
+        result = { number: '0x10', hash: blockHash, gasLimit: '0x100000' };
+      } else if (request.method === 'eth_simulateV1') {
+        const tx = Transaction.from(signedRaw);
+        const expected = { from: ADDRESS, to: getPaliEntryPointAddress(1), data: tx.data, chainId: '0x1',
+          gas: '0x493e0', nonce: '0x0', value: '0x0', type: '0x0', gasPrice: '0x2' };
+        assert.deepEqual(request.params, [{ blockStateCalls: [{ calls: [expected] }], validation: true,
+          returnFullTransactions: true, traceTransfers: false }, '0x10']);
+        const operation = paliEntryPointInterface.decodeFunctionData('handleOps', tx.data)[0][0];
+        const identity = captureSmartAccountCallsIdentity(operation, 1);
+        const event = paliEntryPointInterface.encodeEventLog(paliEntryPointInterface.getEvent('UserOperationEvent')!,
+          [identity.userOpHash, operation.sender, '0x' + '00'.repeat(20), operation.nonce, true, 1, 1]);
+        simulations++;
+        result = [{ number: '0x11', parentHash: blockHash, transactions: [{ ...expected, input: expected.data }],
+          calls: [{ status: '0x1', gasUsed: '0x100', logs: [{ ...event, address: expected.to }] }] }];
+      } else if (request.method === 'eth_sendRawTransaction') {
+        assert.equal(request.params[0], signedRaw);
+        assert.equal(simulations, 1, 'exact execution admission must precede broadcast');
+        broadcasts.push(signedRaw); result = Transaction.from(signedRaw).hash;
+      } else throw Error(`Unexpected replay RPC: ${request.method}`);
+      return { jsonrpc: '2.0', id: request.id, result };
+    };
+    return new Response(JSON.stringify(Array.isArray(payload) ? payload.map(reply) : reply(payload)),
+      { status: 200, headers: { 'content-type': 'application/json' } });
   };
   const f = await readySmartCreationAuthority(undefined, fetcher);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fetcher }) });
@@ -842,6 +873,7 @@ test('native Smart saved replay uses its recorded payer and displays the inner t
       preVerificationGas: 21000, gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03', paymasterAndData: '0x', signature: '0x1234' };
     const raw = await HDNodeWallet.fromPhrase(PHRASE).signTransaction({ chainId: 1, nonce: 0, type: 0, gasPrice: 2, gasLimit: 300000,
       to: getPaliEntryPointAddress(1), value: 0, data: paliEntryPointInterface.encodeFunctionData('handleOps', [[operation], ADDRESS]) });
+    signedRaw = raw;
     const access = f.keyring.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1', 'org.syscoin.pali.evm.signed.chunk.v1',
       'org.syscoin.pali.utxo.signed.root.v1', 'org.syscoin.pali.utxo.signed.chunk.v1']);
     const profile = await access.getPrivateRecordProfileId();
@@ -858,6 +890,7 @@ test('native Smart saved replay uses its recorded payer and displays the inner t
     assert.equal(f.disk.credentialPort.secretReads, reads);
     await transfers.confirm(review.id, { method: 'device' });
     assert.deepEqual(broadcasts, [raw]);
+    assert.equal(simulations, 1);
     assert.equal(f.disk.credentialPort.secretReads, reads);
     await transfers.recover(true, Transaction.from(raw).hash!);
     const expired = transfers.getSnapshot().review!;
