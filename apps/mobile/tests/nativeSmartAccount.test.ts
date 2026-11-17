@@ -675,6 +675,24 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   };
 }
 
+async function assertRetainedSmartSendRecords(
+  f: Awaited<ReturnType<typeof fixture>>,
+  expectedOuterTransactions: number
+) {
+  const identity = (await f.storage.recovery.readIdentity())!.root!;
+  const retained = await f.storage.signedRecords.read(identity.profileId);
+  assert(retained, 'the signed authorization remains durable after admission refuses submission');
+  assert.equal(f.signatures.length, 1);
+  assert.equal(f.payerSignatures.length, expectedOuterTransactions);
+  assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, expectedOuterTransactions + 1);
+  const physical = JSON.parse(retained) as {
+    entries: { hash: string }[];
+    authorizations: { operationHash: string }[];
+  };
+  assert.deepEqual(physical.authorizations.map(entry => entry.operationHash), f.signatures.map(proof => proof.digest));
+  assert.deepEqual(physical.entries.map(entry => entry.hash), f.payerSignatures.map(raw => Transaction.from(raw).hash!));
+}
+
 async function readyLedgerInfrastructure(hooks: {before?: SqlHook; after?: SqlHook} = {}) {
   const device = nativeSmartLedgerDevice(), deviceTransactions: string[] = [];
   let f!: Awaited<ReturnType<typeof fixture>>;
@@ -2427,10 +2445,8 @@ for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`co
     assert(f.spendabilityReads.token > readsAtChange, 'final admission observes the changed token balance');
     assert.equal(operation.getSnapshot().phase, 'failed', JSON.stringify(operation.getSnapshot()));
     assert.equal(f.submitted.length, 0);
-    const identity = (await f.storage.recovery.readIdentity())!.root!;
-    const retained = await f.storage.signedRecords.read(identity.profileId);
-    assert(retained, 'the exact signed prefund was persisted before final admission');
-    assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
+    // The exact signed prefund and its standalone owner authorization both remain durable.
+    await assertRetainedSmartSendRecords(f, 1);
   } finally { operation?.dispose(); await f.close(); }
 });
 
@@ -2472,14 +2488,7 @@ for (const change of ['balance', 'nonce'] as const) for (const boundary of ['pay
       assert.equal(operation.getSnapshot().transactionHash, null);
     }
     assert.equal(f.submitted.length, 0);
-    const identity = (await f.storage.recovery.readIdentity())!.root!;
-    const retained = await f.storage.signedRecords.read(identity.profileId);
-    if (boundary === 'payer-review') {
-      assert(!retained || inspectEvmSignedBundle(retained, identity.profileId).transactions === 0);
-    } else {
-      assert(retained, 'the signed outer bytes remain durably inspectable');
-      assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
-    }
+    await assertRetainedSmartSendRecords(f, boundary === 'payer-review' ? 0 : 1);
   } finally { operation?.dispose(); await f.close(); }
 });
 
@@ -6695,8 +6704,7 @@ for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`Sm
     assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(f.payerSignatures.length, 1);
     assert.equal(f.submitted.length, 0);
-    const identity = (await f.storage.recovery.readIdentity())!.root!;
-    assert.equal(inspectEvmSignedBundle((await f.storage.signedRecords.read(identity.profileId))!, identity.profileId).transactions, 1);
+    await assertRetainedSmartSendRecords(f, 1);
   } finally { operation?.dispose(); await f.close(); }
 });
 
@@ -6789,14 +6797,7 @@ test(`deployed Smart ${standard} final admission rejects asset loss during ${bou
     assert.equal(f.payerSignatures.length, boundary === 'payer-review' ? 0 : 1);
     assert.equal(f.submitted.length, 0);
     assert.equal(operation.getSnapshot().phase, 'failed', JSON.stringify(operation.getSnapshot()));
-    const identity = (await f.storage.recovery.readIdentity())!.root!;
-    const retained = await f.storage.signedRecords.read(identity.profileId);
-    if (boundary === 'payer-review') {
-      assert(!retained || inspectEvmSignedBundle(retained, identity.profileId).transactions === 0);
-    } else {
-      assert(retained);
-      assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
-    }
+    await assertRetainedSmartSendRecords(f, boundary === 'payer-review' ? 0 : 1);
   } finally { operation?.dispose(); await f.close(); }
 });
 
@@ -6880,9 +6881,7 @@ test(`Smart ERC20 reviewed precision rejects changes at ${boundary}`, async () =
     assert.equal(f.signatures.length, boundary === 'prepare' || boundary === 'owner-signing' ? 0 : 1);
     if (boundary === 'payer-signing' || boundary === 'payer-persistence') {
       assert.equal(f.payerSignatures.length, 1);
-      const identity = (await f.storage.recovery.readIdentity())!.root!;
-      const retained = await f.storage.signedRecords.read(identity.profileId);
-      assert(retained); assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
+      await assertRetainedSmartSendRecords(f, 1);
     }
   } finally { operation?.dispose(); await f.close(); }
 });
