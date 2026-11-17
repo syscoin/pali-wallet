@@ -12,6 +12,7 @@ import { getPrivacyPool } from './registry.ts';
 import type {
   IPrivacyWithdrawalAttempt,
   IPrivacyWithdrawalJournal,
+  IPrivacyWithdrawalPublicInputs,
 } from './withdrawalTransactionTypes.ts';
 import type { EvmRetainedSignedRecord } from '../../wallet/evmSignedRecords.ts';
 
@@ -38,6 +39,66 @@ function uint(value: unknown, positive = false): bigint {
   if (parsed > UINT256_MAX || (positive && parsed === BigInt(0)))
     return invalid();
   return parsed;
+}
+
+export function captureWithdrawalPublicInputs(
+  value: unknown,
+  inputHash?: string
+): Readonly<IPrivacyWithdrawalPublicInputs> {
+  const v = readEvmOwnData(value, [
+    'root',
+    'nullifierHash',
+    'recipient',
+    'relayer',
+    'fee',
+    'refund',
+  ]);
+  const field = BigInt(
+    '21888242871839275222246405745257275088548364400416034343698204186575808495617'
+  );
+  if (
+    typeof v.root !== 'string' ||
+    !HASH.test(v.root) ||
+    BigInt(v.root) === BigInt(0) ||
+    BigInt(v.root) >= field ||
+    typeof v.nullifierHash !== 'string' ||
+    !HASH.test(v.nullifierHash) ||
+    BigInt(v.nullifierHash) >= field ||
+    typeof v.recipient !== 'string' ||
+    !ADDRESS.test(v.recipient) ||
+    BigInt(v.recipient) === BigInt(0) ||
+    typeof v.relayer !== 'string' ||
+    !ADDRESS.test(v.relayer) ||
+    typeof v.fee !== 'string' ||
+    !/^(0|[1-9][0-9]{0,76})$/.test(v.fee) ||
+    uint(v.fee) > UINT256_MAX ||
+    v.refund !== '0'
+  )
+    return invalid();
+  const inputs: IPrivacyWithdrawalPublicInputs = {
+    root: String(v.root).toLowerCase(),
+    nullifierHash: String(v.nullifierHash).toLowerCase(),
+    recipient: String(v.recipient).toLowerCase(),
+    relayer: String(v.relayer).toLowerCase(),
+    fee: v.fee,
+    refund: '0',
+  };
+  const hash = keccak256(
+    AbiCoder.defaultAbiCoder().encode(
+      Array(6).fill('uint256'),
+      [
+        inputs.root,
+        inputs.nullifierHash,
+        inputs.recipient,
+        inputs.relayer,
+        inputs.fee,
+        inputs.refund,
+      ].map((input) => BigInt(input).toString())
+    )
+  );
+  if (inputHash !== undefined && hash !== inputHash.toLowerCase())
+    return invalid();
+  return Object.freeze(inputs);
 }
 
 export function createPrivateWithdrawalJournal(
@@ -263,6 +324,17 @@ export function createPrivateWithdrawalJournal(
       phase: 'unknown',
       proofHash,
       inputHash,
+      publicInputs: captureWithdrawalPublicInputs(
+        {
+          root: attempt.root,
+          nullifierHash: attempt.nullifierHash,
+          recipient: attempt.recipient,
+          relayer: attempt.relayer,
+          fee: attempt.fee,
+          refund: attempt.refund,
+        },
+        inputHash
+      ),
       attemptHash: keccak256(toUtf8Bytes(JSON.stringify(normalized))),
       ...direct,
       ...(attempt.mode === 'relayed'

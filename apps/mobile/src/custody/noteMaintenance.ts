@@ -2,6 +2,7 @@ import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGu
 import { getPrivacyPool, PRIVACY_CHAIN_ID } from '../../../../source/utils/privacy/registry.ts';
 import { prepareSpentCompletion, type SpentCompletionRequest } from '../../../../source/utils/privacy/spentCompletion.ts';
 import { prepareWithdrawalRecovery } from '../../../../source/utils/privacy/withdrawalRecovery.ts';
+import { readPrivacyRelayerJobPublicInputs, type PrivacyRelayerJobFetch } from '../../../../source/utils/privacy/relayJobs.ts';
 import type { IPrivateVaultHost } from '../../../../source/wallet/privateVault.ts';
 import type { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
@@ -15,6 +16,7 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
   signal: AbortSignal;
   assertCurrent(): void;
   rpc: Pick<EvmTransferReadRpc, 'noteMaintenanceRead'>;
+  relayerFetch?: PrivacyRelayerJobFetch;
   readOriginalRawTransaction?(from: string, hash: string, assertCurrent: () => void): Promise<string | null>;
 }>): NativeNoteMaintenanceProofs {
   const network = snapshotNativeNetwork(options.network);
@@ -55,7 +57,8 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
       const submitted: SpentCompletionRequest['withdrawal'] = withdrawal.mode === 'direct'
         ? { phase: 'submitted', mode: 'direct', transactionHash: withdrawal.transactionHash,
             from: withdrawal.from!, nonce: withdrawal.nonce! }
-        : { phase: 'submitted', mode: 'relayed', transactionHash: withdrawal.transactionHash };
+        : { phase: 'submitted', mode: 'relayed', transactionHash: withdrawal.transactionHash,
+            ...(withdrawal.transactionHashes ? { transactionHashes: withdrawal.transactionHashes } : {}) };
       return prepareSpentCompletion({ poolAddress: getPrivacyPool(identity.poolId).address,
         nullifierHash: identity.nullifierHash, withdrawal: submitted,
         ...(deposit ? { deposit: { phase: 'submitted', transactionHash: deposit.transactionHash!, from: deposit.from, nonce: deposit.nonce } } : {}),
@@ -66,6 +69,12 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
       guard();
       return prepareWithdrawalRecovery({ poolAddress: getPrivacyPool(identity.poolId).address,
         nullifierHash: identity.nullifierHash, withdrawal, assertCurrent: guard, rpc: read(guard),
+        ...(withdrawal.mode === 'relayed' && withdrawal.jobId && withdrawal.endpoint ? {
+          readRelayedPublicInputs: (signal: AbortSignal) => readPrivacyRelayerJobPublicInputs({
+            endpoint: withdrawal.endpoint!, jobId: withdrawal.jobId!, poolId: identity.poolId,
+            inputHash: withdrawal.inputHash, proofHash: withdrawal.proofHash,
+          }, { assertCurrent: guard, signal, fetcher: options.relayerFetch }),
+        } : {}),
         ...(options.readOriginalRawTransaction ? { readOriginalRawTransaction: async () => {
           guard();
           const raw = await options.readOriginalRawTransaction!(withdrawal.from!, withdrawal.transactionHash!, guard);

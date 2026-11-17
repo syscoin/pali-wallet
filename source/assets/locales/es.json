@@ -1957,11 +1957,11 @@
     },
     "recovery": {
       "action": "Comprobar recuperación del retiro",
-      "help": "La recuperación solo está disponible cuando la transacción original ha fallado de forma definitiva o el nonce de quien paga las comisiones se ha consumido de forma definitiva, la raíz de la prueba divulgada ya no se acepta y la nota sigue sin gastarse. La nota y el historial del retiro se conservan. Un nuevo retiro requiere una nueva revisión.",
-      "disclosure": "Esta comprobación comparte la dirección de quien paga las comisiones, el hash de la transacción, la raíz original de la prueba y el nullifier público de la nota con el RPC de Ethereum seleccionado.",
+      "help": "La recuperación requiere una comprobación finalizada de que la raíz de la prueba divulgada ya no se acepta y la nota sigue sin gastarse. Los retiros directos también requieren una transacción fallida finalizada o un nonce del pagador consumido de forma definitiva. La nota y el historial del retiro se conservan. Un nuevo retiro requiere una nueva revisión.",
+      "disclosure": "Esta comprobación comparte la raíz original de la prueba y el nullifier público de la nota con el RPC de Ethereum seleccionado. Para los retiros directos también comparte la dirección del pagador y el hash de la transacción. Puede consultarse un trabajo anterior del relayer para recuperar las entradas de prueba guardadas.",
       "password": "Contraseña de la cartera",
       "failed": "No se pudo confirmar la recuperación. La prueba original puede seguir siendo válida, la nota puede estar gastada o las pruebas pueden no estar disponibles. Actualiza antes de intentarlo de nuevo.",
-      "checking": "Comprobando la transacción finalizada y la caducidad de la prueba…",
+      "checking": "Comprobando la caducidad finalizada de la prueba…",
       "confirm": "Comprobar y recuperar"
     },
     "restoreReview": {

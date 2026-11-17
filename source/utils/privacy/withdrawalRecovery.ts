@@ -2,8 +2,10 @@ import { AbiCoder, Interface, keccak256 } from 'ethers';
 import { Transaction } from 'ethers/transaction';
 
 import { FIELD_SIZE } from './merkle.ts';
+import { captureWithdrawalPublicInputs } from './withdrawalMetadata.ts';
 import type {
   IPrivacyWithdrawalJournal,
+  IPrivacyWithdrawalPublicInputs,
   IPrivacyWithdrawalRecoveryReceipt,
 } from './withdrawalTransactionTypes';
 
@@ -38,6 +40,10 @@ export interface IWithdrawalRecoveryRequest {
   poolAddress: string;
   /** Exact bytes loaded from authenticated custody, never supplied by a renderer. */
   readOriginalRawTransaction?: () => Promise<string | null>;
+  /** Background-only lookup for older, hash-bound known relayer jobs. */
+  readRelayedPublicInputs?: (
+    signal: AbortSignal
+  ) => Promise<IPrivacyWithdrawalPublicInputs | null>;
   rpc: (
     method: string,
     params: unknown[],
@@ -58,6 +64,7 @@ export interface IWithdrawalRecoveryRequest {
 export async function prepareWithdrawalRecovery(
   req: IWithdrawalRecoveryRequest
 ): Promise<{
+  publicInputs?: Readonly<IPrivacyWithdrawalPublicInputs>;
   receipt: IPrivacyWithdrawalRecoveryReceipt;
   revalidate: () => Promise<void>;
 }> {
@@ -69,16 +76,22 @@ export async function prepareWithdrawalRecovery(
       !ADDRESS.test(pool) ||
       !HASH.test(nullifier) ||
       !w ||
-      w.mode !== 'direct' ||
-      w.phase !== 'submitted' ||
+      !['direct', 'relayed'].includes(w.mode) ||
+      !['submitted', 'unknown'].includes(w.phase) ||
       w.recovery ||
-      !HASH.test(lower(w.transactionHash)) ||
+      w.unsigned ||
       !HASH.test(lower(w.proofHash)) ||
       !HASH.test(lower(w.inputHash)) ||
-      !ADDRESS.test(lower(w.from)) ||
-      typeof w.nonce !== 'string' ||
-      !/^(?:0|[1-9][0-9]{0,19})$/.test(w.nonce) ||
-      BigInt(w.nonce) >= BigInt(1) << BigInt(64) ||
+      (w.mode === 'relayed' &&
+        !w.publicInputs &&
+        !req.readRelayedPublicInputs) ||
+      (w.mode === 'direct' &&
+        (w.phase !== 'submitted' ||
+          !HASH.test(lower(w.transactionHash)) ||
+          !ADDRESS.test(lower(w.from)) ||
+          typeof w.nonce !== 'string' ||
+          !/^(?:0|[1-9][0-9]{0,19})$/.test(w.nonce) ||
+          BigInt(w.nonce) >= BigInt(1) << BigInt(64))) ||
       typeof req.rpc !== 'function' ||
       typeof req.assertCurrent !== 'function'
     )
@@ -87,6 +100,7 @@ export async function prepareWithdrawalRecovery(
     const nonce = w.nonce!;
     const readOriginal = req.readOriginalRawTransaction;
     let original: Record<string, unknown> | undefined;
+    let publicInputs: Readonly<IPrivacyWithdrawalPublicInputs> | undefined;
     let receiptWasMissing: boolean | undefined;
     const run = async (evidence?: IPrivacyWithdrawalRecoveryReceipt) => {
       const deadline = Date.now() + 15000;
@@ -135,117 +149,138 @@ export async function prepareWithdrawalRecovery(
           : lower(anchor.hash) !== lower(finalized.hash))
       )
         return invalid();
-      const receiptValue = await read('eth_getTransactionReceipt', [
-        transactionHash,
-      ]);
-      const missing = receiptValue === null;
-      if (receiptWasMissing !== undefined && missing !== receiptWasMissing)
-        return invalid();
-      receiptWasMissing = missing;
-      let tx: Record<string, any>;
-      if (missing) {
-        if (!readOriginal) return invalid();
-        if (!original) {
-          const raw = await owned(() => readOriginal());
-          if (
-            typeof raw !== 'string' ||
-            raw.length > 8194 ||
-            !/^0x[\da-f]+$/i.test(raw)
-          )
-            return invalid();
-          const signed = Transaction.from(raw);
-          if (
-            !signed.signature ||
-            !signed.hash ||
-            !signed.from ||
-            signed.chainId !== BigInt(1)
-          )
-            return invalid();
-          original = Object.freeze({
-            hash: signed.hash,
-            from: signed.from,
-            to: signed.to,
-            nonce: '0x' + signed.nonce.toString(16),
-            value: '0x' + signed.value.toString(16),
-            input: signed.data,
-            chainId: '0x1',
-          });
+      let root: string;
+      if (w.mode === 'relayed') {
+        if (!publicInputs) {
+          const captured =
+            w.publicInputs ??
+            (req.readRelayedPublicInputs
+              ? await owned(req.readRelayedPublicInputs)
+              : null);
+          publicInputs = captureWithdrawalPublicInputs(captured, w.inputHash);
         }
-        tx = original;
-        const consumed = quantity(
-          await read('eth_getTransactionCount', [lower(w.from), blockNumber])
-        );
-        if (consumed <= BigInt(nonce) || consumed >= BigInt(1) << BigInt(64))
+        if (
+          publicInputs.nullifierHash !== nullifier ||
+          BigInt(publicInputs.relayer) === BigInt(0) ||
+          (evidence && evidence.root !== publicInputs.root)
+        )
           return invalid();
+        root = publicInputs.root;
       } else {
-        const receipt = object(receiptValue);
+        const receiptValue = await read('eth_getTransactionReceipt', [
+          transactionHash,
+        ]);
+        const missing = receiptValue === null;
+        if (receiptWasMissing !== undefined && missing !== receiptWasMissing)
+          return invalid();
+        receiptWasMissing = missing;
+        let tx: Record<string, any>;
+        if (missing) {
+          if (!readOriginal) return invalid();
+          if (!original) {
+            const raw = await owned(() => readOriginal());
+            if (
+              typeof raw !== 'string' ||
+              raw.length > 8194 ||
+              !/^0x[\da-f]+$/i.test(raw)
+            )
+              return invalid();
+            const signed = Transaction.from(raw);
+            if (
+              !signed.signature ||
+              !signed.hash ||
+              !signed.from ||
+              signed.chainId !== BigInt(1)
+            )
+              return invalid();
+            original = Object.freeze({
+              hash: signed.hash,
+              from: signed.from,
+              to: signed.to,
+              nonce: '0x' + signed.nonce.toString(16),
+              value: '0x' + signed.value.toString(16),
+              input: signed.data,
+              chainId: '0x1',
+            });
+          }
+          tx = original;
+          const consumed = quantity(
+            await read('eth_getTransactionCount', [lower(w.from), blockNumber])
+          );
+          if (consumed <= BigInt(nonce) || consumed >= BigInt(1) << BigInt(64))
+            return invalid();
+        } else {
+          const receipt = object(receiptValue);
+          if (
+            lower(receipt.transactionHash) !== transactionHash ||
+            receipt.status !== '0x0' ||
+            !HASH.test(lower(receipt.blockHash)) ||
+            quantity(receipt.blockNumber) > quantity(blockNumber)
+          )
+            return invalid();
+          const canonical = object(
+            await read('eth_getBlockByNumber', [receipt.blockNumber, false])
+          );
+          if (
+            canonical.number !== receipt.blockNumber ||
+            lower(canonical.hash) !== lower(receipt.blockHash)
+          )
+            return invalid();
+          tx = object(
+            await read('eth_getTransactionByHash', [transactionHash])
+          );
+          if (
+            lower(tx.blockHash) !== lower(receipt.blockHash) ||
+            tx.blockNumber !== receipt.blockNumber
+          )
+            return invalid();
+        }
         if (
-          lower(receipt.transactionHash) !== transactionHash ||
-          receipt.status !== '0x0' ||
-          !HASH.test(lower(receipt.blockHash)) ||
-          quantity(receipt.blockNumber) > quantity(blockNumber)
+          lower(tx.hash) !== transactionHash ||
+          lower(tx.from) !== lower(w.from) ||
+          lower(tx.to) !== pool ||
+          quantity(tx.nonce) !== BigInt(nonce) ||
+          quantity(tx.value) !== BigInt(0) ||
+          (tx.chainId !== undefined && quantity(tx.chainId) !== BigInt(1)) ||
+          typeof tx.input !== 'string' ||
+          !/^0x[0-9a-fA-F]{1032}$/.test(tx.input)
         )
           return invalid();
-        const canonical = object(
-          await read('eth_getBlockByNumber', [receipt.blockNumber, false])
+        const input = lower(tx.input);
+        const values = ABI.decodeFunctionData('withdraw', input);
+        if (
+          lower(ABI.encodeFunctionData('withdraw', values)) !== input ||
+          !/^0x[0-9a-f]{512}$/.test(lower(values[0])) ||
+          lower(values[2]) !== nullifier ||
+          BigInt(values[4]) !== BigInt(0) ||
+          values[5] !== BigInt(0) ||
+          values[6] !== BigInt(0) ||
+          keccak256(values[0]) !== lower(w.proofHash)
+        )
+          return invalid();
+        root = lower(values[1]);
+        if (
+          !HASH.test(root) ||
+          root === FALSE ||
+          BigInt(root) >= FIELD_SIZE ||
+          (evidence && evidence.root !== root)
+        )
+          return invalid();
+        const inputHash = keccak256(
+          AbiCoder.defaultAbiCoder().encode(
+            Array(6).fill('uint256'),
+            [
+              values[1],
+              values[2],
+              values[3],
+              values[4],
+              values[5],
+              values[6],
+            ].map((value) => BigInt(value).toString())
+          )
         );
-        if (
-          canonical.number !== receipt.blockNumber ||
-          lower(canonical.hash) !== lower(receipt.blockHash)
-        )
-          return invalid();
-        tx = object(await read('eth_getTransactionByHash', [transactionHash]));
-        if (
-          lower(tx.blockHash) !== lower(receipt.blockHash) ||
-          tx.blockNumber !== receipt.blockNumber
-        )
-          return invalid();
+        if (inputHash !== lower(w.inputHash)) return invalid();
       }
-      if (
-        lower(tx.hash) !== transactionHash ||
-        lower(tx.from) !== lower(w.from) ||
-        lower(tx.to) !== pool ||
-        quantity(tx.nonce) !== BigInt(nonce) ||
-        quantity(tx.value) !== BigInt(0) ||
-        (tx.chainId !== undefined && quantity(tx.chainId) !== BigInt(1)) ||
-        typeof tx.input !== 'string' ||
-        !/^0x[0-9a-fA-F]{1032}$/.test(tx.input)
-      )
-        return invalid();
-      const input = lower(tx.input);
-      const values = ABI.decodeFunctionData('withdraw', input);
-      if (
-        lower(ABI.encodeFunctionData('withdraw', values)) !== input ||
-        !/^0x[0-9a-f]{512}$/.test(lower(values[0])) ||
-        lower(values[2]) !== nullifier ||
-        BigInt(values[4]) !== BigInt(0) ||
-        values[5] !== BigInt(0) ||
-        values[6] !== BigInt(0) ||
-        keccak256(values[0]) !== lower(w.proofHash)
-      )
-        return invalid();
-      const root = lower(values[1]);
-      if (
-        !HASH.test(root) ||
-        root === FALSE ||
-        BigInt(root) >= FIELD_SIZE ||
-        (evidence && evidence.root !== root)
-      )
-        return invalid();
-      const inputHash = keccak256(
-        AbiCoder.defaultAbiCoder().encode(
-          Array(6).fill('uint256'),
-          [
-            values[1],
-            values[2],
-            values[3],
-            values[4],
-            values[5],
-            values[6],
-          ].map((value) => BigInt(value).toString())
-        )
-      );
-      if (inputHash !== lower(w.inputHash)) return invalid();
       // These calls disclose the public root/nullifier to the selected RPC.
       for (const [method, value] of [
         ['isKnownRoot', root],
@@ -267,6 +302,9 @@ export async function prepareWithdrawalRecovery(
         return invalid();
       req.assertCurrent();
       return {
+        ...(w.mode === 'relayed'
+          ? { kind: 'relayed-proof-expired' as const }
+          : {}),
         root,
         blockNumber: quantity(blockNumber).toString(),
         blockHash: lower(anchor.hash),
@@ -276,6 +314,7 @@ export async function prepareWithdrawalRecovery(
     const receipt = Object.freeze({ ...evidence });
     return {
       receipt,
+      ...(publicInputs ? { publicInputs } : {}),
       revalidate: async () => {
         try {
           await run(evidence);

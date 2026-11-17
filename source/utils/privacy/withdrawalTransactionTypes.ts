@@ -7,6 +7,16 @@ import type { IEvmTransactionContext } from '../evmTransactionContext';
 
 export type IPrivacyWithdrawalSession = IPrivacyDepositSession;
 export type IPrivacyWithdrawalTransaction = PrivacyDepositTransaction;
+export const MAX_PRIVACY_RELAY_TRANSACTIONS = 16;
+/** Public proof inputs retained only in encrypted custody and explicit backups. */
+export interface IPrivacyWithdrawalPublicInputs {
+  fee: string;
+  nullifierHash: string;
+  recipient: string;
+  refund: '0';
+  relayer: string;
+  root: string;
+}
 
 interface IWithdrawalAttemptBase {
   context: IPrivacyWithdrawalSession['context'];
@@ -50,6 +60,7 @@ export interface IPrivacyWithdrawalRecoveryReceipt {
   blockHash: string;
   /** Canonical decimal Ethereum block number. */
   blockNumber: string;
+  kind?: 'relayed-proof-expired';
   root: string;
 }
 
@@ -78,16 +89,15 @@ interface IPrivacyWithdrawalJournalFields {
   nonce?: string;
   phase: 'unknown' | 'submitted';
   proofHash: string;
+  publicInputs?: IPrivacyWithdrawalPublicInputs;
   transactionHash?: string;
+  transactionHashes?: readonly string[];
 }
 
 /** Inert local evidence retained when a recovered note starts a fresh attempt. */
 export interface IPrivacyRetiredWithdrawal
   extends IPrivacyWithdrawalJournalFields {
-  mode: 'direct';
-  phase: 'submitted';
   recovery: IPrivacyWithdrawalRecovery;
-  transactionHash: string;
 }
 
 export interface IPrivacyWithdrawalJournal

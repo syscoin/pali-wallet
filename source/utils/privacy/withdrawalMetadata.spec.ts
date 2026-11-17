@@ -168,6 +168,14 @@ test.each([false, true])(
       attemptHash: keccak256(toUtf8Bytes(JSON.stringify(normalized))),
       from: wallet.address.toLowerCase(),
       nonce: '4',
+      publicInputs: {
+        root: input.root,
+        nullifierHash: input.nullifierHash,
+        recipient: input.recipient.toLowerCase(),
+        relayer: input.relayer.toLowerCase(),
+        fee: input.fee,
+        refund: '0',
+      },
     });
     const captured = capturePrivateWithdrawalAttempt(input);
     input.context.sessionGeneration = 99;

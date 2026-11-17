@@ -4013,7 +4013,13 @@ class MainController {
               );
               if (!proof.receipt)
                 throw new Error('privacy_withdrawal_recovery_unavailable');
-              return { receipt: proof.receipt, revalidate: proof.revalidate };
+              return {
+                receipt: proof.receipt,
+                revalidate: proof.revalidate,
+                ...(proof.publicInputs
+                  ? { publicInputs: proof.publicInputs }
+                  : {}),
+              };
             },
             readNote: (identity) =>
               this.privateVaultNoteReader
@@ -4104,6 +4110,7 @@ class MainController {
     session: IPrivateVaultSession,
     recovery = false
   ): Promise<{
+    publicInputs?: IPrivacyWithdrawalJournal['publicInputs'];
     receipt?: IPrivacyWithdrawalRecoveryReceipt;
     revalidate: () => Promise<void>;
   }> {
@@ -4181,6 +4188,28 @@ class MainController {
         nullifierHash: identity.nullifierHash,
         withdrawal,
         assertCurrent,
+        ...(withdrawal.mode === 'relayed' &&
+        withdrawal.jobId &&
+        withdrawal.endpoint
+          ? {
+              readRelayedPublicInputs: async (signal: AbortSignal) => {
+                const { readPrivacyRelayerJobPublicInputs } = await import(
+                  /* webpackChunkName: "private-vault" */ 'utils/privacy/relayJobs'
+                );
+                assertCurrent();
+                return readPrivacyRelayerJobPublicInputs(
+                  {
+                    endpoint: withdrawal.endpoint!,
+                    jobId: withdrawal.jobId!,
+                    poolId: identity.poolId,
+                    inputHash: withdrawal.inputHash,
+                    proofHash: withdrawal.proofHash,
+                  },
+                  { assertCurrent, signal }
+                );
+              },
+            }
+          : {}),
         readOriginalRawTransaction: async () => {
           assertCurrent();
           const keyring = this.getActiveKeyring();
@@ -4229,6 +4258,9 @@ class MainController {
         phase: 'submitted',
         mode: 'relayed',
         transactionHash: withdrawal.transactionHash,
+        ...(withdrawal.transactionHashes
+          ? { transactionHashes: withdrawal.transactionHashes }
+          : {}),
       };
     } else throw new Error('privacy_spent_proof_unavailable');
     let submittedDeposit: SpentCompletionRequest['deposit'];

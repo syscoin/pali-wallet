@@ -105,7 +105,7 @@ test('imported uncertainty only adds a guard, retaining local journals byte for 
   expect(privateNoteExportHistory(merged)?.withdrawals).toHaveLength(2);
   const projection = JSON.stringify(privateNoteCurrentHistory(merged));
   expect(projection).not.toContain('endpoint');
-  expect(projection).not.toContain('proofHash');
+  expect(JSON.parse(projection).withdrawals[0].proofHash).toBe(HASH);
 });
 test('a restored reconciliation marker cannot disappear on duplicate import', () => {
   const local = { ...entry(), id: id(1) };

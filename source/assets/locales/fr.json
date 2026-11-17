@@ -1957,11 +1957,11 @@
     },
     "recovery": {
       "action": "Vérifier la récupération du retrait",
-      "help": "La récupération est disponible uniquement lorsque la transaction initiale a définitivement échoué ou que le nonce du payeur a été définitivement consommé, que la racine de preuve divulguée n’est plus acceptée et que la note reste non dépensée. La note et l’historique du retrait sont conservés. Un nouveau retrait nécessite une nouvelle vérification.",
-      "disclosure": "Cette vérification partage l’adresse du payeur, le hash de transaction, la racine de preuve initiale et le nullifier public de la note avec votre RPC Ethereum sélectionné.",
+      "help": "La récupération nécessite une vérification finalisée confirmant que la racine de preuve divulguée n’est plus acceptée et que la note reste non dépensée. Pour un retrait direct, il faut aussi une transaction définitivement échouée ou un nonce du payeur définitivement consommé. La note et l’historique du retrait sont conservés. Un nouveau retrait nécessite une nouvelle vérification.",
+      "disclosure": "Cette vérification partage la racine de preuve initiale et le nullifier public de la note avec votre RPC Ethereum sélectionné. Pour un retrait direct, elle partage aussi l’adresse du payeur et le hash de transaction. Une ancienne tâche du relais peut être consultée pour retrouver les entrées de preuve enregistrées.",
       "password": "Mot de passe du portefeuille",
       "failed": "La récupération n’a pas pu être confirmée. La preuve peut rester utilisable, la note peut être dépensée ou les données indisponibles. Actualisez avant de réessayer.",
-      "checking": "Vérification de la transaction finalisée et de l’expiration de la preuve…",
+      "checking": "Vérification de l’expiration finalisée de la preuve…",
       "confirm": "Vérifier et récupérer"
     },
     "restoreReview": {

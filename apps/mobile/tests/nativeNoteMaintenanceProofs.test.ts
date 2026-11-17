@@ -64,6 +64,19 @@ test('native recovery requires the same failed transaction, evicted original roo
   await assert.rejects(f.ports.prepareWithdrawalRecovery(identity, withdrawal, f.session), /privacy_withdrawal_recovery_unavailable/);
 });
 
+for (const phase of ['unknown', 'submitted'] as const) test(`native relayed ${phase} recovery uses the fixed finalized proof inputs without a payer nonce`, async () => {
+  const f = fixture();
+  const publicInputs = { root, nullifierHash:identity.nullifierHash, recipient, relayer:account, fee:'123', refund:'0' as const };
+  const relayed = { ...withdrawal, mode:'relayed' as const, phase, from:undefined, nonce:undefined, transactionHash:undefined,
+    publicInputs, inputHash:keccak256(AbiCoder.defaultAbiCoder().encode(Array(6).fill('uint256'), Object.values(publicInputs).map(BigInt))) };
+  const lease = await f.ports.prepareWithdrawalRecovery(identity, relayed, f.session);
+  assert.equal(lease.receipt.kind,'relayed-proof-expired');
+  assert.deepEqual(lease.publicInputs,publicInputs);
+  await lease.revalidate();
+  assert(f.calls.every(call => ['eth_chainId','eth_getBlockByNumber','eth_call'].includes(call.method)));
+  f.setKnown(true); await assert.rejects(lease.revalidate(),/privacy_withdrawal_recovery_unavailable/);
+});
+
 test('each maintenance run rechecks chain identity before disclosing transaction or nullifier', async () => {
   for (const recovery of [false, true]) {
     const f = fixture(recovery);

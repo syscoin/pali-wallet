@@ -168,7 +168,7 @@ it('rejects a changed anchor, changed proof status, and revoked session during p
   }
 });
 
-it('refuses unknown, relayed, and already-recovered attempts without an RPC', async () => {
+it('refuses unknown direct, evidence-less relayed, and already-recovered attempts without an RPC', async () => {
   for (const patch of [
     { phase: 'unknown' },
     { mode: 'relayed' },
@@ -188,6 +188,98 @@ it('refuses unknown, relayed, and already-recovered attempts without an RPC', as
     );
     expect(f.rpc).not.toHaveBeenCalled();
   }
+});
+
+function relayedFixture(phase: 'unknown' | 'submitted' = 'unknown') {
+  const f = fixture();
+  const publicInputs = {
+    root: ROOT,
+    nullifierHash: '0x' + '07'.repeat(32),
+    recipient: RECIPIENT,
+    relayer: FROM,
+    fee: '100',
+    refund: '0' as const,
+  };
+  const withdrawal = {
+    ...f.request.withdrawal,
+    mode: 'relayed' as const,
+    phase,
+    from: undefined,
+    nonce: undefined,
+    transactionHash: undefined,
+    publicInputs,
+    inputHash: keccak256(
+      AbiCoder.defaultAbiCoder().encode(
+        Array(6).fill('uint256'),
+        Object.values(publicInputs).map(BigInt)
+      )
+    ),
+  };
+  return {
+    ...f,
+    publicInputs,
+    request: {
+      ...f.request,
+      nullifierHash: publicInputs.nullifierHash,
+      withdrawal,
+    },
+  };
+}
+
+it.each(['unknown', 'submitted'] as const)(
+  'recovers expired relayed %s proof without payer nonce or receipt evidence',
+  async (phase) => {
+    const f = relayedFixture(phase);
+    const proof = await prepareWithdrawalRecovery(f.request);
+    expect(proof.receipt).toEqual({
+      kind: 'relayed-proof-expired',
+      root: ROOT,
+      blockHash: BLOCK,
+      blockNumber: '16',
+    });
+    expect(proof.publicInputs).toEqual(f.publicInputs);
+    await proof.revalidate();
+    expect(new Set(f.rpc.mock.calls.map(([method]) => method))).toEqual(
+      new Set(['eth_chainId', 'eth_getBlockByNumber', 'eth_call'])
+    );
+  }
+);
+
+it.each([
+  'live-root',
+  'spent',
+  'wrong-nullifier',
+  'wrong-input',
+  'changed-anchor',
+])('refuses relayed recovery for %s', async (kind) => {
+  const f = relayedFixture();
+  if (kind === 'live-root') f.setKnown(true);
+  if (kind === 'spent') f.setSpent(true);
+  if (kind === 'wrong-nullifier') f.request.nullifierHash = ROOT;
+  if (kind === 'wrong-input') f.publicInputs.fee = '101';
+  if (kind === 'changed-anchor') {
+    const proof = await prepareWithdrawalRecovery(f.request);
+    f.block.hash = HASH;
+    await expect(proof.revalidate()).rejects.toThrow(
+      'privacy_withdrawal_recovery_unavailable'
+    );
+  } else
+    await expect(prepareWithdrawalRecovery(f.request)).rejects.toThrow(
+      'privacy_withdrawal_recovery_unavailable'
+    );
+});
+
+it('captures older known-job inputs privately once and repeats chain evidence without trusting job status', async () => {
+  const f = relayedFixture('submitted');
+  delete (f.request.withdrawal as any).publicInputs;
+  const lookup = jest.fn(async () => f.publicInputs);
+  const proof = await prepareWithdrawalRecovery({
+    ...f.request,
+    readRelayedPublicInputs: lookup,
+  });
+  await proof.revalidate();
+  expect(lookup).toHaveBeenCalledTimes(1);
+  expect(proof.publicInputs).toEqual(f.publicInputs);
 });
 
 async function displacedFixture() {

@@ -1016,7 +1016,7 @@ it('manual job status matches durable hashes and stores only a bound acknowledge
   expect(run.fetcher).toHaveBeenCalledTimes(2); // one explicit submit, one explicit status read
 });
 
-it('a forged job or transaction hash cannot update the durable attempt', async () => {
+it('rejects changed proof inputs, but retains a bound same-job replacement hash as a candidate', async () => {
   jest.useFakeTimers();
   const run = setup();
   const { record, job } = await recordedRelay(run);
@@ -1042,10 +1042,14 @@ it('a forged job or transaction hash cannot update the durable attempt', async (
       headers: { 'content-type': 'application/json' },
     })
   );
-  await expect(run.controller.statusByNote(NOTE_ID)).rejects.toThrow(
-    'privacy_relayer_job_invalid'
+  const status = await run.controller.statusByNote(NOTE_ID);
+  expect(status.transactionHash).toBe(job.txHash);
+  expect(run.host.recordJobStatus).toHaveBeenCalledWith(
+    NOTE_ID,
+    record.attemptHash,
+    { jobId: JOB_ID, transactionHash: job.txHash },
+    expect.any(Object)
   );
-  expect(run.host.recordJobStatus).not.toHaveBeenCalled();
 });
 
 it('unsubmitted or direct attempt status reads remain local', async () => {

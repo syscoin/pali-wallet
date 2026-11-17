@@ -1957,11 +1957,11 @@
     },
     "recovery": {
       "action": "Wiederherstellung der Auszahlung prüfen",
-      "help": "Eine Wiederherstellung ist erst möglich, wenn die ursprüngliche Transaktion endgültig fehlgeschlagen oder die Nonce des Gebührenzahlers endgültig verbraucht ist, die offengelegte Beweiswurzel nicht mehr akzeptiert wird und die Note ungenutzt bleibt. Note und Auszahlungsverlauf bleiben gespeichert. Eine neue Auszahlung erfordert eine neue Prüfung.",
-      "disclosure": "Diese Prüfung teilt die Adresse des Gebührenzahlers, den Transaktionshash, die ursprüngliche Beweiswurzel und den öffentlichen Nullifier der Note mit Ihrem ausgewählten Ethereum-RPC.",
+      "help": "Die Wiederherstellung erfordert eine endgültig bestätigte Prüfung, dass die offengelegte Beweiswurzel nicht mehr akzeptiert wird und die Note ungenutzt bleibt. Bei direkten Auszahlungen muss zusätzlich die Transaktion endgültig fehlgeschlagen oder die Nonce des Gebührenzahlers endgültig verbraucht sein. Note und Auszahlungsverlauf bleiben gespeichert. Eine neue Auszahlung erfordert eine neue Prüfung.",
+      "disclosure": "Diese Prüfung teilt die ursprüngliche Beweiswurzel und den öffentlichen Nullifier der Note mit Ihrem ausgewählten Ethereum-RPC. Bei direkten Auszahlungen werden auch die Adresse des Gebührenzahlers und der Transaktionshash geteilt. Ein älterer Relayer-Auftrag kann abgefragt werden, um seine gespeicherten Beweiseingaben wiederherzustellen.",
       "password": "Wallet-Passwort",
       "failed": "Die Wiederherstellung konnte nicht bestätigt werden. Der ursprüngliche Nachweis ist eventuell noch nutzbar, die Notiz bereits ausgegeben oder der Beleg nicht verfügbar. Aktualisiere vor einem erneuten Versuch.",
-      "checking": "Endgültige Transaktion und Ablauf des Nachweises werden geprüft…",
+      "checking": "Endgültiger Ablauf des Nachweises wird geprüft…",
       "confirm": "Prüfen und wiederherstellen"
     },
     "restoreReview": {

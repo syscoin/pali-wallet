@@ -19,8 +19,10 @@ import {
 import { getPrivacyPool } from '../utils/privacy/registry.ts';
 import {
   capturePrivateWithdrawalAttempt,
+  captureWithdrawalPublicInputs,
   createPrivateWithdrawalJournal,
 } from '../utils/privacy/withdrawalMetadata.ts';
+import { MAX_PRIVACY_RELAY_TRANSACTIONS } from '../utils/privacy/withdrawalTransactionTypes.ts';
 
 import {
   planPrivateNoteRestore,
@@ -103,6 +105,7 @@ import type {
   IPrivacyWithdrawalStatusRecord,
   IPrivacyUnsignedWithdrawal,
 } from '../utils/privacy/withdrawalTransactionTypes';
+import type { IPrivacyWithdrawalPublicInputs } from '../utils/privacy/withdrawalTransactionTypes.ts';
 import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
 const restoreEpochs = new WeakMap<IPrivateVaultMutex, Map<string, object>>();
@@ -271,6 +274,7 @@ export interface IPrivateVaultHost {
     withdrawal: IPrivacyWithdrawalJournal,
     session: IPrivateVaultSession
   ) => Promise<{
+    publicInputs?: Readonly<IPrivacyWithdrawalPublicInputs>;
     receipt: IPrivacyWithdrawalRecoveryReceipt;
     revalidate: () => Promise<void>;
   }>;
@@ -670,9 +674,11 @@ export function createPrivateVaultController(
             mode: note.withdrawal.mode,
             phase: note.withdrawal.phase,
             ...(!hasImportedWithdrawalHistory(note.restoreGuard) &&
-            note.withdrawal.mode === 'direct' &&
-            note.withdrawal.phase === 'submitted' &&
-            note.withdrawal.transactionHash
+            !note.withdrawal.unsigned &&
+            (note.withdrawal.mode === 'direct'
+              ? note.withdrawal.phase === 'submitted' &&
+                note.withdrawal.transactionHash
+              : note.withdrawal.publicInputs || note.withdrawal.jobId)
               ? { canCheckRecovery: true as const }
               : {}),
             ...(note.withdrawal.jobId ? { jobId: note.withdrawal.jobId } : {}),
@@ -1417,22 +1423,27 @@ export function createPrivateVaultController(
           acknowledgement.jobId !== previous.jobId ||
           (acknowledgement.transactionHash !== undefined &&
             (typeof acknowledgement.transactionHash !== 'string' ||
-              !/^0x[0-9a-fA-F]{64}$/.test(acknowledgement.transactionHash))) ||
-          (previous.transactionHash &&
-            acknowledgement.transactionHash &&
-            previous.transactionHash !==
-              acknowledgement.transactionHash.toLowerCase())
+              !/^0x[0-9a-fA-F]{64}$/.test(acknowledgement.transactionHash)))
         )
           throw new Error('privacy_withdrawal_attempt_invalid');
         if (
           !acknowledgement.transactionHash ||
-          previous.transactionHash ===
+          (previous.transactionHashes ?? [previous.transactionHash]).includes(
             acknowledgement.transactionHash.toLowerCase()
+          )
         )
           return;
+        const transactionHashes = [
+          ...(previous.transactionHashes ??
+            (previous.transactionHash ? [previous.transactionHash] : [])),
+          acknowledgement.transactionHash.toLowerCase(),
+        ];
+        if (transactionHashes.length > MAX_PRIVACY_RELAY_TRANSACTIONS)
+          throw new Error('privacy_withdrawal_attempt_invalid');
         const withdrawal = {
           ...previous,
-          transactionHash: acknowledgement.transactionHash.toLowerCase(),
+          transactionHash: previous.transactionHash ?? transactionHashes[0],
+          transactionHashes,
         };
         await persist(
           context,
@@ -1910,9 +1921,11 @@ export function createPrivateVaultController(
               throw new Error('privacy_note_restore_required');
             if (
               !note.withdrawal ||
-              note.withdrawal.mode !== 'direct' ||
-              note.withdrawal.phase !== 'submitted' ||
-              !note.withdrawal.transactionHash ||
+              note.withdrawal.unsigned ||
+              (note.withdrawal.mode === 'direct'
+                ? note.withdrawal.phase !== 'submitted' ||
+                  !note.withdrawal.transactionHash
+                : !note.withdrawal.publicInputs && !note.withdrawal.jobId) ||
               note.withdrawal.recovery
             )
               throw new Error('privacy_withdrawal_recovery_unavailable');
@@ -1934,11 +1947,34 @@ export function createPrivateVaultController(
           if (!proof || typeof proof.revalidate !== 'function')
             throw new Error('privacy_withdrawal_recovery_unavailable');
           let recovery: IPrivacyWithdrawalRecovery;
+          let publicInputs:
+            | Readonly<IPrivacyWithdrawalPublicInputs>
+            | undefined;
           try {
             recovery = withdrawalRecovery({
               ...recoveryReceipt(proof.receipt),
               recoveredAt: now(),
             });
+            const value =
+              proof.publicInputs ?? candidate.withdrawal.publicInputs;
+            if (value) {
+              publicInputs = captureWithdrawalPublicInputs(
+                value,
+                candidate.withdrawal.inputHash
+              );
+              if (
+                publicInputs.nullifierHash !==
+                  candidate.identity.nullifierHash ||
+                publicInputs.root !== recovery.root
+              )
+                throw new Error();
+            }
+            if (
+              candidate.withdrawal.mode === 'relayed'
+                ? recovery.kind !== 'relayed-proof-expired' || !publicInputs
+                : recovery.kind !== undefined
+            )
+              throw new Error();
           } catch {
             throw new Error('privacy_withdrawal_recovery_unavailable');
           }
@@ -1956,6 +1992,7 @@ export function createPrivateVaultController(
               throw new Error('privacy_withdrawal_recovery_unavailable');
             const withdrawal = withdrawalJournal({
               ...note.withdrawal!,
+              ...(publicInputs ? { publicInputs } : {}),
               recovery,
             });
             await assertProfile(context);

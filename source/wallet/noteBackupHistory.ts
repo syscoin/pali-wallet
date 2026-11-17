@@ -1,3 +1,9 @@
+import { captureWithdrawalPublicInputs } from '../utils/privacy/withdrawalMetadata.ts';
+import {
+  MAX_PRIVACY_RELAY_TRANSACTIONS,
+  type IPrivacyWithdrawalPublicInputs,
+} from '../utils/privacy/withdrawalTransactionTypes.ts';
+
 export const NOTE_BACKUP_MAX_HISTORY_HINTS = 16;
 const HASH = /^0x[0-9a-f]{64}$/;
 const ADDRESS = /^0x[0-9a-f]{40}$/;
@@ -14,11 +20,15 @@ export interface INoteBackupDepositHistory {
 }
 export interface INoteBackupWithdrawalHistory {
   from?: string;
+  inputHash?: string;
   jobId?: string;
   mode: 'direct' | 'relayed';
   nonce?: string;
   outcome: Outcome;
+  proofHash?: string;
+  publicInputs?: Readonly<IPrivacyWithdrawalPublicInputs>;
   transactionHash?: string;
+  transactionHashes?: readonly string[];
 }
 export interface INoteBackupHistory {
   deposits?: readonly Readonly<INoteBackupDepositHistory>[];
@@ -117,10 +127,37 @@ function withdrawal(value: unknown): Readonly<INoteBackupWithdrawalHistory> {
     'from',
     'nonce',
     'jobId',
+    'proofHash',
+    'inputHash',
+    'publicInputs',
+    'transactionHashes',
   ]);
   const state = outcome(entry.outcome);
   if (entry.mode !== 'direct' && entry.mode !== 'relayed') return invalid();
   const transactionHash = hash(entry.transactionHash);
+  const proofHash = hash(entry.proofHash);
+  const inputHash = hash(entry.inputHash);
+  const publicInputs =
+    entry.publicInputs === undefined
+      ? undefined
+      : inputHash
+      ? captureWithdrawalPublicInputs(entry.publicInputs, inputHash)
+      : invalid();
+  const transactionHashes =
+    entry.transactionHashes === undefined
+      ? undefined
+      : snapshotBackupArray(
+          entry.transactionHashes,
+          MAX_PRIVACY_RELAY_TRANSACTIONS
+        ).map((candidate) => hash(candidate) ?? invalid());
+  if (
+    transactionHashes &&
+    (entry.mode !== 'relayed' ||
+      !transactionHashes.length ||
+      transactionHashes[0] !== transactionHash ||
+      new Set(transactionHashes).size !== transactionHashes.length)
+  )
+    return invalid();
   const identity = senderNonce(entry, entry.mode === 'direct');
   if (entry.mode === 'relayed' && entry.from !== undefined) return invalid();
   if (
@@ -138,6 +175,12 @@ function withdrawal(value: unknown): Readonly<INoteBackupWithdrawalHistory> {
     ...identity,
     ...(transactionHash ? { transactionHash } : {}),
     ...(entry.jobId === undefined ? {} : { jobId: entry.jobId }),
+    ...(proofHash === undefined ? {} : { proofHash }),
+    ...(inputHash === undefined ? {} : { inputHash }),
+    ...(publicInputs === undefined ? {} : { publicInputs }),
+    ...(transactionHashes === undefined
+      ? {}
+      : { transactionHashes: Object.freeze(transactionHashes) }),
   });
 }
 function ordered<T>(values: readonly T[]): readonly T[] {

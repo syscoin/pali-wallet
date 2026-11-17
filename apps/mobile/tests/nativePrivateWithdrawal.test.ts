@@ -1445,3 +1445,48 @@ test('a displaced privacy withdrawal recovers only after finalized nonce consump
     assert.equal(f.posted.length, posted); await retry.dispose();
   } finally { route.abort(); await maintenance?.dispose(); await f.close(); }
 });
+
+for (const lostReply of [false,true]) test(`native relayed proof expiry recovery survives restart (lost reply: ${lostReply}) without trusting relayer failure or using its nonce`, async () => {
+  const f = await fixture(), route = new AbortController();
+  let maintenance: Awaited<ReturnType<NonNullable<KeyringRuntime['openNoteMaintenance']>>> | undefined;
+  try {
+    const inventory = await f.seed(), withdrawalRoute = new AbortController();
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop, testInventoryAuthentication(inventory));
+    await model.loadRelayers();
+    await model.prepare({recipient:RECIPIENT,mode:'relayed',relayerId:model.getSnapshot().relayers[0]!.id});
+    f.loseResponse(lostReply);
+    await model.confirm(model.getSnapshot().review!.intentId);
+    assert.equal(model.getSnapshot().phase,lostReply?'unknown':'submitted');
+    withdrawalRoute.abort(); await model.dispose();
+    const [before] = await f.privateNotes(); assert(before?.withdrawal?.publicInputs);
+    assert.equal(before.withdrawal.phase,lostReply?'unknown':'submitted');
+    f.loseResponse(false); f.enableCompletionReads(); f.completionPoolState(true);
+    maintenance = await f.runtime.openNoteMaintenance!(route.signal,noop,createTestPrivateAuthentication(noop));
+    const disk = await f.storage.notes!.read();
+    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id,noop,noop),/privacy_withdrawal_recovery_unavailable/);
+    assert.deepEqual(await f.storage.notes!.read(),disk);
+    f.completionPoolState(false,true);
+    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id,noop,noop),/privacy_withdrawal_recovery_unavailable/);
+    assert.deepEqual(await f.storage.notes!.read(),disk);
+    f.completionPoolState(false);
+    let rootReads = 0;
+    f.beforeRpc(async method => { if (method==='eth_call' && ++rootReads===3) f.completionPoolState(true); });
+    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id,noop,noop),/privacy_withdrawal_recovery_unavailable/);
+    assert.deepEqual(await f.storage.notes!.read(),disk,'prewrite evidence is repeated, not trusted from preparation');
+    f.beforeRpc(async()=>undefined); f.completionPoolState(false);
+    const rpcStart=f.rpcMethods.length, secretReads=f.secretReads, posts=f.relayedPosts.length, signed=f.signatures;
+    await maintenance.recoverFailedWithdrawal(before.id,noop,noop);
+    assert.equal(f.secretReads,secretReads+1,'recovery uses one existing authenticated lease');
+    assert.equal(f.relayedPosts.length,posts); assert.equal(f.signatures,signed);
+    assert(f.rpcMethods.slice(rpcStart).every(method=>['eth_chainId','eth_getBlockByNumber','eth_call'].includes(method)));
+    const [after]=await f.privateNotes(); assert(after?.withdrawal?.recovery);
+    assert.equal(after.withdrawal.recovery.kind,'relayed-proof-expired');
+    assert.deepEqual({...after.withdrawal,recovery:undefined},{...before.withdrawal,recovery:undefined});
+    route.abort(); await maintenance.dispose(); maintenance=undefined; await f.reopen();
+    assert.deepEqual((await f.privateNotes())[0]!.withdrawal,after.withdrawal);
+    const fresh=await readTestNoteInventory(f.runtime,noop);
+    const retry=await fresh.openWithdrawal!(fresh.notes[0]!,new AbortController().signal,noop,testInventoryAuthentication(fresh));
+    await retry.prepare({recipient:RECIPIENT,mode:'direct'});
+    assert.equal(retry.getSnapshot().phase,'review'); assert.equal(f.relayedPosts.length,posts); await retry.dispose();
+  } finally { route.abort(); await maintenance?.dispose(); await f.close(); }
+});

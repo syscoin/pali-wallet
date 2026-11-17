@@ -11,6 +11,7 @@ import {
 import type { INoteBackupHistory } from './noteBackupHistory.ts';
 import { MAX_ARCHIVED_NOTES, MAX_VAULT_NOTES } from './privateVaultEnvelope.ts';
 import type { identifyClassicNote } from '../utils/privacy/note.ts';
+import type { IPrivacyWithdrawalPublicInputs } from '../utils/privacy/withdrawalTransactionTypes.ts';
 
 // Backup decoding and envelope validation belong to the codec. This leaf only
 // projects restored entries, persists conservative evidence, and plans a merge.
@@ -43,12 +44,16 @@ export interface IPrivateNoteRestoreMetadata {
 }
 interface ILocalJournal {
   from?: string;
+  inputHash?: string;
   jobId?: string;
   mode?: 'direct' | 'relayed';
   nonce?: string;
   phase: 'unknown' | 'submitted';
+  proofHash?: string;
+  publicInputs?: Readonly<IPrivacyWithdrawalPublicInputs>;
   retired?: readonly ILocalJournal[];
   transactionHash?: string;
+  transactionHashes?: readonly string[];
 }
 export interface IRestorableNote {
   archivedAt?: number;
@@ -192,7 +197,7 @@ export function snapshotPrivateNoteRestoreEntries(
 export const privateNoteRestoreDigest = (value: unknown): string =>
   keccak256(toUtf8Bytes(JSON.stringify(value)));
 
-/** Excludes endpoints, proofs, intent IDs and other active-job authority. */
+/** Excludes endpoints, proof bytes, intent IDs and other active-job authority. */
 export function privateNoteCurrentHistory(
   note: IRestorableNote
 ): Readonly<INoteBackupHistory> | undefined {
@@ -224,6 +229,18 @@ export function privateNoteCurrentHistory(
                 ? { transactionHash: entry.transactionHash }
                 : {}),
               ...(entry.jobId ? { jobId: entry.jobId } : {}),
+              ...(entry.proofHash === undefined
+                ? {}
+                : { proofHash: entry.proofHash }),
+              ...(entry.inputHash === undefined
+                ? {}
+                : { inputHash: entry.inputHash }),
+              ...(entry.publicInputs === undefined
+                ? {}
+                : { publicInputs: entry.publicInputs }),
+              ...(entry.transactionHashes === undefined
+                ? {}
+                : { transactionHashes: entry.transactionHashes }),
             })
           ),
         }

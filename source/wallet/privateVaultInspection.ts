@@ -1,6 +1,8 @@
 import { keccak256 } from 'ethers/crypto';
 
 import { identifyClassicNote } from '../utils/privacy/note.ts';
+import { captureWithdrawalPublicInputs } from '../utils/privacy/withdrawalMetadata.ts';
+import { MAX_PRIVACY_RELAY_TRANSACTIONS } from '../utils/privacy/withdrawalTransactionTypes.ts';
 
 import {
   NOTE_BACKUP_MAX_HISTORY_HINTS,
@@ -276,9 +278,11 @@ const WITHDRAWAL_JOURNAL_KEYS = [
   'nonce',
   'phase',
   'proofHash',
+  'publicInputs',
   'recovery',
   'retired',
   'transactionHash',
+  'transactionHashes',
   'unsigned',
 ];
 const MAX_RETIRED_WITHDRAWALS = NOTE_BACKUP_MAX_HISTORY_HINTS - 1;
@@ -287,9 +291,10 @@ export function recoveryReceipt(value: IPrivacyWithdrawalRecoveryReceipt) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    Object.keys(value).length !== 3 ||
+    Object.keys(value).length !== 3 + (value.kind === undefined ? 0 : 1) ||
+    (value.kind !== undefined && value.kind !== 'relayed-proof-expired') ||
     Object.keys(value).some(
-      (key) => !['root', 'blockNumber', 'blockHash'].includes(key)
+      (key) => !['root', 'blockNumber', 'blockHash', 'kind'].includes(key)
     ) ||
     typeof value.root !== 'string' ||
     !HASH.test(value.root) ||
@@ -305,6 +310,7 @@ export function recoveryReceipt(value: IPrivacyWithdrawalRecoveryReceipt) {
   )
     throw new Error('privacy_vault_corrupt');
   return {
+    ...(value.kind ? { kind: value.kind } : {}),
     root: value.root,
     blockNumber: value.blockNumber,
     blockHash: value.blockHash,
@@ -315,10 +321,12 @@ export function withdrawalRecovery(value: IPrivacyWithdrawalRecovery) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    Object.keys(value).length !== 4 ||
+    Object.keys(value).length !== 4 + (value.kind === undefined ? 0 : 1) ||
     Object.keys(value).some(
       (key) =>
-        !['root', 'blockNumber', 'blockHash', 'recoveredAt'].includes(key)
+        !['root', 'blockNumber', 'blockHash', 'recoveredAt', 'kind'].includes(
+          key
+        )
     ) ||
     !Number.isSafeInteger(value.recoveredAt) ||
     value.recoveredAt < 0 ||
@@ -327,6 +335,7 @@ export function withdrawalRecovery(value: IPrivacyWithdrawalRecovery) {
     throw new Error('privacy_vault_corrupt');
   return {
     ...recoveryReceipt({
+      ...(value.kind ? { kind: value.kind } : {}),
       root: value.root,
       blockNumber: value.blockNumber,
       blockHash: value.blockHash,
@@ -461,16 +470,51 @@ export function withdrawalJournal(
       ? value.transactionHash !== undefined || value.jobId !== undefined
       : !value.transactionHash && !value.jobId) ||
     ((value.recovery !== undefined || isRetired) &&
-      (value.mode !== 'direct' ||
+      (!value.recovery ||
+        (value.mode === 'direct'
+          ? value.phase !== 'submitted' ||
+            !value.transactionHash ||
+            value.recovery.kind !== undefined
+          : value.recovery.kind !== 'relayed-proof-expired' ||
+            !value.publicInputs))) ||
+    (value.transactionHashes !== undefined &&
+      (value.mode !== 'relayed' ||
         value.phase !== 'submitted' ||
         !value.transactionHash ||
-        value.recovery === undefined))
+        !Array.isArray(value.transactionHashes) ||
+        !value.transactionHashes.length ||
+        value.transactionHashes.length > MAX_PRIVACY_RELAY_TRANSACTIONS ||
+        value.transactionHashes[0] !== value.transactionHash ||
+        !value.transactionHashes.every(
+          (hash) => typeof hash === 'string' && HASH.test(hash)
+        ) ||
+        new Set(value.transactionHashes).size !==
+          value.transactionHashes.length))
   )
     throw new Error('privacy_vault_corrupt');
   const recovery =
     value.recovery === undefined
       ? undefined
       : withdrawalRecovery(value.recovery);
+  let publicInputs;
+  try {
+    publicInputs =
+      value.publicInputs === undefined
+        ? undefined
+        : captureWithdrawalPublicInputs(value.publicInputs, value.inputHash);
+    if (
+      publicInputs &&
+      ((value.mode === 'direct' &&
+        (publicInputs.relayer !== '0x' + '00'.repeat(20) ||
+          publicInputs.fee !== '0')) ||
+        (value.mode === 'relayed' &&
+          publicInputs.relayer === '0x' + '00'.repeat(20)) ||
+        (recovery && recovery.root !== publicInputs.root))
+    )
+      throw new Error();
+  } catch {
+    throw new Error('privacy_vault_corrupt');
+  }
   let retired: IPrivacyRetiredWithdrawal[] | undefined;
   if (value.retired !== undefined) {
     if (
@@ -481,7 +525,9 @@ export function withdrawalJournal(
       throw new Error('privacy_vault_corrupt');
     const intents = new Set([value.intentId]),
       attempts = new Set([value.attemptHash]),
-      transactions = new Set([value.transactionHash]);
+      transactions = new Set(
+        value.transactionHash ? [value.transactionHash] : []
+      );
     retired = value.retired.map((entry) => {
       const retiredEntry = withdrawalJournal(
         entry,
@@ -490,12 +536,14 @@ export function withdrawalJournal(
       if (
         intents.has(retiredEntry.intentId) ||
         attempts.has(retiredEntry.attemptHash) ||
-        transactions.has(retiredEntry.transactionHash)
+        (retiredEntry.transactionHash !== undefined &&
+          transactions.has(retiredEntry.transactionHash))
       )
         throw new Error('privacy_vault_corrupt');
       intents.add(retiredEntry.intentId);
       attempts.add(retiredEntry.attemptHash);
-      transactions.add(retiredEntry.transactionHash);
+      if (retiredEntry.transactionHash)
+        transactions.add(retiredEntry.transactionHash);
       return retiredEntry;
     });
   }
@@ -504,6 +552,7 @@ export function withdrawalJournal(
     attemptHash: value.attemptHash,
     proofHash: value.proofHash,
     inputHash: value.inputHash,
+    ...(publicInputs ? { publicInputs } : {}),
     createdAt: value.createdAt,
     mode: value.mode,
     phase: value.phase,
@@ -514,6 +563,9 @@ export function withdrawalJournal(
       ? { transactionHash: value.transactionHash }
       : {}),
     ...(value.jobId ? { jobId: value.jobId } : {}),
+    ...(value.transactionHashes
+      ? { transactionHashes: [...value.transactionHashes] }
+      : {}),
     ...(recovery ? { recovery } : {}),
     ...(retired ? { retired } : {}),
     ...(value.unsigned ? { unsigned: unsignedWithdrawal(value.unsigned) } : {}),
@@ -950,6 +1002,15 @@ export async function readPrivateVaultBundle(
         entry.withdrawal === undefined
           ? undefined
           : withdrawalJournal(entry.withdrawal);
+      if (
+        withdrawal &&
+        [withdrawal, ...(withdrawal.retired ?? [])].some(
+          (attempt) =>
+            attempt.publicInputs &&
+            attempt.publicInputs.nullifierHash !== identity.nullifierHash
+        )
+      )
+        throw new Error('privacy_vault_corrupt');
       if (deposit && entry.origin !== 'generated')
         throw new Error('privacy_vault_corrupt');
       const key = `${identity.poolId}:${identity.commitment}`;

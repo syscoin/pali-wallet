@@ -434,12 +434,11 @@ export function createPrivacyWithdrawalsController(
         );
         assertCurrent();
         if (
-          record.transactionHash &&
           observation.transactionHash &&
-          record.transactionHash.toLowerCase() !== observation.transactionHash
-        )
-          throw fail('privacy_relayer_job_invalid');
-        if (observation.transactionHash && !record.transactionHash) {
+          !(record.transactionHashes ?? [record.transactionHash]).includes(
+            observation.transactionHash
+          )
+        ) {
           await host.recordJobStatus(
             noteId,
             record.attemptHash,

@@ -2446,6 +2446,7 @@ export function createKeyringRuntimeFactory(
             };
             check();
             const proofs = createNativeNoteMaintenanceProofs({ network, signal, assertCurrent: check,
+              relayerFetch: dependencies.connectionFetch ?? walletFetch,
               async readOriginalRawTransaction(from, hash, guard) {
                 check(); guard();
                 const row = await signedRecords.readForObservation({ keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, network.chainId, from, hash);

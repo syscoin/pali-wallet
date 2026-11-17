@@ -1957,11 +1957,11 @@
     },
     "recovery": {
       "action": "Verificar recuperação do saque",
-      "help": "A recuperação só está disponível quando a transação original falhou de forma definitiva ou o nonce do pagador foi consumido de forma definitiva, a raiz da prova divulgada deixou de ser aceita e a nota permanece não gasta. A nota e o histórico do saque são preservados. Um novo saque exige uma nova revisão.",
-      "disclosure": "Esta verificação compartilha o endereço do pagador, o hash da transação, a raiz original da prova e o nullifier público da nota com o RPC Ethereum selecionado.",
+      "help": "A recuperação exige uma verificação finalizada de que a raiz da prova divulgada deixou de ser aceita e a nota permanece não gasta. Saques diretos também exigem uma transação com falha finalizada ou um nonce do pagador consumido de forma definitiva. A nota e o histórico do saque são preservados. Um novo saque exige uma nova revisão.",
+      "disclosure": "Esta verificação compartilha a raiz original da prova e o nullifier público da nota com o RPC Ethereum selecionado. Para saques diretos, também compartilha o endereço do pagador e o hash da transação. Um trabalho anterior do relayer pode ser consultado para recuperar as entradas de prova salvas.",
       "password": "Senha da carteira",
       "failed": "Não foi possível confirmar a recuperação. A prova original pode continuar válida, a nota pode ter sido gasta ou as evidências podem estar indisponíveis. Atualize antes de tentar novamente.",
-      "checking": "Verificando a transação finalizada e a expiração da prova…",
+      "checking": "Verificando a expiração finalizada da prova…",
       "confirm": "Verificar e recuperar"
     },
     "restoreReview": {
