@@ -241,22 +241,8 @@ export const ImportToken: React.FC = () => {
         ['wallet', 'getUserOwnedTokens'],
         [activeAccount.address]
       )) as ITokenSearchResult[];
-      // Filter out already imported tokens
-      const filteredResults = results.filter((token) => {
-        try {
-          const tokenId =
-            token.tokenStandard === 'ERC-1155'
-              ? `${token.contractAddress.toLowerCase()}-${
-                  activeNetwork.chainId
-                }-${normalizeNftTokenId(token.tokenId)}`
-              : token.id;
-          return !importedAssetIds.has(tokenId);
-        } catch {
-          return false;
-        }
-      });
-
-      if (isCurrent()) setOwnedTokens(filteredResults);
+      // Membership can change in another wallet document while this view stays open.
+      if (isCurrent()) setOwnedTokens(results);
     } catch (error) {
       console.error('Error loading owned tokens:', error);
       if (isCurrent()) {
@@ -265,14 +251,7 @@ export const ImportToken: React.FC = () => {
     } finally {
       if (isCurrent()) setIsLoadingOwned(false);
     }
-  }, [
-    activeAccount?.address,
-    importedAssetIds,
-    alert,
-    t,
-    activeNetwork.chainId,
-    activeNetwork.apiUrl,
-  ]);
+  }, [activeAccount?.address, activeNetwork.chainId, activeNetwork.apiUrl]);
 
   // Load user's owned tokens - only once per account/network combination
   useEffect(() => {
@@ -753,8 +732,11 @@ export const ImportToken: React.FC = () => {
 
   // Prepare assets for the list
   const ownedAssetsForList = useMemo(
-    () => convertToImportableAssets(ownedTokens),
-    [ownedTokens, convertToImportableAssets]
+    () =>
+      convertToImportableAssets(ownedTokens).filter(
+        (asset) => !importedAssetIds.has(asset.id)
+      ),
+    [ownedTokens, convertToImportableAssets, importedAssetIds]
   );
 
   const customAssetsForList = useMemo(() => {
