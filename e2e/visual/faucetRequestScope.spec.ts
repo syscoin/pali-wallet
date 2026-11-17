@@ -615,6 +615,66 @@ async function runFaucetScope(
       };
     }, CURRENT_HASH);
     const page = wallet.page;
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.evaluate((title) => {
+      const inspect = (target: Element) => {
+        const style = getComputedStyle(target);
+        const animation = target
+          .getAnimations()
+          .find(
+            (candidate) =>
+              candidate instanceof CSSAnimation &&
+              candidate.animationName === 'slideIn'
+          );
+        return {
+          connected: target.isConnected,
+          reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+          name: style.animationName,
+          duration: style.animationDuration,
+          easing: style.animationTimingFunction,
+          transform: style.transform,
+          transition: style.transitionProperty,
+          playState: animation?.playState ?? null,
+          currentTime:
+            typeof animation?.currentTime === 'number'
+              ? animation.currentTime
+              : null,
+        };
+      };
+      const samples: Array<{
+        initial: ReturnType<typeof inspect>;
+        progressed: ReturnType<typeof inspect> | null;
+      }> = [];
+      const seen = new WeakSet<Element>();
+      const observer = new MutationObserver(() => {
+        const dialog = Array.from(
+          document.querySelectorAll('[role="dialog"]')
+        ).find((node) =>
+          Array.from(node.querySelectorAll('h2')).some(
+            (heading) => heading.textContent === title
+          )
+        );
+        const target = dialog?.querySelector(
+          '.relative.flex.w-full.justify-center'
+        );
+        if (!target || seen.has(target)) return;
+        seen.add(target);
+        // Capture the inserted sheet before its 200ms entrance can finish.
+        const sample = { initial: inspect(target), progressed: null } as {
+          initial: ReturnType<typeof inspect>;
+          progressed: ReturnType<typeof inspect> | null;
+        };
+        samples.push(sample);
+        setTimeout(() => {
+          sample.progressed = inspect(target);
+        }, 80);
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      (window as any).__faucetSheetMotion = {
+        snapshot: () => samples,
+        stop: () => observer.disconnect(),
+      };
+    }, en.settings.successfullyCopied);
     const copy = page.getByRole('button', {
       name: en.buttons.copy,
       exact: true,
@@ -628,18 +688,78 @@ async function runFaucetScope(
     });
     const clipboard = () =>
       page.evaluate(() => (window as any).__faucetCopy.snapshot());
-    const waitForCopied = async () => {
+    let checkedSheetOpenings = 0;
+    const waitForCopied = async (dismissal: 'close' | 'escape' = 'close') => {
       await expect(copied).toBeVisible();
       await expect(page).toHaveURL(/#\/faucet$/);
       expect(claims).toHaveLength(2);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => (window as any).__faucetSheetMotion.snapshot().length
+          )
+        )
+        .toBe(checkedSheetOpenings + 1);
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            Boolean(
+              (window as any).__faucetSheetMotion.snapshot().at(-1)?.progressed
+            )
+          )
+        )
+        .toBe(true);
+      const motion = await page.evaluate(() =>
+        (window as any).__faucetSheetMotion.snapshot().at(-1)
+      );
+      checkedSheetOpenings++;
+      expect(motion.initial.connected).toBe(true);
+      expect(motion.progressed.connected).toBe(true);
+      if (motion.initial.reduced) {
+        expect(motion.initial.name).toBe('none');
+        expect(motion.initial.playState).toBeNull();
+        expect(motion.initial.currentTime).toBeNull();
+        expect(motion.initial.transition).toBe('none');
+        expect(motion.progressed.name).toBe('none');
+        expect(motion.progressed.transform).toBe(motion.initial.transform);
+      } else {
+        expect(motion.initial.name).toBe('slideIn');
+        expect(motion.initial.duration).toBe('0.2s');
+        expect(motion.initial.easing).toBe('ease-in-out');
+        expect(motion.initial.playState).toBe('running');
+        expect(motion.initial.currentTime).not.toBeNull();
+        expect(motion.initial.currentTime).toBeGreaterThanOrEqual(0);
+        expect(motion.initial.currentTime).toBeLessThan(200);
+        expect(motion.progressed.transform).not.toBe(motion.initial.transform);
+      }
+      observations[`copy-sheet-motion-${checkedSheetOpenings}`] = motion;
+      await info.attach(`copy-sheet-motion-${checkedSheetOpenings}`, {
+        body: JSON.stringify(motion, null, 2),
+        contentType: 'application/json',
+      });
+      await page.keyboard.press('Tab');
+      expect(
+        await copied.evaluate((element) =>
+          element.contains(document.activeElement)
+        )
+      ).toBe(true);
+      await page.keyboard.press('Shift+Tab');
+      expect(
+        await copied.evaluate((element) =>
+          element.contains(document.activeElement)
+        )
+      ).toBe(true);
       // The existing status modal auto-dismisses. Its header Close must not
       // activate the underlying faucet's distinct navigation action.
-      await copied
-        .getByRole('button', { name: en.buttons.close, exact: true })
-        .click();
+      if (dismissal === 'escape') await page.keyboard.press('Escape');
+      else
+        await copied
+          .getByRole('button', { name: en.buttons.close, exact: true })
+          .click();
       await expect(page).toHaveURL(/#\/faucet$/);
       await expect(copied).toHaveCount(0);
       await expect(copy).toHaveText(CURRENT_HASH);
+      await expect(copy).toBeFocused();
     };
     await page.setViewportSize(viewport);
     await wallet.step(
@@ -770,6 +890,7 @@ async function runFaucetScope(
     await wallet.step(
       `faucet copy: native Space and pointer retain exact-hash copying at ${viewport.width}x${viewport.height}`,
       async (capture) => {
+        await page.emulateMedia({ reducedMotion: 'reduce' });
         let before = (await clipboard()).writes.length;
         await tabTo(page, copy);
         await exposed(page, copy);
@@ -777,10 +898,11 @@ async function runFaucetScope(
         await waitForCopied();
         expect((await clipboard()).writes).toHaveLength(before + 1);
         before += 1;
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
         await copy.scrollIntoViewIfNeeded();
         await exposed(page, copy);
         await copy.click();
-        await waitForCopied();
+        await waitForCopied('escape');
         expect((await clipboard()).writes).toHaveLength(before + 1);
         await capture(page);
       }
@@ -987,7 +1109,10 @@ async function runFaucetScope(
         try {
           if (wallet && !wallet.page.isClosed())
             await wallet.page
-              .evaluate(() => (window as any).__faucetCopy?.restore())
+              .evaluate(() => {
+                (window as any).__faucetSheetMotion?.stop();
+                (window as any).__faucetCopy?.restore();
+              })
               .catch(() => undefined);
           await wallet?.dispose(status);
         } finally {
