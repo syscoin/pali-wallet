@@ -133,6 +133,50 @@ const prepareForm = async (chainId: string) => {
 const saves = () =>
   mockEmitter.mock.calls.filter(([[, method]]) => method === 'addCustomRpc');
 
+it('recovers the same RPC after invalid discovery without clearing the cache or waiting', async () => {
+  let healthy = false;
+  jest.mocked(globalThis.fetch).mockImplementation(
+    async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          jsonrpc: '2.0',
+          id: 1,
+          result: healthy ? '0x7a69' : 'not-a-chain-id',
+        }),
+      } as Response)
+  );
+  const user = userEvent.setup();
+  render(<CustomRPC />);
+  await user.type(screen.getByRole('combobox'), 'Public chain');
+  const url = screen.getByPlaceholderText('settings.rpcUrlPlaceholder');
+  await user.type(url, rpcUrl);
+  await user.tab();
+  const error = 'Invalid RPC URL. Could not get chain ID for network.';
+  expect(await screen.findByText(error)).toBeVisible();
+  expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  expect(saves()).toHaveLength(0);
+
+  healthy = true;
+  await user.click(url);
+  await user.tab();
+  await waitFor(() =>
+    expect(
+      screen.getByPlaceholderText('settings.chainIdCustomEvm')
+    ).toHaveValue('31337')
+  );
+  await waitFor(() =>
+    expect(screen.queryByText(error)).not.toBeInTheDocument()
+  );
+  expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  await user.type(screen.getByPlaceholderText('settings.symbol'), 'ETH');
+  await user.click(screen.getByRole('button', { name: 'buttons.save' }));
+  await waitFor(() => expect(saves()).toHaveLength(1));
+  expect(saves()[0][1][0]).toMatchObject({ chainId: 31337, url: rpcUrl });
+  expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+});
+
 it.each(['31337', ' 31337 '])(
   'saves a complete positive decimal chain ID %j as the detected integer',
   async (chainId) => {

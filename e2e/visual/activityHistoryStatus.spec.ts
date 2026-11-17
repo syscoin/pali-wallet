@@ -60,10 +60,14 @@ const visibleControlBounds = async (page: Page, control: Locator) => {
   await control.scrollIntoViewIfNeeded();
   const geometry = await control.evaluate((element) => {
     const bounds = element.getBoundingClientRect();
+    const centerX = bounds.left + bounds.width / 2;
+    const centerY = bounds.top + bounds.height / 2;
     const points = [
-      [bounds.left + bounds.width / 2, bounds.top + bounds.height / 2],
-      [bounds.left + 2, bounds.top + 2],
-      [bounds.right - 2, bounds.bottom - 2],
+      [centerX, centerY],
+      [bounds.left + 2, centerY],
+      [bounds.right - 2, centerY],
+      [centerX, bounds.top + 2],
+      [centerX, bounds.bottom - 2],
     ];
     return {
       left: bounds.left,
@@ -88,7 +92,7 @@ const visibleControlBounds = async (page: Page, control: Locator) => {
   expect(geometry.top).toBeGreaterThanOrEqual(0);
   expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
   expect(geometry.documentWidth).toBe(geometry.viewportWidth);
-  expect(geometry.hits).toEqual([true, true, true]);
+  expect(geometry.hits).toEqual([true, true, true, true, true]);
   return geometry;
 };
 

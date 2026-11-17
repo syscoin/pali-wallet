@@ -3,7 +3,7 @@
   "version": "5.0.0",
   "description": "Self-custody wallet for Bitcoin, Ethereum and supported EVM/UTXO networks, with dApps, tokens and hardware-wallet support.",
   "private": true,
-  "paliSysweb3Overlay": "sysweb3.6b362540d1a73bc6d48111d3f96456503261407a.sha256.6fb296e4037bff5d2193ff142955053b43342777669946a89ed13c709374fb6a",
+  "paliSysweb3Overlay": "sysweb3.ae0ba838c6e40f78cadb598c52b43813303625b7.sha256.e9b3a37374d28bf966ab5dab7569680798056f3f6a8b04754bdaca95264466c1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/syscoin/pali-wallet.git"

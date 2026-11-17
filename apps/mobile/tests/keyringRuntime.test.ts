@@ -43,6 +43,7 @@ import type { DappGrant } from '../../../source/shared/dappTypes.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { captureSmartAccountCallsIdentity } from '../../../source/shared/dappCallsStatus.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
+import { UTXO_SIGNED_RECORD_KEY } from '../../../source/wallet/utxoSignedRecords.ts';
 import { encrypt, recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
 const softwarePsbtHandoff = { id: 'software-fixture', expiresAt: Number.MAX_SAFE_INTEGER, beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
@@ -109,7 +110,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   let identityHook: (() => Promise<void>) | undefined;
   let utxoSigned: string | undefined;
   const utxoPort: NonNullable<OpenWalletStorage['utxoSignedRecords']> = {
-    async read() { return utxoSigned; },
+    async read() { const value = utxoSigned; await recordHook?.('get', UTXO_SIGNED_RECORD_KEY); return value; },
     async compareAndSet(_profile, expected, next, guard) { guard(); if (utxoSigned !== expected) return false; utxoSigned = next; return true; },
   };
   const originalFetch = globalThis.fetch;
@@ -378,19 +379,12 @@ test('connection host retains its wallet owner across lock while disclosing only
   }
 });
 
-test('connection UTXO public reads use the real SDK and reject a retired owner after held Blockbook discovery', async () => {
-  const { getUtxoNetwork } = await import('../src/core/utxoNetworks.ts');
+test('connection UTXO public derivations use the real local allocator and reject a retired owner after its held record read', async () => {
   const [{ getNetworkConfig }, { utils }] = await Promise.all([import('@sidhujag/sysweb3-network'), import('syscoinjs-lib')]);
-  const network = getUtxoNetwork('bitcoin'), requests: string[] = [];
-  let hold: (() => Promise<void>) | undefined;
-  const disk = memoryDisk(undefined, undefined, undefined, undefined, async (input, init) => {
+  const requests: string[] = [];
+  const disk = memoryDisk(undefined, undefined, undefined, undefined, async (input) => {
     const url = String(input); requests.push(url);
-    assert.equal(init?.method, 'GET'); assert.equal(init?.credentials, 'omit'); assert.equal(init?.redirect, 'error');
-    assert.match(url, /^https:\/\//);
-    assert(url.startsWith(network.endpoint + '/api/v2/xpub/'));
-    assert(url.endsWith('?tokens=used&details=tokens'));
-    await hold?.();
-    const response = Response.json({ tokens: [] }); Object.defineProperty(response, 'url', { value: url }); return response;
+    throw Error('Local public derivation must not request Blockbook discovery');
   });
   const runtime = await disk.factory.open() as KeyringRuntime;
   const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
@@ -410,17 +404,21 @@ test('connection UTXO public reads use the real SDK and reject a retired owner a
       assert.equal(await runtime.readConnectionUtxoPublic('getCurrentAddressPubkey', scope, change, signal, () => undefined), hd.Signer.accounts.get(account.index).getPublicKey(0, change));
       assert.equal(await runtime.readConnectionUtxoPublic('getBip32Path', scope, change, signal, () => undefined), `m/84'/0'/0'/${change ? 1 : 0}/0`);
     }
-    assert.equal(requests.length, 5);
+    assert.equal(requests.length, 0, 'All five address, public-key and path reads use the durable local allocator');
     const before = requests.length;
     await assert.rejects(runtime.readConnectionUtxoPublic('getBip32Path', { ...scope, accountId: 'hd:0:999' }, false, signal, () => undefined));
     assert.equal(requests.length, before, 'a different account cannot disclose its xpub');
     let current = true;
-    hold = async () => { entered.resolve(); await release.promise; };
+    disk.onRecord(async (kind, key) => {
+      if (kind === 'get' && key === UTXO_SIGNED_RECORD_KEY) {
+        disk.onRecord(); entered.resolve(); await release.promise;
+      }
+    });
     const work = runtime.readConnectionUtxoPublic('getCurrentAddressPubkey', scope, false, signal, () => { if (!current) throw Error('retired request owner'); });
-    const refused = assert.rejects(work);
+    const refused = assert.rejects(work, /retired request owner/);
     await entered.promise; current = false; release.resolve(); await refused;
-    assert.equal(requests.length, before + 1);
-  } finally { release.resolve(); await owner.dispose(); disk.restoreNetwork(); }
+    assert.equal(requests.length, before, 'A retired local derivation never falls back to discovery RPC');
+  } finally { release.resolve(); disk.onRecord(); await owner.dispose(); disk.restoreNetwork(); }
 });
 
 test('connection external PSBT runtime captures the selected account and aborts held prevout reads before a facade exists', async () => {

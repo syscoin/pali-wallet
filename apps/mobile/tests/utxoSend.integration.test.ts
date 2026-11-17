@@ -28,6 +28,7 @@ import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import {
   UTXO_SIGNED_RECORD_KEY,
   UtxoSignedRecords,
+  inspectUtxoSignedBundle,
 } from '../../../source/wallet/utxoSignedRecords.ts';
 import { SENTRY_NETWORKS } from '../../../source/shared/sentryNetworks.ts';
 import { SYSX_ASSET_DECIMALS, SYSX_ASSET_GUID } from '../../../source/shared/syscoinAssetIds.ts';
@@ -474,7 +475,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
         draft.rbf = true;
         return pending;
       });
-      assert.equal(calls.slice(callStart).filter((call) => call.includes('/api/v2/xpub/')).length, type === 'HDAccount' ? 1 : 0);
+      assert.equal(calls.slice(callStart).filter((call) => call.includes('/api/v2/xpub/')).length, 0, 'Ordinary SPT quotes use locally issued change without address-discovery RPC');
       assert.deepEqual(review.assetDisplay, originalAsset);
       assert.deepEqual(review.transactionOptions, { rbf: false, zdag: true });
       assert.equal(review.outputs[0]?.address, recipient);
@@ -483,6 +484,15 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       const change = review.outputs.find(({ address, asset }) => address !== recipient && asset);
       assert.equal(change?.asset?.rawAmount, '187654322');
       assert.equal(change?.address === account.address, type === 'Imported');
+      if (type === 'HDAccount') {
+        const saved = await storage.utxoSignedRecords!.read(profileId);
+        assert(saved);
+        const issued = inspectUtxoSignedBundle(saved, profileId).discovery?.flatMap(({ paths }) => paths).find(({ branch }) => branch === 1);
+        assert(issued, 'The real allocator durably retains the reviewed change path');
+        assert.equal(issued.address, change?.address);
+        assert.equal(issued.path, `m/84'/${network.slip44}'/${account.id}'/1/${issued.index}`);
+        assert.equal(issued.script, Buffer.from(bitcoin.address.toOutputScript(issued.address, network.addressNetwork)).toString('hex'));
+      }
       assert(BigInt(review.feeSatoshis) > 0n);
       await assert.rejects(send.confirm({ ...review }, { method: 'device' }), /NOT_READY/);
       assert.equal(sign.mock.callCount(), 0);

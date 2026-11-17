@@ -36,7 +36,7 @@ import { createNativePrivacyServiceSettings } from '../src/platform/privacyServi
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { PRIVACY_SERVICE_ORIGIN_STORAGE_KEY } from '../../../source/shared/privacyServiceOrigin.ts';
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
-import { readPrivateVaultBundle } from '../../../source/wallet/privateVaultInspection.ts';
+import { readPrivateVaultBundle, type IStoredNote } from '../../../source/wallet/privateVaultInspection.ts';
 
 const credentialPort = createTestCredentialPort();
 
@@ -50,6 +50,14 @@ const depositAbi = new Interface([
   'event Withdrawal(address to, bytes32 nullifierHash, address indexed relayer, uint256 fee)',
 ]);
 const RECIPIENT = '0x' + '12'.repeat(20);
+
+const assertArchivedRecoveryNote = (saved: IStoredNote | undefined, original: IStoredNote) => {
+  assert(saved);
+  const { archivedAt, ...recovery } = saved;
+  assert(Number.isSafeInteger(archivedAt) && archivedAt! > 0);
+  assert.deepEqual(recovery, original, 'Archiving preserves the raw secret and every recovery field');
+  return saved;
+};
 
 async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-private-deposit-'));
@@ -1049,7 +1057,7 @@ test('deposit cancellation immediately after reservation commit clears only its 
 });
 
 
-test('native maintenance clears only shared-verified completed notes and preserves unspent notes and custody', async () => {
+test('native maintenance archives only shared-verified completed notes and preserves recovery secrets, unspent notes and custody', async () => {
   const f = await fixture(); const route = new AbortController();
   try {
     const inventory = await f.seed();
@@ -1068,12 +1076,22 @@ test('native maintenance clears only shared-verified completed notes and preserv
     const notes = await maintenance.getNotes(noop); assert.equal(notes.notes.length, 2);
     assert.equal(f.rpcMethods.length, localReads, 'opening inventory performs no note-specific RPC');
     assert.deepEqual(await maintenance.clearCompletedNotes([completed.id], noop, noop, noop), { removed: [completed.id], unresolved: [] });
-    assert.deepEqual((await f.privateNotes()).map(note => note.id), [unspent.id]);
+    const saved = await f.privateNotes();
+    assert.equal(saved.length, 2, 'Full encrypted recovery retains both notes');
+    const archived = assertArchivedRecoveryNote(saved.find(note => note.id === completed.id), completed);
+    assert.deepEqual(saved.find(note => note.id === unspent.id), unspent);
+    assert.deepEqual((await maintenance.getNotes(noop)).notes.map(note => note.id), [unspent.id]);
     assert(f.runtime.catalogue.getSnapshot());
     assert.equal(f.posted.length, 2, 'maintenance does not sign or broadcast');
     route.abort(); await maintenance.dispose();
     await f.runtime.session.lock(); await f.runtime.session.unlock();
-    assert.deepEqual((await f.privateNotes()).map(note => note.id), [unspent.id]);
+    const restarted = await f.privateNotes();
+    assert.deepEqual(restarted.find(note => note.id === completed.id), archived);
+    assert.deepEqual(restarted.find(note => note.id === unspent.id), unspent);
+    const active = await readTestNoteInventory(f.runtime, noop);
+    assert.equal(active.notes.length, 1);
+    assert.equal(active.notes[0]!.createdAt, unspent.createdAt);
+    assert.equal(active.archiveSummary?.noteCount, 1);
   } finally { route.abort(); await f.close(); }
 });
 
@@ -1149,8 +1167,13 @@ test('single-note maintenance reaches a completed seventh note past a slow unres
     route.abort(); await maintenance.dispose(); maintenance = undefined;
     await f.reopen();
     const after = await f.privateNotes();
-    assert.equal(after.length, 6);
-    assert(after.every(note => note.id !== last.id));
+    assert.equal(after.length, 7, 'Restart recovery includes the archived seventh secret');
+    assertArchivedRecoveryNote(after.find(note => note.id === last.id), last);
+    assert.deepEqual(after.filter(note => note.id !== last.id), before.filter(note => note.id !== last.id));
+    const active = await readTestNoteInventory(f.runtime, noop);
+    assert.equal(active.notes.length, 6);
+    assert(active.notes.every(note => note.createdAt !== last.createdAt));
+    assert.equal(active.archiveSummary?.noteCount, 1);
   } finally {
     context.mock.restoreAll();
     routes.forEach(route => route.abort());
@@ -1185,7 +1208,7 @@ for (const cancel of ['route', 'lock'] as const) test(`native maintenance rolls 
   } finally { hold = false; release.resolve(); route.abort(); await f.close(); }
 });
 
-test('native maintenance preserves a lost-ack removal and never processes the remaining notes', async () => {
+test('native maintenance preserves a lost-ack archive and never processes the remaining notes', async () => {
   let armed = false, noteWrite = false, writes = 0;
   const f = await fixture({ after(kind, sql) {
     if (armed && kind === 'run' && sql.startsWith('INSERT INTO private_note_records')) { noteWrite = true; writes++; }
@@ -1210,7 +1233,14 @@ test('native maintenance preserves a lost-ack removal and never processes the re
     assert.equal(writes, 1); assert.deepEqual(progress, []);
     assert.equal(f.secretReads, authorizations + 1, 'An uncertain commit must not cause another prompt or replay');
     route.abort(); await maintenance.dispose(); await f.reopen();
-    assert.deepEqual((await f.privateNotes()).map(note => note.id).sort(), remaining.sort());
+    const after = await f.privateNotes();
+    assert.equal(after.length, before.length, 'An uncertain archive acknowledgement never deletes the selected secret');
+    assertArchivedRecoveryNote(after.find(note => note.id === completed.id), completed);
+    assert.deepEqual(after.filter(note => note.id !== completed.id), before.filter(note => note.id !== completed.id));
+    const active = await readTestNoteInventory(f.runtime, noop);
+    assert.equal(active.notes.length, remaining.length);
+    assert(active.notes.every(note => note.createdAt !== completed.createdAt));
+    assert.equal(active.archiveSummary?.noteCount, 1);
   } finally { armed = false; route.abort(); await f.close(); }
 });
 

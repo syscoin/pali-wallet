@@ -67,6 +67,104 @@ type AxObservation = {
   value: string | null;
 };
 
+// Test-only observation of public fee IPC. The native API receives the original
+// request; its callback receives the exact original response, synchronously.
+// Never retain params, transaction/result bodies, approval IDs or credentials.
+async function observePublicFeeFailures(context: BrowserContext) {
+  await context.addInitScript(() => {
+    if (
+      !globalThis.chrome?.runtime?.id ||
+      new URL(chrome.runtime.getURL('/')).host !== location.host
+    )
+      return;
+    const methods = new Set([
+      'authorizeDappManualNonce',
+      'reviewDappEvmFee',
+      'discardNativeEvmFeeReview',
+    ]);
+    const records: Array<Record<string, unknown>> = [];
+    Object.defineProperty(window, '__paliPublicFeeDiagnostics', {
+      value: records,
+    });
+    const runtime = chrome.runtime as unknown as {
+      lastError?: { message?: string };
+      sendMessage: (...args: any[]) => unknown;
+    };
+    const original = runtime.sendMessage;
+    const errorFields = (error: unknown) => {
+      const source =
+        typeof error === 'string'
+          ? { message: error }
+          : error && typeof error === 'object'
+          ? (error as Record<string, unknown>)
+          : {};
+      return {
+        ...(typeof source.code === 'number' || typeof source.code === 'string'
+          ? { code: String(source.code).slice(0, 80) }
+          : {}),
+        ...(typeof source.message === 'string'
+          ? {
+              message: source.message
+                .replace(/0x[0-9a-f]{16,}/gi, '[hex]')
+                .slice(0, 240),
+            }
+          : {}),
+        ...(typeof source.name === 'string'
+          ? { name: source.name.slice(0, 80) }
+          : {}),
+      };
+    };
+    runtime.sendMessage = function (...args: any[]) {
+      const request = args[0],
+        callback = args[args.length - 1];
+      if (
+        request?.type !== 'CONTROLLER_ACTION' ||
+        !Array.isArray(request.data?.methods) ||
+        request.data.methods.length !== 2 ||
+        request.data.methods[0] !== 'wallet' ||
+        !methods.has(request.data.methods[1]) ||
+        typeof callback !== 'function'
+      )
+        return Reflect.apply(original, this, args);
+      const entry: Record<string, unknown> = {
+        method: request.data.methods[1],
+        stage: 'sent',
+        startedAt: performance.now(),
+        path: location.pathname.slice(0, 128),
+      };
+      records.push(entry);
+      if (records.length > 32) records.shift();
+      const forwarded = [...args];
+      forwarded[forwarded.length - 1] = function (...responses: any[]) {
+        try {
+          const response = responses[0];
+          const error =
+            runtime.lastError ||
+            (response?.error === true ? response : response?.error);
+          Object.assign(entry, {
+            stage: error ? 'rejected' : 'resolved',
+            elapsedMs: performance.now() - Number(entry.startedAt),
+            ...(error ? { error: errorFields(error) } : {}),
+          });
+        } catch {
+          /* Diagnostics cannot alter the original callback. */
+        }
+        return Reflect.apply(callback, this, responses);
+      };
+      try {
+        return Reflect.apply(original, this, forwarded);
+      } catch (error) {
+        try {
+          Object.assign(entry, { stage: 'threw', error: errorFields(error) });
+        } catch {
+          /* Preserve the original API exception even if observation fails. */
+        }
+        throw error;
+      }
+    };
+  });
+}
+
 async function publicState(page: Page, host: string) {
   return page.evaluate(async (origin) => {
     const state = await chrome.runtime.sendMessage({ type: 'getCurrentState' });
@@ -448,6 +546,7 @@ for (const view of ['details', 'account-mismatch'] as const) {
           offlineHttpProxy: server.url,
           viewport: { width: 400, height: 620 },
         });
+        await observePublicFeeFailures(wallet.context);
         const observe = (page: Page) =>
           page.on('pageerror', (error) => pageErrors.push(error.message));
         wallet.context.pages().forEach(observe);
@@ -1058,6 +1157,19 @@ for (const view of ['details', 'account-mismatch'] as const) {
         expect(observations).toHaveLength(3);
         status = info.errors.length === 0 ? 'passed' : 'failed';
       } finally {
+        if (activePopup && !activePopup.isClosed()) {
+          const feeDiagnostic = await activePopup
+            .evaluate(() => ({
+              language: document.documentElement.lang,
+              path: location.pathname,
+              records: (window as any).__paliPublicFeeDiagnostics ?? [],
+            }))
+            .catch(() => ({ unavailable: true }));
+          await info.attach('public-fee-failure-diagnostic-' + view, {
+            contentType: 'application/json',
+            body: JSON.stringify(feeDiagnostic),
+          });
+        }
         try {
           await info.attach(
             'approval-purpose-native-browser-evidence-' + view,

@@ -1,6 +1,6 @@
 # Temporary Sysweb3 integration
 
-Pali applies the reviewed runtime changes from [SDK PR #119](https://github.com/sidhujag/sysweb3/pull/119), commit `6b362540d1a73bc6d48111d3f96456503261407a`, over its existing npm packages. The SDK PR remains open; package versions stay at the published versions below.
+Pali applies the reviewed runtime changes from [SDK PR #119](https://github.com/sidhujag/sysweb3/pull/119), commit `ae0ba838c6e40f78cadb598c52b43813303625b7`, over its existing npm packages. The SDK PR remains open; package versions stay at the published versions below.
 
 | Package | Published base | Changed artifacts |
 | --- | --- | --- |
@@ -8,7 +8,7 @@ Pali applies the reviewed runtime changes from [SDK PR #119](https://github.com/
 | `@sidhujag/sysweb3-network` | `2.0.0` | 12 transport, network-discovery, declaration and export files |
 | `@sidhujag/sysweb3-utils` | `1.1.282` | 3 token-metadata implementation, declaration and source-map files |
 
-`sysweb3-overlay.json` records the source commit/tree, compiler, original npm archive integrities, and before/after SHA-256 and byte lengths for all 410 runtime artifacts. Its 82 changed outputs are stored in `sysweb3-overlay.deflate`: 374,128 compressed bytes, expanding to exactly 1,947,054 bytes. The overlay covers both Keyring entry formats, the shared Network transport, and Utils' metadata-only APIs. It keeps published documentation and compiled tests unchanged. UTXO address selection uses the wallet-owned allocation port; ordinary address and change reads do not query backend token indexes.
+`sysweb3-overlay.json` records the source commit/tree, compiler, original npm archive integrities, and before/after SHA-256 and byte lengths for all 410 runtime artifacts. Its 82 changed outputs are stored in `sysweb3-overlay.deflate`: 374,155 compressed bytes, expanding to exactly 1,947,079 bytes. The overlay covers both Keyring entry formats, the shared Network transport, and Utils' metadata-only APIs. It keeps published documentation and compiled tests unchanged. UTXO address selection uses the wallet-owned allocation port; ordinary address and change reads do not query backend token indexes.
 
 Root and mobile postinstall run the same offline installer. It validates all three packages and all artifact hashes before writing, refuses linked targets and shadowing nested SDK dependencies, and accepts only pristine or exact reviewed bytes. SDK dependency edges from every directly declared Sysweb3 consumer must resolve to these packages. The verifier also rejects `node_modules/node_modules` SDK shadows, which Webpack searches even though Node skips that ancestor. Verified partial installs and exact owned temporary files can resume. Common webpack configuration verifies the overlay before any extension bundle; native qualification verifies it and includes its identity in the build record. Installation never downloads or builds SDK code.
 
