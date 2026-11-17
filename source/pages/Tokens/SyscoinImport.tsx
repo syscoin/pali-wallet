@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
+import { parseSyscoinAssetGuid } from '../../shared/syscoinAssetIds';
 import { getHomeBrowsingScope } from '../Home/useHomeBrowsingState';
 import { TbFileImport } from 'components/Icon/Icon';
 import {
@@ -128,28 +129,46 @@ export const SyscoinImport: React.FC = () => {
   const validationKey = `${tokenImportScope}:${customAssetGuid.trim()}`;
   const validationKeyRef = useRef(validationKey);
   validationKeyRef.current = validationKey;
-  const importOperationRef = useRef<object | null>(null);
+  const importOperationRef = useRef<{ assetGuid: string } | null>(null);
+  const publishedImportGuidsRef = useRef(new Set<string>());
 
   // Calculate imported asset GUIDs for efficient lookup
-  const importedAssetGuids = useMemo(() => {
+  const savedAssetGuids = useMemo(() => {
     const guids = new Set<string>();
     if (activeAccountAssets?.syscoin) {
       activeAccountAssets.syscoin
         .filter((token) => token.chainId === activeNetwork.chainId)
         .forEach((token) => {
-          if (token.assetGuid) {
-            guids.add(token.assetGuid);
-          }
+          const guid = parseSyscoinAssetGuid(
+            typeof token.assetGuid === 'string'
+              ? token.assetGuid.replace(/^0+(?=\d)/, '')
+              : token.assetGuid
+          );
+          if (guid) guids.add(guid);
         });
     }
-    // Also add recently imported GUIDs
-    recentlyImportedGuids.forEach((guid) => guids.add(guid));
     return guids;
-  }, [
-    activeAccountAssets?.syscoin,
-    activeNetwork.chainId,
-    recentlyImportedGuids,
-  ]);
+  }, [activeAccountAssets?.syscoin, activeNetwork.chainId]);
+
+  useEffect(() => {
+    // Publication may precede the save reply. Once observed, a later public
+    // removal must win over this view's optimistic Added marker, including late replies.
+    savedAssetGuids.forEach((guid) => {
+      if (
+        recentlyImportedGuids.has(guid) ||
+        importOperationRef.current?.assetGuid === guid
+      )
+        publishedImportGuidsRef.current.add(guid);
+    });
+  }, [savedAssetGuids, recentlyImportedGuids]);
+
+  const importedAssetGuids = useMemo(() => {
+    const guids = new Set(savedAssetGuids);
+    recentlyImportedGuids.forEach((guid) => {
+      if (!publishedImportGuidsRef.current.has(guid)) guids.add(guid);
+    });
+    return guids;
+  }, [savedAssetGuids, recentlyImportedGuids]);
 
   // PATH 1: Load tokens user actually owns
   const loadOwnedTokens = useCallback(async () => {
@@ -174,15 +193,7 @@ export const SyscoinImport: React.FC = () => {
         [activeAccount.address]
       )) as ISysTokensAssetReponse[];
 
-      // Filter out already imported tokens BUT keep recently imported ones for UI consistency
-      const filteredResults =
-        results?.filter(
-          (token) =>
-            !importedAssetGuids.has(token.assetGuid) ||
-            recentlyImportedGuids.has(token.assetGuid)
-        ) || [];
-
-      if (isCurrent()) setOwnedTokens(filteredResults);
+      if (isCurrent()) setOwnedTokens(results || []);
     } catch (error) {
       console.error('Error loading owned tokens:', error);
       if (isCurrent()) {
@@ -192,13 +203,7 @@ export const SyscoinImport: React.FC = () => {
     } finally {
       if (isCurrent()) setIsLoadingOwned(false);
     }
-  }, [
-    activeAccount?.address,
-    activeAccount?.xpub,
-    importedAssetGuids,
-    recentlyImportedGuids,
-    tokenImportScope,
-  ]);
+  }, [activeAccount?.address, activeAccount?.xpub, tokenImportScope]);
 
   // Load user's owned tokens - only once per account/network combination
   useEffect(() => {
@@ -318,7 +323,14 @@ export const SyscoinImport: React.FC = () => {
   const handleImport = async (asset: any) => {
     if (importOperationRef.current)
       throw new Error('A token import is already in progress');
-    const operation = {};
+    const operation = { assetGuid: asset.assetGuid };
+    publishedImportGuidsRef.current.delete(asset.assetGuid);
+    setRecentlyImportedGuids((previous) => {
+      if (!previous.has(asset.assetGuid)) return previous;
+      const next = new Set(previous);
+      next.delete(asset.assetGuid);
+      return next;
+    });
     importOperationRef.current = operation;
     setImportSuccess(null);
     const scope = tokenImportScope;
@@ -420,11 +432,21 @@ export const SyscoinImport: React.FC = () => {
     }
   };
 
+  const eligibleOwnedTokens = useMemo(
+    () =>
+      ownedTokens.filter(
+        (token) =>
+          !importedAssetGuids.has(token.assetGuid) ||
+          recentlyImportedGuids.has(token.assetGuid) ||
+          currentlyImporting === token.assetGuid
+      ),
+    [ownedTokens, importedAssetGuids, recentlyImportedGuids, currentlyImporting]
+  );
   const {
     visibleItems: visibleOwnedTokens,
     hasMore: hasMoreOwnedAssets,
     showMore: showMoreOwnedAssets,
-  } = useIncrementalList(ownedTokens, tokenImportScope);
+  } = useIncrementalList(eligibleOwnedTokens, tokenImportScope);
   // Keep complete discovery data, but only format and mount revealed rows.
   const ownedAssetsForList = useMemo(
     () => convertToImportableAssets(visibleOwnedTokens),
@@ -508,7 +530,7 @@ export const SyscoinImport: React.FC = () => {
               <ListLoadMore
                 onClick={showMoreOwnedAssets}
                 shown={visibleOwnedTokens.length}
-                total={ownedTokens.length}
+                total={eligibleOwnedTokens.length}
               />
             )}
           </>

@@ -151,7 +151,28 @@ it.each(['owned', 'custom'])(
     ).toHaveLength(1);
     publishAsset();
     view.rerender(tree(tab));
-    expect(importButton().disabled).toBe(true);
+    if (tab === 'owned') {
+      // The live owned projection hides authoritative saved membership. Removing
+      // it elsewhere restores the retained discovery row without another read.
+      expect(
+        screen.queryByRole('button', { name: 'Import SAMPLE token' })
+      ).toBeNull();
+      mockState.vault.accountAssets.HDAccount[0].ethereum = [];
+      view.rerender(tree(tab));
+      expect(importButton().disabled).toBe(false);
+    } else {
+      expect(importButton().disabled).toBe(true);
+    }
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([[, method]]) => method === 'getUserOwnedTokens'
+      )
+    ).toHaveLength(1);
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([[, method]]) => method === 'saveTokenInfo'
+      )
+    ).toHaveLength(1);
   }
 );
 
