@@ -2593,17 +2593,43 @@ for (const [data, self] of [['0x', false], ['0x12345678', false], ['0x', true]] 
 });
 
 
-for (const existing of [false, true]) test(`two real Smart sends queue before mining (${existing ? 'deployed' : 'first deployment'})`, async () => {
-  const f = await fixture();
+for (const existing of [false, true]) test(`a second real Smart send waits for canonical predecessor inclusion (${existing ? 'deployed' : 'first deployment'})`, { timeout: 20_000 }, async ({ signal }) => {
+  const f = await fixture({}, true);
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  const cancel = () => operation?.cancel();
+  signal.addEventListener('abort', cancel, { once: true });
   try {
+    signal.throwIfAborted();
     await f.change({ kind: 'create-smart', label: 'Queued Smart',});
     f.fundedSmart(); f.holdReceipts();
     if (existing) f.deployed();
     const nonces: bigint[] = [];
     for (let index = 0; index < 2; index++) {
       operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
-      await operation.prepare();
+      if (index === 0) await operation.prepare();
+      else {
+        const waiting = Promise.withResolvers<void>();
+        const nonceTags: string[] = [];
+        f.onInnerNonceRead(tag => nonceTags.push(tag));
+        const unsubscribe = operation.subscribe(() => {
+          const state = operation!.getSnapshot();
+          if (state.error === 'Waiting for the network to include the earlier pending operation.') waiting.resolve();
+          else if (state.phase === 'failed') waiting.reject(Error(JSON.stringify(state)));
+        });
+        const preparing = operation.prepare();
+        try {
+          await waiting.promise;
+          assert.equal(operation.getSnapshot().phase, 'preparing');
+          assert.equal(operation.getSnapshot().authorization, null);
+          assert.equal(operation.getSnapshot().payerReview, null);
+          assert(nonceTags.includes('latest'), 'pending-only nonce advancement cannot release a retained authorization');
+          assert.equal(f.signatures.length, 1);
+          assert.equal(f.payerSignatures.length, 1);
+          assert.equal(f.submitted.length, 1);
+          f.showReceipts();
+          await preparing;
+        } finally { unsubscribe(); }
+      }
       const ready = operation.getSnapshot();
       assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
       nonces.push(BigInt(ready.authorization!.nonce));
@@ -2616,11 +2642,13 @@ for (const existing of [false, true]) test(`two real Smart sends queue before mi
       operation.confirmPayer(review.id);
       await submission;
       assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
-      operation.dispose();
+      await operation.dispose();
     }
     assert.equal(nonces[1], nonces[0]! + 1n);
+    assert.equal(f.signatures.length, 2);
+    assert.equal(f.payerSignatures.length, 2);
     assert.equal(f.submitted.length, 2);
-  } finally { operation?.dispose(); await f.close(); }
+  } finally { signal.removeEventListener('abort', cancel); await operation?.dispose(); await f.close(); }
 });
 
 
