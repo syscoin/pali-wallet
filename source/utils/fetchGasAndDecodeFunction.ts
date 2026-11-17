@@ -333,7 +333,10 @@ export const fetchGasAndDecodeFunction = async (
     const isSimpleTransfer =
       !dataTx.data || dataTx.data === '0x' || dataTx.data === '0x0';
 
-    if (!isSimpleTransfer) {
+    // Smart review immediately performs the exact raw estimate below and the
+    // shared AA execution estimate/admission. A preliminary direct call adds
+    // no evidence: its return value is unused and its revert is ignored.
+    if (!isSimpleTransfer && !isSmartAccount) {
       // if it run successfully, the contract data is all right.
       const clonedTx = { ...dataTx };
       delete clonedTx.gasLimit;

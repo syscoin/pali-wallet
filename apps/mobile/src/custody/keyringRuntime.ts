@@ -31,6 +31,10 @@ import { NativeSigningHandoffs, captureNativeSigningContinuation, completeNative
 import { signNativeSmartTrezorOwner } from '../hardware/smartOwnerSigning.ts';
 import { NativeOwnerProofReceipts, type NativeOwnerProofIdentity } from '../smartAccount/ownerProofReceipts.ts';
 import { snapshotNativeSmartLocalAction } from '../smartAccount/localAction.ts';
+import { assertSmartAccountCancellation, assertSmartAccountCancellationOperation, captureSmartAccountCancellation, smartAccountCancellationMetadata, type SmartAccountCancellation, type SmartAccountCancellationRequest, type SmartAccountCancellationDispatch } from '../../../../source/wallet/smartAccountCancellation.ts';
+import { getSmartAccountUserOpHash } from '../../../../source/utils/smartAccount/userOperationHash.ts';
+import type { SmartAccountAuthorizationSummary } from '../../../../source/wallet/smartAccountAuthorization.ts';
+import { observeSmartAccountAuthorization, type SmartAccountAuthorizationObservation } from '../../../../source/utils/smartAccount/authorizationStatus.ts';
 import { signSmartAccountOwnerIntent, type SmartAccountOwnerSigningSdk } from '../../../../source/utils/smartAccount/ownerSigning.ts';
 import { createSmartAccountRawSigningIntent } from '../../../../source/utils/smartAccount/ownerSigningIntent.ts';
 import { getPaliErc7739PersonalSignHash } from '../../../../source/utils/smartAccount/erc7739.ts';
@@ -129,7 +133,7 @@ import { readNativeApprovalMetadata } from '../connections/approvalMetadata.ts';
 import { EvmTransferReadRpc, type NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
 import { walletFetch } from '../platform/http.ts';
 import { normalizeDappTransaction } from '../../../../source/shared/dappTransaction.ts';
-import { serializePreparedEvmTransaction, snapshotEvmAccessList } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+import { serializePreparedEvmTransaction, snapshotEvmAccessList, readEvmOwnData } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { requireSmartAccountAddressIdentity } from '../../../../source/utils/smartAccount/addressIdentity.ts';
 import { readSmartAccountValidatorMetadata } from '../../../../source/utils/smartAccount/executionMetadata.ts';
 import { buildGuardianPolicyExecutions, projectGuardianPolicyModule } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
@@ -148,7 +152,7 @@ import { openNativeConnectionRepository, type NativeConnectionRepository } from 
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
-import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedReplacementBinding, type EvmSignedRetirementReadMethod, type EvmSignedRetirementReadForChain } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle, assertEvmVerifiedSmartAccountReplacement, isEvmVerifiedSmartAccountReplacement, type EvmVerifiedSmartAccountReplacement, type EvmVerifiedReplacementBinding, type EvmSignedRetirementReadMethod, type EvmSignedRetirementReadForChain } from '../../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction, projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { createSmartAccountSignedReplay } from '../../../../source/wallet/smartAccountSignedReplay.ts';
@@ -364,6 +368,9 @@ export interface KeyringRuntime extends CustodyRuntime {
     owner: Readonly<{ accountId: string; xpub: string }>, isChangeAddress: boolean,
     signal: AbortSignal, assertCurrent: () => void): Promise<string>;
   openSmartAccountDeployment(assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
+  openSmartAccountCancellation(reference: SmartAccountCancellationRequest, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
+  listSmartAccountAuthorizations(options: Readonly<{beforeHash?:string;maximum:number}>,signal:AbortSignal,assertCurrent:()=>void):Promise<Readonly<{entries:readonly SmartAccountAuthorizationSummary[];nextCursor:string|null}>>;
+  readSmartAccountAuthorizationStatus(operationHash:string,signal:AbortSignal,assertCurrent:()=>void):Promise<SmartAccountAuthorizationObservation>;
   openWalletAuthenticator(purpose: SmartAccountAuthenticatorPurpose, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
   canUsePasskeys(): boolean;
   openPasskeyAuthenticator(recreate: boolean, purpose: SmartAccountAuthenticatorPurpose, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
@@ -1264,7 +1271,7 @@ export function createKeyringRuntimeFactory(
           return capturePayerSubmission(context, selected, externalGuard, metadata, replacement, verifyDispatch);
         }
         function capturePayerSubmission(context: EvmSubmissionContext, selected: NativeCatalogueAccount, externalGuard: () => void,
-          metadata?: Readonly<Record<string, unknown>>, replacement?: EvmVerifiedReplacementBinding,
+          metadata?: Readonly<Record<string, unknown>>, replacement?: EvmVerifiedReplacementBinding | EvmVerifiedSmartAccountReplacement,
           verifyDispatch?: NativeTransferDispatchValidation, assertSmartAdmission?: NativeSmartPayerAdmission) {
           const captured = generation;
           const payerType = context.account.type as keyof typeof state.accounts;
@@ -1281,7 +1288,7 @@ export function createKeyringRuntimeFactory(
           };
           check();
           const requiresReplacement = context.operation === 'cancel' || context.operation === 'speed-up';
-          if (requiresReplacement !== (replacement !== undefined) || !verifyDispatch)
+          if ((isEvmVerifiedSmartAccountReplacement(replacement) ? context.operation !== 'send' : requiresReplacement !== (replacement !== undefined)) || !verifyDispatch)
             throw new NativeTransferError('EXPIRED');
           const session = { keyring: transactionRecordKeyring(keyring, check), assertCurrent: check };
           const capturedCatalogue = catalogueSnapshot!;
@@ -1297,7 +1304,8 @@ export function createKeyringRuntimeFactory(
             metadata, replacement,
             automaticNonceEndpoint: requiresReplacement ? undefined : context.network.url,
             preflight: verifyDispatch ? (record, assertCurrent, snapshot) => {
-              const planner = createNativeAutomaticNoncePlanner(signedRecords, session, String(context.network.chainId), context.account.address, context.network.url, snapshot);
+              const planner = smartReplacementNoncePlanner(session, String(context.network.chainId), context.account.address, context.network.url, snapshot,
+                isEvmVerifiedSmartAccountReplacement(replacement)?replacement:undefined);
               const ownedPlanner: NativeAutomaticNoncePlanner = assertSmartAdmission ? async input => {
                 const plan = await planner(input);
                 assertCurrent();
@@ -1314,10 +1322,25 @@ export function createKeyringRuntimeFactory(
           });
         }
         const enteredPrivateExecution = new WeakSet<object>();
+        function smartReplacementNoncePlanner(session:import('../../../../source/wallet/evmSignedRecords.ts').EvmSignedRecordSession,
+          chainId:string,from:string,endpoint:string,held:import('../../../../source/shared/evmAutoNonce.ts').EvmAutoNonceSnapshot|undefined,
+          replacement:EvmVerifiedSmartAccountReplacement|undefined):import('./evmTransferReadRpc.ts').NativeAutomaticNoncePlanner {
+          if(!replacement)return createNativeAutomaticNoncePlanner(signedRecords,session,chainId,from,endpoint,held);
+          return async input=>{
+            const check=()=>{session.assertCurrent();input.assertCurrent();assertEvmVerifiedSmartAccountReplacement(replacement);};check();
+            if(replacement.chainId!==chainId||replacement.from!==from.toLowerCase()||input.nonceOverride!==replacement.nonce||input.latest!==replacement.nonce||input.assetState)
+              throw new NativeTransferError('EXPIRED');
+            const snapshot=held??await signedRecords.captureAutoNonceSnapshot(session,chainId,from);check();
+            const plan=await signedRecords.autoNonceAcceptance.plan({...input,chainId,from,endpoint,assertCurrent:check,
+              snapshot:{...snapshot,retained:snapshot.retained.filter(row=>!(row.chainId===chainId&&row.from.toLowerCase()===from.toLowerCase()&&row.nonce===replacement.nonce))}});
+            check();if(plan.kind!=='ready'||plan.nonce!==replacement.nonce)throw new NativeTransferError('EXPIRED');
+            return{...plan,balanceState:'latest' as const};
+          };
+        }
         // One-use private refusal receipts, issued only after the owned hardware
         // request retires. Rethrow outside run() without retiring the result screen.
         const infrastructureSigningFailures = new WeakSet<Error>();
-        function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
+        async function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
           selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
           hardwareSigner: (Pick<NativeHardwareDappSigning, 'signTransaction'> & {keyring(): IndexedKeyring}) | null,
           validateSigningAndBroadcast: (() => Promise<void>) | null,
@@ -1325,7 +1348,7 @@ export function createKeyringRuntimeFactory(
           beforeSigningFailure: (() => Promise<void>) | null = null,
           beforePrivateExecution: (() => Promise<void>) | null = null,
           assertSmartAdmission?: NativeSmartPayerAdmission,
-          finalAdmissionIncludesAssets?: true) {
+          finalAdmissionIncludesAssets?: true, smartCancellation?:SmartAccountCancellationDispatch) {
           check();
           if (authentication !== null) assertNativePrivateAuthentication(authentication);
           if (validateSigningAndBroadcast !== null && typeof validateSigningAndBroadcast !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
@@ -1344,10 +1367,27 @@ export function createKeyringRuntimeFactory(
           const fetch = dependencies.connectionFetch ?? walletFetch;
           const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
           const sender = new NativeTransferRpc({ registration: network, fetch });
-          const planner = createNativeAutomaticNoncePlanner(signedRecords, hardwareSigner
+          let smartReplacement:EvmVerifiedSmartAccountReplacement|undefined;
+          if(smartCancellation){
+            const cap=smartCancellation.cancellation;assertSmartAccountCancellation(cap);
+            assertSmartAccountCancellationOperation(cap,smartCancellation.userOperation,cap.validator);
+            const expected=smartAccountCancellationMetadata(cap,getSmartAccountUserOpHash(smartCancellation.userOperation,cap.chainId));
+            const provided=metadata?.smartAccountOperationCancellation as Record<string,unknown>|undefined;
+            const {paliEntryPointInterface,getPaliEntryPointAddress}=await import('../../../../source/utils/smartAccount/contracts.ts');check();
+            if(typeof smartCancellation.replaceOuter!=='boolean'||cap.chainId!==Number(network.chainId)||cap.account.toLowerCase()!==selectedContext.address.toLowerCase()||
+                normalized.to?.toLowerCase()!==getPaliEntryPointAddress(cap.chainId).toLowerCase()||BigInt(normalized.value??'0')!==BigInt(0)||
+                normalized.data.toLowerCase()!==paliEntryPointInterface.encodeFunctionData('handleOps',[[smartCancellation.userOperation],selected.address]).toLowerCase()||
+                !provided||Object.keys(provided).length!==Object.keys(expected).length||Object.entries(expected).some(([key,value])=>provided[key]!==value))throw new KeyringRuntimeError('INVALID_INPUT');
+            if(smartCancellation.replaceOuter){
+              if(!cap.outer||cap.outer.from.toLowerCase()!==selected.address.toLowerCase()||cap.outer.signer.id!==selected.index||cap.outer.signer.type!==selected.type||BigInt(normalized.nonce??'-1')!==BigInt(cap.outer.nonce))throw new KeyringRuntimeError('INVALID_INPUT');
+              smartReplacement=await signedRecords.captureSmartAccountCancellationReplacement({keyring:transactionRecordKeyring(ring,check),assertCurrent:check},
+                {chainId:cap.chainId,newUserOperation:smartCancellation.userOperation,originalHash:cap.originalHash,payer:selected.address});check();
+            }
+          }
+          const planner = smartReplacementNoncePlanner(hardwareSigner
             ? {get keyring() {check(); return transactionRecordKeyring(hardwareSigner.keyring(), check);}, assertCurrent: check}
             : {keyring: transactionRecordKeyring(ring, check), assertCurrent: check},
-            network.chainId, selected.address, network.rpcUrl);
+            network.chainId, selected.address, network.rpcUrl,undefined,smartReplacement);
           return prepareNativeConnectionTransaction({ ...normalized, from: selected.address }, {
             network, rpc, signal, planner, funding, gasPolicy, assertCurrent: check,
             feePolicy: metadata?.smartAccountExecution === true && (normalized.gasPrice !== undefined ||
@@ -1433,7 +1473,7 @@ export function createKeyringRuntimeFactory(
                 operation: 'send',
               };
               const boundary = sdk.captureEvmSubmission(context, guard, () => {
-                const lifecycle = capturePayerSubmission(context, selectedContext, guard, submissionMetadata, undefined, verifyDispatch, assertSmartAdmission);
+                const lifecycle = capturePayerSubmission(context, selectedContext, guard, submissionMetadata, smartReplacement, verifyDispatch, assertSmartAdmission);
                 return submission.kind === 'eoa-calls'
                   ? bindEoaCallsSignedLifecycle(lifecycle, registry!, submission.attempt) : lifecycle;
               });
@@ -5482,6 +5522,28 @@ export function createKeyringRuntimeFactory(
             const pendingRecords = await signedRecords.captureSmartAccountPendingRecords(
               { keyring: transactionRecordKeyring(ring, check), assertCurrent: check }, network.chainId, account.address);
             check();
+            let cancellation: SmartAccountCancellation | undefined;
+            if (intent.kind === 'cancel-operation') {
+              const session={keyring:transactionRecordKeyring(ring,check),assertCurrent:check};
+              const authorization=await signedRecords.readSmartAccountAuthorizationExact(session,network.chainId,account.address,intent.reference.originalHash);
+              const outer=authorization
+                ? (await signedRecords.findSmartAccountAuthorizationOuter(session,network.chainId,account.address,authorization.operationHash))?.entry
+                : (await signedRecords.readSmartAccountReplayExact(session,network.chainId,account.address,intent.reference.originalHash))?.entry;
+              check();
+              if (!authorization&&!outer) throw new KeyringRuntimeError('NOT_READY');
+              let observedAt=authorization?.observedAt;
+              if(!observedAt){
+                const lifetime=new AbortController();
+                try{
+                  const value=await rpc.smartAccountRead('eth_getBlockByNumber',['latest',false],lifetime.signal,check) as {number:string;hash:string};
+                  if(!value||typeof value.number!=='string'||!/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(value.number)||typeof value.hash!=='string'||!/^0x[0-9a-f]{64}$/i.test(value.hash))throw new KeyringRuntimeError('NOT_READY');
+                  observedAt={number:BigInt(value.number).toString(),hash:value.hash.toLowerCase()};
+                }finally{lifetime.abort();}
+              }
+              cancellation=captureSmartAccountCancellation({account:account.address,authorization:authorization??undefined,outer,chainId:Number(network.chainId),
+                observedAt,referenceHash:intent.reference.originalHash,operationHash:intent.reference.operationHash});
+              check();
+            }
             const ownerInventory = captureSmartSigningOwners();
             const proposedPolicy=intent.kind==='modules'?captureCompositePolicyChange({accountAddress:account.address,metadata:account.smartAccount,executions:intent.command.executions}):null;
             // Suite continuation owns only an actual Trezor signing plan. Ordinary
@@ -5508,7 +5570,7 @@ export function createKeyringRuntimeFactory(
             const signOwnerProof = smartOwnerProofSequence(handoff);
             try {
             operation=createNativeSmartOperation({
-              intent, pendingRecords, authorizationExpiresAt: Math.min(deadline, Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS),
+              intent, pendingRecords, ...(cancellation?{cancellation}:{}), authorizationExpiresAt: Math.min(deadline, Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS),
               // Dapp departure belongs to the connection queue; wallet actions use this local owner.
               background: localTrezor?backgroundLocalSmart:()=>undefined,
               signingOwners: ownerInventory.localOwners, slhDsaKeyIds: availableSlhKeyIds(account.smartAccount), assertOwnerCurrent(owner) {
@@ -5547,6 +5609,15 @@ export function createKeyringRuntimeFactory(
                   guard(); const result = await (options?.compositePossession ? signOwnerProof.withDeferredCompletion(work) : work()); guard(); return result;
                 });
               },
+              async retainAuthorization(userOperation, payer, observedAt, assertCurrent) {
+                const guard = () => { check(); checkGuard(assertCurrent); };
+                guard();
+                return signedRecords.retainSmartAccountAuthorization(
+                  { keyring: transactionRecordKeyring(ring, guard), assertCurrent: guard },
+                  { chainId: Number(network.chainId), observedAt, payer: payer.address, userOperation,
+                    ...(cancellation?{replacesOperationHash:cancellation.authorization.operationHash}:{}) }
+                );
+              },
               async signOwner(address, digest, owner, assertCurrent, intent, signal, metadata) {
                 if (owner.type === 'Ledger' && !ledger.isConnected()) throw new KeyringRuntimeError('NOT_READY');
                   const guard = () => { current(captured); check(); checkGuard(assertCurrent); };
@@ -5572,7 +5643,7 @@ export function createKeyringRuntimeFactory(
                   guard();
                   return signature;
               },
-              preparePayer(request, payer, signal, assertCurrent, metadata, funding, assertAssetState, assertFinalAdmission, finalAdmissionIncludesAssets) {
+              preparePayer(request, payer, signal, assertCurrent, metadata, funding, assertAssetState, assertFinalAdmission, finalAdmissionIncludesAssets, cancellationDispatch) {
                 check(); checkGuard(assertCurrent);
                 const owned = snapshot.accounts.find(candidate => candidate.index === payer.id && candidate.type === payer.type);
                 if (!owned || owned.address.toLowerCase() !== payer.address.toLowerCase()) throw new KeyringRuntimeError('INVALID_INPUT');
@@ -5582,7 +5653,7 @@ export function createKeyringRuntimeFactory(
                   if (state.accounts[payer.type]?.[payer.id] !== payerRecord || payerRecord?.address.toLowerCase() !== owned.address.toLowerCase())
                     throw new KeyringRuntimeError('CANCELLED');
                 };
-                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null, assertAssetState, authentication, null, null, assertFinalAdmission, finalAdmissionIncludesAssets);
+                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null, assertAssetState, authentication, null, null, assertFinalAdmission, finalAdmissionIncludesAssets,cancellationDispatch);
               },
               async waitForReceipt(hash, transaction, signal, assertCurrent, operation) {
                 const guard = () => { check(); checkGuard(assertCurrent); if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
@@ -5952,7 +6023,51 @@ export function createKeyringRuntimeFactory(
             const command = (purpose === 'add-to-combined' ? buildSmartAccountBuiltinInstall : buildSmartAccountValidatorSwitch)({ accountAddress: account.address, chainId: account.smartAccount.chainId, metadata: account.smartAccount, target });
             return openSmartAccountOperation({ kind: 'authenticator', command }, check, origin, authentication);
         };
+        const smartAuthorizationReadOwner=(signal:AbortSignal,assertOwner:()=>void)=>{
+          const captured=generation,ring=keyring,snapshot=catalogueSnapshot,selected=selectedAccount();
+          const account=state.accounts.SmartAccount[selected.index];
+          if(!snapshot||selected.type!=='SmartAccount'||!account?.smartAccount||!ring.hasPublicSession())throw new KeyringRuntimeError('NOT_READY');
+          const network=getNativeNetwork(snapshot.active.networkId,snapshot.networks);
+          const check=()=>{current(captured);checkGuard(assertOwner);if(signal.aborted||keyring!==ring||!ring.hasPublicSession()||catalogueSnapshot!==snapshot||selectedAccount()!==selected||state.accounts.SmartAccount[selected.index]!==account)throw new KeyringRuntimeError('CANCELLED');};
+          check();return{account,network,check,session:{keyring:transactionRecordKeyring(ring,check),assertCurrent:check}};
+        };
         return {
+          async openSmartAccountCancellation(reference,assertOwner,authentication){
+            const value=readEvmOwnData(reference,['originalHash',...(reference&&Object.hasOwn(reference,'operationHash')?['operationHash']:[])]);
+            const action=snapshotNativeSmartLocalAction({kind:'operation',intent:{kind:'cancel-operation',reference:value as SmartAccountCancellationRequest}});
+            if(action.kind!=='operation')throw new KeyringRuntimeError('INVALID_INPUT');
+            return openSmartAccountOperation(action.intent,assertOwner,{kind:'local-new',action},authentication);
+          },
+          async listSmartAccountAuthorizations(options,signal,assertOwner){
+            const value=readEvmOwnData(options,['maximum',...(options&&Object.hasOwn(options,'beforeHash')?['beforeHash']:[])]);
+            const owner=smartAuthorizationReadOwner(signal,assertOwner);
+            const result=await signedRecords.listSmartAccountAuthorizations(owner.session,owner.network.chainId,owner.account.address,
+              {maximum:value.maximum as number,...(value.beforeHash===undefined?{}:{beforeHash:typeof value.beforeHash==='string'?value.beforeHash.toLowerCase():value.beforeHash as string})});
+            owner.check();return result;
+          },
+          async readSmartAccountAuthorizationStatus(operationHash,signal,assertOwner){
+            if(typeof operationHash!=='string'||!/^0x[0-9a-f]{64}$/i.test(operationHash))throw new KeyringRuntimeError('INVALID_INPUT');
+            const owner=smartAuthorizationReadOwner(signal,assertOwner);
+            const record=await signedRecords.readSmartAccountAuthorizationExact(owner.session,owner.network.chainId,owner.account.address,operationHash.toLowerCase());
+            owner.check();if(!record)throw new KeyringRuntimeError('NOT_READY');
+            const {userOperation:_operation,...summary}=record;void _operation;
+            const rpc=new EvmTransferReadRpc(owner.network,{infrastructureReader,capabilities:transferReadCapabilities.get(owner.network.registrationHash,owner.network.rpcUrl),fetch:transferFetch});
+            const observation=await observeSmartAccountAuthorization(summary,createNativeSmartAccountProvider(owner.network,rpc,signal,owner.check),owner.check,Number(owner.network.chainId));
+            if(observation.kind!=='pending'){
+              try{
+                await signedRecords.retireConsumedSmartAccountAuthorizations(owner.session,Number(owner.network.chainId),owner.account.address,async(method,params,proofSignal)=>{
+                  if(method!=='eth_chainId'&&method!=='eth_getBlockByNumber'&&method!=='eth_call')throw new KeyringRuntimeError('INVALID_INPUT');
+                  const request=new AbortController(),abort=()=>request.abort();
+                  signal.addEventListener('abort',abort,{once:true});proofSignal.addEventListener('abort',abort,{once:true});
+                  try{
+                    owner.check();if(proofSignal.aborted)request.abort();
+                    return await rpc.smartAccountRead(method,params,request.signal,owner.check);
+                  }finally{signal.removeEventListener('abort',abort);proofSignal.removeEventListener('abort',abort);request.abort();}
+                });
+              }catch{owner.check(); /* Unavailable finalized evidence preserves all retained instructions. */}
+            }
+            owner.check();return observation;
+          },
           async resumeSmartAccountOperation(id,signal,assertOwner,authentication){
             if(signal.aborted)throw new KeyringRuntimeError('CANCELLED');
             const descriptor=localSmartHandoffs.localDescriptor(id);if(!descriptor)throw new KeyringRuntimeError('NOT_READY');

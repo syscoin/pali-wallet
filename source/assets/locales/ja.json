@@ -1105,6 +1105,21 @@
     "coinGeckoListingUnavailable": "掲載情報を取得できません"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "元の参照",
+      "title": "署名済みの指示",
+      "empty": "保存された署名済み指示はありません",
+      "mayExecute": "この指示はまだ実行される可能性があります",
+      "nonceConsumedUnknown": "nonceは使用済みですが結果は不明です",
+      "observedSuccess": "指示の成功を確認",
+      "observedFailure": "指示の失敗を確認",
+      "checkStatus": "状態を確認",
+      "cancelInstruction": "指示を取り消す",
+      "unavailable": "署名済み指示を取得できません。再試行してください。",
+      "operationHash": "オペレーションハッシュ"
+    },
+    "smartAccountCancelUnavailable": "この操作は取り消せません。署名済みの指示が引き続き実行される可能性があります。",
+    "smartAccountCancelDescription": "同じnonceで空の操作を送信し、このスマートアカウントの指示を取り消します。元の操作が先に承認される場合があります。ネットワークが置換操作を承認した時点で取り消しが完了します。",
     "feePayer": "手数料の支払元",
     "labelCopied": "{{label}}をクリップボードにコピーしました",
     "decodeDetailsFailed": "トランザクション詳細をデコードできませんでした",

@@ -27,7 +27,7 @@ type NativeSmartAccountProvider = Readonly<{
   getBalance(address: string): Promise<BigNumber>;
   estimateGas(input: Record<string, unknown>): Promise<BigNumber>;
   call(input: Record<string, unknown>): Promise<string>;
-  getFeeData(): Promise<{
+  getFeeData(options?: { getBlock?(tag: 'latest'): Promise<unknown> }): Promise<{
     gasPrice: BigNumber;
     maxFeePerGas: BigNumber | null;
     maxPriorityFeePerGas: BigNumber | null;
@@ -166,9 +166,9 @@ function smartAccountProvider(
         throw new Error('Invalid smart account response');
       return hexlify(result);
     },
-    async getFeeData() {
+    async getFeeData(options?: { getBlock?(tag: 'latest'): Promise<unknown> }) {
       const fees = await (phase
-        ? phase.feeData()
+        ? phase.feeData(options?.getBlock ? () => options.getBlock!('latest') : undefined)
         : rpc.smartAccountFeeData(signal, assertCurrent));
       return {
         gasPrice: BigNumber.from(fees.gasPrice),

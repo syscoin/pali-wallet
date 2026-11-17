@@ -72,7 +72,13 @@ jest.mock('react-redux', () => ({
             0: { id: 0, address: mockOwnerWallet.address },
           },
         },
-        activeNetwork: { chainId: 57057 },
+        activeNetwork: {
+          chainId: 57057,
+          currency: 'ZKSYS',
+          kind: 'ethereum',
+          url: 'https://rpc.example',
+          slip44: 60,
+        },
       },
     }),
 }));

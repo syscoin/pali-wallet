@@ -18,6 +18,7 @@ import { Transaction } from 'ethers/transaction';
 import { recoverAddress } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
+import { createSmartAccountJournalFixture } from 'tests/fixtures/smartAccountJournal';
 
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -101,6 +102,15 @@ describe('smart-account owner signing intent', () => {
         }),
         send: jest.fn(async (method, params) => {
           if (method === 'eth_chainId') return '0x1';
+          if (method === 'eth_getBlockByNumber') {
+            expect(params).toEqual(['latest', false]);
+            return {
+              hash: '0x' + 'aa'.repeat(32),
+              number: '0x10',
+              gasLimit: '0x100000',
+              baseFeePerGas: '0x1',
+            };
+          }
           if (method === 'eth_getTransactionCount') return '0x0';
           if (method === 'eth_simulateV1') {
             expect(params[0]).toEqual({
@@ -145,6 +155,7 @@ describe('smart-account owner signing intent', () => {
           maxPriorityFeePerGas: 1,
         }),
       };
+      const journal = createSmartAccountJournalFixture();
       const broadcast = jest.fn();
       const send = jest.fn(async (transaction) => {
         await provider.estimateGas(transaction);
@@ -165,10 +176,7 @@ describe('smart-account owner signing intent', () => {
         vaultGlobal: { activeSlip44: 60 },
       });
       const controller: any = new SmartAccountController({
-        captureSmartAccountPendingRecords: async () => ({
-          profileId: '0x' + '11'.repeat(32),
-          read: async () => [],
-        }),
+        ...journal,
         getEthereumTransaction: () => ethereumTransaction,
         sendAndSaveEthTransaction: send,
       } as any);
@@ -269,6 +277,14 @@ describe('smart-account owner signing intent', () => {
       expect(broadcast).not.toHaveBeenCalled();
       expect(prepared.actionHash).not.toBe(unrelatedTransaction.unsignedHash);
       expect(getUserOpHash).not.toHaveBeenCalled();
+      const retained = await journal.records.readSmartAccountAuthorizationExact(
+        journal.session(captureSubmissionGuard(controller)),
+        '1',
+        ACCOUNT,
+        prepared.actionHash
+      );
+      expect(retained?.userOperation.signature).toBe(signature.signature);
+      expect(journal.stored()).not.toContain(signature.signature);
     }
   );
 });

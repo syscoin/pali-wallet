@@ -8,7 +8,7 @@ import { classifyDappRpcMethod, DAPP_PUBLIC_RPC_METHODS, normalizeDappRpcRequest
 import { EthereumRpcErrorHandler, serializePublicRpcError } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
 import { assertPublicResponseBudget, DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
 import { privacyWithdrawalFees } from '../../../../source/utils/privacy/withdrawalFees.ts';
-import { captureEvmGasPolicy, prepareEvmDappQuote, EvmDappReviewRequiredError, type EvmDappPreparedQuote, type EvmDappTransactionRequest, type EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
+import { captureEvmGasPolicy, prepareEvmDappQuote, EvmDappReviewRequiredError, type EvmDappPreparedQuote, type EvmDappQuote, type EvmDappTransactionRequest, type EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
 import { getAddress } from 'ethers/address';
 import { getEvmFeeData, assertEvmGasLimit, planEvmCancellationFees, planEvmSpeedUpFees } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { Transaction } from 'ethers/transaction';
@@ -47,12 +47,12 @@ const RETIREMENT_METHODS: Readonly<Record<EvmSignedRetirementReadMethod, true>> 
 const BLOCK_BYTES = 512 * 1024;
 const RECEIPT_BYTES = 1024 * 1024;
 const CODE_BYTES = 32 * 1024;
-export type NativeSmartAccountReadMethod = 'eth_getTransactionByHash' | 'eth_simulateV1' | 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getTransactionCount' | 'eth_getTransactionReceipt';
+export type NativeSmartAccountReadMethod = 'eth_getLogs' | 'eth_getTransactionByHash' | 'eth_simulateV1' | 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getTransactionCount' | 'eth_getTransactionReceipt';
 export type NativeSmartAccountReadPhase = Readonly<{
   read(method: NativeSmartAccountReadMethod, params: readonly unknown[]): Promise<unknown>;
   readFresh?(method: NativeSmartAccountReadMethod, params: readonly unknown[]): Promise<unknown>;
   readMany(requests: readonly { method: NativeSmartAccountReadMethod; params: readonly unknown[] }[]): Promise<PromiseSettledResult<unknown>[]>;
-  feeData(): ReturnType<EvmTransferReadRpc['smartAccountFeeData']>;
+  feeData(getBlock?: () => Promise<unknown>): ReturnType<EvmTransferReadRpc['smartAccountFeeData']>;
   assertCurrent(): void;
 }>;
 type Method = 'eth_simulateV1' | DappPublicRpcMethod | 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_getStorageAt' | 'eth_gasPrice' |
@@ -453,9 +453,9 @@ export class EvmTransferReadRpc {
       });
     }, 'dapp-rpc');
   }
-  smartAccountRead(method: 'eth_getTransactionByHash' | 'eth_simulateV1' | 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory',
+  smartAccountRead(method: 'eth_getLogs' | 'eth_getTransactionByHash' | 'eth_simulateV1' | 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory',
     params: readonly unknown[], signal: AbortSignal, guard: () => void): Promise<unknown> {
-    const allowed = ['eth_getTransactionByHash', 'eth_simulateV1', 'eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber', 'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'];
+    const allowed = ['eth_getLogs', 'eth_getTransactionByHash', 'eth_simulateV1', 'eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber', 'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'];
     if (!allowed.includes(method) || !Array.isArray(params) || params.length > 5)
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.operation(signal, guard, async (read) => {
@@ -472,21 +472,23 @@ export class EvmTransferReadRpc {
       const phase = Object.freeze({
         readFresh: (method: NativeSmartAccountReadMethod, params: readonly unknown[]) => read(method, params),
         read: (method: NativeSmartAccountReadMethod, params: readonly unknown[]) => {
-          if (!['eth_getTransactionByHash', 'eth_simulateV1', 'eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
+          if (!['eth_getLogs', 'eth_getTransactionByHash', 'eth_simulateV1', 'eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
             'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
             'eth_getTransactionCount', 'eth_getTransactionReceipt'].includes(method) || !Array.isArray(params) || params.length > 5)
             return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
           return read(method, params);
         },
         readMany: (requests: readonly { method: NativeSmartAccountReadMethod; params: readonly unknown[] }[]) => {
-          if (requests.some(request => !['eth_simulateV1', 'eth_getTransactionByHash', 'eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
+          if (requests.some(request => !['eth_getLogs', 'eth_simulateV1', 'eth_getTransactionByHash', 'eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
             'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
             'eth_getTransactionCount', 'eth_getTransactionReceipt'].includes(request.method) || !Array.isArray(request.params) || request.params.length > 5))
             return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
           return read.many(requests);
         },
-        feeData: async () => {
-          const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+        feeData: async (getBlock?: () => Promise<unknown>) => {
+          read.assertCurrent();
+          const sampled = block(await (getBlock ? getBlock() : read('eth_getBlockByNumber', ['latest', false])));
+          read.assertCurrent();
           return this.feeData(read, sampled, signal);
         },
         assertCurrent: read.assertCurrent,
@@ -1152,7 +1154,7 @@ export class EvmTransferReadRpc {
 
   /** Generic dapp envelope through the same owned reads, nonce planner and fee policy. */
   prepareDapp(request: EvmDappTransactionRequest, signal: AbortSignal, guard: () => void,
-    automaticNonce: NativeAutomaticNoncePlanner, approved: EvmDappPreparedQuote | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
+    automaticNonce: NativeAutomaticNoncePlanner, approved: EvmDappQuote | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
     feePolicy?: 'fixed', assertRefreshedState?: (provider: unknown) => Promise<void>): Promise<EvmDappPreparedQuote> {
     gasPolicy = captureEvmGasPolicy(gasPolicy);
     return this.operation(signal, guard, async (read) => {

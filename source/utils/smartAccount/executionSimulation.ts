@@ -8,7 +8,7 @@ import {
   type SmartAccountCallsIdentity,
 } from '../../shared/dappCallsStatus.ts';
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
-import { readFreshEvmState } from '../../shared/evmReadPhase.ts';
+import { verifyEvmCanonicalBlock } from '../../shared/evmReadPhase.ts';
 import {
   readEvmRpcHash,
   readEvmRpcQuantity,
@@ -286,13 +286,15 @@ export async function assertSignedSmartAccountExecution(
     transactions: [...transactions, target],
     simulate: (params) => provider.send('eth_simulateV1', [...params]),
   });
-  const canonical = await readFreshEvmState(provider, 'eth_getBlockByNumber', [
-    quantity(parentNumber),
-    false,
-  ]);
-  assertSynchronousEvmFeeGuard(assertCurrent);
-  if (readEvmRpcHash(canonical?.hash) !== readEvmRpcHash(parent.hash))
-    throw requireExecutionEvidence();
+  await verifyEvmCanonicalBlock(
+    provider,
+    {
+      hash: readEvmRpcHash(parent.hash),
+      number: parentNumber,
+    },
+    assertCurrent,
+    requireExecutionEvidence
+  );
 }
 
 /** Replacements and replay recover the already authorized operation from signed bytes. */

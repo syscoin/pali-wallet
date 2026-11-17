@@ -39,6 +39,29 @@ export async function observeSmartAccountFeeDiagnostics(
       });
       if (records.length > 32) records.shift();
     };
+    const send = chrome.runtime.sendMessage;
+    chrome.runtime.sendMessage = function (...args: any[]) {
+      const request = args[0];
+      const callback = args[args.length - 1];
+      if (
+        request?.type === 'CONTROLLER_ACTION' &&
+        typeof callback === 'function' &&
+        String(request.data?.methods?.[1] ?? '').includes('SmartAccount')
+      ) {
+        const method = String(request.data?.methods?.[1] ?? '').slice(0, 80);
+        record('sent', method);
+        args[args.length - 1] = function (response: any) {
+          try {
+            const error = response?.error === true ? response : response?.error;
+            record(error ? 'rejected' : 'resolved', method, error);
+          } catch {
+            /* Observation cannot change delivery. */
+          }
+          return Reflect.apply(callback, this, [response]);
+        };
+      }
+      return Reflect.apply(send, this, args);
+    } as typeof chrome.runtime.sendMessage;
     const connect = chrome.runtime.connect;
     chrome.runtime.connect = function (...args: any[]) {
       const port = Reflect.apply(connect, this, args) as chrome.runtime.Port;

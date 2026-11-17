@@ -86,6 +86,7 @@ const scripts = {
       'js/privacy-withdrawal.bundle.js',
       'js/privacy-prover.bundle.js',
       'js/privacy-background-shared.bundle.js',
+      'js/smart-account.bundle.js',
       'js/sentry-controller.bundle.js',
       'js/sentry-sdk.bundle.js',
       // Required by the Sentry SDK's evaluation-time preload when present.

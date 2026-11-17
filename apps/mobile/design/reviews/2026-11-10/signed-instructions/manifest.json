@@ -1,0 +1,12 @@
+{
+  "capture": "React Native Web, actual implemented screen with synthetic public instruction data",
+  "deviceQualification": false,
+  "checks": [
+    "320px and390px layout, 77-digit nonce, manual status check, no false transaction link"
+  ],
+  "sources": {
+    "apps/mobile/src/screens/NativeSmartAccountAuthorizations.tsx": "7da216be2efd2b2eb00037c5efb3b5ed1dde840cd3b38e463009152e7ba35610",
+    "apps/mobile/tests/native-activity-ui/smartAuthorizationsFixture.tsx": "9b8beb0c18561f63bf2f11186e8e378d73bee3848eff56348763c4c7fa69575d",
+    "apps/mobile/tests/activity-ui/smart-authorizations.spec.ts": "e10d81aa007cfbecb9ed622a6914dadf9f9e09052b986fa504708c55e2e371eb"
+  }
+}

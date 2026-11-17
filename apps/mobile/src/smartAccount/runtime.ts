@@ -13,7 +13,11 @@ import {
   createSmartAccountCallsExecutions,
   normalizeDappCallsRequest,
 } from '../../../../source/shared/dappCalls.ts';
-import type { SmartAccountPendingRecords } from '../../../../source/wallet/evmSignedRecords.ts';
+import { assertSmartAccountAuthorizationReceipt, resolveSmartAccountAuthorization, type SmartAccountAuthorizationReceipt, type SmartAccountPendingRecords } from '../../../../source/wallet/evmSignedRecords.ts';
+import type { SmartAccountAuthorizationBlock } from '../../../../source/wallet/smartAccountAuthorization.ts';
+import { assertSmartAccountCancellation, assertSmartAccountCancellationOperation, inspectSmartAccountCancellationPayer,
+  smartAccountCancellationExecutions, smartAccountCancellationPendingRecords, type SmartAccountCancellation,
+  type SmartAccountCancellationDispatch } from '../../../../source/wallet/smartAccountCancellation.ts';
 import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import type { SmartAccountActivityIdentity } from '../../../../source/wallet/smartAccountActivity.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
@@ -21,6 +25,7 @@ import { buildSmartAccountErc20Transfer, snapshotSmartAccountExpectedErc20Transf
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
 import { assertSmartAccountSpendability } from '../../../../source/utils/smartAccount/assetSpendability.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
+import type { SmartAccountPackedUserOperation } from '../../../../source/utils/smartAccount/account.ts';
 import { buildGuardianPolicyExecutions } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertSmartAccountTargetsAllowed } from '../../../../source/utils/smartAccount/targetPolicy.ts';
@@ -82,6 +87,7 @@ export type NativeSmartPayerAdmission = (provider: unknown, currentSignedHash?: 
 export type NativeSmartOperationPorts = Readonly<{
   intent: NativeSmartAccountIntent;
   pendingRecords: SmartAccountPendingRecords;
+  cancellation?: SmartAccountCancellation;
   account: IKeyringAccountState & { smartAccount: ISmartAccountMetadata };
   network: NativeNetworkRegistration;
   rpc: EvmTransferReadRpc;
@@ -97,6 +103,8 @@ export type NativeSmartOperationPorts = Readonly<{
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
   /** One reviewed aggregate owner proof; ends before a separate payer approval. */
   withOwnerProof<T>(signal: AbortSignal, guard: () => void, work: () => Promise<T>, options?: Readonly<{compositePossession:true}>): Promise<T>;
+  retainAuthorization(operation: SmartAccountPackedUserOperation, payer: SmartAccountGasPayer,
+    observedAt: SmartAccountAuthorizationBlock, guard: () => void): Promise<SmartAccountAuthorizationReceipt>;
   captureCompositePossession?(proposal: CompositePolicyChange, preparedActionHash: string): ReturnType<typeof createCompositePolicyPossession>;
   signOwner(
     address: string,
@@ -116,7 +124,8 @@ export type NativeSmartOperationPorts = Readonly<{
     funding: EvmFeeFunding,
     assertAssetState: (() => Promise<void>) | null,
     assertFinalAdmission?: NativeSmartPayerAdmission,
-    finalAdmissionIncludesAssets?: true
+    finalAdmissionIncludesAssets?: true,
+    cancellation?: SmartAccountCancellationDispatch
   ): Promise<NativePreparedConnectionTransaction>;
   waitForReceipt(
     hash: string,
@@ -143,7 +152,15 @@ export function createNativeSmartOperation(
     throw new TypeError('Explicit native passkey signing capability is required');
   if (!Object.hasOwn(ports, 'slhDsa') || (ports.slhDsa !== null && typeof ports.slhDsa !== 'function'))
     throw new TypeError('Explicit native SLH signing capability is required');
+  if (typeof ports.retainAuthorization !== 'function')
+    throw new TypeError('Native Smart authorization retention is required');
   const account = ports.account;
+  const cancellation = ports.cancellation;
+  if (cancellation) assertSmartAccountCancellation(cancellation);
+  if ((ports.intent.kind === 'cancel-operation') !== Boolean(cancellation) || cancellation &&
+      (ports.intent.kind !== 'cancel-operation' || ports.intent.reference.originalHash !== cancellation.referenceHash ||
+        ports.intent.reference.operationHash !== undefined && ports.intent.reference.operationHash !== cancellation.authorization.operationHash))
+    throw new Error('SMART_OPERATION_EXPIRED');
   const readInfrastructureCodes = infrastructureReaders.get(ports.wallet) ?? createSmartAccountInfrastructureReader();
   infrastructureReaders.set(ports.wallet, readInfrastructureCodes);
   let metadata = account.smartAccount;
@@ -188,10 +205,14 @@ export function createNativeSmartOperation(
       : Object.freeze({ maxFeePerGas: selectedFees.maxFeePerGas, maxPriorityFeePerGas: selectedFees.maxPriorityFeePerGas })
     : undefined;
   let issued: PreparedSmartAccountOperation | undefined;
+  let observedAt: SmartAccountAuthorizationBlock | undefined;
+  let authorization: SmartAccountAuthorizationReceipt | undefined;
   let pending: SmartAccountPendingState;
   const contextId = 'native-smart-account-operation';
   let policySignal: AbortSignal;
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
+  const pendingRecords = cancellation ? smartAccountCancellationPendingRecords(ports.pendingRecords,cancellation,check) : ports.pendingRecords;
+  let cancellationPayer: Awaited<ReturnType<typeof inspectSmartAccountCancellationPayer>> | undefined;
   const assertValidatorSwitch = async (assertCurrent: () => void, preparedMetadata?: ISmartAccountMetadata) => {
     if (intent.kind !== 'authenticator' && intent.kind !== 'modules') return;
     const observed = preparedMetadata ?? await readSmartAccountValidatorMetadata({
@@ -227,10 +248,10 @@ export function createNativeSmartOperation(
       );
       pending = createSmartAccountPendingState(
         rawProvider,
-        ports.pendingRecords,
+        pendingRecords,
         chainId,
         account.address,
-        assertCurrent
+        assertCurrent, undefined, false, cancellation ? 'latest' : 'pending'
       );
       // Deployment can land while preparation runs. Keep its first observation
       // separate so the operation's later admission reads the chain again.
@@ -239,8 +260,16 @@ export function createNativeSmartOperation(
             readSmartAccountDeploymentState({ account, chainId, provider, assertCurrent }))
         : undefined;
       return withEvmReadPhase(rawProvider, assertCurrent, async (scopedProvider) => {
-        const pending = createSmartAccountPendingState(scopedProvider, ports.pendingRecords, chainId, account.address, assertCurrent);
+        const pending = createSmartAccountPendingState(scopedProvider, pendingRecords, chainId, account.address, assertCurrent, undefined, false, cancellation ? 'latest' : 'pending');
         const provider = pending.provider;
+        const captureObservation = async () => {
+          // Share any earlier header read inside this preparation phase.
+          const sampled = await provider.send('eth_getBlockByNumber', ['latest', false]);
+          assertCurrent();
+          if (!sampled || typeof sampled.number !== 'string' || !/^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/.test(sampled.number) ||
+              typeof sampled.hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(sampled.hash)) throw new Error('SMART_ACCOUNT_AUTHORIZATION_REQUIRED');
+          observedAt = Object.freeze({number: BigInt(sampled.number).toString(), hash: sampled.hash.toLowerCase()});
+        };
         await pending.verify();
         if (intent.kind === 'modules') {
           await assertSmartAccountTargetsAllowed(getBlacklistTargetsForEvmCall({ to: account.address, data: '0x' }), ports.checkAddress, assertCurrent);
@@ -254,6 +283,7 @@ export function createNativeSmartOperation(
         } else if (
           intent.kind !== 'deploy' &&
           intent.kind !== 'guardian-policy' &&
+          intent.kind !== 'cancel-operation' &&
           intent.kind !== 'authenticator'
         ) {
           await assertSmartAccountTargetsAllowed(
@@ -287,7 +317,7 @@ export function createNativeSmartOperation(
           provider,
           assertCurrent,
         });
-        const ordinaryTransfer = ['native-transfer', 'native-max', 'erc20-transfer', 'nft-transfer', 'dapp-call', 'dapp-batch'].includes(intent.kind);
+        const ordinaryTransfer = ['native-transfer', 'native-max', 'erc20-transfer', 'nft-transfer', 'dapp-call', 'dapp-batch', 'cancel-operation'].includes(intent.kind);
         const deployedTransfer = ordinaryTransfer && state === 'deployed' && metadata.isDeployed && hasUsableSmartAccountAuthMetadata(metadata);
         // A deployed transfer uses its observed account and installed validator.
         // Deployment and management retain the complete infrastructure check.
@@ -339,6 +369,10 @@ export function createNativeSmartOperation(
           });
           assertCurrent();
         }
+        if (cancellation && state === 'deployed') {
+          metadata = await readSmartAccountValidatorMetadata({account,chainId,provider,assertCurrent});
+          assertCurrent();
+        }
         const authenticator = assertNativeSmartAccountAuthenticator(metadata);
         if (!['ecdsa', 'composite'].includes(authenticator.module) &&
             !(authenticator.module === 'slh-dsa' && ports.slhDsa !== null) &&
@@ -346,6 +380,7 @@ export function createNativeSmartOperation(
           throw new Error(
             'This authenticator is not available for native transfers'
           );
+        cancellationPayer = cancellation ? await inspectSmartAccountCancellationPayer(cancellation,provider,assertCurrent) : undefined;
         const prepare = (
           executions: { target: string; data: string; value: string }[]
         ) =>
@@ -361,7 +396,7 @@ export function createNativeSmartOperation(
               hasUsableSmartAccountAuthMetadata(metadata),
             executions,
             expectedErc20Transfers,
-            ...(feeOverrides ? { feeOverrides } : intent.kind === 'dapp-call'
+            ...(cancellationPayer?.replaceOuter ? {feeOverrides:cancellationPayer.feeOverrides} : feeOverrides ? { feeOverrides } : intent.kind === 'dapp-call'
               ? {
                   // Match extension Smart submissions. EOA gas/gasLimit fields
                   // do not replace the shared UserOperation gas estimate.
@@ -377,6 +412,11 @@ export function createNativeSmartOperation(
               : {}),
             assertCurrent,
             async selectGasPayer(gasEstimate, maxFeePerGas) {
+              if (cancellationPayer?.replaceOuter) {
+                const gasPayer = await selectSmartAccountGasPayer(ports.wallet,provider,cancellationPayer.payer as SmartAccountGasPayer,undefined,{requirePreferred:true});
+                const useGasTank = await canUseSmartAccountGasTank(provider,{chainId,gasEstimate,maxFeePerGas,gasPayerAddress:gasPayer.address});
+                assertCurrent();return{gasPayer,useGasTank};
+              }
               const primary = getSmartAccountGasPayerCandidates(
                 ports.wallet,
                 metadata.deploymentGasPayer
@@ -424,6 +464,7 @@ export function createNativeSmartOperation(
           });
           issued = maximum.quote;
           assertCurrent();
+          await captureObservation();
           return {
             kind: 'authorization',
             operation: issued,
@@ -436,7 +477,7 @@ export function createNativeSmartOperation(
           };
         }
         issued = await prepare(
-          intent.kind === 'authenticator' || intent.kind === 'modules'
+          intent.kind === 'cancel-operation' ? smartAccountCancellationExecutions(cancellation!) : intent.kind === 'authenticator' || intent.kind === 'modules'
             ? intent.command.executions.map((execution) => ({ ...execution }))
             : intent.kind === 'guardian-policy'
             ? buildGuardianPolicyExecutions(intent.command)
@@ -465,11 +506,13 @@ export function createNativeSmartOperation(
               ]
         );
         assertCurrent();
+        if (cancellation) assertSmartAccountCancellationOperation(cancellation,issued.userOperation,issued.validator);
         if (intent.kind === 'deploy' && issued.userOperation.initCode === '0x') {
           await ports.markDeployed(assertCurrent);
           assertCurrent();
           return { kind: 'already-deployed' };
         }
+        await captureObservation();
         return { kind: 'authorization', operation: issued, intent } as const;
       });
     },
@@ -522,7 +565,7 @@ export function createNativeSmartOperation(
           proofCurrent();
         }
         await withEvmReadPhase(pending.provider, proofCurrent, async provider => {
-        const current = createSmartAccountPendingState(provider, ports.pendingRecords, chainId, account.address, proofCurrent);
+        const current = createSmartAccountPendingState(provider, pendingRecords, chainId, account.address, proofCurrent, undefined, false, cancellation ? 'latest' : 'pending');
         await current.assertNonce(prepared.userOperation);
         await assertSmartAccountSpendability({
           provider: current.provider,
@@ -533,7 +576,7 @@ export function createNativeSmartOperation(
         });
       });
         proofCurrent();
-        return signNativeSmartAccountActionHash({
+        const signed = await signNativeSmartAccountActionHash({
         metadata,
         actionHash: prepared.actionHash,
         accountId: account.id,
@@ -553,6 +596,16 @@ export function createNativeSmartOperation(
             signal, metadata
           ),
       });
+        proofCurrent();
+        if (!observedAt) throw new Error('SMART_ACCOUNT_AUTHORIZATION_REQUIRED');
+        const userOperation = {...prepared.userOperation, signature:signed.signature};
+        const receipt = await ports.retainAuthorization(userOperation, prepared.gasPayer, observedAt, proofCurrent);
+        proofCurrent();
+        const retained = resolveSmartAccountAuthorization(receipt,{chainId,payer:prepared.gasPayer.address,userOperation},proofCurrent);
+        assertSmartAccountAuthorizationReceipt(receipt,{chainId,payer:prepared.gasPayer.address,userOperation:retained},proofCurrent);
+        authorization=receipt;
+        pending=pending.withAuthorization(receipt);
+        return {...signed,signature:retained.signature};
       },proposal?{compositePossession:true}:undefined);
       if (intent.kind === 'modules' && intent.command.draft.kind === 'install-custom') {
         const record = await ports.rememberCustomModule!(signal, assertCurrent);
@@ -632,7 +685,8 @@ export function createNativeSmartOperation(
           (transactionMetadata?.smartAccountDeploymentPrefund === true || transactionMetadata?.smartAccountExecution === true)
             ? (provider, hash, admission, signedRaw) => options.assertPendingState(provider, hash, admission, signedRaw)
             : undefined,
-          options.assertPendingStateIncludesAssets
+          options.assertPendingStateIncludesAssets,
+          options.smartAccountCancellation
         );
         guard();
         await reviewPayer(
@@ -702,6 +756,12 @@ export function createNativeSmartOperation(
             chainId,
             provider,
             pending,
+            async retainAuthorization(userOperation, payer, guard) {
+              guard();
+              if (!authorization || prepared !== issued) throw new Error('SMART_ACCOUNT_AUTHORIZATION_REQUIRED');
+              assertSmartAccountAuthorizationReceipt(authorization,{chainId,payer:payer.address,userOperation},guard);
+              return authorization;
+            },
             assertExpectedExecutionContext: () => {
               throw new Error('Unexpected dapp provenance');
             },
@@ -713,6 +773,7 @@ export function createNativeSmartOperation(
                 gasPrice: prepared.gasPrice,
                 expectedErc20Transfers: prepared.expectedErc20Transfers,
                 userOperation: prepared.userOperation,
+                ...(cancellation ? {cancellation,replaceOuter:Boolean(cancellationPayer?.replaceOuter)} : {}),
               };
             },
             getSmartAccountById: (id) => {

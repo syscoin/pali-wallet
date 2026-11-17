@@ -14,12 +14,13 @@ import type { ShellLeafNavigation } from './RealAppShell';
 import { activityAssetIcon } from '../activity/assetIcon';
 
 export type AccountActivityAction = 'saved' | 'cancel' | 'cancel-saved' | 'speed-up';
-export function AllNetworksActivity({ controller, accountLabel, navigation, onAction, initialTarget }: {
+export function AllNetworksActivity({ controller, accountLabel, navigation, onAction, initialTarget, onSignedInstructions }: {
   controller: AccountActivityController;
   accountLabel: string;
   navigation?: ShellLeafNavigation;
   onAction?(entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertCurrent: () => void): Promise<void>;
   initialTarget?: Readonly<{ networkId: string; hash: string }>;
+  onSignedInstructions?(): void;
 }) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const { hidden } = useBalancePrivacy(), { t } = useNativeTranslation();
@@ -133,6 +134,7 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   }).map(choice => choice.networkName);
   return <SafeAreaView edges={navigation ? ['top'] : ['top', 'bottom']} style={s.root}>
     <View style={s.header}><Header title={t('buttons.activity')} subtitle={accountLabel} right={<View style={s.toolbar}>
+      {onSignedInstructions && <IconButton label={t('transactions.smartAuthorizations.title')} icon="clock" onPress={onSignedInstructions} />}
       <IconButton label={t('mobile.activityViews.nativeActivity.refreshActivity')} icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status === 'loading'} onPress={() => void run(async check => {
         check();
         // Retry a failed notification target only on this deliberate refresh.

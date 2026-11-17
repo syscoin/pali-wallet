@@ -39,6 +39,7 @@ jest.mock('state/store', () => ({
   },
 }));
 
+import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import {
   captureEvmSubmission,
@@ -54,7 +55,13 @@ import {
   createOwnedEvmFeeFunding,
   NATIVE_EVM_FEE_FUNDING,
 } from '../../../shared/evmFeeApproval';
+import { getSmartAccountUserOpHash } from '../../../utils/smartAccount/userOperationHash';
+import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import { decodeRetainedSmartAccountOperations } from '../../../wallet/smartAccountActivity';
+import {
+  captureSmartAccountCancellation,
+  smartAccountCancellationMetadata,
+} from '../../../wallet/smartAccountCancellation';
 import { KeyringAccountType } from 'types/network';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 import {
@@ -131,11 +138,14 @@ function fixture(chainId = 57) {
   let onPersisted: () => void = () => undefined;
   const provider = {
     signal: new AbortController().signal,
+    call: async (request: any): Promise<any> =>
+      provider.send('eth_call', [request, 'pending']),
     verifyConfiguredChainId: jest.fn(async () => undefined),
     send: jest.fn(
       async (method: string, params: readonly unknown[] = []): Promise<any> => {
         if (!Array.isArray(params)) throw new Error('Invalid RPC parameters');
         if (method === 'eth_getBlockByNumber') return block;
+        if (method === 'eth_getTransactionCount') return '0x0';
         if (method === 'eth_getBalance') return '0x' + balance.toString(16);
         if (method === 'eth_estimateGas') return '0x5208';
         throw new Error(`Unexpected RPC: ${method}`);
@@ -319,6 +329,377 @@ function fixture(chainId = 57) {
 }
 
 afterEach(() => jest.restoreAllMocks());
+
+async function cancellationFixture() {
+  const f = fixture();
+  const cryptoKeyring: any = Object.create(SoftwareKeyring.prototype);
+  cryptoKeyring.sessionPassword = { isCleared: () => false };
+  cryptoKeyring.sessionMnemonic = { isCleared: () => false };
+  cryptoKeyring.privateRecordSessionRevision = 0;
+  cryptoKeyring.getDecryptedMnemonic = () =>
+    'synthetic cancellation journal root';
+  const keyring = f.wallet.getActiveKeyring();
+  for (const name of [
+    'getPrivateRecordProfileId',
+    'encryptPrivateRecord',
+    'decryptPrivateRecord',
+  ])
+    keyring[name] = cryptoKeyring[name].bind(cryptoKeyring);
+  let stored: string | undefined;
+  const records = new EvmSignedRecords({
+    read: async () => stored,
+    compareAndSet: async (_profile, expected, next, check) => {
+      check();
+      if (stored !== expected) return false;
+      stored = next;
+      return true;
+    },
+  });
+  f.wallet.getRetainedEvmRecords = () => records;
+  f.wallet.inspectOrdinaryEvmNonce = (
+    MainController.prototype as any
+  ).inspectOrdinaryEvmNonce.bind(f.wallet);
+  const session = { keyring, assertCurrent: () => undefined };
+  const validator = deployment.account.smartAccount.auth!.validator;
+  const nonce = (
+    BigInt(encodeSmartAccountValidatorNonceKey(validator)) << BigInt(64)
+  ).toString();
+  const originalOperation = buildSmartAccountUserOperation({
+    sender: smart,
+    nonce,
+    callData: '0x1234',
+    signature: '0x1234',
+  });
+  const originalData = paliEntryPointInterface.encodeFunctionData('handleOps', [
+    [originalOperation],
+    signer.address,
+  ]);
+  const rawTransaction = await signer.signTransaction({
+    type: 2,
+    chainId: 57,
+    nonce: 0,
+    to: getPaliEntryPointAddress(57),
+    value: 0,
+    data: originalData,
+    gasLimit: 21000,
+    maxFeePerGas: 3,
+    maxPriorityFeePerGas: 1,
+  });
+  const original = await records.append(session, {
+    rawTransaction,
+    hash: Transaction.from(rawTransaction).hash!,
+    from: signer.address,
+    chainId: '57',
+    nonce: 0,
+    type: 2,
+    context: {
+      account: { id: 0, type: 'HDAccount', address: signer.address },
+      network: {
+        kind: 'ethereum',
+        chainId: 57,
+        slip44: 60,
+        url: 'https://rpc.invalid',
+      },
+      operation: 'send',
+    },
+  });
+  const cancellation = captureSmartAccountCancellation({
+    account: smart,
+    chainId: 57,
+    referenceHash: original.hash,
+    outer: original,
+    observedAt: { number: '16', hash: block.hash },
+  });
+  const noop = encodeERC7579Executions([
+    { target: smart, value: '0x0', data: '0x' },
+  ]);
+  const userOperation = {
+    ...originalOperation,
+    callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+      noop.mode,
+      noop.executionCalldata,
+    ]),
+    signature: '0x5678',
+  };
+  const descriptor = { cancellation, replaceOuter: true, userOperation };
+  Object.assign(f.options, { smartAccountCancellation: descriptor });
+  const metadata = {
+    smartAccountExecution: true,
+    smartAccountOperationCancellation: smartAccountCancellationMetadata(
+      cancellation,
+      getSmartAccountUserOpHash(userOperation, 57)
+    ),
+  };
+  const request = {
+    ...f.request,
+    to: getPaliEntryPointAddress(57),
+    data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+      [userOperation],
+      signer.address,
+    ]),
+    maxFeePerGas: '4',
+    maxPriorityFeePerGas: '2',
+  };
+  let latest = 0;
+  const send = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getTransactionCount')
+      return params?.[1] === 'pending' ? '0x1' : `0x${latest.toString(16)}`;
+    if (
+      method === 'eth_getBalance' &&
+      params?.[1] === 'pending' &&
+      latest === 0
+    )
+      return '0x0';
+    if (
+      method === 'eth_getTransactionByHash' ||
+      method === 'eth_getTransactionReceipt'
+    )
+      return null;
+    return send(method, params);
+  });
+  return {
+    ...f,
+    records,
+    session,
+    original,
+    descriptor,
+    setLatest(value: number) {
+      latest = value;
+    },
+    submit: () => f.submit(NATIVE_EVM_FEE_FUNDING, request, metadata),
+  };
+}
+
+it('replaces only the authenticated Smart outer nonce using canonical funds', async () => {
+  const f = await cancellationFixture();
+  const response = await f.submit();
+  expect(f.broadcast).toHaveBeenCalledTimes(1);
+  const raw = f.send.mock.calls[0][0];
+  expect(raw.nonce).toBe('0');
+  const saved = await f.records.readExact(
+    f.session,
+    '57',
+    signer.address,
+    response.hash
+  );
+  expect(saved?.originalHash).toBe(f.original.hash);
+  expect(saved?.metadata?.smartAccountOperationCancellation).toEqual(
+    smartAccountCancellationMetadata(
+      f.descriptor.cancellation,
+      getSmartAccountUserOpHash(f.descriptor.userOperation, 57)
+    )
+  );
+});
+
+it.each(['consent', 'signing'] as const)(
+  'refuses a consumed Smart outer nonce after %s',
+  async (stage) => {
+    const f = await cancellationFixture();
+    if (stage === 'consent')
+      f.options.confirmFee.mockImplementationOnce(async (quote) => {
+        f.setLatest(1);
+        return quote.id;
+      });
+    else f.onSigned(() => f.setLatest(1));
+    await expect(f.submit()).rejects.toMatchObject({
+      transactionNotBroadcast: true,
+    });
+    expect(f.broadcast).not.toHaveBeenCalled();
+    expect(f.send).toHaveBeenCalledTimes(stage === 'consent' ? 0 : 1);
+  }
+);
+
+it('retains other payer commitments when replacing a Smart outer transaction', async () => {
+  const f = await cancellationFixture();
+  const rawTransaction = await signer.signTransaction({
+    type: 2,
+    chainId: 57,
+    nonce: 1,
+    to: receiver,
+    value: 0,
+    gasLimit: 400000,
+    maxFeePerGas: 3,
+    maxPriorityFeePerGas: 1,
+  });
+  await f.records.append(f.session, {
+    rawTransaction,
+    hash: Transaction.from(rawTransaction).hash!,
+    from: signer.address,
+    chainId: '57',
+    nonce: 1,
+    type: 2,
+    context: {
+      account: { id: 0, type: 'HDAccount', address: signer.address },
+      network: {
+        kind: 'ethereum',
+        chainId: 57,
+        slip44: 60,
+        url: 'https://rpc.invalid',
+      },
+      operation: 'send',
+    },
+  });
+  await expect(f.submit()).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+});
+
+it('rejects a copied Smart cancellation descriptor before quoting or signing', async () => {
+  const f = await cancellationFixture();
+  Object.assign(f.options, {
+    smartAccountCancellation: {
+      ...f.descriptor,
+      cancellation: { ...f.descriptor.cancellation },
+    },
+  });
+  await expect(f.submit()).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  expect(f.options.confirmFee).not.toHaveBeenCalled();
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+});
+
+it('uses ordinary nonce admission for fresh Smart cancellation delivery', async () => {
+  const f = await cancellationFixture();
+  f.descriptor.replaceOuter = false;
+  f.setLatest(1);
+  const response = await f.submit();
+  expect(f.send.mock.calls[0][0].nonce).toBe('1');
+  const saved = await f.records.readExact(
+    f.session,
+    '57',
+    signer.address,
+    response.hash
+  );
+  expect(saved?.originalHash).toBeUndefined();
+  expect(saved?.metadata?.smartAccountOperationCancellation).toEqual(
+    smartAccountCancellationMetadata(
+      f.descriptor.cancellation,
+      getSmartAccountUserOpHash(f.descriptor.userOperation, 57)
+    )
+  );
+  expect(f.broadcast).toHaveBeenCalledTimes(1);
+});
+
+it('quotes only the exact payer envelope before consent and admits freshly afterward', async () => {
+  const f = fixture();
+  f.options.confirmFee.mockImplementationOnce(async (quote) => {
+    expect(f.wallet.inspectOrdinaryEvmNonce).not.toHaveBeenCalled();
+    expect(f.options.assertPendingState).not.toHaveBeenCalled();
+    expect(f.options.assertAssetState).not.toHaveBeenCalled();
+    expect(f.provider.send.mock.calls.map(([method]) => method)).toEqual([
+      'eth_getBlockByNumber',
+      'eth_getTransactionCount',
+      'eth_estimateGas',
+    ]);
+    expect(quote.transaction.nonce).toBe('0');
+    f.setBalance(BigInt(0));
+    return quote.id;
+  });
+  await expect(f.submit()).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  expect(f.wallet.inspectOrdinaryEvmNonce).toHaveBeenCalledTimes(1);
+  expect(f.options.assertPendingState).toHaveBeenCalledTimes(1);
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+});
+
+it('reuses only the owner display header and keeps fresh state at both signing boundaries', async () => {
+  const f = fixture();
+  Object.assign(f.options, { feeDisplayBlock: { ...block } });
+  f.options.confirmFee.mockImplementationOnce(async (quote) => {
+    expect(f.provider.send.mock.calls.map(([method]) => method)).toEqual([
+      'eth_getTransactionCount',
+      'eth_estimateGas',
+    ]);
+    return quote.id;
+  });
+  await f.submit();
+  expect(f.options.assertPendingState).toHaveBeenCalledTimes(2);
+  expect(f.options.assertAssetState).toHaveBeenCalledTimes(2);
+  expect(
+    f.provider.send.mock.calls.filter(
+      ([method]) => method === 'eth_estimateGas'
+    )
+  ).toHaveLength(2);
+  expect(
+    f.provider.send.mock.calls.filter(
+      ([method, params]) =>
+        method === 'eth_getBlockByNumber' && params[0] === 'latest'
+    )
+  ).toHaveLength(2);
+  expect(f.broadcast).toHaveBeenCalledTimes(1);
+});
+
+it('finishes authenticated phase priming before independent quote and admission reads', async () => {
+  const f = fixture();
+  const ready = new WeakSet<object>();
+  const prepareReadPhase = jest.fn(async (provider: object) => {
+    await Promise.resolve();
+    ready.add(provider);
+  });
+  Object.assign(f.options, { prepareReadPhase });
+  f.options.assertPendingState.mockImplementation(async (...args) => {
+    expect(ready.has(args[0] as object)).toBe(true);
+  });
+  await f.submit();
+  expect(prepareReadPhase).toHaveBeenCalledTimes(2);
+  expect(prepareReadPhase.mock.calls[0][0]).not.toBe(
+    prepareReadPhase.mock.calls[1][0]
+  );
+  expect(f.broadcast).toHaveBeenCalledTimes(1);
+});
+
+it.each(['larger', 'unavailable'] as const)(
+  'holds signed bytes when the final estimate becomes %s after consent',
+  async (change) => {
+    const f = fixture();
+    let approved = false;
+    const read = f.provider.send.getMockImplementation()!;
+    f.options.confirmFee.mockImplementationOnce(async (quote) => {
+      approved = true;
+      return quote.id;
+    });
+    f.provider.send.mockImplementation(async (method, params) => {
+      if (approved && method === 'eth_estimateGas') {
+        if (change === 'unavailable')
+          throw new Error('final estimate unavailable');
+        return '0x100000';
+      }
+      return read(method, params);
+    });
+    await expect(f.submit()).rejects.toMatchObject({
+      transactionNotBroadcast: true,
+    });
+    expect(f.send).toHaveBeenCalledTimes(1);
+    expect(f.records.append).toHaveBeenCalledTimes(1);
+    expect(f.broadcast).not.toHaveBeenCalled();
+    expect(
+      f.provider.send.mock.calls.filter(
+        ([method]) => method === 'eth_estimateGas'
+      )
+    ).toHaveLength(2);
+  }
+);
+
+it('rejects a higher live base fee before payer signing despite the fixed approved gas bound', async () => {
+  const f = fixture();
+  Object.assign(f.options, { feeDisplayBlock: { ...block } });
+  f.options.confirmFee.mockImplementationOnce(async (quote) => {
+    block.baseFeePerGas = '0xa';
+    return quote.id;
+  });
+  await expect(f.submit()).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+});
 
 it('refuses a smart payer without explicit numerical fee consent', async () => {
   const f = fixture();
@@ -1008,10 +1389,42 @@ it.each(['signing', 'persistence', 'unchanged'] as const)(
       }
       return originalRead(method, params);
     });
+    const protectedKeyring: any = Object.create(SoftwareKeyring.prototype);
+    protectedKeyring.sessionPassword = { isCleared: () => false };
+    protectedKeyring.sessionMnemonic = { isCleared: () => false };
+    protectedKeyring.privateRecordSessionRevision = 0;
+    protectedKeyring.getDecryptedMnemonic = () =>
+      'synthetic prefund authorization root';
+    let authorizationBytes: string | undefined;
+    const authorizations = new EvmSignedRecords({
+      read: async () => authorizationBytes,
+      compareAndSet: async (_profile, expected, next, check) => {
+        check();
+        if (authorizationBytes !== expected) return false;
+        authorizationBytes = next;
+        return true;
+      },
+    });
+    const authorizationSession = {
+      keyring: protectedKeyring,
+      assertCurrent: () => undefined,
+    };
+    const authorizationRecords =
+      await authorizations.captureSmartAccountPendingRecords(
+        authorizationSession,
+        '57',
+        smart
+      );
+    f.snapshot.owner = authorizationRecords.profileId;
+    Object.assign(f.snapshot, {
+      readSmartAccountAuthorizations: () =>
+        authorizationRecords.readAuthorizations!(true),
+    });
     const pending = createSmartAccountPendingState(
       f.provider,
       {
-        profileId,
+        ...authorizationRecords,
+        profileId: authorizationRecords.profileId,
         read: async () => {
           if (f.records.append.mock.calls.length) {
             throw new Error(
@@ -1078,6 +1491,16 @@ it.each(['signing', 'persistence', 'unchanged'] as const)(
         getLocalNativeExecutionRecipients: () => [],
         invalidateMetadata: () => undefined,
         ensureDeploymentPrefund: fund,
+        retainAuthorization: (userOperation, payer, assertCurrent) =>
+          authorizations.retainSmartAccountAuthorization(
+            { ...authorizationSession, assertCurrent },
+            {
+              chainId: 57,
+              observedAt: { number: '16', hash: block.hash },
+              payer: payer.address,
+              userOperation,
+            }
+          ),
         sendTransaction: async (transaction) => {
           expect(transaction).not.toHaveProperty('gasLimit');
           throw new Error('Reached handleOps');

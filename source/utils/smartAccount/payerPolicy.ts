@@ -260,6 +260,7 @@ export async function ensureSmartAccountDeploymentPrefund<
       assertBeforeSign: options.assertBeforeSign,
       assertCurrentContext: options.assertCurrentContext,
       assertPendingState: options.assertPendingState,
+      prepareReadPhase: options.prepareReadPhase,
       assertPendingStateIncludesAssets:
         options.assertPendingStateIncludesAssets,
       assertAssetState: options.assertAssetState,

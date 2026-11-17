@@ -1,4 +1,7 @@
-import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import {
+  planEvmCancellationFees,
+  assertEvmGasLimit,
+} from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { getAddress } from 'ethers/address';
 import { sha256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
@@ -8,22 +11,46 @@ import { decodeErc20Transfer } from '../shared/erc20.ts';
 import { snapshotEvmTransferAsset } from '../shared/evmAssetState.ts';
 import { EvmAutoNonceAcceptance } from '../shared/evmAutoNonce.ts';
 import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
 import { EVM_SIGNED_RECORD_LIMITS } from '../shared/evmSignedRecordLimits.ts';
 import { observeEvmTransaction } from '../shared/evmTransactionObservation.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+} from '../utils/smartAccount/contracts.ts';
+import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHash.ts';
 
 import {
   decodeRetainedSmartAccountTransfer,
   decodeRetainedSmartAccountCancellation,
+  isSmartAccountActivityCandidate,
   decodeRetainedSmartAccountOperations,
   type RetainedSmartAccountOperation,
-  isSmartAccountActivityCandidate,
   type RetainedSmartAccountActivity,
   type RetainedSmartAccountCancellation,
 } from './smartAccountActivity.ts';
+import {
+  smartAccountAuthorizationSummary,
+  captureSignedSmartAccountOperation,
+  captureSmartAccountAuthorization,
+  captureSmartAccountAuthorizationSummary,
+  decodeSmartAccountAuthorization,
+  encodeSmartAccountAuthorization,
+  isSmartAccountRevocationOperation,
+  type RetainedSmartAccountAuthorization,
+  type SmartAccountAuthorizationBlock,
+  type SmartAccountAuthorizationSummary,
+} from './smartAccountAuthorization.ts';
+import {
+  decodeCancellationOuter,
+  decodeSmartAccountCancellation,
+  type SmartAccountCancellationMetadata,
+} from './smartAccountCancellation.ts';
 import type { EvmAutoNonceSnapshot } from '../shared/evmAutoNonce.ts';
 import type { EvmTransactionObservation } from '../shared/evmTransactionObservation.ts';
+import type { SmartAccountPackedUserOperation } from '../utils/smartAccount/account.ts';
 import type {
   IEncryptedPrivateRecord,
   EvmSignedSubmission,
@@ -107,12 +134,107 @@ export type EvmSignedRecordStorage = {
   read(profileId: string): Promise<string | undefined>;
 };
 export type SmartAccountPendingRecords = Readonly<{
+  filterPendingAuthorizations?(
+    authorizations: readonly Pick<
+      SmartAccountAuthorizationSummary,
+      'account' | 'chainId' | 'operationHash' | 'operationNonce'
+    >[]
+  ): readonly Pick<
+    SmartAccountAuthorizationSummary,
+    'account' | 'chainId' | 'operationHash' | 'operationNonce'
+  >[];
+  filterPendingOperations?(
+    operations: readonly RetainedSmartAccountOperation[]
+  ): readonly RetainedSmartAccountOperation[];
+  forAuthorization?(
+    receipt: SmartAccountAuthorizationReceipt
+  ): SmartAccountPendingRecords;
   profileId: string;
   read(fresh: boolean): Promise<readonly RetainedSmartAccountOperation[]>;
+  readAuthorizations?(
+    fresh: boolean
+  ): Promise<
+    readonly Pick<
+      SmartAccountAuthorizationSummary,
+      'account' | 'chainId' | 'operationHash' | 'operationNonce'
+    >[]
+  >;
   readPayerRecords?(
     address: string
   ): Promise<readonly EvmSignedRecordSummary[]>;
 }>;
+export type SmartAccountAuthorizationReceipt = Readonly<{
+  operationHash: string;
+}>;
+const authorizationReceipts = new WeakMap<
+  SmartAccountAuthorizationReceipt,
+  Readonly<{
+    assertCurrent(): void;
+    profileId: string;
+    record: RetainedSmartAccountAuthorization;
+    storage: EvmSignedRecordStorage;
+  }>
+>();
+export function assertSmartAccountAuthorizationReceipt(
+  receipt: SmartAccountAuthorizationReceipt,
+  input: Readonly<{
+    chainId: number;
+    payer: string;
+    userOperation: SmartAccountPackedUserOperation;
+  }>,
+  assertCurrent: () => void
+): void {
+  const captured = authorizationReceipts.get(receipt);
+  if (!captured) throw new Error('SMART_ACCOUNT_AUTHORIZATION_REQUIRED');
+  assertCurrent();
+  captured.assertCurrent();
+  if (
+    captured.record.chainId !== String(input.chainId) ||
+    captured.record.payer !== getAddress(input.payer) ||
+    JSON.stringify(captured.record.userOperation) !==
+      JSON.stringify(captureSignedSmartAccountOperation(input.userOperation))
+  )
+    throw new Error('SMART_ACCOUNT_AUTHORIZATION_CHANGED');
+}
+/** Resolve an already retained no-op's randomized proof without discarding its first bytes. */
+export function resolveSmartAccountAuthorization(
+  receipt: SmartAccountAuthorizationReceipt,
+  input: Readonly<{
+    chainId: number;
+    payer: string;
+    userOperation: SmartAccountPackedUserOperation;
+  }>,
+  assertCurrent: () => void
+): SmartAccountPackedUserOperation {
+  const captured = authorizationReceipts.get(receipt);
+  if (!captured) throw new Error('SMART_ACCOUNT_AUTHORIZATION_REQUIRED');
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  captured.assertCurrent();
+  const provided = captureSignedSmartAccountOperation(input.userOperation);
+  const retained = captured.record.userOperation;
+  if (
+    captured.record.chainId !== String(input.chainId) ||
+    captured.record.payer !== getAddress(input.payer) ||
+    !sameUnsignedSmartAccountOperation(retained, provided) ||
+    (retained.signature !== provided.signature &&
+      (!captured.record.replacesOperationHash ||
+        !isSmartAccountRevocationOperation(retained) ||
+        !isSmartAccountRevocationOperation(provided)))
+  )
+    throw new Error('SMART_ACCOUNT_AUTHORIZATION_CHANGED');
+  return retained;
+}
+function sameUnsignedSmartAccountOperation(
+  left: SmartAccountPackedUserOperation,
+  right: SmartAccountPackedUserOperation
+): boolean {
+  return Object.keys(left).every(
+    (key) =>
+      key === 'signature' ||
+      left[key as keyof SmartAccountPackedUserOperation] ===
+        right[key as keyof SmartAccountPackedUserOperation]
+  );
+}
 const mutationSerials = new WeakMap<EvmSignedRecordStorage, number>();
 
 export type EvmSignedRecordSession = {
@@ -170,6 +292,45 @@ export type EvmReplacementRates = Readonly<
   | { gasPrice: bigint; type: 0 }
   | { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint; type: 2 }
 >;
+/** Pali-owned permission to replace an outer nonce with an inner-nonce revocation. */
+export type EvmVerifiedSmartAccountReplacement = Readonly<{
+  chainId: string;
+  expectedTipHash: string;
+  from: string;
+  nonce: number;
+  operation: 'send';
+  originalHash: string;
+  profileId: string;
+  rates: EvmReplacementRates;
+  resetGeneration: number;
+}>;
+const smartAccountReplacementBindings = new WeakMap<
+  EvmVerifiedSmartAccountReplacement,
+  Readonly<{
+    assertCurrent(): void;
+    data: string;
+    metadata: SmartAccountCancellationMetadata;
+    userOperation: SmartAccountPackedUserOperation;
+  }>
+>();
+export function isEvmVerifiedSmartAccountReplacement(
+  value: unknown
+): value is EvmVerifiedSmartAccountReplacement {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    smartAccountReplacementBindings.has(
+      value as EvmVerifiedSmartAccountReplacement
+    )
+  );
+}
+export function assertEvmVerifiedSmartAccountReplacement(
+  value: EvmVerifiedSmartAccountReplacement
+): void {
+  const binding = smartAccountReplacementBindings.get(value);
+  if (!binding) throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+  binding.assertCurrent();
+}
 
 function bindVerifiedReplacement(
   original: VerifiedPendingOriginal,
@@ -217,6 +378,8 @@ function repricesCancellation(tx: Transaction, original: Transaction): boolean {
 }
 
 type Entry = EvmSignedRecordSummary &
+  Readonly<{ chunks: readonly IEncryptedPrivateRecord[] }>;
+type AuthorizationEntry = SmartAccountAuthorizationSummary &
   Readonly<{ chunks: readonly IEncryptedPrivateRecord[] }>;
 type MinedObservation = Extract<EvmTransactionObservation, { status: 'mined' }>;
 
@@ -338,7 +501,9 @@ function assertNonceFloor(bundle: Bundle | null, scope: NonceFloor): void {
     });
 }
 type ParsedBundle = Readonly<{
+  authorizations: readonly AuthorizationEntry[];
   entries: readonly Entry[];
+  hasAuthorizations: boolean;
   profileId: string;
   revision: number;
   root: IEncryptedPrivateRecord;
@@ -515,12 +680,18 @@ function parse(raw: string, expectedProfile?: string): ParsedBundle {
     nodes: 500000,
     tokenCharacters: 100000,
   });
-  const value = exact(JSON.parse(raw), [
+  const decoded = JSON.parse(raw);
+  const hasAuthorizations =
+    !!decoded &&
+    typeof decoded === 'object' &&
+    Object.hasOwn(decoded, 'authorizations');
+  const value = exact(decoded, [
     'version',
     'profileId',
     'revision',
     'root',
     'entries',
+    ...(hasAuthorizations ? ['authorizations'] : []),
   ]);
   if (
     JSON.stringify(value) !== raw ||
@@ -530,7 +701,11 @@ function parse(raw: string, expectedProfile?: string): ParsedBundle {
     !Number.isSafeInteger(value.revision) ||
     value.revision < 0 ||
     !Array.isArray(value.entries) ||
-    value.entries.length > EVM_SIGNED_RECORD_LIMITS.transactions
+    value.entries.length > EVM_SIGNED_RECORD_LIMITS.transactions ||
+    (hasAuthorizations &&
+      (!Array.isArray(value.authorizations) ||
+        value.entries.length + value.authorizations.length >
+          EVM_SIGNED_RECORD_LIMITS.transactions))
   )
     return invalid();
   const hashes = new Set<string>();
@@ -597,12 +772,56 @@ function parse(raw: string, expectedProfile?: string): ParsedBundle {
       ),
     }) as Entry;
   });
+  const authorizationHashes = new Set<string>();
+  const authorizations: AuthorizationEntry[] = (
+    hasAuthorizations ? value.authorizations : []
+  ).map((input: unknown) => {
+    const data = exact(input, [
+      'account',
+      'chainId',
+      'createdAt',
+      'observedAt',
+      'operationHash',
+      'operationNonce',
+      'payer',
+      'chunks',
+      ...(input &&
+      typeof input === 'object' &&
+      Object.hasOwn(input, 'replacesOperationHash')
+        ? ['replacesOperationHash']
+        : []),
+    ]);
+    const { chunks, ...header } = data;
+    const captured = captureSmartAccountAuthorizationSummary(header);
+    if (
+      authorizationHashes.has(captured.operationHash) ||
+      !Array.isArray(chunks) ||
+      !chunks.length
+    )
+      return invalid();
+    authorizationHashes.add(captured.operationHash);
+    return Object.freeze({
+      ...captured,
+      chunks: Object.freeze(
+        chunks.map((chunk: unknown, i: number) =>
+          envelope(
+            chunk,
+            value.profileId,
+            CHUNK_DOMAIN,
+            `authorization/${captured.operationHash}/${i}`
+          )
+        )
+      ),
+    });
+  });
   return Object.freeze({
     version: 1,
     profileId: value.profileId,
     revision: value.revision,
     root: envelope(value.root, value.profileId, ROOT_DOMAIN, 'manifest'),
     entries: Object.freeze(entries),
+    authorizations: Object.freeze(authorizations),
+    hasAuthorizations,
   });
 }
 /** Structural physical admission only; authenticated completeness is checked after SDK decryption. */
@@ -619,7 +838,7 @@ export function inspectEvmSignedBundle(
   return Object.freeze({
     profileId: value.profileId,
     revision: value.revision,
-    transactions: value.entries.length,
+    transactions: value.entries.length + value.authorizations.length,
     bytes: encoder.encode(raw).length,
   });
 }
@@ -643,7 +862,7 @@ function summary(entry: Entry): EvmSignedRecordSummary {
   void _chunks;
   return Object.freeze(value);
 }
-async function entriesHash(entries: readonly Entry[]): Promise<string> {
+async function entriesHash(entries: readonly unknown[]): Promise<string> {
   const bytes = encoder.encode(JSON.stringify(entries));
   try {
     return sha256(bytes);
@@ -779,6 +998,20 @@ export class EvmSignedRecords {
         !!value &&
         typeof value === 'object' &&
         Object.hasOwn(value, 'resetGeneration');
+      const hasAuthorizationCount =
+        !!value &&
+        typeof value === 'object' &&
+        Object.hasOwn(value, 'authorizations');
+      const hasAuthorizationHash =
+        !!value &&
+        typeof value === 'object' &&
+        Object.hasOwn(value, 'authorizationsHash');
+      const hasAuthorizationEntries = parsed.hasAuthorizations;
+      if (
+        hasAuthorizationCount !== hasAuthorizationHash ||
+        hasAuthorizationCount !== hasAuthorizationEntries
+      )
+        return invalid();
       const root = exact(value, [
         'version',
         'revision',
@@ -786,12 +1019,19 @@ export class EvmSignedRecords {
         'entriesHash',
         ...(hasFloors ? ['nonceFloors'] : []),
         ...(hasResetGeneration ? ['resetGeneration'] : []),
+        ...(hasAuthorizationCount
+          ? ['authorizations', 'authorizationsHash']
+          : []),
       ]);
       if (
         root.version !== 1 ||
         root.revision !== parsed.revision ||
         root.transactions !== parsed.entries.length ||
-        root.entriesHash !== (await entriesHash(parsed.entries))
+        root.entriesHash !== (await entriesHash(parsed.entries)) ||
+        (hasAuthorizationCount &&
+          (root.authorizations !== parsed.authorizations.length ||
+            root.authorizationsHash !==
+              (await entriesHash(parsed.authorizations))))
       )
         return invalid();
       floors = nonceFloors(hasFloors ? root.nonceFloors : []);
@@ -821,13 +1061,17 @@ export class EvmSignedRecords {
     before: string | undefined,
     revision: number,
     entries: readonly Entry[],
+    authorizations: readonly AuthorizationEntry[],
     floors: readonly NonceFloor[],
     reserveStatusGrowth: boolean,
     resetGeneration: number,
     verifyBeforeCommit?: () => Promise<() => void>
   ): Promise<boolean> {
     if (!Number.isSafeInteger(revision)) return limit();
-    if (entries.length > EVM_SIGNED_RECORD_LIMITS.transactions)
+    if (
+      entries.length + authorizations.length >
+      EVM_SIGNED_RECORD_LIMITS.transactions
+    )
       return reserveStatusGrowth ? appendLimit() : limit();
     const digest = await entriesHash(entries);
     guard(session);
@@ -837,6 +1081,12 @@ export class EvmSignedRecords {
         revision,
         transactions: entries.length,
         entriesHash: digest,
+        ...(authorizations.length
+          ? {
+              authorizations: authorizations.length,
+              authorizationsHash: await entriesHash(authorizations),
+            }
+          : {}),
         nonceFloors: nonceFloors(floors),
         ...(resetGeneration ? { resetGeneration } : {}),
       })
@@ -863,6 +1113,7 @@ export class EvmSignedRecords {
       revision,
       root: envelope(root, id, ROOT_DOMAIN, 'manifest'),
       entries,
+      ...(authorizations.length ? { authorizations } : {}),
     });
     // The prior bundle was already authenticated. Distinguish a newly
     // generated over-limit append from an oversized/corrupt stored bundle.
@@ -946,12 +1197,371 @@ export class EvmSignedRecords {
     }
   }
 
+  private authorizationReceipt(
+    session: EvmSignedRecordSession,
+    profileId: string,
+    record: RetainedSmartAccountAuthorization
+  ): SmartAccountAuthorizationReceipt {
+    const receipt = Object.freeze({ operationHash: record.operationHash });
+    authorizationReceipts.set(receipt, {
+      assertCurrent: () => guard(session),
+      profileId,
+      record,
+      storage: this.storage,
+    });
+    return receipt;
+  }
+  private async materializeAuthorization(
+    session: EvmSignedRecordSession,
+    entry: AuthorizationEntry
+  ): Promise<RetainedSmartAccountAuthorization> {
+    const pieces: Uint8Array[] = [];
+    try {
+      let total = 0;
+      for (let i = 0; i < entry.chunks.length; i++) {
+        guard(session);
+        const part = await session.keyring.decryptPrivateRecord({
+          domain: CHUNK_DOMAIN,
+          recordId: `authorization/${entry.operationHash}/${i}`,
+          envelope: entry.chunks[i]!,
+        });
+        pieces.push(part);
+        guard(session);
+        total += part.length;
+        if (
+          !part.length ||
+          part.length > EVM_SIGNED_RECORD_LIMITS.chunkBytes ||
+          total > EVM_SIGNED_RECORD_LIMITS.bytes
+        )
+          return invalid();
+      }
+      const payload = new Uint8Array(total);
+      try {
+        let offset = 0;
+        for (const part of pieces) {
+          payload.set(part, offset);
+          offset += part.length;
+        }
+        const { chunks: _chunks, ...header } = entry;
+        void _chunks;
+        return decodeSmartAccountAuthorization(header, payload);
+      } finally {
+        payload.fill(0);
+      }
+    } finally {
+      for (const part of pieces) part.fill(0);
+    }
+  }
+  /** Commit the usable inner signature before any estimate, simulation or delivery can disclose it. */
+  retainSmartAccountAuthorization(
+    session: EvmSignedRecordSession,
+    input: Readonly<{
+      chainId: number;
+      observedAt: SmartAccountAuthorizationBlock;
+      payer: string;
+      replacesOperationHash?: string;
+      userOperation: SmartAccountPackedUserOperation;
+    }>
+  ): Promise<SmartAccountAuthorizationReceipt> {
+    session = this.captureSession(session);
+    const record = captureSmartAccountAuthorization({
+      ...input,
+      createdAt: this.now(),
+    });
+    const payload = encodeSmartAccountAuthorization(record);
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const previous = await this.load(session, id);
+        const duplicate = previous.bundle?.authorizations.find(
+          (entry) => entry.operationHash === record.operationHash
+        );
+        if (duplicate) {
+          const retained = await this.materializeAuthorization(
+            session,
+            duplicate
+          );
+          if (
+            !sameUnsignedSmartAccountOperation(
+              retained.userOperation,
+              record.userOperation
+            ) ||
+            (retained.userOperation.signature !==
+              record.userOperation.signature &&
+              (!record.replacesOperationHash ||
+                !isSmartAccountRevocationOperation(record.userOperation))) ||
+            retained.payer !== record.payer ||
+            retained.replacesOperationHash !== record.replacesOperationHash
+          )
+            throw new Error('SMART_ACCOUNT_AUTHORIZATION_CONFLICT');
+          return this.authorizationReceipt(session, id, retained);
+        }
+        const conflicts = new Map<string, string>();
+        const priorRevocations = new Set<string>();
+        for (const entry of previous.bundle?.authorizations ?? []) {
+          if (
+            entry.account === record.account &&
+            entry.chainId === record.chainId &&
+            entry.operationNonce === record.operationNonce
+          ) {
+            conflicts.set(entry.operationHash, entry.operationNonce);
+            if (
+              record.replacesOperationHash &&
+              entry.replacesOperationHash === record.replacesOperationHash &&
+              isSmartAccountRevocationOperation(
+                (await this.materializeAuthorization(session, entry))
+                  .userOperation
+              )
+            )
+              priorRevocations.add(entry.operationHash);
+          }
+        }
+        // Historical signed outer records also disclose an independently live
+        // instruction, even when that payer transaction reverted or was cancelled.
+        for (const entry of previous.bundle?.entries ?? []) {
+          if (entry.chainId !== record.chainId) continue;
+          const outer = await this.materialize(session, entry);
+          const cancellation =
+            record.replacesOperationHash &&
+            decodeSmartAccountCancellation(outer);
+          for (const operation of decodeRetainedSmartAccountOperations(outer))
+            if (
+              operation.account === record.account &&
+              operation.operationNonce === record.operationNonce
+            ) {
+              conflicts.set(
+                operation.operationHash.toLowerCase(),
+                operation.operationNonce
+              );
+              if (
+                cancellation &&
+                cancellation.originalOperationHash ===
+                  record.replacesOperationHash
+              )
+                priorRevocations.add(operation.operationHash.toLowerCase());
+            }
+        }
+        // An authenticated historical outer row may already contain these
+        // identical inner fields. Backfill its signature without minting a nonce.
+        conflicts.delete(record.operationHash);
+        if (record.replacesOperationHash !== undefined) {
+          if (
+            !isSmartAccountRevocationOperation(record.userOperation) ||
+            !conflicts.has(record.replacesOperationHash) ||
+            [...conflicts.keys()].some(
+              (hash) =>
+                hash !== record.replacesOperationHash &&
+                !priorRevocations.has(hash)
+            )
+          )
+            throw new Error('SMART_ACCOUNT_AUTHORIZATION_CONFLICT');
+        } else if (conflicts.size)
+          throw new Error('SMART_ACCOUNT_AUTHORIZATION_CONFLICT');
+        const entries = previous.bundle?.entries ?? [],
+          authorizations = previous.bundle?.authorizations ?? [];
+        if (
+          entries.length + authorizations.length >=
+            EVM_SIGNED_RECORD_LIMITS.transactions ||
+          (previous.raw?.length ?? 0) + Math.ceil((payload.length * 4) / 3) >
+            EVM_SIGNED_RECORD_LIMITS.bytes
+        )
+          return appendLimit();
+        const chunks: IEncryptedPrivateRecord[] = [];
+        for (
+          let offset = 0;
+          offset < payload.length;
+          offset += EVM_SIGNED_RECORD_LIMITS.chunkBytes
+        ) {
+          const part = payload.slice(
+            offset,
+            offset + EVM_SIGNED_RECORD_LIMITS.chunkBytes
+          );
+          try {
+            const recordId = `authorization/${record.operationHash}/${chunks.length}`;
+            const encrypted = await session.keyring.encryptPrivateRecord({
+              domain: CHUNK_DOMAIN,
+              recordId,
+              plaintext: part,
+            });
+            guard(session);
+            chunks.push(envelope(encrypted, id, CHUNK_DOMAIN, recordId));
+          } finally {
+            part.fill(0);
+          }
+        }
+        const added = Object.freeze({
+          ...smartAccountAuthorizationSummary(record),
+          chunks: Object.freeze(chunks),
+        });
+        if (
+          await this.write(
+            session,
+            id,
+            previous.raw,
+            (previous.bundle?.revision ?? -1) + 1,
+            previous.bundle?.entries ?? [],
+            [...(previous.bundle?.authorizations ?? []), added],
+            previous.bundle?.nonceFloors ?? [],
+            true,
+            previous.bundle?.resetGeneration ?? 0
+          )
+        )
+          return this.authorizationReceipt(session, id, record);
+      }
+      throw new Error('EVM_SIGNED_RECORD_CONFLICT');
+    }).finally(() => payload.fill(0));
+  }
+  /** Free completed inner signatures only when space is needed, without querying other accounts. */
+  retireConsumedSmartAccountAuthorizations(
+    session: EvmSignedRecordSession,
+    chainId: number,
+    address: string,
+    read: import('./smartAccountAuthorizationRetirement.ts').SmartAccountRetirementRead
+  ): Promise<number> {
+    session = this.captureSession(session);
+    const account = getAddress(address);
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const previous = await this.load(session, id),
+          bundle = previous.bundle;
+        if (
+          !bundle ||
+          !bundle.authorizations.length ||
+          (bundle.entries.length + bundle.authorizations.length <
+            EVM_SIGNED_RECORD_LIMITS.transactions - 1 &&
+            (previous.raw?.length ?? 0) <
+              EVM_SIGNED_RECORD_LIMITS.bytes - 1024 * 1024)
+        )
+          return 0;
+        const { prepareSmartAccountAuthorizationRetirement } = await import(
+          /* webpackChunkName: "smart-account" */
+          './smartAccountAuthorizationRetirement.ts'
+        );
+        guard(session);
+        const proof = await prepareSmartAccountAuthorizationRetirement({
+          account,
+          chainId,
+          authorizations: bundle.authorizations,
+          read,
+          assertCurrent: () => guard(session),
+        });
+        guard(session);
+        if (!proof.hashes.length) return 0;
+        const hashes = new Set(proof.hashes);
+        const remaining = bundle.authorizations.filter(
+          (entry) => !hashes.has(entry.operationHash)
+        );
+        if (
+          await this.write(
+            session,
+            id,
+            previous.raw,
+            bundle.revision + 1,
+            bundle.entries,
+            remaining,
+            bundle.nonceFloors,
+            false,
+            bundle.resetGeneration,
+            async () => {
+              await proof.revalidate();
+              guard(session);
+              return () => guard(session);
+            }
+          )
+        )
+          return bundle.authorizations.length - remaining.length;
+      }
+      throw new Error('EVM_SIGNED_RECORD_CONFLICT');
+    });
+  }
+
+  readSmartAccountAuthorizationExact(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    account: string,
+    operationHash: string
+  ): Promise<RetainedSmartAccountAuthorization | null> {
+    session = this.captureSession(session);
+    account = getAddress(account);
+    if (!HASH.test(operationHash))
+      throw new Error('SMART_ACCOUNT_AUTHORIZATION_CORRUPT');
+    return this.exclusive(async () => {
+      const id = await profile(session),
+        { bundle } = await this.load(session, id);
+      const entry = bundle?.authorizations.find(
+        (value) =>
+          value.operationHash === operationHash &&
+          value.chainId === chainId &&
+          value.account === account
+      );
+      return entry ? this.materializeAuthorization(session, entry) : null;
+    });
+  }
+  listSmartAccountAuthorizations(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    account: string,
+    options: Readonly<{ beforeHash?: string; maximum: number }>
+  ): Promise<
+    Readonly<{
+      entries: readonly SmartAccountAuthorizationSummary[];
+      nextCursor: string | null;
+    }>
+  > {
+    session = this.captureSession(session);
+    account = getAddress(account);
+    if (
+      !Number.isSafeInteger(options.maximum) ||
+      options.maximum < 1 ||
+      options.maximum > 100 ||
+      (options.beforeHash !== undefined && !HASH.test(options.beforeHash))
+    )
+      throw new Error('SMART_ACCOUNT_AUTHORIZATION_CORRUPT');
+    return this.exclusive(async () => {
+      const id = await profile(session),
+        { bundle } = await this.load(session, id);
+      const matching = (bundle?.authorizations ?? []).filter(
+        (entry) => entry.chainId === chainId && entry.account === account
+      );
+      const end =
+        options.beforeHash === undefined
+          ? matching.length
+          : matching.findIndex(
+              (entry) => entry.operationHash === options.beforeHash
+            );
+      if (end < 0) throw new Error('SMART_ACCOUNT_AUTHORIZATION_CORRUPT');
+      const start = Math.max(0, end - options.maximum);
+      const entries = matching
+        .slice(start, end)
+        .reverse()
+        .map((entry) => {
+          const { chunks: _chunks, ...header } = entry;
+          void _chunks;
+          return Object.freeze(header);
+        });
+      return Object.freeze({
+        entries: Object.freeze(entries),
+        nextCursor: start > 0 ? entries.at(-1)!.operationHash : null,
+      });
+    });
+  }
+
   private async replayableVariants(
     session: EvmSignedRecordSession,
     entries: readonly Entry[]
   ): Promise<readonly Entry[]> {
+    const smart = new Set<string>();
+    for (const entry of entries) {
+      if (
+        entry.operation === 'send' &&
+        entry.metadata?.smartAccountOperationCancellation &&
+        decodeSmartAccountCancellation(await this.materialize(session, entry))
+      )
+        smart.add(entry.hash);
+    }
     const firstCancel = entries.findIndex(
-      (entry) => entry.operation === 'cancel'
+      (entry) => entry.operation === 'cancel' || smart.has(entry.hash)
     );
     if (firstCancel < 0) return entries;
     const allowed = new Map<string, Transaction>();
@@ -962,6 +1572,7 @@ export class EvmSignedRecords {
         : undefined;
       if (
         entry.operation !== 'cancel' &&
+        !smart.has(entry.hash) &&
         !(entry.operation === 'speed-up' && parent)
       )
         continue;
@@ -969,15 +1580,79 @@ export class EvmSignedRecords {
         (await this.materialize(session, entry)).rawTransaction
       );
       if (
-        entry.operation === 'cancel'
+        smart.has(entry.hash) ||
+        (entry.operation === 'cancel'
           ? isCancellationEnvelope(tx)
-          : repricesCancellation(tx, parent!)
+          : smart.has(entry.originalHash ?? '')
+          ? tx.to === parent!.to &&
+            tx.data === parent!.data &&
+            tx.value === parent!.value &&
+            tx.type === parent!.type &&
+            tx.gasLimit === parent!.gasLimit &&
+            JSON.stringify(tx.accessList ?? []) ===
+              JSON.stringify(parent!.accessList ?? [])
+          : repricesCancellation(tx, parent!))
       ) {
         allowed.set(entry.hash, tx);
+        if (smart.has(entry.originalHash ?? '')) smart.add(entry.hash);
         result.push(entry);
       }
     }
     return result;
+  }
+
+  /** Retention withdraws local permission to redisclose the old instruction;
+   * it is not evidence that its on-chain nonce has been consumed. */
+  private async revokedSmartAccountOperations(
+    session: EvmSignedRecordSession,
+    entries: readonly Entry[],
+    authorizations: readonly AuthorizationEntry[]
+  ): Promise<ReadonlySet<string>> {
+    const revoked = new Set<string>();
+    for (const entry of authorizations) {
+      if (!entry.replacesOperationHash) continue;
+      const record = await this.materializeAuthorization(session, entry);
+      if (!isSmartAccountRevocationOperation(record.userOperation))
+        return invalid();
+      revoked.add(record.replacesOperationHash!);
+    }
+    for (const entry of entries) {
+      if (!entry.metadata?.smartAccountOperationCancellation) continue;
+      const cancellation = decodeSmartAccountCancellation(
+        await this.materialize(session, entry)
+      );
+      if (cancellation)
+        revoked.add(cancellation.originalOperationHash.toLowerCase());
+    }
+    guard(session);
+    return revoked;
+  }
+
+  private async withoutRevokedSmartAccountOperations(
+    session: EvmSignedRecordSession,
+    entries: readonly Entry[],
+    allEntries: readonly Entry[],
+    authorizations: readonly AuthorizationEntry[]
+  ): Promise<readonly Entry[]> {
+    const revoked = await this.revokedSmartAccountOperations(
+      session,
+      allEntries,
+      authorizations
+    );
+    if (!revoked.size) return entries;
+    const retained: Entry[] = [];
+    for (const entry of entries) {
+      const operations = decodeRetainedSmartAccountOperations(
+        await this.materialize(session, entry)
+      );
+      if (
+        !operations.some((operation) =>
+          revoked.has(operation.operationHash.toLowerCase())
+        )
+      )
+        retained.push(entry);
+    }
+    return retained;
   }
 
   private async cancellationFence(
@@ -985,13 +1660,17 @@ export class EvmSignedRecords {
     entries: readonly Entry[],
     scope: Pick<VerifiedPendingOriginal, 'chainId' | 'from' | 'nonce'>
   ): Promise<Readonly<{ tip: Entry | undefined }> | undefined> {
-    if (
-      !entries.some(
-        (entry) => entry.operation === 'cancel' && matchesNonce(entry, scope)
-      )
-    )
-      return;
     const sameNonce = entries.filter((entry) => matchesNonce(entry, scope));
+    let fenced = sameNonce.some((entry) => entry.operation === 'cancel');
+    for (const entry of sameNonce) {
+      if (
+        !fenced &&
+        entry.metadata?.smartAccountOperationCancellation &&
+        decodeSmartAccountCancellation(await this.materialize(session, entry))
+      )
+        fenced = true;
+    }
+    if (!fenced) return;
     const tip = (await this.replayableVariants(session, sameNonce)).at(-1);
     return { tip };
   }
@@ -1063,6 +1742,171 @@ export class EvmSignedRecords {
     });
   }
 
+  private async smartAccountReplacementBasis(
+    session: EvmSignedRecordSession,
+    entries: readonly Entry[],
+    input: Readonly<{
+      chainId: string;
+      from: string;
+      originalHash: string;
+      userOperation: SmartAccountPackedUserOperation;
+    }>
+  ) {
+    const selected = entries.find((entry) => entry.hash === input.originalHash);
+    if (
+      !selected ||
+      selected.chainId !== input.chainId ||
+      selected.from !== input.from ||
+      !isPendingPhase(selected.phase)
+    )
+      throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    const original = await this.materialize(session, selected);
+    const decoded = decodeCancellationOuter(
+      original.rawTransaction,
+      Number(input.chainId)
+    );
+    const oldOperation = captureSignedSmartAccountOperation(decoded.operation);
+    const operations = decodeRetainedSmartAccountOperations(original);
+    if (
+      operations.length !== 1 ||
+      oldOperation.paymasterAndData !== '0x' ||
+      input.userOperation.sender !== oldOperation.sender ||
+      input.userOperation.nonce !== oldOperation.nonce ||
+      !isSmartAccountRevocationOperation(input.userOperation) ||
+      getSmartAccountUserOpHash(
+        input.userOperation,
+        Number(input.chainId)
+      ).toLowerCase() === operations[0]!.operationHash.toLowerCase()
+    )
+      throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    const expectedTipHash = await this.verifiedReplacementTip(
+      session,
+      entries,
+      {
+        chainId: input.chainId,
+        from: input.from,
+        nonce: selected.nonce,
+        originalHash: selected.hash,
+        operation: 'cancel',
+      }
+    );
+    if (!expectedTipHash || (decoded.tx.type !== 0 && decoded.tx.type !== 2))
+      throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    let cap = decoded.tx.maxFeePerGas ?? decoded.tx.gasPrice ?? BigInt(0);
+    let priority = decoded.tx.maxPriorityFeePerGas ?? BigInt(0);
+    const sameNonce = entries.filter((entry) => matchesNonce(entry, selected));
+    const lineage = retainedReplacementLineage(
+      sameNonce,
+      sameNonce.indexOf(selected)
+    );
+    if (!lineage) throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    for (const entry of lineage.slice(1)) {
+      const variant = Transaction.from(
+        (await this.materialize(session, entry)).rawTransaction
+      );
+      if (
+        variant.type !== decoded.tx.type ||
+        variant.to !== decoded.tx.to ||
+        variant.value !== decoded.tx.value ||
+        variant.data !== decoded.tx.data ||
+        JSON.stringify(variant.accessList ?? []) !==
+          JSON.stringify(decoded.tx.accessList ?? [])
+      )
+        throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+      const rate = variant.maxFeePerGas ?? variant.gasPrice ?? BigInt(0);
+      const tip = variant.maxPriorityFeePerGas ?? BigInt(0);
+      if (rate > cap) cap = rate;
+      if (tip > priority) priority = tip;
+    }
+    const rates: EvmReplacementRates =
+      decoded.tx.type === 0
+        ? Object.freeze({ type: 0, gasPrice: cap })
+        : Object.freeze({
+            type: 2,
+            maxFeePerGas: cap,
+            maxPriorityFeePerGas: priority,
+          });
+    return {
+      original,
+      expectedTipHash,
+      rates,
+      oldOperationHash: operations[0]!.operationHash.toLowerCase(),
+    };
+  }
+
+  /** Authenticate the original outer nonce without introducing a new SDK operation kind. */
+  captureSmartAccountCancellationReplacement(
+    session: EvmSignedRecordSession,
+    input: Readonly<{
+      chainId: number;
+      newUserOperation: SmartAccountPackedUserOperation;
+      originalHash: string;
+      payer: string;
+    }>
+  ): Promise<EvmVerifiedSmartAccountReplacement> {
+    const originalHash = input.originalHash.toLowerCase(),
+      chainId = String(input.chainId);
+    const from = getAddress(input.payer).toLowerCase();
+    const userOperation = captureSignedSmartAccountOperation(
+      input.newUserOperation
+    );
+    if (
+      !Number.isSafeInteger(input.chainId) ||
+      input.chainId <= 0 ||
+      !HASH.test(originalHash)
+    )
+      throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session),
+        { bundle } = await this.load(session, id);
+      const basis = await this.smartAccountReplacementBasis(
+        session,
+        bundle?.entries ?? [],
+        { originalHash, chainId, from, userOperation }
+      );
+      assertNonceFloor(bundle, basis.original);
+      const binding: EvmVerifiedSmartAccountReplacement = Object.freeze({
+        chainId,
+        from,
+        nonce: basis.original.nonce,
+        originalHash,
+        operation: 'send',
+        expectedTipHash: basis.expectedTipHash,
+        profileId: id,
+        resetGeneration: bundle?.resetGeneration ?? 0,
+        rates: basis.rates,
+      });
+      const metadata: SmartAccountCancellationMetadata = Object.freeze({
+        account: userOperation.sender,
+        chainId,
+        originalHash,
+        originalKind: 'transaction',
+        originalOperationHash: basis.oldOperationHash,
+        operationHash: getSmartAccountUserOpHash(
+          userOperation,
+          input.chainId
+        ).toLowerCase(),
+        operationNonce: userOperation.nonce,
+      });
+      smartAccountReplacementBindings.set(
+        binding,
+        Object.freeze({
+          assertCurrent: () => guard(session),
+          userOperation,
+          metadata,
+          data: paliEntryPointInterface
+            .encodeFunctionData('handleOps', [
+              [userOperation],
+              getAddress(from),
+            ])
+            .toLowerCase(),
+        })
+      );
+      return binding;
+    });
+  }
+
   /** A host-verified pending transaction can predate this journal. Its exact
    * nonce lineage must still match at write time, even when initially empty. */
   captureVerifiedReplacement(
@@ -1117,7 +1961,7 @@ export class EvmSignedRecords {
       throw new Error('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
     if (tracked && !matchesNonce(tracked, original))
       throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
-    if (sameNonce.some((entry) => entry.operation === 'cancel')) {
+    if (await this.cancellationFence(session, entries, original)) {
       const tip = (await this.replayableVariants(session, sameNonce)).at(-1);
       if (
         !tip ||
@@ -1151,7 +1995,9 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     signed: EvmSignedSubmission,
     metadata?: Readonly<Record<string, unknown>>,
-    replacement?: EvmVerifiedReplacementBinding
+    replacement?:
+      | EvmVerifiedReplacementBinding
+      | EvmVerifiedSmartAccountReplacement
   ): Promise<EvmRetainedSignedRecord> {
     guard(session);
     const raw = signed.rawTransaction,
@@ -1163,6 +2009,11 @@ export class EvmSignedRecords {
     )
       return Promise.reject(new Error('EVM_SIGNED_RECORD_CAPACITY'));
     const source = signed.context;
+    const smartReplacement = isEvmVerifiedSmartAccountReplacement(replacement)
+      ? replacement
+      : undefined;
+    if (smartReplacement)
+      assertEvmVerifiedSmartAccountReplacement(smartReplacement);
     const context = Object.freeze({
       account: Object.freeze({
         id: source.account.id,
@@ -1171,14 +2022,20 @@ export class EvmSignedRecords {
       }),
       network: Object.freeze({ chainId: source.network.chainId }),
       operation: source.operation,
-      originalHash: source.originalHash?.toLowerCase(),
+      originalHash:
+        source.originalHash?.toLowerCase() ?? smartReplacement?.originalHash,
     });
     const isReplacement =
       context.operation === 'speed-up' || context.operation === 'cancel';
     if (
-      isReplacement !== Boolean(replacement) ||
+      (smartReplacement
+        ? context.operation !== 'send'
+        : isReplacement !== Boolean(replacement)) ||
       (replacement &&
-        (!verifiedReplacementBindings.has(replacement) ||
+        ((!smartReplacement &&
+          !verifiedReplacementBindings.has(
+            replacement as EvmVerifiedReplacementBinding
+          )) ||
           replacement.originalHash !== context.originalHash))
     )
       return Promise.reject(new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED'));
@@ -1208,24 +2065,91 @@ export class EvmSignedRecords {
         const previous = await this.load(session, id);
         let retainedMetadata = metadataSnapshot;
         assertNonceFloor(previous.bundle, signedNonce);
-        if (replacement) {
+        if (smartReplacement) {
+          const permit = smartAccountReplacementBindings.get(smartReplacement)!;
+          permit.assertCurrent();
+          const basis = await this.smartAccountReplacementBasis(
+            session,
+            previous.bundle?.entries ?? [],
+            {
+              originalHash: smartReplacement.originalHash,
+              chainId: smartReplacement.chainId,
+              from: smartReplacement.from,
+              userOperation: permit.userOperation,
+            }
+          );
+          guard(session);
+          permit.assertCurrent();
+          const floor = planEvmCancellationFees(
+            basis.rates.type === 0
+              ? { type: 0, currentGasPrice: basis.rates.gasPrice }
+              : {
+                  type: 2,
+                  currentMaxFeePerGas: basis.rates.maxFeePerGas,
+                  currentMaxPriorityFeePerGas: basis.rates.maxPriorityFeePerGas,
+                }
+          );
           if (
-            id !== replacement.profileId ||
+            id !== smartReplacement.profileId ||
             (previous.bundle?.resetGeneration ?? 0) !==
-              replacement.resetGeneration ||
-            replacement.operation !== context.operation ||
-            !matchesNonce(signedNonce, replacement) ||
+              smartReplacement.resetGeneration ||
+            basis.expectedTipHash !== smartReplacement.expectedTipHash ||
+            tx.chainId.toString() !== smartReplacement.chainId ||
+            tx.from?.toLowerCase() !== smartReplacement.from ||
+            tx.nonce !== smartReplacement.nonce ||
+            tx.to?.toLowerCase() !==
+              getPaliEntryPointAddress(
+                Number(smartReplacement.chainId)
+              ).toLowerCase() ||
+            tx.value !== BigInt(0) ||
+            tx.data.toLowerCase() !== permit.data ||
+            tx.type !== floor.type ||
+            (floor.type === 0
+              ? tx.gasPrice === null || tx.gasPrice < floor.gasPrice
+              : tx.maxFeePerGas === null ||
+                tx.maxPriorityFeePerGas === null ||
+                tx.maxFeePerGas < floor.maxFeePerGas ||
+                tx.maxPriorityFeePerGas < floor.maxPriorityFeePerGas)
+          )
+            throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+          const provided = metadataSnapshot?.smartAccountOperationCancellation;
+          if (
+            provided !== undefined &&
+            (!provided ||
+              typeof provided !== 'object' ||
+              Object.keys(provided).length !==
+                Object.keys(permit.metadata).length ||
+              Object.entries(permit.metadata).some(
+                ([key, value]) =>
+                  (provided as Record<string, unknown>)[key] !== value
+              ))
+          )
+            throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+          retainedMetadata = Object.freeze({
+            ...replacementMetadata(metadataSnapshot, undefined, 'cancel'),
+            smartAccountExecution: true,
+            smartAccountExecutionFrom: permit.metadata.account,
+            smartAccountOperationCancellation: permit.metadata,
+          });
+        } else if (replacement) {
+          const ordinary = replacement as EvmVerifiedReplacementBinding;
+          if (
+            id !== ordinary.profileId ||
+            (previous.bundle?.resetGeneration ?? 0) !==
+              ordinary.resetGeneration ||
+            ordinary.operation !== context.operation ||
+            !matchesNonce(signedNonce, ordinary) ||
             (await this.verifiedReplacementTip(
               session,
               previous.bundle?.entries ?? [],
-              replacement,
+              ordinary,
               tx
-            )) !== replacement.expectedTipHash
+            )) !== ordinary.expectedTipHash
           )
             throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
           if (context.operation === 'speed-up') {
             const originalEntry = previous.bundle?.entries.find(
-              (entry) => entry.hash === replacement.originalHash
+              (entry) => entry.hash === ordinary.originalHash
             );
             const original = originalEntry
               ? await this.materialize(session, originalEntry)
@@ -1259,7 +2183,8 @@ export class EvmSignedRecords {
           return existing;
         }
         if (
-          (previous.bundle?.entries.length ?? 0) >=
+          (previous.bundle?.entries.length ?? 0) +
+            (previous.bundle?.authorizations.length ?? 0) >=
           EVM_SIGNED_RECORD_LIMITS.transactions
         )
           return appendLimit();
@@ -1328,9 +2253,18 @@ export class EvmSignedRecords {
             previous.raw,
             (previous.bundle?.revision ?? -1) + 1,
             entries,
+            previous.bundle?.authorizations ?? [],
             previous.bundle?.nonceFloors ?? [],
             true,
-            previous.bundle?.resetGeneration ?? 0
+            previous.bundle?.resetGeneration ?? 0,
+            smartReplacement
+              ? async () => {
+                  const permit =
+                    smartAccountReplacementBindings.get(smartReplacement)!;
+                  permit.assertCurrent();
+                  return permit.assertCurrent;
+                }
+              : undefined
           )
         )
           return Object.freeze({ ...summary(entry), rawTransaction: raw });
@@ -1365,7 +2299,7 @@ export class EvmSignedRecords {
       const sameNonce = entries.filter((entry) =>
         matchesNonce(entry, selected)
       );
-      if (sameNonce.some((entry) => entry.operation === 'cancel')) return null;
+      if (await this.cancellationFence(session, entries, selected)) return null;
       const lineage = retainedReplacementLineage(
         sameNonce,
         sameNonce.indexOf(selected)
@@ -1438,7 +2372,9 @@ export class EvmSignedRecords {
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
-      return bundle?.entries.length ?? 0;
+      return (
+        (bundle?.entries.length ?? 0) + (bundle?.authorizations.length ?? 0)
+      );
     });
   }
   /** Explicitly forget local tracking for one account and chain. Network-held
@@ -1476,6 +2412,10 @@ export class EvmSignedRecords {
         const floors = (previous.bundle?.nonceFloors ?? []).filter(
           (entry) => entry.chainId !== chainId || entry.from !== from
         );
+        const authorizations = (previous.bundle?.authorizations ?? []).filter(
+          (entry) =>
+            entry.chainId !== chainId || entry.account.toLowerCase() !== from
+        );
         const resetGeneration = (previous.bundle?.resetGeneration ?? 0) + 1;
         if (!Number.isSafeInteger(resetGeneration)) return limit();
         if (
@@ -1485,6 +2425,7 @@ export class EvmSignedRecords {
             previous.raw,
             (previous.bundle?.revision ?? -1) + 1,
             entries,
+            authorizations,
             floors,
             false,
             resetGeneration
@@ -1494,7 +2435,12 @@ export class EvmSignedRecords {
           for (const entry of previous.bundle?.entries ?? [])
             if (entry.chainId === chainId && entry.from === from)
               this.autoNonceAcceptance.retireNonce(profileId, entry);
-          return (previous.bundle?.entries.length ?? 0) - entries.length;
+          return (
+            (previous.bundle?.entries.length ?? 0) -
+            entries.length +
+            (previous.bundle?.authorizations.length ?? 0) -
+            authorizations.length
+          );
         }
       }
       throw new Error('EVM_SIGNED_RECORD_CONFLICT');
@@ -1678,6 +2624,7 @@ export class EvmSignedRecords {
                 previous.raw,
                 previous.bundle!.revision + 1,
                 entries,
+                previous.bundle!.authorizations,
                 previous.bundle!.nonceFloors,
                 false,
                 previous.bundle!.resetGeneration,
@@ -1849,7 +2796,8 @@ export class EvmSignedRecords {
     owner: string,
     entries: readonly Entry[],
     nonceFloor: number,
-    authenticatedEntries: readonly Entry[]
+    authenticatedEntries: readonly Entry[],
+    authenticatedAuthorizations: readonly AuthorizationEntry[]
   ): EvmAutoNonceSnapshot {
     const byHash = new Map(entries.map((entry) => [entry.hash, entry]));
     const budgets = new Map<
@@ -1883,6 +2831,75 @@ export class EvmSignedRecords {
       budgets.set(hash, budget);
       return budget;
     };
+    let revoked: Promise<ReadonlySet<string>> | undefined;
+
+    const operationReads = new Map<
+      string,
+      Promise<readonly RetainedSmartAccountOperation[]>
+    >();
+
+    const readOperations = (chainId: string, address: string) => {
+      guard(session);
+      const account = getAddress(address),
+        key = JSON.stringify([chainId, account]);
+      let result = operationReads.get(key);
+      if (!result) {
+        result = (async () => {
+          const operations: RetainedSmartAccountOperation[] = [];
+          for (const entry of authenticatedEntries) {
+            if (entry.chainId !== chainId) continue;
+            const materialized = await this.materialize(session, entry);
+            operations.push(
+              ...decodeRetainedSmartAccountOperations(materialized).filter(
+                (operation) => operation.account === account
+              )
+            );
+          }
+          guard(session);
+          return Object.freeze(operations);
+        })();
+        operationReads.set(key, result);
+      }
+      return result;
+    };
+
+    const readAuthorizations = async (chainId: string, address: string) => {
+      guard(session);
+      const account = getAddress(address);
+      const identities = new Map<
+        string,
+        Pick<
+          SmartAccountAuthorizationSummary,
+          'account' | 'chainId' | 'operationHash' | 'operationNonce'
+        >
+      >();
+      for (const entry of authenticatedAuthorizations) {
+        if (entry.chainId !== chainId || entry.account !== account) continue;
+        const record = await this.materializeAuthorization(session, entry);
+        identities.set(
+          record.operationHash,
+          Object.freeze({
+            account,
+            chainId,
+            operationHash: record.operationHash,
+            operationNonce: record.operationNonce,
+          })
+        );
+      }
+      for (const operation of await readOperations(chainId, account))
+        identities.set(
+          operation.operationHash.toLowerCase(),
+          Object.freeze({
+            account,
+            chainId,
+            operationHash: operation.operationHash.toLowerCase(),
+            operationNonce: operation.operationNonce,
+          })
+        );
+      guard(session);
+      return Object.freeze([...identities.values()]);
+    };
+
     return Object.freeze({
       owner,
       minimumNonce: nonceFloor,
@@ -1891,28 +2908,32 @@ export class EvmSignedRecords {
           Object.freeze({ chainId, from, hash, nonce, phase })
         )
       ),
-      readSignedTransaction: async (hash: string) =>
-        (await readBudget(hash)).transaction.serialized,
+      readSignedTransaction: async (hash: string) => {
+        revoked ??= this.revokedSmartAccountOperations(
+          session,
+          authenticatedEntries,
+          authenticatedAuthorizations
+        );
+        const suppressed = await revoked;
+        const transaction = (await readBudget(hash)).transaction;
+        if (
+          suppressed.size &&
+          decodeRetainedSmartAccountOperations({
+            ...byHash.get(hash)!,
+            rawTransaction: transaction.serialized,
+          }).some((operation) =>
+            suppressed.has(operation.operationHash.toLowerCase())
+          )
+        )
+          throw new EvmSignedRecordCancellationFence(null);
+        return transaction.serialized;
+      },
       readMaximumCost: async (hash: string) =>
         (await readBudget(hash)).maximumCost,
       // The admission already authenticated this complete manifest while holding
       // its storage queue. Project from that exact snapshot without re-entering it.
-      readSmartAccountOperations: async (chainId, address) => {
-        guard(session);
-        const account = getAddress(address);
-        const operations: RetainedSmartAccountOperation[] = [];
-        for (const entry of authenticatedEntries) {
-          if (entry.chainId !== chainId) continue;
-          const materialized = await this.materialize(session, entry);
-          operations.push(
-            ...decodeRetainedSmartAccountOperations(materialized).filter(
-              (operation) => operation.account === account
-            )
-          );
-        }
-        guard(session);
-        return Object.freeze(operations);
-      },
+      readSmartAccountOperations: readOperations,
+      readSmartAccountAuthorizations: readAuthorizations,
       readAssetDebit: async (hash, input) => {
         const asset = snapshotEvmTransferAsset(input);
         const tx = (await readBudget(hash)).transaction;
@@ -1966,7 +2987,8 @@ export class EvmSignedRecords {
           (entry) => entry.chainId === chainId && entry.from === from
         ),
         minimumNonce(bundle, { chainId, from }),
-        bundle?.entries ?? []
+        bundle?.entries ?? [],
+        bundle?.authorizations ?? []
       );
     });
   }
@@ -2071,37 +3093,166 @@ export class EvmSignedRecords {
     address: string
   ): Promise<SmartAccountPendingRecords> {
     session = this.captureSession(session);
-    const owner = getAddress(address);
-    const id = await profile(session);
+    const owner = getAddress(address),
+      id = await profile(session);
     guard(session);
-    let serial = -1;
-    let cached: readonly RetainedSmartAccountOperation[] | undefined;
-    return Object.freeze({
-      profileId: id,
-      readPayerRecords: (payer: string) =>
-        this.listSender(session, chainId, payer),
-      read: (fresh: boolean) =>
-        this.exclusive(async () => {
-          guard(session);
-          const currentSerial = mutationSerials.get(this.storage) ?? 0;
-          if (!fresh && cached && serial === currentSerial) return cached;
-          const { bundle } = await this.load(session, id);
-          const operations: RetainedSmartAccountOperation[] = [];
-          for (const entry of bundle?.entries ?? []) {
-            if (entry.chainId !== chainId) continue;
-            const materialized = await this.materialize(session, entry);
-            operations.push(
-              ...decodeRetainedSmartAccountOperations(materialized).filter(
-                (operation) => operation.account === owner
-              )
+    type Identity = Pick<
+      SmartAccountAuthorizationSummary,
+      'account' | 'chainId' | 'operationHash' | 'operationNonce'
+    >;
+    type Pending = Readonly<{
+      authorizations: readonly Identity[];
+      operations: readonly RetainedSmartAccountOperation[];
+    }>;
+    let serial = -1,
+      cached: Pending | undefined,
+      running: Promise<Pending> | undefined;
+    const readPending = (fresh: boolean): Promise<Pending> => {
+      guard(session);
+      if (running) return running;
+      const task = this.exclusive(async () => {
+        const currentSerial = mutationSerials.get(this.storage) ?? 0;
+        guard(session);
+
+        if (!fresh && cached && serial === currentSerial) return cached;
+        const { bundle } = await this.load(session, id);
+        const operations: RetainedSmartAccountOperation[] = [],
+          authorizations = new Map<string, Identity>();
+        for (const entry of bundle?.authorizations ?? []) {
+          if (entry.chainId !== chainId || entry.account !== owner) continue;
+          const record = await this.materializeAuthorization(session, entry);
+          authorizations.set(
+            record.operationHash,
+            Object.freeze({
+              account: owner,
+              chainId,
+              operationHash: record.operationHash,
+              operationNonce: record.operationNonce,
+            })
+          );
+        }
+        for (const entry of bundle?.entries ?? []) {
+          if (entry.chainId !== chainId) continue;
+          const materialized = await this.materialize(session, entry);
+          for (const operation of decodeRetainedSmartAccountOperations(
+            materialized
+          )) {
+            if (operation.account !== owner) continue;
+            operations.push(operation);
+            authorizations.set(
+              operation.operationHash.toLowerCase(),
+              Object.freeze({
+                account: owner,
+                chainId,
+                operationHash: operation.operationHash.toLowerCase(),
+                operationNonce: operation.operationNonce,
+              })
             );
           }
+        }
+        guard(session);
+        cached = Object.freeze({
+          operations: Object.freeze(operations),
+          authorizations: Object.freeze([...authorizations.values()]),
+        });
+        serial = currentSerial;
+        return cached;
+      });
+      running = task;
+      void task
+        .finally(() => {
+          if (running === task) running = undefined;
+        })
+        .catch(() => undefined);
+      return task;
+    };
+    const scoped = (
+      allowed: readonly SmartAccountAuthorizationReceipt[]
+    ): SmartAccountPendingRecords => {
+      const permissions = () =>
+        allowed.map((receipt) => {
+          const captured = authorizationReceipts.get(receipt);
+          if (
+            !captured ||
+            captured.storage !== this.storage ||
+            captured.profileId !== id ||
+            captured.record.account !== owner ||
+            captured.record.chainId !== chainId
+          )
+            throw new Error('SMART_ACCOUNT_AUTHORIZATION_CHANGED');
+          captured.assertCurrent();
           guard(session);
-          cached = Object.freeze(operations);
-          serial = currentSerial;
-          return cached;
-        }),
-    });
+          return captured.record;
+        });
+      const isAllowed = (
+        operation: Identity,
+        values: readonly RetainedSmartAccountAuthorization[]
+      ) =>
+        values.some(
+          (record) =>
+            operation.operationHash.toLowerCase() === record.operationHash &&
+            operation.account === record.account &&
+            operation.chainId === record.chainId &&
+            operation.operationNonce === record.operationNonce
+        );
+      const checked = async (fresh: boolean) => {
+        const pending = await readPending(fresh),
+          values = permissions();
+        for (const value of values)
+          if (
+            !pending.authorizations.some((operation) =>
+              isAllowed(operation, [value])
+            )
+          )
+            throw new Error('SMART_ACCOUNT_AUTHORIZATION_CHANGED');
+        return { pending, values };
+      };
+      return Object.freeze({
+        profileId: id,
+        readPayerRecords: (payer: string) =>
+          this.listSender(session, chainId, payer),
+        filterPendingOperations: (
+          operations: readonly RetainedSmartAccountOperation[]
+        ) => {
+          const values = permissions();
+          return Object.freeze(
+            operations.filter((operation) => !isAllowed(operation, values))
+          );
+        },
+        filterPendingAuthorizations: (authorizations) => {
+          const values = permissions();
+          return Object.freeze(
+            authorizations.filter((operation) => !isAllowed(operation, values))
+          );
+        },
+        forAuthorization: (receipt: SmartAccountAuthorizationReceipt) => {
+          if (allowed.includes(receipt)) return scoped(allowed);
+          if (allowed.length >= 2)
+            throw new Error('SMART_ACCOUNT_AUTHORIZATION_CHANGED');
+          const result = scoped(Object.freeze([...allowed, receipt]));
+          // Resolve the opaque receipt at the point it grants an exception.
+          result.filterPendingOperations!([]);
+          return result;
+        },
+        read: async (fresh: boolean) => {
+          const { pending, values } = await checked(fresh);
+          return Object.freeze(
+            pending.operations.filter(
+              (operation) => !isAllowed(operation, values)
+            )
+          );
+        },
+        readAuthorizations: async (fresh: boolean) => {
+          const { pending, values } = await checked(fresh);
+          return Object.freeze(
+            pending.authorizations.filter(
+              (operation) => !isAllowed(operation, values)
+            )
+          );
+        },
+      });
+    };
+    return scoped([]);
   }
 
   /** General handleOps recovery: membership comes from authenticated signed bytes. */
@@ -2152,6 +3303,52 @@ export class EvmSignedRecords {
     });
   }
 
+  /** Resolve a public operation reference to its authenticated outer lineage. */
+  findSmartAccountAuthorizationOuter(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string,
+    operationHash: string
+  ): Promise<EvmRetainedSmartAccountRecord | null> {
+    session = this.captureSession(session);
+    const account = getAddress(address);
+    if (!HASH.test(operationHash))
+      throw new Error('SMART_ACCOUNT_AUTHORIZATION_CORRUPT');
+    return this.exclusive(async () => {
+      const id = await profile(session),
+        { bundle } = await this.load(session, id);
+      // New rows have an exact hash hint. Older rows require bounded decoding;
+      // an incomplete search must not silently authorize a fresh outer nonce.
+      const candidates = (bundle?.entries ?? []).filter(
+        (entry) =>
+          entry.chainId === chainId &&
+          entry.metadata?.smartAccountExecution === true &&
+          typeof entry.metadata.smartAccountExecutionFrom === 'string' &&
+          entry.metadata.smartAccountExecutionFrom.toLowerCase() ===
+            account.toLowerCase() &&
+          (!entry.metadata.smartAccountOperationHash ||
+            entry.metadata.smartAccountOperationHash === operationHash)
+      );
+      let examined = 0;
+      for (const header of candidates.toReversed()) {
+        if (++examined > 128)
+          throw new Error('SMART_ACCOUNT_AUTHORIZATION_LOOKUP_UNAVAILABLE');
+        const entry = await this.materialize(session, header);
+        const operations = decodeRetainedSmartAccountOperations(entry);
+        if (
+          operations.some(
+            (operation) =>
+              operation.account === account &&
+              operation.operationHash === operationHash
+          )
+        )
+          return Object.freeze({ entry, operations });
+      }
+      guard(session);
+      return null;
+    });
+  }
+
   readSmartAccountReplayPage(
     session: EvmSignedRecordSession,
     chainId: string,
@@ -2176,8 +3373,11 @@ export class EvmSignedRecords {
     return this.exclusive(async () => {
       const id = await profile(session),
         { bundle } = await this.load(session, id);
-      const candidates = (bundle?.entries ?? []).filter(
-        (entry) => entry.chainId === chainId
+      const candidates = await this.withoutRevokedSmartAccountOperations(
+        session,
+        (bundle?.entries ?? []).filter((entry) => entry.chainId === chainId),
+        bundle?.entries ?? [],
+        bundle?.authorizations ?? []
       );
       const end =
         beforeHash === undefined
@@ -2371,7 +3571,15 @@ export class EvmSignedRecords {
           (nonce === undefined || entry.nonce === nonce)
       );
       const matching = replayCandidatesOnly
-        ? await this.replayableVariants(session, scoped)
+        ? await this.replayableVariants(
+            session,
+            await this.withoutRevokedSmartAccountOperations(
+              session,
+              scoped,
+              bundle?.entries ?? [],
+              bundle?.authorizations ?? []
+            )
+          )
         : scoped;
       const end =
         beforeHash === undefined
@@ -2438,9 +3646,15 @@ export class EvmSignedRecords {
       const sender = (bundle?.entries ?? []).filter(
         (entry) => entry.chainId === chainId && entry.from === address
       );
+      const replayableSender = await this.withoutRevokedSmartAccountOperations(
+        session,
+        sender,
+        bundle?.entries ?? [],
+        bundle?.authorizations ?? []
+      );
       const variants = await this.replayableVariants(
         session,
-        sender.filter((entry) => entry.nonce === nonce)
+        replayableSender.filter((entry) => entry.nonce === nonce)
       );
       const retained = variants.find((entry) => entry.hash === hash);
       if (
@@ -2456,7 +3670,9 @@ export class EvmSignedRecords {
           : (
               await this.replayableVariants(
                 session,
-                sender.filter((entry) => entry.nonce === predecessorNonce)
+                replayableSender.filter(
+                  (entry) => entry.nonce === predecessorNonce
+                )
               )
             ).map(summary);
       guard(session);
@@ -2467,7 +3683,8 @@ export class EvmSignedRecords {
             id,
             sender.filter((entry) => entry.hash !== hash),
             minimumNonce(bundle, { chainId, from: address }),
-            bundle?.entries ?? []
+            bundle?.entries ?? [],
+            bundle?.authorizations ?? []
           )
         );
         guard(session);
@@ -2672,6 +3889,7 @@ export class EvmSignedRecords {
             previous.raw,
             previous.bundle.revision + 1,
             entries,
+            previous.bundle.authorizations,
             previous.bundle.nonceFloors,
             false,
             previous.bundle.resetGeneration,
@@ -2699,7 +3917,10 @@ export function createEvmSignedRecordLifecycle(
     ) => Promise<void>;
     replacement?:
       | EvmVerifiedReplacementBinding
-      | Promise<EvmVerifiedReplacementBinding>;
+      | EvmVerifiedSmartAccountReplacement
+      | Promise<
+          EvmVerifiedReplacementBinding | EvmVerifiedSmartAccountReplacement
+        >;
     // Opt in only when the host can recheck the original token approval.
     retainAssetPreflightFailure?: boolean;
     retirementReadForChain: EvmSignedRetirementReadForChain | null;
@@ -2717,6 +3938,7 @@ export function createEvmSignedRecordLifecycle(
     options.metadata === undefined
       ? undefined
       : snapshotMetadata(options.metadata);
+  let smartReplacementOriginalHash: string | undefined;
   // Starting another lifecycle invalidates any unconsumed earlier refusal.
   // Concurrent sends may fall back to generic guidance, never stale guidance.
   currentPersistToken = undefined;
@@ -2747,8 +3969,20 @@ export function createEvmSignedRecordLifecycle(
         );
         metadata = replacementMetadata(metadata, original, 'speed-up');
       }
+      const persist = async () => {
+        const retained = await records.append(
+          session,
+          signed,
+          metadata,
+          replacement
+        );
+        if (isEvmVerifiedSmartAccountReplacement(replacement)) {
+          smartReplacementOriginalHash = retained.originalHash;
+          metadata = retained.metadata;
+        }
+      };
       try {
-        await records.append(session, signed, metadata, replacement);
+        await persist();
       } catch (error) {
         guard(session);
         if (
@@ -2769,7 +4003,7 @@ export function createEvmSignedRecordLifecycle(
           )) > 0
         ) {
           try {
-            await records.append(session, signed, metadata, replacement);
+            await persist();
             return;
           } catch (retryError) {
             guard(session);
@@ -2815,7 +4049,9 @@ export function createEvmSignedRecordLifecycle(
             nonce: record.nonce,
             hash: record.hash,
             operation: record.context.operation,
-            originalHash: record.context.originalHash?.toLowerCase(),
+            originalHash:
+              record.context.originalHash?.toLowerCase() ??
+              smartReplacementOriginalHash,
             metadata,
           },
           async () => {

@@ -20,6 +20,7 @@ jest.mock('utils/smartAccount/adapter', () => ({
 }));
 
 import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
+import { createSmartAccountJournalFixture } from 'tests/fixtures/smartAccountJournal';
 
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -219,7 +220,15 @@ describe('smart-account execution approval context', () => {
           return [{ calls: [], transactions: [] }];
         }
         if (method === 'eth_getBlockByNumber')
-          return { baseFeePerGas: pendingBaseFee };
+          return {
+            baseFeePerGas:
+              pendingBaseFee === null
+                ? null
+                : '0x' + pendingBaseFee.toString(16),
+            hash: HASH,
+            number: '0x10',
+            gasLimit: '0x100000',
+          };
         if (method === 'eth_getBalance') return '0xde0b6b3a7640000';
         if (method === 'eth_call') {
           if (
@@ -257,10 +266,7 @@ describe('smart-account execution approval context', () => {
       return { hash: HASH };
     });
     controller = new SmartAccountController({
-      captureSmartAccountPendingRecords: async () => ({
-        profileId: '0x' + '11'.repeat(32),
-        read: async () => [],
-      }),
+      ...createSmartAccountJournalFixture(),
       getEthereumTransaction: () => transaction,
       getWalletSessionGeneration: () => generation,
       sendAndSaveEthTransaction: send,

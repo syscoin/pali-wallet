@@ -3,6 +3,7 @@ import test from 'node:test';
 import { AbiCoder, Interface } from 'ethers/abi';
 import { isCallException } from 'ethers/utils';
 import { readEvmAssetBalance } from '../../../source/shared/evmAssetState.ts';
+import { withEvmReadPhase } from '../../../source/shared/evmReadPhase.ts';
 import { createNativeSmartAccountProvider } from '../src/smartAccount/provider.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
@@ -335,6 +336,23 @@ test('bounded RPC normalization preserves the explicit unsupported priority-fee 
   const fees = await rpc.smartAccountFeeData(new AbortController().signal, () => undefined);
   assert.equal(fees.maxPriorityFeePerGas, 3n);
   assert(methods.includes('eth_feeHistory'));
+});
+
+test('native Smart fees and retained authorization share one header per owned phase and refresh on the next action', async()=>{
+ const methods:string[]=[];let height=1;
+ const rpc=new EvmTransferReadRpc(getNativeNetwork('ethereum'),{fetch:async(_url,init)=>{
+  const reply=(request:any)=>{methods.push(request.method);const result=request.method==='eth_chainId'?'0x1':request.method==='eth_getBlockByNumber'?{number:'0x'+height.toString(16),hash:'0x'+height.toString(16).padStart(64,'0'),gasLimit:'0x1c9c380',baseFeePerGas:'0x4'}:request.method==='eth_gasPrice'?'0xa':'0x2';return{jsonrpc:'2.0',id:request.id,result};};
+  const request=JSON.parse(String(init.body));return Response.json(Array.isArray(request)?request.map(reply):reply(request));
+ }});
+ const provider=createNativeSmartAccountProvider(getNativeNetwork('ethereum'),rpc,new AbortController().signal,()=>undefined);
+ for(height=1;height<=2;height++){
+  const before=methods.filter(method=>method==='eth_getBlockByNumber').length;
+  const block=await withEvmReadPhase(provider,()=>undefined,async phase=>{
+   const fees=await phase.getFeeData();assert.equal(fees.lastBaseFeePerGas.toString(),'4');
+   return phase.send('eth_getBlockByNumber',['latest',false]);
+  });
+  assert.equal(block.number,'0x'+height.toString(16));assert.equal(methods.filter(method=>method==='eth_getBlockByNumber').length-before,1);
+ }
 });
 
 test('fresh native readers share four physical slots while rejected body cancellation is held', async () => {

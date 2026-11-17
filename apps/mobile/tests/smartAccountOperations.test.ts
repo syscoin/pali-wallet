@@ -1,6 +1,9 @@
 import { createSmartAccountPendingState } from '../../../source/utils/smartAccount/pendingState.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { webcrypto } from 'node:crypto';
+import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import { EvmSignedRecords, type EvmSignedRecordStorage } from '../../../source/wallet/evmSignedRecords.ts';
 import { AbiCoder, Interface } from 'ethers/abi';
 import { Wallet } from 'ethers/wallet';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
@@ -14,6 +17,7 @@ import { submitSmartAccountOperation } from '../../../source/utils/smartAccount/
 import { assertSmartAccountNativeSpendability } from '../../../source/utils/smartAccount/nativeSpendability.ts';
 import type { IKeyringAccountState, KeyringAccountType } from '../../../source/types/network.ts';
 
+Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
 const owner = '0x1111111111111111111111111111111111111111';
 const payer = { id: 0, type: 'HDAccount' as KeyringAccountType, address: owner };
 const chainId = 1;
@@ -61,9 +65,30 @@ async function prepareNative(f: ReturnType<typeof fixture>, value: string, asser
     async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent });
 }
 
-function nativeSubmitHost(f: ReturnType<typeof fixture>, prepared: Awaited<ReturnType<typeof prepareNative>>, send: (...args: any[]) => Promise<any>) {
+async function nativeSubmitHost(f: ReturnType<typeof fixture>, prepared: Awaited<ReturnType<typeof prepareNative>>, send: (...args: any[]) => Promise<any>) {
+  // Issue a real encrypted journal receipt: the submit boundary must never be
+  // satisfied by an invented capability or an unretained signature.
+  const keyring: any = Object.create(SoftwareKeyring.prototype);
+  keyring.sessionPassword = { isCleared: () => false };
+  keyring.sessionMnemonic = { isCleared: () => false };
+  keyring.privateRecordSessionRevision = 0;
+  keyring.getDecryptedMnemonic = () => 'synthetic native submit journal root';
+  let stored: string | undefined;
+  const storage: EvmSignedRecordStorage = { async read() { return stored; }, async compareAndSet(_id, expected, next, guard) {
+    guard(); if (stored !== expected) return false; stored = next; return true;
+  } };
+  const records = new EvmSignedRecords(storage);
+  const session = { keyring, assertCurrent() {} };
+  const captured = await records.captureSmartAccountPendingRecords(session, String(chainId), f.account.address);
+  const pending = createSmartAccountPendingState(f.rawProvider, captured, chainId, f.account.address, () => undefined);
   return {
-    chainId, provider: f.provider, pending: f.pending, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
+    chainId, provider: pending.provider, pending, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
+    async retainAuthorization(userOperation: import('../../../source/utils/smartAccount/account.ts').SmartAccountPackedUserOperation, gasPayer: import('../../../source/utils/smartAccount/prepareOperation.ts').SmartAccountGasPayer, guard: () => void) {
+      guard();
+      return records.retainSmartAccountAuthorization({ ...session, assertCurrent: guard }, {
+        chainId, payer: gasPayer.address, userOperation, observedAt: { number: '1', hash: '0x' + 'aa'.repeat(32) },
+      });
+    },
     getExecutionContext: () => ({ accountId: 0, userOperation: prepared.userOperation }),
     getSmartAccountById: () => ({ account: f.account, metadata: f.metadata }),
     getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [],
@@ -98,7 +123,7 @@ test('shared asset preparation and the separate late dispatch check reject a cha
   const prepared = await prepare('7');
   f.funds.failEstimate = false;
   let dispatched = 0;
-  const host = nativeSubmitHost(f, prepared, async (...args) => {
+  const host = await nativeSubmitHost(f, prepared, async (...args) => {
     // The outer record is now reserved: its own nonce cannot be checked again.
     balance = 6n;
     await args[4].assertAssetState();
@@ -149,7 +174,7 @@ test('shared submission rechecks Smart balance after authenticator signing and i
   f.funds.balance = BigInt(122);
   let sends = 0;
   await assert.rejects(submitSmartAccountOperation({ ...prepared, executions: [], accountId: 0, executionContextId: 'fixture', signature: '0x1234' },
-    nativeSubmitHost(f, prepared, async (...args) => { await args[4].assertPendingState(); sends++; throw new Error('Unexpected send'); }), () => {}),
+    await nativeSubmitHost(f, prepared, async (...args) => { await args[4].assertPendingState(); sends++; throw new Error('Unexpected send'); }), () => {}),
     (error: any) => error.transactionNotBroadcast === true);
   assert.equal(sends, 0);
 });
@@ -161,7 +186,7 @@ test('ordinary native submission succeeds and rechecks balance at the payer auth
   assert.equal(f.funds.balanceReads, 1);
   assert.equal(f.funds.depositReads, 1);
   let sends = 0;
-  const host = nativeSubmitHost(f, prepared, async (...args) => {
+  const host = await nativeSubmitHost(f, prepared, async (...args) => {
     await args[4].assertPendingState();
     sends++;
     return { hash: '0x' + 'ab'.repeat(32), async wait() {} };
@@ -192,7 +217,7 @@ test('cancelled native authorization cannot submit', async () => {
   let sends = 0;
   current = false;
   await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' },
-    nativeSubmitHost(f, prepared, async () => { sends++; throw new Error('Unexpected send'); }), () => { assert(current, 'cancelled'); }), /cancelled/);
+    await nativeSubmitHost(f, prepared, async () => { sends++; throw new Error('Unexpected send'); }), () => { assert(current, 'cancelled'); }), /cancelled/);
   assert.equal(sends, 0);
 });
 
@@ -412,13 +437,10 @@ test('portable deployment preserves prefund acknowledgement if handleOps submiss
     await args[4]?.onBroadcast?.({ hash: '0x' + 'ab'.repeat(32) });
     return { hash: '0x' + 'ab'.repeat(32), async wait() {} };
   };
+  const host = await nativeSubmitHost(f, prepared, send);
   await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' }, {
-    chainId, provider: f.provider, pending: f.pending, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
-    getExecutionContext: () => ({ accountId: 0, userOperation: prepared.userOperation }),
-    getSmartAccountById: () => ({ account: f.account, metadata: f.metadata }),
-    getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [],
-    ensureDeploymentPrefund: (...args) => ensureSmartAccountDeploymentPrefund(f.provider, send, ...args),
-    sendTransaction: send, invalidateMetadata() {},
+    ...host,
+    ensureDeploymentPrefund: (...args) => ensureSmartAccountDeploymentPrefund(host.provider, send, ...args),
   }, () => undefined), (error: any) => error.transactionNotBroadcast === false && error.transactionHash === undefined);
   assert.equal(sends.length, 2);
 });

@@ -22,6 +22,7 @@ import { ConfirmationModal } from 'components/Modal';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { TransactionOptions } from 'components/TransactionOptions';
+import { SmartAccountAuthorizations } from 'components/TransactionOptions/SmartAccountAuthorizations';
 import { useContextualState } from 'hooks/useContextualState';
 import { usePrice } from 'hooks/usePrice';
 import { useRequestScope } from 'hooks/useRequestScope';
@@ -922,6 +923,9 @@ export const EvmTransactionsList = ({
   return (
     <>
       <ConfirmationModal show={isOpenModal} {...modalData} />
+      <div className="mb-3">
+        <SmartAccountAuthorizations />
+      </div>
       {Object?.entries(groupedTransactions)?.map(
         ([date, transactions]: any) => (
           <div key={date} className="relative mb-[20px]">

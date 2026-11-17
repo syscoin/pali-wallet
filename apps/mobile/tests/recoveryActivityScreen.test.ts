@@ -758,7 +758,7 @@ test('scoped Smart Activity exposes replacement navigation without direct signer
     Object.assign(row.local, { accountId: 'smart:60:0', smartAccount: { payer: row.local.address,
       operations: [{ operationHash: '0x' + 'ab'.repeat(32), operationNonce: '0' }] } });
     const tree = await openFixtureRow(f, row);
-    for (const title of ['Speed Up', 'Cancel pending transaction']) {
+    for (const title of ['Speed Up', 'Cancel instruction']) {
       const button = all(tree).find(node => node.type === 'Button' && node.props.title === title); assert(button, title);
       button.props.onPress(); await settle();
     }
@@ -801,12 +801,12 @@ for (const scenario of [
     await openFixtureRow(f, row);
     f.rows([row, ...(scenario.descendant ? [speedUp] : []), cancellation]);
     const tree = all(f.render());
-    for (const title of ['Speed Up', 'Cancel pending transaction']) {
+    for (const title of ['Speed Up', 'Cancel instruction']) {
       const button = tree.find(node => node.type === 'Button' && node.props.title === title);
-      assert.equal(!!button, scenario.allowed, title);
+      assert.equal(!!button, title === 'Cancel instruction' || scenario.allowed, title);
       if (button) { button.props.onPress(); await settle(); }
     }
-    assert.deepEqual(navigation, scenario.allowed ? [['speed-up', hash], ['cancel', hash]] : []);
+    assert.deepEqual(navigation, scenario.allowed ? [['speed-up', hash], ['cancel', hash]] : [['cancel', hash]]);
   } finally { f.dispose(); }
 });
 
@@ -1039,4 +1039,18 @@ test(`Activity ${status} generic Cancel respects retained private-withdrawal aut
     assert.equal(tree.some(node => node.type === 'Button' && node.props.title === title), !privateWithdrawal);
     assert(tree.some(node => node.type === 'Button' && node.props.title === 'Review resend'), 'existing retained bytes remain reviewable');
   } finally { f.dispose(); }
+});
+
+for(const blocked of ['none','private-withdrawal','cancellation','multiple'] as const)test(`historical Smart instruction cancellation is independent of its consumed outer nonce (${blocked})`,async()=>{
+ const navigation:[string,string][]=[];const f=fixture(undefined,false,{onNavigateToReview:(action:string,value:string)=>navigation.push([action,value])});
+ try{
+  const base=pendingScopedRow();
+  const row={...base,observation:undefined,retainedObservation:{status:'missing',latestNonce:'1'},local:{...base.local,phase:'reverted',
+    ...(blocked==='private-withdrawal'?{cancellationUnavailable:true}:{}),smartAccount:{payer:base.local.address,
+      operations:Array.from({length:blocked==='multiple'?2:1},(_,i)=>({operationHash:'0x'+(i?'cd':'ab').repeat(32),operationNonce:'0'})),
+      ...(blocked==='cancellation'?{cancellation:true}:{})}}};
+  const tree=all(await openFixtureRow(f,row));const action=tree.find(node=>node.type==='Button'&&node.props.title==='Cancel instruction');
+  assert.equal(!!action,blocked==='none');assert(!tree.some(node=>node.type==='Button'&&['Cancel pending transaction','Cancel saved transaction'].includes(node.props.title)));
+  if(action){action.props.onPress();await settle();assert.deepEqual(navigation,[['cancel',hash]]);}
+ }finally{f.dispose();}
 });

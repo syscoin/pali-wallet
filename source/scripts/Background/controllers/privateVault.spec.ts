@@ -10,6 +10,7 @@ import { identifyClassicNote } from 'utils/privacy/note';
 import type { IPrivateNoteStatus } from 'utils/privacy/privateVaultTypes';
 import { getPrivacyPool } from 'utils/privacy/registry';
 import type { IPrivacyDepositAttempt } from 'utils/privacy/transactionTypes';
+import { createPrivateWithdrawalJournal } from 'utils/privacy/withdrawalMetadata';
 import { prepareWithdrawalRecovery as prepareWithdrawalRecoveryProof } from 'utils/privacy/withdrawalRecovery';
 import type {
   IPrivacyWithdrawalAttempt,
@@ -417,8 +418,40 @@ function capacityAttempt(
 it.each(['direct', 'relayed'] as const)(
   'keeps all 128 accepted notes spendable after their %s withdrawal journals grow',
   async (mode) => {
-    const { f, notes, key, identify } = await capacityFixture();
+    const { f, notes, identify } = await capacityFixture();
+    const attempts = notes.map((note, index) =>
+      capacityAttempt(note, index, mode, identify)
+    );
+    const journals = attempts.map((attempt, index) => ({
+      ...createPrivateWithdrawalJournal(
+        attempt,
+        notes[index].id,
+        identify(notes[index].note)
+      ),
+      phase: 'submitted' as const,
+      transactionHash: TX_HASH,
+      ...(mode === 'relayed' ? { jobId: 'x'.repeat(128) } : {}),
+    }));
+    // Build the other 126 journals once with the production capture function
+    // and real SDK AEAD. The first/last actual transitions below test growth at
+    // full capacity without 256 repeated whole-vault setup writes (O(n²)).
+    const key = await storeCanonicalManifest(
+      f,
+      {
+        version: 1,
+        notes: notes.map((note, index) =>
+          index === 0 || index === notes.length - 1
+            ? note
+            : { ...note, withdrawal: journals[index] }
+        ),
+      },
+      128,
+      undefined,
+      4
+    ); // Long relayer endpoints must fit each existing 32 KiB shard.
+
     expect((await f.controller.getNotes()).notes).toHaveLength(128);
+    f.storage.setItem.mockClear();
     const encrypt = jest.spyOn(f.getKeyring(), 'encryptPrivateRecord');
     const encryptedSizes: number[] = [];
     let storageWrites = 0;
@@ -435,8 +468,8 @@ it.each(['direct', 'relayed'] as const)(
       f.storage.getItem.mockClear();
     };
     const session = f.captureSession();
-    for (const [index, note] of notes.entries()) {
-      const attempt = capacityAttempt(note, index, mode, identify);
+    for (const index of [0, notes.length - 1]) {
+      const attempt = attempts[index];
       await f.controller.reserveWithdrawalAttempt(
         attempt,
         session,
@@ -455,12 +488,34 @@ it.each(['direct', 'relayed'] as const)(
     }
     expect(f.records[key].version).toBe(1);
     expect(f.records[key].shards.length).toBeGreaterThan(1);
-    expect(storageWrites).toBe(256);
-    expect(encryptedSizes.length).toBeGreaterThanOrEqual(256);
+    expect(storageWrites).toBe(4);
+    expect(encryptedSizes.length).toBeGreaterThanOrEqual(4);
     expect(encryptedSizes.every((size) => size <= 64 * 1024)).toBe(true);
+    const beforeReopen = JSON.stringify(f.records[key]);
     const restarted = f.create();
     const restored = (await restarted.getNotes()).notes;
     expect(restored).toHaveLength(128);
+    expect(JSON.stringify(f.records[key])).toBe(beforeReopen);
+    // Authenticate/decode every resulting journal once, so the preconstructed
+    // interior rows cannot hide a missing input/nullifier/recipient/fee binding.
+    const decoded: { id: string; withdrawal: IPrivacyWithdrawalJournal }[] = [];
+    for (const shard of f.records[key].shards) {
+      const plaintext = await f.getKeyring().decryptPrivateRecord({
+        domain: shard.domain,
+        recordId: shard.recordId,
+        envelope: shard,
+      });
+      try {
+        decoded.push(...JSON.parse(new TextDecoder().decode(plaintext)).notes);
+      } finally {
+        plaintext.fill(0);
+      }
+    }
+    expect(decoded).toHaveLength(128);
+    for (const [index, note] of notes.entries())
+      expect(decoded.find((entry) => entry.id === note.id)?.withdrawal).toEqual(
+        journals[index]
+      );
     expect(
       restored.every((note) => note.withdrawal?.phase === 'submitted')
     ).toBe(true);

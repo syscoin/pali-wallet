@@ -1,3 +1,4 @@
+import { PALI_INFRASTRUCTURE_BY_ID } from '../../../source/utils/smartAccount/deployment.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createErc20Reader } from '../src/portfolio/erc20ReadRpc.ts';
@@ -504,9 +505,10 @@ test('saved balance groups isolate precision failures and reject a changed commo
 
 test('verified Multicall3 serves twenty warm saved balances in five wire methods', async () => {
   const { Interface } = await import('ethers/abi');
-  const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');
-  const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
+
+  const creation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+    2 + 0x20 * 2
+  )}`;
   const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
   const abi = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
   const requests: Request[] = [];
@@ -547,9 +549,10 @@ test('verified Multicall3 serves twenty warm saved balances in five wire methods
 
 test('one oversized aggregate member leaves a healthy token available at the same block', async () => {
   const { Interface } = await import('ethers/abi');
-  const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');
-  const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
+
+  const creation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+    2 + 0x20 * 2
+  )}`;
   const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
   const aggregate = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
   const bad = { ...metadata, contractAddress: `0x${'22'.repeat(20)}` };
@@ -796,17 +799,10 @@ for (const scenario of [
 for (const broken of ['revert', 'malformed', 'healthy-scalar'] as const) {
   test(`broken Multicall ${broken} preserves direct batching for twenty tokens`, async () => {
     const { Interface } = await import('ethers/abi');
-    const { readFileSync } = await import('node:fs');
-    const deployment = readFileSync(
-      new URL(
-        '../../../source/utils/smartAccount/deployment.ts',
-        import.meta.url
-      ),
-      'utf8'
-    );
-    const creation = deployment.match(
-      /const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/
-    )![1]!;
+
+    const creation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+      2 + 0x20 * 2
+    )}`;
     const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
     const aggregate = new Interface([
       'function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)',

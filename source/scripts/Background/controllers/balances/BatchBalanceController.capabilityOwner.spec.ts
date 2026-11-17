@@ -4,21 +4,16 @@ jest.mock('state/store', () => ({
 }));
 jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
 
-import fs from 'fs';
-import path from 'path';
-
 import { ownedAssetProvider } from '../assets/utils';
 import { Interface } from 'utils/ethersV6Compat';
 import { clearMulticall3AddressCache } from 'utils/smartAccount/aggregate';
+import { PALI_INFRASTRUCTURE_BY_ID } from 'utils/smartAccount/deployment';
 
 import { BatchBalanceController } from './BatchBalanceController';
 
-const creation = fs
-  .readFileSync(
-    path.join(__dirname, '../../../../utils/smartAccount/deployment.ts'),
-    'utf8'
-  )
-  .match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1];
+const creation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+  2 + 0x20 * 2
+)}`;
 const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
 const abi = new Interface([
   'function aggregate3((address target,bool allowFailure,bytes callData)[]) view returns ((bool success,bytes returnData)[])',

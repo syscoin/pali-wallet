@@ -1,4 +1,8 @@
-import { withEvmReadPhase, EVM_READ_PHASE_TIMEOUT_MS } from './evmReadPhase';
+import {
+  withEvmReadPhase,
+  verifyEvmCanonicalBlock,
+  EVM_READ_PHASE_TIMEOUT_MS,
+} from './evmReadPhase';
 
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
@@ -29,6 +33,87 @@ const fixture = () => {
 };
 beforeEach(() => jest.useFakeTimers({ doNotFake: ['queueMicrotask'] }));
 afterEach(() => jest.useRealTimers());
+
+it('shares canonical parent fences only at phase exit after every estimate', async () => {
+  const { provider } = fixture();
+  const block = { number: '5', hash: '0x' + 'ab'.repeat(32) };
+  const reads: string[] = [];
+  provider.readMany.mockImplementation(async (requests) =>
+    requests.map((request) => {
+      reads.push(request.method);
+      return {
+        status: 'fulfilled',
+        value:
+          request.method === 'eth_getBlockByNumber'
+            ? { ...block, number: '0x5' }
+            : '0x5208',
+      };
+    })
+  );
+  await expect(
+    withEvmReadPhase(
+      provider,
+      () => undefined,
+      async (phase) => {
+        await verifyEvmCanonicalBlock(phase, block, () => undefined);
+        await phase.send('eth_estimateGas', [{ to: 'target' }]);
+        await verifyEvmCanonicalBlock(phase, block, () => undefined);
+        expect(reads).toEqual(['eth_estimateGas']);
+        return 'admitted';
+      }
+    )
+  ).resolves.toBe('admitted');
+  expect(reads).toEqual(['eth_estimateGas', 'eth_getBlockByNumber']);
+  expect(provider.readMany).toHaveBeenCalledTimes(2);
+});
+
+it.each(['reorg', 'number', 'retire', 'abort'] as const)(
+  'rejects %s at the shared final canonical fence before returning admission',
+  async (change) => {
+    const { provider, abort } = fixture();
+    const block = { number: '5', hash: '0x' + 'ab'.repeat(32) };
+    let current = true;
+    const check = () => {
+      if (!current) throw new Error('retired');
+    };
+    provider.readMany.mockImplementation(async () => {
+      if (change === 'retire') current = false;
+      if (change === 'abort') abort.abort(new Error('cancelled'));
+      return [
+        {
+          status: 'fulfilled',
+          value: {
+            hash: change === 'reorg' ? '0x' + 'cd'.repeat(32) : block.hash,
+            number: change === 'number' ? '0x6' : '0x5',
+          },
+        },
+      ];
+    });
+    const published = jest.fn();
+    await expect(
+      withEvmReadPhase(provider, check, async (phase) => {
+        await verifyEvmCanonicalBlock(phase, block, check);
+        await verifyEvmCanonicalBlock(phase, block, check);
+      }).then(published)
+    ).rejects.toThrow();
+    expect(published).not.toHaveBeenCalled();
+    expect(provider.readMany).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('verifies canonical parents immediately outside an owned phase', async () => {
+  const block = { number: '5', hash: '0x' + 'ab'.repeat(32) };
+  const sendFresh = jest.fn(async () => ({ ...block, number: '0x5' }));
+  const send = jest.fn(async () => {
+    throw new Error('must be fresh');
+  });
+  await verifyEvmCanonicalBlock({ send, sendFresh }, block, () => undefined);
+  expect(sendFresh).toHaveBeenCalledWith('eth_getBlockByNumber', [
+    '0x5',
+    false,
+  ]);
+  expect(send).not.toHaveBeenCalled();
+});
 
 it('joins exact reads, batches distinct selectors and gives each consumer its own result', async () => {
   const { provider } = fixture();

@@ -12,7 +12,7 @@ import {
 import { normalizeDappTransaction } from './dappTransaction.ts';
 import type { EvmDappFeeComparison } from './evmDappFeePolicy.ts';
 import type {
-  EvmDappPreparedQuote,
+  EvmDappQuote,
   EvmDappTransactionRequest,
 } from './evmDappPreparation.ts';
 import {
@@ -54,8 +54,13 @@ export type EvmDappReviewPorts<NonceContext, Result> = Readonly<{
     request: EvmDappTransactionRequest,
     assertCurrent: () => void,
     nonceContext: NonceContext,
-    approved: EvmDappPreparedQuote | undefined
-  ): Promise<EvmDappPreparedQuote>;
+    approved: EvmDappQuote | undefined
+  ): Promise<EvmDappQuote>;
+  prepareDisplay?(
+    request: EvmDappTransactionRequest,
+    assertCurrent: () => void,
+    nonceContext: NonceContext
+  ): Promise<EvmDappQuote>;
   scope: string;
   send(
     transaction: PreparedEvmTransaction,
@@ -80,6 +85,9 @@ async function createEvmDappReview<NonceContext, Result>(
     assertCurrent: ports.assertCurrent.bind(ports),
     now: ports.now.bind(ports),
     prepare: ports.prepare.bind(ports),
+    ...(ports.prepareDisplay
+      ? { prepareDisplay: ports.prepareDisplay.bind(ports) }
+      : {}),
     send: ports.send.bind(ports),
   });
   const normalized = normalizeDappTransaction(input);
@@ -143,7 +151,7 @@ async function createEvmDappReview<NonceContext, Result>(
     if (ports.signal.aborted) throw new Error('CANCELLED');
   };
   check();
-  const quote = await ports.prepare(
+  const quote = await (ports.prepareDisplay ?? ports.prepare)(
     request,
     check,
     ports.nonceContext,
@@ -203,7 +211,8 @@ async function createEvmDappReview<NonceContext, Result>(
         now()
       );
     };
-    if (refreshBeforeSend) await refresh(ports.nonceContext, current);
+    if (refreshBeforeSend || ports.prepareDisplay)
+      await refresh(ports.nonceContext, current);
     current();
     return ports.send(
       quote.transaction,

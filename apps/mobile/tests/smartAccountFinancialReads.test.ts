@@ -152,6 +152,55 @@ test('the actual SDK carries three pending getters in one HTTP envelope per phas
   } finally { client.destroy(); }
 });
 
+test('the actual SDK batches a primed authenticated nonce, financial state and quote header in one POST', async () => {
+  const { JsonRpcReadClient } = await import('@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js');
+  const { createSmartAccountPendingState } = await import('../../../source/utils/smartAccount/pendingState.ts');
+  const { prepareEvmDappQuote } = await import('../../../source/shared/evmDappPreparation.ts');
+  const { NATIVE_EVM_FEE_FUNDING } = await import('../../../source/shared/evmFeeApproval.ts');
+  const { buildSmartAccountUserOperation, encodeERC7579Executions, encodeSmartAccountGasFees } = await import('../../../source/utils/smartAccount/account.ts');
+  const { paliSmartAccountInterface } = await import('../../../source/utils/smartAccount/contracts.ts');
+  let current = 1n, loads = 0;
+  const payer = '0x' + '22'.repeat(20), posts: any[][] = [];
+  const client = new JsonRpcReadClient('https://financial.invalid', { fetch: async (_url, init) => {
+    const raw = JSON.parse(String(init.body)), requests = Array.isArray(raw) ? raw : [raw];
+    posts.push(requests);
+    const replies = requests.map(request => ({ jsonrpc: '2.0', id: request.id, result:
+      request.method === 'eth_getBlockByNumber' ? { number: '0x10', hash: '0x' + '44'.repeat(32), gasLimit: '0x100000', baseFeePerGas: '0x1' }
+      : request.method === 'eth_estimateGas' ? '0x5208'
+      : request.method === 'eth_getBalance' ? '0xde0b6b3a7640000'
+      : uint(request.params[0].data.startsWith(paliEntryPointInterface.getFunction('getNonce')!.selector) ? current : 1000000000000000000n) }));
+    return Response.json(Array.isArray(raw) ? replies : replies[0]);
+  } });
+  const provider = { send: client.read.bind(client), readMany: client.readMany.bind(client), verifyConfiguredChainId: async () => undefined };
+  const pending = createSmartAccountPendingState(provider, { profileId: '0x' + '33'.repeat(32), read: async () => [],
+    readAuthorizations: async () => { loads++; await Promise.resolve(); return [{ account, chainId: '1', operationHash: '0x' + '55'.repeat(32), operationNonce: (current - 1n).toString() }]; },
+  }, 1, account, () => undefined);
+  const calls = encodeERC7579Executions([{ target: payer, value: '1', data: '0x' }]);
+  try {
+    for (let phase = 0; phase < 2; phase++) {
+      const operation = buildSmartAccountUserOperation({ sender: account, nonce: current.toString(),
+        callData: paliSmartAccountInterface.encodeFunctionData('execute', [calls.mode, calls.executionCalldata]),
+        gasFees: encodeSmartAccountGasFees({ maxFeePerGas: 1, maxPriorityFeePerGas: 1 }) });
+      const before = posts.length;
+      await pending.withReadPhase(async owned => Promise.all([
+        owned.assertNonce(operation),
+        prepareEvmDappQuote({ from: payer, to: account, value: '0', data: '0x1234', maxFeePerGas: '3', maxPriorityFeePerGas: '1' }, {
+          chainId: '1', scope: 'owned', funding: NATIVE_EVM_FEE_FUNDING, gasPolicy: { kind: 'estimate' }, feePolicy: 'fixed',
+          assertCurrent() {}, now: () => 1, read: (method, params) => owned.provider.send(method, [...params]),
+          verifyChain: async () => { await owned.provider.verifyConfiguredChainId(true); }, verifyBlock: async () => undefined,
+          nonce: async () => ({ nonce: 0n, state: 'pending' as const }), balance: async () => 1000000000000000000n,
+          fees: async () => { throw new Error('No recommendation needed'); },
+        }),
+      ]));
+      assert.equal(posts[before]!.length, 4);
+      assert.deepEqual(posts[before]!.map(row => row.method).sort(), ['eth_call', 'eth_call', 'eth_getBalance', 'eth_getBlockByNumber'].sort());
+      assert.equal(posts.length - before, 2, 'one grouped observation POST and one estimate POST');
+      current++;
+    }
+    assert.equal(loads, 2);
+  } finally { client.destroy(); }
+});
+
 test('actual native full admission batches the nonce and spendability with two chain probes', async () => {
   const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
   const { EvmTransferReadRpc } = await import('../src/custody/evmTransferReadRpc.ts');

@@ -2,11 +2,9 @@ jest.mock('utils/smartAccount', () => ({
   resolveMulticall3Address: jest.fn(),
 }));
 
-import fs from 'fs';
-import path from 'path';
-
 import { Interface, defaultAbiCoder } from 'utils/ethersV6Compat';
 import { resolveMulticall3Address } from 'utils/smartAccount';
+import { PALI_INFRASTRUCTURE_BY_ID } from 'utils/smartAccount/deployment';
 
 import { BatchBalanceController } from './BatchBalanceController';
 
@@ -132,12 +130,9 @@ it('keeps actual Multicall capability probes isolated when endpoints share a cha
   (resolveMulticall3Address as jest.Mock).mockImplementation(
     resolver.resolveMulticall3Address
   );
-  const creation = fs
-    .readFileSync(
-      path.join(__dirname, '../../../../utils/smartAccount/deployment.ts'),
-      'utf8'
-    )
-    .match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1];
+  const creation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+    2 + 0x20 * 2
+  )}`;
   const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
   const list = tokens(1);
   const first = {

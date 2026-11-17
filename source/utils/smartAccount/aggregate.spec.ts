@@ -1,6 +1,3 @@
-import fs from 'fs';
-import path from 'path';
-
 import { Interface } from 'utils/ethersV6Compat';
 import { hexZeroPad } from 'utils/ethersV6Compat';
 import { keccak256 } from 'utils/ethersV6Compat';
@@ -23,9 +20,9 @@ import {
   getZkSysGasTankAddress,
 } from './deployment';
 
-const creation = fs
-  .readFileSync(path.join(__dirname, 'deployment.ts'), 'utf8')
-  .match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1];
+const creation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+  2 + 0x20 * 2
+)}`;
 const MULTICALL_RUNTIME = `0x${creation.slice(
   2 + 0x20 * 2,
   2 + (0x20 + 0xee0) * 2

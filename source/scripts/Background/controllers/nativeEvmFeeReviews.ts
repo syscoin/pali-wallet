@@ -28,6 +28,7 @@ import type { EvmDappReview } from '../../../shared/evmDappReview';
 import type { IEvmTransactionContext } from '../../../utils/evmTransactionContext';
 import type { IPrivacyDepositAttempt } from '../../../utils/privacy/transactionTypes';
 import type { IPrivacyWithdrawalAttempt } from '../../../utils/privacy/withdrawalTransactionTypes';
+import type { SmartAccountCancellationDispatch } from '../../../wallet/smartAccountCancellation';
 import type {
   EvmSignedSubmission,
   EvmSubmissionContext,
@@ -54,6 +55,7 @@ export type GenericEvmFeeAuthority =
       request: object;
     }>
   | Readonly<{
+      cancellation?: SmartAccountCancellationDispatch;
       checkPendingState: (() => Promise<void>) | null;
       kind: 'smart-payer';
       metadata: Readonly<Record<string, unknown>>;
@@ -413,6 +415,10 @@ export function captureGenericEvmFeeDispatch(
   };
   return Object.freeze({
     preflight,
+    smartAccountCancellation:
+      value.authority.kind === 'smart-payer'
+        ? value.authority.cancellation
+        : undefined,
     beforePersist:
       value.authority.kind === 'smart-payer'
         ? async (

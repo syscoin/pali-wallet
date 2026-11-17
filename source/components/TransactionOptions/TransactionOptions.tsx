@@ -17,6 +17,8 @@ import {
 } from 'utils/transactions';
 import { ITransactionOptions } from 'utils/types';
 
+import { useSmartAccountCancellation } from './useSmartAccountCancellation';
+
 // Memoize frequently used transaction option icons
 const EditTxIcon = React.memo(() => (
   <Icon isSvg name="EditTx" className="text-base" />
@@ -63,6 +65,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     (state: RootState) => state.vault.activeNetwork.currency
   );
   const scope = useSelector(() => getWalletNavigationScope());
+  const smartCancellation = useSmartAccountCancellation(transaction.hash);
   const cancellationUnavailable =
     (transaction as { cancellationUnavailable?: unknown })
       .cancellationUnavailable === true;
@@ -205,6 +208,10 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   };
 
   const handleOnClick = (actionType: UpdateTxAction) => {
+    if (actionType === UpdateTxAction.Cancel && smartCancellation.available) {
+      void smartCancellation.request();
+      return;
+    }
     void previewReplacement(actionType);
   };
 
@@ -315,7 +322,11 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                   ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                   ${CANCEL_ITEM_CLASS_NAME}
                   `}
-                          onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+                          aria-disabled={smartCancellation.busy}
+                          onClick={() => {
+                            if (!smartCancellation.busy)
+                              handleOnClick(UpdateTxAction.Cancel);
+                          }}
                         >
                           <div className="w-5 mr-3">
                             <CancelIcon />
@@ -333,6 +344,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
           </>
         )}
       </Menu>
+      {smartCancellation.content}
     </>
   );
 };

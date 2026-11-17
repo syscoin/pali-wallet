@@ -25,7 +25,10 @@ import {
 import { getSmartAccountNativeValue } from './nativeSpendability.ts';
 import { SMART_ACCOUNT_PENDING_STATE } from './pendingStateError.ts';
 import type { EvmAutoNonceSnapshot } from '../../shared/evmAutoNonce.ts';
-import type { SmartAccountPendingRecords } from '../../wallet/evmSignedRecords.ts';
+import type {
+  SmartAccountPendingRecords,
+  SmartAccountAuthorizationReceipt,
+} from '../../wallet/evmSignedRecords.ts';
 
 export { SMART_ACCOUNT_PENDING_STATE } from './pendingStateError.ts';
 export const isSmartAccountPendingStateError = (error: unknown) =>
@@ -79,7 +82,8 @@ export function createSmartAccountPendingState(
   address: string,
   assertCurrent: () => void,
   currentSignedHash?: string,
-  phaseScoped = false
+  phaseScoped = false,
+  blockTag: 'pending' | 'latest' = 'pending'
 ) {
   if (
     !/^0x[0-9a-f]{64}$/.test(records.profileId) ||
@@ -101,7 +105,15 @@ export function createSmartAccountPendingState(
   };
   const read = async (method: string, params: readonly unknown[]) => {
     check();
-    const result = await provider.send(method, params);
+    const values =
+      blockTag === 'latest' &&
+      ['eth_call', 'eth_getBalance', 'eth_getCode', 'eth_estimateGas'].includes(
+        method
+      ) &&
+      params.at(-1) === 'pending'
+        ? [...params.slice(0, -1), 'latest']
+        : params;
+    const result = await provider.send(method, values);
     check();
     return result;
   };
@@ -111,6 +123,28 @@ export function createSmartAccountPendingState(
       throw new Error('Invalid smart account RPC data');
     return value;
   };
+  const loadRecords = async (fresh: boolean) => {
+    const [retained, authorizations] = await Promise.all([
+      records.read(fresh),
+      records.readAuthorizations?.(fresh) ?? [],
+    ]);
+    check();
+    return { retained, authorizations };
+  };
+  let phaseRecords: ReturnType<typeof loadRecords> | undefined;
+  let phaseRecordView: Awaited<ReturnType<typeof loadRecords>> | undefined;
+  const readRecords = (fresh: boolean) =>
+    phaseScoped
+      ? (phaseRecords ??= loadRecords(true).then((value) => {
+          phaseRecordView = value;
+          return value;
+        }))
+      : loadRecords(fresh);
+  const prime = async () => {
+    check();
+    await readRecords(true);
+    check();
+  };
   const nonceReads = new Map<string, Promise<string>>();
   let balance: Promise<BigNumber> | undefined;
   let deposit: Promise<BigNumber> | undefined;
@@ -118,13 +152,33 @@ export function createSmartAccountPendingState(
     const identity = key.toString();
     let result = nonceReads.get(identity);
     if (!result) {
-      result = readSmartAccountNonce({ send: read }, chainId, account, key);
+      const observe = ({
+        authorizations,
+      }: Awaited<ReturnType<typeof loadRecords>>) => {
+        const requiresCanonical = authorizations.some(
+          (operation) =>
+            operation.chainId === String(chainId) &&
+            operation.account === account &&
+            BigInt(operation.operationNonce) >> BigInt(64) === key
+        );
+        return readSmartAccountNonce(
+          { send: read },
+          chainId,
+          account,
+          key,
+          requiresCanonical || blockTag === 'latest' ? 'latest' : 'pending'
+        );
+      };
+      result = phaseRecordView
+        ? observe(phaseRecordView)
+        : readRecords(false).then(observe);
       nonceReads.set(identity, result);
     }
     return result;
   };
   const financialState = async (key: bigint, includeDeposit = true) => {
     check();
+    if (phaseScoped && !phaseRecordView) await prime();
     await provider.verifyConfiguredChainId(true);
     check();
     const nonce = nonceState(key);
@@ -188,9 +242,20 @@ export function createSmartAccountPendingState(
       account,
       key,
     ]);
+    const { retained, authorizations } =
+      phaseRecordView ?? (await readRecords(fresh));
+    const sameKey = authorizations.filter(
+      (operation) =>
+        operation.chainId === String(chainId) &&
+        operation.account === account &&
+        BigInt(operation.operationNonce) >> BigInt(64) === key
+    );
     const response = phaseScoped
       ? undefined
-      : await hex('eth_call', [{ to: entryPoint, data }, 'pending']);
+      : await hex('eth_call', [
+          { to: entryPoint, data },
+          sameKey.length || blockTag === 'latest' ? 'latest' : 'pending',
+        ]);
     if (response !== undefined && !/^0x[0-9a-f]{64}$/i.test(response))
       throw new Error('Invalid smart account nonce response');
     const nonce = phaseScoped
@@ -206,7 +271,8 @@ export function createSmartAccountPendingState(
         );
     if (nonce >> BigInt(64) !== key)
       throw new Error('Invalid smart account nonce key response');
-    const retained = await records.read(fresh);
+    if (sameKey.some((operation) => BigInt(operation.operationNonce) >= nonce))
+      throw unavailable();
     check();
     for (const operation of retained) {
       if (
@@ -256,6 +322,21 @@ export function createSmartAccountPendingState(
   };
   return Object.freeze({
     provider: pendingProvider,
+    prime,
+    withAuthorization(receipt: SmartAccountAuthorizationReceipt) {
+      check();
+      if (!records.forAuthorization) throw unavailable();
+      return createSmartAccountPendingState(
+        provider,
+        records.forAuthorization(receipt),
+        chainId,
+        account,
+        check,
+        currentSignedHash,
+        phaseScoped,
+        blockTag
+      );
+    },
     async assertPayerPredecessors(payer: string) {
       const from = getAddress(payer);
       const [latest, pending] = await Promise.all([
@@ -294,19 +375,20 @@ export function createSmartAccountPendingState(
     withReadPhase<T>(
       work: (state: SmartAccountPendingState) => Promise<T>
     ): Promise<T> {
-      return withEvmReadPhase(provider, check, (phase) =>
-        work(
-          createSmartAccountPendingState(
-            phase,
-            records,
-            chainId,
-            account,
-            check,
-            currentSignedHash,
-            true
-          )
-        )
-      );
+      return withEvmReadPhase(provider, check, async (phase) => {
+        const owned = createSmartAccountPendingState(
+          phase,
+          records,
+          chainId,
+          account,
+          check,
+          currentSignedHash,
+          true,
+          blockTag
+        );
+        await owned.prime();
+        return work(owned);
+      });
     },
     onProvider(
       phase: any,
@@ -317,12 +399,26 @@ export function createSmartAccountPendingState(
         throw unavailable();
       const ownedRecords = admission
         ? {
-            profileId: records.profileId,
-            read: async () => {
-              if (!admission.readSmartAccountOperations) throw unavailable();
-              return admission.readSmartAccountOperations(
+            ...records,
+            readAuthorizations: async () => {
+              if (!admission.readSmartAccountAuthorizations)
+                throw unavailable();
+              const operations = await admission.readSmartAccountAuthorizations(
                 String(chainId),
                 account
+              );
+              return (
+                records.filterPendingAuthorizations?.(operations) ?? operations
+              );
+            },
+            read: async () => {
+              if (!admission.readSmartAccountOperations) throw unavailable();
+              const operations = await admission.readSmartAccountOperations(
+                String(chainId),
+                account
+              );
+              return (
+                records.filterPendingOperations?.(operations) ?? operations
               );
             },
           }
@@ -334,7 +430,8 @@ export function createSmartAccountPendingState(
         account,
         check,
         signedHash,
-        true
+        true,
+        blockTag
       );
     },
     verify,

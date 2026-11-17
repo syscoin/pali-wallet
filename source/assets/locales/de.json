@@ -1105,6 +1105,21 @@
     "coinGeckoListingUnavailable": "Eintrag nicht verfügbar"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "Ursprüngliche Referenz",
+      "title": "Signierte Anweisungen",
+      "empty": "Keine signierten Anweisungen gespeichert",
+      "mayExecute": "Die Anweisung kann noch ausgeführt werden",
+      "nonceConsumedUnknown": "Nonce verbraucht; Ergebnis unbekannt",
+      "observedSuccess": "Erfolgreiche Anweisung beobachtet",
+      "observedFailure": "Fehlgeschlagene Anweisung beobachtet",
+      "checkStatus": "Status prüfen",
+      "cancelInstruction": "Anweisung abbrechen",
+      "unavailable": "Signierte Anweisungen nicht verfügbar. Erneut versuchen.",
+      "operationHash": "Operationshash"
+    },
+    "smartAccountCancelUnavailable": "Diese Operation kann nicht abgebrochen werden. Ihre signierte Anweisung kann weiterhin ausgeführt werden.",
+    "smartAccountCancelDescription": "Brechen Sie diese Smart-Account-Anweisung mit einer leeren Operation mit derselben Nonce ab. Die ursprüngliche Operation kann zuerst bestätigt werden. Der Abbruch ist erst abgeschlossen, wenn das Netzwerk die Ersatzoperation bestätigt.",
     "feePayer": "Gebührenzahler",
     "labelCopied": "{{label}} in die Zwischenablage kopiert",
     "decodeDetailsFailed": "Transaktionsdetails konnten nicht dekodiert werden",

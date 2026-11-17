@@ -6,6 +6,10 @@ import {
   readFreshEvmState,
   withEvmReadPhase,
 } from '../../../../shared/evmReadPhase';
+import {
+  readEvmRpcHash,
+  readEvmRpcQuantity,
+} from '../../../../shared/evmTransactionObservation.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../utils/smartAccount/account.ts';
 import {
   captureCompositePolicyChange,
@@ -20,6 +24,14 @@ import {
   inspectGuardianRemovals,
   type GuardianRemovalInspection,
 } from '../../../../wallet/guardianRemoval';
+import {
+  assertSmartAccountCancellation,
+  assertSmartAccountCancellationOperation,
+  inspectSmartAccountCancellationPayer,
+  smartAccountCancellationExecutions,
+  smartAccountCancellationPendingRecords,
+  type SmartAccountCancellation,
+} from '../../../../wallet/smartAccountCancellation.ts';
 import {
   IEvmTransactionResponse,
   ISysTransaction,
@@ -164,6 +176,7 @@ import {
 import {
   getExplicitSmartAccountGasPrice,
   prepareSmartAccountOperation,
+  type SmartAccountGasPayer,
   requireSmartAccountAuthenticator,
   SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
 } from 'utils/smartAccount/prepareOperation';
@@ -184,7 +197,10 @@ import {
 } from './infrastructureJournal';
 import type { SmartAccountControllerAuthority } from '../../../../shared/smartAccountControllerAuthority';
 import type { SmartAccountFeeQuote } from '../../../../shared/smartAccountFeeQuote.ts';
-import type { SmartAccountPendingRecords } from '../../../../wallet/evmSignedRecords';
+import type {
+  EvmSignedRecords,
+  SmartAccountPendingRecords,
+} from '../../../../wallet/evmSignedRecords';
 import type { ITxid } from '@sidhujag/sysweb3-utils';
 
 export interface ISmartAccountControllerDependencies {
@@ -212,6 +228,10 @@ export interface ISmartAccountControllerDependencies {
   getWalletSessionGeneration?: () => number;
   getWalletStateGeneration: () => number;
   readSettingsEvmFeeNonce(id: string, contractId: string): number;
+  retainSmartAccountAuthorization(
+    input: Parameters<EvmSignedRecords['retainSmartAccountAuthorization']>[1],
+    assertCurrent: () => void
+  ): ReturnType<EvmSignedRecords['retainSmartAccountAuthorization']>;
   reviewSettingsEvmFee(
     params: unknown,
     targetAccount: { id: number; type: PaliKeyringAccountType },
@@ -348,6 +368,8 @@ class SmartAccountController {
     {
       accountId: number;
       actionHash: string;
+      authorizationAnchor?: { hash: string; number: string };
+      cancellation?: SmartAccountCancellation;
       compositePossession?: {
         accepted: boolean;
         challenge: ReturnType<typeof createCompositePolicyPossession>;
@@ -365,10 +387,12 @@ class SmartAccountController {
       };
       executionIntent?: string;
       expiresAt: number;
+      feeDisplayBlock?: import('../../../../shared/evmDappPreparation').EvmDappFeeDisplayBlock;
       gasPrice?: string;
       pending?: SmartAccountPendingState;
       prepared?: Awaited<ReturnType<typeof prepareSmartAccountOperation>>;
       purpose: 'user-operation' | 'recovery-digest';
+      replaceOuter?: boolean;
       snapshot: ReturnType<SmartAccountController['infrastructureContext']>;
       userOperation?: SmartAccountPackedUserOperation;
     }
@@ -536,6 +560,16 @@ class SmartAccountController {
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
       this.assertInfrastructureContext(context.snapshot);
+      if (context.cancellation) {
+        const active = this.getSmartAccountById(context.accountId);
+        if (!context.userOperation || !active.metadata.auth?.validator)
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        assertSmartAccountCancellationOperation(
+          context.cancellation,
+          context.userOperation,
+          active.metadata.auth.validator
+        );
+      }
       if (context.compositePossession) {
         const current = this.getSmartAccountById(context.accountId).metadata;
         if (
@@ -1990,15 +2024,17 @@ class SmartAccountController {
         maxPriorityFeePerGas?: string;
       };
       useCachedMetadata?: boolean;
-    } = {}
+    } = {},
+    cancellation?: SmartAccountCancellation
   ) {
+    if (cancellation) assertSmartAccountCancellation(cancellation);
     if (options.expectedContext)
       this.assertExpectedExecutionContext(options.expectedContext, accountId);
     const feeOverrides = { ...options.feeOverrides };
     const expectedErc20Transfers = snapshotSmartAccountExpectedErc20Transfers(
       options.expectedErc20Transfers
     );
-    const legacyGasPrice = getExplicitSmartAccountGasPrice(feeOverrides);
+    getExplicitSmartAccountGasPrice(feeOverrides);
     const snapshot = this.infrastructureContext();
     const assertContext = () => {
       try {
@@ -2038,11 +2074,32 @@ class SmartAccountController {
       auth: localSource.auth,
       installedModules: localSource.installedModules,
     });
-    const pendingRecords = await this.deps.captureSmartAccountPendingRecords(
-      snapshot.chainId,
-      active.account.address,
-      assertContext
-    );
+    const savedPendingRecords =
+      await this.deps.captureSmartAccountPendingRecords(
+        snapshot.chainId,
+        active.account.address,
+        assertContext
+      );
+    if (
+      cancellation &&
+      (cancellation.account !== getAddress(active.account.address) ||
+        cancellation.chainId !== snapshot.chainId)
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const pendingRecords = cancellation
+      ? smartAccountCancellationPendingRecords(
+          savedPendingRecords,
+          cancellation,
+          assertContext
+        )
+      : savedPendingRecords;
+    let authorizationAnchor: { hash: string; number: string } | undefined;
+    let feeDisplayBlock:
+      | import('../../../../shared/evmDappPreparation').EvmDappFeeDisplayBlock
+      | undefined;
+    let cancellationPayer:
+      | Awaited<ReturnType<typeof inspectSmartAccountCancellationPayer>>
+      | undefined;
     const sourceMetadata = active.metadata;
     let hydratedMetadata: ISmartAccountMetadata | undefined;
     const prepared = await withEvmReadPhase(
@@ -2054,7 +2111,10 @@ class SmartAccountController {
           pendingRecords,
           snapshot.chainId,
           active.account.address,
-          assertContext
+          assertContext,
+          undefined,
+          false,
+          cancellation ? 'latest' : 'pending'
         );
         const provider = pending.provider;
         const deployed =
@@ -2099,17 +2159,57 @@ class SmartAccountController {
           await this.assertInfrastructureSupported(snapshot, assertContext);
           assertContext();
         }
-        return prepareSmartAccountOperation({
+        cancellationPayer = cancellation
+          ? await inspectSmartAccountCancellationPayer(
+              cancellation,
+              provider,
+              assertContext
+            )
+          : undefined;
+        const result = await prepareSmartAccountOperation({
           account: { ...active.account, smartAccount: active.metadata },
           chainId: snapshot.chainId,
           executions: params,
           expectedErc20Transfers,
-          feeOverrides,
+          feeOverrides: cancellationPayer?.replaceOuter
+            ? cancellationPayer.feeOverrides
+            : feeOverrides,
           knownDeployed: useDeployedMetadata,
           provider,
           pending,
           assertCurrent: assertContext,
           selectGasPayer: async (gasEstimate, maxFeePerGas) => {
+            if (cancellationPayer?.replaceOuter) {
+              const payer = cancellationPayer.payer;
+              const account =
+                store.getState().vault.accounts[
+                  payer.type as PaliKeyringAccountType
+                ]?.[payer.id];
+              if (
+                !account ||
+                getAddress(account.address) !== getAddress(payer.address) ||
+                account.isSmartAccount
+              )
+                throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+              const gasPayer = await this.getWalletGasPayerAccount(
+                provider,
+                payer as SmartAccountGasPayer,
+                undefined,
+                { requirePreferred: true }
+              );
+              assertContext();
+              const useGasTank = await this.canUseZkSysGasTankForSmartAccountTx(
+                provider,
+                {
+                  chainId: snapshot.chainId,
+                  gasEstimate,
+                  gasPayerAddress: gasPayer.address,
+                  maxFeePerGas,
+                }
+              );
+              assertContext();
+              return { gasPayer, useGasTank };
+            }
             const primaryGasPayer = this.getWalletGasPayerCandidates(
               active.metadata.deploymentGasPayer
             )[0];
@@ -2136,6 +2236,32 @@ class SmartAccountController {
             return { gasPayer, useGasTank };
           },
         });
+        if (cancellation)
+          assertSmartAccountCancellationOperation(
+            cancellation,
+            result.userOperation,
+            result.validator
+          );
+        const anchor = await provider.send('eth_getBlockByNumber', [
+          'latest',
+          false,
+        ]);
+        assertContext();
+        authorizationAnchor = {
+          hash: readEvmRpcHash(anchor?.hash),
+          number: readEvmRpcQuantity(anchor?.number).toString(),
+        };
+        feeDisplayBlock = Object.freeze({
+          number: '0x' + BigInt(authorizationAnchor.number).toString(16),
+          hash: authorizationAnchor.hash,
+          gasLimit: '0x' + readEvmRpcQuantity(anchor?.gasLimit).toString(16),
+          baseFeePerGas:
+            anchor?.baseFeePerGas === null ||
+            anchor?.baseFeePerGas === undefined
+              ? null
+              : '0x' + readEvmRpcQuantity(anchor.baseFeePerGas).toString(16),
+        });
+        return result;
       }
     );
     assertContext();
@@ -2222,8 +2348,16 @@ class SmartAccountController {
       entryPointFeeApproved: false,
       entryPointFeeConsumed: false,
       ...(compositePossession ? { compositePossession } : {}),
-      gasPrice: legacyGasPrice,
+      gasPrice: prepared.gasPrice,
       snapshot,
+      authorizationAnchor,
+      feeDisplayBlock,
+      ...(cancellation
+        ? {
+            cancellation,
+            replaceOuter: Boolean(cancellationPayer?.replaceOuter),
+          }
+        : {}),
       userOperation: Object.freeze({ ...userOperation }),
       prepared,
       executionIntent: JSON.stringify({
@@ -2240,7 +2374,10 @@ class SmartAccountController {
         pendingRecords,
         snapshot.chainId,
         active.account.address,
-        assertContext
+        assertContext,
+        undefined,
+        false,
+        cancellation ? 'latest' : 'pending'
       ),
     });
     return {
@@ -2248,10 +2385,35 @@ class SmartAccountController {
       accountId: active.account.id,
       executionContextId,
       entryPointFeeQuote,
+      ...(cancellation
+        ? {
+            operationCancellation: {
+              originalHash: cancellation.referenceHash,
+              originalKind: cancellation.originalKind,
+              operationHash: cancellation.authorization.operationHash,
+              operationNonce: cancellation.authorization.operationNonce,
+            },
+          }
+        : {}),
       ...(compositePossession
         ? { requiresCompositePossession: true as const }
         : {}),
     };
+  }
+
+  public async prepareSmartAccountCancellation(
+    cancellation: SmartAccountCancellation,
+    accountId: number,
+    options: { expectedContext: IEvmTransactionContext }
+  ) {
+    assertSmartAccountCancellation(cancellation);
+    const prepared = await this.prepareSmartAccountExecutions(
+      smartAccountCancellationExecutions(cancellation),
+      accountId,
+      { ...options, useCachedMetadata: false },
+      cancellation
+    );
+    return { ...prepared, accountAddress: cancellation.account };
   }
 
   public reuseSmartAccountExecutions(
@@ -2294,6 +2456,16 @@ class SmartAccountController {
       accountId: context.accountId,
       executionContextId: options.executionContextId,
       entryPointFeeQuote: context.entryPointFeeQuote,
+      ...(context.cancellation
+        ? {
+            operationCancellation: {
+              originalHash: context.cancellation.referenceHash,
+              originalKind: context.cancellation.originalKind,
+              operationHash: context.cancellation.authorization.operationHash,
+              operationNonce: context.cancellation.authorization.operationNonce,
+            },
+          }
+        : {}),
       ...(context.compositePossession
         ? { requiresCompositePossession: true as const }
         : {}),
@@ -2359,6 +2531,29 @@ class SmartAccountController {
         chainId: store.getState().vault.activeNetwork.chainId,
         provider: pending.provider,
         pending,
+        retainAuthorization: async (userOperation, payer, guard) => {
+          guard();
+          const context = this.executionContexts.get(
+            params.executionContextId
+          )!;
+          if (!context.authorizationAnchor)
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+          return this.deps.retainSmartAccountAuthorization(
+            {
+              chainId: captured.chainId,
+              userOperation,
+              payer: payer.address,
+              observedAt: context.authorizationAnchor,
+              ...(context.cancellation
+                ? {
+                    replacesOperationHash:
+                      context.cancellation.authorization.operationHash,
+                  }
+                : {}),
+            },
+            guard
+          );
+        },
         assertExpectedExecutionContext: (context, id) =>
           this.assertExpectedExecutionContext(context, id),
         assertSmartAccountExecutionContext: (id) =>

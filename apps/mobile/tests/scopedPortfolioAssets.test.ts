@@ -1,6 +1,6 @@
+import { PALI_INFRASTRUCTURE_BY_ID } from '../../../source/utils/smartAccount/deployment.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
 import { Interface } from 'ethers/abi';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
 import { createScopedPortfolioAssetReader } from '../src/portfolio/scopedPortfolioAssets.ts';
@@ -18,8 +18,9 @@ const abi = new Interface(['function balanceOfBatch(address[],uint256[]) view re
 type Wire = { id: number; method: string; params: any[] };
 
 function fixture(inventory: NativeTokenInventory, multicall = false) {
-  const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');
-  const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
+  const creation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+    2 + 0x20 * 2
+  )}`;
   const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
   const aggregate = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
   const requests: Wire[] = [], widths: number[] = [], urls: string[] = [], loads: NativeTokenPortfolioScope[] = [];

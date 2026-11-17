@@ -1105,6 +1105,21 @@
     "coinGeckoListingUnavailable": "등록 정보를 확인할 수 없습니다"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "원래 참조",
+      "title": "서명된 지시",
+      "empty": "저장된 서명 지시가 없습니다",
+      "mayExecute": "아직 실행될 수 있는 지시입니다",
+      "nonceConsumedUnknown": "nonce 사용됨; 결과 알 수 없음",
+      "observedSuccess": "성공한 지시 확인됨",
+      "observedFailure": "실패한 지시 확인됨",
+      "checkStatus": "상태 확인",
+      "cancelInstruction": "지시 취소",
+      "unavailable": "서명된 지시를 불러올 수 없습니다. 다시 시도하세요.",
+      "operationHash": "작업 해시"
+    },
+    "smartAccountCancelUnavailable": "이 작업은 취소할 수 없습니다. 서명된 지시는 여전히 실행될 수 있습니다.",
+    "smartAccountCancelDescription": "동일한 nonce로 빈 작업을 전송하여 이 스마트 계정 지시를 취소합니다. 원래 작업이 먼저 확정될 수 있습니다. 네트워크가 대체 작업을 확정해야 취소가 완료됩니다.",
     "feePayer": "수수료 지불 계정",
     "labelCopied": "{{label}} 클립보드에 복사됨",
     "decodeDetailsFailed": "거래 세부 정보를 디코딩하지 못했습니다",

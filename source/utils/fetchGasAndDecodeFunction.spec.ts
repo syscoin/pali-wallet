@@ -662,7 +662,7 @@ describe('dapp transaction fee preparation', () => {
   });
 
   it.each([false, true])(
-    'skips the EOA nonce plan for a smart-account dapp review while retaining direct simulation (account type=%s)',
+    'skips the EOA nonce plan and redundant call for Smart review while retaining exact estimates (account type=%s)',
     async (byAccountType) => {
       if (byAccountType) {
         state.vault.accounts.SmartAccount = {
@@ -677,10 +677,7 @@ describe('dapp transaction fee preparation', () => {
       expect(callsFor('wallet.getRecommendedEvmNonce')).toHaveLength(0);
       expect(result.nonce).toBeUndefined();
       expect(result.formTx).not.toHaveProperty('nonce');
-      expect(rpcCalls('eth_call')[0][1]).toEqual([
-        'eth_call',
-        [{ from: FROM, to: TO, data, value: '0x0' }, 'latest'],
-      ]);
+      expect(rpcCalls('eth_call')).toHaveLength(0);
       expect(rpcCalls('eth_estimateGas')).toHaveLength(1);
       expect(rpcCalls('eth_estimateGas')[0][1][1][0]).toEqual({
         from: FROM,
@@ -698,6 +695,37 @@ describe('dapp transaction fee preparation', () => {
       });
     }
   );
+
+  it('still refuses a failed exact Smart inner estimate before AA preparation', async () => {
+    state.vault.accounts.HDAccount[0].isSmartAccount = true;
+    const execute = emitterMock.getMockImplementation()!;
+    const failure = new Error('Exact inner execution reverted');
+    emitterMock.mockImplementation((path, args) => {
+      if (
+        path.join('.') === 'wallet.ethereumTransaction.web3Provider.send' &&
+        args[0] === 'eth_estimateGas'
+      )
+        throw failure;
+      return execute(path, args);
+    });
+    await expect(prepare({ data: '0xa9059cbb' })).rejects.toBe(failure);
+    expect(rpcCalls('eth_call')).toHaveLength(0);
+    expect(callsFor('wallet.prepareSmartAccountExecutions')).toHaveLength(0);
+  });
+
+  it('propagates real AA preparation refusal after the exact inner estimate succeeds', async () => {
+    state.vault.accounts.HDAccount[0].isSmartAccount = true;
+    smartQuote = Object.assign(
+      new Error('Exact Smart execution is unavailable'),
+      {
+        code: 'SMART_ACCOUNT_SIMULATION_UNSUPPORTED',
+      }
+    );
+    await expect(prepare({ data: '0xa9059cbb' })).rejects.toBe(smartQuote);
+    expect(rpcCalls('eth_call')).toHaveLength(0);
+    expect(rpcCalls('eth_estimateGas')).toHaveLength(1);
+    expect(callsFor('wallet.prepareSmartAccountExecutions')).toHaveLength(1);
+  });
 
   it('keeps gas estimation fee-neutral when zkSYS rejects a fee-inflated omitted-gas affordability ceiling', async () => {
     const execute = emitterMock.getMockImplementation()!;

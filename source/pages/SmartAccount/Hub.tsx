@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { SmartAccountAuthorizations } from '../../components/TransactionOptions/SmartAccountAuthorizations';
 import { isPaliValidatorAlgorithmSupported } from '../../utils/smartAccount/validatorSignability';
 import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import {
@@ -1222,6 +1223,8 @@ const SmartAccountHub = () => {
           </li>
         </ul>
       </section>
+
+      <SmartAccountAuthorizations />
 
       {/* Shortcuts */}
       <section className="flex flex-col gap-2">

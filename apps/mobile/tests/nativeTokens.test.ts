@@ -1,3 +1,4 @@
+import { PALI_INFRASTRUCTURE_BY_ID } from '../../../source/utils/smartAccount/deployment.ts';
 import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -132,9 +133,10 @@ test('selected Send rejects an obsolete registration and retires on account revi
 });
 
 for (const multicall of [false, true]) test(`the token screen batches twenty balances on connect and manual refresh (Multicall ${multicall})`, async () => {
-  const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');
-  const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
+
+  const creation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+    2 + 0x20 * 2
+  )}`;
   const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
   const abi = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
   const items = Array.from({ length: 20 }, (_, index) => ({ ...metadata,

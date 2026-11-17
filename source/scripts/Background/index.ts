@@ -75,6 +75,14 @@ void import(
 void import(
   /* webpackChunkName: "privacy-prover" */ 'utils/privacy/prover'
 ).catch(() => undefined);
+// Register Smart instruction observation and retirement before classic MV3
+// workers seal importScripts. Evaluation neither opens records nor queries RPC.
+void import(
+  /* webpackChunkName: "smart-account" */ '../../utils/smartAccount/authorizationStatus'
+).catch(() => undefined);
+void import(
+  /* webpackChunkName: "smart-account" */ '../../wallet/smartAccountAuthorizationRetirement'
+).catch(() => undefined);
 // Register the optional Sentry signer chunk while the classic worker evaluates.
 // This does not unlock keys or initialize its cryptographic implementations.
 void import(

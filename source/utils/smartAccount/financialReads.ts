@@ -36,7 +36,8 @@ export async function readSmartAccountNonce(
   provider: FinancialProvider,
   chainId: number,
   address: string,
-  nonceKey = BigInt(0)
+  nonceKey = BigInt(0),
+  blockTag: 'pending' | 'latest' = 'pending'
 ): Promise<string> {
   const account = getAddress(address);
   if (nonceKey < BigInt(0) || nonceKey >= BigInt(1) << BigInt(192))
@@ -49,7 +50,7 @@ export async function readSmartAccountNonce(
   const nonce = word(
     await provider.send('eth_call', [
       { to: entryPoint, data: nonceData },
-      'pending',
+      blockTag,
     ])
   );
   if (nonce >> BigInt(64) !== nonceKey)

@@ -211,6 +211,7 @@ export function NativeActivityScreen({
   onCancelSaved,
   onSpeedUpPending,
   onNavigateToReview,
+  onSignedInstructions,
   initialHash,
   externallyConnected = false,
   detailOnly = false,
@@ -226,6 +227,7 @@ export function NativeActivityScreen({
   onSpeedUpPending?(hash: string): void;
   /** Navigation to a canonical selected-network review, never direct authorization. */
   onNavigateToReview?(action: NativeActivityReviewAction, hash: string): void;
+  onSignedInstructions?(): void;
   initialHash?: string;
   externallyConnected?: boolean;
   detailOnly?: boolean;
@@ -251,6 +253,7 @@ export function NativeActivityScreen({
       onCancelSaved={onCancelSaved}
       onSpeedUpPending={onSpeedUpPending}
       onNavigateToReview={onNavigateToReview}
+      onSignedInstructions={onSignedInstructions}
       initialHash={initialHash}
       detailOnly={detailOnly}
       savedPendingOnly={savedPendingOnly}
@@ -268,6 +271,7 @@ function NativeActivityContent({
   onCancelSaved,
   onSpeedUpPending,
   onNavigateToReview,
+  onSignedInstructions,
   initialHash,
   detailOnly,
   savedPendingOnly,
@@ -282,6 +286,7 @@ function NativeActivityContent({
   onCancelSaved?(hash: string): void;
   onSpeedUpPending?(hash: string): void;
   onNavigateToReview?(action: NativeActivityReviewAction, hash: string): void;
+  onSignedInstructions?(): void;
   initialHash?: string;
   detailOnly?: boolean;
   savedPendingOnly?: boolean;
@@ -385,6 +390,10 @@ function NativeActivityContent({
     ? reviewAction('speed-up', onSpeedUpPending) : undefined;
   const cancelPending = reviewAction('cancel', onCancelPending);
   const cancelSaved = reviewAction('cancel-saved', onCancelSaved);
+  // An outer receipt/nonce does not revoke its independently usable inner proof.
+  const canCancelSmartInstruction = chosen?.local?.smartAccount && !chosen.checking &&
+    !chosen.local.cancellationUnavailable && !chosen.local.smartAccount.cancellation &&
+    chosen.local.operation !== 'cancel' && chosen.local.smartAccount.operations.length === 1;
   const observedStatus = chosen && (savedPending ? savedPendingStatusTag(chosen) : statusTag(chosen));
   const replay = observedStatus === 'confirmed' || observedStatus === 'reverted' || observedStatus === 'replaced'
     ? undefined : reviewAction('saved', onReplay);
@@ -549,6 +558,7 @@ function NativeActivityContent({
           }`}
           onBack={detailOnly || !navigation || chosen || savedPending || copyAddress ? close : undefined}
           right={!chosen && !detailOnly ? <View style={s.toolbar}>
+            {onSignedInstructions && !savedPending && <IconButton label={t('transactions.smartAuthorizations.title')} icon="clock" onPress={onSignedInstructions} />}
             <IconButton label={t('mobile.activityViews.nativeActivity.refreshActivity')} icon="refresh"
               disabled={snapshot.status === 'loading' || snapshot.loadingMore || savedPending?.status === 'loading'}
               onPress={() => {
@@ -823,10 +833,13 @@ function NativeActivityContent({
           {canReplace && speedUp && (
             <Button title={t('header.speedUp')} variant="secondary" onPress={() => void afterPositionSaved(() => speedUp(chosen.hash))} />
           )}
-          {canReplace && !chosen.local?.cancellationUnavailable && cancelPending && (
+          {canCancelSmartInstruction && cancelPending && (
+            <Button title={t('transactions.smartAuthorizations.cancelInstruction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />
+          )}
+          {canReplace && !chosen.local?.smartAccount && !chosen.local?.cancellationUnavailable && cancelPending && (
             <Button title={t('mobile.activityViews.nativeActivity.cancelPendingTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />
           )}
-          {canCancelSaved && cancelSaved && (
+          {canCancelSaved && !chosen.local?.smartAccount && cancelSaved && (
             <Button title={t('mobile.activityViews.nativeActivity.cancelSavedTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelSaved(chosen.hash))} />
           )}
           {replay && (

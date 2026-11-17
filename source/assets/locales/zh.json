@@ -1105,6 +1105,21 @@
     "coinGeckoListingUnavailable": "暂无法获取收录信息"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "原始引用",
+      "title": "已签署的指令",
+      "empty": "没有保存的已签署指令",
+      "mayExecute": "此指令仍可能执行",
+      "nonceConsumedUnknown": "Nonce 已使用；结果未知",
+      "observedSuccess": "已观察到成功的指令",
+      "observedFailure": "已观察到失败的指令",
+      "checkStatus": "检查状态",
+      "cancelInstruction": "取消指令",
+      "unavailable": "已签署的指令暂不可用。请重试。",
+      "operationHash": "操作哈希"
+    },
+    "smartAccountCancelUnavailable": "此操作无法取消。其已签署的指令仍可能执行。",
+    "smartAccountCancelDescription": "通过提交具有相同 nonce 的空操作来取消此智能账户指令。原始操作可能先得到确认。只有网络确认替换操作后，取消才算完成。",
     "feePayer": "手续费支付账户",
     "labelCopied": "已将{{label}}复制到剪贴板",
     "decodeDetailsFailed": "无法解码交易详情",

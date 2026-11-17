@@ -6,7 +6,7 @@ jest.mock('state/store', () => ({
       vault: {
         activeAccount: { id: 9, type: 'SmartAccount' },
         activeNetwork: {
-          chainId: CHAIN_ID,
+          chainId: mockChainId,
           kind: 'ethereum',
           url: 'https://fixture.invalid',
         },
@@ -30,6 +30,7 @@ import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
+import { createSmartAccountJournalFixture } from 'tests/fixtures/smartAccountJournal';
 
 import { createTestEvmSubmissionCapture } from '../../../../../tests/helpers/evmSubmission';
 import { KeyringAccountType } from 'types/network';
@@ -39,16 +40,22 @@ import {
   encodeSmartAccountGasFees,
   encodeSmartAccountGasLimits,
   encodeERC7579Executions,
+  getSmartAccountUserOpRequiredPrefund,
 } from 'utils/smartAccount';
 import {
   paliEntryPointInterface,
   paliSmartAccountInterface,
 } from 'utils/smartAccount/contracts';
 import { createSmartAccountPendingState } from 'utils/smartAccount/pendingState';
+import { getSmartAccountUserOpHash } from 'utils/smartAccount/userOperationHash';
 
 import SmartAccountController from './index';
 
 const CHAIN_ID = 57;
+let mockChainId = CHAIN_ID;
+beforeEach(() => {
+  mockChainId = CHAIN_ID;
+});
 const identity = smartAccountAddressFixture(CHAIN_ID);
 const ACCOUNT_ADDRESS = identity.account.address;
 
@@ -195,10 +202,7 @@ describe('SmartAccountController smart account execution fees', () => {
     );
     const transaction = { web3Provider: { estimateGas } };
     const controller: any = new SmartAccountController({
-      captureSmartAccountPendingRecords: async () => ({
-        profileId: '0x' + '11'.repeat(32),
-        read: async () => [],
-      }),
+      ...createSmartAccountJournalFixture(),
       getEthereumTransaction: () => transaction,
       sendAndSaveEthTransaction,
     } as any);
@@ -243,13 +247,15 @@ describe('SmartAccountController smart account execution fees', () => {
       sender: ACCOUNT_ADDRESS,
     });
 
-  const withPreparedDeployment = (
+  const withPreparedDeployment = async (
     controller: any,
     userOperation: ReturnType<typeof buildUserOperation>,
-    gasPrice?: string
+    gasPrice?: string,
+    feePayer = gasPayer
   ) => {
     const executionContextId = 'reviewed-deployment';
     const provider = controller.ethereumTransaction.web3Provider;
+    const chainId = controller.infrastructureContext().chainId;
     provider.verifyConfiguredChainId ??= jest.fn(async () => undefined);
     provider.send ??= jest.fn(async (method: string, params: any[]) => {
       if (method === 'eth_call')
@@ -266,13 +272,32 @@ describe('SmartAccountController smart account execution fees', () => {
     });
     const pending = createSmartAccountPendingState(
       provider,
-      { profileId: '0x' + '11'.repeat(32), read: async () => [] },
-      CHAIN_ID,
+      await controller.deps.captureSmartAccountPendingRecords(
+        chainId,
+        ACCOUNT_ADDRESS,
+        captureSubmissionGuard(controller)
+      ),
+      chainId,
       ACCOUNT_ADDRESS,
       () => undefined
     );
+    const entryPointFeeQuote = {
+      executionContextId,
+      feePayer,
+      maximumFeeWei:
+        getSmartAccountUserOpRequiredPrefund(userOperation).toString(),
+      gasUnits: (
+        BigInt(userOperation.accountGasLimits.slice(0, 34)) +
+        BigInt('0x' + userOperation.accountGasLimits.slice(34)) +
+        BigInt(userOperation.preVerificationGas)
+      ).toString(),
+    };
     controller.executionContexts.set(executionContextId, {
       accountId: 9,
+      actionHash: getSmartAccountUserOpHash(userOperation, chainId),
+      purpose: 'user-operation',
+      authorizationAnchor: { number: '16', hash: '0x' + 'aa'.repeat(32) },
+      entryPointFeeQuote,
       expiresAt: Date.now() + 60_000,
       snapshot: controller.infrastructureContext(),
       gasPrice,
@@ -283,25 +308,34 @@ describe('SmartAccountController smart account execution fees', () => {
   };
 
   // Unit fixtures supply the exact prepared operation context explicitly.
-  const submitReviewed = (
+  const submitReviewed = async (
     controller: any,
     params: any,
     guard = captureSubmissionGuard(controller)
-  ) =>
-    controller.submitSmartAccountExecution(
-      {
-        accountId: 9,
-        ...(params.executionContextId
-          ? {}
-          : withPreparedDeployment(
-              controller,
-              params.userOperation,
-              params.gasPrice
-            )),
-        ...params,
-      },
+  ) => {
+    const prepared = params.executionContextId
+      ? params
+      : {
+          ...(await withPreparedDeployment(
+            controller,
+            params.userOperation,
+            params.gasPrice,
+            params.gasPayer
+          )),
+          ...params,
+        };
+    const context = controller.executionContexts.get(
+      prepared.executionContextId
+    );
+    controller.approveSmartAccountExecutionFeeQuote(
+      prepared.executionContextId,
+      context.entryPointFeeQuote
+    );
+    return controller.submitSmartAccountExecution(
+      { accountId: 9, ...prepared },
       guard
     );
+  };
 
   describe.each([
     ['native gas', 'insufficient funds', 'PALI_NATIVE_GAS_REQUIRED'],
@@ -464,7 +498,7 @@ describe('SmartAccountController smart account execution fees', () => {
         executions: [],
         gasPayer,
         signature: '0x1234',
-        ...withPreparedDeployment(controller, userOperation),
+        ...(await withPreparedDeployment(controller, userOperation)),
       })
     ).rejects.toMatchObject({ transactionNotBroadcast: true });
     expect(controller.ensureSmartAccountDeploymentPrefund).toHaveBeenCalled();
@@ -500,7 +534,7 @@ describe('SmartAccountController smart account execution fees', () => {
           execution.executionCalldata,
         ]),
       };
-      const prepared = withPreparedDeployment(controller, userOperation);
+      const prepared = await withPreparedDeployment(controller, userOperation);
       const provider = controller.ethereumTransaction.web3Provider;
       const originalRead = provider.send;
       provider.send = jest.fn(async (method, params) => {
@@ -566,10 +600,10 @@ describe('SmartAccountController smart account execution fees', () => {
         executions: [],
         gasPayer,
         signature: '0x1234',
-        ...withPreparedDeployment(controller, {
+        ...(await withPreparedDeployment(controller, {
           ...buildUserOperation(),
           initCode: '0x1234',
-        }),
+        })),
       })
     ).rejects.toMatchObject({ transactionNotBroadcast: true });
     expect(prefund).not.toHaveBeenCalled();
@@ -622,10 +656,10 @@ describe('SmartAccountController smart account execution fees', () => {
           executions: [],
           gasPayer,
           signature: '0x1234',
-          ...withPreparedDeployment(controller, {
+          ...(await withPreparedDeployment(controller, {
             ...buildUserOperation(),
             initCode: identity.deploymentInitCode,
-          }),
+          })),
         })
       ).rejects.toBe(error);
       expect(error).not.toHaveProperty('transactionNotBroadcast');
@@ -712,6 +746,7 @@ describe('SmartAccountController smart account execution fees', () => {
   });
 
   it('defers gas-tank coverage to the owned payer quote', async () => {
+    mockChainId = 57057;
     const { controller, estimateGas, sendAndSaveEthTransaction } =
       buildController();
     controller.getActiveSmartAccount.mockReturnValue({
@@ -747,6 +782,7 @@ describe('SmartAccountController smart account execution fees', () => {
   });
 
   it('preserves the exact legacy price for the payer quote without another tank estimate', async () => {
+    mockChainId = 57057;
     const { controller, estimateGas, sendAndSaveEthTransaction } =
       buildController();
     controller.getActiveSmartAccount.mockReturnValue({
@@ -924,7 +960,12 @@ describe('SmartAccountController smart account execution fees', () => {
           gasPrice: '13',
           signature: '0x1234',
           ...(operation === 'prefund'
-            ? withPreparedDeployment(controller, userOperation, '13')
+            ? await withPreparedDeployment(
+                controller,
+                userOperation,
+                '13',
+                fixturePayer
+              )
             : { userOperation }),
           waitForConfirmation:
             operation === 'handleOps' && phase === 'wait failure',

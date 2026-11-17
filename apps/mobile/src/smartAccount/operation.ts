@@ -1,4 +1,5 @@
 import type { NativeSmartModuleCommand, NativeSmartModuleConsent } from './modules.ts';
+import type { SmartAccountCancellationRequest } from '../../../../source/wallet/smartAccountCancellation.ts';
 import { isSmartAccountPendingStateError } from '../../../../source/utils/smartAccount/pendingState.ts';
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import type { SmartAccountBuiltinInstall } from '../../../../source/utils/smartAccount/moduleCommands.ts';
@@ -31,6 +32,7 @@ import { ExecutionSimulationUnsupportedError, SmartAccountPayerPendingError } fr
 
 export type NativeSmartAccountResolvedIntent = (
   | Readonly<{ kind: 'deploy' }>
+  | Readonly<{ kind: 'cancel-operation'; reference: SmartAccountCancellationRequest }>
   | Readonly<{
       kind: 'authenticator';
       command: SmartAccountValidatorSwitch | SmartAccountBuiltinInstall;
@@ -356,6 +358,12 @@ export class NativeSmartAccountOperation {
           })
         )
           throw new Error('Guardian policy review changed');
+      } else if (intent.kind === 'cancel-operation') {
+        const requested = this.host.intent, execution = prepared.executions[0];
+        if (requested.kind !== intent.kind || requested.reference.originalHash !== intent.reference.originalHash ||
+            requested.reference.operationHash !== intent.reference.operationHash || prepared.executions.length !== 1 ||
+            execution?.target.toLowerCase() !== this.host.account.toLowerCase() || BigInt(execution.value) !== BigInt(0) || execution.data !== '0x')
+          throw new Error('SMART_OPERATION_EXPIRED');
       } else if (intent.kind === 'dapp-batch') {
         const requested = this.host.intent;
         if (requested.kind !== 'dapp-batch' || requested.calls !== intent.calls)
@@ -379,6 +387,7 @@ export class NativeSmartAccountOperation {
         if (
           requested.kind === 'dapp-batch' ||
           requested.kind === 'guardian-policy' ||
+          requested.kind === 'cancel-operation' ||
           requested.kind === 'authenticator' || requested.kind === 'modules'
         )
           throw new Error('SMART_OPERATION_EXPIRED');

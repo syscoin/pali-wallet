@@ -339,6 +339,7 @@ jobs:
           PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
           PALI_RPC_EXTENDED: '1'
           PALI_RPC_ERC1155: '1'
+          PALI_RPC_CANCELLATION: '1'
         run: yarn e2e:harness rpc-request-budget.journey.spec.ts
       - name: Check RPC fallback budget and transfer receipts
         env:

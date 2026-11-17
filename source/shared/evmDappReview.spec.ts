@@ -1,5 +1,6 @@
 import {
   prepareEvmDappQuote,
+  prepareEvmDappDisplayQuote,
   type EvmDappBlock,
   type EvmGasPolicy,
   type EvmDappTransactionRequest,
@@ -131,6 +132,69 @@ function fixture(legacy = false) {
 }
 
 describe('shared generic per-call fee review', () => {
+  test('display quotes retain exact fees and coverage without claiming admission', async () => {
+    const f = fixture();
+    const balance = jest.fn(async () => {
+      throw new Error('admission only');
+    });
+    const verifyChain = jest.fn(async () => {
+      throw new Error('admission only');
+    });
+    const verifyBlock = jest.fn(async () => {
+      throw new Error('admission only');
+    });
+    const coverage = jest.fn(async (approval) =>
+      BigInt(approval.maximumFeeUnits)
+    );
+    const quote = await prepareEvmDappDisplayQuote(
+      {
+        from,
+        to,
+        value: '0',
+        data: '0x1234',
+        maxFeePerGas: '3',
+        maxPriorityFeePerGas: '1',
+      },
+      {
+        ...f.ports,
+        feePolicy: 'fixed',
+        balance,
+        verifyChain,
+        verifyBlock,
+        funding: createOwnedEvmFeeFunding(coverage),
+      }
+    );
+    expect(quote.transaction).toMatchObject({
+      nonce: '4',
+      gasLimit: '25200',
+      maxFeePerGas: '3',
+    });
+    expect(quote).not.toHaveProperty('balanceUnits');
+    expect(quote.coveredFeeUnits).toBe(quote.maximumFeeUnits);
+    expect(coverage).toHaveBeenCalledTimes(1);
+    expect(balance).not.toHaveBeenCalled();
+    expect(verifyChain).not.toHaveBeenCalled();
+    expect(verifyBlock).not.toHaveBeenCalled();
+    expect(f.requests.map(({ method }) => method)).toEqual([
+      'eth_getBlockByNumber',
+      'eth_estimateGas',
+    ]);
+    f.switchChain();
+    await expect(
+      prepareEvmDappQuote(
+        {
+          from,
+          to,
+          value: '0',
+          data: '0x1234',
+          maxFeePerGas: '3',
+          maxPriorityFeePerGas: '1',
+        },
+        f.ports,
+        quote
+      )
+    ).rejects.toThrow('wrong chain');
+  });
   test.each([false, true])(
     'quotes and refreshes the same fee-sensitive execution, legacy=%s',
     async (legacy) => {

@@ -2092,3 +2092,14 @@ After the existing device authorization reveals an eligible account key, its car
 | Standard width | Narrow width |
 | --- | --- |
 | ![Account key with Copy control](private-key-copy/native-security-public-fixture-key.png) | ![Account key with Copy control at 320px](private-key-copy/native-security-public-fixture-key-320.png) |
+
+
+## Signed Smart Account instructions
+
+Mobile Activity opens this local inventory. Each saved instruction offers an explicit status check and **Cancel instruction** while its nonce is unconsumed. Cancellation opens the existing approval and fee-review flow. A consumed nonce without a matching transaction event shows **outcome unknown**.
+
+These captures render the implemented screen with synthetic public data, including a full-length nonce. [Capture sources](signed-instructions/manifest.json).
+
+| 320 px | 390 px |
+| --- | --- |
+| ![Signed instructions at320px](signed-instructions/signed-instructions-320.png) | ![Signed instructions at390px](signed-instructions/signed-instructions-390.png) |

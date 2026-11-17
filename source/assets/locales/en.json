@@ -1105,6 +1105,21 @@
     "coinGeckoListingUnavailable": "Listing unavailable"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "Original reference",
+      "title": "Signed instructions",
+      "empty": "No saved signed instructions",
+      "mayExecute": "Instruction may still execute",
+      "nonceConsumedUnknown": "Nonce consumed; outcome unknown",
+      "observedSuccess": "Observed successful instruction",
+      "observedFailure": "Observed failed instruction",
+      "checkStatus": "Check status",
+      "cancelInstruction": "Cancel instruction",
+      "unavailable": "Signed instructions unavailable. Try again.",
+      "operationHash": "Operation hash"
+    },
+    "smartAccountCancelUnavailable": "This operation could not be cancelled. Its signed instruction may still execute.",
+    "smartAccountCancelDescription": "Cancel this Smart Account instruction by submitting an empty operation with the same nonce. The original may confirm first. Cancellation completes only when the network confirms the replacement.",
     "feePayer": "Fee payer",
     "labelCopied": "{{label}} copied to clipboard",
     "decodeDetailsFailed": "Failed to decode transaction details",

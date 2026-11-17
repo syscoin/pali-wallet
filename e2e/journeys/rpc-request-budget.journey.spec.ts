@@ -1,4 +1,10 @@
-import { expect, test, chromium, type Request } from '@playwright/test';
+import {
+  expect,
+  test,
+  chromium,
+  type Request,
+  type Route,
+} from '@playwright/test';
 import { Interface, keccak256, Transaction } from 'ethers';
 import fs from 'fs';
 import path from 'path';
@@ -20,6 +26,7 @@ import {
   assertRpcTrafficBudget,
   countRpcTraffic,
 } from '../harness/rpcTrafficBudget';
+import { runSmartAccountCancellationJourney } from '../harness/smartAccountCancellationJourney';
 import { observeSmartAccountFeeDiagnostics } from '../harness/smartAccountFeeDiagnostics';
 import {
   startLocalChains,
@@ -40,13 +47,14 @@ import { startUtxoFixtureServer } from '../harness/utxoFixture';
 // are disposable loopback fixtures. The launch proxy blocks other RPC traffic.
 // PALI_RPC_EXTENDED=1 adds ERC20/ERC721 and dapp approvals.
 // PALI_RPC_ERC1155=1 adds ERC1155 wallet/dapp transfers to the extended run.
+// PALI_RPC_CANCELLATION=1 adds nonce revocation, independent replay and restart controls after traffic checks.
 // PALI_RPC_GAS_TANK=1 adds synthetic creditOf coverage on local chain 57057.
 // PALI_RPC_PREFUND=1 registers an unfunded account through two real transactions.
 // PALI_RPC_NO_MULTICALL=1 and PALI_RPC_REJECT_BATCH=1 qualify fallback readers.
 // Deployed Smart-send limits allow one separately checked final estimate of signed execution.
 // PALI_RPC_REFERENCE=1 disables this cap for historical-artifact comparisons.
 test('RPC budget and receipts for local wallet transfers', async () => {
-  test.setTimeout(240000);
+  test.setTimeout(process.env.PALI_RPC_CANCELLATION === '1' ? 360000 : 240000);
   const responseDelayMs = Number(process.env.PALI_RPC_RESPONSE_DELAY_MS || 0);
   if (
     !Number.isSafeInteger(responseDelayMs) ||
@@ -239,7 +247,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       item.requestFailure = request.failure()?.errorText ?? 'Request failed';
       item.finished = Date.now();
     });
-    await wallet.context.route('**/*', async (route) => {
+    const routeLocalNetwork = async (route: Route) => {
       const request = route.request();
       const url = new URL(request.url());
       if (url.protocol !== 'http:' && url.protocol !== 'https:')
@@ -348,7 +356,8 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         });
       }
       return route.abort('blockedbyclient');
-    });
+    };
+    await wallet.context.route('**/*', routeLocalNetwork);
     const [payer, recipient] = await wallet.step(
       'deploy local infrastructure fixtures',
       async () => {
@@ -1455,8 +1464,25 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         output.capabilityProbeTraffic = countRpcTraffic(probes);
       });
     }
+    if (process.env.PALI_RPC_CANCELLATION === '1') {
+      const result = await runSmartAccountCancellationJourney({
+        wallet,
+        account,
+        chain,
+        currency,
+        fenceUrl: fence.url,
+        payer,
+        recipient,
+        mark,
+        installRoutes: async (context) => {
+          await context.route('**/*', routeLocalNetwork);
+        },
+      });
+      wallet = result.wallet;
+      output.cancellation = result.evidence;
+    }
     await wallet.step('capture final wallet state', async () => {
-      await page.screenshot({
+      await wallet!.page.screenshot({
         path: path.join(E2E_CONFIG.artifactsDir, 'warm-send.png'),
       });
     });

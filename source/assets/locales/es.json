@@ -1105,6 +1105,21 @@
     "coinGeckoListingUnavailable": "Listado no disponible"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "Referencia original",
+      "title": "Instrucciones firmadas",
+      "empty": "No hay instrucciones firmadas guardadas",
+      "mayExecute": "La instrucción aún puede ejecutarse",
+      "nonceConsumedUnknown": "Nonce consumido; resultado desconocido",
+      "observedSuccess": "Instrucción completada observada",
+      "observedFailure": "Instrucción fallida observada",
+      "checkStatus": "Comprobar estado",
+      "cancelInstruction": "Cancelar instrucción",
+      "unavailable": "Instrucciones firmadas no disponibles. Inténtalo de nuevo.",
+      "operationHash": "Hash de la operación"
+    },
+    "smartAccountCancelUnavailable": "Esta operación no se puede cancelar. Su instrucción firmada aún podría ejecutarse.",
+    "smartAccountCancelDescription": "Cancela esta instrucción de Smart Account enviando una operación vacía con el mismo nonce. La original podría confirmarse primero. La cancelación solo se completa cuando la red confirma la operación de reemplazo.",
     "feePayer": "Pagador de comisiones",
     "labelCopied": "{{label}} copiado al portapapeles",
     "decodeDetailsFailed": "No se pudieron decodificar los detalles de la transacción",

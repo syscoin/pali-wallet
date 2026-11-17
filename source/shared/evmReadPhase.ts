@@ -5,6 +5,10 @@ import { assertJsonWorkBudget } from '../utils/requestPayloadBudget.ts';
 
 import { evmCallRequest } from './evmEstimateRequest.ts';
 import { assertSynchronousEvmFeeGuard } from './evmFeeGuard.ts';
+import {
+  readEvmRpcHash,
+  readEvmRpcQuantity,
+} from './evmTransactionObservation.ts';
 
 const READ_METHODS = new Set([
   'eth_simulateV1',
@@ -17,6 +21,7 @@ const READ_METHODS = new Set([
   'eth_getTransactionCount',
   'eth_getTransactionReceipt',
   'eth_getTransactionByHash',
+  'eth_getLogs',
   'eth_call',
   'eth_estimateGas',
   'eth_gasPrice',
@@ -52,6 +57,42 @@ export function readFreshEvmState(
   return provider.sendFresh
     ? provider.sendFresh(method, params)
     : provider.send(method, params);
+}
+
+/** A phase owns its final canonical fence; ordinary providers verify immediately. */
+export async function verifyEvmCanonicalBlock(
+  provider: {
+    deferCanonicalBlockCheck?(
+      number: string,
+      verify: (value: unknown) => void
+    ): void;
+    send(method: string, params: unknown[]): Promise<any>;
+    sendFresh?(method: string, params: unknown[]): Promise<any>;
+  },
+  block: Readonly<{ hash: string; number: string | bigint }>,
+  assertCurrent: () => void,
+  changed: () => Error = () => new Error('Canonical EVM block changed')
+): Promise<void> {
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  const number = BigInt(block.number);
+  if (number < BigInt(0) || number >= BigInt(1) << BigInt(256)) throw changed();
+  const hash = readEvmRpcHash(block.hash);
+  const tag = `0x${number.toString(16)}`;
+  const verify = (value: any) => {
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    if (
+      readEvmRpcHash(value?.hash) !== hash ||
+      readEvmRpcQuantity(value?.number) !== number
+    )
+      throw changed();
+  };
+  if (typeof provider.deferCanonicalBlockCheck === 'function') {
+    provider.deferCanonicalBlockCheck(tag, verify);
+    return;
+  }
+  verify(
+    await readFreshEvmState(provider, 'eth_getBlockByNumber', [tag, false])
+  );
 }
 
 /** One bounded host-owned observation, retired before signing or storage. */
@@ -91,6 +132,9 @@ export async function withEvmReadPhase<T>(
     }
     const pending = new Map<string, Promise<unknown>>();
     const helpers = new Map<string, Promise<unknown>>();
+    const canonicalChecks = new Map<string, Array<(value: unknown) => void>>();
+    let acceptingCanonicalChecks = true;
+    let canonicalCheckCount = 0;
     let requestBytes = 0;
     let requestCount = 0;
     let queue: Array<{
@@ -256,6 +300,23 @@ export async function withEvmReadPhase<T>(
     };
     const scoped: any = Object.freeze({
       signal: lifetime.signal,
+      deferCanonicalBlockCheck: (
+        number: string,
+        verify: (value: unknown) => void
+      ) => {
+        active();
+        if (
+          !acceptingCanonicalChecks ||
+          !/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(number) ||
+          typeof verify !== 'function'
+        )
+          throw new Error('Invalid EVM canonical fence');
+        const checks = canonicalChecks.get(number) ?? [];
+        if (++canonicalCheckCount > MAX_PHASE_READS)
+          throw new Error('EVM read phase work limit exceeded');
+        checks.push(verify);
+        canonicalChecks.set(number, checks);
+      },
       send,
       sendFresh: (method: string, params: readonly unknown[]) =>
         send(method, params, true),
@@ -329,6 +390,20 @@ export async function withEvmReadPhase<T>(
       getBlock: (...args: unknown[]) => guardedHelper('getBlock', args),
     });
     const result = await bounded(Promise.resolve().then(() => work(scoped)));
+    active();
+    acceptingCanonicalChecks = false;
+    await Promise.all(
+      [...canonicalChecks].map(async ([number, checks]) => {
+        const current = await send(
+          'eth_getBlockByNumber',
+          [number, false],
+          true
+        );
+        active();
+        for (const verify of checks)
+          assertSynchronousEvmFeeGuard(() => verify(current));
+      })
+    );
     active();
     if (ownsChainChecks) {
       await bounded(source.verifyConfiguredChainId(true));
