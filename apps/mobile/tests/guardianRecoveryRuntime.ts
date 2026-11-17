@@ -1,12 +1,11 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { keccak256 } from 'ethers';
+import { PALI_INFRASTRUCTURE_BY_ID } from '../../../source/utils/smartAccount/deployment.ts';
 import { PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 
-/** Host fixture only. Load the pinned compiler artifact without importing deployment logic. */
+/** Host fixture only. Decode the actual catalogue and retain both compiler hash checks. */
 function readGuardianRuntime(): string {
-  const source = readFileSync(resolve('../../source/utils/smartAccount/deployment.ts'), 'utf8');
-  const creation = /^  guardianRecoveryModule:\s*'(0x[0-9a-f]+)'/m.exec(source)?.[1];
+  const deployed = PALI_INFRASTRUCTURE_BY_ID.guardianRecoveryModule.deployCalldata;
+  const creation = deployed && `0x${deployed.slice(2 + 0x20 * 2)}`;
   const metadata = PALI_INFRASTRUCTURE_METADATA_BY_ID.guardianRecoveryModule;
   if (!creation || keccak256(creation) !== metadata.bytecodeHash)
     throw new Error('Unexpected guardian creation fixture');
