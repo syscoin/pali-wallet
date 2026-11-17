@@ -2,8 +2,8 @@
   "source": {
     "repository": "https://github.com/sidhujag/sysweb3",
     "pullRequest": "https://github.com/sidhujag/sysweb3/pull/119",
-    "commit": "69b8137cedb5f395380df3f21efffb6ee05dd39b",
-    "tree": "760722542428a7e61b6b0ac72e9ecbed8789d4eb",
+    "commit": "834225f2dd84a9bdd3a6975c46a8ffba48a9b529",
+    "tree": "6e77718663c4b1dc7b55873fcde08d4efcea0a0d",
     "compiler": "typescript@5.9.3",
     "node": "v26.12.1",
     "build": [
@@ -16,11 +16,11 @@
   },
   "payload": {
     "file": "sysweb3-overlay.deflate",
-    "sha256": "da3235e371424408fa6014c8102aadf24777cfb48c736174ac0521b7b9fc0767",
-    "bytes": 1948676,
-    "decodedSha256": "4832d7c739bec7a3b4a424e2eeb66c46a7ac0ae83ce416353ea4ca090eb68cee",
+    "sha256": "23d929f413ea459851fcea9798aa2838ec721121bed25dc4883642ce2a4485a6",
+    "bytes": 1948745,
+    "decodedSha256": "8a1c1bbbd30b0df5aa192a1a0599e710131b89854e77f2164547d6feb6e86af1",
     "files": 82,
-    "compressedBytes": 374662
+    "compressedBytes": 374666
   },
   "packages": [
     {
@@ -2579,16 +2579,16 @@
         {
           "path": "cjs/rpc.js",
           "before": "e0aaa865b1ffbef6728c9bc2fbf8ce14e29a2e437262305a41f665e751929cdf",
-          "after": "a727b7150b16668a0d086822892eae9c35d3b8b28a59d16bbd3abbe2df77b907",
+          "after": "e5874d70db3aec88974f0a845e490550da4814eea5704b7785e8984dce3e8589",
           "beforeBytes": 19629,
-          "bytes": 15068
+          "bytes": 15114
         },
         {
           "path": "cjs/rpc.js.map",
           "before": "9b884a74bfa76ccf4544479c5d4173165fb9ccb5cb69ca21b69fdf7a7123b7b0",
-          "after": "670527496a246bc80c41c2102d4f81367e0ad0c4fabd3229f864ab2580665c0b",
+          "after": "ca3ebc1f84cf80d1f97cec4299b8ea3d274a324be3b7130216ca7ebf2e91056e",
           "beforeBytes": 14454,
-          "bytes": 12271
+          "bytes": 12293
         },
         {
           "path": "cjs/types.js",
