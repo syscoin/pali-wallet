@@ -58,7 +58,8 @@ const mockClear = jest.fn((id, done) => {
   notifications: {
     create: mockCreate,
     clear: mockClear,
-    getAll: (done: any) => done(Object.fromEntries(mockCreated)),
+    getAll: (done: any) =>
+      done(Object.fromEntries([...mockCreated.keys()].map((id) => [id, true]))),
     onClicked: { addListener: (cb: any) => mockClicks.push(cb) },
     onButtonClicked: { addListener: (cb: any) => mockButtons.push(cb) },
     onClosed: { addListener: (cb: any) => mockClosed.push(cb) },
@@ -358,6 +359,8 @@ it('actual registered transaction click opens wallet once and clears the matchin
 });
 it('actual closed-notification listener retires click metadata', async () => {
   const id = await notifications.showNetworkChangeNotification(network.label);
+  // The browser removes the notification before delivering its closed event.
+  expect(mockCreated.delete(id)).toBe(true);
   mockClosed[0](id);
   mockClicks[0](id);
   await flush();
