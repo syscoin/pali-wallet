@@ -510,7 +510,7 @@ module.exports = {
               .split(String.fromCharCode(92))
               .join('/');
             return (
-              /\/source\/utils\/privacy\/(?:note|relayers|withdrawal)\.ts$/.test(
+              /\/source\/utils\/privacy\/(?:note|relayers|relayJobs|withdrawal|withdrawTypes)\.ts$/.test(
                 resource
               ) ||
               resource.endsWith(

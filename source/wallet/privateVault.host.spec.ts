@@ -1226,7 +1226,7 @@ test('withdrawal replay rejects a cleared or different current attempt without d
   const lease = await f.vault.authorizeWithdrawalReplay(f.attempt, f.session);
   await f.vault.clearUnbroadcastWithdrawalAttempt(f.attempt, f.session);
   await expect(lease.withAdmission(admit)).rejects.toThrow(
-    'privacy_withdrawal_attempt_invalid'
+    'privacy_note_restore_required'
   );
   await expect(lease.onAcknowledged(HASH)).rejects.toThrow(
     'privacy_withdrawal_attempt_invalid'
@@ -1265,11 +1265,29 @@ test('withdrawal replay cannot reactivate recovered or retired attempts', async 
     '00000000-0000-4000-8000-000000000099:0'
   );
   await expect(lease.withAdmission(admit)).rejects.toThrow(
-    'privacy_withdrawal_attempt_invalid'
+    'privacy_note_restore_required'
   );
-  await expect(lease.onAcknowledged(HASH)).rejects.toThrow(
-    'privacy_withdrawal_attempt_invalid'
+  const beforeLateAck = await f.vault.getWithdrawalAttempt(
+    f.note.id,
+    f.session
   );
+  const recordsBeforeLateAck = structuredClone(f.records);
+  // A duplicate ACK is observation custody, not permission to dispatch the old proof.
+  await expect(lease.onAcknowledged(HASH)).resolves.toBeUndefined();
+  expect(f.records).toEqual(recordsBeforeLateAck);
+  expect(await f.vault.getWithdrawalAttempt(f.note.id, f.session)).toEqual(
+    beforeLateAck
+  );
+  expect(beforeLateAck).toMatchObject({
+    intentId: next.intentId,
+    phase: 'unknown',
+  });
+  expect(beforeLateAck?.retired?.[0]).toMatchObject({
+    intentId: f.attempt.intentId,
+    phase: 'submitted',
+    transactionHash: HASH,
+    recovery: { root: f.attempt.root, blockHash: HASH, blockNumber: '123' },
+  });
   expect(
     (await f.vault.getWithdrawalAttempt(f.note.id, f.session))?.retired
   ).toHaveLength(1);
@@ -1318,7 +1336,7 @@ test('withdrawal replay holds admission ownership, releases it before ACK, and r
     await f.vault.getWithdrawalAttempt(f.note.id, f.session)
   ).toMatchObject({ phase: 'submitted', transactionHash: HASH });
   expect((await f.vault.getNotes()).notes[0].restoration).toBe(
-    'withdrawal-pending'
+    'review-required'
   );
 });
 
@@ -1605,7 +1623,7 @@ test('archive restore and permanent clear require authentication, preserve activ
   expect(await vault.revealNote(archived.id, 'synthetic-password')).toBe(NOTE);
   expect(
     (await vault.getNotes()).notes.find((note) => note.id === archived.id)
-  ).toMatchObject({ phase: 'waiting', withdrawal: { phase: 'submitted' } });
+  ).toMatchObject({ phase: 'verified', withdrawal: { phase: 'submitted' } });
   await vault.clearCompletedNotes([archived.id]);
   jest.mocked(f.host.readNote).mockClear();
   expect(await vault.clearArchive('synthetic-password')).toEqual({

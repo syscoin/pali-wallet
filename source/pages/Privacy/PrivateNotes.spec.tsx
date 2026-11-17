@@ -418,6 +418,7 @@ it('opens direct withdrawal from a verified note for a signer with an empty reci
 it('keeps a reserved withdrawal out of balance and checks a saved relay job only on request', async () => {
   const saved = {
     ...note,
+    phase: 'waiting',
     withdrawal: {
       mode: 'relayed',
       phase: 'submitted',
@@ -531,6 +532,78 @@ it.each([
   }
 );
 
+it.each([
+  ['direct', 'unknown'],
+  ['direct', 'submitted'],
+  ['relayed', 'unknown'],
+  ['relayed', 'submitted'],
+])(
+  'preserves verified %s %s history and opens the normal withdrawal form',
+  async (mode, phase) => {
+    const saved = {
+      ...note,
+      withdrawal: {
+        mode,
+        phase,
+        transactionHash: depositHash,
+        ...(mode === 'relayed' ? { jobId: depositIntentId } : {}),
+      },
+    };
+    mockState.vault.accounts.Imported[0].xprv = 'synthetic-withdrawal-signer';
+    mockEmitter.mockResolvedValue({ notes: [saved] });
+    render(<PrivateNotes />);
+    expect(
+      await screen.findByText(en.privacy.notePhase.verified)
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        phase === 'unknown'
+          ? en.privacy.withdrawal.statusUnknown
+          : en.privacy.withdrawal.statusPending
+      )
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.withdrawal.open })
+    );
+    expect(screen.getByLabelText(en.privacy.withdrawal.recipient)).toHaveValue(
+      ''
+    );
+    expect(mockEmitter.mock.calls).toEqual([
+      [['privateVault', 'getNotes'], [], 10000, false],
+    ]);
+  }
+);
+
+it.each(['prepared', 'waiting', 'not-found', 'spent'])(
+  'does not promote %s notes with withdrawal history to verified or expose Withdraw',
+  async (phase) => {
+    mockEmitter.mockResolvedValue({
+      notes: [
+        {
+          ...note,
+          phase,
+          withdrawal: {
+            mode: 'direct',
+            phase: 'unknown',
+            transactionHash: depositHash,
+          },
+        },
+      ],
+    });
+    render(<PrivateNotes />);
+    if (phase === 'spent')
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Reported spent notes (1)' })
+      );
+    expect(
+      await screen.findByText(mockTranslate(`privacy.notePhase.${phase}`))
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: en.privacy.withdrawal.open })
+    ).not.toBeInTheDocument();
+  }
+);
+
 it('projects only public withdrawal metadata and validates its hash and job ID', () => {
   const value = {
     ...note,
@@ -545,7 +618,6 @@ it('projects only public withdrawal metadata and validates its hash and job ID',
   };
   expect(readPrivateNote(value)).toEqual({
     ...note,
-    phase: 'waiting',
     withdrawal: {
       mode: 'relayed',
       phase: 'submitted',
