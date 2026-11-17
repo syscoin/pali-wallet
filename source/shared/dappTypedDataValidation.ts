@@ -6,10 +6,62 @@ import { assertTypedDataParamsWorkBudget } from '../utils/typedDataWorkBudget.ts
 const invalidParams = (message: string): Error & { code: number } =>
   Object.assign(new Error(message), { code: -32602 });
 
+const MAX_DOMAIN_CHAIN_ID = (BigInt(1) << BigInt(256)) - BigInt(1);
+function domainChainId(value: unknown): bigint {
+  let result: bigint;
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    result = BigInt(value);
+  } else if (
+    typeof value === 'string' &&
+    /^(?:0x[0-9a-f]+|[0-9]+)$/i.test(value)
+  ) {
+    const hex = /^0x/i.test(value);
+    const digits = (hex ? value.slice(2) : value).replace(/^0+/, '');
+    if (digits.length > (hex ? 64 : 78))
+      throw invalidParams(
+        'Invalid typed data domain.chainId: expected uint256'
+      );
+    result = BigInt(value);
+  } else {
+    throw invalidParams('Invalid typed data domain.chainId: expected uint256');
+  }
+  if (result > MAX_DOMAIN_CHAIN_ID)
+    throw invalidParams('Invalid typed data domain.chainId: expected uint256');
+  return result;
+}
+
+/** Compare a declared modern domain without changing the bytes being approved. */
+export function assertDappTypedDataChain(
+  method: string,
+  typedData: unknown,
+  expectedChainId?: number | string
+): void {
+  if (method !== 'eth_signTypedData_v3' && method !== 'eth_signTypedData_v4')
+    return;
+  if (!typedData || typeof typedData !== 'object') return;
+  const domain = Object.getOwnPropertyDescriptor(typedData, 'domain');
+  if (!domain) return;
+  if (!('value' in domain)) throw invalidParams('Invalid typed data domain');
+  if (!domain.value || typeof domain.value !== 'object') return;
+  const chain = Object.getOwnPropertyDescriptor(domain.value, 'chainId');
+  if (!chain) return;
+  if (!('value' in chain))
+    throw invalidParams('Invalid typed data domain.chainId');
+  const declared = domainChainId(chain.value);
+  if (
+    expectedChainId !== undefined &&
+    declared !== domainChainId(expectedChainId)
+  )
+    throw invalidParams(
+      'Typed data domain.chainId does not match the selected chain'
+    );
+}
+
 /** Validate the same bounded typed-data semantics before either host opens approval. */
 export const assertDappTypedDataValid = (
   method: string,
-  params: unknown
+  params: unknown,
+  expectedChainId?: number | string
 ): void => {
   const values = params as any;
   // Only validate typed data methods
@@ -68,6 +120,8 @@ export const assertDappTypedDataValid = (
       // V1 validation uses the same address checks as the extension.
       return;
     }
+
+    assertDappTypedDataChain(method, typedData, expectedChainId);
 
     // Validate domain fields
     if (typedData.domain) {

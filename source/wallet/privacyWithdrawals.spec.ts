@@ -329,6 +329,15 @@ it('relayed mode fixes selected reward/fee before proof and sends exactly the pi
   expect(run.fetcher).not.toHaveBeenCalled();
   const result = await run.controller.submitWithdrawal(review.intentId);
   expect(result).toMatchObject({ phase: 'submitted', jobId: JOB_ID });
+  const retained = jest.mocked(run.host.beforeSubmission).mock.calls[0][0];
+  expect(retained.mode).toBe('relayed');
+  if (retained.mode !== 'relayed') throw new Error();
+  expect(retained.rootAnchor).toEqual({
+    root: run.snapshot.root,
+    blockNumber: String(run.snapshot.asOfBlockNumber),
+    blockHash: run.snapshot.asOfBlockHash,
+  });
+  expect(Object.isFrozen(retained.rootAnchor)).toBe(true);
   expect(run.events).toEqual(['reserve', 'post', 'ack']);
   expect(run.host.sendTransaction).not.toHaveBeenCalled();
   const [url, init] = run.fetcher.mock.calls[0];

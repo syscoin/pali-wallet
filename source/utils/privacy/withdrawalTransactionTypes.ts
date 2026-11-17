@@ -18,6 +18,13 @@ export interface IPrivacyWithdrawalPublicInputs {
   root: string;
 }
 
+/** Canonical positive root observation retained with a relayed instruction. */
+export interface IPrivacyWithdrawalRootAnchor {
+  blockHash: string;
+  blockNumber: string;
+  root: string;
+}
+
 interface IWithdrawalAttemptBase {
   context: IPrivacyWithdrawalSession['context'];
   createdAt: number;
@@ -47,6 +54,7 @@ export type IPrivacyWithdrawalAttempt = Readonly<
           ensHash: string;
           mode: 'relayed';
           rewardAccount: string;
+          rootAnchor: Readonly<IPrivacyWithdrawalRootAnchor>;
         }
     )
 >;
@@ -90,6 +98,7 @@ interface IPrivacyWithdrawalJournalFields {
   phase: 'unknown' | 'submitted';
   proofHash: string;
   publicInputs?: IPrivacyWithdrawalPublicInputs;
+  rootAnchor?: Readonly<IPrivacyWithdrawalRootAnchor>;
   transactionHash?: string;
   transactionHashes?: readonly string[];
 }

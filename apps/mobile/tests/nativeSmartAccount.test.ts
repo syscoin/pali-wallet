@@ -87,6 +87,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let credentialReads = 0, secretLeases = 0, completedSecretLeases = 0;
   let afterSecretLease: (() => void) | undefined;
   const signatures: { address: string; digest: string; signature: string; intentPersisted: boolean }[] = [];
+  const typedSigningRequests: { address: string; typedData: unknown; version: unknown }[] = [];
   let onCredentialRequest: ((check: () => void) => void | Promise<void>) | undefined;
   const submitted: string[] = [];
   const payerSignatures: string[] = [];
@@ -517,6 +518,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             signatures.push({ address: input[0][0]!, digest: input[0][1]!, signature, intentPersisted: !!saved.guardianRecoveryIntents?.length });
             return signature;
           };
+          const originalTypedSign = this.ethereumTransaction.signTypedData.bind(this.ethereumTransaction);
+          this.ethereumTransaction.signTypedData = async (...input: Parameters<typeof originalTypedSign>) => {
+            typedSigningRequests.push({ address: input[0], typedData: input[1], version: input[2] });
+            return originalTypedSign(...input);
+          };
           const signPrepared = this.signPreparedEvmTransaction.bind(this);
           readPreparedRecord = async (chainId, from, hash) => {
             const entry = await new EvmSignedRecords(storage.signedRecords).readExact(
@@ -573,7 +579,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
     increaseInnerGas() { innerGasEstimate = '0x493e0'; },
     failInnerExecution() { innerGasEstimate = '0xffffffff'; },
-    get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, payerSignatures, possessionViews, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
+    get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, typedSigningRequests, payerSignatures, possessionViews, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
       const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
       if (present) missingInfrastructure.delete(address); else missingInfrastructure.add(address);
@@ -3714,6 +3720,57 @@ async function smartMessageApproval(f: Awaited<ReturnType<typeof fixture>>) {
   });
   return { host, selected, approval, revoke() { grant = undefined; } };
 }
+
+for (const method of ['eth_signTypedData_v3', 'eth_signTypedData_v4'] as const)
+test(`EOA typed domain ${method} is checked by the actual native host before secret access or SDK signing`, async () => {
+  const f = await fixture({}, true);
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  try {
+    const host = await f.runtime.openConnectionHost(), context = host.context();
+    const selected = context.accounts.find(account => account.id === context.activeAccountId)!;
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType,
+      chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: 'https://fixture.example', date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({
+      account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant,
+      network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration(),
+    }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    const reads = f.credentialReads, leases = f.secretLeases, rpc = f.calls.length;
+    const request: DappMessageRequest = { method, address: selected.address, version: method === 'eth_signTypedData_v3' ? 'V3' : 'V4', typedData: {
+      domain: { chainId: 10 }, types: { EIP712Domain: [{ name: 'chainId', type: 'uint256' }], Note: [{ name: 'text', type: 'string' }] },
+      primaryType: 'Note', message: { text: 'Another chain' },
+    } };
+    await assert.rejects(async () => host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval: approval!, request }, null), { code: -32602 });
+    assert.equal(f.credentialReads, reads); assert.equal(f.secretLeases, leases);
+    assert.equal(f.typedSigningRequests.length, 0); assert.equal(f.signatures.length, 0);
+    assert.equal(f.calls.length, rpc); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
+  } finally { approval?.dispose(); await f.close(); }
+});
+
+for (const method of ['eth_signTypedData_v3', 'eth_signTypedData_v4'] as const)
+for (const chainId of ['0x01', undefined]) test(`EOA typed domain ${method} preserves matching or absent chain ${chainId} at the actual SDK boundary`, async () => {
+  const f = await fixture({}, true);
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  try {
+    const host = await f.runtime.openConnectionHost(), context = host.context();
+    const selected = context.accounts.find(account => account.id === context.activeAccountId)!;
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType,
+      chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: 'https://fixture.example', date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({
+      account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant,
+      network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration(),
+    }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    const typedData = { domain: chainId === undefined ? {} : { chainId },
+      types: { EIP712Domain: chainId === undefined ? [] : [{ name: 'chainId', type: 'uint256' }], Note: [{ name: 'text', type: 'string' }] },
+      primaryType: 'Note', message: { text: 'Exact domain' } };
+    const version = method === 'eth_signTypedData_v3' ? 'V3' : 'V4';
+    const request: DappMessageRequest = { method, address: selected.address, version, typedData };
+    const rpc = f.calls.length;
+    const signed = await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval, request }, null);
+    assert.match(signed, /^0x[0-9a-f]{130}$/i);
+    assert.deepEqual(f.typedSigningRequests, [{ address: selected.address, typedData, version }]);
+    assert.equal(f.calls.length, rpc); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
+  } finally { approval?.dispose(); await f.close(); }
+});
 
 /** Actual continuation ownership for SDK-port tests; relay/UI qualification is separate. */
 function ownedSmartSdkHandoff(connection: Awaited<ReturnType<typeof smartMessageApproval>>, id: string, expiresAt: number, method: string) {

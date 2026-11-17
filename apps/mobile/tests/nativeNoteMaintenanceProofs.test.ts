@@ -20,6 +20,7 @@ const withdrawal = { attemptHash: word(13), createdAt: 10, inputHash: keccak256(
   mode: 'direct', nonce: '2', phase: 'submitted', proofHash: keccak256(proof), transactionHash: hash, from: account } as const;
 function fixture(reverted = false) {
   let current = true, spent = false, known = false, canonical = blockHash, chain = '0x1';
+  let originKnown = true, originHash = word(19);
   let onRead = (_method: string) => {};
   const signal = new AbortController(), calls: { method: string; params: unknown[] }[] = [];
   const network = createNativeNetwork({ id: 'saved-ethereum', name: 'Saved Ethereum', kind: 'evm', chainId: '1', slip44: 60,
@@ -33,18 +34,19 @@ function fixture(reverted = false) {
     onRead(method);
     let result: unknown;
     if (method === 'eth_chainId') result = chain;
-    else if (method === 'eth_getBlockByNumber') result = params[0] === '0x70'
+    else if (method === 'eth_getBlockByNumber') result = params[0] === '0x60'
+      ? { number: '0x60', hash: originHash } : params[0] === '0x70'
       ? { number: '0x70', hash: canonical } : { number: '0x80', hash: anchor };
     else if (method === 'eth_getTransactionReceipt') result = { transactionHash: hash, blockHash, blockNumber: '0x70',
       status: reverted ? '0x0' : '0x1', logs: [{ address: pool.address, transactionHash: hash, blockHash, blockNumber: '0x70', removed: false, ...encoded }] };
     else if (method === 'eth_getTransactionByHash') result = { hash, blockHash, blockNumber: '0x70', from: account, nonce: '0x2',
       to: pool.address, value: '0x0', chainId: '0x1', input };
-    else if (method === 'eth_call') result = (String(params[0].data).includes(identity.nullifierHash.slice(2)) ? spent : known) ? word(1) : word(0);
+    else if (method === 'eth_call') result = (String(params[0].data).includes(identity.nullifierHash.slice(2)) ? spent : params[1] === '0x60' ? originKnown : known) ? word(1) : word(0);
     else throw Error('Unexpected RPC ' + method);
     return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { headers: { 'content-type': 'application/json' } });
   } });
   const ports = createNativeNoteMaintenanceProofs({ network, signal: signal.signal, assertCurrent: check, rpc });
-  return { ports, session, signal, calls, rpc, check, onRead(value: typeof onRead) { onRead = value; }, setChain(value: string) { chain = value; }, setCurrent(value: boolean) { current = value; }, setSpent(value: boolean) { spent = value; }, setKnown(value: boolean) { known = value; }, reorg() { canonical = word(100); } };
+  return { ports, session, signal, calls, rpc, check, onRead(value: typeof onRead) { onRead = value; }, setChain(value: string) { chain = value; }, setCurrent(value: boolean) { current = value; }, setSpent(value: boolean) { spent = value; }, setKnown(value: boolean) { known = value; }, setOriginKnown(value: boolean) { originKnown = value; }, reorgOrigin() { originHash = word(101); }, reorg() { canonical = word(100); } };
 }
 test('native completion uses the shared finalized event/nonce verifier and rechecks its original RPC before removal', async () => {
   const f = fixture();
@@ -68,6 +70,7 @@ for (const phase of ['unknown', 'submitted'] as const) test(`native relayed ${ph
   const f = fixture();
   const publicInputs = { root, nullifierHash:identity.nullifierHash, recipient, relayer:account, fee:'123', refund:'0' as const };
   const relayed = { ...withdrawal, mode:'relayed' as const, phase, from:undefined, nonce:undefined, transactionHash:undefined,
+    rootAnchor:{root,blockNumber:'96',blockHash:word(19)},
     publicInputs, inputHash:keccak256(AbiCoder.defaultAbiCoder().encode(Array(6).fill('uint256'), Object.values(publicInputs).map(BigInt))) };
   const lease = await f.ports.prepareWithdrawalRecovery(identity, relayed, f.session);
   assert.equal(lease.receipt.kind,'relayed-proof-expired');
@@ -75,6 +78,29 @@ for (const phase of ['unknown', 'submitted'] as const) test(`native relayed ${ph
   await lease.revalidate();
   assert(f.calls.every(call => ['eth_chainId','eth_getBlockByNumber','eth_call'].includes(call.method)));
   f.setKnown(true); await assert.rejects(lease.revalidate(),/privacy_withdrawal_recovery_unavailable/);
+});
+
+for (const mode of ['missing', 'newer-than-finalized', 'never-known', 'origin-reorg'] as const) test(`native relayed recovery refuses unsafe root provenance: ${mode}`, async () => {
+  const f = fixture();
+  const publicInputs = { root, nullifierHash:identity.nullifierHash, recipient, relayer:account, fee:'123', refund:'0' as const };
+  const relayed = { ...withdrawal, mode:'relayed' as const, phase:'unknown' as const, from:undefined, nonce:undefined, transactionHash:undefined,
+    rootAnchor: mode === 'missing' ? undefined : {root,blockNumber:mode === 'newer-than-finalized' ? '129' : '96',blockHash:word(19)},
+    publicInputs,inputHash:keccak256(AbiCoder.defaultAbiCoder().encode(Array(6).fill('uint256'), Object.values(publicInputs).map(BigInt))) };
+  if(mode === 'never-known') f.setOriginKnown(false);
+  if(mode === 'origin-reorg') f.reorgOrigin();
+  await assert.rejects(f.ports.prepareWithdrawalRecovery(identity, relayed, f.session),/privacy_withdrawal_recovery_unavailable/);
+  if(mode === 'missing') assert.equal(f.calls.length,0);
+});
+
+test('native relayed prewrite validation rejects a reorged positive origin', async () => {
+  const f = fixture();
+  const publicInputs = { root, nullifierHash:identity.nullifierHash, recipient, relayer:account, fee:'123', refund:'0' as const };
+  const relayed = { ...withdrawal,mode:'relayed' as const,phase:'unknown' as const,from:undefined,nonce:undefined,transactionHash:undefined,
+    rootAnchor:{root,blockNumber:'96',blockHash:word(19)},publicInputs,
+    inputHash:keccak256(AbiCoder.defaultAbiCoder().encode(Array(6).fill('uint256'), Object.values(publicInputs).map(BigInt))) };
+  const lease = await f.ports.prepareWithdrawalRecovery(identity,relayed,f.session);
+  f.reorgOrigin();
+  await assert.rejects(lease.revalidate(),/privacy_withdrawal_recovery_unavailable/);
 });
 
 test('each maintenance run rechecks chain identity before disclosing transaction or nullifier', async () => {

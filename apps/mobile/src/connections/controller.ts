@@ -2621,7 +2621,8 @@ export class NativeConnectionsController {
       } else if (isDappEncryptionMethod(wire.method)) {
         request = readDappEncryptionRequest(wire.method, wire.params, account.address);
       } else {
-        assertDappTypedDataValid(wire.method, wire.params);
+        assertDappTypedDataValid(wire.method, wire.params,
+          account.type === 'SmartAccount' ? undefined : context.network.chainId);
         request = readDappMessageRequest(
           wire.method,
           wire.params,

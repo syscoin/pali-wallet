@@ -192,6 +192,20 @@ it('refuses unknown direct, evidence-less relayed, and already-recovered attempt
 
 function relayedFixture(phase: 'unknown' | 'submitted' = 'unknown') {
   const f = fixture();
+  const originBlock = { number: '0x8', hash: '0x' + '99'.repeat(32) };
+  let originKnown = true;
+  const read = f.rpc.getMockImplementation()!;
+  f.rpc.mockImplementation(async (method, params) => {
+    if (method === 'eth_getBlockByNumber' && params[0] === '0x8')
+      return { ...originBlock };
+    if (method === 'eth_call' && params[1] === '0x8') {
+      expect((params[0] as { data: string }).data).toBe(
+        ABI.encodeFunctionData('isKnownRoot', [ROOT])
+      );
+      return ABI.encodeFunctionResult('isKnownRoot', [originKnown]);
+    }
+    return read(method, params);
+  });
   const publicInputs = {
     root: ROOT,
     nullifierHash: '0x' + '07'.repeat(32),
@@ -208,6 +222,7 @@ function relayedFixture(phase: 'unknown' | 'submitted' = 'unknown') {
     nonce: undefined,
     transactionHash: undefined,
     publicInputs,
+    rootAnchor: { root: ROOT, blockNumber: '8', blockHash: originBlock.hash },
     inputHash: keccak256(
       AbiCoder.defaultAbiCoder().encode(
         Array(6).fill('uint256'),
@@ -218,6 +233,10 @@ function relayedFixture(phase: 'unknown' | 'submitted' = 'unknown') {
   return {
     ...f,
     publicInputs,
+    originBlock,
+    setOriginKnown(value: boolean) {
+      originKnown = value;
+    },
     request: {
       ...f.request,
       nullifierHash: publicInputs.nullifierHash,
@@ -244,6 +263,119 @@ it.each(['unknown', 'submitted'] as const)(
     );
   }
 );
+
+it('refuses relayed recovery when finalized precedes a new root that is still known at latest', async () => {
+  const f = relayedFixture();
+  f.request.withdrawal.rootAnchor.blockNumber = '17';
+  const read = f.rpc.getMockImplementation()!;
+  f.rpc.mockImplementation(async (method, params) => {
+    if (method === 'eth_call' && params[1] === 'latest')
+      return ABI.encodeFunctionResult('isKnownRoot', [true]);
+    return read(method, params);
+  });
+  await expect(prepareWithdrawalRecovery(f.request)).rejects.toThrow(
+    'privacy_withdrawal_recovery_unavailable'
+  );
+  expect(f.rpc.mock.calls.filter(([method]) => method === 'eth_call')).toEqual(
+    []
+  );
+});
+
+it.each([
+  'missing',
+  'wrong-root',
+  'wrong-hash',
+  'never-known',
+  'same-block',
+] as const)(
+  'refuses relayed recovery without canonical prior-positive origin: %s',
+  async (mode) => {
+    const f = relayedFixture();
+    if (mode === 'missing') delete (f.request.withdrawal as any).rootAnchor;
+    if (mode === 'wrong-root') f.request.withdrawal.rootAnchor.root = HASH;
+    if (mode === 'wrong-hash') f.originBlock.hash = HASH;
+    if (mode === 'never-known') f.setOriginKnown(false);
+    if (mode === 'same-block')
+      f.request.withdrawal.rootAnchor.blockNumber = '16';
+    await expect(prepareWithdrawalRecovery(f.request)).rejects.toThrow(
+      'privacy_withdrawal_recovery_unavailable'
+    );
+    if (mode === 'missing') expect(f.rpc).not.toHaveBeenCalled();
+  }
+);
+
+it.each(['origin-reorg', 'origin-unknown', 'expiry-reorg'] as const)(
+  'relayed prewrite revalidation repeats both canonical anchors: %s',
+  async (mode) => {
+    const f = relayedFixture();
+    const lease = await prepareWithdrawalRecovery(f.request);
+    if (mode === 'origin-reorg') f.originBlock.hash = HASH;
+    if (mode === 'origin-unknown') f.setOriginKnown(false);
+    if (mode === 'expiry-reorg') f.block.hash = HASH;
+    await expect(lease.revalidate()).rejects.toThrow(
+      'privacy_withdrawal_recovery_unavailable'
+    );
+  }
+);
+
+it('refuses relayed recovery if the positive origin changes during the negative reads', async () => {
+  const f = relayedFixture();
+  const read = f.rpc.getMockImplementation()!;
+  f.rpc.mockImplementation(async (method, params) => {
+    const result = await read(method, params);
+    if (
+      method === 'eth_call' &&
+      (params[0] as { data: string }).data ===
+        ABI.encodeFunctionData('isSpent', [f.publicInputs.nullifierHash])
+    )
+      f.originBlock.hash = HASH;
+    return result;
+  });
+  await expect(prepareWithdrawalRecovery(f.request)).rejects.toThrow(
+    'privacy_withdrawal_recovery_unavailable'
+  );
+});
+
+it('captures relayed provenance and inputHash-bound inputs before the first RPC can mutate caller data', async () => {
+  const f = relayedFixture();
+  const read = f.rpc.getMockImplementation()!;
+  f.rpc.mockImplementationOnce(async (method, params) => {
+    Object.assign(f.request.withdrawal.rootAnchor, {
+      root: HASH,
+      blockNumber: '17',
+      blockHash: HASH,
+    });
+    f.publicInputs.root = HASH;
+    return read(method, params);
+  });
+  const lease = await prepareWithdrawalRecovery(f.request);
+  expect(lease.receipt.root).toBe(ROOT);
+  expect(lease.publicInputs?.root).toBe(ROOT);
+  await lease.revalidate();
+});
+
+it('rejects missing relayed origin before consulting the existing job lookup or RPC', async () => {
+  const f = relayedFixture();
+  delete (f.request.withdrawal as any).rootAnchor;
+  delete (f.request.withdrawal as any).publicInputs;
+  const lookup = jest.fn(async () => f.publicInputs);
+  await expect(
+    prepareWithdrawalRecovery({ ...f.request, readRelayedPublicInputs: lookup })
+  ).rejects.toThrow('privacy_withdrawal_recovery_unavailable');
+  expect(lookup).not.toHaveBeenCalled();
+  expect(f.rpc).not.toHaveBeenCalled();
+});
+
+it('hash-binds older origin-equipped job inputs before chain evidence checks', async () => {
+  const f = relayedFixture();
+  delete (f.request.withdrawal as any).publicInputs;
+  const lookup = jest.fn(async () => ({ ...f.publicInputs, root: HASH }));
+  await expect(
+    prepareWithdrawalRecovery({ ...f.request, readRelayedPublicInputs: lookup })
+  ).rejects.toThrow('privacy_withdrawal_recovery_unavailable');
+  expect(lookup).toHaveBeenCalledTimes(1);
+  expect(f.rpc).not.toHaveBeenCalled();
+});
 
 it.each([
   'live-root',

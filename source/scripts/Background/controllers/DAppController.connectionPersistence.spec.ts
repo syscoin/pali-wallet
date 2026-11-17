@@ -20,6 +20,7 @@ jest.mock('../notification-manager', () => ({
 }));
 
 import { smartAccountAddressFixture } from '../../../../tests/fixtures/smartAccountAddress';
+import * as typedDataValidation from '../../../shared/dappTypedDataValidation';
 import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
 import {
   getMessageSignGrantReplacement,
@@ -388,7 +389,10 @@ describe('connected personal-sign approval authority', () => {
   const message = 'Read this message';
   const createPopup = jest.fn();
   const signPersonalMessage = jest.fn(async () => 'synthetic-signature');
-  const signTypedData = jest.fn(async () => 'synthetic-typed-signature');
+  const signTypedData = jest.fn<
+    Promise<string>,
+    [string, unknown, string, { assertCurrent(): void; signal: AbortSignal }]
+  >(async () => 'synthetic-typed-signature');
   const signSmartAccountMessageOwnerInternal = jest.fn(
     async () => 'synthetic-owner-signature'
   );
@@ -592,6 +596,73 @@ describe('connected personal-sign approval authority', () => {
       : method === 'eth_signTypedData_v3'
       ? 'V3'
       : 'V4';
+
+  it.each(['eth_signTypedData_v3', 'eth_signTypedData_v4'])(
+    'refuses a foreign %s domain at actual popup capture',
+    async (method) => {
+      await connect();
+      const typedData = {
+        ...typedRequest(method as 'eth_signTypedData_v4'),
+        domain: { chainId: 10 },
+      };
+      await expect(
+        new EthMethodHandler().handle({
+          methodConfig: getMethodConfig(method)!,
+          originalRequest: {
+            host,
+            method,
+            params: [address, typedData],
+            sender: {
+              documentId: 'site-document',
+              frameId: 0,
+              tab: { id: 7 },
+              url: `${host}/page`,
+              origin: host,
+            },
+            type: 'METHOD_REQUEST',
+          },
+        } as IEnhancedRequestContext)
+      ).rejects.toMatchObject({ code: -32602 });
+      expect(createPopup).not.toHaveBeenCalled();
+      expect(signTypedData).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['eth_signTypedData_v3', 'eth_signTypedData_v4'])(
+    'freshly checks the captured %s domain before invoking the EOA SDK',
+    async (method) => {
+      await connect();
+      const typedData = {
+        ...typedRequest(method as 'eth_signTypedData_v4'),
+        domain: { chainId: '0x01' },
+      };
+      const check = jest.spyOn(typedDataValidation, 'assertDappTypedDataChain');
+      const approval = await openApproval(undefined, method, [
+        address,
+        JSON.stringify(typedData),
+      ]);
+      const capturedChecks = check.mock.calls.length;
+      signTypedData.mockImplementationOnce(
+        async (_address, payload, _version, authority) => {
+          expect(check.mock.calls.length).toBeGreaterThan(capturedChecks);
+          expect(payload).toEqual(typedData);
+          const before = check.mock.calls.length;
+          authority.assertCurrent();
+          expect(check.mock.calls.length).toBeGreaterThan(before);
+          return 'synthetic-typed-signature';
+        }
+      );
+      const response = await approval.invoke(
+        ['wallet', 'ethereumTransaction', 'signTypedData'],
+        [address, typedData, typedVersion(method as 'eth_signTypedData_v4')]
+      );
+      approval.reply(response);
+      await expect(approval.outcome).resolves.toEqual({
+        value: 'synthetic-typed-signature',
+      });
+      expect(signTypedData).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it.each(
     typedMethods.flatMap((method) =>
@@ -999,6 +1070,25 @@ describe('connected personal-sign approval authority', () => {
       });
     }
   );
+
+  it('keeps a Smart typed approval on its wrapped route instead of raw EOA signing', async () => {
+    const { approval, runtime, args } = await openSmartApproval(false, true);
+    const vault = store.getState().vault;
+    const smart =
+      vault.accounts[KeyringAccountType.SmartAccount][vault.activeAccount.id];
+    const response = await approval.invoke(
+      ['wallet', 'ethereumTransaction', 'signTypedData'],
+      [smart.address, typedRequest('eth_signTypedData_v4'), 'V4']
+    );
+    expect(response).toMatchObject({ success: false });
+    expect(signTypedData).not.toHaveBeenCalled();
+    const wrapped = await runtime.signActionHash(args);
+    approval.reply(wrapped);
+    await expect(approval.outcome).resolves.toEqual({
+      value: 'synthetic-owner-signature',
+    });
+    expect(signSmartAccountMessageOwnerInternal).toHaveBeenCalledTimes(1);
+  });
 
   it.each([true, false])(
     'admits a connected smart-account local ECDSA signer only while its grant is current, revoked=%s',

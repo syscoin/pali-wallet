@@ -11,6 +11,7 @@ import {
   matchesDappMessageRequest,
   type DappMessageMethod,
 } from '../../../shared/dappMessageRequest';
+import { assertDappTypedDataChain } from '../../../shared/dappTypedDataValidation';
 import {
   prepareDappEncryptionApproval,
   type DappEncryptionSdk,
@@ -132,6 +133,15 @@ export const captureDappAccountApproval = ({
   )
     throw Object.assign(new Error('Unsupported method'), { code: 4200 });
   const request = readDappMessageRequest(method, params, address);
+  const assertTypedDataChain = () => {
+    if (request && request.method !== 'personal_sign')
+      assertDappTypedDataChain(
+        request.method,
+        request.typedData,
+        type === KeyringAccountType.SmartAccount ? undefined : chainId
+      );
+  };
+  assertTypedDataChain();
   const encryptionRequest = isDappEncryptionMethod(method)
     ? readDappEncryptionRequest(method, params, address)
     : undefined;
@@ -170,7 +180,10 @@ export const captureDappAccountApproval = ({
       );
     });
   }
-  const assertCurrent = lifetime.assertCurrent;
+  const assertCurrent = () => {
+    lifetime.assertCurrent();
+    assertTypedDataChain();
+  };
   const assertLiveDocument = (live: boolean) => {
     if (!live) lifetime.retire();
     assertCurrent();
@@ -197,6 +210,10 @@ export const captureDappAccountApproval = ({
     },
     matches(args: unknown, signingMethod: string) {
       return (
+        !(
+          type === KeyringAccountType.SmartAccount &&
+          signingMethod === 'signTypedData'
+        ) &&
         request !== undefined &&
         signingMethod ===
           (request.method === 'personal_sign'

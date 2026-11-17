@@ -104,6 +104,11 @@ function withdrawalAttempt(
       fee: '12345',
       endpoint: 'https://relay.example/base',
       ensHash: '0x' + '44'.repeat(32),
+      rootAnchor: {
+        root: base.root,
+        blockNumber: '8',
+        blockHash: '0x' + '55'.repeat(32),
+      },
     };
   return {
     ...base,
@@ -4051,6 +4056,106 @@ it.each(['direct cleanup', 'known-unbroadcast cleanup'] as const)(
       session
     );
     expect(backup.notes[0].history?.withdrawals).toHaveLength(2);
+  }
+);
+
+it.each([
+  'success',
+  'missing-origin',
+  'origin-reorg',
+  'journal-changed',
+] as const)(
+  'relayed origin recovery preserves authenticated CAS boundaries: %s',
+  async (mode) => {
+    const f = fixture();
+    const note = await f.controller.importNote(NOTE),
+      session = f.captureSession();
+    const attempt = withdrawalAttempt(note.id, 'relayed');
+    await f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    );
+    await f.controller.consumeUnsignedWithdrawal(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    );
+    if (mode === 'missing-origin') {
+      const manifest = await decryptedVault(f);
+      delete manifest.notes[0].withdrawal.rootAnchor;
+      await storeCanonicalManifest(
+        f,
+        { version: 1, notes: manifest.notes },
+        128
+      );
+    }
+    let expected = structuredClone(f.records),
+      originHash = '0x' + '55'.repeat(32);
+    const rpc = jest.fn(async (method: string, params: unknown[]) => {
+      if (method === 'eth_chainId') return '0x1';
+      if (method === 'eth_getBlockByNumber')
+        return params[0] === '0x8'
+          ? { number: '0x8', hash: originHash }
+          : { number: '0x10', hash: '0x' + 'cd'.repeat(32) };
+      if (method === 'eth_call')
+        return '0x' + '0'.repeat(63) + (params[1] === '0x8' ? '1' : '0');
+      throw new Error('Unexpected recovery RPC');
+    });
+    f.prepareWithdrawalRecovery.mockImplementation(
+      async (identity, withdrawal, captured) => {
+        const lease = await prepareWithdrawalRecoveryProof({
+          poolAddress: getPrivacyPool(identity.poolId).address,
+          nullifierHash: identity.nullifierHash,
+          withdrawal,
+          assertCurrent: captured.assertCurrent,
+          rpc,
+        });
+        if (mode === 'journal-changed') {
+          const manifest = await decryptedVault(f);
+          manifest.notes[0].withdrawal.rootAnchor.blockHash =
+            '0x' + '66'.repeat(32);
+          await storeCanonicalManifest(
+            f,
+            { version: 1, notes: manifest.notes },
+            128
+          );
+          expected = structuredClone(f.records);
+        }
+        return {
+          ...lease,
+          revalidate: async () => {
+            if (mode === 'origin-reorg') originHash = '0x' + '77'.repeat(32);
+            await lease.revalidate();
+          },
+        };
+      }
+    );
+    if (mode === 'success') {
+      await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+      const saved = (await decryptedVault(f)).notes[0].withdrawal;
+      expect(saved.rootAnchor).toEqual(
+        (attempt as Extract<IPrivacyWithdrawalAttempt, { mode: 'relayed' }>)
+          .rootAnchor
+      );
+      expect(saved.recovery.kind).toBe('relayed-proof-expired');
+      expect((await f.create().getNotes()).notes[0].phase).toBe('verified');
+    } else {
+      await expect(
+        f.controller.recoverFailedWithdrawal(note.id, 'correct-password')
+      ).rejects.toThrow('privacy_withdrawal_recovery_unavailable');
+      expect(f.records).toEqual(expected);
+      expect(
+        (await decryptedVault(f)).notes[0].withdrawal.recovery
+      ).toBeUndefined();
+      if (mode === 'missing-origin') {
+        expect(rpc).not.toHaveBeenCalled();
+        expect(
+          (await f.controller.exportBackupSnapshot('correct-password', session))
+            .notes
+        ).toHaveLength(1);
+      }
+    }
   }
 );
 

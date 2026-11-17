@@ -999,6 +999,11 @@ test('deposit replay refuses a withdrawal recorded after lease capture', async (
       rewardAccount: '0x' + '33'.repeat(20),
       endpoint: 'https://relay.example',
       ensHash: HASH,
+      rootAnchor: {
+        root: '0x' + '01'.repeat(32),
+        blockNumber: '8',
+        blockHash: HASH,
+      },
     },
     f.session,
     '00000000-0000-4000-8000-000000000099:0'

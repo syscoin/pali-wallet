@@ -3212,6 +3212,51 @@ const typedMessage = {
   message: { contents: 'Hello Pali' },
 };
 
+for (const method of ['eth_signTypedData_v3', 'eth_signTypedData_v4'])
+for (const kind of ['HDAccount', 'Imported', 'Ledger', 'Trezor'] as const)
+test(`${kind} ${method} rejects a foreign domain before creating a signing review`, async () => {
+  const hardware = kind === 'Ledger' || kind === 'Trezor' ? kind : undefined;
+  const f = await connectedFixture({ hardware, imported: kind === 'Imported',
+    accountId: hardware ? `${hardware.toLowerCase()}:60:0` : kind === 'Imported' ? 'imported:60:0' : 'hd:60:0' });
+  try {
+    const review = await messageRequest(f, method, [ADDRESS, { ...typedMessage, domain: { ...typedMessage.domain, chainId: 10 } }]);
+    assert.equal(review, null);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.transactions.length, 0);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { error: { code: -32602, message: 'Invalid signing request' } } });
+  } finally { await f.controller.dispose(); }
+});
+
+for (const method of ['eth_signTypedData_v3', 'eth_signTypedData_v4'])
+for (const chainId of ['0x01', undefined]) test(`${method} retains matching or absent domain chain ${chainId}`, async () => {
+  const f = await connectedFixture();
+  try {
+    const payload = { ...typedMessage,
+      types: { ...typedMessage.types, EIP712Domain: chainId === undefined ? [] : typedMessage.types.EIP712Domain },
+      domain: chainId === undefined ? {} : { name: 'Fixture', chainId } };
+    const review = await messageRequest(f, method, [JSON.stringify(payload), ADDRESS]);
+    assert(review); assert.equal(f.signatures.length, 0);
+    await f.view.approveRequest(review.id, review.revision, false);
+    assert.equal(f.signatures.length, 1);
+    assert.deepEqual((f.signatures[0] as { typedData: unknown }).typedData, payload);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const method of ['eth_signTypedData_v3', 'eth_signTypedData_v4'])
+for (const change of ['account', 'network']) test(`${method} cannot revive after its ${change} changes and returns`, async () => {
+  const f = await connectedFixture({ secondAccount: true });
+  try {
+    const review = await messageRequest(f, method, [ADDRESS, typedMessage]);
+    assert(review);
+    if (change === 'account') { f.selectDisplayAccount('hd:60:1'); f.selectDisplayAccount('hd:60:0'); }
+    else { f.selectChain(10); f.selectChain(1); }
+    await settle();
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
 for (const [method, payload] of [
   ['personal_sign', 'Hello Pali'],
   [

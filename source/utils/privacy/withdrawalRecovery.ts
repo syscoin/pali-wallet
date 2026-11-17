@@ -2,7 +2,10 @@ import { AbiCoder, Interface, keccak256 } from 'ethers';
 import { Transaction } from 'ethers/transaction';
 
 import { FIELD_SIZE } from './merkle.ts';
-import { captureWithdrawalPublicInputs } from './withdrawalMetadata.ts';
+import {
+  captureWithdrawalPublicInputs,
+  captureWithdrawalRootAnchor,
+} from './withdrawalMetadata.ts';
 import type {
   IPrivacyWithdrawalJournal,
   IPrivacyWithdrawalPublicInputs,
@@ -18,6 +21,7 @@ const HASH = /^0x[0-9a-f]{64}$/;
 const ADDRESS = /^0x[0-9a-f]{40}$/;
 const QUANTITY = /^0x(?:0|[1-9a-f][0-9a-f]*)$/;
 const FALSE = '0x' + '0'.repeat(64);
+const TRUE = '0x' + '0'.repeat(63) + '1';
 const invalid = (): never => {
   throw new Error('privacy_withdrawal_recovery_unavailable');
 };
@@ -97,10 +101,18 @@ export async function prepareWithdrawalRecovery(
     )
       return invalid();
     const transactionHash = lower(w.transactionHash);
+    let publicInputs: Readonly<IPrivacyWithdrawalPublicInputs> | undefined =
+      w.mode === 'relayed' && w.publicInputs
+        ? captureWithdrawalPublicInputs(w.publicInputs, w.inputHash)
+        : undefined;
+    // Missing legacy provenance is not evidence that a root has expired.
+    const origin =
+      w.mode === 'relayed'
+        ? captureWithdrawalRootAnchor(w.rootAnchor, publicInputs?.root)
+        : undefined;
     const nonce = w.nonce!;
     const readOriginal = req.readOriginalRawTransaction;
     let original: Record<string, unknown> | undefined;
-    let publicInputs: Readonly<IPrivacyWithdrawalPublicInputs> | undefined;
     let receiptWasMissing: boolean | undefined;
     const run = async (evidence?: IPrivacyWithdrawalRecoveryReceipt) => {
       const deadline = Date.now() + 15000;
@@ -128,6 +140,20 @@ export async function prepareWithdrawalRecovery(
       };
       const read = (method: string, params: unknown[]) =>
         owned((signal) => req.rpc(method, params, signal));
+      if (w.mode === 'relayed') {
+        if (!publicInputs) {
+          const captured = req.readRelayedPublicInputs
+            ? await owned(req.readRelayedPublicInputs)
+            : null;
+          publicInputs = captureWithdrawalPublicInputs(captured, w.inputHash);
+        }
+        if (
+          publicInputs.root !== origin!.root ||
+          publicInputs.nullifierHash !== nullifier ||
+          BigInt(publicInputs.relayer) === BigInt(0)
+        )
+          return invalid();
+      }
       if ((await read('eth_chainId', [])) !== '0x1') return invalid();
       const finalized = object(
         await read('eth_getBlockByNumber', ['finalized', false])
@@ -150,22 +176,30 @@ export async function prepareWithdrawalRecovery(
       )
         return invalid();
       let root: string;
+      let originTag: string | undefined;
       if (w.mode === 'relayed') {
-        if (!publicInputs) {
-          const captured =
-            w.publicInputs ??
-            (req.readRelayedPublicInputs
-              ? await owned(req.readRelayedPublicInputs)
-              : null);
-          publicInputs = captureWithdrawalPublicInputs(captured, w.inputHash);
-        }
+        if (evidence && evidence.root !== publicInputs!.root) return invalid();
+        root = publicInputs!.root;
         if (
-          publicInputs.nullifierHash !== nullifier ||
-          BigInt(publicInputs.relayer) === BigInt(0) ||
-          (evidence && evidence.root !== publicInputs.root)
+          !origin ||
+          origin.root !== root ||
+          BigInt(origin.blockNumber) >= quantity(blockNumber)
         )
           return invalid();
-        root = publicInputs.root;
+        originTag = '0x' + BigInt(origin.blockNumber).toString(16);
+        const positive = object(
+          await read('eth_getBlockByNumber', [originTag, false])
+        );
+        if (
+          positive.number !== originTag ||
+          lower(positive.hash) !== origin.blockHash
+        )
+          return invalid();
+        const known = await read('eth_call', [
+          { to: pool, data: ABI.encodeFunctionData('isKnownRoot', [root]) },
+          originTag,
+        ]);
+        if (lower(known) !== TRUE) return invalid();
       } else {
         const receiptValue = await read('eth_getTransactionReceipt', [
           transactionHash,
@@ -291,6 +325,16 @@ export async function prepareWithdrawalRecovery(
           blockNumber,
         ]);
         if (lower(result) !== FALSE) return invalid();
+      }
+      if (originTag) {
+        const positiveAfter = object(
+          await read('eth_getBlockByNumber', [originTag, false])
+        );
+        if (
+          positiveAfter.number !== originTag ||
+          lower(positiveAfter.hash) !== origin!.blockHash
+        )
+          return invalid();
       }
       const after = object(
         await read('eth_getBlockByNumber', [blockNumber, false])

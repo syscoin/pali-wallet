@@ -1,7 +1,10 @@
 import { keccak256 } from 'ethers/crypto';
 
 import { identifyClassicNote } from '../utils/privacy/note.ts';
-import { captureWithdrawalPublicInputs } from '../utils/privacy/withdrawalMetadata.ts';
+import {
+  captureWithdrawalPublicInputs,
+  captureWithdrawalRootAnchor,
+} from '../utils/privacy/withdrawalMetadata.ts';
 import { MAX_PRIVACY_RELAY_TRANSACTIONS } from '../utils/privacy/withdrawalTransactionTypes.ts';
 
 import {
@@ -279,6 +282,7 @@ const WITHDRAWAL_JOURNAL_KEYS = [
   'phase',
   'proofHash',
   'publicInputs',
+  'rootAnchor',
   'recovery',
   'retired',
   'transactionHash',
@@ -496,12 +500,19 @@ export function withdrawalJournal(
     value.recovery === undefined
       ? undefined
       : withdrawalRecovery(value.recovery);
-  let publicInputs;
+  let publicInputs, rootAnchor;
   try {
     publicInputs =
       value.publicInputs === undefined
         ? undefined
         : captureWithdrawalPublicInputs(value.publicInputs, value.inputHash);
+    if (value.rootAnchor !== undefined) {
+      if (value.mode !== 'relayed') throw new Error();
+      rootAnchor = captureWithdrawalRootAnchor(
+        value.rootAnchor,
+        publicInputs?.root
+      );
+    }
     if (
       publicInputs &&
       ((value.mode === 'direct' &&
@@ -553,6 +564,7 @@ export function withdrawalJournal(
     proofHash: value.proofHash,
     inputHash: value.inputHash,
     ...(publicInputs ? { publicInputs } : {}),
+    ...(rootAnchor ? { rootAnchor } : {}),
     createdAt: value.createdAt,
     mode: value.mode,
     phase: value.phase,
