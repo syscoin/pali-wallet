@@ -501,7 +501,7 @@ function TokenContent({
                     ? t('mobile.sendAssetViews.tokens.readingToken')
                     : t('mobile.sendAssetViews.tokens.reviewToken')
                 }
-                disabled={busy || !contract.trim()}
+                disabled={busy || snapshot.status !== 'ready' || !contract.trim()}
                 onPress={() => run(() => controller.preview(contract))}
                 testID="native-token-review"
               />
@@ -648,7 +648,7 @@ function TokenContent({
                   <Button
                     title={t('mobile.sendAssetViews.tokens.removeTokenFromList')}
                     variant="danger"
-                    disabled={busy}
+                    disabled={busy || snapshot.status !== 'ready'}
                     onPress={() => {
                       const selected = token.metadata.contractAddress;
                       void run(
@@ -728,7 +728,7 @@ function TokenContent({
                   <Button
                     title={t('mobile.sendAssetViews.tokens.removeToken')}
                     variant="danger" size="compact" icon="trash"
-                    disabled={busy}
+                    disabled={busy || snapshot.status !== 'ready'}
                     onPress={() =>
                       setRoute({
                         kind: 'remove',
@@ -754,6 +754,10 @@ function TokenContent({
             >
               {error}
             </Text>
+          )}
+          {route.kind !== 'list' && snapshot.status === 'error' && (route.kind === 'import' || !!token || route.kind === 'collectibles' || route.kind === 'collectible') && (
+            <Button title={t('mobile.sendAssetViews.tokens.refreshTokens')} icon="refresh" variant="secondary"
+              disabled={busy} onPress={() => run(() => controller.refresh())} testID="native-token-recover-inventory" />
           )}
 
         </>

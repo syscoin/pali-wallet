@@ -80,6 +80,15 @@ test('direct token detail distinguishes loading, retryable inventory failure and
     assert.match(text(), /2.5 TOK/); assert.match(text(), /Saved token/);
     assert.doesNotMatch(text(), /Token is no longer in this list/);
     assert.equal(sends, 0); assert.equal(receives, 0);
+    await React.act(async () => publish({ status: 'error', error: 'The token change could not be confirmed. Refresh to check your saved list.' }));
+    const remove = [...dom.window.document.querySelectorAll('button')].find((button: any) => button.textContent === 'Remove token');
+    assert(remove?.disabled, 'an invalidated inventory cannot offer an inert removal');
+    const recover = [...dom.window.document.querySelectorAll('button')].find((button: any) => button.textContent === 'Refresh tokens');
+    assert(recover && !recover.disabled);
+    await React.act(async () => { recover.click(); await tick(); });
+    assert.equal(retries, 2);
+    const restoredRemove = [...dom.window.document.querySelectorAll('button')].find((button: any) => button.textContent === 'Remove token');
+    assert(restoredRemove && !restoredRemove.disabled);
     await React.act(async () => publish({ status: 'ready', items: [] }));
     assert.match(text(), /Token is no longer in this list/);
     assert.doesNotMatch(text(), /Saved tokens unavailable|Loading saved tokens/);

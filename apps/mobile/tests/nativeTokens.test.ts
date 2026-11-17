@@ -294,6 +294,7 @@ function fixture(
   };
   return {
     model,
+    runtime,
     source,
     change,
     mutations,
@@ -1233,6 +1234,53 @@ test('cancelling metadata preview retires only its own request and scope changes
     assert.equal(f.model.getSnapshot().status, 'unavailable');
     assert.deepEqual(f.model.getSnapshot().items, []);
   } finally { disconnect(); balance.resolve({ units: '42' }); preview.resolve({ metadata: candidate, units: '9' }); }
+});
+
+test('an uncertain token import keeps its inventory error while editing and reloads the committed list before retry', async () => {
+  const f = fixture();
+  const disconnect = f.model.connect();
+  try {
+    await tick();
+    const add = f.runtime.add;
+    f.runtime.add = async (...args) => { await add(...args); throw Error('Lost response after commit'); };
+    await f.model.preview(metadata.contractAddress);
+    await f.model.confirmPreview();
+    const error = f.model.getSnapshot().error;
+    assert(error); assert.equal(f.model.getSnapshot().status, 'error');
+    f.model.cancelPreview();
+    assert.equal(f.model.getSnapshot().error, error);
+    await f.model.preview(metadata.contractAddress);
+    assert.equal(f.model.getSnapshot().preview, null);
+    assert.equal(f.mutations.length, 1);
+    await f.model.refresh();
+    assert.equal(f.model.getSnapshot().status, 'ready');
+    assert.equal(f.model.getSnapshot().error, null);
+    assert.equal(f.model.getSnapshot().items[0]?.metadata.contractAddress, metadata.contractAddress);
+    await f.model.preview(metadata.contractAddress);
+    assert.match(f.model.getSnapshot().error!, /already in your list/);
+    assert.equal(f.mutations.length, 1, 'recovery does not repeat a possibly committed mutation');
+  } finally { disconnect(); }
+});
+
+for (const committed of [false, true]) test(`targeted refresh reloads the inventory after an uncertain removal (committed ${committed})`, async () => {
+  const f = fixture({ items: [metadata] });
+  const disconnect = f.model.connect();
+  try {
+    await tick();
+    const remove = f.runtime.remove;
+    f.runtime.remove = async (...args) => { if (committed) await remove(...args); throw Error('Unknown token mutation'); };
+    await f.model.remove(metadata.contractAddress);
+    assert.equal(f.model.getSnapshot().status, 'error');
+    await f.model.refresh(metadata.contractAddress);
+    assert.equal(f.model.getSnapshot().status, 'ready');
+    assert.equal(f.model.getSnapshot().error, null);
+    assert.equal(f.model.getSnapshot().items.length, committed ? 0 : 1);
+    f.runtime.remove = remove;
+    await f.model.remove(metadata.contractAddress);
+    await tick();
+    assert.deepEqual(f.model.getSnapshot().items, []);
+    assert.equal(f.mutations.length, 1, 'a confirmed removal is never repeated');
+  } finally { disconnect(); }
 });
 
 test('connection replay drains an old registry read before starting the new scope', async () => {

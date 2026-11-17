@@ -101,6 +101,36 @@ beforeEach(() => {
   mockView = { ...initialView };
 });
 
+it.each([
+  ['0xBitcoin', 'BTC', '0xbitcoin'],
+  ['Bitcoin', '0XBTC', ' 0xBtC '],
+  ['0xCafe', 'CAFE', '0xCafe'],
+  ['Ordinary Asset', 'ASSET', 'ordinary'],
+  ['Ordinary Asset', 'ASSET', 'AsSeT'],
+  ['Ordinary Asset', 'ASSET', '0x111111'],
+  ['Ordinary Asset', 'ASSET', '0x' + '11'.repeat(20)],
+])(
+  'searches names, symbols and contracts together: %s / %s / %s',
+  (name, tokenSymbol, searchValue) => {
+    mockAssets = [{ ...token(false), name, tokenSymbol }, token(true)];
+    mockView = { ...initialView, searchValue };
+    render(<EvmAssetsList scope="synthetic-test-scope" />);
+    expect(
+      screen.getByRole('button', {
+        name: `View details for ${tokenSymbol} token`,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', {
+        name: 'View details for QANFT collection',
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('assetsHeader.noMatchingAssets')
+    ).not.toBeInTheDocument();
+  }
+);
+
 it.each([false, true])(
   'distinguishes a filtered-zero %s NFT list and clears back to focused search',
   async (isNft) => {

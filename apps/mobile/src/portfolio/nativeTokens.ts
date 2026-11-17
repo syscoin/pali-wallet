@@ -784,8 +784,12 @@ export class NativeTokens {
       return;
     const request = this.begin('refresh');
     if (!request) return;
+    const reloadInventory = !target || this.inventoryRevision === null && this.state.status === 'error';
+    // An uncertain mutation invalidates the list revision. A balance-only
+    // refresh cannot restore permission to edit that list.
+    if (reloadInventory && !selected) target = undefined;
     this.publish({
-      status: target ? 'ready' : 'loading',
+      status: reloadInventory ? 'loading' : 'ready',
       preview: null,
       previewStatus: 'idle',
       error: null,
@@ -801,7 +805,7 @@ export class NativeTokens {
       this.guard(request);
       const runtime = this.runtime();
       if (!runtime) throw new Error('UNAVAILABLE');
-      if (!target) {
+      if (reloadInventory) {
         const inventory = await this.loadInventory(request, runtime);
         this.guard(request);
         this.install(inventory);
@@ -979,7 +983,7 @@ export class NativeTokens {
     if (this.state.busy) return;
     // Opening or leaving Import clears its state without retiring balance reads.
     this.cancelPreviewRequest();
-    this.publish({ preview: null, previewStatus: 'idle', error: null });
+    this.publish({ preview: null, previewStatus: 'idle', error: this.inventoryRevision === null ? this.state.error : null });
   };
   confirmPreview = async (): Promise<void> => {
     const account = this.state.account;
