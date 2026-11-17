@@ -1,0 +1,228 @@
+{
+  "status": "APPROVED",
+  "schema": "pali-single-advisory-exception-v1",
+  "scope": "Only the mobile npm moderate+ gate; no blanket package exemption or extension audit exemption",
+  "reviewedHead": "cbf1f6bfc1841677b3f1e319b91aed2749441145",
+  "reviewedTree": "f6ccaabfd5cdb18d5f9cb407a9522001e10ec6a7",
+  "notBefore": "2026-11-17T18:29:00Z",
+  "expiresAt": "2026-11-24T00:00:00Z",
+  "advisory": {
+    "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+    "cve": "CVE-2026-112366",
+    "source": 1247710,
+    "name": "picomatch",
+    "dependency": "picomatch",
+    "severity": "high",
+    "range": "<=4.0.7"
+  },
+  "repositoryPins": {
+    "package.json": "051192c70aa333a5e171351baa137670a26dad26bc3dbab80aed50aeba34d17b",
+    "yarn.lock": "3597d266faa2347bd1ce333c3f69ee32872623f59210bbeedee8d2417842e83a",
+    "apps/mobile/package.json": "1eb42be895346fa6fe70533f2609a7985ad7c04b1fb28cf2ce22d378e878b07f",
+    "apps/mobile/package-lock.json": "dc21ea37cb697529e10f88386c00bcac91f463a86680113c1586da8286b8ea8a",
+    "apps/mobile/metro.config.js": "a7d5a960cc7b050da04ab7642e7a16ef6af2923ba0d81aa91ea80b61b676656f",
+    "scripts/apply-walletconnect-terminal.cjs": "6e8c2540d145f139d5aff0f67c4d9e628a578439764a8eb51c307c8fecd2e132",
+    "scripts/walletconnect-terminal.json": "03ce9132174333bdb653e3b0d8da3e87fad27532fdc0c2f6ab1b0c528f1b0180"
+  },
+  "rootLockVersions": [
+    "2.3.2",
+    "4.0.5"
+  ],
+  "mobileInstalledPackages": [
+    {
+      "path": "node_modules/anymatch/node_modules/picomatch",
+      "name": "picomatch",
+      "version": "2.3.2",
+      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.3.2.tgz",
+      "integrity": "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA==",
+      "sha256": {
+        "package.json": "63264d817e856a4bff57d4304f2b38d2964a4f6df520eb169e7bcdb619f13e9a",
+        "index.js": "5695ff5dfcd5a338a40630bd506056f2950bcb08fe1cc068519cbbfe60add480",
+        "lib/constants.js": "980225ab847a88a784f6d315557b8434f7742b2551ce20e354455c61b938c0a5",
+        "lib/parse.js": "3a91656f440069aa8f8e15c9d695b9f6b2209df1eab2be8127c72cbcca45ff5f",
+        "lib/picomatch.js": "2cb169cbe17d356036c5f62a377318b85e30817877e59797842aec9d8b15f54b",
+        "lib/scan.js": "227fcc994a477ea95c5a0435d32783566334c6bd0dcc4a103029735ad8c9c535",
+        "lib/utils.js": "809fc29cf35ab0aa76b99cad29182f62c0ae598902481d10f9868eaef71981ee"
+      }
+    },
+    {
+      "path": "node_modules/jest-util/node_modules/picomatch",
+      "name": "picomatch",
+      "version": "2.3.2",
+      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.3.2.tgz",
+      "integrity": "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA==",
+      "sha256": {
+        "package.json": "63264d817e856a4bff57d4304f2b38d2964a4f6df520eb169e7bcdb619f13e9a",
+        "index.js": "5695ff5dfcd5a338a40630bd506056f2950bcb08fe1cc068519cbbfe60add480",
+        "lib/constants.js": "980225ab847a88a784f6d315557b8434f7742b2551ce20e354455c61b938c0a5",
+        "lib/parse.js": "3a91656f440069aa8f8e15c9d695b9f6b2209df1eab2be8127c72cbcca45ff5f",
+        "lib/picomatch.js": "2cb169cbe17d356036c5f62a377318b85e30817877e59797842aec9d8b15f54b",
+        "lib/scan.js": "227fcc994a477ea95c5a0435d32783566334c6bd0dcc4a103029735ad8c9c535",
+        "lib/utils.js": "809fc29cf35ab0aa76b99cad29182f62c0ae598902481d10f9868eaef71981ee"
+      }
+    },
+    {
+      "path": "node_modules/micromatch/node_modules/picomatch",
+      "name": "picomatch",
+      "version": "2.3.2",
+      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.3.2.tgz",
+      "integrity": "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA==",
+      "sha256": {
+        "package.json": "63264d817e856a4bff57d4304f2b38d2964a4f6df520eb169e7bcdb619f13e9a",
+        "index.js": "5695ff5dfcd5a338a40630bd506056f2950bcb08fe1cc068519cbbfe60add480",
+        "lib/constants.js": "980225ab847a88a784f6d315557b8434f7742b2551ce20e354455c61b938c0a5",
+        "lib/parse.js": "3a91656f440069aa8f8e15c9d695b9f6b2209df1eab2be8127c72cbcca45ff5f",
+        "lib/picomatch.js": "2cb169cbe17d356036c5f62a377318b85e30817877e59797842aec9d8b15f54b",
+        "lib/scan.js": "227fcc994a477ea95c5a0435d32783566334c6bd0dcc4a103029735ad8c9c535",
+        "lib/utils.js": "809fc29cf35ab0aa76b99cad29182f62c0ae598902481d10f9868eaef71981ee"
+      }
+    },
+    {
+      "path": "node_modules/picomatch",
+      "name": "picomatch",
+      "version": "4.0.7",
+      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz",
+      "integrity": "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==",
+      "sha256": {
+        "package.json": "479b70b87aa7b44344d62c8a459ae7e53dd2bca6c61f1396bd55e63e9de73fc6",
+        "index.js": "02ae26406508e28f9ba0865be16cf77f0b33de6c4d4d49c212c4176df1d5625a",
+        "lib/constants.js": "c28f952d2758261fe5428a121add485cc25b03e0193633f649de903dc0e5e222",
+        "lib/parse.js": "4e1e05447668aa1e94366c5516a2bcd8f5fff800cc92b1d0cd7d77703b8618c4",
+        "lib/picomatch.js": "fdd249d7ffff853f3bb1c77eafc8baa1a437bea85a94c35877b83c6a40d9ca94",
+        "lib/scan.js": "6457a1764e5c2e543cc3a0c00ce12ebb3764097628868198370b64d4e642aaae",
+        "lib/utils.js": "f04604f70cd1a3f6ace80b84766468674ff38b4bb83818d2ef1d81fc6355f935"
+      }
+    }
+  ],
+  "sourcePins": {
+    "apps/mobile/src/connections/walletConnect.ts": "eed9228eefe52e09a7707c6bbe919eaeb6d272563797be46bf7045b3742b0b2c",
+    "apps/mobile/src/connections/storage.ts": "836f922c4e8055b2c2eefd13d90f9f1553a3303f54482bc6c2ece07e01b2df7e",
+    "apps/mobile/src/connections/controller.ts": "5e21ffdc85994440c2518564264dbc7ee28ee8ca688f0444e1f83aca3e5a2114",
+    "apps/mobile/src/custody/keyringRuntime.ts": "926ae6d4709a7f552619e12382d0fbcc0aaa83601fdd658912bf53554134639e",
+    "apps/mobile/metro.config.js": "a7d5a960cc7b050da04ab7642e7a16ef6af2923ba0d81aa91ea80b61b676656f",
+    "source/config/webpack.common.js": "ab63205493d7e2efa5fa879800e448ae714cbecf58e2b0f36433536dcf30c7e9",
+    "source/config/webpack.prod.js": "862ae2dd5d73c1fd095571a89f60b3579837ae0e93b16143ddd756f11020a4c4"
+  },
+  "consumerPins": {
+    "apps/mobile/node_modules/@walletconnect/core/package.json": "546907289378c5600ee80ebffe78edb7ff4861c65442e280ed6dc119a954ce70",
+    "apps/mobile/node_modules/@walletconnect/core/dist/index.cjs": "7dc526b9154470faf7fb69beeed21d84d3fe8e768c543298b0db89fb55294ebf",
+    "apps/mobile/node_modules/@walletconnect/core/node_modules/@walletconnect/keyvaluestorage/package.json": "77488f780326227f042bc00ff72c0172c00643d6463444b3fcfa2d759ec07275",
+    "apps/mobile/node_modules/@walletconnect/core/node_modules/@walletconnect/keyvaluestorage/dist/react-native/index.js": "c0228c936ede934073900d2ac86739e5448181ed6616bc657ec8b2746268d3e6",
+    "apps/mobile/node_modules/@walletconnect/core/node_modules/@walletconnect/keyvaluestorage/dist/index.es.js": "5e8c2519c013052aab1efde070348dbac7f608597d972451a76d3b957c75c40a",
+    "apps/mobile/node_modules/unstorage/dist/index.mjs": "392eb4548ff63e9805b84867851e6ace930cb9f1bd0f5b6b9096ab4dc739b78a",
+    "apps/mobile/node_modules/unstorage/drivers/fs.cjs": "9212952aafcd264e2e2afecd355510d0c2bcd4cc4ace1f36d56279853f2af027",
+    "apps/mobile/node_modules/@expo/metro-config/build/ExpoMetroConfig.js": "724ebf2dbc7c42b8cddbb30a0438b6f5d0f52001967427fff1e9cf0ced9374f1"
+  },
+  "reviewEvidence": {
+    "applicability": {
+      "path": "/private/tmp/pali-picomatch-exception-proposal-20261117/evidence-cbf1/applicability.json",
+      "sha256": "fa89f1637381e71d046a775335129d7a41bf0dee2167c223f4cc34b90a252bf6"
+    },
+    "verifier": {
+      "path": "/private/tmp/pali-picomatch-exception-proposal-20261117/evidence-cbf1/verify-applicability-cbf1.py",
+      "sha256": "8c10625a5387de7739eb56306a029673add3a88baf9e056236499527afdf6a1c"
+    },
+    "auditJson": {
+      "path": "/private/tmp/pali-mobile-picomatch-audit-isolated.json",
+      "sha256": "42674c01a302e6484857b3094a9e388f035a63f84f16b7c4cc4511cb9a22185a",
+      "auditReportVersion": 2,
+      "moderate": 0,
+      "high": 35,
+      "allHighRootedInSingleAdvisory": true
+    },
+    "android": {
+      "sourceRevision": "cbf1f6bfc1841677b3f1e319b91aed2749441145",
+      "buildNumber": 32,
+      "apkSha256": "09ff7d7250a182f65454ac14a24aed770081205cee1dd92395042212ad3a395a",
+      "mapSha256": "68d192f9c28936e66c9d55e2132372643e882d0ef7db5c23e9e186b3366655d6",
+      "bundleSha256": "f561eb33ade96519543392def3e9e454d73e9d47ef1c9e9311d43ea5b323eaa2",
+      "verifiedSourceContents": 5713,
+      "sdkFiles": 94,
+      "variant": "Actual isolated EmulatorQA APK with fresh JS/Hermes export and unchanged native base29; not a normal Android/iOS artifact"
+    },
+    "canary": {
+      "sourceRevision": "6321ecfd2e82beb205bdecd2bc279c7d55eacb5e",
+      "buildNumber": 28,
+      "zipSha256": "889dedc2549991690ea1c2a67f030deb087a846da06031883ec374daf743ebb1",
+      "analyzerSha256": "da671c60211c5897e5e217b8df1f0e67fe6f5b89a4f9b702c923e06caacd8865",
+      "nodes": 8037,
+      "currentExtensionInputsUnchangedAt": "cbf1f6bfc1841677b3f1e319b91aed2749441145"
+    },
+    "limitations": [
+      "No statement that all dev/build-time dependency uses are safe",
+      "No proof for future artifacts, changed dependencies, source or resolver choices",
+      "Copied non-webpack script inspection establishes no module import/require or named dependency evidence, not a general code audit"
+    ],
+    "staticIosAssessment": {
+      "scope": "Static normal Android/iOS resolver and supplied-storage assessment only; no normal artifact/device qualification claimed",
+      "resolver": "apps/mobile/node_modules/@expo/metro-config/build/ExpoMetroConfig.js",
+      "sha256": "724ebf2dbc7c42b8cddbb30a0438b6f5d0f52001967427fff1e9cf0ced9374f1",
+      "evidence": "ExpoMetroConfig.js306-328 selects same ios/android react-native conditions and react-native/browser/main fields; selected Pali supplied protocolStorage path has no ios/android storage variant."
+    },
+    "staticNormalMobileAssessment": {
+      "kind": "STATIC same JavaScript dependency closure and shared RN resolver/storage path",
+      "qaJavaScriptDeltas": "entry.native UI banner and httpPolicy loopback transport/response checks; reviewed deltas add no imports/requires",
+      "otherQaDeltas": "App identity/config plugin and Kotlin credential adapter; watchFolders visibility expands, resolver unchanged",
+      "limits": "No actual normal Android/iOS runtime exclusion or device qualification is claimed by this receipt."
+    }
+  },
+  "enableConditions": [
+    "Explicit user approval of the NEW temporary exception",
+    "Exact lock, package/source/consumer identities and UTC expiry",
+    "Fresh complete audit JSON; every moderate+ terminal leaf must exactly match the single advisory",
+    "No published safe correction available; upstream candidates failed qualification",
+    "Exact complete unchanged reviewed production-input inventory plus pinned actual Android/Canary artifact receipt; no claimed post-export runtime gate",
+    "Source/resolver/dependency/consumer drift requires renewed actual artifact verification before any reviewed-pin refresh"
+  ],
+  "removal": "Delete exception once a safe compatible correction is qualified; any pin/consumer/advisory drift or expiry requires fresh review and authorization.",
+  "productionInputs": {
+    "selectors": [
+      "source",
+      "apps/mobile/src",
+      "apps/mobile/modules",
+      "scripts",
+      "apps/mobile/scripts",
+      "apps/mobile/index.ts",
+      "apps/mobile/metro.config.js",
+      "apps/mobile/package.json",
+      "apps/mobile/package-lock.json",
+      "package.json",
+      "yarn.lock",
+      ".nvmrc",
+      "apps/mobile/App.tsx",
+      "apps/mobile/app.json",
+      "apps/mobile/app.config.cjs",
+      "apps/mobile/babel.config.cjs",
+      "apps/mobile/tsconfig.json",
+      "apps/mobile/plugins",
+      ".babelrc",
+      "tsconfig.json",
+      "manifest.json",
+      ".babelrc*",
+      "babel.config.*",
+      "tsconfig*.json",
+      "manifest*.json",
+      "apps/mobile/app.*",
+      "apps/mobile/babel.config.*",
+      "apps/mobile/metro.config.*",
+      "apps/mobile/tsconfig*.json",
+      "apps/mobile/.babelrc*",
+      "apps/mobile/index.*",
+      "apps/mobile/App.*"
+    ],
+    "excludedPolicyHelper": "apps/mobile/scripts/check-dependency-advisories.cjs",
+    "files": 2577,
+    "sha256": "38643a74a54210d08f4310f6a8e62cf456f3568f1bfc7cfc28f393e2f02a432a"
+  },
+  "runtimeReceipt": {
+    "path": "apps/mobile/security/picomatch-runtime-receipt.json",
+    "sha256": "fa89f1637381e71d046a775335129d7a41bf0dee2167c223f4cc34b90a252bf6"
+  },
+  "nodeVersion": "v26.12.1",
+  "approval": {
+    "approvedAt": "2026-11-17T20:23:08Z",
+    "authority": "Explicit user approval in the Pali QA chat",
+    "statement": "Approve this scoped exception",
+    "scope": "GHSA-fc5q-39xc-vjpf only; exact reviewed identities and runtime evidence; development/build exposure accepted until the stated expiry"
+  }
+}

@@ -121,7 +121,10 @@ jobs:
       - name: Check bounded native SLH guards and pinned profile
         run: sh modules/pali-wallet-crypto/tests/run-slh-native.sh
       - name: Reject moderate and higher dependency advisories
-        run: npm audit --audit-level=moderate
+        # One user-approved advisory exception; exact pins and hard expiry are enforced.
+        run: |
+          node --test ../../.github/scripts/tests/dependency-audit-policy.test.cjs
+          node scripts/check-dependency-advisories.cjs
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
