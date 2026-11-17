@@ -4060,7 +4060,8 @@ it.each(['direct cleanup', 'known-unbroadcast cleanup'] as const)(
 );
 
 it.each([
-  'success',
+  'success-direct',
+  'success-relayed',
   'missing-origin',
   'origin-reorg',
   'journal-changed',
@@ -4131,7 +4132,7 @@ it.each([
         };
       }
     );
-    if (mode === 'success') {
+    if (mode === 'success-direct' || mode === 'success-relayed') {
       await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
       const saved = (await decryptedVault(f)).notes[0].withdrawal;
       expect(saved.rootAnchor).toEqual(
@@ -4139,7 +4140,25 @@ it.each([
           .rootAnchor
       );
       expect(saved.recovery.kind).toBe('relayed-proof-expired');
-      expect((await f.create().getNotes()).notes[0].phase).toBe('verified');
+      const restarted = f.create();
+      expect((await restarted.getNotes()).notes[0].phase).toBe('verified');
+      await expect(
+        restarted.withWithdrawalNote(note.id, session, (raw) => raw)
+      ).resolves.toBe(NOTE);
+      await restarted.reserveWithdrawalAttempt(
+        {
+          ...withdrawalAttempt(
+            note.id,
+            mode === 'success-relayed' ? 'relayed' : 'direct'
+          ),
+          intentId: UUID,
+        },
+        session,
+        '00000000-0000-4000-8000-000000000099:1'
+      );
+      expect((await decryptedVault(f)).notes[0].withdrawal.retired[0]).toEqual(
+        saved
+      );
     } else {
       await expect(
         f.controller.recoverFailedWithdrawal(note.id, 'correct-password')
@@ -4156,6 +4175,114 @@ it.each([
         ).toHaveLength(1);
       }
     }
+  }
+);
+
+it.each(
+  (['missing', 'same-checkpoint', 'later-checkpoint'] as const).flatMap(
+    (origin) =>
+      (['direct', 'relayed'] as const).map((mode) => ({ origin, mode }))
+  )
+)(
+  'persisted unproven relayed expiry blocks a fresh $mode attempt ($origin)',
+  async ({ origin, mode }) => {
+    const { f, note, session } = await failedWithdrawalFixture('relayed');
+    await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+    const manifest = await decryptedVault(f),
+      withdrawal = manifest.notes[0].withdrawal;
+    if (origin === 'missing') delete withdrawal.rootAnchor;
+    else
+      withdrawal.rootAnchor.blockNumber =
+        origin === 'same-checkpoint'
+          ? withdrawal.recovery.blockNumber
+          : String(BigInt(withdrawal.recovery.blockNumber) + BigInt(1));
+    await storeCanonicalManifest(f, { version: 1, notes: manifest.notes }, 128);
+    const restarted = f.create();
+    expect((await restarted.getNotes()).notes).toHaveLength(1);
+    expect(
+      (await restarted.exportBackupSnapshot('correct-password', session)).notes
+    ).toHaveLength(1);
+    const bytes = structuredClone(f.records),
+      use = jest.fn(),
+      onIdentity = jest.fn();
+    f.readNote.mockClear();
+    f.storage.setItem.mockClear();
+    f.prepareWithdrawalRecovery.mockClear();
+    await expect(
+      restarted.withWithdrawalNote(note.id, session, use)
+    ).rejects.toThrow('privacy_withdrawal_attempt_exists');
+    await expect(
+      restarted.reserveWithdrawalAttempt(
+        { ...withdrawalAttempt(note.id, mode), intentId: UUID },
+        session,
+        '00000000-0000-4000-8000-000000000099:1',
+        onIdentity
+      )
+    ).rejects.toThrow('privacy_withdrawal_attempt_exists');
+    expect(use).not.toHaveBeenCalled();
+    expect(onIdentity).not.toHaveBeenCalled();
+    expect(f.readNote).not.toHaveBeenCalled();
+    expect(f.prepareWithdrawalRecovery).not.toHaveBeenCalled();
+    expect(f.storage.setItem).not.toHaveBeenCalled();
+    expect(f.records).toEqual(bytes);
+  }
+);
+
+it.each(['direct', 'relayed'] as const)(
+  'retired unproven relayed expiry cannot hide behind current %s recovery',
+  async (currentMode) => {
+    const { f, note, session } = await failedWithdrawalFixture('relayed');
+    await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+    const current = {
+      ...withdrawalAttempt(note.id, currentMode),
+      intentId: UUID,
+    };
+    await f.controller.reserveWithdrawalAttempt(
+      current,
+      session,
+      '00000000-0000-4000-8000-000000000099:1'
+    );
+    await f.controller.recordWithdrawalSubmission(
+      current,
+      currentMode === 'direct'
+        ? { transactionHash: '0x' + 'de'.repeat(32) }
+        : { jobId: UUID },
+      session
+    );
+    await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+    await expect(
+      f.controller.withWithdrawalNote(note.id, session, (raw) => raw)
+    ).resolves.toBe(NOTE);
+    const manifest = await decryptedVault(f);
+    delete manifest.notes[0].withdrawal.retired[0].rootAnchor;
+    await storeCanonicalManifest(f, { version: 1, notes: manifest.notes }, 128);
+    const restarted = f.create();
+    expect((await restarted.getNotes()).notes).toHaveLength(1);
+    expect(
+      (await restarted.exportBackupSnapshot('correct-password', session)).notes
+    ).toHaveLength(1);
+    const bytes = structuredClone(f.records),
+      use = jest.fn();
+    f.readNote.mockClear();
+    f.storage.setItem.mockClear();
+    await expect(
+      restarted.withWithdrawalNote(note.id, session, use)
+    ).rejects.toThrow('privacy_withdrawal_attempt_exists');
+    for (const mode of ['direct', 'relayed'] as const)
+      await expect(
+        restarted.reserveWithdrawalAttempt(
+          {
+            ...withdrawalAttempt(note.id, mode),
+            intentId: '00000000-0000-4000-8000-000000000003',
+          },
+          session,
+          '00000000-0000-4000-8000-000000000099:2'
+        )
+      ).rejects.toThrow('privacy_withdrawal_attempt_exists');
+    expect(use).not.toHaveBeenCalled();
+    expect(f.readNote).not.toHaveBeenCalled();
+    expect(f.storage.setItem).not.toHaveBeenCalled();
+    expect(f.records).toEqual(bytes);
   }
 );
 

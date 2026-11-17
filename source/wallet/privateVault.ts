@@ -1049,6 +1049,22 @@ export function createPrivateVaultController(
       throw new Error('privacy_note_restore_required');
     if (note.withdrawal && !note.withdrawal.recovery)
       throw new Error('privacy_withdrawal_attempt_exists');
+    if (note.withdrawal) {
+      for (const prior of [
+        note.withdrawal,
+        ...(note.withdrawal.retired ?? []),
+      ]) {
+        if (prior.mode !== 'relayed') continue;
+        const { rootAnchor, recovery } = prior;
+        if (
+          !rootAnchor ||
+          !recovery ||
+          rootAnchor.root !== recovery.root ||
+          BigInt(rootAnchor.blockNumber) >= BigInt(recovery.blockNumber)
+        )
+          throw new Error('privacy_withdrawal_attempt_exists');
+      }
+    }
     const identity = identify(note.note);
     const status = await readStatus(context, identity);
     if (status.phase === 'spent') throw new Error('privacy_note_spent');
