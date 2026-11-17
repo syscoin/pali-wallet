@@ -102,14 +102,14 @@ export async function prepareWithdrawalRecovery(
       return invalid();
     const transactionHash = lower(w.transactionHash);
     let publicInputs: Readonly<IPrivacyWithdrawalPublicInputs> | undefined =
-      w.mode === 'relayed' && w.publicInputs
+      w.publicInputs
         ? captureWithdrawalPublicInputs(w.publicInputs, w.inputHash)
         : undefined;
     // Missing legacy provenance is not evidence that a root has expired.
-    const origin =
-      w.mode === 'relayed'
-        ? captureWithdrawalRootAnchor(w.rootAnchor, publicInputs?.root)
-        : undefined;
+    const origin = captureWithdrawalRootAnchor(
+      w.rootAnchor,
+      publicInputs?.root
+    );
     const nonce = w.nonce!;
     const readOriginal = req.readOriginalRawTransaction;
     let original: Record<string, unknown> | undefined;
@@ -148,7 +148,7 @@ export async function prepareWithdrawalRecovery(
           publicInputs = captureWithdrawalPublicInputs(captured, w.inputHash);
         }
         if (
-          publicInputs.root !== origin!.root ||
+          publicInputs.root !== origin.root ||
           publicInputs.nullifierHash !== nullifier ||
           BigInt(publicInputs.relayer) === BigInt(0)
         )
@@ -176,30 +176,9 @@ export async function prepareWithdrawalRecovery(
       )
         return invalid();
       let root: string;
-      let originTag: string | undefined;
       if (w.mode === 'relayed') {
         if (evidence && evidence.root !== publicInputs!.root) return invalid();
         root = publicInputs!.root;
-        if (
-          !origin ||
-          origin.root !== root ||
-          BigInt(origin.blockNumber) >= quantity(blockNumber)
-        )
-          return invalid();
-        originTag = '0x' + BigInt(origin.blockNumber).toString(16);
-        const positive = object(
-          await read('eth_getBlockByNumber', [originTag, false])
-        );
-        if (
-          positive.number !== originTag ||
-          lower(positive.hash) !== origin.blockHash
-        )
-          return invalid();
-        const known = await read('eth_call', [
-          { to: pool, data: ABI.encodeFunctionData('isKnownRoot', [root]) },
-          originTag,
-        ]);
-        if (lower(known) !== TRUE) return invalid();
       } else {
         const receiptValue = await read('eth_getTransactionReceipt', [
           transactionHash,
@@ -315,6 +294,25 @@ export async function prepareWithdrawalRecovery(
         );
         if (inputHash !== lower(w.inputHash)) return invalid();
       }
+      if (
+        origin.root !== root ||
+        BigInt(origin.blockNumber) >= quantity(blockNumber)
+      )
+        return invalid();
+      const originTag = '0x' + BigInt(origin.blockNumber).toString(16);
+      const positive = object(
+        await read('eth_getBlockByNumber', [originTag, false])
+      );
+      if (
+        positive.number !== originTag ||
+        lower(positive.hash) !== origin.blockHash
+      )
+        return invalid();
+      const known = await read('eth_call', [
+        { to: pool, data: ABI.encodeFunctionData('isKnownRoot', [root]) },
+        originTag,
+      ]);
+      if (lower(known) !== TRUE) return invalid();
       // These calls disclose the public root/nullifier to the selected RPC.
       for (const [method, value] of [
         ['isKnownRoot', root],
@@ -326,16 +324,14 @@ export async function prepareWithdrawalRecovery(
         ]);
         if (lower(result) !== FALSE) return invalid();
       }
-      if (originTag) {
-        const positiveAfter = object(
-          await read('eth_getBlockByNumber', [originTag, false])
-        );
-        if (
-          positiveAfter.number !== originTag ||
-          lower(positiveAfter.hash) !== origin!.blockHash
-        )
-          return invalid();
-      }
+      const positiveAfter = object(
+        await read('eth_getBlockByNumber', [originTag, false])
+      );
+      if (
+        positiveAfter.number !== originTag ||
+        lower(positiveAfter.hash) !== origin.blockHash
+      )
+        return invalid();
       const after = object(
         await read('eth_getBlockByNumber', [blockNumber, false])
       );

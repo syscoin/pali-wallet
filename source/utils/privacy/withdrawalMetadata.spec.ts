@@ -140,6 +140,41 @@ test('relayed root provenance is immutable, root-bound and covered by the durabl
   ).toThrow();
 });
 
+test('new direct root provenance is immutable and hash-bound while legacy signed metadata remains readable', async () => {
+  const legacy = attempt();
+  const rootAnchor = {
+    root: legacy.root,
+    blockNumber: '8',
+    blockHash: '0x' + '44'.repeat(32),
+  };
+  const input = { ...legacy, rootAnchor };
+  const captured = capturePrivateWithdrawalAttempt(input);
+  const journal = createPrivateWithdrawalJournal(captured, captured.noteId, {
+    poolId: pool.id,
+    nullifierHash: captured.nullifierHash,
+  });
+  rootAnchor.blockNumber = '9';
+  expect(captured.rootAnchor?.blockNumber).toBe('8');
+  expect(Object.isFrozen(captured.rootAnchor)).toBe(true);
+  expect(withdrawalJournal(journal).rootAnchor).toEqual(captured.rootAnchor);
+  expect(
+    createPrivateWithdrawalJournal(input, input.noteId, {
+      poolId: pool.id,
+      nullifierHash: input.nullifierHash,
+    }).attemptHash
+  ).not.toBe(journal.attemptHash);
+  expect(readPrivateWithdrawalAttempt(await record(captured))).toEqual(
+    captured
+  );
+  expect(readPrivateWithdrawalAttempt(await record(legacy))).toEqual(legacy);
+  expect(
+    createPrivateWithdrawalJournal(legacy, legacy.noteId, {
+      poolId: pool.id,
+      nullifierHash: legacy.nullifierHash,
+    })
+  ).not.toHaveProperty('rootAnchor');
+});
+
 test.each([
   undefined,
   { blockNumber: '08' },

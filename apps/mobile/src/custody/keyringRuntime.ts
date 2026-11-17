@@ -149,6 +149,7 @@ import {
 } from '../../../../source/utils/smartAccount/messageSigning.ts';
 import { matchesDappMessageRequest, readDappMessageRequest } from '../../../../source/shared/dappMessageRequest.ts';
 import { assertDappTypedDataChain } from '../../../../source/shared/dappTypedDataValidation.ts';
+import { assertTypedDataWorkBudget } from '../../../../source/utils/typedDataWorkBudget.ts';
 import { openNativeConnectionRepository, type NativeConnectionRepository } from '../connections/storage.ts';
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
@@ -6837,12 +6838,14 @@ export function createKeyringRuntimeFactory(
                   snapshot.active.networkId,
                   snapshot.networks
                 );
-                const assertTypedDataChain = () => {
-                  if (request.method !== 'personal_sign')
+                const assertTypedData = () => {
+                  if (request.method !== 'personal_sign') {
+                    assertTypedDataWorkBudget(request.typedData);
                     assertDappTypedDataChain(request.method, request.typedData,
                       selected.type === 'SmartAccount' ? undefined : network.chainId);
+                  }
                 };
-                assertTypedDataChain();
+                assertTypedData();
                 const ownerCurrent = () =>
                   !closed &&
                   generation === captured &&
@@ -6866,7 +6869,7 @@ export function createKeyringRuntimeFactory(
                     checkGuard(approval.assertCurrent);
                     if (!isCurrent())
                       throw new KeyringRuntimeError('CANCELLED');
-                    assertTypedDataChain();
+                    assertTypedData();
                   };
                   guard();
                   const hardware = hardwareDappSigner(selected, network, approval, guard, binding, input.handoff);

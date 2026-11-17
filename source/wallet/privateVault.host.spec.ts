@@ -1083,6 +1083,7 @@ function withdrawalReplayAttempt(
     mode: 'direct',
     proof,
     root,
+    rootAnchor: { root, blockNumber: '8', blockHash: HASH },
     nullifierHash,
     recipient,
     relayer,

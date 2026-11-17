@@ -135,6 +135,11 @@ async function fixture(
     mode: 'direct',
     proof: '0x' + 'ab'.repeat(256),
     root: '0x' + '01'.repeat(32),
+    rootAnchor: {
+      root: '0x' + '01'.repeat(32),
+      blockNumber: '8',
+      blockHash: '0x' + '55'.repeat(32),
+    },
     nullifierHash: identifyClassicNote(NOTE).nullifierHash,
     recipient: signer.address,
     relayer: '0x' + '00'.repeat(20),

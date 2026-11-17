@@ -29,6 +29,7 @@ import { prepareSmartAccountMessage, encodeSmartAccountMessageSignature } from '
 import { getPaliErc7739PersonalSignHash } from '../../../source/utils/smartAccount/erc7739.ts';
 import { encodeSmartAccountAuthenticatorSignature } from '../../../source/utils/smartAccount/signature.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
+import { assertDappTypedDataValid } from '../../../source/shared/dappTypedDataValidation.ts';
 import type { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts';
@@ -3720,6 +3721,39 @@ async function smartMessageApproval(f: Awaited<ReturnType<typeof fixture>>) {
   });
   return { host, selected, approval, revoke() { grant = undefined; } };
 }
+
+for (const method of ['eth_signTypedData', 'eth_signTypedData_v3', 'eth_signTypedData_v4'] as const)
+for (const malformed of ['changed', 'captured'] as const)
+test(`typed bool ${method} ${malformed} payload is refused by the actual native host before secret or SDK callbacks`, async () => {
+  const f = await fixture({}, true);
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  try {
+    const host = await f.runtime.openConnectionHost(), context = host.context();
+    const selected = context.accounts.find(account => account.id === context.activeAccountId)!;
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType,
+      chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: 'https://fixture.example', date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({
+      account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant,
+      network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration(),
+    }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    const value = { allowed: false }, field = { name: 'allowed', type: 'bool', value: false };
+    const typedData = method === 'eth_signTypedData' ? [field] : {
+      domain: {}, types: { EIP712Domain: [], Permit: [{ name: 'allowed', type: 'bool' }] }, primaryType: 'Permit', message: value,
+    };
+    // Admission saw a real bool; the actual host must independently capture and
+    // validate it, including fields omitted by the JSON snapshot.
+    assertDappTypedDataValid(method, [selected.address, typedData], 1);
+    const target = method === 'eth_signTypedData' ? field : value, key = method === 'eth_signTypedData' ? 'value' : 'allowed';
+    Object.defineProperty(target, key, malformed === 'changed' ? { value: 'false', enumerable: true } : { value: false, enumerable: false });
+    const reads = f.credentialReads, leases = f.secretLeases, rpc = f.calls.length;
+    const request: DappMessageRequest = { method, address: selected.address, version: method === 'eth_signTypedData' ? 'V1' : method === 'eth_signTypedData_v3' ? 'V3' : 'V4', typedData };
+    await assert.rejects(async () => host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval: approval!, request }, null),
+      malformed === 'changed' ? { code: 'INVALID_INPUT' } : { code: -32602 });
+    assert.equal(f.credentialReads, reads); assert.equal(f.secretLeases, leases);
+    assert.equal(f.typedSigningRequests.length, 0); assert.equal(f.signatures.length, 0);
+    assert.equal(f.calls.length, rpc); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
+  } finally { approval?.dispose(); await f.close(); }
+});
 
 for (const method of ['eth_signTypedData_v3', 'eth_signTypedData_v4'] as const)
 test(`EOA typed domain ${method} is checked by the actual native host before secret access or SDK signing`, async () => {

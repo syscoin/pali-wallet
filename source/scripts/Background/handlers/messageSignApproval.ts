@@ -28,6 +28,7 @@ import { createDappApprovalLifetime } from 'utils/dappApprovalLifetime';
 import { matchAttestedDappOrigin } from 'utils/dappOrigin';
 import { prepareSmartAccountMessage } from 'utils/smartAccount/messageSigning';
 import { getInstalledValidatorModuleByAddress } from 'utils/smartAccount/modules';
+import { assertTypedDataWorkBudget } from 'utils/typedDataWorkBudget';
 
 import type { IEnhancedRequestContext } from '../controllers/message-handler/types';
 
@@ -133,15 +134,17 @@ export const captureDappAccountApproval = ({
   )
     throw Object.assign(new Error('Unsupported method'), { code: 4200 });
   const request = readDappMessageRequest(method, params, address);
-  const assertTypedDataChain = () => {
-    if (request && request.method !== 'personal_sign')
+  const assertTypedData = () => {
+    if (request && request.method !== 'personal_sign') {
+      assertTypedDataWorkBudget(request.typedData);
       assertDappTypedDataChain(
         request.method,
         request.typedData,
         type === KeyringAccountType.SmartAccount ? undefined : chainId
       );
+    }
   };
-  assertTypedDataChain();
+  assertTypedData();
   const encryptionRequest = isDappEncryptionMethod(method)
     ? readDappEncryptionRequest(method, params, address)
     : undefined;
@@ -182,7 +185,7 @@ export const captureDappAccountApproval = ({
   }
   const assertCurrent = () => {
     lifetime.assertCurrent();
-    assertTypedDataChain();
+    assertTypedData();
   };
   const assertLiveDocument = (live: boolean) => {
     if (!live) lifetime.retire();

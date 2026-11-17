@@ -20,6 +20,7 @@ import { getPrivacyPool } from '../utils/privacy/registry.ts';
 import {
   capturePrivateWithdrawalAttempt,
   captureWithdrawalPublicInputs,
+  captureWithdrawalRootAnchor,
   createPrivateWithdrawalJournal,
 } from '../utils/privacy/withdrawalMetadata.ts';
 import { MAX_PRIVACY_RELAY_TRANSACTIONS } from '../utils/privacy/withdrawalTransactionTypes.ts';
@@ -1054,7 +1055,6 @@ export function createPrivateVaultController(
         note.withdrawal,
         ...(note.withdrawal.retired ?? []),
       ]) {
-        if (prior.mode !== 'relayed') continue;
         const { rootAnchor, recovery } = prior;
         if (
           !rootAnchor ||
@@ -1476,11 +1476,15 @@ export function createPrivateVaultController(
           attempt.expiresAt <= now()
         )
           throw new Error('privacy_withdrawal_attempt_invalid');
+        const rootAnchor = captureWithdrawalRootAnchor(
+          attempt.rootAnchor,
+          attempt.root
+        );
         const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt?.noteId);
         const identity = await assertWithdrawable(context, note);
         const created = createPrivateWithdrawalJournal(
-          attempt,
+          { ...attempt, rootAnchor },
           note.id,
           identity
         );

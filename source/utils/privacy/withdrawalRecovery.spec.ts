@@ -36,12 +36,15 @@ function fixture() {
     status: '0x0',
   };
   const block: any = { number: '0x10', hash: BLOCK };
+  const originBlock = { number: '0x8', hash: '0x' + '99'.repeat(32) };
   let known = false,
-    spent = false;
+    spent = false,
+    originKnown = true;
   const current = jest.fn();
   const rpc = jest.fn(async (method: string, params: unknown[]) => {
     if (method === 'eth_chainId') return '0x1';
-    if (method === 'eth_getBlockByNumber') return { ...block };
+    if (method === 'eth_getBlockByNumber')
+      return params[0] === '0x8' ? { ...originBlock } : { ...block };
     if (method === 'eth_getTransactionReceipt') return { ...receipt };
     if (method === 'eth_getTransactionByHash') return { ...tx };
     if (method === 'eth_call') {
@@ -52,7 +55,9 @@ function fixture() {
           : 'isSpent',
         [
           call.data.startsWith(ABI.getFunction('isKnownRoot')!.selector)
-            ? known
+            ? params[1] === '0x8'
+              ? originKnown
+              : known
             : spent,
         ]
       );
@@ -78,6 +83,7 @@ function fixture() {
         )
       ),
       proofHash: keccak256(PROOF),
+      rootAnchor: { root: ROOT, blockNumber: '8', blockHash: originBlock.hash },
     },
     rpc,
     assertCurrent: current,
@@ -87,10 +93,12 @@ function fixture() {
     tx,
     receipt,
     block,
+    originBlock,
     rpc,
     current,
     setKnown: (value: boolean) => (known = value),
     setSpent: (value: boolean) => (spent = value),
+    setOriginKnown: (value: boolean) => (originKnown = value),
   };
 }
 
@@ -105,13 +113,43 @@ it('binds the original reverted transaction and repeats proof against the same f
   await result.revalidate();
   expect(
     f.rpc.mock.calls.filter(([method]) => method === 'eth_call')
-  ).toHaveLength(4);
+  ).toHaveLength(6);
   expect(
     f.rpc.mock.calls
       .filter(([method]) => method === 'eth_call')
-      .every(([, params]) => params[1] === '0x10')
-  ).toBe(true);
+      .map(([, params]) => params[1])
+  ).toEqual(['0x8', '0x10', '0x10', '0x8', '0x10', '0x10']);
   expect(JSON.stringify(f.rpc.mock.calls)).not.toContain(PROOF);
+});
+
+it.each([
+  'missing',
+  'orphaned',
+  'never-known',
+  'newer-than-finalized',
+] as const)(
+  'direct recovery refuses an unproven positive origin: %s',
+  async (mode) => {
+    const f = fixture();
+    if (mode === 'missing') delete (f.request.withdrawal as any).rootAnchor;
+    if (mode === 'orphaned') f.originBlock.hash = HASH;
+    if (mode === 'never-known') f.setOriginKnown(false);
+    if (mode === 'newer-than-finalized')
+      f.request.withdrawal.rootAnchor.blockNumber = '17';
+    await expect(prepareWithdrawalRecovery(f.request)).rejects.toThrow(
+      'privacy_withdrawal_recovery_unavailable'
+    );
+    if (mode === 'missing') expect(f.rpc).not.toHaveBeenCalled();
+  }
+);
+
+it('direct recovery revalidates its positive origin despite a finalized reverted receipt', async () => {
+  const f = fixture();
+  const lease = await prepareWithdrawalRecovery(f.request);
+  f.originBlock.hash = HASH;
+  await expect(lease.revalidate()).rejects.toThrow(
+    'privacy_withdrawal_recovery_unavailable'
+  );
 });
 
 it.each([
@@ -192,20 +230,6 @@ it('refuses unknown direct, evidence-less relayed, and already-recovered attempt
 
 function relayedFixture(phase: 'unknown' | 'submitted' = 'unknown') {
   const f = fixture();
-  const originBlock = { number: '0x8', hash: '0x' + '99'.repeat(32) };
-  let originKnown = true;
-  const read = f.rpc.getMockImplementation()!;
-  f.rpc.mockImplementation(async (method, params) => {
-    if (method === 'eth_getBlockByNumber' && params[0] === '0x8')
-      return { ...originBlock };
-    if (method === 'eth_call' && params[1] === '0x8') {
-      expect((params[0] as { data: string }).data).toBe(
-        ABI.encodeFunctionData('isKnownRoot', [ROOT])
-      );
-      return ABI.encodeFunctionResult('isKnownRoot', [originKnown]);
-    }
-    return read(method, params);
-  });
   const publicInputs = {
     root: ROOT,
     nullifierHash: '0x' + '07'.repeat(32),
@@ -222,7 +246,6 @@ function relayedFixture(phase: 'unknown' | 'submitted' = 'unknown') {
     nonce: undefined,
     transactionHash: undefined,
     publicInputs,
-    rootAnchor: { root: ROOT, blockNumber: '8', blockHash: originBlock.hash },
     inputHash: keccak256(
       AbiCoder.defaultAbiCoder().encode(
         Array(6).fill('uint256'),
@@ -233,10 +256,6 @@ function relayedFixture(phase: 'unknown' | 'submitted' = 'unknown') {
   return {
     ...f,
     publicInputs,
-    originBlock,
-    setOriginKnown(value: boolean) {
-      originKnown = value;
-    },
     request: {
       ...f.request,
       nullifierHash: publicInputs.nullifierHash,

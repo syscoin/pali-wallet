@@ -289,6 +289,12 @@ it('binds direct calldata/fees and journals before dispatch and acknowledgement'
   if (attempt.mode !== 'direct') throw new Error();
   expect(Object.isFrozen(attempt)).toBe(true);
   expect(Object.isFrozen(attempt.transaction)).toBe(true);
+  expect(attempt.rootAnchor).toEqual({
+    root: run.snapshot.root,
+    blockNumber: String(run.snapshot.asOfBlockNumber),
+    blockHash: run.snapshot.asOfBlockHash,
+  });
+  expect(Object.isFrozen(attempt.rootAnchor)).toBe(true);
   expect(attempt.transaction).toMatchObject({
     chainId: 1,
     value: '0x0',

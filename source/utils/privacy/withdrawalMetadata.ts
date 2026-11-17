@@ -149,12 +149,13 @@ export function createPrivateWithdrawalJournal(
       'refund',
       'relayer',
       'root',
+      'rootAnchor',
       'mode',
     ];
     const keys =
       attempt?.mode === 'direct'
         ? [...baseKeys, 'transaction']
-        : [...baseKeys, 'endpoint', 'ensHash', 'rewardAccount', 'rootAnchor'];
+        : [...baseKeys, 'endpoint', 'ensHash', 'rewardAccount'];
     if (
       !attempt ||
       Object.keys(attempt).some((key) => !keys.includes(key)) ||
@@ -204,7 +205,10 @@ export function createPrivateWithdrawalJournal(
       throw new Error();
     let modeFields: object;
     let direct: { from: string; nonce: string } | undefined;
-    let rootAnchor: Readonly<IPrivacyWithdrawalRootAnchor> | undefined;
+    const rootAnchor =
+      attempt.rootAnchor === undefined
+        ? undefined
+        : captureWithdrawalRootAnchor(attempt.rootAnchor, attempt.root);
     if (attempt.mode === 'direct') {
       const tx = attempt.transaction;
       if (
@@ -274,6 +278,7 @@ export function createPrivateWithdrawalJournal(
           value: '0',
           ...fees,
         },
+        ...(rootAnchor ? { rootAnchor } : {}),
       };
     } else if (attempt.mode === 'relayed') {
       if (
@@ -296,10 +301,7 @@ export function createPrivateWithdrawalJournal(
         endpoint.hash
       )
         throw new Error();
-      rootAnchor = captureWithdrawalRootAnchor(
-        attempt.rootAnchor,
-        attempt.root
-      );
+      if (!rootAnchor) throw new Error();
       modeFields = {
         endpoint: attempt.endpoint,
         ensHash: attempt.ensHash,
@@ -367,13 +369,13 @@ export function createPrivateWithdrawalJournal(
         },
         inputHash
       ),
+      ...(rootAnchor ? { rootAnchor } : {}),
       attemptHash: keccak256(toUtf8Bytes(JSON.stringify(normalized))),
       ...direct,
       ...(attempt.mode === 'relayed'
         ? {
             endpoint: attempt.endpoint,
             ensHash: attempt.ensHash,
-            rootAnchor: rootAnchor!,
           }
         : {}),
     };
@@ -386,6 +388,10 @@ export function createPrivateWithdrawalJournal(
 export function capturePrivateWithdrawalAttempt(
   value: unknown
 ): Readonly<Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>> {
+  const hasRootAnchor =
+    value !== null &&
+    typeof value === 'object' &&
+    Object.getOwnPropertyDescriptor(value, 'rootAnchor') !== undefined;
   const input = readEvmOwnData(value, [
     'context',
     'createdAt',
@@ -400,6 +406,7 @@ export function capturePrivateWithdrawalAttempt(
     'refund',
     'relayer',
     'root',
+    ...(hasRootAnchor ? ['rootAnchor'] : []),
     'mode',
     'transaction',
   ]);
@@ -436,6 +443,14 @@ export function capturePrivateWithdrawalAttempt(
     invalid();
   const attempt = {
     ...input,
+    ...(input.rootAnchor === undefined
+      ? {}
+      : {
+          rootAnchor: captureWithdrawalRootAnchor(
+            input.rootAnchor,
+            input.root as string
+          ),
+        }),
     context: { ...context, account: { ...account } },
     transaction: { ...transaction },
   } as unknown as Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>;

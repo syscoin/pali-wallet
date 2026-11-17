@@ -1,7 +1,11 @@
-import { captureWithdrawalPublicInputs } from '../utils/privacy/withdrawalMetadata.ts';
+import {
+  captureWithdrawalPublicInputs,
+  captureWithdrawalRootAnchor,
+} from '../utils/privacy/withdrawalMetadata.ts';
 import {
   MAX_PRIVACY_RELAY_TRANSACTIONS,
   type IPrivacyWithdrawalPublicInputs,
+  type IPrivacyWithdrawalRootAnchor,
 } from '../utils/privacy/withdrawalTransactionTypes.ts';
 
 export const NOTE_BACKUP_MAX_HISTORY_HINTS = 16;
@@ -27,6 +31,7 @@ export interface INoteBackupWithdrawalHistory {
   outcome: Outcome;
   proofHash?: string;
   publicInputs?: Readonly<IPrivacyWithdrawalPublicInputs>;
+  rootAnchor?: Readonly<IPrivacyWithdrawalRootAnchor>;
   transactionHash?: string;
   transactionHashes?: readonly string[];
 }
@@ -130,6 +135,7 @@ function withdrawal(value: unknown): Readonly<INoteBackupWithdrawalHistory> {
     'proofHash',
     'inputHash',
     'publicInputs',
+    'rootAnchor',
     'transactionHashes',
   ]);
   const state = outcome(entry.outcome);
@@ -142,6 +148,12 @@ function withdrawal(value: unknown): Readonly<INoteBackupWithdrawalHistory> {
       ? undefined
       : inputHash
       ? captureWithdrawalPublicInputs(entry.publicInputs, inputHash)
+      : invalid();
+  const rootAnchor =
+    entry.rootAnchor === undefined
+      ? undefined
+      : publicInputs
+      ? captureWithdrawalRootAnchor(entry.rootAnchor, publicInputs.root)
       : invalid();
   const transactionHashes =
     entry.transactionHashes === undefined
@@ -178,6 +190,7 @@ function withdrawal(value: unknown): Readonly<INoteBackupWithdrawalHistory> {
     ...(proofHash === undefined ? {} : { proofHash }),
     ...(inputHash === undefined ? {} : { inputHash }),
     ...(publicInputs === undefined ? {} : { publicInputs }),
+    ...(rootAnchor === undefined ? {} : { rootAnchor }),
     ...(transactionHashes === undefined
       ? {}
       : { transactionHashes: Object.freeze(transactionHashes) }),

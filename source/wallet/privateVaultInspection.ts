@@ -507,7 +507,6 @@ export function withdrawalJournal(
         ? undefined
         : captureWithdrawalPublicInputs(value.publicInputs, value.inputHash);
     if (value.rootAnchor !== undefined) {
-      if (value.mode !== 'relayed') throw new Error();
       rootAnchor = captureWithdrawalRootAnchor(
         value.rootAnchor,
         publicInputs?.root

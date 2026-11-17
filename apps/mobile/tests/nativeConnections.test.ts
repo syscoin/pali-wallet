@@ -3212,6 +3212,35 @@ const typedMessage = {
   message: { contents: 'Hello Pali' },
 };
 
+for (const method of ['eth_signTypedData', 'eth_signTypedData_v3', 'eth_signTypedData_v4'])
+for (const kind of (method === 'eth_signTypedData' ? ['HDAccount', 'Imported'] : ['HDAccount', 'Imported', 'Ledger', 'Trezor']) as readonly ('HDAccount' | 'Imported' | 'Ledger' | 'Trezor')[])
+test(`${kind} ${method} rejects a coerced bool before creating a signing review`, async () => {
+  const hardware = kind === 'Ledger' || kind === 'Trezor' ? kind : undefined;
+  const f = await connectedFixture({ hardware, imported: kind === 'Imported',
+    accountId: hardware ? `${hardware.toLowerCase()}:60:0` : kind === 'Imported' ? 'imported:60:0' : 'hd:60:0' });
+  try {
+    const payload = method === 'eth_signTypedData' ? [{ name: 'allowed', type: 'bool', value: 'false' }]
+      : { ...typedMessage, types: { ...typedMessage.types, Note: [{ name: 'allowed', type: 'bool' }] }, message: { allowed: 'false' } };
+    assert.equal(await messageRequest(f, method, [ADDRESS, payload]), null);
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { error: { code: -32602, message: 'Invalid signing request' } } });
+  } finally { await f.controller.dispose(); }
+});
+
+for (const method of ['eth_signTypedData', 'eth_signTypedData_v3', 'eth_signTypedData_v4'])
+for (const value of [true, false]) test(`${method} preserves real bool ${value} through the approved host callback`, async () => {
+  const f = await connectedFixture();
+  try {
+    const payload = method === 'eth_signTypedData' ? [{ name: 'allowed', type: 'bool', value }]
+      : { ...typedMessage, types: { ...typedMessage.types, Note: [{ name: 'allowed', type: 'bool' }] }, message: { allowed: value } };
+    const review = await messageRequest(f, method, [ADDRESS, payload]);
+    assert(review); assert.equal(f.signatures.length, 0);
+    await f.view.approveRequest(review.id, review.revision, false);
+    assert.equal(f.signatures.length, 1);
+    assert.deepEqual((f.signatures[0] as { typedData: unknown }).typedData, payload);
+  } finally { await f.controller.dispose(); }
+});
+
 for (const method of ['eth_signTypedData_v3', 'eth_signTypedData_v4'])
 for (const kind of ['HDAccount', 'Imported', 'Ledger', 'Trezor'] as const)
 test(`${kind} ${method} rejects a foreign domain before creating a signing review`, async () => {

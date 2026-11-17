@@ -11,7 +11,10 @@ import {
 import type { INoteBackupHistory } from './noteBackupHistory.ts';
 import { MAX_ARCHIVED_NOTES, MAX_VAULT_NOTES } from './privateVaultEnvelope.ts';
 import type { identifyClassicNote } from '../utils/privacy/note.ts';
-import type { IPrivacyWithdrawalPublicInputs } from '../utils/privacy/withdrawalTransactionTypes.ts';
+import type {
+  IPrivacyWithdrawalPublicInputs,
+  IPrivacyWithdrawalRootAnchor,
+} from '../utils/privacy/withdrawalTransactionTypes.ts';
 
 // Backup decoding and envelope validation belong to the codec. This leaf only
 // projects restored entries, persists conservative evidence, and plans a merge.
@@ -52,6 +55,7 @@ interface ILocalJournal {
   proofHash?: string;
   publicInputs?: Readonly<IPrivacyWithdrawalPublicInputs>;
   retired?: readonly ILocalJournal[];
+  rootAnchor?: Readonly<IPrivacyWithdrawalRootAnchor>;
   transactionHash?: string;
   transactionHashes?: readonly string[];
 }
@@ -238,6 +242,9 @@ export function privateNoteCurrentHistory(
               ...(entry.publicInputs === undefined
                 ? {}
                 : { publicInputs: entry.publicInputs }),
+              ...(entry.rootAnchor === undefined
+                ? {}
+                : { rootAnchor: entry.rootAnchor }),
               ...(entry.transactionHashes === undefined
                 ? {}
                 : { transactionHashes: entry.transactionHashes }),

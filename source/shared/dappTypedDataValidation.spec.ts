@@ -137,3 +137,65 @@ it('leaves legacy V1 fields unchanged', () => {
     assertDappTypedDataValid('eth_signTypedData', [address, legacy], 1)
   ).not.toThrow();
 });
+
+describe.each(['eth_signTypedData_v3', 'eth_signTypedData_v4'])(
+  '%s strict bool validation',
+  (method) => {
+    const payload = (allowed: unknown, domain = false) => ({
+      types: {
+        EIP712Domain: domain ? [{ name: 'allowed', type: 'bool' }] : [],
+        Permit: domain ? [] : [{ name: 'allowed', type: 'bool' }],
+      },
+      domain: domain ? { allowed } : {},
+      primaryType: 'Permit',
+      message: domain ? {} : { allowed },
+    });
+    it.each(['false', 'true', 0, 1, null, {}, []])(
+      'rejects coerced bool %p in both the message and domain',
+      (value) => {
+        for (const domain of [false, true]) {
+          for (const data of [
+            payload(value, domain),
+            JSON.stringify(payload(value, domain)),
+          ]) {
+            expect(() =>
+              assertDappTypedDataValid(method, [address, data], 1)
+            ).toThrow('bool values must be boolean');
+          }
+        }
+      }
+    );
+    it.each([true, false])(
+      'preserves actual bool %p without normalization',
+      (value) => {
+        const data = payload(value);
+        const before = JSON.stringify(data);
+        expect(() =>
+          assertDappTypedDataValid(method, [address, data], 1)
+        ).not.toThrow();
+        expect(JSON.stringify(data)).toBe(before);
+      }
+    );
+  }
+);
+
+it('rejects coercion in V1 bool fields while preserving real booleans', () => {
+  for (const value of ['false', 0, 1, null]) {
+    expect(() =>
+      assertDappTypedDataValid(
+        'eth_signTypedData',
+        [address, [{ name: 'allowed', type: 'bool', value }]],
+        1
+      )
+    ).toThrow('bool values must be boolean');
+  }
+  for (const value of [true, false]) {
+    expect(() =>
+      assertDappTypedDataValid(
+        'eth_signTypedData',
+        [address, [{ name: 'allowed', type: 'bool', value }]],
+        1
+      )
+    ).not.toThrow();
+  }
+});

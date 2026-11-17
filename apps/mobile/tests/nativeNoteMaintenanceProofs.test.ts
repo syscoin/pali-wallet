@@ -17,7 +17,8 @@ const abi = new Interface(['event Withdrawal(address to, bytes32 nullifierHash, 
 const proof = '0x' + '12'.repeat(256), zero = '0x' + '00'.repeat(20);
 const input = abi.encodeFunctionData('withdraw', [proof, root, identity.nullifierHash, recipient, zero, 0, 0]);
 const withdrawal = { attemptHash: word(13), createdAt: 10, inputHash: keccak256(AbiCoder.defaultAbiCoder().encode(Array(6).fill('uint256'), [root, identity.nullifierHash, recipient, zero, 0, 0])), intentId: 'public-fixture',
-  mode: 'direct', nonce: '2', phase: 'submitted', proofHash: keccak256(proof), transactionHash: hash, from: account } as const;
+  mode: 'direct', nonce: '2', phase: 'submitted', proofHash: keccak256(proof), transactionHash: hash, from: account,
+  rootAnchor:{root,blockNumber:'96',blockHash:word(19)} } as const;
 function fixture(reverted = false) {
   let current = true, spent = false, known = false, canonical = blockHash, chain = '0x1';
   let originKnown = true, originHash = word(19);
@@ -59,11 +60,21 @@ test('native completion uses the shared finalized event/nonce verifier and reche
 test('native recovery requires the same failed transaction, evicted original root and unspent nullifier', async () => {
   const f = fixture(true);
   const lease = await f.ports.prepareWithdrawalRecovery(identity, withdrawal, f.session);
-  assert.equal(lease.receipt.root, root); assert.equal(f.calls.length, 9);
-  await lease.revalidate(); assert.equal(f.calls.length, 18);
+  assert.equal(lease.receipt.root, root); assert.equal(f.calls.length, 12);
+  await lease.revalidate(); assert.equal(f.calls.length, 24);
   f.setKnown(true); await assert.rejects(lease.revalidate(), /privacy_withdrawal_recovery_unavailable/);
   f.setKnown(false); f.setSpent(true);
   await assert.rejects(f.ports.prepareWithdrawalRecovery(identity, withdrawal, f.session), /privacy_withdrawal_recovery_unavailable/);
+});
+
+for (const mode of ['missing', 'orphaned', 'never-known'] as const) test(`native direct recovery refuses unproven origin: ${mode}`, async () => {
+  const f = fixture(true);
+  if(mode === 'orphaned') f.reorgOrigin();
+  if(mode === 'never-known') f.setOriginKnown(false);
+  await assert.rejects(f.ports.prepareWithdrawalRecovery(identity, {
+    ...withdrawal,rootAnchor:mode === 'missing' ? undefined : withdrawal.rootAnchor,
+  },f.session),/privacy_withdrawal_recovery_unavailable/);
+  if(mode === 'missing') assert.equal(f.calls.length,0);
 });
 
 for (const phase of ['unknown', 'submitted'] as const) test(`native relayed ${phase} recovery uses the fixed finalized proof inputs without a payer nonce`, async () => {

@@ -38,6 +38,11 @@ const evidence = () => ({
   proofHash: hash(4),
   inputHash,
   publicInputs: { ...publicInputs },
+  rootAnchor: {
+    root: publicInputs.root,
+    blockNumber: '8',
+    blockHash: hash(10),
+  },
   transactionHashes: Array.from({ length: 16 }, (_, n) => hash(n + 3)),
 });
 const history = (value: unknown) => ({ withdrawals: [value] });
@@ -68,6 +73,80 @@ test('the existing encrypted backup format roundtrips the optional relay evidenc
   ).toEqual(payload);
 });
 
+test('direct current and retired root anchors remain portable inert hints in the unchanged backup format', async () => {
+  const inputs = { ...publicInputs, relayer: `0x${'00'.repeat(20)}`, fee: '0' };
+  const original = {
+    mode: 'direct' as const,
+    outcome: 'submitted' as const,
+    from: publicInputs.recipient,
+    nonce: '0',
+    transactionHash: hash(3),
+    proofHash: hash(4),
+    rootAnchor: evidence().rootAnchor,
+    publicInputs: inputs,
+    inputHash: keccak256(
+      AbiCoder.defaultAbiCoder().encode(
+        Array(6).fill('uint256'),
+        Object.values(inputs).map(BigInt)
+      )
+    ),
+  };
+  const local = {
+    id: '00000000-0000-4000-8000-000000000001',
+    note: `tornado-eth-1-1-0x${'01'.repeat(62)}`,
+    createdAt: 1,
+    withdrawal: {
+      ...original,
+      phase: 'submitted' as const,
+      retired: [
+        { ...original, phase: 'unknown' as const, transactionHash: undefined },
+      ],
+    },
+  };
+  const exported = privateNoteExportHistory(local)!;
+  expect(exported.withdrawals).toHaveLength(2);
+  expect(
+    exported.withdrawals!.every(
+      (row) =>
+        JSON.stringify(row.rootAnchor) === JSON.stringify(original.rootAnchor)
+    )
+  ).toBe(true);
+  const codec = createNoteBackupCodec({
+    crypto: webcrypto as unknown as Crypto,
+    assertCurrent: () => undefined,
+  });
+  const payload = {
+    format: NOTE_BACKUP_FORMAT,
+    version: 1 as const,
+    createdAt: 1,
+    notes: [{ note: local.note, createdAt: 1, history: exported }],
+  };
+  expect(
+    await codec.decrypt(
+      await codec.encrypt(payload, 'synthetic backup history password'),
+      'synthetic backup history password'
+    )
+  ).toEqual(payload);
+  const identify = () =>
+    ({
+      poolId: 'eth-1',
+      commitment: hash(5),
+      nullifierHash: hash(2),
+    } as IClassicNoteIdentity);
+  const restored = planPrivateNoteRestore({
+    entries: payload.notes,
+    existing: [],
+    capacity: 128,
+    identify,
+    importedAt: 10,
+    randomId: () => '00000000-0000-4000-8000-000000000002',
+  });
+  expect(restored.notes[0]).not.toHaveProperty('withdrawal');
+  expect(restoredNoteBlocksWithdrawal(restored.notes[0].restoreGuard)).toBe(
+    true
+  );
+});
+
 test('relay public proof inputs and bounded replacement hashes remain immutable inert history', () => {
   const input = evidence();
   const captured = validateNoteBackupHistory(history(input));
@@ -75,12 +154,15 @@ test('relay public proof inputs and bounded replacement hashes remain immutable 
   expect(captured.withdrawals![0]).not.toHaveProperty('recovery');
   expect(captured.withdrawals![0]).not.toHaveProperty('proof');
   expect(Object.isFrozen(captured.withdrawals![0].publicInputs)).toBe(true);
+  expect(Object.isFrozen(captured.withdrawals![0].rootAnchor)).toBe(true);
   expect(Object.isFrozen(captured.withdrawals![0].transactionHashes)).toBe(
     true
   );
   input.publicInputs.fee = '8';
+  input.rootAnchor.blockNumber = '9';
   input.transactionHashes[0] = hash(99);
   expect(captured.withdrawals![0].publicInputs?.fee).toBe('7');
+  expect(captured.withdrawals![0].rootAnchor?.blockNumber).toBe('8');
   expect(captured.withdrawals![0].transactionHashes?.[0]).toBe(hash(3));
   expect(mergeNoteBackupHistories(captured, captured)).toEqual(captured);
 });
@@ -116,6 +198,15 @@ test.each([
   { publicInputs: { ...publicInputs, fee: '08' } },
   { publicInputs: { ...publicInputs, refund: '1' } },
   { publicInputs: { ...publicInputs, recipient: `0x${'00'.repeat(20)}` } },
+  { rootAnchor: { root: hash(99), blockNumber: '8', blockHash: hash(10) } },
+  {
+    rootAnchor: {
+      root: publicInputs.root,
+      blockNumber: '08',
+      blockHash: hash(10),
+    },
+  },
+  { publicInputs: undefined },
 ])('rejects malformed or unbound relay history: %j', (change) => {
   expect(() =>
     validateNoteBackupHistory(history({ ...evidence(), ...change }))
@@ -177,6 +268,7 @@ test('export preserves active and retired relay observations without importing r
   )!;
   expect(known.transactionHashes).toEqual(original.transactionHashes);
   expect(known.publicInputs).toEqual(publicInputs);
+  expect(known.rootAnchor).toEqual(original.rootAnchor);
   const serialized = JSON.stringify(privateNoteCurrentHistory(local));
   for (const forbidden of [
     'endpoint',

@@ -654,6 +654,11 @@ export function createPrivacyWithdrawalsController(
                   root: intent.lease.snapshot.root,
                   nullifierHash: identity.nullifierHash,
                   proof: proof.proof,
+                  rootAnchor: Object.freeze({
+                    root: intent.lease.snapshot.root,
+                    blockNumber: String(intent.lease.snapshot.asOfBlockNumber),
+                    blockHash: intent.lease.snapshot.asOfBlockHash,
+                  }),
                 };
                 intent.attempt =
                   request.mode === 'direct'
@@ -683,13 +688,6 @@ export function createPrivacyWithdrawalsController(
                         endpoint: intent.selection!.endpoint,
                         ensHash: intent.selection!.ensHash,
                         rewardAccount: relayer,
-                        rootAnchor: Object.freeze({
-                          root: intent.lease.snapshot.root,
-                          blockNumber: String(
-                            intent.lease.snapshot.asOfBlockNumber
-                          ),
-                          blockHash: intent.lease.snapshot.asOfBlockHash,
-                        }),
                       });
                 intent.expiresAt = expiresAt;
                 intent.timer = setTimeout(

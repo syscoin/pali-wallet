@@ -88,6 +88,11 @@ function withdrawalAttempt(
     expiresAt: 60456,
     context: depositAttempt(noteId, 0, NOTE, identify).context,
     root: '0x' + '01'.repeat(32),
+    rootAnchor: {
+      root: '0x' + '01'.repeat(32),
+      blockNumber: '8',
+      blockHash: '0x' + '55'.repeat(32),
+    },
     nullifierHash: identity.nullifierHash,
     recipient: '0x' + '22'.repeat(20),
     relayer: '0x' + '00'.repeat(20),
@@ -104,11 +109,6 @@ function withdrawalAttempt(
       fee: '12345',
       endpoint: 'https://relay.example/base',
       ensHash: '0x' + '44'.repeat(32),
-      rootAnchor: {
-        root: base.root,
-        blockNumber: '8',
-        blockHash: '0x' + '55'.repeat(32),
-      },
     };
   return {
     ...base,
@@ -3901,9 +3901,16 @@ it('failed withdrawal recovery retains the original journal and survives restart
       proofHash: before.withdrawal.proofHash,
       inputHash: before.withdrawal.inputHash,
       publicInputs: before.withdrawal.publicInputs,
+      rootAnchor: before.withdrawal.rootAnchor,
     },
   ]);
-  expect(JSON.stringify(backup)).not.toMatch(/recoveredAt|blockHash/);
+  expect(JSON.stringify(backup)).not.toMatch(/recoveredAt/);
+  expect(JSON.stringify(backup)).not.toContain(
+    after.withdrawal.recovery.blockHash
+  );
+  expect(backup.notes[0].history?.withdrawals?.[0]).not.toHaveProperty(
+    'recovery'
+  );
   expect(Object.keys(after.withdrawal)).toContain('recovery');
   await restarted.importNote(NOTE);
   expect((await decryptedVault(f)).notes[0].withdrawal).toEqual(
@@ -4179,14 +4186,20 @@ it.each([
 );
 
 it.each(
-  (['missing', 'same-checkpoint', 'later-checkpoint'] as const).flatMap(
-    (origin) =>
-      (['direct', 'relayed'] as const).map((mode) => ({ origin, mode }))
+  (['direct', 'relayed'] as const).flatMap((withdrawalMode) =>
+    (['missing', 'same-checkpoint', 'later-checkpoint'] as const).flatMap(
+      (origin) =>
+        (['direct', 'relayed'] as const).map((mode) => ({
+          withdrawalMode,
+          origin,
+          mode,
+        }))
+    )
   )
 )(
-  'persisted unproven relayed expiry blocks a fresh $mode attempt ($origin)',
-  async ({ origin, mode }) => {
-    const { f, note, session } = await failedWithdrawalFixture('relayed');
+  'persisted unproven $withdrawalMode expiry blocks a fresh $mode attempt ($origin)',
+  async ({ withdrawalMode, origin, mode }) => {
+    const { f, note, session } = await failedWithdrawalFixture(withdrawalMode);
     await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
     const manifest = await decryptedVault(f),
       withdrawal = manifest.notes[0].withdrawal;
@@ -4228,10 +4241,43 @@ it.each(
   }
 );
 
-it.each(['direct', 'relayed'] as const)(
-  'retired unproven relayed expiry cannot hide behind current %s recovery',
-  async (currentMode) => {
-    const { f, note, session } = await failedWithdrawalFixture('relayed');
+it('a legacy direct representation cannot become a fresh reservation without origin evidence', async () => {
+  const f = fixture(),
+    note = await f.controller.importNote(NOTE),
+    session = f.captureSession();
+  const attempt = withdrawalAttempt(note.id, 'direct');
+  delete (attempt as { rootAnchor?: unknown }).rootAnchor;
+  const bytes = structuredClone(f.records),
+    onIdentity = jest.fn();
+  f.readNote.mockClear();
+  f.storage.getItem.mockClear();
+  f.storage.setItem.mockClear();
+  await expect(
+    f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0',
+      onIdentity
+    )
+  ).rejects.toThrow();
+  expect(f.storage.getItem).not.toHaveBeenCalled();
+  expect(f.readNote).not.toHaveBeenCalled();
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+  expect(onIdentity).not.toHaveBeenCalled();
+  expect(f.records).toEqual(bytes);
+});
+
+it.each(
+  (['direct', 'relayed'] as const).flatMap((oldMode) =>
+    (['direct', 'relayed'] as const).map((currentMode) => ({
+      oldMode,
+      currentMode,
+    }))
+  )
+)(
+  'retired unproven $oldMode expiry cannot hide behind current $currentMode recovery',
+  async ({ oldMode, currentMode }) => {
+    const { f, note, session } = await failedWithdrawalFixture(oldMode);
     await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
     const current = {
       ...withdrawalAttempt(note.id, currentMode),

@@ -18,7 +18,7 @@ export interface IPrivacyWithdrawalPublicInputs {
   root: string;
 }
 
-/** Canonical positive root observation retained with a relayed instruction. */
+/** Canonical positive root observation retained with a withdrawal instruction. */
 export interface IPrivacyWithdrawalRootAnchor {
   blockHash: string;
   blockNumber: string;
@@ -40,6 +40,8 @@ interface IWithdrawalAttemptBase {
   refund: '0';
   relayer: string;
   root: string;
+  /** Absent only in legacy retained attempts; fresh reservations require it. */
+  rootAnchor?: Readonly<IPrivacyWithdrawalRootAnchor>;
 }
 
 export type IPrivacyWithdrawalAttempt = Readonly<
