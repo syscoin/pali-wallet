@@ -637,7 +637,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (next === 'send') {
       if (!sendTarget || (sendTarget.kind === 'spt' ? !canSendSpt :
         !canSign && !(canSendUtxo && sendTarget.kind === 'native' || canSendSmart && (sendTarget.kind === 'native' || sendTarget.kind === 'token' || sendTarget.kind === 'collectible') ||
-          canReplaceSelectedSmart && (sendTarget.kind === 'speed-up' || sendTarget.kind === 'cancel' || sendTarget.kind === 'cancel-saved')))) return;
+          canReplaceSelectedSmart && (sendTarget.kind === 'saved' || sendTarget.kind === 'speed-up' || sendTarget.kind === 'cancel' || sendTarget.kind === 'cancel-saved')))) return;
       const sender = owner?.account?.address.toLowerCase();
       const recipientPicker = sendTarget.kind === 'native' && canSign && local && sender &&
         capturedCatalogue?.accounts.some(({ address }) => address.toLowerCase() !== sender)
@@ -992,7 +992,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const sendTarget = stage === 'send' && sendDraft &&
     sendDraft.origin.context === (sendDraft.origin.publicDraft ? publicSendContext(snapshot, catalogue) : custodyContext(snapshot, catalogue))?.context
     ? sendDraft.target : undefined;
-  const canReplaceSmart = selectedAccountType === 'SmartAccount' && (sendTarget?.kind === 'speed-up' || sendTarget?.kind === 'cancel' || sendTarget?.kind === 'cancel-saved');
+  const canReplaceSmart = selectedAccountType === 'SmartAccount' && (sendTarget?.kind === 'saved' || sendTarget?.kind === 'speed-up' || sendTarget?.kind === 'cancel' || sendTarget?.kind === 'cancel-saved');
   const openSelectedSmartCancellation = useCallback((assertCurrent: () => void, signal: AbortSignal, authentication: NativePrivateAuthenticationScope) => {
     if (!openSmartCancellation || !sendTarget || sendTarget.kind !== 'cancel' && sendTarget.kind !== 'cancel-saved') throw Error('CANCELLED');
     return openSmartCancellation({ originalHash: sendTarget.hash }, assertCurrent, signal, authentication);
@@ -2113,7 +2113,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel}
           onSignedInstructions={selectedAccountType === 'SmartAccount' ? showSignedInstructions : undefined}
           initialHash={transactionActivity && transactionActivity.context === guardianContext ? transactionActivity.hash : recoveryActivity && recoveryActivity.context === guardianContext ? recoveryActivity.hash : undefined}
-          onReplay={canSign ? (hash) => openStage('send', { kind: 'saved', hash }) : undefined}
+          onReplay={canSign || canReplaceSelectedSmart ? (hash) => openStage('send', { kind: 'saved', hash }) : undefined}
           onCancelPending={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'cancel', hash }) : undefined}
           onCancelSaved={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'cancel-saved', hash }) : undefined}
           onSpeedUpPending={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'speed-up', hash }) : undefined}
