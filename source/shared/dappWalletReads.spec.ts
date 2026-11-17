@@ -1,6 +1,7 @@
 import {
   normalizeDappWalletRead,
   projectWalletBalance,
+  projectWalletAccount,
   projectWalletBalanceUnits,
   projectWalletAvailableBalanceUnits,
   projectWalletTokens,
@@ -32,6 +33,42 @@ it('matches UTXO confirmed plus signed pending observations without changing fun
   expect(projectWalletAvailableBalanceUnits('1', '-2', 8)).toBe('0');
   expect(projectWalletAvailableBalanceUnits('0', '1', 8)).toBe('0.00000001');
 });
+
+it.each([
+  undefined,
+  null,
+  -1,
+  NaN,
+  Infinity,
+  'unknown',
+  { endpoint: 'https://private-rpc.invalid/api-token' },
+])(
+  'omits unavailable optional account balance %p without weakening the standalone balance response',
+  (value) => {
+    const result = projectWalletAccount({
+      address: 'sys1connected',
+      xpub: 'approved-public-xpub',
+      balances: {
+        syscoin: value,
+        ethereum: 0,
+        'https://private-rpc.invalid/api-token': '5',
+      },
+      nativeBalanceCache: {
+        'https://private-rpc.invalid/api-token': { balance: '5' },
+      },
+    });
+    expect(result).toEqual({
+      address: 'sys1connected',
+      xpub: 'approved-public-xpub',
+      balances: { ethereum: 0 },
+    });
+    expect(JSON.stringify(result)).not.toContain('api-token');
+    if (value === null || value === undefined)
+      expect(projectWalletBalance(value)).toBeNull();
+    else
+      expect(() => projectWalletBalance(value)).toThrow('Balance unavailable');
+  }
+);
 
 it('shares the public token container and permits an explicit negotiated-chain projection', () => {
   const zero = {

@@ -185,6 +185,7 @@ export function useSmartAccountFeeConfirmation(scope: string) {
       confirmFee(review, { ...details, signal, signedInstruction: true }),
   });
   const shown = view?.scope === scope ? view : null;
+  const gasSymbol = shown?.symbol.toUpperCase();
   const row = (label: string, value: string) => (
     <div className="min-w-0">
       <dt className="text-brand-graylight">{label}</dt>
@@ -243,18 +244,18 @@ export function useSmartAccountFeeConfirmation(scope: string) {
               ? 'send.smartAccountMaxFee'
               : 'transactions.replay.maximumFee'
           ),
-          `${formatEther(shown.quote.maximumFeeUnits)} ${shown.symbol}`
+          `${formatEther(shown.quote.maximumFeeUnits)} ${gasSymbol}`
         )}
         {'transaction' in shown.quote &&
           BigInt(shown.quote.coveredFeeUnits ?? '0') > BigInt(0) &&
           row(
             t('mobile.recoveryStatusViews.operation.maximumNetworkFeeGasTank'),
-            `${formatEther(shown.quote.coveredFeeUnits!)} ${shown.symbol}`
+            `${formatEther(shown.quote.coveredFeeUnits!)} ${gasSymbol}`
           )}
         {'transaction' in shown.quote &&
           row(
             t('settings.smartAccountFeeReviewMaximumTotal'),
-            `${formatEther(shown.quote.maximumTotalUnits)} ${shown.symbol}`
+            `${formatEther(shown.quote.maximumTotalUnits)} ${gasSymbol}`
           )}
       </dl>
       {'entryPoint' in shown.quote && (

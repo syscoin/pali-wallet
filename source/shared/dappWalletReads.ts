@@ -34,23 +34,21 @@ export function normalizeDappWalletRead(
 }
 
 /** Existing public API response; never a transaction/funding amount. */
+const isWalletBalance = (value: unknown): value is number | string =>
+  (typeof value === 'string' &&
+    /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) ||
+  (typeof value === 'number' && Number.isFinite(value) && value >= 0);
 export function projectWalletBalance(value: unknown): number | string | null {
   if (value === null || value === undefined) return null;
-  if (
-    typeof value === 'string' &&
-    /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)
-  )
-    return value;
-  if (typeof value === 'number' && Number.isFinite(value) && value >= 0)
-    return value;
+  if (isWalletBalance(value)) return value;
   throw new EthereumRpcErrorHandler(-32603, 'Balance unavailable');
 }
 
 export type DappWalletAccount = Readonly<{
   address: string;
   balances?: Readonly<{
-    ethereum?: number | string | null;
-    syscoin?: number | string | null;
+    ethereum?: number | string;
+    syscoin?: number | string;
   }>;
   id?: number;
   isImported?: boolean;
@@ -102,8 +100,12 @@ export function projectWalletAccount(value: unknown): DappWalletAccount | null {
     const balances = account.balances as Record<string, unknown>;
     result.balances = Object.fromEntries(
       ['ethereum', 'syscoin']
-        .filter((chain) => Object.hasOwn(balances, chain))
-        .map((chain) => [chain, projectWalletBalance(balances[chain])])
+        // Legacy -1/loading and absent balances are optional hints, not amounts.
+        .filter(
+          (chain) =>
+            Object.hasOwn(balances, chain) && isWalletBalance(balances[chain])
+        )
+        .map((chain) => [chain, balances[chain]])
     );
   }
   return result;

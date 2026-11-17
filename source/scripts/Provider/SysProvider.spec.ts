@@ -7,6 +7,8 @@ jest.mock('state/store', () => ({
 jest.mock('scripts/Background', () => ({
   getController: () => getControllerMock(),
 }));
+import { initialActiveHdAccountState } from 'types/network';
+
 import { SysProvider } from './SysProvider';
 
 describe('SysProvider account privacy', () => {
@@ -138,6 +140,27 @@ describe('SysProvider account privacy', () => {
       `${'12'.repeat(32)}:0`,
     ]);
     expect(provider.transaction(['unrelated'])).toBeNull();
+  });
+
+  it('keeps the initial UTXO account and xpub available while its legacy balances are still loading', () => {
+    const account = {
+      ...initialActiveHdAccountState,
+      address: 'sys1initialaccount',
+      xpub: 'approved-initial-xpub',
+      // The vault reducer initializes both chain-family observations to -1.
+      balances: { ethereum: -1, syscoin: -1 },
+    };
+    getControllerMock().dapp.getAccount = () => account;
+    const provider = SysProvider('https://connected.test');
+    expect(provider.getAccount()).toMatchObject({
+      address: account.address,
+      xpub: account.xpub,
+      balances: {},
+    });
+    expect(provider.getPublicKey()).toBe(account.xpub);
+    expect(provider.getAccount()!.balances).not.toHaveProperty('syscoin');
+    expect(provider.getAccount()!.balances).not.toHaveProperty('ethereum');
+    expect(account.balances).toEqual({ ethereum: -1, syscoin: -1 });
   });
 
   it('hides accounts, public keys and history while locked', () => {

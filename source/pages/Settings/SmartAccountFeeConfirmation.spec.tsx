@@ -101,11 +101,13 @@ function Harness({
   entryPoint = false,
   executionPayer = false,
   signal,
+  symbol = 'ETH',
 }: {
   entryPoint?: boolean;
   executionPayer?: boolean;
   scope?: string;
   signal?: AbortSignal;
+  symbol?: string;
   value?: any;
 }) {
   const { confirmFee, feeConfirmation, forExecution } =
@@ -118,7 +120,7 @@ function Harness({
             const details = {
               account: ACCOUNT,
               chainId: 31337,
-              symbol: 'ETH',
+              symbol,
               label: 'Recovery',
               signal,
               assertCurrent() {
@@ -160,6 +162,41 @@ afterEach(() => {
   cleanup();
   jest.useRealTimers();
 });
+
+it.each([false, true])(
+  'displays a lowercase configured gas symbol consistently without changing the reviewed fee (EntryPoint=%s)',
+  async (entryPoint) => {
+    const value = entryPoint
+      ? {
+          executionContextId: 'initial',
+          maximumFeeWei: '21000000000000',
+          gasUnits: '21000',
+        }
+      : quote('payer', {
+          coveredFeeUnits: '10000000000000',
+          maximumTotalUnits: '100011000000000000',
+        });
+    render(
+      <Harness
+        entryPoint={entryPoint}
+        executionPayer={!entryPoint}
+        symbol="eth"
+        value={value}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare' }));
+    expect(screen.getByText('0.000021 ETH')).toBeTruthy();
+    if (!entryPoint) {
+      expect(screen.getByText('0.00001 ETH')).toBeTruthy();
+      expect(screen.getByText('0.100011 ETH')).toBeTruthy();
+    }
+    expect(screen.queryByText(/\beth$/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() =>
+      expect(submitted).toHaveBeenCalledWith(entryPoint ? 'initial' : 'payer')
+    );
+  }
+);
 
 it('warns that declining the actual payer fee does not revoke an already signed instruction', async () => {
   render(<Harness executionPayer />);
