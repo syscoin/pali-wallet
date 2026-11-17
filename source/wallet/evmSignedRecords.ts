@@ -1109,10 +1109,10 @@ export class EvmSignedRecords {
     );
     if (
       tracked &&
-      original.operation === 'speed-up' &&
       tracked.metadata &&
-      (Object.hasOwn(tracked.metadata, 'privateDeposit') ||
-        Object.hasOwn(tracked.metadata, 'privateWithdrawal'))
+      (Object.hasOwn(tracked.metadata, 'privateWithdrawal') ||
+        (original.operation === 'speed-up' &&
+          Object.hasOwn(tracked.metadata, 'privateDeposit')))
     )
       throw new Error('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
     if (tracked && !matchesNonce(tracked, original))
@@ -1375,10 +1375,10 @@ export class EvmSignedRecords {
 
       const original = await this.materialize(session, selected);
       if (
-        operation === 'speed-up' &&
         original.metadata &&
-        (Object.hasOwn(original.metadata, 'privateDeposit') ||
-          Object.hasOwn(original.metadata, 'privateWithdrawal'))
+        (Object.hasOwn(original.metadata, 'privateWithdrawal') ||
+          (operation === 'speed-up' &&
+            Object.hasOwn(original.metadata, 'privateDeposit')))
       )
         return null;
       const base = Transaction.from(original.rawTransaction);

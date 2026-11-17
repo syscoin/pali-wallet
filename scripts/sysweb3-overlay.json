@@ -2,8 +2,8 @@
   "source": {
     "repository": "https://github.com/sidhujag/sysweb3",
     "pullRequest": "https://github.com/sidhujag/sysweb3/pull/119",
-    "commit": "ae0ba838c6e40f78cadb598c52b43813303625b7",
-    "tree": "254e124620d7f91cc02dc23915fd1b4f2e309e9c",
+    "commit": "5d49c52fbbf539f2845588299c05f8f4221ff0ee",
+    "tree": "18b9e4019fcd655446592800843850e2f0635ad8",
     "compiler": "typescript@5.9.3",
     "node": "v26.12.1",
     "build": [
@@ -16,11 +16,11 @@
   },
   "payload": {
     "file": "sysweb3-overlay.deflate",
-    "sha256": "2f36c151d52920d2a70304d773f8904cdf734a9d625ec0c03b11e9f663edba57",
-    "bytes": 1947079,
-    "decodedSha256": "543553b5b58b2b25c104d6e9830c3b382c74a10e498e8f001332df17db1fafef",
+    "sha256": "faa21b7b10d99f261746f16f1f5e98161a01e86ebb4fb8333a57eb0a6492fbcc",
+    "bytes": 1947676,
+    "decodedSha256": "502954b353b81b29d81060e605f9d04e1e9db7803e59d4eea96eab1f6e9f7a95",
     "files": 82,
-    "compressedBytes": 374155
+    "compressedBytes": 374319
   },
   "packages": [
     {
@@ -2537,16 +2537,16 @@
         {
           "path": "cjs/retryUtils.js",
           "before": "53305fd4228634d911a81ea990486b6d09a3b865e9f650fb2e6c4d77815940e8",
-          "after": "fe6ea66da259406492ea8377cbe640cdd7cd413eb53abef423fa091f90ff3477",
+          "after": "676a333a85ae078b497473978747f615b5cdbf8885d91ecbe46355a40ba6c09a",
           "beforeBytes": 4045,
-          "bytes": 3875
+          "bytes": 4164
         },
         {
           "path": "cjs/retryUtils.js.map",
           "before": "149e52528ac89fae16f2e2a8489932963ba542ae39001cdfcfa650c75fedb1de",
-          "after": "ef7d063456ee0de32bd95bc05d9660ca27c55ce5fd7c32dd08c127e3fa4714ee",
+          "after": "eb829b1065964c07b26274d8e372ab9c1f8d5ac3c0b72a0078fc1fdc1effd934",
           "beforeBytes": 2737,
-          "bytes": 2585
+          "bytes": 2732
         },
         {
           "path": "cjs/rpc-read-client.js",
@@ -2579,16 +2579,16 @@
         {
           "path": "cjs/rpc.js",
           "before": "e0aaa865b1ffbef6728c9bc2fbf8ce14e29a2e437262305a41f665e751929cdf",
-          "after": "e969e502dc64c7153c2dd33057f0ca21e63a60090268d72870c92aecff80cd40",
+          "after": "a727b7150b16668a0d086822892eae9c35d3b8b28a59d16bbd3abbe2df77b907",
           "beforeBytes": 19629,
-          "bytes": 14957
+          "bytes": 15068
         },
         {
           "path": "cjs/rpc.js.map",
           "before": "9b884a74bfa76ccf4544479c5d4173165fb9ccb5cb69ca21b69fdf7a7123b7b0",
-          "after": "c8e15aa3789e6ed94ea3474123b3b6d2bbe8fe87b7c73eef49ee5a9706d7e870",
+          "after": "670527496a246bc80c41c2102d4f81367e0ad0c4fabd3229f864ab2580665c0b",
           "beforeBytes": 14454,
-          "bytes": 12227
+          "bytes": 12271
         },
         {
           "path": "cjs/types.js",

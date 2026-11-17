@@ -12,7 +12,10 @@ import {
   encodeCompositeValidatorInitData,
   type SmartAccountExecution,
 } from './account.ts';
-import { SmartAccountExternalSignatureRequired } from './authenticatorDispatch.ts';
+import {
+  SmartAccountExternalSignatureRequired,
+  smartAccountAuthenticatorPriority,
+} from './authenticatorDispatch.ts';
 import {
   getPaliModuleAddress,
   paliSmartAccountInterface,
@@ -336,12 +339,14 @@ export async function collectCompositePolicyPossession(
   }>
 ): Promise<void> {
   const signatures = input.proposal.children.map(() => '0x');
-  const priority = (module: SmartAccountValidatorModule) =>
-    ['ecdsa', 'slh-dsa', 'p256-webauthn'].indexOf(module.id);
   const candidates = input.proposal.children
     .map((child, index) => ({ child, index }))
-    .filter(({ child }) => priority(child) >= 0)
-    .sort((a, b) => priority(a.child) - priority(b.child) || a.index - b.index);
+    .filter(({ child }) => smartAccountAuthenticatorPriority(child) >= 0)
+    .sort(
+      (a, b) =>
+        smartAccountAuthenticatorPriority(a.child) -
+          smartAccountAuthenticatorPriority(b.child) || a.index - b.index
+    );
   for (const { child, index } of candidates) {
     input.assertCurrent();
     let signature: string | null;

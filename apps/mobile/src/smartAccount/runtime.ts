@@ -90,6 +90,7 @@ export type NativeSmartOperationPorts = Readonly<{
   authorizationExpiresAt: number;
   background(): void;
   signingOwners: readonly NativeSmartAccountSigningOwner[];
+  slhDsaKeyIds?: readonly string[];
   assertOwnerCurrent(owner: NativeSmartAccountSigningOwner): void;
   p256WebAuthn: ((metadata: ISmartAccountMetadata, intent: SmartAccountOwnerSigningIntent, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['p256WebAuthn']>) | null;
   slhDsa: ((metadata: ISmartAccountMetadata, intent: SmartAccountOwnerSigningIntent, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
@@ -495,7 +496,7 @@ export function createNativeSmartOperation(
               if (!child.data || !['ecdsa','p256-webauthn','slh-dsa'].includes(child.id)) return null;
               const childMetadata: ISmartAccountMetadata = {...proposal.smartAccount,
                 auth:{module:child.id,validator:child.address,data:child.data}};
-              if(!getSmartAccountSigningPlan(childMetadata,{ecdsa:ports.signingOwners,p256WebAuthn:ports.p256WebAuthn!==null,slhDsa:ports.slhDsa!==null}))return null;
+              if(!getSmartAccountSigningPlan(childMetadata,{ecdsa:ports.signingOwners,p256WebAuthn:ports.p256WebAuthn!==null,slhDsa:ports.slhDsa!==null, ...(ports.slhDsaKeyIds === undefined ? {} : {slhDsaKeyIds:ports.slhDsaKeyIds})}))return null;
               const result = await signNativeSmartAccountActionHash({metadata:childMetadata, actionHash:challenge.intent.actionHash,
                 accountId:account.id,allowReservedSLHDSASignature:false,
                 p256WebAuthn:ports.p256WebAuthn===null?null:ports.p256WebAuthn(childMetadata,challenge.intent,proofCurrent,signal),

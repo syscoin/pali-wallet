@@ -509,6 +509,7 @@ export const RetainedTransactionReplay = ({
       </button>
       {canSignRetainedCancellation &&
         retained.hash === hash.toLowerCase() &&
+        retained.cancellationUnavailable !== true &&
         !view.cancellationHash &&
         retained.operation !== 'cancel' &&
         (retained.type === 0 || retained.type === 2) &&

@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -119,6 +120,21 @@ jest.mock('state/vault/selectors', () => ({
   selectValidEnsCache: () => ({}),
 }));
 jest.mock('components/index', () => ({
+  ConfirmationModal: ({
+    show,
+    children,
+    title,
+    buttonText,
+    onClose,
+    onClick,
+  }: any) =>
+    show ? (
+      <section role="dialog" aria-label={title}>
+        {children}
+        <button onClick={onClose}>Close fee</button>
+        <button onClick={onClick}>{buttonText}</button>
+      </section>
+    ) : null,
   Button: ({ children, onClick, disabled, variant }: any) => {
     if (children === 'buttons.confirm') mockConfirmClick = onClick;
     return (
@@ -968,6 +984,161 @@ it('retires the consumed Smart Account quote after a definite payer-fee decline 
       .approvedFeeQuote.executionContextId
   ).toBe('fresh-context');
 });
+
+it('keeps the actual payer review in its original submission owner after the router installs the inert marker', async () => {
+  prepareSmartAccountConfirmation();
+  mockNavigate.mockImplementation((path, options) => {
+    if (!options?.state?.submissionStarted) return;
+    mockLocation = {
+      ...mockLocation,
+      pathname: path,
+      key: 'owned-submission-marker',
+      state: options.state,
+    };
+    window.history.replaceState({ key: mockLocation.key }, '', path);
+  });
+  const payerReview = {
+    id: 'payer-envelope',
+    validForMs: 90000,
+    transaction: {
+      from: feePayer.address,
+      to: mockLocation.state.tx.receivingAddress,
+      chainId: '5700',
+      nonce: '1',
+      value: '0',
+      gasLimit: '21000',
+      type: 0,
+      gasPrice: '1000000000',
+      data: '0x',
+    },
+    maximumFeeUnits: '21000000000000',
+    maximumTotalUnits: '21000000000000',
+  };
+  let accepted = false;
+  (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
+    async (params) => {
+      await params.onBeforeSubmit({ executionContextId: 'owned-operation' });
+      expect(
+        await params.feeConsent.confirmFee(
+          payerReview,
+          new AbortController().signal
+        )
+      ).toBe(payerReview.id);
+      accepted = true;
+      return { hash: 'owned-operation-hash' };
+    }
+  );
+  try {
+    render(<SendConfirm />);
+    await waitFor(() => expect(screen.getByText('0.00065 TSYS')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('dialog', {
+          name: 'settings.smartAccountFeeReviewTitle',
+        })
+      ).toBeTruthy()
+    );
+    expect(mockLocation.state.submissionStarted).toBe(true);
+    expect(mockLocation.state.tx).toBeUndefined();
+    expect(
+      within(screen.getByRole('dialog')).getByText(feePayer.address)
+    ).toBeTruthy();
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'buttons.confirm',
+      })
+    );
+    await waitFor(() => expect(accepted).toBe(true));
+    expect(mockAlert.error).not.toHaveBeenCalled();
+    expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
+  } finally {
+    mockNavigate.mockReset();
+  }
+});
+
+it.each(['route', 'account', 'unmount'])(
+  'does not present a late payer fee after genuine %s departure from the marker-owned attempt',
+  async (departure) => {
+    prepareSmartAccountConfirmation();
+    mockNavigate.mockImplementation((path, options) => {
+      if (!options?.state?.submissionStarted) return;
+      mockLocation = {
+        ...mockLocation,
+        pathname: path,
+        key: 'owned-submission-marker',
+        state: options.state,
+      };
+      window.history.replaceState({ key: mockLocation.key }, '', path);
+    });
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let finished = false;
+    (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
+      async (params) => {
+        await params.onBeforeSubmit({ executionContextId: 'owned-operation' });
+        await waiting;
+        try {
+          await params.feeConsent.confirmFee(
+            {
+              id: 'late-fee',
+              validForMs: 90000,
+              transaction: {
+                from: feePayer.address,
+                to: '0x2222222222222222222222222222222222222222',
+                chainId: '5700',
+                nonce: '1',
+                value: '0',
+                gasLimit: '21000',
+                type: 0,
+                gasPrice: '1000000000',
+                data: '0x',
+              },
+              maximumFeeUnits: '21000000000000',
+              maximumTotalUnits: '21000000000000',
+            },
+            new AbortController().signal
+          );
+        } finally {
+          finished = true;
+        }
+      }
+    );
+    const view = render(<SendConfirm />);
+    try {
+      await waitFor(() =>
+        expect(screen.getByText('0.00065 TSYS')).toBeTruthy()
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+      await waitFor(() =>
+        expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
+      );
+      if (departure === 'route') {
+        mockLocation = {
+          ...mockLocation,
+          key: 'genuine-other-entry',
+          pathname: '/home',
+          state: null,
+        };
+        window.history.replaceState({ key: mockLocation.key }, '', '/home');
+        view.rerender(<SendConfirm />);
+      } else if (departure === 'account') {
+        mockNavigationScope = {
+          ...mockNavigationScope,
+          account: 'different-account',
+        };
+        view.rerender(<SendConfirm />);
+      } else view.unmount();
+      await act(async () => release());
+      await waitFor(() => expect(finished).toBe(true));
+      expect(screen.queryByRole('dialog')).toBeNull();
+    } finally {
+      mockNavigate.mockReset();
+    }
+  }
+);
 
 it('uses trusted zero account-charge tank mode for native MAX without subtracting outer payer fees', async () => {
   prepareSmartAccountConfirmation(true);

@@ -91,6 +91,19 @@ export async function readWithdrawalRecoveryRpc(
   params: unknown[],
   signal: AbortSignal
 ): Promise<unknown> {
+  if (method === 'eth_getTransactionCount') {
+    if (
+      !Array.isArray(params) ||
+      params.length !== 2 ||
+      typeof params[0] !== 'string' ||
+      !/^0x[0-9a-f]{40}$/.test(params[0]) ||
+      typeof params[1] !== 'string' ||
+      params[1].length > 66 ||
+      !/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(params[1])
+    )
+      throw new Error('privacy_rpc_unavailable');
+    return rpc(validatePrivacyRpcUrl(rpcUrl), method, params, signal);
+  }
   if (method !== 'eth_call')
     return readCompletionRpc(rpcUrl, method, params, signal);
   const call: any =

@@ -367,6 +367,7 @@ function NativeActivityContent({
     chosenObservation?.status === 'pending' && chosenObservation.from.toLowerCase() === (chosen.local.smartAccount?.payer ?? owner).toLowerCase() &&
     chosenObservation.nonce === String(chosen.local.nonce);
   const canCancelSaved = chosen?.replacementStatus !== 'replaced' && chosen?.local && !chosen.checking && !chosenObservation &&
+    !chosen.local.cancellationUnavailable &&
     chosen.local.operation !== 'cancel' && !replacementBlocksReview &&
     (chosen.local.transactionType === 0 || chosen.local.transactionType === 2) &&
     ['signed', 'attempted', 'submitted'].includes(chosen.local.phase) &&
@@ -822,7 +823,7 @@ function NativeActivityContent({
           {canReplace && speedUp && (
             <Button title={t('header.speedUp')} variant="secondary" onPress={() => void afterPositionSaved(() => speedUp(chosen.hash))} />
           )}
-          {canReplace && cancelPending && (
+          {canReplace && !chosen.local?.cancellationUnavailable && cancelPending && (
             <Button title={t('mobile.activityViews.nativeActivity.cancelPendingTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />
           )}
           {canCancelSaved && cancelSaved && (

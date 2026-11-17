@@ -7,6 +7,7 @@ import { encodeEcdsaValidatorInitData } from './account';
 import {
   signSmartAccountActionHash,
   canSignSmartAccountActionHash,
+  getSmartAccountSigningPlan,
   SmartAccountExternalSignatureRequired,
   type SmartAccountAuthenticatorPorts,
 } from './authenticatorDispatch';
@@ -236,6 +237,202 @@ it('keeps composite contract order and checks authority before every child', asy
   expect(result.signature).toBe(
     defaultAbiCoder.encode(['bytes[]'], [['0xabcd', signatures[0]]])
   );
+});
+
+it('uses the proved ECDSA subset when an unavailable optional passkey occupies the first contract slot', async () => {
+  const passkey = jest.fn(async () => {
+    throw new Error('Credential unavailable');
+  });
+  const value = composite([validators.passkey, validators.ecdsa], 1);
+  const plan = getSmartAccountSigningPlan(value, {
+    ecdsa: localOwners,
+    p256WebAuthn: true,
+    slhDsa: false,
+  })!;
+  expect(plan.authenticators.map((item) => item.index)).toEqual([1]);
+  const result = await signSmartAccountActionHash({
+    smartAccount: value,
+    actionHash: digest,
+    assertBeforeAuthentication: async () => undefined,
+    ports: {
+      ecdsa: { localOwners, signActionHash: async () => signatures[0] },
+      p256WebAuthn: { signActionHash: passkey },
+      slhDsa: null,
+    },
+  });
+  expect(result.signature).toBe(
+    defaultAbiCoder.encode(['bytes[]'], [['0x', signatures[0]]])
+  );
+  expect(passkey).not.toHaveBeenCalled();
+});
+
+function optionalSlhMetadata() {
+  const value = composite([validators.slh, validators.passkey], 1);
+  value.installedModules!.push({
+    id: 'slh-dsa',
+    type: 'validator',
+    address: validators.slh,
+    config: {
+      keyId: 'missing-key',
+      parameterSet: 'SLH-DSA-SHA2-128-24',
+      pkRoot: '0x' + 'aa'.repeat(16),
+      pkSeed: '0x' + 'bb'.repeat(16),
+    },
+  } as never);
+  return value;
+}
+
+it('uses authenticated empty SLH inventory before selecting a passkey without changing contract indices', async () => {
+  const value = optionalSlhMetadata(),
+    slh = jest.fn();
+  const plan = getSmartAccountSigningPlan(value, {
+    ecdsa: [],
+    p256WebAuthn: true,
+    slhDsa: true,
+    slhDsaKeyIds: [],
+  })!;
+  expect(plan.authenticators.map((item) => item.index)).toEqual([1]);
+  const result = await signSmartAccountActionHash({
+    smartAccount: value,
+    actionHash: digest,
+    assertBeforeAuthentication: async () => undefined,
+    ports: {
+      ecdsa: null,
+      p256WebAuthn: { signActionHash: async () => ({ signature: '0xabcd' }) },
+      slhDsa: {
+        availableKeyIds: [],
+        signActionHash: slh,
+        signMessageActionHash: null,
+      },
+    },
+  });
+  expect(result.signature).toBe(
+    defaultAbiCoder.encode(['bytes[]'], [['0x', '0xabcd']])
+  );
+  expect(slh).not.toHaveBeenCalled();
+  expect(
+    getSmartAccountSigningPlan(value, {
+      ecdsa: [],
+      p256WebAuthn: false,
+      slhDsa: true,
+      slhDsaKeyIds: [],
+    })
+  ).toBeNull();
+});
+
+it('does not treat malformed key inventories as permission to use a different authenticator', async () => {
+  const passkey = jest.fn();
+  await expect(
+    signSmartAccountActionHash({
+      smartAccount: optionalSlhMetadata(),
+      actionHash: digest,
+      assertBeforeAuthentication: async () => undefined,
+      ports: {
+        ecdsa: null,
+        p256WebAuthn: { signActionHash: passkey },
+        slhDsa: {
+          availableKeyIds: [null] as never,
+          signActionHash: jest.fn(),
+          signMessageActionHash: null,
+        },
+      },
+    })
+  ).rejects.toThrow('key inventory');
+  expect(passkey).not.toHaveBeenCalled();
+});
+
+it('uses a later indexed passkey only after exact pre-auth missing-SLH classification', async () => {
+  const passkey = jest.fn(async () => ({ signature: '0xabcd' }));
+  const unavailable = Object.assign(new Error('Local key absent'), {
+    code: 'COMPOSITE_CHILD_UNAVAILABLE',
+    transactionNotBroadcast: true,
+  });
+  const result = await signSmartAccountActionHash({
+    smartAccount: optionalSlhMetadata(),
+    actionHash: digest,
+    assertBeforeAuthentication: async () => undefined,
+    ports: {
+      ecdsa: null,
+      p256WebAuthn: { signActionHash: passkey },
+      slhDsa: {
+        signActionHash: async () => {
+          throw unavailable;
+        },
+        signMessageActionHash: null,
+      },
+    },
+  });
+  expect(result.signature).toBe(
+    defaultAbiCoder.encode(['bytes[]'], [['0x', '0xabcd']])
+  );
+  expect(passkey).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  Object.assign(new Error('User cancelled'), { name: 'NotAllowedError' }),
+  new Error('Encrypted state corrupt'),
+  new Error('Provider unavailable'),
+  Object.assign(new Error('Untrusted absence'), {
+    code: 'COMPOSITE_CHILD_UNAVAILABLE',
+  }),
+  new SmartAccountExternalSignatureRequired({
+    actionHash: digest,
+    authenticator: 'slh-dsa',
+    validator: validators.slh,
+    message: 'Capability retired',
+  }),
+])(
+  'preserves fatal child error rather than prompting a different authenticator: %s',
+  async (failure) => {
+    const passkey = jest.fn();
+    await expect(
+      signSmartAccountActionHash({
+        smartAccount: optionalSlhMetadata(),
+        actionHash: digest,
+        assertBeforeAuthentication: async () => undefined,
+        ports: {
+          ecdsa: null,
+          p256WebAuthn: { signActionHash: passkey },
+          slhDsa: {
+            signActionHash: async () => {
+              throw failure;
+            },
+            signMessageActionHash: null,
+          },
+        },
+      })
+    ).rejects.toBe(failure);
+    expect(passkey).not.toHaveBeenCalled();
+  }
+);
+
+it('rechecks the exact request after a missing child before another authenticator can start', async () => {
+  let current = true;
+  const passkey = jest.fn();
+  await expect(
+    signSmartAccountActionHash({
+      smartAccount: optionalSlhMetadata(),
+      actionHash: digest,
+      assertBeforeAuthentication: async () => {
+        if (!current) throw new Error('stale');
+      },
+      ports: {
+        ecdsa: null,
+        p256WebAuthn: { signActionHash: passkey },
+        slhDsa: {
+          signMessageActionHash: null,
+          signActionHash: async () => {
+            current = false;
+            throw Object.assign(new Error('Local key absent'), {
+              code: 'COMPOSITE_CHILD_UNAVAILABLE',
+              transactionNotBroadcast: true,
+            });
+          },
+        },
+      },
+    })
+  ).rejects.toThrow('stale');
+  expect(passkey).not.toHaveBeenCalled();
 });
 
 it('extension passkey adapter preserves proof and backup-status delivery', async () => {

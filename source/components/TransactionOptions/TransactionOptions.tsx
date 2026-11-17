@@ -63,6 +63,9 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     (state: RootState) => state.vault.activeNetwork.currency
   );
   const scope = useSelector(() => getWalletNavigationScope());
+  const cancellationUnavailable =
+    (transaction as { cancellationUnavailable?: unknown })
+      .cancellationUnavailable === true;
   const preview = useRef<{
     cancel: () => void;
     close: () => void;
@@ -304,24 +307,26 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                       </li>
                     )}
                   </Menu.Item>
-                  <Menu.Item>
-                    {({ active }) => (
-                      <li
-                        className={`
+                  {!cancellationUnavailable && (
+                    <Menu.Item>
+                      {({ active }) => (
+                        <li
+                          className={`
                   ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                   ${CANCEL_ITEM_CLASS_NAME}
                   `}
-                        onClick={() => handleOnClick(UpdateTxAction.Cancel)}
-                      >
-                        <div className="w-5 mr-3">
-                          <CancelIcon />
-                        </div>
-                        <span className={ITEM_TEXT_CLASS_NAME}>
-                          {t('buttons.cancel')}
-                        </span>
-                      </li>
-                    )}
-                  </Menu.Item>
+                          onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+                        >
+                          <div className="w-5 mr-3">
+                            <CancelIcon />
+                          </div>
+                          <span className={ITEM_TEXT_CLASS_NAME}>
+                            {t('buttons.cancel')}
+                          </span>
+                        </li>
+                      )}
+                    </Menu.Item>
+                  )}
                 </Menu.Items>
               )}
             </div>

@@ -1118,3 +1118,39 @@ test('stopped EOA batch receipts reconcile after both authenticated stores reope
     'a stale stopped snapshot cannot complete a now-active sequence'
   );
 });
+
+for (const marker of ['ordinary', 'privateDeposit', 'privateWithdrawal'] as const) test(`generic payer cancellation preserves the ${marker} authority boundary`, async () => {
+  const f = fixture(), input = await signed(), session = f.session();
+  const metadata = marker === 'ordinary' ? undefined : { [marker]: { noteId: 'synthetic-note', intentId: 'synthetic-attempt' } };
+  await f.store.append(session, input, metadata);
+  const read = () => f.store.readReplacement(session, input.chainId, signer.address, input.hash, 'cancel');
+  const evidence = await read();
+  if (marker === 'privateWithdrawal') {
+    assert.equal(evidence, null);
+    await assert.rejects(f.store.captureVerifiedReplacement(session, { chainId: input.chainId, from: signer.address,
+      nonce: input.nonce, operation: 'cancel', originalHash: input.hash }), /EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE/);
+    assert.equal((await f.store.readExact(session, input.chainId, signer.address, input.hash))!.rawTransaction, input.rawTransaction);
+  } else {
+    assert(evidence?.binding, 'ordinary EOA and private-deposit payer cancellation remain available');
+    const rawTransaction = await signer.signTransaction({ type: 2, chainId: 7654321, nonce: input.nonce, to: signer.address, value: 0, data: '0x', gasLimit: 21000, maxFeePerGas: 6, maxPriorityFeePerGas: 2 });
+    await f.store.append(session, { ...input, rawTransaction, hash: Transaction.from(rawTransaction).hash!,
+      context: { ...input.context, operation: 'cancel', originalHash: input.hash } }, undefined, evidence.binding);
+  }
+  if (marker !== 'ordinary') assert.equal(await f.store.readReplacement(session, input.chainId, signer.address, input.hash, 'speed-up'), null);
+});
+
+test('private withdrawal cancellation exclusion is projected to both hosts without hiding retained bytes', async () => {
+  const { createNativeSignedRecordView } = await import('../src/custody/sharedSignedRecords.ts');
+  const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const { projectSavedEvmTransaction } = await import('../../../source/wallet/evmSignedReplay.ts');
+  const f = fixture(), input = await signed();
+  await f.store.append(f.session(), input, { privateWithdrawal: { noteId: 'fixture', intentId: 'attempt' } });
+  const entry = await f.store.readExact(f.session(), input.chainId, signer.address, input.hash); assert(entry);
+  assert.equal(projectSavedEvmTransaction(entry).cancellationUnavailable, true);
+  const network = createNativeNetwork({ id: 'custom:7654321', name: 'Fixture', kind: 'evm', chainId: input.chainId, slip44: 60,
+    rpcUrl: 'https://fixture.invalid', symbol: 'TEST', decimals: 18, testnet: true });
+  const view = createNativeSignedRecordView(f.store, f.session(), '1'.repeat(64), { type: 'HDAccount', index: 0, address: signer.address }, network);
+  const [row] = (await view.activities()).records; assert(row);
+  assert.equal(row.cancellationUnavailable, true); assert.equal(row.speedUpEligible, undefined); assert.equal(row.inspectionOnly, undefined);
+  assert.equal((await f.store.readExact(f.session(), input.chainId, signer.address, input.hash))!.rawTransaction, input.rawTransaction);
+});

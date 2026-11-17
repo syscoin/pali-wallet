@@ -208,7 +208,14 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           if (call.to?.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase()) {
             const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', call.data);
             for (const op of operations) {
-              const earlier = submitted.filter(raw => Transaction.from(raw).to === getPaliEntryPointAddress(Number(network.chainId))).length;
+              // EntryPoint sequences are scoped to sender AND validator nonce
+              // key. Activating a different validator does not consume its key.
+              const earlier = submitted.flatMap(raw => {
+                const tx = Transaction.from(raw);
+                if (tx.to !== getPaliEntryPointAddress(Number(network.chainId))) return [];
+                const [previous] = paliEntryPointInterface.decodeFunctionData('handleOps', tx.data);
+                return [...previous].filter(saved => saved.sender.toLowerCase() === op.sender.toLowerCase() && (saved.nonce >> 64n) === (op.nonce >> 64n));
+              }).length;
               const sequence = request.params[1] === 'pending' || readReceipts ? earlier : 0;
               assert.equal(op.nonce & ((1n << 64n) - 1n), BigInt(sequence) + externalSmartNonce, 'handleOps must estimate against matching pending state');
             }
@@ -6764,7 +6771,7 @@ for (const threshold of [1, 2]) test(`combined possession rejects unavailable re
   } finally { await operation?.dispose(); await close(); }
 });
 
-test('combined possession optional lost passkey does not block a verified ECDSA threshold', async () => {
+test('combined possession optional lost passkey permits later transfer and policy repair with original child slots', async () => {
   const { f, binding, hashes, assertion, close } = await combinedPossessionFixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
@@ -6775,6 +6782,26 @@ test('combined possession optional lost passkey does not block a verified ECDSA 
     await confirmModuleOperation(operation);
     assert.equal(hashes.length, 0); assert.equal(f.possessionViews.length, 1); assert.equal(f.signatures.length, 2);
     assert.notEqual(f.signatures[0]!.digest, f.signatures[1]!.digest);
+    await operation.dispose(); operation = undefined;
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, binding);
+    await confirmPolicyOperation(operation);
+    assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 2); assert.equal(hashes.length, 0);
+    const [sent] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[1]!).data);
+    const [sentSlots] = coder.decode(['bytes[]'], sent[0].signature);
+    assert.deepEqual([...sentSlots], ['0x', f.signatures[2]!.signature], 'the working second child keeps its original contract index');
+    await operation.dispose(); operation = undefined;
+    const repaired = [getConfiguredAuthenticatorAddress(1, 'ecdsa')];
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: repaired, threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    f.onBroadcast(() => { f.observedCompositeChildren(repaired); f.retainActiveValidator('composite'); });
+    await confirmModuleOperation(operation);
+    assert.equal(f.submitted.length, 3); assert.equal(hashes.length, 0); assert.equal(f.possessionViews.length, 2);
+    const [repair] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[2]!).data);
+    const [repairSlots] = coder.decode(['bytes[]'], repair[0].signature);
+    assert.deepEqual([...repairSlots], ['0x', f.signatures[4]!.signature], 'repair is signed by the still-active old policy before changing its children');
+    const observed = await f.runtime.readSmartAccountModules(new AbortController().signal, () => undefined);
+    const composite = observed.installedModules?.find(module => module.type === 'validator' && module.id === 'composite');
+    assert(composite?.type === 'validator' && composite.id === 'composite');
+    assert.deepEqual(composite.config.childValidators.map(address => address.toLowerCase()), repaired.map(address => address.toLowerCase()));
   } finally { await operation?.dispose(); await close(); }
 });
 
@@ -6933,7 +6960,7 @@ test('combined possession aborts malformed child responses instead of trying an 
   } finally { await operation?.dispose(); await close(); }
 });
 
-test('combined possession skips only pre-auth missing SLH state and retains the later passkey/current Trezor phases', async () => {
+test('combined possession missing SLH alternative permits later passkey transfer and policy repair with original slots', async () => {
   const backend = slhSmartBackend(); let assertions = 0, prompt = false;
   const auth = createNativePrivateAuthenticationScope();
   const binding = bindNativePrivateAuthentication(auth, { assertCurrent() {}, isPromptActive: () => prompt });
@@ -6957,5 +6984,23 @@ test('combined possession skips only pre-auth missing SLH state and retains the 
     assert.equal(backend.opened, 0, 'missing encrypted SLH state is rejected before private authentication/crypto');
     assert.deepEqual(f.slhDerivations, []); assert.equal(assertions, 1); assert.equal(f.possessionViews.length, 1); assert.equal(device.signatures.length, 1); assert.equal(f.submitted.length, 0);
     operation.confirmPayer(operation.getSnapshot().payerReview!.id); await authorizing; assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 1);
+    await operation.dispose(); operation = undefined;
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, binding);
+    await confirmPolicyOperation(operation); assert.equal(operation.getSnapshot().phase, 'complete');
+    assert.equal(assertions, 2); assert.equal(f.submitted.length, 2); assert.equal(backend.opened, 0);
+    const [sent] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[1]!).data);
+    const [sentSlots] = coder.decode(['bytes[]'], sent[0].signature);
+    assert.deepEqual([...sentSlots], ['0x', mixedPasskeyProof], 'the absent first SLH child is an empty slot, not an attempted signer');
+    await operation.dispose(); operation = undefined;
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [passkey], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    f.onBroadcast(() => { f.observedCompositeChildren([passkey]); f.retainActiveValidator('composite'); });
+    await confirmModuleOperation(operation);
+    assert.equal(assertions, 4); assert.equal(f.submitted.length, 3); assert.equal(backend.opened, 0); assert.equal(device.signatures.length, 1);
+    const [repair] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[2]!).data);
+    const [repairSlots] = coder.decode(['bytes[]'], repair[0].signature);
+    assert.deepEqual([...repairSlots], ['0x', mixedPasskeyProof]);
+    const observed = await f.runtime.readSmartAccountModules(new AbortController().signal, () => undefined);
+    const composite = observed.installedModules?.find(module => module.type === 'validator' && module.id === 'composite');
+    assert(composite?.type === 'validator' && composite.id === 'composite'); assert.deepEqual(composite.config.childValidators.map(address => address.toLowerCase()), [passkey.toLowerCase()]);
   } finally { auth.retire(); await operation?.dispose(); await close(); }
 });

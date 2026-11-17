@@ -235,7 +235,7 @@ describe('normal local composite approvals', () => {
   });
 
   it('does not silently fall back after a passkey rejection', async () => {
-    const smartAccount = metadata(1);
+    const smartAccount = metadata(2);
     compositeModule(smartAccount).config.childValidators = [P256, ECDSA];
     const denied = Object.assign(new Error('Passkey rejected'), {
       name: 'NotAllowedError',
@@ -508,6 +508,7 @@ describe('composite submission and SLH reserve policy', () => {
   ])('does not skip a PQ child after %s', async (message) => {
     const smartAccount = slhComposite();
     compositeModule(smartAccount).config.childValidators = [SLH, ECDSA];
+    compositeModule(smartAccount).config.threshold = 2;
     const signEcdsa = jest.fn().mockResolvedValue(ECDSA_SIGNATURE);
     const failure = new Error(message);
     await expect(
@@ -627,7 +628,7 @@ describe('one shared capability and connection plan', () => {
       );
     }
   );
-  it('does not require an unused later Ledger child when the earlier interactive child satisfies the threshold', () => {
+  it('chooses the same ECDSA threshold subset as possession despite a prior passkey slot', () => {
     const smartAccount = metadata(1);
     compositeModule(smartAccount).config.childValidators = [P256, ECDSA];
     const plan = getSmartAccountSigningPlan(smartAccount, {
@@ -636,12 +637,14 @@ describe('one shared capability and connection plan', () => {
       slhDsa: false,
     })!;
     expect(plan.authenticators.map((entry) => entry.validator.address)).toEqual(
-      [P256]
+      [ECDSA]
     );
-    expect(plan.authenticators.flatMap((entry) => entry.owners)).toEqual([]);
+    expect(plan.authenticators.flatMap((entry) => entry.owners)).toEqual([
+      { address: OWNER, id: 7, type: 'Ledger' },
+    ]);
   });
   it('retires a chosen child that loses capability without switching to a later unconnected owner', async () => {
-    const smartAccount = metadata(1);
+    const smartAccount = metadata(2);
     compositeModule(smartAccount).config.childValidators = [P256, ECDSA];
     const ledger = jest.fn(async () => ECDSA_SIGNATURE);
     const unavailable = new SmartAccountExternalSignatureRequired({

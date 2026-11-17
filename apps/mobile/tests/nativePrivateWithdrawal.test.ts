@@ -48,6 +48,8 @@ const depositAbi = new Interface([
   'function deposit(bytes32) payable',
   'function withdraw(bytes,bytes32,bytes32,address,address,uint256,uint256)',
   'event Withdrawal(address to, bytes32 nullifierHash, address indexed relayer, uint256 fee)',
+  'function isKnownRoot(bytes32) view returns(bool)',
+  'function isSpent(bytes32) view returns(bool)',
 ]);
 const RECIPIENT = '0x' + '12'.repeat(20);
 
@@ -99,7 +101,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let beforeResponse: () => Promise<void> = async () => undefined;
   let lost = false;
   let failPoolDispose = false;
-  let completionReads = false, completionReverted = false;
+  let completionReads = false, completionReverted = false, completionKnown = false, completionSpent = false;
   let missingCompletionReceipt: ((hash: string) => boolean) | undefined;
   let noteStatus: IPrivateNoteStatus = { phase: 'waiting' };
   const posted: string[] = [];
@@ -141,7 +143,10 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       const event = action.name === 'withdraw' ? depositAbi.encodeEventLog(depositAbi.getEvent('Withdrawal')!, [action.args[3], action.args[2], action.args[4], action.args[5]]) : null;
       result = method === 'eth_getTransactionByHash' ? shared : { transactionHash: transaction.hash, blockHash: shared.blockHash, blockNumber: shared.blockNumber, status: completionReverted && action.name === 'withdraw' ? '0x0' : '0x1', logs: event ? [{ address: transaction.to, transactionHash: transaction.hash, blockHash: shared.blockHash, blockNumber: shared.blockNumber, removed: false, ...event }] : [] };
     }
-    else if (completionReads && method === 'eth_call') result = '0x' + '00'.repeat(32);
+    else if (completionReads && method === 'eth_call') {
+      const known = params[0].data.startsWith(depositAbi.getFunction('isKnownRoot')!.selector);
+      result = depositAbi.encodeFunctionResult(known ? 'isKnownRoot' : 'isSpent', [known ? completionKnown : completionSpent]);
+    }
     else if (method === 'eth_getTransactionCount')
       result = '0x' + nonce.toString(16);
     else if (method === 'eth_getBalance') result = '0x56bc75e2d63100000';
@@ -329,6 +334,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     },
     enableCompletionReads(reverted = false) { completionReads = true; completionReverted = reverted; },
     missingCompletionReceipts(read: (hash: string) => boolean) { missingCompletionReceipt = read; },
+    completionPoolState(known: boolean, spent = false) { completionKnown = known; completionSpent = spent; },
+    finalizedPayerNonce(value: number) { nonce = value; },
     markUnsupported(
       flag: 'isLedgerWallet' | 'isTrezorWallet' | 'isSmartAccount'
     ) {
@@ -1391,4 +1398,50 @@ for (const fault of ['release', 'quarantine-and-release'] as const) for (const r
     assert.equal(f.disposed, previousDisposals + 1, 'failed exact cleanup is not repeated or hidden');
     assert.equal(f.posted.length, fault === 'release' ? 0 : 2);
   } finally { failRead = false; route.abort(); await recovery.dispose(); await f.close(); }
+});
+
+test('a displaced privacy withdrawal recovers only after finalized nonce consumption and proof expiry, preserving the journal across restart', async () => {
+  const f = await fixture(), route = new AbortController();
+  let maintenance: Awaited<ReturnType<NonNullable<KeyringRuntime['openNoteMaintenance']>>> | undefined;
+  try {
+    const inventory = await f.seed(), withdrawalRoute = new AbortController();
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop, testInventoryAuthentication(inventory));
+    await model.prepare({ recipient: RECIPIENT, mode: 'direct' }); await model.confirm(model.getSnapshot().review!.intentId);
+    withdrawalRoute.abort(); await model.dispose();
+    const [before] = await f.privateNotes(); assert(before?.withdrawal?.transactionHash);
+    const originalHash = before.withdrawal.transactionHash, originalNonce = Number(before.withdrawal.nonce);
+    f.enableCompletionReads(); f.missingCompletionReceipts(hash => hash === originalHash);
+    f.completionPoolState(true); f.finalizedPayerNonce(originalNonce + 1);
+    maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
+    const oldBytes = await f.storage.notes!.read();
+    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop, noop), /privacy_withdrawal_recovery_unavailable/);
+    assert.deepEqual(await f.storage.notes!.read(), oldBytes, 'a live disclosed proof cannot be cleared by payer cancellation');
+    f.completionPoolState(false); f.finalizedPayerNonce(originalNonce);
+    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop, noop), /privacy_withdrawal_recovery_unavailable/);
+    assert.deepEqual(await f.storage.notes!.read(), oldBytes);
+    f.finalizedPayerNonce(originalNonce + 1); f.completionPoolState(false, true);
+    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop, noop), /privacy_withdrawal_recovery_unavailable/);
+    assert.deepEqual(await f.storage.notes!.read(), oldBytes);
+    f.completionPoolState(false);
+    let nonceReads = 0;
+    f.beforeRpc(async method => { if (method === 'eth_getTransactionCount' && ++nonceReads === 2) f.completionPoolState(true); });
+    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop, noop), /privacy_withdrawal_recovery_unavailable/);
+    assert.equal(nonceReads, 2, 'the same finalized evidence is checked again immediately before storage mutation');
+    assert.deepEqual(await f.storage.notes!.read(), oldBytes);
+    f.beforeRpc(async () => undefined); f.completionPoolState(false);
+    const posted = f.posted.length, signatures = f.signatures, authorizations = f.secretReads;
+    await maintenance.recoverFailedWithdrawal(before.id, noop, noop);
+    assert.equal(f.secretReads, authorizations + 1, 'original record lookup and recovery reuse the same authentication');
+    assert.equal(f.posted.length, posted); assert.equal(f.signatures, signatures);
+    const [after] = await f.privateNotes(); assert(after?.withdrawal?.recovery);
+    assert.equal(after.note, before.note); assert.equal(after.withdrawal.transactionHash, originalHash);
+    assert.equal(after.withdrawal.proofHash, before.withdrawal.proofHash); assert.equal(after.withdrawal.inputHash, before.withdrawal.inputHash);
+    route.abort(); await maintenance.dispose(); maintenance = undefined; await f.reopen();
+    assert.deepEqual((await f.privateNotes())[0]!.withdrawal, after.withdrawal);
+    const freshInventory = await readTestNoteInventory(f.runtime, noop);
+    const retry = await freshInventory.openWithdrawal!(freshInventory.notes[0]!, new AbortController().signal, noop, testInventoryAuthentication(freshInventory));
+    await retry.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    assert.equal(retry.getSnapshot().phase, 'review', 'fresh proof and fee consent are required after recovery');
+    assert.equal(f.posted.length, posted); await retry.dispose();
+  } finally { route.abort(); await maintenance?.dispose(); await f.close(); }
 });

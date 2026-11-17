@@ -183,7 +183,7 @@ export const SendConfirm = () => {
       activeAccountMeta,
       activeNetwork.chainId,
       activeNetwork.url,
-      location.key,
+      submission.reviewScope,
       state?.walletScope,
     ])
   );

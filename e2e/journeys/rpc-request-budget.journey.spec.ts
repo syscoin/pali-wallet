@@ -20,6 +20,7 @@ import {
   assertRpcTrafficBudget,
   countRpcTraffic,
 } from '../harness/rpcTrafficBudget';
+import { observeSmartAccountFeeDiagnostics } from '../harness/smartAccountFeeDiagnostics';
 import {
   startLocalChains,
   localRpc,
@@ -169,6 +170,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       recordVideo: false,
       viewport: { width: 400, height: 620 },
     });
+    await observeSmartAccountFeeDiagnostics(wallet.context);
     chromium.launchPersistentContext = originalLaunch;
     const observations = new Map<Request, any>();
     const bodies: Promise<void>[] = [];
@@ -1525,6 +1527,9 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       };
     });
     if (wallet) {
+      output.controllerFees = await wallet.page
+        .evaluate(() => (window as any).__paliSmartAccountFeeDiagnostics ?? [])
+        .catch(() => []);
       output.finalUrl = wallet.page.url();
       output.finalText = await wallet.page
         .locator('body')

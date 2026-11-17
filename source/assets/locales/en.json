@@ -1956,9 +1956,9 @@
       "notBroadcast": "The transaction was not sent. Refresh the review before confirming again."
     },
     "recovery": {
-      "action": "Recover failed withdrawal",
-      "help": "Recovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.",
-      "disclosure": "This check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.",
+      "action": "Check withdrawal recovery",
+      "help": "Recovery is available only after the original transaction has finalized as failed, or its payer nonce has finalized as consumed, and the disclosed proof root is no longer accepted while the note remains unspent. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.",
+      "disclosure": "This check shares the payer address, transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.",
       "password": "Wallet password",
       "failed": "Recovery could not be confirmed. The original proof may still be usable, the note may be spent, or the evidence may be unavailable. Refresh before trying again.",
       "checking": "Checking finalized transaction and proof expiry…",

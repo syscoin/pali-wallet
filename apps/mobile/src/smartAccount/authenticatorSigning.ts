@@ -118,15 +118,15 @@ function captureNativeSmartAccountSigningContext(inputMetadata: ISmartAccountMet
   return { metadata, owners };
 }
 
-export function getNativeSmartAccountSigningPlan(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ p256WebAuthn: boolean; slhDsa: boolean }>) {
+export function getNativeSmartAccountSigningPlan(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ p256WebAuthn: boolean; slhDsa: boolean; slhDsaKeyIds?: readonly string[] }>) {
   if (typeof available?.slhDsa !== 'boolean' || typeof available?.p256WebAuthn !== 'boolean') throw new Error('Explicit native signing availability is required');
   const captured = captureNativeSmartAccountSigningContext(metadata, localOwners);
-  const plan = getSmartAccountSigningPlan(captured.metadata, {ecdsa: captured.owners, p256WebAuthn: available.p256WebAuthn, slhDsa: available.slhDsa});
+  const plan = getSmartAccountSigningPlan(captured.metadata, {ecdsa: captured.owners, p256WebAuthn: available.p256WebAuthn, slhDsa: available.slhDsa, ...(available.slhDsaKeyIds === undefined ? {} : {slhDsaKeyIds:available.slhDsaKeyIds})});
   // One terminal signature per Suite job; ordered owner jobs share only the
   // process-owned, exact-intent proof continuation implemented by the host.
   return plan;
 }
-export function canSignNativeSmartAccountActionHash(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ p256WebAuthn: boolean; slhDsa: boolean }>): boolean {
+export function canSignNativeSmartAccountActionHash(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ p256WebAuthn: boolean; slhDsa: boolean; slhDsaKeyIds?: readonly string[] }>): boolean {
   try { return getNativeSmartAccountSigningPlan(metadata, localOwners, available) !== null; } catch { return false; }
 }
 
@@ -167,7 +167,7 @@ export async function signNativeSmartAccountActionHash(
   )
     throw new Error('Native smart account signing ports are required');
   const { metadata, owners } = captureNativeSmartAccountSigningContext(params.metadata, params.localOwners);
-  const slhDsa = params.slhDsa === null ? null : Object.freeze({ signActionHash: params.slhDsa.signActionHash!.bind(params.slhDsa), signMessageActionHash: null });
+  const slhDsa = params.slhDsa === null ? null : Object.freeze({ signActionHash: params.slhDsa.signActionHash!.bind(params.slhDsa), signMessageActionHash: null, ...(params.slhDsa.availableKeyIds === undefined ? {} : {availableKeyIds:params.slhDsa.availableKeyIds}) });
   const result = await signSmartAccountActionHash({
     accountId: params.accountId,
     allowReservedSLHDSASignature: params.allowReservedSLHDSASignature,

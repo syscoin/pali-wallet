@@ -1,4 +1,5 @@
 import { AbiCoder, Interface, keccak256 } from 'ethers';
+import { Transaction } from 'ethers/transaction';
 
 import { FIELD_SIZE } from './merkle.ts';
 import type {
@@ -35,6 +36,8 @@ export interface IWithdrawalRecoveryRequest {
   assertCurrent: () => void;
   nullifierHash: string;
   poolAddress: string;
+  /** Exact bytes loaded from authenticated custody, never supplied by a renderer. */
+  readOriginalRawTransaction?: () => Promise<string | null>;
   rpc: (
     method: string,
     params: unknown[],
@@ -46,6 +49,8 @@ export interface IWithdrawalRecoveryRequest {
 /**
  * Explicit, privacy-sensitive recovery only. A reverted transaction alone is
  * insufficient: its disclosed proof remains usable until its root is evicted.
+ * A displaced, never-mined original also requires its authenticated signed
+ * bytes and finalized consumption of that payer nonce.
  * The pinned Classic pools only append to their trees; an evicted historical
  * root cannot return absent a hash collision. This retains the configured RPC
  * and Ethereum finality assumptions, not a trustless receipt proof.
@@ -80,9 +85,12 @@ export async function prepareWithdrawalRecovery(
       return invalid();
     const transactionHash = lower(w.transactionHash);
     const nonce = w.nonce!;
+    const readOriginal = req.readOriginalRawTransaction;
+    let original: Record<string, unknown> | undefined;
+    let receiptWasMissing: boolean | undefined;
     const run = async (evidence?: IPrivacyWithdrawalRecoveryReceipt) => {
       const deadline = Date.now() + 15000;
-      const read = async (method: string, params: unknown[]) => {
+      const owned = async <T>(work: (signal: AbortSignal) => Promise<T>) => {
         req.assertCurrent();
         const remaining = deadline - Date.now();
         if (remaining <= 0) return invalid();
@@ -90,7 +98,7 @@ export async function prepareWithdrawalRecovery(
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           const value = await Promise.race([
-            req.rpc(method, params, controller.signal),
+            work(controller.signal),
             new Promise<never>((_resolve, reject) => {
               timer = setTimeout(() => {
                 controller.abort();
@@ -104,6 +112,8 @@ export async function prepareWithdrawalRecovery(
           if (timer !== undefined) clearTimeout(timer);
         }
       };
+      const read = (method: string, params: unknown[]) =>
+        owned((signal) => req.rpc(method, params, signal));
       if ((await read('eth_chainId', [])) !== '0x1') return invalid();
       const finalized = object(
         await read('eth_getBlockByNumber', ['finalized', false])
@@ -125,35 +135,78 @@ export async function prepareWithdrawalRecovery(
           : lower(anchor.hash) !== lower(finalized.hash))
       )
         return invalid();
-      const receipt = object(
-        await read('eth_getTransactionReceipt', [transactionHash])
-      );
-      if (
-        lower(receipt.transactionHash) !== transactionHash ||
-        receipt.status !== '0x0' ||
-        !HASH.test(lower(receipt.blockHash)) ||
-        quantity(receipt.blockNumber) > quantity(blockNumber)
-      )
+      const receiptValue = await read('eth_getTransactionReceipt', [
+        transactionHash,
+      ]);
+      const missing = receiptValue === null;
+      if (receiptWasMissing !== undefined && missing !== receiptWasMissing)
         return invalid();
-      const canonical = object(
-        await read('eth_getBlockByNumber', [receipt.blockNumber, false])
-      );
-      if (
-        canonical.number !== receipt.blockNumber ||
-        lower(canonical.hash) !== lower(receipt.blockHash)
-      )
-        return invalid();
-      const tx = object(
-        await read('eth_getTransactionByHash', [transactionHash])
-      );
+      receiptWasMissing = missing;
+      let tx: Record<string, any>;
+      if (missing) {
+        if (!readOriginal) return invalid();
+        if (!original) {
+          const raw = await owned(() => readOriginal());
+          if (
+            typeof raw !== 'string' ||
+            raw.length > 8194 ||
+            !/^0x[\da-f]+$/i.test(raw)
+          )
+            return invalid();
+          const signed = Transaction.from(raw);
+          if (
+            !signed.signature ||
+            !signed.hash ||
+            !signed.from ||
+            signed.chainId !== BigInt(1)
+          )
+            return invalid();
+          original = Object.freeze({
+            hash: signed.hash,
+            from: signed.from,
+            to: signed.to,
+            nonce: '0x' + signed.nonce.toString(16),
+            value: '0x' + signed.value.toString(16),
+            input: signed.data,
+            chainId: '0x1',
+          });
+        }
+        tx = original;
+        const consumed = quantity(
+          await read('eth_getTransactionCount', [lower(w.from), blockNumber])
+        );
+        if (consumed <= BigInt(nonce) || consumed >= BigInt(1) << BigInt(64))
+          return invalid();
+      } else {
+        const receipt = object(receiptValue);
+        if (
+          lower(receipt.transactionHash) !== transactionHash ||
+          receipt.status !== '0x0' ||
+          !HASH.test(lower(receipt.blockHash)) ||
+          quantity(receipt.blockNumber) > quantity(blockNumber)
+        )
+          return invalid();
+        const canonical = object(
+          await read('eth_getBlockByNumber', [receipt.blockNumber, false])
+        );
+        if (
+          canonical.number !== receipt.blockNumber ||
+          lower(canonical.hash) !== lower(receipt.blockHash)
+        )
+          return invalid();
+        tx = object(await read('eth_getTransactionByHash', [transactionHash]));
+        if (
+          lower(tx.blockHash) !== lower(receipt.blockHash) ||
+          tx.blockNumber !== receipt.blockNumber
+        )
+          return invalid();
+      }
       if (
         lower(tx.hash) !== transactionHash ||
         lower(tx.from) !== lower(w.from) ||
         lower(tx.to) !== pool ||
         quantity(tx.nonce) !== BigInt(nonce) ||
         quantity(tx.value) !== BigInt(0) ||
-        lower(tx.blockHash) !== lower(receipt.blockHash) ||
-        tx.blockNumber !== receipt.blockNumber ||
         (tx.chainId !== undefined && quantity(tx.chainId) !== BigInt(1)) ||
         typeof tx.input !== 'string' ||
         !/^0x[0-9a-fA-F]{1032}$/.test(tx.input)

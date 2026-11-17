@@ -4181,6 +4181,23 @@ class MainController {
         nullifierHash: identity.nullifierHash,
         withdrawal,
         assertCurrent,
+        readOriginalRawTransaction: async () => {
+          assertCurrent();
+          const keyring = this.getActiveKeyring();
+          const guard = () => {
+            assertCurrent();
+            if (this.getActiveKeyring() !== keyring)
+              throw new Error('privacy_withdrawal_recovery_unavailable');
+          };
+          const row = await this.getRetainedEvmRecords().readForObservation(
+            { keyring, assertCurrent: guard },
+            '1',
+            withdrawal.from!,
+            withdrawal.transactionHash!
+          );
+          guard();
+          return row?.entry.rawTransaction ?? null;
+        },
         rpc: (method, params, signal) =>
           readWithdrawalRecoveryRpc(rpcUrl, method, params, signal),
       });
@@ -11537,7 +11554,9 @@ class MainController {
             params.keyId
           )}. Regenerate the local signer.`
         ),
-        possessionMetadata
+        possessionMetadata ||
+          ((activeAuth?.module || activeAuth?.scheme) === 'composite' &&
+            activeValidator?.id === 'composite')
           ? {
               code: 'COMPOSITE_CHILD_UNAVAILABLE',
               transactionNotBroadcast: true,

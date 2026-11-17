@@ -173,7 +173,6 @@ export type SubmitSmartAccountExecutionsParams = {
     prepared: Readonly<{ executionContextId: string }>
   ) => Promise<void>;
   onPrepared?: () => void;
-  onSubmissionNotBroadcast?: () => Promise<void>;
   skipRapidPolling?: boolean;
   smartAccount: ISmartAccountMetadata;
   /** Internal wallet controls share only the same exact approval context. */
@@ -319,77 +318,9 @@ type P256WebAuthnAuthenticatorRuntimeContext = {
 };
 
 type SLHDSAAuthenticatorRuntimeContext = {
+  availableKeyIds?: readonly string[];
   signActionHash?: SmartAccountSLHDSASigner;
   signMessageActionHash?: (keyId: string, validator: string) => Promise<string>;
-};
-
-const stringifyError = (error: unknown): string => {
-  if (!error || typeof error !== 'object') {
-    return '';
-  }
-
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return '';
-  }
-};
-
-const getErrorText = (error: unknown, depth = 0): string => {
-  if (!error || depth > 4) {
-    return '';
-  }
-  if (typeof error === 'string') {
-    try {
-      return [error, getErrorText(JSON.parse(error), depth + 1)]
-        .filter(Boolean)
-        .join(' ');
-    } catch {
-      return error;
-    }
-  }
-  if (typeof error !== 'object') {
-    return String(error);
-  }
-
-  const errorRecord = error as Record<string, unknown>;
-  const parts = [
-    errorRecord.message,
-    errorRecord.reason,
-    errorRecord.code,
-    errorRecord.data,
-    errorRecord.error,
-    errorRecord.body,
-    errorRecord.response,
-    errorRecord.info,
-    stringifyError(error),
-    ...Object.getOwnPropertyNames(error)
-      .filter((key) => key !== 'stack')
-      .map((key) => errorRecord[key]),
-  ].flatMap((value) => {
-    if (!value) {
-      return [];
-    }
-    if (typeof value === 'string') {
-      try {
-        return [value, getErrorText(JSON.parse(value), depth + 1)];
-      } catch {
-        return [value];
-      }
-    }
-    return [getErrorText(value, depth + 1)];
-  });
-
-  return parts.filter(Boolean).join(' ');
-};
-
-const isSmartAccountSignatureError = (error: unknown) => {
-  const message = getErrorText(error);
-  return (
-    message.includes('AA24') ||
-    message.includes('PALI_SMART_ACCOUNT_SIGNATURE_ERROR') ||
-    message.includes('41413234207369676e6174757265206572726f72')
-  );
 };
 
 export const getSmartAccountLocalOwnerContexts = ({
@@ -498,6 +429,9 @@ function extensionAuthenticatorPorts(
     },
     slhDsa: slh
       ? {
+          ...(slh.availableKeyIds !== undefined && {
+            availableKeyIds: slh.availableKeyIds,
+          }),
           signActionHash: slh.signActionHash ?? null,
           signMessageActionHash: slh.signMessageActionHash ?? null,
         }
@@ -540,7 +474,6 @@ export const signAndSubmitSmartAccountExecutions = async (
     onAuthenticatorSigningStarted,
     onBeforeSubmit,
     onPrepared,
-    onSubmissionNotBroadcast,
     skipRapidPolling,
     trackLocalSubmission,
     smartAccount,
@@ -569,11 +502,9 @@ export const signAndSubmitSmartAccountExecutions = async (
       })
     : '';
 
-  let submissionStarted = false;
-  const prepareSignAndSubmit = async (useCachedMetadataOverride?: boolean) => {
-    submissionStarted = false;
+  const prepareSignAndSubmit = async () => {
     const retainedContextId =
-      useCachedMetadataOverride !== false
+      useCachedMetadata !== false
         ? approvedFeeQuote?.executionContextId
         : undefined;
     const prepared = (await controllerEmitter(
@@ -590,7 +521,7 @@ export const signAndSubmitSmartAccountExecutions = async (
           ...(expectedContext ? { expectedContext } : {}),
           feeOverrides,
           expectedErc20Transfers,
-          useCachedMetadata: useCachedMetadataOverride,
+          useCachedMetadata,
           ...(retainedContextId
             ? { executionContextId: retainedContextId }
             : {}),
@@ -773,7 +704,6 @@ export const signAndSubmitSmartAccountExecutions = async (
       })
     );
     await assertContext();
-    submissionStarted = true;
     return controllerEmitter(
       ['wallet', 'submitSmartAccountExecution'],
       [
@@ -802,28 +732,11 @@ export const signAndSubmitSmartAccountExecutions = async (
     );
   };
 
-  const run = async () => {
-    try {
-      return await prepareSignAndSubmit(useCachedMetadata);
-    } catch (error) {
-      if (
-        useCachedMetadata !== false &&
-        isSmartAccountSignatureError(error) &&
-        !(error as any)?.transactionHash &&
-        (error as any)?.transactionNotBroadcast !== false &&
-        (!submissionStarted || (error as any)?.transactionNotBroadcast === true)
-      ) {
-        // A host's durable begin must be settled before a refreshed operation
-        // can acquire the reservation. Unknown submissions never reach here.
-        if (submissionStarted) await onSubmissionNotBroadcast?.();
-        return await prepareSignAndSubmit(false);
-      }
-      throw error;
-    }
-  };
-
+  // A signed UserOperation may already be executable after an estimate or
+  // simulation, even when no outer payer transaction was broadcast. A failed
+  // attempt must never create a fresh nonce authorization under this approval.
   if (!shouldTrackJob) {
-    return run();
+    return prepareSignAndSubmit();
   }
 
   const inFlightJob = smartAccountSubmitJobs.get(submitJobKey);
@@ -831,7 +744,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     return inFlightJob;
   }
 
-  const job = run();
+  const job = prepareSignAndSubmit();
   smartAccountSubmitJobs.set(submitJobKey, job);
   try {
     return await job;

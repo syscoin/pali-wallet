@@ -667,7 +667,7 @@ describe('smart-account signing and outer broadcast context', () => {
       expect(fixture.call).not.toHaveBeenCalled();
     });
 
-    it('classifies only missing encrypted possession state as an optional unavailable SLH child', async () => {
+    it('classifies only missing encrypted composite state as an optional unavailable SLH child', async () => {
       prepare(1);
       const load = jest
         .spyOn(slhState, 'loadEncryptedSLHDSAState')
@@ -718,6 +718,16 @@ describe('smart-account signing and outer broadcast context', () => {
         wallet.hydrateActiveSLHDSAStateForSigning(request, 0, proposed)
       ).rejects.not.toHaveProperty('code');
       currentState.vault.accounts.SmartAccount[1].smartAccount = proposed;
+      await expect(
+        wallet.hydrateActiveSLHDSAStateForSigning(request, 0)
+      ).rejects.toMatchObject({
+        code: 'COMPOSITE_CHILD_UNAVAILABLE',
+        transactionNotBroadcast: true,
+      });
+      currentState.vault.accounts.SmartAccount[1].smartAccount = {
+        ...proposed,
+        auth: { module: 'slh-dsa', validator: slh, data: '0x' },
+      };
       await expect(
         wallet.hydrateActiveSLHDSAStateForSigning(request, 0)
       ).rejects.not.toHaveProperty('code');

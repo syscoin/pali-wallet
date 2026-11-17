@@ -84,6 +84,10 @@ test('maintenance transport denies unsupported methods and malformed parameters 
     ['eth_getBalance', [account, 'latest']],
     ['eth_chainId', ['unexpected']],
     ['eth_getTransactionByHash', ['bad-hash']],
+    ['eth_getTransactionCount', [account, 'latest']],
+    ['eth_getTransactionCount', [account, 'pending']],
+    ['eth_getTransactionCount', [account, '0x010']],
+    ['eth_getTransactionCount', ['bad-address', '0x10']],
     ['eth_call', [{ to: account, data: 'invalid' }, 'latest']],
   ] as const) await assert.rejects(async () => f.rpc.noteMaintenanceRead(method, params, f.signal.signal, f.check));
   assert.equal(f.calls.length, 0);

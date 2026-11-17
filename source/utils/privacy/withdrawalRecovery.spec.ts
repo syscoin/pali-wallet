@@ -1,4 +1,4 @@
-import { AbiCoder, Interface, keccak256 } from 'ethers';
+import { AbiCoder, Interface, keccak256, Wallet, Transaction } from 'ethers';
 
 import { prepareWithdrawalRecovery } from './withdrawalRecovery';
 
@@ -187,5 +187,195 @@ it('refuses unknown, relayed, and already-recovered attempts without an RPC', as
       'privacy_withdrawal_recovery_unavailable'
     );
     expect(f.rpc).not.toHaveBeenCalled();
+  }
+});
+
+async function displacedFixture() {
+  const f = fixture();
+  const wallet = new Wallet('0x' + '01'.repeat(32)); // Public disposable test key.
+  const raw = await wallet.signTransaction({
+    type: 2,
+    chainId: 1,
+    nonce: 1,
+    to: POOL,
+    value: 0,
+    data: f.tx.input,
+    gasLimit: 300000,
+    maxFeePerGas: 20,
+    maxPriorityFeePerGas: 2,
+  });
+  const signed = Transaction.from(raw);
+  Object.assign(f.request.withdrawal, {
+    from: wallet.address.toLowerCase(),
+    transactionHash: signed.hash!,
+  });
+  let consumedNonce = '0x2';
+  const base = f.rpc.getMockImplementation()!;
+  f.rpc.mockImplementation(async (method: string, params: unknown[]) => {
+    if (method === 'eth_getTransactionReceipt') return null;
+    if (method === 'eth_getTransactionByHash')
+      throw Error('The displaced original is no longer in the RPC mempool');
+    if (method === 'eth_getTransactionCount') {
+      expect(params).toEqual([wallet.address.toLowerCase(), '0x10']);
+      return consumedNonce;
+    }
+    return base(method, params);
+  });
+  const readOriginalRawTransaction = jest.fn<Promise<string | null>, []>(
+    async () => raw
+  );
+  return {
+    ...f,
+    raw,
+    wallet,
+    request: { ...f.request, readOriginalRawTransaction },
+    setNonce: (value: string) => {
+      consumedNonce = value;
+    },
+  };
+}
+
+it('recovers a displaced never-mined original only from its authenticated bytes and finalized consumed nonce', async () => {
+  const f = await displacedFixture();
+  const proof = await prepareWithdrawalRecovery(f.request);
+  expect(proof.receipt).toEqual({
+    root: ROOT,
+    blockNumber: '16',
+    blockHash: BLOCK,
+  });
+  await proof.revalidate();
+  expect(f.request.readOriginalRawTransaction).toHaveBeenCalledTimes(1);
+  expect(
+    f.rpc.mock.calls.filter(([method]) => method === 'eth_getTransactionCount')
+  ).toHaveLength(2);
+  expect(
+    f.rpc.mock.calls.filter(([method]) => method === 'eth_getTransactionByHash')
+  ).toHaveLength(0);
+});
+
+it.each([
+  'live root',
+  'spent',
+  'unconsumed',
+  'wrong hash',
+  'wrong payer',
+  'wrong nonce',
+  'wrong pool',
+  'wrong proof',
+  'wrong input',
+  'unsigned',
+  'oversized',
+  'raw unavailable',
+] as const)('does not recover a displaced original with %s', async (mode) => {
+  const f = await displacedFixture();
+  if (mode === 'live root') f.setKnown(true);
+  if (mode === 'spent') f.setSpent(true);
+  if (mode === 'unconsumed') f.setNonce('0x1');
+  if (mode === 'wrong hash') f.request.withdrawal.transactionHash = BLOCK;
+  if (mode === 'wrong payer') f.request.withdrawal.from = RECIPIENT;
+  if (mode === 'wrong nonce') f.request.withdrawal.nonce = '2';
+  if (mode === 'wrong pool') f.request.poolAddress = RECIPIENT;
+  if (mode === 'wrong proof') f.request.withdrawal.proofHash = BLOCK;
+  if (mode === 'wrong input') f.request.withdrawal.inputHash = BLOCK;
+  if (mode === 'unsigned')
+    f.request.readOriginalRawTransaction.mockResolvedValue(
+      Transaction.from(f.raw).unsignedSerialized
+    );
+  if (mode === 'oversized')
+    f.request.readOriginalRawTransaction.mockResolvedValue(
+      '0x' + '00'.repeat(8192)
+    );
+  if (mode === 'raw unavailable')
+    f.request.readOriginalRawTransaction.mockResolvedValue(null);
+  await expect(prepareWithdrawalRecovery(f.request)).rejects.toThrow(
+    'privacy_withdrawal_recovery_unavailable'
+  );
+});
+
+it.each(['anchor', 'root', 'spent', 'nonce', 'session'] as const)(
+  'revalidates displaced-withdrawal %s immediately before the vault mutation',
+  async (mode) => {
+    const f = await displacedFixture(),
+      proof = await prepareWithdrawalRecovery(f.request);
+    if (mode === 'anchor') f.block.hash = HASH;
+    if (mode === 'root') f.setKnown(true);
+    if (mode === 'spent') f.setSpent(true);
+    if (mode === 'nonce') f.setNonce('0x1');
+    if (mode === 'session')
+      f.current.mockImplementation(() => {
+        throw Error('retired');
+      });
+    await expect(proof.revalidate()).rejects.toThrow(
+      'privacy_withdrawal_recovery_unavailable'
+    );
+  }
+);
+
+it.each([undefined, {}, { status: '0x1' }])(
+  'does not substitute nonce evidence for a malformed or successful original receipt (%j)',
+  async (receipt) => {
+    const f = await displacedFixture(),
+      read = f.rpc.getMockImplementation()!;
+    f.rpc.mockImplementation((method, params) =>
+      method === 'eth_getTransactionReceipt'
+        ? Promise.resolve(receipt)
+        : read(method, params)
+    );
+    await expect(prepareWithdrawalRecovery(f.request)).rejects.toThrow(
+      'privacy_withdrawal_recovery_unavailable'
+    );
+    expect(f.request.readOriginalRawTransaction).not.toHaveBeenCalled();
+  }
+);
+
+it('rejects another-chain signed evidence even when its reported hash and payer match the journal', async () => {
+  const f = await displacedFixture(),
+    transaction = Transaction.from(f.raw);
+  const raw = await f.wallet.signTransaction({
+    type: 2,
+    chainId: 2,
+    nonce: transaction.nonce,
+    to: transaction.to,
+    data: transaction.data,
+    value: 0,
+    gasLimit: transaction.gasLimit,
+    maxFeePerGas: 20,
+    maxPriorityFeePerGas: 2,
+  });
+  f.request.withdrawal.transactionHash = Transaction.from(raw).hash!;
+  f.request.readOriginalRawTransaction.mockResolvedValue(raw);
+  await expect(prepareWithdrawalRecovery(f.request)).rejects.toThrow(
+    'privacy_withdrawal_recovery_unavailable'
+  );
+});
+
+it('bounds a held authenticated original read and ignores its late result', async () => {
+  const f = await displacedFixture();
+  jest.useFakeTimers();
+  let enter!: () => void, release!: (raw: string) => void;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  f.request.readOriginalRawTransaction.mockImplementation(() => {
+    enter();
+    return new Promise((resolve) => {
+      release = resolve;
+    });
+  });
+  try {
+    const prepared = prepareWithdrawalRecovery(f.request),
+      rejected = expect(prepared).rejects.toThrow(
+        'privacy_withdrawal_recovery_unavailable'
+      );
+    await entered;
+    jest.advanceTimersByTime(15000);
+    await rejected;
+    release(f.raw);
+    await Promise.resolve();
+    expect(
+      f.rpc.mock.calls.some(([method]) => method === 'eth_getTransactionCount')
+    ).toBe(false);
+  } finally {
+    jest.useRealTimers();
   }
 });

@@ -584,13 +584,13 @@ describe('signAndSubmitSmartAccountExecutions', () => {
   );
 
   it.each([
-    { marker: undefined, acknowledged: false, expected: 1 },
-    { marker: false, acknowledged: false, expected: 1 },
-    { marker: true, acknowledged: false, expected: 2 },
-    { marker: true, acknowledged: true, expected: 1 },
+    { marker: undefined, acknowledged: false },
+    { marker: false, acknowledged: false },
+    { marker: true, acknowledged: false },
+    { marker: true, acknowledged: true },
   ])(
-    'retries a submitted signature error only when proven unsent: %j',
-    async ({ marker, acknowledged, expected }) => {
+    'never authorizes another operation automatically after a submitted signature error: %j',
+    async ({ marker, acknowledged }) => {
       const executions = [{ data: '0x', target: ENTRY_TARGET, value: '0x0' }];
       const events: string[] = [];
       let submits = 0;
@@ -631,35 +631,25 @@ describe('signAndSubmitSmartAccountExecutions', () => {
           onBeforeSubmit: async () => {
             events.push('durable begin');
           },
-          onSubmissionNotBroadcast: async () => {
-            events.push('proven unsent');
-          },
         })
       );
-      if (expected === 2)
-        await expect(submitting).resolves.toEqual({ hash: 'retried' });
-      else await expect(submitting).rejects.toBe(error);
+      await expect(submitting).rejects.toBe(error);
       const calls = emitter.mock.calls.filter(
         ([[, method]]) => method === 'submitSmartAccountExecution'
       );
-      expect(calls).toHaveLength(expected);
+      expect(calls).toHaveLength(1);
       for (const call of calls)
         expect(call.slice(2)).toEqual([
           300000,
           false,
           { confirmFee: expect.any(Function) },
         ]);
-      expect(events).toEqual(
-        expected === 2
-          ? [
-              'durable begin',
-              'submit',
-              'proven unsent',
-              'durable begin',
-              'submit',
-            ]
-          : ['durable begin', 'submit']
-      );
+      expect(events).toEqual(['durable begin', 'submit']);
+      expect(
+        emitter.mock.calls.filter(
+          ([[, method]]) => method === 'prepareSmartAccountExecutions'
+        )
+      ).toHaveLength(1);
     }
   );
 

@@ -907,11 +907,6 @@ export const SendCalls = () => {
                 setIsPqSigning(true);
               }
             },
-            onSubmissionNotBroadcast: async () => {
-              if (!(await markSubmissionNotBroadcast()))
-                throw new Error(t('send.sendError'));
-              smartSubmissionInvoked = false;
-            },
             onBeforeSubmit: async ({ executionContextId }) => {
               if (
                 !mountedRef.current ||

@@ -591,3 +591,44 @@ test('completion RPC bounds receipt response before parsing and rejects mismatch
     )
   ).rejects.toThrow();
 });
+
+it('permits finalized numeric-block payer nonce recovery reads but no pending/latest or arbitrary account query', async () => {
+  const payer = '0x' + '12'.repeat(20);
+  global.fetch = jest.fn(async (_url, init) => {
+    const request = JSON.parse(String(init?.body));
+    return Response.json({ jsonrpc: '2.0', id: request.id, result: '0x2' });
+  });
+  await expect(
+    readWithdrawalRecoveryRpc(
+      'https://rpc.example',
+      'eth_getTransactionCount',
+      [payer, '0x10'],
+      signal()
+    )
+  ).resolves.toBe('0x2');
+  for (const params of [
+    [payer, 'latest'],
+    [payer, 'pending'],
+    [payer, 'finalized'],
+    [payer, '0x010'],
+    ['wrong-address', '0x10'],
+    [payer, '0x10', 'extra'],
+  ])
+    await expect(
+      readWithdrawalRecoveryRpc(
+        'https://rpc.example',
+        'eth_getTransactionCount',
+        params,
+        signal()
+      )
+    ).rejects.toThrow('privacy_rpc_unavailable');
+  await expect(
+    readCompletionRpc(
+      'https://rpc.example',
+      'eth_getTransactionCount',
+      [payer, '0x10'],
+      signal()
+    )
+  ).rejects.toThrow('privacy_rpc_unavailable');
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+});

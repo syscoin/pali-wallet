@@ -6,7 +6,9 @@ jest.mock('scripts/Background', () => ({
   getController: () => ({ createPopup: createPopupMock }),
 }));
 
+import { SMART_ACCOUNT_CONTROLLER_PORT } from '../../../../shared/smartAccountControllerAuthority';
 import { beginApprovalSubmission } from '../../handlers/approvalSubmission';
+import { handleMasterControllerResponses } from '../../handlers/handleMasterControllerResponses';
 import { createExternalWalletView } from '../externalWalletCreation';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 
@@ -167,6 +169,191 @@ describe('approval popup boundary', () => {
     },
     { method: 'signSendAndSaveTransaction', route: MethodRoute.SignTx },
   ];
+
+  it.each(
+    [
+      MethodRoute.SendEthTx,
+      MethodRoute.SendCalls,
+      MethodRoute.SmartAccount,
+      MethodRoute.SmartAccountModules,
+    ].flatMap((route) =>
+      [
+        'approveSmartAccountExecutionFeeQuote',
+        'signSmartAccountCompositeOwner',
+        'verifySmartAccountCompositePossession',
+      ].map((method) => ({ route, method }))
+    )
+  )(
+    'enrolls $method through the actual external $route popup and owned Port',
+    async ({ route, method }) => {
+      const operation = jest.fn(async (_id, _value, authority) => {
+        authority.assertCurrent();
+        return { approved: true };
+      });
+      handleMasterControllerResponses({
+        wallet: { [method]: operation },
+      } as any);
+      let pending: Promise<unknown> | undefined;
+      const connect = (documentId = 'approval-document') => {
+        const messages = new Set<(message: unknown) => void>(),
+          disconnects = new Set<() => void>();
+        const port = {
+          name: SMART_ACCOUNT_CONTROLLER_PORT,
+          sender: {
+            id: 'pali',
+            frameId: 0,
+            documentId,
+            tab: { id: 19, windowId: 9 },
+            url: source(`external/${route}`).url,
+          },
+          onMessage: {
+            addListener: (fn: (message: unknown) => void) => messages.add(fn),
+            removeListener: (fn: (message: unknown) => void) =>
+              messages.delete(fn),
+          },
+          onDisconnect: {
+            addListener: (fn: () => void) => disconnects.add(fn),
+            removeListener: (fn: () => void) => disconnects.delete(fn),
+          },
+          postMessage: jest.fn(),
+          disconnect: jest.fn(() => [...disconnects].forEach((fn) => fn())),
+        };
+        (chrome.runtime.onConnect.addListener as jest.Mock).mock.calls.at(
+          -1
+        )[0](port);
+        [...messages].forEach((fn) =>
+          fn({
+            type: 'CONTROLLER_ACTION',
+            data: {
+              methods: ['wallet', method],
+              params: ['prepared-context', { proof: 'test-only' }],
+            },
+          })
+        );
+        return port;
+      };
+      try {
+        ({ pending } = await begin(undefined, undefined, true, route));
+        (self as any).clients = {
+          get: async () => ({ url: source(`external/${route}`).url }),
+        };
+        const foreign = connect('other-document');
+        await new Promise(setImmediate);
+        expect(operation).not.toHaveBeenCalled();
+        expect(foreign.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            success: false,
+            error: expect.objectContaining({ transactionNotBroadcast: true }),
+          })
+        );
+        const owned = connect();
+        await new Promise(setImmediate);
+        expect(operation).toHaveBeenCalledTimes(1);
+        expect(owned.postMessage).toHaveBeenCalledWith({ approved: true });
+        const authority = operation.mock.calls[0][2];
+        expect(authority.kind).toBe('document');
+        expect(authority.signal.aborted).toBe(true);
+        const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+        windowRemovalListener(9);
+        await rejected;
+        const retired = connect();
+        await new Promise(setImmediate);
+        expect(operation).toHaveBeenCalledTimes(1);
+        expect(retired.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            success: false,
+            error: expect.objectContaining({ transactionNotBroadcast: true }),
+          })
+        );
+      } finally {
+        if (pending) {
+          const settled = pending.catch(() => undefined);
+          windowRemovalListener(9);
+          await settled;
+        }
+        handleMasterControllerResponses({ wallet: {} } as any);
+        delete (self as any).clients;
+      }
+    }
+  );
+
+  it.each([
+    ...[
+      'approveSmartAccountExecutionFeeQuote',
+      'signSmartAccountCompositeOwner',
+      'verifySmartAccountCompositePossession',
+    ].map((method) => ({ route: MethodRoute.Connect, method })),
+    { route: MethodRoute.SendEthTx, method: 'registerSmartAccountOnChain' },
+  ])(
+    'does not enroll $method on the unrelated external $route route',
+    async ({ route, method }) => {
+      const operation = jest.fn();
+      handleMasterControllerResponses({
+        wallet: { [method]: operation },
+      } as any);
+      let pending: Promise<unknown> | undefined;
+      try {
+        ({ pending } = await begin(undefined, undefined, true, route));
+        (self as any).clients = {
+          get: async () => ({ url: source(`external/${route}`).url }),
+        };
+        const messages = new Set<(value: unknown) => void>(),
+          disconnects = new Set<() => void>();
+        const port = {
+          name: SMART_ACCOUNT_CONTROLLER_PORT,
+          sender: {
+            id: 'pali',
+            frameId: 0,
+            documentId: 'approval-document',
+            tab: { id: 19, windowId: 9 },
+            url: source(`external/${route}`).url,
+          },
+          onMessage: {
+            addListener: (fn: (value: unknown) => void) => messages.add(fn),
+            removeListener: (fn: (value: unknown) => void) =>
+              messages.delete(fn),
+          },
+          onDisconnect: {
+            addListener: (fn: () => void) => disconnects.add(fn),
+            removeListener: (fn: () => void) => disconnects.delete(fn),
+          },
+          postMessage: jest.fn(),
+          disconnect: jest.fn(() => [...disconnects].forEach((fn) => fn())),
+        };
+        (chrome.runtime.onConnect.addListener as jest.Mock).mock.calls.at(
+          -1
+        )[0](port);
+        [...messages].forEach((fn) =>
+          fn({
+            type: 'CONTROLLER_ACTION',
+            data: {
+              methods: ['wallet', method],
+              params:
+                method === 'registerSmartAccountOnChain'
+                  ? [{}]
+                  : ['prepared-context', {}],
+            },
+          })
+        );
+        await new Promise(setImmediate);
+        expect(operation).not.toHaveBeenCalled();
+        expect(port.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            success: false,
+            error: expect.objectContaining({ transactionNotBroadcast: true }),
+          })
+        );
+      } finally {
+        if (pending) {
+          const settled = pending.catch(() => undefined);
+          windowRemovalListener(9);
+          await settled;
+        }
+        handleMasterControllerResponses({ wallet: {} } as any);
+        delete (self as any).clients;
+      }
+    }
+  );
 
   it.each(submissionRoutes)(
     'reports an unknown outcome when a submitting $method popup closes',

@@ -15,6 +15,7 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
   signal: AbortSignal;
   assertCurrent(): void;
   rpc: Pick<EvmTransferReadRpc, 'noteMaintenanceRead'>;
+  readOriginalRawTransaction?(from: string, hash: string, assertCurrent: () => void): Promise<string | null>;
 }>): NativeNoteMaintenanceProofs {
   const network = snapshotNativeNetwork(options.network);
   if (network.chainId !== String(PRIVACY_CHAIN_ID) ||
@@ -64,7 +65,12 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
       const guard = () => { check(); assertSynchronousEvmFeeGuard(session.assertCurrent); };
       guard();
       return prepareWithdrawalRecovery({ poolAddress: getPrivacyPool(identity.poolId).address,
-        nullifierHash: identity.nullifierHash, withdrawal, assertCurrent: guard, rpc: read(guard) });
+        nullifierHash: identity.nullifierHash, withdrawal, assertCurrent: guard, rpc: read(guard),
+        ...(options.readOriginalRawTransaction ? { readOriginalRawTransaction: async () => {
+          guard();
+          const raw = await options.readOriginalRawTransaction!(withdrawal.from!, withdrawal.transactionHash!, guard);
+          guard(); return raw;
+        } } : {}) });
     },
   });
 }

@@ -212,17 +212,20 @@ const openApprovalPopup = async (
           callCount: (data as { calls: readonly unknown[] }).calls.length,
         }
       : undefined;
+  const executionMethods: readonly DappSmartAccountMethod[] = [
+    'approveSmartAccountExecutionFeeQuote',
+    'signSmartAccountPreparedOwner',
+    'signSmartAccountCompositeOwner',
+    'verifySmartAccountCompositePossession',
+    'submitSmartAccountExecution',
+  ];
   const smartMethods: readonly DappSmartAccountMethod[] | undefined =
     route === MethodRoute.SmartAccount
-      ? [
-          'registerSmartAccountOnChain',
-          'submitSmartAccountExecution',
-          'signSmartAccountPreparedOwner',
-        ]
+      ? ['registerSmartAccountOnChain', ...executionMethods]
       : route === MethodRoute.SendEthTx ||
         route === MethodRoute.SendCalls ||
         route === MethodRoute.SmartAccountModules
-      ? ['submitSmartAccountExecution', 'signSmartAccountPreparedOwner']
+      ? executionMethods
       : undefined;
   const tracksTransactionDocument = Boolean(
     evmContext || utxoReview || smartMethods

@@ -1025,3 +1025,18 @@ for (const language of ['fr', 'ja']) test(`production Activity controller messag
     });
   } finally { await englishI18n.changeLanguage('en'); }
 });
+
+for (const status of ['pending', 'missing'] as const) for (const privateWithdrawal of [false, true])
+test(`Activity ${status} generic Cancel respects retained private-withdrawal authority (${privateWithdrawal})`, async () => {
+  const f = fixture(undefined, false, { onReplay() {}, onCancelPending() {}, onCancelSaved() {} });
+  try {
+    const base = pendingScopedRow();
+    const row = { ...base, local: { ...base.local, inspectionOnly: false,
+      ...(privateWithdrawal ? { cancellationUnavailable: true } : {}) },
+      ...(status === 'missing' ? { observation: undefined, retainedObservation: { status: 'missing', latestNonce: '0' } } : {}) };
+    const tree = all(await openFixtureRow(f, row));
+    const title = status === 'pending' ? 'Cancel pending transaction' : 'Cancel saved transaction';
+    assert.equal(tree.some(node => node.type === 'Button' && node.props.title === title), !privateWithdrawal);
+    assert(tree.some(node => node.type === 'Button' && node.props.title === 'Review resend'), 'existing retained bytes remain reviewable');
+  } finally { f.dispose(); }
+});

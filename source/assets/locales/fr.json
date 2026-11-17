@@ -1956,9 +1956,9 @@
       "notBroadcast": "La transaction n’a pas été envoyée. Actualisez la vérification avant de confirmer à nouveau."
     },
     "recovery": {
-      "action": "Récupérer un retrait échoué",
-      "help": "La récupération est possible uniquement après la finalisation de l’échec et lorsque la preuve d’origine ne peut plus être exécutée. La note et son historique sont conservés. Un nouveau retrait exige une nouvelle vérification.",
-      "disclosure": "Cette vérification partage le hash de transaction, la racine de la preuve et le nullifiant public de la note avec votre RPC Ethereum sélectionné.",
+      "action": "Vérifier la récupération du retrait",
+      "help": "La récupération est disponible uniquement lorsque la transaction initiale a définitivement échoué ou que le nonce du payeur a été définitivement consommé, que la racine de preuve divulguée n’est plus acceptée et que la note reste non dépensée. La note et l’historique du retrait sont conservés. Un nouveau retrait nécessite une nouvelle vérification.",
+      "disclosure": "Cette vérification partage l’adresse du payeur, le hash de transaction, la racine de preuve initiale et le nullifier public de la note avec votre RPC Ethereum sélectionné.",
       "password": "Mot de passe du portefeuille",
       "failed": "La récupération n’a pas pu être confirmée. La preuve peut rester utilisable, la note peut être dépensée ou les données indisponibles. Actualisez avant de réessayer.",
       "checking": "Vérification de la transaction finalisée et de l’expiration de la preuve…",

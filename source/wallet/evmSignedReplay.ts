@@ -34,6 +34,7 @@ export type EvmReplayCandidate = Pick<
 >;
 export type EvmSavedTransaction = EvmReplayCandidate &
   Readonly<{
+    cancellationUnavailable?: true;
     chainId: string;
     collectibleTransfer?: NftTransferIntent;
     createdAt: number;
@@ -241,6 +242,9 @@ export function projectSavedEvmTransaction(
     hash: entry.hash,
     nonce: entry.nonce,
     operation: entry.operation,
+    ...(Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal')
+      ? { cancellationUnavailable: true as const }
+      : {}),
     ...(entry.originalHash ? { originalHash: entry.originalHash } : {}),
     chainId: entry.chainId,
     from: entry.from,
