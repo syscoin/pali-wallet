@@ -75,6 +75,7 @@ const PUBLIC_ERRORS = new Set([
   'privacy_withdrawal_snapshot_invalid',
   'privacy_withdrawal_invalid',
   'privacy_withdrawal_attempt_exists',
+  'privacy_withdrawal_nonce_conflict',
   'privacy_withdrawal_attempt_invalid',
   'privacy_withdrawal_quote_changed',
   'privacy_withdrawal_risk_not_accepted',

@@ -149,6 +149,7 @@ import { readRetainedEoaCall } from '../../../wallet/dappCallsBundles.ts';
 import {
   createEvmSignedRecordLifecycle,
   EVM_SIGNED_RECORD_LIMITS,
+  EVM_SIGNED_RECORD_NONCE_CONFLICT,
   EVM_SIGNED_RECORD_PREFIX,
 } from '../../../wallet/evmSignedRecords';
 import {
@@ -4901,7 +4902,15 @@ class MainController {
           owned,
           session.context.account.address,
           { assertCurrent: check }
-        );
+        ).catch((error: unknown) => {
+          if (
+            error instanceof Error &&
+            'code' in error &&
+            error.code === EVM_SIGNED_RECORD_NONCE_CONFLICT
+          )
+            throw new Error('privacy_withdrawal_nonce_conflict');
+          throw error;
+        });
         check();
         const nonce = plan.nonce;
         const balance = await read(session, () =>

@@ -43,6 +43,7 @@ const SPENT_COMMITMENT =
   '0x2d707d9af99186d8fab88c82455e4af57221d7148440318e2de0039bc6ce7841';
 const FUNDED_NULLIFIER = identifyClassicNote(FUNDED_NOTE).nullifierHash;
 const WITHDRAWAL_RECIPIENT = '0x' + '35'.repeat(20);
+const COMPETING_RECIPIENT = '0x' + '36'.repeat(20);
 const SPENT_NULLIFIER =
   '0x1247b27cdafda5cc981be564e7c1b992b711fc5393c137435574d875714e6638';
 // Independent circomlibjs@0.1.7 Pedersen and MiMC vectors for two synthetic
@@ -284,6 +285,10 @@ test('privacy pool preparation verifies local note imports and preserves a good 
   let withdrawalBroadcastAttempts = 0;
   let withdrawalPreparedFingerprint = '';
   let withdrawalReviewed = false;
+  let competingReviewed = false;
+  let competingSignedHash = '';
+  let withdrawalSignedHash = '';
+  let retainedHashLookups = 0;
   const screenshots: string[] = [];
   const observations: Record<string, unknown> = {};
   let server: Awaited<ReturnType<typeof startPrivacyFence>> | undefined;
@@ -453,8 +458,10 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           value: signed.value,
         });
         expect(signed.chainId).toBe(BigInt(1));
+        const competing =
+          decoded?.name === 'withdraw' && withdrawalBroadcastAttempts === 1;
         expect(signed.from?.toLowerCase()).toBe(
-          fixture.evmAddresses[0].toLowerCase()
+          fixture.evmAddresses[competing ? 1 : 0].toLowerCase()
         );
         expect(signed.to?.toLowerCase()).toBe(POOL_ADDRESS);
         expect(signed.maxPriorityFeePerGas).toBe(BigInt(1000000000));
@@ -491,14 +498,19 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           expect(decoded?.name).toBe('withdraw');
           expect(signed.maxFeePerGas).toBe(BigInt(3000000000));
           expect(withdrawalReviewed).toBe(true);
+          expect(withdrawalBroadcastAttempts).toBeLessThan(2);
+          if (competing) expect(competingReviewed).toBe(true);
           expect(depositBroadcastAttempts).toBe(1);
-          expect(signed.nonce).toBe(8);
+          expect(signed.nonce).toBe(competing ? 0 : 8);
           expect(signed.value).toBe(BigInt(0));
           expect(signed.gasLimit).toBe(BigInt(650000));
           const args = decoded!.args;
           expect(args[1]).toBe(TWO_LEAF_ROOT);
           expect(args[2]).toBe(FUNDED_NULLIFIER);
-          expect(args[3].toLowerCase()).toBe(WITHDRAWAL_RECIPIENT);
+          const recipient = competing
+            ? COMPETING_RECIPIENT
+            : WITHDRAWAL_RECIPIENT;
+          expect(args[3].toLowerCase()).toBe(recipient);
           expect(args[4]).toBe('0x' + '00'.repeat(20));
           expect(args[5]).toBe(BigInt(0));
           expect(args[6]).toBe(BigInt(0));
@@ -523,7 +535,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           const inputs = [
             TWO_LEAF_ROOT,
             FUNDED_NULLIFIER,
-            WITHDRAWAL_RECIPIENT,
+            recipient,
             args[4],
             '0',
             '0',
@@ -539,6 +551,8 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           expect(await encryptedNotesFingerprint(wallet!.page)).not.toBe(
             withdrawalPreparedFingerprint
           );
+          if (competing) competingSignedHash = signed.hash!;
+          else withdrawalSignedHash = signed.hash!;
           withdrawalBroadcastAttempts++;
           observations.withdrawalTransport = {
             attempts: withdrawalBroadcastAttempts,
@@ -548,6 +562,14 @@ test('privacy pool preparation verifies local note imports and preserves a good 
             custodyWriteBeforeTransport: true,
             publicBroadcast: false,
           };
+          if (competing)
+            return route.fulfill({
+              json: {
+                jsonrpc: '2.0',
+                id: call.id,
+                result: competingSignedHash,
+              },
+            });
         }
         await route.abort('failed');
         return;
@@ -577,7 +599,25 @@ test('privacy pool preparation verifies local note imports and preserves a good 
               break;
             case 'eth_getTransactionCount':
               if (!owns(call.params[0])) return undefined;
-              result = depositBroadcastAttempts === 0 ? '0x7' : '0x8';
+              result =
+                String(call.params[0]).toLowerCase() ===
+                fixture.evmAddresses[0].toLowerCase()
+                  ? depositBroadcastAttempts === 0
+                    ? '0x7'
+                    : '0x8'
+                  : '0x0';
+              break;
+            case 'eth_getTransactionByHash':
+              if (
+                call.params.length !== 1 ||
+                !withdrawalSignedHash ||
+                call.params[0] !== withdrawalSignedHash
+              )
+                return undefined;
+              retainedHashLookups++;
+              // Its only transport was aborted. Do not invent pending/mined
+              // acceptance to advance the original payer's reserved nonce.
+              result = null;
               break;
             case 'eth_estimateGas': {
               if (
@@ -1255,6 +1295,17 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           '0.00195 ETH'
         );
         await expect(detail(en.privacy.withdrawal.receive)).toHaveText('1 ETH');
+        await expect(
+          withdrawal.getByText(en.privacy.withdrawal.pendingProofWarning, {
+            exact: true,
+          })
+        ).toBeVisible();
+        await expect(
+          withdrawal.getByRole('button', {
+            name: en.privacy.withdrawal.confirm,
+            exact: true,
+          })
+        ).toBeEnabled();
         const preparationReads = rpcReads.slice(readsBefore);
         expect(
           preparationReads.some(
@@ -1325,6 +1376,168 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         await expect(notes.getByRole('listitem')).toHaveCount(3);
         expect(withdrawalBroadcastAttempts).toBe(1);
         observations.withdrawalRetainedAfterUnknown = true;
+      }
+    );
+    await wallet.step(
+      'privacy: an unresolved payer remains blocked and a different payer can explicitly confirm a competing withdrawal',
+      async () => {
+        const page = wallet!.page;
+        const notes = page.locator(
+          'section[aria-labelledby="privacy-notes-title"]'
+        );
+        const note = notes.getByRole('listitem').filter({
+          has: page.getByText('1 ETH', { exact: true }),
+        });
+        const withdrawal = page.locator(
+          'section[aria-labelledby="privacy-withdrawal-title"]'
+        );
+        const openReview = async (recipient: string) => {
+          await note
+            .getByRole('button', {
+              name: en.privacy.withdrawal.open,
+              exact: true,
+            })
+            .click();
+          await withdrawal
+            .locator('#privacy-withdrawal-recipient')
+            .fill(recipient);
+          await withdrawal
+            .getByRole('button', {
+              name: en.privacy.withdrawal.continue,
+              exact: true,
+            })
+            .click();
+        };
+        const unchanged = await encryptedNotesFingerprint(page);
+        const lookupsBefore = retainedHashLookups;
+        const snapshotsBefore = snapshots.length;
+        await openReview(COMPETING_RECIPIENT);
+        await expect(withdrawal.getByRole('alert')).toHaveText(
+          en.send.savedNonceConflict
+        );
+        expect(retainedHashLookups).toBe(lookupsBefore + 1);
+        expect(withdrawalBroadcastAttempts).toBe(1);
+        expect(snapshots.length).toBe(snapshotsBefore);
+        expect(await encryptedNotesFingerprint(page)).toBe(unchanged);
+        await withdrawal
+          .getByRole('button', { name: en.buttons.cancel, exact: true })
+          .click();
+        await page
+          .getByRole('button', { name: en.buttons.back, exact: true })
+          .click();
+        await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+        await page.locator('#general-settings-button').click();
+        await page
+          .getByText(en.accountMenu.createNewAccount, { exact: true })
+          .click();
+        await page.locator('#account-name-input').fill('Review fee payer');
+        await page.locator('#create-btn').click();
+        await page.getByRole('button', { name: /^ok$/i }).first().click();
+        await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+        await openPrivacy(wallet!);
+        await page
+          .getByRole('combobox', { name: en.privacy.poolLabel })
+          .selectOption(POOL_ID);
+        const refreshed = snapshots.length;
+        await page
+          .getByRole('button', { name: en.privacy.refresh, exact: true })
+          .click();
+        await expect.poll(() => snapshots.length).toBeGreaterThan(refreshed);
+        await expect(poolStatus(page)).toContainText(en.privacy.ready);
+        await notes
+          .getByRole('button', { name: en.privacy.refreshNotes, exact: true })
+          .click();
+        await expect(
+          note.getByRole('button', {
+            name: en.privacy.withdrawal.open,
+            exact: true,
+          })
+        ).toBeEnabled();
+        const beforeReview = await encryptedNotesFingerprint(page);
+        await openReview(COMPETING_RECIPIENT);
+        await expect(
+          withdrawal.getByRole('heading', {
+            name: en.privacy.withdrawal.review,
+            exact: true,
+          })
+        ).toBeVisible({ timeout: 120000 });
+        const detail = (label: string) =>
+          withdrawal
+            .locator('dl > div')
+            .filter({ hasText: label })
+            .locator('dd');
+        await expect(detail(en.privacy.withdrawal.gasPayer)).toHaveText(
+          fixture.evmAddresses[1]
+        );
+        await expect(
+          withdrawal.getByText(en.privacy.withdrawal.pendingProofWarning, {
+            exact: true,
+          })
+        ).toBeVisible();
+        const prior = withdrawal.getByRole('region', {
+          name: en.privacy.withdrawal.previousAttempts,
+        });
+        await expect(prior).toContainText(WITHDRAWAL_RECIPIENT);
+        await expect(
+          detail(en.privacy.withdrawal.recipient).first()
+        ).toHaveText(COMPETING_RECIPIENT);
+        await expect(prior).toContainText(en.privacy.withdrawal.unknown);
+        await expect(
+          prior.getByText(en.privacy.deposit.txHash, { exact: true })
+        ).toHaveCount(0);
+        const confirmCompeting = withdrawal.getByRole('button', {
+          name: en.privacy.withdrawal.competingConfirm,
+          exact: true,
+        });
+        await expect(confirmCompeting).toBeEnabled();
+        await captureReview('withdrawal');
+        await withdrawal
+          .getByRole('button', { name: en.buttons.cancel, exact: true })
+          .click();
+        expect(withdrawalBroadcastAttempts).toBe(1);
+        expect(await encryptedNotesFingerprint(page)).toBe(beforeReview);
+        await openReview(COMPETING_RECIPIENT);
+        await expect(confirmCompeting).toBeEnabled({ timeout: 120000 });
+        await expect(prior).toContainText(WITHDRAWAL_RECIPIENT);
+        await expect(
+          detail(en.privacy.withdrawal.recipient).first()
+        ).toHaveText(COMPETING_RECIPIENT);
+        expect(withdrawalBroadcastAttempts).toBe(1);
+        withdrawalPreparedFingerprint = beforeReview;
+        await info.attach('competing-withdrawal-confirmation', {
+          body: await withdrawal.screenshot(),
+          contentType: 'image/png',
+        });
+        competingReviewed = true;
+        await confirmCompeting.click();
+        await expect(
+          withdrawal.getByRole('heading', {
+            name: en.privacy.withdrawal.submitted,
+            exact: true,
+          })
+        ).toBeVisible();
+        expect(withdrawalBroadcastAttempts).toBe(2);
+        expect(competingSignedHash).not.toBe(withdrawalSignedHash);
+        await expect(withdrawal).toContainText(competingSignedHash);
+        await withdrawal
+          .getByRole('button', {
+            name: en.privacy.deposit.done,
+            exact: true,
+          })
+          .click();
+        observations.competingReview = {
+          unresolvedOriginalPayerRefused: true,
+          originalPendingLookup: 'null',
+          differentPayer: fixture.evmAddresses[1],
+          previousAttemptDetailsVisible: true,
+          previousAttemptHasNoAcknowledgedHash: true,
+          cancellationLeftOriginalUnchanged: true,
+          explicitCompetingConfirmationAvailable: true,
+          originalRecipient: WITHDRAWAL_RECIPIENT,
+          competingRecipient: COMPETING_RECIPIENT,
+          verifiedSignedWithdrawals: withdrawalBroadcastAttempts,
+          competingSubmissionAcknowledgedLocally: true,
+        };
       }
     );
     await wallet.step(
@@ -1400,7 +1613,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
     wallet.finding({
       severity: 'info',
       detail:
-        'All pool, RPC and explorer replies were synthetic and fulfilled locally behind a launch-time deny proxy. The unmodified wallet computed the MiMC tree, checked independent RPC anchors and persisted public IndexedDB data. One synthetic deposit and one withdrawal using an actual locally generated and independently verified proof were signed locally; both RPC transports were aborted behind the fence, their encrypted custody writes preceded transport, and neither unknown result was retried. No public transaction or real funds were used.',
+        'The fixture aborted the initial deposit and withdrawal locally. The same payer could not reuse its unresolved nonce. A second payer explicitly approved a new withdrawal to a different recipient for the same note. Both signed withdrawal envelopes and proofs were verified locally; only the second received a synthetic acknowledgement. No public transaction or real funds were used.',
     });
     status = info.errors.length ? 'failed' : 'passed';
   } finally {

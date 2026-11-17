@@ -502,6 +502,35 @@ it.each([
   }
 );
 
+it.each([
+  ['privacy_withdrawal_nonce_conflict', en.send.savedNonceConflict],
+  ['privacy_vault_unavailable', en.privacy.withdrawal.prepareFailed],
+])(
+  'renders the preparation diagnostic for %s without allowing submission',
+  async (code, message) => {
+    const original = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path, ...rest) =>
+      path[1] === 'prepareWithdrawal'
+        ? Promise.reject(new Error(code))
+        : original(path, ...rest)
+    );
+    mount();
+    fireEvent.change(screen.getByLabelText(en.privacy.withdrawal.recipient), {
+      target: { value: RECIPIENT },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(
+      screen.queryByRole('button', { name: en.privacy.withdrawal.confirm })
+    ).not.toBeInTheDocument();
+    expect(
+      mockEmitter.mock.calls.some(([path]) => path[1] === 'submitWithdrawal')
+    ).toBe(false);
+  }
+);
+
 it('keeps other preparation failures generic', async () => {
   const original = mockEmitter.getMockImplementation()!;
   mockEmitter.mockImplementation((path, ...rest) =>

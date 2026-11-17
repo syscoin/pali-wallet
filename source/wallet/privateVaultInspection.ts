@@ -602,6 +602,7 @@ const PUBLIC_ERRORS = new Set([
   'privacy_deposit_note_ineligible',
   'privacy_note_spent',
   'privacy_withdrawal_attempt_exists',
+  'privacy_withdrawal_nonce_conflict',
   'privacy_withdrawal_attempt_invalid',
   'privacy_withdrawal_recovery_unavailable',
   'privacy_proof_cancelled',

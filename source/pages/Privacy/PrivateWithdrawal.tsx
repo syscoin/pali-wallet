@@ -304,7 +304,18 @@ function WithdrawalFlow({
           'message' in failure &&
           (failure.message === 'privacy_proof_cancelled' ||
             failure.message === 'privacy_verification_pending');
-        setError(interrupted ? 'prepareInterrupted' : 'prepareFailed');
+        const nonceConflict =
+          typeof failure === 'object' &&
+          failure !== null &&
+          'message' in failure &&
+          failure.message === 'privacy_withdrawal_nonce_conflict';
+        setError(
+          nonceConflict
+            ? 'nonceConflict'
+            : interrupted
+            ? 'prepareInterrupted'
+            : 'prepareFailed'
+        );
       }
     } finally {
       if (current(revision)) {
@@ -742,7 +753,11 @@ function WithdrawalFlow({
       )}
       {error && (
         <p role="alert" className="text-xs text-brand-red">
-          {t(`privacy.withdrawal.${error}`)}
+          {t(
+            error === 'nonceConflict'
+              ? 'send.savedNonceConflict'
+              : `privacy.withdrawal.${error}`
+          )}
         </p>
       )}
       <button

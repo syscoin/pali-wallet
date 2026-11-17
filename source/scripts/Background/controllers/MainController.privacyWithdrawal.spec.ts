@@ -37,7 +37,9 @@ import { Interface, Transaction } from 'ethers';
 
 import { getController } from '..';
 import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
+import { EVM_SIGNED_RECORD_NONCE_CONFLICT } from '../../../wallet/evmSignedRecords';
 import { createPrivacyWithdrawalsController } from '../../../wallet/privacyWithdrawals';
+import { publicError } from '../../../wallet/privateVaultInspection';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
@@ -325,6 +327,35 @@ const prepare = (wallet: any) =>
     recipient: RECIPIENT,
     mode: 'direct',
   });
+
+it.each([true, false])(
+  'preserves only a diagnosed retained nonce conflict through private preparation (conflict=%s)',
+  async (conflict) => {
+    const { wallet, vault, host } = setup();
+    const error = Object.assign(new Error('synthetic nonce lookup failure'), {
+      ...(conflict ? { code: EVM_SIGNED_RECORD_NONCE_CONFLICT } : {}),
+    });
+    wallet.inspectOrdinaryEvmNonce.mockRejectedValue(error);
+    vault.withWithdrawalNote.mockImplementation(async (_id, session, use) => {
+      session.assertCurrent();
+      try {
+        return await use(NOTE, 'eth-1', {
+          binding: HASH,
+          previousWithdrawals: [],
+        });
+      } catch (failure) {
+        throw publicError(failure);
+      }
+    });
+    await expect(prepare(wallet)).rejects.toThrow(
+      conflict
+        ? 'privacy_withdrawal_nonce_conflict'
+        : 'privacy_vault_unavailable'
+    );
+    expect(host.prove).not.toHaveBeenCalled();
+    expect(vault.reserveWithdrawalAttempt).not.toHaveBeenCalled();
+  }
+);
 
 const selectImportedAccount = (state: any, xprv = '') => {
   state.vault.activeAccount = { id: 0, type: KeyringAccountType.Imported };
