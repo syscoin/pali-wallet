@@ -19,7 +19,7 @@ const SkeletonLoader: React.FC<{
     } ${className}`}
     style={{ width, height, margin }}
   >
-    <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-gray-600/30 to-transparent" />
+    <div className="absolute inset-0 -translate-x-full motion-safe:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-gray-600/30 to-transparent" />
   </div>
 );
 

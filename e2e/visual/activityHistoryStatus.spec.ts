@@ -383,6 +383,73 @@ test('UTXO Activity distinguishes pending and failed history from a verified emp
           (read) => read.accountId === 1 && read.mode === 'held-error'
         )!;
         await expect.poll(() => Date.now() - held.at).toBeGreaterThan(1200);
+        const shimmer = pending
+          .locator('..')
+          .locator('.relative.overflow-hidden > .bg-gradient-to-r')
+          .first();
+        const readShimmer = () =>
+          shimmer.evaluate((element) => {
+            const style = getComputedStyle(element);
+            const animation = element
+              .getAnimations()
+              .find(
+                (candidate) =>
+                  candidate instanceof CSSAnimation &&
+                  candidate.animationName === 'shimmer'
+              );
+            return {
+              reducedMotion: matchMedia('(prefers-reduced-motion: reduce)')
+                .matches,
+              name: style.animationName,
+              transform: style.transform,
+              playState: animation?.playState ?? null,
+              currentTime:
+                typeof animation?.currentTime === 'number'
+                  ? animation.currentTime
+                  : null,
+              progress: animation?.effect?.getComputedTiming().progress ?? null,
+            };
+          });
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await expect(shimmer).toBeVisible();
+        await expect
+          .poll(async () => (await readShimmer()).playState)
+          .toBe('running');
+        const initialAnimation = await readShimmer();
+        expect(initialAnimation.reducedMotion).toBe(false);
+        expect(initialAnimation.name).toBe('shimmer');
+        expect(initialAnimation.currentTime).not.toBeNull();
+        expect(initialAnimation.progress).not.toBeNull();
+        await expect
+          .poll(async () => {
+            const observed = await readShimmer();
+            return (
+              observed.currentTime !== null &&
+              initialAnimation.currentTime !== null &&
+              observed.currentTime > initialAnimation.currentTime + 100 &&
+              observed.transform !== initialAnimation.transform
+            );
+          })
+          .toBe(true);
+        const progressedAnimation = await readShimmer();
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await expect.poll(async () => (await readShimmer()).name).toBe('none');
+        const reducedAnimation = await readShimmer();
+        expect(reducedAnimation.reducedMotion).toBe(true);
+        expect(reducedAnimation.playState).toBeNull();
+        expect(reducedAnimation.currentTime).toBeNull();
+        await expect(pending).toBeVisible();
+        const motion = {
+          initial: initialAnimation,
+          progressed: progressedAnimation,
+          reduced: reducedAnimation,
+        };
+        observations.pendingSkeletonMotion = motion;
+        await info.attach('activity-pending-skeleton-motion', {
+          body: JSON.stringify(motion, null, 2),
+          contentType: 'application/json',
+        });
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
         for (const viewport of [
           { width: 400, height: 620 },
           { width: 320, height: 360 },
