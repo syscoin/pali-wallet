@@ -112,7 +112,6 @@ const receipt = {
   qualificationEntry: 'qualification/index.tsx',
   keyringVersion: sdk.version,
   ...(sdk.quickCryptoIdentity ? { quickCryptoIdentity: sdk.quickCryptoIdentity } : {}),
-  ...(sdk.sysweb3Identity ? { sysweb3Identity: sdk.sysweb3Identity } : {}),
   ...(walletConnectIdentity ? { walletConnectIdentity } : {}),
   ...(physical ? { physical } : {}),
   ...(http ? { http } : {}),
@@ -126,10 +125,10 @@ app.expo.extra = {
   paliQualificationSdkVersion: sdk.version,
   paliQualificationSdkIdentity: sdk.identity,
   ...(sdk.quickCryptoIdentity ? { paliQuickCryptoSentryIdentity: sdk.quickCryptoIdentity } : {}),
-  ...(sdk.sysweb3Identity ? { paliSysweb3OverlayIdentity: sdk.sysweb3Identity } : {}),
   ...(walletConnectIdentity ? { paliWalletConnectIdentity: walletConnectIdentity } : {}),
 };
 delete app.expo.extra.paliQualificationSdkDigest;
+delete app.expo.extra.paliSysweb3OverlayIdentity;
 app.expo.name = 'PaliQualification';
 app.expo.slug = 'pali-native-qualification';
 app.expo.scheme = 'pali-wallet-qualification';

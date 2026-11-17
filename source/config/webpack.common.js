@@ -8,10 +8,6 @@ const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const { join, resolve } = require('path');
 const { DefinePlugin, IgnorePlugin, ProvidePlugin } = require('webpack');
 
-require('../../scripts/apply-sysweb3-overlay.cjs').verifySysweb3Overlay(
-  resolve(__dirname, '../..')
-);
-
 const ethersPublicAliases = require('./ethersPublicAliases');
 const {
   createIdenticalDependencyDedupPlugins,

@@ -22,9 +22,6 @@ on:
       - 'scripts/walletconnect-terminal.json'
       - 'scripts/apply-quickcrypto-sentry.cjs'
       - 'scripts/quickcrypto-sentry.json'
-      - 'scripts/apply-sysweb3-overlay.cjs'
-      - 'scripts/sysweb3-overlay.json'
-      - 'scripts/sysweb3-overlay.deflate'
       - 'apps/mobile/src/**'
       - 'apps/mobile/modules/**'
       - 'apps/mobile/qualification/**'
@@ -153,7 +150,6 @@ jobs:
         working-directory: .
         run: |
           yarn install --frozen-lockfile --ignore-scripts
-          node scripts/apply-sysweb3-overlay.cjs
           node apps/mobile/scripts/qualification-sdk.cjs
           node scripts/prepare-native-private-prover.cjs # pinned public artifacts
           mkdir -p "$RUNNER_TEMP/pali-native-ios"
@@ -279,7 +275,6 @@ jobs:
         working-directory: .
         run: |
           yarn install --frozen-lockfile --ignore-scripts
-          node scripts/apply-sysweb3-overlay.cjs
           node apps/mobile/scripts/qualification-sdk.cjs
           node scripts/prepare-native-private-prover.cjs # pinned public artifacts
           mkdir -p "$RUNNER_TEMP/pali-native-android"

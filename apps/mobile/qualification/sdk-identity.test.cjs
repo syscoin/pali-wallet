@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
 const { composeQualificationSdkIdentity, assertQualificationSdkIdentity, QUALIFICATION_SDK_IDENTITY_STAGE } = require('../scripts/qualificationSdkIdentity.ts');
+const { readQualificationSdkPin, verifyInstalledQualificationSdk } = require('../scripts/qualification-sdk.cjs');
 
 const version = '2.1.14';
 const quick = `quickcrypto.1.1.9.source.${'a'.repeat(40)}.sha256.${'b'.repeat(64)}`;
@@ -19,11 +20,8 @@ test('qualification identity binds the exact official package and any native can
     assert.throws(() => assertQualificationSdkIdentity(actual, version, quick));
   assert.throws(() => assertQualificationSdkIdentity(identity, version));
   assert.throws(() => assertQualificationSdkIdentity(identity, version, `${quick}0`));
-  const sdk = `sysweb3.${'c'.repeat(40)}.sha256.${'d'.repeat(64)}`;
-  const overlaid = composeQualificationSdkIdentity(version, quick, sdk);
-  assert.doesNotThrow(() => assertQualificationSdkIdentity(overlaid, version, quick, sdk));
-  assert.throws(() => assertQualificationSdkIdentity(overlaid, version, quick));
-  assert.throws(() => assertQualificationSdkIdentity(overlaid, version, quick, `${sdk}0`));
+  const legacyOverlay = `sysweb3.${'c'.repeat(40)}.sha256.${'d'.repeat(64)}`;
+  assert.throws(() => assertQualificationSdkIdentity(`${identity}.${legacyOverlay}`, version, quick));
 });
 
 test('qualification identities reject coercion, empty values and malformed components', () => {
@@ -31,6 +29,24 @@ test('qualification identities reject coercion, empty values and malformed compo
     assert.throws(() => composeQualificationSdkIdentity(invalid));
   for (const invalid of [null, {}, 2, '', 'a b', 'a\n', 'a'.repeat(513)])
     assert.throws(() => composeQualificationSdkIdentity(version, invalid));
+});
+
+test('published SDK qualification binds the exact installed package without a runtime overlay', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-published-sdk-'));
+  const installed = path.join(root, 'node_modules/@sidhujag/sysweb3-keyring');
+  try {
+    fs.mkdirSync(installed, { recursive: true });
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+      dependencies: { '@sidhujag/sysweb3-keyring': version },
+    }));
+    const metadata = path.join(installed, 'package.json');
+    fs.writeFileSync(metadata, JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version }));
+    const pin = readQualificationSdkPin(root);
+    assert.deepEqual(pin, { version, identity: version });
+    assert.doesNotThrow(() => verifyInstalledQualificationSdk(root, pin));
+    fs.writeFileSync(metadata, JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: '2.1.13' }));
+    assert.throws(() => verifyInstalledQualificationSdk(root, pin), /exact manifest version/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('native qualification validates the generated candidate identity and names identity failures separately', () => {
@@ -63,6 +79,7 @@ test('isolated configuration forwards the exact package and native candidate wit
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ main: 'index.ts' }));
     fs.writeFileSync(path.join(root, 'app.json'), JSON.stringify({ expo: {
       ios: { bundleIdentifier: 'com.paliwallet.mobile' }, android: { package: 'com.paliwallet.mobile', allowBackup: false }, updates: { enabled: false },
+      extra: { paliSysweb3OverlayIdentity: 'obsolete-build-only-value' },
     } }));
     fs.writeFileSync(path.join(root, 'index.ts'), '// public configuration fixture');
     const result = spawnSync(process.execPath, [path.join(root, 'scripts/configure-native-qualification.cjs')], {
@@ -72,6 +89,7 @@ test('isolated configuration forwards the exact package and native candidate wit
     const extra = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8')).expo.extra;
     assert.equal(extra.paliQualificationSdkVersion, version);
     assert.equal(extra.paliQuickCryptoSentryIdentity, quick);
+    assert.equal(Object.hasOwn(extra, 'paliSysweb3OverlayIdentity'), false);
     assertQualificationSdkIdentity(extra.paliQualificationSdkIdentity, extra.paliQualificationSdkVersion,
       extra.paliQuickCryptoSentryIdentity);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
