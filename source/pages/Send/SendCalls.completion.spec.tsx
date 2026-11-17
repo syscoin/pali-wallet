@@ -226,15 +226,11 @@ const prepare = async (
       await mockRecordGate(args[2]);
       const { smartAccountExecutionContextId, ...record } = args[2];
       if (record.smartAccount && record.submissionStarted) {
-        expect(smartAccountExecutionContextId).toMatch(
-          /^prepared-smart-context(?:-retry)?$/
-        );
+        expect(smartAccountExecutionContextId).toBe('prepared-smart-context');
         record.smartAccountIdentity = captureSmartAccountCallsIdentity(
           buildSmartAccountUserOperation({
             sender: mockQuery.approvedContext.account.address,
-            nonce: smartAccountExecutionContextId.endsWith('-retry')
-              ? '1'
-              : '0',
+            nonce: '0',
             callData: '0x',
           }),
           1
@@ -726,7 +722,7 @@ it('does not invoke a sender after unmounting while the durable begin is pending
 });
 
 it.each([false, true])(
-  'requires an acknowledged unsent record before automatic smart retry (storage failure=%s)',
+  'keeps a rejected Smart attempt single-shot and requires durable unsent proof before retirement (storage failure=%s)',
   async (failRetirement) => {
     await prepare(true);
     const stages: string[] = [];
@@ -737,21 +733,21 @@ it.each([false, true])(
         if (failRetirement)
           throw new Error('Synthetic retirement write failure');
       }
+      if (failRetirement && record.submissionCompleted && record.failed)
+        throw new Error('Synthetic terminal failure write unavailable');
     };
     mockSmartSubmit.mockImplementation(async (params) => {
+      expect(params.onSubmissionNotBroadcast).toBeUndefined();
       await params.onBeforeSubmit({
         executionContextId: 'prepared-smart-context',
       });
-      await params.onSubmissionNotBroadcast();
-      await params.onBeforeSubmit({
-        executionContextId: 'prepared-smart-context-retry',
+      throw Object.assign(new Error('AA24 signature error'), {
+        transactionNotBroadcast: true,
       });
-      return { hash: HASH_A };
     });
     await approve();
-    expect(stages).toEqual(
-      failRetirement ? ['begin', 'unsent'] : ['begin', 'unsent', 'begin']
-    );
+    expect(stages).toEqual(['begin', 'unsent']);
+    expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
     if (failRetirement) {
       expect(await status()).toBe(100);
       expect(
@@ -766,8 +762,10 @@ it.each([false, true])(
     } else {
       expect(mockStored[mockQuery.host][mockQuery.bundleId]).toMatchObject({
         submissionCompleted: true,
-        txHashes: [HASH_A],
+        failed: true,
+        txHashes: [],
       });
+      expect(await status()).toBe(400);
     }
   }
 );
