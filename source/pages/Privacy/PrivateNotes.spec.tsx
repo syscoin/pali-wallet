@@ -773,6 +773,23 @@ it.each([
   expect(screen.queryByText(code)).not.toBeInTheDocument();
 });
 
+it('directs an already archived import to restore it from Archived notes', async () => {
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getNotes') return { notes: [] };
+    throw new Error('privacy_note_archived');
+  });
+  render(<PrivateNotes />);
+  const input = await openImport();
+  fireEvent.change(input, { target: { value: 'typed-private-note' } });
+  fireEvent.click(screen.getByRole('button', { name: en.privacy.importNote }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'This note is archived. Open Archived notes and restore it to use it again.'
+  );
+  expect(input).not.toHaveAttribute('aria-invalid');
+  expect(screen.queryByText('privacy_note_archived')).not.toBeInTheDocument();
+  expect(mockCopy).not.toHaveBeenCalled();
+});
+
 it('associates an invalid note error with the import field and clears it on edit', async () => {
   mockEmitter.mockImplementation(async ([, method]) => {
     if (method === 'getNotes') return { notes: [] };
@@ -1373,7 +1390,9 @@ it('keeps pending withdrawals visible and retains an unverified reported-spent n
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
-  expect(await screen.findByText('Removed: 0. Still saved: 2.')).toBeVisible();
+  expect(
+    await screen.findByText('Archived: 0. Still active: 2.')
+  ).toBeVisible();
   expect(screen.getByText(en.privacy.withdrawal.statusPending)).toBeVisible();
   fireEvent.click(
     screen.getByRole('button', { name: 'Reported spent notes (1)' })
@@ -1417,7 +1436,9 @@ it('does not restore a cleared note from a list request started before the clear
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
-  expect(await screen.findByText('Removed: 1. Still saved: 0.')).toBeVisible();
+  expect(
+    await screen.findByText('Archived: 1. Still active: 0.')
+  ).toBeVisible();
   await waitFor(() => expect(reads).toBe(3));
   await act(async () => oldRead.resolve({ notes: [saved] }));
   expect(
@@ -1491,7 +1512,7 @@ it.each(['resolve', 'reject'] as const)(
       screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
     );
     expect(
-      await screen.findByText('Removed: 1. Still saved: 0.')
+      await screen.findByText('Archived: 1. Still active: 0.')
     ).toBeVisible();
     await act(async () => {
       if (outcome === 'resolve') resolveStatus({ claimedStatus: 'CONFIRMED' });
@@ -1614,4 +1635,50 @@ it('explains unsupported development data without showing an empty vault or over
   expect(
     screen.queryByText(en.privacy.notesUnsupported)
   ).not.toBeInTheDocument();
+});
+
+it('keeps archived-only notes outside the active balance and enables their encrypted bundle export after opening the separate archive', async () => {
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getNotes') return { notes: [] };
+    if (method === 'getArchivedNotes')
+      return {
+        limit: 512,
+        storedBytes: 1234,
+        bundleLimitBytes: 4194304,
+        notes: [
+          {
+            id: note.id,
+            poolId: note.poolId,
+            amount: note.amount,
+            createdAt: note.createdAt,
+            archivedAt: 5678,
+          },
+        ],
+      };
+    throw Error('Unexpected archive operation');
+  });
+  render(<PrivateNotes />);
+  expect(await screen.findByText(en.privacy.noNotes)).toBeVisible();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  fireEvent.click(
+    screen.getByRole('button', { name: mockTranslate('privacy.archive.title') })
+  );
+  expect(
+    await screen.findByRole('button', { name: en.privacy.revealNote })
+  ).toBeVisible();
+  expect(
+    screen.getByText(mockTranslate('privacy.verifiedBalance', { amount: '0' }))
+  ).toBeVisible();
+  expect(
+    screen.queryByText(en.privacy.notePhase.verified)
+  ).not.toBeInTheDocument();
+  const exports = screen.getAllByRole('button', {
+    name: en.privacy.bundle.exportTitle,
+  });
+  expect(exports).toHaveLength(2);
+  exports.forEach((button) => expect(button).toBeEnabled());
+  expect(mockEmitter.mock.calls.map(([path]) => path[1])).toEqual([
+    'getNotes',
+    'getArchivedNotes',
+  ]);
 });

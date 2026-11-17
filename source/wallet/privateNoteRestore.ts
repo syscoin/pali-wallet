@@ -9,11 +9,13 @@ import {
   validateNoteBackupHistory,
 } from './noteBackupHistory.ts';
 import type { INoteBackupHistory } from './noteBackupHistory.ts';
+import { MAX_ARCHIVED_NOTES, MAX_VAULT_NOTES } from './privateVaultEnvelope.ts';
 import type { identifyClassicNote } from '../utils/privacy/note.ts';
 
 // Backup decoding and envelope validation belong to the codec. This leaf only
 // projects restored entries, persists conservative evidence, and plans a merge.
 export interface IPrivateNoteRestoreEntry {
+  archivedAt?: number;
   createdAt: number;
   history?: Readonly<INoteBackupHistory>;
   note: string;
@@ -49,6 +51,7 @@ interface ILocalJournal {
   transactionHash?: string;
 }
 export interface IRestorableNote {
+  archivedAt?: number;
   createdAt: number;
   deposit?: ILocalJournal;
   id: string;
@@ -58,7 +61,7 @@ export interface IRestorableNote {
 }
 type IRestoredNote = Pick<
   IRestorableNote,
-  'createdAt' | 'id' | 'note' | 'restoreGuard'
+  'archivedAt' | 'createdAt' | 'id' | 'note' | 'restoreGuard'
 >;
 const HASH = /^0x[0-9a-f]{64}$/;
 const UUID =
@@ -139,10 +142,11 @@ export function readPrivateNoteRestoreMetadata(
     !HASH.test(receipt.sourceHash) ||
     !date(receipt.createdAt) ||
     ![receipt.added, receipt.duplicates, receipt.guarded].every(
-      (count) => Number.isSafeInteger(count) && count >= 0 && count <= 512
+      (count) =>
+        Number.isSafeInteger(count) && count >= 0 && count <= MAX_VAULT_NOTES
     ) ||
     receipt.added + receipt.duplicates < 1 ||
-    receipt.added + receipt.duplicates > 512 ||
+    receipt.added + receipt.duplicates > MAX_VAULT_NOTES ||
     receipt.guarded > receipt.added + receipt.duplicates
   )
     return invalid();
@@ -151,16 +155,17 @@ export function readPrivateNoteRestoreMetadata(
 export function snapshotPrivateNoteRestoreEntries(
   value: unknown
 ): IPrivateNoteRestoreEntry[] {
-  const entries = snapshotBackupArray(value, 512);
+  const entries = snapshotBackupArray(value, MAX_VAULT_NOTES);
   if (!entries.length) return invalid();
   return entries.map((raw) => {
     const entry = data(
       raw,
-      ['createdAt', 'note', 'history', 'reconciliationRequired'],
+      ['archivedAt', 'createdAt', 'note', 'history', 'reconciliationRequired'],
       ['createdAt', 'note']
     );
     if (
       !date(entry.createdAt) ||
+      (entry.archivedAt !== undefined && !date(entry.archivedAt)) ||
       typeof entry.note !== 'string' ||
       !entry.note.length ||
       entry.note.length > 256 ||
@@ -171,6 +176,9 @@ export function snapshotPrivateNoteRestoreEntries(
       return invalid();
     return {
       createdAt: entry.createdAt,
+      ...(entry.archivedAt === undefined
+        ? {}
+        : { archivedAt: entry.archivedAt }),
       note: entry.note,
       ...(entry.history === undefined
         ? {}
@@ -267,7 +275,10 @@ export function planPrivateNoteRestore<T extends IRestorableNote>(input: {
   const { capacity, existing, identify, importedAt, randomId } = input;
   if (
     ![128, 256, 512].includes(capacity) ||
-    existing.length > capacity ||
+    existing.filter((note) => note.archivedAt === undefined).length >
+      capacity ||
+    existing.filter((note) => note.archivedAt !== undefined).length >
+      MAX_ARCHIVED_NOTES ||
     !date(importedAt)
   )
     return invalid();
@@ -326,7 +337,18 @@ export function planPrivateNoteRestore<T extends IRestorableNote>(input: {
       }
       continue;
     }
-    if (notes.length >= capacity) throw new Error('privacy_note_limit');
+    if (
+      entry.archivedAt === undefined
+        ? notes.filter((note) => note.archivedAt === undefined).length >=
+          capacity
+        : notes.filter((note) => note.archivedAt !== undefined).length >=
+          MAX_ARCHIVED_NOTES
+    )
+      throw new Error(
+        entry.archivedAt === undefined
+          ? 'privacy_note_limit'
+          : 'privacy_archive_limit'
+      );
     const id = randomId();
     if (typeof id !== 'string' || !UUID.test(id) || ids.has(id))
       return invalid();
@@ -335,6 +357,9 @@ export function planPrivateNoteRestore<T extends IRestorableNote>(input: {
       id,
       note: entry.note,
       createdAt: entry.createdAt,
+      ...(entry.archivedAt === undefined
+        ? {}
+        : { archivedAt: entry.archivedAt }),
       restoreGuard: {
         version: 1,
         importedAt,

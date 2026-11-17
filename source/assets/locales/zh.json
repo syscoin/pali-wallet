@@ -1027,7 +1027,10 @@
     "smartAccountGuardianRecoveryExpired": "此恢复请求在完成前已过期。请重新开始恢复。",
     "invalidAddress": "无效地址",
     "changeHardwareDevice": "更换设备",
-    "closeHardwareSetup": "关闭设置"
+    "closeHardwareSetup": "关闭设置",
+    "smartAccountFeeReviewTitle": "查看网络费用",
+    "smartAccountFeeReviewSelectedAccount": "所选账户",
+    "smartAccountFeeReviewMaximumTotal": "最高总费用"
   },
   "start": {
     "eraseAndStartFresh": "清除并重新开始",
@@ -1867,10 +1870,10 @@
       "error": "无法更改上限。请确认已保存票据数量符合上限后重试。",
       "save": "保存上限",
       "reportedSpent": "标记为已使用的票据（{{count}}）",
-      "clear": "清除已完成票据",
-      "clearHelp": "所选 Ethereum RPC 将收到已知提款哈希，以及存在时相关存款的哈希，服务商可能将两者关联。仅删除该 RPC 确认提款及相关存款均已最终确定的票据；未验证的票据仍会保存。",
-      "confirmClear": "验证并清除",
-      "clearResult": "已删除：{{removed}}。仍保存：{{unresolved}}。",
+      "clear": "归档已完成票据",
+      "clearHelp": "所选Ethereum RPC会收到已知的提现及相关存款交易哈希，因此提供方可能将它们关联起来。只有此RPC报告已最终确认的票据才会移至加密归档，其他票据仍保持活跃。已归档票据不占用活跃额度。",
+      "confirmClear": "验证并归档",
+      "clearResult": "已归档：{{removed}}。仍活跃：{{unresolved}}。",
       "clearError": "无法完成票据检查。请刷新以查看剩余票据。",
       "clearProgress": "已检查 {{total}} 张票据中的 {{checked}} 张。",
       "storedBytes": "序列化后的加密保险库：{{bytes}} 字节。"
@@ -1971,6 +1974,24 @@
       "confirm": "确认票据检查",
       "busy": "正在保存检查结果…",
       "failed": "无法保存检查结果。请检查密码和资金池数据后重试。"
+    },
+    "archive": {
+      "title": "已归档票据",
+      "help": "已完成的票据会在此加密保存，直到您恢复票据或清空归档。它们不占用活跃票据额度。",
+      "empty": "没有已归档票据",
+      "restore": "恢复票据",
+      "restored": "票据已恢复至活跃列表",
+      "clear": "清空归档",
+      "confirmClear": "永久删除已归档票据",
+      "warning": "恢复助记词无法找回这些票据。仅在确认票据已花费或保留可用备份后，才永久删除归档。",
+      "confirmBackup": "我已确认这些票据已花费，或已保留可用备份",
+      "clearResult": "已删除 {{count}} 张归档票据",
+      "loadError": "无法加载归档，请重试。",
+      "actionError": "无法更新归档，请刷新后重试。",
+      "full": "归档存储空间已满。清空归档以释放空间前，请先导出加密备份。",
+      "capacity": "已归档票据：{{count}} / {{limit}}",
+      "activeFull": "活跃票据额度已满。请先归档已完成的票据或提高额度，再恢复票据。",
+      "alreadyArchived": "此票据已归档。请打开“已归档票据”并恢复，然后再次使用。"
     }
   },
   "mobile": {
@@ -2519,7 +2540,7 @@
         "addNotesFromAnEncryptedFile": "从加密文件添加票据",
         "changeTheSavedNoteLimit": "更改已保存票据数量上限",
         "manageCompletedNotes": "管理已完成票据",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "清理已完成票据或恢复失败的提款",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "归档已完成票据或恢复失败的提现",
         "serviceOriginAndPublicPoolData": "服务源及公开池数据",
         "verifyBackup": "验证备份",
         "backupVerified": "备份已验证",
@@ -2603,7 +2624,7 @@
       },
       "maintenance": {
         "chooseNote": "选择一条已保存的票据进行验证并清除。每次尝试只检查该票据。",
-        "clearHelp": "所选的以太坊 RPC 将收到此票据已知的提款交易哈希，以及相关存款交易的哈希（如有）。这可能使该服务提供商关联其存款和提款。只有当该 RPC 确认操作完成且相关存款结算已最终确定时，才会删除这一条票据。否则，它将继续保存。"
+        "clearHelp": "所选Ethereum RPC会收到已知的提现及相关存款交易哈希，因此提供方可能将它们关联起来。只有此RPC报告已最终确认的票据才会移至加密归档，其他票据仍保持活跃。已归档票据不占用活跃额度。"
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "无法加载票据上限。",

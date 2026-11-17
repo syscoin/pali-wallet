@@ -21,6 +21,9 @@ export const PRIVATE_VAULT_FORMAT = 'pali-private-note-vault';
 export const PRIVATE_VAULT_VERSION = 1;
 export const DEFAULT_CAPACITY = 128;
 export const MAX_NOTES = 512;
+export const MAX_ARCHIVED_NOTES = 512;
+export const MAX_VAULT_NOTES = MAX_NOTES + MAX_ARCHIVED_NOTES;
+export const PRIVATE_VAULT_ARCHIVE_BUDGET = 4 * 1024 * 1024;
 export const PRIVATE_VAULT_CAPACITIES = Object.freeze([
   DEFAULT_CAPACITY,
   256,
@@ -30,6 +33,10 @@ export const capacityValid = (value: unknown): value is 128 | 256 | 512 =>
   PRIVATE_VAULT_CAPACITIES.some((capacity) => capacity === value);
 export const capacityBudget = (capacity: 128 | 256 | 512): number =>
   (capacity / 128) * 4 * 1024 * 1024;
+// Keep the existing native SQLite record ceiling and wallet format unchanged.
+// The active and archive quotas also remain independently enforced below it.
+export const PRIVATE_VAULT_MAX_BUNDLE_BYTES = capacityBudget(512);
+// Match the existing SDK private-record bound, including archive identity keys.
 export const MAX_PLAINTEXT_BYTES = 64 * 1024;
 export const MAX_SHARD_BYTES = 32 * 1024;
 export const MAX_SHARD_NOTES = 16;
@@ -146,7 +153,7 @@ export function snapshotPrivateVaultBundle(
     });
   };
   const root = envelope(raw.root, PRIVATE_VAULT_DOMAIN, MAX_PLAINTEXT_BYTES);
-  const values = snapshotBackupArray(raw.shards, MAX_NOTES);
+  const values = snapshotBackupArray(raw.shards, MAX_VAULT_NOTES);
   if (!values.length) throw new Error('privacy_vault_corrupt');
   const ids = new Set([root.recordId]);
   const shards = values.map((entry) => {
@@ -164,7 +171,7 @@ export function snapshotPrivateVaultBundle(
   };
   if (
     new TextEncoder().encode(JSON.stringify(result)).length >
-    capacityBudget(512)
+    PRIVATE_VAULT_MAX_BUNDLE_BYTES
   )
     throw new Error('privacy_vault_corrupt');
   return result;
@@ -177,13 +184,13 @@ export function parsePrivateVaultBundle(
 ): IPrivateNoteBundle {
   if (
     typeof raw !== 'string' ||
-    raw.length > capacityBudget(512) ||
-    new TextEncoder().encode(raw).length > capacityBudget(512)
+    raw.length > PRIVATE_VAULT_MAX_BUNDLE_BYTES ||
+    new TextEncoder().encode(raw).length > PRIVATE_VAULT_MAX_BUNDLE_BYTES
   )
     throw new Error('privacy_vault_corrupt');
   assertJsonTextBudget(raw, {
     depth: 8,
-    nodes: 8192,
+    nodes: 16384,
     tokenCharacters: 90_000,
     whitespace: true,
   });

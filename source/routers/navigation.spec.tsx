@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import {
   BrowserRouter,
@@ -61,13 +61,18 @@ const Probe = () => {
   return <output data-testid="location">{JSON.stringify(location)}</output>;
 };
 const location = () => JSON.parse(screen.getByTestId('location').textContent!);
-const renderExternal = () =>
-  render(
-    <BrowserRouter useTransitions={false}>
-      <Probe />
-      <Router />
-    </BrowserRouter>
-  );
+const renderExternal = async () => {
+  // Complete the lazy import/effect setup before starting assertions about the
+  // resulting route; these checks do not measure chunk-loading duration.
+  await act(async () => {
+    render(
+      <BrowserRouter useTransitions={false}>
+        <Probe />
+        <Router />
+      </BrowserRouter>
+    );
+  });
+};
 
 beforeEach(() => {
   mockUnlocked = true;
@@ -101,7 +106,7 @@ it.each([
     const data = JSON.stringify({ requestId: 17, text: 'a&b=+#%/?' });
     const query = new URLSearchParams({ route, data });
     window.history.replaceState(null, '', `/external.html?${query}`);
-    renderExternal();
+    await renderExternal();
     await screen.findByText(label);
     expect(location().pathname).toBe(`/external/${route}`);
     expect(new URLSearchParams(location().search).get('data')).toBe(data);
@@ -114,7 +119,7 @@ it('keeps the requested external route and data while routing a locked wallet to
   const data = JSON.stringify({ requestId: 18, text: 'pending approval' });
   const query = new URLSearchParams({ route: 'tx/ethSign', data });
   window.history.replaceState(null, '', `/external.html?${query}`);
-  renderExternal();
+  await renderExternal();
   await screen.findByText('Unlock fixture');
   expect(location().pathname).toBe('/');
   const saved = new URLSearchParams(location().search);
@@ -125,7 +130,7 @@ it('keeps the requested external route and data while routing a locked wallet to
 it('closes an already-unlocked external login window exactly once', async () => {
   const close = jest.spyOn(window, 'close').mockImplementation(() => undefined);
   window.history.replaceState(null, '', '/external.html?route=login');
-  renderExternal();
+  await renderExternal();
   await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
   close.mockRestore();
 });
@@ -135,7 +140,7 @@ it.each(['//attacker.invalid', '\\attacker.invalid', '/\\attacker.invalid'])(
   async (route) => {
     const query = new URLSearchParams({ route });
     window.history.replaceState(null, '', `/external.html?${query}`);
-    renderExternal();
+    await renderExternal();
     await waitFor(() => expect(location().pathname).not.toBe('/external.html'));
     expect(window.location.origin).toBe('http://localhost');
     expect(location().pathname).toMatch(/^\/external\//);

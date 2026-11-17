@@ -2325,7 +2325,7 @@ async function completedClearFixture() {
   return { f, completed, unrelated, session, attempt };
 }
 
-it('clear completed removes only the proven unchanged note and preserves unresolved records', async () => {
+it('clear completed archives only the proven unchanged note and preserves unresolved records', async () => {
   const { f, completed, unrelated } = await completedClearFixture();
   const result = await f.controller.clearCompletedNotes([completed.id]);
   expect(result).toEqual({ removed: [completed.id], unresolved: [] });
@@ -2341,9 +2341,28 @@ it('clear completed removes only the proven unchanged note and preserves unresol
   expect(JSON.stringify(f.prepareCompletionProof.mock.calls)).not.toContain(
     NOTE
   );
-  expect((await f.create().getNotes()).notes.map((note) => note.id)).toEqual([
+  const restarted = f.create();
+  expect((await restarted.getNotes()).notes.map((note) => note.id)).toEqual([
     unrelated.id,
   ]);
+  expect((await restarted.getArchivedNotes()).notes).toEqual([
+    expect.objectContaining({
+      id: completed.id,
+      archivedAt: expect.any(Number),
+    }),
+  ]);
+  // Completion is RPC-supplied evidence. It must not destroy the last bearer
+  // secret, including when the independent note reader still reports funded.
+  expect(await restarted.revealNote(completed.id, 'correct-password')).toBe(
+    NOTE
+  );
+  const backup = await restarted.exportBackupSnapshot(
+    'correct-password',
+    f.captureSession()
+  );
+  expect(backup.notes.map((note) => note.note)).toEqual(
+    expect.arrayContaining([NOTE, SECOND_NOTE])
+  );
 });
 
 it.each(['initial', 'revalidation'])(
@@ -2566,9 +2585,16 @@ it('clears a verified note without losing canonical capacity or unrelated custod
     capacity: 256,
     noteCount: 1,
   });
-  expect((await f.create().getNotes()).notes.map((entry) => entry.id)).toEqual([
+  const reopened = f.create();
+  expect((await reopened.getNotes()).notes.map((entry) => entry.id)).toEqual([
     unrelated.id,
   ]);
+  expect(
+    (await reopened.getArchivedNotes()).notes.map((entry) => entry.id)
+  ).toEqual([completed.id]);
+  expect(await reopened.revealNote(completed.id, 'correct-password')).toBe(
+    NOTE
+  );
 });
 
 it.each([256, 512] as const)(
@@ -2720,6 +2746,12 @@ it.each([256, 512] as const)(
     const remaining = (await afterRestart.getNotes()).notes;
     expect(remaining).toHaveLength(capacity - 1);
     expect(remaining.some((entry) => entry.id === notes[0].id)).toBe(false);
+    expect(
+      (await afterRestart.getArchivedNotes()).notes.map((entry) => entry.id)
+    ).toEqual([notes[0].id]);
+    expect(await afterRestart.revealNote(notes[0].id, 'correct-password')).toBe(
+      notes[0].note
+    );
     expect(
       await afterRestart.getWithdrawalAttempt(notes[1].id, f.captureSession())
     ).toEqual({

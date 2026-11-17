@@ -2,7 +2,7 @@
   "name": "@pali/mobile",
   "version": "5.0.0",
   "private": true,
-  "paliSysweb3Overlay": "sysweb3.f6503bd5424c198de85d66881b252a91c0a5cb19.sha256.62fcc214672b0e280e19cfb7383f97a1bdd7c942f1364c971cffe17ec67016c3",
+  "paliSysweb3Overlay": "sysweb3.6b362540d1a73bc6d48111d3f96456503261407a.sha256.6fb296e4037bff5d2193ff142955053b43342777669946a89ed13c709374fb6a",
   "main": "index.ts",
   "scripts": {
     "start": "EXPO_NO_TELEMETRY=1 expo start",

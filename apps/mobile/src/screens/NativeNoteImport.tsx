@@ -41,6 +41,8 @@ function importError(error: unknown, t: ReturnType<typeof useNativeTranslation>[
     return t('mobile.noteFlows.import.thisNoteWasNotFoundInTheVerified');
   if (code === 'privacy_note_limit')
     return t('mobile.noteFlows.import.yourSavedNoteLimitHasBeenReached');
+  if (code === 'privacy_note_archived')
+    return t('privacy.archive.alreadyArchived');
   if (code === 'privacy_wrong_chain')
     return t('mobile.noteFlows.import.selectEthereumToImportThisNote');
   if (code === 'privacy_verification_pending')

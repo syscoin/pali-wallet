@@ -3,6 +3,10 @@ import { sha256 } from 'ethers/crypto';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 import { PSBT_WORK_LIMITS } from '../utils/psbtWorkBudget.ts';
 
+import {
+  validUtxoDiscoveryMetadata,
+  type UtxoDiscoveryMetadata,
+} from './utxoAddressDiscovery.ts';
 import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
 export const UTXO_SIGNED_RECORD_PREFIX = 'pali-utxo-signed-v1:';
@@ -29,6 +33,7 @@ export type Summary = Readonly<{
 export type Entry = Summary &
   Readonly<{ chunks: readonly IEncryptedPrivateRecord[] }>;
 export type Bundle = Readonly<{
+  discovery?: readonly UtxoDiscoveryMetadata[];
   entries: readonly Entry[];
   profileId: string;
   revision: number;
@@ -105,7 +110,7 @@ export function inspectUtxoSignedBundle(
   const value = JSON.parse(raw);
   if (
     !value ||
-    Object.keys(value).length !== 5 ||
+    Object.keys(value).length !== (value.discovery === undefined ? 5 : 6) ||
     JSON.stringify(value) !== raw ||
     value.version !== 1 ||
     value.profileId !== profileId ||
@@ -114,7 +119,9 @@ export function inspectUtxoSignedBundle(
     value.revision < 0 ||
     !validUtxoEnvelope(value.root, profileId, ROOT_DOMAIN, 'manifest') ||
     !Array.isArray(value.entries) ||
-    value.entries.length > MAX_RECORDS
+    value.entries.length > MAX_RECORDS ||
+    (value.discovery !== undefined &&
+      !validUtxoDiscoveryMetadata(value.discovery, MAX_RECORDS))
   )
     return corrupt();
   const keys = new Set<string>();

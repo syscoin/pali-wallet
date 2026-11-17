@@ -54,6 +54,7 @@ const submit = (prepared: any) =>
   controller.submitPreparedSmartAccountGuardianStartRecovery({
     ...prepared,
     claimHash: prepared.claim.intent.operation.hash,
+    feeReviewId: 'reviewed-recovery',
   });
 function open() {
   controller = new SmartAccountController({
@@ -325,6 +326,7 @@ test('lost finalize reply retains exact refs in durable state until explicit exp
   );
   await expect(
     controller.finalizeSmartAccountGuardianRecovery({
+      feeReviewId: 'reviewed-recovery',
       claim: prepared.claim,
       expectedClaimHash: prepared.claim.intent.operation.hash,
     })

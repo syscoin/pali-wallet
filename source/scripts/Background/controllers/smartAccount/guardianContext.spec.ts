@@ -71,6 +71,7 @@ describe('guardian recovery originating wallet context', () => {
   const submit = () =>
     controller.submitPreparedSmartAccountGuardianStartRecovery({
       claimHash: operation.hash,
+      feeReviewId: 'reviewed-recovery',
       account: TARGET,
       guardian: GUARDIAN,
       approval: { guardian: GUARDIAN, signature: '0x1234' },
@@ -83,6 +84,7 @@ describe('guardian recovery originating wallet context', () => {
         mockState.vault.accounts.SmartAccount[1].smartAccount
           .guardianRecoveryClaim,
       expectedClaimHash: operation.hash,
+      feeReviewId: 'reviewed-recovery',
       expectedContext,
     });
   beforeEach(() => {
@@ -206,6 +208,7 @@ describe('guardian recovery originating wallet context', () => {
       approval,
       operation: captured,
       gasPayer: payer,
+      feeReviewId: 'reviewed-recovery',
       expectedContext,
     });
     captured.salt = `0x${'55'.repeat(32)}`;

@@ -1027,7 +1027,10 @@
     "smartAccountGuardianRecoveryExpired": "Diese Wiederherstellungsanfrage ist abgelaufen, bevor sie abgeschlossen wurde. Starten Sie die Wiederherstellung erneut.",
     "invalidAddress": "Ungültige Adresse",
     "changeHardwareDevice": "Gerät wechseln",
-    "closeHardwareSetup": "Einrichtung schließen"
+    "closeHardwareSetup": "Einrichtung schließen",
+    "smartAccountFeeReviewTitle": "Netzwerkgebühr prüfen",
+    "smartAccountFeeReviewSelectedAccount": "Ausgewähltes Konto",
+    "smartAccountFeeReviewMaximumTotal": "Maximale Gesamtkosten"
   },
   "start": {
     "eraseAndStartFresh": "Löschen und neu starten",
@@ -1867,10 +1870,10 @@
       "error": "Das Limit konnte nicht geändert werden. Prüfe, ob die gespeicherten Notizen hineinpassen, und versuche es erneut.",
       "save": "Limit speichern",
       "reportedSpent": "Als ausgegeben gemeldete Notizen ({{count}})",
-      "clear": "Abgeschlossene Notizen entfernen",
-      "clearHelp": "Der ausgewählte Ethereum-RPC erhält den bekannten Auszahlungs-Hash und gegebenenfalls den zugehörigen Einzahlungs-Hash. Der Anbieter kann dadurch Einzahlung und Auszahlung verknüpfen. Nur Notizen, deren Abschluss und zugehörige Einzahlung dieser RPC als final bestätigt, werden entfernt; ungeprüfte bleiben gespeichert.",
-      "confirmClear": "Prüfen und entfernen",
-      "clearResult": "Entfernt: {{removed}}. Weiter gespeichert: {{unresolved}}.",
+      "clear": "Abgeschlossene Notizen archivieren",
+      "clearHelp": "Der ausgewählte Ethereum-RPC erhält bekannte Transaktions-Hashes für Auszahlungen und zugehörige Einzahlungen. Der Anbieter kann diese verknüpfen. Nur von diesem RPC als endgültig bestätigte Notizen werden verschlüsselt archiviert; andere bleiben aktiv. Archivierte Notizen zählen nicht zum aktiven Limit.",
+      "confirmClear": "Prüfen und archivieren",
+      "clearResult": "Archiviert: {{removed}}. Noch aktiv: {{unresolved}}.",
       "clearError": "Die Prüfung konnte nicht abgeschlossen werden. Aktualisiere die Liste.",
       "clearProgress": "{{checked}} von {{total}} Notizen geprüft.",
       "storedBytes": "Serialisierter verschlüsselter Tresor: {{bytes}} Byte."
@@ -1971,6 +1974,24 @@
       "confirm": "Notizprüfung bestätigen",
       "busy": "Prüfung wird gespeichert…",
       "failed": "Die Prüfung konnte nicht gespeichert werden. Prüfe Passwort und Pool-Daten und versuche es erneut."
+    },
+    "archive": {
+      "title": "Archivierte Notizen",
+      "help": "Abgeschlossene Notizen bleiben hier verschlüsselt, bis du sie wiederherstellst oder das Archiv leerst. Sie zählen nicht zum Limit aktiver Notizen.",
+      "empty": "Keine archivierten Notizen",
+      "restore": "Notiz wiederherstellen",
+      "restored": "Notiz zu den aktiven Notizen wiederhergestellt",
+      "clear": "Archiv leeren",
+      "confirmClear": "Archivierte Notizen dauerhaft löschen",
+      "warning": "Deine Wiederherstellungsphrase kann diese Notizen nicht wiederherstellen. Lösche das Archiv nur, wenn die Notizen ausgegeben sind oder du eine verwendbare Sicherung hast.",
+      "confirmBackup": "Ich habe bestätigt, dass die Notizen ausgegeben sind, oder eine verwendbare Sicherung aufbewahrt",
+      "clearResult": "{{count}} archivierte Notizen gelöscht",
+      "loadError": "Archiv konnte nicht geladen werden. Versuche es erneut.",
+      "actionError": "Archiv konnte nicht aktualisiert werden. Aktualisiere die Ansicht und versuche es erneut.",
+      "full": "Der Archivspeicher ist voll. Exportiere vor dem Leeren eine verschlüsselte Sicherung.",
+      "capacity": "{{count}} / {{limit}} archivierte Notizen",
+      "activeFull": "Das Limit aktiver Notizen ist erreicht. Archiviere abgeschlossene Notizen oder erhöhe das Limit vor der Wiederherstellung.",
+      "alreadyArchived": "Diese Notiz ist archiviert. Öffne Archivierte Notizen und stelle sie wieder her, um sie erneut zu verwenden."
     }
   },
   "mobile": {
@@ -2519,7 +2540,7 @@
         "addNotesFromAnEncryptedFile": "Notizen aus verschlüsselter Datei hinzufügen",
         "changeTheSavedNoteLimit": "Limit gespeicherter Notizen ändern",
         "manageCompletedNotes": "Abgeschlossene Notizen verwalten",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Abgeschlossene Notizen löschen oder fehlgeschlagene Abhebung wiederherstellen",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Abgeschlossene Notizen archivieren oder eine fehlgeschlagene Auszahlung wiederherstellen",
         "serviceOriginAndPublicPoolData": "Dienstursprung und öffentliche Pool-Daten",
         "verifyBackup": "Sicherung prüfen",
         "backupVerified": "Sicherung geprüft",
@@ -2603,7 +2624,7 @@
       },
       "maintenance": {
         "chooseNote": "Wähle eine gespeicherte Note zum Prüfen und Entfernen aus. Jeder Versuch prüft nur diese Note.",
-        "clearHelp": "Der ausgewählte Ethereum-RPC erhält den bekannten Transaktionshash der Auszahlung dieser Note und, falls vorhanden, den des zugehörigen Deposits. Dadurch kann dieser Anbieter Deposit und Auszahlung verknüpfen. Nur diese Note wird entfernt, und nur wenn dieser RPC den Abschluss und die Abwicklung des zugehörigen Deposits als endgültig bestätigt. Andernfalls bleibt sie gespeichert."
+        "clearHelp": "Der ausgewählte Ethereum-RPC erhält bekannte Transaktions-Hashes für Auszahlungen und zugehörige Einzahlungen. Der Anbieter kann diese verknüpfen. Nur von diesem RPC als endgültig bestätigte Notizen werden verschlüsselt archiviert; andere bleiben aktiv. Archivierte Notizen zählen nicht zum aktiven Limit."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Notizlimit konnte nicht geladen werden.",

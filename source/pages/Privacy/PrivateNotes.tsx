@@ -16,6 +16,7 @@ import { RootState } from 'state/store';
 import { verifiedNoteBalance } from 'utils/privacy/balance';
 import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
 
+import PrivateArchivedNotes from './PrivateArchivedNotes';
 import PrivateDeposit from './PrivateDeposit';
 import PrivateNoteBackupDialog from './PrivateNoteBackupDialog';
 import PrivateNoteRestoreReview from './PrivateNoteRestoreReview';
@@ -48,6 +49,8 @@ function importError(error: unknown): string {
       return 'notePending';
     case 'privacy_note_duplicate':
       return 'noteDuplicate';
+    case 'privacy_note_archived':
+      return 'archive.alreadyArchived';
     case 'privacy_note_limit':
       return 'noteLimit';
     default:
@@ -80,6 +83,8 @@ function NotesView() {
   const [deposit, setDeposit] = useState(false);
   const [capacitySettings, setCapacitySettings] = useState(false);
   const [showSpent, setShowSpent] = useState(false);
+  const [archiveRevision, setArchiveRevision] = useState(0);
+  const [archiveCount, setArchiveCount] = useState(0);
   const [backupNoteId, setBackupNoteId] = useState<string | null>(null);
   const [bundleMode, setBundleMode] = useState<'export' | 'import' | null>(
     null
@@ -233,7 +238,9 @@ function NotesView() {
               <button
                 type="button"
                 className={actionClass}
-                disabled={loading || unavailable || !notes.length}
+                disabled={
+                  loading || unavailable || (!notes.length && !archiveCount)
+                }
                 onClick={() => {
                   clear();
                   setBundleMode('export');
@@ -361,14 +368,16 @@ function NotesView() {
                 (statusRevisions.current.get(id) || 0) + 1
               );
             forget(ids);
-            setStatusNote((current) =>
-              current && ids.includes(current) ? null : current
+            setArchiveCount((value) => value + ids.length);
+            setArchiveRevision((value) => value + 1);
+            setStatusNote((previous) =>
+              previous && ids.includes(previous) ? null : previous
             );
-            setStatusError((current) =>
-              current && ids.includes(current) ? null : current
+            setStatusError((previous) =>
+              previous && ids.includes(previous) ? null : previous
             );
-            setReportedStatus((current) =>
-              current && ids.includes(current.id) ? null : current
+            setReportedStatus((previous) =>
+              previous && ids.includes(previous.id) ? null : previous
             );
           }}
           onComplete={() => {
@@ -660,6 +669,21 @@ function NotesView() {
   return (
     <>
       {content}
+      {!deposit && !withdrawing && (
+        <PrivateArchivedNotes
+          controllerEmitter={controllerEmitter}
+          revision={archiveRevision}
+          onCount={setArchiveCount}
+          onRestored={() => {
+            void refresh();
+          }}
+          onReveal={setBackupNoteId}
+          onExport={() => {
+            clear();
+            setBundleMode('export');
+          }}
+        />
+      )}
       {/* Keep the deposit review mounted while the local backup dialog is open. */}
       <PrivateNoteBackupDialog
         noteId={backupNoteId}

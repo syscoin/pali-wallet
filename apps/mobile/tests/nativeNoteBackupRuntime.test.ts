@@ -1,4 +1,4 @@
-import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild } from '../src/custody/privateAuthentication.ts';
 import { createTestCredentialPort } from './fixtures/credential.ts';
 import { readTestNoteInventory, testInventoryAuthentication } from './fixtures/privateAuthentication.ts';
 import { isOperationAuthenticationCancellation, operationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
@@ -990,4 +990,82 @@ test('real inventory credential acquisition belongs only to its current private 
     assert.equal(signal.aborted, true);
     blocked.release(); await rejected;
   } finally { f.onCredential(); await f.dispose(); }
+});
+
+async function archiveFixture() {
+  const f = await fixture();
+  try {
+    const archived = [
+      { note: `tornado-eth-1-1-0x${'31'.repeat(62)}`, createdAt: 11, archivedAt: 31 },
+      { note: `tornado-eth-1-1-0x${'32'.repeat(62)}`, createdAt: 12, archivedAt: 32 },
+    ];
+    const backup = await f.runtime.openNoteBackup!(current), id = backup.begin();
+    await backup.prepareImport(id, await encrypted([NOTE, ...archived]), BACKUP_PASSWORD);
+    await backup.commitImport(id);
+    await f.reopen();
+    const parent = createNativePrivateAuthenticationScope();
+    const binding = bindNativePrivateAuthentication(parent, { assertCurrent: current, isPromptActive: () => false });
+    const inventory = await f.rawRuntime.readNoteInventory!(current, binding);
+    const action = async <T>(work: (scope: ReturnType<typeof createNativePrivateAuthenticationChild>) => Promise<T>) => {
+      const child = createNativePrivateAuthenticationChild(parent);
+      try { return await work(child); } finally { child.retire(); }
+    };
+    return { f, archived, inventory, parent, action };
+  } catch (error) { await f.dispose(); throw error; }
+}
+
+test('native archive is lazy and mutation refreshes use one authorization with reusable parent-owned handles', async () => {
+  const { f, archived, inventory, parent, action } = await archiveFixture();
+  try {
+    assert.equal(inventory.notes.length, 1);
+    assert.equal(inventory.archiveSummary?.noteCount, 2);
+    assert.deepEqual(Object.keys(inventory.archive!), ['open'], 'Ordinary inventory has no decrypted archive rows');
+    const opened = f.unlockCalls;
+    const archive = await action(scope => inventory.archive!.open(current, scope));
+    assert.equal(f.unlockCalls, opened + 1, 'Explicit archive entry authorizes once');
+    assert.deepEqual(archive.notes.map(note => note.archivedAt), [32, 31]);
+    assert.equal(archive.limit, inventory.archiveSummary!.limit);
+    const beforeRestore = f.unlockCalls;
+    const restored = await action(scope => archive.restoreNote(archive.notes[0]!, current, scope));
+    assert.equal(f.unlockCalls, beforeRestore + 1, 'Restore, active refresh and archive refresh share one authorization');
+    assert.equal(restored.inventory.notes.length, 2);
+    assert.equal(restored.inventory.archiveSummary?.noteCount, 1);
+    assert.equal(restored.archive.notes.length, 1);
+    const restoredRow = restored.inventory.notes.find(note => note.createdAt === 12)!;
+    assert(restoredRow);
+    const beforeReveal = f.unlockCalls;
+    assert.equal(await action(scope => restored.inventory.revealNote(restoredRow, current, scope)), archived[1]!.note);
+    assert.equal(f.unlockCalls, beforeReveal + 1, 'A sibling action survives the retired restore child and reauthorizes once');
+    assert.equal(await action(scope => restored.archive.revealNote(restored.archive.notes[0]!, current, scope)), archived[0]!.note);
+    const beforeClear = f.unlockCalls;
+    const cleared = await action(scope => restored.archive.clearArchive(current, scope));
+    assert.equal(f.unlockCalls, beforeClear + 1, 'Clear and both refreshes share one authorization');
+    assert.equal(cleared.removed, 1);
+    assert.equal(cleared.archive.notes.length, 0);
+    assert.equal(cleared.inventory.archiveSummary?.noteCount, 0);
+    const active = cleared.inventory.notes.find(note => note.createdAt === 12)!;
+    assert.equal(await action(scope => cleared.inventory.revealNote(active, current, scope)), archived[1]!.note);
+    const access = f.latestPrivateAccess; assert(access);
+    await assert.rejects(access.getPrivateRecordProfileId(), 'No action codec remains unlocked after the operation');
+  } finally { parent.retire(); await f.dispose(); }
+});
+
+test('native archive cancellation and parent retirement do not mutate or poison a later authorized action', async () => {
+  const { f, inventory, parent, action } = await archiveFixture();
+  try {
+    const archive = await action(scope => inventory.archive!.open(current, scope));
+    const before = f.unlockCalls, writes = f.noteWrites;
+    f.refuseCredential();
+    await assert.rejects(action(scope => archive.restoreNote(archive.notes[0]!, current, scope)), isOperationAuthenticationCancellation);
+    assert.equal(f.unlockCalls, before + 1);
+    assert.equal(f.noteWrites, writes);
+    const restored = await action(scope => archive.restoreNote(archive.notes[0]!, current, scope));
+    assert.equal(restored.archive.notes.length, 1);
+    assert.equal(f.unlockCalls, before + 2, 'A cancelled child does not retire the original view');
+    const last = f.unlockCalls;
+    const child = createNativePrivateAuthenticationChild(parent);
+    parent.retire();
+    await assert.rejects(restored.archive.clearArchive(current, child));
+    assert.equal(f.unlockCalls, last, 'A retired parent cannot request another credential');
+  } finally { parent.retire(); await f.dispose(); }
 });

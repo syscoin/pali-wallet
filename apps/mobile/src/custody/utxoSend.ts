@@ -189,7 +189,7 @@ export function createNativeUtxoSend(
     const controller = new AbortController();
     readController = controller;
     await verifyEndpoint(controller.signal, assertCurrent);
-    return createOwnedUtxoBlockbookRead(
+    const read = createOwnedUtxoBlockbookRead(
       {
         kind: 'wallet',
         address: scope.account.address,
@@ -201,6 +201,7 @@ export function createNativeUtxoSend(
       assertCurrent,
       fetch
     );
+    return Object.freeze({ ...read, ...records.addressDiscovery({ ...session, assertCurrent: read.assertCurrent }, owner) });
   };
   return Object.freeze({
     cancel,

@@ -285,7 +285,7 @@ async function marketAvailability(
     const checkVisibleCategories = async (count: number, symbol: string) => {
       const categories = categoryLabels.slice(0, count);
       await expect(
-        page.locator('a[href^="https://www.coingecko.com/en/categories/"]')
+        page.locator('a[href="https://www.coingecko.com/en/categories"]')
       ).toHaveCount(count);
       await expect(
         page.getByText(en.tokens.categories, { exact: true })
@@ -299,9 +299,7 @@ async function marketAvailability(
         await expect(link).toBeVisible();
         await expect(link).toHaveAttribute(
           'href',
-          `https://www.coingecko.com/en/categories/${category
-            .toLowerCase()
-            .replace(/\s+/g, '-')}`
+          'https://www.coingecko.com/en/categories'
         );
         await expect(link).toHaveAttribute('target', '_blank');
         await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -525,10 +523,7 @@ async function marketAvailability(
           await expect(page.getByText(label, { exact: true })).toHaveCount(0);
         await expect(
           page.getByRole('link', { name: 'Payments', exact: true })
-        ).toHaveAttribute(
-          'href',
-          'https://www.coingecko.com/en/categories/payments'
-        );
+        ).toHaveAttribute('href', 'https://www.coingecko.com/en/categories');
         await expect(
           page.getByRole('link', { name: 'Layer 2', exact: true })
         ).toHaveCount(malformedCategories ? 0 : 1);

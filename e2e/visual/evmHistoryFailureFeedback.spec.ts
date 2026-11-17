@@ -64,8 +64,8 @@ const visibleBounds = async (page: Page, control: Locator) => {
     const bounds = element.getBoundingClientRect();
     const points = [
       [bounds.left + bounds.width / 2, bounds.top + bounds.height / 2],
-      [bounds.left + 2, bounds.top + 2],
-      [bounds.right - 2, bounds.bottom - 2],
+      [bounds.left + 2, bounds.top + bounds.height / 2],
+      [bounds.right - 2, bounds.top + bounds.height / 2],
     ];
     return {
       left: bounds.left,

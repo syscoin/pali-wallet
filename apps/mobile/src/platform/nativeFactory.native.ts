@@ -6,7 +6,7 @@ import { bindNativePrivateAuthentication, bindNativePrivateAuthenticationChild, 
 import type { NativeSmartModuleManagement } from '../smartAccount/moduleManagement.ts';
 import { createNativePrivacyServiceSettings } from './privacyServiceSettings.native';
 import type { NativePrivacyControls } from '../privacy/privacyControls';
-import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime';
+import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory, NativeNoteArchiveInventory, NativeNoteArchiveMutation } from '../custody/noteBackupRuntime';
 import type { NativeSlhDsaManagement } from '../smartAccount/slhDsaManagement';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard';
 import { NativeLedgerAccounts } from '../custody/ledgerAccounts.ts';
@@ -833,9 +833,27 @@ export function createNativeWalletControllers() {
     const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const read = selected.readNoteInventory;
     if (!read) throw new CustodyOperationError('NOT_READY');
-    const inventory = await observeFailure(() => read(assertCurrent, binding));
-    assertCurrent();
-    return Object.freeze<NativeNoteInventory>({
+    const wrapMutation = (result: NativeNoteArchiveMutation): NativeNoteArchiveMutation => Object.freeze({
+      inventory: wrapInventory(result.inventory), archive: wrapArchive(result.archive),
+    });
+    const wrapArchive = (archive: NativeNoteArchiveInventory): NativeNoteArchiveInventory => Object.freeze<NativeNoteArchiveInventory>({
+      ...archive,
+      revealNote: (...args) => observeFailure(() => archive.revealNote(...args)),
+      async restoreNote(...args) {
+        const result = await observeFailure(() => archive.restoreNote(...args));
+        assertCurrent(); return wrapMutation(result);
+      },
+      async clearArchive(...args) {
+        const result = await observeFailure(() => archive.clearArchive(...args));
+        assertCurrent(); return Object.freeze({ ...wrapMutation(result), removed: result.removed });
+      },
+    });
+    const wrapInventory = (inventory: NativeNoteInventory): NativeNoteInventory => Object.freeze<NativeNoteInventory>({
+      ...(inventory.archiveSummary ? { archiveSummary: inventory.archiveSummary } : {}),
+      ...(inventory.archive ? { archive: Object.freeze({ async open(...args: Parameters<NonNullable<NativeNoteInventory['archive']>['open']>) {
+        const archive = await observeFailure(() => inventory.archive!.open(...args));
+        assertCurrent(); return wrapArchive(archive);
+      } }) } : {}),
       notes: inventory.notes,
       ...(inventory.checkNote ? { checkNote: (...args: Parameters<NonNullable<NativeNoteInventory['checkNote']>>) => observeFailure(() => inventory.checkNote!(...args)) } : {}),
       ...(inventory.openWithdrawal ? {
@@ -855,6 +873,8 @@ export function createNativeWalletControllers() {
         return secret;
       },
     });
+    const inventory = await observeFailure(() => read(assertCurrent, binding));
+    assertCurrent(); return wrapInventory(inventory);
   };
   const openPrivateDeposit = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);

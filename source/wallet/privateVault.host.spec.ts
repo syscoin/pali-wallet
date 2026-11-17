@@ -18,6 +18,13 @@ import type {
   IPrivateVaultHost,
   IPrivateVaultSession,
 } from './privateVault';
+import {
+  envelopeHash,
+  privateVaultNoteKey,
+  PRIVATE_VAULT_SHARD_DOMAIN,
+  MAX_SHARD_NOTES,
+} from './privateVaultInspection';
+import type { IStoredNote } from './privateVaultInspection';
 import type { IPrivacyDepositAttempt } from '../utils/privacy/transactionTypes';
 import type { IPrivacyWithdrawalAttempt } from '../utils/privacy/withdrawalTransactionTypes';
 
@@ -1427,4 +1434,421 @@ test('unsigned withdrawal cleanup preserves a different exact retained attempt',
   expect(await f.vault.getWithdrawalAttempt(f.note.id, f.session)).toEqual(
     before
   );
+});
+
+const archivedTestNote = (index: number) =>
+  `tornado-eth-1-1-0x${index.toString(16).padStart(124, '0')}`;
+const archiveTestId = (index: number) =>
+  `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
+const completedArchiveNote = (note = NOTE, id = RECORD_ID): IStoredNote => ({
+  id,
+  note,
+  createdAt: 100,
+  withdrawal: {
+    intentId: INTENT_ID,
+    attemptHash: HASH,
+    inputHash: HASH,
+    proofHash: HASH,
+    createdAt: 100,
+    mode: 'relayed',
+    phase: 'submitted',
+    endpoint: 'https://relay.example',
+    ensHash: HASH,
+    transactionHash: HASH,
+  },
+});
+async function seedArchiveVault(
+  f: ReturnType<typeof fixture>,
+  notes: IStoredNote[],
+  capacity = 128
+) {
+  const active = notes.filter((note) => note.archivedAt === undefined);
+  const archived = notes.filter((note) => note.archivedAt !== undefined);
+  const groups: IStoredNote[][] = [];
+  for (const partition of [active, archived])
+    for (let offset = 0; offset < partition.length; offset += MAX_SHARD_NOTES)
+      groups.push(partition.slice(offset, offset + MAX_SHARD_NOTES));
+  if (!groups.length) groups.push([]);
+  const shards = [],
+    references = [];
+  for (const [index, group] of groups.entries()) {
+    const envelope = await f.keyring.encryptPrivateRecord({
+      domain: PRIVATE_VAULT_SHARD_DOMAIN,
+      recordId: archiveTestId(10000 + index),
+      plaintext: new TextEncoder().encode(
+        JSON.stringify({ version: 1, notes: group })
+      ),
+    });
+    shards.push(envelope);
+    references.push({
+      recordId: envelope.recordId,
+      hash: envelopeHash(envelope),
+      count: group.length,
+      ...(group[0]?.archivedAt === undefined
+        ? {}
+        : {
+            archived: true as const,
+            noteKeys: group.map((note) =>
+              privateVaultNoteKey(f.dependencies.identify(note.note))
+            ),
+          }),
+    });
+  }
+  const root = await f.keyring.encryptPrivateRecord({
+    domain: core.PRIVATE_VAULT_DOMAIN,
+    recordId: archiveTestId(9999),
+    plaintext: new TextEncoder().encode(
+      JSON.stringify({
+        format: core.PRIVATE_VAULT_FORMAT,
+        version: 1,
+        capacity,
+        noteCount: active.length,
+        ...(archived.length ? { archiveCount: archived.length } : {}),
+        shards: references,
+        restore: { version: 1 },
+      })
+    ),
+  });
+  const bundle = {
+    format: core.PRIVATE_VAULT_FORMAT,
+    version: 1,
+    root,
+    shards,
+  };
+  f.records[core.PRIVATE_VAULT_STORAGE_PREFIX + root.profileId] = bundle;
+  return {
+    bundle,
+    archiveIds: new Set(
+      references.filter((ref) => ref.archived).map((ref) => ref.recordId)
+    ),
+  };
+}
+
+test('a false completed/spent proof archives the last secret durably without changing its recovery evidence', async () => {
+  const f = fixture();
+  const note = completedArchiveNote();
+  await seedArchiveVault(f, [note]);
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  expect(await vault.clearCompletedNotes([note.id])).toEqual({
+    removed: [note.id],
+    unresolved: [],
+  });
+  expect(await vault.getNotes()).toEqual({ notes: [] });
+  jest.mocked(f.host.readNote).mockClear();
+  const archive = await vault.getArchivedNotes();
+  expect(archive).toMatchObject({
+    limit: 512,
+    bundleLimitBytes: 4194304,
+    notes: [{ id: note.id, archivedAt: 456 }],
+  });
+  expect(JSON.stringify(archive)).not.toContain(NOTE);
+  expect(f.host.readNote).not.toHaveBeenCalled();
+  const reopened = core.createPrivateVaultController(f.host, f.dependencies);
+  expect(await reopened.revealNote(note.id, 'synthetic-password')).toBe(NOTE);
+  const backup = await reopened.exportBackupSnapshot(
+    'synthetic-password',
+    f.host.captureSession()
+  );
+  expect(backup.notes[0]).toMatchObject({
+    note: NOTE,
+    archivedAt: 456,
+    history: { withdrawals: [{ transactionHash: HASH }] },
+  });
+  expect(await reopened.getCapacity()).toMatchObject({
+    capacity: 128,
+    noteCount: 0,
+  });
+});
+
+test('archive storage failure or ambiguous acknowledgement preserves a recoverable secret after restart', async () => {
+  for (const acknowledged of [false, true]) {
+    const f = fixture();
+    const note = completedArchiveNote();
+    await seedArchiveVault(f, [note]);
+    const write = f.storage.setItem.getMockImplementation()!;
+    f.storage.setItem.mockImplementationOnce(async (key, value) => {
+      if (acknowledged) await write(key, value);
+      throw new Error('Storage full or acknowledgement lost');
+    });
+    const vault = core.createPrivateVaultController(f.host, f.dependencies);
+    await expect(vault.clearCompletedNotes([note.id])).rejects.toThrow(
+      'privacy_vault_unavailable'
+    );
+    const reopened = core.createPrivateVaultController(f.host, f.dependencies);
+    expect(await reopened.revealNote(note.id, 'synthetic-password')).toBe(NOTE);
+    const archived = (await reopened.getArchivedNotes()).notes;
+    expect(archived).toHaveLength(acknowledged ? 1 : 0);
+  }
+});
+
+test('archive restore and permanent clear require authentication, preserve active notes and do no chain work', async () => {
+  const f = fixture();
+  const archived = { ...completedArchiveNote(), archivedAt: 200 };
+  const active = { id: INTENT_ID, note: SECOND_NOTE, createdAt: 100 };
+  await seedArchiveVault(f, [active, archived]);
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  const before = structuredClone(f.records);
+  await expect(vault.restoreArchivedNote(archived.id, 'wrong')).rejects.toThrow(
+    'Invalid password'
+  );
+  await expect(vault.clearArchive('wrong')).rejects.toThrow('Invalid password');
+  expect(f.records).toEqual(before);
+  expect(f.host.readNote).not.toHaveBeenCalled();
+  await vault.restoreArchivedNote(archived.id, 'synthetic-password');
+  expect((await vault.getArchivedNotes()).notes).toEqual([]);
+  expect(await vault.revealNote(archived.id, 'synthetic-password')).toBe(NOTE);
+  expect(
+    (await vault.getNotes()).notes.find((note) => note.id === archived.id)
+  ).toMatchObject({ phase: 'waiting', withdrawal: { phase: 'submitted' } });
+  await vault.clearCompletedNotes([archived.id]);
+  jest.mocked(f.host.readNote).mockClear();
+  expect(await vault.clearArchive('synthetic-password')).toEqual({
+    removed: 1,
+  });
+  expect(f.host.readNote).not.toHaveBeenCalled();
+  expect(await vault.revealNote(active.id, 'synthetic-password')).toBe(
+    SECOND_NOTE
+  );
+  await expect(
+    vault.revealNote(archived.id, 'synthetic-password')
+  ).rejects.toThrow('privacy_note_missing');
+});
+
+test('full archive stays outside active quotas and ordinary inventory/append never decrypt, identify or query its notes', async () => {
+  const f = fixture();
+  const archived = Array.from({ length: 512 }, (_, index) => ({
+    id: archiveTestId(index + 100000),
+    note: archivedTestNote(index + 100000),
+    createdAt: 100,
+    archivedAt: 200,
+  }));
+  const identify = jest.fn((raw: string) => ({
+    poolId: 'eth-1' as const,
+    commitment: keccak256(toUtf8Bytes(raw)),
+    nullifierHash: HASH,
+  }));
+  f.dependencies.identify = identify;
+  const { bundle, archiveIds } = await seedArchiveVault(f, [
+    { id: RECORD_ID, note: NOTE, createdAt: 100 },
+    ...archived,
+  ]);
+  const originalArchives = bundle.shards.filter((shard) =>
+    archiveIds.has(shard.recordId)
+  );
+  const decrypt = jest.spyOn(f.keyring, 'decryptPrivateRecord');
+  identify.mockClear();
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  expect(await vault.getNotes(true)).toMatchObject({
+    notes: [{ id: RECORD_ID }],
+    archiveSummary: { noteCount: 512, limit: 512 },
+  });
+  expect(identify.mock.calls.map(([raw]) => raw)).toEqual([NOTE]);
+  expect(
+    decrypt.mock.calls.filter(([request]) => archiveIds.has(request.recordId))
+  ).toHaveLength(0);
+  expect(f.host.readNote).toHaveBeenCalledTimes(1);
+  identify.mockClear();
+  decrypt.mockClear();
+  jest.mocked(f.host.readNote).mockClear();
+  await vault.importNote(SECOND_NOTE);
+  expect(
+    identify.mock.calls.every(([raw]) => raw === NOTE || raw === SECOND_NOTE)
+  ).toBe(true);
+  expect(
+    decrypt.mock.calls.filter(([request]) => archiveIds.has(request.recordId))
+  ).toHaveLength(0);
+  expect(
+    jest
+      .mocked(f.host.readNote)
+      .mock.calls.every(
+        ([identity]) =>
+          identity.commitment === keccak256(toUtf8Bytes(SECOND_NOTE))
+      )
+  ).toBe(true);
+  const stored = Object.values(f.records)[0] as typeof bundle;
+  expect(
+    stored.shards.filter((shard) => archiveIds.has(shard.recordId))
+  ).toEqual(originalArchives);
+  expect(await vault.getCapacity()).toMatchObject({
+    capacity: 128,
+    noteCount: 2,
+  });
+  const before = structuredClone(f.records);
+  decrypt.mockClear();
+  jest.mocked(f.host.readNote).mockClear();
+  await expect(vault.importNote(archived[0]!.note)).rejects.toThrow(
+    'privacy_note_archived'
+  );
+  expect(f.records).toEqual(before);
+  expect(
+    decrypt.mock.calls.filter(([request]) => archiveIds.has(request.recordId))
+  ).toHaveLength(0);
+  expect(f.host.readNote).not.toHaveBeenCalled();
+});
+
+test('an archive at its count limit preserves both the completed active note and every archived secret', async () => {
+  const f = fixture();
+  f.dependencies.identify = (raw) => ({
+    poolId: 'eth-1',
+    commitment: keccak256(toUtf8Bytes(raw)),
+    nullifierHash: HASH,
+  });
+  const archived = Array.from({ length: 512 }, (_, index) => ({
+    id: archiveTestId(index + 100000),
+    note: archivedTestNote(index + 100000),
+    createdAt: 100,
+    archivedAt: 200,
+  }));
+  await seedArchiveVault(f, [completedArchiveNote(), ...archived]);
+  const before = structuredClone(f.records);
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  await expect(vault.clearCompletedNotes([RECORD_ID])).rejects.toThrow(
+    'privacy_archive_limit'
+  );
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+  expect(f.records).toEqual(before);
+  expect(await vault.getCapacity()).toMatchObject({ noteCount: 1 });
+});
+
+test('encrypted note backup restoration retains archive location, bearer secret and inert withdrawal evidence', async () => {
+  const source = fixture();
+  await seedArchiveVault(source, [
+    { ...completedArchiveNote(), archivedAt: 200 },
+  ]);
+  const from = core.createPrivateVaultController(
+    source.host,
+    source.dependencies
+  );
+  const exported = await from.exportBackupSnapshot(
+    'synthetic-password',
+    source.host.captureSession()
+  );
+  const target = fixture();
+  const to = core.createPrivateVaultController(
+    target.host,
+    target.dependencies
+  );
+  const owner = target.host.captureSession();
+  const plan = await to.prepareRestore(exported.notes, owner);
+  await to.commitRestore(plan, exported.notes, 'synthetic-password', owner);
+  expect(await to.getNotes()).toEqual({ notes: [] });
+  expect(await to.getCapacity()).toMatchObject({ noteCount: 0 });
+  const inventory = await to.getArchivedNotes();
+  expect(inventory.notes).toHaveLength(1);
+  expect(
+    await to.revealNote(inventory.notes[0]!.id, 'synthetic-password')
+  ).toBe(NOTE);
+  const again = await to.exportBackupSnapshot(
+    'synthetic-password',
+    target.host.captureSession()
+  );
+  expect(again.notes[0]).toMatchObject({
+    note: NOTE,
+    archivedAt: 200,
+    reconciliationRequired: true,
+    history: { withdrawals: [{ transactionHash: HASH }] },
+  });
+});
+
+test('maximum restore metadata, full active capacity and a full archive fit the unchanged SDK root bound', async () => {
+  const f = fixture();
+  f.dependencies.identify = (raw) => ({
+    poolId: 'eth-1',
+    commitment: keccak256(toUtf8Bytes(raw)),
+    nullifierHash: HASH,
+  });
+  const archived = Array.from({ length: 512 }, (_, index) => ({
+    id: archiveTestId(index + 100000),
+    note: archivedTestNote(index + 100000),
+    createdAt: 100,
+    archivedAt: 200,
+  }));
+  const active = Array.from({ length: 511 }, (_, index) => ({
+    id: archiveTestId(index + 200000),
+    note: archivedTestNote(index + 200000),
+    createdAt: 100,
+  }));
+  const { bundle, archiveIds } = await seedArchiveVault(
+    f,
+    [...active, ...archived],
+    512
+  );
+  const rootPlain = await f.keyring.decryptPrivateRecord({
+    domain: core.PRIVATE_VAULT_DOMAIN,
+    recordId: bundle.root.recordId,
+    envelope: bundle.root,
+  });
+  const root = JSON.parse(new TextDecoder().decode(rootPlain));
+  rootPlain.fill(0);
+  root.restore = {
+    version: 1,
+    receipt: {
+      id: INTENT_ID,
+      sourceHash: HASH,
+      createdAt: 8640000000000000,
+      added: 1024,
+      duplicates: 0,
+      guarded: 1024,
+    },
+  };
+  bundle.root = await f.keyring.encryptPrivateRecord({
+    domain: core.PRIVATE_VAULT_DOMAIN,
+    recordId: bundle.root.recordId,
+    plaintext: new TextEncoder().encode(JSON.stringify(root)),
+  });
+  f.records[core.PRIVATE_VAULT_STORAGE_PREFIX + bundle.root.profileId] = bundle;
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  const beforeArchives = bundle.shards.filter((shard) =>
+    archiveIds.has(shard.recordId)
+  );
+  const decrypt = jest.spyOn(f.keyring, 'decryptPrivateRecord');
+  await vault.importNote(SECOND_NOTE);
+  expect(
+    decrypt.mock.calls.filter(([request]) => archiveIds.has(request.recordId))
+  ).toHaveLength(0);
+  expect(await vault.getCapacity()).toMatchObject({
+    capacity: 512,
+    noteCount: 512,
+  });
+  const written = Object.values(f.records)[0] as typeof bundle;
+  expect(
+    written.shards.filter((shard) => archiveIds.has(shard.recordId))
+  ).toEqual(beforeArchives);
+  const plaintext = await f.keyring.decryptPrivateRecord({
+    domain: core.PRIVATE_VAULT_DOMAIN,
+    recordId: written.root.recordId,
+    envelope: written.root,
+  });
+  expect(plaintext.length).toBeLessThanOrEqual(65536);
+  plaintext.fill(0);
+});
+
+test('the unchanged combined 16MiB ceiling rejects a 20MiB bundle before decrypting or mutating existing secrets', async () => {
+  const f = fixture();
+  const { bundle } = await seedArchiveVault(f, [
+    { id: RECORD_ID, note: NOTE, createdAt: 100 },
+  ]);
+  const before = structuredClone(f.records);
+  const ciphertext = 'A'.repeat(Math.ceil((32 * 1024 + 16) / 3) * 4);
+  const oversized = {
+    ...bundle,
+    shards: Array.from({ length: 480 }, (_, index) => ({
+      ...bundle.shards[0]!,
+      recordId: archiveTestId(300000 + index),
+      ciphertext,
+    })),
+  };
+  expect(
+    new TextEncoder().encode(JSON.stringify(oversized)).length
+  ).toBeGreaterThan(20 * 1024 * 1024);
+  f.storage.getItem.mockResolvedValueOnce(oversized);
+  const decrypt = jest.spyOn(f.keyring, 'decryptPrivateRecord');
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  await expect(vault.importNote(SECOND_NOTE)).rejects.toThrow(
+    'privacy_vault_corrupt'
+  );
+  expect(decrypt).not.toHaveBeenCalled();
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+  expect(f.records).toEqual(before);
+  expect(await vault.revealNote(RECORD_ID, 'synthetic-password')).toBe(NOTE);
 });

@@ -1027,7 +1027,10 @@
     "smartAccountGuardianRecoveryExpired": "この復元リクエストは完了前に期限切れになりました。もう一度復元を開始してください。",
     "invalidAddress": "無効なアドレスです",
     "changeHardwareDevice": "デバイスを変更",
-    "closeHardwareSetup": "設定を閉じる"
+    "closeHardwareSetup": "設定を閉じる",
+    "smartAccountFeeReviewTitle": "ネットワーク手数料を確認",
+    "smartAccountFeeReviewSelectedAccount": "選択したアカウント",
+    "smartAccountFeeReviewMaximumTotal": "最大合計費用"
   },
   "start": {
     "eraseAndStartFresh": "消去して最初から始める",
@@ -1867,10 +1870,10 @@
       "error": "上限を変更できませんでした。保存済みノートが上限内に収まることを確認して再試行してください。",
       "save": "上限を保存",
       "reportedSpent": "使用済みと報告されたノート（{{count}}件）",
-      "clear": "完了したノートを消去",
-      "clearHelp": "選択中のEthereum RPCには、既知の引き出しのハッシュと、存在する場合は関連する入金のハッシュが送られ、プロバイダーが両者を関連付ける可能性があります。そのRPCが引き出しの完了と関連する入金の確定を確認したノートのみ削除し、未確認のノートは保存します。",
-      "confirmClear": "確認して消去",
-      "clearResult": "削除: {{removed}}件。保存継続: {{unresolved}}件。",
+      "clear": "完了したノートをアーカイブ",
+      "clearHelp": "選択したEthereum RPCに既知の出金と関連する入金のトランザクションハッシュが送信され、提供者がそれらを関連付けられる場合があります。このRPCが確定済みと報告したノートのみ暗号化してアーカイブし、その他はアクティブなまま残します。アーカイブ済みノートはアクティブなノートの上限に含まれません。",
+      "confirmClear": "確認してアーカイブ",
+      "clearResult": "アーカイブ済み：{{removed}}件。引き続きアクティブ：{{unresolved}}件。",
       "clearError": "ノートの確認を完了できませんでした。更新して残りを確認してください。",
       "clearProgress": "{{total}}件中{{checked}}件を確認しました。",
       "storedBytes": "シリアル化された暗号化保管庫: {{bytes}}バイト。"
@@ -1971,6 +1974,24 @@
       "confirm": "ノートの確認を承認",
       "busy": "確認結果を保存中…",
       "failed": "確認結果を保存できませんでした。パスワードとプールデータを確認し、もう一度お試しください。"
+    },
+    "archive": {
+      "title": "アーカイブ済みノート",
+      "help": "完了したノートは、復元するかアーカイブを消去するまで暗号化して保管されます。アクティブなノートの上限には含まれません。",
+      "empty": "アーカイブ済みノートはありません",
+      "restore": "ノートを復元",
+      "restored": "アクティブなノートに復元しました",
+      "clear": "アーカイブを消去",
+      "confirmClear": "アーカイブ済みノートを完全に削除",
+      "warning": "リカバリーフレーズではこれらのノートを復元できません。使用済みであることを確認するか、利用可能なバックアップを保管してから削除してください。",
+      "confirmBackup": "使用済みであることを確認したか、利用可能なバックアップを保管しました",
+      "clearResult": "{{count}}件のアーカイブ済みノートを削除しました",
+      "loadError": "アーカイブを読み込めませんでした。再試行してください。",
+      "actionError": "アーカイブを更新できませんでした。画面を更新してから再試行してください。",
+      "full": "アーカイブの保存容量がいっぱいです。空き容量を作るために消去する前に、暗号化バックアップをエクスポートしてください。",
+      "capacity": "アーカイブ済みノート：{{count}} / {{limit}}",
+      "activeFull": "アクティブなノートの上限に達しています。完了したノートをアーカイブするか、上限を増やしてから復元してください。",
+      "alreadyArchived": "このノートはアーカイブ済みです。再び使用するには「アーカイブ済みノート」を開き、復元してください。"
     }
   },
   "mobile": {
@@ -2519,7 +2540,7 @@
         "addNotesFromAnEncryptedFile": "暗号化ファイルからノートを追加",
         "changeTheSavedNoteLimit": "保存ノート数の上限を変更",
         "manageCompletedNotes": "完了したノートを管理",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "完了したノートを削除、または失敗した出金を復旧",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "完了したノートのアーカイブ、または失敗した出金の復旧",
         "serviceOriginAndPublicPoolData": "サービスのオリジンと公開プールデータ",
         "verifyBackup": "バックアップを確認",
         "backupVerified": "バックアップ確認済み",
@@ -2603,7 +2624,7 @@
       },
       "maintenance": {
         "chooseNote": "検証して削除する保存済みノートを1つ選択してください。各試行では、そのノートだけを確認します。",
-        "clearHelp": "選択した Ethereum RPC には、このノートの既知の出金トランザクションハッシュと、存在する場合は関連する入金トランザクションハッシュが送信されます。これにより、そのプロバイダーが入金と出金を関連付ける可能性があります。この RPC が処理の完了と関連する入金の決済が確定したことを確認した場合にのみ、このノートだけが削除されます。それ以外の場合は保存されたままです。"
+        "clearHelp": "選択したEthereum RPCに既知の出金と関連する入金のトランザクションハッシュが送信され、提供者がそれらを関連付けられる場合があります。このRPCが確定済みと報告したノートのみ暗号化してアーカイブし、その他はアクティブなまま残します。アーカイブ済みノートはアクティブなノートの上限に含まれません。"
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "ノート数の上限を読み込めませんでした。",

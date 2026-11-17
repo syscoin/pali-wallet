@@ -79,6 +79,7 @@ export function Text({ style, ...props }: TextProps) {
 type IconProps = { name: string; size?: number; color?: string };
 
 const iconPaths: Record<string, string[]> = {
+  archive: ['M3 3h18v4H3z', 'M5 7v14h14V7', 'M10 12h4'],
   'arrow-left': ['M19 12H5', 'm12 5-7 7 7 7'],
   'arrow-right': ['M5 12h14', 'm12 5 7 7-7 7'],
   'arrow-up-right': ['M6 18 18 6', 'M6 6h12v12'],

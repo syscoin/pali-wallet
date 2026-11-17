@@ -1889,7 +1889,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       if (AppState.currentState === 'active' && readyContext()) setStage('note-capacity');
     } : undefined} />;
   if (stage === 'note-inventory' && snapshot.phase === 'ready' && protectedScreen && readNoteInventory) return <NativeNoteInventory
-    key={snapshot.revision} readInventory={readNoteInventory} onBack={() => setStage('private-notes')} onLock={lockWallet} />;
+    key={snapshot.revision} readInventory={readNoteInventory} onBack={() => setStage('private-notes')} onLock={lockWallet}
+    onExport={() => { if (noteRestore.begin('export')) { depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null); setStage('backup-notes'); } }} />;
   if (stage === 'note-import' && snapshot.phase === 'ready' && protectedScreen && openNoteImport) return <NativeNoteImport
     key={snapshot.revision} openImport={openNoteImport} onBack={() => setStage('private-notes')} />;
   if (stage === 'note-deposit' && snapshot.phase === 'ready' && protectedScreen && canDeposit && openPrivateDeposit) return <NativePrivateDeposit

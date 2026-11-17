@@ -1589,8 +1589,7 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
               });
               await expect(link).toHaveAttribute(
                 'href',
-                'https://www.coingecko.com/en/categories/' +
-                  category.toLowerCase().replace(/\s+/g, '-')
+                'https://www.coingecko.com/en/categories'
               );
             }
             await expect(

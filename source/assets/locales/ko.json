@@ -1027,7 +1027,10 @@
     "smartAccountGuardianRecoveryExpired": "이 복구 요청은 완료되기 전에 만료되었습니다. 복구를 다시 시작하세요.",
     "invalidAddress": "유효하지 않은 주소입니다",
     "changeHardwareDevice": "기기 변경",
-    "closeHardwareSetup": "설정 닫기"
+    "closeHardwareSetup": "설정 닫기",
+    "smartAccountFeeReviewTitle": "네트워크 수수료 검토",
+    "smartAccountFeeReviewSelectedAccount": "선택한 계정",
+    "smartAccountFeeReviewMaximumTotal": "최대 총비용"
   },
   "start": {
     "eraseAndStartFresh": "지우고 새로 시작",
@@ -1867,10 +1870,10 @@
       "error": "한도를 변경하지 못했습니다. 저장된 노트가 한도에 맞는지 확인하고 다시 시도하세요.",
       "save": "한도 저장",
       "reportedSpent": "사용 완료로 표시된 노트 ({{count}}개)",
-      "clear": "완료된 노트 지우기",
-      "clearHelp": "선택한 Ethereum RPC에 알려진 출금 해시와 관련 입금 해시가 있으면 함께 전송되어 제공자가 둘을 연결할 수 있습니다. 해당 RPC가 출금 완료와 관련 입금의 확정을 확인한 노트만 삭제하며 미확인 노트는 보관합니다.",
-      "confirmClear": "확인 후 지우기",
-      "clearResult": "삭제: {{removed}}개. 보관 중: {{unresolved}}개.",
+      "clear": "완료된 노트 보관",
+      "clearHelp": "선택한 Ethereum RPC에 알려진 출금 및 관련 입금 거래 해시가 전송되므로 제공자가 이를 연결할 수 있습니다. 이 RPC가 최종 확정으로 보고한 노트만 암호화하여 보관하고 나머지는 활성 상태로 유지합니다. 보관된 노트는 활성 한도에 포함되지 않습니다.",
+      "confirmClear": "확인 후 보관",
+      "clearResult": "보관됨: {{removed}}개. 활성 유지: {{unresolved}}개.",
       "clearError": "노트 확인을 완료하지 못했습니다. 새로고침하여 남은 노트를 확인하세요.",
       "clearProgress": "{{total}}개 중 {{checked}}개 확인됨.",
       "storedBytes": "직렬화된 암호화 보관함: {{bytes}}바이트."
@@ -1971,6 +1974,24 @@
       "confirm": "노트 검토 확인",
       "busy": "검토 결과 저장 중…",
       "failed": "검토 결과를 저장하지 못했습니다. 비밀번호와 풀 데이터를 확인한 후 다시 시도하세요."
+    },
+    "archive": {
+      "title": "보관된 노트",
+      "help": "완료된 노트는 복원하거나 보관함을 비울 때까지 암호화되어 보관됩니다. 활성 노트 한도에는 포함되지 않습니다.",
+      "empty": "보관된 노트가 없습니다",
+      "restore": "노트 복원",
+      "restored": "활성 노트로 복원했습니다",
+      "clear": "보관함 비우기",
+      "confirmClear": "보관된 노트 영구 삭제",
+      "warning": "복구 문구로는 이 노트를 복원할 수 없습니다. 사용 완료를 확인하거나 사용 가능한 백업을 보관한 후에만 삭제하세요.",
+      "confirmBackup": "노트의 사용 완료를 확인했거나 사용 가능한 백업을 보관했습니다",
+      "clearResult": "보관된 노트 {{count}}개를 삭제했습니다",
+      "loadError": "보관함을 불러오지 못했습니다. 다시 시도하세요.",
+      "actionError": "보관함을 업데이트하지 못했습니다. 새로 고친 후 다시 시도하세요.",
+      "full": "보관함 저장 공간이 가득 찼습니다. 비우기 전에 암호화된 백업을 내보내세요.",
+      "capacity": "보관된 노트 {{count}} / {{limit}}개",
+      "activeFull": "활성 노트 한도에 도달했습니다. 완료된 노트를 보관하거나 한도를 늘린 후 복원하세요.",
+      "alreadyArchived": "이 노트는 보관되어 있습니다. 다시 사용하려면 보관된 노트를 열고 복원하세요."
     }
   },
   "mobile": {
@@ -2519,7 +2540,7 @@
         "addNotesFromAnEncryptedFile": "암호화된 파일에서 노트 추가",
         "changeTheSavedNoteLimit": "저장된 노트 수 한도 변경",
         "manageCompletedNotes": "완료된 노트 관리",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "완료된 노트 정리 또는 실패한 출금 복구",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "완료된 노트 보관 또는 실패한 출금 복구",
         "serviceOriginAndPublicPoolData": "서비스 출처 및 공개 풀 데이터",
         "verifyBackup": "백업 확인",
         "backupVerified": "백업 확인됨",
@@ -2603,7 +2624,7 @@
       },
       "maintenance": {
         "chooseNote": "확인하고 삭제할 저장된 노트 하나를 선택하세요. 각 시도는 해당 노트만 확인합니다.",
-        "clearHelp": "선택한 Ethereum RPC는 이 노트의 알려진 출금 거래 해시와, 존재하는 경우 관련 입금 거래 해시를 받습니다. 이로 인해 해당 제공자가 입금과 출금을 연결할 수 있습니다. 이 RPC가 작업 완료와 관련 입금 정산의 최종 확정을 확인한 경우에만 이 노트 하나가 삭제됩니다. 그렇지 않으면 저장된 상태로 유지됩니다."
+        "clearHelp": "선택한 Ethereum RPC에 알려진 출금 및 관련 입금 거래 해시가 전송되므로 제공자가 이를 연결할 수 있습니다. 이 RPC가 최종 확정으로 보고한 노트만 암호화하여 보관하고 나머지는 활성 상태로 유지합니다. 보관된 노트는 활성 한도에 포함되지 않습니다."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "노트 한도를 불러올 수 없습니다.",

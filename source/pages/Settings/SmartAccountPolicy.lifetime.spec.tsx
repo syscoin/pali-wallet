@@ -10,6 +10,7 @@ import {
 } from '@testing-library/react';
 import { Wallet } from 'ethers/wallet';
 import React from 'react';
+import { acknowledgedGuardianRecoveryClaim } from 'tests/fixtures/guardianRecoveryClaim';
 
 import { KeyringAccountType } from 'types/network';
 import { toP256WebAuthnRecoveryTarget } from 'utils/passkey';
@@ -47,8 +48,22 @@ jest.mock('components/index', () => ({
       {children}
     </button>
   ),
-  ConfirmationModal: ({ show, title }: any) =>
-    show ? <div>{title}</div> : null,
+  ConfirmationModal: ({
+    show,
+    title,
+    children,
+    buttonText,
+    onClick,
+    onClose,
+  }: any) =>
+    show ? (
+      <div role="dialog" aria-label={title}>
+        {title}
+        {children}
+        <button onClick={onClose}>Cancel review</button>
+        <button onClick={onClick}>{buttonText}</button>
+      </div>
+    ) : null,
   Icon: () => <span />,
 }));
 jest.mock('components/Loading', () => ({
@@ -180,7 +195,11 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         },
       },
       activeAccount: { id: 1, type: KeyringAccountType.SmartAccount },
-      activeNetwork: { chainId: CHAIN_ID, url: 'https://rpc.test' },
+      activeNetwork: {
+        chainId: CHAIN_ID,
+        url: 'https://rpc.test',
+        currency: 'TSYS',
+      },
     };
     mockHandleLockedError.mockReturnValue(false);
     mockEmitter.mockImplementation(async ([, method]: string[]) => {
@@ -308,6 +327,152 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     );
     return { ...pending, view };
   };
+
+  const feeReview = () => ({
+    id: 'guardian-fee',
+    maximumFeeUnits: '21000',
+    maximumTotalUnits: '21000',
+    validForMs: 90000,
+    transaction: {
+      from: OWNER,
+      to: GUARDIAN,
+      chainId: String(CHAIN_ID),
+      nonce: '0',
+      value: '0',
+      gasLimit: '21000',
+      type: 0,
+      gasPrice: '1',
+      data: '0x',
+    },
+  });
+  for (const action of ['start', 'finalize'] as const)
+    for (const approve of [false, true])
+      it(`${action} recovery ${
+        approve
+          ? 'waits for explicit fee confirmation'
+          : 'cancellation never submits the quoted transaction'
+      }`, async () => {
+        const method =
+          action === 'start'
+            ? 'submitPreparedSmartAccountGuardianStartRecovery'
+            : 'finalizeSmartAccountGuardianRecovery';
+        mockVault.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
+        let claimHash: string;
+        if (action === 'finalize') {
+          const pending = await beginRecoveryFinalization();
+          claimHash =
+            mockVault.accounts.SmartAccount[1].smartAccount
+              .guardianRecoveryClaim.intent.operation.hash;
+          const original = mockEmitter.getMockImplementation()!;
+          mockEmitter.mockImplementation(
+            (path: string[], params: any[] = [], ...rest: any[]) =>
+              path[1] === method && params[0]?.feeReviewId
+                ? Promise.resolve({ hash: '0x' + '77'.repeat(32) })
+                : original(path, params, ...rest)
+          );
+          await act(async () =>
+            pending.resolve({ feeReview: feeReview(), claimHash })
+          );
+        } else {
+          const original = mockEmitter.getMockImplementation()!;
+          mockEmitter.mockImplementation(
+            async (path: string[], params: any[] = [], ...rest: any[]) => {
+              if (path[1] === 'prepareSmartAccountGuardianStartRecovery') {
+                const operation = buildSmartAccountGuardianRecoveryOperation({
+                  account: ACCOUNT,
+                  chainId: CHAIN_ID,
+                  policyEpoch: '7',
+                  recoveryModule: getPaliModuleAddress(
+                    CHAIN_ID,
+                    'guardian-recovery'
+                  ),
+                  salt: '0x' + '66'.repeat(32),
+                  target: params[0].target,
+                });
+                claimHash = operation.hash;
+                const prepared = {
+                  operation,
+                  approval: { guardian: GUARDIAN, signature: '0x11' },
+                };
+                return {
+                  ...prepared,
+                  claim: acknowledgedGuardianRecoveryClaim(params[0], prepared),
+                };
+              }
+              if (path[1] === method)
+                return params[0]?.feeReviewId
+                  ? {
+                      operation: {},
+                      transaction: { hash: '0x' + '77'.repeat(32) },
+                    }
+                  : { operation: {}, feeReview: feeReview() };
+              return original(path, params, ...rest);
+            }
+          );
+          render(<SmartAccountPolicy />);
+          fireEvent.click(
+            await screen.findByRole('button', {
+              name: 'settings.smartAccountGuardianRecoveryShowOptions',
+            })
+          );
+          fireEvent.click(
+            await screen.findByRole('button', {
+              name: 'settings.ecdsaAuthenticator settings.recoveryAuthenticatorEcdsaDescription',
+            })
+          );
+          fireEvent.change(
+            screen.getByPlaceholderText(
+              'settings.recoveryAuthenticatorEcdsaOwner'
+            ),
+            { target: { value: OWNER } }
+          );
+          const start = screen.getByRole('button', {
+            name: 'settings.smartAccountGuardianRecoveryStart',
+          });
+          await waitFor(() =>
+            expect((start as HTMLButtonElement).disabled).toBe(false)
+          );
+          fireEvent.click(start);
+        }
+        const dialog = await screen.findByRole('dialog', {
+          name: 'settings.smartAccountFeeReviewTitle',
+        });
+        const calls = () =>
+          mockEmitter.mock.calls.filter(([path]) => path[1] === method);
+        expect(calls()).toHaveLength(1);
+        expect(calls()[0][1][0].feeReviewId).toBeUndefined();
+        expect(
+          within(dialog).getByText(
+            'settings.smartAccountFeeReviewSelectedAccount'
+          ).nextElementSibling?.textContent
+        ).toBe(OWNER);
+        expect(
+          within(dialog).getByText('smartAccountHub.accountAddress')
+            .nextElementSibling?.textContent
+        ).toBe(ACCOUNT);
+        expect(
+          within(dialog).getByText('settings.feePayer').nextElementSibling
+            ?.textContent
+        ).toBe(OWNER);
+        expect(
+          within(dialog).getAllByText('0.000000000000021 TSYS')
+        ).toHaveLength(2);
+        fireEvent.click(
+          within(dialog).getByRole('button', {
+            name: approve ? 'buttons.confirm' : 'Cancel review',
+          })
+        );
+        if (approve) {
+          await waitFor(() => expect(calls()).toHaveLength(2));
+          expect(calls()[1][1][0].feeReviewId).toBe('guardian-fee');
+          if (action === 'finalize')
+            expect(calls()[1][1][0].expectedClaimHash).toBe(claimHash!);
+        } else {
+          await act(async () => undefined);
+          expect(calls()).toHaveLength(1);
+          expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+        }
+      });
 
   it.each(['unavailable', 'stale', 'receipt unavailable'])(
     'keeps a submitted wallet-owner rotation with %s metadata and retries only verification',

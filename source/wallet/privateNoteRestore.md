@@ -50,6 +50,22 @@ root field, even when empty. The prior pre-release five-field root is accepted
 only without per-note guards; its next write is canonical. Its old strict
 five-field reader rejects the new six-field root, preventing silent guard loss.
 
+Completed-note cleanup moves the complete secret and its journals into encrypted
+archive shards. The optional authenticated `archiveCount` root field and each
+archive reference's full identity digests bind their count and contents. Ordinary
+active reads and writes preserve these ciphertext shards without decrypting or
+deriving archived notes or querying their chain status. Explicit archive viewing,
+authenticated reveal, backup and restoration can read them. Older strict root
+readers reject the archive extension.
+
+The archive has independent limits of 512 notes and 4 MiB, including its encrypted
+root-index contribution. Active capacity remains 128, 256 or 512 notes with its
+existing 4, 8 or 16 MiB quota. Both share the existing 16 MiB storage ceiling and
+64 KiB encrypted-root bound. Failed admission or storage never evicts secrets.
+Restoring an archived note requires authentication and an available active slot,
+and retains all withdrawal history and review guards. Permanently clearing the
+archive is a separate authenticated action that leaves active notes intact.
+
 The shared limit is sixteen distinct history hints per note, counting imported,
 retained and current local evidence together. Admission reserves one further
 slot for an unknown deposit/direct withdrawal or a relay job awaiting its hash,

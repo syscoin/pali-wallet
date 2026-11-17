@@ -1027,7 +1027,10 @@
     "smartAccountGuardianRecoveryExpired": "This recovery request expired before it was finished. Start recovery again.",
     "invalidAddress": "Invalid address",
     "changeHardwareDevice": "Change device",
-    "closeHardwareSetup": "Close setup"
+    "closeHardwareSetup": "Close setup",
+    "smartAccountFeeReviewTitle": "Review network fee",
+    "smartAccountFeeReviewSelectedAccount": "Selected account",
+    "smartAccountFeeReviewMaximumTotal": "Maximum total cost"
   },
   "start": {
     "eraseAndStartFresh": "Erase and start fresh",
@@ -1867,10 +1870,10 @@
       "error": "Could not change the limit. Check that your saved notes fit and try again.",
       "save": "Save limit",
       "reportedSpent": "Reported spent notes ({{count}})",
-      "clear": "Clear completed notes",
-      "clearHelp": "The selected Ethereum RPC will receive the known withdrawal transaction hash and, when present, the related deposit transaction hash. This can link the deposit and withdrawal at that provider. Only notes with completion and related deposit settlement confirmed as finalized by that RPC are removed; unverified notes remain saved.",
-      "confirmClear": "Verify and clear",
-      "clearResult": "Removed: {{removed}}. Still saved: {{unresolved}}.",
+      "clear": "Archive completed notes",
+      "clearHelp": "The selected Ethereum RPC receives known withdrawal and related deposit transaction hashes, which can link them at that provider. Only notes that this RPC reports finalized are moved to encrypted archives; others stay active. Archived notes do not count toward the active limit.",
+      "confirmClear": "Verify and archive",
+      "clearResult": "Archived: {{removed}}. Still active: {{unresolved}}.",
       "clearError": "Could not finish checking notes. Refresh to see what remains.",
       "clearProgress": "Checked {{checked}} of {{total}} notes.",
       "storedBytes": "Serialized encrypted vault: {{bytes}} bytes."
@@ -1971,6 +1974,24 @@
       "confirm": "Confirm note review",
       "busy": "Saving review…",
       "failed": "The review could not be saved. Check your password and pool data, then try again."
+    },
+    "archive": {
+      "title": "Archived notes",
+      "help": "Completed notes stay encrypted here until you restore them or clear the archive. They do not count toward your active note limit.",
+      "empty": "No archived notes",
+      "restore": "Restore note",
+      "restored": "Note restored to your active notes",
+      "clear": "Clear archive",
+      "confirmClear": "Permanently delete archived notes",
+      "warning": "Your recovery phrase cannot recover these notes. Permanently delete the archive only after confirming the notes are spent or keeping a usable backup.",
+      "confirmBackup": "I confirmed these notes are spent or kept a usable backup",
+      "clearResult": "Deleted {{count}} archived notes",
+      "loadError": "Could not load the archive. Try again.",
+      "actionError": "Could not update the archive. Refresh before trying again.",
+      "full": "Archive storage is full. Export an encrypted backup before clearing the archive to make space.",
+      "capacity": "{{count}} / {{limit}} archived notes",
+      "activeFull": "Your active note limit is full. Archive completed notes or increase the limit before restoring.",
+      "alreadyArchived": "This note is archived. Open Archived notes and restore it to use it again."
     }
   },
   "mobile": {
@@ -2519,7 +2540,7 @@
         "addNotesFromAnEncryptedFile": "Add notes from an encrypted file",
         "changeTheSavedNoteLimit": "Change the saved note limit",
         "manageCompletedNotes": "Manage completed notes",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Clear completed notes or recover a failed withdrawal",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Archive completed notes or recover a failed withdrawal",
         "serviceOriginAndPublicPoolData": "Service origin and public pool data",
         "verifyBackup": "Verify backup",
         "backupVerified": "Backup verified",
@@ -2603,7 +2624,7 @@
       },
       "maintenance": {
         "chooseNote": "Select one saved note to verify and clear. Each attempt checks only that note.",
-        "clearHelp": "The selected Ethereum RPC will receive this note’s known withdrawal transaction hash and, when present, its related deposit transaction hash. This can link its deposit and withdrawal at that provider. Only this note is removed, and only when that RPC confirms completion and the related deposit settlement as finalized. Otherwise it remains saved."
+        "clearHelp": "The selected Ethereum RPC receives known withdrawal and related deposit transaction hashes, which can link them at that provider. Only notes that this RPC reports finalized are moved to encrypted archives; others stay active. Archived notes do not count toward the active limit."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Could not load the note limit.",

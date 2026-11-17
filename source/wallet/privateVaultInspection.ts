@@ -20,7 +20,10 @@ import {
   PRIVATE_VAULT_FORMAT,
   PRIVATE_VAULT_VERSION,
   DEFAULT_CAPACITY,
-  MAX_NOTES,
+  MAX_ARCHIVED_NOTES,
+  MAX_VAULT_NOTES,
+  PRIVATE_VAULT_ARCHIVE_BUDGET,
+  PRIVATE_VAULT_MAX_BUNDLE_BYTES,
   capacityValid,
   capacityBudget,
   MAX_PLAINTEXT_BYTES,
@@ -53,6 +56,10 @@ export {
   PRIVATE_VAULT_VERSION,
   DEFAULT_CAPACITY,
   MAX_NOTES,
+  MAX_ARCHIVED_NOTES,
+  MAX_VAULT_NOTES,
+  PRIVATE_VAULT_ARCHIVE_BUDGET,
+  PRIVATE_VAULT_MAX_BUNDLE_BYTES,
   capacityValid,
   capacityBudget,
   MAX_PLAINTEXT_BYTES,
@@ -125,6 +132,7 @@ export interface IPrivateVaultDepositJournal {
 
 /** Private authenticated read result; never return bearer notes through a public DTO. */
 export interface IStoredNote {
+  archivedAt?: number;
   createdAt: number;
   deposit?: IPrivateVaultDepositJournal;
   id: string;
@@ -138,9 +146,48 @@ export interface IManifest {
   version: 1;
 }
 export interface IShardReference {
+  archived?: true;
   count: number;
   hash: string;
+  noteKeys?: string[];
   recordId: string;
+}
+export interface IPrivateVaultEncryptedArchive {
+  count: number;
+  shards: Array<{
+    envelope: IEncryptedPrivateRecord;
+    reference: IShardReference;
+  }>;
+}
+
+export const privateVaultNoteKey = (identity: IClassicNoteIdentity): string =>
+  keccak256(
+    new TextEncoder().encode(
+      JSON.stringify([identity.poolId, identity.commitment])
+    )
+  );
+
+/** Charge the archive's authenticated index to its own byte quota. */
+export function privateVaultArchiveIndexBytes(
+  root: any,
+  ciphertextLength?: number
+): number {
+  if (!root.archiveCount) return 0;
+  const active = {
+    ...root,
+    shards: root.shards.filter(
+      (reference: IShardReference) => !reference.archived
+    ),
+  };
+  delete active.archiveCount;
+  const encodedLength = (value: unknown) =>
+    Math.ceil(
+      (new TextEncoder().encode(JSON.stringify(value)).length + 16) / 3
+    ) * 4;
+  return Math.max(
+    0,
+    (ciphertextLength ?? encodedLength(root)) - encodedLength(active)
+  );
 }
 export interface IVaultBundle {
   format: typeof PRIVATE_VAULT_FORMAT;
@@ -480,6 +527,8 @@ const PUBLIC_ERRORS = new Set([
   'privacy_restore_invalid',
   'privacy_restore_stale',
   'privacy_note_limit',
+  'privacy_archive_limit',
+  'privacy_note_archived',
   'privacy_note_missing',
   'privacy_note_not_found',
   'privacy_vault_corrupt',
@@ -600,9 +649,12 @@ export async function readPrivateVaultBundle(
   identify: typeof identifyClassicNote = identifyClassicNote,
   encoding: 'object' | 'serialized' = 'object',
   identities?: WeakMap<IStoredNote, IClassicNoteIdentity>,
-  yieldInventory?: () => Promise<void>
+  yieldInventory?: () => Promise<void>,
+  includeArchive = true
 ): Promise<
   Readonly<{
+    archive: IPrivateVaultEncryptedArchive;
+    archiveStoredBytes: number;
     capacity: PrivateVaultCapacity;
     manifest: IManifest;
     recordId?: string;
@@ -656,6 +708,8 @@ export async function readPrivateVaultBundle(
   if (stored === null || stored === undefined)
     return {
       manifest: { version: 1, notes: [] },
+      archiveStoredBytes: 0,
+      archive: { count: 0, shards: [] },
       capacity: context.capacity,
       restore: context.restore,
       storedBytes: 0,
@@ -678,7 +732,7 @@ export async function readPrivateVaultBundle(
       Object.keys(bundle).length !== 4 ||
       !Array.isArray(bundle.shards) ||
       bundle.shards.length < 1 ||
-      bundle.shards.length > MAX_NOTES
+      bundle.shards.length > MAX_VAULT_NOTES
     )
       throw new Error('privacy_vault_corrupt');
     checkEnvelope(
@@ -694,7 +748,7 @@ export async function readPrivateVaultBundle(
         PRIVATE_VAULT_SHARD_DOMAIN,
         MAX_SHARD_BYTES
       );
-    if (context.storedBytes > capacityBudget(512))
+    if (context.storedBytes > PRIVATE_VAULT_MAX_BUNDLE_BYTES)
       throw new Error('privacy_vault_corrupt');
     const root: any = await decrypt(
       context,
@@ -708,7 +762,7 @@ export async function readPrivateVaultBundle(
       Array.isArray(root) ||
       root.format !== PRIVATE_VAULT_FORMAT ||
       root.version !== PRIVATE_VAULT_VERSION ||
-      ![5, 6].includes(Object.keys(root).length) ||
+      ![5, 6, 7].includes(Object.keys(root).length) ||
       (Object.keys(root).length === 5 &&
         Object.prototype.hasOwnProperty.call(root, 'restore')) ||
       (Object.keys(root).length === 6 &&
@@ -717,10 +771,27 @@ export async function readPrivateVaultBundle(
       !Number.isInteger(root.noteCount) ||
       root.noteCount < 0 ||
       root.noteCount > root.capacity ||
+      (root.archiveCount !== undefined &&
+        (!Number.isInteger(root.archiveCount) ||
+          root.archiveCount < 1 ||
+          root.archiveCount > MAX_ARCHIVED_NOTES ||
+          !Object.prototype.hasOwnProperty.call(root, 'restore'))) ||
+      Object.keys(root).some(
+        (key) =>
+          ![
+            'format',
+            'version',
+            'noteCount',
+            'capacity',
+            'shards',
+            'restore',
+            'archiveCount',
+          ].includes(key)
+      ) ||
       !Array.isArray(root.shards) ||
       root.shards.length !== bundle.shards.length ||
-      root.shards.length > Math.max(1, root.noteCount) ||
-      context.storedBytes > capacityBudget(root.capacity)
+      root.shards.length >
+        Math.max(1, root.noteCount + (root.archiveCount ?? 0))
     )
       throw new Error('privacy_vault_corrupt');
     // The only compatibility reader is the guard-free pre-release root.
@@ -732,22 +803,58 @@ export async function readPrivateVaultBundle(
     context.capacity = root.capacity;
     const recordIds = new Set([bundle.root.recordId]);
     const storedNotes: IStoredNote[] = [];
+    let archiveStoredBytes = privateVaultArchiveIndexBytes(
+      root,
+      bundle.root.ciphertext.length
+    );
+    let archiveCount = 0;
+    const archive: IPrivateVaultEncryptedArchive = {
+      count: root.archiveCount ?? 0,
+      shards: [],
+    };
+    const archivedKeys = new Set<string>();
+    const expectedArchiveKeys = new Map<string, readonly string[]>();
     for (const [index, envelope] of bundle.shards.entries()) {
       const reference: IShardReference = root.shards[index];
       if (
         !reference ||
         typeof reference !== 'object' ||
         Array.isArray(reference) ||
-        Object.keys(reference).length !== 3 ||
+        Object.keys(reference).length !==
+          (reference.archived === true ? 5 : 3) ||
+        (reference.archived !== undefined && reference.archived !== true) ||
         reference.recordId !== envelope.recordId ||
         recordIds.has(reference.recordId) ||
         !Number.isInteger(reference.count) ||
-        reference.count < (root.noteCount === 0 ? 0 : 1) ||
+        reference.count <
+          (root.noteCount + (root.archiveCount ?? 0) === 0 ? 0 : 1) ||
         reference.count > MAX_SHARD_NOTES ||
         reference.hash !== envelopeHash(envelope)
       )
         throw new Error('privacy_vault_corrupt');
       recordIds.add(reference.recordId);
+      if (reference.archived) {
+        if (
+          !Array.isArray(reference.noteKeys) ||
+          reference.noteKeys.length !== reference.count ||
+          reference.noteKeys.some(
+            (key) =>
+              typeof key !== 'string' ||
+              !HASH.test(key) ||
+              archivedKeys.has(key)
+          )
+        )
+          throw new Error('privacy_vault_corrupt');
+        for (const key of reference.noteKeys) {
+          if (archivedKeys.has(key)) throw new Error('privacy_vault_corrupt');
+          archivedKeys.add(key);
+        }
+        archiveCount += reference.count;
+        archiveStoredBytes +=
+          new TextEncoder().encode(JSON.stringify(envelope)).length + 1;
+        archive.shards.push({ envelope, reference });
+        if (!includeArchive) continue;
+      }
       const shard = await decrypt(
         context,
         envelope,
@@ -764,11 +871,28 @@ export async function readPrivateVaultBundle(
         shard.notes.length !== reference.count
       )
         throw new Error('privacy_vault_corrupt');
+      if (
+        shard.notes.some(
+          (entry: any) =>
+            (entry?.archivedAt !== undefined) !== (reference.archived === true)
+        )
+      )
+        throw new Error('privacy_vault_corrupt');
+      if (reference.archived)
+        for (const entry of shard.notes)
+          expectedArchiveKeys.set(entry.id, reference.noteKeys!);
       storedNotes.push(...shard.notes);
-      if (storedNotes.length > context.capacity)
+      if (storedNotes.length > MAX_VAULT_NOTES)
         throw new Error('privacy_vault_corrupt');
     }
-    if (storedNotes.length !== root.noteCount)
+    if (
+      storedNotes.length !==
+        root.noteCount + (includeArchive ? root.archiveCount ?? 0 : 0) ||
+      archiveCount !== (root.archiveCount ?? 0) ||
+      archiveStoredBytes > PRIVATE_VAULT_ARCHIVE_BUDGET ||
+      context.storedBytes - archiveStoredBytes >
+        capacityBudget(context.capacity)
+    )
       throw new Error('privacy_vault_corrupt');
     const data: IManifest = { version: 1, notes: storedNotes };
     const recordId = bundle.root.recordId;
@@ -784,6 +908,7 @@ export async function readPrivateVaultBundle(
         'deposit',
         'withdrawal',
         'restoreGuard',
+        'archivedAt',
       ]);
       if (
         !entry ||
@@ -798,6 +923,10 @@ export async function readPrivateVaultBundle(
         entry.note.length > 256 ||
         entry.note !== entry.note.trim().toLowerCase() ||
         (entry.origin !== undefined && entry.origin !== 'generated') ||
+        (entry.archivedAt !== undefined &&
+          (!Number.isSafeInteger(entry.archivedAt) ||
+            entry.archivedAt < 0 ||
+            entry.archivedAt > 8_640_000_000_000_000)) ||
         (legacyRoot &&
           Object.prototype.hasOwnProperty.call(entry, 'restoreGuard'))
       )
@@ -816,6 +945,13 @@ export async function readPrivateVaultBundle(
       if (deposit && entry.origin !== 'generated')
         throw new Error('privacy_vault_corrupt');
       const key = `${identity.poolId}:${identity.commitment}`;
+      const noteKey = privateVaultNoteKey(identity);
+      if (
+        entry.archivedAt === undefined
+          ? archivedKeys.has(noteKey)
+          : !expectedArchiveKeys.get(entry.id)?.includes(noteKey)
+      )
+        throw new Error('privacy_vault_corrupt');
       if (commitments.has(key)) throw new Error('privacy_vault_corrupt');
       commitments.add(key);
       ids.add(entry.id);
@@ -823,6 +959,9 @@ export async function readPrivateVaultBundle(
         id: entry.id,
         note: entry.note,
         createdAt: entry.createdAt,
+        ...(entry.archivedAt === undefined
+          ? {}
+          : { archivedAt: entry.archivedAt }),
         ...(entry.origin === 'generated' ? { origin: entry.origin } : {}),
         ...(deposit ? { deposit } : {}),
         ...(withdrawal ? { withdrawal } : {}),
@@ -848,6 +987,8 @@ export async function readPrivateVaultBundle(
     for (const note of notes) privateNoteExportHistory(note);
     return {
       manifest: { version: 1, notes },
+      archiveStoredBytes,
+      archive,
       recordId,
       capacity: context.capacity,
       restore: context.restore,

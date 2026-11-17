@@ -1027,7 +1027,10 @@
     "smartAccountGuardianRecoveryExpired": "Este pedido de recuperação expirou antes de ser concluído. Inicie a recuperação novamente.",
     "invalidAddress": "Endereço inválido",
     "changeHardwareDevice": "Trocar dispositivo",
-    "closeHardwareSetup": "Fechar configuração"
+    "closeHardwareSetup": "Fechar configuração",
+    "smartAccountFeeReviewTitle": "Rever taxa de rede",
+    "smartAccountFeeReviewSelectedAccount": "Conta selecionada",
+    "smartAccountFeeReviewMaximumTotal": "Custo total máximo"
   },
   "start": {
     "eraseAndStartFresh": "Apagar e começar de novo",
@@ -1867,10 +1870,10 @@
       "error": "Não foi possível alterar o limite. Verifique se as notas salvas cabem e tente novamente.",
       "save": "Salvar limite",
       "reportedSpent": "Notas informadas como gastas ({{count}})",
-      "clear": "Limpar notas concluídas",
-      "clearHelp": "O RPC Ethereum selecionado receberá o hash do saque conhecido e, quando houver, o hash do depósito relacionado. O provedor pode vincular os dois. Apenas notas cujo saque e depósito relacionado sejam confirmados como finalizados por esse RPC são removidas; as demais permanecem salvas.",
-      "confirmClear": "Verificar e limpar",
-      "clearResult": "Removidas: {{removed}}. Ainda salvas: {{unresolved}}.",
+      "clear": "Arquivar notas concluídas",
+      "clearHelp": "O RPC Ethereum selecionado recebe os hashes conhecidos de levantamentos e depósitos relacionados, o que pode permitir ao fornecedor associá-los. Apenas as notas que este RPC confirma como finalizadas são arquivadas de forma encriptada; as restantes permanecem ativas. As notas arquivadas não contam para o limite ativo.",
+      "confirmClear": "Verificar e arquivar",
+      "clearResult": "Arquivadas: {{removed}}. Ainda ativas: {{unresolved}}.",
       "clearError": "Não foi possível concluir a verificação. Atualize para ver as notas restantes.",
       "clearProgress": "{{checked}} de {{total}} notas verificadas.",
       "storedBytes": "Cofre criptografado serializado: {{bytes}} bytes."
@@ -1971,6 +1974,24 @@
       "confirm": "Confirmar revisão da nota",
       "busy": "Salvando revisão…",
       "failed": "Não foi possível salvar a revisão. Confira a senha e os dados do pool e tente novamente."
+    },
+    "archive": {
+      "title": "Notas arquivadas",
+      "help": "As notas concluídas ficam encriptadas aqui até as restaurar ou limpar o arquivo. Não contam para o limite de notas ativas.",
+      "empty": "Não há notas arquivadas",
+      "restore": "Restaurar nota",
+      "restored": "Nota restaurada às notas ativas",
+      "clear": "Limpar arquivo",
+      "confirmClear": "Eliminar permanentemente as notas arquivadas",
+      "warning": "A frase de recuperação não pode recuperar estas notas. Elimine o arquivo apenas depois de confirmar que foram gastas ou de guardar uma cópia de segurança utilizável.",
+      "confirmBackup": "Confirmei que as notas foram gastas ou guardei uma cópia de segurança utilizável",
+      "clearResult": "{{count}} notas arquivadas eliminadas",
+      "loadError": "Não foi possível carregar o arquivo. Tente novamente.",
+      "actionError": "Não foi possível atualizar o arquivo. Atualize a vista antes de tentar novamente.",
+      "full": "O armazenamento do arquivo está cheio. Exporte uma cópia encriptada antes de o limpar para libertar espaço.",
+      "capacity": "{{count}} / {{limit}} notas arquivadas",
+      "activeFull": "O limite de notas ativas foi atingido. Arquive notas concluídas ou aumente o limite antes de restaurar.",
+      "alreadyArchived": "Esta nota está arquivada. Abra Notas arquivadas e restaure-a para voltar a utilizá-la."
     }
   },
   "mobile": {
@@ -2519,7 +2540,7 @@
         "addNotesFromAnEncryptedFile": "Adicionar notas de um arquivo criptografado",
         "changeTheSavedNoteLimit": "Alterar o limite de notas salvas",
         "manageCompletedNotes": "Gerenciar notas concluídas",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Limpar notas concluídas ou recuperar um saque com falha",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Arquivar notas concluídas ou recuperar um levantamento falhado",
         "serviceOriginAndPublicPoolData": "Origem do serviço e dados públicos do pool",
         "verifyBackup": "Verificar backup",
         "backupVerified": "Backup verificado",
@@ -2603,7 +2624,7 @@
       },
       "maintenance": {
         "chooseNote": "Selecione uma nota salva para verificar e remover. Cada tentativa verifica apenas essa nota.",
-        "clearHelp": "O RPC de Ethereum selecionado receberá o hash conhecido da transação de saque desta nota e, quando existir, o hash do depósito relacionado. Isso pode vincular o depósito e o saque nesse provedor. Somente esta nota será removida, e apenas quando esse RPC confirmar a conclusão e a liquidação do depósito relacionado como finalizadas. Caso contrário, ela permanecerá salva."
+        "clearHelp": "O RPC Ethereum selecionado recebe os hashes conhecidos de levantamentos e depósitos relacionados, o que pode permitir ao fornecedor associá-los. Apenas as notas que este RPC confirma como finalizadas são arquivadas de forma encriptada; as restantes permanecem ativas. As notas arquivadas não contam para o limite ativo."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Não foi possível carregar o limite de notas.",

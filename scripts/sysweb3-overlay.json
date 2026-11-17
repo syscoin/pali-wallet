@@ -2,8 +2,8 @@
   "source": {
     "repository": "https://github.com/sidhujag/sysweb3",
     "pullRequest": "https://github.com/sidhujag/sysweb3/pull/119",
-    "commit": "f6503bd5424c198de85d66881b252a91c0a5cb19",
-    "tree": "1b523adb945457585cb3b8794fddd7d725acea1a",
+    "commit": "6b362540d1a73bc6d48111d3f96456503261407a",
+    "tree": "a18336cd2ec1960e2b4a20f7fd1a653561bce970",
     "compiler": "typescript@5.9.3",
     "node": "v26.12.1",
     "build": [
@@ -16,11 +16,11 @@
   },
   "payload": {
     "file": "sysweb3-overlay.deflate",
-    "sha256": "752315a917cfc9d7815dd417dcafab1c10ea54ba81573bbd46fe0133a352628a",
-    "bytes": 1921604,
-    "decodedSha256": "4e632ff23c2f56871b37f3be24fef0c08cae257a684fd38c2c37c3f4f7e43b74",
-    "files": 74,
-    "compressedBytes": 368205
+    "sha256": "15cfd642247fbbc139981acf793228d6f2a97ef8e7892ca3e74b166499034e6d",
+    "bytes": 1947054,
+    "decodedSha256": "fcb90035989141fdb81aac6d82cbf6ed784f2a95eb3e61d90235a4d8b6c4f046",
+    "files": 82,
+    "compressedBytes": 374128
   },
   "packages": [
     {
@@ -185,16 +185,16 @@
         {
           "path": "cjs/keyring-core.js",
           "before": "ee8b6319b2b7b8d19b434e12c9b666f8045983c8d5af3fd8b1e4bc7268710eaf",
-          "after": "dbe2a088e0a741c800707123d45c4db66048838985fb8f83b90d85fb393fe146",
+          "after": "dc974ea1fe95960f2de49a37b6986f73296ae73ed628f94378a7dff83667c37d",
           "beforeBytes": 172156,
-          "bytes": 172114
+          "bytes": 171984
         },
         {
           "path": "cjs/keyring-core.js.map",
           "before": "a6833a5639a50764d0ffd218fddaf2403c9a50ee5955b3e4c1649d713ad40bbb",
-          "after": "a9d8fbc98d9b4cf1a38f35e29d4bd002caf66d4f229ed9beaccef24fa5f9efdc",
+          "after": "90b7e32a0bcdb0068e289dd5995cb07720bebe5f9c5d1383a2b45c6f1c902279",
           "beforeBytes": 114702,
-          "bytes": 114625
+          "bytes": 114709
         },
         {
           "path": "cjs/keyring-host.js",
@@ -598,7 +598,7 @@
         {
           "path": "cjs/software.js.map",
           "before": "8d5f9743b1fa74afbaab8c5c1b667ec2bb93617ad2cf8f3cd965c6146771d11c",
-          "after": "8d5f9743b1fa74afbaab8c5c1b667ec2bb93617ad2cf8f3cd965c6146771d11c",
+          "after": "e39fc671fbaff63fbc6486e1cbe4fc926ab87b81c1d3a704686b74ae2b30e51d",
           "beforeBytes": 861,
           "bytes": 861
         },
@@ -759,16 +759,16 @@
         {
           "path": "cjs/transactions/syscoin-core.js",
           "before": "e030fead0a1629ef8f66ec5802665e4d5bd22bb05c121679beef44993e20efa9",
-          "after": "d618bdacdebc8bb785f6f23564e325b5baff2136b4e6d8d4d0a202b673732fa4",
+          "after": "8baf776035678664090ca89d434c2088e8e852385d074330d1857f26bb813c36",
           "beforeBytes": 48227,
-          "bytes": 48177
+          "bytes": 48666
         },
         {
           "path": "cjs/transactions/syscoin-core.js.map",
           "before": "3da0b7781ac225fda8a8c943e7540d49bdc73b5214d1d61e1a3b5135ac3cf751",
-          "after": "71e2b96441e60ff80d7f72ba2d78b05776dc904ed4b0d3192e17c2bfcf00e215",
+          "after": "2a3cf60dd273d46aa8478b79aa9aeb2aa0c532363e0c109364430ad5a3abf9f0",
           "beforeBytes": 34088,
-          "bytes": 34056
+          "bytes": 34366
         },
         {
           "path": "cjs/transactions/trezor-signing.js",
@@ -878,7 +878,7 @@
         {
           "path": "cjs/types.js.map",
           "before": "a60cede34895139fae25cf3d14cd9a9edd1c86262179e111f2caba23ad480780",
-          "after": "da0c638efc4813abc590c0dd1dd073f5290dab691aacbff035e978847a3dd221",
+          "after": "d48bddd3922fcf790ac369f2ae1ab7302e397ddd74ae2b07695741f31e909310",
           "beforeBytes": 435,
           "bytes": 422
         },
@@ -965,6 +965,20 @@
           "after": "e39fc22f7bb1b0743f4b6b11cb614f8a8530261c04df20935884eb6c840dfa41",
           "beforeBytes": 748,
           "bytes": 748
+        },
+        {
+          "path": "cjs/utils/utxo-address-discovery.js",
+          "before": null,
+          "after": "35c263e43c7a077322ec09e4e8f06f421d6b329c286174f14404654416a3a0a2",
+          "beforeBytes": null,
+          "bytes": 3265
+        },
+        {
+          "path": "cjs/utils/utxo-address-discovery.js.map",
+          "before": null,
+          "after": "2e8fb4f614a5e183aa03fe68f9277e31a49a9a0f1217a707a4d3ca29e579dfea",
+          "beforeBytes": null,
+          "bytes": 2931
         },
         {
           "path": "cjs/utils/utxo-fee-rate.js",
@@ -1123,16 +1137,16 @@
         {
           "path": "esm/keyring-core.js",
           "before": "b0afc655c8e4433ccaefdcaaf7e4340e03b4cc9b8e37f804ac5f8c30b1ac4e1d",
-          "after": "83756fb8bc581cc274969ce22520f79a466210745b246c488879d607d86057a4",
+          "after": "c555b935e1709b352861e3e6e9e4bbf638b82f056f1c07092442162c60623692",
           "beforeBytes": 168309,
-          "bytes": 168267
+          "bytes": 168123
         },
         {
           "path": "esm/keyring-core.js.map",
           "before": "922f018f9f05f8d7553f8525226b99aa5f3050fd449f92bbc4a8ef6bbe534ce7",
-          "after": "6daa104cac6ff596859b10df90a21a0ffd6b968663e410c74e83eeba00a7d8e1",
+          "after": "b6b6e7f393aee57d5a61da6f27025b64232af130b44b94b7033ff34e97d0fcd3",
           "beforeBytes": 115366,
-          "bytes": 115289
+          "bytes": 115405
         },
         {
           "path": "esm/keyring-host.js",
@@ -1683,16 +1697,16 @@
         {
           "path": "esm/transactions/syscoin-core.js",
           "before": "9f9456e169723848eb9da4601182b5c3c29c36492ef34c127c25f76ef29b78e7",
-          "after": "5cb29977c9dac66d8b8ebc29c485b1ca1bda849e085477b104bab5ccd6efa2c7",
+          "after": "3e2bb7cd1af2388c47cd523a6028710ff6c0434f3af211a926686cff8f299bd5",
           "beforeBytes": 46089,
-          "bytes": 46039
+          "bytes": 46528
         },
         {
           "path": "esm/transactions/syscoin-core.js.map",
           "before": "a1548bb079cd235c969d39291fbbde613e8e7d93b8f110eb88f35fbb7945783d",
-          "after": "14e938161af658e374bc0be8e08a269480690f3e9cdc9fefd8ff45be2d7bc1a3",
+          "after": "b7002d6e07b2ada07a69d337a1e46355a6069c81b5f7af556d1643c95717780e",
           "beforeBytes": 34272,
-          "bytes": 34240
+          "bytes": 34550
         },
         {
           "path": "esm/transactions/trezor-signing.js",
@@ -1774,7 +1788,7 @@
         {
           "path": "esm/types.js.map",
           "before": "84f1f70ed54ad72d76ec2cfd82136fed0c80472147f5b0b2bef1b713ccb02fb0",
-          "after": "defe0f9446d4d6dc6edae5a27cb3479e15eee2e8706e44f75669f36b48b574d0",
+          "after": "978662796ec2e37caa7e23d40badee8183903bf7df2c86dc0838e79f3094a896",
           "beforeBytes": 480,
           "bytes": 437
         },
@@ -1847,6 +1861,20 @@
           "after": "fd0e60c0af962b60333eede18727b24cf816f17c51e1cd0275c8c79b4ee8d67e",
           "beforeBytes": 754,
           "bytes": 754
+        },
+        {
+          "path": "esm/utils/utxo-address-discovery.js",
+          "before": null,
+          "after": "90e1b0491f905381efb693c364eaa29f9321a9220c41fdf216307cfa2672ab26",
+          "beforeBytes": null,
+          "bytes": 3040
+        },
+        {
+          "path": "esm/utils/utxo-address-discovery.js.map",
+          "before": null,
+          "after": "67ee7302b61ef6cea140f718d32a14178c40247c9a792484b304fa9d86c50378",
+          "beforeBytes": null,
+          "bytes": 3005
         },
         {
           "path": "esm/utils/utxo-fee-rate.js",
@@ -1963,9 +1991,9 @@
         {
           "path": "types/keyring-core.d.ts",
           "before": "bb1b158ab015b80741f92be3861729214489db3a3ce6b6fa8ae83818561c2fd9",
-          "after": "2887d384a482aac7c18ac1ec6553c30c7276220cbbdffcab4e70330431a6e8cd",
+          "after": "1a28d0056cc2311e884f45fe0b3be00a6f7b1ef6f6c32ccd2abe652c2bce6b5e",
           "beforeBytes": 15124,
-          "bytes": 15127
+          "bytes": 15083
         },
         {
           "path": "types/keyring-host.d.ts",
@@ -2208,9 +2236,9 @@
         {
           "path": "types/software.d.ts",
           "before": "4606fea563cd07d63f4141a8c5c002106820c8a87fa079b2885626f34df3baa7",
-          "after": "4606fea563cd07d63f4141a8c5c002106820c8a87fa079b2885626f34df3baa7",
+          "after": "fbd9727a0e14db5fc3f2269f1796332cdabd5435e05247a64363fc44d1dc56df",
           "beforeBytes": 2199,
-          "bytes": 2199
+          "bytes": 2288
         },
         {
           "path": "types/storage-core.d.ts",
@@ -2292,9 +2320,9 @@
         {
           "path": "types/transactions/syscoin-core.d.ts",
           "before": "541f33b7580052a9ce2e25e9964ec89b1b630f8c7f97e761ae45d575ef5b98b6",
-          "after": "541f33b7580052a9ce2e25e9964ec89b1b630f8c7f97e761ae45d575ef5b98b6",
+          "after": "3a087dd2dd4fafb435ed8a7f3fd74336722bc8f8486e3481bad1adf54c7b607b",
           "beforeBytes": 5824,
-          "bytes": 5824
+          "bytes": 5986
         },
         {
           "path": "types/transactions/trezor-signing.d.ts",
@@ -2348,9 +2376,9 @@
         {
           "path": "types/types.d.ts",
           "before": "7d4fe88c972dd16470365175569ab53da2a3873ba64088cd583c760ec53cf794",
-          "after": "8ad627b95115b5a3205bb3adb046ae4c70c08f20477ff41619445dcba921a4dc",
+          "after": "c35c04118c49c198d41810af31dec6129654889d4911465a5a225cc908ccd0bc",
           "beforeBytes": 19335,
-          "bytes": 19291
+          "bytes": 19512
         },
         {
           "path": "types/utils.d.ts",
@@ -2393,6 +2421,13 @@
           "after": "09527f86a53fd2c18578021afc64f07c3a67a511a90cb31d75cadb2c83403717",
           "beforeBytes": 643,
           "bytes": 643
+        },
+        {
+          "path": "types/utils/utxo-address-discovery.d.ts",
+          "before": null,
+          "after": "f407e08feab77b8e4a3cf0abd1cd11da73bae37da893527e950606267f102dea",
+          "beforeBytes": null,
+          "bytes": 1442
         },
         {
           "path": "types/utils/utxo-fee-rate.d.ts",

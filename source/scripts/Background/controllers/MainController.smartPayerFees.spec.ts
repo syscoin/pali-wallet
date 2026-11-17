@@ -14,8 +14,8 @@ jest.mock('@sidhujag/sysweb3-keyring/cjs/evm-fees.js', () => ({
     const { baseFeePerGas } = await provider.getBlock();
     return {
       gasPrice: BigInt(3),
-      maxFeePerGas: BigInt(3),
-      maxPriorityFeePerGas: BigInt(1),
+      maxFeePerGas: mockSettingsFeePerGas,
+      maxPriorityFeePerGas: mockSettingsPriorityFee,
       ...(baseFeePerGas === null ? {} : { baseFeePerGas }),
     };
   },
@@ -77,6 +77,7 @@ import { createSmartAccountPendingState } from 'utils/smartAccount/pendingState'
 import { submitSmartAccountOperation } from 'utils/smartAccount/submitOperation';
 
 import MainController from './MainController';
+import { readSettingsEvmFeeNonce } from './nativeEvmFeeReviews';
 
 const signer = new Wallet('0x' + '1'.padStart(64, '0'));
 const deployment = smartAccountAddressFixture(57, signer.address);
@@ -90,8 +91,13 @@ const block = {
   baseFeePerGas: '0x1',
 };
 let mockState: any;
+let mockSettingsFeePerGas = BigInt(3);
+let mockSettingsPriorityFee = BigInt(1);
 
 function fixture(chainId = 57) {
+  block.baseFeePerGas = '0x1';
+  mockSettingsFeePerGas = BigInt(3);
+  mockSettingsPriorityFee = BigInt(1);
   Object.defineProperty(globalThis, 'crypto', {
     configurable: true,
     value: webcrypto,
@@ -1022,3 +1028,326 @@ it.each(['assertPendingState', 'assertAssetState'] as const)(
     expect(f.broadcast).not.toHaveBeenCalled();
   }
 );
+
+const settingsOperations = [
+  { smartAccountGuardianRecovery: true, smartAccountRecoveryAccount: smart },
+  {
+    smartAccountGuardianRecoveryFinalize: true,
+    smartAccountRecoveryAccount: smart,
+  },
+  {
+    smartAccountInfrastructureDeployment: true,
+    smartAccountInfrastructureId: 'factory',
+    smartAccountInfrastructureRpcUrl: 'https://rpc.invalid',
+  },
+];
+const settingsRequest = () => ({
+  chainId: 57,
+  to: receiver,
+  data: '0x1234',
+  value: '0',
+});
+const settingsPayer = { id: 0, type: KeyringAccountType.HDAccount };
+
+it.each(settingsOperations)(
+  'requires explicit reviewed fees for settings operation %j',
+  async (metadata) => {
+    const f = fixture();
+    await expect(
+      f.wallet.sendAndSaveEthTransaction(
+        settingsRequest(),
+        false,
+        settingsPayer,
+        metadata,
+        f.options
+      )
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(f.provider.send).not.toHaveBeenCalled();
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.records.append).not.toHaveBeenCalled();
+    expect(f.broadcast).not.toHaveBeenCalled();
+  }
+);
+
+it.each(settingsOperations)(
+  'prepares settings fees without signing and consumes the exact funded EOA review once: %j',
+  async (metadata) => {
+    const f = fixture();
+    const input = settingsRequest();
+    const quote = await f.wallet.reviewSettingsEvmFee(
+      input,
+      settingsPayer,
+      metadata,
+      f.options
+    );
+    expect(quote).toMatchObject({
+      maximumFeeUnits: '75600',
+      maximumTotalUnits: '75600',
+      transaction: {
+        from: signer.address,
+        chainId: '57',
+        nonce: '0',
+        gasLimit: '25200',
+        maxFeePerGas: '3',
+        maxPriorityFeePerGas: '1',
+      },
+    });
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.records.append).not.toHaveBeenCalled();
+    expect(f.broadcast).not.toHaveBeenCalled();
+    const onBroadcast = jest.fn();
+    const options = { ...f.options, genericReviewId: quote.id, onBroadcast };
+    await f.wallet.sendAndSaveEthTransaction(
+      input,
+      false,
+      settingsPayer,
+      metadata,
+      options
+    );
+    expect(f.send).toHaveBeenCalledTimes(1);
+    expect(f.send.mock.calls[0][0]).toEqual(quote.transaction);
+    expect(f.records.append).toHaveBeenCalledTimes(1);
+    expect(f.records.append.mock.calls[0][2]).toMatchObject(metadata);
+    expect(f.broadcast).toHaveBeenCalledTimes(1);
+    expect(onBroadcast).toHaveBeenCalledTimes(1);
+    await expect(
+      f.wallet.sendAndSaveEthTransaction(
+        input,
+        false,
+        settingsPayer,
+        metadata,
+        options
+      )
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(f.send).toHaveBeenCalledTimes(1);
+    for (const [method, params] of f.provider.send.mock.calls as any)
+      if (method === 'eth_getBalance') expect(params[0]).toBe(signer.address);
+  }
+);
+
+it.each(['confirmation', 'signed envelope'] as const)(
+  'blocks a settings base fee above the approved ceiling at %s',
+  async (stage) => {
+    const f = fixture();
+    const metadata = settingsOperations[0];
+    const input = settingsRequest();
+    const quote = await f.wallet.reviewSettingsEvmFee(
+      input,
+      settingsPayer,
+      metadata,
+      f.options
+    );
+    const increase = () => {
+      block.baseFeePerGas = '0xa';
+      mockSettingsFeePerGas = BigInt(20);
+      mockSettingsPriorityFee = BigInt(10);
+    };
+    if (stage === 'confirmation') increase();
+    else f.onSigned(increase);
+    await expect(
+      f.wallet.sendAndSaveEthTransaction(
+        input,
+        false,
+        settingsPayer,
+        metadata,
+        { ...f.options, genericReviewId: quote.id }
+      )
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(f.send).toHaveBeenCalledTimes(stage === 'confirmation' ? 0 : 1);
+    expect(f.records.append).toHaveBeenCalledTimes(
+      stage === 'confirmation' ? 0 : 1
+    );
+    expect(f.broadcast).not.toHaveBeenCalled();
+  }
+);
+
+it.each([
+  'calldata',
+  'target',
+  'nonce',
+  'metadata',
+  'selected account',
+  'payer',
+  'network',
+  'session',
+  'expired',
+] as const)(
+  'rejects changed settings review %s before signing',
+  async (change) => {
+    const f = fixture();
+    const input = settingsRequest();
+    const metadata = { ...settingsOperations[0] };
+    const quote = await f.wallet.reviewSettingsEvmFee(
+      input,
+      settingsPayer,
+      metadata,
+      f.options
+    );
+    if (change === 'calldata') input.data = '0x5678';
+    if (change === 'target') input.to = smart;
+    if (change === 'nonce') (input as any).nonce = '1';
+    if (change === 'metadata')
+      (metadata as any).smartAccountRecoveryAccount = receiver;
+    if (change === 'selected account') mockState.vault.activeAccount.id = 3;
+    if (change === 'payer')
+      mockState.vault.accounts.HDAccount[0].address = receiver;
+    if (change === 'network')
+      mockState.vault.activeNetwork = {
+        ...mockState.vault.activeNetwork,
+        url: 'https://other.invalid',
+      };
+    if (change === 'session') f.wallet.walletSessionGeneration += 1;
+    if (change === 'expired')
+      jest
+        .spyOn(performance, 'now')
+        .mockReturnValue(performance.now() + quote.validForMs + 1);
+    await expect(
+      f.wallet.sendAndSaveEthTransaction(
+        input,
+        false,
+        settingsPayer,
+        metadata,
+        { ...f.options, genericReviewId: quote.id }
+      )
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.records.append).not.toHaveBeenCalled();
+    expect(f.broadcast).not.toHaveBeenCalled();
+  }
+);
+
+it('does not increase the approved settings priority or total fee when RPC recommendations rise', async () => {
+  const f = fixture();
+  const metadata = settingsOperations[0];
+  const input = settingsRequest();
+  const quote = await f.wallet.reviewSettingsEvmFee(
+    input,
+    settingsPayer,
+    metadata,
+    f.options
+  );
+  mockSettingsFeePerGas = BigInt(2000);
+  mockSettingsPriorityFee = BigInt(1000);
+  await f.wallet.sendAndSaveEthTransaction(
+    input,
+    false,
+    settingsPayer,
+    metadata,
+    { ...f.options, genericReviewId: quote.id }
+  );
+  expect(f.send).toHaveBeenCalledTimes(1);
+  expect(f.send.mock.calls[0][0]).toEqual(quote.transaction);
+  expect(f.broadcast).toHaveBeenCalledTimes(1);
+});
+
+it('requires another settings review when the fresh gas estimate exceeds the approved limit', async () => {
+  const f = fixture();
+  const input = settingsRequest();
+  const metadata = settingsOperations[0];
+  const quote = await f.wallet.reviewSettingsEvmFee(
+    input,
+    settingsPayer,
+    metadata,
+    f.options
+  );
+  const read = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, values) =>
+    method === 'eth_estimateGas' ? '0x100000' : read(method, values)
+  );
+  await expect(
+    f.wallet.sendAndSaveEthTransaction(input, false, settingsPayer, metadata, {
+      ...f.options,
+      genericReviewId: quote.id,
+    })
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+});
+
+it('requires another settings review when the fresh payer nonce advances', async () => {
+  const f = fixture();
+  const input = settingsRequest();
+  const metadata = settingsOperations[0];
+  const quote = await f.wallet.reviewSettingsEvmFee(
+    input,
+    settingsPayer,
+    metadata,
+    f.options
+  );
+  const inspect = f.wallet.inspectOrdinaryEvmNonce.getMockImplementation();
+  f.wallet.inspectOrdinaryEvmNonce.mockImplementation(async (...args) => ({
+    ...(await inspect(...args)),
+    nonce: 1,
+  }));
+  await expect(
+    f.wallet.sendAndSaveEthTransaction(input, false, settingsPayer, metadata, {
+      ...f.options,
+      genericReviewId: quote.id,
+    })
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+});
+
+it('cannot auto-approve a settings operation by adding smart-payer metadata', async () => {
+  const f = fixture();
+  await expect(
+    f.wallet.sendAndSaveEthTransaction(
+      settingsRequest(),
+      false,
+      settingsPayer,
+      { ...settingsOperations[0], smartAccountExecution: true },
+      { ...f.options, genericReviewId: 'not-an-issued-review' }
+    )
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  expect(f.provider.send).not.toHaveBeenCalled();
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+});
+
+it('reads the quoted infrastructure nonce only for its exact contract and live unused review', async () => {
+  const f = fixture();
+  const input = settingsRequest();
+  const metadata = settingsOperations[2];
+  const quote = await f.wallet.reviewSettingsEvmFee(
+    input,
+    settingsPayer,
+    metadata,
+    f.options
+  );
+  expect(readSettingsEvmFeeNonce(f.wallet, quote.id, 'factory')).toBe(0);
+  f.provider.send.mockClear();
+  expect(() =>
+    readSettingsEvmFeeNonce(f.wallet, quote.id, 'accountImplementation')
+  ).toThrow('Infrastructure fee review changed');
+  expect(f.provider.send).not.toHaveBeenCalled();
+  expect(f.send).not.toHaveBeenCalled();
+  await f.wallet.sendAndSaveEthTransaction(
+    input,
+    false,
+    settingsPayer,
+    metadata,
+    { ...f.options, genericReviewId: quote.id }
+  );
+  expect(() => readSettingsEvmFeeNonce(f.wallet, quote.id, 'factory')).toThrow(
+    'Settings fee review is unavailable'
+  );
+});
+
+it('cannot use a guardian fee review as an infrastructure nonce authority', async () => {
+  const f = fixture();
+  const quote = await f.wallet.reviewSettingsEvmFee(
+    settingsRequest(),
+    settingsPayer,
+    settingsOperations[0],
+    f.options
+  );
+  expect(() => readSettingsEvmFeeNonce(f.wallet, quote.id, 'factory')).toThrow(
+    'Infrastructure fee review changed'
+  );
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+});

@@ -8,6 +8,7 @@ import {
   validateNoteBackupHistory,
 } from './noteBackupHistory.ts';
 import type { INoteBackupHistory } from './noteBackupHistory.ts';
+import { MAX_ARCHIVED_NOTES, MAX_VAULT_NOTES } from './privateVaultEnvelope.ts';
 export {
   NOTE_BACKUP_MAX_HISTORY_HINTS,
   validateNoteBackupHistory,
@@ -21,7 +22,7 @@ export type {
 
 export const NOTE_BACKUP_FORMAT = 'pali-private-notes';
 export const NOTE_BACKUP_HEADER_BYTES = 64;
-export const NOTE_BACKUP_MAX_NOTES = 512;
+export const NOTE_BACKUP_MAX_NOTES = MAX_VAULT_NOTES;
 export const NOTE_BACKUP_MAX_PLAINTEXT_BYTES = 8 * 1024 * 1024;
 export const NOTE_BACKUP_MAX_FILE_BYTES =
   NOTE_BACKUP_HEADER_BYTES + NOTE_BACKUP_MAX_PLAINTEXT_BYTES + 16;
@@ -30,9 +31,10 @@ export const NOTE_BACKUP_KDF_ITERATIONS = 900_000;
 const MAGIC = [80, 65, 76, 73, 78, 79, 84, 69]; // PALINOTE
 const DATE_MAX = 8_640_000_000_000_000;
 const MAX_JSON_DEPTH = 8;
-const MAX_JSON_NODES = 65_536;
+const MAX_JSON_NODES = 131_072;
 const MAX_JSON_TOKEN_CHARS = 2048;
 export interface INoteBackupEntry {
+  archivedAt?: number;
   createdAt: number;
   history?: Readonly<INoteBackupHistory>;
   note: string;
@@ -93,45 +95,67 @@ export function validateNoteBackupPayload(
       return fail('BACKUP_INVALID_PAYLOAD');
     const createdAt = timestamp(raw.createdAt);
     const identities = new Set<string>();
-    const notes = snapshotBackupArray(raw.notes, NOTE_BACKUP_MAX_NOTES).map(
-      (item: unknown) => {
-        const entry = object(item, [
+    const entries = snapshotBackupArray(raw.notes, NOTE_BACKUP_MAX_NOTES).map(
+      (item) =>
+        object(item, [
           'note',
           'createdAt',
           'reconciliationRequired',
           'history',
-        ]);
-        if (
-          typeof entry.note !== 'string' ||
-          entry.note.length > MAX_JSON_TOKEN_CHARS ||
-          !wellFormed(entry.note) ||
-          entry.note !== entry.note.trim().toLowerCase()
-        )
-          return fail('BACKUP_INVALID_PAYLOAD');
-        const identity = identifyClassicNote(entry.note);
-        const key = `${identity.poolId}:${identity.commitment}`;
-        if (identities.has(key)) return fail('BACKUP_INVALID_PAYLOAD');
-        identities.add(key);
-        const noteCreatedAt = timestamp(entry.createdAt);
-        if (
-          entry.reconciliationRequired !== undefined &&
-          entry.reconciliationRequired !== true
-        )
-          return fail('BACKUP_INVALID_PAYLOAD');
-        const hints =
-          entry.history === undefined
-            ? undefined
-            : validateNoteBackupHistory(entry.history);
-        return Object.freeze({
-          note: entry.note,
-          createdAt: noteCreatedAt,
-          ...(entry.reconciliationRequired === true
-            ? { reconciliationRequired: true as const }
-            : {}),
-          ...(hints ? { history: hints } : {}),
-        });
-      }
+          'archivedAt',
+        ])
     );
+    const archiveCount = entries.filter(
+      (entry) => entry.archivedAt !== undefined
+    ).length;
+    if (
+      archiveCount > MAX_ARCHIVED_NOTES ||
+      entries.length - archiveCount > 512
+    )
+      return fail('BACKUP_INVALID_PAYLOAD');
+    const notes = entries.map((item: unknown) => {
+      const entry = object(item, [
+        'note',
+        'createdAt',
+        'reconciliationRequired',
+        'history',
+        'archivedAt',
+      ]);
+      if (
+        typeof entry.note !== 'string' ||
+        entry.note.length > MAX_JSON_TOKEN_CHARS ||
+        !wellFormed(entry.note) ||
+        entry.note !== entry.note.trim().toLowerCase()
+      )
+        return fail('BACKUP_INVALID_PAYLOAD');
+      const identity = identifyClassicNote(entry.note);
+      const key = `${identity.poolId}:${identity.commitment}`;
+      if (identities.has(key)) return fail('BACKUP_INVALID_PAYLOAD');
+      identities.add(key);
+      const noteCreatedAt = timestamp(entry.createdAt);
+      const archivedAt =
+        entry.archivedAt === undefined
+          ? undefined
+          : timestamp(entry.archivedAt);
+      if (
+        entry.reconciliationRequired !== undefined &&
+        entry.reconciliationRequired !== true
+      )
+        return fail('BACKUP_INVALID_PAYLOAD');
+      const hints =
+        entry.history === undefined
+          ? undefined
+          : validateNoteBackupHistory(entry.history);
+      return Object.freeze({
+        note: entry.note,
+        createdAt: noteCreatedAt,
+        ...(archivedAt === undefined ? {} : { archivedAt }),
+        ...(entry.reconciliationRequired === true
+          ? { reconciliationRequired: true as const }
+          : {}),
+        ...(hints ? { history: hints } : {}),
+      });
+    });
     // Fixed property order is the canonical wire encoding. No normalization of
     // passwords or alternate encodings is implicit in this payload validator.
     const payload = Object.freeze({

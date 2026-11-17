@@ -12,7 +12,7 @@ import { passkeyRegistrationToProfile } from '../../../../source/utils/passkey/r
 import { bytesToHex } from '../../../../source/utils/passkey/base64url.ts';
 import type { IPasskeyCredentialProfile , ISmartAccountMetadata, SmartAccountValidatorModule, SmartAccountCustomModuleRecord } from '../../../../source/types/network.ts';
 import type { NativePasskeyCapability } from '../smartAccount/passkeys.ts';
-import { assertNativePrivateAuthentication, bindNativePrivateAuthenticationChild, nativePrivateAuthenticationScope, withNativePrivateAuthentication, type NativePrivateAuthentication } from './privateAuthentication.ts';
+import { assertNativePrivateAuthentication, bindNativePrivateAuthenticationChild, nativePrivateAuthenticationScope, withNativePrivateAuthentication, type NativePrivateAuthentication, type NativePrivateAuthenticationScope } from './privateAuthentication.ts';
 import { createNativeInfrastructure, getNativeInfrastructureContinuation, type NativeInfrastructureHandoffCapture } from './nativeInfrastructure.ts';
 import { isOperationAuthenticationCancellation } from '../core/operationAuthentication.ts';
 import { NativeCredentialAction } from './credentialAction.ts';
@@ -26,7 +26,7 @@ import { preflightCustomValidatorInstall, type CustomValidatorPreflightResult } 
 import { createNativePrivacyControls, type NativePrivacyControls, type NativePrivacyServiceSettingsPort } from '../privacy/privacyControls.ts';
 import { createNativePrivacyLifecycle } from '../privacy/privacyLifecycle.ts';
 import { createNativeNoteMaintenanceProofs } from './noteMaintenance.ts';
-import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from './noteBackupRuntime.ts';
+import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory, NativeNoteArchiveInventory, NativeNoteArchiveMutation } from './noteBackupRuntime.ts';
 import { NativeSigningHandoffs, captureNativeSigningContinuation, completeNativeSigningOwnerStep, retireNativeSigningHandoff, sameSigningResumeOwner, type NativeSigningHandoff, type LocalSigningResumeScope, type LocalSigningHandoffDescriptor, type LocalInfrastructureHandoffDescriptor, requireNativeSigningHandoff } from '../connections/signingHandoff.ts';
 import { signNativeSmartTrezorOwner } from '../hardware/smartOwnerSigning.ts';
 import { NativeOwnerProofReceipts, type NativeOwnerProofIdentity } from '../smartAccount/ownerProofReceipts.ts';
@@ -2348,7 +2348,7 @@ export function createKeyringRuntimeFactory(
             });
             return sentryKeys;
           });
-        const openNotes = <T>(assertOwner: () => void, bind: (notes: NoteRuntime, session: IPrivateVaultSession) => T | Promise<T>, authentication: NativePrivateAuthentication | null) => runPrivateDomain(async (captured): Promise<T> => {
+        const openNotes = <T>(assertOwner: () => void, bind: (notes: NoteRuntime, session: IPrivateVaultSession) => T | Promise<T>, authentication: NativePrivateAuthentication | null, preserveCancellation = false) => runPrivateDomain(async (captured): Promise<T> => {
           if (authentication !== null) assertNativePrivateAuthentication(authentication);
           const session = privateDomainSession(captured, assertOwner, authentication);
           if (!noteBackups) {
@@ -2400,7 +2400,7 @@ export function createKeyringRuntimeFactory(
             });
           }
           return bind(noteBackups, session);
-        });
+        }, preserveCancellation);
         const openNoteBackup: NonNullable<KeyringRuntime['openNoteBackup']> = (assertOwner, authentication) =>
           openNotes(assertOwner, (notes, session) => notes.bind(session), authentication);
         const openNoteCapacity: NonNullable<KeyringRuntime['openNoteCapacity']> = (assertOwner, authentication) =>
@@ -2435,22 +2435,52 @@ export function createKeyringRuntimeFactory(
         const openNoteMaintenance: NonNullable<KeyringRuntime['openNoteMaintenance']> = (signal, guard, authentication) =>
           privacyLifecycle.open(signal, guard, (ownerSignal, check) => openNoteMaintenanceUnowned(ownerSignal, check, authentication), view => view.dispose(), (view, dispose) => Object.freeze({ ...view, dispose }));
         const readNoteInventory: NonNullable<KeyringRuntime['readNoteInventory']> = (assertOwner, authentication) =>
-          openNotes(assertOwner, (notes, session) => {
+          openNotes(assertOwner, (notes, parentSession) => {
             const network = catalogueSnapshot?.networks.find(item => item.id === catalogueSnapshot!.active.networkId);
             const openPool = openPrivacyPool;
             const selected = selectedAccount();
             const account = state.accounts[selected.type][selected.index];
-            return notes.readInventory(session, network?.chainId === '1' && openPool ? async (id, poolId, guard) => {
+            const readStatus = network?.chainId === '1' && openPool ? async (id: string, poolId: PrivacyPoolId, guard: () => void) => {
               const lifetime = new AbortController();
               const pool = await openOwnedPrivatePool(poolId,
                 (selected, signal) => openPool(network, selected, signal, guard), lifetime.signal, guard);
-              try { await pool.refresh(); guard(); return await notes.readNoteStatus(session, id, pool.readNote); }
+              try { await pool.refresh(); guard(); return await notes.readNoteStatus(parentSession, id, pool.readNote); }
               finally { lifetime.abort(); await pool.dispose(); }
-            } : null, network?.chainId === '1' && openPool && dependencies.openPrivacyWithdrawal && supportsPrivateWithdrawal(selected.type, account)
-              ? (id, poolId, restored, signal, guard, scope) => openPrivateWithdrawal(id, poolId, restored, signal, guard, bindNativePrivateAuthenticationChild(authentication, scope))
-              : null, (id, guard, scope) => openNotes(guard,
-                (ownedNotes, ownedSession) => ownedNotes.reveal(ownedSession, id),
-                bindNativePrivateAuthenticationChild(authentication, scope)));
+            } : null;
+            const withdrawal = network?.chainId === '1' && openPool && dependencies.openPrivacyWithdrawal && supportsPrivateWithdrawal(selected.type, account)
+              ? (id: string, poolId: PrivacyPoolId, restored: boolean, signal: AbortSignal, guard: () => void, scope: NativePrivateAuthenticationScope) =>
+                openPrivateWithdrawal(id, poolId, restored, signal, guard, bindNativePrivateAuthenticationChild(authentication, scope))
+              : null;
+            const reveal = (id: string, guard: () => void, scope: NativePrivateAuthenticationScope) => openNotes(guard,
+              (ownedNotes, ownedSession) => ownedNotes.reveal(ownedSession, id),
+              bindNativePrivateAuthenticationChild(authentication, scope));
+            function bindInventory(ownedNotes: NoteRuntime, readSession: IPrivateVaultSession): Promise<NativeNoteInventory> {
+              return ownedNotes.readInventory(readSession, readStatus, withdrawal, reveal, openArchive, parentSession);
+            }
+            function bindArchive(ownedNotes: NoteRuntime, readSession: IPrivateVaultSession): Promise<NativeNoteArchiveInventory> {
+              return ownedNotes.readArchive(readSession, reveal, restore, clear, parentSession);
+            }
+            async function refresh(ownedNotes: NoteRuntime, readSession: IPrivateVaultSession): Promise<NativeNoteArchiveMutation> {
+              // Reads share this mutation's authorization; returned handles belong
+              // to the persistent parent view, not the disposable action child.
+              const inventory = await bindInventory(ownedNotes, readSession);
+              const archive = await bindArchive(ownedNotes, readSession);
+              readSession.assertCurrent(); parentSession.assertCurrent();
+              return Object.freeze({ inventory, archive });
+            }
+            const openArchive = (guard: () => void, scope: NativePrivateAuthenticationScope) => openNotes(guard,
+              bindArchive, bindNativePrivateAuthenticationChild(authentication, scope), true);
+            const restore = (id: string, guard: () => void, scope: NativePrivateAuthenticationScope) => openNotes(guard,
+              async (ownedNotes, ownedSession) => {
+                await ownedNotes.restoreArchivedNote(ownedSession, id);
+                return refresh(ownedNotes, ownedSession);
+              }, bindNativePrivateAuthenticationChild(authentication, scope), true);
+            const clear = (guard: () => void, scope: NativePrivateAuthenticationScope) => openNotes(guard,
+              async (ownedNotes, ownedSession) => {
+                const { removed } = await ownedNotes.clearArchive(ownedSession);
+                return Object.freeze({ ...await refresh(ownedNotes, ownedSession), removed });
+              }, bindNativePrivateAuthenticationChild(authentication, scope), true);
+            return bindInventory(notes, parentSession);
           }, authentication);
         const openPrivateWithdrawalUnowned = async (
           noteId: string,
@@ -7030,7 +7060,7 @@ export function createKeyringRuntimeFactory(
           async readConnectionUtxoPublic(method, owner, isChangeAddress, signal, assertOwner) {
             const captured = generation, ring = keyring, snapshot = catalogueSnapshot;
             const network = snapshot && findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
-            if (!network || !dependencies.utxoFetch || typeof isChangeAddress !== 'boolean')
+            if (!network || !utxoRecords || !dependencies.utxoFetch || typeof isChangeAddress !== 'boolean')
               throw new KeyringRuntimeError('NOT_READY');
             const selected = selectedAccount(), account = state.accounts[selected.type][selected.index];
             if (selected.id !== owner.accountId || selected.type === 'SmartAccount' || !account || account.xpub !== owner.xpub)
@@ -7051,9 +7081,13 @@ export function createKeyringRuntimeFactory(
             if (hasUtxoEndpointOverride(network))
               await verifySavedUtxoEndpoint(network, { fetch: dependencies.utxoFetch, timeoutMs: 10_000 }, signal, check);
             check();
-            const read = createOwnedUtxoBlockbookRead({ kind: 'wallet', url: sdkNetwork.url,
+            const transport = createOwnedUtxoBlockbookRead({ kind: 'wallet', url: sdkNetwork.url,
               address: selected.address, xpub: owner.xpub, reuseAddressDiscovery: true },
               signal, check, dependencies.utxoFetch);
+            const read = Object.freeze({ ...transport, ...utxoRecords.addressDiscovery({
+              keyring: transactionRecordKeyring(ring, transport.assertCurrent), assertCurrent: transport.assertCurrent,
+            }, { chainId: network.chainId, slip44: network.slip44, genesisHash: network.genesisHash,
+              account: { id: selected.index, type: selected.type, xpub: owner.xpub } }) });
             const result = method === 'getChangeAddress' ? await ring.getChangeAddress(selected.index, read) :
               method === 'getCurrentAddressPubkey' ? await ring.getCurrentAddressPubkey(owner.xpub, isChangeAddress, read) :
               method === 'getBip32Path' ? await ring.getBip32Path(selected.index, isChangeAddress, read) :

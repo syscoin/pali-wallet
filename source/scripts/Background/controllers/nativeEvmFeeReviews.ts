@@ -45,6 +45,11 @@ export type GenericEvmFeeAuthority =
   | Readonly<{ kind: 'dapp'; request: object }>
   | Readonly<{ kind: 'wallet' }>
   | Readonly<{
+      intent: string;
+      kind: 'settings';
+      metadata: Readonly<Record<string, unknown>>;
+    }>
+  | Readonly<{
       kind: 'private-deposit' | 'private-withdrawal';
       request: object;
     }>
@@ -60,7 +65,11 @@ const sameAuthority = (
 ) =>
   expected.kind === actual.kind &&
   (expected.kind === 'wallet' ||
-    (actual.kind !== 'wallet' && expected.request === actual.request));
+    (expected.kind === 'settings'
+      ? actual.kind === 'settings' && expected.intent === actual.intent
+      : actual.kind !== 'wallet' &&
+        actual.kind !== 'settings' &&
+        expected.request === actual.request));
 type GenericPending = Readonly<{
   approval: ReturnType<typeof captureEvmFeeApproval>;
   assertCurrent: () => void;
@@ -271,7 +280,37 @@ export function issueGenericEvmFeeReview(
   });
 }
 
-/** The caller must still supply its independently verified dapp or wallet authority. */
+/** Recover a live reviewed nonce before reserving its deployment journal entry. */
+export function readSettingsEvmFeeNonce(
+  owner: object,
+  id: string,
+  contractId: string
+): number {
+  const entry = pendingByOwner.get(owner)?.get(id);
+  if (
+    !entry ||
+    entry.kind !== 'generic' ||
+    entry.phase !== 'quoted' ||
+    entry.value.authority.kind !== 'settings'
+  )
+    throw new Error('Settings fee review is unavailable');
+  if (
+    entry.value.authority.metadata.smartAccountInfrastructureDeployment !==
+      true ||
+    entry.value.authority.metadata.smartAccountInfrastructureId !== contractId
+  )
+    throw new Error(
+      'Infrastructure fee review changed. Review deployment again.'
+    );
+  assertSynchronousEvmFeeGuard(entry.value.assertCurrent);
+  assertEvmFeeApprovalCurrent(
+    entry.value.approval,
+    Math.floor(performance.now())
+  );
+  return entry.value.walletNonce.nonce;
+}
+
+/** The caller must still supply its independently verified host authority. */
 export function consumeGenericEvmFeeReview(
   owner: object,
   id: string,
@@ -386,7 +425,8 @@ export function captureGenericEvmFeeDispatch(
           }
         : null,
     metadata:
-      value.authority.kind === 'smart-payer'
+      value.authority.kind === 'smart-payer' ||
+      value.authority.kind === 'settings'
         ? value.authority.metadata
         : entry.privateNote
         ? entry.privateNote.kind === 'deposit'

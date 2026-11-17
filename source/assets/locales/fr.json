@@ -1027,7 +1027,10 @@
     "smartAccountGuardianRecoveryExpired": "Cette demande de récupération a expiré avant d'être terminée. Relancez la récupération.",
     "invalidAddress": "Adresse invalide",
     "changeHardwareDevice": "Changer d’appareil",
-    "closeHardwareSetup": "Fermer la configuration"
+    "closeHardwareSetup": "Fermer la configuration",
+    "smartAccountFeeReviewTitle": "Vérifier les frais réseau",
+    "smartAccountFeeReviewSelectedAccount": "Compte sélectionné",
+    "smartAccountFeeReviewMaximumTotal": "Coût total maximal"
   },
   "start": {
     "eraseAndStartFresh": "Effacer et recommencer",
@@ -1867,10 +1870,10 @@
       "error": "Impossible de modifier la limite. Vérifiez que les notes enregistrées tiennent dans la limite, puis réessayez.",
       "save": "Enregistrer la limite",
       "reportedSpent": "Notes signalées comme dépensées ({{count}})",
-      "clear": "Effacer les notes terminées",
-      "clearHelp": "Le RPC Ethereum sélectionné recevra le hash du retrait connu et, le cas échéant, celui du dépôt associé. Le fournisseur peut ainsi relier les deux. Seules les notes dont ce RPC confirme la finalisation du retrait et du dépôt associé sont supprimées ; les autres restent enregistrées.",
-      "confirmClear": "Vérifier et effacer",
-      "clearResult": "Supprimées : {{removed}}. Conservées : {{unresolved}}.",
+      "clear": "Archiver les notes terminées",
+      "clearHelp": "Le RPC Ethereum sélectionné reçoit les hachages connus des retraits et dépôts associés, ce qui peut permettre au fournisseur de les relier. Seules les notes que ce RPC confirme comme finalisées sont archivées sous forme chiffrée ; les autres restent actives. Les notes archivées ne comptent pas dans la limite active.",
+      "confirmClear": "Vérifier et archiver",
+      "clearResult": "Archivées : {{removed}}. Encore actives : {{unresolved}}.",
       "clearError": "La vérification est incomplète. Actualisez pour voir les notes restantes.",
       "clearProgress": "{{checked}} notes vérifiées sur {{total}}.",
       "storedBytes": "Coffre chiffré sérialisé : {{bytes}} octets."
@@ -1971,6 +1974,24 @@
       "confirm": "Confirmer l’examen de la note",
       "busy": "Enregistrement de l’examen…",
       "failed": "Impossible d’enregistrer l’examen. Vérifiez le mot de passe et les données du pool, puis réessayez."
+    },
+    "archive": {
+      "title": "Notes archivées",
+      "help": "Les notes terminées restent chiffrées ici jusqu’à leur restauration ou la suppression de l’archive. Elles ne comptent pas dans la limite des notes actives.",
+      "empty": "Aucune note archivée",
+      "restore": "Restaurer la note",
+      "restored": "Note restaurée parmi vos notes actives",
+      "clear": "Vider l’archive",
+      "confirmClear": "Supprimer définitivement les notes archivées",
+      "warning": "Votre phrase de récupération ne peut pas restaurer ces notes. Supprimez l’archive uniquement après avoir confirmé leur dépense ou conservé une sauvegarde utilisable.",
+      "confirmBackup": "J’ai confirmé que les notes sont dépensées ou conservé une sauvegarde utilisable",
+      "clearResult": "{{count}} notes archivées supprimées",
+      "loadError": "Impossible de charger l’archive. Réessayez.",
+      "actionError": "Impossible de modifier l’archive. Actualisez avant de réessayer.",
+      "full": "L’archive est pleine. Exportez une sauvegarde chiffrée avant de la vider pour libérer de l’espace.",
+      "capacity": "{{count}} / {{limit}} notes archivées",
+      "activeFull": "La limite des notes actives est atteinte. Archivez des notes terminées ou augmentez la limite avant de restaurer.",
+      "alreadyArchived": "Cette note est archivée. Ouvrez Notes archivées et restaurez-la pour la réutiliser."
     }
   },
   "mobile": {
@@ -2519,7 +2540,7 @@
         "addNotesFromAnEncryptedFile": "Ajouter les notes d’un fichier chiffré",
         "changeTheSavedNoteLimit": "Modifier la limite de notes enregistrées",
         "manageCompletedNotes": "Gérer les notes terminées",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Effacer les notes terminées ou récupérer un retrait échoué",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Archiver les notes terminées ou récupérer un retrait échoué",
         "serviceOriginAndPublicPoolData": "Origine du service et données publiques du pool",
         "verifyBackup": "Vérifier la sauvegarde",
         "backupVerified": "Sauvegarde vérifiée",
@@ -2603,7 +2624,7 @@
       },
       "maintenance": {
         "chooseNote": "Sélectionnez une note enregistrée à vérifier et à supprimer. Chaque tentative ne vérifie que cette note.",
-        "clearHelp": "Le RPC Ethereum sélectionné recevra le hash connu de la transaction de retrait de cette note et, le cas échéant, celui du dépôt associé. Ce fournisseur pourra ainsi relier le dépôt et le retrait. Seule cette note sera supprimée, et uniquement si ce RPC confirme la finalisation de l’opération et du règlement du dépôt associé. Sinon, elle restera enregistrée."
+        "clearHelp": "Le RPC Ethereum sélectionné reçoit les hachages connus des retraits et dépôts associés, ce qui peut permettre au fournisseur de les relier. Seules les notes que ce RPC confirme comme finalisées sont archivées sous forme chiffrée ; les autres restent actives. Les notes archivées ne comptent pas dans la limite active."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Impossible de charger la limite de notes.",

@@ -16,6 +16,7 @@ import { getNetwork } from '../core/networks';
 export type WalletAccountsProps = {
   catalogue: NativeWalletCatalogueSnapshot | null;
   watch: WatchAccountState;
+  watchConnection?: Readonly<{ status: 'opening' | 'ready' | 'unavailable'; accountIds: readonly string[] }>;
   active: AccountSelection | null;
   onSelect(selection: AccountSelection): void | Promise<void>;
   onAdd(input: { name: string; address: string; network?: WatchAccountNetwork }): Promise<void>;
@@ -29,7 +30,7 @@ export type WalletAccountsProps = {
   onManageHd?(): void;
   onOpenWallet?(): void;
 };
-export type WatchWalletBridge = Pick<WalletAccountsProps, 'watch' | 'onAdd' | 'onRename' | 'onRemove' | 'onRetry' | 'availableWatchNetworks' | 'networkSettings' | 'onNetworksChanged'> & {
+export type WatchWalletBridge = Pick<WalletAccountsProps, 'watch' | 'watchConnection' | 'onAdd' | 'onRename' | 'onRemove' | 'onRetry' | 'availableWatchNetworks' | 'networkSettings' | 'onNetworksChanged'> & {
   onSelectWatch(selection: AccountSelection): void;
   onNativeCatalogue(catalogue: NativeWalletCatalogueSnapshot | null): void;
 };
@@ -57,7 +58,13 @@ export function WalletAccounts(props: WalletAccountsProps) {
   };
   const entries = projectAccounts(props.catalogue, props.watch.accounts);
   const selected = props.active ? accountIdentity(props.active) : null;
-  const canManageWatch = props.watch.status === 'ready' && !props.watch.busy && !busy;
+  const connectionReady = !props.watchConnection || props.watchConnection.status === 'ready';
+  const canManageWatch = props.watch.status === 'ready' && connectionReady && !props.watch.busy && !busy;
+  const unavailable = props.watch.status === 'unavailable' || props.watchConnection?.status === 'unavailable';
+  const opening = props.watch.status === 'opening' || props.watch.status === 'ready' && props.watchConnection?.status === 'opening';
+  const canSelect = (entry: (typeof entries)[number]) => !busy && !props.watch.busy &&
+    (entry.selection.kind !== 'watch' || props.watch.status === 'ready' && connectionReady &&
+      (!props.watchConnection || props.watchConnection.accountIds.includes(entry.selection.id)));
   const renaming = form !== null && form !== 'add' && form.kind === 'rename';
   const accessibleIdentity = (entry: (typeof entries)[number]) => {
     if (entry.kind === 'watch') {
@@ -81,8 +88,8 @@ export function WalletAccounts(props: WalletAccountsProps) {
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' && renaming ? 'height' : undefined}>
     {form === 'add' ? <AddWatchAccount utxoNetworks={props.watch.utxoNetworks} networkSettings={props.networkSettings} onNetworksChanged={props.onNetworksChanged} availableNetworks={props.availableWatchNetworks} onAdd={props.onAdd} onCancel={() => setForm(null)} /> : <Screen footer={form ? <Button title={form.kind === 'rename' ? t('mobile.accounts.saveName') : t('mobile.shellViews.walletAccounts.removeWatchAccount')} disabled={!canManageWatch || form.kind === 'rename' && !name.trim()} onPress={() => void run(() => form.kind === 'rename' ? props.onRename(form.id, name) : props.onRemove(form.id))} /> : undefined}>
       <Header title={form ? form.kind === 'rename' ? t('mobile.shellViews.walletAccounts.renameWatchAccount') : t('mobile.shellViews.walletAccounts.removeWatchAccount') : t('mobile.accounts.title')} subtitle={t('mobile.shellViews.walletAccounts.walletAndWatchAccounts')} onBack={() => back.current()} />
-      {props.watch.status === 'opening' && <View style={s.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t('mobile.shellViews.walletAccounts.openingSavedWatchAccounts')}</Text></View>}
-      {props.watch.status === 'unavailable' && <><Notice title={t('mobile.shellViews.walletAccounts.watchAccountsUnavailable')} body={t('mobile.shellViews.walletAccounts.yourSavedWatchDataHasBeenPreservedReopen')} tone="amber" /><Button title={t('mobile.shellViews.walletAccounts.reopenWatchAccounts')} disabled={busy || props.watch.busy} variant="secondary" onPress={() => void run(props.onRetry)} /></>}
+      {opening && <View style={s.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t('mobile.shellViews.walletAccounts.openingSavedWatchAccounts')}</Text></View>}
+      {unavailable && <><Notice title={t('mobile.shellViews.walletAccounts.watchAccountsUnavailable')} body={t('mobile.shellViews.walletAccounts.yourSavedWatchDataHasBeenPreservedReopen')} tone="amber" /><Button title={t('mobile.shellViews.walletAccounts.reopenWatchAccounts')} disabled={busy || props.watch.busy || opening} variant="secondary" onPress={() => void run(props.onRetry)} /></>}
       {form && typeof form !== 'string' ? <>
         <Notice title={form.name} body={form.kind === 'remove' ? t('mobile.shellViews.walletAccounts.thisRemovesTheWatchAccountFromThisDevice') : t('mobile.shellViews.walletAccounts.namesAreSavedOnThisDeviceAndDo')} />
         <Text selectable style={s.address}>{form.address}</Text>
@@ -91,8 +98,8 @@ export function WalletAccounts(props: WalletAccountsProps) {
         <Text style={styles.muted}>{t('mobile.shellViews.walletAccounts.walletAccountsUnlockThroughYourWalletImportedKeys')}</Text>
         {entries.map((entry) => <Card key={entry.identity} style={s.account}>
           <IdlePressable accessibilityRole="button" accessibilityLabel={t('mobile.shellViews.accounts.selectIdentity', { identity: accessibleIdentity(entry), selected: entry.identity === selected ? t('mobile.shellViews.accounts.selectedSuffix') : '' })}
-            accessibilityState={{ selected: entry.identity === selected, disabled: busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready' }}
-            disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
+            accessibilityState={{ selected: entry.identity === selected, disabled: !canSelect(entry) }}
+            disabled={!canSelect(entry)} onPress={() => void run(() => props.onSelect(entry.selection))}>
             <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>{t('mobile.language.selected')}</Text>}</View>
             <Text style={s.kind}>{entry.selection.kind === 'hd' ? t('mobile.accounts.phrase') : entry.selection.kind === 'imported' ? t('mobile.accounts.imported') : entry.selection.kind === 'smart' ? t('smartAccountHub.menuEntry') : entry.selection.kind === 'ledger' ? t('mobile.accounts.ledger') : entry.selection.kind === 'trezor' ? t('mobile.shellViews.walletAccounts.trezor') : (() => {
               const watched = props.watch.accounts.find((account) => account.id === entry.selection.id)!;

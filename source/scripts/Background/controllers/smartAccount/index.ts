@@ -202,6 +202,17 @@ export interface ISmartAccountControllerDependencies {
   ) => Promise<boolean>;
   getWalletSessionGeneration?: () => number;
   getWalletStateGeneration: () => number;
+  readSettingsEvmFeeNonce(id: string, contractId: string): number;
+  reviewSettingsEvmFee(
+    params: unknown,
+    targetAccount: { id: number; type: PaliKeyringAccountType },
+    metadata: Record<string, unknown>,
+    options: NonNullable<
+      Parameters<
+        ISmartAccountControllerDependencies['sendAndSaveEthTransaction']
+      >[4]
+    >
+  ): Promise<SettingsEvmFeeReview>;
   saveWalletState: (
     operation: string,
     isUserActivity?: boolean,
@@ -217,6 +228,7 @@ export interface ISmartAccountControllerDependencies {
       assertCurrentContext?: () => void;
       assertPendingState?: () => Promise<void>;
       clearNavigation?: boolean;
+      genericReviewId?: string;
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
       skipRapidPolling?: boolean;
@@ -266,9 +278,14 @@ type GuardianRecoveryStatusForAccount = {
 };
 
 type InfrastructurePending = InfrastructureJournalEntry;
+type SettingsEvmFeeReview = ReturnType<
+  typeof import('../nativeEvmFeeReviews').issueGenericEvmFeeReview
+>;
 
 type InfrastructureDeploymentResult = {
+  contractName?: string;
   deployed: PaliInfrastructureContractId[];
+  feeReview?: SettingsEvmFeeReview;
   pending?: InfrastructurePending;
   skipped: PaliInfrastructureContractId[];
 };
@@ -827,7 +844,9 @@ class SmartAccountController {
     return this.readInfrastructureStatus(context, assertCurrent, forceRefresh);
   }
 
-  public deploySmartAccountInfrastructure(): Promise<InfrastructureDeploymentResult> {
+  public deploySmartAccountInfrastructure(
+    params: { feeReviewId?: string } = {}
+  ): Promise<InfrastructureDeploymentResult> {
     const context = this.infrastructureContext();
     const existing = this.infrastructureDeployments.get(context.chainId);
     if (existing) {
@@ -838,15 +857,16 @@ class SmartAccountController {
         )
       );
     }
-    const operation = this.deployInfrastructureForContext(context).finally(
-      () => {
-        if (
-          this.infrastructureDeployments.get(context.chainId)?.operation ===
-          operation
-        )
-          this.infrastructureDeployments.delete(context.chainId);
-      }
-    );
+    const operation = this.deployInfrastructureForContext(
+      context,
+      params.feeReviewId
+    ).finally(() => {
+      if (
+        this.infrastructureDeployments.get(context.chainId)?.operation ===
+        operation
+      )
+        this.infrastructureDeployments.delete(context.chainId);
+    });
     this.infrastructureDeployments.set(context.chainId, {
       contextKey: context.key,
       operation,
@@ -855,7 +875,8 @@ class SmartAccountController {
   }
 
   private async deployInfrastructureForContext(
-    context: ReturnType<SmartAccountController['infrastructureContext']>
+    context: ReturnType<SmartAccountController['infrastructureContext']>,
+    feeReviewId?: string
   ): Promise<InfrastructureDeploymentResult> {
     const deployed: PaliInfrastructureContractId[] = [];
     const skipped: PaliInfrastructureContractId[] = [];
@@ -901,13 +922,41 @@ class SmartAccountController {
       const parsedNonce = Number(pendingNonce);
       if (!Number.isSafeInteger(parsedNonce) || parsedNonce < 0)
         throw new Error(DEPLOYMENT_NONCE_ERROR);
-      const nonce = Math.max(nextNonce, parsedNonce);
+      const nonce =
+        feeReviewId === undefined
+          ? Math.max(nextNonce, parsedNonce)
+          : this.deps.readSettingsEvmFeeNonce(feeReviewId, contract.id);
       const command = buildInfrastructureDeploymentCommand({
         contract,
         chainId: context.chainId,
         from: context.address,
         nonce,
       });
+      const metadata = {
+        smartAccountInfrastructureDeployment: true,
+        smartAccountInfrastructureId: contract.id,
+        smartAccountInfrastructureRpcUrl: context.url,
+      };
+      if (feeReviewId === undefined) {
+        const feeReview = await this.deps.reviewSettingsEvmFee(
+          command,
+          context.account,
+          metadata,
+          {
+            clearNavigation: false,
+            persist: true,
+            assertBeforeSign: assertCurrent,
+            assertCurrentContext: assertCurrent,
+          }
+        );
+        assertCurrent();
+        return {
+          deployed,
+          skipped,
+          feeReview,
+          contractName: contract.displayName,
+        };
+      }
       const reservation: InfrastructurePending = {
         contractId: contract.id,
         attemptId: randomBytes32Hex(),
@@ -943,14 +992,11 @@ class SmartAccountController {
           command,
           false,
           context.account,
-          {
-            smartAccountInfrastructureDeployment: true,
-            smartAccountInfrastructureId: contract.id,
-            smartAccountInfrastructureRpcUrl: context.url,
-          },
+          metadata,
           {
             clearNavigation: false,
             persist: true,
+            genericReviewId: feeReviewId,
             assertBeforeSign: () => this.assertInfrastructureContext(context),
             assertCurrentContext: () =>
               this.assertInfrastructureContext(context),
@@ -1042,6 +1088,8 @@ class SmartAccountController {
             : reservation.nonce,
       };
       this.pendingInfrastructure.set(context.chainId, pending);
+      // One explicit confirmation authorizes one exact deployment envelope.
+      feeReviewId = undefined;
       nextNonce = nonce + 1;
       const deadline = Date.now() + 15000;
       let receipt: any;
@@ -2752,10 +2800,12 @@ class SmartAccountController {
     claimHash: string;
     executionContextId?: string;
     expectedContext?: IEvmTransactionContext;
+    feeReviewId?: string;
     gasPayer?: { address: string; id: number; type: PaliKeyringAccountType };
     guardian: string;
     operation: SmartAccountGuardianRecoveryOperation;
   }) {
+    const feeReviewId = params.feeReviewId;
     const owner = this.getActiveSmartAccount(getAddress(params.account))
       .metadata.guardianRecoveryClaim;
     if (!owner || owner.intent.operation.hash !== params.claimHash)
@@ -2807,20 +2857,32 @@ class SmartAccountController {
             transaction
           );
           assertCurrent();
+          const metadata = {
+            smartAccountGuardianRecovery: true,
+            smartAccountRecoveryAccount: account,
+          };
+          const options = {
+            clearNavigation: false,
+            persist: true,
+            assertBeforeSign: assertCurrent,
+            assertCurrentContext: assertCurrent,
+          };
+          if (feeReviewId === undefined) {
+            const feeReview = await this.deps.reviewSettingsEvmFee(
+              transaction,
+              gasPayer,
+              metadata,
+              options
+            );
+            assertCurrent();
+            return { operation, feeReview };
+          }
           const response = await this.deps.sendAndSaveEthTransaction(
             transaction,
             false,
             gasPayer,
-            {
-              smartAccountGuardianRecovery: true,
-              smartAccountRecoveryAccount: account,
-            },
-            {
-              clearNavigation: false,
-              persist: true,
-              assertBeforeSign: assertCurrent,
-              assertCurrentContext: assertCurrent,
-            }
+            metadata,
+            { ...options, genericReviewId: feeReviewId }
           );
 
           return {
@@ -2845,7 +2907,9 @@ class SmartAccountController {
     claim: GuardianRecoveryClaim;
     expectedClaimHash: string | null;
     expectedContext?: IEvmTransactionContext;
+    feeReviewId?: string;
   }) {
+    const feeReviewId = params.feeReviewId;
     const origin = this.recoveryApprovalContext(params.expectedContext);
     const input = captureGuardianRecoveryClaim(params.claim),
       account = input.intent.operation.account;
@@ -2883,24 +2947,37 @@ class SmartAccountController {
             transaction
           );
           assertCurrent();
+          const metadata = {
+            smartAccountGuardianRecoveryFinalize: true,
+            smartAccountRecoveryAccount: account,
+          };
+          const options = {
+            clearNavigation: false,
+            persist: true,
+            assertBeforeSign: assertCurrent,
+            assertCurrentContext: assertCurrent,
+          };
+          if (feeReviewId === undefined) {
+            const feeReview = await this.deps.reviewSettingsEvmFee(
+              transaction,
+              gasPayer,
+              metadata,
+              options
+            );
+            assertCurrent();
+            return { feeReview, claimHash: claim.intent.operation.hash };
+          }
           return this.deps.sendAndSaveEthTransaction(
             transaction,
             false,
             { id: gasPayer.id, type: gasPayer.type },
-            {
-              smartAccountGuardianRecoveryFinalize: true,
-              smartAccountRecoveryAccount: account,
-            },
-            {
-              clearNavigation: false,
-              persist: true,
-              assertBeforeSign: assertCurrent,
-              assertCurrentContext: assertCurrent,
-            }
+            metadata,
+            { ...options, genericReviewId: feeReviewId }
           );
         },
         'finalize'
       );
+      if ('feeReview' in response) return response;
       // Admission is released after the transport settles. The existing signed
       // record retains exclusion while canonical receipt observation continues.
       await response.wait();

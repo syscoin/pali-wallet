@@ -1805,3 +1805,247 @@ it('does not make automatic requests for a different owner or an empty journal',
   });
   expect(c.fetch).not.toHaveBeenCalled();
 });
+
+const discoverySelection = (
+  previous?: Readonly<{ changeIndex: number; receivingIndex: number }>
+) => {
+  const state = previous ?? { receivingIndex: 0, changeIndex: 0 };
+  const key = bitcoin.ECPair.fromPrivateKey(
+    Buffer.alloc(32, 3 + state.changeIndex)
+  );
+  const payment = bitcoin.payments.p2wpkh({ pubkey: key.publicKey });
+  return {
+    state,
+    issued: {
+      branch: 1 as const,
+      index: state.changeIndex,
+      address: payment.address,
+      path: `m/84'/0'/0'/1/${state.changeIndex}`,
+      script: Buffer.from(payment.output).toString('hex'),
+    },
+  };
+};
+
+it('durably repeats an issued change address across quotes, restart and independent account/chain owners', async () => {
+  const f = context();
+  const first = await f.records
+    .addressDiscovery(f.session, owner)
+    .allocateUtxoAddress(discoverySelection);
+  const retained = await f.storage.read();
+  expect(first.index).toBe(0);
+  expect(retained).toBeDefined();
+  expect(
+    await f.records
+      .addressDiscovery(f.session, owner)
+      .allocateUtxoAddress(discoverySelection)
+  ).toEqual(first);
+  expect(await f.storage.read()).toBe(retained);
+  const reopened = new UtxoSignedRecords(f.storage, f.storage);
+  expect(
+    await reopened
+      .addressDiscovery(f.session, owner)
+      .allocateUtxoAddress(discoverySelection)
+  ).toEqual(first);
+  for (const other of [
+    {
+      ...owner,
+      account: { ...owner.account, id: 1, xpub: 'different-public-xpub' },
+    },
+    { ...owner, chainId: 5700, slip44: 57, genesisHash: '1'.repeat(64) },
+  ]) {
+    const select = jest.fn(discoverySelection);
+    await reopened
+      .addressDiscovery(f.session, other)
+      .allocateUtxoAddress(select);
+    expect(select).toHaveBeenCalledWith(undefined);
+  }
+  expect(
+    await reopened
+      .addressDiscovery(f.session, owner)
+      .allocateUtxoAddress(discoverySelection)
+  ).toEqual(first);
+});
+
+it('serializes concurrent owner allocations without consuming another change index', async () => {
+  const f = context(),
+    entered = deferred(),
+    release = deferred();
+  const original = f.cas.getMockImplementation()!;
+  f.cas.mockImplementationOnce(async (...args) => {
+    entered.finish();
+    await release.promise;
+    return original(...args);
+  });
+  const first = f.records
+    .addressDiscovery(f.session, owner)
+    .allocateUtxoAddress(discoverySelection);
+  await entered.promise;
+  const secondRecords = new UtxoSignedRecords(f.storage, f.storage);
+  const second = secondRecords
+    .addressDiscovery(f.session, owner)
+    .allocateUtxoAddress(discoverySelection);
+  release.finish();
+  const [one, two] = await Promise.all([first, second]);
+  expect(one).toEqual(two);
+  expect(one.index).toBe(0);
+  expect(f.cas).toHaveBeenCalledTimes(1);
+});
+
+it('reloads an authenticated allocation after another writer wins the physical CAS', async () => {
+  const f = context(),
+    original = f.cas.getMockImplementation()!;
+  f.cas.mockImplementationOnce(async (...args) => {
+    // An independently admitted writer wins the physical storage race. The
+    // following original expectation then loses its exact-byte comparison.
+    await original(...args);
+    return original(...args);
+  });
+  const select = jest.fn(discoverySelection);
+  expect(
+    (
+      await f.records
+        .addressDiscovery(f.session, owner)
+        .allocateUtxoAddress(select)
+    ).index
+  ).toBe(0);
+  expect(select.mock.calls.map(([state]) => state?.changeIndex)).toEqual([
+    undefined,
+    0,
+  ]);
+});
+
+it('refuses altered public discovery metadata whose authenticated root was not rewritten', async () => {
+  const f = context();
+  await f.records
+    .addressDiscovery(f.session, owner)
+    .allocateUtxoAddress(discoverySelection);
+  const before = (await f.storage.read())!;
+  const parsed = JSON.parse(before);
+  parsed.discovery[0].state.changeIndex = 1;
+  const altered = JSON.stringify(parsed);
+  await f.cas(parsed.profileId, before, altered, guard);
+  const reopened = new UtxoSignedRecords(f.storage, f.storage),
+    select = jest.fn(discoverySelection);
+  await expect(
+    reopened.addressDiscovery(f.session, owner).allocateUtxoAddress(select)
+  ).rejects.toThrow();
+  expect(select).not.toHaveBeenCalled();
+  expect(await f.storage.read()).toBe(altered);
+});
+
+it('never publishes an allocation after failed storage or cancellation and retains a committed path after lost acknowledgement', async () => {
+  const f = context();
+  f.cas.mockRejectedValueOnce(Error('Storage unavailable'));
+  await expect(
+    f.records
+      .addressDiscovery(f.session, owner)
+      .allocateUtxoAddress(discoverySelection)
+  ).rejects.toThrow('Storage unavailable');
+  expect(await f.storage.read()).toBeUndefined();
+  let current = true;
+  const session = {
+    ...f.session,
+    assertCurrent() {
+      if (!current) throw Error('Retired allocation');
+    },
+  };
+  const original = f.cas.getMockImplementation()!;
+  f.cas.mockImplementationOnce(async (...args) => {
+    current = false;
+    return original(...args);
+  });
+  await expect(
+    f.records
+      .addressDiscovery(session, owner)
+      .allocateUtxoAddress(discoverySelection)
+  ).rejects.toThrow('Retired allocation');
+  expect(await f.storage.read()).toBeUndefined();
+  current = true;
+  f.cas.mockImplementationOnce(async (...args) => {
+    await original(...args);
+    throw Error('Acknowledgement lost');
+  });
+  await expect(
+    f.records
+      .addressDiscovery(session, owner)
+      .allocateUtxoAddress(discoverySelection)
+  ).rejects.toThrow('Acknowledgement lost');
+  const reopened = new UtxoSignedRecords(f.storage, f.storage);
+  const select = jest.fn(discoverySelection);
+  expect(
+    (
+      await reopened
+        .addressDiscovery(f.session, owner)
+        .allocateUtxoAddress(select)
+    ).index
+  ).toBe(0);
+  expect(select).toHaveBeenCalledWith({ receivingIndex: 0, changeIndex: 0 });
+});
+
+it('seals issued paths with exact signed bytes and advances only their matching confirmed change once', async () => {
+  const f = context(),
+    signed = record();
+  const issued = await f.records
+    .addressDiscovery(f.session, owner)
+    .allocateUtxoAddress(discoverySelection);
+  await f.records.persist(f.session, signed);
+  const reopened = new UtxoSignedRecords(f.storage, f.storage);
+  expect(
+    (await reopened.readExact(f.session, owner, signed.txid))?.issuedPaths
+  ).toEqual([issued]);
+  const current = async () =>
+    (
+      await reopened
+        .addressDiscovery(f.session, owner)
+        .allocateUtxoAddress(discoverySelection)
+    ).index;
+  await reopened.acknowledge(f.session, owner, signed.txid);
+  expect(await current()).toBe(0);
+  expect(
+    await reopened.observeRetained(f.session, owner, signed.txid, async () => ({
+      txid: signed.txid,
+      hex: signed.rawTransaction,
+      confirmations: 0,
+    }))
+  ).toBe('seen');
+  expect(await current()).toBe(0);
+  expect(
+    await reopened.observeRetained(f.session, owner, signed.txid, async () => ({
+      txid: '0'.repeat(64),
+      hex: signed.rawTransaction,
+      confirmations: 9,
+      blockHash: 'a'.repeat(64),
+    }))
+  ).toBe('unknown');
+  expect(await current()).toBe(0);
+  const observed = {
+    txid: signed.txid,
+    hex: signed.rawTransaction,
+    confirmations: 1,
+    blockHash: 'a'.repeat(64),
+  };
+  expect(
+    await reopened.observeRetained(
+      f.session,
+      owner,
+      signed.txid,
+      async () => observed
+    )
+  ).toBe('confirmed');
+  expect(await current()).toBe(1);
+  expect(
+    await reopened.observeRetained(
+      f.session,
+      owner,
+      signed.txid,
+      async () => observed
+    )
+  ).toBe('confirmed');
+  expect(await current()).toBe(1);
+  expect(
+    (await reopened.readExact(f.session, owner, signed.txid))?.rawTransaction
+  ).toBe(signed.rawTransaction);
+  expect(
+    (await reopened.readExact(f.session, owner, signed.txid))?.issuedPaths
+  ).toEqual([issued]);
+});

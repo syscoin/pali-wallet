@@ -520,6 +520,7 @@ import {
   captureGenericEvmFeeDispatch,
   consumeGenericEvmFeeReview,
   issueGenericEvmFeeReview,
+  readSettingsEvmFeeNonce,
   consumeNativeEvmFeeReview,
   discardNativeEvmFeeReview,
   issueNativeEvmFeeReview,
@@ -560,6 +561,7 @@ import type {
 } from '../../../shared/activityNotifications';
 import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
 import type { SmartAccountControllerAuthority } from '../../../shared/smartAccountControllerAuthority';
+import type { WalletAuthentication } from '../../../shared/walletAuthentication';
 import type {
   GuardianRecoveryClaim,
   GuardianRecoveryReplacement,
@@ -617,6 +619,38 @@ const NETWORK_ALREADY_EXISTS_ERROR =
 const TOKEN_BALANCE_CONTEXT_CHANGED_ERROR =
   'Token balance refresh context changed';
 const NETWORK_SWITCH_AFTER_UPDATES = 'network-switch-after-updates';
+
+const isSettingsEvmFeeOperation = (metadata?: Record<string, unknown>) =>
+  metadata?.smartAccountGuardianRecovery === true ||
+  metadata?.smartAccountGuardianRecoveryFinalize === true ||
+  metadata?.smartAccountInfrastructureDeployment === true;
+
+// These wallet-built commands deliberately omit fees. Bind their complete
+// intent separately from the RPC-filled envelope held by the review registry.
+const settingsEvmFeeIntent = (
+  request: ReturnType<typeof normalizeDappTransaction>,
+  metadata: Record<string, unknown>
+) => {
+  if (
+    !isSettingsEvmFeeOperation(metadata) ||
+    Object.keys(request).some(
+      (key) =>
+        !['chainId', 'from', 'nonce', 'data', 'to', 'value'].includes(key)
+    )
+  )
+    throw new Error('Invalid settings transaction fee intent');
+  return JSON.stringify([
+    Object.keys(metadata)
+      .sort()
+      .map((key) => [key, metadata[key]]),
+    request.from?.toLowerCase(),
+    request.to?.toLowerCase(),
+    request.data.toLowerCase(),
+    BigInt(request.value ?? 0).toString(),
+    request.chainId === undefined ? null : BigInt(request.chainId).toString(),
+    request.nonce === undefined ? null : BigInt(request.nonce).toString(),
+  ]);
+};
 
 const fiatNetworkKey = (network: INetwork) =>
   JSON.stringify([
@@ -1266,6 +1300,9 @@ class MainController {
           transactionMetadata,
           saveOptions
         ),
+      reviewSettingsEvmFee: (...args) => this.reviewSettingsEvmFee(...args),
+      readSettingsEvmFeeNonce: (id, contractId) =>
+        readSettingsEvmFeeNonce(this, id, contractId),
       sendAndSaveTransaction: (tx, targetAccount, options) =>
         this.sendAndSaveTransaction(tx, targetAccount, options),
     });
@@ -4211,6 +4248,23 @@ class MainController {
     return this.usePrivateVault((vault) => vault.clearCompletedNotes(ids));
   }
 
+  public getArchivedPrivateVaultNotes() {
+    return this.usePrivateVault((vault) => vault.getArchivedNotes());
+  }
+
+  public restoreArchivedPrivateVaultNote(
+    id: string,
+    password: WalletAuthentication
+  ) {
+    return this.usePrivateVault((vault) =>
+      vault.restoreArchivedNote(id, password)
+    );
+  }
+
+  public clearPrivateVaultArchive(password: WalletAuthentication) {
+    return this.usePrivateVault((vault) => vault.clearArchive(password));
+  }
+
   public async getPrivateVaultNotes() {
     // Admission belongs to the current session even if reconciliation yields.
     const session = this.capturePrivateVaultSession();
@@ -6593,9 +6647,9 @@ class MainController {
     return this.smartAccount.getSmartAccountInfrastructureStatus(forceRefresh);
   }
 
-  public deploySmartAccountInfrastructure() {
+  public deploySmartAccountInfrastructure(params?: { feeReviewId?: string }) {
     this.assertWalletReadyForSigning();
-    return this.smartAccount.deploySmartAccountInfrastructure();
+    return this.smartAccount.deploySmartAccountInfrastructure(params);
   }
 
   public async prepareSmartAccountExecution(params: {
@@ -6795,6 +6849,7 @@ class MainController {
     claimHash: string;
     executionContextId?: string;
     expectedContext?: IEvmTransactionContext;
+    feeReviewId?: string;
     gasPayer?: { address: string; id: number; type: KeyringAccountType };
     guardian: string;
     operation: SmartAccountGuardianRecoveryOperation;
@@ -6820,6 +6875,7 @@ class MainController {
     claim: GuardianRecoveryClaim;
     expectedClaimHash: string | null;
     expectedContext?: IEvmTransactionContext;
+    feeReviewId?: string;
   }) {
     this.assertWalletReadyForSigning();
     return this.smartAccount.finalizeSmartAccountGuardianRecovery(params);
@@ -10259,7 +10315,21 @@ class MainController {
     const smartPayer =
       transactionMetadata?.smartAccountExecution === true ||
       transactionMetadata?.smartAccountDeploymentPrefund === true;
-    if (smartPayer && saveOptions?.genericDispatchId === undefined) {
+    const settingsOperation = isSettingsEvmFeeOperation(transactionMetadata);
+    if (
+      settingsOperation &&
+      (!internal ||
+        (saveOptions?.genericReviewId === undefined &&
+          saveOptions?.genericDispatchId === undefined))
+    )
+      throw Object.assign(new Error('Reviewed transaction fees are required'), {
+        transactionNotBroadcast: true,
+      });
+    if (
+      smartPayer &&
+      !settingsOperation &&
+      saveOptions?.genericDispatchId === undefined
+    ) {
       try {
         assertAuthority();
         if (
@@ -10365,6 +10435,15 @@ class MainController {
       let owned: ReturnType<typeof consumeGenericEvmFeeReview> | undefined;
       try {
         let reviewedContext = expectedContext;
+        const settings = settingsOperation
+          ? this.captureSettingsEvmFeeContext(
+              params,
+              targetAccount!,
+              transactionMetadata!,
+              saveOptions!
+            )
+          : undefined;
+        if (settings) reviewedContext = settings.payerContext;
         if (!reviewedContext && hardwareScope) {
           const { vault, vaultGlobal } = store.getState();
           const account =
@@ -10381,7 +10460,8 @@ class MainController {
         }
         if (!reviewedContext) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
         let reviewAuthority: import('./nativeEvmFeeReviews').GenericEvmFeeAuthority;
-        if (authorizeDapp && saveOptions.dappApprovalOwner)
+        if (settings) reviewAuthority = settings.authority;
+        else if (authorizeDapp && saveOptions.dappApprovalOwner)
           reviewAuthority = {
             kind: 'dapp',
             request: saveOptions.dappApprovalOwner,
@@ -10400,6 +10480,7 @@ class MainController {
           owned.review.transaction
         );
         if (
+          !settings &&
           serializePreparedEvmTransaction(
             snapshotPreparedEvmTransaction(params)
           ) !== expected
@@ -10415,7 +10496,7 @@ class MainController {
                 nonce: owned!.walletNonce.nonce,
               } as IEvmTransactionResponse);
           },
-          saveOptions.submission!
+          settings ? { kind: 'transaction' } : saveOptions.submission!
         );
       } catch (error) {
         if (typeof error?.transactionNotBroadcast === 'boolean') throw error;
@@ -11689,6 +11770,126 @@ class MainController {
     ).token;
   }
 
+  private captureSettingsEvmFeeContext(
+    params: unknown,
+    targetAccount: { id: number; type: KeyringAccountType },
+    metadata: Record<string, unknown>,
+    options: NonNullable<
+      Parameters<MainController['sendAndSaveEthTransaction']>[4]
+    >
+  ) {
+    if (
+      !targetAccount ||
+      targetAccount.type === KeyringAccountType.SmartAccount ||
+      typeof options.assertCurrentContext !== 'function' ||
+      typeof options.assertBeforeSign !== 'function'
+    )
+      throw new Error('Settings transaction approval is required');
+    const read = this.captureFreshEvmRead(getWalletNavigationScope());
+    const { vault, vaultGlobal } = store.getState();
+    const selected =
+      vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
+    const payer = vault.accounts[targetAccount.type]?.[targetAccount.id];
+    if (
+      !selected?.address ||
+      !payer?.address ||
+      payer.isSmartAccount ||
+      vault.isBitcoinBased
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const generation = this.walletSessionGeneration;
+    const selectedContext: IEvmTransactionContext = Object.freeze({
+      account: Object.freeze({
+        ...vault.activeAccount,
+        address: selected.address,
+      }),
+      chainId: read.network.chainId,
+      rpcUrl: read.network.url,
+      slip44: vaultGlobal.activeSlip44,
+      sessionGeneration: generation,
+    });
+    const payerContext: IEvmTransactionContext = Object.freeze({
+      ...selectedContext,
+      account: Object.freeze({ ...targetAccount, address: payer.address }),
+    });
+    const assertCurrent = () => {
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation);
+      read.assertCurrent();
+      assertSynchronousEvmFeeGuard(options.assertCurrentContext!);
+      assertSynchronousEvmFeeGuard(options.assertBeforeSign!);
+      const live = store.getState().vault;
+      if (
+        live.activeAccount.id !== selectedContext.account.id ||
+        live.activeAccount.type !== selectedContext.account.type ||
+        live.accounts[selectedContext.account.type]?.[
+          selectedContext.account.id
+        ]?.address?.toLowerCase() !==
+          selectedContext.account.address.toLowerCase() ||
+        live.accounts[payerContext.account.type]?.[
+          payerContext.account.id
+        ]?.address?.toLowerCase() !== payerContext.account.address.toLowerCase()
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    assertCurrent();
+    const request = normalizeDappTransaction({
+      ...(params as any),
+      from: payer.address,
+    });
+    if (
+      ((params as any)?.from !== undefined &&
+        getAddress((params as any).from) !== getAddress(payer.address)) ||
+      (request.chainId !== undefined &&
+        BigInt(request.chainId) !== BigInt(read.network.chainId))
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const authority = Object.freeze({
+      kind: 'settings' as const,
+      intent: settingsEvmFeeIntent(request, metadata),
+      metadata: Object.freeze({ ...metadata }),
+    });
+    return { request, payerContext, selectedContext, assertCurrent, authority };
+  }
+
+  private async reviewSettingsEvmFee(
+    params: unknown,
+    targetAccount: { id: number; type: KeyringAccountType },
+    metadata: Record<string, unknown>,
+    options: NonNullable<
+      Parameters<MainController['sendAndSaveEthTransaction']>[4]
+    >
+  ) {
+    const captured = this.captureSettingsEvmFeeContext(
+      params,
+      targetAccount,
+      metadata,
+      options
+    );
+    const explicit =
+      captured.request.nonce === undefined
+        ? undefined
+        : reviewedExtensionNonce(captured.request.nonce, 'manual');
+    return (
+      await this.prepareGenericEvmFeeReview(
+        captured.request,
+        captured.payerContext,
+        explicit,
+        captured.assertCurrent,
+        { assertCurrentContext: captured.assertCurrent },
+        captured.authority,
+        {
+          reviewOnly: true,
+          funding: NATIVE_EVM_FEE_FUNDING,
+          selectedContext: captured.selectedContext,
+          targetAccount: Object.freeze({ ...targetAccount }),
+          transactionMetadata: captured.authority.metadata,
+          saveOptions: options,
+        }
+      )
+    ).token;
+  }
+
   private prepareGenericEvmFeeReview(
     params: unknown,
     context: IEvmTransactionContext,
@@ -11721,6 +11922,37 @@ class MainController {
     feeAuthority: import('./nativeEvmFeeReviews').GenericEvmFeeAuthority,
     payerDispatch: Readonly<{
       funding: EvmFeeFunding;
+      reviewOnly: true;
+      saveOptions: NonNullable<
+        Parameters<MainController['sendAndSaveEthTransaction']>[4]
+      >;
+      selectedContext: IEvmTransactionContext;
+      targetAccount: { id: number; type: KeyringAccountType };
+      transactionMetadata: Record<string, unknown>;
+    }>
+  ): Promise<
+    Readonly<{
+      submit(
+        assertBeforeSign: () => void,
+        onBroadcast: (response: IEvmTransactionResponse) => Promise<void>,
+        dispatch?: () => Promise<void>
+      ): Promise<IEvmTransactionResponse>;
+      token: ReturnType<typeof issueGenericEvmFeeReview>;
+    }>
+  >;
+  private prepareGenericEvmFeeReview(
+    params: unknown,
+    context: IEvmTransactionContext,
+    walletNonce: ExtensionReviewedNonce | undefined,
+    assertAuthority: () => void,
+    authority:
+      | { authorizeDapp: () => void; dappApprovalOwner: object }
+      | { hardwareScope: IWalletNavigationScope }
+      | { assertCurrentContext: () => void },
+    feeAuthority: import('./nativeEvmFeeReviews').GenericEvmFeeAuthority,
+    payerDispatch: Readonly<{
+      funding: EvmFeeFunding;
+      reviewOnly?: false;
       saveOptions: NonNullable<
         Parameters<MainController['sendAndSaveEthTransaction']>[4]
       >;
@@ -11741,6 +11973,7 @@ class MainController {
     feeAuthority: import('./nativeEvmFeeReviews').GenericEvmFeeAuthority,
     payerDispatch?: Readonly<{
       funding: EvmFeeFunding;
+      reviewOnly?: boolean;
       saveOptions: NonNullable<
         Parameters<MainController['sendAndSaveEthTransaction']>[4]
       >;
@@ -11749,8 +11982,15 @@ class MainController {
       transactionMetadata: Record<string, unknown>;
     }>
   ) {
-    if ((feeAuthority.kind === 'smart-payer') !== Boolean(payerDispatch))
-      throw new Error('Invalid smart account payer fee review');
+    if (
+      (feeAuthority.kind === 'smart-payer' &&
+        (!payerDispatch || payerDispatch.reviewOnly)) ||
+      (feeAuthority.kind === 'settings' && !payerDispatch?.reviewOnly) ||
+      (payerDispatch &&
+        feeAuthority.kind !== 'smart-payer' &&
+        feeAuthority.kind !== 'settings')
+    )
+      throw new Error('Invalid internal payer fee review');
     const read = this.captureFreshEvmRead(getWalletNavigationScope());
     const expected = Object.freeze({
       ...context,
@@ -12027,7 +12267,7 @@ class MainController {
       reviewId = token.id;
       return token;
     };
-    if (payerDispatch) {
+    if (payerDispatch && !payerDispatch.reviewOnly) {
       let consumed: ReturnType<typeof consumeGenericEvmFeeReview> | undefined;
       let sdkEntered: (() => boolean) | undefined;
       try {
@@ -15091,7 +15331,19 @@ class MainController {
             address: context.account.address,
           },
           assertWalletReviewCurrent,
-          operation,
+          (read) =>
+            operation(
+              Object.freeze({
+                ...read,
+                ...this.getRetainedUtxoRecords().addressDiscovery(
+                  {
+                    keyring,
+                    assertCurrent: read.assertCurrent,
+                  },
+                  this.utxoRecordOwner(vault.activeNetwork, context.account)
+                ),
+              })
+            ),
           approvalSignal
         ),
     };

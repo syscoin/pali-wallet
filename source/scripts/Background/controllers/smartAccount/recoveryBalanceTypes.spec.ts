@@ -36,6 +36,7 @@ describe('guardian recovery provider numeric boundaries', () => {
       approval: { guardian: GUARDIAN, signature: SIGNATURE },
       guardian: GUARDIAN,
       operation,
+      feeReviewId: 'reviewed-recovery',
     });
 
   beforeEach(() => {

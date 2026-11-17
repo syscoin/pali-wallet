@@ -43,7 +43,7 @@ function fixture({ decodedLimit, compressedLimit } = {}) {
 }
 
 test('the exact reviewed SDK overlay binds both host pins and every decoded artifact', () => {
-  assert.equal(manifest.source.commit, 'f6503bd5424c198de85d66881b252a91c0a5cb19');
+  assert.equal(manifest.source.commit, '6b362540d1a73bc6d48111d3f96456503261407a');
   assert.equal(manifest.source.compiler, 'typescript@5.9.3');
   for (const file of ['../../../package.json', '../package.json']) assert.equal(require(file).paliSysweb3Overlay, identity);
   const compressed = fs.readFileSync(require.resolve('../../../scripts/sysweb3-overlay.deflate'));
