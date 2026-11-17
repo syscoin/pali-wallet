@@ -439,9 +439,7 @@ export function withdrawalJournal(
     Object.keys(value).some((key) => !WITHDRAWAL_JOURNAL_KEYS.includes(key)) ||
     (isRetired && value.retired !== undefined) ||
     (value.unsigned !== undefined &&
-      (isRetired ||
-        value.phase !== 'unknown' ||
-        value.recovery !== undefined)) ||
+      (value.phase !== 'unknown' || value.recovery !== undefined)) ||
     typeof value.intentId !== 'string' ||
     !UUID.test(value.intentId) ||
     ![value.attemptHash, value.proofHash, value.inputHash].every(
@@ -473,14 +471,13 @@ export function withdrawalJournal(
     (value.phase === 'unknown'
       ? value.transactionHash !== undefined || value.jobId !== undefined
       : !value.transactionHash && !value.jobId) ||
-    ((value.recovery !== undefined || isRetired) &&
-      (!value.recovery ||
-        (value.mode === 'direct'
-          ? value.phase !== 'submitted' ||
-            !value.transactionHash ||
-            value.recovery.kind !== undefined
-          : value.recovery.kind !== 'relayed-proof-expired' ||
-            !value.publicInputs))) ||
+    (value.recovery !== undefined &&
+      (value.mode === 'direct'
+        ? value.phase !== 'submitted' ||
+          !value.transactionHash ||
+          value.recovery.kind !== undefined
+        : value.recovery.kind !== 'relayed-proof-expired' ||
+          !value.publicInputs)) ||
     (value.transactionHashes !== undefined &&
       (value.mode !== 'relayed' ||
         value.phase !== 'submitted' ||

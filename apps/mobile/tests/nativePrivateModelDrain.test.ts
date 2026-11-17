@@ -9,8 +9,7 @@ type Operation =
   | 'prepare'
   | 'confirm'
   | 'refresh'
-  | 'loadRelayers'
-  | 'reviewRestored';
+  | 'loadRelayers';
 function gate() {
   let release!: () => void;
   const promise = new Promise<void>((resolve) => {
@@ -83,7 +82,6 @@ function fixture(kind: 'deposit' | 'withdrawal') {
     {
       assertCurrent() {},
       canSign: true,
-      restored: true,
       noteId: 'note',
       poolId: 'eth-1',
       createWithdrawals() {
@@ -113,7 +111,6 @@ function fixture(kind: 'deposit' | 'withdrawal') {
         await run('refresh');
         return { phase: 'verified' };
       },
-      reviewRestored: () => run('reviewRestored'),
       close: () => run('cleanup'),
     },
     signal
@@ -127,7 +124,6 @@ function fixture(kind: 'deposit' | 'withdrawal') {
       confirm: () => model.confirm('review'),
       refresh: () => model.refresh(),
       loadRelayers: () => model.loadRelayers(),
-      reviewRestored: () => model.reviewRestored(),
     } as Partial<Record<Operation, () => Promise<void>>>,
   };
 }
@@ -136,7 +132,7 @@ for (const kind of ['deposit', 'withdrawal'] as const) {
   const operations: Operation[] =
     kind === 'deposit'
       ? ['prepare', 'confirm', 'refresh']
-      : ['prepare', 'confirm', 'refresh', 'loadRelayers', 'reviewRestored'];
+      : ['prepare', 'confirm', 'refresh', 'loadRelayers'];
   for (const operation of operations) {
     test(`${kind} disposal drains ${operation} and concurrent host cleanup`, async () => {
       const f = fixture(kind);

@@ -276,7 +276,6 @@ it('drains cancelled model preparation through final native document disposal', 
         return undefined;
       },
       canSign: true,
-      restored: false,
       noteId: 'owned-note',
       poolId: 'eth-1',
       createWithdrawals() {
@@ -306,9 +305,6 @@ it('drains cancelled model preparation through final native document disposal', 
       },
       async readNoteStatus() {
         return { phase: 'waiting' };
-      },
-      async reviewRestored() {
-        return undefined;
       },
       close,
     },

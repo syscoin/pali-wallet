@@ -163,7 +163,7 @@ function setup() {
     }),
     withWithdrawalNote: jest.fn(async (_id, session, use) => {
       session.assertCurrent();
-      return use(NOTE, 'eth-1');
+      return use(NOTE, 'eth-1', { binding: HASH, previousWithdrawals: [] });
     }),
     reserveWithdrawalAttempt: jest.fn(
       async (_attempt, session, _lifetime, onIdentity) => {
@@ -396,7 +396,9 @@ async function pendingRecovery() {
     written.resolve();
     await release.promise;
   });
-  const submission = run.controller.submitWithdrawal(review.intentId);
+  const submission = run.controller.submitWithdrawal(review.intentId, {
+    acceptPreviousWithdrawalRisk: true,
+  });
   const failure = expect(submission).rejects.toMatchObject({
     transactionNotBroadcast: true,
   });
@@ -516,7 +518,7 @@ it.each(['account change', 'account ABA', 'network ABA'] as const)(
       type: KeyringAccountType.HDAccount,
     };
     expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
-      'waiting'
+      'verified'
     );
     expect(storage.setItem.mock.calls.length).toBe(writesBefore);
     expect(run.wallet.knownUnbroadcast.has(review.intentId)).toBe(true);

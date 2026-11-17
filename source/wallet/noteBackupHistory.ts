@@ -152,9 +152,7 @@ function withdrawal(value: unknown): Readonly<INoteBackupWithdrawalHistory> {
   const rootAnchor =
     entry.rootAnchor === undefined
       ? undefined
-      : publicInputs
-      ? captureWithdrawalRootAnchor(entry.rootAnchor, publicInputs.root)
-      : invalid();
+      : captureWithdrawalRootAnchor(entry.rootAnchor, publicInputs?.root);
   const transactionHashes =
     entry.transactionHashes === undefined
       ? undefined

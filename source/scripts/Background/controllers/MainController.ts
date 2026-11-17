@@ -4924,7 +4924,7 @@ class MainController {
         if (!price) throw new Error('privacy_withdrawal_fee_invalid');
         return String(price);
       },
-      beforeSubmission: async (attempt) => {
+      beforeSubmission: async (attempt, approval) => {
         const saved = binding(attempt.context);
         saved.assertCurrent();
         if (attempt.mode === 'direct') {
@@ -4959,7 +4959,8 @@ class MainController {
               reservationIdentity.set(attempt, {
                 ...identity,
                 walletStateGeneration,
-              })
+              }),
+            approval
           );
           const identity = reservationIdentity.get(attempt);
           if (!identity) throw new Error('privacy_vault_unavailable');
@@ -4973,7 +4974,7 @@ class MainController {
           throw error;
         }
       },
-      beforeDispatch: async (attempt) => {
+      beforeDispatch: async (attempt, approval) => {
         const saved = binding(attempt.context);
         saved.assertCurrent();
         const vault = await this.getPrivateVaultController();
@@ -4981,7 +4982,8 @@ class MainController {
         await vault.consumeUnsignedWithdrawal(
           attempt,
           saved.acknowledgementSession,
-          lifetimes.get(attempt.context)!
+          lifetimes.get(attempt.context)!,
+          approval
         );
         saved.assertCurrent();
       },
@@ -5087,9 +5089,13 @@ class MainController {
     return controller.prepareWithdrawal(request);
   }
 
-  public async submitPrivacyWithdrawal(intentId: string) {
+  public async submitPrivacyWithdrawal(
+    intentId: string,
+    approval: Parameters<IPrivacyWithdrawalsController['submitWithdrawal']>[1]
+  ) {
     return (await this.getPrivacyWithdrawalsController()).submitWithdrawal(
-      intentId
+      intentId,
+      approval
     );
   }
 

@@ -125,7 +125,7 @@ export const hasImportedWithdrawalHistory = (
   guard: IPrivateNoteRestoreGuard | undefined
 ): boolean => Boolean(guard?.history?.withdrawals?.length);
 
-/** Review is local consent, not evidence of exclusive ownership or proof revocation. */
+/** Ordinary local review never revokes an imported withdrawal proof. */
 export const restoredNoteBlocksWithdrawal = (
   guard: IPrivateNoteRestoreGuard | undefined
 ): boolean =>
@@ -242,8 +242,7 @@ export function privateNoteCurrentHistory(
               ...(entry.publicInputs === undefined
                 ? {}
                 : { publicInputs: entry.publicInputs }),
-              ...(entry.rootAnchor === undefined ||
-              entry.publicInputs === undefined
+              ...(entry.rootAnchor === undefined
                 ? {}
                 : { rootAnchor: entry.rootAnchor }),
               ...(entry.transactionHashes === undefined
@@ -266,17 +265,21 @@ export function privateNoteExportHistory(
   );
   const count =
     (history?.deposits?.length ?? 0) + (history?.withdrawals?.length ?? 0);
+  const withdrawals = note.withdrawal
+    ? [note.withdrawal, ...(note.withdrawal.retired ?? [])]
+    : [];
   const pending =
     Number(note.deposit?.phase === 'unknown') +
-    (note.withdrawal?.phase === 'unknown'
-      ? note.withdrawal.mode === 'relayed'
-        ? 2
-        : 1
-      : Number(
-          note.withdrawal?.mode === 'relayed' &&
-            note.withdrawal.phase === 'submitted' &&
-            !note.withdrawal.transactionHash
-        ));
+    withdrawals.reduce(
+      (total, entry) =>
+        total +
+        (entry.phase === 'unknown'
+          ? entry.mode === 'relayed'
+            ? 2
+            : 1
+          : Number(entry.mode === 'relayed' && !entry.transactionHash)),
+      0
+    );
   if (count + pending > NOTE_BACKUP_MAX_HISTORY_HINTS)
     throw new Error('privacy_note_limit');
   return history;

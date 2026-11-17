@@ -197,12 +197,9 @@ function WithdrawalContent({
     state.checking ||
     state.phase === 'preparing' ||
     state.phase === 'submitting';
-  const submitted =
-    !!state.result || (!!state.status && state.status.phase !== 'none');
-  const observed =
-    state.status && state.status.phase !== 'none'
-      ? state.status
-      : state.result;
+  const submitted = !!state.result;
+  const hasPreviousSubmission = !!state.status && state.status.phase !== 'none';
+  const observed = hasPreviousSubmission ? state.status : state.result;
   const spent = state.noteStatus?.phase === 'spent';
   const unknown = observed?.phase === 'unknown';
   const showReview = !!review && !editing && !submitted;
@@ -253,6 +250,7 @@ function WithdrawalContent({
       !review ||
       current.review !== review ||
       current.phase !== 'review' ||
+      current.noteStatus?.phase === 'spent' ||
       current.checking ||
       Date.now() >= review.expiresAt
     )
@@ -281,28 +279,21 @@ function WithdrawalContent({
       (modes.current.get(target) as unknown as { focus?(): void })?.focus?.();
     }
   };
-  const reviewRestored = () => {
-    if (busy) return;
-    Keyboard.dismiss();
-    void controller.reviewRestored().catch(() => undefined);
-  };
+  const hash =
+    observed?.transactionHash ??
+    state.result?.signedTransactionHash;
+  const jobId = observed?.jobId;
   const title = submitted
     ? spent
       ? t('mobile.privacyFlows.deposit.noteAlreadySpent')
       : unknown
       ? t('privacy.deposit.unknown')
-      : (state.status?.jobId || state.result?.jobId) &&
-        !(state.status?.transactionHash || state.result?.transactionHash)
+      : jobId && !hash
       ? t('privacy.withdrawal.accepted')
       : t('mobile.privacyFlows.withdrawal.withdrawalSubmitted')
     : showReview
     ? t('privacy.withdrawal.continue')
     : t('privacy.withdrawal.title');
-  const hash =
-    state.status?.transactionHash ??
-    state.result?.transactionHash ??
-    state.result?.signedTransactionHash;
-  const jobId = state.status?.jobId ?? state.result?.jobId;
   const error =
     state.error === 'expired'
       ? t('mobile.privacyFlows.withdrawal.thisReviewExpiredPrepareAFreshReviewBeforeConfirming')
@@ -310,8 +301,6 @@ function WithdrawalContent({
       ? t('mobile.privacyFlows.withdrawal.thisNoteHasASavedWithdrawalCheckItsStatusBefore')
       : state.error === 'verification'
       ? t('mobile.privacyFlows.withdrawal.checkThePoolDataBeforePreparingThisWithdrawal')
-      : state.error === 'restored'
-      ? t('mobile.privacyFlows.withdrawal.couldNotReviewThisRestoredNoteTryAgain')
       : state.error === 'unavailable'
       ? t('mobile.privacyFlows.withdrawal.thisWithdrawalIsUnavailableInTheCurrentAccountOrNetwork')
       : state.error === 'failed'
@@ -320,12 +309,6 @@ function WithdrawalContent({
   const needsRefresh = reviewExpired || state.phase === 'failed';
   const primary = submitted ? (
     <Button title={t('privacy.deposit.done')} onPress={onBack} />
-  ) : state.restored ? (
-    <Button
-      title={busy ? t('mobile.privacyFlows.withdrawal.reviewingNote') : t('privacy.restoreReview.action')}
-      disabled={busy}
-      onPress={reviewRestored}
-    />
   ) : showReview ? (
     <Button
       title={
@@ -333,9 +316,9 @@ function WithdrawalContent({
           ? t('privacy.deposit.submitting')
           : needsRefresh
           ? t('privacy.deposit.refresh')
-          : t('privacy.withdrawal.confirm')
+          : t(review?.previousWithdrawals?.length ? 'privacy.withdrawal.competingConfirm' : 'privacy.withdrawal.confirm')
       }
-      disabled={busy}
+      disabled={busy || spent}
       onPress={needsRefresh ? prepare : confirm}
     />
   ) : (
@@ -377,12 +360,7 @@ function WithdrawalContent({
               {error}
             </Text>
           )}
-          {state.restored && !submitted ? (
-            <>
-              <Text style={styles.muted}>
-                {t('mobile.privacyFlows.withdrawal.reviewThisRestoredNoteBeforeWithdrawing')}</Text>
-            </>
-          ) : !showReview && !submitted ? (
+          {!showReview && !submitted ? (
             <>
               <Text style={s.label}>{t('privacy.withdrawal.recipient')}</Text>
               <IdleTextInput
@@ -562,6 +540,18 @@ function WithdrawalContent({
                   ? t('privacy.withdrawal.directWarning')
                   : t('privacy.withdrawal.relayedWarning')}
               </Text>
+              <Text style={styles.muted}>{t('privacy.withdrawal.pendingProofWarning')}</Text>
+              {!!review.previousWithdrawals?.length && <Card style={s.card}>
+                <Text style={s.label}>{t('privacy.withdrawal.previousAttempts')}</Text>
+                {review.previousWithdrawals.map((prior,index) => <View key={index}>
+                  <Text>{t(`privacy.withdrawal.${prior.mode}`)} · {t(`privacy.withdrawal.${prior.outcome === 'unknown' ? 'unknown' : 'submitted'}`)}</Text>
+                  {prior.recipient && <><Text style={s.label}>{t('privacy.withdrawal.recipient')}</Text><Text selectable style={s.address}>{prior.recipient}</Text></>}
+                  {[...new Set([...(prior.transactionHashes ?? []), ...(prior.transactionHash ? [prior.transactionHash] : [])])].map(hash =>
+                    <View key={hash}><Text style={s.label}>{t('privacy.deposit.txHash')}</Text><Text selectable style={s.address}>{hash}</Text></View>)}
+                  {prior.jobId && <><Text style={s.label}>{t('privacy.withdrawal.jobId')}</Text><Text selectable style={s.address}>{prior.jobId}</Text></>}
+                </View>)}
+              </Card>}
+
               {reviewExpired && (
                 <Text accessibilityLiveRegion="polite" style={styles.muted}>
                   {t('mobile.privacyFlows.withdrawal.thisReviewExpiredPrepareAFreshReviewBeforeConfirming')}</Text>
@@ -574,7 +564,7 @@ function WithdrawalContent({
               />
             </>
           )}
-          {submitted && (
+          {(submitted || hasPreviousSubmission) && (
             <>
               <Text accessibilityLiveRegion="polite" style={styles.muted}>
                 {spent

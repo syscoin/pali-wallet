@@ -53,6 +53,14 @@ const depositAbi = new Interface([
 ]);
 const RECIPIENT = '0x' + '12'.repeat(20);
 
+async function assertCheckpointReached(checkpoint: Promise<void>, operation: Promise<unknown>) {
+  assert.equal(
+    await Promise.race([checkpoint.then(() => true), operation.then(() => false)]),
+    true,
+    'The operation must reach its held checkpoint before completing'
+  );
+}
+
 const assertArchivedRecoveryNote = (saved: IStoredNote | undefined, original: IStoredNote) => {
   assert(saved);
   const { archivedAt, ...recovery } = saved;
@@ -129,8 +137,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     if (method === 'eth_chainId') result = '0x1';
     else if (method === 'eth_getBlockByNumber')
       result = {
-        number: '0x10',
-        hash: '0x' + 'aa'.repeat(32),
+        number: params[0] === '0x8' ? '0x8' : '0x10',
+        hash: '0x' + (params[0] === '0x8' ? '55' : 'aa').repeat(32),
         gasLimit: '0x1c9c380',
         baseFeePerGas: '0x2',
       };
@@ -145,7 +153,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     }
     else if (completionReads && method === 'eth_call') {
       const known = params[0].data.startsWith(depositAbi.getFunction('isKnownRoot')!.selector);
-      result = depositAbi.encodeFunctionResult(known ? 'isKnownRoot' : 'isSpent', [known ? completionKnown : completionSpent]);
+      result = depositAbi.encodeFunctionResult(known ? 'isKnownRoot' : 'isSpent', [known ? params[1] === '0x8' || completionKnown : completionSpent]);
     }
     else if (method === 'eth_getTransactionCount')
       result = '0x' + nonce.toString(16);
@@ -292,7 +300,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         async readSnapshot(id: string) {
           check();
           assert.equal(id, poolId);
-          const snapshot = { poolId, root: '0x' + '11'.repeat(32) };
+          const snapshot = { poolId, root: '0x' + '11'.repeat(32), asOfBlockNumber: 8, asOfBlockHash: '0x' + '55'.repeat(32) };
           return {
             snapshot,
             assertSnapshotCurrent(value: unknown) {
@@ -581,7 +589,9 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
       model.getSnapshot().result!.signedTransactionHash!,
       /^0x[0-9a-f]{64}$/
     );
-    assert.equal((await f.privateNotes())[0]!.withdrawal?.phase, 'unknown');
+    const oldJournal=(await f.privateNotes())[0]!.withdrawal;
+    const oldHash=model.getSnapshot().result!.signedTransactionHash!;
+    assert.equal(oldJournal?.phase, 'unknown');
     assert.equal((await f.privateNotes())[0]!.withdrawal?.unsigned, undefined);
     await model.dispose();
     await f.reopen();
@@ -593,8 +603,12 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
     , testInventoryAuthentication(reopened));
     assert.equal(resumed.getSnapshot().status?.phase, 'unknown');
     await resumed.prepare({ recipient: RECIPIENT, mode: 'direct' });
-    assert.equal(resumed.getSnapshot().phase, 'failed');
-    assert.equal(f.posted.length, 2);
+    assert.equal(resumed.getSnapshot().phase, 'review');
+    assert.deepEqual(resumed.getSnapshot().review!.previousWithdrawals,[{mode:'direct',outcome:'unknown',recipient:RECIPIENT}]);
+    assert.equal(f.posted.length, 2, 'a fresh review never resubmits before explicit Confirm');
+    assert.deepEqual((await f.privateNotes())[0]!.withdrawal,oldJournal,'preparation preserves the prior journal');
+    const signed=await f.storage.signedRecords.read((await f.storage.recovery.readIdentity())!.root!.profileId);
+    assert(signed);assert(JSON.parse(signed).entries.some((entry:{hash:string})=>entry.hash===oldHash),'the exact old signed outer remains available');
     await resumed.dispose();
   } finally {
     await f.close();
@@ -625,7 +639,7 @@ for (const mode of ['direct', 'relayed'] as const) test(`native ${mode} unsigned
     const signatures = f.signatures;
     holding = true;
     const sending = model.confirm(model.getSnapshot().review!.intentId);
-    await entered.promise;
+    await assertCheckpointReached(entered.promise, sending);
     await assert.rejects(readTestNoteInventory(f.runtime, noop), { code: 'BUSY' });
     const restart = await f.captureRestart();
     route.abort(); release.resolve();
@@ -671,7 +685,7 @@ test('authenticated inventory during direct preflight cannot reclaim its live un
     });
     const signatures = f.signatures;
     const sending = model.confirm(model.getSnapshot().review!.intentId);
-    await entered.promise;
+    await assertCheckpointReached(entered.promise, sending);
     const before = (await f.storage.notes!.read())[0]!.value;
     const concurrent = await readTestNoteInventory(f.runtime, noop);
     assert.equal(concurrent.notes[0]!.reconciliation, 'withdrawal-history');
@@ -729,7 +743,7 @@ test('cancel during held proof drains the runtime before returning to inventory'
       noop
     , testInventoryAuthentication(inventory));
     const preparing = model.prepare({ recipient: RECIPIENT, mode: 'direct' });
-    await started;
+    await assertCheckpointReached(started, preparing);
     lifetime.abort();
     const disposing = model.dispose();
     let disposed = false;
@@ -788,7 +802,7 @@ test('imported EVM payer withdraws a saved note through the normal selected-key 
   }
 });
 
-test('restored note requires explicit authenticated review before fresh withdrawal', async () => {
+test('restored note reaches the normal prepared review and explicit withdrawal confirmation', async () => {
   const f = await fixture();
   try {
     const inventory = await f.restore();
@@ -799,11 +813,8 @@ test('restored note requires explicit authenticated review before fresh withdraw
       noop
     , testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
-    assert.equal(model.getSnapshot().error, 'restored');
-    assert.equal(f.proofs, 0);
-    await model.reviewRestored();
-    assert.equal(model.getSnapshot().restored, false);
-    await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    assert.equal(f.proofs, 1);
+    assert.equal(f.posted.length, 0, 'preparation never broadcasts the imported note');
     assert.equal(model.getSnapshot().phase, 'review');
     await model.confirm(model.getSnapshot().review!.intentId);
     assert.equal(model.getSnapshot().phase, 'submitted');
@@ -841,7 +852,7 @@ for (const change of ['account', 'lock-unlock'] as const) {
         await gate;
       });
       const confirming = model.confirm(model.getSnapshot().review!.intentId);
-      await posted;
+      await assertCheckpointReached(posted, confirming);
       if (change === 'account') await f.select('hd:60:1');
       else {
         await f.runtime.session.lock();
@@ -961,7 +972,7 @@ test('cancel during held reservation cannot sign or persist a usable withdrawal 
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     holding = true;
     const confirming = model.confirm(model.getSnapshot().review!.intentId);
-    await started;
+    await assertCheckpointReached(started, confirming);
     lifetime.abort();
     release();
     await confirming;
@@ -1117,7 +1128,6 @@ test('single-note maintenance reaches a completed seventh note past a slow unres
       assert(note, `iteration ${index}: inventory ${inventory.notes.length}, submitted ${submitted.length}`);
       const route = new AbortController(); routes.push(route);
       const withdrawal = await inventory.openWithdrawal!(note, route.signal, noop, testInventoryAuthentication(inventory));
-      if (withdrawal.getSnapshot().restored) await withdrawal.reviewRestored();
       await withdrawal.prepare({ recipient: RECIPIENT, mode: 'direct' });
       assert.equal(withdrawal.getSnapshot().phase, 'review', `iteration ${index}: ${JSON.stringify(withdrawal.getSnapshot())}`);
       await withdrawal.confirm(withdrawal.getSnapshot().review!.intentId);
@@ -1205,7 +1215,7 @@ for (const cancel of ['route', 'lock'] as const) test(`native maintenance rolls 
     withdrawalRoute.abort(); await model.dispose(); f.enableCompletionReads();
     const [note] = await f.privateNotes(); assert(note);
     const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop)); hold = true;
-    const removed = assert.rejects(maintenance.clearCompletedNotes([note.id], noop, noop, noop)); await entered.promise;
+    const removed = assert.rejects(maintenance.clearCompletedNotes([note.id], noop, noop, noop)); await assertCheckpointReached(entered.promise, removed);
     let retired: Promise<void>;
     if (cancel === 'lock') retired = f.runtime.session.lock();
     else { route.abort(); retired = maintenance.dispose(); }
@@ -1265,7 +1275,7 @@ test('native service-origin changes are guarded in the real protected SQL transa
     await f.seed(); const before = await f.privateNotes();
     const controls = await f.runtime.openPrivacyControls!(route.signal, noop), origin = await controls.getOrigin();
     hold = true; const change = assert.rejects(controls.changeOrigin('https://private.example', origin));
-    await entered.promise; const locked = f.runtime.session.lock(); release.resolve(); await change; await locked; hold = false;
+    await assertCheckpointReached(entered.promise, change); const locked = f.runtime.session.lock(); release.resolve(); await change; await locked; hold = false;
     await f.runtime.session.unlock();
     assert.equal(await f.storage.keyringStorage.get(PRIVACY_SERVICE_ORIGIN_STORAGE_KEY), undefined);
     assert.deepEqual(await f.privateNotes(), before);
@@ -1318,7 +1328,7 @@ test('a service-origin change preserves unknown recovery after an unacknowledged
     const model = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop, testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     f.beforeResponse(async () => { entered.resolve(); await release.promise; });
-    const sending = model.confirm(model.getSnapshot().review!.intentId); await entered.promise;
+    const sending = model.confirm(model.getSnapshot().review!.intentId); await assertCheckpointReached(entered.promise, sending);
     const changing = settings.changeOrigin('https://private.example', origin); let changed = false;
     void changing.then(() => { changed = true; });
     await new Promise<void>(resolve => setImmediate(resolve)); await changing; assert.equal(changed, true);
@@ -1345,7 +1355,7 @@ test('a service-origin change waits for durable recording of an already verified
     const model = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop, testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     f.beforeResponse(async () => { holding = true; });
-    const sending = model.confirm(model.getSnapshot().review!.intentId); await entered.promise;
+    const sending = model.confirm(model.getSnapshot().review!.intentId); await assertCheckpointReached(entered.promise, sending);
     const changing = settings.changeOrigin('https://private.example', origin); let changed = false;
     void changing.then(() => { changed = true; });
     await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(changed, false);

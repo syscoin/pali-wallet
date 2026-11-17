@@ -2513,8 +2513,8 @@ export function createKeyringRuntimeFactory(
               finally { lifetime.abort(); await pool.dispose(); }
             } : null;
             const withdrawal = network?.chainId === '1' && openPool && dependencies.openPrivacyWithdrawal && supportsPrivateWithdrawal(selected.type, account)
-              ? (id: string, poolId: PrivacyPoolId, restored: boolean, signal: AbortSignal, guard: () => void, scope: NativePrivateAuthenticationScope) =>
-                openPrivateWithdrawal(id, poolId, restored, signal, guard, bindNativePrivateAuthenticationChild(authentication, scope))
+              ? (id: string, poolId: PrivacyPoolId, signal: AbortSignal, guard: () => void, scope: NativePrivateAuthenticationScope) =>
+                openPrivateWithdrawal(id, poolId, signal, guard, bindNativePrivateAuthenticationChild(authentication, scope))
               : null;
             const reveal = (id: string, guard: () => void, scope: NativePrivateAuthenticationScope) => openNotes(guard,
               (ownedNotes, ownedSession) => ownedNotes.reveal(ownedSession, id),
@@ -2550,7 +2550,6 @@ export function createKeyringRuntimeFactory(
         const openPrivateWithdrawalUnowned = async (
           noteId: string,
           poolId: PrivacyPoolId,
-          restored: boolean,
           signal: AbortSignal,
           assertOwner: () => void,
           authentication: NativePrivateAuthentication
@@ -2632,7 +2631,6 @@ export function createKeyringRuntimeFactory(
                 {
                   assertCurrent: check,
                   canSign,
-                  restored,
                   noteId,
                   poolId,
                   createWithdrawals(onProgress) {
@@ -2688,7 +2686,7 @@ export function createKeyringRuntimeFactory(
                           ),
                         quoteRelayerGasPrice: () =>
                           rpc.withdrawalGasPrice(lifetime.signal, check),
-                        async beforeSubmission(attempt) {
+                        async beforeSubmission(attempt, approval) {
                           check();
                           if (attempt.noteId !== noteId || attempt.poolId !== poolId)
                             throw new Error('privacy_note_invalid');
@@ -2730,7 +2728,7 @@ export function createKeyringRuntimeFactory(
                           let fence!: () => void;
                           await vault.reserve(attempt, (guard) => {
                             fence = guard;
-                          });
+                          }, approval);
                           if (attempt.mode === 'direct') {
                             const saved = prepared.get(attempt.context)!;
                             let settlement: Promise<void> | undefined;
@@ -2741,7 +2739,7 @@ export function createKeyringRuntimeFactory(
                             fence();
                           };
                         },
-                        beforeDispatch: attempt => vault.consumeUnsigned(attempt),
+                        beforeDispatch: (attempt, approval) => vault.consumeUnsigned(attempt, approval),
                         async sendTransaction(
                           _transaction,
                           owner,
@@ -2816,11 +2814,6 @@ export function createKeyringRuntimeFactory(
                     check();
                     return vault.readStatus(noteId);
                   },
-                  async reviewRestored() {
-                    await ownedPool.refresh();
-                    check();
-                    return vault.reviewRestored(noteId);
-                  },
                   async close() {
                     lifetime.abort();
                     acknowledgement.dispose();
@@ -2859,11 +2852,11 @@ export function createKeyringRuntimeFactory(
             throw error;
           }
         };
-        const openPrivateWithdrawal = (noteId: string, poolId: PrivacyPoolId, restored: boolean, signal: AbortSignal, guard: () => void, authentication: NativePrivateAuthentication) =>
-          privacyLifecycle.open(signal, guard, (ownerSignal, check) => openPrivateWithdrawalUnowned(noteId, poolId, restored, ownerSignal, check, authentication), view => view.dispose(), (view, dispose) => Object.freeze({
+        const openPrivateWithdrawal = (noteId: string, poolId: PrivacyPoolId, signal: AbortSignal, guard: () => void, authentication: NativePrivateAuthentication) =>
+          privacyLifecycle.open(signal, guard, (ownerSignal, check) => openPrivateWithdrawalUnowned(noteId, poolId, ownerSignal, check, authentication), view => view.dispose(), (view, dispose) => Object.freeze({
             getSnapshot: view.getSnapshot.bind(view), subscribe: view.subscribe.bind(view), prepare: view.prepare.bind(view),
             confirm: view.confirm.bind(view), refresh: view.refresh.bind(view), loadRelayers: view.loadRelayers.bind(view),
-            reviewRestored: view.reviewRestored.bind(view), dispose }));
+            dispose }));
         const openPrivateDepositUnowned: NonNullable<KeyringRuntime['openPrivateDeposit']> = (
           signal,
           assertOwner,

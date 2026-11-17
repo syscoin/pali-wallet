@@ -1,3 +1,5 @@
+import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
+import type { NativePrivateWithdrawalSnapshot } from '../src/custody/privateWithdrawal.ts';
 import { walletUiFixture } from './walletUiFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
@@ -48,10 +50,11 @@ test('real React StrictMode gives Withdrawal a fresh effect scope and preserves 
   const created: NativePrivateAuthenticationScope[] = [];
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   let opens = 0, disposed = 0, backs = 0;
-  const snapshot = Object.freeze({ phase: 'idle', canSign: true, restored: false, relayers: [], progress: null,
+  let snapshot: NativePrivateWithdrawalSnapshot = Object.freeze({ phase: 'idle', canSign: true, relayers: [], progress: null,
     review: null, result: null, status: null, noteStatus: null, checking: false, error: null });
-  const controller = { getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    async dispose() { disposed++; }, async refresh() {}, async loadRelayers() {} };
+  const renders = new Set<() => void>(); const confirmations: string[] = [];
+  const controller = { getSnapshot: () => snapshot, subscribe: (listener:()=>void) => {renders.add(listener);return()=>renders.delete(listener);},
+    async confirm(id:string){confirmations.push(id);}, async dispose() { disposed++; }, async refresh() {}, async loadRelayers() {} };
   const imports: Record<string, unknown> = {
     '../platform/localization': nativeTranslationFixture,
     react: React,
@@ -110,6 +113,25 @@ test('real React StrictMode gives Withdrawal a fresh effect scope and preserves 
     });
     assert.equal(parent.isAuthenticating(), false);
     assert.doesNotMatch(container.textContent, /Could not open/);
+    const oldHash='0x'+'bc'.repeat(32), nextRecipient='0x'+'12'.repeat(20);
+    await React.act(async()=>{snapshot={...snapshot,status:{noteId:'owned-note',phase:'unknown',transactionHash:oldHash},noteStatus:{phase:'verified'}};renders.forEach(render=>render());});
+    assert.match(container.textContent,/Recipient address/,'saved history does not replace the fresh withdrawal form');
+    assert.match(container.textContent,new RegExp(oldHash),'the earlier instruction remains visible');
+    await React.act(async()=>{snapshot={...snapshot,phase:'review',review:{intentId:'owned-intent',noteId:'owned-note',poolId:'eth-1',amount:'1',poolAddress:'0x'+'11'.repeat(20),mode:'direct',recipient:nextRecipient,account:{id:0,type:KeyringAccountType.HDAccount,address:nextRecipient},chainId:1,expiresAt:Date.now()+60000,feeWei:'0',receiveWei:'1000000000000000000',gasLimit:'650000',maxNetworkFeeWei:'3900000',serviceFeeWei:'0',previousWithdrawals:[{mode:'direct',outcome:'unknown',transactionHash:oldHash}]}};renders.forEach(render=>render());});
+    const competing = Array.from(container.querySelectorAll('button')).find((button:any)=>button.textContent==='Submit competing withdrawal') as HTMLButtonElement;
+    assert(competing); assert.equal(competing.disabled,false);
+    await React.act(async()=>{snapshot={...snapshot,noteStatus:{phase:'spent'}};renders.forEach(render=>render());});
+    assert.equal(competing.disabled,true); await React.act(async()=>competing.click()); assert.deepEqual(confirmations,[]);
+    await React.act(async()=>{snapshot={...snapshot,noteStatus:{phase:'verified'}};renders.forEach(render=>render());});
+    assert.match(container.textContent,/Any earlier withdrawal may still complete/);
+    assert.match(container.textContent,/Previous withdrawals/);
+    await React.act(async()=>competing.click()); assert.deepEqual(confirmations,['owned-intent']);
+    await React.act(async()=>{snapshot={...snapshot,phase:'submitted',status:null,result:{intentId:'owned-intent',noteId:'owned-note',phase:'submitted',jobId:'new-relayer-job'}};renders.forEach(render=>render());});
+    assert.match(container.textContent,/Relayer accepted the request/);
+    assert.doesNotMatch(container.textContent,new RegExp(oldHash),'the new result must not display the earlier transaction as its own');
+    const refreshedHash='0x'+'de'.repeat(32);
+    await React.act(async()=>{snapshot={...snapshot,status:{noteId:'owned-note',phase:'submitted',jobId:'new-relayer-job',transactionHash:refreshedHash}};renders.forEach(render=>render());});
+    assert.match(container.textContent,new RegExp(refreshedHash),'a later current-job observation publishes its transaction hash');
     await React.act(async () => root.unmount());
     assert.equal(disposed, 1);
     assert.throws(() => bindNativePrivateAuthenticationChild(parentBinding, created[1]!), /CANCELLED/);

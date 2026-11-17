@@ -174,7 +174,7 @@ function setup() {
     }),
     withWithdrawalNote: jest.fn(async (_id, session, use) => {
       session.assertCurrent();
-      return use(NOTE, 'eth-1');
+      return use(NOTE, 'eth-1', { binding: HASH, previousWithdrawals: [] });
     }),
     reserveWithdrawalAttempt: jest.fn(
       async (_attempt, session, _lifetime, onIdentity) => {
@@ -380,10 +380,14 @@ it.each(['healthy', 'snapshot', 'expiry', 'service change'] as const)(
         await release.promise;
         return [];
       });
-    const result = run.wallet.submitPrivacyWithdrawal(review.intentId).then(
-      (value: unknown) => ({ value, error: undefined }),
-      (error: unknown) => ({ value: undefined, error })
-    );
+    const result = run.wallet
+      .submitPrivacyWithdrawal(review.intentId, {
+        acceptPreviousWithdrawalRisk: true,
+      })
+      .then(
+        (value: unknown) => ({ value, error: undefined }),
+        (error: unknown) => ({ value: undefined, error })
+      );
     await Promise.race([
       entered.promise,
       result.then((settled) => {
@@ -495,10 +499,14 @@ it.each(['healthy', 'snapshot', 'expiry', 'expiry after broadcast'] as const)(
       MainController.prototype.sendAndSaveEthTransaction.bind(run.wallet);
     jest.mocked(getController).mockReturnValue({ wallet: run.wallet } as any);
     const review = await prepare(run.wallet);
-    const result = run.wallet.submitPrivacyWithdrawal(review.intentId).then(
-      (value: unknown) => ({ value, error: undefined }),
-      (error: unknown) => ({ value: undefined, error })
-    );
+    const result = run.wallet
+      .submitPrivacyWithdrawal(review.intentId, {
+        acceptPreviousWithdrawalRisk: true,
+      })
+      .then(
+        (value: unknown) => ({ value, error: undefined }),
+        (error: unknown) => ({ value: undefined, error })
+      );
     await entered.promise;
     expect(run.vault.reserveWithdrawalAttempt).toHaveBeenCalledTimes(1);
     expect(sign).not.toHaveBeenCalled();
@@ -636,7 +644,11 @@ it('quotes a fresh pending nonce and rechecks it even while the actual SDK read 
     pending = '0x9';
     expect(await live.getTransactionCount(ADDRESS, 'pending')).toBe(7);
     await expect(
-      settleCollected(wallet.submitPrivacyWithdrawal(review.intentId))
+      settleCollected(
+        wallet.submitPrivacyWithdrawal(review.intentId, {
+          acceptPreviousWithdrawalRisk: true,
+        })
+      )
     ).rejects.toThrow();
     expect(vault.reserveWithdrawalAttempt).not.toHaveBeenCalled();
     expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
@@ -672,7 +684,9 @@ it('allows an imported signing account to prepare and submit Direct withdrawal',
   const review = await prepare(wallet);
   expect(review.account.type).toBe(KeyringAccountType.Imported);
   await expect(
-    wallet.submitPrivacyWithdrawal(review.intentId)
+    wallet.submitPrivacyWithdrawal(review.intentId, {
+      acceptPreviousWithdrawalRisk: true,
+    })
   ).resolves.toMatchObject({
     phase: 'submitted',
     transactionHash: HASH,
@@ -708,7 +722,9 @@ it.each(['preparation', 'confirmation'] as const)(
       const review = await prepare(wallet);
       account.xprv = '';
       await expect(
-        wallet.submitPrivacyWithdrawal(review.intentId)
+        wallet.submitPrivacyWithdrawal(review.intentId, {
+          acceptPreviousWithdrawalRisk: true,
+        })
       ).rejects.toMatchObject({
         message: 'privacy_withdrawal_context_changed',
         transactionNotBroadcast: true,
@@ -758,7 +774,9 @@ it('carries the actual controller cloned context through fixed-gas Main preparat
   expect(JSON.stringify(review)).not.toContain(PROOF);
   expect(JSON.stringify(review)).not.toContain(IDENTITY.nullifierHash);
   await expect(
-    wallet.submitPrivacyWithdrawal(review.intentId)
+    wallet.submitPrivacyWithdrawal(review.intentId, {
+      acceptPreviousWithdrawalRisk: true,
+    })
   ).resolves.toMatchObject({ phase: 'submitted', transactionHash: HASH });
   expect(events).toEqual(['reserve', 'send', 'record']);
   expect(retainedMetadata).toMatchObject({
@@ -903,7 +921,9 @@ it('rejects a changed nonce before reserving or sending an already reviewed with
   const review = await prepare(wallet);
   pendingNonce.mockResolvedValue(8);
   await expect(
-    wallet.submitPrivacyWithdrawal(review.intentId)
+    wallet.submitPrivacyWithdrawal(review.intentId, {
+      acceptPreviousWithdrawalRisk: true,
+    })
   ).rejects.toThrow();
   expect(vault.reserveWithdrawalAttempt).not.toHaveBeenCalled();
   expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
@@ -919,7 +939,9 @@ it('waits for durable reservation, then rechecks account context before invoking
     await release.promise;
     events.push('reserve');
   });
-  const pending = wallet.submitPrivacyWithdrawal(review.intentId);
+  const pending = wallet.submitPrivacyWithdrawal(review.intentId, {
+    acceptPreviousWithdrawalRisk: true,
+  });
   const failure = expect(pending).rejects.toThrow();
   await entered.promise;
   expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
@@ -942,7 +964,9 @@ it('journals a successful acknowledgement to the original attempt when the selec
     }
   );
   await expect(
-    wallet.submitPrivacyWithdrawal(review.intentId)
+    wallet.submitPrivacyWithdrawal(review.intentId, {
+      acceptPreviousWithdrawalRisk: true,
+    })
   ).resolves.toMatchObject({ phase: 'submitted', transactionHash: HASH });
   const [attempt, , session] = vault.recordWithdrawalSubmission.mock.calls[0];
   expect(attempt.context.account.id).toBe(0);
@@ -967,7 +991,9 @@ it('preserves an acknowledgement already in flight when the privacy service chan
       return { hash: HASH };
     }
   );
-  const pending = wallet.submitPrivacyWithdrawal(review.intentId);
+  const pending = wallet.submitPrivacyWithdrawal(review.intentId, {
+    acceptPreviousWithdrawalRisk: true,
+  });
   await entered.promise;
   await wallet.invalidatePrivacyServiceWithdrawals();
   release.resolve();
@@ -992,14 +1018,18 @@ it('retains an unknown reserved attempt when a broadcast acknowledgement arrives
     }
   );
   await expect(
-    wallet.submitPrivacyWithdrawal(review.intentId)
+    wallet.submitPrivacyWithdrawal(review.intentId, {
+      acceptPreviousWithdrawalRisk: true,
+    })
   ).resolves.toMatchObject({ phase: 'unknown', transactionHash: HASH });
   expect(vault.reserveWithdrawalAttempt).toHaveBeenCalledTimes(1);
   expect(vault.recordWithdrawalSubmission).not.toHaveBeenCalled();
   expect(vault.clearUnbroadcastWithdrawalAttempt).not.toHaveBeenCalled();
-  await expect(wallet.submitPrivacyWithdrawal(review.intentId)).rejects.toThrow(
-    'privacy_withdrawal_intent_expired'
-  );
+  await expect(
+    wallet.submitPrivacyWithdrawal(review.intentId, {
+      acceptPreviousWithdrawalRisk: true,
+    })
+  ).rejects.toThrow('privacy_withdrawal_intent_expired');
   expect(wallet.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
 });
 
@@ -1149,7 +1179,9 @@ it.each([
   const clear = jest.spyOn(vault, 'clearUnbroadcastWithdrawalAttempt');
   if (cleanupUnavailable)
     clear.mockRejectedValueOnce(new Error('Synthetic cleanup storage refusal'));
-  const result = run.controller.submitWithdrawal(review.intentId);
+  const result = run.controller.submitWithdrawal(review.intentId, {
+    acceptPreviousWithdrawalRisk: true,
+  });
   const outcome =
     scenario === 'sender entered with unknown outcome'
       ? expect(result).resolves.toMatchObject({ phase: 'unknown' })
@@ -1169,13 +1201,13 @@ it.each([
   if (cleanupUnavailable) {
     expect(clear).toHaveBeenCalledTimes(1);
     expect(saved).toMatchObject({ phase: 'unknown' });
-    expect((await vault.getNotes()).notes[0].phase).toBe('waiting');
+    expect((await vault.getNotes()).notes[0].phase).toBe('verified');
     run.state.vault.activeAccount = {
       id: 1,
       type: KeyringAccountType.HDAccount,
     };
     expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
-      'waiting'
+      'verified'
     );
     run.state.vault.activeAccount = {
       id: 0,
@@ -1183,7 +1215,7 @@ it.each([
     };
     run.state.vault.activeNetwork.url = 'https://other.example';
     expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
-      'waiting'
+      'verified'
     );
     run.state.vault.activeNetwork.url = 'https://operator.example';
     testRoot = 'different profile root';
@@ -1196,12 +1228,12 @@ it.each([
       attemptHash: '0x' + 'ff'.repeat(32),
     });
     expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
-      'waiting'
+      'verified'
     );
     capability.set(review.intentId, bound);
     run.wallet.knownUnbroadcast = new Map(); // Simulate worker memory loss.
     expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
-      'waiting'
+      'verified'
     );
     run.wallet.knownUnbroadcast = new Map([
       ['stale', { ...bound, attemptHash: '0x' + 'ff'.repeat(32) }],
@@ -1217,7 +1249,7 @@ it.each([
     expect(clear).not.toHaveBeenCalled();
     expect(saved).toMatchObject({ phase: 'unknown' });
     expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
-      'waiting'
+      'verified'
     );
   } else {
     expect(clear).toHaveBeenCalledTimes(1);
@@ -1387,7 +1419,9 @@ it.each([
     const result = (
       kind === 'deposit'
         ? run.wallet.submitPrivacyDeposit(review.intentId)
-        : run.wallet.submitPrivacyWithdrawal(review.intentId)
+        : run.wallet.submitPrivacyWithdrawal(review.intentId, {
+            acceptPreviousWithdrawalRisk: true,
+          })
     ).then(
       (value: unknown) => ({ value, error: undefined }),
       (error: unknown) => ({ value: undefined, error })
@@ -1419,9 +1453,11 @@ it.each([
         transactionHash: HASH,
       });
     }
-    await expect(
-      vault.withWithdrawalNote(NOTE_ID, session, () => 'must not return')
-    ).rejects.toThrow('privacy_note_restore_required');
+    const backup = await vault.exportBackupSnapshot(
+      'synthetic-password',
+      session
+    );
+    expect(backup.notes[0]).toMatchObject({ reconciliationRequired: true });
   }
 );
 
@@ -1540,7 +1576,9 @@ it.each(['lock-unlock', 'wallet-reset', 'keyring-replacement'] as const)(
       }
     );
     await expect(
-      run.wallet.submitPrivacyWithdrawal(review.intentId)
+      run.wallet.submitPrivacyWithdrawal(review.intentId, {
+        acceptPreviousWithdrawalRisk: true,
+      })
     ).resolves.toMatchObject({ phase: 'unknown', transactionHash: HASH });
     expect(run.vault.recordWithdrawalSubmission).not.toHaveBeenCalled();
     expect(run.vault.clearUnbroadcastWithdrawalAttempt).not.toHaveBeenCalled();
@@ -1622,10 +1660,14 @@ it.each(['lock', 'lock-unlock', 'wallet reset', 'worker restart'] as const)(
         await release.promise;
         return [];
       });
-    const result = run.wallet.submitPrivacyWithdrawal(review.intentId).then(
-      (value: unknown) => ({ value, error: undefined }),
-      (error: unknown) => ({ value: undefined, error })
-    );
+    const result = run.wallet
+      .submitPrivacyWithdrawal(review.intentId, {
+        acceptPreviousWithdrawalRisk: true,
+      })
+      .then(
+        (value: unknown) => ({ value, error: undefined }),
+        (error: unknown) => ({ value: undefined, error })
+      );
     await entered.promise;
     expect(
       await vault.getWithdrawalAttempt(
@@ -1681,7 +1723,7 @@ it.each(['lock', 'lock-unlock', 'wallet reset', 'worker restart'] as const)(
         .mockImplementation(() => vault.getNotes());
       expect(run.wallet.knownUnbroadcast?.size ?? 0).toBe(0);
       expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
-        'waiting'
+        'verified'
       );
     } else {
       expect(run.wallet.knownUnbroadcast?.has(review.intentId)).toBe(true);
@@ -1718,7 +1760,9 @@ it('a rejected duplicate fee submission cannot replace the active unsigned-dispa
     });
   });
   const review = await prepare(run.wallet);
-  const first = run.wallet.submitPrivacyWithdrawal(review.intentId);
+  const first = run.wallet.submitPrivacyWithdrawal(review.intentId, {
+    acceptPreviousWithdrawalRisk: true,
+  });
   await entered.promise;
   expect(run.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   expect(run.vault.consumeUnsignedWithdrawal).not.toHaveBeenCalled();

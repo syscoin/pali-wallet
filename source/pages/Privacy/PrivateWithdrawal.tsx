@@ -8,6 +8,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
 import { PRIVACY_POOLS } from 'utils/privacy/registry';
+import { capturePreviousWithdrawalAttempts } from 'utils/privacy/withdrawTypes';
 import type {
   IPrivacyRelayerChoice,
   IPrivacyWithdrawalReview,
@@ -116,6 +117,13 @@ function readReview(
     maxNetworkFeeWei: value.maxNetworkFeeWei,
     serviceFeeWei: value.serviceFeeWei,
     receiveWei: value.receiveWei,
+    ...(value.previousWithdrawals !== undefined
+      ? {
+          previousWithdrawals: capturePreviousWithdrawalAttempts(
+            value.previousWithdrawals
+          ),
+        }
+      : {}),
     ...(mode === 'relayed'
       ? {
           relayerId: value.relayerId,
@@ -131,8 +139,8 @@ function WithdrawalFlow({
   emitter,
   canSign,
 }: IPrivateWithdrawalProps & {
-  emitter: (...args: any[]) => Promise<any>;
   canSign: boolean;
+  emitter: (...args: any[]) => Promise<any>;
 }) {
   const { t } = useTranslation();
   const [recipient, setRecipient] = useState('');
@@ -323,7 +331,7 @@ function WithdrawalFlow({
     try {
       const raw = (await call(
         'submitWithdrawal',
-        [review.intentId],
+        [review.intentId, { acceptPreviousWithdrawalRisk: true }],
         120000
       )) as IPrivacyWithdrawalSubmission;
       if (!current(revision)) return;
@@ -614,6 +622,52 @@ function WithdrawalFlow({
               }`
             )}
           </p>
+          <p className="text-xs text-brand-gray200">
+            {t('privacy.withdrawal.pendingProofWarning')}
+          </p>
+          {!!review.previousWithdrawals?.length && (
+            <section
+              className="space-y-2 text-xs"
+              aria-label={t('privacy.withdrawal.previousAttempts')}
+            >
+              <h3>{t('privacy.withdrawal.previousAttempts')}</h3>
+              {review.previousWithdrawals.map((prior, index) => (
+                <dl key={index} className="space-y-1 break-all">
+                  <div>
+                    {t(`privacy.withdrawal.${prior.mode}`)} ·{' '}
+                    {t(
+                      `privacy.withdrawal.${
+                        prior.outcome === 'unknown' ? 'unknown' : 'submitted'
+                      }`
+                    )}
+                  </div>
+                  {prior.recipient && (
+                    <div>
+                      <dt>{t('privacy.withdrawal.recipient')}</dt>
+                      <dd>{prior.recipient}</dd>
+                    </div>
+                  )}
+                  {[
+                    ...new Set([
+                      ...(prior.transactionHashes ?? []),
+                      ...(prior.transactionHash ? [prior.transactionHash] : []),
+                    ]),
+                  ].map((hash) => (
+                    <div key={hash}>
+                      <dt>{t('privacy.deposit.txHash')}</dt>
+                      <dd>{hash}</dd>
+                    </div>
+                  ))}
+                  {prior.jobId && (
+                    <div>
+                      <dt>{t('privacy.withdrawal.jobId')}</dt>
+                      <dd>{prior.jobId}</dd>
+                    </div>
+                  )}
+                </dl>
+              ))}
+            </section>
+          )}
           {!consumed && (
             <p role="status" className="text-xs">
               {t(`privacy.withdrawal.${expired ? 'expired' : 'expires'}`, {
@@ -646,7 +700,11 @@ function WithdrawalFlow({
             >
               {t(
                 `privacy.withdrawal.${
-                  busy === 'submit' ? 'submitting' : 'confirm'
+                  busy === 'submit'
+                    ? 'submitting'
+                    : review.previousWithdrawals?.length
+                    ? 'competingConfirm'
+                    : 'confirm'
                 }`
               )}
             </Button>
@@ -713,14 +771,14 @@ export default function PrivateWithdrawal(props: IPrivateWithdrawalProps) {
     const { vault, vaultGlobal } = state;
     const ref = vault.activeAccount,
       account = vault.accounts?.[ref.type]?.[ref.id],
-      canSign = ref.type !== 'Imported' || Boolean(account?.xprv);
+      selectedCanSign = ref.type !== 'Imported' || Boolean(account?.xprv);
     return {
       scope: JSON.stringify([
         ref.type,
         ref.id,
         account?.address,
         account?.xpub,
-        canSign,
+        selectedCanSign,
         vault.activeNetwork.url,
         vault.activeNetwork.chainId,
         vault.isBitcoinBased,
@@ -728,7 +786,7 @@ export default function PrivateWithdrawal(props: IPrivateWithdrawalProps) {
         vaultGlobal.lastLogin,
         vault.passkeyCredentialProfile?.credentialIdHash,
       ]),
-      canSign,
+      canSign: selectedCanSign,
       eligible:
         !vault.isBitcoinBased &&
         vault.activeNetwork.kind === 'ethereum' &&

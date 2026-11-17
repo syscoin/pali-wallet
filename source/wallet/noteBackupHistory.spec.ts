@@ -206,7 +206,6 @@ test.each([
       blockHash: hash(10),
     },
   },
-  { publicInputs: undefined },
 ])('rejects malformed or unbound relay history: %j', (change) => {
   expect(() =>
     validateNoteBackupHistory(history({ ...evidence(), ...change }))
@@ -302,6 +301,30 @@ test('export preserves active and retired relay observations without importing r
     ...restored.notes[0].restoreGuard,
     reviewedAt: 11,
   });
-  // Local acknowledgement cannot authorize a relayed proof from imported evidence.
+  // A stored review marker cannot become a permanent competing-proof approval.
   expect(restoredNoteBlocksWithdrawal(reviewed)).toBe(true);
+});
+
+test('export admission reserves late acknowledgement space for unresolved retained withdrawals', () => {
+  const journal = (n: number) => ({
+    ...evidence(),
+    phase: 'unknown' as const,
+    transactionHash: undefined,
+    transactionHashes: undefined,
+    proofHash: hash(n + 30),
+    jobId: `retained-${n}`,
+  });
+  const note = (count: number) => ({
+    id: '00000000-0000-4000-8000-000000000001',
+    note: 'synthetic-note',
+    createdAt: 1,
+    withdrawal: {
+      ...journal(0),
+      retired: Array.from({ length: count - 1 }, (_, index) =>
+        journal(index + 1)
+      ),
+    },
+  });
+  expect(privateNoteExportHistory(note(5))?.withdrawals).toHaveLength(5);
+  expect(() => privateNoteExportHistory(note(6))).toThrow('privacy_note_limit');
 });

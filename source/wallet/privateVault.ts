@@ -24,6 +24,11 @@ import {
   createPrivateWithdrawalJournal,
 } from '../utils/privacy/withdrawalMetadata.ts';
 import { MAX_PRIVACY_RELAY_TRANSACTIONS } from '../utils/privacy/withdrawalTransactionTypes.ts';
+import {
+  capturePreviousWithdrawalAttempts,
+  type IPrivacyWithdrawalHistory,
+  type IPrivacyWithdrawalSubmissionApproval,
+} from '../utils/privacy/withdrawTypes.ts';
 
 import {
   planPrivateNoteRestore,
@@ -180,7 +185,8 @@ export interface IPrivateVaultWithdrawalController {
   consumeUnsignedWithdrawal: (
     attempt: IPrivacyWithdrawalAttempt,
     session: IPrivateVaultSession,
-    lifetime: string
+    lifetime: string,
+    approval?: Readonly<IPrivacyWithdrawalSubmissionApproval>
   ) => Promise<void>;
   getWithdrawalAttempt: (
     noteId: string,
@@ -211,12 +217,17 @@ export interface IPrivateVaultWithdrawalController {
       assertRestoreCurrent: () => void;
       attemptHash: string;
       profileId: string;
-    }) => void
+    }) => void,
+    approval?: Readonly<IPrivacyWithdrawalSubmissionApproval>
   ) => Promise<void>;
   withWithdrawalNote: <T>(
     noteId: string,
     session: IPrivateVaultSession,
-    use: (note: string, poolId: PrivacyPoolId) => Promise<T> | T
+    use: (
+      note: string,
+      poolId: PrivacyPoolId,
+      history: Readonly<IPrivacyWithdrawalHistory>
+    ) => Promise<T> | T
   ) => Promise<T>;
 }
 
@@ -503,6 +514,77 @@ function retireWithdrawal(withdrawal: IPrivacyWithdrawalJournal) {
   return retired as IPrivacyRetiredWithdrawal;
 }
 
+function withdrawalHistoryBinding(note: IStoredNote): string {
+  return keccak256(
+    toUtf8Bytes(
+      JSON.stringify({
+        withdrawal: note.withdrawal ?? null,
+        restoreGuard: note.restoreGuard ?? null,
+      })
+    )
+  );
+}
+
+function captureWithdrawalHistory(
+  note: IStoredNote
+): Readonly<IPrivacyWithdrawalHistory> {
+  const imported = note.restoreGuard?.history?.withdrawals ?? [];
+  const local = note.withdrawal
+    ? [...(note.withdrawal.retired ?? []), note.withdrawal]
+    : [];
+  const previousWithdrawals = capturePreviousWithdrawalAttempts([
+    ...imported.map((entry) => ({
+      ...entry,
+      recipient: entry.publicInputs?.recipient,
+    })),
+    ...local.map((entry) => ({
+      ...entry,
+      outcome: entry.phase,
+      recipient: entry.publicInputs?.recipient,
+    })),
+  ]);
+  return Object.freeze({
+    binding: withdrawalHistoryBinding(note),
+    previousWithdrawals,
+  });
+}
+
+function captureWithdrawalApproval(
+  approval: Readonly<IPrivacyWithdrawalSubmissionApproval> | undefined
+): Readonly<IPrivacyWithdrawalSubmissionApproval> | undefined {
+  if (approval === undefined) return undefined;
+  const { acceptPreviousWithdrawalRisk, historyBinding } = approval;
+  if (
+    acceptPreviousWithdrawalRisk !== true ||
+    typeof historyBinding !== 'string' ||
+    !/^0x[0-9a-f]{64}$/.test(historyBinding)
+  )
+    throw new Error('privacy_withdrawal_attempt_invalid');
+  return Object.freeze({ acceptPreviousWithdrawalRisk, historyBinding });
+}
+
+function assertWithdrawalHistoryApproval(
+  note: IStoredNote,
+  approval: Readonly<IPrivacyWithdrawalSubmissionApproval>
+): void {
+  if (withdrawalHistoryBinding(note) !== approval.historyBinding)
+    throw new Error('privacy_withdrawal_attempt_invalid');
+}
+
+/** Reconstruct exactly the note history which preceded this reserved attempt. */
+function previousWithdrawalHistory(note: IStoredNote): IStoredNote {
+  const retired = note.withdrawal?.retired;
+  return {
+    ...note,
+    withdrawal: retired?.length
+      ? withdrawalJournal({
+          ...retired[retired.length - 1]!,
+          ...(retired.length > 1 ? { retired: retired.slice(0, -1) } : {}),
+        })
+      : undefined,
+  };
+}
+
 export function createPrivateVaultController(
   host: IPrivateVaultHost,
   dependencies: IPrivateVaultDependencies
@@ -674,7 +756,10 @@ export function createPrivateVaultController(
           withdrawal: {
             mode: note.withdrawal.mode,
             phase: note.withdrawal.phase,
-            ...(!hasImportedWithdrawalHistory(note.restoreGuard) &&
+            ...(!(
+              hasImportedWithdrawalHistory(note.restoreGuard) &&
+              restoredNoteBlocksWithdrawal(note.restoreGuard)
+            ) &&
             !note.withdrawal.unsigned &&
             (note.withdrawal.mode === 'direct'
               ? note.withdrawal.phase === 'submitted' &&
@@ -691,21 +776,14 @@ export function createPrivateVaultController(
       : {}),
     ...(note.restoreGuard
       ? {
-          restoration:
-            hasImportedWithdrawalHistory(note.restoreGuard) ||
-            Boolean(note.withdrawal && !note.withdrawal.recovery)
+          restoration: restoredNoteBlocksWithdrawal(note.restoreGuard)
+            ? hasImportedWithdrawalHistory(note.restoreGuard)
               ? ('withdrawal-pending' as const)
-              : restoredNoteBlocksWithdrawal(note.restoreGuard)
-              ? ('review-required' as const)
-              : ('reviewed' as const),
+              : ('review-required' as const)
+            : ('reviewed' as const),
         }
       : {}),
-    ...(restoredNoteBlocksWithdrawal(note.restoreGuard) &&
-    status.phase !== 'spent'
-      ? { phase: 'waiting' as const }
-      : note.withdrawal && !note.withdrawal.recovery && status.phase !== 'spent'
-      ? { phase: 'waiting' as const }
-      : note.deposit && status.phase !== 'verified' && status.phase !== 'spent'
+    ...(note.deposit && status.phase !== 'verified' && status.phase !== 'spent'
       ? { phase: 'waiting' as const }
       : note.origin === 'generated' && status.phase === 'not-found'
       ? { phase: 'prepared' as const }
@@ -1045,16 +1123,32 @@ export function createPrivateVaultController(
       basis
     );
   };
-  const assertWithdrawable = async (context: IContext, note: IStoredNote) => {
-    if (restoredNoteBlocksWithdrawal(note.restoreGuard))
-      throw new Error('privacy_note_restore_required');
-    if (note.withdrawal && !note.withdrawal.recovery)
-      throw new Error('privacy_withdrawal_attempt_exists');
-    if (note.withdrawal) {
-      for (const prior of [
-        note.withdrawal,
-        ...(note.withdrawal.retired ?? []),
-      ]) {
+  const assertWithdrawalNoteAvailable = async (
+    context: IContext,
+    note: IStoredNote
+  ) => {
+    const identity = identify(note.note);
+    const status = await readStatus(context, identity);
+    if (status.phase === 'spent') throw new Error('privacy_note_spent');
+    if (status.phase === 'not-found') throw new Error('privacy_note_not_found');
+    if (status.phase !== 'verified')
+      throw new Error('privacy_verification_pending');
+    return identity;
+  };
+  const assertWithdrawable = async (
+    context: IContext,
+    note: IStoredNote,
+    approval?: Readonly<IPrivacyWithdrawalSubmissionApproval>
+  ) => {
+    if (approval) assertWithdrawalHistoryApproval(note, approval);
+    else {
+      if (restoredNoteBlocksWithdrawal(note.restoreGuard))
+        throw new Error('privacy_note_restore_required');
+      if (note.withdrawal && !note.withdrawal.recovery)
+        throw new Error('privacy_withdrawal_attempt_exists');
+      for (const prior of note.withdrawal
+        ? [note.withdrawal, ...(note.withdrawal.retired ?? [])]
+        : []) {
         const { rootAnchor, recovery } = prior;
         if (
           !rootAnchor ||
@@ -1065,13 +1159,7 @@ export function createPrivateVaultController(
           throw new Error('privacy_withdrawal_attempt_exists');
       }
     }
-    const identity = identify(note.note);
-    const status = await readStatus(context, identity);
-    if (status.phase === 'spent') throw new Error('privacy_note_spent');
-    if (status.phase === 'not-found') throw new Error('privacy_note_not_found');
-    if (status.phase !== 'verified')
-      throw new Error('privacy_verification_pending');
-    return identity;
+    return assertWithdrawalNoteAvailable(context, note);
   };
   const unsignedScope = (context: IEvmTransactionContext, lifetime: string) =>
     unsignedWithdrawal({
@@ -1105,6 +1193,46 @@ export function createPrivateVaultController(
       throw new Error('privacy_withdrawal_attempt_invalid');
     return note.withdrawal;
   };
+  const retainedWithdrawal = (
+    note: IStoredNote,
+    attempt: IPrivacyWithdrawalAttempt
+  ) => {
+    const expected = createPrivateWithdrawalJournal(
+      attempt,
+      note.id,
+      identify(note.note)
+    );
+    const current = note.withdrawal;
+    if (
+      current?.intentId === expected.intentId &&
+      current.attemptHash === expected.attemptHash
+    )
+      return { previous: current, index: -1 };
+    const index =
+      current?.retired?.findIndex(
+        (entry) =>
+          entry.intentId === expected.intentId &&
+          entry.attemptHash === expected.attemptHash
+      ) ?? -1;
+    if (index < 0) throw new Error('privacy_withdrawal_attempt_invalid');
+    return { previous: current!.retired![index]!, index };
+  };
+  const replaceRetainedWithdrawal = (
+    note: IStoredNote,
+    index: number,
+    value: IPrivacyWithdrawalJournal
+  ): IStoredNote => ({
+    ...note,
+    withdrawal:
+      index < 0
+        ? value
+        : withdrawalJournal({
+            ...note.withdrawal!,
+            retired: note.withdrawal!.retired!.map((entry, at) =>
+              at === index ? value : entry
+            ),
+          }),
+  });
   const recordWithdrawalSubmission = async (
     context: IContext,
     attempt: IPrivacyWithdrawalAttempt,
@@ -1121,7 +1249,7 @@ export function createPrivateVaultController(
       throw new Error('privacy_withdrawal_attempt_invalid');
     const { manifest, basis } = await load(context);
     const note = findNote(manifest, attempt?.noteId);
-    const previous = matchingWithdrawal(note, attempt);
+    const { previous, index } = retainedWithdrawal(note, attempt);
     const { transactionHash, jobId } = acknowledgement;
     if (
       (!transactionHash && !jobId) ||
@@ -1149,10 +1277,16 @@ export function createPrivateVaultController(
       ...(jobId ? { jobId } : {}),
     });
     if (JSON.stringify(withdrawal) === JSON.stringify(previous)) return;
+    // Late acknowledgements change the facts shown in another prepared review.
+    // Retire its synchronous fence before the first yielding write, even when
+    // the storage acknowledgement is later lost. ACK custody uses its own lease.
+    epochs.set(context.profileId, {});
     await persist(
       context,
       manifest.notes.map((entry) =>
-        entry.id === note.id ? { ...entry, withdrawal } : entry
+        entry.id === note.id
+          ? replaceRetainedWithdrawal(note, index, withdrawal)
+          : entry
       ),
       basis
     );
@@ -1161,9 +1295,15 @@ export function createPrivateVaultController(
     notes.some(
       (entry) =>
         (entry.deposit?.from === from && entry.deposit.nonce === nonce) ||
-        (!entry.withdrawal?.recovery &&
-          entry.withdrawal?.from === from &&
-          entry.withdrawal.nonce === nonce)
+        (entry.withdrawal
+          ? [entry.withdrawal, ...(entry.withdrawal.retired ?? [])]
+          : []
+        ).some(
+          (withdrawal) =>
+            !withdrawal.recovery &&
+            withdrawal.from === from &&
+            withdrawal.nonce === nonce
+        )
     );
 
   // No bearer notes survive a preview operation in this map. A commit must
@@ -1374,12 +1514,14 @@ export function createPrivateVaultController(
       let poolId: PrivacyPoolId | undefined;
       let context: IContext | undefined;
       let assertRestoreCurrent: (() => void) | undefined;
+      let history: Readonly<IPrivacyWithdrawalHistory> | undefined;
       try {
         await internal(session, async (captured) => {
           context = captured;
           const { manifest } = await load(captured);
           const note = findNote(manifest, noteId);
-          const identity = await assertWithdrawable(captured, note);
+          history = captureWithdrawalHistory(note);
+          const identity = await assertWithdrawalNoteAvailable(captured, note);
           await assertProfile(captured);
           assertRestoreCurrent = restoreFence(captured);
           raw = note.note;
@@ -1388,7 +1530,7 @@ export function createPrivateVaultController(
         session.assertCurrent();
         // Proving can take minutes. Do not hold the wallet persistence mutex
         // while the background-only callback uses this locally decrypted note.
-        const result = await use(raw, poolId!);
+        const result = await use(raw, poolId!, history!);
         assertRestoreCurrent!();
         await assertProfile(context!);
         assertRestoreCurrent!();
@@ -1422,8 +1564,19 @@ export function createPrivateVaultController(
     ) =>
       internal(session, async (context) => {
         const { manifest, basis } = await load(context);
-        const note = findNote(manifest, noteId),
-          previous = note.withdrawal;
+        const note = findNote(manifest, noteId);
+        const index =
+          note.withdrawal?.attemptHash === attemptHash
+            ? -1
+            : note.withdrawal?.retired?.findIndex(
+                (entry) => entry.attemptHash === attemptHash
+              ) ?? -1;
+        const previous =
+          note.withdrawal?.attemptHash === attemptHash
+            ? note.withdrawal
+            : index < 0
+            ? undefined
+            : note.withdrawal!.retired![index];
         if (
           !previous ||
           previous.mode !== 'relayed' ||
@@ -1461,16 +1614,26 @@ export function createPrivateVaultController(
           transactionHash: previous.transactionHash ?? transactionHashes[0],
           transactionHashes,
         };
+        epochs.set(context.profileId, {});
         await persist(
           context,
           manifest.notes.map((entry) =>
-            entry.id === note.id ? { ...entry, withdrawal } : entry
+            entry.id === note.id
+              ? replaceRetainedWithdrawal(note, index, withdrawal)
+              : entry
           ),
           basis
         );
       }),
-    reserveWithdrawalAttempt: (attempt, session, lifetime, onIdentity) =>
-      internal(session, async (context) => {
+    reserveWithdrawalAttempt: (
+      attempt,
+      session,
+      lifetime,
+      onIdentity,
+      approval
+    ) => {
+      const approved = captureWithdrawalApproval(approval);
+      return internal(session, async (context) => {
         if (
           attempt?.context?.sessionGeneration !== session.generation ||
           attempt.expiresAt <= now()
@@ -1482,7 +1645,7 @@ export function createPrivateVaultController(
         );
         const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt?.noteId);
-        const identity = await assertWithdrawable(context, note);
+        const identity = await assertWithdrawable(context, note, approved);
         const created = createPrivateWithdrawalJournal(
           { ...attempt, rootAnchor },
           note.id,
@@ -1492,7 +1655,7 @@ export function createPrivateVaultController(
         const withdrawal = withdrawalJournal({
           ...created,
           unsigned: unsignedScope(attempt.context, lifetime),
-          ...(previous?.recovery
+          ...(previous
             ? {
                 retired: [
                   ...(previous.retired ?? []),
@@ -1501,6 +1664,9 @@ export function createPrivateVaultController(
               }
             : {}),
         });
+        // A competing reservation retires earlier synchronous admissions before
+        // yielding to persistence. Its own fence captures the successor epoch.
+        if (previous || note.restoreGuard) epochs.set(context.profileId, {});
         onIdentity?.({
           assertRestoreCurrent: restoreFence(context),
           profileId: context.profileId,
@@ -1519,12 +1685,14 @@ export function createPrivateVaultController(
           ),
           basis,
           async () => {
-            await assertWithdrawable(context, note);
+            await assertWithdrawable(context, note, approved);
           }
         );
-      }),
-    consumeUnsignedWithdrawal: (attempt, session, lifetime) =>
-      internal(session, async (context) => {
+      });
+    },
+    consumeUnsignedWithdrawal: (attempt, session, lifetime, approval) => {
+      const approved = captureWithdrawalApproval(approval);
+      return internal(session, async (context) => {
         if (attempt.context.sessionGeneration !== session.generation)
           throw new Error('privacy_vault_session_changed');
         const expected = unsignedScope(attempt.context, lifetime);
@@ -1532,12 +1700,17 @@ export function createPrivateVaultController(
         const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt.noteId);
         const previous = matchingWithdrawal(note, attempt);
+        if (approved)
+          assertWithdrawalHistoryApproval(
+            previousWithdrawalHistory(note),
+            approved
+          );
         if (
           previous.phase !== 'unknown' ||
           !previous.unsigned ||
           previous.unsigned.lifetime !== expected.lifetime ||
           !sameUnsignedScope(previous.unsigned, expected) ||
-          restoredNoteBlocksWithdrawal(note.restoreGuard)
+          (!approved && restoredNoteBlocksWithdrawal(note.restoreGuard))
         )
           throw new Error('privacy_withdrawal_attempt_invalid');
         const withdrawal = { ...previous };
@@ -1548,10 +1721,18 @@ export function createPrivateVaultController(
             entry.id === note.id ? { ...entry, withdrawal } : entry
           ),
           basis,
-          async () => assertRestoreCurrent(),
+          async () => {
+            if (approved)
+              assertWithdrawalHistoryApproval(
+                previousWithdrawalHistory(note),
+                approved
+              );
+            assertRestoreCurrent();
+          },
           assertRestoreCurrent
         );
-      }),
+      });
+    },
     reconcileUnsignedWithdrawals: (
       scope,
       lifetime,
@@ -1677,11 +1858,25 @@ export function createPrivateVaultController(
         if (!previous) return;
         if (
           previous.intentId !== intentId ||
+          previous.attemptHash !== attemptHash
+        ) {
+          const retired = previous.retired?.find(
+            (entry) =>
+              entry.intentId === intentId && entry.attemptHash === attemptHash
+          );
+          if (retired?.phase === 'unknown') {
+            assertCurrent();
+            return;
+          }
+        }
+        if (
+          previous.intentId !== intentId ||
           previous.attemptHash !== attemptHash ||
           previous.phase !== 'unknown'
         )
           throw new Error('privacy_withdrawal_attempt_invalid');
         const cleared = clearUnbroadcastJournal(note);
+        epochs.set(context.profileId, {});
         await persist(
           context,
           manifest.notes.map((entry) =>
@@ -1695,10 +1890,13 @@ export function createPrivateVaultController(
       internal(session, async (context) => {
         const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt?.noteId);
-        const previous = matchingWithdrawal(note, attempt);
+        const { previous, index } = retainedWithdrawal(note, attempt);
         if (previous.phase !== 'unknown')
           throw new Error('privacy_withdrawal_attempt_invalid');
+        // A late known-unsent result must not erase a retained competing attempt.
+        if (index >= 0) return;
         const cleared = clearUnbroadcastJournal(note);
+        epochs.set(context.profileId, {});
         await persist(
           context,
           manifest.notes.map((entry) =>
@@ -1902,6 +2100,7 @@ export function createPrivateVaultController(
               ...note.restoreGuard,
               reviewedAt: now(),
             });
+            epochs.set(context.profileId, {});
             await persist(
               context,
               manifest.notes.map((entry) =>
@@ -1937,7 +2136,10 @@ export function createPrivateVaultController(
           const candidate = await mutex.runExclusive(async () => {
             const { manifest } = await load(context);
             const note = findNote(manifest, id);
-            if (hasImportedWithdrawalHistory(note.restoreGuard))
+            if (
+              hasImportedWithdrawalHistory(note.restoreGuard) &&
+              restoredNoteBlocksWithdrawal(note.restoreGuard)
+            )
               throw new Error('privacy_note_restore_required');
             if (
               !note.withdrawal ||

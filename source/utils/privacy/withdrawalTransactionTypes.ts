@@ -105,10 +105,11 @@ interface IPrivacyWithdrawalJournalFields {
   transactionHashes?: readonly string[];
 }
 
-/** Inert local evidence retained when a recovered note starts a fresh attempt. */
+/** Inert local evidence retained when a note starts a fresh approved attempt. */
 export interface IPrivacyRetiredWithdrawal
   extends IPrivacyWithdrawalJournalFields {
-  recovery: IPrivacyWithdrawalRecovery;
+  recovery?: IPrivacyWithdrawalRecovery;
+  unsigned?: IPrivacyUnsignedWithdrawal;
 }
 
 export interface IPrivacyWithdrawalJournal

@@ -29,12 +29,10 @@ export type NativePrivateWithdrawalSnapshot = Readonly<{
   status: IPrivacyWithdrawalStatus | null;
   noteStatus: IPrivateNoteStatus | null;
   checking: boolean;
-  restored: boolean;
   error:
     | 'expired'
     | 'pending'
     | 'verification'
-    | 'restored'
     | 'unavailable'
     | 'failed'
     | null;
@@ -44,14 +42,12 @@ type Request = Omit<IPrivacyWithdrawalPrepareRequest, 'noteId'>;
 type Host = Readonly<{
   assertCurrent(): void;
   canSign: boolean;
-  restored: boolean;
   noteId: string;
   poolId: PrivacyPoolId;
   createWithdrawals(
     onProgress: (progress: IPrivacyProofProgress) => void
   ): IPrivacyWithdrawalsController;
   readNoteStatus(): Promise<IPrivateNoteStatus>;
-  reviewRestored(): Promise<void>;
   close(): Promise<void>;
 }>;
 
@@ -68,7 +64,6 @@ function failureCode(error: unknown): NativePrivateWithdrawalSnapshot['error'] {
     message === 'privacy_note_not_found'
   )
     return 'verification';
-  if (message === 'privacy_note_restore_required') return 'restored';
   if (
     message === 'privacy_wrong_chain' ||
     message === 'privacy_withdrawal_unsupported_account'
@@ -97,7 +92,6 @@ export class NativePrivateWithdrawal {
     this.snapshot = Object.freeze({
       phase: 'idle',
       canSign: host.canSign,
-      restored: host.restored,
       relayers: Object.freeze([]),
       progress: null,
       review: null,
@@ -153,7 +147,7 @@ export class NativePrivateWithdrawal {
   };
 
   async prepare(request: Request): Promise<void> {
-    if (this.busy || this.disposed) return;
+    if (this.busy || this.disposed || this.snapshot.noteStatus?.phase === 'spent') return;
     this.check();
     if (request.mode === 'direct' && !this.host.canSign) {
       this.publish({ error: 'unavailable' });
@@ -193,17 +187,20 @@ export class NativePrivateWithdrawal {
       this.busy ||
       this.disposed ||
       this.snapshot.phase !== 'review' ||
+      this.snapshot.noteStatus?.phase === 'spent' ||
       this.snapshot.review?.intentId !== intentId
     )
       return;
     this.check();
     this.busy = true;
     const finish = this.drain.begin();
-    this.publish({ phase: 'submitting', error: null });
+    this.publish({ phase: 'submitting', error: null, status: null });
     let result: IPrivacyWithdrawalSubmission | undefined;
     try {
       this.check();
-      result = await this.withdrawals.submitWithdrawal(intentId);
+      result = await this.withdrawals.submitWithdrawal(intentId, {
+        acceptPreviousWithdrawalRisk: true,
+      });
       this.check();
       this.publish({ phase: result.phase, result });
     } catch (error) {
@@ -287,27 +284,6 @@ export class NativePrivateWithdrawal {
     }
   }
 
-  async reviewRestored(): Promise<void> {
-    if (this.busy || this.disposed) return;
-    this.check();
-    this.busy = true;
-    const finish = this.drain.begin();
-    this.publish({ checking: true, error: null });
-    try {
-      this.check();
-      await this.host.reviewRestored();
-      this.check();
-      this.publish({ restored: false });
-    } catch (error) {
-      this.reportFailure(error);
-      this.publish({ error: 'restored' });
-    } finally {
-      this.busy = false;
-      finish();
-      this.publish({ checking: false });
-    }
-  }
-
   dispose(): Promise<void> {
     return this.drain.close(() => {
       this.disposed = true;
@@ -325,6 +301,5 @@ export type NativePrivateWithdrawalView = Pick<
   | 'confirm'
   | 'refresh'
   | 'loadRelayers'
-  | 'reviewRestored'
   | 'dispose'
 >;
