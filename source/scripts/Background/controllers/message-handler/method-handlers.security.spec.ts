@@ -43,6 +43,7 @@ import {
   clearProviderCache,
   EthMethodHandler,
   MAX_PROVIDER_CACHE_ENTRIES,
+  SysMethodHandler,
   WalletMethodHandler,
 } from './method-handlers';
 import { getMethodConfig } from './method-registry';
@@ -738,6 +739,77 @@ describe('origin-scoped provider data', () => {
     ).resolves.toBeNull();
     isUnlocked.mockReturnValue(true);
   });
+
+  it.each(['wallet_getAccount'])(
+    'projects %s without private endpoint caches or nested storage metadata',
+    async (method) => {
+      const privateUrl =
+        'https://private-rpc.example/v3/private-api-token?key=private-query-token';
+      const publicAccount = {
+        ...connectedAccount,
+        label: 'Connected account',
+        slip44: 60,
+        balances: { ethereum: '12.5', syscoin: 4 },
+        isImported: false,
+        isLedgerWallet: true,
+        isTrezorWallet: false,
+        isSmartAccount: false,
+      };
+      getAccount.mockReturnValue({
+        ...publicAccount,
+        xprv: 'encrypted-private-key',
+        balances: {
+          ...publicAccount.balances,
+          [privateUrl]: { url: privateUrl },
+        },
+        nativeBalanceCache: {
+          [JSON.stringify(['ethereum', 1, privateUrl])]: {
+            balance: '12.5',
+            updatedAt: 1,
+          },
+        },
+        evmTxCountByChainId: { 1: 7 },
+        smartAccountUserOpScanByChainId: { 1: 99 },
+        smartAccount: {
+          descriptor: { rpcUrl: privateUrl },
+          localSigner: 'internal-storage-reference',
+        },
+        arbitraryFutureStorage: { nested: { apiUrl: privateUrl } },
+      });
+      const result = await new WalletMethodHandler().handle(
+        makeContext(
+          method,
+          'https://connected.example',
+          MethodHandlerType.Wallet
+        )
+      );
+      expect(result).toEqual(publicAccount);
+      expect(JSON.stringify(result)).not.toMatch(
+        /private-api-token|private-query-token|encrypted-private-key|internal-storage-reference|nativeBalanceCache/
+      );
+    }
+  );
+
+  it.each(['eth_requestAccounts', 'sys_requestAccounts'])(
+    'keeps %s as an address array after connection',
+    async (method) => {
+      getAccount.mockReturnValue(connectedAccount);
+      const handler = method.startsWith('eth_')
+        ? new EthMethodHandler()
+        : new SysMethodHandler();
+      expect(
+        await handler.handle(
+          makeContext(
+            method,
+            'https://connected.example',
+            method.startsWith('eth_')
+              ? MethodHandlerType.Eth
+              : MethodHandlerType.Sys
+          )
+        )
+      ).toEqual([CONNECTED_ADDRESS.toLowerCase()]);
+    }
+  );
 
   it('does not fetch asset metadata from a page-selected backend URL', async () => {
     const state = getStateMock();

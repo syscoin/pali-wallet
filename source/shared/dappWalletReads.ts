@@ -45,6 +45,69 @@ export function projectWalletBalance(value: unknown): number | string | null {
     return value;
   throw new EthereumRpcErrorHandler(-32603, 'Balance unavailable');
 }
+
+export type DappWalletAccount = Readonly<{
+  address: string;
+  balances?: Readonly<{
+    ethereum?: number | string | null;
+    syscoin?: number | string | null;
+  }>;
+  id?: number;
+  isImported?: boolean;
+  isLedgerWallet?: boolean;
+  isSmartAccount?: boolean;
+  isTrezorWallet?: boolean;
+  label?: string;
+  slip44?: number;
+  type?: string;
+  xpub?: string;
+}>;
+
+/** Provider data is an allowlist, never an internal account minus its private key. */
+export function projectWalletAccount(value: unknown): DappWalletAccount | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const account = value as Record<string, unknown>;
+  if (typeof account.address !== 'string') return null;
+  const result: {
+    -readonly [K in keyof DappWalletAccount]: DappWalletAccount[K];
+  } = { address: account.address };
+  for (const field of ['xpub', 'label'] as const)
+    if (typeof account[field] === 'string') result[field] = account[field];
+  for (const field of ['id', 'slip44'] as const)
+    if (
+      typeof account[field] === 'number' &&
+      Number.isSafeInteger(account[field]) &&
+      account[field] >= 0
+    )
+      result[field] = account[field];
+  for (const field of [
+    'isImported',
+    'isLedgerWallet',
+    'isSmartAccount',
+    'isTrezorWallet',
+  ] as const)
+    if (typeof account[field] === 'boolean') result[field] = account[field];
+  if (
+    typeof account.type === 'string' &&
+    ['HDAccount', 'Imported', 'Ledger', 'Trezor', 'SmartAccount'].includes(
+      account.type
+    )
+  )
+    result.type = account.type;
+  if (
+    account.balances &&
+    typeof account.balances === 'object' &&
+    !Array.isArray(account.balances)
+  ) {
+    const balances = account.balances as Record<string, unknown>;
+    result.balances = Object.fromEntries(
+      ['ethereum', 'syscoin']
+        .filter((chain) => Object.hasOwn(balances, chain))
+        .map((chain) => [chain, projectWalletBalance(balances[chain])])
+    );
+  }
+  return result;
+}
 export function projectWalletBalanceUnits(
   units: string,
   decimals: number

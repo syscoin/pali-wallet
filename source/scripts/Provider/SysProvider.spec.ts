@@ -40,6 +40,53 @@ describe('SysProvider account privacy', () => {
     expect(provider.transaction(['unrelated'])).toBeNull();
   });
 
+  it('projects the actual sys_getAccount provider result without private RPC caches or nested metadata', () => {
+    const privateUrl =
+      'https://private-rpc.example/v3/private-api-token?key=private-query-token';
+    const publicAccount = {
+      id: 1,
+      address: 'sys1connected',
+      xpub: 'approved-public-xpub',
+      label: 'Account 2',
+      balances: { syscoin: '12', ethereum: 0 },
+      isImported: false,
+      isLedgerWallet: false,
+      isTrezorWallet: true,
+      isSmartAccount: false,
+      slip44: 57,
+    };
+    const stored = {
+      ...publicAccount,
+      xprv: 'encrypted-private-key',
+      balances: {
+        ...publicAccount.balances,
+        [privateUrl]: { endpoint: privateUrl },
+      },
+      nativeBalanceCache: {
+        [JSON.stringify(['ethereum', 1, privateUrl])]: { balance: '12' },
+      },
+      smartAccount: {
+        descriptor: { rpcUrl: privateUrl },
+        localSigner: 'internal-storage-reference',
+      },
+      storageMetadata: { nested: { endpoint: privateUrl } },
+    };
+    getControllerMock().dapp.getAccount = () => stored;
+    const provider = SysProvider('https://connected.test');
+    const result = provider.getAccount();
+    expect(result).toEqual(publicAccount);
+    expect(provider.getPublicKey()).toBe(publicAccount.xpub);
+    expect(JSON.stringify(result)).not.toMatch(
+      /private-api-token|private-query-token|encrypted-private-key|internal-storage-reference|nativeBalanceCache/
+    );
+    expect(
+      Object.hasOwn(
+        stored.nativeBalanceCache,
+        JSON.stringify(['ethereum', 1, privateUrl])
+      )
+    ).toBe(true);
+  });
+
   it('keeps internal provenance out of both public history methods without changing transaction data', () => {
     const publicTransaction = {
       txid: 'connected',
