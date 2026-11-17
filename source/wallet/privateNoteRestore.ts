@@ -242,7 +242,8 @@ export function privateNoteCurrentHistory(
               ...(entry.publicInputs === undefined
                 ? {}
                 : { publicInputs: entry.publicInputs }),
-              ...(entry.rootAnchor === undefined
+              ...(entry.rootAnchor === undefined ||
+              entry.publicInputs === undefined
                 ? {}
                 : { rootAnchor: entry.rootAnchor }),
               ...(entry.transactionHashes === undefined

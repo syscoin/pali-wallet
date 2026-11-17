@@ -2265,7 +2265,11 @@ it.each([
   const clear = jest.fn(async (attempt) =>
     f.controller.clearUnbroadcastWithdrawalAttempt(attempt, originalSession)
   );
-  const snapshot: any = { root };
+  const snapshot: any = {
+    root,
+    asOfBlockNumber: 8,
+    asOfBlockHash: '0x' + '55'.repeat(32),
+  };
   const host: any = {
     classifySubmissionFailure: () => ({ transactionNotBroadcast: false }),
     captureSession: () => captured,
@@ -2324,10 +2328,12 @@ it.each([
   });
   const committed = deferred(),
     release = deferred();
+  let committedWriteReached = false;
   if (scenario === 'switch during committed write') {
     const write = f.storage.setItem.getMockImplementation()!;
     f.storage.setItem.mockImplementationOnce(async (key, value) => {
       await write(key, value);
+      committedWriteReached = true;
       committed.resolve();
       await release.promise;
     });
@@ -2346,6 +2352,7 @@ it.each([
   const newSession = f.captureSession();
   const persisted = await f.create().getWithdrawalAttempt(saved.id, newSession);
   if (scenario === 'switch during committed write') {
+    expect(committedWriteReached).toBe(true);
     expect(clear).toHaveBeenCalledTimes(1);
     expect(clear).toHaveBeenCalledWith(reservedAttempt);
     expect(persisted).toMatchObject({ phase: 'unknown' });
@@ -2354,6 +2361,7 @@ it.each([
       f.create().withWithdrawalNote(saved.id, newSession, jest.fn())
     ).rejects.toThrow('privacy_withdrawal_attempt_exists');
   } else {
+    expect(forceCancel).toBe(true);
     expect(clear).toHaveBeenCalledTimes(1);
     expect(persisted).toBeNull();
     expect((await f.create().getNotes()).notes[0].phase).toBe('verified');
@@ -3955,7 +3963,9 @@ it('recovers the reproduced reverted withdrawal through real receipt/root verifi
         rpc: async (method, params) => {
           if (method === 'eth_chainId') return '0x1';
           if (method === 'eth_getBlockByNumber')
-            return { number: '0x7b', hash: blockHash };
+            return params[0] === '0x8'
+              ? { number: '0x8', hash: attempt.rootAnchor!.blockHash }
+              : { number: '0x7b', hash: blockHash };
           if (method === 'eth_getTransactionReceipt')
             return {
               transactionHash: TX_HASH,
@@ -3991,7 +4001,7 @@ it('recovers the reproduced reverted withdrawal through real receipt/root verifi
               ? 'isKnownRoot'
               : 'isSpent';
             return abi.encodeFunctionResult(name, [
-              name === 'isKnownRoot' ? known : false,
+              name === 'isKnownRoot' ? params[1] === '0x8' || known : false,
             ]);
           }
           throw new Error('Unexpected synthetic RPC');
@@ -4493,6 +4503,17 @@ it.each([false, true])(
     expect(
       (await f.controller.getNotes()).notes[0].withdrawal?.canCheckRecovery
     ).toBe(known ? true : undefined);
+    const backup = await f.controller.exportBackupSnapshot(
+      'correct-password',
+      session
+    );
+    expect(backup.notes).toHaveLength(1);
+    expect(backup.notes[0].history?.withdrawals?.[0]).not.toHaveProperty(
+      'rootAnchor'
+    );
+    expect((await decryptedVault(f)).notes[0].withdrawal.rootAnchor).toEqual(
+      attempt.rootAnchor
+    );
     if (known) {
       f.prepareWithdrawalRecovery.mockImplementationOnce(async () => ({
         receipt: {
@@ -4508,6 +4529,9 @@ it.each([false, true])(
       expect(
         (await decryptedVault(f)).notes[0].withdrawal.publicInputs
       ).toEqual(inputs);
+      await expect(
+        f.controller.withWithdrawalNote(note.id, session, (raw) => raw)
+      ).resolves.toBe(NOTE);
     } else {
       await expect(
         f.controller.recoverFailedWithdrawal(note.id, 'correct-password')

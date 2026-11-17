@@ -2,8 +2,8 @@
   "source": {
     "repository": "https://github.com/sidhujag/sysweb3",
     "pullRequest": "https://github.com/sidhujag/sysweb3/pull/119",
-    "commit": "834225f2dd84a9bdd3a6975c46a8ffba48a9b529",
-    "tree": "6e77718663c4b1dc7b55873fcde08d4efcea0a0d",
+    "commit": "0c842ca55a88eed0a6572b11a0ecff59ac829e66",
+    "tree": "e0f7feff5fc3a3336030704ed823d0fd304548b8",
     "compiler": "typescript@5.9.3",
     "node": "v26.12.1",
     "build": [
@@ -16,11 +16,11 @@
   },
   "payload": {
     "file": "sysweb3-overlay.deflate",
-    "sha256": "23d929f413ea459851fcea9798aa2838ec721121bed25dc4883642ce2a4485a6",
-    "bytes": 1948745,
-    "decodedSha256": "8a1c1bbbd30b0df5aa192a1a0599e710131b89854e77f2164547d6feb6e86af1",
-    "files": 82,
-    "compressedBytes": 374666
+    "sha256": "c01c979144daf0a6c34a78616af3773b387bd0014b7fd0bfa72040ac40fb652a",
+    "bytes": 1957557,
+    "decodedSha256": "7a7b39d83e29d3f60dee09f6bcbfbb4f2853148926c96f5dc4fb3bf70c2504aa",
+    "files": 83,
+    "compressedBytes": 376014
   },
   "packages": [
     {
@@ -185,16 +185,16 @@
         {
           "path": "cjs/keyring-core.js",
           "before": "ee8b6319b2b7b8d19b434e12c9b666f8045983c8d5af3fd8b1e4bc7268710eaf",
-          "after": "dc974ea1fe95960f2de49a37b6986f73296ae73ed628f94378a7dff83667c37d",
+          "after": "c07d32ee3d66f35c10def326b422a1eac0fe24e98d7b71fdbd24283a96657326",
           "beforeBytes": 172156,
-          "bytes": 171984
+          "bytes": 172033
         },
         {
           "path": "cjs/keyring-core.js.map",
           "before": "a6833a5639a50764d0ffd218fddaf2403c9a50ee5955b3e4c1649d713ad40bbb",
-          "after": "90b7e32a0bcdb0068e289dd5995cb07720bebe5f9c5d1383a2b45c6f1c902279",
+          "after": "c9fc51126a729421dd6ba81324157b530e6c3f4506ad03447bf9619c43f81c9c",
           "beforeBytes": 114702,
-          "bytes": 114709
+          "bytes": 114737
         },
         {
           "path": "cjs/keyring-host.js",
@@ -619,16 +619,16 @@
         {
           "path": "cjs/transactions/ethereum.js",
           "before": "55772acfe1bb17582bbcda431c0a322101831276af7bad8e2695baee1083c418",
-          "after": "cb426f6379ceae4528da54dc11d157011ec4262c22f202e4ac1444cd3eb2f618",
+          "after": "592172c0f50ed0e86d431f9804f153e683d0d3c285d0de86093ba948b8dd24bd",
           "beforeBytes": 146067,
-          "bytes": 146177
+          "bytes": 146389
         },
         {
           "path": "cjs/transactions/ethereum.js.map",
           "before": "aae4dd65f2a8b4b08358b42a6797bd16ef9c863f8cc3e4bd196fa7694301bba3",
-          "after": "6c0c45f2b3a633cd811b1cb656add22007c7c84b64a7276994ce7a0f62701e7c",
+          "after": "95f7b0770b7c1ca4af8e0a8ca8046cabe2a044f3c5aaf8f938fb7aa4e82308cd",
           "beforeBytes": 97862,
-          "bytes": 97933
+          "bytes": 98065
         },
         {
           "path": "cjs/transactions/evm-cancellation.js",
@@ -1137,16 +1137,16 @@
         {
           "path": "esm/keyring-core.js",
           "before": "b0afc655c8e4433ccaefdcaaf7e4340e03b4cc9b8e37f804ac5f8c30b1ac4e1d",
-          "after": "c555b935e1709b352861e3e6e9e4bbf638b82f056f1c07092442162c60623692",
+          "after": "bd3cd6d9099e77d95970df54b17c881492b70e690ca851bee3916b32ec0bb21e",
           "beforeBytes": 168309,
-          "bytes": 168123
+          "bytes": 168172
         },
         {
           "path": "esm/keyring-core.js.map",
           "before": "922f018f9f05f8d7553f8525226b99aa5f3050fd449f92bbc4a8ef6bbe534ce7",
-          "after": "b6b6e7f393aee57d5a61da6f27025b64232af130b44b94b7033ff34e97d0fcd3",
+          "after": "01159ef346f36c786c00b4550b95604904034361eac54e6b0ef12a36b6eae74b",
           "beforeBytes": 115366,
-          "bytes": 115405
+          "bytes": 115433
         },
         {
           "path": "esm/keyring-host.js",
@@ -1585,16 +1585,16 @@
         {
           "path": "esm/transactions/ethereum.js",
           "before": "3d26325741f77e76bbb1bca468f31a5890d0b4acf45e6edf63bb88bdc431ecb1",
-          "after": "788465a2859f0fecfa2801ba9a36ddbd4bc232823819cca9357ae70137aa59a4",
+          "after": "148d780b6cc2fd36fb3985841a70f5850ce4169de3d9ea7151555fb799a44be8",
           "beforeBytes": 143142,
-          "bytes": 143223
+          "bytes": 143435
         },
         {
           "path": "esm/transactions/ethereum.js.map",
           "before": "7cd23e38af53eacd09f0e27d00a9beff993ddf3ac598206b9c7841a1f759b9f9",
-          "after": "cba67f2cbdcf221a867f7ce347143fbe4707ad341aadbb691f5248fdd248aa9f",
+          "after": "bed8c5f7f103ba6df043a179b60e30ce01bce85ec018c6f4147c7d2107fd0e09",
           "beforeBytes": 98244,
-          "bytes": 98310
+          "bytes": 98442
         },
         {
           "path": "esm/transactions/evm-cancellation.js",
@@ -2250,9 +2250,9 @@
         {
           "path": "types/transactions/ethereum.d.ts",
           "before": "4bd155ea579c3e8b0b1807e639e699193e4c134963a3472483748bb857405504",
-          "after": "4bd155ea579c3e8b0b1807e639e699193e4c134963a3472483748bb857405504",
+          "after": "2544c7abd8834378fda274b2d3b5a710753b3f5a24a57bdc5a387551e3ceccfc",
           "beforeBytes": 7690,
-          "bytes": 7690
+          "bytes": 7745
         },
         {
           "path": "types/transactions/evm-cancellation.d.ts",
