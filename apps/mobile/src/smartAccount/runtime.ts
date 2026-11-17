@@ -26,7 +26,10 @@ import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts'
 import { assertSmartAccountTargetsAllowed } from '../../../../source/utils/smartAccount/targetPolicy.ts';
 import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
 import { canUseReservedSLHDSASignature } from '../../../../source/utils/smartAccount/slhDsaPurpose.ts';
-import type { SmartAccountAuthenticatorPorts } from '../../../../source/utils/smartAccount/authenticatorDispatch.ts';
+import { getSmartAccountSigningPlan, type SmartAccountAuthenticatorPorts } from '../../../../source/utils/smartAccount/authenticatorDispatch.ts';
+import { captureCompositePolicyChange, collectCompositePolicyPossession, compositeSourceConfiguration,
+  createCompositePolicyPossession, verifyCompositePolicyPossession, type CompositePolicyChange } from '../../../../source/utils/smartAccount/compositePossession.ts';
+import { paliEcdsaValidatorInterface } from '../../../../source/utils/smartAccount/contracts.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
 import {
   hasUsableSmartAccountAuthMetadata,
@@ -92,7 +95,8 @@ export type NativeSmartOperationPorts = Readonly<{
   slhDsa: ((metadata: ISmartAccountMetadata, intent: SmartAccountOwnerSigningIntent, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
   /** One reviewed aggregate owner proof; ends before a separate payer approval. */
-  withOwnerProof<T>(signal: AbortSignal, guard: () => void, work: () => Promise<T>): Promise<T>;
+  withOwnerProof<T>(signal: AbortSignal, guard: () => void, work: () => Promise<T>, options?: Readonly<{compositePossession:true}>): Promise<T>;
+  captureCompositePossession?(proposal: CompositePolicyChange, preparedActionHash: string): ReturnType<typeof createCompositePolicyPossession>;
   signOwner(
     address: string,
     digest: string,
@@ -142,6 +146,7 @@ export function createNativeSmartOperation(
   const readInfrastructureCodes = infrastructureReaders.get(ports.wallet) ?? createSmartAccountInfrastructureReader();
   infrastructureReaders.set(ports.wallet, readInfrastructureCodes);
   let metadata = account.smartAccount;
+  const originalSourceConfiguration = compositeSourceConfiguration(account.smartAccount);
   const selectedFees = ports.intent.feeChoice === undefined ? undefined : snapshotEvmFeeChoice(ports.intent.feeChoice);
   if (selectedFees && (selectedFees.kind !== 'custom' || selectedFees.gasLimit !== undefined))
     throw new Error('Invalid Smart account fee choice');
@@ -472,19 +477,62 @@ export function createNativeSmartOperation(
       await assertValidatorSwitch(assertCurrent);
       if (intent.kind === 'guardian-policy')
         await ports.assertGuardianPolicy!(policySignal, assertCurrent);
-      await withEvmReadPhase(pending.provider, assertCurrent, async provider => {
-        const current = createSmartAccountPendingState(provider, ports.pendingRecords, chainId, account.address, assertCurrent);
+      const signingIntent = buildSmartAccountUserOpSigningIntent(prepared.userOperation, chainId);
+      const proposal = captureCompositePolicyChange({accountAddress:account.address,metadata,executions:prepared.executions});
+      const proofCurrent = () => {
+        assertCurrent();
+        if (proposal && compositeSourceConfiguration(account.smartAccount) !== originalSourceConfiguration)
+          throw new Error('SMART_OPERATION_EXPIRED');
+      };
+      const signature = await ports.withOwnerProof(signal, proofCurrent, async () => {
+        if (proposal) {
+          if (!ports.captureCompositePossession) throw new Error('Combined approval possession is required');
+          const challenge = ports.captureCompositePossession(proposal,prepared.actionHash);
+          proofCurrent();
+          const proofs = new Map<string,{signature:string;valid:boolean}>();
+          await collectCompositePolicyPossession({proposal,assertCurrent:proofCurrent,
+            async sign(child) {
+              if (!child.data || !['ecdsa','p256-webauthn','slh-dsa'].includes(child.id)) return null;
+              const childMetadata: ISmartAccountMetadata = {...proposal.smartAccount,
+                auth:{module:child.id,validator:child.address,data:child.data}};
+              if(!getSmartAccountSigningPlan(childMetadata,{ecdsa:ports.signingOwners,p256WebAuthn:ports.p256WebAuthn!==null,slhDsa:ports.slhDsa!==null}))return null;
+              const result = await signNativeSmartAccountActionHash({metadata:childMetadata, actionHash:challenge.intent.actionHash,
+                accountId:account.id,allowReservedSLHDSASignature:false,
+                p256WebAuthn:ports.p256WebAuthn===null?null:ports.p256WebAuthn(childMetadata,challenge.intent,proofCurrent,signal),
+                slhDsa:ports.slhDsa===null?null:ports.slhDsa(childMetadata,challenge.intent,proofCurrent,signal),
+                localOwners:ports.signingOwners,assertCurrent:proofCurrent,assertOwnerCurrent:ports.assertOwnerCurrent,
+                signOwner:(address,digest,owner,guard)=>ports.signOwner(address,digest,{id:owner.id,type:owner.type as SmartAccountGasPayer['type']},guard,challenge.intent,signal,childMetadata)});
+              proofCurrent(); return result.signature;
+            },
+            async verify(signatures) {
+              const verifiedChildren = await withEvmReadPhase(pending.provider,proofCurrent,provider=>
+                verifyCompositePolicyPossession({proposal,actionHash:challenge.intent.actionHash,signatures,assertCurrent:proofCurrent,
+                  async verifyChild(child,proof) {
+                    const key=child.address.toLowerCase(),previous=proofs.get(key);
+                    if(previous) {if(previous.signature!==proof)throw new Error('Combined approval proof changed');return previous.valid;}
+                    const raw = await provider.call({from:account.address,to:child.address,
+                      data:paliEcdsaValidatorInterface.encodeFunctionData('isValidSignatureWithSender',[account.address,challenge.intent.actionHash,proof])});
+                    proofCurrent();
+                    const valid=paliEcdsaValidatorInterface.decodeFunctionResult('isValidSignatureWithSender',raw)[0]==='0x1626ba7e';
+                    proofs.set(key,{signature:proof,valid}); return valid;
+                  }}));
+              return {verifiedChildren,threshold:proposal.threshold,satisfied:verifiedChildren.length>=proposal.threshold};
+            }});
+          proofCurrent();
+        }
+        await withEvmReadPhase(pending.provider, proofCurrent, async provider => {
+        const current = createSmartAccountPendingState(provider, ports.pendingRecords, chainId, account.address, proofCurrent);
         await current.assertNonce(prepared.userOperation);
         await assertSmartAccountSpendability({
           provider: current.provider,
           chainId,
           userOperation: prepared.userOperation,
           expectedErc20Transfers,
-          assertCurrent,
+          assertCurrent:proofCurrent,
         });
       });
-      const signingIntent = buildSmartAccountUserOpSigningIntent(prepared.userOperation, chainId);
-      const signature = await ports.withOwnerProof(signal, assertCurrent, () => signNativeSmartAccountActionHash({
+        proofCurrent();
+        return signNativeSmartAccountActionHash({
         metadata,
         actionHash: prepared.actionHash,
         accountId: account.id,
@@ -492,7 +540,7 @@ export function createNativeSmartOperation(
         p256WebAuthn: ports.p256WebAuthn === null ? null : ports.p256WebAuthn(metadata, signingIntent, assertCurrent, signal),
         slhDsa: ports.slhDsa === null ? null : ports.slhDsa(metadata, signingIntent, assertCurrent, signal),
         localOwners: ports.signingOwners,
-        assertCurrent,
+        assertCurrent:proofCurrent,
         assertOwnerCurrent: ports.assertOwnerCurrent,
         signOwner: (address, digest, owner, guard) =>
           ports.signOwner(
@@ -503,7 +551,8 @@ export function createNativeSmartOperation(
             signingIntent,
             signal, metadata
           ),
-      }));
+      });
+      },proposal?{compositePossession:true}:undefined);
       if (intent.kind === 'modules' && intent.command.draft.kind === 'install-custom') {
         const record = await ports.rememberCustomModule!(signal, assertCurrent);
         assertCurrent();

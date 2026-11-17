@@ -187,6 +187,10 @@ describe('smart-account owner signing intent', () => {
         [{ data: '0x', target: INTENDED_TARGET, value: '0x0' }],
         7
       );
+      controller.approveSmartAccountExecutionFeeQuote(
+        prepared.executionContextId,
+        prepared.entryPointFeeQuote
+      );
 
       // Exercise the published sysweb3 ethSign implementation and the actual
       // Pali ECDSA authenticator driver. RPC/host state are the modeled edges.

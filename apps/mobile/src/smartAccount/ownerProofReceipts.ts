@@ -326,7 +326,7 @@ function captureSteps(
       order.push(`owner:${steps.length - 1}`);
     }
   }
-  if (!steps.length) throw Error('An ECDSA owner proof plan is required');
+  if (!steps.length && !passkeys.length && !slh.length) throw Error('An owner proof plan is required');
   return {
     steps: Object.freeze(steps),
     passkeys: Object.freeze(passkeys),

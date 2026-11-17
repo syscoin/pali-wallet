@@ -27,6 +27,7 @@ import {
   ITxState,
   TransactionType,
 } from '../../types/transactions';
+import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import {
   Button,
   Icon,
@@ -177,6 +178,15 @@ export const SendConfirm = () => {
     connectionUnavailable,
   });
   const { state } = submission;
+  const { forExecution, feeConfirmation } = useSmartAccountFeeConfirmation(
+    JSON.stringify([
+      activeAccountMeta,
+      activeNetwork.chainId,
+      activeNetwork.url,
+      location.key,
+      state?.walletScope,
+    ])
+  );
   const tokenReviewPort = useRef<ReturnType<typeof openWalletTokenReview>>();
   useEffect(() => {
     const retireOnDeparture = () => {
@@ -1378,6 +1388,15 @@ export const SendConfirm = () => {
               : {}),
             feeOverrides,
             approvedFeeQuote: smartAccountQuote,
+            feeConsent: forExecution({
+              account: activeAccount.address,
+              smartAccount: activeAccount.address,
+              chainId: activeNetwork.chainId,
+              symbol: activeNetwork.currency,
+              label: t('buttons.send'),
+              assertCurrent: assertSmartAccountConfirmationCurrent,
+            }),
+            onBeforeAuthentication: assertSmartAccountConfirmationCurrent,
             onPrepared: assertSmartAccountConfirmationCurrent,
             onBeforeSubmit: async () => {
               assertSmartAccountConfirmationCurrent();
@@ -1397,6 +1416,15 @@ export const SendConfirm = () => {
             smartAccount: activeAccount.smartAccount,
           });
         } catch (error) {
+          if (
+            publicationRequested &&
+            error?.code === 4001 &&
+            error?.transactionNotBroadcast === true &&
+            submission.isActive()
+          ) {
+            setSmartAccountQuote(undefined);
+            setSmartAccountQuoteNeedsRefresh(true);
+          }
           // A same-text error after the publication boundary is not evidence
           // that refreshing/re-signing is safe, regardless of its marker.
           if (
@@ -2383,6 +2411,7 @@ export const SendConfirm = () => {
 
   return (
     <>
+      {feeConfirmation}
       <EditPriorityModal
         showModal={isOpenEditFeeModal}
         setIsOpen={setIsOpenEditFeeModal}

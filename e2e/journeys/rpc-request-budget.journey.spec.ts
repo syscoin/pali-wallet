@@ -29,6 +29,7 @@ import {
 } from '../harness/testDappConformance';
 import {
   approve,
+  approveSmartAccountFeeReview,
   startRequest,
   providerRequest,
 } from '../harness/testDappConformance';
@@ -472,6 +473,21 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         const before = output.broadcasts.length;
         mark('prefund:confirm');
         await register.click();
+        await approveSmartAccountFeeReview(page, {
+          kind: 'entry-point',
+          account,
+          payer: account,
+          chainId: chain.chainId,
+          symbol: currency,
+        });
+        for (let envelope = 0; envelope < 2; envelope++)
+          await approveSmartAccountFeeReview(page, {
+            kind: 'payer',
+            account,
+            payer,
+            chainId: chain.chainId,
+            symbol: currency,
+          });
         await expect
           .poll(() => output.broadcasts.length, { timeout: 45000 })
           .toBe(before + 2);
@@ -588,6 +604,14 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         await page
           .getByRole('button', { name: 'Confirm', exact: true })
           .click();
+        if (!label.startsWith('eoa-'))
+          await approveSmartAccountFeeReview(page, {
+            kind: 'payer',
+            account,
+            payer,
+            chainId: chain.chainId,
+            symbol: currency,
+          });
         await expect
           .poll(() => output.broadcasts.length, { timeout: 45000 })
           .toBe(before + 1);

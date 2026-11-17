@@ -1295,34 +1295,52 @@ describe('document-bound dapp nonce dispatch', () => {
   );
 });
 
-it.each(['EVM_LEGACY_PENDING', 'EVM_LEGACY_VERIFICATION_UNAVAILABLE'])(
-  'preserves local %s classification through controller IPC',
-  (code) => {
-    expect(
-      controllerErrorResponse(
-        Object.assign(new Error('guard'), {
-          code,
-          transactionNotBroadcast: true,
-        })
-      )
-    ).toEqual({
-      success: false,
-      error: expect.objectContaining({
-        message: 'guard',
+it.each([
+  'EVM_LEGACY_PENDING',
+  'EVM_LEGACY_VERIFICATION_UNAVAILABLE',
+  'COMPOSITE_CHILD_UNAVAILABLE',
+])('preserves local %s classification through controller IPC', (code) => {
+  expect(
+    controllerErrorResponse(
+      Object.assign(new Error('guard'), {
         code,
         transactionNotBroadcast: true,
-      }),
-    });
-    expect(
-      controllerErrorResponse(
-        Object.assign(new Error('guard'), {
-          code,
-          transactionNotBroadcast: false,
-        })
-      ).error
-    ).not.toHaveProperty('code');
-  }
-);
+      })
+    )
+  ).toEqual({
+    success: false,
+    error: expect.objectContaining({
+      message: 'guard',
+      code,
+      transactionNotBroadcast: true,
+    }),
+  });
+  expect(
+    controllerErrorResponse(
+      Object.assign(new Error('guard'), {
+        code,
+        transactionNotBroadcast: false,
+      })
+    ).error
+  ).not.toHaveProperty('code');
+});
+
+it('does not expose optional-child unavailability as a fallback after financial handoff', () => {
+  const failure = Object.assign(new Error('Missing local child'), {
+    code: 'COMPOSITE_CHILD_UNAVAILABLE',
+    transactionNotBroadcast: true,
+  });
+  expect(
+    controllerErrorResponse(failure, { hash: '0x' + 'ab'.repeat(32) }).error
+  ).not.toHaveProperty('code');
+  expect(
+    controllerErrorResponse(
+      Object.assign(new Error('Missing local child'), {
+        code: 'COMPOSITE_CHILD_UNAVAILABLE',
+      })
+    ).error
+  ).not.toHaveProperty('code');
+});
 
 it('keeps the asset-review code only for definite local no-broadcast failures', () => {
   const code = 'EVM_ASSET_REVIEW_REQUIRED';

@@ -925,6 +925,50 @@ it('requires explicit refresh after a proven fee increase, and never auto-resubm
   expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
 });
 
+it('retires the consumed Smart Account quote after a definite payer-fee decline and requires a fresh review', async () => {
+  prepareSmartAccountConfirmation();
+  render(<SendConfirm />);
+  await waitFor(() => expect(screen.getByText('0.00065 TSYS')).toBeTruthy());
+  (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
+    async (params) => {
+      await params.onBeforeSubmit({ executionContextId: 'consumed' });
+      throw Object.assign(new Error('Transaction fee approval was cancelled'), {
+        code: 4001,
+        transactionNotBroadcast: true,
+      });
+    }
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'send.refreshFeeQuote' })
+    ).toBeEnabled()
+  );
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
+  const prepared = (prepareSmartAccountFeeQuote as jest.Mock).mock.calls.length;
+  (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
+    feePayer,
+    gasUnits: '900000',
+    maximumFeeWei: '900000000000000',
+    executionContextId: 'fresh-context',
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'send.refreshFeeQuote' }));
+  await waitFor(() => expect(screen.getByText('0.0009 TSYS')).toBeTruthy());
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(prepared + 1);
+  expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() =>
+    expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(2)
+  );
+  expect(
+    (signAndSubmitSmartAccountExecutions as jest.Mock).mock.calls[1][0]
+      .approvedFeeQuote.executionContextId
+  ).toBe('fresh-context');
+});
+
 it('uses trusted zero account-charge tank mode for native MAX without subtracting outer payer fees', async () => {
   prepareSmartAccountConfirmation(true);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({

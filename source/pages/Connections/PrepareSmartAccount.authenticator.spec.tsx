@@ -15,6 +15,7 @@ import { PrepareSmartAccount } from './PrepareSmartAccount';
 let mockRequest: any;
 const mockEmitter = jest.fn();
 const mockInstall = jest.fn();
+const mockRegistration = jest.fn();
 const owner = '0x1111111111111111111111111111111111111111';
 const otherOwner = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const validator = getPaliModuleAddress(57057, 'ecdsa');
@@ -90,7 +91,10 @@ jest.mock('components/ToastActionFooter', () => ({
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/smartAccount', () => ({
   ...jest.requireActual('utils/smartAccount'),
-  signAndSubmitSmartAccountExecutions: (params: any) => mockInstall(params),
+  signAndSubmitSmartAccountExecutions: (params: any) =>
+    params.executions.length === 1 && params.executions[0].data === '0x'
+      ? mockRegistration(params)
+      : mockInstall(params),
 }));
 
 beforeEach(() => {
@@ -99,6 +103,7 @@ beforeEach(() => {
   // Keep normalization and ABI encoding real; replace the controller transport
   // and transaction submission boundaries so no signatures or chain I/O run.
   mockInstall.mockResolvedValue(undefined);
+  mockRegistration.mockResolvedValue(undefined);
   mockEmitter.mockImplementation(async ([, method]: string[]) => {
     if (method === 'createSmartAccount')
       return {
@@ -106,12 +111,7 @@ beforeEach(() => {
         address: '0x2222222222222222222222222222222222222222',
         smartAccount: bootstrapMetadata,
       };
-    if (
-      method === 'setAccount' ||
-      method === 'connect' ||
-      method === 'registerSmartAccountOnChain'
-    )
-      return undefined;
+    if (method === 'setAccount' || method === 'connect') return undefined;
     if (method === 'getSmartAccountNativeGasStatus')
       return { hasNativeGas: true };
     if (method === 'hydrateSmartAccount') {
@@ -294,11 +294,25 @@ describe.each(['authenticator', 'initialAuthenticator', 'policy'])(
         expect(mockEmitter.mock.calls.map(([[, method]]) => method)).toEqual([
           'createSmartAccount',
           'setAccount',
-          'registerSmartAccountOnChain',
           'getSmartAccountNativeGasStatus',
           'hydrateSmartAccount',
           'connect',
         ]);
+        expect(mockRegistration).toHaveBeenCalledWith(
+          expect.objectContaining({
+            executions: [
+              {
+                target: '0x2222222222222222222222222222222222222222',
+                data: '0x',
+                value: '0x0',
+              },
+            ],
+            feeConsent: expect.objectContaining({
+              confirmEntryPoint: expect.any(Function),
+              confirmFee: expect.any(Function),
+            }),
+          })
+        );
         expect(mockInstall).toHaveBeenCalledWith(
           expect.objectContaining({
             executions: [

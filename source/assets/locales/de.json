@@ -1286,6 +1286,7 @@
     "checkYourDevice": "Prüfen Sie Ihr {{device}}, um diese Anfrage zu genehmigen",
     "useYourPasskey": "Verwenden Sie Ihren Passkey",
     "passkeyPrompt": "Folgen Sie der Browser-Aufforderung, um mit Ihrem Passkey zu signieren",
+    "smartAccountAuthorizationRetained": "Die Smart-Account-Anweisung ist bereits signiert. Das Ablehnen dieser Gasgebühr widerruft sie nicht; sie kann weiterhin ausgeführt werden, bis ihre Nonce verbraucht ist.",
     "cancelFeePreview": "Netzwerkgebühr für den Abbruch wird geprüft…",
     "cancelFeeConsent": "Transaktion mit einer maximalen Gasgebühr von {{fee}} {{currency}} abbrechen?",
     "cancelFeeUnavailable": "Die Abbruchgebühr konnte nicht geprüft werden. Bitte erneut versuchen.",

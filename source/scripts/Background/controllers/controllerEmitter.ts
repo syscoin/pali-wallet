@@ -1,7 +1,12 @@
 import {
   SMART_ACCOUNT_CONTROLLER_PORT,
+  SMART_ACCOUNT_FEE_APPROVAL,
+  SMART_ACCOUNT_FEE_REVIEW,
   isOwnedSmartAccountControllerCall,
+  type SmartAccountControllerCallOptions,
+  type SmartAccountControllerFeeReview,
 } from '../../../shared/smartAccountControllerAuthority';
+import { assertJsonWorkBudget } from '../../../utils/requestPayloadBudget';
 
 import type { IMasterController } from '.';
 
@@ -48,14 +53,19 @@ function controllerResponseError(response: any): unknown {
 function ownedControllerCall(
   methods: readonly string[],
   params: any[],
-  timeout: number
+  timeout: number,
+  options?: SmartAccountControllerCallOptions
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let port: chrome.runtime.Port | undefined,
       settled = false;
+    const lifetime = new AbortController();
+    let feePending: object | undefined;
+    const feeIds = new Set<string>();
     const finish = (error: unknown, response?: unknown) => {
       if (settled) return;
       settled = true;
+      lifetime.abort();
       clearTimeout(timer);
       port?.onDisconnect.removeListener(disconnected);
       port?.onMessage.removeListener(received);
@@ -69,8 +79,58 @@ function ownedControllerCall(
     };
     const disconnected = () =>
       finish(new Error('Wallet approval document disconnected'));
-    const received = (response: unknown) =>
+    const received = (response: unknown) => {
+      if (
+        response &&
+        typeof response === 'object' &&
+        (response as { type?: unknown }).type === SMART_ACCOUNT_FEE_REVIEW
+      ) {
+        try {
+          assertJsonWorkBudget(response);
+          const review = (
+            response as { review?: SmartAccountControllerFeeReview }
+          ).review;
+          if (
+            !options?.confirmFee ||
+            ![
+              'submitSmartAccountExecution',
+              'registerSmartAccountOnChain',
+            ].includes(methods[1]) ||
+            feePending ||
+            feeIds.size >= 2 ||
+            typeof review?.id !== 'string' ||
+            !/^[A-Za-z0-9_-]{1,160}$/.test(review.id) ||
+            feeIds.has(review.id) ||
+            !Number.isFinite(review.validForMs) ||
+            review.validForMs <= 0 ||
+            review.validForMs > 90_000
+          )
+            throw new Error('Invalid Smart account fee review');
+          feeIds.add(review.id);
+          const attempt = {};
+          feePending = attempt;
+          void Promise.resolve()
+            .then(() => options.confirmFee(review, lifetime.signal))
+            .then((id) => {
+              if (settled || feePending !== attempt || lifetime.signal.aborted)
+                return;
+              if (id !== null && id !== review.id)
+                throw new Error('Smart account fee approval changed');
+              feePending = undefined;
+              port!.postMessage({
+                type: SMART_ACCOUNT_FEE_APPROVAL,
+                id: review.id,
+                approved: id === review.id,
+              });
+            })
+            .catch((error) => finish(error));
+        } catch (error) {
+          finish(error);
+        }
+        return;
+      }
       finish(controllerResponseError(response), response);
+    };
     const timer = setTimeout(
       () => finish(new Error('Network request timed out')),
       timeout
@@ -99,12 +159,19 @@ export async function controllerEmitter<
     | Methods<T>
     | ['wallet', 'authorizeDappManualNonce']
     | ['wallet', 'performDappEncryptionApproval']
->(methods: P, params?: any[], timeout = 10000, retryConnection = true) {
+>(
+  methods: P,
+  params?: any[],
+  timeout = 10000,
+  retryConnection = true,
+  options?: SmartAccountControllerCallOptions
+) {
   if (isOwnedSmartAccountControllerCall(methods))
     return ownedControllerCall(
       methods as readonly string[],
       params || [],
-      timeout
+      timeout,
+      options
     );
   // Add retry logic for service worker lifecycle issues
   const MAX_RETRIES = 3;

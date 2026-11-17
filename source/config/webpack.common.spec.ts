@@ -9,6 +9,22 @@ describe('smart-account execution chunk isolation', () => {
   test.each([
     ['/repo/source/pages/Send/EditPriority.tsx', true],
     ['C:\\repo\\source\\pages\\Send\\EditPriority.tsx', true],
+    ['/repo/source/pages/Settings/SmartAccountFeeConfirmation.tsx', true],
+    [
+      'C:\\repo\\source\\pages\\Settings\\SmartAccountFeeConfirmation.tsx',
+      true,
+    ],
+    ['/repo/source/pages/Settings/SmartAccountFeeConfirmation.spec.tsx', false],
+    [
+      '/repo/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js',
+      true,
+    ],
+    ['/repo/node_modules/@sidhujag/sysweb3-keyring/cjs/evm-fees.js', true],
+    [
+      '/repo/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js',
+      false,
+    ],
+    ['/repo/source/utils/smartAccount/validatorSwitch.ts', true],
     ['/repo/source/pages/Send/SendEth.tsx', false],
     ['/repo/source/pages/Send/EditPriority.spec.tsx', false],
   ])('shares only the exact fee-review page %s', (resource, expected) => {

@@ -35,6 +35,7 @@ import { signSmartAccountOwnerIntent, type SmartAccountOwnerSigningSdk } from '.
 import { createSmartAccountRawSigningIntent } from '../../../../source/utils/smartAccount/ownerSigningIntent.ts';
 import { getPaliErc7739PersonalSignHash } from '../../../../source/utils/smartAccount/erc7739.ts';
 import { encodeSmartAccountAuthenticatorSignature } from '../../../../source/utils/smartAccount/signature.ts';
+import { captureCompositePolicyChange, compositeSourceConfiguration, createCompositePolicyPossession, type CompositePolicyChange } from '../../../../source/utils/smartAccount/compositePossession.ts';
 import { supportsDappEncryptionAccount } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
@@ -1199,7 +1200,7 @@ export function createKeyringRuntimeFactory(
         const revalidateLocalSmart = () => {
           if(!localSmartHandoffs.active||!keyring.hasPublicSession()||!verifiedIdentity||!catalogueSnapshot)return;
           localSmartHandoffs.revalidateLocal(descriptor=>{
-            try{return sameSigningResumeOwner(descriptor.scope,descriptor.kind === 'local-infrastructure' ? readLocalInfrastructureScope(descriptor.scope.wallet) : readLocalSmartScope(descriptor.scope.wallet));}catch{return false;}
+            try{return sameSigningResumeOwner(descriptor.scope,descriptor.kind === 'local-infrastructure' ? readLocalInfrastructureScope(descriptor.scope.wallet) : readLocalSmartScope(descriptor.scope.wallet,descriptor.action));}catch{return false;}
           });
         };
         const publishAccounts = (next: NativeWalletCatalogueSnapshot) => {
@@ -1969,7 +1970,7 @@ export function createKeyringRuntimeFactory(
         };
         const slhDsaSigningPort = (
           captured: number, metadata: ISmartAccountMetadata, accountId: number, actionHash: string,
-          assertDelivery: () => void, approval: SLHDSADispatchApproval | null, signal: AbortSignal, authentication: NativePrivateAuthentication | null
+          assertDelivery: () => void, approval: SLHDSADispatchApproval | null, signal: AbortSignal, authentication: NativePrivateAuthentication | null, possession = false
         ): NonNullable<SmartAccountAuthenticatorPorts['slhDsa']> => {
           if (slhCapability === null) throw new KeyringRuntimeError('NOT_READY');
           const seal = JSON.stringify({ auth: metadata.auth, installedModules: metadata.installedModules });
@@ -1998,7 +1999,16 @@ export function createKeyringRuntimeFactory(
                 pkRoot: request.pkRoot, pkSeed: request.pkSeed });
               const work = (async () => {
                 const runtime = await getSlhDsa(captured); check();
-                await runtime.hydrateInstalled(key, check); check();
+                try { await runtime.hydrateInstalled(key, check); }
+                catch (error) {
+                  check();
+                  // Only absence established before authentication may skip an
+                  // optional proposed child. Corruption/refusal never qualifies.
+                  if (possession && error instanceof Error && error.message === 'SLH_DSA_INSTALLED_STATE_MISSING')
+                    throw Object.assign(new Error('Combined approval child is unavailable'), { code: 'COMPOSITE_CHILD_UNAVAILABLE' });
+                  throw error;
+                }
+                check();
                 return runtime.signActionHash(request, approval, check, signal, authentication);
               })();
               const pending = work.finally(() => { pendingSubmissions.delete(pending); });
@@ -3740,6 +3750,7 @@ export function createKeyringRuntimeFactory(
                 const owners = plan.authenticators.flatMap(entry => entry.owners.map(owner => ({...owner, publicKey:records.get(`${owner.type}:${owner.id}`)?.xpub})));
                 return Object.freeze({trezor:owners.some(owner=>owner.type==='Trezor'),binding:JSON.stringify({metadata,plan,owners})});
         };
+        let compositeLedgerOwners: (() => readonly NativeSmartAccountSigningOwner[]) | undefined;
         const ledgerConnectionTargets = (): readonly string[] => {
           if (!catalogueSnapshot || !keyring.hasPublicSession()) throw new KeyringRuntimeError('NOT_READY');
           const selected = selectedAccount();
@@ -3755,7 +3766,8 @@ export function createKeyringRuntimeFactory(
           const plan = getNativeSmartAccountSigningPlan(metadata, captureSmartSigningOwners().localOwners, {p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null});
           if (!plan) throw new KeyringRuntimeError('NOT_READY');
           const result = new Set<string>();
-          for (const entry of plan.authenticators) for (const owner of entry.owners) if (owner.type === 'Ledger') {
+          const owners = [...plan.authenticators.flatMap(entry => entry.owners), ...(compositeLedgerOwners?.() ?? [])];
+          for (const owner of owners) if (owner.type === 'Ledger') {
             const target = catalogueSnapshot.accounts.find(account => account.type === 'Ledger' && account.index === owner.id && account.address.toLowerCase() === owner.address.toLowerCase());
             if (!target || target.slip44 !== 60) throw new KeyringRuntimeError('NOT_READY');
             result.add(target.id);
@@ -4121,32 +4133,58 @@ export function createKeyringRuntimeFactory(
         };
         };
         const smartOwnerProofSequence = (handoff: NativeSigningHandoff | null) => {
-          let ordinal = 0, passkeyOrdinal = 0, slhOrdinal = 0;
+          let deferred = false;
           type Intent = Parameters<typeof signSmartAccountOwnerIntent>[0]['intent'];
           type Inventory = ReturnType<typeof captureSmartSigningOwners>;
           type PasskeyRequest = Parameters<NonNullable<SmartAccountAuthenticatorPorts['p256WebAuthn']>['signActionHash']>[0];
+          const createPhase = (expiresAt: number) => {
+            const receipts = new NativeOwnerProofReceipts({ now: Date.now });
+            let captured: ReturnType<NativeOwnerProofReceipts['capture']> | undefined, retired = false;
+            return { receipts, expiresAt, ordinal:0, passkeyOrdinal:0, slhOrdinal:0,
+              get captured() {if(retired)throw new KeyringRuntimeError('CANCELLED');return captured;},
+              capture(input:Parameters<NativeOwnerProofReceipts['capture']>[0],guard:()=>void) {
+                if(retired||captured)throw new KeyringRuntimeError('CANCELLED');captured=receipts.capture(input,guard);return captured;
+              },
+              retire() {retired=true;if(captured)receipts.retire(captured.handle);captured=undefined;},
+            };
+          };
+          const createContinuation = (expiresAt:number) => {
+            const phases = new Map<string,ReturnType<typeof createPhase>>();
+            let retired=false, challenge:ReturnType<typeof createCompositePolicyPossession>|undefined, challengeBinding:string|undefined;
+            return {
+              expiresAt,
+              phase(binding:string, allowAdditional:boolean) {
+                if(retired)throw new KeyringRuntimeError('CANCELLED');
+                let phase=phases.get(binding);
+                if(!phase) {
+                  // Ordinary handoffs retain one exact request. Only the owned
+                  // combined-policy challenge authorizes multiple proof phases.
+                  if(phases.size>=65 || phases.size>0 && (!allowAdditional || !challenge)) throw new KeyringRuntimeError('CANCELLED');
+                  phase=createPhase(expiresAt);phases.set(binding,phase);
+                }
+                return phase;
+              },
+              challenge(binding:string,create:()=>ReturnType<typeof createCompositePolicyPossession>) {
+                if(retired||challengeBinding!==undefined&&challengeBinding!==binding)throw new KeyringRuntimeError('CANCELLED');
+                if(!challenge) {challenge=create();challengeBinding=binding;}return challenge;
+              },
+              retire() {retired=true;for(const phase of phases.values())phase.retire();phases.clear();challenge=undefined;challengeBinding=undefined;},
+            };
+          };
+          let local:ReturnType<typeof createContinuation>|undefined;
+          const enteredPhases = new WeakSet<ReturnType<typeof createPhase>>();
+          const continuationFor = (expiresAt:number) => handoff
+            ? captureNativeSigningContinuation(handoff, createContinuation)
+            : (local??=createContinuation(expiresAt));
           const context = (metadata: ISmartAccountMetadata, intent: Intent, inventory: Inventory, check: () => void) => {
             check();
             const plan = getNativeSmartAccountSigningPlan(metadata, inventory.localOwners, { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null });
             if (!plan) throw new KeyringRuntimeError('NOT_READY');
-            if (!plan.authenticators.some(entry => entry.owners.some(candidate => candidate.type === 'Trezor'))) return null;
+            if (!plan.authenticators.some(entry => entry.owners.some(candidate => candidate.type === 'Trezor')) && !(deferred && handoff)) return null;
             requireNativeSigningHandoff(handoff);
             const ownedHandoff = handoff;
             try {
-              const continuation = captureNativeSigningContinuation(ownedHandoff, expiresAt => {
-                const receipts = new NativeOwnerProofReceipts({ now: Date.now });
-                let captured: ReturnType<NativeOwnerProofReceipts['capture']> | undefined;
-                let retired = false;
-                return {
-                  receipts, expiresAt,
-                  get captured() { if (retired) throw new KeyringRuntimeError('CANCELLED'); return captured; },
-                  capture(input: Parameters<NativeOwnerProofReceipts['capture']>[0], guard: () => void) {
-                    if (retired || captured) throw new KeyringRuntimeError('CANCELLED');
-                    captured = receipts.capture(input, guard); return captured;
-                  },
-                  retire() { retired = true; if (captured) receipts.retire(captured.handle); captured = undefined; },
-                };
-              });
+              const owner = continuationFor(ownedHandoff.expiresAt);
               const selected = selectedAccount(), snapshot = catalogueSnapshot;
               const smart = state.accounts.SmartAccount[selected.index];
               if (!snapshot || selected.type !== 'SmartAccount' || !smart?.smartAccount) throw new KeyringRuntimeError('CANCELLED');
@@ -4166,24 +4204,41 @@ export function createKeyringRuntimeFactory(
                 account: { id: selected.id, address: smart.address, publicKey: smart.xpub },
                 network: getNativeNetwork(snapshot.active.networkId, snapshot.networks), metadata, plan,
                 owners: [...identities.values()].map(owner => ({ ...owner, publicKey: inventory.ownerRecords.get(`${owner.type}:${owner.id}`)!.xpub })) });
+              const continuation = owner.phase(JSON.stringify([intent,binding]),deferred);
+              if(!enteredPhases.has(continuation)) {continuation.ordinal=0;continuation.passkeyOrdinal=0;continuation.slhOrdinal=0;enteredPhases.add(continuation);}
               const captured = continuation.captured ?? continuation.capture({ binding, intent, plan, owners: [...identities.values()], expiresAt: continuation.expiresAt }, check);
               return { continuation, captured, binding, ownedHandoff };
             } catch (error) { retireNativeSigningHandoff(ownedHandoff); throw error; }
           };
-          const isFinal = (captured: ReturnType<NativeOwnerProofReceipts['capture']>) => ordinal + passkeyOrdinal + slhOrdinal === captured.steps.length + captured.passkeys.length + captured.slh.length;
+          const isFinal = (phase:ReturnType<typeof createPhase>,captured: ReturnType<NativeOwnerProofReceipts['capture']>) => !deferred && phase.ordinal + phase.passkeyOrdinal + phase.slhOrdinal === captured.steps.length + captured.passkeys.length + captured.slh.length;
           return {
+          captureCompositePossession(proposal:CompositePolicyChange,preparedActionHash:string,executionContextId:string,expiresAt:number) {
+            const binding=JSON.stringify({source:proposal.sourceConfiguration,children:proposal.validator.config.childValidators,threshold:proposal.threshold,executions:proposal.executions,preparedActionHash,executionContextId});
+            const continuation = continuationFor(expiresAt);
+            // A Suite resume may shorten the operation deadline. Retain the
+            // original, signed challenge expiry; the resumed owner enforces its
+            // earlier deadline independently and cannot extend this lifetime.
+            return continuation.challenge(binding,()=>createCompositePolicyPossession({proposal,accountAddress:proposal.accountAddress,chainId:proposal.chainId,
+              executionContextId,preparedActionHash,expiresAt:continuation.expiresAt,nonce:bytesToHex(crypto.getRandomValues(new Uint8Array(32)))}));
+          },
+          async withDeferredCompletion<T>(work:()=>Promise<T>):Promise<T> {
+            if(deferred)throw new KeyringRuntimeError('CANCELLED');deferred=true;
+            try {const result=await work();if(handoff)completeNativeSigningOwnerStep(handoff,true);return result;}
+            catch(error) {if(handoff)retireNativeSigningHandoff(handoff);else local?.retire();throw error;}
+            finally {deferred=false;}
+          },
           async owner(owner: NativeSmartAccountSigningOwner, metadata: ISmartAccountMetadata, intent: Intent, inventory: Inventory,
             check: () => void, sign: (acceptTrezorProof: (signature: string) => void, position: Readonly<{step:number;total:number}> | null) => Promise<string>) {
             const ctx = context(metadata, intent, inventory, check);
             if (!ctx) return sign(() => { throw new KeyringRuntimeError('INVALID_INPUT'); }, null);
             const { continuation, captured, binding, ownedHandoff } = ctx;
             try {
-              const step = captured.steps[ordinal++];
+              const step = captured.steps[continuation.ordinal++];
               if (!step || step.owner.type !== owner.type || step.owner.id !== owner.id || step.owner.address.toLowerCase() !== owner.address.toLowerCase())
                 throw new KeyringRuntimeError('CANCELLED');
               const request = { binding, intent, step };
               const previous = continuation.receipts.read(captured.handle, request, check);
-              if (previous !== null) { check(); if (isFinal(captured)) completeNativeSigningOwnerStep(ownedHandoff, true); return previous; }
+              if (previous !== null) { check(); if (isFinal(continuation,captured)) completeNativeSigningOwnerStep(ownedHandoff, true); return previous; }
               const deviceSteps = captured.steps.filter(candidate => candidate.owner.type === 'Trezor');
               const position = owner.type === 'Trezor' ? {step:deviceSteps.findIndex(candidate => candidate.ordinal === step.ordinal)+1,total:deviceSteps.length} : null;
               let accepted = false;
@@ -4191,13 +4246,13 @@ export function createKeyringRuntimeFactory(
                 check();
                 if (owner.type !== 'Trezor' || accepted) throw new KeyringRuntimeError('CANCELLED');
                 continuation.receipts.record(captured.handle, request, verified, check); accepted = true;
-                completeNativeSigningOwnerStep(ownedHandoff, isFinal(captured)); check();
+                completeNativeSigningOwnerStep(ownedHandoff, isFinal(continuation,captured)); check();
               }, position);
               check();
               if (owner.type === 'Trezor') {
                 if (!accepted || continuation.receipts.read(captured.handle, request, check)?.toLowerCase() !== signature.toLowerCase())
                   throw new KeyringRuntimeError('CANCELLED');
-              } else { continuation.receipts.record(captured.handle, request, signature, check); if (isFinal(captured)) completeNativeSigningOwnerStep(ownedHandoff, true); }
+              } else { continuation.receipts.record(captured.handle, request, signature, check); if (isFinal(continuation,captured)) completeNativeSigningOwnerStep(ownedHandoff, true); }
               check(); return signature;
             } catch (error) { retireNativeSigningHandoff(ownedHandoff); throw error; }
           },
@@ -4207,16 +4262,16 @@ export function createKeyringRuntimeFactory(
             if (!ctx) return sign();
             const { continuation, captured, binding, ownedHandoff } = ctx;
             try {
-              const step = captured.passkeys[passkeyOrdinal++];
+              const step = captured.passkeys[continuation.passkeyOrdinal++];
               if (!step || request.actionHash !== intent.actionHash ||
                   JSON.stringify(request.expectedPublicKey) !== JSON.stringify(step.config.publicKey) ||
                   request.credentialId !== (step.config.credentialId || undefined) || request.expectedCredentialIdHash !== step.config.credentialIdHash)
                 throw new KeyringRuntimeError('CANCELLED');
               const receipt = { binding, intent, step }, previous = continuation.receipts.readPasskey(captured.handle, receipt, check);
-              if (previous !== null) { check(); if (isFinal(captured)) completeNativeSigningOwnerStep(ownedHandoff, true); return { signature: previous }; }
+              if (previous !== null) { check(); if (isFinal(continuation,captured)) completeNativeSigningOwnerStep(ownedHandoff, true); return { signature: previous }; }
               const signed = await sign(); check();
               continuation.receipts.recordPasskey(captured.handle, receipt, signed.signature, check);
-              if (isFinal(captured)) completeNativeSigningOwnerStep(ownedHandoff, true);
+              if (isFinal(continuation,captured)) completeNativeSigningOwnerStep(ownedHandoff, true);
               check(); return { signature: signed.signature };
             } catch (error) { retireNativeSigningHandoff(ownedHandoff); throw error; }
           },
@@ -4228,7 +4283,7 @@ export function createKeyringRuntimeFactory(
               if (!ctx) return port.signActionHash!(request);
               const { continuation, captured, binding, ownedHandoff } = ctx;
               try {
-                const step = captured.slh[slhOrdinal++];
+                const step = captured.slh[continuation.slhOrdinal++];
                 if (!step || request.accountId !== selectedAccount().index || request.actionHash !== intent.actionHash ||
                     request.keyId !== step.config.keyId || request.parameterSet !== step.config.parameterSet ||
                     normalizeSLHDSAPublicKeyField(request.pkRoot) !== normalizeSLHDSAPublicKeyField(step.config.pkRoot) ||
@@ -4236,14 +4291,19 @@ export function createKeyringRuntimeFactory(
                   throw new KeyringRuntimeError('CANCELLED');
                 const receipt = { binding, intent, step };
                 const previous = continuation.receipts.readSlh(captured.handle, receipt, check);
-                if (previous !== null) { check(); if (isFinal(captured)) completeNativeSigningOwnerStep(ownedHandoff, true); return previous; }
+                if (previous !== null) { check(); if (isFinal(continuation,captured)) completeNativeSigningOwnerStep(ownedHandoff, true); return previous; }
                 // The shared signer releases this output only after its encrypted
                 // usage counter commits. Retain that proof, never sign it again on return.
                 const signature = await port.signActionHash!(request); check();
                 continuation.receipts.recordSlh(captured.handle, receipt, signature, check);
-                if (isFinal(captured)) completeNativeSigningOwnerStep(ownedHandoff, true);
+                if (isFinal(continuation,captured)) completeNativeSigningOwnerStep(ownedHandoff, true);
                 check(); return signature;
-              } catch (error) { retireNativeSigningHandoff(ownedHandoff); throw error; }
+              } catch (error) {
+                check();
+                if (intent.purpose !== 'policy-possession' || !error || typeof error !== 'object' ||
+                    Object.getOwnPropertyDescriptor(error, 'code')?.value !== 'COMPOSITE_CHILD_UNAVAILABLE') retireNativeSigningHandoff(ownedHandoff);
+                throw error;
+              }
             } });
           },
           };
@@ -5361,16 +5421,29 @@ export function createKeyringRuntimeFactory(
         type SmartOperationOrigin = Readonly<{kind:'dapp';handoff:NativeSigningHandoff}> |
           Readonly<{kind:'local-new';action:NativeSmartLocalAction}> |
           Readonly<{kind:'local-resume';descriptor:LocalSigningHandoffDescriptor}>;
-        const readLocalSmartScope = (wallet: string): LocalSigningResumeScope => {
+        const proposedPolicyHasTrezor = (proposal: CompositePolicyChange | null) => !!proposal && proposal.children.some(child => {
+          if(child.id!=='ecdsa'||!child.data)return false;
+          const metadata:ISmartAccountMetadata={...proposal.smartAccount,auth:{module:child.id,validator:child.address,data:child.data}};
+          const plan=getNativeSmartAccountSigningPlan(metadata,captureSmartSigningOwners().localOwners,{p256WebAuthn:passkeys!==null,slhDsa:slhCapability!==null});
+          return !!plan?.authenticators.some(entry=>entry.owners.some(owner=>owner.type==='Trezor'));
+        });
+        const readLocalSmartScope = (wallet: string, action?: NativeSmartLocalAction): LocalSigningResumeScope => {
           const snapshot=catalogueSnapshot,selected=snapshot&&selectedAccount();
           if(!snapshot||!selected||selected.type!=='SmartAccount'||!keyring.hasPublicSession()||verifiedIdentity?.walletBindingId!==wallet)throw new KeyringRuntimeError('CANCELLED');
           const network=getNativeNetwork(snapshot.active.networkId,snapshot.networks),signing=smartSigningContext(selected.id),record=state.accounts.SmartAccount[selected.index];
           if(!record||typeof record.xpub!=='string'||!record.xpub)throw new KeyringRuntimeError('NOT_READY');
+          let proposal:CompositePolicyChange|null=null;
+          if(action?.kind==='modules'&&action.draft.kind==='composite'&&record.smartAccount) {
+            const command=buildNativeSmartModuleCommand({accountAddress:record.address,metadata:record.smartAccount,draft:action.draft,
+              deploymentAdmission:'deployed-only',removalPolicy:'all-installed-composites',isAlgorithmAvailable:isPaliValidatorAlgorithmSupported});
+            proposal=captureCompositePolicyChange({accountAddress:record.address,metadata:record.smartAccount,executions:command.executions});
+          }
           return Object.freeze({wallet,unlockGeneration:trezorSessionGeneration,accountId:selected.id,address:selected.address,type:selected.type,xpub:record.xpub,
-            registration:JSON.stringify(network),signing:signing.binding,trezor:signing.trezor});
+            registration:JSON.stringify(network),signing:proposal?JSON.stringify({current:signing.binding,source:proposal.sourceConfiguration,children:proposal.validator.config.childValidators,threshold:proposal.threshold}):signing.binding,
+            trezor:signing.trezor||proposedPolicyHasTrezor(proposal)});
         };
-        const localSmartScope = async (captured: number, check: () => void): Promise<LocalSigningResumeScope> => {
-          check();const wallet=await dataBinding(captured,check);check();return readLocalSmartScope(wallet);
+        const localSmartScope = async (captured: number, check: () => void, action?:NativeSmartLocalAction): Promise<LocalSigningResumeScope> => {
+          check();const wallet=await dataBinding(captured,check);check();return readLocalSmartScope(wallet,action);
         };
         const openSmartAccountOperation = async (intent: NativeSmartAccountIntent, assertOwner: () => void, origin: SmartOperationOrigin, authentication: NativePrivateAuthentication | null, submitBatch?: NativeSmartOperationPorts['submitBatch'], assertGuardianPolicy?: NativeSmartOperationPorts['assertGuardianPolicy']): Promise<NativeSmartAccountOperation> => {
           if (authentication !== null) assertNativePrivateAuthentication(authentication);
@@ -5397,16 +5470,17 @@ export function createKeyringRuntimeFactory(
               { keyring: transactionRecordKeyring(ring, check), assertCurrent: check }, network.chainId, account.address);
             check();
             const ownerInventory = captureSmartSigningOwners();
+            const proposedPolicy=intent.kind==='modules'?captureCompositePolicyChange({accountAddress:account.address,metadata:account.smartAccount,executions:intent.command.executions}):null;
             // Suite continuation owns only an actual Trezor signing plan. Ordinary
             // wallet operations keep their existing authorization/cancellation path.
             const localTrezor = origin.kind !== 'dapp' &&
               ownerInventory.localOwners.some(owner => owner.type === 'Trezor') &&
               canSignNativeSmartAccountActionHash(account.smartAccount, ownerInventory.localOwners, { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null }) &&
-              getNativeSmartAccountSigningPlan(account.smartAccount, ownerInventory.localOwners, { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null })!
-                .authenticators.some(entry => entry.owners.some(owner => owner.type === 'Trezor'));
+              (getNativeSmartAccountSigningPlan(account.smartAccount, ownerInventory.localOwners, { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null })!
+                .authenticators.some(entry => entry.owners.some(owner => owner.type === 'Trezor')) || proposedPolicyHasTrezor(proposedPolicy));
             const saved=origin.kind==='local-resume'?origin.descriptor:null;
             const deadline=origin.kind==='dapp'?origin.handoff.expiresAt:saved?.expiresAt??Date.now()+SMART_ACCOUNT_EXECUTION_LIFETIME_MS;
-            const scope=localTrezor?await localSmartScope(captured,check):null;check();
+            const scope=localTrezor?await localSmartScope(captured,check,origin.kind==='local-new'?origin.action:saved?.action):null;check();
             if(saved&&(!scope||localSmartHandoffs.localDescriptor(saved.id)!==saved||!sameSigningResumeOwner(saved.scope,scope)||scope.unlockGeneration<=saved.scope.unlockGeneration))throw new KeyringRuntimeError('CANCELLED');
             let operation!:NativeSmartAccountOperation;
             let disposeOriginal:()=>Promise<void>;
@@ -5431,6 +5505,9 @@ export function createKeyringRuntimeFactory(
               checkAddress: dependencies.checkSmartAccountAddress ?? (address => blacklistService.checkAddress(address)),
               account: account as IKeyringAccountState & { smartAccount: NonNullable<IKeyringAccountState['smartAccount']> },
               wallet: state, network, rpc, assertCurrent: check,
+              captureCompositePossession(proposal,preparedActionHash) {
+                check();return signOwnerProof.captureCompositePossession(proposal,preparedActionHash,id,deadline);
+              },
               p256WebAuthn: passkeys === null ? null : (metadata, intent, assertCurrent, signal) => ({
                 signActionHash: request => {
                   const guard = () => { check(); checkGuard(assertCurrent); };
@@ -5441,9 +5518,9 @@ export function createKeyringRuntimeFactory(
               slhDsa: slhCapability === null ? null : (metadata, intent, assertCurrent, signal) => {
                 const guard = () => { check(); checkGuard(assertCurrent); };
                 return signOwnerProof.slh(metadata, intent, ownerInventory,
-                  slhDsaSigningPort(captured, metadata, accountId, intent.actionHash, guard, null, signal, authentication), guard);
+                  slhDsaSigningPort(captured, metadata, accountId, intent.actionHash, guard, null, signal, authentication, intent.purpose === 'policy-possession'), guard);
               },
-              withOwnerProof(signal, assertCurrent, work) {
+              withOwnerProof(signal, assertCurrent, work, options) {
                 check(); checkGuard(assertCurrent);
                 if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
                 const smartAccount = account?.smartAccount;
@@ -5455,7 +5532,7 @@ export function createKeyringRuntimeFactory(
                 return run(async ownerGeneration => {
                   const guard = () => { current(ownerGeneration); check(); checkGuard(assertCurrent);
                     if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
-                  guard(); const result = await work(); guard(); return result;
+                  guard(); const result = await (options?.compositePossession ? signOwnerProof.withDeferredCompletion(work) : work()); guard(); return result;
                 });
               },
               async signOwner(address, digest, owner, assertCurrent, intent, signal, metadata) {
@@ -5578,6 +5655,31 @@ export function createKeyringRuntimeFactory(
                 }
               },
             });
+            if (proposedPolicy) {
+              const sourceConfiguration = compositeSourceConfiguration(account.smartAccount!);
+              const proposedOwners = proposedPolicy.children.flatMap(child => {
+                if (child.id !== 'ecdsa' || !child.data) return [];
+                const childMetadata: ISmartAccountMetadata = { ...proposedPolicy.smartAccount,
+                  auth: { module: child.id, validator: child.address, data: child.data } };
+                return getNativeSmartAccountSigningPlan(childMetadata, ownerInventory.localOwners,
+                  { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null })?.authenticators.flatMap(entry => entry.owners) ?? [];
+              }).filter((owner): owner is NativeSmartAccountSigningOwner => owner.type === 'Ledger');
+              const capturedTargets = () => {
+                check();
+                if ((!account?.smartAccount || compositeSourceConfiguration(account.smartAccount) !== sourceConfiguration)) throw new KeyringRuntimeError('CANCELLED');
+                for (const owner of proposedOwners) {
+                  const record = ownerInventory.ownerRecords.get(`${owner.type}:${owner.id}`);
+                  if (!record || state.accounts[owner.type][owner.id] !== record || record.address.toLowerCase() !== owner.address.toLowerCase()) throw new KeyringRuntimeError('CANCELLED');
+                }
+                return proposedOwners;
+              };
+              compositeLedgerOwners = capturedTargets;
+              const disposeTargets = operation.dispose.bind(operation);
+              operation.dispose = async () => {
+                if (compositeLedgerOwners === capturedTargets) compositeLedgerOwners = undefined;
+                await disposeTargets();
+              };
+            }
             if(localTrezor){
               requireNativeSigningHandoff(handoff);
               disposeOriginal=operation.dispose.bind(operation);
@@ -5847,7 +5949,7 @@ export function createKeyringRuntimeFactory(
             const check=()=>{current(captured);checkGuard(assertOwner);if(signal.aborted||localSmartHandoffs.localDescriptor(id)!==descriptor)throw new KeyringRuntimeError('CANCELLED');};
             try{
               check();await localSmartHandoffs.drain(id);check();
-              const scope=await localSmartScope(captured,check);check();
+              const scope=await localSmartScope(captured,check,descriptor.action);check();
               if(!sameSigningResumeOwner(descriptor.scope,scope)||scope.unlockGeneration<=descriptor.scope.unlockGeneration)throw new KeyringRuntimeError('CANCELLED');
               const origin:SmartOperationOrigin={kind:'local-resume',descriptor},action=descriptor.action;
               if(action.kind==='guardian-policy')return await openGuardianPolicy(action.draft,signal,assertOwner,origin,authentication);

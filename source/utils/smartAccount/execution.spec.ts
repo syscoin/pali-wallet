@@ -1,5 +1,9 @@
 import { createHash, webcrypto } from 'crypto';
 import { Wallet } from 'ethers/wallet';
+import {
+  SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  withReviewedSmartAccountExecution,
+} from 'tests/fixtures/reviewedSmartAccountExecution';
 
 import { KeyringAccountType } from 'types/network';
 import { SLH_DSA_SIGNATURE_LENGTH } from 'utils/slhDsa/constants';
@@ -9,6 +13,14 @@ import {
   signAndSubmitSmartAccountExecutions,
   signSmartAccountActionHash,
 } from './execution';
+
+const reviewedFixture = (
+  params: Parameters<typeof signAndSubmitSmartAccountExecutions>[0]
+) =>
+  withReviewedSmartAccountExecution(params, {
+    payer: { address: '0x' + '44'.repeat(20), id: 0, type: 'HDAccount' },
+    userOperation: SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  });
 
 const ACCOUNT_ADDRESS = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const ENTRY_TARGET = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -104,16 +116,18 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         if (method === 'submitSmartAccountExecution') return payload[0];
         throw Error(method);
       });
-      const request = signAndSubmitSmartAccountExecutions({
-        accountId: 0,
-        accountAddress: ACCOUNT_ADDRESS,
-        smartAccount,
-        authenticatorContexts: { 'slh-dsa': { signActionHash } },
-        controllerEmitter: emitter,
-        executions: [],
-        expectedContext,
-        approvedFeeQuote: { maximumFeeWei: approved, feePayer },
-      });
+      const request = signAndSubmitSmartAccountExecutions(
+        reviewedFixture({
+          accountId: 0,
+          accountAddress: ACCOUNT_ADDRESS,
+          smartAccount,
+          authenticatorContexts: { 'slh-dsa': { signActionHash } },
+          controllerEmitter: emitter,
+          executions: [],
+          expectedContext,
+          approvedFeeQuote: { maximumFeeWei: approved, feePayer },
+        })
+      );
       if (allowed) await expect(request).resolves.toBeTruthy();
       else
         await expect(request).rejects.toMatchObject({
@@ -173,20 +187,22 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       throw Error(`Unexpected method ${method}`);
     });
     await expect(
-      signAndSubmitSmartAccountExecutions({
-        accountId: 0,
-        accountAddress: ACCOUNT_ADDRESS,
-        smartAccount,
-        authenticatorContexts: { 'slh-dsa': { signActionHash } },
-        controllerEmitter: emitter,
-        executions: [],
-        expectedContext,
-        approvedFeeQuote: {
-          executionContextId: 'approved-context',
-          maximumFeeWei: '5001',
-          feePayer,
-        },
-      })
+      signAndSubmitSmartAccountExecutions(
+        reviewedFixture({
+          accountId: 0,
+          accountAddress: ACCOUNT_ADDRESS,
+          smartAccount,
+          authenticatorContexts: { 'slh-dsa': { signActionHash } },
+          controllerEmitter: emitter,
+          executions: [],
+          expectedContext,
+          approvedFeeQuote: {
+            executionContextId: 'approved-context',
+            maximumFeeWei: '5001',
+            feePayer,
+          },
+        })
+      )
     ).resolves.toMatchObject({ executionContextId: 'approved-context' });
     expect(signActionHash).toHaveBeenCalledTimes(1);
     expect(
@@ -201,11 +217,14 @@ describe('signAndSubmitSmartAccountExecutions', () => {
   it.each(['before signing', 'after signing', 'after durable marker'])(
     'rejects a stale approval %s before submission',
     async (stage) => {
-      const signActionHash = jest.fn().mockResolvedValue(validSlhDsaSignature);
-      const beforeSubmit = jest.fn();
-      let checks = 0;
-      const expectedCheck =
-        stage === 'before signing' ? 1 : stage === 'after signing' ? 3 : 4;
+      let reached = 'before signing';
+      const signActionHash = jest.fn(async () => {
+        reached = 'after signing';
+        return validSlhDsaSignature;
+      });
+      const beforeSubmit = jest.fn(async () => {
+        reached = 'after durable marker';
+      });
       const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
         if (method === 'prepareSmartAccountExecutions') {
           expect(payload[2].expectedContext).toEqual(expectedContext);
@@ -221,7 +240,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         if (method === 'assertSmartAccountPreparedNonce') return;
         if (method === 'assertSmartAccountExecutionContext') {
           expect(payload).toEqual(['prepared-context', `0x${'12'.repeat(32)}`]);
-          if (++checks === expectedCheck)
+          if (reached === stage)
             throw Object.assign(Error('PALI_TRANSACTION_CONTEXT_CHANGED'), {
               transactionNotBroadcast: true,
             });
@@ -230,16 +249,18 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         throw Error(`Unexpected method ${method}`);
       });
       await expect(
-        signAndSubmitSmartAccountExecutions({
-          accountAddress: ACCOUNT_ADDRESS,
-          accountId: 0,
-          authenticatorContexts: { 'slh-dsa': { signActionHash } },
-          controllerEmitter: emitter,
-          executions: [],
-          expectedContext,
-          onBeforeSubmit: beforeSubmit,
-          smartAccount,
-        })
+        signAndSubmitSmartAccountExecutions(
+          reviewedFixture({
+            accountAddress: ACCOUNT_ADDRESS,
+            accountId: 0,
+            authenticatorContexts: { 'slh-dsa': { signActionHash } },
+            controllerEmitter: emitter,
+            executions: [],
+            expectedContext,
+            onBeforeSubmit: beforeSubmit,
+            smartAccount,
+          })
+        )
       ).rejects.toMatchObject({ transactionNotBroadcast: true });
       expect(signActionHash).toHaveBeenCalledTimes(
         stage === 'before signing' ? 0 : 1
@@ -266,15 +287,17 @@ describe('signAndSubmitSmartAccountExecutions', () => {
   it('does not sign an approval whose preparation omitted its background context', async () => {
     const signActionHash = jest.fn().mockResolvedValue(validSlhDsaSignature);
     await expect(
-      signAndSubmitSmartAccountExecutions({
-        accountAddress: ACCOUNT_ADDRESS,
-        accountId: 0,
-        authenticatorContexts: { 'slh-dsa': { signActionHash } },
-        controllerEmitter: jest.fn().mockResolvedValue({ actionHash: '0x' }),
-        executions: [],
-        expectedContext,
-        smartAccount,
-      })
+      signAndSubmitSmartAccountExecutions(
+        reviewedFixture({
+          accountAddress: ACCOUNT_ADDRESS,
+          accountId: 0,
+          authenticatorContexts: { 'slh-dsa': { signActionHash } },
+          controllerEmitter: jest.fn().mockResolvedValue({ actionHash: '0x' }),
+          executions: [],
+          expectedContext,
+          smartAccount,
+        })
+      )
     ).rejects.toMatchObject({ transactionNotBroadcast: true });
     expect(signActionHash).not.toHaveBeenCalled();
   });
@@ -312,14 +335,18 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       smartAccount,
     };
     const results = await Promise.all([
-      signAndSubmitSmartAccountExecutions({
-        ...params,
-        onBeforeSubmit: firstMarker,
-      }),
-      signAndSubmitSmartAccountExecutions({
-        ...params,
-        onBeforeSubmit: secondMarker,
-      }),
+      signAndSubmitSmartAccountExecutions(
+        reviewedFixture({
+          ...params,
+          onBeforeSubmit: firstMarker,
+        })
+      ),
+      signAndSubmitSmartAccountExecutions(
+        reviewedFixture({
+          ...params,
+          onBeforeSubmit: secondMarker,
+        })
+      ),
     ]);
     expect(preparations).toBe(2);
     expect(firstMarker).toHaveBeenCalledTimes(1);
@@ -381,8 +408,8 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     };
     try {
       const requests = [
-        signAndSubmitSmartAccountExecutions(params),
-        signAndSubmitSmartAccountExecutions(params),
+        signAndSubmitSmartAccountExecutions(reviewedFixture(params)),
+        signAndSubmitSmartAccountExecutions(reviewedFixture(params)),
       ];
       // Hold the signature until both immediately settled admission paths ran.
       await new Promise<void>((resolve) => setImmediate(resolve));
@@ -437,11 +464,15 @@ describe('signAndSubmitSmartAccountExecutions', () => {
           : { rpcUrl: 'rpc-b' }),
       };
       const results = await Promise.all([
-        signAndSubmitSmartAccountExecutions({ ...params, expectedContext }),
-        signAndSubmitSmartAccountExecutions({
-          ...params,
-          expectedContext: other,
-        }),
+        signAndSubmitSmartAccountExecutions(
+          reviewedFixture({ ...params, expectedContext })
+        ),
+        signAndSubmitSmartAccountExecutions(
+          reviewedFixture({
+            ...params,
+            expectedContext: other,
+          })
+        ),
       ]);
       expect(signActionHash).toHaveBeenCalledTimes(2);
       expect(results.map((result) => result.expectedContext)).toEqual([
@@ -509,24 +540,28 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       };
 
       await Promise.all([
-        signAndSubmitSmartAccountExecutions({
-          ...baseParams,
-          feeOverrides: {
-            [feeField]: '1',
-            ...(feeField === 'maxFeePerGas'
-              ? { maxPriorityFeePerGas: '0' }
-              : {}),
-          },
-        }),
-        signAndSubmitSmartAccountExecutions({
-          ...baseParams,
-          feeOverrides: {
-            [feeField]: '2',
-            ...(feeField === 'maxFeePerGas'
-              ? { maxPriorityFeePerGas: '0' }
-              : {}),
-          },
-        }),
+        signAndSubmitSmartAccountExecutions(
+          reviewedFixture({
+            ...baseParams,
+            feeOverrides: {
+              [feeField]: '1',
+              ...(feeField === 'maxFeePerGas'
+                ? { maxPriorityFeePerGas: '0' }
+                : {}),
+            },
+          })
+        ),
+        signAndSubmitSmartAccountExecutions(
+          reviewedFixture({
+            ...baseParams,
+            feeOverrides: {
+              [feeField]: '2',
+              ...(feeField === 'maxFeePerGas'
+                ? { maxPriorityFeePerGas: '0' }
+                : {}),
+            },
+          })
+        ),
       ]);
 
       const prepareCalls = controllerEmitter.mock.calls.filter(
@@ -583,22 +618,24 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         if (submits === 1) throw error;
         return { hash: 'retried' };
       });
-      const submitting = signAndSubmitSmartAccountExecutions({
-        accountAddress: ACCOUNT_ADDRESS,
-        accountId: 0,
-        smartAccount,
-        authenticatorContexts: {
-          'slh-dsa': { signActionHash: async () => validSlhDsaSignature },
-        },
-        controllerEmitter: emitter,
-        executions,
-        onBeforeSubmit: async () => {
-          events.push('durable begin');
-        },
-        onSubmissionNotBroadcast: async () => {
-          events.push('proven unsent');
-        },
-      });
+      const submitting = signAndSubmitSmartAccountExecutions(
+        reviewedFixture({
+          accountAddress: ACCOUNT_ADDRESS,
+          accountId: 0,
+          smartAccount,
+          authenticatorContexts: {
+            'slh-dsa': { signActionHash: async () => validSlhDsaSignature },
+          },
+          controllerEmitter: emitter,
+          executions,
+          onBeforeSubmit: async () => {
+            events.push('durable begin');
+          },
+          onSubmissionNotBroadcast: async () => {
+            events.push('proven unsent');
+          },
+        })
+      );
       if (expected === 2)
         await expect(submitting).resolves.toEqual({ hash: 'retried' });
       else await expect(submitting).rejects.toBe(error);
@@ -606,7 +643,12 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         ([[, method]]) => method === 'submitSmartAccountExecution'
       );
       expect(calls).toHaveLength(expected);
-      for (const call of calls) expect(call.slice(2)).toEqual([300000, false]);
+      for (const call of calls)
+        expect(call.slice(2)).toEqual([
+          300000,
+          false,
+          { confirmFee: expect.any(Function) },
+        ]);
       expect(events).toEqual(
         expected === 2
           ? [
@@ -630,22 +672,26 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       smartAccount,
     });
     await expect(
-      signAndSubmitSmartAccountExecutions({
-        accountAddress: ACCOUNT_ADDRESS,
-        accountId: 0,
-        smartAccount,
-        authenticatorContexts: {
-          'slh-dsa': { signActionHash: async () => validSlhDsaSignature },
-        },
-        controllerEmitter: emitter,
-        executions: [],
-        onBeforeSubmit: async () => {
-          throw Error('Persistence failed');
-        },
-      })
+      signAndSubmitSmartAccountExecutions(
+        reviewedFixture({
+          accountAddress: ACCOUNT_ADDRESS,
+          accountId: 0,
+          smartAccount,
+          authenticatorContexts: {
+            'slh-dsa': { signActionHash: async () => validSlhDsaSignature },
+          },
+          controllerEmitter: emitter,
+          executions: [],
+          onBeforeSubmit: async () => {
+            throw Error('Persistence failed');
+          },
+        })
+      )
     ).rejects.toThrow('Persistence failed');
     expect(emitter.mock.calls.map(([[, method]]) => method)).toEqual([
       'prepareSmartAccountExecutions',
+      'assertSmartAccountExecutionContext',
+      'assertSmartAccountExecutionContext',
       'assertSmartAccountExecutionContext',
       'assertSmartAccountExecutionContext',
       'assertSmartAccountExecutionContext',

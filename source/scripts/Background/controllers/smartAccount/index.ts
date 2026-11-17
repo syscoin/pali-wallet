@@ -6,6 +6,13 @@ import {
   readFreshEvmState,
   withEvmReadPhase,
 } from '../../../../shared/evmReadPhase';
+import { getSmartAccountUserOpRequiredPrefund } from '../../../../utils/smartAccount/account.ts';
+import {
+  captureCompositePolicyChange,
+  createCompositePolicyPossession,
+  verifyCompositePolicyPossession,
+  type CompositePolicyChange,
+} from '../../../../utils/smartAccount/compositePossession.ts';
 import { createSmartAccountRawSigningIntent } from '../../../../utils/smartAccount/ownerSigningIntent.ts';
 import { buildSmartAccountUserOpSigningIntent } from '../../../../utils/smartAccount/userOperationHash.ts';
 import {
@@ -29,6 +36,7 @@ import {
 } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { hexDataSlice } from 'utils/ethersV6Compat';
 import { getAddress } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { AddressZero } from 'utils/ethersV6Compat';
@@ -175,6 +183,7 @@ import {
   clearInfrastructureJournal,
 } from './infrastructureJournal';
 import type { SmartAccountControllerAuthority } from '../../../../shared/smartAccountControllerAuthority';
+import type { SmartAccountFeeQuote } from '../../../../shared/smartAccountFeeQuote.ts';
 import type { SmartAccountPendingRecords } from '../../../../wallet/evmSignedRecords';
 import type { ITxid } from '@sidhujag/sysweb3-utils';
 
@@ -228,6 +237,7 @@ export interface ISmartAccountControllerDependencies {
       assertCurrentContext?: () => void;
       assertPendingState?: () => Promise<void>;
       clearNavigation?: boolean;
+      confirmFee?: SmartAccountControllerAuthority['confirmFee'];
       genericReviewId?: string;
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
@@ -338,6 +348,21 @@ class SmartAccountController {
     {
       accountId: number;
       actionHash: string;
+      compositePossession?: {
+        accepted: boolean;
+        challenge: ReturnType<typeof createCompositePolicyPossession>;
+        proofs: Map<
+          string,
+          { signature: string; verification: Promise<boolean> }
+        >;
+        proposal: CompositePolicyChange;
+        sourceMetadata: string;
+      };
+      entryPointFeeApproved?: boolean;
+      entryPointFeeConsumed?: boolean;
+      entryPointFeeQuote?: SmartAccountFeeQuote & {
+        executionContextId: string;
+      };
       executionIntent?: string;
       expiresAt: number;
       gasPrice?: string;
@@ -511,6 +536,16 @@ class SmartAccountController {
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
       this.assertInfrastructureContext(context.snapshot);
+      if (context.compositePossession) {
+        const current = this.getSmartAccountById(context.accountId).metadata;
+        if (
+          JSON.stringify({
+            auth: current.auth,
+            installedModules: current.installedModules,
+          }) !== context.compositePossession.sourceMetadata
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      }
     } catch {
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
@@ -545,6 +580,8 @@ class SmartAccountController {
   public captureOwnerSigningIntent(executionContextId: string) {
     this.assertSmartAccountExecutionContext(executionContextId);
     const context = this.executionContexts.get(executionContextId)!;
+    this.assertCompositePossessionAccepted(executionContextId);
+    this.assertExecutionFeeApproved(executionContextId);
     const intent =
       context.purpose === 'user-operation' && context.userOperation
         ? buildSmartAccountUserOpSigningIntent(
@@ -563,6 +600,237 @@ class SmartAccountController {
     if (intent.actionHash.toLowerCase() !== context.actionHash.toLowerCase())
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     return Object.freeze({ intent, expiresAt: context.expiresAt });
+  }
+
+  public assertCompositePossessionAccepted(executionContextId: string): void {
+    this.assertSmartAccountExecutionContext(executionContextId);
+    const possession =
+      this.executionContexts.get(executionContextId)!.compositePossession;
+    if (possession && !possession.accepted)
+      throw Object.assign(
+        new Error('Prove the proposed combined approvals before signing'),
+        { transactionNotBroadcast: true }
+      );
+  }
+
+  public assertExecutionFeeApproved(executionContextId: string): void {
+    this.assertSmartAccountExecutionContext(executionContextId);
+    const context = this.executionContexts.get(executionContextId)!;
+    if (
+      context.purpose === 'user-operation' &&
+      (!context.entryPointFeeApproved || context.entryPointFeeConsumed)
+    )
+      throw Object.assign(
+        new Error('Approve the Smart account fee quote before signing'),
+        { transactionNotBroadcast: true }
+      );
+  }
+
+  public approveSmartAccountExecutionFeeQuote(
+    executionContextId: string,
+    quote: Pick<
+      SmartAccountFeeQuote,
+      'feePayer' | 'maximumFeeWei' | 'executionContextId'
+    > &
+      Partial<Pick<SmartAccountFeeQuote, 'gasUnits'>>
+  ): void {
+    this.assertSmartAccountExecutionContext(executionContextId);
+    const context = this.executionContexts.get(executionContextId)!;
+    const expected = context.entryPointFeeQuote;
+    if (
+      !expected ||
+      context.entryPointFeeConsumed ||
+      quote?.executionContextId !== executionContextId ||
+      quote.feePayer?.id !== expected.feePayer.id ||
+      quote.feePayer?.type !== expected.feePayer.type ||
+      typeof quote.feePayer?.address !== 'string' ||
+      quote.feePayer.address.toLowerCase() !==
+        expected.feePayer.address.toLowerCase() ||
+      typeof quote.maximumFeeWei !== 'string' ||
+      !/^\d{1,80}$/.test(quote.maximumFeeWei) ||
+      BigInt(quote.maximumFeeWei) !== BigInt(expected.maximumFeeWei) ||
+      (quote.gasUnits !== undefined &&
+        (typeof quote.gasUnits !== 'string' ||
+          !/^\d{1,80}$/.test(quote.gasUnits) ||
+          BigInt(quote.gasUnits) !== BigInt(expected.gasUnits)))
+    )
+      throw Object.assign(
+        new Error('Smart account fee quote changed; review it again'),
+        { transactionNotBroadcast: true }
+      );
+    context.entryPointFeeApproved = true;
+  }
+
+  public getSmartAccountCompositePossession(executionContextId: string) {
+    this.assertSmartAccountExecutionContext(executionContextId);
+    const context = this.executionContexts.get(executionContextId)!;
+    const possession = context.compositePossession;
+    return possession
+      ? Object.freeze({
+          ...possession.challenge,
+          proposal: possession.proposal,
+          accountId: context.accountId,
+          executionContextId,
+        })
+      : null;
+  }
+
+  public captureCompositeOwnerSigningIntent(
+    executionContextId: string,
+    ownerAddress: string
+  ) {
+    this.assertExecutionFeeApproved(executionContextId);
+    const challenge =
+      this.getSmartAccountCompositePossession(executionContextId);
+    if (
+      !challenge ||
+      !challenge.smartAccount.installedModules?.some(
+        (module) =>
+          module.type === 'validator' &&
+          module.id === 'ecdsa' &&
+          challenge.validator.config.childValidators.some(
+            (child) => child.toLowerCase() === module.address.toLowerCase()
+          ) &&
+          module.config.owners.some(
+            (owner) => getAddress(owner) === getAddress(ownerAddress)
+          )
+      )
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    return Object.freeze({
+      intent: challenge.intent,
+      expiresAt: this.executionContexts.get(executionContextId)!.expiresAt,
+    });
+  }
+
+  /** Only the exact proposed installed child may use the separate possession digest. */
+  public captureCompositeSlhSigningMetadata(
+    executionContextId: string,
+    actionHash: string,
+    keyId: string
+  ): ISmartAccountMetadata | undefined {
+    this.assertSmartAccountExecutionContext(executionContextId);
+    const context = this.executionContexts.get(executionContextId)!;
+    this.assertExecutionFeeApproved(executionContextId);
+    if (actionHash.toLowerCase() === context.actionHash.toLowerCase()) {
+      this.assertCompositePossessionAccepted(executionContextId);
+      return undefined;
+    }
+    const challenge = context.compositePossession?.challenge;
+    if (
+      !challenge ||
+      challenge.intent.actionHash.toLowerCase() !== actionHash.toLowerCase() ||
+      !challenge.smartAccount.installedModules?.some(
+        (module) =>
+          module.type === 'validator' &&
+          module.id === 'slh-dsa' &&
+          module.config.keyId === keyId &&
+          challenge.validator.config.childValidators.some(
+            (child) => child.toLowerCase() === module.address.toLowerCase()
+          )
+      )
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    return challenge.smartAccount;
+  }
+
+  public async verifySmartAccountCompositePossession(
+    executionContextId: string,
+    signatures: readonly string[],
+    assertApprovalCurrent: () => void
+  ) {
+    const assertCurrent = () => {
+      this.assertSmartAccountExecutionContext(executionContextId);
+      assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+    };
+    assertCurrent();
+    const context = this.executionContexts.get(executionContextId)!;
+    const possession = context.compositePossession;
+    if (!possession || !context.pending)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    if (
+      !Array.isArray(signatures) ||
+      signatures.length !== possession.proposal.children.length
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const supplied = signatures.map((_, index) => {
+      const field = Object.getOwnPropertyDescriptor(signatures, index);
+      if (!field || !('value' in field) || typeof field.value !== 'string')
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      return field.value as string;
+    });
+    const provisional: Array<{
+      entry: { signature: string; verification: Promise<boolean> };
+      key: string;
+      reject(error: unknown): void;
+      resolve(value: boolean): void;
+      valid: boolean;
+    }> = [];
+    let verifiedChildren: readonly string[];
+    try {
+      verifiedChildren = await context.pending.withReadPhase((phase) =>
+        verifyCompositePolicyPossession({
+          proposal: possession.proposal,
+          actionHash: possession.challenge.intent.actionHash,
+          signatures: supplied,
+          assertCurrent,
+          verifyChild: async (child, signature) => {
+            assertCurrent();
+            const key = child.address.toLowerCase();
+            const previous = possession.proofs.get(key);
+            if (previous) {
+              if (previous.signature !== signature)
+                throw new Error(
+                  'Combined approval proof changed; start a new attempt'
+                );
+              return previous.verification;
+            }
+            let resolve!: (value: boolean) => void,
+              reject!: (error: unknown) => void;
+            const verification = new Promise<boolean>((accepted, refused) => {
+              resolve = accepted;
+              reject = refused;
+            });
+            void verification.catch(() => undefined);
+            const entry = { signature, verification };
+            const observation = { key, entry, valid: false, resolve, reject };
+            provisional.push(observation);
+            possession.proofs.set(key, entry);
+            const validator = new Contract(
+              child.address,
+              [
+                'function isValidSignatureWithSender(address sender,bytes32 hash,bytes signature) view returns (bytes4)',
+              ],
+              phase.provider
+            );
+            observation.valid =
+              (await validator.isValidSignatureWithSender(
+                context.userOperation!.sender,
+                possession.challenge.intent.actionHash,
+                signature
+              )) === '0x1626ba7e';
+            assertCurrent();
+            return observation.valid;
+          },
+        })
+      );
+      assertCurrent();
+      // A contract result is reusable only after its whole phase passes final
+      // canonical/chain and document checks. Concurrent callers await this gate.
+      for (const observation of provisional)
+        observation.resolve(observation.valid);
+    } catch (error) {
+      for (const observation of provisional) {
+        if (possession.proofs.get(observation.key) === observation.entry)
+          possession.proofs.delete(observation.key);
+        observation.reject(error);
+      }
+      throw error;
+    }
+    const threshold = possession.challenge.validator.config.threshold;
+    const satisfied = verifiedChildren.length >= threshold;
+    if (satisfied) possession.accepted = true;
+    return Object.freeze({ verifiedChildren, threshold, satisfied });
   }
 
   public getPreparedCallsIdentity(executionContextId: string) {
@@ -1332,7 +1600,8 @@ class SmartAccountController {
               userOperation: prepared.userOperation,
               waitForConfirmation: true,
             },
-            sourceAuthority.assertCurrent
+            sourceAuthority.assertCurrent,
+            sourceAuthority.confirmFee
           );
         } finally {
           this.pendingDeploymentAddresses.delete(accountAddress);
@@ -1762,6 +2031,13 @@ class SmartAccountController {
     if (!rawProvider) {
       throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
+    // Hydration may return a detached, newer public configuration. Lifetime
+    // ownership is bound to the original local record, not that detached view.
+    const localSource = this.getSmartAccountById(active.account.id).metadata;
+    const localSourceConfiguration = JSON.stringify({
+      auth: localSource.auth,
+      installedModules: localSource.installedModules,
+    });
     const pendingRecords = await this.deps.captureSmartAccountPendingRecords(
       snapshot.chainId,
       active.account.address,
@@ -1885,11 +2161,67 @@ class SmartAccountController {
     while (this.executionContexts.size >= 128)
       this.executionContexts.delete(this.executionContexts.keys().next().value);
     const executionContextId = uuidv4();
+    const expiresAt = Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS;
+    const entryPointFeeQuote = Object.freeze({
+      executionContextId,
+      feePayer: Object.freeze({
+        ...prepared.gasPayer,
+      }) as SmartAccountFeeQuote['feePayer'],
+      gasUnits: BigNumber.from(
+        hexDataSlice(userOperation.accountGasLimits, 0, 16)
+      )
+        .add(
+          BigNumber.from(hexDataSlice(userOperation.accountGasLimits, 16, 32))
+        )
+        .add(BigNumber.from(userOperation.preVerificationGas))
+        .toString(),
+      maximumFeeWei:
+        getSmartAccountUserOpRequiredPrefund(userOperation).toString(),
+    });
+    const proposal = captureCompositePolicyChange({
+      accountAddress: active.account.address,
+      metadata: prepared.smartAccount,
+      executions: prepared.executions,
+    });
+    const compositePossession = proposal
+      ? {
+          proposal,
+          challenge: createCompositePolicyPossession({
+            proposal,
+            accountAddress: active.account.address,
+            chainId: snapshot.chainId,
+            executionContextId,
+            preparedActionHash: actionHash,
+            expiresAt,
+            nonce: randomBytes32Hex(),
+          }),
+          sourceMetadata: localSourceConfiguration,
+          proofs: new Map<
+            string,
+            { signature: string; verification: Promise<boolean> }
+          >(),
+          accepted: false,
+        }
+      : undefined;
+    if (compositePossession) {
+      const current = this.getSmartAccountById(active.account.id).metadata;
+      if (
+        JSON.stringify({
+          auth: current.auth,
+          installedModules: current.installedModules,
+        }) !== localSourceConfiguration
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    }
     this.executionContexts.set(executionContextId, {
       accountId: active.account.id,
       actionHash,
       purpose: 'user-operation',
-      expiresAt: Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
+      expiresAt,
+      entryPointFeeQuote,
+      entryPointFeeApproved: false,
+      entryPointFeeConsumed: false,
+      ...(compositePossession ? { compositePossession } : {}),
       gasPrice: legacyGasPrice,
       snapshot,
       userOperation: Object.freeze({ ...userOperation }),
@@ -1911,7 +2243,15 @@ class SmartAccountController {
         assertContext
       ),
     });
-    return { ...prepared, accountId: active.account.id, executionContextId };
+    return {
+      ...prepared,
+      accountId: active.account.id,
+      executionContextId,
+      entryPointFeeQuote,
+      ...(compositePossession
+        ? { requiresCompositePossession: true as const }
+        : {}),
+    };
   }
 
   public reuseSmartAccountExecutions(
@@ -1953,6 +2293,10 @@ class SmartAccountController {
       ...context.prepared,
       accountId: context.accountId,
       executionContextId: options.executionContextId,
+      entryPointFeeQuote: context.entryPointFeeQuote,
+      ...(context.compositePossession
+        ? { requiresCompositePossession: true as const }
+        : {}),
     };
   }
 
@@ -1978,15 +2322,21 @@ class SmartAccountController {
 
   public async submitSmartAccountExecution(
     params: SmartAccountSubmitParams,
-    assertApprovalCurrent: () => void
+    assertApprovalCurrent: () => void,
+    confirmFee?: SmartAccountControllerAuthority['confirmFee']
   ) {
     const captured = this.infrastructureContext();
     const assertCurrent = () => {
       this.assertInfrastructureContext(captured);
       this.assertSmartAccountExecutionContext(params.executionContextId);
+      this.assertCompositePossessionAccepted(params.executionContextId);
       assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertCurrent();
+    this.assertExecutionFeeApproved(params.executionContextId);
+    this.executionContexts.get(
+      params.executionContextId
+    )!.entryPointFeeConsumed = true;
     const pending = this.executionContexts.get(
       params.executionContextId
     )?.pending;
@@ -1994,6 +2344,15 @@ class SmartAccountController {
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
       });
+    const confirmCurrentFee: SmartAccountControllerAuthority['confirmFee'] =
+      confirmFee
+        ? async (review) => {
+            assertCurrent();
+            const approved = await confirmFee(review);
+            assertCurrent();
+            return approved;
+          }
+        : undefined;
     return submitSmartAccountOperation(
       params,
       {
@@ -2026,9 +2385,22 @@ class SmartAccountController {
         getLocalNativeExecutionRecipients: (executions) =>
           this.getLocalNativeExecutionRecipients(executions),
         ensureDeploymentPrefund: (...args) =>
-          this.ensureSmartAccountDeploymentPrefund(...args, pending.provider),
-        sendTransaction: (...args) =>
-          this.deps.sendAndSaveEthTransaction(...args),
+          this.ensureSmartAccountDeploymentPrefund(
+            ...args,
+            pending.provider,
+            confirmCurrentFee
+          ),
+        sendTransaction: (transaction, legacy, target, metadata, options) =>
+          this.deps.sendAndSaveEthTransaction(
+            transaction,
+            legacy,
+            target,
+            metadata,
+            {
+              ...options,
+              confirmFee: confirmCurrentFee,
+            }
+          ),
         invalidateMetadata: (address) =>
           this.invalidateHydratedMetadata(address),
       },
@@ -2067,11 +2439,22 @@ class SmartAccountController {
       onAcknowledged: () => void;
       onSubmissionAttempt: () => void;
     },
-    provider: any
+    provider: any,
+    confirmFee?: SmartAccountControllerAuthority['confirmFee']
   ): Promise<void> {
     return ensureSmartAccountDeploymentPrefund(
       provider,
-      (...args) => this.deps.sendAndSaveEthTransaction(...args),
+      (transaction, legacy, target, metadata, saveOptions) =>
+        this.deps.sendAndSaveEthTransaction(
+          transaction,
+          legacy,
+          target,
+          metadata,
+          {
+            ...saveOptions,
+            confirmFee,
+          }
+        ),
       accountAddress,
       userOperation,
       entryPointAddress,

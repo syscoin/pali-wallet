@@ -1,3 +1,8 @@
+import {
+  SMART_ACCOUNT_FEE_APPROVAL,
+  SMART_ACCOUNT_FEE_REVIEW,
+} from '../../../shared/smartAccountControllerAuthority';
+
 import { controllerEmitter } from './controllerEmitter';
 
 describe('controller submission timeout', () => {
@@ -124,6 +129,23 @@ describe('controller submission timeout', () => {
 });
 
 describe('Smart account document-owned controller calls', () => {
+  const fee = (id = 'fee-1') => ({
+    id,
+    maximumFeeUnits: '42000',
+    maximumTotalUnits: '42000',
+    validForMs: 90_000,
+    transaction: {
+      chainId: '57',
+      from: '0x' + '11'.repeat(20),
+      to: '0x' + '22'.repeat(20),
+      value: '0',
+      data: '0x',
+      nonce: '0',
+      gasLimit: '21000',
+      type: 0 as const,
+      gasPrice: '2',
+    },
+  });
   function portFixture() {
     const received = new Set<(value: unknown) => void>();
     const disconnected = new Set<() => void>();
@@ -164,8 +186,109 @@ describe('Smart account document-owned controller calls', () => {
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
+  it('waits for explicit fee consent on the same Port before acknowledging an envelope', async () => {
+    const fixture = portFixture();
+    let approve!: (id: string | null) => void;
+    const confirmFee = jest.fn((review: unknown, signal: AbortSignal) => {
+      void review;
+      void signal;
+      return new Promise<string | null>((resolve) => (approve = resolve));
+    });
+    const pending = controllerEmitter(
+      ['wallet', 'submitSmartAccountExecution'],
+      [{}],
+      10000,
+      false,
+      { confirmFee }
+    );
+    fixture.receive({ type: SMART_ACCOUNT_FEE_REVIEW, review: fee() });
+    await Promise.resolve();
+    expect(confirmFee).toHaveBeenCalledWith(fee(), expect.any(AbortSignal));
+    expect(fixture.port.postMessage).toHaveBeenCalledTimes(1);
+    approve('fee-1');
+    await new Promise(setImmediate);
+    expect(fixture.port.postMessage).toHaveBeenLastCalledWith({
+      type: SMART_ACCOUNT_FEE_APPROVAL,
+      id: 'fee-1',
+      approved: true,
+    });
+    fixture.receive({ hash: 'accepted' });
+    await expect(pending).resolves.toEqual({ hash: 'accepted' });
+    expect(confirmFee.mock.calls[0][1].aborted).toBe(true);
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+  it('sends a decline rather than silently approving a cancelled fee dialog', async () => {
+    const fixture = portFixture();
+    const pending = controllerEmitter(
+      ['wallet', 'submitSmartAccountExecution'],
+      [{}],
+      10000,
+      false,
+      { confirmFee: async () => null }
+    );
+    fixture.receive({ type: SMART_ACCOUNT_FEE_REVIEW, review: fee() });
+    await new Promise(setImmediate);
+    expect(fixture.port.postMessage).toHaveBeenLastCalledWith({
+      type: SMART_ACCOUNT_FEE_APPROVAL,
+      id: 'fee-1',
+      approved: false,
+    });
+    fixture.receive({ success: false, error: 'Cancelled' });
+    await expect(pending).rejects.toThrow('Cancelled');
+  });
+  it('aborts a pending dialog on document retirement and never emits its late approval', async () => {
+    const fixture = portFixture();
+    let approve!: (id: string | null) => void;
+    let signal!: AbortSignal;
+    const pending = controllerEmitter(
+      ['wallet', 'submitSmartAccountExecution'],
+      [{}],
+      10000,
+      false,
+      {
+        confirmFee: (_review, ownedSignal) => {
+          signal = ownedSignal;
+          return new Promise((resolve) => (approve = resolve));
+        },
+      }
+    );
+    const rejected = expect(pending).rejects.toThrow('document disconnected');
+    fixture.receive({ type: SMART_ACCOUNT_FEE_REVIEW, review: fee() });
+    await Promise.resolve();
+    fixture.retire();
+    await rejected;
+    expect(signal.aborted).toBe(true);
+    approve('fee-1');
+    await new Promise(setImmediate);
+    expect(fixture.port.postMessage).toHaveBeenCalledTimes(1);
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+  it.each(['missing', 'wrong-id'])(
+    'rejects %s fee consent without retry or automatic approval',
+    async (mode) => {
+      const fixture = portFixture();
+      const pending = controllerEmitter(
+        ['wallet', 'submitSmartAccountExecution'],
+        [{}],
+        10000,
+        false,
+        mode === 'missing' ? undefined : { confirmFee: async () => 'other-fee' }
+      );
+      const rejected = expect(pending).rejects.toThrow(
+        /fee review|fee approval/
+      );
+      fixture.receive({ type: SMART_ACCOUNT_FEE_REVIEW, review: fee() });
+      await rejected;
+      expect(fixture.port.postMessage).toHaveBeenCalledTimes(1);
+      expect(fixture.port.disconnect).toHaveBeenCalledTimes(1);
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    }
+  );
   it.each([
     'signSmartAccountPreparedOwner',
+    'approveSmartAccountExecutionFeeQuote',
+    'signSmartAccountCompositeOwner',
+    'verifySmartAccountCompositePossession',
     'registerSmartAccountOnChain',
     'submitSmartAccountExecution',
   ] as const)(

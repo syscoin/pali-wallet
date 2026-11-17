@@ -76,7 +76,6 @@ import {
 } from '../../../shared/evmDappPreparation';
 import {
   prepareEvmDappReview,
-  prepareAndSubmitEvmDappReview,
   type EvmDappReviewPorts,
 } from '../../../shared/evmDappReview';
 import {
@@ -6754,7 +6753,18 @@ class MainController {
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertCurrent();
-    return this.smartAccount.submitSmartAccountExecution(params, assertCurrent);
+    return this.smartAccount.submitSmartAccountExecution(
+      params,
+      assertCurrent,
+      authority.confirmFee
+        ? async (review) => {
+            assertCurrent();
+            const id = await authority.confirmFee!(review);
+            assertCurrent();
+            return id;
+          }
+        : undefined
+    );
   }
 
   public async prepareSmartAccountGuardianRegistration(params: {
@@ -10186,6 +10196,7 @@ class MainController {
       authorizeDapp?: () => void;
       beforeDispatch?: () => Promise<void>;
       clearNavigation?: boolean;
+      confirmFee?: SmartAccountControllerAuthority['confirmFee'];
       dappApprovalOwner?: object;
       dappNonceApproval?: ExtensionReviewedNonce;
       expectedContext?: IEvmTransactionContext;
@@ -10871,7 +10882,101 @@ class MainController {
     }
   }
 
-  /** Renderer supplies only an opaque prepared context and a configured owner identity. */
+  /** Approve only the worker-issued EntryPoint cap for this prepared operation. */
+  public approveSmartAccountExecutionFeeQuote(
+    executionContextId: string,
+    quote: Parameters<
+      typeof this.smartAccount.approveSmartAccountExecutionFeeQuote
+    >[1],
+    authority: SmartAccountControllerAuthority
+  ): void {
+    this.assertWalletReadyForSigning();
+    if (authority?.kind !== 'document' || !authority.signal)
+      throw new Error('Owned document authority is required');
+    assertSynchronousEvmFeeGuard(authority.assertCurrent);
+    if (authority.signal.aborted)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    this.smartAccount.approveSmartAccountExecutionFeeQuote(
+      executionContextId,
+      quote
+    );
+  }
+
+  public getSmartAccountCompositePossession(executionContextId: string) {
+    this.assertWalletReadyForSigning();
+    return this.smartAccount.getSmartAccountCompositePossession(
+      executionContextId
+    );
+  }
+
+  public async signSmartAccountCompositeOwner(
+    executionContextId: string,
+    targetAccount: { id: number; type: KeyringAccountType },
+    sourceAuthority: SmartAccountControllerAuthority
+  ): Promise<string> {
+    this.assertWalletReadyForSigning();
+    if (sourceAuthority?.kind !== 'document' || !sourceAuthority.signal)
+      throw new Error('Owned document authority is required');
+    targetAccount = Object.freeze({ ...targetAccount });
+    const owner =
+      store.getState().vault.accounts[targetAccount.type]?.[targetAccount.id];
+    if (!owner) throw new Error('Smart account owner is unavailable');
+    const ownerAddress = owner.address,
+      ownerXpub = owner.xpub;
+    const captured = this.smartAccount.captureCompositeOwnerSigningIntent(
+      executionContextId,
+      ownerAddress
+    );
+    const check = () => {
+      assertSynchronousEvmFeeGuard(sourceAuthority.assertCurrent);
+      if (sourceAuthority.signal.aborted)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      const current = this.smartAccount.captureCompositeOwnerSigningIntent(
+        executionContextId,
+        ownerAddress
+      );
+      const currentOwner =
+        store.getState().vault.accounts[targetAccount.type]?.[targetAccount.id];
+      if (
+        current.intent.actionHash !== captured.intent.actionHash ||
+        currentOwner?.address !== ownerAddress ||
+        currentOwner?.xpub !== ownerXpub
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    check();
+    return this.signSmartAccountOwnerIntentInternal(
+      captured.intent,
+      targetAccount,
+      { assertCurrent: check, signal: sourceAuthority.signal },
+      captured.expiresAt
+    );
+  }
+
+  public async verifySmartAccountCompositePossession(
+    executionContextId: string,
+    signatures: readonly string[],
+    authority: SmartAccountControllerAuthority
+  ) {
+    this.assertWalletReadyForSigning();
+    if (authority?.kind !== 'document' || !authority.signal)
+      throw new Error('Owned document authority is required');
+    const generation = this.walletSessionGeneration;
+    const check = () => {
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation);
+      assertSynchronousEvmFeeGuard(authority.assertCurrent);
+      if (authority.signal.aborted)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    check();
+    return this.smartAccount.verifySmartAccountCompositePossession(
+      executionContextId,
+      signatures,
+      check
+    );
+  }
+
   public async signSmartAccountPreparedOwner(
     executionContextId: string,
     targetAccount: { id: number; type: KeyringAccountType },
@@ -11361,7 +11466,8 @@ class MainController {
 
   private async hydrateActiveSLHDSAStateForSigning(
     params: SLHDSASignActionHashParams,
-    sessionGeneration: number
+    sessionGeneration: number,
+    possessionMetadata?: ISmartAccountMetadata
   ): Promise<void> {
     const { activeAccount, accounts } = store.getState().vault;
     const targetAccountId = params.accountId ?? activeAccount.id;
@@ -11375,27 +11481,27 @@ class MainController {
     const smartAccount = accounts[KeyringAccountType.SmartAccount]?.[
       targetAccountId
     ] as any;
-    const activeAuth = smartAccount?.smartAccount?.auth;
-    const activeValidator = smartAccount?.smartAccount?.installedModules?.find(
+    const metadata = possessionMetadata ?? smartAccount?.smartAccount;
+    const activeAuth = metadata?.auth;
+    const activeValidator = metadata?.installedModules?.find(
       (module: any) =>
         module?.type === 'validator' &&
         module?.address?.toLowerCase() === activeAuth?.validator?.toLowerCase()
     );
-    const activeSLHDSAValidator =
-      smartAccount?.smartAccount?.installedModules?.find(
-        (module: any) =>
-          module?.type === 'validator' &&
-          module?.id === 'slh-dsa' &&
-          module?.config?.keyId === params.keyId &&
-          (module?.address?.toLowerCase() ===
-            activeAuth?.validator?.toLowerCase() ||
-            ((activeAuth?.module || activeAuth?.scheme) === 'composite' &&
-              activeValidator?.id === 'composite' &&
-              activeValidator?.config?.childValidators?.some(
-                (child: string) =>
-                  child?.toLowerCase() === module?.address?.toLowerCase()
-              )))
-      );
+    const activeSLHDSAValidator = metadata?.installedModules?.find(
+      (module: any) =>
+        module?.type === 'validator' &&
+        module?.id === 'slh-dsa' &&
+        module?.config?.keyId === params.keyId &&
+        (module?.address?.toLowerCase() ===
+          activeAuth?.validator?.toLowerCase() ||
+          ((activeAuth?.module || activeAuth?.scheme) === 'composite' &&
+            activeValidator?.id === 'composite' &&
+            activeValidator?.config?.childValidators?.some(
+              (child: string) =>
+                child?.toLowerCase() === module?.address?.toLowerCase()
+            )))
+    );
     if (
       !smartAccount?.isSmartAccount ||
       !['slh-dsa', 'composite'].includes(
@@ -11425,10 +11531,18 @@ class MainController {
           `The local post-quantum signer does not match the active validator. Local signer key: ${setupStatus.config.keyId}. Active validator key: ${params.keyId}. Use another approval method to rotate the validator to the local signer key, or restore the original local signer state for the active validator key.`
         );
       }
-      throw new Error(
-        `SLH-DSA encrypted local signer state was not found at ${getSLHDSAStateStorageKey(
-          params.keyId
-        )}. Regenerate the local signer.`
+      throw Object.assign(
+        new Error(
+          `SLH-DSA encrypted local signer state was not found at ${getSLHDSAStateStorageKey(
+            params.keyId
+          )}. Regenerate the local signer.`
+        ),
+        possessionMetadata
+          ? {
+              code: 'COMPOSITE_CHILD_UNAVAILABLE',
+              transactionNotBroadcast: true,
+            }
+          : {}
       );
     }
 
@@ -11440,21 +11554,32 @@ class MainController {
     approval?: SLHDSADispatchApproval
   ): Promise<string> {
     const generation = this.walletSessionGeneration;
+    const possessionMetadata = params.executionContextId
+      ? this.smartAccount.captureCompositeSlhSigningMetadata(
+          params.executionContextId,
+          params.actionHash,
+          params.keyId
+        )
+      : undefined;
     const assertContext = () => {
       this.assertWalletReadyForSigning();
       this.assertCurrentWalletSession(generation);
-      if (params.executionContextId)
-        this.assertSmartAccountExecutionContext(
-          params.executionContextId,
-          params.actionHash
-        );
+      if (params.executionContextId) {
+        const currentMetadata =
+          this.smartAccount.captureCompositeSlhSigningMetadata(
+            params.executionContextId,
+            params.actionHash,
+            params.keyId
+          );
+        if (currentMetadata !== possessionMetadata)
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      }
       approval?.assertCurrent();
     };
     assertContext();
-    if (params.executionContextId)
-      await this.assertSmartAccountPreparedNonce(
-        params.executionContextId,
-        params.actionHash
+    if (params.executionContextId && !possessionMetadata)
+      await this.smartAccount.assertSmartAccountPreparedNonce(
+        params.executionContextId
       );
     assertContext();
     this.configureSLHDSASessionStateCrypto();
@@ -11472,11 +11597,14 @@ class MainController {
       if (!message.includes(SIGNER_SESSION_UNAVAILABLE)) {
         throw error;
       }
-      await this.hydrateActiveSLHDSAStateForSigning(params, sessionGeneration);
-      if (params.executionContextId)
-        await this.assertSmartAccountPreparedNonce(
-          params.executionContextId,
-          params.actionHash
+      await this.hydrateActiveSLHDSAStateForSigning(
+        params,
+        sessionGeneration,
+        possessionMetadata
+      );
+      if (params.executionContextId && !possessionMetadata)
+        await this.smartAccount.assertSmartAccountPreparedNonce(
+          params.executionContextId
         );
       assertContext();
       try {
@@ -12236,8 +12364,8 @@ class MainController {
     ) => {
       check();
       if (payerDispatch) {
-        // These fields were already approved; a higher shared quote requires
-        // another review, never an implicit increase during submission.
+        // Preserve the operation's reviewed rates while preparing its separate
+        // payer envelope. Fee increases require a fresh operation review.
         const request = normalizeDappTransaction(params);
         for (const key of [
           'gasLimit',
@@ -12268,51 +12396,23 @@ class MainController {
       reviewId = token.id;
       return token;
     };
-    if (payerDispatch && !payerDispatch.reviewOnly) {
-      let consumed: ReturnType<typeof consumeGenericEvmFeeReview> | undefined;
-      let sdkEntered: (() => boolean) | undefined;
-      try {
-        return await prepareAndSubmitEvmDappReview(params, ports, {
-          assertCurrent: check,
-          onPrepared: (review) => {
-            const token = admit(review);
-            sdkEntered = captureGenericEvmFeeSdkEntryState(this, token.id);
-            consumed = consumeGenericEvmFeeReview(
-              this,
-              token.id,
-              expected,
-              check,
-              Math.floor(performance.now()),
-              feeAuthority
-            );
-          },
-          onBroadcast: (hash) => {
-            void payerDispatch.saveOptions.onBroadcast?.({
-              hash,
-            } as IEvmTransactionResponse);
-          },
-          submission: { kind: 'transaction' },
-        });
-      } catch (error) {
-        const failure = evmSubmissionFailure(error);
-        throw new PrivateSubmissionError(
-          {
-            transactionNotBroadcast:
-              !sdkEntered?.() || failure?.transactionNotBroadcast === true,
-            ...(failure?.signedTransactionHash
-              ? { signedTransactionHash: failure.signedTransactionHash }
-              : {}),
-          },
-          error
-        );
-      } finally {
-        consumed?.close();
-      }
-    }
+    const confirmPayerFee =
+      payerDispatch && !payerDispatch.reviewOnly
+        ? payerDispatch.saveOptions.confirmFee
+        : undefined;
+    if (
+      payerDispatch &&
+      !payerDispatch.reviewOnly &&
+      typeof confirmPayerFee !== 'function'
+    )
+      throw new PrivateSubmissionError(
+        { transactionNotBroadcast: true },
+        new Error('Explicit payer fee approval is required')
+      );
     const review = await prepareEvmDappReview(params, ports);
     const token = admit(review);
     const sdkEntered = captureGenericEvmFeeSdkEntryState(this, token.id);
-    return Object.freeze({
+    const preparedReview = Object.freeze({
       token,
       submit: async (
         assertBeforeSign: () => void,
@@ -12361,6 +12461,29 @@ class MainController {
         }
       },
     });
+    if (!payerDispatch || payerDispatch.reviewOnly) return preparedReview;
+    try {
+      check();
+      const id = await confirmPayerFee!({
+        ...token,
+        coveredFeeUnits: review.coveredFeeUnits,
+        validForMs: Math.floor(token.validForMs),
+      });
+      check();
+      if (id !== token.id)
+        throw Object.assign(
+          new Error('Transaction fee approval was cancelled'),
+          {
+            code: 4001,
+            transactionNotBroadcast: true,
+          }
+        );
+      return await preparedReview.submit(check, async (response) => {
+        await payerDispatch.saveOptions.onBroadcast?.(response);
+      });
+    } finally {
+      discardNativeEvmFeeReview(this, token.id);
+    }
   }
 
   /**

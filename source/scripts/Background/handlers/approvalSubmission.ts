@@ -42,6 +42,9 @@ export type DappUtxoReview = TransactionApprovalDocument &
 
 export type DappSmartAccountMethod =
   | 'signSmartAccountPreparedOwner'
+  | 'approveSmartAccountExecutionFeeQuote'
+  | 'signSmartAccountCompositeOwner'
+  | 'verifySmartAccountCompositePossession'
   | 'registerSmartAccountOnChain'
   | 'submitSmartAccountExecution';
 

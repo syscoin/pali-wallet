@@ -1286,6 +1286,7 @@
     "checkYourDevice": "Verifique seu {{device}} para aprovar esta solicitação",
     "useYourPasskey": "Use sua chave de acesso",
     "passkeyPrompt": "Siga as instruções do navegador para assinar com sua chave de acesso",
+    "smartAccountAuthorizationRetained": "A instrução da conta inteligente já foi assinada. Recusar esta taxa de gas não a revoga; ela ainda pode ser executada até que o seu nonce seja consumido.",
     "cancelFeePreview": "Verificando a taxa de rede de cancelamento…",
     "cancelFeeConsent": "Cancelar esta transação com uma taxa máxima de gás de {{fee}} {{currency}}?",
     "cancelFeeUnavailable": "Não foi possível verificar a taxa de cancelamento. Tente novamente.",

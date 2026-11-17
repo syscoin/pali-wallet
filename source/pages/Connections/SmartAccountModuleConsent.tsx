@@ -8,6 +8,7 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import { AddressText, Button, Card, Icon } from 'components/index';
 import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData } from 'hooks/index';
@@ -133,6 +134,8 @@ export const SmartAccountModuleConsent = () => {
   ]);
   // Returning to the same selection must not revive an older approval callback.
   const scope = useMemo(() => ({ key: scopeKey }), [scopeKey]);
+  const { forExecution, feeConfirmation } =
+    useSmartAccountFeeConfirmation(scopeKey);
   const currentScope = useRef(scope);
   currentScope.current = scope;
   const mounted = useRef(true);
@@ -380,6 +383,19 @@ export const SmartAccountModuleConsent = () => {
         authenticatorContexts,
         controllerEmitter,
         expectedContext,
+        feeConsent: forExecution({
+          account: expectedContext.account.address,
+          smartAccount: account.address,
+          chainId: activeNetwork.chainId,
+          symbol: activeNetwork.currency,
+          label: t(
+            action === 'install'
+              ? 'smartAccountHub.dappInstallTitle'
+              : 'smartAccountHub.dappUninstallTitle'
+          ),
+          assertCurrent,
+        }),
+        onBeforeAuthentication: assertCurrent,
         onBeforeSubmit: async () => assertCurrent(),
         onPrepared: assertCurrent,
         executions:
@@ -494,6 +510,8 @@ export const SmartAccountModuleConsent = () => {
     activeAccountMeta,
     activeSlip44,
     controllerEmitter,
+    forExecution,
+    activeNetwork.currency,
     eventName,
     handleWalletLockedError,
     host,
@@ -514,6 +532,7 @@ export const SmartAccountModuleConsent = () => {
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col">
+      {feeConfirmation}
       <div className="remove-scrollbar min-h-0 flex-1 overflow-y-auto">
         <div className="border-b border-brand-gray300 px-6 py-6 text-center">
           <h3 className="mb-2 text-xs uppercase tracking-wider text-brand-graylight">

@@ -1286,6 +1286,7 @@
     "checkYourDevice": "Revisa tu {{device}} para aprobar esta solicitud",
     "useYourPasskey": "Usa tu llave de acceso",
     "passkeyPrompt": "Sigue las indicaciones del navegador para firmar con tu llave de acceso",
+    "smartAccountAuthorizationRetained": "La instrucción de la cuenta inteligente ya está firmada. Rechazar esta comisión de gas no la revoca; puede ejecutarse mientras su nonce no se haya consumido.",
     "cancelFeePreview": "Comprobando la comisión de red de cancelación…",
     "cancelFeeConsent": "¿Cancelar esta transacción con una comisión máxima de gas de {{fee}} {{currency}}?",
     "cancelFeeUnavailable": "No se pudo comprobar la comisión de cancelación. Inténtalo de nuevo.",

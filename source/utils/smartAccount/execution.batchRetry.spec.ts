@@ -1,4 +1,8 @@
 import { webcrypto } from 'crypto';
+import {
+  SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  withReviewedSmartAccountExecution,
+} from 'tests/fixtures/reviewedSmartAccountExecution';
 
 import {
   recordSendCallsBundle,
@@ -13,6 +17,14 @@ import {
   encodeSmartAccountGasFees,
 } from './account';
 import { signAndSubmitSmartAccountExecutions } from './execution';
+
+const reviewedFixture = (
+  params: Parameters<typeof signAndSubmitSmartAccountExecutions>[0]
+) =>
+  withReviewedSmartAccountExecution(params, {
+    payer: { address: '0x' + '44'.repeat(20), id: 0, type: 'HDAccount' },
+    userOperation: SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  });
 
 const sender = `0x${'aa'.repeat(20)}`;
 const target = `0x${'bb'.repeat(20)}`;
@@ -123,51 +135,53 @@ it.each([false, true])(
         }
         throw new Error(`Unexpected method ${method}`);
       });
-      const attempt = signAndSubmitSmartAccountExecutions({
-        accountAddress: sender,
-        accountId: 0,
-        smartAccount: initialMetadata,
-        authenticatorContexts: { 'slh-dsa': { signActionHash: sign } },
-        controllerEmitter: emitter,
-        executions: [{ target, data: '0x', value: '0x0' }],
-        expectedContext: {
-          account: {
-            id: 0,
-            address: sender,
-            type: KeyringAccountType.SmartAccount,
+      const attempt = signAndSubmitSmartAccountExecutions(
+        reviewedFixture({
+          accountAddress: sender,
+          accountId: 0,
+          smartAccount: initialMetadata,
+          authenticatorContexts: { 'slh-dsa': { signActionHash: sign } },
+          controllerEmitter: emitter,
+          executions: [{ target, data: '0x', value: '0x0' }],
+          expectedContext: {
+            account: {
+              id: 0,
+              address: sender,
+              type: KeyringAccountType.SmartAccount,
+            },
+            chainId: 57,
+            rpcUrl: 'https://rpc.invalid',
+            slip44: 60,
           },
-          chainId: 57,
-          rpcUrl: 'https://rpc.invalid',
-          slip44: 60,
-        },
-        onBeforeSubmit: async ({ executionContextId }) => {
-          const operation = prepared.get(executionContextId).userOperation;
-          const submissionId = `submission-${preparations}`;
-          await recordSendCallsBundle(host, id, {
-            ...descriptor,
-            reservationId: 'reservation',
-            submissionStarted: true,
-            previousSubmissionId: lastSubmissionId,
-            submissionId,
-            txHashes: [],
-            smartAccountIdentity: captureSmartAccountCallsIdentity(
-              operation,
-              57
-            ),
-          });
-          lastSubmissionId = submissionId;
-        },
-        onSubmissionNotBroadcast: async () => {
-          rejectWrite = failRetirement;
-          await recordSendCallsBundle(host, id, {
-            ...descriptor,
-            reservationId: 'reservation',
-            submissionId: lastSubmissionId,
-            submissionNotBroadcast: true,
-            txHashes: [],
-          });
-        },
-      });
+          onBeforeSubmit: async ({ executionContextId }) => {
+            const operation = prepared.get(executionContextId).userOperation;
+            const submissionId = `submission-${preparations}`;
+            await recordSendCallsBundle(host, id, {
+              ...descriptor,
+              reservationId: 'reservation',
+              submissionStarted: true,
+              previousSubmissionId: lastSubmissionId,
+              submissionId,
+              txHashes: [],
+              smartAccountIdentity: captureSmartAccountCallsIdentity(
+                operation,
+                57
+              ),
+            });
+            lastSubmissionId = submissionId;
+          },
+          onSubmissionNotBroadcast: async () => {
+            rejectWrite = failRetirement;
+            await recordSendCallsBundle(host, id, {
+              ...descriptor,
+              reservationId: 'reservation',
+              submissionId: lastSubmissionId,
+              submissionNotBroadcast: true,
+              txHashes: [],
+            });
+          },
+        })
+      );
       if (failRetirement) {
         await expect(attempt).rejects.toThrow('Unable to persist');
         expect(preparations).toBe(1);

@@ -1,3 +1,4 @@
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard';
 import { signP256WebAuthnActionHash } from '../passkey/authenticator';
 import type {
   ISmartAccountMetadata,
@@ -15,6 +16,7 @@ import {
 import { getSmartAccountUserOpRequiredPrefund } from './account';
 import {
   signSmartAccountActionHash as dispatchSmartAccountActionHash,
+  signSmartAccountWithValidator,
   type SmartAccountAuthenticatorPorts,
   type SmartAccountAuthenticatorSigningCallback,
   type SmartAccountLocalOwner,
@@ -22,11 +24,17 @@ import {
   type SmartAccountSLHDSASigner,
 } from './authenticatorDispatch';
 import {
+  collectCompositePolicyPossession,
+  type createCompositePolicyPossession,
+} from './compositePossession';
+import {
   snapshotSmartAccountExpectedErc20Transfers,
   type SmartAccountExpectedErc20Transfer,
 } from './erc20Transfer';
+import { assertSmartAccountOwnerSigningIntent } from './ownerSigningIntent';
 import type { SmartAccountAuthenticatorSignature } from './signature';
 import { canUseReservedSLHDSASignature } from './slhDsaPurpose';
+import type { SmartAccountControllerCallOptions } from '../../shared/smartAccountControllerAuthority';
 import type { SmartAccountFeeQuote } from '../../shared/smartAccountFeeQuote';
 
 export type { SmartAccountFeeQuote } from '../../shared/smartAccountFeeQuote';
@@ -45,7 +53,8 @@ type ControllerEmitter = (
   methods: string[],
   payload?: any[],
   timeout?: number,
-  retryConnection?: boolean
+  retryConnection?: boolean,
+  options?: SmartAccountControllerCallOptions
 ) => Promise<any>;
 
 export type SmartAccountExecutionIntent = {
@@ -135,6 +144,13 @@ const getSmartAccountSubmitJobKey = async ({
     })
   );
 
+export type SmartAccountExecutionFeeConsent =
+  SmartAccountControllerCallOptions & {
+    confirmEntryPoint(
+      quote: SmartAccountFeeQuote & { executionContextId: string }
+    ): Promise<string | null>;
+  };
+
 export type SubmitSmartAccountExecutionsParams = {
   accountAddress?: string;
   accountId?: number;
@@ -147,10 +163,12 @@ export type SubmitSmartAccountExecutionsParams = {
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
   expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
+  feeConsent?: SmartAccountExecutionFeeConsent;
   feeOverrides?: SmartAccountFeeOverrides;
   onAssertionResolved?: () => void;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
+  onBeforeAuthentication?: () => void;
   onBeforeSubmit?: (
     prepared: Readonly<{ executionContextId: string }>
   ) => Promise<void>;
@@ -515,7 +533,9 @@ export const signAndSubmitSmartAccountExecutions = async (
     expectedContext,
     feeOverrides,
     approvedFeeQuote,
+    feeConsent,
     onAssertionResolved,
+    onBeforeAuthentication,
     onAuthenticatorSigningResolved,
     onAuthenticatorSigningStarted,
     onBeforeSubmit,
@@ -608,14 +628,126 @@ export const signAndSubmitSmartAccountExecutions = async (
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
       });
+    const assertClientCurrent = () => {
+      if (onBeforeAuthentication)
+        assertSynchronousEvmFeeGuard(onBeforeAuthentication);
+    };
     const assertContext = async () => {
+      assertClientCurrent();
       if (prepared.executionContextId)
         await controllerEmitter(
           ['wallet', 'assertSmartAccountExecutionContext'],
           [prepared.executionContextId, prepared.actionHash]
         );
+      assertClientCurrent();
     };
     await assertContext();
+
+    const entryPointQuote = prepared.entryPointFeeQuote as
+      | (SmartAccountFeeQuote & { executionContextId: string })
+      | undefined;
+    if (entryPointQuote) {
+      if (
+        entryPointQuote.executionContextId !== prepared.executionContextId ||
+        entryPointQuote.maximumFeeWei !==
+          getSmartAccountUserOpRequiredPrefund(
+            prepared.userOperation
+          ).toString() ||
+        entryPointQuote.feePayer.id !== prepared.gasPayer?.id ||
+        entryPointQuote.feePayer.type !== prepared.gasPayer?.type ||
+        entryPointQuote.feePayer.address.toLowerCase() !==
+          prepared.gasPayer?.address?.toLowerCase()
+      )
+        throw new Error(INVALID_FEE_QUOTE_ERROR);
+      if (!approvedFeeQuote) {
+        if (!feeConsent)
+          throw new Error('Smart account fee approval is required');
+        const accepted = await feeConsent.confirmEntryPoint(entryPointQuote);
+        await assertContext();
+        if (accepted !== prepared.executionContextId)
+          throw Object.assign(
+            new Error('Smart account fee approval cancelled'),
+            { code: 4001, transactionNotBroadcast: true }
+          );
+      }
+      await controllerEmitter(
+        ['wallet', 'approveSmartAccountExecutionFeeQuote'],
+        [prepared.executionContextId, entryPointQuote]
+      );
+      await assertContext();
+    } else {
+      throw new Error(INVALID_FEE_QUOTE_ERROR);
+    }
+
+    if (prepared.requiresCompositePossession === true) {
+      const challenge = (await controllerEmitter(
+        ['wallet', 'getSmartAccountCompositePossession'],
+        [prepared.executionContextId]
+      )) as ReturnType<typeof createCompositePolicyPossession> & {
+        accountId: number;
+        executionContextId: string;
+      };
+      await assertContext();
+      if (
+        !challenge ||
+        challenge.accountId !== prepared.accountId ||
+        challenge.executionContextId !== prepared.executionContextId ||
+        challenge.intent.purpose !== 'policy-possession' ||
+        challenge.intent.actionHash.toLowerCase() ===
+          prepared.actionHash.toLowerCase()
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      assertSmartAccountOwnerSigningIntent(challenge.intent);
+      const basePorts = extensionAuthenticatorPorts(authenticatorContexts);
+      const ports: SmartAccountAuthenticatorPorts = {
+        ...basePorts,
+        ecdsa: basePorts.ecdsa && {
+          ...basePorts.ecdsa,
+          signActionHash: ({ owner }) =>
+            controllerEmitter(
+              ['wallet', 'signSmartAccountCompositeOwner'],
+              [prepared.executionContextId, { id: owner.id, type: owner.type }],
+              owner.type === 'Ledger' || owner.type === 'Trezor'
+                ? 300000
+                : 10000
+            ),
+        },
+        // Possession has its own prepared-context digest; never substitute a
+        // general message-signing callback or the current transaction digest.
+        slhDsa: basePorts.slhDsa && {
+          signActionHash: basePorts.slhDsa.signActionHash,
+          signMessageActionHash: null,
+        },
+      };
+      await collectCompositePolicyPossession({
+        proposal: challenge.proposal,
+        assertCurrent: assertClientCurrent,
+        sign: async (validator) => {
+          const proof = await signSmartAccountWithValidator({
+            assertBeforeAuthentication: assertContext,
+            accountId: prepared.accountId,
+            actionHash: challenge.intent.actionHash,
+            executionContextId: prepared.executionContextId,
+            onAuthenticatorSigningResolved,
+            onAuthenticatorSigningStarted,
+            ports,
+            smartAccount: challenge.smartAccount,
+            validator,
+          });
+          return proof.signature;
+        },
+        verify: async (signatures) => {
+          await assertContext();
+          const result = await controllerEmitter(
+            ['wallet', 'verifySmartAccountCompositePossession'],
+            [prepared.executionContextId, [...signatures]]
+          );
+          await assertContext();
+          return result;
+        },
+      });
+      await assertContext();
+    }
 
     const signature = await signSmartAccountActionHash({
       assertBeforeAuthentication: assertContext,
@@ -665,7 +797,8 @@ export const signAndSubmitSmartAccountExecutions = async (
         },
       ],
       300000,
-      false
+      false,
+      feeConsent ? { confirmFee: feeConsent.confirmFee } : undefined
     );
   };
 

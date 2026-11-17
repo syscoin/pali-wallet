@@ -419,9 +419,13 @@ export const requireMessageSignApproval = (
     throw dappSigningApprovalExpired();
   const rawDigest =
     (methods.length === 2 &&
-      ['signSmartAccountPreparedOwner', 'signSLHDSAActionHash'].includes(
-        methods[1]
-      )) ||
+      [
+        'signSmartAccountPreparedOwner',
+        'approveSmartAccountExecutionFeeQuote',
+        'signSmartAccountCompositeOwner',
+        'verifySmartAccountCompositePossession',
+        'signSLHDSAActionHash',
+      ].includes(methods[1])) ||
     (methods.length === 3 &&
       methods[1] === 'ethereumTransaction' &&
       methods[2] === 'ethSign');

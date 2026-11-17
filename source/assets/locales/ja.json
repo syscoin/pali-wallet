@@ -1286,6 +1286,7 @@
     "checkYourDevice": "{{device}} でこのリクエストを承認してください",
     "useYourPasskey": "パスキーを使用してください",
     "passkeyPrompt": "ブラウザの指示に従ってパスキーで署名してください",
+    "smartAccountAuthorizationRetained": "スマートアカウントの操作はすでに署名されています。このガス代を拒否しても操作は取り消されず、nonce が使用されるまで実行される可能性があります。",
     "cancelFeePreview": "キャンセルのネットワーク手数料を確認中…",
     "cancelFeeConsent": "最大ガス手数料 {{fee}} {{currency}} でこの取引をキャンセルしますか？",
     "cancelFeeUnavailable": "キャンセル手数料を確認できません。もう一度お試しください。",

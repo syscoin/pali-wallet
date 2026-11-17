@@ -97,12 +97,16 @@ describe('smart-account execution approval context', () => {
   };
   const prepare = () =>
     controller.prepareSmartAccountExecutions(calls, 7, { expectedContext });
-  const submit = (
+  const submit = async (
     prepared: any,
     changes: any = {},
     assertCurrent: () => void = workerAuthority().assertCurrent
-  ) =>
-    controller.submitSmartAccountExecution(
+  ) => {
+    controller.approveSmartAccountExecutionFeeQuote(
+      prepared.executionContextId,
+      prepared.entryPointFeeQuote
+    );
+    return controller.submitSmartAccountExecution(
       {
         accountId: 7,
         executionContextId: prepared.executionContextId,
@@ -116,6 +120,7 @@ describe('smart-account execution approval context', () => {
       },
       assertCurrent
     );
+  };
 
   it.each([async () => undefined, () => true, false])(
     'rejects non-synchronous required guards in submission and local signing facades',
@@ -771,7 +776,8 @@ describe('smart-account execution approval context', () => {
       );
       expect(controller.submitSmartAccountExecution).toHaveBeenCalledWith(
         expect.objectContaining({ expectedContext }),
-        expect.any(Function)
+        expect.any(Function),
+        undefined
       );
       expect(store.dispatch).toHaveBeenCalledTimes(1);
     });

@@ -1,5 +1,9 @@
 import { webcrypto } from 'crypto';
 import { Wallet } from 'ethers/wallet';
+import {
+  SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  withReviewedSmartAccountExecution,
+} from 'tests/fixtures/reviewedSmartAccountExecution';
 
 import type {
   ISmartAccountMetadata,
@@ -22,6 +26,14 @@ import {
   SmartAccountExternalSignatureRequired,
 } from './execution';
 import { isPaliValidatorAlgorithmSupported } from './validatorSignability';
+
+const reviewedFixture = (
+  params: Parameters<typeof signAndSubmitSmartAccountExecutions>[0]
+) =>
+  withReviewedSmartAccountExecution(params, {
+    payer: { address: '0x' + '44'.repeat(20), id: 0, type: 'HDAccount' },
+    userOperation: SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  });
 
 jest.mock('utils/passkey/authenticator', () => ({
   ...jest.requireActual('utils/passkey/authenticator'),
@@ -418,14 +430,16 @@ describe('composite submission and SLH reserve policy', () => {
     async (_name, executions, expected) => {
       const smartAccount = slhComposite();
       const signSlh = jest.fn().mockResolvedValue(SLH_SIGNATURE);
-      await signAndSubmitSmartAccountExecutions({
-        accountAddress: ACCOUNT,
-        accountId: 7,
-        smartAccount,
-        authenticatorContexts: { 'slh-dsa': { signActionHash: signSlh } },
-        controllerEmitter: emitterFor(smartAccount),
-        executions: [...executions],
-      });
+      await signAndSubmitSmartAccountExecutions(
+        reviewedFixture({
+          accountAddress: ACCOUNT,
+          accountId: 7,
+          smartAccount,
+          authenticatorContexts: { 'slh-dsa': { signActionHash: signSlh } },
+          controllerEmitter: emitterFor(smartAccount),
+          executions: [...executions],
+        })
+      );
       expect(signSlh).toHaveBeenCalledWith(
         expect.objectContaining({
           accountId: 7,
@@ -468,8 +482,8 @@ describe('composite submission and SLH reserve policy', () => {
     let results: any[];
     try {
       results = await Promise.all([
-        signAndSubmitSmartAccountExecutions(params),
-        signAndSubmitSmartAccountExecutions(params),
+        signAndSubmitSmartAccountExecutions(reviewedFixture(params)),
+        signAndSubmitSmartAccountExecutions(reviewedFixture(params)),
       ]);
     } finally {
       observedDigest.mockRestore();

@@ -25,6 +25,7 @@ import {
   type EvmDappFeeChoiceFields,
   type EvmDappFeeComparison,
 } from '../../shared/evmDappFeePolicy';
+import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -150,6 +151,9 @@ export const SendTransaction = () => {
   const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
+  const { forExecution, feeConfirmation } = useSmartAccountFeeConfirmation(
+    JSON.stringify([currentApprovalWalletContextKey, host, eventName])
+  );
   const [approvedContext] = useState<IEvmTransactionContext>(() => {
     const current = store.getState();
     return (
@@ -1061,7 +1065,13 @@ export const SendTransaction = () => {
               accounts,
               controllerEmitter,
             }),
-            controllerEmitter: (methods, params, timeout, retryConnection) => {
+            controllerEmitter: (
+              methods,
+              params,
+              timeout,
+              retryConnection,
+              options
+            ) => {
               if (
                 methods.length === 2 &&
                 methods[0] === 'wallet' &&
@@ -1072,7 +1082,8 @@ export const SendTransaction = () => {
                 methods as Parameters<typeof controllerEmitter>[0],
                 params,
                 timeout,
-                retryConnection
+                retryConnection,
+                options
               );
             },
             executions: [
@@ -1084,6 +1095,15 @@ export const SendTransaction = () => {
             ],
             feeOverrides: getSmartAccountFeeOverrides(),
             approvedFeeQuote: fee!.smartAccountFeeQuote!,
+            feeConsent: forExecution({
+              account: approvedContext.account.address,
+              smartAccount: activeAccount.address,
+              chainId: activeNetwork.chainId,
+              symbol: activeNetwork.currency,
+              label: t('buttons.send'),
+              assertCurrent: assertApprovedQuoteCurrent,
+            }),
+            onBeforeAuthentication: assertApprovedQuoteCurrent,
             expectedContext: approvedContext,
             onPrepared: assertApprovedQuoteCurrent,
             onBeforeSubmit: async () => assertApprovedQuoteCurrent(),
@@ -1139,6 +1159,15 @@ export const SendTransaction = () => {
         // Don't set loading to false here - let the navigation effect handle it
         return response.hash;
       } catch (error: any) {
+        if (
+          activeAccount.isSmartAccount &&
+          submissionRequested &&
+          error?.code === 4001 &&
+          error?.transactionNotBroadcast === true &&
+          mountedRef.current &&
+          generation === closeGenerationRef.current
+        )
+          setFeeQuoteNeedsRefresh(true);
         if (
           !activeAccount.isSmartAccount &&
           error?.transactionNotBroadcast === true
@@ -1840,6 +1869,7 @@ export const SendTransaction = () => {
 
   return (
     <>
+      {feeConfirmation}
       <EditPriorityModal
         showModal={isOpen}
         setIsOpen={updateFeeEditorOpen}

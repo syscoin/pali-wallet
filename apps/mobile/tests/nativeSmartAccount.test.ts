@@ -1,4 +1,5 @@
 import { Wallet } from 'ethers/wallet';
+import { TypedDataEncoder } from 'ethers/hash';
 import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import type { NativeTrezorClient } from '../src/hardware/trezorHost.ts';
@@ -89,6 +90,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let onCredentialRequest: ((check: () => void) => void | Promise<void>) | undefined;
   const submitted: string[] = [];
   const payerSignatures: string[] = [];
+  const possessionViews: { validator: string; hash: string; proof: string }[] = [];
+  let possessionVerifier: ((validator: string, hash: string, proof: string) => boolean | string | undefined | Promise<boolean | string | undefined>) | undefined;
   const infrastructureBroadcasts: { rawTransaction: string; pending: NativeInfrastructurePending }[] = [];
   const missingInfrastructure = new Set<string>();
   let failInfrastructureBroadcast = false;
@@ -292,7 +295,25 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const smartComposite = ownGuardian ? ownGuardian.compositeThreshold !== undefined : !!composite;
           const token = tokens.get(to);
           const nft = nfts.get(to);
-          if (nft) {
+          if (data.startsWith(paliEcdsaValidatorInterface.getFunction('isValidSignatureWithSender')!.selector)) {
+            const [sender, hash, proof] = paliEcdsaValidatorInterface.decodeFunctionData('isValidSignatureWithSender', data);
+            assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === sender.toLowerCase()));
+            assert.equal(request.params[0].from.toLowerCase(), sender.toLowerCase());
+            possessionViews.push({ validator: to, hash, proof });
+            let valid = await possessionVerifier?.(to, hash, proof);
+            if (valid === undefined) {
+              valid = false;
+              if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && observedEcdsaInstalled) {
+                const ownerAddress = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === 'hd:60:0')!.address;
+                const configured = observedOwners ?? [recoveredOwner ?? (externalOwner ? '0x' + '66'.repeat(20) : ownerAddress)];
+                const proofs: readonly string[] = observedThreshold === 1 ? [proof] : [...coder.decode(['bytes[]'], proof)[0]];
+                const recovered = proofs.map(signature => recoverAddress(hash, signature).toLowerCase());
+                valid = recovered.length === observedThreshold && new Set(recovered).size === recovered.length &&
+                  recovered.every(address => configured.some(owner => owner.toLowerCase() === address));
+              }
+            }
+            result = typeof valid === 'string' ? valid : paliEcdsaValidatorInterface.encodeFunctionResult('isValidSignatureWithSender', [valid ? '0x1626ba7e' : '0xffffffff']);
+          } else if (nft) {
             const call = nftInterface.parseTransaction({ data }); assert(call);
             if (call.name === 'supportsInterface') result = nftInterface.encodeFunctionResult(call.fragment,
               [call.args[0] === (nft.standard === 'ERC-721' ? '0x80ac58cd' : '0xd9b67a26')]);
@@ -510,7 +531,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
     increaseInnerGas() { innerGasEstimate = '0x493e0'; },
     failInnerExecution() { innerGasEstimate = '0xffffffff'; },
-    get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
+    get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, payerSignatures, possessionViews, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
       const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
       if (present) missingInfrastructure.delete(address); else missingInfrastructure.add(address);
@@ -531,6 +552,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       deployed = true;
       return guardian;
     },
+    verifyPossessionWith(callback: NonNullable<typeof possessionVerifier>) { possessionVerifier = callback; },
     externalOwner() { externalOwner = true; },
     recoveredOwner(address: string) { recoveredOwner = address; },
     observedEcdsaOwners(addresses: string[], threshold: number) { observedOwners = addresses; observedThreshold = threshold; },
@@ -4480,14 +4502,14 @@ test('actual Smart credential replacement authenticates retained SLH ciphertext 
   } finally { await f.close(); }
 });
 
-async function readyLedgerSmartOwner(count = 1) {
+async function readyLedgerSmartOwner(count = 1, passkeys: KeyringRuntimeDependencies['passkeys'] = null) {
   const device = nativeSmartLedgerDevice();
   let disconnect!: () => Promise<void>;
   const f = await fixture({}, true, null, async scope => {
     const transport = await device.factory(scope);
     disconnect = () => transport.host.disconnect();
     return transport;
-  });
+  }, undefined, passkeys);
   const picker = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'import');
   try {
     for (let index = 0; index < count; index++) {
@@ -5547,7 +5569,9 @@ test('module management composite uses shared execution and reconciles its exact
     f.onBroadcast(() => f.observedCompositeChildren(children));
     await confirmModuleOperation(operation);
     assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
-    assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1);
+    assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 2);
+    assert.equal(f.possessionViews.length, 1);
+    assert.notEqual(f.signatures[0]!.digest, f.signatures[1]!.digest, 'possession cannot authorize the financial UserOp');
     const observed = await f.runtime.readSmartAccountModules(new AbortController().signal, () => undefined);
     assert.equal(observed.auth?.module, 'composite');
     assert.equal(f.runtime.canSignSmartAccount(), true);
@@ -6694,4 +6718,244 @@ for (const count of [1, 10, 20]) test(`Smart ERC20 batch classification groups $
     const counts = { methods: f.calls.length, http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0) };
     console.log('SMART_BATCH_CLASSIFICATION_COUNTS', JSON.stringify({ count, ...counts }));
   } finally { operation?.dispose(); approval?.dispose(); await f.close(); }
+});
+
+async function combinedPossessionFixture() {
+  let f!: Awaited<ReturnType<typeof fixture>>, prompt = false;
+  let assertion: ((request: Parameters<NonNullable<KeyringRuntimeDependencies['passkeys']>['sign']>[0]) => Promise<void>) | undefined;
+  const hashes: string[] = [];
+  const scope = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('No credential creation during policy proof'); },
+    async recover() { throw Error('No credential replacement during policy proof'); },
+    async sign(request) {
+      prompt = true;
+      try { request.assertCurrent(); f.assertNoSigningKeys(); hashes.push(request.actionHash); await assertion?.(request); request.assertCurrent(); return { signature: mixedPasskeyProof }; }
+      finally { prompt = false; }
+    },
+  };
+  f = await fixture({}, true, null, undefined, undefined, passkeys);
+  try {
+    await f.change({ kind: 'create-smart', label: 'Combined possession' });
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.observedPasskey(); f.retainActiveValidator('ecdsa');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    return { f, binding, hashes, assertion(work: NonNullable<typeof assertion>) { assertion = work; },
+      async close() { scope.retire(); await f.close(); } };
+  } catch (error) { scope.retire(); await f.close(); throw error; }
+}
+
+for (const threshold of [1, 2]) test(`combined possession rejects unavailable required passkey before current-policy signing (threshold ${threshold})`, async () => {
+  const { f, binding, hashes, assertion, close } = await combinedPossessionFixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    assertion(async () => { throw new DOMException('Credential unavailable or cancelled', 'NotAllowedError'); });
+    const passkey = getConfiguredAuthenticatorAddress(1, 'p256-webauthn');
+    const children = threshold === 1 ? [passkey] : [getConfiguredAuthenticatorAddress(1, 'ecdsa'), passkey];
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children, threshold }, new AbortController().signal, () => undefined, binding);
+    await operation.prepare(); const hash = operation.getSnapshot().userOperationHash;
+    assert.equal(operation.getSnapshot().phase, 'authorize'); assert(operation.getSnapshot().maximumPrefundUnits);
+    assert.equal(hashes.length, 0); assert.equal(f.signatures.length, 0, 'initial numerical fee consent precedes all possession work');
+    await authorizeReviewedModule(operation);
+    assert.equal(operation.getSnapshot().phase, 'failed'); assert.equal(hashes.length, 1);
+    assert.equal(f.signatures.length, threshold - 1); assert(f.signatures.every(entry => entry.digest !== hash));
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.auth.module, 'ecdsa');
+  } finally { await operation?.dispose(); await close(); }
+});
+
+test('combined possession optional lost passkey does not block a verified ECDSA threshold', async () => {
+  const { f, binding, hashes, assertion, close } = await combinedPossessionFixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    assertion(async () => { throw Error('The optional passkey must not be requested'); });
+    const children = [getConfiguredAuthenticatorAddress(1, 'p256-webauthn'), getConfiguredAuthenticatorAddress(1, 'ecdsa')];
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children, threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    f.onBroadcast(() => { f.observedCompositeChildren(children); f.retainActiveValidator('composite'); });
+    await confirmModuleOperation(operation);
+    assert.equal(hashes.length, 0); assert.equal(f.possessionViews.length, 1); assert.equal(f.signatures.length, 2);
+    assert.notEqual(f.signatures[0]!.digest, f.signatures[1]!.digest);
+  } finally { await operation?.dispose(); await close(); }
+});
+
+for (const admitted of [false, true]) test(`combined possession requires installed passkey verification with no credential hint (valid ${admitted})`, async () => {
+  const { f, binding, hashes, assertion, close } = await combinedPossessionFixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    const passkey = getConfiguredAuthenticatorAddress(1, 'p256-webauthn');
+    assertion(async request => { assert.equal(request.credentialId, undefined); assert.equal(request.expectedPublicKey.x, '0x' + '01'.repeat(32)); });
+    f.verifyPossessionWith((validator, hash, proof) => {
+      assert.equal(validator, passkey.toLowerCase()); assert.equal(hash, hashes[0]); assert.equal(proof, mixedPasskeyProof);
+      assert.equal(f.signatures.length, 0, 'the current policy cannot sign before child verification');
+      return admitted;
+    });
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [passkey], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    if (admitted) {
+      f.onBroadcast(() => { f.observedCompositeChildren([passkey]); f.retainActiveValidator('composite'); });
+      await confirmModuleOperation(operation); assert.equal(f.signatures.length, 1); assert.equal(f.submitted.length, 1);
+      assert.notEqual(hashes[0], f.signatures[0]!.digest);
+    } else {
+      await operation.prepare(); await authorizeReviewedModule(operation);
+      assert.equal(operation.getSnapshot().phase, 'failed'); assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    }
+    assert.equal(hashes.length, 1); assert.equal(f.possessionViews.length, 1);
+  } finally { await operation?.dispose(); await close(); }
+});
+
+for (const changed of ['nonce', 'lock', 'source configuration'] as const) test(`combined possession rechecks ${changed} after a held proposed proof`, async () => {
+  const { f, binding, assertion, close } = await combinedPossessionFixture();
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    assertion(async () => { entered.resolve(); await release.promise; });
+    f.verifyPossessionWith(() => true);
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [getConfiguredAuthenticatorAddress(1, 'p256-webauthn')], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    await operation.prepare(); const authorizing = authorizeReviewedModule(operation);
+    await Promise.race([entered.promise, authorizing.then(() => { throw Error('Expected held assertion'); })]);
+    if (changed === 'nonce') f.advanceSmartNonce();
+    else if (changed === 'lock') f.owner.lock();
+    else f.mutateSelectedSmart(account => { account.smartAccount!.auth = { ...account.smartAccount!.auth!, data: encodeEcdsaValidatorInitData(['0x' + '88'.repeat(20)], 1) }; });
+    release.resolve(); await authorizing;
+    assert.equal(operation.getSnapshot().phase, 'failed'); assert.equal(f.signatures.length, 0); assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { release.resolve(); await operation?.dispose(); await close(); }
+});
+
+test('combined possession retains the passkey phase and exact challenge across current Trezor Suite return', async () => {
+  let assertions = 0, prompt = false;
+  const hashes: string[] = [], entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const auth = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(auth, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('No new credential'); }, async recover() { throw Error('No replacement credential'); },
+    async sign(request) { prompt = true; try { request.assertCurrent(); assertions++; hashes.push(request.actionHash); return { signature: mixedPasskeyProof }; } finally { prompt = false; } },
+  };
+  const { f, device, close } = await readyTrezorSmartOwner(null, 1, passkeys);
+  let original: NativeSmartAccountOperation | undefined, resumed: NativeSmartAccountOperation | undefined;
+  try {
+    const passkey = getConfiguredAuthenticatorAddress(1, 'p256-webauthn');
+    f.observedPasskey(); f.retainActiveValidator('ecdsa');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    f.verifyPossessionWith((validator, hash, proof) => {
+      assert.equal(validator, passkey.toLowerCase()); assert.equal(hash, hashes[0]); assert.equal(proof, mixedPasskeyProof); return true;
+    });
+    device.onBeforeCallback(async request => { if (request.method === 'ethereumSignTypedData') { entered.resolve(); await release.promise; } });
+    original = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [passkey], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    await original.prepare(); const originalHash = original.getSnapshot().userOperationHash;
+    assert.equal(assertions, 0, 'the initial numerical fee review precedes possession');
+    const signing = authorizeReviewedModule(original);
+    await Promise.race([entered.promise, signing.then(() => { throw Error('Expected Suite departure'); })]);
+    assert.equal(assertions, 1); assert.equal(f.possessionViews.length, 1);
+    assert.notEqual(hashes[0], originalHash);
+    original.background(); f.runtime.trezor.background(); f.owner.lock(); await signing;
+    release.resolve(); await new Promise(resolve => setImmediate(resolve)); assert.equal(device.sessions.getSnapshot()?.phase, 'response-ready');
+    await f.owner.unlock(); const resume = await f.runtime.trezor.resumeSend(); assert.equal(resume.kind, 'smart-operation');
+    resumed = await f.runtime.resumeSmartAccountOperation(resume.id, new AbortController().signal, () => undefined, binding);
+    await resumed.prepare(); assert.equal(resumed.getSnapshot().phase, 'authorize'); assert.equal(resumed.getSnapshot().userOperationHash, originalHash);
+    const opened = device.urls.length;
+    f.onBroadcast(() => { f.observedCompositeChildren([passkey]); f.retainActiveValidator('composite'); });
+    const authorizing = authorizeReviewedModule(resumed);
+    for (let index = 0; index < 1000 && !resumed.getSnapshot().payerReview && resumed.getSnapshot().phase !== 'failed'; index++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(resumed.getSnapshot().payerReview, JSON.stringify(resumed.getSnapshot()));
+    assert.equal(assertions, 1, 'a retained non-Trezor possession phase is not requested again after Suite return');
+    assert.equal(device.urls.length, opened); assert.equal(device.signatures.length, 1);
+    assert.equal(f.submitted.length, 0); resumed.confirmPayer(resumed.getSnapshot().payerReview!.id); await authorizing;
+    assert.equal(resumed.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 1);
+  } finally { release.resolve(); auth.retire(); await original?.dispose(); await resumed?.dispose(); await close(); }
+});
+
+test('combined possession connects only the proposed inactive Ledger owner and keeps transaction/payer reviews separate', async () => {
+  let assertions = 0, prompt = false;
+  const auth = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(auth, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('No new credential'); }, async recover() { throw Error('No replacement credential'); },
+    async sign(request) { prompt = true; try { request.assertCurrent(); assertions++; return { signature: mixedPasskeyProof }; } finally { prompt = false; } },
+  };
+  const owned = await readyLedgerSmartOwner(1, passkeys), { f, device } = owned;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    f.observedPasskey(); f.retainActiveValidator('p256-webauthn');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), []);
+    const ecdsa = getConfiguredAuthenticatorAddress(1, 'ecdsa');
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [ecdsa], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);
+    assert.equal(f.runtime.ledger.isConnected(), false); await connectLedgerSmart(owned); assert.equal(f.runtime.ledger.isConnected(), true);
+    await operation.prepare(); assert.equal(device.signatures.length, 0); assert.equal(assertions, 0);
+    f.onBroadcast(() => { f.observedCompositeChildren([ecdsa]); f.retainActiveValidator('composite'); });
+    await confirmModuleOperation(operation);
+    assert.equal(device.signatures.length, 1); assert.equal(f.possessionViews.length, 1); assert.equal(assertions, 1);
+    assert.equal(device.signatures[0]!.digest, f.possessionViews[0]!.hash);
+    assert.notEqual(device.signatures[0]!.digest, operation.getSnapshot().userOperationHash);
+    assert.equal(f.submitted.length, 1); assert.equal(f.payerSignatures.length, 1);
+  } finally { auth.retire(); await operation?.dispose(); await owned.close(); }
+});
+
+test('combined possession proves a proposed inactive Trezor validator before the current passkey signs', async () => {
+  const hashes: string[] = []; let prompt = false;
+  const auth = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(auth, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('No new credential'); }, async recover() { throw Error('No replacement credential'); },
+    async sign(request) { prompt = true; try { request.assertCurrent(); hashes.push(request.actionHash); return { signature: mixedPasskeyProof }; } finally { prompt = false; } },
+  };
+  const { f, device, close } = await readyTrezorSmartOwner(null, 1, passkeys);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    f.observedPasskey(); f.retainActiveValidator('p256-webauthn');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    const ecdsa = getConfiguredAuthenticatorAddress(1, 'ecdsa');
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [ecdsa], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize'); assert.equal(device.signatures.length, 0); assert.equal(hashes.length, 0);
+    f.onBroadcast(() => { f.observedCompositeChildren([ecdsa]); f.retainActiveValidator('composite'); });
+    const authorizing = authorizeReviewedModule(operation);
+    for (let index = 0; index < 1000 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; index++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    assert.equal(device.signatures.length, 1); assert.equal(f.possessionViews.length, 1); assert.equal(hashes.length, 1);
+    const signed = device.signatures[0]!.data, types = { ...signed.types }; delete types.EIP712Domain;
+    const digest = TypedDataEncoder.hash(signed.domain, types, signed.message);
+    assert.equal(digest, f.possessionViews[0]!.hash); assert.notEqual(digest, hashes[0]);
+    assert.equal(hashes[0], operation.getSnapshot().userOperationHash); assert.equal(f.submitted.length, 0);
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await authorizing; assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 1);
+  } finally { auth.retire(); await operation?.dispose(); await close(); }
+});
+
+test('combined possession aborts malformed child responses instead of trying an optional credential', async () => {
+  const { f, binding, hashes, close } = await combinedPossessionFixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    f.verifyPossessionWith(() => '0x1234');
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [getConfiguredAuthenticatorAddress(1, 'ecdsa'), getConfiguredAuthenticatorAddress(1, 'p256-webauthn')], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    await operation.prepare(); const transactionHash = operation.getSnapshot().userOperationHash;
+    await authorizeReviewedModule(operation); assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.possessionViews.length, 1); assert.equal(hashes.length, 0); assert.equal(f.signatures.length, 1);
+    assert.notEqual(f.signatures[0]!.digest, transactionHash); assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await operation?.dispose(); await close(); }
+});
+
+test('combined possession skips only pre-auth missing SLH state and retains the later passkey/current Trezor phases', async () => {
+  const backend = slhSmartBackend(); let assertions = 0, prompt = false;
+  const auth = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(auth, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('No new credential'); }, async recover() { throw Error('No replacement credential'); },
+    async sign(request) { prompt = true; try { request.assertCurrent(); assertions++; return { signature: mixedPasskeyProof }; } finally { prompt = false; } },
+  };
+  const { f, device, close } = await readyTrezorSmartOwner(backend.capability, 1, passkeys);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    f.observedPasskey(); f.observedSlh({ pkRoot: '0x' + '44'.repeat(16) + '00'.repeat(16), pkSeed: '0x' + '33'.repeat(16) + '00'.repeat(16) }); f.retainActiveValidator('ecdsa');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    const passkey = getConfiguredAuthenticatorAddress(1, 'p256-webauthn'), children = [getConfiguredAuthenticatorAddress(1, 'slh-dsa'), passkey];
+    f.verifyPossessionWith((validator, _hash, proof) => { assert.equal(validator, passkey.toLowerCase()); assert.equal(proof, mixedPasskeyProof); return true; });
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children, threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
+    f.onBroadcast(() => { f.observedCompositeChildren(children); f.retainActiveValidator('composite'); });
+    const authorizing = authorizeReviewedModule(operation);
+    for (let index = 0; index < 1000 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; index++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    assert.equal(backend.opened, 0, 'missing encrypted SLH state is rejected before private authentication/crypto');
+    assert.deepEqual(f.slhDerivations, []); assert.equal(assertions, 1); assert.equal(f.possessionViews.length, 1); assert.equal(device.signatures.length, 1); assert.equal(f.submitted.length, 0);
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await authorizing; assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 1);
+  } finally { auth.retire(); await operation?.dispose(); await close(); }
 });

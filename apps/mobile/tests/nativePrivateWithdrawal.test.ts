@@ -1122,7 +1122,9 @@ test('single-note maintenance reaches a completed seventh note past a slow unres
     assert.equal(before.length, 7);
     assert(before.every(note => note.withdrawal?.phase === 'submitted'));
     f.enableCompletionReads();
-    let elapsed = performance.now();
+    // The controlled clock advances in exact milliseconds; avoid subtracting
+    // unrelated floating-point fractions from the real process clock.
+    let elapsed = Math.trunc(performance.now());
     const start = elapsed;
     context.mock.method(performance, 'now', () => elapsed);
     const checked: string[] = [];

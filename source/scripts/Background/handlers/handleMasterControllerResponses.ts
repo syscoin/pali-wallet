@@ -2,6 +2,8 @@ import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions
 
 import {
   SMART_ACCOUNT_CONTROLLER_PORT,
+  SMART_ACCOUNT_FEE_APPROVAL,
+  SMART_ACCOUNT_FEE_REVIEW,
   isOwnedSmartAccountControllerCall,
   type SmartAccountControllerAuthority,
 } from '../../../shared/smartAccountControllerAuthority';
@@ -184,6 +186,12 @@ export const controllerErrorResponse = (
     error?.transactionNotBroadcast === true
   )
     submission.code = EVM_SIGNED_RECORD_NONCE_CONFLICT;
+  if (
+    error?.code === 'COMPOSITE_CHILD_UNAVAILABLE' &&
+    error?.transactionNotBroadcast === true &&
+    !trustedBatchHash
+  )
+    submission.code = error.code;
   if (
     (error?.code === 'UTXO_SUBMISSION_NOT_DISPATCHED' &&
       error.transactionNotBroadcast === true) ||
@@ -444,7 +452,10 @@ export const handleMasterControllerResponses = (
             const smartMethod =
               walletMethod === 'submitSmartAccountExecution' ||
               walletMethod === 'registerSmartAccountOnChain' ||
-              walletMethod === 'signSmartAccountPreparedOwner'
+              walletMethod === 'signSmartAccountPreparedOwner' ||
+              walletMethod === 'approveSmartAccountExecutionFeeQuote' ||
+              walletMethod === 'signSmartAccountCompositeOwner' ||
+              walletMethod === 'verifySmartAccountCompositePossession'
                 ? walletMethod
                 : undefined;
             const smartApproval = smartMethod
@@ -508,6 +519,7 @@ export const handleMasterControllerResponses = (
                   // Background-only capabilities do not cross the UI boundary.
                   assertCurrentContext: undefined,
                   assertBeforeSign: undefined,
+                  confirmFee: undefined,
                   genericDispatchId: undefined,
                   submission,
                   authorizeDapp: dappApproval?.assertCurrent,
@@ -537,6 +549,9 @@ export const handleMasterControllerResponses = (
               ];
             } else if (
               smartMethod === 'signSmartAccountPreparedOwner' ||
+              smartMethod === 'approveSmartAccountExecutionFeeQuote' ||
+              smartMethod === 'signSmartAccountCompositeOwner' ||
+              smartMethod === 'verifySmartAccountCompositePossession' ||
               smartMethod === 'registerSmartAccountOnChain' ||
               smartMethod === 'submitSmartAccountExecution'
             ) {
@@ -569,9 +584,20 @@ export const handleMasterControllerResponses = (
                   smartApproval?.assertCurrent();
                   if (!owned.isCurrent()) throw transactionApprovalExpired();
                 },
+                ...(sourceAuthority.confirmFee && {
+                  async confirmFee(review) {
+                    controllerAuthority.assertCurrent();
+                    const id = await sourceAuthority.confirmFee!(review);
+                    controllerAuthority.assertCurrent();
+                    return id;
+                  },
+                }),
               };
               argumentsForCall =
-                smartMethod === 'signSmartAccountPreparedOwner'
+                smartMethod === 'signSmartAccountPreparedOwner' ||
+                smartMethod === 'approveSmartAccountExecutionFeeQuote' ||
+                smartMethod === 'signSmartAccountCompositeOwner' ||
+                smartMethod === 'verifySmartAccountCompositePossession'
                   ? [params?.[0], params?.[1], controllerAuthority]
                   : [
                       smartApproval?.context
@@ -617,7 +643,12 @@ export const handleMasterControllerResponses = (
             // A signed proof must never leave its retired document. Financial
             // submissions retain their existing acknowledged/unknown result;
             // document retirement cannot undo the durable handoff.
-            if (smartMethod === 'signSmartAccountPreparedOwner')
+            if (
+              smartMethod === 'signSmartAccountPreparedOwner' ||
+              smartMethod === 'approveSmartAccountExecutionFeeQuote' ||
+              smartMethod === 'signSmartAccountCompositeOwner' ||
+              smartMethod === 'verifySmartAccountCompositePossession'
+            )
               sourceAuthority?.assertCurrent();
             recordNonce?.(response);
             recordQuotedNonce?.(response?.transaction?.nonce);
@@ -758,9 +789,25 @@ export const handleMasterControllerResponses = (
     });
     const lifetime = new AbortController();
     let used = false;
+    let usedMethod: string | undefined;
+    const reviewedFeeIds = new Set<string>();
+    let pendingFee:
+      | {
+          expires: number;
+          id: string;
+          reject(error: Error): void;
+          resolve(id: string | null): void;
+          timer: ReturnType<typeof setTimeout>;
+        }
+      | undefined;
     const retire = () => {
       if (lifetime.signal.aborted) return;
       lifetime.abort();
+      if (pendingFee) {
+        clearTimeout(pendingFee.timer);
+        pendingFee.reject(transactionApprovalExpired());
+        pendingFee = undefined;
+      }
       clearTimeout(deadline);
       controllerPortRetirements.delete(retire);
       port.onMessage.removeListener(receive);
@@ -777,28 +824,85 @@ export const handleMasterControllerResponses = (
       assertCurrent() {
         if (lifetime.signal.aborted) throw transactionApprovalExpired();
       },
+      confirmFee(review) {
+        authority.assertCurrent();
+        assertJsonWorkBudget(review);
+        if (
+          ![
+            'submitSmartAccountExecution',
+            'registerSmartAccountOnChain',
+          ].includes(usedMethod ?? '') ||
+          pendingFee ||
+          reviewedFeeIds.size >= 2 ||
+          typeof review?.id !== 'string' ||
+          !/^[A-Za-z0-9_-]{1,160}$/.test(review.id) ||
+          reviewedFeeIds.has(review.id) ||
+          !Number.isFinite(review.validForMs) ||
+          review.validForMs <= 0 ||
+          review.validForMs > 90_000
+        )
+          throw transactionApprovalExpired();
+        reviewedFeeIds.add(review.id);
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(retire, review.validForMs);
+          pendingFee = {
+            id: review.id,
+            expires: performance.now() + review.validForMs,
+            resolve,
+            reject,
+            timer,
+          };
+          try {
+            port.postMessage({ type: SMART_ACCOUNT_FEE_REVIEW, review });
+          } catch (error) {
+            retire();
+          }
+        });
+      },
     };
     const receive = (message: unknown) => {
       try {
         authority.assertCurrent();
         assertJsonWorkBudget(message);
         const request = message as {
+          approved?: unknown;
           data?: { methods?: unknown; params?: unknown };
+          id?: unknown;
           type?: unknown;
         };
+        if (request.type === SMART_ACCOUNT_FEE_APPROVAL) {
+          if (
+            !pendingFee ||
+            Object.keys(request).length !== 3 ||
+            request.id !== pendingFee.id ||
+            typeof request.approved !== 'boolean' ||
+            performance.now() >= pendingFee.expires
+          )
+            throw transactionApprovalExpired();
+          const accepted = pendingFee;
+          pendingFee = undefined;
+          clearTimeout(accepted.timer);
+          accepted.resolve(request.approved ? accepted.id : null);
+          return;
+        }
         if (
           used ||
           request.type !== 'CONTROLLER_ACTION' ||
           !isOwnedSmartAccountControllerCall(request.data?.methods) ||
           !Array.isArray(request.data?.params) ||
           request.data.params.length !==
-            ((request.data.methods as string[])[1] ===
-            'signSmartAccountPreparedOwner'
+            ([
+              'signSmartAccountPreparedOwner',
+              'approveSmartAccountExecutionFeeQuote',
+              'signSmartAccountCompositeOwner',
+              'verifySmartAccountCompositePossession',
+            ].includes((request.data.methods as string[])[1])
               ? 2
               : 1)
         )
           throw transactionApprovalExpired();
         used = true;
+        usedMethod = (request.data!.methods as string[])[1];
         invokeController(
           request,
           capturedSender,

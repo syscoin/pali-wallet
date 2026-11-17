@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { decodeAssetTransfer } from '../../shared/assetTransfer';
 import { createSmartAccountCallsExecutions } from '../../shared/dappCalls';
 import { createEoaCallsSequence } from '../../wallet/evmCallsSequence';
+import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import { Button, Icon, Tooltip } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -355,6 +356,8 @@ export const SendCalls = () => {
   const hasCurrentFeeQuote =
     !requestSmartAccount.supportsAtomicBatch ||
     Boolean(feeQuote?.key === feeQuoteKey && !feeQuoteNeedsRefresh);
+  const { forExecution, feeConfirmation } =
+    useSmartAccountFeeConfirmation(feeQuoteKey);
   const currentFeeQuoteKeyRef = React.useRef(feeQuoteKey);
   currentFeeQuoteKeyRef.current = feeQuoteKey;
   const assetTransfers = useAssetTransferSummaries(
@@ -842,6 +845,16 @@ export const SendCalls = () => {
             throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
               transactionNotBroadcast: true,
             });
+          const assertApprovedQuoteCurrent = () => {
+            if (
+              !mountedRef.current ||
+              settlementStartedRef.current ||
+              approvedQuote.key !== currentFeeQuoteKeyRef.current
+            )
+              throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+                transactionNotBroadcast: true,
+              });
+          };
           setReviewedDestinations((previous) =>
             Object.freeze({ ...previous, ...approvedQuote.destinations })
           );
@@ -865,19 +878,16 @@ export const SendCalls = () => {
             executions: approvedQuote.executions,
             expectedContext: approvedContext,
             approvedFeeQuote: approvedQuote,
-            onPrepared: () => {
-              if (
-                !mountedRef.current ||
-                settlementStartedRef.current ||
-                approvedQuote.key !== currentFeeQuoteKeyRef.current
-              )
-                throw Object.assign(
-                  new Error(EVM_TRANSACTION_CONTEXT_CHANGED),
-                  {
-                    transactionNotBroadcast: true,
-                  }
-                );
-            },
+            feeConsent: forExecution({
+              account: approvedContext.account.address,
+              smartAccount: approvedContext.account.address,
+              chainId: activeNetwork.chainId,
+              symbol: activeNetwork.currency,
+              label: t('buttons.send'),
+              assertCurrent: assertApprovedQuoteCurrent,
+            }),
+            onBeforeAuthentication: assertApprovedQuoteCurrent,
+            onPrepared: assertApprovedQuoteCurrent,
             onAssertionResolved: () => {
               selectedIndices.forEach((index) => {
                 setTransactionStatuses((prev) => {
@@ -951,6 +961,17 @@ export const SendCalls = () => {
           alert.success(t('send.txSuccessfull'));
           return;
         } catch (error) {
+          if (
+            smartSubmissionInvoked &&
+            error?.code === 4001 &&
+            error?.transactionNotBroadcast === true &&
+            mountedRef.current &&
+            !settlementStartedRef.current &&
+            feeQuote?.key === currentFeeQuoteKeyRef.current
+          ) {
+            setFeeQuoteNeedsRefresh(true);
+            setFeeQuoteError(t('send.smartAccountFeeQuoteChanged'));
+          }
           if (
             error?.message === SMART_ACCOUNT_FEE_QUOTE_CHANGED &&
             smartSubmissionInvoked
@@ -1375,6 +1396,7 @@ export const SendCalls = () => {
 
   return (
     <div className="h-screen flex flex-col">
+      {feeConfirmation}
       {/* Header */}
       <div className="bg-brand-blue600 p-4">
         <p className="text-sm text-brand-white break-all">{host}</p>

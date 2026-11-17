@@ -1704,6 +1704,60 @@ it('refuses an explicit zero EIP-1559 fee cap before submission', async () => {
   ).toBe(false);
 });
 
+it('invalidates a consumed Smart Account context after definite payer-fee decline and reviews a fresh quote before retry', async () => {
+  mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+  mockState.vault.accounts.HDAccount[0].smartAccount = {};
+  const view = await prepare();
+  mockHandleTransactionError.mockReturnValueOnce(true);
+  mockSmartSubmit.mockImplementationOnce(({ controllerEmitter }) =>
+    controllerEmitter(['wallet', 'submitSmartAccountExecution'], [{}])
+  );
+  const invoke = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (methods, args, ...rest) => {
+    if (methods[1] === 'submitSmartAccountExecution')
+      throw Object.assign(new Error('Transaction fee approval was cancelled'), {
+        code: 4001,
+        transactionNotBroadcast: true,
+      });
+    return invoke(methods, args, ...rest);
+  });
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.confirm',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'send.refreshFeeQuote',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(false);
+  expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
+  const quoted = mockFee.mock.calls.length;
+  await act(async () => mockButtonHandlers['send.refreshFeeQuote']());
+  await waitFor(() =>
+    expect(mockFee.mock.calls.length).toBeGreaterThan(quoted)
+  );
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
+  mockSmartSubmit.mockResolvedValueOnce({ hash: 'freshly-reviewed' });
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(mockSmartSubmit).toHaveBeenCalledTimes(2);
+  view.unmount();
+});
+
 it('refuses smart-account review without account metadata before requesting a signature', async () => {
   mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
   mockQuery.tx.gasPrice = '0x1';

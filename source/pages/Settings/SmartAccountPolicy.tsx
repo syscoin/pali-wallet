@@ -603,7 +603,7 @@ const SmartAccountPolicy = () => {
     useState<WalletAuthenticatorReconciliation | null>(null);
   const walletAuthenticatorPendingRef = useRef(walletAuthenticatorPending);
   walletAuthenticatorPendingRef.current = walletAuthenticatorPending;
-  const { confirmFee, feeConfirmation } =
+  const { confirmFee, feeConfirmation, forExecution } =
     useSmartAccountFeeConfirmation(metadataEntryKey);
   useEffect(() => {
     setLoading(false);
@@ -1449,6 +1449,15 @@ const SmartAccountPolicy = () => {
         controllerEmitter,
         executions,
         expectedContext: approval.expectedContext,
+        feeConsent: forExecution({
+          account: approval.expectedContext.account.address,
+          smartAccount: account.address,
+          chainId: activeNetwork.chainId,
+          symbol: activeNetwork.currency,
+          label: t('settings.smartAccountAccountPolicy'),
+          assertCurrent: approval.assertCurrent,
+        }),
+        onBeforeAuthentication: approval.assertCurrent,
         onPrepared: approval.assertCurrent,
         onBeforeSubmit: async () => {
           await assertApprovalSession(approval);
@@ -1549,6 +1558,15 @@ const SmartAccountPolicy = () => {
         controllerEmitter,
         executions: command.executions.map((execution) => ({ ...execution })),
         expectedContext: approval.expectedContext,
+        feeConsent: forExecution({
+          account: approval.expectedContext.account.address,
+          smartAccount: account.address,
+          chainId: activeNetwork.chainId,
+          symbol: activeNetwork.currency,
+          label: t('settings.smartAccountAccountPolicy'),
+          assertCurrent: approval.assertCurrent,
+        }),
+        onBeforeAuthentication: approval.assertCurrent,
         onPrepared: approval.assertCurrent,
         onBeforeSubmit: async () => {
           // refreshMetadata retains the existing approval/session check before
@@ -1615,11 +1633,11 @@ const SmartAccountPolicy = () => {
     setLoading(true);
     try {
       const approval = await capturePolicyApproval();
-      await controllerEmitter(
-        ['wallet', 'registerSmartAccountOnChain'],
-        [{ accountId: account.id, expectedContext: approval.expectedContext }],
-        300000
-      );
+      if (!metadata.isDeployed)
+        await submitModuleExecutions(
+          [{ target: account.address, data: '0x', value: '0x0' }],
+          { approval, waitForConfirmation: true, refreshAfterSubmit: false }
+        );
       await refreshMetadata(approval, false).catch(() => null);
       if (isCurrentUi()) alert.success(t('settings.smartAccountRegistered'));
     } catch (error: any) {

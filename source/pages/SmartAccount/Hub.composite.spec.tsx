@@ -462,24 +462,27 @@ it('freezes editing and Cancel until the submitted operation settles', async () 
   await act(async () => pending.resolve({ hash: '0xack' }));
 });
 
-it('blocks signing when account changes during preparation', async () => {
-  const prepared = deferred<void>();
-  const sign = jest.fn();
-  mockSubmit.mockImplementation(async (params) => {
-    await prepared.promise;
-    params.onPrepared?.();
-    sign();
-    return { hash: '0xack' };
-  });
-  const view = render(<SmartAccountHub />);
-  await open();
-  save();
-  await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
-  select(1);
-  view.rerender(<SmartAccountHub />);
-  await act(async () => prepared.resolve());
-  expect(sign).not.toHaveBeenCalled();
-});
+it.each(['onPrepared', 'onBeforeAuthentication'])(
+  'blocks signing when account changes before %s',
+  async (checkpoint) => {
+    const prepared = deferred<void>();
+    const sign = jest.fn();
+    mockSubmit.mockImplementation(async (params) => {
+      await prepared.promise;
+      params[checkpoint]?.();
+      sign();
+      return { hash: '0xack' };
+    });
+    const view = render(<SmartAccountHub />);
+    await open();
+    save();
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    select(1);
+    view.rerender(<SmartAccountHub />);
+    await act(async () => prepared.resolve());
+    expect(sign).not.toHaveBeenCalled();
+  }
+);
 
 it('blocks signing after native route departure before React unmounts', async () => {
   const prepared = deferred<void>();

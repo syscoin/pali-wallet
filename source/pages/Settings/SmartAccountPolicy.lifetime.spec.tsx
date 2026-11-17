@@ -19,7 +19,13 @@ import {
   setActivePasskeyRecord,
   signP256WebAuthnActionHash,
 } from 'utils/passkey';
-import { encodeEcdsaValidatorInitData } from 'utils/smartAccount/account';
+import {
+  buildSmartAccountUserOperation,
+  encodeEcdsaValidatorInitData,
+  encodeSmartAccountGasFees,
+  encodeSmartAccountGasLimits,
+  getSmartAccountUserOpRequiredPrefund,
+} from 'utils/smartAccount/account';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
 import { captureGuardianRecoveryClaim } from 'utils/smartAccount/guardianRecoveryClaim';
 import { getGuardianRecoveryOperationId } from 'utils/smartAccount/guardianStatus';
@@ -155,6 +161,59 @@ const metadata = (isDeployed = true) => ({
   isDeployed,
 });
 
+const preparedExecution = (
+  executions: unknown,
+  smartAccount = metadata(),
+  executionContextId = 'policy-operation'
+) => {
+  const gasPayer = {
+    id: 0,
+    type: KeyringAccountType.HDAccount,
+    address: OWNER,
+  };
+  const userOperation = buildSmartAccountUserOperation({
+    sender: ACCOUNT,
+    nonce: '0',
+    callData: '0x',
+    initCode: '0x',
+    accountGasLimits: encodeSmartAccountGasLimits({
+      callGasLimit: 1,
+      verificationGasLimit: 1,
+    }),
+    gasFees: encodeSmartAccountGasFees({
+      maxFeePerGas: 2,
+      maxPriorityFeePerGas: 1,
+    }),
+    preVerificationGas: '1',
+  });
+  return {
+    accountId: 1,
+    actionHash: `0x${'77'.repeat(32)}`,
+    executionContextId,
+    executions,
+    smartAccount,
+    gasPayer,
+    userOperation,
+    entryPointFeeQuote: {
+      executionContextId,
+      feePayer: gasPayer,
+      gasUnits: '3',
+      maximumFeeWei:
+        getSmartAccountUserOpRequiredPrefund(userOperation).toString(),
+    },
+  };
+};
+
+const approveInitialFee = async () => {
+  const dialog = await screen.findByRole('dialog', {
+    name: 'settings.smartAccountFeeReviewTitle',
+  });
+  expect(within(dialog).getByText('send.smartAccountMaxFee')).toBeTruthy();
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'buttons.confirm' })
+  );
+};
+
 const setNativeEntry = (path = POLICY_ROUTE, key = 'policy-entry') => {
   window.history.replaceState({ key }, '', `/#${path}`);
 };
@@ -250,6 +309,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       }
       if (method === 'getSmartAccountNativeGasStatus')
         return { hasNativeGas: true };
+      if (method === 'approveSmartAccountExecutionFeeQuote') return;
       throw new Error(`Unexpected controller method ${method}`);
     });
   });
@@ -510,13 +570,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
           return applied;
         }
         if (path[1] === 'prepareSmartAccountExecutions')
-          return {
-            accountId: 1,
-            actionHash: `0x${'77'.repeat(32)}`,
-            executionContextId: 'wallet-owner-change',
-            executions: params[0],
-            smartAccount: initial,
-          };
+          return preparedExecution(params[0], initial, 'wallet-owner-change');
         if (
           path[1] === 'assertSmartAccountExecutionContext' ||
           path[1] === 'assertSmartAccountPreparedNonce'
@@ -542,6 +596,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
           name: 'settings.useSmartAccountValidator',
         })
       );
+      await approveInitialFee();
       await screen.findByText('notifications.submitted');
       expect(screen.getByText(hash)).toBeTruthy();
       const count = (method: string) =>
@@ -618,13 +673,9 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       } else if (changed === 'session') mockGeneration++;
       else depart('route', view);
       await act(async () =>
-        pending.resolve({
-          accountId: 1,
-          actionHash: `0x${'77'.repeat(32)}`,
-          executionContextId: 'wallet-owner-change',
-          executions: preparation[1][0],
-          smartAccount: initial,
-        })
+        pending.resolve(
+          preparedExecution(preparation[1][0], initial, 'wallet-owner-change')
+        )
       );
       expect(
         mockEmitter.mock.calls.some(
@@ -1117,7 +1168,20 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     const original = mockEmitter.getMockImplementation()!;
     let hydrationReads = 0;
     mockEmitter.mockImplementation((path: string[], ...args: any[]) => {
-      if (path[1] === 'registerSmartAccountOnChain') return pending.promise;
+      if (path[1] === 'prepareSmartAccountExecutions')
+        return Promise.resolve(
+          preparedExecution(args[0][0], metadata(false), 'registration')
+        );
+      if (
+        path[1] === 'assertSmartAccountExecutionContext' ||
+        path[1] === 'assertSmartAccountPreparedNonce'
+      )
+        return Promise.resolve();
+      if (path[1] === 'signSmartAccountPreparedOwner')
+        return Promise.resolve(
+          mockOwnerWallet.signingKey.sign(`0x${'77'.repeat(32)}`).serialized
+        );
+      if (path[1] === 'submitSmartAccountExecution') return pending.promise;
       if (path[1] === 'hydrateSmartAccount') {
         if (++hydrationReads === 1) return Promise.resolve(metadata(false));
         if (hydrate) return hydrate;
@@ -1132,10 +1196,11 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         name: 'settings.registerSmartAccount',
       })
     );
+    await approveInitialFee();
     await waitFor(() =>
       expect(
         mockEmitter.mock.calls.some(
-          ([path]) => path[1] === 'registerSmartAccountOnChain'
+          ([path]) => path[1] === 'submitSmartAccountExecution'
         )
       ).toBe(true)
     );
@@ -1232,13 +1297,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
   });
 
   describe('policy approval lifetime before signing', () => {
-    const prepared = (executions: unknown) => ({
-      accountId: 1,
-      actionHash: `0x${'77'.repeat(32)}`,
-      executionContextId: 'policy-operation',
-      executions,
-      smartAccount: metadata(),
-    });
+    const prepared = (executions: unknown) => preparedExecution(executions);
     const install = async (slow: 'gas' | 'prepare' | 'none') => {
       const pending = deferred<any>();
       const original = mockEmitter.getMockImplementation()!;
@@ -1293,6 +1352,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
 
     it('retains ordinary current-context signing as a control', async () => {
       const { view } = await install('none');
+      await approveInitialFee();
       await waitFor(() =>
         expect(
           mockEmitter.mock.calls.some(

@@ -1286,6 +1286,7 @@
     "checkYourDevice": "Check your {{device}} to approve this request",
     "useYourPasskey": "Use your passkey",
     "passkeyPrompt": "Follow your browser prompt to sign with your passkey",
+    "smartAccountAuthorizationRetained": "The Smart Account instruction is already signed. Declining this gas fee does not revoke it; it may still execute until its nonce is consumed.",
     "cancelFeePreview": "Checking the cancellation network fee…",
     "cancelFeeConsent": "Cancel this transaction with a maximum gas fee of {{fee}} {{currency}}?",
     "cancelFeeUnavailable": "Unable to check the cancellation fee. Please try again.",

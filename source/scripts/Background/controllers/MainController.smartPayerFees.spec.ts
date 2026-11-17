@@ -78,6 +78,7 @@ import { submitSmartAccountOperation } from 'utils/smartAccount/submitOperation'
 
 import MainController from './MainController';
 import { readSettingsEvmFeeNonce } from './nativeEvmFeeReviews';
+import type { SmartAccountControllerFeeReview } from '../../../shared/smartAccountControllerAuthority';
 
 const signer = new Wallet('0x' + '1'.padStart(64, '0'));
 const deployment = smartAccountAddressFixture(57, signer.address);
@@ -278,6 +279,10 @@ function fixture(chainId = 57) {
     assertAssetState: jest.fn(async () => undefined),
     feeFunding: NATIVE_EVM_FEE_FUNDING,
     clearNavigation: false,
+    confirmFee: jest.fn(
+      async (quote: SmartAccountControllerFeeReview): Promise<string | null> =>
+        quote.id
+    ),
   };
   return {
     wallet,
@@ -314,6 +319,78 @@ function fixture(chainId = 57) {
 }
 
 afterEach(() => jest.restoreAllMocks());
+
+it('refuses a smart payer without explicit numerical fee consent', async () => {
+  const f = fixture();
+  delete (f.options as { confirmFee?: unknown }).confirmFee;
+  await expect(f.submit()).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+});
+
+it('shows an affordable excessive RPC priority fee before the payer can sign', async () => {
+  const f = fixture();
+  f.setBalance(BigInt('1000000000000000000000000'));
+  mockSettingsFeePerGas = BigInt('1000000000000');
+  mockSettingsPriorityFee = BigInt('999999999999');
+  let approve!: (id: string | null) => void;
+  f.options.confirmFee.mockImplementationOnce(
+    () => new Promise((resolve) => (approve = resolve))
+  );
+  const work = f.submit(NATIVE_EVM_FEE_FUNDING, {
+    ...f.request,
+    maxFeePerGas: mockSettingsFeePerGas.toString(),
+    maxPriorityFeePerGas: mockSettingsPriorityFee.toString(),
+  });
+  for (let i = 0; i < 20 && !approve; i++) await new Promise(setImmediate);
+  expect(approve).toBeDefined();
+  const quote = f.options.confirmFee.mock.calls[0][0];
+  expect(quote.maximumFeeUnits).toBe('21000000000000000');
+  expect(quote.transaction).toMatchObject({
+    from: signer.address,
+    to: receiver,
+    gasLimit: '21000',
+    maxPriorityFeePerGas: mockSettingsPriorityFee.toString(),
+  });
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+  approve(quote.id);
+  await work;
+  expect(f.send).toHaveBeenCalledTimes(1);
+  expect(f.broadcast).toHaveBeenCalledTimes(1);
+});
+
+it.each(['cancel', 'payer', 'network', 'session'])(
+  'does not sign or persist the payer envelope after fee-review %s',
+  async (failure) => {
+    const f = fixture();
+    let approve!: (id: string | null) => void;
+    f.options.confirmFee.mockImplementationOnce(
+      () => new Promise((resolve) => (approve = resolve))
+    );
+    const work = f.submit();
+    const refused = expect(work).rejects.toMatchObject({
+      transactionNotBroadcast: true,
+    });
+    for (let i = 0; i < 20 && !approve; i++) await new Promise(setImmediate);
+    expect(approve).toBeDefined();
+    const quote = f.options.confirmFee.mock.calls[0][0];
+    if (failure === 'payer')
+      mockState.vault.accounts.HDAccount[0].address = receiver;
+    if (failure === 'network')
+      mockState.vault.activeNetwork.url = 'https://other.invalid';
+    if (failure === 'session') f.wallet.walletSessionGeneration++;
+    approve(failure === 'cancel' ? null : quote.id);
+    await refused;
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.records.append).not.toHaveBeenCalled();
+    expect(f.broadcast).not.toHaveBeenCalled();
+  }
+);
 
 it.each(['signing', 'persistence', 'unchanged'] as const)(
   'checks fresh tank credit after %s with one compatible estimate per phase',
@@ -478,9 +555,33 @@ it('does not reject its own newly persisted handleOps row as an unrelated pendin
 it('uses verified gas credit without requiring native gas and rechecks it at dispatch', async () => {
   const f = fixture();
   f.setBalance(BigInt(0));
-  const verify = jest.fn(async (approval) => BigInt(approval.maximumFeeUnits));
+  let boundary = 'quote';
+  const boundaries: string[] = [];
+  f.options.confirmFee.mockImplementation(async (quote) => {
+    boundary = 'approved';
+    return quote.id;
+  });
+  f.onSigned(() => {
+    boundary = 'signed';
+  });
+  f.onPersisted(() => {
+    boundary = 'persisted';
+  });
+  const verify = jest.fn(async (approval) => {
+    boundaries.push(boundary);
+    return BigInt(approval.maximumFeeUnits);
+  });
   await f.submit(createOwnedEvmFeeFunding(verify));
-  expect(verify).toHaveBeenCalledTimes(2);
+  expect(f.options.confirmFee).toHaveBeenCalledWith(
+    expect.objectContaining({
+      maximumFeeUnits: '63000',
+      coveredFeeUnits: '63000',
+      maximumTotalUnits: '0',
+    })
+  );
+  // The new asynchronous consent boundary requires fresh credit admission;
+  // final dispatch still checks again after the durable signed-row write.
+  expect(boundaries).toEqual(['quote', 'approved', 'persisted']);
   expect(f.records.append).toHaveBeenCalledTimes(1);
   expect(f.broadcast).toHaveBeenCalledTimes(1);
 });
@@ -938,7 +1039,8 @@ it.each(['signing', 'persistence', 'unchanged'] as const)(
         pending.provider,
         async (...sendArgs) => {
           const response = await f.wallet.sendAndSaveEthTransaction(
-            ...sendArgs
+            ...sendArgs.slice(0, 4),
+            { ...sendArgs[4], confirmFee: f.options.confirmFee }
           );
           return { ...response, wait: async () => undefined };
         },

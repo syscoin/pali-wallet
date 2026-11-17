@@ -11,6 +11,7 @@ export type SmartAccountOwnerSigningPurpose =
   | 'user-operation'
   | 'erc7739-personal'
   | 'erc7739-typed-data'
+  | 'policy-possession'
   | 'recovery';
 /** Raw-only is an explicit software capability, never a hardware signing fallback. */
 export type SmartAccountOwnerSigningIntent = Readonly<
@@ -92,6 +93,7 @@ export function assertSmartAccountOwnerSigningIntent(
       'user-operation',
       'erc7739-personal',
       'erc7739-typed-data',
+      'policy-possession',
       'recovery',
     ].includes(intent.purpose) ||
     !isHexString(intent.actionHash, 32)

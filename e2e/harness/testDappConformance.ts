@@ -579,6 +579,90 @@ export async function popupFor(
   return popup!;
 }
 
+type SmartAccountFeeReviewExpectation = {
+  account?: string;
+  chainId?: number;
+  kind?: 'entry-point' | 'payer';
+  payer?: string;
+  symbol?: string;
+};
+
+/** Inspect real numerical consent before clicking; never substitute a host callback. */
+async function inspectSmartAccountFeeReview(
+  page: Page,
+  expected: SmartAccountFeeReviewExpectation = {}
+) {
+  const dialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Review network fee', exact: true }),
+  });
+  if (!(await dialog.isVisible())) return null;
+  const value = async (label: string) => {
+    const row = dialog.locator('dl > div').filter({
+      has: page.getByText(label, { exact: true }),
+    });
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('dd')).toBeVisible();
+    return (await row.locator('dd').innerText()).trim();
+  };
+  const kind = (await dialog
+    .getByText('Smart account maximum fee', { exact: true })
+    .isVisible())
+    ? 'entry-point'
+    : 'payer';
+  if (expected.kind) expect(kind).toBe(expected.kind);
+  const account = await value('Selected account');
+  const payer = await value('Fee payer');
+  expect(account).toMatch(/^0x[\da-f]{40}$/i);
+  expect(payer).toMatch(/^0x[\da-f]{40}$/i);
+  if (expected.account)
+    expect(account.toLowerCase()).toBe(expected.account.toLowerCase());
+  if (expected.payer)
+    expect(payer.toLowerCase()).toBe(expected.payer.toLowerCase());
+  const chainId = await value('Network');
+  expect(chainId).toMatch(/^[1-9]\d*$/);
+  if (expected.chainId) expect(chainId).toBe(String(expected.chainId));
+  const fee = await value(
+    kind === 'entry-point' ? 'Smart account maximum fee' : 'Maximum network fee'
+  );
+  const money = /^\d+(?:\.\d+)? [A-Z][A-Z\d]*$/;
+  expect(fee).toMatch(money);
+  if (expected.symbol) expect(fee.endsWith(` ${expected.symbol}`)).toBe(true);
+  if (kind === 'payer') {
+    const total = await value('Maximum total cost');
+    expect(total).toMatch(money);
+    if (expected.symbol)
+      expect(total.endsWith(` ${expected.symbol}`)).toBe(true);
+    await expect(dialog.getByText('To', { exact: true })).toBeVisible();
+  } else {
+    await expect(
+      dialog.getByText('Maximum total cost', { exact: true })
+    ).toHaveCount(0);
+    await expect(
+      dialog.getByText(
+        'Maximum EntryPoint charge to this smart account. The outer transaction is paid separately by its gas payer or gas tank.',
+        { exact: true }
+      )
+    ).toBeVisible();
+  }
+  return dialog;
+}
+
+export async function approveSmartAccountFeeReview(
+  page: Page,
+  expected: SmartAccountFeeReviewExpectation
+) {
+  await expect(
+    page.getByRole('heading', { name: 'Review network fee', exact: true })
+  ).toBeVisible({ timeout: 30000 });
+  const dialog = await inspectSmartAccountFeeReview(page, expected);
+  if (!dialog) throw new Error('Expected the owned smart account fee review');
+  const ownedPanel = await dialog.elementHandle();
+  await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await expect
+    .poll(() => ownedPanel!.evaluate((element) => !element.isConnected))
+    .toBe(true);
+}
+
 export async function approve(
   context: BrowserContext,
   page: Page,
@@ -595,11 +679,21 @@ export async function approve(
       .last();
     await expect(button).toBeVisible({ timeout: 10_000 });
     await expect(button).toBeEnabled({ timeout: 10_000 });
+    const feeReview = await inspectSmartAccountFeeReview(popup);
+    const ownedFeePanel = feeReview ? await feeReview.elementHandle() : null;
     await capture?.(popup);
     await clickClosingPopup({
       click: () => button.click(),
       isClosed: () => popup.isClosed(),
     });
+    if (ownedFeePanel)
+      await expect
+        .poll(async () =>
+          popup.isClosed()
+            ? true
+            : ownedFeePanel.evaluate((element) => !element.isConnected)
+        )
+        .toBe(true);
     // Second untrusted-site confirmation may replace the first button.
     await expect
       .poll(

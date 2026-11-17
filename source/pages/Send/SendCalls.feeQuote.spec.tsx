@@ -224,6 +224,51 @@ it('surfaces a preparation failure without signing and permits explicit retry', 
   expect(screen.queryByText('send.feeUnavailable')).not.toBeInTheDocument();
 });
 
+it('requires a fresh quoted context after a definite payer-fee decline, without automatically signing again', async () => {
+  mockQuote.mockResolvedValueOnce({
+    ...quote(),
+    executionContextId: 'consumed',
+  });
+  mockSubmit.mockImplementationOnce(async (params) => {
+    await params.onBeforeSubmit({ executionContextId: 'consumed' });
+    throw Object.assign(new Error('Transaction fee approval was cancelled'), {
+      code: 4001,
+      transactionNotBroadcast: true,
+    });
+  });
+  render(<SendCalls />);
+  await ready();
+  fireEvent.click(sign());
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'send.refreshFeeQuote' })
+    ).toBeEnabled()
+  );
+  expect(sign()).toBeDisabled();
+  expect(mockQuote).toHaveBeenCalledTimes(1);
+  expect(mockSubmit).toHaveBeenCalledTimes(1);
+  expect(
+    mockEmitter.mock.calls.some(
+      ([methods, args]) =>
+        methods[1] === 'recordSendCallsBundle' &&
+        args[2].submissionNotBroadcast === true
+    )
+  ).toBe(true);
+  mockQuote.mockResolvedValue({
+    ...quote('5000000000000000'),
+    executionContextId: 'fresh',
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'send.refreshFeeQuote' }));
+  await ready();
+  expect(screen.getByText('0.005 TSYS')).toBeVisible();
+  expect(mockSubmit).toHaveBeenCalledTimes(1);
+  fireEvent.click(sign());
+  await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(2));
+  expect(mockSubmit.mock.calls[1][0].approvedFeeQuote.executionContextId).toBe(
+    'fresh'
+  );
+});
+
 it('does not introduce AA preparation into the existing EOA route', async () => {
   mockState.vault.accounts.SmartAccount[19].isSmartAccount = false;
   render(<SendCalls />);

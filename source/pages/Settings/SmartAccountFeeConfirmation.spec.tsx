@@ -98,25 +98,41 @@ jest.mock('components/index', () => ({
 function Harness({
   scope = 'one',
   value = quote(),
+  entryPoint = false,
+  executionPayer = false,
+  signal,
 }: {
+  entryPoint?: boolean;
+  executionPayer?: boolean;
   scope?: string;
+  signal?: AbortSignal;
   value?: any;
 }) {
-  const { confirmFee, feeConfirmation } = useSmartAccountFeeConfirmation(scope);
+  const { confirmFee, feeConfirmation, forExecution } =
+    useSmartAccountFeeConfirmation(scope);
   return (
     <>
       <button
         onClick={async () => {
           try {
-            const id = await confirmFee(value, {
+            const details = {
               account: ACCOUNT,
               chainId: 31337,
               symbol: 'ETH',
               label: 'Recovery',
+              signal,
               assertCurrent() {
                 if (!mockCurrent) throw Error('Changed');
               },
-            });
+            };
+            const id = entryPoint
+              ? await forExecution(details).confirmEntryPoint(value)
+              : executionPayer
+              ? await forExecution(details).confirmFee(
+                  value,
+                  signal ?? new AbortController().signal
+                )
+              : await confirmFee(value, details);
             if (id) submitted(id);
           } catch {
             submitted('refused');
@@ -145,6 +161,41 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+it('warns that declining the actual payer fee does not revoke an already signed instruction', async () => {
+  render(<Harness executionPayer />);
+  fireEvent.click(screen.getByRole('button', { name: 'Prepare' }));
+  expect(
+    screen.getByText('transactions.smartAccountAuthorizationRetained')
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(submitted).not.toHaveBeenCalled();
+});
+
+it('keeps the signed-instruction warning out of unsigned recovery and initial EntryPoint reviews', () => {
+  const view = render(<Harness />);
+  fireEvent.click(screen.getByRole('button', { name: 'Prepare' }));
+  expect(
+    screen.queryByText('transactions.smartAccountAuthorizationRetained')
+  ).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  view.rerender(
+    <Harness
+      entryPoint
+      value={{
+        executionContextId: 'initial',
+        maximumFeeWei: '123',
+        gasUnits: '1',
+      }}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Prepare' }));
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  expect(
+    screen.queryByText('transactions.smartAccountAuthorizationRetained')
+  ).toBeNull();
+});
+
 test('displays selected account separately from actual payer and preserves exact fee and total', async () => {
   render(<Harness />);
   fireEvent.click(screen.getByText('Prepare'));
@@ -162,6 +213,93 @@ test('displays selected account separately from actual payer and preserves exact
   expect(submitted.mock.calls.filter(([id]) => id === 'fee-one')).toHaveLength(
     1
   );
+});
+
+test.each([
+  ['21000000000000', '0.1 ETH'],
+  ['10000000000000', '0.100011 ETH'],
+])(
+  'preserves the trusted %s gas-tank coverage in the exact payer total',
+  async (coveredFeeUnits, totalText) => {
+    render(
+      <Harness
+        value={quote('covered', {
+          coveredFeeUnits,
+          maximumTotalUnits: (
+            BigInt('21000000000000') -
+            BigInt(coveredFeeUnits) +
+            BigInt('100000000000000000')
+          ).toString(),
+        })}
+      />
+    );
+    fireEvent.click(screen.getByText('Prepare'));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain(
+      'mobile.recoveryStatusViews.operation.maximumNetworkFeeGasTank'
+    );
+    expect(screen.getByText(totalText)).toBeTruthy();
+    expect(submitted).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('buttons.confirm'));
+    await waitFor(() => expect(submitted).toHaveBeenCalledWith('covered'));
+  }
+);
+
+test.each([
+  { coveredFeeUnits: '-1' },
+  { coveredFeeUnits: '21000000000001' },
+  { coveredFeeUnits: '1e3' },
+  { coveredFeeUnits: 0 },
+  {
+    coveredFeeUnits: '10000000000000',
+    maximumTotalUnits: '100021000000000000',
+  },
+])(
+  'rejects invalid or inconsistent fee coverage before approval: %j',
+  async (extra) => {
+    render(<Harness value={quote('invalid-coverage', extra)} />);
+    fireEvent.click(screen.getByText('Prepare'));
+    await waitFor(() => expect(submitted).toHaveBeenCalledWith('refused'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  }
+);
+
+test('reviews the EntryPoint charge separately without presenting it as the outer transaction total', async () => {
+  render(
+    <Harness
+      entryPoint
+      value={{
+        executionContextId: 'prepared-operation',
+        feePayer: { address: PAYER, id: 0, type: 'HDAccount' },
+        gasUnits: '21000',
+        maximumFeeWei: '21000000000000',
+      }}
+    />
+  );
+  fireEvent.click(screen.getByText('Prepare'));
+  await screen.findByRole('dialog');
+  expect(screen.getByText('send.smartAccountMaxFee')).toBeTruthy();
+  expect(screen.getByText('send.smartAccountFeeDetails')).toBeTruthy();
+  expect(screen.getByText('0.000021 ETH')).toBeTruthy();
+  expect(
+    screen.queryByText('settings.smartAccountFeeReviewMaximumTotal')
+  ).toBeNull();
+  expect(screen.queryByText(PAYER)).toBeNull();
+  expect(submitted).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText('buttons.confirm'));
+  await waitFor(() =>
+    expect(submitted).toHaveBeenCalledWith('prepared-operation')
+  );
+});
+
+test('a retired owned Port closes its pending fee dialog without authorizing it', async () => {
+  const lifetime = new AbortController();
+  render(<Harness signal={lifetime.signal} />);
+  fireEvent.click(screen.getByText('Prepare'));
+  await screen.findByRole('dialog');
+  act(() => lifetime.abort());
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(submitted).not.toHaveBeenCalled();
 });
 
 test.each(['cancel', 'scope', 'unmount', 'guard', 'expiry'])(

@@ -141,7 +141,8 @@ export async function signSmartAccountOwnerIntent(
     const account =
       intent.purpose === 'user-operation'
         ? intent.typedData.message.sender
-        : intent.purpose === 'erc7739-personal'
+        : intent.purpose === 'erc7739-personal' ||
+          intent.purpose === 'policy-possession'
         ? intent.typedData.domain.verifyingContract
         : intent.typedData.message.verifyingContract;
     if (getAddress(account) !== selectedSmart.expectedAddress)

@@ -1286,6 +1286,7 @@
     "checkYourDevice": "Vérifiez votre {{device}} pour approuver cette demande",
     "useYourPasskey": "Utilisez votre clé d'accès",
     "passkeyPrompt": "Suivez les instructions du navigateur pour signer avec votre clé d'accès",
+    "smartAccountAuthorizationRetained": "L’instruction du compte intelligent est déjà signée. Refuser ces frais de gas ne la révoque pas ; elle peut encore être exécutée tant que son nonce n’est pas consommé.",
     "cancelFeePreview": "Vérification des frais réseau d’annulation…",
     "cancelFeeConsent": "Annuler cette transaction avec des frais de gaz maximum de {{fee}} {{currency}} ?",
     "cancelFeeUnavailable": "Impossible de vérifier les frais d’annulation. Réessayez.",
