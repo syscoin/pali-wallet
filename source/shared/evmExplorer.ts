@@ -27,6 +27,38 @@ const PAGE_INTERVAL_MS = 550; // Existing extension keyless-tier pacing.
 const HISTORY_CACHE_MS = 30_000;
 const HISTORY_ACTIONS = new Set(['txlist', 'tokentx', 'pendingtxlist']);
 
+/** Retire queued/pacing work without handing off a still-owned physical request. */
+function waitForRoutescanDispatch(
+  wait: number | Promise<void>,
+  signal: AbortSignal
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    const finish = (complete: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      signal.removeEventListener('abort', cancel);
+      complete();
+    };
+    const cancel = () =>
+      finish(() => reject(new Error('Explorer API request timed out')));
+    if (signal.aborted) {
+      cancel();
+      return;
+    }
+    signal.addEventListener('abort', cancel, { once: true });
+    if (typeof wait === 'number')
+      timer = setTimeout(() => finish(resolve), wait);
+    else
+      void wait.then(
+        () => finish(resolve),
+        (error) => finish(() => reject(error))
+      );
+  });
+}
+
 export const isRoutescanApiUrl = (
   apiUrl: string | undefined,
   chainId: number
@@ -51,7 +83,7 @@ export const createRoutescanFetch = (
   ) => fetch(url, options)
 ) => {
   let routescanQueue = Promise.resolve();
-  let lastRoutescanRequestAt = 0;
+  let lastRoutescanRequestAt: number | undefined;
   return async (
     url: string,
     options: RequestInit = {},
@@ -66,7 +98,7 @@ export const createRoutescanFetch = (
     requestUrl.searchParams.delete('apikey');
     requestUrl.searchParams.delete('apiKey');
     const abort = options.signal ? undefined : new AbortController();
-    const signal = options.signal || abort?.signal;
+    const signal = options.signal || abort!.signal;
     const timeout = abort
       ? setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS)
       : undefined;
@@ -75,16 +107,21 @@ export const createRoutescanFetch = (
     routescanQueue = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let admitted = false;
     try {
-      await previous;
-      const delay = Math.max(
-        0,
-        lastRoutescanRequestAt + PAGE_INTERVAL_MS - Date.now()
-      );
-      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-      if (signal?.aborted) throw new Error('Explorer API request timed out');
+      await waitForRoutescanDispatch(previous, signal);
+      admitted = true;
+      const delay =
+        lastRoutescanRequestAt === undefined
+          ? 0
+          : Math.max(
+              0,
+              lastRoutescanRequestAt + PAGE_INTERVAL_MS - performance.now()
+            );
+      if (delay) await waitForRoutescanDispatch(delay, signal);
+      if (signal.aborted) throw new Error('Explorer API request timed out');
       assertCurrent?.();
-      lastRoutescanRequestAt = Date.now();
+      lastRoutescanRequestAt = performance.now();
       if (
         requestUrl.origin === ROUTESCAN_ORIGIN &&
         /^\/v2\/network\/mainnet\/evm\/\d+\/etherscan\/api\/?$/.test(
@@ -98,7 +135,7 @@ export const createRoutescanFetch = (
         // Routescan's CDN ignores no-cache headers; share a bounded cache window.
         requestUrl.searchParams.set(
           '_pali_refresh',
-          String(Math.floor(lastRoutescanRequestAt / HISTORY_CACHE_MS))
+          String(Math.floor(Date.now() / HISTORY_CACHE_MS))
         );
       return await fetcher(requestUrl.toString(), {
         ...options,
@@ -106,8 +143,9 @@ export const createRoutescanFetch = (
         signal,
       });
     } finally {
-      if (timeout) clearTimeout(timeout);
-      release();
+      if (timeout !== undefined) clearTimeout(timeout);
+      if (admitted) release();
+      else void previous.then(release, release);
     }
   };
 };

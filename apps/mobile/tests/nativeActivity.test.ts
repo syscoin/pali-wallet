@@ -1266,3 +1266,91 @@ for (const mode of ['mined', 'missing', 'reorg', 'wrong hash', 'scalar', 'wrong 
       }
     } finally { held.resolve(); model.invalidate(); }
   });
+
+test('a successful full Activity preference write clears only its recovered save warning', async () => {
+  const f = fixture();
+  await f.controller.refresh();
+  let fail = true, saved = DEFAULT_ACTIVITY_VIEW;
+  f.runtime.saveView = async (_scope, view, check) => { check(); if (fail) { fail = false; throw Error('Temporary public preference failure'); } saved = view; };
+  await f.controller.setView({ filter: 'sent', anchor: hash(8), offset: 12 });
+  assert.equal(f.controller.getSnapshot().error, 'position-not-saved');
+  await f.controller.setView({ filter: 'received' });
+  assert.deepEqual(saved, { ...DEFAULT_ACTIVITY_VIEW, filter: 'received', anchor: hash(8), offset: 12 });
+  assert.equal(f.controller.getSnapshot().error, null);
+});
+
+for (const error of ['feed-unavailable', 'older-unavailable'] as const) test(`Activity save recovery restores its independent ${error} warning`, async () => {
+  const f = fixture({ explorer: error === 'feed-unavailable' ? new FakeExplorer(() => { throw Error('Public feed unavailable'); }) : undefined });
+  await f.controller.refresh();
+  if (error === 'older-unavailable') { f.runtime.saveCache = async () => { throw Error('Older cache unavailable'); }; await f.controller.loadMore(); }
+  assert.equal(f.controller.getSnapshot().error, error);
+  let fail = true;
+  f.runtime.saveView = async (_scope, _view, check) => { check(); if (fail) { fail = false; throw Error('Temporary preference failure'); } };
+  await f.controller.setView({ filter: 'sent' });
+  assert.equal(f.controller.getSnapshot().error, 'position-not-saved');
+  await f.controller.setView({ filter: 'received' });
+  assert.equal(f.controller.getSnapshot().error, error);
+});
+
+test('a healthy Activity preference write preserves an independent feed warning', async () => {
+  const f = fixture({ explorer: new FakeExplorer(() => { throw Error('Public feed unavailable'); }) });
+  await f.controller.refresh();
+  await f.controller.setView({ filter: 'received' });
+  assert.equal(f.controller.getSnapshot().error, 'feed-unavailable');
+});
+
+for (const olderFails of [false, true]) test(`only the newest Activity full-view write owns save feedback (older failure ${olderFails})`, async () => {
+  const f = fixture(), held = deferred<void>();
+  await f.controller.refresh();
+  let writes = 0;
+  f.runtime.saveView = async (_scope, _view, check) => { check(); if (++writes === 1) { await held.promise; if (olderFails) throw Error('Old preference failure'); } else if (!olderFails) throw Error('New preference failure'); };
+  const older = f.controller.setView({ filter: 'sent' });
+  await f.controller.setView({ filter: 'received' });
+  held.resolve(); await older;
+  assert.equal(f.controller.getSnapshot().view.filter, 'received');
+  assert.equal(f.controller.getSnapshot().error, olderFails ? null : 'position-not-saved');
+});
+
+test('a late Activity preference acknowledgement cannot retire a new account save warning', async () => {
+  const f = fixture(), held = deferred<void>();
+  const disconnect = f.controller.connect();
+  try {
+    await until(() => f.controller.getSnapshot().status === 'ready');
+    f.runtime.saveView = async (scope, _view, check) => { check(); if (scope.address === OWNER) await held.promise; else throw Error('New account preference failure'); };
+    const old = f.controller.setView({ filter: 'sent' });
+    f.source.change({ account: { network: 'ethereum', address: OTHER } });
+    await until(() => f.controller.getSnapshot().status === 'ready' && f.controller.getSnapshot().accountAddress === OTHER);
+    await f.controller.setView({ filter: 'received' });
+    const current = f.controller.getSnapshot();
+    held.resolve(); await old;
+    assert.equal(f.controller.getSnapshot(), current);
+    assert.equal(current.error, 'position-not-saved');
+  } finally { held.resolve(); disconnect(); }
+});
+
+test('Activity preference success preserves an older-page warning arriving during that write', async () => {
+  const f = fixture(), held = deferred<void>();
+  await f.controller.refresh();
+  f.runtime.saveView = async (_scope, _view, check) => { check(); await held.promise; };
+  const writing = f.controller.setView({ filter: 'received' });
+  f.runtime.saveCache = async () => { throw Error('Older page save unavailable'); };
+  await f.controller.loadMore();
+  assert.equal(f.controller.getSnapshot().error, 'older-unavailable');
+  held.resolve(); await writing;
+  assert.equal(f.controller.getSnapshot().error, 'older-unavailable');
+});
+
+test('Activity save recovery does not restore a feed warning whose own retry already recovered', async () => {
+  let feedFails = true;
+  const f = fixture({ explorer: new FakeExplorer(() => { if (feedFails) throw Error('Public feed unavailable'); return []; }) });
+  await f.controller.refresh();
+  f.runtime.saveView = async () => { throw Error('Temporary preference failure'); };
+  await f.controller.setView({ filter: 'sent' });
+  assert.equal(f.controller.getSnapshot().error, 'position-not-saved');
+  feedFails = false;
+  await f.controller.loadMore();
+  assert.equal(f.controller.getSnapshot().error, 'position-not-saved');
+  f.runtime.saveView = async (_scope, _view, check) => { check(); };
+  await f.controller.setView({ filter: 'received' });
+  assert.equal(f.controller.getSnapshot().error, null);
+});

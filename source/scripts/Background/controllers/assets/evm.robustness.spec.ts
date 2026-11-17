@@ -28,6 +28,8 @@ import {
   cleanTokenSymbol,
   contractChecker,
   getTokenStandardMetadata,
+  getNftStandardMetadata,
+  getERC721StandardBalance,
 } from '@sidhujag/sysweb3-utils';
 
 import { verifyERC1155OwnershipHelper } from '../../../../shared/nftReads';
@@ -1025,5 +1027,158 @@ it('does not commit a grouped precision mismatch as a fresh balance', async () =
     balance: 7,
     rawBalance: '7000000',
     decimals: 6,
+  });
+});
+
+describe('NFT optional metadata caching', () => {
+  const runner = { call: jest.fn() };
+  const read = (controller: ReturnType<typeof EvmAssetsController>) =>
+    controller.getTokenDetailsWithMarketData(TOKEN, ACCOUNT, runner as any);
+  beforeEach(() => {
+    jest.mocked(getNftStandardMetadata).mockReset();
+    jest.mocked(contractChecker).mockResolvedValue({ type: 'ERC-721' } as any);
+    jest.mocked(getERC721StandardBalance).mockResolvedValue(3);
+  });
+
+  it('retries transient descriptive metadata on a later request while refreshing the exact count', async () => {
+    jest
+      .mocked(getNftStandardMetadata)
+      .mockResolvedValueOnce({
+        name: 'ERC-721 Collection',
+        symbol: 'NFT',
+        metadataUnavailable: true,
+      } as any)
+      .mockResolvedValueOnce({ name: 'Recovered collection', symbol: 'RPC' });
+    const controller = EvmAssetsController();
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'ERC-721 Collection',
+      symbol: 'NFT',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(60_000);
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Recovered collection',
+      symbol: 'RPC',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+    expect(getERC721StandardBalance).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { name: 'Healthy collection', symbol: 'HEALTHY' },
+    { name: 'ERC-721 Collection', symbol: 'NFT' },
+  ])(
+    'preserves the healthy 24-hour cache including legitimate optional absence: %o',
+    async (metadata) => {
+      jest.mocked(getNftStandardMetadata).mockResolvedValue(metadata);
+      const controller = EvmAssetsController();
+      await expect(read(controller)).resolves.toMatchObject({
+        ...metadata,
+        balance: 3,
+      });
+      jest.advanceTimersByTime(24 * 60 * 60_000 - 1);
+      await expect(read(controller)).resolves.toMatchObject({
+        ...metadata,
+        balance: 3,
+      });
+      expect(getNftStandardMetadata).toHaveBeenCalledTimes(1);
+      expect(getERC721StandardBalance).toHaveBeenCalledTimes(2);
+      jest.advanceTimersByTime(1);
+      await read(controller);
+      expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it('returns a successful name during a partial failure and refreshes the failed symbol later', async () => {
+    jest
+      .mocked(getNftStandardMetadata)
+      .mockResolvedValueOnce({
+        name: 'Healthy name',
+        symbol: 'NFT',
+        metadataUnavailable: true,
+      } as any)
+      .mockResolvedValueOnce({ name: 'Healthy name', symbol: 'RECOVERED' });
+    const controller = EvmAssetsController();
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Healthy name',
+      symbol: 'NFT',
+      balance: 3,
+    });
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Healthy name',
+      symbol: 'RECOVERED',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares one incomplete metadata request without retrying until the next invocation', async () => {
+    const pending = deferred();
+    jest.mocked(getNftStandardMetadata).mockReturnValueOnce(pending.promise);
+    const controller = EvmAssetsController();
+    const first = read(controller);
+    const overlapping = read(controller);
+    await Promise.resolve();
+    pending.resolve({
+      name: 'Partial fallback',
+      symbol: 'NFT',
+      metadataUnavailable: true,
+    });
+    const results = await Promise.all([first, overlapping]);
+    expect(results.map((value) => value?.name)).toEqual([
+      'Partial fallback',
+      'Partial fallback',
+    ]);
+    expect(results.map((value) => value?.balance)).toEqual([3, 3]);
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(1);
+    jest
+      .mocked(getNftStandardMetadata)
+      .mockResolvedValue({ name: 'Recovered collection', symbol: 'RPC' });
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Recovered collection',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache a cancelled metadata request and permits the next owned request', async () => {
+    const cancelled = Object.assign(new Error('cancelled'), {
+      name: 'AbortError',
+    });
+    jest.mocked(getNftStandardMetadata).mockRejectedValueOnce(cancelled);
+    const controller = EvmAssetsController();
+    await expect(read(controller)).resolves.toBeNull();
+    expect(getERC721StandardBalance).not.toHaveBeenCalled();
+    jest
+      .mocked(getNftStandardMetadata)
+      .mockResolvedValue({ name: 'Recovered collection', symbol: 'RPC' });
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Recovered collection',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+    expect(getERC721StandardBalance).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not publish or cache an optional-metadata read after the endpoint changes', async () => {
+    const pending = deferred();
+    jest.mocked(getNftStandardMetadata).mockReturnValueOnce(pending.promise);
+    const controller = EvmAssetsController();
+    const first = read(controller);
+    await Promise.resolve();
+    network = { ...network, url: 'https://other-rpc.test' };
+    pending.resolve({ name: 'Old endpoint name', symbol: 'OLD' });
+    await expect(first).resolves.toBeNull();
+    jest
+      .mocked(getNftStandardMetadata)
+      .mockResolvedValue({ name: 'Current endpoint name', symbol: 'CURRENT' });
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Current endpoint name',
+      symbol: 'CURRENT',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
   });
 });

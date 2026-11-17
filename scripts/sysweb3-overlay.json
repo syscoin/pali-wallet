@@ -2,8 +2,8 @@
   "source": {
     "repository": "https://github.com/sidhujag/sysweb3",
     "pullRequest": "https://github.com/sidhujag/sysweb3/pull/119",
-    "commit": "5d49c52fbbf539f2845588299c05f8f4221ff0ee",
-    "tree": "18b9e4019fcd655446592800843850e2f0635ad8",
+    "commit": "69b8137cedb5f395380df3f21efffb6ee05dd39b",
+    "tree": "760722542428a7e61b6b0ac72e9ecbed8789d4eb",
     "compiler": "typescript@5.9.3",
     "node": "v26.12.1",
     "build": [
@@ -16,11 +16,11 @@
   },
   "payload": {
     "file": "sysweb3-overlay.deflate",
-    "sha256": "faa21b7b10d99f261746f16f1f5e98161a01e86ebb4fb8333a57eb0a6492fbcc",
-    "bytes": 1947676,
-    "decodedSha256": "502954b353b81b29d81060e605f9d04e1e9db7803e59d4eea96eab1f6e9f7a95",
+    "sha256": "da3235e371424408fa6014c8102aadf24777cfb48c736174ac0521b7b9fc0767",
+    "bytes": 1948676,
+    "decodedSha256": "4832d7c739bec7a3b4a424e2eeb66c46a7ac0ae83ce416353ea4ca090eb68cee",
     "files": 82,
-    "compressedBytes": 374319
+    "compressedBytes": 374662
   },
   "packages": [
     {
@@ -2803,16 +2803,16 @@
         {
           "path": "cjs/tokens.js",
           "before": "bcefaa5931df9bd5f8700ba7142ffd9983c2f46b6bdd01a3be474460c004ccab",
-          "after": "faf457345d19d31c477df2866b9854213e2b22208978103d33d33fd36bf00d8a",
+          "after": "584058f4c7ed115fb5ee5954843894cda81302b3481ca84b5388d54df8087371",
           "beforeBytes": 19337,
-          "bytes": 20313
+          "bytes": 20749
         },
         {
           "path": "cjs/tokens.js.map",
           "before": "53c61ed71c40d782c35da65db52e71868d59319a0bcc8721450e2793c8231efa",
-          "after": "729384c849140f4a26e87aaf63ab325ce671fa9223312928cc057c5f718fb797",
+          "after": "2420c11c8196393c9b29ae3ec05bbe8c0c041bc52685388930290700b32460d1",
           "beforeBytes": 13371,
-          "bytes": 14024
+          "bytes": 14458
         },
         {
           "path": "cjs/transactions.js",
@@ -2894,9 +2894,9 @@
         {
           "path": "types/tokens.d.ts",
           "before": "91b732e59255ae78e9979f5362584dac21e1754b2c5b9395a30e8caa53f35aa0",
-          "after": "1578ff8c32ed53090a7e5945abae78f2fa0484887fff1459a5edcfcaf547357e",
+          "after": "d0fa33391fe9a452990973e2c07cf07decd06795120f2b47cd037ac66b6a3d80",
           "beforeBytes": 9025,
-          "bytes": 9361
+          "bytes": 9485
         },
         {
           "path": "types/transactions.d.ts",

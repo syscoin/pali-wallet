@@ -107,3 +107,95 @@ it('keeps pacing and rejects a cancelled or retired owner before dispatch', asyn
   await expect(retired).rejects.toThrow('Owner retired');
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+it.each([-600_000, 600_000])(
+  'paces from elapsed time after a wall-clock change of %sms',
+  async (change) => {
+    const dispatches: number[] = [];
+    const fetcher = jest.fn(async (url: string) => {
+      expect(new URL(url).origin).toBe('https://api.routescan.io');
+      dispatches.push(performance.now());
+      return response;
+    });
+    const read = createRoutescanFetch(fetcher);
+    const url = buildAccountHistoryUrl(API, ADDRESS, 'txlist').toString();
+    await read(url);
+    jest.setSystemTime(Date.now() + change);
+    const next = read(url);
+    await jest.advanceTimersByTimeAsync(549);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await next;
+    expect(dispatches[1] - dispatches[0]).toBe(550);
+    expect(
+      new URL(fetcher.mock.calls[1][0]).searchParams.get('_pali_refresh')
+    ).toBe(String(Math.floor(Date.now() / 30_000)));
+    expect(jest.getTimerCount()).toBe(0);
+  }
+);
+
+it('retires an aborted pacing wait immediately without changing dispatch spacing', async () => {
+  const fetcher = jest.fn().mockResolvedValue(response);
+  const read = createRoutescanFetch(fetcher);
+  await read(API);
+  const owner = new AbortController();
+  let rejected = false;
+  const cancelled = read(API, { signal: owner.signal }).catch(() => {
+    rejected = true;
+  });
+  await jest.advanceTimersByTimeAsync(0);
+  owner.abort();
+  await jest.advanceTimersByTimeAsync(0);
+  expect(rejected).toBe(true);
+  await cancelled;
+  expect(jest.getTimerCount()).toBe(0);
+  const next = read(API);
+  await jest.advanceTimersByTimeAsync(549);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await jest.advanceTimersByTimeAsync(1);
+  await next;
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it.each(['caller', 'deadline'])(
+  'retires a queued %s without releasing an earlier physical request',
+  async (kind) => {
+    let finish!: (value: Response) => void;
+    const physical = new Promise<Response>((resolve) => {
+      finish = resolve;
+    });
+    const fetcher = jest
+      .fn()
+      .mockReturnValueOnce(physical)
+      .mockResolvedValue(response);
+    const read = createRoutescanFetch(fetcher);
+    const first = read(API, { signal: new AbortController().signal });
+    await jest.advanceTimersByTimeAsync(0);
+    const owner = new AbortController();
+    let rejected = false;
+    const cancelled = read(
+      API,
+      kind === 'caller' ? { signal: owner.signal } : {}
+    ).catch(() => {
+      rejected = true;
+    });
+    const following = read(API, {
+      signal: new AbortController().signal,
+    });
+    await jest.advanceTimersByTimeAsync(0);
+    if (kind === 'caller') owner.abort();
+    await jest.advanceTimersByTimeAsync(kind === 'caller' ? 0 : 15_000);
+    expect(rejected).toBe(true);
+    await cancelled;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(550);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    finish(response);
+    await first;
+    await jest.advanceTimersByTimeAsync(0);
+    await following;
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(jest.getTimerCount()).toBe(0);
+  }
+);

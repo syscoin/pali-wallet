@@ -171,6 +171,9 @@ const initial = (): NativeActivitySnapshot =>
 /** Account-bound read model. Neither network results nor this controller can sign. */
 export class NativeActivity {
   private snapshot = initial();
+  private activityError: Exclude<NativeActivitySnapshot['error'], 'position-not-saved'> = null;
+  private viewSaveFailed = false;
+  private viewSaveAttempt = 0;
   private listeners = new Set<() => void>();
   private scope: EvmActivityReadScope | null = null;
   private scopeRevision: number | null = null;
@@ -228,7 +231,10 @@ export class NativeActivity {
     return () => this.listeners.delete(listener);
   };
   private publish(update: Partial<NativeActivitySnapshot>) {
-    this.snapshot = Object.freeze({ ...this.snapshot, ...update });
+    if (update.error !== undefined && update.error !== 'position-not-saved')
+      this.activityError = update.error;
+    this.snapshot = Object.freeze({ ...this.snapshot, ...update,
+      error: this.viewSaveFailed ? 'position-not-saved' : this.activityError });
     for (const listener of this.listeners) listener();
   }
   connect(): () => void {
@@ -252,6 +258,8 @@ export class NativeActivity {
   }
   private stop() {
     this.generation++;
+    this.activityError = null;
+    this.viewSaveFailed = false;
     this.request?.abort();
     this.request = null;
     this.scope = null;
@@ -859,19 +867,29 @@ export class NativeActivity {
   }
 
   async setView(update: Partial<ActivityViewState>): Promise<void> {
-    const next = Object.freeze({ ...this.snapshot.view, ...update });
-    this.publish({ view: next });
     const scope = this.scope,
       generation = this.generation,
-      revision = this.source.getSnapshot().revision;
-    if (scope)
-      await this.runtime()
-        ?.saveView(scope, next, () => this.guard(generation, revision))
-        .catch(() => {
-          if (generation === this.generation)
-            this.publish({
-              error: 'position-not-saved',
-            });
-        });
+      revision = this.source.getSnapshot().revision,
+      runtime = scope ? this.runtime() : undefined,
+      attempt = ++this.viewSaveAttempt;
+    const next = Object.freeze({ ...this.snapshot.view, ...update });
+    this.publish({ view: next });
+    if (!scope || !runtime) return;
+    const guard = () => this.guard(generation, revision);
+    try {
+      guard();
+      await runtime.saveView(scope, next, guard);
+      guard();
+      if (attempt !== this.viewSaveAttempt || !this.viewSaveFailed) return;
+      // A full current view supersedes prior save failures, independently of
+      // the feed/older-page warning that may have arrived while writing.
+      this.viewSaveFailed = false;
+      this.publish({});
+    } catch {
+      try { guard(); } catch { return; }
+      if (attempt !== this.viewSaveAttempt) return;
+      this.viewSaveFailed = true;
+      this.publish({});
+    }
   }
 }

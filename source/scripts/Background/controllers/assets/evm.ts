@@ -782,14 +782,20 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         const isNft = contractType === 'ERC-721' || contractType === 'ERC-1155';
         let basicTokenDetails: ITokenDetails;
+        let cacheMetadata = true;
 
         if (isNft) {
           // For NFTs, use NFT-specific metadata function
-          const nftMetadata = await getNftStandardMetadata(
+          const nftMetadata: {
+            metadataUnavailable?: true;
+            name: string;
+            symbol: string;
+          } = await getNftStandardMetadata(
             contractAddress,
             metadataRunner(w3Provider),
             contractType === 'ERC-721' ? 'ERC-721' : 'ERC-1155'
           );
+          cacheMetadata = nftMetadata.metadataUnavailable !== true;
 
           basicTokenDetails = {
             id: `${contractAddress.toLowerCase()}-${context.chainId}`,
@@ -827,14 +833,16 @@ const EvmAssetsController = (): IEvmAssetsController => {
         }
 
         if (!contextIsCurrent(context.key)) return null;
-        // Cache the basic details for future use
-        tokenDetailsCache.set(cacheKey, {
-          details: basicTokenDetails,
-          timestamp: now,
-        });
+        // A temporary optional-field failure may display a fallback now, but
+        // a later request must be able to recover its descriptive metadata.
+        if (cacheMetadata)
+          tokenDetailsCache.set(cacheKey, {
+            details: basicTokenDetails,
+            timestamp: now,
+          });
 
         console.log(
-          `[EvmAssetsController] Cached basic details for ${contractType} token ${basicTokenDetails.symbol}`
+          `[EvmAssetsController] Read basic details for ${contractType} token ${basicTokenDetails.symbol}`
         );
         return basicTokenDetails;
       } catch (error) {
