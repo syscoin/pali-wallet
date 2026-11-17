@@ -236,6 +236,30 @@ export const getExactAssetAllocations = (
   }
 };
 
+const getExactBurnDestination = (transaction: any): string | undefined => {
+  if (transaction?.version !== ALLOCATION_BURN_TO_ETHEREUM_VERSION)
+    return undefined;
+  try {
+    const payload = getCoreSyscoinPayload(transaction);
+    const burn = syscoinBufferUtils.deserializeAllocationBurn(payload);
+    if (
+      !(burn.ethaddress instanceof Uint8Array) ||
+      burn.ethaddress.length !== 20 ||
+      !burn.ethaddress.some((byte: number) => byte !== 0)
+    )
+      throw new Error('Invalid NEVM destination');
+    const canonical = Buffer.concat([
+      syscoinBufferUtils.serializeAssetAllocations(burn.allocation),
+      syscoinBufferUtils.serializeAllocationBurn(burn),
+    ]);
+    if (!equalBytes(payload, canonical))
+      throw new Error('Noncanonical bridge burn data');
+    return `0x${Buffer.from(burn.ethaddress).toString('hex')}`;
+  } catch {
+    throw new Error('Unable to verify Syscoin bridge burn destination');
+  }
+};
+
 const getRawTransactionHex = (response: any): string | null => {
   if (typeof response === 'string') return response;
   if (typeof response?.hex === 'string') return response.hex;
@@ -493,6 +517,7 @@ export const getSyscoinPsbtValueSummary = (
     assetGuid: string;
     values: Array<{ n: number; value: string }>;
   }>;
+  burnDestination?: string;
   feeSatoshis: string;
   outputValuesSatoshis: string[];
 } => {
@@ -583,6 +608,7 @@ export const getSyscoinPsbtValueSummary = (
   }
   const transaction = psbt.extractTransaction(true, true);
   const assetAllocations = getExactAssetAllocations(transaction);
+  const burnDestination = getExactBurnDestination(transaction);
 
   let effectiveInput = totalInput;
   if (transaction.version === ALLOCATION_BURN_TO_SYSCOIN_VERSION) {
@@ -626,6 +652,7 @@ export const getSyscoinPsbtValueSummary = (
 
   return {
     assetAllocations,
+    ...(burnDestination ? { burnDestination } : {}),
     feeSatoshis: (effectiveInput - totalOutput).toString(),
     outputValuesSatoshis,
   };

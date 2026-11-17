@@ -135,6 +135,7 @@ import {
 } from '../../../utils/navigationState';
 import { assertRetainedSmartAccountExecution } from '../../../utils/smartAccount/executionSimulation';
 import { signSmartAccountOwnerIntent } from '../../../utils/smartAccount/ownerSigning.ts';
+import { bindVerifiedSyscoinBurn } from '../../../utils/syscoinPsbtReview';
 import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
 import {
   createBrowserLocalPasskeyStorage,
@@ -15462,7 +15463,11 @@ class MainController {
       const signing = this.captureUtxoSigningContext();
       const decoded = signing.transactions.decodeRawTransaction(psbtOrHex);
 
-      const { summary, sentry } = await signing.withRead(async (read) => {
+      const {
+        psbt: verifiedPsbt,
+        summary,
+        sentry,
+      } = await signing.withRead(async (read) => {
         const verified = await this.verifySyscoinPsbt(psbtOrHex, read);
         const feeReview = await this.verifySentryFeePsbt(
           verified.psbt,
@@ -15477,6 +15482,11 @@ class MainController {
       ) {
         throw new Error('Decoded outputs do not match the PSBT');
       }
+      const burn = bindVerifiedSyscoinBurn(
+        verifiedPsbt.version,
+        decoded.syscoin?.burn,
+        summary.burnDestination
+      );
       decoded.feeSatoshis = summary.feeSatoshis;
       signing.assertCurrent();
       if (sentry) decoded.sentry = sentry;
@@ -15484,6 +15494,7 @@ class MainController {
         output.valueSatoshis = summary.outputValuesSatoshis[index];
       });
       if (decoded.syscoin) {
+        if (burn) decoded.syscoin.burn = burn;
         decoded.syscoin.allocations = summary.assetAllocations.length
           ? { assets: summary.assetAllocations }
           : null;

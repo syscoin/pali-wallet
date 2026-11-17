@@ -41,6 +41,7 @@ let mockAllowanceValue = '2';
 let mockAllowanceIsCustom = true;
 let mockAllowanceOpen = false;
 let mockFeeOpen = false;
+let mockLegacyFeeEditor: boolean | undefined;
 let mockRecommendedNonce = 0;
 let mockFeeReviewSerial = 0;
 let mockEditHandlers: {
@@ -182,7 +183,12 @@ jest.mock('./EditApprovedAllowanceValueModal', () => ({
   },
 }));
 jest.mock('./EditPriority', () => ({
-  EditPriorityModal: ({ setCustomFee, showModal }: any) => {
+  EditPriorityModal: ({
+    setCustomFee,
+    showModal,
+    isSendLegacyTransaction,
+  }: any) => {
+    mockLegacyFeeEditor = isSendLegacyTransaction;
     mockEditHandlers.fee = setCustomFee;
     mockFeeOpen = showModal;
     return mockShowSmartFeeEditor ? (
@@ -241,6 +247,7 @@ beforeEach(() => {
   mockAllowanceIsCustom = true;
   mockAllowanceOpen = false;
   mockFeeOpen = false;
+  mockLegacyFeeEditor = undefined;
   mockRecommendedNonce = 0;
   mockFeeReviewSerial = 0;
   mockEditHandlers = {};
@@ -358,6 +365,46 @@ it.each(['held', 'failed'])(
       ([path]) => path[1] === 'sendAndSaveEthTransaction'
     );
     expect(submission?.[1][4].genericReviewId).toBe('lifetime-fee-1');
+  }
+);
+
+it.each([false, true])(
+  'uses the quoted fee mode for an untyped request without a pre-popup network classification (legacy %s)',
+  async (legacy) => {
+    mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+    mockFee.mockImplementation(async () => ({
+      feeDetails: {
+        gasLimit: 21000,
+        ...(legacy ? { gasPrice: 2 } : {}),
+        maxFeePerGas: legacy ? 2 : 3,
+        maxPriorityFeePerGas: legacy ? 2 : 1,
+      },
+      formTx: {
+        ...mockQuery.tx,
+        gasLimit: BigNumber.from(21000),
+        nonce: 0,
+        ...(legacy
+          ? { gasPrice: '2000000000' }
+          : {
+              maxFeePerGas: BigNumber.from('3000000000'),
+              maxPriorityFeePerGas: BigNumber.from('1000000000'),
+            }),
+      },
+      isInvalidTxData: false,
+      gasLimitError: false,
+    }));
+    expect(mockQuery.tx.type).toBeUndefined();
+    expect(mockQuery.tx.gasPrice).toBeUndefined();
+    expect(mockQuery.txMetadata.isLegacyTx).toBeUndefined();
+    await prepare();
+    expect(mockLegacyFeeEditor).toBe(legacy);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
   }
 );
 

@@ -186,12 +186,6 @@ export const SendTransaction = () => {
   genericFeeRef.current = genericFeeView;
   // Determine legacy transaction explicitly: honor metadata or explicit type 0x0
   const explicitType = (dataTx as any)?.type;
-  const isLegacyTransaction =
-    genericFeeView?.quote.transaction.type === 0 ||
-    Boolean(txMetadata.isLegacyTx) ||
-    explicitType === 0 ||
-    explicitType === '0x0' ||
-    dataTx.gasPrice !== undefined;
   const isApproval = txMetadata.isApproval || false;
   const approvalType = txMetadata.approvalType as ApprovalType | undefined;
   const tokenStandard = txMetadata.tokenStandard;
@@ -292,6 +286,14 @@ export const SendTransaction = () => {
   const [initialNonceReviewError, setInitialNonceReviewError] =
     useState<string>();
   const [tx, setTx] = useState<ITxState>();
+  // An untyped request follows its actual quote, including legacy networks.
+  const isLegacyTransaction =
+    genericFeeView?.quote.transaction.type === 0 ||
+    tx?.gasPrice !== undefined ||
+    Boolean(txMetadata.isLegacyTx) ||
+    explicitType === 0 ||
+    explicitType === '0x0' ||
+    dataTx.gasPrice !== undefined;
   const [fee, setFee] = useState<IFeeState>();
   const [txResponse, setTxResponse] = useState<string | null>(null);
   // An unset override follows the latest quote; re-estimation must never

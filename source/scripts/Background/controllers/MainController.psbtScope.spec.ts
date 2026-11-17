@@ -401,6 +401,97 @@ describe('PSBT approval context', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  const decoderController = () => {
+    // Initialize the actual decoder arrow field without starting unrelated
+    // keyring/service startup. Its owned read and publication remain real.
+    const initialize = jest
+      .spyOn(MainController.prototype as any, 'initializeKeyring')
+      .mockImplementation(() => undefined);
+    const startup = jest
+      .spyOn(globalThis, 'setTimeout')
+      .mockReturnValue(0 as unknown as ReturnType<typeof setTimeout>);
+    try {
+      return Object.assign(new MainController(), wallet);
+    } finally {
+      initialize.mockRestore();
+      startup.mockRestore();
+    }
+  };
+
+  it.each([false, true])(
+    'binds decoded burn publication to the verified PSBT version (mismatch=%s)',
+    async (mismatch) => {
+      const psbt = syntheticPsbt(BigInt(1000));
+      psbt.setVersion(141);
+      const destination = `0x${'22'.repeat(20)}`;
+      wallet.verifySyscoinPsbt.mockResolvedValue({
+        psbt,
+        summary: {
+          ...syntheticSummary(psbt),
+          outputValuesSatoshis: psbt.txOutputs.map(({ value }) =>
+            value.toString()
+          ),
+          assetAllocations: [],
+          inputAssets: [],
+          burnDestination: destination,
+        },
+      });
+      keyring.syscoinTransaction.decodeRawTransaction.mockReturnValue({
+        version: 2,
+        vout: psbt.txOutputs.map(() => ({})),
+        syscoin: {
+          burn: {
+            ethaddress: (mismatch ? '11' : '22').repeat(20),
+            allocation: ['legacy-decoy'],
+          },
+        },
+      });
+      const decoder = decoderController();
+      if (mismatch)
+        await expect(
+          decoder.decodeRawTransaction(signedEnvelope())
+        ).rejects.toThrow('Unable to verify Syscoin bridge burn destination');
+      else {
+        const decoded = await decoder.decodeRawTransaction(signedEnvelope());
+        expect(decoded.syscoin.burn).toEqual({ ethaddress: destination });
+        expect(decoded.syscoin.allocations).toBeNull();
+      }
+      expect(wallet.getRetainedUtxoRecords).not.toHaveBeenCalled();
+      expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([138, 2])(
+    'preserves non-NEVM-burn decoder shape for verified version %s',
+    async (version) => {
+      const psbt = syntheticPsbt(BigInt(1000));
+      psbt.setVersion(version);
+      wallet.verifySyscoinPsbt.mockResolvedValue({
+        psbt,
+        summary: {
+          ...syntheticSummary(psbt),
+          outputValuesSatoshis: psbt.txOutputs.map(({ value }) =>
+            value.toString()
+          ),
+          assetAllocations: [],
+          inputAssets: [],
+        },
+      });
+      const burn = { ethaddress: '', allocation: ['legacy-non-NEVM'] };
+      keyring.syscoinTransaction.decodeRawTransaction.mockReturnValue({
+        version: 141,
+        vout: psbt.txOutputs.map(() => ({})),
+        ...(version === 138 ? { syscoin: { burn } } : {}),
+      });
+      const decoded = await decoderController().decodeRawTransaction(
+        signedEnvelope()
+      );
+      if (version === 138) expect(decoded.syscoin.burn).toBe(burn);
+      else expect(decoded.syscoin).toBeUndefined();
+    }
+  );
+
   it('verifies an ordinary PSBT without opening the unused address-allocation journal', async () => {
     const psbt = syntheticPsbt(BigInt(1000));
     const outputValuesSatoshis = psbt.txOutputs.map(({ value }) =>

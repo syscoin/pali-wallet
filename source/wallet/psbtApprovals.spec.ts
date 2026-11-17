@@ -234,6 +234,146 @@ function fixture(partial = false, asset = false) {
   };
 }
 
+function bridgeBurnFixture(prefixed: boolean, displayedByte = 0x22) {
+  const f = fixture();
+  const allocations = (n: number) =>
+    bufferUtils.serializeAssetAllocations([
+      {
+        assetGuid: '123',
+        values: [{ n, value: new syscoinUtils.BN('100000000') }],
+      },
+    ]);
+  const previous = new bitcoin.Transaction();
+  previous.version = 142;
+  previous.addInput(Buffer.alloc(32, 7), 0);
+  previous.addOutput(payer.output, BigInt(100_000));
+  previous.addOutput(
+    bitcoin.payments.embed({ data: [allocations(0)] }).output!,
+    BigInt(0)
+  );
+  const destination = Buffer.alloc(20, 0x22);
+  const payload = Buffer.concat([
+    allocations(1),
+    bufferUtils.serializeAllocationBurn({ ethaddress: destination }),
+  ]);
+  // Parseable legacy allocations/address whose first four bytes are the Core
+  // witness marker. Core skips this entire push before selecting the payload.
+  const decoy = Buffer.concat([
+    Buffer.from([0xaa, 0x21, 0xa9, 0xed, 0]),
+    Buffer.alloc(168 * 2 + 169 * 2),
+    Buffer.from([20]),
+    Buffer.alloc(20, displayedByte),
+  ]);
+  const script = bitcoin.payments.embed({
+    data: prefixed ? [decoy, payload] : [payload],
+  }).output!;
+  const psbt = new bitcoin.Psbt({ network: outputNetwork });
+  psbt.setVersion(141);
+  psbt.addInput({
+    hash: previous.getId(),
+    index: 0,
+    witnessUtxo: previous.outs[0],
+    unknownKeyVals: [
+      {
+        key: Buffer.from('assetInfo'),
+        value: Buffer.from(
+          JSON.stringify({ assetGuid: '123', value: '100000000' })
+        ),
+      },
+    ],
+  });
+  psbt.addOutput({ address: recipient.address, value: BigInt(99_000) });
+  psbt.addOutput({ script, value: BigInt(0) });
+  Object.assign(f.envelope, PsbtUtils.toPali(psbt));
+  f.readFetch.mockImplementation(async (url) => {
+    expect(url).toBe(`${network.url}/api/v2/tx/${previous.getId()}`);
+    const response = Response.json({ hex: previous.toHex() });
+    Object.defineProperty(response, 'url', { value: url });
+    return response;
+  });
+  jest.mocked(f.host.readAssetMetadata).mockResolvedValue({
+    asset: {
+      assetGuid: '123',
+      assetType: 'ERC20',
+      contract: '0x' + '44'.repeat(20),
+      originDecimals: 18,
+      decimals: 8,
+      symbol: 'T',
+    },
+  });
+  return {
+    ...f,
+    psbt,
+    destination: '0x' + destination.toString('hex'),
+    script,
+  };
+}
+
+it.each(['sys_sign', 'sys_signAndSend'] as const)(
+  'refuses a Core-selected bridge destination disagreement before %s can reach a signer',
+  async (method) => {
+    const f = bridgeBurnFixture(true, 0x11);
+    expect(f.script).toHaveLength(731);
+    expect(f.sdk.decodeRawTransaction(f.envelope).syscoin.burn.ethaddress).toBe(
+      '11'.repeat(20)
+    );
+    await expect(f.prepare(method)).rejects.toThrow(
+      'Unable to verify Syscoin bridge burn destination'
+    );
+    expect(f.sign).not.toHaveBeenCalled();
+    expect(f.disclose).not.toHaveBeenCalled();
+    expect(f.records.admit).not.toHaveBeenCalled();
+    expect(f.post).not.toHaveBeenCalled();
+  }
+);
+
+it.each([false, true])(
+  'preserves the verified bridge destination and exact signed bytes (witness-prefixed %s)',
+  async (prefixed) => {
+    const f = bridgeBurnFixture(prefixed);
+    const pending = await f.prepare();
+    expect(pending.review).toMatchObject({
+      burnDestination: f.destination,
+      feeSatoshis: '1000',
+      outputs: [
+        { assets: [] },
+        {
+          assets: [
+            {
+              assetGuid: '123',
+              rawAmount: '100000000',
+              amount: '1',
+              symbol: 'T',
+              isBurn: true,
+            },
+          ],
+        },
+      ],
+    });
+    const original = Buffer.from(f.psbt.data.globalMap.unsignedTx.toBuffer());
+    const signed = PsbtUtils.fromPali(await pending.approve(), network);
+    expect(Buffer.from(signed.data.globalMap.unsignedTx.toBuffer())).toEqual(
+      original
+    );
+    expect(signed.data.inputs[0].finalScriptWitness).toBeDefined();
+    expect(f.sign).toHaveBeenCalledTimes(1);
+    expect(f.disclose).toHaveBeenCalledTimes(1);
+    expect(f.post).not.toHaveBeenCalled();
+    pending.dispose();
+  }
+);
+
+it('does not sign a bridge review after its owner retires', async () => {
+  const f = bridgeBurnFixture(true);
+  const pending = await f.prepare();
+  f.retire();
+  await expect(pending.approve()).rejects.toThrow('Original approval retired');
+  expect(f.sign).not.toHaveBeenCalled();
+  expect(f.disclose).not.toHaveBeenCalled();
+  expect(f.post).not.toHaveBeenCalled();
+  pending.dispose();
+});
+
 it.each([false, true])(
   'returns structured SDK PSBT bytes without broadcasting (partial %s)',
   async (partial) => {

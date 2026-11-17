@@ -629,6 +629,28 @@ describe('EthProvider transaction admission', () => {
     }
   );
 
+  it.each([
+    [{}, false],
+    [{ type: '0x0' }, true],
+    [{ gasPrice: '0x0' }, true],
+    [{ gasPrice: '0xba43b7400' }, true],
+  ])(
+    'leaves network fee-mode discovery to the quote when no London-only feature was requested: %p',
+    async (fields, legacy) => {
+      await EthProvider(HOST, readContext()).sendTransaction({
+        ...transaction,
+        ...fields,
+        data: '0x',
+      } as any);
+      expect(rpc.getBlock).not.toHaveBeenCalled();
+      expect(popupMock.mock.calls[0][0].data.txMetadata.isLegacyTx).toBe(
+        legacy
+      );
+      expect(decodeMock).toHaveBeenCalledTimes(1);
+      expect(popupMock).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it.each(['0x0', '0xba43b7400'])(
     'keeps an untyped gasPrice-only request legacy on an EIP-1559 network: %s',
     async (gasPrice) => {

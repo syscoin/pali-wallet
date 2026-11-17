@@ -144,21 +144,24 @@ export const EthProvider = (host: string, context: IEnhancedRequestContext) => {
       accountMeta.type === KeyringAccountType.SmartAccount
     )
       snapshotSmartAccountDappTransaction(tx);
-    // Get current block to check EIP1559 compatibility
-    const currentBlock = await web3Provider.getBlock('latest');
-    assertCurrentContext();
-    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(currentBlock));
-    assertCurrentContext();
+    // Only requested London-only features need early compatibility rejection.
+    // Untyped requests get their fee mode from the existing pending-state quote,
+    // without relying on ethers' short-lived block cache across popup setup.
     if (
-      isLegacyTx &&
-      (tx.type === '0x2' ||
-        tx.accessList !== undefined ||
-        tx.maxFeePerGas !== undefined ||
-        tx.maxPriorityFeePerGas !== undefined)
-    )
-      throw ethErrors.provider.unsupportedMethod(
-        'This network does not support EIP-1559 transactions'
-      );
+      tx.type === '0x2' ||
+      tx.accessList !== undefined ||
+      tx.maxFeePerGas !== undefined ||
+      tx.maxPriorityFeePerGas !== undefined
+    ) {
+      const currentBlock = await web3Provider.getBlock('latest');
+      assertCurrentContext();
+      const compatible = await verifyNetworkEIP1559Compatibility(currentBlock);
+      assertCurrentContext();
+      if (!compatible)
+        throw ethErrors.provider.unsupportedMethod(
+          'This network does not support EIP-1559 transactions'
+        );
+    }
     const decodedTx = (await decodeTransactionData(
       tx as ITransactionParams,
       web3Provider,
@@ -183,7 +186,7 @@ export const EthProvider = (host: string, context: IEnhancedRequestContext) => {
 
     // Pass transaction metadata for the component to handle appropriately
     const txMetadata = {
-      isLegacyTx: isLegacyTx || tx.type === '0x0' || tx.gasPrice !== undefined,
+      isLegacyTx: tx.type === '0x0' || tx.gasPrice !== undefined,
       isContractInteraction,
       isApproval,
       isDeployment,
