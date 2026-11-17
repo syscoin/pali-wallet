@@ -237,8 +237,10 @@ export default function PrivateArchivedNotes({
                     className="rounded-lg border border-alpha-whiteAlpha300 p-3 space-y-2"
                   >
                     <p>
-                      {note.amount} ETH ·{' '}
-                      {new Date(note.archivedAt).toLocaleDateString()}
+                      {t('mobile.noteFlows.inventory.poolAmount', {
+                        amount: note.amount,
+                      })}{' '}
+                      · {new Date(note.archivedAt).toLocaleDateString()}
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <button

@@ -451,7 +451,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
             .nextElementSibling?.textContent
         ).toBe(ACCOUNT);
         expect(
-          within(dialog).getByText('settings.feePayer').nextElementSibling
+          within(dialog).getByText('transactions.feePayer').nextElementSibling
             ?.textContent
         ).toBe(OWNER);
         expect(

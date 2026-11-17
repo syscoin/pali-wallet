@@ -2835,9 +2835,11 @@ it.each(['tier', 'count', 'schema', 'bytes'] as const)(
     f.records[key] = bundle;
     const saved = structuredClone(bundle);
     const writes = f.storage.setItem.mock.calls.length;
+    const decrypt = jest.spyOn(keyring, 'decryptPrivateRecord');
     await expect(f.create().getCapacity()).rejects.toThrow(
       'privacy_vault_corrupt'
     );
+    expect(decrypt).toHaveBeenCalledTimes(1);
     expect(f.storage.setItem).toHaveBeenCalledTimes(writes);
     expect(f.records[key]).toEqual(saved);
   }

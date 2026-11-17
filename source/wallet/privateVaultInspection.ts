@@ -853,8 +853,20 @@ export async function readPrivateVaultBundle(
         archiveStoredBytes +=
           new TextEncoder().encode(JSON.stringify(envelope)).length + 1;
         archive.shards.push({ envelope, reference });
-        if (!includeArchive) continue;
       }
+    }
+    if (
+      archiveCount !== (root.archiveCount ?? 0) ||
+      archiveStoredBytes > PRIVATE_VAULT_ARCHIVE_BUDGET ||
+      context.storedBytes - archiveStoredBytes >
+        capacityBudget(context.capacity)
+    )
+      throw new Error('privacy_vault_corrupt');
+    // Admit the authenticated layout and both byte quotas before decrypting
+    // shards, including when an oversized active tier has an archive attached.
+    for (const [index, envelope] of bundle.shards.entries()) {
+      const reference: IShardReference = root.shards[index];
+      if (reference.archived && !includeArchive) continue;
       const shard = await decrypt(
         context,
         envelope,
@@ -887,11 +899,7 @@ export async function readPrivateVaultBundle(
     }
     if (
       storedNotes.length !==
-        root.noteCount + (includeArchive ? root.archiveCount ?? 0 : 0) ||
-      archiveCount !== (root.archiveCount ?? 0) ||
-      archiveStoredBytes > PRIVATE_VAULT_ARCHIVE_BUDGET ||
-      context.storedBytes - archiveStoredBytes >
-        capacityBudget(context.capacity)
+      root.noteCount + (includeArchive ? root.archiveCount ?? 0 : 0)
     )
       throw new Error('privacy_vault_corrupt');
     const data: IManifest = { version: 1, notes: storedNotes };

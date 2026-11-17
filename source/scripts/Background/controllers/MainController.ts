@@ -15335,13 +15335,25 @@ class MainController {
             operation(
               Object.freeze({
                 ...read,
-                ...this.getRetainedUtxoRecords().addressDiscovery(
-                  {
-                    keyring,
-                    assertCurrent: read.assertCurrent,
-                  },
-                  this.utxoRecordOwner(vault.activeNetwork, context.account)
-                ),
+                allocateUtxoAddress: (
+                  select: Parameters<
+                    ReturnType<
+                      UtxoSignedRecords['addressDiscovery']
+                    >['allocateUtxoAddress']
+                  >[0]
+                ) => {
+                  read.assertCurrent();
+                  const owner = this.utxoRecordOwner(
+                    vault.activeNetwork,
+                    context.account
+                  );
+                  return this.getRetainedUtxoRecords()
+                    .addressDiscovery(
+                      { keyring, assertCurrent: read.assertCurrent },
+                      owner
+                    )
+                    .allocateUtxoAddress(select);
+                },
               })
             ),
           approvalSignal
