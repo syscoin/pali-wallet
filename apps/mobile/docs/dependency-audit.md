@@ -39,12 +39,16 @@ only GHSA-fc5q-39xc-vjpf/source1247710 on the exact reviewed mobile picomatch
 there is no extension-audit exception. These versions remain unpatched.
 Other moderate or higher advisories still fail.
 
-The actual reviewed isolated EmulatorQA Android32 APK (fresh JS/Hermes, unchanged
-native base29) and Canary28 artifact exclude these modules. Android32 is cbf1;
-Canary28 is 6321 with byte-identical extension inputs at cbf1. No fresh native
-compile or normal production APK is claimed. Normal Android/iOS use the same
-JavaScript imports and resolver settings according to source inspection;
-their normal app artifacts and devices were not tested here.
+Requalified on 2026-11-17 for source f92421ae1 under the same approval and
+expiry: the clean normal production Chrome artifact and normal Android
+JavaScript/Hermes export exclude these modules. All 5,643 Android source bodies,
+410 SDK artifacts and all packaged extension JavaScript were checked. The
+Android export uses the normal source/Metro configuration without QA aliases.
+This is JavaScript runtime evidence, not a new APK, native compile or device
+qualification. The older Android32 APK remains historical isolated QA evidence;
+iOS still has only the common resolver/storage static assessment. Canary30
+retains its recorded base-plus-dirty-patch provenance and is not relabeled as a
+clean f924 build. The fresh production Chrome build supplies that qualification.
 The exception binds their complete production input inventory, exact
 locks, parser and consumer bytes, UTC deadline, and reviewed runtime receipt.
 Any source/config/dependency/consumer drift closes it until requalification.

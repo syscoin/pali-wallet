@@ -2,8 +2,8 @@
   "status": "APPROVED",
   "schema": "pali-single-advisory-exception-v1",
   "scope": "Only the mobile npm moderate+ gate; no blanket package exemption or extension audit exemption",
-  "reviewedHead": "cbf1f6bfc1841677b3f1e319b91aed2749441145",
-  "reviewedTree": "f6ccaabfd5cdb18d5f9cb407a9522001e10ec6a7",
+  "reviewedHead": "f92421ae1c8129f724d79bd0c348b14944ccee97",
+  "reviewedTree": "b383bdf18ae2886cf4bfad2d7fb3dbdec09e489b",
   "notBefore": "2026-11-17T18:29:00Z",
   "expiresAt": "2026-11-24T00:00:00Z",
   "advisory": {
@@ -115,12 +115,12 @@
   },
   "reviewEvidence": {
     "applicability": {
-      "path": "/private/tmp/pali-picomatch-exception-proposal-20261117/evidence-cbf1/applicability.json",
-      "sha256": "fa89f1637381e71d046a775335129d7a41bf0dee2167c223f4cc34b90a252bf6"
+      "path": "/private/tmp/f924-audit-requalification/renewal-applicability.json",
+      "sha256": "d3fb44787c37544a65bd8e8e3795a8dc43be0cc2abd2a42750db2061140d09b8"
     },
     "verifier": {
-      "path": "/private/tmp/pali-picomatch-exception-proposal-20261117/evidence-cbf1/verify-applicability-cbf1.py",
-      "sha256": "8c10625a5387de7739eb56306a029673add3a88baf9e056236499527afdf6a1c"
+      "path": "/private/tmp/f924-audit-requalification/verify-renewal.py",
+      "sha256": "145778caf79ec607428269b9de80ee9c3b3f51bc6275c1167a45ebf803d393db"
     },
     "auditJson": {
       "path": "/private/tmp/pali-mobile-picomatch-audit-isolated.json",
@@ -131,22 +131,21 @@
       "allHighRootedInSingleAdvisory": true
     },
     "android": {
-      "sourceRevision": "cbf1f6bfc1841677b3f1e319b91aed2749441145",
-      "buildNumber": 32,
-      "apkSha256": "09ff7d7250a182f65454ac14a24aed770081205cee1dd92395042212ad3a395a",
-      "mapSha256": "68d192f9c28936e66c9d55e2132372643e882d0ef7db5c23e9e186b3366655d6",
-      "bundleSha256": "f561eb33ade96519543392def3e9e454d73e9d47ef1c9e9311d43ea5b323eaa2",
-      "verifiedSourceContents": 5713,
-      "sdkFiles": 94,
-      "variant": "Actual isolated EmulatorQA APK with fresh JS/Hermes export and unchanged native base29; not a normal Android/iOS artifact"
+      "sourceRevision": "f92421ae1c8129f724d79bd0c348b14944ccee97",
+      "variant": "Actual normal Android release JavaScript/Hermes only; no new APK, native compilation, signing or device qualification",
+      "mapSha256": "1a832674eaa8a2f3f1c05e7c5fea976183b8c44f75c66871f8bb203bfae5120c",
+      "bundleSha256": "03e0ce285139e73a118c44ebdfc27794dce4a7a160e1617af3b43a189a7bc16d",
+      "verifiedSourceContents": 5643,
+      "sdkArtifactsVerified": 410,
+      "sdkFiles": 94
     },
     "canary": {
-      "sourceRevision": "6321ecfd2e82beb205bdecd2bc279c7d55eacb5e",
-      "buildNumber": 28,
-      "zipSha256": "889dedc2549991690ea1c2a67f030deb087a846da06031883ec374daf743ebb1",
-      "analyzerSha256": "da671c60211c5897e5e217b8df1f0e67fe6f5b89a4f9b702c923e06caacd8865",
+      "zipSha256": "5ed847d6d583a4c6389b718f25b35c795ffbefe6a70400535576af44fedbe7b5",
+      "analyzerSha256": "70e2e94579cc78266f44e1cd7b0c9e7f4a2d02bf4ba9de269850d671e70fcf4d",
       "nodes": 8037,
-      "currentExtensionInputsUnchangedAt": "cbf1f6bfc1841677b3f1e319b91aed2749441145"
+      "allocatorSourceRevision": "44814891547d1793973550ddef2d8f10cfaf705e",
+      "allocatorSourceDirty": true,
+      "qualifiedSourceRelationship": "Base 448148915 plus saved exact f924 seven-file patch; not relabeled as a clean f924 build"
     },
     "limitations": [
       "No statement that all dev/build-time dependency uses are safe",
@@ -160,10 +159,17 @@
       "evidence": "ExpoMetroConfig.js306-328 selects same ios/android react-native conditions and react-native/browser/main fields; selected Pali supplied protocolStorage path has no ios/android storage variant."
     },
     "staticNormalMobileAssessment": {
-      "kind": "STATIC same JavaScript dependency closure and shared RN resolver/storage path",
-      "qaJavaScriptDeltas": "entry.native UI banner and httpPolicy loopback transport/response checks; reviewed deltas add no imports/requires",
-      "otherQaDeltas": "App identity/config plugin and Kotlin credential adapter; watchFolders visibility expands, resolver unchanged",
-      "limits": "No actual normal Android/iOS runtime exclusion or device qualification is claimed by this receipt."
+      "kind": "Only complete native packaging and iOS remain outside actual current JS qualification",
+      "limits": "Normal Android JS/Hermes now directly verified; no new APK, native compile or iOS artifact/device qualification."
+    },
+    "productionExtension": {
+      "sourceRevision": "f92421ae1c8129f724d79bd0c348b14944ccee97",
+      "sourceTree": "b383bdf18ae2886cf4bfad2d7fb3dbdec09e489b",
+      "sourceDirty": false,
+      "zipSha256": "d996234876c36988ad670a6ad26a011f1cf7a3caa8cdc87284299549b3b720b2",
+      "analyzerSha256": "40fc4ce0a40de0a95bf0f1856f588e90427e6e089f0c0de876f148a0f89d5eb4",
+      "nodes": 8036,
+      "unpackedFiles": 184
     }
   },
   "enableConditions": [
@@ -212,11 +218,11 @@
     ],
     "excludedPolicyHelper": "apps/mobile/scripts/check-dependency-advisories.cjs",
     "files": 2577,
-    "sha256": "38643a74a54210d08f4310f6a8e62cf456f3568f1bfc7cfc28f393e2f02a432a"
+    "sha256": "a14474e832125e96b5b5da23a06c703a91866b7e8e20c4c6f2108052156a5f65"
   },
   "runtimeReceipt": {
     "path": "apps/mobile/security/picomatch-runtime-receipt.json",
-    "sha256": "fa89f1637381e71d046a775335129d7a41bf0dee2167c223f4cc34b90a252bf6"
+    "sha256": "d3fb44787c37544a65bd8e8e3795a8dc43be0cc2abd2a42750db2061140d09b8"
   },
   "nodeVersion": "v26.12.1",
   "approval": {
@@ -224,5 +230,23 @@
     "authority": "Explicit user approval in the Pali QA chat",
     "statement": "Approve this scoped exception",
     "scope": "GHSA-fc5q-39xc-vjpf only; exact reviewed identities and runtime evidence; development/build exposure accepted until the stated expiry"
+  },
+  "requalification": {
+    "verifiedAt": "2026-11-17T21:56:59.009155Z",
+    "sourceRevision": "f92421ae1c8129f724d79bd0c348b14944ccee97",
+    "previousReviewedHead": "cbf1f6bfc1841677b3f1e319b91aed2749441145",
+    "authority": "User explicitly authorized requalification under the existing single-advisory exception and unchanged expiry.",
+    "scopeUnchanged": true,
+    "advisory": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+    "expiresAt": "2026-11-24T00:00:00Z",
+    "normalAndroid": {
+      "path": "/private/tmp/pali-f924-normal-android-runtime-20261117/normal-android-runtime-receipt.json",
+      "sha256": "7628c1e6ece8880d8fc474548bdcdec9b26e5bb35a5095f9014a3ddfe6b6be78"
+    },
+    "extension": {
+      "path": "/private/tmp/f924-audit-requalification/extension-applicability.json",
+      "sha256": "97af2a8835d5ec6a1159c683597697ebf3f473f6a2a2176fb1e26c0fd6cda78a"
+    },
+    "inputDigest": "a14474e832125e96b5b5da23a06c703a91866b7e8e20c4c6f2108052156a5f65"
   }
 }
