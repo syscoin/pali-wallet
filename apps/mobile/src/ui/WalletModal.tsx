@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useId, useLayoutEffect, useState, useSyncExternalStore } from 'react';
-import { Animated, AppState, BackHandler, Modal, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import React, { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { AccessibilityInfo, Animated, AppState, BackHandler, Modal, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { WalletModalState, type WalletModalEntry } from './walletModalState';
 import { registerWalletModalHost } from './WalletBackHandler';
 
@@ -13,13 +13,19 @@ type Props = Readonly<{
   onRequestClose(): void;
 }>;
 
-function Layer({ entry, top }: { entry: WalletModalEntry<React.ReactNode>; top: boolean }) {
-  const [progress] = useState(() => new Animated.Value(entry.animation === 'none' ? 1 : 0));
+function Layer({ entry, top, reducedMotion }: { entry: WalletModalEntry<React.ReactNode>; top: boolean; reducedMotion: boolean }) {
+  const [progress] = useState(() => new Animated.Value(reducedMotion || entry.animation === 'none' ? 1 : 0));
+  const entranceRetired = useRef(reducedMotion || entry.animation === 'none');
   const { height } = useWindowDimensions();
   useLayoutEffect(() => {
+    if (reducedMotion || entry.animation === 'none' || entranceRetired.current) {
+      // A visible layer must not replay its entrance when motion becomes allowed.
+      entranceRetired.current = true;
+      progress.stopAnimation(); progress.setValue(1); return;
+    }
     const animation = Animated.timing(progress, { toValue: 1, duration: 200, useNativeDriver: true });
     animation.start(); return () => animation.stop();
-  }, [progress]);
+  }, [progress, reducedMotion, entry.animation]);
   return <View style={s.layer} pointerEvents={top ? 'auto' : 'none'} accessibilityElementsHidden={!top}
     importantForAccessibility={top ? 'auto' : 'no-hide-descendants'}>
     <Animated.View accessibilityViewIsModal style={[s.layer, !entry.transparent && s.opaque,
@@ -30,7 +36,7 @@ function Layer({ entry, top }: { entry: WalletModalEntry<React.ReactNode>; top: 
   </View>;
 }
 
-function Frame({ state, children }: { state: WalletModalState<React.ReactNode>; children: React.ReactNode }) {
+function Frame({ state, children, reducedMotion }: { state: WalletModalState<React.ReactNode>; children: React.ReactNode; reducedMotion: boolean }) {
   const entries = useSyncExternalStore(state.subscribe, state.getSnapshot, state.getSnapshot);
   useLayoutEffect(() => {
     if (!entries.length) return;
@@ -42,19 +48,34 @@ function Frame({ state, children }: { state: WalletModalState<React.ReactNode>; 
   return <View style={s.root}>
     <View style={s.root} pointerEvents={covered ? 'none' : 'auto'} accessibilityElementsHidden={covered}
       importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}>{children}</View>
-    {entries.map((entry, index) => <Layer key={entry.id} entry={entry} top={index === entries.length - 1} />)}
+    {entries.map((entry, index) => <Layer key={entry.id} entry={entry} top={index === entries.length - 1} reducedMotion={reducedMotion} />)}
   </View>;
 }
 
 /** Android sheets share the app window, so opening one never causes app blur. */
 export function WalletModalHost({ children }: { children: React.ReactNode }) {
   const [state] = useState(() => new WalletModalState<React.ReactNode>());
+  const [reducedMotion, setReducedMotion] = useState(true);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    let live = true, preferenceRevision = 0;
+    const preference = AccessibilityInfo.addEventListener('reduceMotionChanged', value => {
+      preferenceRevision++;
+      if (live) setReducedMotion(value);
+    });
+    const observedRevision = preferenceRevision;
+    void AccessibilityInfo.isReduceMotionEnabled().then(value => {
+      if (!live || preferenceRevision !== observedRevision) return;
+      setReducedMotion(value);
+    }).catch(() => { /* Unknown preferences retain static, visible layers. */ });
+    return () => { live = false; preference.remove(); };
+  }, []);
   useLayoutEffect(() => {
     if (Platform.OS !== 'android') return;
     return registerWalletModalHost(state);
   }, [state]);
   if (Platform.OS !== 'android') return <>{children}</>;
-  return <Host.Provider value={state}><Frame state={state}>{children}</Frame></Host.Provider>;
+  return <Host.Provider value={state}><Frame state={state} reducedMotion={reducedMotion}>{children}</Frame></Host.Provider>;
 }
 
 export function WalletModal({ visible = true, transparent = false, animationType = 'none', onRequestClose, children }: Props) {

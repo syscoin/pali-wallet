@@ -203,7 +203,9 @@ beforeEach(() => {
 const receiver = () =>
   screen.getByPlaceholderText('send.receiver') as HTMLInputElement;
 const begin = async () => {
-  render(<SendEth />);
+  await act(async () => {
+    render(<SendEth />);
+  });
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'buttons.next' })).toBeEnabled()
   );

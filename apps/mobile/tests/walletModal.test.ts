@@ -23,6 +23,9 @@ async function fixture(platform = 'android') {
     if (name === 'change') appState.currentState = value!;
     for (const callback of [...(listeners.get(name) ?? [])]) callback(value);
   };
+  const motionPreference = Promise.withResolvers<boolean>();
+  const motionListeners = new Set<(reduced: boolean) => void>();
+  let motionQueries = 0;
   let nativeShows = 0;
   function NativeModal(props: any) {
     React.useLayoutEffect(() => { if (props.visible) { nativeShows++; if (platform === 'android') emit('blur'); } }, [props.visible]);
@@ -32,12 +35,30 @@ async function fixture(platform = 'android') {
     'data-pointer': pointerEvents, 'aria-hidden': accessibilityElementsHidden,
     'data-accessibility': importantForAccessibility, 'data-absolute': JSON.stringify(style).includes('absolute'),
   }, children);
-  class Value { value: number; constructor(value: number) { this.value = value; } interpolate() { return 0; } }
+  const values: Value[] = [];
+  const timings: { value: Value; options: Record<string, unknown>; running: boolean; starts: number; stops: number }[] = [];
+  class Value {
+    value: number;
+    constructor(value: number) { this.value = value; values.push(this); }
+    interpolate() { return 0; }
+    setValue(value: number) { this.value = value; }
+    stopAnimation() { for (const timing of timings) if (timing.value === this && timing.running) { timing.running = false; timing.stops++; } }
+  }
   const native = {
     Modal: NativeModal, View, Platform: { OS: platform }, AppState: appState,
     BackHandler: { addEventListener: event }, useWindowDimensions: () => ({ height: 800, width: 400 }),
     StyleSheet: { create: (value: unknown) => value, absoluteFillObject: { position: 'absolute', top: 0, left: 0, bottom: 0, right: 0 } },
-    Animated: { View, Value, timing: () => ({ start() {}, stop() {} }) },
+    AccessibilityInfo: {
+      isReduceMotionEnabled() { motionQueries++; return motionPreference.promise; },
+      addEventListener(name: string, callback: (reduced: boolean) => void) {
+        assert.equal(name, 'reduceMotionChanged'); motionListeners.add(callback);
+        return { remove() { motionListeners.delete(callback); } };
+      },
+    },
+    Animated: { View, Value, timing(value: Value, options: Record<string, unknown>) {
+      const timing = { value, options, running: false, starts: 0, stops: 0 }; timings.push(timing);
+      return { start() { timing.running = true; timing.starts++; }, stop() { timing.running = false; timing.stops++; } };
+    } },
   };
   const backModule = { exports: {} as Record<string, any> };
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/ui/WalletBackHandler.ts', import.meta.url), 'utf8'), {
@@ -61,7 +82,9 @@ async function fixture(platform = 'android') {
     WalletBackHandler: backModule.exports.WalletBackHandler,
     WalletModal: module.exports.WalletModal as React.ComponentType<any>,
     WalletModalHost: module.exports.WalletModalHost as React.ComponentType<any>,
-    NativeModal, document: dom.window.document, emit,
+    NativeModal, document: dom.window.document, emit, values, timings, motionPreference, motionListeners,
+    get motionQueries() { return motionQueries; },
+    emitMotion(reduced: boolean) { for (const callback of [...motionListeners]) callback(reduced); },
     get nativeShows() { return nativeShows; },
     back() { return [...(listeners.get('hardwareBackPress') ?? [])].reverse().some(callback => callback() === true); },
     listen: event,
@@ -155,6 +178,124 @@ test('iOS retains native Modal presentation and its existing close callback', as
     await f.render(React.createElement(f.WalletModalHost, null,
       React.createElement(f.WalletModal, { visible: true, animationType: 'slide', onRequestClose() {} }, 'iOS sheet')));
     assert.equal(f.nativeShows, 1);
+    assert.equal(f.motionQueries, 0); assert.equal(f.motionListeners.size, 0);
     assert(f.document.querySelector('[data-native-modal]'));
   } finally { await f.dispose(); }
+});
+
+// These exercise the AccessibilityInfo/Animated API boundary, not Android OS rendering.
+test('motion API: unknown preference shows the layer statically and a late allowance does not replay it', async () => {
+  const f = await fixture();
+  const render = (visible: boolean) => f.render(React.createElement(f.WalletModalHost, null,
+    React.createElement(f.WalletModal, { visible, animationType: 'slide', onRequestClose() {} }, 'Public sheet')));
+  try {
+    await render(true);
+    assert(f.document.body.textContent!.includes('Public sheet'));
+    assert.equal(f.values[0]!.value, 1); assert.equal(f.timings.length, 0);
+    assert.equal(f.motionQueries, 1); assert.equal(f.motionListeners.size, 1);
+    await act(async () => f.motionPreference.resolve(false));
+    assert.equal(f.values[0]!.value, 1); assert.equal(f.timings.length, 0);
+    await render(false); await render(true);
+    assert.equal(f.values[1]!.value, 0);
+    assert.equal(f.timings.length, 1);
+    assert.equal(f.timings[0]!.running, true);
+    assert.equal(f.timings[0]!.options.duration, 200);
+    assert.equal(f.timings[0]!.options.useNativeDriver, true);
+    assert.equal(f.timings[0]!.options.toValue, 1);
+  } finally { await f.dispose(); }
+});
+
+test('motion API: an initially reduced preference keeps new slide and fade layers visible without timing', async () => {
+  const f = await fixture();
+  try {
+    await f.render(React.createElement(f.WalletModalHost));
+    await act(async () => f.motionPreference.resolve(true));
+    await f.render(React.createElement(f.WalletModalHost, null,
+      React.createElement(f.WalletModal, { animationType: 'slide', onRequestClose() {} }, 'Public slide'),
+      React.createElement(f.WalletModal, { animationType: 'fade', onRequestClose() {} }, 'Public fade')));
+    assert(f.document.body.textContent!.includes('Public slide'));
+    assert(f.document.body.textContent!.includes('Public fade'));
+    assert.deepEqual(f.values.map(value => value.value), [1, 1]);
+    assert.equal(f.timings.length, 0);
+    await act(async () => f.emitMotion(false));
+    assert.deepEqual(f.values.map(value => value.value), [1, 1]);
+    assert.equal(f.timings.length, 0);
+  } finally { await f.dispose(); }
+});
+
+test('motion API: explicit none stays visible without a timing after motion is allowed', async () => {
+  const f = await fixture();
+  try {
+    await f.render(React.createElement(f.WalletModalHost));
+    await act(async () => f.motionPreference.resolve(false));
+    await f.render(React.createElement(f.WalletModalHost, null,
+      React.createElement(f.WalletModal, { animationType: 'none', onRequestClose() {} }, 'Public sheet')));
+    assert(f.document.body.textContent!.includes('Public sheet'));
+    assert.equal(f.values[0]!.value, 1); assert.equal(f.timings.length, 0);
+  } finally { await f.dispose(); }
+});
+
+for (const animationType of ['slide', 'fade'] as const) {
+  test(`motion API: reducing motion stops an in-flight ${animationType} without replay on later allowance`, async () => {
+    const f = await fixture();
+    const render = (visible: boolean, content = 'Public sheet') => f.render(React.createElement(f.WalletModalHost, null,
+      React.createElement(f.WalletModal, { visible, animationType, onRequestClose() {} }, content)));
+    try {
+      await render(false);
+      await act(async () => f.motionPreference.resolve(false));
+      await render(true);
+      const timing = f.timings[0]!;
+      assert.equal(timing.running, true); assert.equal(timing.value.value, 0);
+      await act(async () => f.emitMotion(true));
+      assert.equal(timing.running, false); assert(timing.stops > 0);
+      assert.equal(timing.value.value, 1);
+      assert(f.document.body.textContent!.includes('Public sheet'));
+      await act(async () => f.emitMotion(false));
+      await render(true, 'Updated public sheet');
+      assert.equal(timing.value.value, 1); assert.equal(f.timings.length, 1);
+      await render(false); await render(true);
+      assert.equal(f.timings.length, 2); assert.equal(f.timings[1]!.running, true);
+    } finally { await f.dispose(); }
+    assert.equal(f.motionListeners.size, 0);
+    assert(f.timings.every(timing => !timing.running));
+  });
+}
+
+test('motion API: a late query cannot overwrite a newer reduced-motion event', async () => {
+  const f = await fixture();
+  try {
+    await f.render(React.createElement(f.WalletModalHost));
+    await act(async () => f.emitMotion(true));
+    await act(async () => f.motionPreference.resolve(false));
+    await f.render(React.createElement(f.WalletModalHost, null,
+      React.createElement(f.WalletModal, { animationType: 'slide', onRequestClose() {} }, 'Public sheet')));
+    assert.equal(f.values[0]!.value, 1); assert.equal(f.timings.length, 0);
+  } finally { await f.dispose(); }
+});
+
+test('motion API: an unavailable preference keeps the layer visible and static', async () => {
+  const f = await fixture();
+  try {
+    await f.render(React.createElement(f.WalletModalHost, null,
+      React.createElement(f.WalletModal, { animationType: 'fade', onRequestClose() {} }, 'Public sheet')));
+    await act(async () => f.motionPreference.reject(new Error('Preference unavailable')));
+    assert(f.document.body.textContent!.includes('Public sheet'));
+    assert.equal(f.values[0]!.value, 1); assert.equal(f.timings.length, 0);
+  } finally { await f.dispose(); }
+});
+
+test('motion API: unmount removes its subscription and ignores a late query and queued event', async () => {
+  const f = await fixture(); let disposed = false;
+  try {
+    await f.render(React.createElement(f.WalletModalHost));
+    assert.equal(f.motionQueries, 1);
+    const queued = [...f.motionListeners];
+    await f.dispose(); disposed = true;
+    assert.equal(f.motionListeners.size, 0);
+    await act(async () => {
+      f.motionPreference.resolve(false);
+      for (const callback of queued) callback(false);
+    });
+    assert.equal(f.timings.length, 0);
+  } finally { if (!disposed) await f.dispose(); }
 });

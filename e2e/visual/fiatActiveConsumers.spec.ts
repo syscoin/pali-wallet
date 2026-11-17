@@ -165,8 +165,9 @@ async function expose(page: Page, target: Locator) {
       const footer = [...document.querySelectorAll('div')].find((node) => {
         const style = getComputedStyle(node);
         return (
-          style.position === 'fixed' &&
-          style.bottom === '0px' &&
+          (node.hasAttribute('data-page-action-footer') ||
+            (style.position === 'fixed' &&
+              ['0px', '16px'].includes(style.bottom))) &&
           node.getBoundingClientRect().top > 0
         );
       });
@@ -211,6 +212,16 @@ async function captures(
   for (const size of sizes) {
     await page.setViewportSize(size);
     await expose(page, target);
+    if (name.startsWith('fee-')) {
+      const next = page.getByRole('button', {
+        name: en.buttons.next,
+        exact: true,
+      });
+      const bounds = (await next.boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(size.width);
+      expect(bounds.width).toBeGreaterThanOrEqual(200);
+    }
     const file = info.outputPath(name + '-' + size.width + '.png');
     await page.screenshot({ path: file, animations: 'disabled' });
     await info.attach(name + '-' + size.width, {
@@ -291,9 +302,59 @@ test('normal UTXO Send keeps fee and total exact while unavailable fiat estimate
           );
         await captures(page, feeContainer, info, 'fee-' + scenario.phase);
         expect(await fee.inputValue()).toBe('0.00000002');
-        await page
-          .getByRole('button', { name: en.buttons.next, exact: true })
-          .click();
+        const next = page.getByRole('button', {
+          name: en.buttons.next,
+          exact: true,
+        });
+        const scroller = page.locator(
+          '[data-navigation-scroll="wallet-layout"]'
+        );
+        const originalScroll = await scroller.evaluate(
+          (node) => node.scrollTop
+        );
+        const fieldBounds = (await feeContainer.boundingBox())!;
+        const actionBounds = (await next.boundingBox())!;
+        await page.mouse.move(160, 200);
+        await page.mouse.wheel(
+          0,
+          fieldBounds.y +
+            fieldBounds.height / 2 -
+            (actionBounds.y + actionBounds.height / 2)
+        );
+        await expect
+          .poll(() => scroller.evaluate((node) => node.scrollTop))
+          .toBeLessThan(originalScroll);
+        await expect
+          .poll(() =>
+            next.evaluate((node) => {
+              const box = node.getBoundingClientRect();
+              const hit = document.elementFromPoint(
+                box.left + box.width / 2,
+                box.top + box.height / 2
+              );
+              return !!hit && (node === hit || node.contains(hit));
+            })
+          )
+          .toBe(true);
+        await expose(page, feeContainer);
+        await expect
+          .poll(() =>
+            feeContainer.evaluate((node) => {
+              const footer = document.querySelector(
+                '[data-page-action-footer]'
+              );
+              return (
+                !!footer &&
+                node.getBoundingClientRect().bottom <=
+                  footer.getBoundingClientRect().top
+              );
+            })
+          )
+          .toBe(true);
+        await fee.click();
+        await fee.fill('0.00000002');
+        expect(await fee.inputValue()).toBe('0.00000002');
+        await next.click();
         await expect(page).toHaveURL(/#\/send\/confirm$/);
         await expect(
           page.getByRole('button', { name: en.buttons.confirm, exact: true })
