@@ -317,6 +317,7 @@
     "viewOnNamedExplorer": "Открыть в обозревателе {{explorer}}",
     "importToken": "Импорт токена",
     "youHaveNoTokens": "У вас нет токенов или NFT",
+    "youHaveNoFungibleTokens": "У вас нет токенов.",
     "youHaveNoTxs": "Нет истории транзакций",
     "historyMayBeIncomplete": "Без API обозревателя история транзакций может быть неполной.",
     "seeAllTxs": "Посмотреть все транзакции",

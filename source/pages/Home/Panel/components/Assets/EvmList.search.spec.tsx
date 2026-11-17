@@ -154,7 +154,9 @@ it.each([false, true])(
       'assetsHeader.noMatchingAssets'
     );
     expect(screen.queryByText('home.youHaveNoNfts')).not.toBeInTheDocument();
-    expect(screen.queryByText('home.youHaveNoTokens')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('home.youHaveNoFungibleTokens')
+    ).not.toBeInTheDocument();
     await user.click(
       screen.getByRole('button', { name: 'assetsHeader.clearSearch' })
     );
@@ -176,7 +178,9 @@ it.each([false, true])(
     mockAssets = [token(!isNft)];
     render(<EvmAssetsList scope="synthetic-test-scope" />);
     expect(
-      screen.getByText(isNft ? 'home.youHaveNoNfts' : 'home.youHaveNoTokens')
+      screen.getByText(
+        isNft ? 'home.youHaveNoNfts' : 'home.youHaveNoFungibleTokens'
+      )
     ).toBeInTheDocument();
     expect(
       screen.queryByText('assetsHeader.noMatchingAssets')

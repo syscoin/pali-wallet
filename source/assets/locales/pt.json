@@ -317,6 +317,7 @@
     "viewOnNamedExplorer": "Ver no explorador {{explorer}}",
     "importToken": "Importar Token",
     "youHaveNoTokens": "Você não tem tokens ou NFTs",
+    "youHaveNoFungibleTokens": "Você não tem tokens.",
     "youHaveNoTxs": "Você não tem histórico de transações",
     "historyMayBeIncomplete": "O histórico de transações pode estar incompleto sem uma API de explorador.",
     "seeAllTxs": "Ver todas as transações",

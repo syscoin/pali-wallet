@@ -317,6 +317,7 @@
     "viewOnNamedExplorer": "{{explorer}} エクスプローラーで表示",
     "importToken": "トークンインポート",
     "youHaveNoTokens": "トークンやNFTがありません",
+    "youHaveNoFungibleTokens": "トークンがありません。",
     "youHaveNoTxs": "取引履歴がありません",
     "historyMayBeIncomplete": "エクスプローラー API がない場合、取引履歴が不完全になる可能性があります。",
     "seeAllTxs": "全取引を表示",

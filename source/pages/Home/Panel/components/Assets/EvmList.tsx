@@ -161,7 +161,7 @@ const DefaultEvmAssets = React.memo(
             <AssetSearchEmptyState onClearSearch={onClearSearch} />
           ) : (
             <p className="py-6 text-sm text-brand-white">
-              {t('home.youHaveNoTokens')}
+              {t('home.youHaveNoFungibleTokens')}
             </p>
           ))}
         {visibleItems.map((token: ITokenEthProps) => (
