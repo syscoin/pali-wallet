@@ -8,6 +8,7 @@ import {
 } from 'ethers';
 
 import { KeyringAccountType } from '../../types/network';
+import { withdrawalJournal } from '../../wallet/privateVaultInspection';
 
 import { getPrivacyPool } from './registry';
 import {
@@ -15,6 +16,7 @@ import {
   createPrivateWithdrawalJournal,
   privateWithdrawalUnsignedBytes,
   readPrivateWithdrawalAttempt,
+  captureWithdrawalRootAnchor,
 } from './withdrawalMetadata';
 import type { IPrivacyWithdrawalAttempt } from './withdrawalTransactionTypes';
 import type { EvmRetainedSignedRecord } from '../../wallet/evmSignedRecords';
@@ -96,6 +98,107 @@ async function record(input = attempt()): Promise<EvmRetainedSignedRecord> {
   };
 }
 
+test('relayed root provenance is immutable, root-bound and covered by the durable attempt identity', () => {
+  const input: Extract<IPrivacyWithdrawalAttempt, { mode: 'relayed' }> = {
+    ...attempt(),
+    mode: 'relayed',
+    relayer: wallet.address,
+    rewardAccount: wallet.address,
+    endpoint: 'https://relay.example',
+    ensHash: '0x' + '33'.repeat(32),
+    rootAnchor: {
+      root: attempt().root,
+      blockNumber: '8',
+      blockHash: '0x' + '44'.repeat(32),
+    },
+  };
+  Reflect.deleteProperty(input, 'transaction');
+  const create = () =>
+    createPrivateWithdrawalJournal(input, input.noteId, {
+      poolId: pool.id,
+      nullifierHash: input.nullifierHash,
+    });
+  const journal = create();
+  expect(journal.rootAnchor).toEqual(input.rootAnchor);
+  expect(Object.isFrozen(journal.rootAnchor)).toBe(true);
+  expect(journal.rootAnchor).not.toBe(input.rootAnchor);
+  const changed = createPrivateWithdrawalJournal(
+    { ...input, rootAnchor: { ...input.rootAnchor, blockNumber: '9' } },
+    input.noteId,
+    { poolId: pool.id, nullifierHash: input.nullifierHash }
+  );
+  expect(changed.attemptHash).not.toBe(journal.attemptHash);
+  expect(withdrawalJournal(journal).rootAnchor).toEqual(journal.rootAnchor);
+  const legacy = { ...journal };
+  delete legacy.rootAnchor;
+  expect(withdrawalJournal(legacy).rootAnchor).toBeUndefined();
+  expect(() =>
+    withdrawalJournal({
+      ...journal,
+      rootAnchor: { ...input.rootAnchor, root: '0x' + '05'.repeat(32) },
+    })
+  ).toThrow();
+});
+
+test('new direct root provenance is immutable and hash-bound while legacy signed metadata remains readable', async () => {
+  const legacy = attempt();
+  const rootAnchor = {
+    root: legacy.root,
+    blockNumber: '8',
+    blockHash: '0x' + '44'.repeat(32),
+  };
+  const input = { ...legacy, rootAnchor };
+  const captured = capturePrivateWithdrawalAttempt(input);
+  const journal = createPrivateWithdrawalJournal(captured, captured.noteId, {
+    poolId: pool.id,
+    nullifierHash: captured.nullifierHash,
+  });
+  rootAnchor.blockNumber = '9';
+  expect(captured.rootAnchor?.blockNumber).toBe('8');
+  expect(Object.isFrozen(captured.rootAnchor)).toBe(true);
+  expect(withdrawalJournal(journal).rootAnchor).toEqual(captured.rootAnchor);
+  expect(
+    createPrivateWithdrawalJournal(input, input.noteId, {
+      poolId: pool.id,
+      nullifierHash: input.nullifierHash,
+    }).attemptHash
+  ).not.toBe(journal.attemptHash);
+  expect(readPrivateWithdrawalAttempt(await record(captured))).toEqual(
+    captured
+  );
+  expect(readPrivateWithdrawalAttempt(await record(legacy))).toEqual(legacy);
+  expect(
+    createPrivateWithdrawalJournal(legacy, legacy.noteId, {
+      poolId: pool.id,
+      nullifierHash: legacy.nullifierHash,
+    })
+  ).not.toHaveProperty('rootAnchor');
+});
+
+test.each([
+  undefined,
+  { blockNumber: '08' },
+  { blockNumber: '0x8' },
+  { blockNumber: (BigInt(1) << BigInt(256)).toString() },
+  { blockHash: 'bad' },
+  { root: '0x' + '05'.repeat(32) },
+])(
+  'relayed provenance rejects absent or noncanonical anchor data %j',
+  (patch) => {
+    const root = attempt().root;
+    const value =
+      patch === undefined
+        ? undefined
+        : {
+            root,
+            blockNumber: '8',
+            blockHash: '0x' + '44'.repeat(32),
+            ...patch,
+          };
+    expect(() => captureWithdrawalRootAnchor(value, root)).toThrow();
+  }
+);
+
 test.each([false, true])(
   'retains canonical journal bytes and original attempt fields, legacy=%s',
   async (legacy) => {
@@ -168,6 +271,14 @@ test.each([false, true])(
       attemptHash: keccak256(toUtf8Bytes(JSON.stringify(normalized))),
       from: wallet.address.toLowerCase(),
       nonce: '4',
+      publicInputs: {
+        root: input.root,
+        nullifierHash: input.nullifierHash,
+        recipient: input.recipient.toLowerCase(),
+        relayer: input.relayer.toLowerCase(),
+        fee: input.fee,
+        refund: '0',
+      },
     });
     const captured = capturePrivateWithdrawalAttempt(input);
     input.context.sessionGeneration = 99;

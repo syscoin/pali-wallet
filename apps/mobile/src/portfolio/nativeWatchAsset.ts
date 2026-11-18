@@ -1,8 +1,9 @@
 import { getAddress } from 'ethers/address';
+import type { TransactionRequest } from 'ethers/providers';
 import { getContractType } from '@sidhujag/sysweb3-utils/cjs/getContract.js';
 import {
   getNftStandardMetadata,
-  getTokenStandardMetadata,
+  fetchStandardTokenMetadata,
 } from '@sidhujag/sysweb3-utils/cjs/tokens.js';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import {
@@ -103,24 +104,17 @@ export function createNativeWatchAssetObserver(
       request.address,
       signal,
       check,
-      async ({ target, holder, call }) => {
+      async ({ target, call }) => {
         // These are the only calls made by the shared SDK's type and metadata helpers.
         const runner = {
-          async call(transaction: {
-            to?: string;
-            data?: string;
-          }): Promise<string> {
+          provider: null,
+          async call(transaction: TransactionRequest): Promise<string> {
             check();
             const data = transaction.data;
             const known =
               data === '0x06fdde03' ||
               data === '0x95d89b41' ||
               data === '0x313ce567' ||
-              data ===
-                `0x70a08231${holder
-                  .slice(2)
-                  .toLowerCase()
-                  .padStart(64, '0')}` ||
               data ===
                 `0x70a08231${target
                   .slice(2)
@@ -130,7 +124,7 @@ export function createNativeWatchAssetObserver(
               data === `0x01ffc9a7d9b67a26${'0'.repeat(56)}`;
             if (
               !known ||
-              !transaction.to ||
+              typeof transaction.to !== 'string' ||
               getAddress(transaction.to) !== target
             )
               throw invalid();
@@ -145,16 +139,14 @@ export function createNativeWatchAssetObserver(
         if (standard?.type !== `ERC-${request.type.slice(3)}`) throw invalid();
         const metadata =
           request.type === 'ERC20'
-            // The SDK declarations require a whole provider; these helpers use
-            // only ContractRunner.call, confined by the selector gate above.
-            ? await getTokenStandardMetadata(target, holder, runner as Parameters<typeof getTokenStandardMetadata>[2]).then(
+            ? await fetchStandardTokenMetadata(target, runner).then(
                 (value) => ({
                   name: value.tokenSymbol,
                   symbol: value.tokenSymbol,
                   decimals: value.decimals,
                 })
               )
-            : await getNftStandardMetadata(target, runner as Parameters<typeof getNftStandardMetadata>[1]).then((value) => ({
+            : await getNftStandardMetadata(target, runner, standard.type as 'ERC-721' | 'ERC-1155').then((value) => ({
                 name: value.name,
                 symbol: value.symbol,
                 decimals: 0,

@@ -30,10 +30,10 @@ async function noSpending(page: Page) {
     return { signs: value.signs, broadcasts: value.broadcasts, keys: value.keyReads };
   })).toEqual({ signs: 0, broadcasts: 0, keys: 0 });
 }
-async function openEvmDraft(page: Page, network = 'Ethereum') {
+async function openEvmDraft(page: Page, network: 'Ethereum' | 'Base' = 'Ethereum') {
   await button(page, 'Send').click();
   await expect(heading(page, 'Send from')).toBeVisible();
-  await page.getByRole('radio', { name: `${network}, ETH`, exact: true }).click();
+  await page.getByRole('radio', { name: `${network}, ETH, Chain ID ${network === 'Ethereum' ? '1' : '8453'}`, exact: true }).click();
   await expect(heading(page, 'Send ETH')).toBeVisible();
   await recipient(page).fill(RECIPIENT); await amount(page).fill('0.125');
 }

@@ -12,10 +12,16 @@ type Page = {
   nextCursor: string | null;
   transactions: readonly EvmSavedTransaction[];
 };
-type State = { loading: boolean; page: Page };
+type State = {
+  failedCursor?: string;
+  loading: boolean;
+  page: Page;
+  unavailable: boolean;
+};
 const EMPTY: State = {
-  loading: false,
+  loading: true,
   page: { transactions: [], nextCursor: null },
+  unavailable: false,
 };
 
 /** Project the shared public summary without inventing unsigned calldata or receipt fields. */
@@ -85,10 +91,17 @@ export const savedTransactionHistoryRow = (
 /** One bounded authenticated local page; explorer fetching stays with the existing history flow. */
 export const useSavedEvmTransactions = (enabled: boolean, scope: string) => {
   const [state, setState] = useContextualState<State>(scope, EMPTY);
-  const context = useRef({ scope, revision: 0, request: 0, active: true });
-  if (context.current.scope !== scope)
+  const context = useRef({
+    scope,
+    enabled,
+    revision: 0,
+    request: 0,
+    active: true,
+  });
+  if (context.current.scope !== scope || context.current.enabled !== enabled)
     context.current = {
       scope,
+      enabled,
       revision: context.current.revision + 1,
       request: 0,
       active: true,
@@ -114,7 +127,13 @@ export const useSavedEvmTransactions = (enabled: boolean, scope: string) => {
         ['wallet', 'getSavedEvmTransactions'],
         beforeHash === undefined ? [] : [beforeHash, 30]
       )) as Page;
-      if (!current() || !Array.isArray(page?.transactions)) return;
+      if (!current()) return;
+      if (
+        !Array.isArray(page?.transactions) ||
+        page.transactions.length > 30 ||
+        (page.nextCursor !== null && typeof page.nextCursor !== 'string')
+      )
+        throw new Error('Saved transaction page unavailable');
       setState((previous) => {
         const rows = beforeHash
           ? [...previous.page.transactions, ...page.transactions]
@@ -130,6 +149,7 @@ export const useSavedEvmTransactions = (enabled: boolean, scope: string) => {
         );
         return {
           loading: false,
+          unavailable: false,
           page: {
             nextCursor:
               !beforeHash && overlaps
@@ -141,6 +161,12 @@ export const useSavedEvmTransactions = (enabled: boolean, scope: string) => {
       });
     } catch {
       // Local records remain visible when a later read fails; never claim remote history is complete.
+      if (current())
+        setState((previous) => ({
+          ...previous,
+          unavailable: true,
+          failedCursor: beforeHash,
+        }));
     } finally {
       if (current()) setState((previous) => ({ ...previous, loading: false }));
     }
@@ -162,6 +188,8 @@ export const useSavedEvmTransactions = (enabled: boolean, scope: string) => {
       : [],
     hasMore: enabled && state.page.nextCursor !== null,
     loading: enabled && state.loading,
+    unavailable: enabled && state.unavailable,
+    retry: () => fetchPage(state.failedCursor),
     loadMore: () => fetchPage(state.page.nextCursor ?? undefined),
   };
 };

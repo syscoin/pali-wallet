@@ -16,6 +16,7 @@ import {
   type SmartAccountPreparationEcdsaConfig,
   type SmartAccountPreparationRequest,
 } from '../../shared/smartAccountPreparation.ts';
+import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import { DropdownArrowSvg, LoadingSvg } from 'components/Icon/Icon';
 import { Button, Card, Icon } from 'components/index';
 import { PqOperationStatus } from 'components/Loading';
@@ -52,6 +53,7 @@ import {
   encodeSLHDSAValidatorInitData,
   encodeUninstallValidatorModuleCall,
   getPaliModuleAddress,
+  getSmartAccountLocalOwnerContexts,
   isSLHDSAOffscreenSignerSupported,
   signAndSubmitSmartAccountExecutions,
 } from 'utils/smartAccount';
@@ -381,6 +383,8 @@ export const PrepareSmartAccount = () => {
     activeNetwork.apiUrl,
     accounts.HDAccount?.[0]?.xpub || accounts.HDAccount?.[0]?.address,
   ]);
+  const { forExecution, feeConfirmation } =
+    useSmartAccountFeeConfirmation(scope);
   const progressRef = useRef<PreparationProgress>();
   if (progressRef.current?.scope !== scope) progressRef.current = { scope };
   useEffect(() => {
@@ -450,9 +454,11 @@ export const PrepareSmartAccount = () => {
       account,
       bootstrapMetadata,
       onBeforeSubmit,
+      assertCurrent,
       requested,
     }: {
       account: IKeyringAccountState;
+      assertCurrent(): void;
       bootstrapMetadata: any;
       onBeforeSubmit: () => Promise<void>;
       requested: PreparedAuthenticator;
@@ -521,6 +527,15 @@ export const PrepareSmartAccount = () => {
           },
         },
         controllerEmitter,
+        feeConsent: forExecution({
+          account: account.address,
+          smartAccount: account.address,
+          chainId: activeNetwork.chainId,
+          symbol: activeNetwork.currency,
+          label: t('connections.prepareSmartAccountTitle'),
+          assertCurrent,
+        }),
+        onBeforeAuthentication: assertCurrent,
         onBeforeSubmit,
         executions: replacesSameValidatorModule
           ? [rotateExecution]
@@ -530,7 +545,14 @@ export const PrepareSmartAccount = () => {
         waitForConfirmation: true,
       });
     },
-    [controllerEmitter, findLocalOwner, t]
+    [
+      controllerEmitter,
+      findLocalOwner,
+      forExecution,
+      activeNetwork.chainId,
+      activeNetwork.currency,
+      t,
+    ]
   );
 
   const approve = useCallback(async () => {
@@ -674,14 +696,51 @@ export const PrepareSmartAccount = () => {
       if (!progress.outerConfirmed) {
         setCreationStep('deploying');
         if (!progress.registered) {
-          // Registration may submit a deployment operation before returning.
-          // Only an explicit not-broadcast error makes its failure retryable.
-          progress.submitting = true;
-          await controllerEmitter(
-            ['wallet', 'registerSmartAccountOnChain'],
-            [{ accountId: account.id }],
-            300000
-          );
+          // Initial fee consent and authenticators run before the financial
+          // submission boundary below marks an outcome as potentially unknown.
+          if (!bootstrapMetadata.isDeployed)
+            await signAndSubmitSmartAccountExecutions({
+              accountAddress: account.address,
+              accountId: account.id,
+              authenticatorContexts: getSmartAccountLocalOwnerContexts({
+                accounts,
+                controllerEmitter,
+              }),
+              controllerEmitter,
+              executions: [
+                { target: account.address, data: '0x', value: '0x0' },
+              ],
+              smartAccount: bootstrapMetadata,
+              onBeforeAuthentication: () => {
+                if (!isCurrent())
+                  throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+              },
+              onPrepared: () => {
+                if (!isCurrent())
+                  throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+              },
+              onBeforeSubmit: async () => {
+                if (!isCurrent())
+                  throw Object.assign(
+                    new Error('PALI_TRANSACTION_CONTEXT_CHANGED'),
+                    { transactionNotBroadcast: true }
+                  );
+                progress.submitting = true;
+              },
+              feeConsent: forExecution({
+                account: account.address,
+                smartAccount: account.address,
+                chainId: activeNetwork.chainId,
+                symbol: activeNetwork.currency,
+                label: t('connections.prepareSmartAccountTitle'),
+                assertCurrent: () => {
+                  if (!isCurrent())
+                    throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+                },
+              }),
+              skipRapidPolling: true,
+              waitForConfirmation: true,
+            });
           progress.registered = true;
           progress.submitting = false;
           if (!isCurrent()) return;
@@ -701,6 +760,10 @@ export const PrepareSmartAccount = () => {
           account,
           bootstrapMetadata,
           requested,
+          assertCurrent: () => {
+            if (!isCurrent())
+              throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+          },
           onBeforeSubmit: async () => {
             if (!isCurrent())
               throw Object.assign(
@@ -817,6 +880,7 @@ export const PrepareSmartAccount = () => {
     host,
     label,
     replaceRequestedValidator,
+    forExecution,
     requestedAuthenticator,
     scope,
     t,
@@ -824,6 +888,7 @@ export const PrepareSmartAccount = () => {
 
   return (
     <div className="flex h-full w-full flex-col">
+      {feeConfirmation}
       <div className="remove-scrollbar flex-1 overflow-y-auto">
         <div className="border-b border-brand-gray300 px-6 py-6 text-center">
           <h3 className="mb-2 text-xs uppercase tracking-wider text-brand-graylight">

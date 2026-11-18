@@ -317,6 +317,7 @@
     "viewOnNamedExplorer": "Ver no explorador {{explorer}}",
     "importToken": "Importar Token",
     "youHaveNoTokens": "Você não tem tokens ou NFTs",
+    "youHaveNoFungibleTokens": "Você não tem tokens.",
     "youHaveNoTxs": "Você não tem histórico de transações",
     "historyMayBeIncomplete": "O histórico de transações pode estar incompleto sem uma API de explorador.",
     "seeAllTxs": "Ver todas as transações",
@@ -335,7 +336,10 @@
     "ifYouHaveAHardWallet": "Se você possui uma carteira física, conecte-a agora!",
     "congratulations": "Parabéns!",
     "youWalletWas": "Sua carteira foi importada com sucesso",
-    "youHaveNoNfts": "Você não tem NFTs."
+    "youHaveNoNfts": "Você não tem NFTs.",
+    "noIndexedActivity": "Nenhuma atividade encontrada. Transferências de NFT e internas podem não aparecer aqui.",
+    "savedActivityUnavailable": "Não foi possível carregar a atividade salva.",
+    "retrySavedActivity": "Tentar carregar a atividade salva novamente"
   },
   "titles": {
     "assetDetails": "Detalhes do ativo",
@@ -593,6 +597,7 @@
     "calculating": "Calculando...",
     "unableToLoad": "Não foi possível carregar",
     "smartAccountPendingReview": "Uma transação salva da conta inteligente ainda não foi resolvida. Abra Atividade para revisá-la antes de enviar outra transação.",
+    "smartAccountPayerPending": "Uma transação anterior da conta que paga as taxas precisa ser confirmada antes de continuar. Aguarde a confirmação e tente novamente.",
     "feeUnavailable": "Taxa indisponível",
     "plusGasFee": " + Taxa de Gas",
     "plusNetworkFee": " + Taxa de rede",
@@ -1023,7 +1028,10 @@
     "smartAccountGuardianRecoveryExpired": "Este pedido de recuperação expirou antes de ser concluído. Inicie a recuperação novamente.",
     "invalidAddress": "Endereço inválido",
     "changeHardwareDevice": "Trocar dispositivo",
-    "closeHardwareSetup": "Fechar configuração"
+    "closeHardwareSetup": "Fechar configuração",
+    "smartAccountFeeReviewTitle": "Rever taxa de rede",
+    "smartAccountFeeReviewSelectedAccount": "Conta selecionada",
+    "smartAccountFeeReviewMaximumTotal": "Custo total máximo"
   },
   "start": {
     "eraseAndStartFresh": "Apagar e começar de novo",
@@ -1098,6 +1106,21 @@
     "coinGeckoListingUnavailable": "Listagem indisponível"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "Referência original",
+      "title": "Instruções assinadas",
+      "empty": "Nenhuma instrução assinada salva",
+      "mayExecute": "A instrução ainda pode ser executada",
+      "nonceConsumedUnknown": "Nonce consumido; resultado desconhecido",
+      "observedSuccess": "Instrução bem-sucedida observada",
+      "observedFailure": "Instrução com falha observada",
+      "checkStatus": "Verificar status",
+      "cancelInstruction": "Cancelar instrução",
+      "unavailable": "Instruções assinadas indisponíveis. Tente novamente.",
+      "operationHash": "Hash da operação"
+    },
+    "smartAccountCancelUnavailable": "Não é possível cancelar esta operação. Sua instrução assinada ainda pode ser executada.",
+    "smartAccountCancelDescription": "Cancele esta instrução da Smart Account enviando uma operação vazia com o mesmo nonce. A original pode ser confirmada primeiro. O cancelamento só é concluído quando a rede confirma a substituição.",
     "feePayer": "Pagador de taxas",
     "labelCopied": "{{label}} copiado para a área de transferência",
     "decodeDetailsFailed": "Falha ao decodificar os detalhes da transação",
@@ -1279,6 +1302,7 @@
     "checkYourDevice": "Verifique seu {{device}} para aprovar esta solicitação",
     "useYourPasskey": "Use sua chave de acesso",
     "passkeyPrompt": "Siga as instruções do navegador para assinar com sua chave de acesso",
+    "smartAccountAuthorizationRetained": "A instrução da conta inteligente já foi assinada. Recusar esta taxa de gas não a revoga; ela ainda pode ser executada até que o seu nonce seja consumido.",
     "cancelFeePreview": "Verificando a taxa de rede de cancelamento…",
     "cancelFeeConsent": "Cancelar esta transação com uma taxa máxima de gás de {{fee}} {{currency}}?",
     "cancelFeeUnavailable": "Não foi possível verificar a taxa de cancelamento. Tente novamente.",
@@ -1331,7 +1355,8 @@
         "erc721": "Transferência de NFT",
         "erc1155": "Transferência de NFT"
       }
-    }
+    },
+    "detailsUnavailable": "Não foi possível carregar os detalhes da transação. Tente novamente."
   },
   "switchNetworkPage": {
     "chainFallback": "Rede {{chainId}}",
@@ -1440,7 +1465,8 @@
     "firstAccessTitle": "Pegue ${{token}} com nossa torneira para começar a experienciar a rede {{network}}!",
     "firstAccessDescription": "Você pode obter {{token}} por endereço de carteira a cada 24 horas.",
     "grabTokens": "Ir para o Faucet",
-    "rateLimited": "O faucet está limitando as solicitações. Acesse o faucet para mais informações."
+    "rateLimited": "O faucet está limitando as solicitações. Acesse o faucet para mais informações.",
+    "requestTimedOut": "A solicitação expirou. Verifique seu saldo antes de solicitar tokens novamente."
   },
   "nftDetails": {
     "information": "Informações do NFT",
@@ -1773,7 +1799,7 @@
       "reconciliation": "Revise as notas restauradas antes de sacar. A atividade de saque registrada deve ser resolvida primeiro. O histórico salvo nunca reinicia um saque.",
       "expires": "Esta revisão expira após cinco minutos.",
       "confirmRestore": "Restaurar notas",
-      "restored": "Restauração confirmada. Revise as notas restauradas antes de sacar; notas com atividade de saque registrada permanecem bloqueadas até que ela seja resolvida.",
+      "restored": "Notas restauradas. Verifique o estado delas no pool antes de sacar.",
       "unconfirmed": "A restauração não foi confirmada. Ela pode já estar salva. Verifique o comprovante; não envie novamente.",
       "checkReceipt": "Verificar comprovante",
       "receiptUnavailable": "Nenhum comprovante correspondente foi confirmado. Isso não prova que a restauração falhou. Verifique as notas salvas antes de começar novamente.",
@@ -1861,10 +1887,10 @@
       "error": "Não foi possível alterar o limite. Verifique se as notas salvas cabem e tente novamente.",
       "save": "Salvar limite",
       "reportedSpent": "Notas informadas como gastas ({{count}})",
-      "clear": "Limpar notas concluídas",
-      "clearHelp": "O RPC Ethereum selecionado receberá o hash do saque conhecido e, quando houver, o hash do depósito relacionado. O provedor pode vincular os dois. Apenas notas cujo saque e depósito relacionado sejam confirmados como finalizados por esse RPC são removidas; as demais permanecem salvas.",
-      "confirmClear": "Verificar e limpar",
-      "clearResult": "Removidas: {{removed}}. Ainda salvas: {{unresolved}}.",
+      "clear": "Arquivar notas concluídas",
+      "clearHelp": "O RPC Ethereum selecionado recebe os hashes conhecidos de levantamentos e depósitos relacionados, o que pode permitir ao fornecedor associá-los. Apenas as notas que este RPC confirma como finalizadas são arquivadas de forma encriptada; as restantes permanecem ativas. As notas arquivadas não contam para o limite ativo.",
+      "confirmClear": "Verificar e arquivar",
+      "clearResult": "Arquivadas: {{removed}}. Ainda ativas: {{unresolved}}.",
       "clearError": "Não foi possível concluir a verificação. Atualize para ver as notas restantes.",
       "clearProgress": "{{checked}} de {{total}} notas verificadas.",
       "storedBytes": "Cofre criptografado serializado: {{bytes}} bytes."
@@ -1901,6 +1927,9 @@
       "backupFailed": "Não foi possível abrir o backup da nota. Tente novamente."
     },
     "withdrawal": {
+      "pendingProofWarning": "Um saque anterior ainda pode ser concluído. Continuar não o cancela, e uma transação concorrente pode falhar e gerar taxas.",
+      "competingConfirm": "Enviar saque concorrente",
+      "previousAttempts": "Saques anteriores",
       "watchOnlyDirectUnavailable": "O saque direto requer uma chave privada. Esta conta é somente para observação.",
       "title": "Sacar nota",
       "open": "Sacar",
@@ -1946,12 +1975,12 @@
       "notBroadcast": "A transação não foi enviada. Atualize a revisão antes de confirmar novamente."
     },
     "recovery": {
-      "action": "Recuperar saque que falhou",
-      "help": "A recuperação só está disponível quando a transação está finalizada como falha e sua prova original não pode mais ser executada. A nota e o histórico são preservados. Um novo saque exige nova revisão.",
-      "disclosure": "Esta verificação compartilha o hash da transação, a raiz da prova e o anulador público da nota com o RPC Ethereum selecionado.",
+      "action": "Verificar recuperação do saque",
+      "help": "A recuperação exige uma verificação finalizada de que a raiz da prova divulgada deixou de ser aceita e a nota permanece não gasta. Saques diretos também exigem uma transação com falha finalizada ou um nonce do pagador consumido de forma definitiva. A nota e o histórico do saque são preservados. Um novo saque exige uma nova revisão.",
+      "disclosure": "Esta verificação compartilha a raiz original da prova e o nullifier público da nota com o RPC Ethereum selecionado. Para saques diretos, também compartilha o endereço do pagador e o hash da transação. Um trabalho anterior do relayer pode ser consultado para recuperar as entradas de prova salvas.",
       "password": "Senha da carteira",
       "failed": "Não foi possível confirmar a recuperação. A prova original pode continuar válida, a nota pode ter sido gasta ou as evidências podem estar indisponíveis. Atualize antes de tentar novamente.",
-      "checking": "Verificando a transação finalizada e a expiração da prova…",
+      "checking": "Verificando a expiração finalizada da prova…",
       "confirm": "Verificar e recuperar"
     },
     "restoreReview": {
@@ -1960,11 +1989,29 @@
       "disclosure": "Restaurar não cancela saques anteriores nem invalida outras cópias desta nota.",
       "snapshot": "Dados do pool verificados até o bloco {{block}}. São dados salvos, não uma consulta em tempo real.",
       "noSnapshot": "Prepare ou atualize os dados do pool antes de revisar esta nota.",
-      "pending": "Esta nota tem atividade de saque registrada. Resolva seu status antes de iniciar outro saque.",
+      "pending": "A atividade dos saques anteriores foi preservada. Confira antes de enviar outro saque.",
       "password": "Senha da carteira",
       "confirm": "Confirmar revisão da nota",
       "busy": "Salvando revisão…",
       "failed": "Não foi possível salvar a revisão. Confira a senha e os dados do pool e tente novamente."
+    },
+    "archive": {
+      "title": "Notas arquivadas",
+      "help": "As notas concluídas ficam encriptadas aqui até as restaurar ou limpar o arquivo. Não contam para o limite de notas ativas.",
+      "empty": "Não há notas arquivadas",
+      "restore": "Restaurar nota",
+      "restored": "Nota restaurada às notas ativas",
+      "clear": "Limpar arquivo",
+      "confirmClear": "Eliminar permanentemente as notas arquivadas",
+      "warning": "A frase de recuperação não pode recuperar estas notas. Elimine o arquivo apenas depois de confirmar que foram gastas ou de guardar uma cópia de segurança utilizável.",
+      "confirmBackup": "Confirmei que as notas foram gastas ou guardei uma cópia de segurança utilizável",
+      "clearResult": "{{count}} notas arquivadas eliminadas",
+      "loadError": "Não foi possível carregar o arquivo. Tente novamente.",
+      "actionError": "Não foi possível atualizar o arquivo. Atualize a vista antes de tentar novamente.",
+      "full": "O armazenamento do arquivo está cheio. Exporte uma cópia encriptada antes de o limpar para libertar espaço.",
+      "capacity": "{{count}} / {{limit}} notas arquivadas",
+      "activeFull": "O limite de notas ativas foi atingido. Arquive notas concluídas ou aumente o limite antes de restaurar.",
+      "alreadyArchived": "Esta nota está arquivada. Abra Notas arquivadas e restaure-a para voltar a utilizá-la."
     }
   },
   "mobile": {
@@ -2513,7 +2560,7 @@
         "addNotesFromAnEncryptedFile": "Adicionar notas de um arquivo criptografado",
         "changeTheSavedNoteLimit": "Alterar o limite de notas salvas",
         "manageCompletedNotes": "Gerenciar notas concluídas",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Limpar notas concluídas ou recuperar um saque com falha",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Arquivar notas concluídas ou recuperar um levantamento falhado",
         "serviceOriginAndPublicPoolData": "Origem do serviço e dados públicos do pool",
         "verifyBackup": "Verificar backup",
         "backupVerified": "Backup verificado",
@@ -2597,7 +2644,7 @@
       },
       "maintenance": {
         "chooseNote": "Selecione uma nota salva para verificar e remover. Cada tentativa verifica apenas essa nota.",
-        "clearHelp": "O RPC de Ethereum selecionado receberá o hash conhecido da transação de saque desta nota e, quando existir, o hash do depósito relacionado. Isso pode vincular o depósito e o saque nesse provedor. Somente esta nota será removida, e apenas quando esse RPC confirmar a conclusão e a liquidação do depósito relacionado como finalizadas. Caso contrário, ela permanecerá salva."
+        "clearHelp": "O RPC Ethereum selecionado recebe os hashes conhecidos de levantamentos e depósitos relacionados, o que pode permitir ao fornecedor associá-los. Apenas as notas que este RPC confirma como finalizadas são arquivadas de forma encriptada; as restantes permanecem ativas. As notas arquivadas não contam para o limite ativo."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Não foi possível carregar o limite de notas.",
@@ -3092,13 +3139,10 @@
         "thisReviewExpiredPrepareAFreshReviewBeforeConfirming": "Esta revisão expirou. Prepare uma nova revisão antes de confirmar.",
         "thisNoteHasASavedWithdrawalCheckItsStatusBefore": "Esta nota tem um saque salvo. Confira o estado antes de tentar novamente.",
         "checkThePoolDataBeforePreparingThisWithdrawal": "Confira os dados do pool antes de preparar este saque.",
-        "couldNotReviewThisRestoredNoteTryAgain": "Não foi possível revisar esta nota restaurada. Tente novamente.",
         "thisWithdrawalIsUnavailableInTheCurrentAccountOrNetwork": "Este saque está indisponível na conta ou rede atual.",
         "couldNotCompleteThisRequestCheckThePoolDataAnd": "Não foi possível concluir a solicitação. Confira os dados do pool e a rede e tente novamente.",
-        "reviewingNote": "Revisando nota…",
         "preparingProof": "Preparando prova…",
         "ethereumMainnetPrivateNote": "Ethereum Mainnet · Nota privada",
-        "reviewThisRestoredNoteBeforeWithdrawing": "Revise esta nota restaurada antes de sacar.",
         "withdrawalDelivery": "Forma de saque",
         "thisAccountCannotSignADirectWithdrawal": "Esta conta não pode assinar um saque direto.",
         "refreshRelayers": "Atualizar retransmissores",
@@ -3801,7 +3845,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "Dia {{day}} de 7",
       "priceHistory": "Histórico de preços",
       "inspectHint": "Deslize para cima ou para baixo para percorrer as amostras de preço.",
       "nextPrice": "Próximo preço",

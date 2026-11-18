@@ -7,7 +7,10 @@ import {
   mapEvmExplorerTokenTransfer as mapTokenTransfer,
   mergeEvmExplorerTransactions,
   explorerApiError,
+  markEvmHistoryIncomplete,
+  isEvmHistoryIncomplete,
 } from '../../../../shared/evmHistory';
+import { assertEvmReceiptCoherence } from '../../../../shared/evmTransactionObservation';
 import store from 'state/store';
 import { setActiveAccountProperty } from 'state/vault';
 import { hasPositiveBalance } from 'utils/balance';
@@ -21,21 +24,27 @@ import {
   validateAndManageUserTransactions,
 } from './utils';
 
-const fetchExplorerApi = (url: string, options?: RequestInit) =>
+const fetchExplorerApi = (
+  url: string,
+  options?: RequestInit,
+  assertCurrent?: () => void
+) =>
   new URL(url).origin === 'https://api.routescan.io'
-    ? fetchRoutescan(url, options)
+    ? fetchRoutescan(url, options, assertCurrent)
     : retryableFetch(url, options);
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
     numBlocks: number,
     web3Provider: CustomJsonRpcProvider,
-    isCurrentRead?: () => boolean
+    isCurrentRead?: () => boolean,
+    signal?: AbortSignal
   ) => {
     const providerUserTxs = await findUserTxsInProviderByBlocksRange(
       web3Provider,
       numBlocks,
-      isCurrentRead
+      isCurrentRead,
+      signal
     );
 
     // Just return the raw transactions - let the caller handle processing
@@ -154,264 +163,327 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     chainId: number,
     apiUrl?: string,
     includePending = false,
-    web3Provider?: CustomJsonRpcProvider
+    web3Provider?: CustomJsonRpcProvider,
+    isCurrentRead?: () => boolean,
+    signal?: AbortSignal
   ): Promise<{
     error?: string;
     hasMore?: boolean;
     transactions: IEvmTransactionResponse[] | null;
   }> => {
-    // Routescan does not implement Blockscout's pendingtxlist action.
-    const fetchPending = includePending && !isRoutescanApiUrl(apiUrl, chainId);
-    if (!apiUrl) return { transactions: null, error: 'No API URL provided' };
-
-    const { accounts, activeAccount } = store.getState().vault;
-    let hintOwner = accounts[activeAccount.type]?.[activeAccount.id] as any;
-    const persistCountHint = (count: number) => {
-      const current = store.getState().vault;
-      // The count is only a pagination hint. Discard it if another account or
-      // a replaced/updated account record now owns this slot during the read.
-      if (
-        !hintOwner ||
-        hintOwner.address?.toLowerCase() !== address.toLowerCase() ||
-        current.activeAccount.type !== activeAccount.type ||
-        current.activeAccount.id !== activeAccount.id ||
-        current.accounts[activeAccount.type]?.[activeAccount.id] !== hintOwner
-      )
-        return;
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'evmTxCountByChainId',
-          value: { ...(hintOwner.evmTxCountByChainId || {}), [chainId]: count },
-        })
-      );
-      hintOwner =
-        store.getState().vault.accounts[activeAccount.type]?.[activeAccount.id];
-    };
-
-    // Most block explorers (Etherscan, Polygonscan, Blockscout, etc.) use this same API format
-    // Reference: https://docs.blockscout.com/devs/apis/rpc/account
-    const url = accountApiUrl(apiUrl, address, 'txlist');
-
-    // Decide whether to include paging using persisted or probed tx count
-    let evmTxCount: number | undefined;
-    let nativeBalanceHint = 0;
+    const owner = new AbortController();
+    const abort = () => owner.abort(signal?.reason);
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(() => owner.abort(), 30_000);
+    const readSignal = owner.signal;
     try {
-      const acc =
-        hintOwner?.address?.toLowerCase() === address.toLowerCase()
-          ? hintOwner
-          : undefined;
-      if (acc) {
-        // Chain-specific hint takes precedence
-        const byChain = acc.evmTxCountByChainId || {};
-        if (typeof byChain[chainId] === 'number') evmTxCount = byChain[chainId];
-      }
-      // Use native balance as a secondary hint: if > 0, txlist almost certainly non-empty
-      nativeBalanceHint = Number(acc?.balances?.ethereum || 0);
-    } catch {}
+      const check = () => {
+        if (readSignal.aborted || (isCurrentRead && !isCurrentRead()))
+          throw new Error('History context changed');
+      };
+      const fetchFeed = async (endpoint: string) => {
+        check();
+        return fetchExplorerApi(endpoint, { signal: readSignal }, check);
+      };
+      check();
+      // Routescan does not implement Blockscout's pendingtxlist action.
+      const fetchPending =
+        includePending && !isRoutescanApiUrl(apiUrl, chainId);
+      if (!apiUrl) return { transactions: null, error: 'No API URL provided' };
 
-    if ((evmTxCount === undefined || evmTxCount === 0) && web3Provider) {
+      const { accounts, activeAccount } = store.getState().vault;
+      let hintOwner = accounts[activeAccount.type]?.[activeAccount.id] as any;
+      const persistCountHint = (count: number) => {
+        const current = store.getState().vault;
+        // The count is only a pagination hint. Discard it if another account or
+        // a replaced/updated account record now owns this slot during the read.
+        if (
+          !hintOwner ||
+          hintOwner.address?.toLowerCase() !== address.toLowerCase() ||
+          current.activeAccount.type !== activeAccount.type ||
+          current.activeAccount.id !== activeAccount.id ||
+          readSignal.aborted ||
+          (isCurrentRead && !isCurrentRead()) ||
+          current.accounts[activeAccount.type]?.[activeAccount.id] !== hintOwner
+        )
+          return;
+        store.dispatch(
+          setActiveAccountProperty({
+            property: 'evmTxCountByChainId',
+            value: {
+              ...(hintOwner.evmTxCountByChainId || {}),
+              [chainId]: count,
+            },
+          })
+        );
+        hintOwner =
+          store.getState().vault.accounts[activeAccount.type]?.[
+            activeAccount.id
+          ];
+      };
+
+      // Most block explorers (Etherscan, Polygonscan, Blockscout, etc.) use this same API format
+      // Reference: https://docs.blockscout.com/devs/apis/rpc/account
+      const url = accountApiUrl(apiUrl, address, 'txlist');
+
+      // Decide whether to include paging using persisted or probed tx count
+      let evmTxCount: number | undefined;
+      let nativeBalanceHint = 0;
       try {
-        const count = await web3Provider.getTransactionCount(address);
-        evmTxCount = Number(count || 0);
-        persistCountHint(evmTxCount);
-      } catch (e) {
-        evmTxCount = 0; // safe default
+        const acc =
+          hintOwner?.address?.toLowerCase() === address.toLowerCase()
+            ? hintOwner
+            : undefined;
+        if (acc) {
+          // Chain-specific hint takes precedence
+          const byChain = acc.evmTxCountByChainId || {};
+          if (typeof byChain[chainId] === 'number')
+            evmTxCount = byChain[chainId];
+        }
+        // Use native balance as a secondary hint: if > 0, txlist almost certainly non-empty
+        nativeBalanceHint = Number(acc?.balances?.ethereum || 0);
+      } catch {}
+
+      if ((evmTxCount === undefined || evmTxCount === 0) && web3Provider) {
+        try {
+          let count: unknown;
+          if (typeof web3Provider.readMany === 'function') {
+            const [result] = await web3Provider.readMany(
+              [
+                {
+                  method: 'eth_getTransactionCount',
+                  params: [address, 'latest'],
+                },
+              ],
+              { signal: readSignal }
+            );
+            if (result.status === 'rejected') throw result.reason;
+            count = result.value;
+          } else count = await web3Provider.getTransactionCount(address);
+          check();
+          evmTxCount = Number(count || 0);
+          persistCountHint(evmTxCount);
+        } catch (e) {
+          check();
+          evmTxCount = 0; // safe default
+        }
       }
-    }
 
-    const shouldIncludeOffset = (evmTxCount || 0) > 0 || nativeBalanceHint > 0;
+      const shouldIncludeOffset =
+        (evmTxCount || 0) > 0 || nativeBalanceHint > 0;
 
-    if (shouldIncludeOffset) {
-      url.searchParams.set('page', '1');
-      url.searchParams.set('offset', '30');
-    }
+      if (shouldIncludeOffset) {
+        url.searchParams.set('page', '1');
+        url.searchParams.set('offset', '30');
+      }
 
-    // Prepare fetch promises for parallel execution
-    const fetchPromises: Promise<Response>[] = [
-      fetchExplorerApi(url.toString()),
-    ];
+      // Prepare fetch promises for parallel execution
+      const fetchPromises: Promise<Response>[] = [fetchFeed(url.toString())];
 
-    // Add pending transactions fetch if requested
-    let pendingUrl: URL | null = null;
-    if (fetchPending) {
-      pendingUrl = accountApiUrl(apiUrl, address, 'pendingtxlist');
-      fetchPromises.push(fetchExplorerApi(pendingUrl.toString()));
-    }
+      // Add pending transactions fetch if requested
+      let pendingUrl: URL | null = null;
+      if (fetchPending) {
+        pendingUrl = accountApiUrl(apiUrl, address, 'pendingtxlist');
+        fetchPromises.push(fetchFeed(pendingUrl.toString()));
+      }
 
-    // Token transfer endpoint (use tokentx only for Blockscout compatibility)
-    const token20Url = accountApiUrl(
-      apiUrl,
-      address,
-      'tokentx',
-      shouldIncludeOffset ? 1 : undefined
-    );
+      // Token transfer endpoint (use tokentx only for Blockscout compatibility)
+      const token20Url = accountApiUrl(
+        apiUrl,
+        address,
+        'tokentx',
+        shouldIncludeOffset ? 1 : undefined
+      );
 
-    fetchPromises.push(fetchExplorerApi(token20Url.toString()));
+      fetchPromises.push(fetchFeed(token20Url.toString()));
 
-    // Execute all fetches in parallel (tolerate partial failures)
-    const responses = await Promise.allSettled(fetchPromises);
-    const response =
-      responses[0]?.status === 'fulfilled'
-        ? (responses[0] as PromiseFulfilledResult<Response>).value
-        : (undefined as any as Response);
+      // Execute all fetches in parallel (tolerate partial failures)
+      const responses = await Promise.allSettled(fetchPromises);
+      check();
+      const response =
+        responses[0]?.status === 'fulfilled'
+          ? (responses[0] as PromiseFulfilledResult<Response>).value
+          : (undefined as any as Response);
 
-    // Correctly map optional responses based on whether includePending was requested
-    let nextIndex = 1;
-    const pendingResponse: Response | undefined = fetchPending
-      ? responses[nextIndex]?.status === 'fulfilled'
-        ? (responses[nextIndex] as PromiseFulfilledResult<Response>).value
-        : undefined
-      : undefined;
-    if (fetchPending) {
-      nextIndex += 1;
-    }
-
-    const token20Response: Response | undefined =
-      responses[nextIndex]?.status === 'fulfilled'
-        ? (responses[nextIndex] as PromiseFulfilledResult<Response>).value
+      // Correctly map optional responses based on whether includePending was requested
+      let nextIndex = 1;
+      const pendingResponse: Response | undefined = fetchPending
+        ? responses[nextIndex]?.status === 'fulfilled'
+          ? (responses[nextIndex] as PromiseFulfilledResult<Response>).value
+          : undefined
         : undefined;
+      if (fetchPending) {
+        nextIndex += 1;
+      }
 
-    if (!response || !response.ok) {
-      // Graceful degradation: if tokentx succeeded, return token transfers only
-      try {
-        if (token20Response && token20Response.ok) {
-          const token20Data = await token20Response.json();
-          if (Array.isArray(token20Data?.result)) {
-            return {
-              transactions: token20Data.result.map((ev: any) =>
-                mapTokenTransfer(ev, chainId)
-              ),
-              error: undefined,
-              hasMore: false,
-            };
+      const token20Response: Response | undefined =
+        responses[nextIndex]?.status === 'fulfilled'
+          ? (responses[nextIndex] as PromiseFulfilledResult<Response>).value
+          : undefined;
+
+      if (!response || !response.ok) {
+        // Graceful degradation: if tokentx succeeded, return token transfers only
+        try {
+          if (token20Response && token20Response.ok) {
+            const token20Data = await token20Response.json();
+            check();
+            if (
+              Array.isArray(token20Data?.result) &&
+              !explorerApiError(token20Data, token20Response.status, 'tokentx')
+            ) {
+              return {
+                transactions: token20Data.result.map((ev: any) =>
+                  mapTokenTransfer(ev, chainId)
+                ),
+                error: 'Explorer transaction history unavailable',
+                hasMore: false,
+              };
+            }
           }
+        } catch {
+          check();
+          // A malformed token fallback is not a successful empty history read.
         }
-      } catch {
-        // A malformed token fallback is not a successful empty history read.
+        const errorStatus = response ? `${response.status}` : 'unknown';
+        const errorMsg = `Explorer API request failed with status ${errorStatus}`;
+        return { transactions: null, error: errorMsg };
       }
-      const errorStatus = response ? `${response.status}` : 'unknown';
-      const errorMsg = `Explorer API request failed with status ${errorStatus}`;
-      return { transactions: null, error: errorMsg };
-    }
 
-    // Parse all responses in parallel (gate optional ones by ok)
-    const parsePromises: Promise<any>[] = [response.json()];
-    if (pendingResponse)
-      // Unsupported pending endpoints can return HTML instead of JSON. Their
-      // optional failure must not reject healthy confirmed/token history.
-      parsePromises.push(
-        pendingResponse.ok
-          ? pendingResponse.json().catch(() => null)
-          : Promise.resolve(null)
-      );
-    if (token20Response && token20Response.ok)
-      parsePromises.push(token20Response.json());
+      // Parse all responses in parallel (gate optional ones by ok)
+      const parsePromises: Promise<any>[] = [response.json()];
+      if (pendingResponse)
+        // Unsupported pending endpoints can return HTML instead of JSON. Their
+        // optional failure must not reject healthy confirmed/token history.
+        parsePromises.push(
+          pendingResponse.ok
+            ? pendingResponse.json().catch(() => null)
+            : Promise.resolve(null)
+        );
+      if (token20Response && token20Response.ok)
+        parsePromises.push(token20Response.json().catch(() => null));
 
-    const parsed = await Promise.all(parsePromises);
-    const data = parsed[0];
-    let pendingData: any;
-    let token20Data: any;
-    let parsedIndex = 1;
-    if (fetchPending && pendingResponse) {
-      pendingData = parsed[parsedIndex++];
-    }
-    if (token20Response && token20Response.ok) {
-      token20Data = parsed[parsedIndex++];
-    }
+      const parsed = await Promise.all(parsePromises);
+      check();
+      const data = parsed[0];
+      let pendingData: any;
+      let token20Data: any;
+      let parsedIndex = 1;
+      if (fetchPending && pendingResponse) {
+        pendingData = parsed[parsedIndex++];
+      }
+      if (token20Response && token20Response.ok) {
+        token20Data = parsed[parsedIndex++];
+      }
 
-    const apiError = explorerApiError(data, response.status, 'txlist');
-    if (apiError) return { transactions: null, error: apiError };
+      const apiError = explorerApiError(data, response.status, 'txlist');
+      if (apiError) return { transactions: null, error: apiError };
+      const tokenError =
+        !token20Response?.ok || !Array.isArray(token20Data?.result)
+          ? 'Explorer token history unavailable'
+          : explorerApiError(token20Data, token20Response.status, 'tokentx');
 
-    let allTransactions: IEvmTransactionResponse[] = [];
-    let baseTxCount = 0; // Number of txs returned by txlist (exclude tokentx)
+      let allTransactions: IEvmTransactionResponse[] = [];
+      let baseTxCount = 0; // Number of txs returned by txlist (exclude tokentx)
 
-    // Both Etherscan and Blockscout use the same response format
-    // Handle both status "1" (success) and status "0" with valid empty results
-    if (
-      (data.status === '1' ||
-        (data.status === '0' && Array.isArray(data.result))) &&
-      data.result &&
-      Array.isArray(data.result)
-    ) {
-      // Note: txlist returns transactions that are in blocks (including those with 0 confirmations)
-      // It does NOT return transactions that are only in the mempool (truly pending)
-      // For mempool transactions, use pendingtxlist action
-      baseTxCount = data.result.length;
-      const transactions = data.result.map((tx: any) => mapApiTx(tx, chainId));
+      // Both Etherscan and Blockscout use the same response format
+      // Handle both status "1" (success) and status "0" with valid empty results
+      if (
+        (data.status === '1' ||
+          (data.status === '0' && Array.isArray(data.result))) &&
+        data.result &&
+        Array.isArray(data.result)
+      ) {
+        // Note: txlist returns transactions that are in blocks (including those with 0 confirmations)
+        // It does NOT return transactions that are only in the mempool (truly pending)
+        // For mempool transactions, use pendingtxlist action
+        baseTxCount = data.result.length;
+        const transactions = data.result.map((tx: any) =>
+          mapApiTx(tx, chainId)
+        );
 
-      allTransactions = transactions;
-    }
+        allTransactions = transactions;
+      }
 
-    // Process pending transactions if they were fetched
-    if (fetchPending && pendingResponse && pendingResponse.ok && pendingData) {
+      // Process pending transactions if they were fetched
+      if (
+        fetchPending &&
+        pendingResponse &&
+        pendingResponse.ok &&
+        pendingData
+      ) {
+        try {
+          // Check for pending API errors too
+          if (pendingData.status !== '0' && Array.isArray(pendingData.result)) {
+            const pendingTxs = pendingData.result.map((tx: any) => ({
+              ...mapApiTx(
+                tx,
+                chainId,
+                undefined,
+                EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending
+              ),
+              blockNumber: null, // Pending transactions don't have a block number
+              blockHash: null,
+              timestamp: tx.timeStamp
+                ? parseInt(tx.timeStamp, 10)
+                : Math.floor(Date.now() / 1000),
+              confirmations: 0,
+              // Add any other fields your UI expects as null/default
+              contractAddress: tx.contractAddress || null,
+              cumulativeGasUsed: tx.cumulativeGasUsed || null,
+              gasUsed: tx.gasUsed || null,
+              transactionIndex:
+                tx.transactionIndex !== undefined ? tx.transactionIndex : null,
+            }));
+
+            // Combine pending with confirmed transactions
+            allTransactions = [...pendingTxs, ...allTransactions];
+          }
+        } catch (pendingError) {
+          // Not all APIs support pending transactions, so this is not a critical error
+          console.log('Pending transactions not supported by this API');
+        }
+      }
+
+      // Normalize token transfer events to transaction-like entries (tokentx only)
+      const tokenEventResults: any[] = [];
       try {
-        // Check for pending API errors too
-        if (pendingData.status !== '0' && Array.isArray(pendingData.result)) {
-          const pendingTxs = pendingData.result.map((tx: any) => ({
-            ...mapApiTx(
-              tx,
-              chainId,
-              undefined,
-              EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending
-            ),
-            blockNumber: null, // Pending transactions don't have a block number
-            blockHash: null,
-            timestamp: tx.timeStamp
-              ? parseInt(tx.timeStamp, 10)
-              : Math.floor(Date.now() / 1000),
-            confirmations: 0,
-            // Add any other fields your UI expects as null/default
-            contractAddress: tx.contractAddress || null,
-            cumulativeGasUsed: tx.cumulativeGasUsed || null,
-            gasUsed: tx.gasUsed || null,
-            transactionIndex:
-              tx.transactionIndex !== undefined ? tx.transactionIndex : null,
-          }));
+        if (!tokenError && token20Data && Array.isArray(token20Data.result))
+          tokenEventResults.push(...token20Data.result);
+      } catch {}
 
-          // Combine pending with confirmed transactions
-          allTransactions = [...pendingTxs, ...allTransactions];
-        }
-      } catch (pendingError) {
-        // Not all APIs support pending transactions, so this is not a critical error
-        console.log('Pending transactions not supported by this API');
-      }
+      allTransactions = mergeEvmExplorerTransactions(
+        allTransactions,
+        tokenEventResults,
+        chainId
+      );
+
+      // Cache whether this address has transactions (only if not already cached or cache expired)
+      // Persist updated hint on account (0 or >=1)
+      try {
+        const hasTransactionsInTxList = baseTxCount > 0;
+        const newCount = hasTransactionsInTxList
+          ? Math.max(1, evmTxCount || 0)
+          : 0;
+        // Maintain only per-chain counts going forward
+        persistCountHint(newCount);
+      } catch {}
+
+      // If we didn't use offset, limit to 30 for consistency
+      // This applies to first-time requests and addresses with no transactions
+      const finalTransactions = shouldIncludeOffset
+        ? allTransactions
+        : allTransactions.slice(0, 30);
+
+      return {
+        transactions: finalTransactions, // Return the array (even if empty) - empty array is valid
+        error: tokenError,
+        hasMore: finalTransactions.length >= 30, // heuristic for initial load
+      };
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
     }
-
-    // Normalize token transfer events to transaction-like entries (tokentx only)
-    const tokenEventResults: any[] = [];
-    try {
-      if (token20Data && Array.isArray(token20Data.result))
-        tokenEventResults.push(...token20Data.result);
-    } catch {}
-
-    allTransactions = mergeEvmExplorerTransactions(
-      allTransactions,
-      tokenEventResults,
-      chainId
-    );
-
-    // Cache whether this address has transactions (only if not already cached or cache expired)
-    // Persist updated hint on account (0 or >=1)
-    try {
-      const hasTransactionsInTxList = baseTxCount > 0;
-      const newCount = hasTransactionsInTxList
-        ? Math.max(1, evmTxCount || 0)
-        : 0;
-      // Maintain only per-chain counts going forward
-      persistCountHint(newCount);
-    } catch {}
-
-    // If we didn't use offset, limit to 30 for consistency
-    // This applies to first-time requests and addresses with no transactions
-    const finalTransactions = shouldIncludeOffset
-      ? allTransactions
-      : allTransactions.slice(0, 30);
-
-    return {
-      transactions: finalTransactions, // Return the array (even if empty) - empty array is valid
-      error: undefined, // No error when we get a valid response with empty results
-      hasMore: finalTransactions.length >= 30, // heuristic for initial load
-    };
   };
 
   const fetchTransactionsPageFromAPI = async (
@@ -507,8 +579,14 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     web3Provider: CustomJsonRpcProvider,
     isPolling?: boolean,
     isRapidPolling?: boolean,
-    isCurrentRead?: () => boolean
+    isCurrentRead?: () => boolean,
+    signal?: AbortSignal
   ) => {
+    const check = () => {
+      if (signal?.aborted || (isCurrentRead && !isCurrentRead()))
+        throw new Error('History context changed');
+    };
+    check();
     // Guard: ensure web3Provider is valid before polling
     if (!web3Provider) {
       console.warn(
@@ -537,6 +615,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     let rawTransactions: IEvmTransactionResponse[] = [];
     const isSmartAccount = Boolean((currentAccount as any).isSmartAccount);
     let apiSucceeded = false;
+    let incompleteHistory = false;
 
     // Try to fetch from external API first (more efficient)
     if (activeNetwork?.apiUrl) {
@@ -548,8 +627,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         currentNetworkChainId,
         activeNetwork.apiUrl,
         true,
-        web3Provider
+        web3Provider,
+        isCurrentRead,
+        signal
       );
+      check();
 
       if (apiResult.transactions !== null) {
         console.log(
@@ -557,6 +639,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         );
         rawTransactions = apiResult.transactions;
         apiSucceeded = true;
+        incompleteHistory = Boolean(apiResult.error);
       } else if (apiResult.error) {
         // Always throw when API is configured but fails
         // Let MainController decide how to handle based on isPolling
@@ -615,8 +698,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         rawTransactions = await getUserTransactionByDefaultProvider(
           blocksToScan,
           web3Provider,
-          isCurrentRead
+          isCurrentRead,
+          signal
         );
+        check();
       }
 
       // ENHANCEMENT: When no API is available, also check specific pending transactions
@@ -663,14 +748,20 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           // redundant per-tx block/height calls.
           const pendingTxPromises = pendingTxs.map(async (pendingTx: any) => {
             try {
+              check();
               const tx = await web3Provider.getTransaction(pendingTx.hash);
-              if (tx) {
+              check();
+              if (
+                tx &&
+                tx.hash?.toLowerCase() === pendingTx.hash.toLowerCase()
+              ) {
                 // If transaction is found and has a block number, it's confirmed
                 if (tx.blockNumber) {
                   const [block, latestBlock] = await Promise.all([
                     getBlockOnce(tx.blockNumber),
                     getLatestBlockOnce(),
                   ]);
+                  check();
                   const confirmations = Math.max(
                     0,
                     latestBlock - tx.blockNumber
@@ -681,6 +772,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                   let isSuccess = null;
                   try {
                     receipt = await web3Provider.getTransactionReceipt(tx.hash);
+                    check();
                     if (receipt) {
                       isSuccess =
                         receipt.status === 1 || receipt.status === '0x1';
@@ -688,6 +780,17 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                   } catch (receiptError) {
                     console.log(`Could not fetch receipt for ${tx.hash}`);
                   }
+                  assertEvmReceiptCoherence(
+                    {
+                      hash: pendingTx.hash,
+                      from: tx.from,
+                      to: tx.to,
+                      blockHash: tx.blockHash,
+                      blockNumber: tx.blockNumber,
+                    },
+                    receipt,
+                    block
+                  );
 
                   return {
                     ...tx,
@@ -755,15 +858,20 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     // persisted block cursor).
     if (isSmartAccount) {
       try {
+        check();
         const userOpTransactions = await fetchSmartAccountUserOpTransactions(
           web3Provider,
           currentAccount as any,
           activeAccount.type,
           currentNetworkChainId,
-          isCurrentRead
+          isCurrentRead,
+          signal
         );
+        check();
+        incompleteHistory ||= isEvmHistoryIncomplete(userOpTransactions);
         rawTransactions = [...rawTransactions, ...userOpTransactions];
       } catch (error) {
+        incompleteHistory = true;
         console.warn(
           '[pollingEvmTransactions] Smart account user-op history fetch failed:',
           error
@@ -772,9 +880,14 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
 
     // Process all transactions consistently, regardless of source (API or RPC)
+    check();
     const processedTransactions =
       validateAndManageUserTransactions(rawTransactions);
-    return processedTransactions as IEvmTransactionResponse[];
+    return incompleteHistory
+      ? markEvmHistoryIncomplete(
+          processedTransactions as IEvmTransactionResponse[]
+        )
+      : (processedTransactions as IEvmTransactionResponse[]);
   };
 
   return {

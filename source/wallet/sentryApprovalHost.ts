@@ -131,6 +131,10 @@ export type SentryApprovalHost = Readonly<{
   assertCurrent(scope: SentryApprovalScope): void;
   captureScope(): SentryApprovalScope;
   getSettings(scope: SentryApprovalScope): Promise<SentrySettings>;
+  hasWalletAuthorities?(
+    addresses: readonly string[],
+    scope: SentryApprovalScope
+  ): Promise<readonly boolean[]>;
   hasWalletAuthority(
     address: string,
     scope: SentryApprovalScope

@@ -1799,3 +1799,40 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     }
   );
 });
+
+it('preserves zero, one and string IDs through actual callback success and member errors', async () => {
+  const provider = new PaliInpageProviderEth();
+  const call = (payload: any) =>
+    new Promise<any>((resolve, reject) =>
+      provider.sendAsync(payload, (error, result) =>
+        error ? reject(error) : resolve(result)
+      )
+    );
+  expect(
+    await call({ id: 0, method: 'eth_blockNumber', params: [] })
+  ).toMatchObject({ id: 0, result: '0x1' });
+  expect(
+    await call([
+      { id: 0, method: 'eth_blockNumber', params: [] },
+      { id: 1, method: 'eth_chainId', params: [] },
+      { id: 'third', method: 'unknown_fixture_method', params: [] },
+    ])
+  ).toEqual([
+    { id: 0, jsonrpc: '2.0', result: '0x1' },
+    { id: 1, jsonrpc: '2.0', result: '0x1' },
+    {
+      id: 'third',
+      jsonrpc: '2.0',
+      error: expect.objectContaining({ code: 4200 }),
+    },
+  ]);
+  expect(
+    await call([
+      { id: 0, method: 'unknown_fixture_method', params: [] },
+      { id: 1, method: 'unknown_fixture_method', params: [] },
+    ])
+  ).toEqual([
+    { id: 0, jsonrpc: '2.0', error: expect.objectContaining({ code: 4200 }) },
+    { id: 1, jsonrpc: '2.0', error: expect.objectContaining({ code: 4200 }) },
+  ]);
+});

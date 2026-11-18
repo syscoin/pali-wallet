@@ -312,6 +312,7 @@ function fixture() {
       }),
     submit: () =>
       controller.submitPreparedSmartAccountGuardianStartRecovery({
+        feeReviewId: 'reviewed-recovery',
         account: ACCOUNT,
         guardian: signer.address,
         operation: claim.intent.operation,

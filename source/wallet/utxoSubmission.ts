@@ -32,6 +32,7 @@ type UtxoSubmissionRequest = Readonly<{
   record: UtxoDurableSubmission;
   records: UtxoSignedRecords;
   session: UtxoRecordSession;
+  signal?: AbortSignal;
 }>;
 
 type SubmissionAuthority = Parameters<
@@ -132,7 +133,8 @@ async function readRetainedJson(
   url: string,
   signal: AbortSignal,
   assertCurrent: () => void,
-  maxBytes: number
+  maxBytes: number,
+  deadline: number
 ): Promise<unknown> {
   const response = await fetchUtxoRead(
     fetch,
@@ -146,7 +148,8 @@ async function readRetainedJson(
       cache: 'no-store',
       referrerPolicy: 'no-referrer',
     },
-    assertCurrent
+    assertCurrent,
+    deadline
   );
   try {
     assertCurrent();
@@ -206,6 +209,7 @@ export function observeRetainedUtxo({
       const abort = () => controller.abort();
       signal.addEventListener('abort', abort, { once: true });
       const timeout = setTimeout(abort, STATUS_TIMEOUT_MS);
+      const deadline = Date.now() + STATUS_TIMEOUT_MS;
       const owned = controller.signal;
       const guard = () => {
         assertCurrent();
@@ -227,7 +231,14 @@ export function observeRetainedUtxo({
               (url !== statusUrl && url !== genesisUrl)
             )
               throw new Error('Invalid retained UTXO identity read');
-            return readRetainedJson(fetch, url, owned, guard, IDENTITY_BYTES);
+            return readRetainedJson(
+              fetch,
+              url,
+              owned,
+              guard,
+              IDENTITY_BYTES,
+              deadline
+            );
           },
         });
         if (verified.coin.hashGenesisBlock !== retained.owner.genesisHash)
@@ -238,7 +249,8 @@ export function observeRetainedUtxo({
           statusUrl + 'tx/' + retained.txid,
           owned,
           verified.assertCurrent,
-          STATUS_BYTES
+          STATUS_BYTES,
+          deadline
         );
       } finally {
         clearTimeout(timeout);
@@ -300,7 +312,9 @@ export function submitRetainedUtxo({
         checkAborted(signal);
       };
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let deadline = 0;
       let statusUrl: string;
+      let descriptorPrepared = false;
       let stage:
         | 'journal'
         | 'checking'
@@ -336,8 +350,16 @@ export function submitRetainedUtxo({
             // The journal validates the canonical /api/v2/sendtx/ suffix. Only its
             // two adjacent identity paths can use the read port for this replay.
             statusUrl = retained.url.slice(0, -'sendtx/'.length);
+            // Finish durable admission here so both SDK call orders verify only afterward.
+            await authority.prepare({
+              url: retained.url,
+              txid: retained.txid,
+              rawTransaction: retained.rawTransaction,
+            });
+            assertCurrent();
             stage = 'status';
             timer = setTimeout(abort, IDENTITY_TIMEOUT_MS);
+            deadline = Date.now() + IDENTITY_TIMEOUT_MS;
             return retained;
           },
           async readJson(url, ownerSignal) {
@@ -355,18 +377,31 @@ export function submitRetainedUtxo({
               url,
               signal,
               assertCurrent,
-              IDENTITY_BYTES
+              IDENTITY_BYTES,
+              deadline
             );
             stage = isStatus ? 'genesis' : 'ready';
             return body;
           },
           async prepare(descriptor) {
             assertCurrent();
-            if (stage !== 'ready')
+            if (
+              descriptorPrepared ||
+              (stage !== 'ready' && stage !== 'status') ||
+              descriptor.url !== record.url ||
+              descriptor.txid !== record.txid ||
+              descriptor.rawTransaction !== record.rawTransaction
+            )
+              throw new Error('Retained UTXO route or descriptor changed');
+            descriptorPrepared = true;
+          },
+          fetch(input, init) {
+            assertCurrent();
+            if (!descriptorPrepared || stage !== 'ready')
               throw new Error('Retained UTXO route was not verified');
             stage = 'admission';
             clearTimeout(timer);
-            await authority.prepare(descriptor);
+            return authority.fetch(input, init);
           },
         });
       } finally {
@@ -379,7 +414,14 @@ export function submitRetainedUtxo({
 }
 
 async function submitUtxo(
-  { record: candidate, records, session, fetch, intent }: UtxoSubmissionRequest,
+  {
+    record: candidate,
+    records,
+    session,
+    fetch,
+    intent,
+    signal,
+  }: UtxoSubmissionRequest,
   dispatch: (
     record: UtxoDurableSubmission,
     authority: SubmissionAuthority
@@ -388,12 +430,20 @@ async function submitUtxo(
   const record = snapshotUtxoSubmission(candidate);
   const { rawTransaction, txid, url, owner } = record;
   const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) abort();
+  const assertCurrent = () => {
+    checkAborted(controller.signal);
+    session.assertCurrent();
+  };
   let timer: ReturnType<typeof setTimeout> | undefined;
   let admitted = false;
   let preparing = false;
   let attempted = false;
   let admissionFailure: unknown;
   try {
+    assertCurrent();
     const ack = await records.admit(
       session,
       record,
@@ -401,9 +451,10 @@ async function submitUtxo(
       (prepare, release) =>
         dispatch(record, {
           signal: controller.signal,
-          assertCurrent: session.assertCurrent,
+          assertCurrent,
           async prepare(received) {
             try {
+              assertCurrent();
               if (
                 preparing ||
                 received.url !== url ||
@@ -432,7 +483,8 @@ async function submitUtxo(
             )
               throw new Error('Invalid owned UTXO POST');
             // Revocation after dispatch does not erase a matching network ACK.
-            session.assertCurrent();
+            assertCurrent();
+            signal?.removeEventListener('abort', abort);
             attempted = true;
             timer = setTimeout(() => controller.abort(), ACK_TIMEOUT_MS);
             const pending = post(fetch, url, rawTransaction, controller.signal);
@@ -485,6 +537,7 @@ async function submitUtxo(
       admitted ? txid : undefined
     );
   } finally {
+    signal?.removeEventListener('abort', abort);
     if (timer !== undefined) clearTimeout(timer);
     controller.abort();
   }

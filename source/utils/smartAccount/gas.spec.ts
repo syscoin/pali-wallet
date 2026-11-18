@@ -36,10 +36,11 @@ describe('estimateSmartAccountCallGasLimit', () => {
     const provider = providerWithEstimate(60_000);
     const limit = await estimateSmartAccountCallGasLimit(provider, {
       callData: CALL_DATA,
+      chainId: 1,
       isDeployed: true,
       sender: SENDER,
     });
-    expect(limit).toBe(39_000 + 12_000);
+    expect(limit).toBe(38_936 + 12_000);
     expect(provider.estimateGas).toHaveBeenCalledWith({
       data: CALL_DATA,
       from: PALI_ENTRYPOINT_V09_ADDRESS,
@@ -52,10 +53,11 @@ describe('estimateSmartAccountCallGasLimit', () => {
     const provider = providerWithEstimate(221_000);
     const limit = await estimateSmartAccountCallGasLimit(provider, {
       callData: CALL_DATA,
+      chainId: 1,
       isDeployed: true,
       sender: SENDER,
     });
-    expect(limit).toBe(200_000 + 20_000);
+    expect(limit).toBe(199_936 + 19_993);
   });
 
   it('caps the margin below the penalty threshold', async () => {
@@ -63,10 +65,11 @@ describe('estimateSmartAccountCallGasLimit', () => {
     const provider = providerWithEstimate(1_021_000);
     const limit = await estimateSmartAccountCallGasLimit(provider, {
       callData: CALL_DATA,
+      chainId: 1,
       isDeployed: true,
       sender: SENDER,
     });
-    expect(limit).toBe(1_000_000 + 35_000);
+    expect(limit).toBe(999_936 + 35_000);
     expect(limit - 1_000_000).toBeLessThan(SMART_ACCOUNT_PENALTY_GAS_THRESHOLD);
   });
 
@@ -74,6 +77,7 @@ describe('estimateSmartAccountCallGasLimit', () => {
     const provider = providerWithEstimate(60_000);
     const limit = await estimateSmartAccountCallGasLimit(provider, {
       callData: CALL_DATA,
+      chainId: 1,
       isDeployed: false,
       sender: SENDER,
     });
@@ -85,10 +89,60 @@ describe('estimateSmartAccountCallGasLimit', () => {
     const provider = providerWithEstimate(new Error('execution reverted'));
     const limit = await estimateSmartAccountCallGasLimit(provider, {
       callData: CALL_DATA,
+      chainId: 1,
       isDeployed: true,
       sender: SENDER,
     });
     expect(limit).toBe(SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT);
+  });
+});
+
+describe('qualified Smart execution gas', () => {
+  const data = '0x' + 'ff'.repeat(6004);
+  const input = { callData: data, isDeployed: true, sender: SENDER };
+
+  it.each([1, 560048])(
+    'removes exact calldata intrinsic cost on chain %i',
+    async (chainId) => {
+      const intrinsic = 21000 + 6004 * 16;
+      const provider = providerWithEstimate(intrinsic + 14043);
+      expect(
+        await estimateSmartAccountCallGasLimit(provider, { ...input, chainId })
+      ).toBe(26043);
+      expect(provider.estimateGas).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('retains an execution upper bound when the Prague calldata floor dominates', async () => {
+    const floor = 21000 + 6004 * 40;
+    const residual = floor - (21000 + 6004 * 16);
+    const limit = await estimateSmartAccountCallGasLimit(
+      providerWithEstimate(floor),
+      { ...input, chainId: 1 }
+    );
+    expect(limit).toBe(residual + Math.floor(residual / 10));
+    expect(limit).toBeGreaterThan(14043);
+  });
+
+  it.each([undefined, 57057, 8453, 11155111])(
+    'keeps the complete estimate for unqualified chain %s',
+    async (chainId) => {
+      expect(
+        await estimateSmartAccountCallGasLimit(
+          providerWithEstimate(15000 + 14043),
+          { ...input, chainId }
+        )
+      ).toBe(41043);
+    }
+  );
+
+  it('falls back when a qualified estimate is below transaction intrinsic cost', async () => {
+    expect(
+      await estimateSmartAccountCallGasLimit(providerWithEstimate(21000), {
+        ...input,
+        chainId: 1,
+      })
+    ).toBe(SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT);
   });
 });
 
@@ -188,11 +242,12 @@ describe('estimateSmartAccountUserOpGas', () => {
     const provider = providerWithEstimate(121_000);
     const estimate = await estimateSmartAccountUserOpGas(provider, {
       callData: CALL_DATA,
+      chainId: 1,
       isDeployed: true,
       sender: SENDER,
       validatorKind: 'ecdsa',
     });
-    expect(estimate.callGasLimit).toBe(100_000 + 12_000);
+    expect(estimate.callGasLimit).toBe(99_936 + 12_000);
     expect(estimate.verificationGasLimit).toBe(
       SMART_ACCOUNT_VERIFICATION_GAS_LIMITS.ecdsa
     );
@@ -210,6 +265,7 @@ describe('estimateSmartAccountUserOpGas', () => {
     const provider = providerWithEstimate(121_000);
     const estimate = await estimateSmartAccountUserOpGas(provider, {
       callData: CALL_DATA,
+      chainId: 1,
       isDeployed: true,
       sender: SENDER,
       validatorKind: 'slh-dsa',
@@ -259,6 +315,7 @@ describe('getSmartAccountGasUnitsReserve', () => {
       {
         ...profile,
         callData: CALL_DATA,
+        chainId: 1,
         isDeployed: true,
         sender: SENDER,
       }
@@ -296,6 +353,7 @@ describe('getSmartAccountGasUnitsReserve', () => {
     const provider = providerWithEstimate(90_000);
     const estimate = await estimateSmartAccountUserOpGas(provider, {
       callData: CALL_DATA,
+      chainId: 1,
       isDeployed: true,
       sender: SENDER,
       validatorKind: 'ecdsa',

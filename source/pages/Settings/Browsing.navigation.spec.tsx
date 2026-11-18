@@ -20,7 +20,12 @@ let mockState: any;
 let mockLocation: any;
 let mockHooks: any[];
 let mockHookIndex: number;
+let mockRefs: Array<{ current: any }>;
+let mockRefIndex: number;
 let mockEffects: Array<() => any>;
+let mockMountedCleanups: Array<() => void>;
+const mockStoreListeners = new Set<() => void>();
+const mockStatusListeners = new Set<() => void>();
 let mockScope: { account: string; network: string };
 let mockStatus: {
   connectionUnavailable: boolean;
@@ -34,6 +39,7 @@ const mockCopy = jest.fn();
 const mockEmitter = jest.fn();
 const mockAlert = { error: jest.fn(), success: jest.fn() };
 const mockForm = {
+  resetFields: jest.fn(),
   validateFields: jest.fn(),
   setFields: jest.fn(),
   setFieldsValue: jest.fn(),
@@ -68,6 +74,20 @@ jest.mock('hooks/useController', () => ({
 }));
 jest.mock('hooks/controllerStatus', () => ({
   getControllerStatus: () => mockStatus,
+  subscribeControllerStatus: (listener: () => void) => {
+    mockStatusListeners.add(listener);
+    return () => mockStatusListeners.delete(listener);
+  },
+}));
+jest.mock('state/store', () => ({
+  __esModule: true,
+  default: {
+    getState: () => mockState,
+    subscribe: (listener: () => void) => {
+      mockStoreListeners.add(listener);
+      return () => mockStoreListeners.delete(listener);
+    },
+  },
 }));
 jest.mock('utils/navigationState', () => ({
   getWalletNavigationScope: () => mockScope,
@@ -124,13 +144,33 @@ const find = (
 };
 const render = (view: () => React.ReactNode) => {
   mockHookIndex = 0;
+  mockRefIndex = 0;
   mockEffects = [];
   return view();
 };
+const mountForgetWallet = () => {
+  const view = render(ForgetWallet);
+  for (const effect of mockEffects) {
+    const cleanup = effect();
+    if (typeof cleanup === 'function') mockMountedCleanups.push(cleanup);
+  }
+  return view;
+};
+const authenticateForgetWallet = async () => {
+  const view = mountForgetWallet();
+  const input = find(view, (element) => element.type === 'password-input')!;
+  const disclosure = await input.props.onValidate('synthetic-password');
+  input.props.onValidationSuccess(disclosure);
+  return render(ForgetWallet);
+};
+const removalCalls = () =>
+  mockEmitter.mock.calls.filter(([method]) => method[1] === 'forgetWallet');
 
 describe('settings browsing context', () => {
   beforeEach(() => {
     mockHooks = [];
+    mockRefs = [];
+    mockMountedCleanups = [];
     mockScope = { account: 'account-a', network: 'network-a' };
     mockStatus = {
       isUnlocked: true,
@@ -168,11 +208,13 @@ describe('settings browsing context', () => {
     mockAlert.error.mockReset();
     mockCopy.mockReset();
     mockForm.validateFields.mockReset().mockResolvedValue(undefined);
+    mockForm.resetFields.mockReset();
     mockForm.setFields.mockReset();
     mockForm.setFieldsValue.mockReset();
     mockEmitter.mockReset().mockImplementation(async (method: string[]) => {
       if (method[1] === 'getRpc') return rpc;
       if (method[1] === 'getChainData') return [];
+      if (method[1] === 'getSeed') return 'synthetic authenticated phrase';
       return undefined;
     });
     jest.spyOn(React, 'useState').mockImplementation((initial?: any) => {
@@ -189,9 +231,11 @@ describe('settings browsing context', () => {
     });
     jest.spyOn(React, 'useMemo').mockImplementation((callback) => callback());
     jest.spyOn(React, 'useCallback').mockImplementation((callback) => callback);
-    jest
-      .spyOn(React, 'useRef')
-      .mockImplementation((initial) => ({ current: initial }));
+    jest.spyOn(React, 'useRef').mockImplementation((initial) => {
+      const index = mockRefIndex++;
+      if (!(index in mockRefs)) mockRefs[index] = { current: initial };
+      return mockRefs[index];
+    });
     jest.spyOn(React, 'useEffect').mockImplementation((callback) => {
       mockEffects.push(callback);
     });
@@ -199,7 +243,12 @@ describe('settings browsing context', () => {
       mockEffects.push(callback);
     });
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    mockMountedCleanups.forEach((cleanup) => cleanup());
+    expect(mockStoreListeners.size).toBe(0);
+    expect(mockStatusListeners.size).toBe(0);
+    jest.restoreAllMocks();
+  });
 
   it.each(['add', 'edit'])(
     'returns a successful %s RPC operation to its caller instead of browser history',
@@ -413,6 +462,42 @@ describe('settings browsing context', () => {
     )!.props.onClick();
     expect(mockNavigateBack).toHaveBeenCalledWith(mockNavigate, mockLocation);
     expect(mockEmitter).not.toHaveBeenCalled();
+    expect(mockForm.resetFields).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not remove a wallet before a current password disclosure is accepted', async () => {
+    const view = mountForgetWallet();
+    await find(
+      view,
+      (element) => typeof element.props.onFinish === 'function'
+    )!.props.onFinish({ password: 'synthetic-password' });
+    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(
+      find(view, (element) => element.props.children === 'buttons.forget')!
+        .props.disabled
+    ).toBe(true);
+  });
+
+  it('retires accepted disclosure authority when its wallet context changes', async () => {
+    const view = await authenticateForgetWallet();
+    expect(
+      find(view, (element) => element.props.children === 'buttons.forget')!
+        .props.disabled
+    ).toBe(false);
+    mockScope = { ...mockScope, account: 'account-b' };
+    mockStoreListeners.forEach((listener) => listener());
+    await find(
+      view,
+      (element) => typeof element.props.onFinish === 'function'
+    )!.props.onFinish({ password: 'synthetic-password' });
+    expect(removalCalls()).toHaveLength(0);
+    expect(mockNavigate).not.toHaveBeenCalled();
+    const retired = render(ForgetWallet);
+    expect(
+      find(retired, (element) => element.props.children === 'buttons.forget')!
+        .props.disabled
+    ).toBe(true);
   });
 
   it.each([
@@ -425,11 +510,11 @@ describe('settings browsing context', () => {
       const log = jest
         .spyOn(console, 'error')
         .mockImplementation(() => undefined);
-      mockEmitter.mockRejectedValueOnce(error);
       const form = find(
-        render(ForgetWallet),
+        await authenticateForgetWallet(),
         (element) => typeof element.props.onFinish === 'function'
       )!;
+      mockEmitter.mockRejectedValueOnce(error);
       await form.props.onFinish({ password: 'synthetic-password' });
       const view = render(ForgetWallet);
       expect(
@@ -438,7 +523,11 @@ describe('settings browsing context', () => {
       expect(
         find(view, (element) => element.props.role === 'status')
       ).toBeUndefined();
-      expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(removalCalls()).toHaveLength(1);
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'getSeed'],
+        ['synthetic-password']
+      );
       expect(mockNavigate).not.toHaveBeenCalled();
       log.mockRestore();
     }
@@ -448,6 +537,7 @@ describe('settings browsing context', () => {
     const log = jest
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
+    await authenticateForgetWallet();
     mockEmitter.mockRejectedValueOnce(new Error('First removal failed'));
     const submit = () =>
       find(
@@ -472,7 +562,10 @@ describe('settings browsing context', () => {
     expect(
       find(pending, (element) => element.props.error === 'First removal failed')
     ).toBeUndefined();
-    expect(mockEmitter).toHaveBeenCalledTimes(2);
+    expect(removalCalls()).toHaveLength(2);
+    expect(
+      mockEmitter.mock.calls.filter(([method]) => method[1] === 'getSeed')
+    ).toHaveLength(1);
     expect(mockNavigate).not.toHaveBeenCalled();
     resolve();
     await retry;

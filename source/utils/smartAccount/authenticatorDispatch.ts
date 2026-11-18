@@ -69,6 +69,8 @@ export type SmartAccountAuthenticatorPorts = Readonly<{
     ): Promise<SmartAccountAuthenticatorSignature>;
   }> | null;
   slhDsa: Readonly<{
+    /** Exact local inventory when the host has an authenticated public projection. */
+    availableKeyIds?: readonly string[];
     signActionHash: SmartAccountSLHDSASigner | null;
     signMessageActionHash:
       | ((keyId: string, validator: string) => Promise<string>)
@@ -245,7 +247,28 @@ export type SmartAccountAuthenticatorAvailability = Readonly<{
   ecdsa: readonly SmartAccountLocalOwner[] | null;
   p256WebAuthn: boolean;
   slhDsa: boolean;
+  slhDsaKeyIds?: readonly string[];
 }>;
+
+/** Activation and later signing use the same preference, independently of contract slots. */
+export const smartAccountAuthenticatorPriority = (
+  validator: SmartAccountValidatorModule
+): number => ['ecdsa', 'slh-dsa', 'p256-webauthn'].indexOf(validator.id);
+
+function assertSlhKeyInventory(
+  value: unknown
+): asserts value is readonly string[] | undefined {
+  if (
+    value !== undefined &&
+    (!Array.isArray(value) ||
+      value.length > 64 ||
+      value.some(
+        (key) => typeof key !== 'string' || key.length === 0 || key.length > 160
+      ) ||
+      new Set(value).size !== value.length)
+  )
+    throw new TypeError('Invalid Smart account SLH-DSA key inventory');
+}
 
 export type SmartAccountSigningPlan = Readonly<{
   authenticators: readonly Readonly<{
@@ -259,6 +282,7 @@ export type SmartAccountSigningPlan = Readonly<{
 function assertAuthenticatorAvailability(
   available: SmartAccountAuthenticatorAvailability
 ): void {
+  assertSlhKeyInventory(available?.slhDsaKeyIds);
   if (
     !available ||
     !Object.hasOwn(available, 'ecdsa') ||
@@ -290,7 +314,8 @@ function captureSigningValidator(
 function planAuthenticator(
   validator: SmartAccountValidatorModule,
   metadata: ISmartAccountMetadata,
-  available: SmartAccountAuthenticatorAvailability
+  available: SmartAccountAuthenticatorAvailability,
+  includeAlternatives = false
 ): SmartAccountSigningPlan | null {
   assertAuthenticatorAvailability(available);
   const availableLeaf = (child: SmartAccountValidatorModule): boolean => {
@@ -302,19 +327,31 @@ function planAuthenticator(
           child.config.threshold
       );
     if (child.id === 'p256-webauthn') return available.p256WebAuthn;
-    if (child.id === 'slh-dsa') return available.slhDsa;
+    if (child.id === 'slh-dsa')
+      return (
+        available.slhDsa &&
+        (available.slhDsaKeyIds === undefined ||
+          available.slhDsaKeyIds.includes(child.config.keyId))
+      );
     return false;
   };
   if (!isPaliSignableValidator(validator, metadata, availableLeaf)) return null;
   validator = captureSigningValidator(validator);
   const candidates =
     validator.id === 'composite'
-      ? validator.config.childValidators.map((address, index) => ({
-          index,
-          validator: captureSigningValidator(
-            getInstalledValidatorModuleByAddress(metadata, address)!
-          ),
-        }))
+      ? validator.config.childValidators
+          .map((address, index) => ({
+            index,
+            validator: captureSigningValidator(
+              getInstalledValidatorModuleByAddress(metadata, address)!
+            ),
+          }))
+          .sort(
+            (a, b) =>
+              smartAccountAuthenticatorPriority(a.validator) -
+                smartAccountAuthenticatorPriority(b.validator) ||
+              a.index - b.index
+          )
       : [{ index: 0, validator }];
   const threshold =
     validator.id === 'composite' ? validator.config.threshold : 1;
@@ -336,11 +373,16 @@ function planAuthenticator(
         ),
       })
     );
-    if (authenticators.length === threshold) break;
+    if (!includeAlternatives && authenticators.length === threshold) break;
   }
   return Object.freeze({
     validator,
-    authenticators: Object.freeze(authenticators),
+    // Select the same threshold subset as possession, retaining its original
+    // contract order for device sequencing and indexed proof slots.
+    authenticators: Object.freeze([
+      ...authenticators.slice(0, threshold).sort((a, b) => a.index - b.index),
+      ...authenticators.slice(threshold),
+    ]),
   });
 }
 
@@ -519,6 +561,21 @@ const compositeDriver: SmartAccountAuthenticatorDriver<
           const aggregate = defaultAbiCoder.encode(['bytes[]'], [signatures]);
           return { proof: aggregate, signature: aggregate };
         }
+      } catch (error) {
+        // A host without a public key inventory may discover definite absence
+        // before authentication. Refusal, corrupt state and failed provider
+        // reads never permit another child to sign this same action.
+        if (
+          child.id !== 'slh-dsa' ||
+          !error ||
+          typeof error !== 'object' ||
+          Object.getOwnPropertyDescriptor(error, 'code')?.value !==
+            'COMPOSITE_CHILD_UNAVAILABLE' ||
+          Object.getOwnPropertyDescriptor(error, 'transactionNotBroadcast')
+            ?.value !== true
+        )
+          throw error;
+        await context.assertBeforeAuthentication();
       } finally {
         context.onAuthenticatorSigningResolved?.(child.id);
       }
@@ -613,17 +670,26 @@ export const signSmartAccountWithValidator = async (
   params: SmartAccountSigningParams & { validator: SmartAccountValidatorModule }
 ): Promise<SmartAccountAuthenticatorSignature> => {
   assertSigningPorts(params.ports);
+  assertSlhKeyInventory(params.ports.slhDsa?.availableKeyIds);
   params = Object.freeze({ ...params });
   const { validator } = params;
   const driver = getAuthenticatorDriver(validator);
-  const signingPlan = planAuthenticator(validator, params.smartAccount, {
-    ecdsa: params.ports.ecdsa?.localOwners ?? null,
-    p256WebAuthn: params.ports.p256WebAuthn !== null,
-    slhDsa:
+  const signingPlan = planAuthenticator(
+    validator,
+    params.smartAccount,
+    {
+      ecdsa: params.ports.ecdsa?.localOwners ?? null,
+      p256WebAuthn: params.ports.p256WebAuthn !== null,
+      slhDsa:
+        params.ports.slhDsa !== null &&
+        (params.ports.slhDsa.signActionHash !== null ||
+          params.ports.slhDsa.signMessageActionHash !== null),
+      slhDsaKeyIds: params.ports.slhDsa?.availableKeyIds,
+    },
+    validator.id === 'composite' &&
       params.ports.slhDsa !== null &&
-      (params.ports.slhDsa.signActionHash !== null ||
-        params.ports.slhDsa.signMessageActionHash !== null),
-  });
+      params.ports.slhDsa?.availableKeyIds === undefined
+  );
   if (!signingPlan)
     throw new SmartAccountExternalSignatureRequired(
       driver.createExternalSignatureRequest({ ...params, validator })

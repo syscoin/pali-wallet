@@ -13,19 +13,19 @@ export const TYPED_DATA_WORK_LIMITS = {
   depth: 16,
 } as const;
 
-/** Bound schema expansion as well as the JSON tree (including repeated fields). */
+/** Bound semantic/schema traversal and reject bool coercion, including domain fields. */
 export const assertTypedDataWorkBudget = (data: any): void => {
   assertJsonWorkBudget(data, DAPP_REQUEST_LIMITS.signingBytes);
-  if (Array.isArray(data)) {
+  const legacy = Array.isArray(data);
+  if (legacy) {
     if (data.length > TYPED_DATA_WORK_LIMITS.fields) {
       throw payloadBudgetError('maximum 512 legacy typed fields');
     }
-    return;
   }
-  if (!data || typeof data !== 'object' || !data.types) return;
+  if (!legacy && (!data || typeof data !== 'object' || !data.types)) return;
   let fieldCount = 0;
   let typeCount = 0;
-  const definitions = data.types;
+  const definitions = legacy ? {} : data.types;
   for (const typeName of Object.keys(definitions)) {
     if (++typeCount > TYPED_DATA_WORK_LIMITS.types) {
       throw payloadBudgetError('maximum 64 typed-data types');
@@ -60,7 +60,15 @@ export const assertTypedDataWorkBudget = (data: any): void => {
   }
 
   const pending: Array<{ depth: number; type: string; value: any }> = [];
-  if (data.primaryType && definitions[data.primaryType]) {
+  if (legacy) {
+    for (const field of data) {
+      if (
+        typeof field?.type === 'string' &&
+        /^bool(?:\[[0-9]*\])*$/.test(field.type)
+      )
+        pending.push({ type: field.type, value: field.value, depth: 0 });
+    }
+  } else if (data.primaryType && definitions[data.primaryType]) {
     pending.push({ type: data.primaryType, value: data.message, depth: 0 });
   } else {
     // Match legacy primary-type inference conservatively, without allowing a
@@ -72,7 +80,7 @@ export const assertTypedDataWorkBudget = (data: any): void => {
     }
   }
   if (definitions.EIP712Domain) {
-    pending.push({ type: 'EIP712Domain', value: data.domain, depth: 0 });
+    pending.push({ type: 'EIP712Domain', value: data.domain ?? {}, depth: 0 });
   }
   let work = 0;
   const push = (item: (typeof pending)[number]) => {
@@ -86,14 +94,22 @@ export const assertTypedDataWorkBudget = (data: any): void => {
   };
   while (pending.length) {
     const item = pending.pop()!;
-    if (item.type.endsWith(']')) {
-      if (!Array.isArray(item.value)) continue; // Existing validation handles shape.
+    if (item.type === 'bool') {
+      if (typeof item.value !== 'boolean')
+        throw payloadBudgetError('typed-data bool values must be boolean');
+    } else if (item.type.endsWith(']')) {
+      if (!Array.isArray(item.value)) {
+        if (item.type.startsWith('bool['))
+          throw payloadBudgetError('typed-data bool values must be boolean');
+        continue; // Existing validation handles other array shapes.
+      }
       const type = item.type.replace(/\[[0-9]*\]$/, '');
       for (const value of item.value) {
         push({ type, value, depth: item.depth + 1 });
       }
     } else if (Object.prototype.hasOwnProperty.call(definitions, item.type)) {
-      if (!item.value || typeof item.value !== 'object') continue;
+      // V4 hashes a null custom struct as zero without encoding its fields.
+      if (item.value === null || item.value === undefined) continue;
       for (const field of definitions[item.type]) {
         push({
           type: field.type,

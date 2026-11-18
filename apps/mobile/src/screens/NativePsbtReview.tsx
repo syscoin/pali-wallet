@@ -93,6 +93,11 @@ export function NativePsbtReview({ review, controller, ledgerConnection }: { rev
         <Text>{t('send.inputs')}: {details.inputs.length}</Text>
         <Text>{t('transactions.rbfLabel')} {details.transactionOptions.rbf ? t('components.enabled') : t('components.disabled')}</Text>
       </Card>
+      {details.burnDestination && <Card style={s.card} testID="native-psbt-burn">
+        <Text style={s.heading}>{t('transactions.bridgeToNevm')}</Text>
+        <Text style={s.muted}>{t('transactions.nevmAddress')}</Text>
+        <Text selectable style={s.value} testID="native-psbt-burn-destination">{details.burnDestination}</Text>
+      </Card>}
       {details.sentry && <Card style={s.card} testID="native-psbt-sentry-fee">
         <Text style={s.heading}>{t('sentry.feeTitle')}</Text><Text>{t('sentry.feeHelp')}</Text>
         <Text>{t(`sentry.feeOperations.${details.sentry.operation}`)}</Text>

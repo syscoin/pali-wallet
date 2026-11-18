@@ -128,6 +128,7 @@ app.expo.extra = {
   ...(walletConnectIdentity ? { paliWalletConnectIdentity: walletConnectIdentity } : {}),
 };
 delete app.expo.extra.paliQualificationSdkDigest;
+delete app.expo.extra.paliSysweb3OverlayIdentity;
 app.expo.name = 'PaliQualification';
 app.expo.slug = 'pali-native-qualification';
 app.expo.scheme = 'pali-wallet-qualification';

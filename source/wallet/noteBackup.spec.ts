@@ -456,7 +456,7 @@ it('preserves a reconciliation-required marker even without historical hints acr
   ).toEqual(opened);
 });
 
-it('round-trips 512 notes with 16 distinct hints each within global work and byte bounds', async () => {
+it('round-trips 512 active and 512 archived notes with 16 hints within global work and byte bounds', async () => {
   const withdrawals = Array.from({ length: 16 }, (_, i) => ({
     outcome: 'submitted',
     mode: 'direct',
@@ -464,9 +464,10 @@ it('round-trips 512 notes with 16 distinct hints each within global work and byt
     nonce: String(i),
     transactionHash: '0x' + (i + 1).toString(16).padStart(64, '0'),
   }));
-  const notes = Array.from({ length: 512 }, (_, i) => ({
+  const notes = Array.from({ length: 1024 }, (_, i) => ({
     note: `tornado-eth-1-1-0x${(i + 1).toString(16).padStart(124, '0')}`,
     createdAt: 0,
+    ...(i >= 512 ? { archivedAt: 1 } : {}),
     reconciliationRequired: true,
     history: { withdrawals },
   }));
@@ -476,7 +477,9 @@ it('round-trips 512 notes with 16 distinct hints each within global work and byt
   const opened = await codec().decrypt(file, PASSWORD);
   expect(opened).toEqual(expected);
   expect(opened.notes[511].history!.withdrawals).toHaveLength(16);
-}, 30000);
+  expect(opened.notes[512].archivedAt).toBe(1);
+  expect(opened.notes[1023].history!.withdrawals).toHaveLength(16);
+}, 60000);
 
 it('rejects authenticated unsorted or duplicate history encodings', async () => {
   const first = { outcome: 'unknown', mode: 'relayed', jobId: 'a' };

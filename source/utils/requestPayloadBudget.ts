@@ -10,6 +10,13 @@ export const DAPP_REQUEST_LIMITS = {
   requestsPerOrigin: 4,
 } as const;
 
+// A supported 1,024-block fee history may contain 100 reward values per block.
+export const DAPP_RESPONSE_LIMITS = {
+  bytes: DAPP_REQUEST_LIMITS.bytes,
+  depth: DAPP_REQUEST_LIMITS.depth,
+  nodes: 131_072,
+} as const;
+
 export const payloadBudgetError = (detail: string): Error & { code: number } =>
   Object.assign(new Error(`Request exceeds wallet work limits: ${detail}`), {
     code: -32602,
@@ -139,6 +146,15 @@ export const assertJsonWorkBudget = (
   maxNodes: number = DAPP_REQUEST_LIMITS.nodes
 ): void => {
   measureJsonWorkBudget(value, maxBytes, maxDepth, maxNodes);
+};
+
+export const assertPublicResponseBudget = (value: unknown): void => {
+  assertJsonWorkBudget(
+    value,
+    DAPP_RESPONSE_LIMITS.bytes,
+    DAPP_RESPONSE_LIMITS.depth,
+    DAPP_RESPONSE_LIMITS.nodes
+  );
 };
 
 export const isTypedDataMethod = (method: string): boolean =>

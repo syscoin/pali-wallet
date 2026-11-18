@@ -28,6 +28,7 @@ import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import {
   UTXO_SIGNED_RECORD_KEY,
   UtxoSignedRecords,
+  inspectUtxoSignedBundle,
 } from '../../../source/wallet/utxoSignedRecords.ts';
 import { SENTRY_NETWORKS } from '../../../source/shared/sentryNetworks.ts';
 import { SYSX_ASSET_DECIMALS, SYSX_ASSET_GUID } from '../../../source/shared/syscoinAssetIds.ts';
@@ -77,7 +78,13 @@ for (const { network, type, spt, utxoAddressType, assetSpec } of testNetworks)
 test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbol}` : network.symbol} ${utxoAddressType ?? type} quote, signed bytes, SQLite admission and exact ACK use the same scoped route`, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'pali-utxo-signed-'));
   const file = join(directory, 'wallet.sqlite');
-  const db = nodeConnection(file);
+  let identityMismatch: 'coin' | 'backend' | 'genesis' | undefined;
+  let changeIdentityOnStorage = false;
+  const db = nodeConnection(file, { after(kind, sql) {
+    if (changeIdentityOnStorage && kind === 'run' && sql.startsWith('INSERT INTO keyring_records')) {
+      changeIdentityOnStorage = false; identityMismatch = 'genesis';
+    }
+  } });
   let storage = await SqliteWalletStorage.open(
     db.connection,
     digest,
@@ -176,6 +183,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     let fragmented = false;
     let useCollateral: false | 'asset' | 'fee' = false;
     let quoteFreeFunding = false;
+    let identityFunding = false;
     const recipient = bitcoin.payments.p2wpkh({
       hash: Buffer.alloc(20, 8),
       network: network.addressNetwork,
@@ -199,14 +207,19 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       assert(url.startsWith(network.endpoint + '/'), 'Only the original endpoint should receive a retained request');
       const path = url.slice(network.endpoint.length);
       calls.push(`${init?.method} ${path}`);
-      if (path === '/api/v2/') return reply(url, metadata(network));
-      if (path === '/api/v2/block-index/0') return reply(url, { blockHash: network.genesisHash });
+      if (path === '/api/v2/') {
+        const status = metadata(network);
+        if (identityMismatch === 'coin') status.blockbook.coin = 'Wrong coin';
+        if (identityMismatch === 'backend') status.backend.chain = network.backendChain === 'main' ? 'test' : 'main';
+        return reply(url, status);
+      }
+      if (path === '/api/v2/block-index/0') return reply(url, { blockHash: identityMismatch === 'genesis' ? 'c'.repeat(64) : network.genesisHash });
       if (path === '/api/v2/estimatefee/1')
         return reply(url, { result: '0.00001024' });
       if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`)
         return reply(url, { tokens: [] });
       if (path === `/api/v2/utxo/${account.xpub}`) {
-        const funding = fragmented ? fragments : quoteFreeFunding ? [previous, freeFunding]
+        const funding = identityFunding ? [freeFunding] : fragmented ? fragments : quoteFreeFunding ? [previous, freeFunding]
           : useCollateral === 'fee' ? [assetCarrier, feeCollateral]
           : [useCollateral === 'asset' ? collateral : previous];
         return reply(url, funding.map((transaction) => ({
@@ -316,6 +329,14 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       () => performance.now() + clockOffset,
     );
     const send = openSend(assertCurrent);
+    for (const mismatch of ['coin', 'backend', 'genesis'] as const) {
+      identityMismatch = mismatch;
+      const before = calls.length;
+      await assert.rejects(send.prepare({ amount: asset ? assetAmount : '0.0004', recipient, ...(asset ? { asset } : {}) }));
+      assert(calls.slice(before).every(call => call === 'GET /api/v2/' || call === 'GET /api/v2/block-index/0'));
+      assert.equal(posted.length, 0);
+    }
+    identityMismatch = undefined; calls.length = 0;
     if (network.id === 'bitcoin') {
       const core = ring.syscoinTransaction as unknown as { createUnsignedPSBT(input: { feeRateBN: { toString(): string } }): Promise<unknown> };
       const builder = t.mock.method(core, 'createUnsignedPSBT');
@@ -454,7 +475,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
         draft.rbf = true;
         return pending;
       });
-      assert.equal(calls.slice(callStart).filter((call) => call.includes('/api/v2/xpub/')).length, type === 'HDAccount' ? 1 : 0);
+      assert.equal(calls.slice(callStart).filter((call) => call.includes('/api/v2/xpub/')).length, 0, 'Ordinary SPT quotes use locally issued change without address-discovery RPC');
       assert.deepEqual(review.assetDisplay, originalAsset);
       assert.deepEqual(review.transactionOptions, { rbf: false, zdag: true });
       assert.equal(review.outputs[0]?.address, recipient);
@@ -463,6 +484,15 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       const change = review.outputs.find(({ address, asset }) => address !== recipient && asset);
       assert.equal(change?.asset?.rawAmount, '187654322');
       assert.equal(change?.address === account.address, type === 'Imported');
+      if (type === 'HDAccount') {
+        const saved = await storage.utxoSignedRecords!.read(profileId);
+        assert(saved);
+        const issued = inspectUtxoSignedBundle(saved, profileId).discovery?.flatMap(({ paths }) => paths).find(({ branch }) => branch === 1);
+        assert(issued, 'The real allocator durably retains the reviewed change path');
+        assert.equal(issued.address, change?.address);
+        assert.equal(issued.path, `m/84'/${network.slip44}'/${account.id}'/1/${issued.index}`);
+        assert.equal(issued.script, Buffer.from(bitcoin.address.toOutputScript(issued.address, network.addressNetwork)).toString('hex'));
+      }
       assert(BigInt(review.feeSatoshis) > 0n);
       await assert.rejects(send.confirm({ ...review }, { method: 'device' }), /NOT_READY/);
       assert.equal(sign.mock.callCount(), 0);
@@ -689,6 +719,25 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       (entry) => entry.key === UTXO_SIGNED_RECORD_KEY
     );
     assert(persisted && !persisted.value.includes(published!));
+    if (network !== litecoinRegistration) {
+      identityFunding = true;
+      const late = await send.prepare({ amount: asset ? assetAmount : '0.0004', recipient, ...(asset ? { asset } : {}) });
+      const signOriginal = ring.syscoinTransaction.signPSBT.bind(ring.syscoinTransaction);
+      const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT', async (...args: Parameters<typeof signOriginal>) => {
+        const result = await signOriginal(...args);
+        if (network.id === 'bitcoin') identityMismatch = 'genesis';
+        else changeIdentityOnStorage = true;
+        return result;
+      });
+      const beforePosts = posted.length;
+      try {
+        await assert.rejects(send.confirm(late, { method: 'device' }), { code: 'UTXO_SUBMISSION_NOT_DISPATCHED' });
+        assert.equal(sign.mock.callCount(), 1);
+        assert.equal(posted.length, beforePosts);
+        assert.equal(identityMismatch, 'genesis');
+        assert((await storage.recovery.readSnapshot()).records.some(row => row.key === UTXO_SIGNED_RECORD_KEY));
+      } finally { sign.mock.restore(); identityMismatch = undefined; changeIdentityOnStorage = false; identityFunding = false; calls.length = 0; }
+    }
     const beforeCancel = calls.length;
     active = false;
     await assert.rejects(

@@ -1,4 +1,6 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+import { isError } from 'ethers';
+import { Network, type TransactionResponse } from 'ethers/providers';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import isEmpty from 'lodash/isEmpty';
@@ -6,6 +8,7 @@ import isEmpty from 'lodash/isEmpty';
 import {
   belongsToEvmHistoryAccount,
   getEvmHistoryDirection,
+  markEvmHistoryOrphaned,
   selectEvmHistoryRepresentatives,
 } from '../../../../shared/evmHistory';
 import store from 'state/store';
@@ -44,6 +47,54 @@ export const getFormattedEvmTransactionResponse = async (
     tx as unknown as IEvmTransactionResponse
   );
 };
+
+function isTypeFour(transaction: { type?: unknown }) {
+  return transaction.type === 4 || transaction.type === '0x4';
+}
+
+/** Optional authorization entries are display metadata, never signing input. */
+function formatHistoryTransaction(
+  provider: CustomJsonRpcProvider,
+  transaction: unknown,
+  chainId: bigint
+): TransactionResponse {
+  const raw = transaction as { authorizationList?: unknown; type?: unknown };
+  const input = isTypeFour(raw)
+    ? { ...raw, authorizationList: undefined }
+    : raw;
+  return Reflect.apply(
+    Reflect.get(provider, '_wrapTransactionResponse'),
+    provider,
+    [input, Network.from(chainId)]
+  );
+}
+
+export async function getHistoryTransaction(
+  provider: CustomJsonRpcProvider,
+  hash: string,
+  chainId: bigint,
+  assertCurrent: () => void
+) {
+  try {
+    return await provider.getTransaction(hash);
+  } catch (error) {
+    if (
+      !isError(error, 'BAD_DATA') ||
+      !error.message.includes('value.authorizationList')
+    )
+      throw error;
+    assertCurrent();
+    const raw = await provider.send('eth_getTransactionByHash', [hash]);
+    assertCurrent();
+    if (
+      !raw ||
+      !isTypeFour(raw) ||
+      raw.hash?.toLowerCase() !== hash.toLowerCase()
+    )
+      throw error;
+    return formatHistoryTransaction(provider, raw, chainId);
+  }
+}
 
 const HISTORY_READ_TIMEOUT_MS = 20000;
 // Keep immutable bodies across the manager's one-minute display-result expiry.
@@ -100,16 +151,23 @@ const historyHeader = (value: any) => ({
 export const findUserTxsInProviderByBlocksRange = async (
   provider: CustomJsonRpcProvider,
   numBlocks: number,
-  isCurrentRead: () => boolean = () => true
+  isCurrentRead: () => boolean = () => true,
+  signal?: AbortSignal
 ): Promise<IEvmTransactionResponse[]> => {
   if (store.getState().vault.isBitcoinBased) return [];
   if (!Number.isSafeInteger(numBlocks) || numBlocks < 0 || numBlocks > 1000)
     throw new Error('Invalid history block range');
+  const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+  const address = accounts[activeAccount.type]?.[activeAccount.id]?.address;
+  if (!address) return [];
   const scope = historyScope();
-  const chainId = BigInt(store.getState().vault.activeNetwork.chainId);
+  const chainId = BigInt(activeNetwork.chainId);
   const deadline = new AbortController();
   const abort = () => deadline.abort(provider.signal.reason);
   provider.signal?.addEventListener('abort', abort, { once: true });
+  const cancel = () => deadline.abort(signal?.reason);
+  signal?.addEventListener('abort', cancel, { once: true });
+  if (signal?.aborted) cancel();
   const timer = setTimeout(
     () => deadline.abort(new Error('History refresh timed out')),
     HISTORY_READ_TIMEOUT_MS
@@ -220,31 +278,63 @@ export const findUserTxsInProviderByBlocksRange = async (
       if (retainedBytes > HISTORY_CACHE_BYTES) break;
       retained.set(block.number, block);
     }
+    const transactions = window.flatMap((block) =>
+      block.transactions
+        .filter((tx) => tx && belongsToEvmHistoryAccount(tx, address))
+        .map((tx) => {
+          const normalized = formatHistoryTransaction(provider, tx, chainId);
+          if (
+            (normalized.chainId && normalized.chainId !== chainId) ||
+            (normalized.signature.legacyChainId &&
+              normalized.signature.legacyChainId !== chainId)
+          )
+            throw new Error('History transaction network changed');
+          return {
+            ...tx,
+            chainId: Number(chainId),
+            confirmations: tx.blockNumber
+              ? Math.max(0, tip.number - historyNumber(tx.blockNumber))
+              : 0,
+            timestamp: block.timestamp,
+            nonce: normalized.nonce,
+            type: normalized.type,
+          };
+        })
+    );
     historyScans.set(provider, {
       scope,
       updatedAt: Date.now(),
       blocks: retained,
     });
-    return window.flatMap((block) =>
-      block.transactions
-        .filter((tx) => tx?.from || tx?.to)
-        .map((tx) => ({
-          ...tx,
-          chainId: Number(tx.chainId),
-          confirmations: tx.blockNumber
-            ? Math.max(0, tip.number - historyNumber(tx.blockNumber))
-            : 0,
-          timestamp: block.timestamp,
-          nonce:
-            typeof tx.nonce === 'string' ? historyNumber(tx.nonce) : tx.nonce,
-        }))
+    const { accountTransactions } = store.getState().vault;
+    const existing =
+      accountTransactions?.[activeAccount.type]?.[activeAccount.id]?.ethereum?.[
+        Number(chainId)
+      ] || [];
+    const observedHashes = new Set(
+      transactions.map((tx) => String(tx.hash).toLowerCase())
     );
+    const orphaned = existing
+      .filter((tx: any) => {
+        const canonical = blocks.get(Number(tx.blockNumber));
+        return (
+          canonical &&
+          Number(tx.blockNumber) >= start &&
+          Number(tx.blockNumber) <= tip.number &&
+          typeof tx.blockHash === 'string' &&
+          canonical.hash !== tx.blockHash.toLowerCase() &&
+          !observedHashes.has(String(tx.hash).toLowerCase())
+        );
+      })
+      .map((tx: any) => markEvmHistoryOrphaned(tx));
+    return [...transactions, ...orphaned] as IEvmTransactionResponse[];
   } catch (error) {
     historyScans.delete(provider);
     throw error;
   } finally {
     clearTimeout(timer);
     provider.signal?.removeEventListener('abort', abort);
+    signal?.removeEventListener('abort', cancel);
   }
 };
 

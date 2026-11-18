@@ -6,6 +6,11 @@ import { Button, Card } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
+import {
+  useSmartAccountFeeConfirmation,
+  type SettingsFeeReviewResult,
+} from './SmartAccountFeeConfirmation';
+
 export type InfrastructureStatus = {
   chainId: number;
   contracts: Array<{ deployed: boolean; displayName: string; id: string }>;
@@ -33,9 +38,13 @@ export const isInfrastructureStatus = (
 const InfrastructurePanel = ({
   chainId,
   canDeploy,
+  accountAddress,
+  currency,
 }: {
+  accountAddress: string;
   canDeploy: boolean;
   chainId: number;
+  currency: string;
 }) => {
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
@@ -115,6 +124,12 @@ const InfrastructurePanel = ({
     return () => clearTimeout(timer);
   }, [deploying]);
 
+  const allowed = useRef(canDeploy);
+  allowed.current = canDeploy;
+  const { confirmFee, feeConfirmation } = useSmartAccountFeeConfirmation(
+    JSON.stringify([chainId, accountAddress, canDeploy])
+  );
+
   const deploy = async () => {
     if (
       pendingDeploy.current ||
@@ -129,12 +144,37 @@ const InfrastructurePanel = ({
     setDeploying(true);
     setMessage('');
     try {
-      await controllerEmitter(
+      const assertCurrent = () => {
+        if (!mounted.current || !allowed.current)
+          throw new Error('Deployment context changed');
+      };
+      let result = (await controllerEmitter(
         ['wallet', 'deploySmartAccountInfrastructure'],
         [],
         120000,
         false
-      );
+      )) as SettingsFeeReviewResult;
+      assertCurrent();
+      while (result?.feeReview) {
+        const feeReviewId = await confirmFee(result.feeReview, {
+          account: accountAddress,
+          chainId,
+          symbol: currency,
+          label:
+            result.contractName ||
+            t('settings.deploySmartAccountInfrastructure'),
+          assertCurrent,
+        });
+        if (!feeReviewId) return;
+        assertCurrent();
+        result = (await controllerEmitter(
+          ['wallet', 'deploySmartAccountInfrastructure'],
+          [{ feeReviewId }],
+          120000,
+          false
+        )) as SettingsFeeReviewResult;
+        assertCurrent();
+      }
     } catch (error: any) {
       if (mounted.current) {
         const errorText = String(error?.message || error || '').toLowerCase();
@@ -165,6 +205,7 @@ const InfrastructurePanel = ({
   const missing = current?.contracts.filter((contract) => !contract.deployed);
   return (
     <div className="mx-auto mb-5 flex w-full max-w-[352px] text-left">
+      {feeConfirmation}
       <Card type={current?.ready ? 'success' : 'info'}>
         <div className="flex w-full flex-col gap-2 text-sm">
           <p className="font-semibold text-brand-white">
@@ -230,9 +271,8 @@ const InfrastructurePanel = ({
 };
 
 export const SmartAccountInfrastructure = () => {
-  const { activeNetwork, activeAccount, isBitcoinBased } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { activeNetwork, activeAccount, accounts, isBitcoinBased } =
+    useSelector((state: RootState) => state.vault);
   const { networkStatus, isSwitchingAccount } = useSelector(
     (state: RootState) => state.vaultGlobal
   );
@@ -242,6 +282,10 @@ export const SmartAccountInfrastructure = () => {
     <InfrastructurePanel
       key={`${activeNetwork.chainId}:${activeNetwork.url}:${activeAccount.type}:${activeAccount.id}`}
       chainId={activeNetwork.chainId}
+      accountAddress={
+        accounts?.[activeAccount.type]?.[activeAccount.id]?.address ?? ''
+      }
+      currency={activeNetwork.currency}
       canDeploy={
         isUnlocked &&
         !connectionUnavailable &&

@@ -25,6 +25,7 @@ import {
   type EvmDappFeeChoiceFields,
   type EvmDappFeeComparison,
 } from '../../shared/evmDappFeePolicy';
+import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -150,6 +151,9 @@ export const SendTransaction = () => {
   const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
+  const { forExecution, feeConfirmation } = useSmartAccountFeeConfirmation(
+    JSON.stringify([currentApprovalWalletContextKey, host, eventName])
+  );
   const [approvedContext] = useState<IEvmTransactionContext>(() => {
     const current = store.getState();
     return (
@@ -186,12 +190,6 @@ export const SendTransaction = () => {
   genericFeeRef.current = genericFeeView;
   // Determine legacy transaction explicitly: honor metadata or explicit type 0x0
   const explicitType = (dataTx as any)?.type;
-  const isLegacyTransaction =
-    genericFeeView?.quote.transaction.type === 0 ||
-    Boolean(txMetadata.isLegacyTx) ||
-    explicitType === 0 ||
-    explicitType === '0x0' ||
-    dataTx.gasPrice !== undefined;
   const isApproval = txMetadata.isApproval || false;
   const approvalType = txMetadata.approvalType as ApprovalType | undefined;
   const tokenStandard = txMetadata.tokenStandard;
@@ -292,6 +290,14 @@ export const SendTransaction = () => {
   const [initialNonceReviewError, setInitialNonceReviewError] =
     useState<string>();
   const [tx, setTx] = useState<ITxState>();
+  // An untyped request follows its actual quote, including legacy networks.
+  const isLegacyTransaction =
+    genericFeeView?.quote.transaction.type === 0 ||
+    tx?.gasPrice !== undefined ||
+    Boolean(txMetadata.isLegacyTx) ||
+    explicitType === 0 ||
+    explicitType === '0x0' ||
+    dataTx.gasPrice !== undefined;
   const [fee, setFee] = useState<IFeeState>();
   const [txResponse, setTxResponse] = useState<string | null>(null);
   // An unset override follows the latest quote; re-estimation must never
@@ -622,6 +628,10 @@ export const SendTransaction = () => {
     [validatedDataTxWithoutType, toAddressForProvider, effectiveApprovalData]
   );
   const isSmartAccountApproval = Boolean(activeAccount.isSmartAccount);
+  const hasGenericSoftwareAdmission =
+    !isSmartAccountApproval &&
+    !activeAccount.isLedgerWallet &&
+    !activeAccount.isTrezorWallet;
   const genericFeeRequestKey = JSON.stringify([
     approvedContext,
     currentApprovalWalletContextKey,
@@ -936,14 +946,16 @@ export const SendTransaction = () => {
 
     let balance = Number(activeAccount?.balances?.ethereum || 0);
 
-    try {
-      const refreshedBalance = (await controllerEmitter(
-        ['wallet', 'refreshActiveAccountBalances'],
-        [{ includeAssets: false }]
-      )) as { nativeBalance: string };
-      balance = Number(refreshedBalance.nativeBalance || 0);
-    } catch (error) {
-      console.error('Failed to refresh balance before sending:', error);
+    if (!hasGenericSoftwareAdmission) {
+      try {
+        const refreshedBalance = (await controllerEmitter(
+          ['wallet', 'refreshActiveAccountBalances'],
+          [{ includeAssets: false }]
+        )) as { nativeBalance: string };
+        balance = Number(refreshedBalance.nativeBalance || 0);
+      } catch (error) {
+        console.error('Failed to refresh balance before sending:', error);
+      }
     }
 
     const canUsePasskeyGasPayer =
@@ -1053,7 +1065,13 @@ export const SendTransaction = () => {
               accounts,
               controllerEmitter,
             }),
-            controllerEmitter: (methods, params, timeout, retryConnection) => {
+            controllerEmitter: (
+              methods,
+              params,
+              timeout,
+              retryConnection,
+              options
+            ) => {
               if (
                 methods.length === 2 &&
                 methods[0] === 'wallet' &&
@@ -1064,7 +1082,8 @@ export const SendTransaction = () => {
                 methods as Parameters<typeof controllerEmitter>[0],
                 params,
                 timeout,
-                retryConnection
+                retryConnection,
+                options
               );
             },
             executions: [
@@ -1076,6 +1095,15 @@ export const SendTransaction = () => {
             ],
             feeOverrides: getSmartAccountFeeOverrides(),
             approvedFeeQuote: fee!.smartAccountFeeQuote!,
+            feeConsent: forExecution({
+              account: approvedContext.account.address,
+              smartAccount: activeAccount.address,
+              chainId: activeNetwork.chainId,
+              symbol: activeNetwork.currency,
+              label: t('buttons.send'),
+              assertCurrent: assertApprovedQuoteCurrent,
+            }),
+            onBeforeAuthentication: assertApprovedQuoteCurrent,
             expectedContext: approvedContext,
             onPrepared: assertApprovedQuoteCurrent,
             onBeforeSubmit: async () => assertApprovedQuoteCurrent(),
@@ -1131,6 +1159,15 @@ export const SendTransaction = () => {
         // Don't set loading to false here - let the navigation effect handle it
         return response.hash;
       } catch (error: any) {
+        if (
+          activeAccount.isSmartAccount &&
+          submissionRequested &&
+          error?.code === 4001 &&
+          error?.transactionNotBroadcast === true &&
+          mountedRef.current &&
+          generation === closeGenerationRef.current
+        )
+          setFeeQuoteNeedsRefresh(true);
         if (
           !activeAccount.isSmartAccount &&
           error?.transactionNotBroadcast === true
@@ -1298,15 +1335,16 @@ export const SendTransaction = () => {
         if (!toAddressForProvider && toRaw.toLowerCase().endsWith('.eth')) {
           return; // wait until resolvedTo is ready
         }
-        await controllerEmitter(
-          ['wallet', 'refreshActiveAccountBalances'],
-          [
-            {
-              includeAssets: false,
-              targetEvmTokenContractAddress: targetedErc20ContractAddress,
-            },
-          ]
-        );
+        if (!hasGenericSoftwareAdmission)
+          await controllerEmitter(
+            ['wallet', 'refreshActiveAccountBalances'],
+            [
+              {
+                includeAssets: false,
+                targetEvmTokenContractAddress: targetedErc20ContractAddress,
+              },
+            ]
+          );
         if (
           isSmartAccountApproval &&
           customFee.isCustom &&
@@ -1315,13 +1353,7 @@ export const SendTransaction = () => {
           throw new Error('Invalid smart account fee override');
         if (!isSmartAccountApproval) {
           setGenericFeeView(undefined);
-          const nonce =
-            customNonce ??
-            dataTx.nonce ??
-            (await controllerEmitter(
-              ['wallet', 'getRecommendedEvmNonce'],
-              [approvedContext.account.address]
-            ));
+          const nonce = customNonce ?? dataTx.nonce;
           if (customNonce !== undefined || dataTx.nonce !== undefined)
             await controllerEmitter(
               ['wallet', 'authorizeDappManualNonce'],
@@ -1583,13 +1615,17 @@ export const SendTransaction = () => {
     ensResolutionFailed,
     targetedErc20ContractAddress,
     isSmartAccountApproval,
+    hasGenericSoftwareAdmission,
     smartAccountFeeOverrides,
     smartAccountQuoteKey,
     feeQuoteRevision,
     genericFeeKey,
   ]); // ensure we wait for resolved address
 
-  // Check for contract interaction with non-contract address
+  const verifiedTransferContract = assetTransfer?.standardVerified
+    ? assetTransfer.contract.toLowerCase()
+    : undefined;
+  // Check for contract interaction with non-contract address.
   useEffect(() => {
     const checkContract = async () => {
       // Only check once per transaction
@@ -1597,7 +1633,8 @@ export const SendTransaction = () => {
         hasCheckedContract ||
         !toAddressForProvider ||
         !dataTx?.data ||
-        isCheckingContract
+        isCheckingContract ||
+        verifiedTransferContract === toAddressForProvider.toLowerCase()
       ) {
         return;
       }
@@ -1651,6 +1688,7 @@ export const SendTransaction = () => {
     dataTx?.data,
     hasCheckedContract,
     initialLoading,
+    verifiedTransferContract,
   ]);
 
   useEffect(() => {
@@ -1831,6 +1869,7 @@ export const SendTransaction = () => {
 
   return (
     <>
+      {feeConfirmation}
       <EditPriorityModal
         showModal={isOpen}
         setIsOpen={updateFeeEditorOpen}

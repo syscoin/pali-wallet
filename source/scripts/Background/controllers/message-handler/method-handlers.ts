@@ -12,6 +12,7 @@ import { projectDappPermissions } from '../../../../shared/dappPermissions.ts';
 import {
   isDappWalletRead,
   normalizeDappWalletRead,
+  projectWalletAccount,
   projectWalletBalance,
   projectWalletTokens,
 } from '../../../../shared/dappWalletReads';
@@ -327,7 +328,7 @@ export class WalletMethodHandler implements IMethodHandler {
           return wallet.getChangeAddress(account.id);
 
         case 'getAccount':
-          return wallet.isUnlocked() ? account || null : null;
+          return wallet.isUnlocked() ? projectWalletAccount(account) : null;
 
         case 'getBalance':
           return projectWalletBalance(
@@ -454,7 +455,7 @@ export class WalletMethodHandler implements IMethodHandler {
               wallet.isUnlocked() && isBitcoinBased
                 ? account?.xpub || null
                 : null,
-            blockExplorerURL: isBitcoinBased ? activeNetwork.url : null,
+            blockExplorerURL: null,
             isUnlocked: wallet.isUnlocked(),
             isBitcoinBased,
           };

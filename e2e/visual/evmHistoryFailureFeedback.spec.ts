@@ -64,8 +64,8 @@ const visibleBounds = async (page: Page, control: Locator) => {
     const bounds = element.getBoundingClientRect();
     const points = [
       [bounds.left + bounds.width / 2, bounds.top + bounds.height / 2],
-      [bounds.left + 2, bounds.top + 2],
-      [bounds.right - 2, bounds.bottom - 2],
+      [bounds.left + 2, bounds.top + bounds.height / 2],
+      [bounds.right - 2, bounds.top + bounds.height / 2],
     ];
     return {
       left: bounds.left,
@@ -282,7 +282,7 @@ test('configured EVM history explains failed reads and retries the same account 
           if (!page.isClosed()) await capture(page);
         }
       });
-    const empty = page.getByText(en.home.youHaveNoTxs, { exact: true });
+    const empty = page.getByText(en.home.noIndexedActivity, { exact: true });
     const error = page.getByText(en.send.unableToLoad, { exact: true });
     const retry = page.getByRole('button', {
       name: en.receive.retry,

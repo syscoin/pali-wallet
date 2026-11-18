@@ -22,7 +22,17 @@ const mockAlert = { error: jest.fn(), info: jest.fn(), success: jest.fn() };
 let mockQuery: any;
 let mockFlagged = true;
 
-jest.mock('state/store', () => ({ __esModule: true, default: {} }));
+jest.mock('state/store', () => ({
+  __esModule: true,
+  default: {
+    getState: () => ({
+      vault: {
+        activeAccount: { type: 'HDAccount', id: 0 },
+        activeNetwork: { chainId: 1 },
+      },
+    }),
+  },
+}));
 jest.mock('react-redux', () => ({
   useSelector: (select: any) =>
     select({

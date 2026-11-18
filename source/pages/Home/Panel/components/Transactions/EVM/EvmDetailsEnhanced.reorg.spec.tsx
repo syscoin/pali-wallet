@@ -381,7 +381,7 @@ it.each([
         await act(async () => rejectFresh(new Error('synthetic unavailable')));
         expect(screen.queryByText('102', { selector: 'dd' })).toBeNull();
         expect(
-          screen.getByText('transactions.transactionNotFoundOrPending')
+          screen.getByText('transactions.detailsUnavailable')
         ).toBeTruthy();
       } finally {
         errorLog.mockRestore();

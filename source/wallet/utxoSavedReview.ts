@@ -68,7 +68,6 @@ export function reviewSavedUtxoOutputs(
       return { address, amountSatoshis, ...(asset && { asset }) };
     } catch {
       const hex = Buffer.from(output.script).toString('hex');
-      if (!allocationSend) return { address: hex, amountSatoshis };
       const kind =
         output.script[0] === bitcoinjs.opcodes.OP_RETURN ? 'data' : 'script';
       return { script: { kind, hex }, amountSatoshis, ...(asset && { asset }) };

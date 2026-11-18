@@ -1,8 +1,7 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
-import { retryableFetch } from '@sidhujag/sysweb3-network';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
 
@@ -10,9 +9,17 @@ import EvmAssetsController from 'scripts/Background/controllers/assets/evm';
 import MainController from 'scripts/Background/controllers/MainController';
 import { CancellablePromises } from 'scripts/Background/controllers/promises/cancellablesPromises';
 import price, { setPrices } from 'state/price';
-import vault from 'state/vault';
+import vault, {
+  setAccountBalanceForNetwork,
+  setAccountBalances,
+  setNetworkChange,
+} from 'state/vault';
 import vaultGlobal from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import {
+  getFreshNativeBalance,
+  NATIVE_BALANCE_CACHE_TTL_MS,
+} from 'utils/nativeBalanceCache';
 
 import { Home } from './Home';
 
@@ -22,16 +29,13 @@ jest.mock('state/store', () => ({
   default: {
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
+    subscribe: (listener: () => void) => mockStore.subscribe(listener),
   },
 }));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
   CustomJsonRpcProvider: jest.fn(),
   PsbtUtils: {},
-}));
-jest.mock('@sidhujag/sysweb3-network', () => ({
-  ...jest.requireActual('@sidhujag/sysweb3-network'),
-  retryableFetch: jest.fn(),
 }));
 jest.mock('scripts/Background', () => ({
   getController: jest.fn(),
@@ -92,9 +96,6 @@ const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation();
-  globalThis.fetch = jest.fn(() => {
-    throw new Error('Real network is denied');
-  }) as any;
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value: { getItem: () => 'true' },
@@ -131,19 +132,26 @@ beforeEach(() => {
     middleware: (getDefault) => getDefault({ serializableCheck: false }),
   });
   quotes = { usd: 0.125, eur: 0.2, jpy: 0.01 };
-  jest.mocked(retryableFetch).mockImplementation(async (url: any) => {
+  globalThis.fetch = jest.fn(async (url, options) => {
     const requested = new URL(String(url));
     expect(requested.origin + requested.pathname).toBe(
       'https://api.coingecko.com/api/v3/simple/price'
     );
     expect(requested.searchParams.get('ids')).toBe('synthetic-native');
+    expect(options).toMatchObject({
+      method: 'GET',
+      credentials: 'omit',
+      redirect: 'error',
+    });
     const currency = requested.searchParams.get('vs_currencies')!;
     return {
       ok: true,
-      json: async () => ({
-        'synthetic-native': { [currency]: quotes[currency] },
-      }),
-    } as Response;
+      headers: { get: () => null },
+      text: async () =>
+        JSON.stringify({
+          'synthetic-native': { [currency]: quotes[currency] },
+        }),
+    } as unknown as Response;
   });
   balanceRead = jest.fn();
   wallet = Object.create(MainController.prototype);
@@ -166,7 +174,18 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
-  expect(globalThis.fetch).not.toHaveBeenCalled();
+  for (const [url, options] of jest.mocked(globalThis.fetch).mock.calls) {
+    const requested = new URL(String(url));
+    expect(requested.origin + requested.pathname).toBe(
+      'https://api.coingecko.com/api/v3/simple/price'
+    );
+    expect(requested.searchParams.get('ids')).toBe('synthetic-native');
+    expect(options).toMatchObject({
+      method: 'GET',
+      credentials: 'omit',
+      redirect: 'error',
+    });
+  }
   globalThis.fetch = originalFetch;
   jest.restoreAllMocks();
 });
@@ -190,6 +209,75 @@ const show = async (balance: string, currency: string) => {
         ?.textContent,
   };
 };
+
+it('keeps native availability bound to the selected endpoint while restoring its own fresh cache', async () => {
+  const { view } = await show('12.34', 'usd');
+  const otherEndpoint = {
+    ...network,
+    url: 'https://other-quote.synthetic.invalid',
+  };
+  const balance = () =>
+    view.container.querySelector('#home-balance')?.textContent;
+  const send = () => screen.getByRole('button', { name: 'buttons.send' });
+  expect(balance()).toBe('12.34');
+  act(() =>
+    mockStore.dispatch(setNetworkChange({ activeNetwork: otherEndpoint }))
+  );
+  const account = mockStore.getState().vault.accounts.HDAccount[0];
+  expect(account.balances.ethereum).toBe(-1);
+  expect(getFreshNativeBalance(account, otherEndpoint)).toBeNull();
+  expect(balance()).toBeUndefined();
+  expect(view.container.querySelector('#home-balance-pending')).not.toBeNull();
+  expect(send()).toBeDisabled();
+  act(() => mockStore.dispatch(setNetworkChange({ activeNetwork: network })));
+  expect(balance()).toBe('12.34');
+  expect(send()).not.toBeDisabled();
+  act(() =>
+    mockStore.dispatch(setNetworkChange({ activeNetwork: otherEndpoint }))
+  );
+  act(() =>
+    mockStore.dispatch(
+      setAccountBalanceForNetwork({
+        network: otherEndpoint,
+        id: 0,
+        type: KeyringAccountType.HDAccount,
+        balance: '0',
+      })
+    )
+  );
+  expect(balance()).toBe('0');
+  expect(view.container.querySelector('#home-balance-pending')).toBeNull();
+  expect(send()).not.toBeDisabled();
+});
+
+it('preserves healthy same-endpoint refresh continuity only within the canonical cache lifetime', async () => {
+  const { view } = await show('12.34', 'usd');
+  const balance = () =>
+    view.container.querySelector('#home-balance')?.textContent;
+  act(() =>
+    mockStore.dispatch(setAccountBalances({ ethereum: -1, syscoin: -1 }))
+  );
+  expect(balance()).toBe('12.34');
+  expect(
+    screen.getByRole('button', { name: 'buttons.send' })
+  ).not.toBeDisabled();
+  act(() =>
+    mockStore.dispatch(
+      setAccountBalanceForNetwork({
+        network,
+        id: 0,
+        type: KeyringAccountType.HDAccount,
+        balance: '12.34',
+        updatedAt: Date.now() - NATIVE_BALANCE_CACHE_TTL_MS,
+      })
+    )
+  );
+  act(() =>
+    mockStore.dispatch(setAccountBalances({ ethereum: -1, syscoin: -1 }))
+  );
+  expect(balance()).toBeUndefined();
+  expect(screen.getByRole('button', { name: 'buttons.send' })).toBeDisabled();
+});
 
 it.each([
   ['1000000', 'usd', '$125K USD'],

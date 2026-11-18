@@ -49,6 +49,7 @@ async function expectUnavailable(authority: NativeCustodyAuthority, action: () =
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const RECIPIENT = '0x1111111111111111111111111111111111111111';
+const TOKEN_CONTRACT = '0x5555555555555555555555555555555555555555';
 
 test('shared SDK and SQLite admit a different pending nonce and retain reorg predecessors across restart', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-native-send-'));
@@ -93,7 +94,10 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
     await authority.initialize();
     const rpc = new NativeTransferRpc({
       networkId: 'ethereum',
-      fetch: async (_url, init) => {
+      fetch: async function fixtureFetch(_url, init): Promise<Response> {
+      const payload = JSON.parse(String(init.body));
+      if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async row =>
+        (await fixtureFetch(_url, {...init, body: JSON.stringify(row)})).json())));
         const b = JSON.parse(String(init.body));
         let result: unknown;
         if (b.method === 'eth_chainId') result = '0x1';
@@ -228,6 +232,10 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
   let signatures = 0;
+  let afterSignature: (() => void) | undefined;
+  let afterSignedInsert: (() => void) | undefined;
+  const execution = { gas: '0x5208', reverts: false, feesUnavailable: false };
+  const token = { balance: 9n, decimals: 0, paused: false };
   let authentications = 0;
   let authenticationStorageFailure = false, clockOffset = 0;
   let authenticationGate: { entered(): void; release: Promise<void> } | null = null;
@@ -270,7 +278,9 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
       >
     ) {
       signatures++;
-      return super.signPreparedEvmTransaction(...args);
+      const signed = super.signPreparedEvmTransaction(...args);
+      afterSignature?.();
+      return signed;
     }
   }
   const base = createKeyringRuntimeFactory({ credentialPort: { ...credentialPort,
@@ -313,6 +323,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
         after: async (kind, sql) => {
           if (kind === 'all' && sql.includes('FROM evm_signed_records'))
             await pause('storage-read');
+          if (kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records')) afterSignedInsert?.();
           const current = journalGate;
           if (!current) return;
           if (
@@ -357,6 +368,8 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
   const broadcasts: string[] = [];
   let loseResponse = false;
   let nativeBalance = '0x10000000000000000';
+  let pendingBalance: string | undefined;
+  let ownsNft = true;
   const replacement = { pending: false, delegated: false, baseFee: '0x1', substituteHash: undefined as string | undefined };
   const largeReceipt = {
     oversized: false,
@@ -371,10 +384,15 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
         canonicalHash: string;
       }
     | undefined;
+  let httpRequests = 0;
   const requests: { method: string; params: unknown[] }[] = [];
   const rpc = new NativeTransferRpc({
     networkId: 'ethereum',
-    fetch: async (_url, init) => {
+    fetch: async function fixtureFetch(_url, init, member = false): Promise<Response> {
+      if (!member) httpRequests++;
+      const payload = JSON.parse(String(init.body));
+      if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async row =>
+        (await fixtureFetch(_url, {...init, body: JSON.stringify(row)}, true)).json())));
       const request = JSON.parse(String(init.body));
       requests.push(request);
       let result: unknown;
@@ -389,7 +407,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
           : null;
       } else if (request.method === 'eth_getCode') {
         if (signatures > 1 && request.params[1] === 'pending') await pause('cancellation-dispatch');
-        result = replacement.delegated ? `0xef0100${'33'.repeat(20)}` : '0x';
+        result = [TOKEN_CONTRACT, RECIPIENT].includes(request.params[0].toLowerCase()) ? '0x6000' : replacement.delegated ? `0xef0100${'33'.repeat(20)}` : '0x';
       }
       else if (request.method === 'eth_getTransactionCount') {
         result = largeReceipt.oversized
@@ -400,14 +418,32 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
             : '0x0'
           : recovery?.nonce ?? '0x0';
       } else if (request.method === 'eth_getBalance')
-        result = nativeBalance;
+        result = request.params[1] === 'pending' ? pendingBalance ?? nativeBalance : nativeBalance;
+      else if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(request.method) && execution.feesUnavailable)
+        throw Error('Recommendation unavailable');
+      else if (request.method === 'eth_call') {
+        const data = request.params[0].data;
+        if (data.startsWith('0xa9059cbb') && token.paused) return Response.json({ jsonrpc: '2.0', id: request.id,
+          error: { code: 3, message: 'execution reverted: paused', data: '0x' } });
+        if (['0x23b872dd', '0xf242432a', '0x42842e0e', '0xb88d4fde'].some(selector => data.startsWith(selector))) result = '0x';
+        else if (data.startsWith('0x6352211e')) {
+          if (BigInt('0x' + data.slice(10)) !== 7n) return Response.json({ jsonrpc: '2.0', id: request.id,
+            error: { code: 3, message: 'execution reverted', data: '0x' } });
+          result = '0x' + (ownsNft ? Wallet.fromPhrase(PHRASE).address : '0x' + '99'.repeat(20)).slice(2).toLowerCase().padStart(64, '0');
+        } else if (data.startsWith('0x4e1273f4')) {
+          result = new Interface(['function balanceOfBatch(address[],uint256[]) view returns(uint256[])'])
+            .encodeFunctionResult('balanceOfBatch', [[2n]]);
+        } else result = '0x' + BigInt(data === '0x313ce567' ? token.decimals : data.startsWith('0x70a08231') ? token.balance : data.startsWith('0x00fdd58e') ? 0 : 1).toString(16).padStart(64, '0');
+      }
       else if (request.method === 'eth_gasPrice') result = '0x2';
       else if (request.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
       else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
       else if (request.method === 'eth_estimateGas') {
         await pause('requote');
-        result = '0x5208';
+        if (execution.reverts) return Response.json({ jsonrpc: '2.0', id: request.id,
+          error: { code: 3, message: 'execution reverted', data: '0x' } });
+        result = execution.gas;
       } else if (request.method === 'eth_getTransactionReceipt') {
         if (!largeReceipt.oversized) result = recovery?.receipt ?? null;
         else {
@@ -517,8 +553,14 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
       return tx;
     },
     setBalance(value: bigint) { nativeBalance = `0x${value.toString(16)}`; },
+    setPendingBalance(value: bigint) { pendingBalance = `0x${value.toString(16)}`; },
+    loseNft() { ownsNft = false; },
+    execution, token,
+    onSignature(callback: () => void) { afterSignature = callback; },
+    onSignedInsert(callback: () => void) { afterSignedInsert = callback; },
     recovery: largeReceipt,
     requests,
+    get httpRequests() { return httpRequests; },
     replacement,
     get transfers() {
       return transfers;
@@ -1833,5 +1875,246 @@ test('OS authorization reads the secret once per signed action and explicit Canc
     await f.transfers.confirm(review.id, { method: 'device' });
     assert.equal(credentialPort.secretReads, beforeRetry + 1);
     assert.equal(f.signatures, 1); assert.equal(f.broadcasts.length, 1);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['before-confirm', 'after-signature', 'after-storage'] as const)
+for (const failure of ['revert', 'gas-growth'] as const) test(`native final admission rejects ${failure} ${boundary} with SDK and SQLite`, async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    const review = f.transfers.getSnapshot().review!;
+    let changedAt = -1;
+    const changeExecution = () => {
+      changedAt = f.requests.length;
+      if (failure === 'revert') f.execution.reverts = true;
+      else f.execution.gas = '0x1e8480';
+    };
+    if (boundary === 'before-confirm') changeExecution();
+    else if (boundary === 'after-signature') f.onSignature(changeExecution);
+    else f.onSignedInsert(changeExecution);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), {
+      code: failure === 'revert' ? 'FAILED' : 'EXPIRED',
+    });
+    assert(changedAt >= 0, 'the selected signing/storage boundary was reached');
+    assert.equal(f.signatures, boundary === 'before-confirm' ? 0 : 1);
+    assert.equal(f.broadcasts.length, 0);
+    const finalEstimate = f.requests.slice(changedAt).find(request => request.method === 'eth_estimateGas');
+    assert(finalEstimate, 'the retained native envelope is checked after the change');
+    assert.equal((finalEstimate.params[0] as { to: string }).to.toLowerCase(), RECIPIENT.toLowerCase());
+    assert.equal((finalEstimate.params[0] as { data: string }).data, '0x');
+    if (boundary === 'after-storage') assert(await f.readDurableJournal(), 'signed bytes remain durable after refusal');
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['after-signature', 'after-storage'] as const) test(`native final admission rejects a raised base fee ${boundary}`, async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    const review = f.transfers.getSnapshot().review!;
+    const changeBaseFee = () => { f.replacement.baseFee = '0xffff'; };
+    if (boundary === 'after-signature') f.onSignature(changeBaseFee);
+    else f.onSignedInsert(changeBaseFee);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'EXPIRED' });
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 0);
+    assert(await f.readDurableJournal());
+  } finally { await f.close(); }
+});
+
+for (const type of [0, 2] as const) test(`native final admission retains approved bytes when execution gas grows within the margin (type ${type})`, async () => {
+  const f = await cancellationFixture(type);
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    const review = f.transfers.getSnapshot().review!;
+    f.onSignedInsert(() => { f.execution.gas = '0x6000'; });
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 1);
+    const signed = Transaction.from(f.broadcasts[0]!);
+    assert.equal(signed.type, type);
+    assert.equal(signed.gasLimit.toString(), review.gasLimit);
+    assert.equal((signed.gasPrice ?? signed.maxFeePerGas)!.toString(), review.maximumFeePerGas);
+    assert.equal(signed.maxPriorityFeePerGas?.toString() ?? null, review.priorityFeePerGas);
+    assert.equal(signed.to, review.recipient);
+    assert.equal(signed.value.toString(), review.amountUnits);
+    assert.equal(signed.data, '0x');
+    assert.equal(signed.nonce.toString(), review.nonce);
+  } finally { await f.close(); }
+});
+
+async function prepareTokenTransfer(f: Awaited<ReturnType<typeof cancellationFixture>>) {
+  const registry = await f.runtime.tokens!.load(() => undefined);
+  await f.runtime.tokens!.add(registry.revision, {
+    contractAddress: TOKEN_CONTRACT, name: 'Test token', symbol: 'TST', decimals: 0,
+  }, () => undefined);
+  await f.transfers.prepareToken(TOKEN_CONTRACT, RECIPIENT, '1');
+}
+
+for (const boundary of ['before-confirm', 'after-signature', 'after-storage'] as const)
+for (const asset of ['native', 'token'] as const) test(`replacement final admission rejects ${asset} loss ${boundary}`, async () => {
+  const f = await cancellationFixture();
+  try {
+    if (asset === 'token') await prepareTokenTransfer(f);
+    else await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    f.replacement.pending = true;
+    await f.transfers.prepareSpeedUp(f.transfers.getSnapshot().hash!);
+    const review = f.transfers.getSnapshot().review!;
+    let changed = false;
+    const lose = () => { changed = true; if (asset === 'token') f.token.balance = 0n; else f.setBalance(0n); };
+    if (boundary === 'before-confirm') lose();
+    else if (boundary === 'after-signature') f.onSignature(lose);
+    else f.onSignedInsert(lose);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), {
+      code: asset === 'token' ? 'INSUFFICIENT_TOKEN_BALANCE' : 'INSUFFICIENT_BALANCE',
+    });
+    assert(changed);
+    assert.equal(f.broadcasts.length, 1, 'only the original was broadcast');
+    assert.equal(f.signatures, boundary === 'before-confirm' ? 1 : 2);
+    const entries = JSON.parse((await f.readDurableJournal())!).entries;
+    assert.equal(entries.length, boundary === 'before-confirm' ? 1 : 2);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['before-confirm', 'after-signature', 'after-storage'] as const)
+test(`token final admission preserves reviewed precision ${boundary}`, async () => {
+  const f = await cancellationFixture();
+  try {
+    await prepareTokenTransfer(f);
+    const review = f.transfers.getSnapshot().review!;
+    const change = () => { f.token.decimals = 18; };
+    if (boundary === 'before-confirm') change();
+    else if (boundary === 'after-signature') f.onSignature(change);
+    else f.onSignedInsert(change);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'TOKEN_CHANGED' });
+    assert.equal(f.broadcasts.length, 0);
+    assert.equal(f.signatures, boundary === 'before-confirm' ? 0 : 1);
+    assert.equal(f.token.decimals, 18);
+  } finally { await f.close(); }
+});
+
+for (const source of ['pending', 'saved'] as const)
+test(`approved ${source} cancellation avoids recommendation dependencies`, async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    const originalHash = f.transfers.getSnapshot().hash!;
+    f.replacement.pending = source === 'pending';
+    if (source === 'pending') await f.transfers.prepareCancellation(originalHash);
+    else await f.transfers.prepareSavedCancellation(originalHash);
+    const review = f.transfers.getSnapshot().review!;
+    f.execution.feesUnavailable = true;
+    f.requests.length = 0;
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.broadcasts.length, 2);
+    const actual = Transaction.from(f.broadcasts[1]!);
+    assert.equal(actual.gasLimit.toString(), review.gasLimit);
+    assert.equal((actual.gasPrice ?? actual.maxFeePerGas)!.toString(), review.maximumFeePerGas);
+    assert.equal(f.requests.some(request => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(request.method)), false);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['after-signature', 'after-storage'] as const)
+test(`cancellation final admission rejects native balance loss ${boundary}`, async () => {
+  const f = await cancellationFixture();
+  try {
+    const { review } = await prepareSavedCancellation(f);
+    const lose = () => f.setBalance(0n);
+    if (boundary === 'after-signature') f.onSignature(lose); else f.onSignedInsert(lose);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'INSUFFICIENT_BALANCE' });
+    assert.equal(f.signatures, 2);
+    assert.equal(f.broadcasts.length, 1);
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, 2);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['before-confirm', 'after-signature', 'after-storage'] as const)
+test(`replacement final admission rejects paused token execution ${boundary}`, async () => {
+  const f = await cancellationFixture();
+  try {
+    await prepareTokenTransfer(f);
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    f.replacement.pending = true;
+    await f.transfers.prepareSpeedUp(f.transfers.getSnapshot().hash!);
+    const review = f.transfers.getSnapshot().review!;
+    let changedAt = -1;
+    const pauseToken = () => { changedAt = f.requests.length; f.token.paused = true; };
+    if (boundary === 'before-confirm') pauseToken();
+    else if (boundary === 'after-signature') f.onSignature(pauseToken);
+    else f.onSignedInsert(pauseToken);
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'FAILED' });
+    assert(changedAt >= 0);
+    assert.equal(f.signatures, boundary === 'before-confirm' ? 1 : 2);
+    assert.equal(f.broadcasts.length, 1);
+    assert.equal(f.token.balance, 9n);
+    assert.equal(f.token.decimals, 0);
+    const simulation = f.requests.slice(changedAt).find(request => request.method === 'eth_call' &&
+      (request.params[0] as { data: string }).data.startsWith('0xa9059cbb'));
+    assert(simulation, 'the exact replacement is simulated after the pause');
+    const call = simulation.params[0] as { gas: string; nonce: string };
+    assert.equal(BigInt(call.gas).toString(), review.gasLimit);
+    assert.equal(BigInt(call.nonce).toString(), review.nonce);
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, boundary === 'before-confirm' ? 1 : 2);
+  } finally { await f.close(); }
+});
+
+for (const asset of ['native', 'token'] as const) test(`counted SDK and SQLite ${asset} replacement confirmation`, async () => {
+  const f = await cancellationFixture();
+  try {
+    if (asset === 'token') await prepareTokenTransfer(f);
+    else await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    f.replacement.pending = true;
+    await f.transfers.prepareSpeedUp(f.transfers.getSnapshot().hash!);
+    const review = f.transfers.getSnapshot().review!;
+    f.requests.length = 0;
+    const httpBefore = f.httpRequests;
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.broadcasts.length, 2);
+    assert.equal(f.requests.length, asset === 'native' ? 26 : 37);
+    assert.equal(f.httpRequests - httpBefore, asset === 'native' ? 22 : 31);
+    assert.equal(f.requests.filter(request => request.method === 'eth_chainId').length, 9);
+    console.log('REPLACEMENT_CONFIRM_COUNTS', JSON.stringify({ asset, methods: f.requests.length, http: f.httpRequests - httpBefore,
+      chains: f.requests.filter(request => request.method === 'eth_chainId').length,
+      calls: f.requests.map(request => request.method) }));
+  } finally { await f.close(); }
+});
+
+
+for (const extra of [0n, 1000000n]) test(`Cancel remains affordable when the original debits pending balance (extra ${extra})`, async () => {
+  const f = await cancellationFixture();
+  try {
+    f.setBalance(1000000000075600n + extra);
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    f.replacement.pending = true; f.setPendingBalance(33600n + extra);
+    await f.transfers.prepareCancellation(f.transfers.getSnapshot().hash!);
+    const review = f.transfers.getSnapshot().review!;
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.broadcasts.length, 2);
+    const actual = Transaction.from(f.broadcasts[1]!);
+    assert.equal(actual.to, actual.from); assert.equal(actual.value, 0n);
+    assert.equal(actual.gasLimit.toString(), review.gasLimit);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['before-review', 'before-confirm'] as const)
+test(`NFT Speed Up rejects missing ownership ${boundary} before signing`, async () => {
+  const f = await cancellationFixture();
+  try {
+    const sender = Wallet.fromPhrase(PHRASE).address;
+    const data = new Interface(['function transferFrom(address,address,uint256)']).encodeFunctionData('transferFrom', [sender, RECIPIENT, 7]);
+    const original = await f.seedOriginal({ to: RECIPIENT, data, operation: 'erc721' });
+    if (boundary === 'before-review') f.loseNft();
+    if (boundary === 'before-review') await assert.rejects(f.transfers.prepareSpeedUp(original.hash!), { code: 'INSUFFICIENT_NFT_BALANCE' });
+    else {
+      await f.transfers.prepareSpeedUp(original.hash!);
+      const review = f.transfers.getSnapshot().review!; f.loseNft();
+      await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'INSUFFICIENT_NFT_BALANCE' });
+    }
+    assert.equal(f.signatures, 0); assert.equal(f.broadcasts.length, 1);
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, 1);
   } finally { await f.close(); }
 });

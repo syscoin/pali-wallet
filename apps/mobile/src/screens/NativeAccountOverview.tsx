@@ -79,11 +79,11 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   const detailCurrent = detail && detail.accountId === accountId && portfolio.source.getSnapshot().account?.network === detail.networkId;
   const pauseOverview = detail?.accountId === accountId;
   const currency = preference.status === 'ready' ? preference.currency : null;
+  useLayoutEffect(() => { controller.setCurrency(currency); }, [controller, currency]);
   useLayoutEffect(() => {
     if (preference.status === 'loading' || pauseOverview) return;
-    controller.setCurrency(currency);
     return controller.connect();
-  }, [controller, pauseOverview, preference.status, currency]);
+  }, [controller, pauseOverview, preference.status]);
   const closeDetail = useCallback(() => { lifetime.current.generation++; lifetime.current.busy = false; setBusy(false); setDetail(null); closeExternalDetail?.(); }, [closeExternalDetail]);
   const closeSheet = useCallback(() => { if (busy && sheet !== 'filter') cancelSelection?.(); closeDetail(); setSheet(null); }, [busy, sheet, cancelSelection, closeDetail]);
   useLayoutEffect(() => portfolio.navigation?.registerBack(() => {
@@ -140,14 +140,17 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   const sources = sourceRows.filter(entry => sheet !== 'send' || canSendChoice(entry.row.choice));
   const options: NetworkSourceOption[] = sheet === 'filter'
     ? [{ id: 'all', name: t('mobile.accountPortfolio.allNetworks'), symbol: '' }, ...snapshot.choices.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol,
+      chainId: 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' ? choice.scope.network.chainId : undefined,
       testnet: 'testnet' in choice.scope.network ? choice.scope.network.testnet : false,
       available: controller.cachedBalances().find(value => value.networkId === choice.scope.network.id)?.available }))]
     : sources.map(entry => ({ id: entry.id, name: entry.row.choice.networkName,
       iconId: entry.row.choice.scope.network.id, symbol: entry.row.choice.symbol,
+      chainId: 'kind' in entry.row.choice.scope.network && entry.row.choice.scope.network.kind === 'evm' ? entry.row.choice.scope.network.chainId : undefined,
       testnet: 'testnet' in entry.row.choice.scope.network && entry.row.choice.scope.network.testnet,
-      available: entry.row.units === null ? undefined : balance(entry.row) }));
+      available: entry.row.status === 'available' && entry.row.units !== null ? balance(entry.row) : undefined,
+      loading: entry.row.status === 'loading' }));
   const selectedNetwork = snapshot.choices.find(choice => choice.scope.network.id === snapshot.filter);
-  const filterName = snapshot.filter === 'all' ? t('mobile.accountPortfolio.allNetworks') : selectedNetwork?.networkName ?? t(snapshot.filter ? 'mobile.accountPortfolio.unavailableNetwork' : 'buttons.loading');
+  const filterName = snapshot.filter === 'all' ? t('mobile.accountPortfolio.allNetworks') : selectedNetwork?.networkName ?? t(snapshot.status === 'loading' ? 'buttons.loading' : 'mobile.accountPortfolio.unavailableNetwork');
   const filterAvailable = snapshot.filter === 'all' ? snapshot.choices.length > 0 : !!selectedNetwork;
   const hasTestnets = snapshot.rows.some(row => 'testnet' in row.choice.scope.network && row.choice.scope.network.testnet);
   const amount = hidden ? HIDDEN_BALANCE : snapshot.knownValue === null || !snapshot.currency ? '—' : snapshot.knownValue >= 1e9
@@ -159,7 +162,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     else void openDetail(source.row.choice, true);
   };
   return <SafeAreaView edges={['top']} style={s.safe}><Screen gap={18}>
-    <Header title="Pali Wallet" brand right={<IconButton label={t('mobile.accountPortfolio.refresh')} icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status !== 'ready'} onPress={() => { void portfolio.onRefreshSmartAccount?.(); void controller.refresh(); }} />} />
+    <Header title="Pali Wallet" brand right={<IconButton label={t('mobile.accountPortfolio.refresh')} icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status === 'loading'} onPress={() => { void portfolio.onRefreshSmartAccount?.(); void controller.refresh(); }} />} />
     {portfolio.onManageAccounts ? <IdlePressable accessibilityRole="button" accessibilityLabel={t('mobile.accountPortfolio.chooseAccount', { account: portfolio.accountLabel ?? 'Account 1' })} onPress={portfolio.onManageAccounts} style={s.account}>
       <Icon name="wallet" size={18} color={colors.blue} /><Text style={s.accountName}>{portfolio.accountLabel ?? 'Account 1'}</Text><Icon name="chevron-down" size={17} color={colors.muted} />
     </IdlePressable> : <View style={s.account}>
@@ -191,7 +194,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
         <View style={s.amounts}><Text style={s.name} numberOfLines={2} accessibilityLabel={hidden ? HIDDEN_BALANCE : `${balance(row)} ${row.choice.symbol}`}>{hidden ? HIDDEN_BALANCE : compactActivityAmountLabel(`${balance(row)} ${row.choice.symbol}`)}</Text><Text style={s.help}>{balanceLabel ?? (row.status === 'loading' ? t('buttons.loading') : row.price !== null && row.units !== null && snapshot.currency ? hidden ? HIDDEN_BALANCE : formatIndicativeFiat(Number(balance(row)) * row.price, snapshot.currency, locale) : '—')}</Text></View>
       </IdlePressable>
       {row.tokens.map(token => {
-        const tokenBalanceLabel = failedBalanceLabel(row.status === 'error' || token.status === 'error', token.units);
+        const tokenBalanceLabel = failedBalanceLabel(token.status === 'error', token.units);
         return <IdlePressable key={token.metadata.contractAddress} accessibilityRole="button" accessibilityLabel={`${token.metadata.symbol}, ${row.choice.networkName}, ${hidden ? HIDDEN_BALANCE : token.units === null ? '—' : formatTokenUnits(token.units, token.metadata.decimals)}${tokenBalanceLabel ? `, ${tokenBalanceLabel}` : ''}`} disabled={busy} onPress={() => void openDetail(row.choice, false, token.metadata.contractAddress)} style={[s.row, s.divider]}>
         <Coin id={token.metadata.contractAddress} asset={{ kind: 'evm', chainId: row.choice.scope.network.chainId, contractAddress: token.metadata.contractAddress, decimals: token.metadata.decimals }} registrationHash={'registrationHash' in row.choice.scope.network ? row.choice.scope.network.registrationHash : undefined} fallbackSymbol={token.metadata.symbol} size={36} /><View style={s.names}><Text style={s.name}>{token.metadata.symbol}</Text><Text style={s.help}>{row.choice.networkName}</Text></View>
         <View style={s.amounts}><Text style={s.name} numberOfLines={2} accessibilityLabel={hidden ? HIDDEN_BALANCE : token.units === null ? '—' : formatTokenUnits(token.units, token.metadata.decimals)}>{hidden ? HIDDEN_BALANCE : token.units === null ? '—' : compactActivityAmountLabel(formatTokenUnits(token.units, token.metadata.decimals))}</Text>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
+import React, { useCallback, useMemo, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -29,10 +29,12 @@ import {
   formatFullPrecisionBalance,
   ONE_MILLION,
 } from 'utils/index';
+import {
+  getFreshNativeBalance,
+  getNativeBalanceCacheKey,
+} from 'utils/nativeBalanceCache';
 
 import { TxsPanel } from './TxsPanel';
-
-const homeBalanceCache: Record<string, string> = {};
 
 // Memoize expensive balance formatting
 const BalanceDisplay = memo(
@@ -211,7 +213,9 @@ export const Home = () => {
   const balanceCacheKey = useMemo(
     () =>
       [
-        activeNetwork?.chainId ?? 'unknown-chain',
+        activeNetwork
+          ? getNativeBalanceCacheKey(activeNetwork)
+          : 'unknown-network',
         activeAccountRef.type,
         activeAccountRef.id,
         currentAccount?.xpub ?? currentAccount?.address ?? 'unknown-account',
@@ -221,6 +225,8 @@ export const Home = () => {
       activeAccountRef.id,
       activeAccountRef.type,
       activeNetwork?.chainId,
+      activeNetwork?.kind,
+      activeNetwork?.url,
       currentAccount?.address,
       currentAccount?.xpub,
       isBitcoinBased,
@@ -239,19 +245,18 @@ export const Home = () => {
       : String(balance);
   }, [currentAccount?.balances, isBitcoinBased]);
 
-  useEffect(() => {
-    if (currentBalanceValue !== '-1') {
-      homeBalanceCache[balanceCacheKey] = currentBalanceValue;
-    }
-  }, [balanceCacheKey, currentBalanceValue]);
-
-  const cachedBalance = homeBalanceCache[balanceCacheKey];
+  const cachedBalance =
+    currentAccount && activeNetwork
+      ? getFreshNativeBalance(currentAccount, activeNetwork)?.balance
+      : undefined;
 
   const rawBalance = useMemo(
     () =>
       currentBalanceValue !== '-1'
         ? currentBalanceValue
-        : cachedBalance ?? '-1',
+        : cachedBalance === undefined
+        ? '-1'
+        : String(cachedBalance),
     [cachedBalance, currentBalanceValue]
   );
 
@@ -351,7 +356,7 @@ export const Home = () => {
                 }`}
               >
                 <BalanceDisplay
-                  key={`${balanceCacheKey}:${activeNetwork.url}`}
+                  key={balanceCacheKey}
                   actualBalance={actualBalance}
                   isLoadingBalance={isLoadingBalance}
                   currency={activeNetwork.currency}

@@ -12,6 +12,18 @@ describe('SysAssetsController imported asset refresh', () => {
     jest.clearAllMocks();
   });
 
+  it('skips transport when no saved SPT needs refreshing', async () => {
+    await expect(
+      SysAssetsController().getSysAssetsByXpub(
+        'zpub-account',
+        'https://blockbook.syscoin.org',
+        57,
+        []
+      )
+    ).resolves.toEqual([]);
+    expect(fetchBackendAccountCachedMock).not.toHaveBeenCalled();
+  });
+
   it('refreshes chain values without dropping imported metadata', async () => {
     fetchBackendAccountCachedMock.mockResolvedValue({
       address: 'zpub-account',

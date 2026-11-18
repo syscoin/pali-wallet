@@ -3,6 +3,8 @@ import { AbiCoder, keccak256 } from 'ethers';
 import { getPrivacyPool } from './registry.ts';
 import { validatePrivacyRelayerEndpoint } from './relayers.ts';
 import type { PrivacyPoolId } from './types.ts';
+import { captureWithdrawalPublicInputs } from './withdrawalMetadata.ts';
+import type { IPrivacyWithdrawalPublicInputs } from './withdrawalTransactionTypes';
 
 export type PrivacyRelayerJobState =
   | 'QUEUED'
@@ -24,6 +26,10 @@ export interface IPrivacyRelayerJobObservation {
   jobId: string;
   transactionHash?: string;
 }
+export type PrivacyRelayerJobFetch = (
+  url: string,
+  init: RequestInit
+) => Promise<Response>;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const WORD = /^0x[0-9a-fA-F]{64}$/;
@@ -45,14 +51,19 @@ const invalid = () => new Error('privacy_relayer_job_invalid');
  * src/router.js, queue.js and constants.js. The endpoint reports these facts;
  * matching the saved proof/input hashes is not proof of on-chain inclusion.
  */
-export async function readPrivacyRelayerJob(
+async function readBoundJob(
   reference: IPrivacyRelayerJobReference,
   options: {
     assertCurrent: () => void;
-    fetcher?: typeof fetch;
+    fetcher?: PrivacyRelayerJobFetch;
     signal?: AbortSignal;
   }
-): Promise<Readonly<IPrivacyRelayerJobObservation>> {
+): Promise<
+  Readonly<{
+    observation: Readonly<IPrivacyRelayerJobObservation>;
+    publicInputs: Readonly<IPrivacyWithdrawalPublicInputs>;
+  }>
+> {
   const guard = () => {
     if (options.signal?.aborted) throw new Error('privacy_relayer_cancelled');
     try {
@@ -169,13 +180,25 @@ export async function readPrivacyRelayerJob(
       (typeof value.txHash !== 'string' || !WORD.test(value.txHash))
     )
       throw invalid();
-    return Object.freeze({
+    const observation = Object.freeze({
       jobId: fixed.jobId,
       claimedStatus: value.status as PrivacyRelayerJobState,
       ...(value.txHash === undefined
         ? {}
         : { transactionHash: value.txHash.toLowerCase() }),
     });
+    const publicInputs = captureWithdrawalPublicInputs(
+      {
+        root: value.args[0].toLowerCase(),
+        nullifierHash: value.args[1].toLowerCase(),
+        recipient: value.args[2].toLowerCase(),
+        relayer: value.args[3].toLowerCase(),
+        fee: BigInt(value.args[4]).toString(),
+        refund: BigInt(value.args[5]).toString(),
+      },
+      fixed.inputHash
+    );
+    return Object.freeze({ observation, publicInputs });
   };
   try {
     return await Promise.race([run(), interrupted]);
@@ -195,4 +218,18 @@ export async function readPrivacyRelayerJob(
     clearTimeout(timer!);
     remove();
   }
+}
+
+/** UI-safe projection: never add proof inputs to this public status DTO. */
+export async function readPrivacyRelayerJob(
+  ...args: Parameters<typeof readBoundJob>
+): Promise<Readonly<IPrivacyRelayerJobObservation>> {
+  return (await readBoundJob(...args)).observation;
+}
+
+/** Background-only recovery evidence. Status and candidate hashes grant no authority. */
+export async function readPrivacyRelayerJobPublicInputs(
+  ...args: Parameters<typeof readBoundJob>
+): Promise<Readonly<IPrivacyWithdrawalPublicInputs>> {
+  return (await readBoundJob(...args)).publicInputs;
 }

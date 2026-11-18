@@ -19,6 +19,7 @@ import { PrepareSmartAccount } from './PrepareSmartAccount';
 
 const mockEmitter = jest.fn();
 const mockInstall = jest.fn();
+const mockRegistration = jest.fn();
 let mockState: any;
 let mockQuery: any;
 let mockConfirm: () => Promise<void>;
@@ -58,7 +59,10 @@ jest.mock('components/Loading', () => ({ PqOperationStatus: () => null }));
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/smartAccount', () => ({
   ...jest.requireActual('utils/smartAccount'),
-  signAndSubmitSmartAccountExecutions: (params: any) => mockInstall(params),
+  signAndSubmitSmartAccountExecutions: (params: any) =>
+    params.executions.length === 1 && params.executions[0].data === '0x'
+      ? mockRegistration(params)
+      : mockInstall(params),
 }));
 
 const CHAIN_ID = 57057;
@@ -184,10 +188,6 @@ beforeEach(() => {
         hasNativeGas: funded.has(params[0].accountId),
         hasZkSysGasTankGas: false,
       };
-    if (method === 'registerSmartAccountOnChain' && registrationFailures-- > 0)
-      throw Object.assign(new Error('Deployment status read unavailable'), {
-        transactionNotBroadcast: true,
-      });
     if (method === 'hydrateSmartAccount' && hydrationFailures-- > 0)
       throw new Error('Hydration read unavailable');
     if (method === 'hydrateSmartAccount')
@@ -196,12 +196,25 @@ beforeEach(() => {
       throw new Error('Connection persistence unavailable');
     if (
       method === 'setAccount' ||
-      method === 'registerSmartAccountOnChain' ||
       method === 'hydrateSmartAccount' ||
       method === 'connect'
     )
       return undefined;
     throw new Error(`Unexpected fixture method: ${method}`);
+  });
+  mockRegistration.mockReset().mockImplementation(async (params) => {
+    expect(params.executions).toEqual([
+      { target: params.accountAddress, data: '0x', value: '0x0' },
+    ]);
+    expect(typeof params.feeConsent?.confirmEntryPoint).toBe('function');
+    expect(typeof params.feeConsent?.confirmFee).toBe('function');
+    params.onBeforeAuthentication();
+    await params.onBeforeSubmit();
+    if (registrationFailures-- > 0)
+      throw Object.assign(new Error('Deployment status read unavailable'), {
+        transactionNotBroadcast: true,
+      });
+    return { hash: `0x${'45'.repeat(32)}` };
   });
   mockInstall.mockReset().mockImplementation(async (params) => {
     await params.onBeforeSubmit();
@@ -220,24 +233,36 @@ it('reuses an admitted account after an explicitly not-broadcast registration fa
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
   expect(calls('createSmartAccount')).toHaveLength(1);
   expect(
-    calls('registerSmartAccountOnChain').map(([, params]) => params)
-  ).toEqual([[{ accountId: 1 }], [{ accountId: 1 }]]);
+    mockRegistration.mock.calls.map(([params]) => params.accountId)
+  ).toEqual([1, 1]);
   expect(mockInstall).toHaveBeenCalledTimes(1);
+});
+
+it('retries a failed registration quote before the financial submission boundary without reallocating', async () => {
+  funded.add(1);
+  mockRegistration.mockRejectedValueOnce(new Error('Quote unavailable'));
+  render(<PrepareSmartAccount />);
+  fireEvent.click(confirm());
+  await screen.findByText('Quote unavailable');
+  expect(confirm().hasAttribute('disabled')).toBe(false);
+  expect(screen.queryByText('send.submissionStatusUnknown')).toBeNull();
+  fireEvent.click(confirm());
+  await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
+  expect(calls('createSmartAccount')).toHaveLength(1);
+  expect(mockRegistration).toHaveBeenCalledTimes(2);
 });
 
 it.each([undefined, false, 'hash'])(
   'does not repeat registration after an ambiguous failure (%s)',
   async (outcome) => {
     funded.add(1);
-    const original = mockEmitter.getMockImplementation()!;
-    mockEmitter.mockImplementation(async (path, params) => {
-      if (path[1] === 'registerSmartAccountOnChain')
-        throw Object.assign(new Error('Registration outcome unknown'), {
-          ...(outcome === 'hash'
-            ? { hash: `0x${'77'.repeat(32)}` }
-            : { transactionNotBroadcast: outcome }),
-        });
-      return original(path, params);
+    mockRegistration.mockImplementationOnce(async (params) => {
+      await params.onBeforeSubmit();
+      throw Object.assign(new Error('Registration outcome unknown'), {
+        ...(outcome === 'hash'
+          ? { hash: `0x${'77'.repeat(32)}` }
+          : { transactionNotBroadcast: outcome }),
+      });
     });
     render(<PrepareSmartAccount />);
     const retained = mockConfirm;
@@ -246,7 +271,7 @@ it.each([undefined, false, 'hash'])(
     expect(confirm().hasAttribute('disabled')).toBe(true);
     await act(async () => retained());
     expect(calls('createSmartAccount')).toHaveLength(1);
-    expect(calls('registerSmartAccountOnChain')).toHaveLength(1);
+    expect(mockRegistration.mock.calls).toHaveLength(1);
     expect(mockInstall).not.toHaveBeenCalled();
     expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   }
@@ -305,7 +330,7 @@ it.each([
     await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
     expect(calls('hydrateSmartAccount')).toHaveLength(2);
     expect(calls('createSmartAccount')).toHaveLength(1);
-    expect(calls('registerSmartAccountOnChain')).toHaveLength(1);
+    expect(mockRegistration.mock.calls).toHaveLength(1);
     expect(mockInstall).toHaveBeenCalledTimes(1);
     expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
   }
@@ -353,7 +378,7 @@ it.each(['hydrate', 'connect'])(
     fireEvent.click(confirm());
     await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
     expect(calls('createSmartAccount')).toHaveLength(1);
-    expect(calls('registerSmartAccountOnChain')).toHaveLength(1);
+    expect(mockRegistration.mock.calls).toHaveLength(1);
     expect(mockInstall).toHaveBeenCalledTimes(1);
     expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
   }
@@ -572,7 +597,7 @@ it('resumes the same admitted account after the known gas error is corrected ins
   );
   expect(calls('createSmartAccount')).toHaveLength(1);
   expect(allocated.map(({ id }) => id)).toEqual([1]);
-  expect(calls('registerSmartAccountOnChain')).toHaveLength(1);
+  expect(mockRegistration.mock.calls).toHaveLength(1);
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
   expect(mockInstall).toHaveBeenCalledWith(
     expect.objectContaining({

@@ -47,6 +47,28 @@ export interface IAssetReviewRow {
   symbol: string;
 }
 
+/** Bind the legacy display field to the destination verified from Core's payload. */
+export const bindVerifiedSyscoinBurn = (
+  version: number,
+  legacyBurn: unknown,
+  burnDestination?: string
+): Readonly<{ ethaddress: string }> | undefined => {
+  if (version !== 141) return undefined;
+  const address =
+    legacyBurn && typeof legacyBurn === 'object' && !Array.isArray(legacyBurn)
+      ? Object.getOwnPropertyDescriptor(legacyBurn, 'ethaddress')?.value
+      : undefined;
+  if (
+    typeof burnDestination !== 'string' ||
+    !/^0x[0-9a-f]{40}$/.test(burnDestination) ||
+    typeof address !== 'string' ||
+    !/^(?:0x)?[0-9a-fA-F]{40}$/.test(address) ||
+    `0x${address.replace(/^0x/, '').toLowerCase()}` !== burnDestination
+  )
+    throw new Error('Unable to verify Syscoin bridge burn destination');
+  return Object.freeze({ ethaddress: burnDestination });
+};
+
 export const getCanonicalOutputRecipient = (
   output: NonNullable<IDecodedReviewTransaction['vout']>[number] | undefined
 ): string | undefined =>

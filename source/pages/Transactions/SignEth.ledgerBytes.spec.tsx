@@ -123,13 +123,20 @@ function createDeviceHost() {
 const prepare = async (payload: string, reversed: boolean) => {
   mockQuery[0] = reversed ? ADDRESS : payload;
   mockQuery[1] = reversed ? payload : ADDRESS;
-  const view = render(<EthSign />);
-  await waitFor(() =>
+  // Advance the popup's initial loading timer without depending on CI scheduling.
+  jest.useFakeTimers();
+  try {
+    const view = render(<EthSign />);
+    await act(async () => {
+      await jest.runOnlyPendingTimersAsync();
+    });
     expect(
       screen.getByRole('button', { name: 'buttons.confirm' })
-    ).toBeDefined()
-  );
-  return view;
+    ).toBeDefined();
+    return view;
+  } finally {
+    jest.useRealTimers();
+  }
 };
 
 beforeEach(() => {

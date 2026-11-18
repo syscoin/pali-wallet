@@ -1,8 +1,9 @@
 import { createPrivacyPoolSync } from '../../../wallet/privacyPoolSync';
 import { privacyCache, type PrivacyCache } from 'utils/privacy/cache';
 import {
+  createSnapshotAnchorVerifier,
   fetchPrivacySnapshot,
-  verifySnapshotAnchor,
+  type verifySnapshotAnchor,
 } from 'utils/privacy/client';
 import type { IPrivacyNoteReader } from 'utils/privacy/privateVaultTypes';
 import type { IPrivacySnapshotReader } from 'utils/privacy/trustedSnapshot';
@@ -60,7 +61,7 @@ export function createPrivacyController(
     {
       cache: dependencies.cache || privacyCache,
       fetchSnapshot: dependencies.fetchSnapshot || fetchPrivacySnapshot,
-      verifyAnchor: dependencies.verifyAnchor || verifySnapshotAnchor,
+      verifyAnchor: dependencies.verifyAnchor || createSnapshotAnchorVerifier(),
       now,
       schedule,
       stop,

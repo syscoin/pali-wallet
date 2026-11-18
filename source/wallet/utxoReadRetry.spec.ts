@@ -15,6 +15,90 @@ const options = (signal = new AbortController().signal) => ({
 beforeEach(() => jest.useFakeTimers());
 afterEach(() => jest.useRealTimers());
 
+it.each(['60', new Date(Date.now() + 60_000).toUTCString()])(
+  'does not retry an advertised cooldown beyond the owner deadline (%s)',
+  async (retryAfter) => {
+    const transport = jest.fn(
+      async () =>
+        new Response('busy', {
+          status: 429,
+          headers: { 'Retry-After': retryAfter },
+        })
+    );
+    await expect(
+      fetchUtxoRead(transport, url, options(), current, Date.now() + 12_000)
+    ).rejects.toThrow('Blockbook read unavailable');
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(transport).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each(['3', 'date'])(
+  'waits for a cooldown within the existing deadline (%s)',
+  async (format) => {
+    jest.setSystemTime(new Date('2026-11-16T12:00:00Z'));
+    const retryAfter =
+      format === 'date' ? new Date(Date.now() + 3000).toUTCString() : '3';
+    const transport = jest
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('busy', {
+          status: 503,
+          headers: { 'Retry-After': retryAfter },
+        })
+      )
+      .mockResolvedValue(new Response('{}'));
+    const pending = fetchUtxoRead(
+      transport,
+      url,
+      options(),
+      current,
+      Date.now() + 12_000
+    );
+    await jest.advanceTimersByTimeAsync(2999);
+    expect(transport).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    await pending;
+    expect(transport).toHaveBeenCalledTimes(2);
+  }
+);
+
+it.each(['invalid', '1.5', '-1', 'Wed, 01 Jan 2020 00:00:00 GMT'])(
+  'uses existing backoff for an unusable cooldown (%s)',
+  async (retryAfter) => {
+    const transport = jest
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('busy', {
+          status: 503,
+          headers: { 'Retry-After': retryAfter },
+        })
+      )
+      .mockResolvedValue(new Response('{}'));
+    const pending = fetchUtxoRead(transport, url, options(), current);
+    await jest.advanceTimersByTimeAsync(1000);
+    await pending;
+    expect(transport).toHaveBeenCalledTimes(2);
+  }
+);
+
+it('cancels during a server cooldown without starting another read', async () => {
+  const owner = new AbortController();
+  const transport = jest.fn(
+    async () =>
+      new Response('busy', { status: 503, headers: { 'Retry-After': '5' } })
+  );
+  const pending = fetchUtxoRead(transport, url, options(owner.signal), current);
+  const rejected = expect(pending).rejects.toMatchObject({
+    name: 'AbortError',
+  });
+  await jest.advanceTimersByTimeAsync(1001);
+  owner.abort();
+  await rejected;
+  await jest.advanceTimersByTimeAsync(6000);
+  expect(transport).toHaveBeenCalledTimes(1);
+});
+
 it('observes a response when transport aborts synchronously during dispatch', async () => {
   const controller = new AbortController();
   const response = new Response('{}');

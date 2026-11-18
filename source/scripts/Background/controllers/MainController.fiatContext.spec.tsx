@@ -22,6 +22,7 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockStore.getState(),
+    subscribe: (fn: () => void) => mockStore.subscribe(fn),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
   persistCommittedWalletState: jest.fn().mockResolvedValue(undefined),
@@ -253,7 +254,8 @@ it.each(['ethereum', 'syscoin'] as const)(
     await controller.setFiat('eur');
     expect(quote).toHaveBeenCalledWith(
       kind === 'ethereum' ? first.chainId : first.url,
-      'eur'
+      'eur',
+      expect.any(AbortSignal)
     );
     expect(mockStore.getState().price.fiat).toEqual({
       asset: 'eur',
@@ -480,7 +482,7 @@ it('does not accept an A quote started while B configuration is pending', async 
   const switching = controller.setActiveNetwork(next);
   const updating = controller.setFiat();
   await flush();
-  expect(quote).toHaveBeenCalledWith(1, 'usd');
+  expect(quote).toHaveBeenCalledWith(1, 'usd', expect.any(AbortSignal));
   finishSwitch();
   await switching;
   old.resolve({ available: true, price: 99 });
@@ -513,7 +515,7 @@ it('keeps explicit currency intent for the queued new-network quote without rela
   await updating;
   await flush();
   try {
-    expect(quote).toHaveBeenLastCalledWith(137, 'eur');
+    expect(quote).toHaveBeenLastCalledWith(137, 'eur', expect.any(AbortSignal));
     expect(mockStore.getState().price.fiat).toEqual({
       asset: 'eur',
       available: false,
@@ -530,10 +532,12 @@ it('keeps explicit currency intent for the queued new-network quote without rela
   });
 });
 
-it('retains a valid in-flight quote and explicit currency when a different-network attempt fails', async () => {
+it('replaces an old in-flight quote after a different-network attempt fails', async () => {
   const { next } = initialize();
   const pending = deferred<{ available: boolean; price: number }>();
-  quote.mockReturnValueOnce(pending.promise);
+  quote
+    .mockReturnValueOnce(pending.promise)
+    .mockResolvedValueOnce({ available: true, price: 4 });
   const updating = controller.setFiat('eur');
   await flush();
   controller.setActiveNetworkLogic = (
@@ -546,6 +550,7 @@ it('retains a valid in-flight quote and explicit currency when a different-netwo
   );
   pending.resolve({ available: true, price: 4 });
   await updating;
+  await flush();
   expect(mockStore.getState().price.fiat).toEqual({
     asset: 'eur',
     available: true,

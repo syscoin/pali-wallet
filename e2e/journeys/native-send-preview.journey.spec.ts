@@ -110,9 +110,10 @@ test('offline native Send: edited fees survive Confirm, Cancel and Back', async 
         recommendedRate = Number(await feeInput.inputValue());
         expect(recommendedRate).not.toBe(0.00000002);
         await recipientInput.fill(fixture.recipientAddress);
-        await amountInput.fill('0.0005');
         await feeInput.fill('0.00000002');
-        await page.getByRole('button', { name: 'Next', exact: true }).click();
+        // Exercise native implicit submission before the fractional field blurs.
+        await amountInput.fill('0.0005');
+        await amountInput.press('Enter');
         firstFee = await readConfirmFee();
         await page
           .getByRole('button', { name: 'Advanced Details', exact: true })

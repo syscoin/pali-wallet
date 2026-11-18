@@ -594,20 +594,13 @@ test('P256 has a separate proof occurrence without an invented ECDSA owner', () 
     slhDsa: false,
   });
   assert(passkeyOnly);
-  assert.throws(
-    () =>
-      receipts.capture(
-        {
-          binding: 'passkey only request',
-          intent,
-          plan: passkeyOnly,
-          owners,
-          expiresAt: 1000,
-        },
-        guard
-      ),
-    /ECDSA owner proof plan/
-  );
+  const phase = receipts.capture({ binding: 'passkey only request', intent, plan: passkeyOnly, owners: [], expiresAt: 1000 }, guard);
+  assert.equal(phase.steps.length, 0);
+  assert.equal(phase.passkeys.length, 1);
+  const request = { binding: 'passkey only request', intent, step: phase.passkeys[0]! };
+  receipts.recordPasskey(phase.handle, request, passkeyProof, guard);
+  assert.equal(receipts.readPasskey(phase.handle, request, guard), passkeyProof);
+  assert.throws(() => receipts.capture({ binding: 'empty phase', intent, plan: { ...passkeyOnly, authenticators: [] }, owners: [], expiresAt: 1000 }, guard), /owner proof plan/);
 });
 
 test('UserOperation proof receipts retain the existing request budget for derived typed calldata', () => {

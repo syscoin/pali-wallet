@@ -332,8 +332,10 @@ export const EvmTransactionDetailsEnhanced = ({
     : detailsRead?.data ?? null;
   const [isLoadingDetails, setIsLoadingDetails] = useContextualState(
     scope,
-    false
+    Boolean(hash)
   );
+  const [lookupFailed, setLookupFailed] = useContextualState(scope, false);
+  const [lookupRetry, setLookupRetry] = useContextualState(scope, 0);
 
   // State for transaction display info - moved up to be available for useEffect dependencies
   const [transactionDisplayInfo, setTransactionDisplayInfo] =
@@ -512,6 +514,19 @@ export const EvmTransactionDetailsEnhanced = ({
   ]);
   const [decodedTxData, setDecodedTxData] =
     useContextualState<IDecodedTx | null>(decodeScope, null);
+  // An incidental rerender must not retry a failed read. A deliberate revisit
+  // or a different payload gets a fresh attempt without caching that failure.
+  const decodeAttempt = useRef({
+    scope: decodeScope,
+    failed: false,
+    pending: null as Promise<IDecodedTx | null> | null,
+  });
+  if (decodeAttempt.current.scope !== decodeScope)
+    decodeAttempt.current = {
+      scope: decodeScope,
+      failed: false,
+      pending: null,
+    };
   const candidate = winnerLookup.settled
     ? winnerLookup.candidate
     : replacementWinner;
@@ -614,10 +629,12 @@ export const EvmTransactionDetailsEnhanced = ({
           cached.observationAtRead === observation.token)
       ) {
         setDetailsRead(cached);
+        setIsLoadingDetails(false);
         return;
       }
 
       setIsLoadingDetails(true);
+      setLookupFailed(false);
       try {
         let enhancedData = null;
         // Routescan's Etherscan API has no Blockscout gettxinfo action.
@@ -636,7 +653,7 @@ export const EvmTransactionDetailsEnhanced = ({
         if (!usableLookup(enhancedData)) {
           enhancedData = await controllerEmitter(
             ['wallet', 'getEvmTransactionFromProvider'],
-            [hash]
+            [hash, true]
           );
         }
         if (!isCurrent()) return;
@@ -656,11 +673,13 @@ export const EvmTransactionDetailsEnhanced = ({
             observationAtRead,
           });
         } else {
+          setLookupFailed(enhancedData !== null);
           setDetailsRead(null);
         }
       } catch (error) {
         if (isCurrent()) {
           console.error('Failed to fetch enhanced transaction details:', error);
+          setLookupFailed(true);
           setDetailsRead(null);
         }
       } finally {
@@ -671,12 +690,15 @@ export const EvmTransactionDetailsEnhanced = ({
     return () => {
       cancelled = true;
     };
-  }, [hash, scope, refreshSupersededRead]);
+  }, [hash, scope, refreshSupersededRead, lookupRetry]);
 
   // Effect to decode transaction data when we have transaction data
   useEffect(() => {
     let cancelled = false;
-    const isCurrent = () => !cancelled && scopeRef.current === scope;
+    const isCurrent = () =>
+      !cancelled &&
+      scopeRef.current === scope &&
+      decodeAttempt.current.scope === decodeScope;
     const processTransactionDecoding = async () => {
       // Check cache first
       const cached = decodedTxCache.get(decodeScope);
@@ -686,6 +708,7 @@ export const EvmTransactionDetailsEnhanced = ({
         setDecodedTxData(cached.data);
         return;
       }
+      if (decodeAttempt.current.failed) return;
 
       const currentTransaction = transactionTx;
 
@@ -694,6 +717,7 @@ export const EvmTransactionDetailsEnhanced = ({
           const mergedTx = currentTransaction;
 
           let decodedData: IDecodedTx | null = null;
+          let completed = true;
 
           // Always decode transactions with input data to get full parameter details
           // This ensures we show decoded data even if transactionDisplayInfo isn't ready yet
@@ -714,12 +738,14 @@ export const EvmTransactionDetailsEnhanced = ({
           } else {
             // Always decode transactions with input data to get full details
             try {
-              decodedData = (await controllerEmitter(
+              decodeAttempt.current.pending ??= controllerEmitter(
                 ['wallet', 'decodeEvmTransactionData'],
                 [mergedTx]
-              )) as IDecodedTx;
+              ) as Promise<IDecodedTx | null>;
+              decodedData = await decodeAttempt.current.pending;
             } catch (decodeError) {
               console.error('Failed to decode transaction data:', decodeError);
+              completed = false;
               // Fallback based on what we know
               if (transactionDisplayInfo?.isErc20Transfer) {
                 decodedData = {
@@ -735,18 +761,22 @@ export const EvmTransactionDetailsEnhanced = ({
           }
 
           if (!isCurrent()) return;
-          // Cache the result
-          decodedTxCache.set(decodeScope, {
-            data: decodedData,
-            timestamp: now,
-          });
-
-          if (decodedTxCache.size > 100)
-            decodedTxCache.delete(decodedTxCache.keys().next().value);
+          decodeAttempt.current.pending = null;
+          decodeAttempt.current.failed = !completed;
+          if (completed) {
+            decodedTxCache.set(decodeScope, {
+              data: decodedData,
+              timestamp: now,
+            });
+            if (decodedTxCache.size > 100)
+              decodedTxCache.delete(decodedTxCache.keys().next().value);
+          }
           setDecodedTxData(decodedData);
         } catch (error) {
           if (isCurrent()) {
             console.error('Error decoding transaction:', error);
+            decodeAttempt.current.pending = null;
+            decodeAttempt.current.failed = true;
             setDecodedTxData(null);
           }
         }
@@ -1012,12 +1042,32 @@ export const EvmTransactionDetailsEnhanced = ({
     return (
       <>
         <div className="p-8 text-center">
-          <p className="text-brand-gray200 text-sm mb-4">
-            {t('transactions.transactionNotFoundOrPending')}
-          </p>
-          <p className="text-xs text-brand-gray400">
-            {t('transactions.transactionMayNotExistYet')}
-          </p>
+          {lookupFailed ? (
+            <>
+              <p role="alert" className="text-brand-gray200 text-sm mb-4">
+                {t('transactions.detailsUnavailable')}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (scopeRef.current === scope)
+                    setLookupRetry((value) => value + 1);
+                }}
+                className="w-full rounded-full border border-brand-royalbluemedium px-4 py-3 text-sm text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
+              >
+                {t('receive.retry')}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-brand-gray200 text-sm mb-4">
+                {t('transactions.transactionNotFoundOrPending')}
+              </p>
+              <p className="text-xs text-brand-gray400">
+                {t('transactions.transactionMayNotExistYet')}
+              </p>
+            </>
+          )}
         </div>
         <RetainedTransactionReplay
           key="retained-replay"

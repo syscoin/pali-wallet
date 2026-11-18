@@ -96,7 +96,7 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
       if (!reloaded && isOperationAuthenticationCancellation(error)) {
         try { check(); cancelledBeforeAccess = AppState.currentState === 'active'; } catch { /* Retired owners stay fail-closed. */ }
       }
-      if (!cancelledBeforeAccess && current.live) setError(kind === 'clear' ? 'privacy.capacity.clearError' : 'privacy.recovery.failed');
+      if (!cancelledBeforeAccess && current.live) setError(kind === 'clear' ? error instanceof Error && error.message === 'privacy_archive_limit' ? 'privacy.archive.full' : 'privacy.capacity.clearError' : 'privacy.recovery.failed');
     }
     finally {
       // The action reloads within its authorization, even after a lost acknowledgement.

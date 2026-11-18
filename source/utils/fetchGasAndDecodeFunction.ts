@@ -82,6 +82,9 @@ export const fetchGasAndDecodeFunction = async (
   const account =
     vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
   if (!account?.address) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+  const isSmartAccount =
+    account.isSmartAccount ||
+    vault.activeAccount.type === KeyringAccountType.SmartAccount;
   const expectedContext: IEvmTransactionContext = approvedContext || {
     account: {
       address: account.address,
@@ -243,13 +246,15 @@ export const fetchGasAndDecodeFunction = async (
     selectedFees.type === 2 ? selectedFees.maxPriorityFeePerGas : legacyGasPrice
   );
 
-  const nonce =
-    dataTx.nonce !== undefined
-      ? BigNumber.from(dataTx.nonce).toNumber()
-      : ((await controllerEmitter(
-          ['wallet', 'getRecommendedEvmNonce'],
-          [dataTx.from]
-        )) as number);
+  // Smart accounts use the keyed EntryPoint nonce in their operation quote.
+  const nonce = isSmartAccount
+    ? undefined
+    : dataTx.nonce !== undefined
+    ? BigNumber.from(dataTx.nonce).toNumber()
+    : ((await controllerEmitter(
+        ['wallet', 'getRecommendedEvmNonce'],
+        [dataTx.from]
+      )) as number);
   assertCurrentContext();
   // Preserve the transaction type based on what dApp sent
   const formTx: {
@@ -261,7 +266,7 @@ export const fetchGasAndDecodeFunction = async (
     gasPrice?: string;
     maxFeePerGas: BigNumber;
     maxPriorityFeePerGas: BigNumber;
-    nonce: number;
+    nonce?: number;
     to: string;
     type?: ITransactionParams['type'];
     value: any; // BigNumber or compatible type
@@ -276,7 +281,7 @@ export const fetchGasAndDecodeFunction = async (
     value: dataTx?.value
       ? safeBigNumber(dataTx.value, '0x0', 'tx value')
       : BigNumber.from(0),
-    nonce: nonce,
+    ...(nonce === undefined ? {} : { nonce }),
     chainId: expectedContext.chainId,
     gasLimit: BigNumber.from(0), //todo: adjust to get from new keyringmanager
     // Always initialize these fields, will be overwritten below
@@ -304,7 +309,7 @@ export const fetchGasAndDecodeFunction = async (
     to: dataTx.to || null,
     value: formTx.value.toString(),
     data: dataTx.data,
-    nonce: String(nonce),
+    ...(nonce === undefined ? {} : { nonce: String(nonce) }),
   });
   // Check if dataTx.gas or dataTx.gasLimit is provided and is a valid non-zero value
   let providedValue: BigNumber | null = null;
@@ -328,7 +333,10 @@ export const fetchGasAndDecodeFunction = async (
     const isSimpleTransfer =
       !dataTx.data || dataTx.data === '0x' || dataTx.data === '0x0';
 
-    if (!isSimpleTransfer) {
+    // Smart review immediately performs the exact raw estimate below and the
+    // shared AA execution estimate/admission. A preliminary direct call adds
+    // no evidence: its return value is unused and its revert is ignored.
+    if (!isSimpleTransfer && !isSmartAccount) {
       // if it run successfully, the contract data is all right.
       const clonedTx = { ...dataTx };
       delete clonedTx.gasLimit;
@@ -419,10 +427,7 @@ export const fetchGasAndDecodeFunction = async (
     feeDetails.baseFee = toGweiNumber(baseFee!);
   }
 
-  if (
-    account.isSmartAccount ||
-    vault.activeAccount.type === KeyringAccountType.SmartAccount
-  ) {
+  if (isSmartAccount) {
     // The direct call's gas remains a standard dapp field. It is not the
     // EntryPoint account-charge bound: verification/signature calldata and
     // deployment gas must come from the same AA preparer used by submission.

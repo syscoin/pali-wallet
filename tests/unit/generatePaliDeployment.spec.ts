@@ -24,7 +24,9 @@ function run({
   entries,
   guardianPin = pin,
   write = false,
+  encoded = false,
 }: {
+  encoded?: boolean | string;
   entries?: string;
   guardianPin?: string | null;
   write?: boolean;
@@ -34,7 +36,18 @@ function run({
     const PALI_CANONICAL_ENTRYPOINT_ADDRESS = '0x${'22'.repeat(20)}';
     const PALI_INFRASTRUCTURE_VERSION = 'fixture';
     const slhDsaVerifierCodeHash = '${pin}';
-    const bytecodes = {${ids.map((id) => `${id}:\n'0x01'`).join(',')}};
+    const bytecodes = {${ids
+      .map(
+        (id) =>
+          `${id}:\n${
+            encoded
+              ? `decodeBytecode('${
+                  typeof encoded === 'string' ? encoded : 'AQ=='
+                }')`
+              : "'0x01'"
+          }`
+      )
+      .join(',')}};
     const entries = [${
       entries ??
       `
@@ -79,6 +92,7 @@ function run({
       require: (name: string) => {
         if (name === 'node:fs') return fakeFs;
         if (name === 'node:path') return path;
+        if (name === 'node:buffer') return { Buffer };
         if (name === 'node:child_process')
           return {
             execFileSync: (_command: string, args: string[]) => {
@@ -127,6 +141,28 @@ test('write mode preserves the explicitly reviewed runtime pin', () => {
   expect(result.writes).toHaveLength(1);
   expect(result.writes[0]).toContain(`runtimeCodeHash: '${pin}'`);
 });
+
+test('refuses noncanonical compact bytecode before writing', () => {
+  const result = run({ encoded: 'AQ=', write: true });
+  expect(result.error?.message).toMatch(/Invalid deployment bytecode encoding/);
+  expect(result.writes).toEqual([]);
+});
+
+test.each([false, true])(
+  'handles compact bytecode without changing the runtime pin (write=%s)',
+  (write) => {
+    const result = run({ encoded: true, write });
+    expect(result.error).toBeUndefined();
+    expect(result.writes).toHaveLength(write ? 1 : 0);
+    if (write) {
+      expect(result.writes[0]).toContain(`runtimeCodeHash: '${pin}'`);
+      for (const id of ids)
+        expect(result.writes[0]).toMatch(
+          new RegExp(`${id}:\\s*decodeBytecode\\('[A-Za-z0-9+/]+={0,2}'\\)`)
+        );
+    }
+  }
+);
 
 test.each([
   [

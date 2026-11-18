@@ -1,6 +1,7 @@
 import { RpcResponseIntegrityError } from '@sidhujag/sysweb3-keyring/cjs/providers';
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum';
 
+import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
@@ -126,6 +127,7 @@ beforeEach(() => {
   sdk.setGasOverrides({ minGasLimit: '35000' });
   keyring = { ethereumTransaction: sdk, isUnlocked: () => unlocked };
   wallet = Object.create(MainController.prototype);
+  wallet.rpcReadCapabilities = createRpcReadCapabilitiesOwner();
   wallet.getActiveKeyring = () => keyring;
   wallet.getWalletSetupStatus = () => undefined;
   wallet.isUnlocked = () => unlocked;

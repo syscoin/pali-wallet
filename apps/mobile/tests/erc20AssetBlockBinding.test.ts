@@ -56,7 +56,9 @@ function fixture(options: { holdBalance?: boolean } = {}) {
     firstPlanCompleted.resolve();
     return result;
   };
-  const fetcher = async (_url: string, init: RequestInit) => {
+  const fetcher = async (_url: string, init: RequestInit): Promise<Response> => {
+      const payload = JSON.parse(String(init.body));
+      if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async row => (await fetcher(_url, { ...init, body: JSON.stringify(row) })).json())));
       const request = JSON.parse(String(init?.body)) as RpcRequest;
       requests.push(request);
       let result: unknown;
@@ -250,6 +252,6 @@ test('a healthy new block before held dispatch preserves the reviewed transfer',
   await f.rpc.verifyForDispatch(quote.transaction, new AbortController().signal, () => {}, f.automatic, undefined, quote.intent);
   const requests = f.requests.slice(start);
   assert.equal(requests.filter((r) => r.method === 'eth_getBlockByNumber' && r.params[0] === 'latest').length, 1);
-  assert.equal(requests.filter((r) => r.method === 'eth_call' && (r.params[0] as { data: string }).data === '0x313ce567').length, 0);
+  assert.equal(requests.filter((r) => r.method === 'eth_call' && (r.params[0] as { data: string }).data === '0x313ce567').length, 1);
   assert(requests.some((r) => r.method === 'eth_call' && r.params[1] === '0x124'));
 });

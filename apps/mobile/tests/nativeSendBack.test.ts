@@ -16,7 +16,8 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import type { NativeRecipientResolver, NativeRecipientResolution } from '../src/portfolio/nativeRecipientResolver.ts';
-import type { NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
+import { sendDraftForNetwork, type NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import type { NativeOperationCredential } from '../src/custody/types.ts';
 import { formatBaseUnits, parseDecimalAmount } from '../src/core/amounts.ts';
 import { normalizeDecimalInput } from '../../../source/shared/decimalInput.ts';
@@ -27,8 +28,9 @@ type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; sett
 function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void, ledgerConnection?: { subscribe(listener: () => void): () => void; isConnected(): boolean }, localization = nativeTranslationFixture) {
   let initialDraft: NativeSendInitialDraft | undefined, collectible: SavedCollectible | undefined;
   let privacyHidden = false, availableAmount: string | undefined = '2';
-  let tokenConnections = 0;
-  const tokenView = { subscribe: () => () => {}, getSnapshot: () => ({ items: [], collectibles: [] }), connect() { tokenConnections++; return () => {}; } };
+  const tokenConnections: unknown[] = [];
+  let assetChoices: readonly unknown[] | undefined = onChangeAsset ? [] : undefined;
+  const tokenView = { subscribe: () => () => {}, getSnapshot: () => ({ items: [], collectibles: [] }), connect(selection?: unknown) { tokenConnections.push(selection); return () => {}; } };
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -129,9 +131,10 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     async recover() { if (recoveryFailure) throw recoveryFailure; }};
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,replacement,ledgerConnection,beforeClose,tokenView,recipientResolver,account,availableAmount,onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,replacement,ledgerConnection,beforeClose,tokenView,recipientResolver,account,availableAmount,onChangeNetwork,onChangeAsset,assetChoices,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
   return {render, privacy(hidden: boolean) { privacyHidden = hidden; }, available(value: string | undefined) { availableAmount = value; }, selectedFees, replacementRequests, seedReplacement(value: NonNullable<typeof replacement>) { replacement = value; }, renderInput: (props: unknown) => module.exports.NativeSendInput(props) as Element,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
-    tokenConnections: () => tokenConnections,
+    tokenConnections,
+    clearCachedAssets() { assetChoices = undefined; },
     seedDraft(draft: NativeSendInitialDraft, saved?: SavedCollectible) { initialDraft = draft; collectible = saved; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     failRecovery(message: string) { recoveryFailure = new Error(message); },
@@ -323,7 +326,7 @@ test('network Change captures unsigned form text without preparing or authorizin
   editSend(f, 'Amount in ETH', '1.234567890123456789');
   one(f.render(), 'SendNetworkCard').props.onChange();
   assert.equal(captured.length, 1);
-  assert.deepEqual(JSON.parse(JSON.stringify(captured[0])), { kind: 'evm', recipient: '0x2222222222222222222222222222222222222222', amount: '1.234567890123456789', nonce: '', tokenId: '', max: false, advanced: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(captured[0])), { kind: 'evm', recipient: '0x2222222222222222222222222222222222222222', amount: '1.234567890123456789', nonce: '', tokenId: '', max: false, advanced: false, feeChoice: { kind: 'automatic' } });
   assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []); f.dispose();
 });
 
@@ -336,6 +339,30 @@ test('asset selector captures same-network unsigned text without preparing or au
   one(f.render(), 'SendAssetSelector').props.onSelect(asset);
   assert.equal((captured[0] as any[])[0].recipient, '0x2222222222222222222222222222222222222222');
   assert.equal((captured[0] as any[])[1], asset); assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []); f.dispose();
+});
+
+test('ERC20 Send uses its selected contract until the uncached asset picker opens', () => {
+  const token = { contractAddress: '0x' + '55'.repeat(20), decimals: 6, name: 'Token', symbol: 'TOK' };
+  const f = setup(token, undefined, undefined, undefined, undefined, () => undefined);
+  f.snapshot.phase = 'idle';
+  try {
+    const picker = () => one(f.render(), 'SendAssetSelector');
+    picker().props.onOpen();
+    const opened = picker();
+    assert.equal(opened.props.open, true);
+    assert.equal(f.tokenConnections.length, 1);
+    assert.equal((f.tokenConnections[0] as { token: unknown }).token, token);
+    opened.props.onClose();
+    f.clearCachedAssets();
+    picker().props.onOpen();
+    const uncached = picker();
+    assert.equal(f.tokenConnections.length, 2);
+    assert.equal((f.tokenConnections[1] as { token?: unknown }).token, undefined);
+    uncached.props.onClose();
+    picker();
+    assert.equal(f.tokenConnections.length, 3);
+    assert.equal((f.tokenConnections[2] as { token: unknown }).token, token);
+  } finally { f.dispose(); }
 });
 
 test('review has one primary action and Header Back returns to the unchanged draft', async () => {
@@ -827,4 +854,37 @@ for (const operation of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`T
     assert(f.counts().cancels > 0);
     assert.equal(f.signatures(), 0);
   } finally { f.dispose(); }
+});
+
+
+for (const choice of [
+  { kind: 'custom', type: 2, maxFeePerGas: '25000000000', maxPriorityFeePerGas: '1000000000' },
+  { kind: 'high' },
+] as const) test(`NFT picker Cancel/remount preserves ${choice.kind} fees and a real network change resets them`, async () => {
+  let captured: Extract<NativeUnsignedSendDraft, { kind: 'evm' }> | undefined;
+  const collectible: SavedCollectible = { contractAddress: '0x' + '33'.repeat(20), tokenStandard: 'ERC-721' };
+  const initialDraft = { recipient: '0x' + '22'.repeat(20), amount: '1', nonce: '', tokenId: '7', max: false, advanced: false, feeChoice: choice };
+  const f = setup(undefined, undefined, undefined, draft => { captured = draft; });
+  f.seedDraft(initialDraft, collectible); f.snapshot.phase = 'idle';
+  try {
+    assert(button(f.render(), `Network Fee · ${choice.kind === 'custom' ? 'Custom' : 'High'}`));
+    one(f.render(), 'SendNetworkCard').props.onChange();
+    assert(captured); assert(Object.isFrozen(captured)); assert(Object.isFrozen(captured.feeChoice));
+    assert.deepEqual(captured.feeChoice, choice);
+    assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []);
+  } finally { f.dispose(); }
+  const returned = setup();
+  try {
+    returned.seedDraft(captured!, collectible); returned.snapshot.phase = 'idle';
+    assert(button(returned.render(), `Network Fee · ${choice.kind === 'custom' ? 'Custom' : 'High'}`));
+    reviewSend(returned); await settle();
+    assert.deepEqual(returned.selectedFees, [choice]);
+  } finally { returned.dispose(); }
+  const changed = setup();
+  try {
+    const reset = sendDraftForNetwork(captured!, getNativeNetwork('syscoin-nevm'));
+    assert.equal(reset.feeChoice, undefined);
+    changed.seedDraft(reset as NativeSendInitialDraft); changed.snapshot.phase = 'idle';
+    assert(button(changed.render(), 'Network Fee · Automatic'));
+  } finally { changed.dispose(); }
 });

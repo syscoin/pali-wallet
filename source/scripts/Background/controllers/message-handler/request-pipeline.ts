@@ -10,6 +10,7 @@ import {
   supportsDappEncryptionAccount,
 } from '../../../../shared/dappEncryptionRequest';
 import { projectDappPermissions } from '../../../../shared/dappPermissions.ts';
+import { projectWalletAccount } from '../../../../shared/dappWalletReads';
 import { DAPP_REQUEST_LIMITS } from '../../../../utils/requestPayloadBudget';
 import {
   getMessageSignGrantReplacement,
@@ -1219,7 +1220,7 @@ export const popupOptimizationMiddleware: Middleware = async (
             return [account.address];
           }
           // For ENABLE, return the connected account
-          return account;
+          return projectWalletAccount(account);
         }
       }
       break;
@@ -1346,7 +1347,7 @@ export const popupOptimizationMiddleware: Middleware = async (
           // Already using this account, no need to change
           // Return the expected format for changeAccount
           const account = dapp.getAccount(host);
-          return account;
+          return projectWalletAccount(account);
         }
       }
       break;

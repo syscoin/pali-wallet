@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -25,7 +25,6 @@ import {
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
-import { keccak256, toUtf8Bytes } from 'utils/ethersV6Compat';
 import {
   formatDisplayValue,
   formatSyscoinValue,
@@ -56,6 +55,16 @@ import {
 } from './utxoTransactionDetails';
 
 const SERVER_PAGE_SIZE = 30;
+const RECONCILE_TIMEOUT_MS = 10_000;
+const mergeHistoryRows = (...lists: ITransactionInfoUtxo[][]) => {
+  const seen = new Set<string>();
+  return lists.flat().filter((transaction) => {
+    const key = transaction?.txid?.toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 const UtxoTransactionsListComponentBase = ({
   tx,
@@ -416,13 +425,9 @@ export const UtxoTransactionsList = ({
     activeNetwork,
     true
   );
-  const paginationContext = keccak256(
-    toUtf8Bytes(
-      JSON.stringify([
-        confirmationContext,
-        userTransactions.map((transaction) => transaction.txid),
-      ])
-    )
+  const paginationContext = confirmationContext;
+  const headKey = JSON.stringify(
+    userTransactions.map((transaction) => transaction.txid)
   );
   const beginPageRequest = useRequestScope(paginationContext);
 
@@ -456,23 +461,10 @@ export const UtxoTransactionsList = ({
     userTransactions.length >= SERVER_PAGE_SIZE,
     networkUrl ? fetchHistoryPage : undefined
   );
-  const combined = useMemo(() => {
-    if (!extraTransactions.length) return userTransactions;
-    const seen = new Set<string>();
-    const result: ITransactionInfoUtxo[] = [];
-    for (const tx of userTransactions) {
-      const key = tx.txid;
-      if (key) seen.add(key);
-      result.push(tx);
-    }
-    for (const tx of extraTransactions) {
-      const key = tx.txid;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      result.push(tx);
-    }
-    return result;
-  }, [userTransactions, extraTransactions]);
+  const combined = useMemo(
+    () => mergeHistoryRows(userTransactions, extraTransactions),
+    [userTransactions, extraTransactions]
+  );
 
   const { filteredTransactions } = useTransactionsListConfig(combined);
 
@@ -487,6 +479,146 @@ export const UtxoTransactionsList = ({
     paginationContext,
     false
   );
+  const [reconciliation, setReconciliation] = useContextualState<{
+    head: string;
+    minimumRows: number;
+  } | null>(paginationContext, null);
+  const [isReconciling, setIsReconciling] = useContextualState(
+    paginationContext,
+    false
+  );
+  const previousHead = useRef({
+    context: paginationContext,
+    rows: userTransactions,
+    key: headKey,
+  });
+  const latest = useRef({
+    context: paginationContext,
+    head: headKey,
+    rows: userTransactions,
+    extra: extraTransactions,
+  });
+  latest.current = {
+    context: paginationContext,
+    head: headKey,
+    rows: userTransactions,
+    extra: extraTransactions,
+  };
+
+  useEffect(() => {
+    const previous = previousHead.current;
+    previousHead.current = {
+      context: paginationContext,
+      rows: userTransactions,
+      key: headKey,
+    };
+    if (previous.context !== paginationContext || previous.key === headKey)
+      return;
+    const oldRows = mergeHistoryRows(previous.rows, extraTransactions);
+    const oldIds = new Set(oldRows.map((row) => row.txid));
+    const headIds = new Set(userTransactions.map((row) => row.txid));
+    // A new live prefix pushes the old page's tail outside the poll's window.
+    // Keep that tail until offset pages can be reconciled; removed head rows do
+    // not survive merely because they used to belong to page one.
+    const lastHeadId = userTransactions[userTransactions.length - 1]?.txid;
+    const boundary = previous.rows.findIndex((row) => row.txid === lastHeadId);
+    const displaced =
+      boundary >= 0
+        ? previous.rows.slice(boundary + 1)
+        : userTransactions.length
+        ? previous.rows
+        : [];
+    setExtraTransactions((rows) =>
+      mergeHistoryRows(displaced, rows).filter((row) => !headIds.has(row.txid))
+    );
+    const incoming = userTransactions.filter(
+      (row) => !oldIds.has(row.txid)
+    ).length;
+    setVisibleCount((count) => Math.min(count, oldRows.length) + incoming);
+    if (userTransactions.length >= SERVER_PAGE_SIZE) setHasMoreServer(true);
+    if (
+      extraTransactions.length ||
+      nextPage > 2 ||
+      isLoadingMore ||
+      isRestoringPages ||
+      (boundary < 0 && displaced.length > 0)
+    ) {
+      setReconciliation((pending) => ({
+        head: headKey,
+        minimumRows: Math.max(pending?.minimumRows ?? 0, oldRows.length),
+      }));
+    }
+  }, [paginationContext, headKey]);
+
+  useEffect(() => {
+    if (!reconciliation || isLoadingMore || isRestoringPages || !networkUrl)
+      return;
+    const snapshot = latest.current;
+    const isCurrentRequest = beginPageRequest();
+    let active = true;
+    const current = () =>
+      active &&
+      isCurrentRequest() &&
+      latest.current.context === paginationContext &&
+      latest.current.head === reconciliation.head;
+    const targetRows = Math.max(
+      reconciliation.minimumRows,
+      mergeHistoryRows(snapshot.rows, snapshot.extra).length
+    );
+    // Offset reconciliation is bounded by the depth already retained. If its
+    // oldest row vanished in a reorg, use this fresh prefix instead of chasing it.
+    const lastPage = Math.max(1, Math.ceil(targetRows / SERVER_PAGE_SIZE));
+    setIsReconciling(true);
+    const timeout = setTimeout(() => {
+      if (!current()) return;
+      active = false;
+      setIsReconciling(false);
+      alert.error(t('settings.apiTimeout'));
+    }, RECONCILE_TIMEOUT_MS);
+    void (async () => {
+      try {
+        const rows: ITransactionInfoUtxo[] = [];
+        let page = 1;
+        let hasMore = snapshot.rows.length >= SERVER_PAGE_SIZE;
+        while (
+          hasMore &&
+          (page < lastPage ||
+            (page === lastPage &&
+              mergeHistoryRows(snapshot.rows, rows).length < targetRows))
+        ) {
+          const result = await fetchHistoryPage(page + 1);
+          if (!current()) return;
+          rows.push(...result.rows);
+          page += 1;
+          hasMore = result.hasMore;
+        }
+        if (!current()) return;
+        const refreshed = mergeHistoryRows(snapshot.rows, rows);
+        // A moving offset may need one overlap page. A full response that still
+        // cannot cover the retained depth is not proof those older rows vanished.
+        if (hasMore && refreshed.length < targetRows) return;
+        const retained = refreshed.slice(0, targetRows);
+        const clipped = retained.length < refreshed.length;
+        const headIds = new Set(snapshot.rows.map((row) => row.txid));
+        setExtraTransactions(retained.filter((row) => !headIds.has(row.txid)));
+        // A partially retained final offset page must be reread on Load More.
+        // Keeping its whole tail would deepen browsing automatically on every poll.
+        setNextPage(clipped ? page : page + 1);
+        setHasMoreServer(hasMore || clipped);
+        setReconciliation(null);
+      } catch (error: any) {
+        if (current()) alert.error(String(error?.message || error));
+      } finally {
+        clearTimeout(timeout);
+        if (current()) setIsReconciling(false);
+      }
+    })();
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      setIsReconciling(false);
+    };
+  }, [paginationContext, reconciliation, isLoadingMore, isRestoringPages]);
 
   return (
     <>
@@ -494,12 +626,16 @@ export const UtxoTransactionsList = ({
         <UtxoTransactionsListComponent key={tx.txid} tx={tx} />
       ))}
       {networkUrl
-        ? (hasMoreServer || array.length > visibleCount) && (
+        ? (reconciliation || hasMoreServer || array.length > visibleCount) && (
             <div className="flex justify-center py-3">
               <button
                 type="button"
-                disabled={isLoadingMore || isRestoringPages}
+                disabled={isLoadingMore || isRestoringPages || isReconciling}
                 onClick={async () => {
+                  if (reconciliation) {
+                    setReconciliation({ ...reconciliation });
+                    return;
+                  }
                   if (array.length > visibleCount) {
                     setVisibleCount((count) => count + 50);
                     return;
@@ -519,7 +655,7 @@ export const UtxoTransactionsList = ({
                     if (!isCurrentRequest()) return;
                     const newTxs = Array.isArray(res) ? res : [];
                     const knownTxids = new Set(
-                      [...userTransactions, ...extraTransactions]
+                      [...latest.current.rows, ...latest.current.extra]
                         .map((tx) => tx.txid)
                         .filter(Boolean)
                     );
@@ -528,10 +664,9 @@ export const UtxoTransactionsList = ({
                     );
 
                     if (uniqueNewTxs.length > 0) {
-                      setExtraTransactions((prev) => [
-                        ...prev,
-                        ...uniqueNewTxs,
-                      ]);
+                      setExtraTransactions((prev) =>
+                        mergeHistoryRows(prev, uniqueNewTxs)
+                      );
                       setVisibleCount((count) => count + uniqueNewTxs.length);
                     }
                     setNextPage((p) => p + 1);
@@ -546,7 +681,7 @@ export const UtxoTransactionsList = ({
                 }}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
               >
-                {isLoadingMore || isRestoringPages
+                {isLoadingMore || isRestoringPages || isReconciling
                   ? t('buttons.loading')
                   : t('buttons.loadMore')}
               </button>

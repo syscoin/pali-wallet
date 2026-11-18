@@ -30,6 +30,22 @@ let mockStore: any;
 let mockController: any;
 let mockMaster: any;
 const mockTransport = jest.fn();
+let mockIndependentHistoryReads = false;
+jest.mock(
+  'scripts/Background/controllers/utils/fetchBackendAccountWrapper',
+  () => {
+    const actual = jest.requireActual(
+      'scripts/Background/controllers/utils/fetchBackendAccountWrapper'
+    );
+    return {
+      ...actual,
+      fetchBackendAccountCached: (...args: any[]) =>
+        mockIndependentHistoryReads
+          ? mockTransport(...args)
+          : actual.fetchBackendAccountCached(...args),
+    };
+  }
+);
 const mockEvmPolling = jest.fn();
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -149,6 +165,7 @@ const originalChrome = global.chrome;
 beforeEach(() => {
   jest.clearAllMocks();
   mockTransport.mockReset();
+  mockIndependentHistoryReads = false;
   mockEvmPolling.mockReset();
   jest.spyOn(Date, 'now').mockReturnValue(1000);
   clearFetchBackendAccountCache();
@@ -367,7 +384,7 @@ it('retries only history from the ordinary error button and coalesces held reque
   await expect(fetchInitial()).rejects.toThrow('Synthetic history failure');
   const held = heldRead();
   mockTransport.mockReturnValue(held.promise);
-  // A separate user action occurs after the existing transport dedup window.
+  clearFetchBackendAccountCache();
   jest.mocked(Date.now).mockReturnValue(7000);
   renderPanel();
   let retry!: Promise<void>;
@@ -405,6 +422,7 @@ it('keeps a validated empty view during a routine held poll but exposes its fail
   renderPanel();
   const held = heldRead();
   mockTransport.mockReturnValue(held.promise);
+  clearFetchBackendAccountCache();
   jest.mocked(Date.now).mockReturnValue(7000);
   let polling!: Promise<void>;
   await act(async () => {
@@ -420,6 +438,7 @@ it('keeps a validated empty view during a routine held poll but exposes its fail
     await polling;
   });
   mockTransport.mockRejectedValue(new Error('Synthetic later failure'));
+  clearFetchBackendAccountCache();
   jest.mocked(Date.now).mockReturnValue(13000);
   await act(async () => {
     await expect(fetchInitial()).rejects.toThrow('Synthetic later failure');
@@ -440,6 +459,7 @@ it('preserves and renders cached rows when refreshing history fails', async () =
 });
 
 it('does not let an older successful read hide a newer failed read', async () => {
+  mockIndependentHistoryReads = true;
   emptyInitialHistory();
   const held = heldRead();
   mockTransport.mockReturnValueOnce(held.promise);
@@ -464,6 +484,8 @@ it.each([
   'session',
   'generation',
 ])('cannot publish old history/status after a changed %s', async (change) => {
+  // These cases isolate publication after independently admitted old/current reads.
+  mockIndependentHistoryReads = true;
   emptyInitialHistory();
   const held = heldRead();
   mockTransport.mockReturnValueOnce(held.promise);

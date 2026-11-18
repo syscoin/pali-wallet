@@ -1,5 +1,8 @@
 import { Contract } from 'ethers/contract';
+import { JsonRpcApiProvider } from 'ethers/providers';
 import { hexlify, isCallException, isHexString, makeError } from 'ethers/utils';
+
+import { assertJsonWorkBudget } from '../utils/requestPayloadBudget.ts';
 
 type ContractRunner = NonNullable<Contract['runner']>;
 export type NftReadRunner = Required<Pick<ContractRunner, 'call'>> &
@@ -38,14 +41,53 @@ function captureNftExecutionRevert(
       (!normalized && !/^execution reverted(?:$|:)/i.test(message))
     )
       return undefined;
-    const data = ownValue(error, 'data');
+    let data = ownValue(error, 'data');
     const { to, data: calldata } = tx;
     if (
-      !isBoundedRevertData(data) ||
+      data === undefined ||
       typeof to !== 'string' ||
       typeof calldata !== 'string'
     )
       return undefined;
+    if (!normalized) {
+      const raw = { code, message, data };
+      assertJsonWorkBudget(raw, 16 * 1024, 16, 256);
+      const parsed = JsonRpcApiProvider.prototype.getRpcError(
+        {
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'eth_call',
+          params: [{ to, data: calldata }],
+        },
+        {
+          id: 1,
+          error: raw as { code: number; data: unknown; message: string },
+        }
+      );
+      if (!isCallException(parsed)) return undefined;
+      data = parsed.data;
+    }
+    if (!isBoundedRevertData(data)) return undefined;
+    if (normalized) {
+      // Ethers can label an incompatible RPC error CALL_EXCEPTION based only
+      // on its wording. When it retains the original error, admit that evidence
+      // through the same raw-code/data checks instead of trusting the label.
+      const info = Object.getOwnPropertyDescriptor(error, 'info');
+      if (info) {
+        if (
+          !Object.prototype.hasOwnProperty.call(info, 'value') ||
+          info.value === null ||
+          typeof info.value !== 'object'
+        )
+          return undefined;
+        const original = captureNftExecutionRevert(
+          ownValue(info.value, 'error'),
+          tx,
+          false
+        );
+        if (!original || ownValue(original, 'data') !== data) return undefined;
+      }
+    }
     return makeError('execution reverted', 'CALL_EXCEPTION', {
       action: 'call',
       data,
@@ -315,6 +357,7 @@ export async function discoverNftTokens(
 ): Promise<{
   hasMore?: boolean;
   method: 'enumeration' | 'manual' | 'api';
+  partial?: boolean;
   requiresManualEntry: boolean;
   tokens?: INftTokenInfo[];
   totalOwned?: string;
@@ -355,26 +398,25 @@ export async function discoverNftTokens(
           promises.push(contract.tokenOfOwnerByIndex!(ownerAddress, i));
         }
 
-        const tokenIds = await Promise.all(promises);
-        tokenIds.forEach((tokenId) => {
-          tokens.push({
-            tokenId: tokenId.toString(),
-            balance: 1, // ERC-721 tokens always have balance of 1
-            verified: true,
-          });
-        });
+        const seen = new Set<string>();
+        for (const result of await Promise.allSettled(promises)) {
+          if (result.status !== 'fulfilled') continue;
+          const tokenId = result.value.toString();
+          if (seen.has(tokenId)) continue;
+          seen.add(tokenId);
+          tokens.push({ tokenId, balance: 1, verified: true });
+        }
 
-        console.log(
-          `[NFT Utils] Enumerated ${tokens.length} of ${tokenCount} ERC-721 tokens`
-        );
-
-        return {
-          method: 'enumeration',
-          tokens,
-          requiresManualEntry: true, // Always allow manual entry
-          hasMore: tokenCount > limit,
-          totalOwned,
-        };
+        if (tokens.length) {
+          return {
+            method: 'enumeration',
+            tokens,
+            requiresManualEntry: true,
+            hasMore: tokenCount > limit,
+            ...(tokens.length !== limit ? { partial: true } : {}),
+            totalOwned,
+          };
+        }
       }
     } catch {
       console.error('[NFT Utils] ERC-721 enumeration failed');

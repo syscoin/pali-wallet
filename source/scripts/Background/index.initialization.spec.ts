@@ -33,6 +33,7 @@ describe('background initialization ownership', () => {
   let subscribers: Set<() => void>;
   let messageListeners: Set<MessageListener>;
   let privacyRegistrations: string[];
+  let smartRegistrations: string[];
   let startPrivacyOperation: jest.Mock;
 
   beforeEach(() => {
@@ -87,8 +88,19 @@ describe('background initialization ownership', () => {
     };
     messageListeners = new Set();
     privacyRegistrations = [];
+    smartRegistrations = [];
     startPrivacyOperation = jest.fn();
     // These factories model evaluation/registration, not operation startup.
+    jest.doMock('../../utils/smartAccount/authorizationStatus', () => {
+      smartRegistrations.push('status');
+      return { observeSmartAccountAuthorization: startPrivacyOperation };
+    });
+    jest.doMock('../../wallet/smartAccountAuthorizationRetirement', () => {
+      smartRegistrations.push('retirement');
+      return {
+        prepareSmartAccountAuthorizationRetirement: startPrivacyOperation,
+      };
+    });
     jest.doMock('./controllers/noteBackup', () => {
       privacyRegistrations.push('note-backup');
       return { createExtensionNoteBackupController: startPrivacyOperation };
@@ -225,6 +237,14 @@ describe('background initialization ownership', () => {
     ]);
     expect(startPrivacyOperation).not.toHaveBeenCalled();
     expect(initializeController).toHaveBeenCalledTimes(1);
+    expectStatus(0);
+  });
+
+  it('registers Smart observation and retirement before wallet setup without invoking them', async () => {
+    initializeController.mockReturnValue(deferred<any>().promise);
+    await loadBackground();
+    expect(smartRegistrations).toEqual(['status', 'retirement']);
+    expect(startPrivacyOperation).not.toHaveBeenCalled();
     expectStatus(0);
   });
 

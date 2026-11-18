@@ -4,7 +4,7 @@ const { Buffer } = require('node:buffer');
 const { randomBytes, X509Certificate } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const {
-  PUBLIC_POOL_ADDRESS, PUBLIC_POOL_ANCHOR_READS, PUBLIC_POOL_BATCHES, PUBLIC_POOL_BLOCK, PUBLIC_POOL_BLOCK_HASH,
+  PUBLIC_POOL_ADDRESS, PUBLIC_POOL_BATCHES, PUBLIC_POOL_BLOCK, PUBLIC_POOL_BLOCK_HASH,
   PUBLIC_POOL_LEAVES, PUBLIC_POOL_PATH, PUBLIC_POOL_PATH_DIGESTS, PUBLIC_POOL_ROOT, publicPoolAnchorPath,
 } = require('./public-pool-contract.ts');
 
@@ -16,6 +16,8 @@ const forbiddenHeaders = ['cookie', 'authorization', 'referer', 'proxy-authoriza
 const readCalls = [
   ['eth_chainId', []], ['eth_getBlockByNumber', [tag, false]], call('0xfc7e9c6f'), call('0xba70f757'),
   call('0x4ecf518b'), call('0x8bca6d16'), ['eth_getBlockByNumber', [tag, false]],
+  call('0x6d9833e3' + PUBLIC_POOL_ROOT.slice(2), 'latest'),
+  ['eth_chainId', []], ['eth_getBlockByNumber', [tag, false]], ['eth_getBlockByNumber', [tag, false]],
   call('0x6d9833e3' + PUBLIC_POOL_ROOT.slice(2), 'latest'),
 ];
 
@@ -38,7 +40,7 @@ async function createPublicPoolFixture({ key, cert }) {
   if (new X509Certificate(cert).checkIP(local) !== local) throw Error('PUBLIC_POOL_FIXTURE_TLS_SAN');
   const token = randomBytes(16).toString('hex');
   const block = { number: tag, hash: PUBLIC_POOL_BLOCK_HASH, timestamp: '0x' + Math.floor(Date.now() / 1000).toString(16) };
-  const results = ['0x1', block, word(PUBLIC_POOL_LEAVES), PUBLIC_POOL_ROOT, word(20), word(10n ** 18n), block, word(1)];
+  const results = ['0x1', block, word(PUBLIC_POOL_LEAVES), PUBLIC_POOL_ROOT, word(20), word(10n ** 18n), block, word(1), '0x1', block, block, word(1)];
   const snapshotBody = JSON.stringify({ version: 1, chainId: 1, poolAddress: PUBLIC_POOL_ADDRESS, asOfBlockNumber: PUBLIC_POOL_BLOCK,
     asOfBlockHash: PUBLIC_POOL_BLOCK_HASH, leafCount: PUBLIC_POOL_LEAVES, root: PUBLIC_POOL_ROOT,
     leaves: Array.from({ length: PUBLIC_POOL_LEAVES }, (_, index) => word(index + 1)), withdrawnNullifiers: [] });
@@ -67,7 +69,7 @@ async function createPublicPoolFixture({ key, cert }) {
     const offset = requestIds.length;
     if (!localRequest(request, anchorPort) || request.method !== 'POST' || request.url !== publicPoolAnchorPath(token) ||
         request.headers['content-type'] !== 'application/json' || typeof size !== 'string' || !/^[1-9][0-9]{0,2}$/.test(size) ||
-        gets !== 1 || pending || offset >= PUBLIC_POOL_ANCHOR_READS.length * 2) { failed(response); return; }
+        gets !== 1 || pending || offset >= readCalls.length) { failed(response); return; }
     pending = true;
     let body = '';
     let count = 0;
@@ -79,14 +81,14 @@ async function createPublicPoolFixture({ key, cert }) {
     });
     request.on('close', () => { pending = false; if (!request.complete) invalid++; });
     request.on('end', () => {
-      const [method, params] = readCalls[offset % readCalls.length];
+      const [method, params] = readCalls[offset];
       let input;
       try { input = JSON.parse(body); } catch { failed(response); return; }
       if (!input || count !== Number(size) || Object.keys(input).sort().join(',') !== 'id,jsonrpc,method,params' ||
           input.jsonrpc !== '2.0' || !Number.isSafeInteger(input.id) || input.id <= 0 || requestIds.includes(input.id) ||
           input.method !== method || !isDeepStrictEqual(input.params, params)) { failed(response); return; }
       requestIds.push(input.id);
-      reply(response, JSON.stringify({ jsonrpc: '2.0', id: input.id, result: results[offset % results.length] }));
+      reply(response, JSON.stringify({ jsonrpc: '2.0', id: input.id, result: results[offset] }));
     });
   });
   for (const server of [indexer, anchor]) {
@@ -101,7 +103,7 @@ async function createPublicPoolFixture({ key, cert }) {
   return {
     launch: Object.freeze({ snapshotPort, anchorPort, token }),
     assertComplete(value) {
-      if (pending || invalid !== 0 || gets !== 1 || requestIds.length !== 16 || !value ||
+      if (pending || invalid !== 0 || gets !== 1 || requestIds.length !== readCalls.length || !value ||
           !isDeepStrictEqual(value, { root: PUBLIC_POOL_ROOT, block: PUBLIC_POOL_BLOCK, leaves: PUBLIC_POOL_LEAVES,
             batches: PUBLIC_POOL_BATCHES, pathDigests: PUBLIC_POOL_PATH_DIGESTS, requestIds, gets, anchorPasses: 2 }))
         throw Error('PUBLIC_POOL_FIXTURE_AUDIT_FAILED');

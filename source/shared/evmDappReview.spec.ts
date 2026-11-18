@@ -1,5 +1,6 @@
 import {
   prepareEvmDappQuote,
+  prepareEvmDappDisplayQuote,
   type EvmDappBlock,
   type EvmGasPolicy,
   type EvmDappTransactionRequest,
@@ -131,6 +132,69 @@ function fixture(legacy = false) {
 }
 
 describe('shared generic per-call fee review', () => {
+  test('display quotes retain exact fees and coverage without claiming admission', async () => {
+    const f = fixture();
+    const balance = jest.fn(async () => {
+      throw new Error('admission only');
+    });
+    const verifyChain = jest.fn(async () => {
+      throw new Error('admission only');
+    });
+    const verifyBlock = jest.fn(async () => {
+      throw new Error('admission only');
+    });
+    const coverage = jest.fn(async (approval) =>
+      BigInt(approval.maximumFeeUnits)
+    );
+    const quote = await prepareEvmDappDisplayQuote(
+      {
+        from,
+        to,
+        value: '0',
+        data: '0x1234',
+        maxFeePerGas: '3',
+        maxPriorityFeePerGas: '1',
+      },
+      {
+        ...f.ports,
+        feePolicy: 'fixed',
+        balance,
+        verifyChain,
+        verifyBlock,
+        funding: createOwnedEvmFeeFunding(coverage),
+      }
+    );
+    expect(quote.transaction).toMatchObject({
+      nonce: '4',
+      gasLimit: '25200',
+      maxFeePerGas: '3',
+    });
+    expect(quote).not.toHaveProperty('balanceUnits');
+    expect(quote.coveredFeeUnits).toBe(quote.maximumFeeUnits);
+    expect(coverage).toHaveBeenCalledTimes(1);
+    expect(balance).not.toHaveBeenCalled();
+    expect(verifyChain).not.toHaveBeenCalled();
+    expect(verifyBlock).not.toHaveBeenCalled();
+    expect(f.requests.map(({ method }) => method)).toEqual([
+      'eth_getBlockByNumber',
+      'eth_estimateGas',
+    ]);
+    f.switchChain();
+    await expect(
+      prepareEvmDappQuote(
+        {
+          from,
+          to,
+          value: '0',
+          data: '0x1234',
+          maxFeePerGas: '3',
+          maxPriorityFeePerGas: '1',
+        },
+        f.ports,
+        quote
+      )
+    ).rejects.toThrow('wrong chain');
+  });
   test.each([false, true])(
     'quotes and refreshes the same fee-sensitive execution, legacy=%s',
     async (legacy) => {
@@ -647,8 +711,12 @@ describe('native fee affordability before estimation', () => {
   test('verified fee credit still supports an empty native balance and performs estimation', async () => {
     const f = fixture();
     f.ports.balance = async () => BigInt(0);
-    const verify = jest.fn(async (approval) =>
-      BigInt(approval.maximumFeeUnits)
+    const verify = jest.fn(
+      async (approval, guard: () => void, executionGas?: bigint) => {
+        guard();
+        expect(executionGas).toBe(BigInt(21000));
+        return BigInt(approval.maximumFeeUnits);
+      }
     );
     f.ports.funding = createOwnedEvmFeeFunding(verify);
     const quote = await prepareEvmDappQuote(
@@ -656,6 +724,7 @@ describe('native fee affordability before estimation', () => {
       f.ports
     );
     expect(verify).toHaveBeenCalledTimes(1);
+    expect(verify.mock.calls[0][2]).toBe(BigInt(21000));
     expect(quote.coveredFeeUnits).toBe(quote.maximumFeeUnits);
     expect(
       f.requests.filter(({ method }) => method === 'eth_estimateGas')

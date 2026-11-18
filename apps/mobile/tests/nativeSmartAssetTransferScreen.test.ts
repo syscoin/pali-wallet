@@ -9,7 +9,7 @@ import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { getNativeNetwork, getNativeSendContext } from '../src/custody/networkContext.ts';
 import type { NativeSmartAccountOperationSnapshot } from '../src/smartAccount/operation.ts';
-import { nativeTranslationFixture } from './localizationFixture.ts';
+import { nativeTranslationFixture, englishI18n } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 
 const contract = '0x1111111111111111111111111111111111111111';
@@ -39,6 +39,27 @@ function fixture() {
   }));
   return { state, render, calls, close: screen.close };
 }
+
+test('Smart instruction cancellation reviews a no-op reference and both fees without claiming cancellation from outer completion', () => {
+  const f = fixture(), reference = '0x' + '77'.repeat(32);
+  try {
+    const snapshot = f.state({ kind: 'cancel-operation', reference: { originalHash: reference } });
+    const initial = f.render(snapshot), copy = text(initial);
+    assert(copy.includes(reference));
+    assert(initial.some(node => node.type === 'Notice' && node.props.body === englishI18n.t('transactions.smartAccountCancelDescription')));
+    assert(!copy.includes(englishI18n.t('mobile.recoveryStatusViews.operation.smartAccountDeployed')));
+    assert.deepEqual(f.calls, []);
+    initial.find(node => node.type === 'Button' && node.props.title === englishI18n.t('transactions.smartAuthorizations.cancelInstruction'))!.props.onPress();
+    const payer = f.render({ ...snapshot, phase: 'review-fee', payerReview: { id: 8, purpose: 'submit-operation',
+      transaction: { from: owner, value: '0' } as never, maximumFeeUnits: '1000000000000000000', coveredFeeUnits: '0', maximumTotalUnits: '1000000000000000000' } });
+    assert(text(payer).includes(owner)); assert(payer.some(node => node.type === 'Notice' && node.props.body === englishI18n.t('transactions.smartAccountAuthorizationRetained')));
+    payer.find(node => node.type === 'Button' && node.props.title === englishI18n.t('mobile.recoveryStatusViews.operation.confirmTransaction'))!.props.onPress();
+    assert.deepEqual(f.calls, [['authorize', false], ['payer', 8]]);
+    const complete = f.render({ ...snapshot, phase: 'complete', transactionHash: '0x' + '88'.repeat(32) });
+    assert(complete.some(node => node.type === 'Notice' && node.props.title === englishI18n.t('privacy.deposit.submitted')));
+    assert(!complete.some(node => node.type === 'Notice' && node.props.title === englishI18n.t('mobile.recoveryStatusViews.operation.smartAccountDeployed')));
+  } finally { f.close(); }
+});
 const text = (nodes: ReturnType<ReturnType<typeof fixture>['render']>) => nodes.flatMap(node => node.children.filter(value => typeof value === 'string')).join(' ');
 
 test('unsigned Smart collectible shortfall shows localized amount feedback instead of transfer status', () => {

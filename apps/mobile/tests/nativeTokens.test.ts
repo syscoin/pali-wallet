@@ -1,3 +1,4 @@
+import { PALI_INFRASTRUCTURE_BY_ID } from '../../../source/utils/smartAccount/deployment.ts';
 import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,10 +33,110 @@ const tick = async () => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 };
 
+test('opening a saved token Send reads only its balance and precision', async () => {
+  const items = Array.from({ length: 20 }, (_, index) => ({
+    ...metadata,
+    contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+  }));
+  const token = items[0]!;
+  const requests: { method: string; params: any[] }[] = [];
+  let posts = 0;
+  const reader = createErc20Reader({ fetch: async (_url, init) => {
+    posts++;
+    const payload = JSON.parse(String(init.body));
+    const rows = Array.isArray(payload) ? payload : [payload];
+    const responses = rows.map(request => {
+      requests.push(request);
+      const result = request.method === 'eth_chainId' ? '0x1'
+        : request.method === 'eth_getBlockByNumber' ? { number: '0x1', hash: `0x${'11'.repeat(32)}` }
+        : request.method === 'eth_getCode' ? '0x'
+        : `0x${BigInt(request.params[0].data === '0x313ce567' ? 255 : 5).toString(16).padStart(64, '0')}`;
+      return { jsonrpc: '2.0', id: request.id, result };
+    });
+    return Response.json(Array.isArray(payload) ? responses : responses[0]);
+  } });
+  const f = fixture({ items, reader });
+  const network = getNativeNetwork('ethereum');
+  const close = f.model.connect({ account: { address: A, network: 'ethereum', revision: 1 }, token, registrationHash: network.registrationHash });
+  try {
+    for (let i = 0; i < 100 && f.model.getSnapshot().items[0]?.status !== 'available'; i++)
+      await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual({ methods: requests.length, posts }, { methods: 6, posts: 3 });
+    assert.deepEqual(requests.filter(row => row.method === 'eth_call').map(row => row.params[0].to), [token.contractAddress, token.contractAddress]);
+    assert.equal(f.model.getSnapshot().items[0]?.units, '5');
+    assert.equal(f.model.getSnapshot().selectedContract, token.contractAddress);
+  } finally { close(); }
+});
+
+test('switching selected Send to the full picker and back retires the prior reads', async () => {
+  const calls: { contract: string; signal: AbortSignal }[] = [];
+  const held = deferred<{ units: string }>();
+  const second = { ...metadata, contractAddress: B };
+  const f = fixture({ items: [metadata, second], reader: {
+    async readToken() { assert.fail('Send should never fetch token metadata'); },
+    async readBalance(_network, _address, token, signal) {
+      calls.push({ contract: token.contractAddress, signal });
+      return calls.length === 1 ? held.promise : { units: '5' };
+    },
+  } });
+  const selection = { account: { address: A, network: 'ethereum' as const, revision: 1 },
+    token: metadata, registrationHash: getNativeNetwork('ethereum').registrationHash };
+  const closeSelected = f.model.connect(selection);
+  await tick();
+  const closePicker = f.model.connect({ account: selection.account, registrationHash: selection.registrationHash });
+  try {
+    closeSelected();
+    assert.equal(calls[0]?.signal.aborted, true);
+    held.resolve({ units: '999' });
+    await tick();
+    assert.deepEqual(calls.map(call => call.contract), [metadata.contractAddress, metadata.contractAddress, B]);
+    assert.deepEqual(f.model.getSnapshot().items.map(item => item.units), ['5', '5']);
+    assert.equal(f.model.getSnapshot().selectedContract, undefined);
+    const closeNext = f.model.connect(selection);
+    try {
+      closePicker();
+      await tick();
+      assert.deepEqual(calls.map(call => call.contract), [metadata.contractAddress, metadata.contractAddress, B, metadata.contractAddress]);
+      assert.deepEqual(f.model.getSnapshot().items.map(item => item.units), ['5']);
+    } finally { closeNext(); }
+  } finally { closePicker(); }
+});
+
+test('selected Send rejects an obsolete registration and retires on account revision change', async () => {
+  const entered = deferred<AbortSignal>();
+  const held = deferred<{ units: string }>();
+  let reads = 0;
+  const f = fixture({ items: [metadata], reader: {
+    async readToken() { assert.fail('Send should never fetch token metadata'); },
+    async readBalance(_network, _address, _token, signal) {
+      reads++;
+      entered.resolve(signal);
+      return held.promise;
+    },
+  } });
+  const selection = { account: { address: A, network: 'ethereum' as const, revision: 1 },
+    token: metadata, registrationHash: getNativeNetwork('ethereum').registrationHash };
+  const obsolete = f.model.connect({ ...selection, registrationHash: 'retired-registration' });
+  assert.equal(reads, 0);
+  obsolete();
+  const close = f.model.connect(selection);
+  try {
+    const signal = await entered.promise;
+    f.change(A);
+    assert.equal(signal.aborted, true);
+    held.resolve({ units: '99' });
+    await tick();
+    assert.equal(reads, 1);
+    assert.equal(f.model.getSnapshot().status, 'unavailable');
+    assert.equal(f.model.getSnapshot().items.length, 0);
+  } finally { close(); }
+});
+
 for (const multicall of [false, true]) test(`the token screen batches twenty balances on connect and manual refresh (Multicall ${multicall})`, async () => {
-  const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');
-  const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
+
+  const creation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+    2 + 0x20 * 2
+  )}`;
   const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
   const abi = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
   const items = Array.from({ length: 20 }, (_, index) => ({ ...metadata,
@@ -195,6 +296,7 @@ function fixture(
   };
   return {
     model,
+    runtime,
     source,
     change,
     mutations,
@@ -341,8 +443,9 @@ test('manual collectible checks use the selected registered RPC without an explo
       assert.equal(url, selected.rpcUrl);
       assert.equal(init.credentials, 'omit');
       assert.equal(init.redirect, 'error');
-      const { id, method, params } = JSON.parse(String(init.body));
-      const respond = (result: unknown) => Response.json({ jsonrpc: '2.0', id, result });
+      const payload = JSON.parse(String(init.body));
+      const reply = ({ id, method, params }: { id: number; method: string; params: any[] }) => {
+      const respond = (result: unknown) => ({ jsonrpc: '2.0', id, result });
       calls.push(method);
       if (method === 'eth_chainId') return respond('0x1');
       if (method === 'eth_getBlockByNumber') return respond(block);
@@ -363,6 +466,8 @@ test('manual collectible checks use the selected registered RPC without an explo
       assert.deepEqual(Array.from(call.args[0]), [A]);
       assert.deepEqual(Array.from(call.args[1]), [max]);
       return respond(abi.encodeFunctionResult(call.name, [[max]]));
+      };
+      return Response.json(Array.isArray(payload) ? payload.map(reply) : reply(payload));
     },
   });
   const f = fixture({
@@ -1068,6 +1173,117 @@ for (const refresh of ['list', 'selected'] as const)
     assert.equal(f.mutations.length, 0);
     disconnect();
   });
+
+for (const grouped of [false, true]) for (const duplicate of [false, true])
+  test(`token review preserves an in-flight ${grouped ? 'grouped' : 'scalar'} saved balance read (duplicate ${duplicate})`, async () => {
+    const pending = deferred<{ units: string }>();
+    const signals: AbortSignal[] = [];
+    const candidate = { ...metadata, contractAddress: '0x4444444444444444444444444444444444444444' };
+    let previews = 0;
+    const reader: Erc20Reader = {
+      async readToken() { previews++; return { metadata: candidate, units: '9' }; },
+      readBalance(_network, _account, _token, signal) { signals.push(signal); return pending.promise; },
+      ...(grouped ? { async readBalances(_network: string, _account: string, tokens: readonly typeof metadata[], signal: AbortSignal) {
+        signals.push(signal);
+        const result = await pending.promise;
+        return tokens.map(() => ({ status: 'available' as const, units: result.units }));
+      } } : {}),
+    };
+    const f = fixture({ items: [metadata, { ...metadata, contractAddress: B }], reader });
+    const disconnect = f.model.connect();
+    try {
+      await tick();
+      assert(f.model.getSnapshot().items.every(item => item.status === 'loading'));
+      await f.model.preview(duplicate ? metadata.contractAddress : candidate.contractAddress);
+      assert.equal(f.model.getSnapshot().previewStatus, duplicate ? 'error' : 'ready');
+      assert.equal(previews, duplicate ? 0 : 1);
+      assert(signals.every(signal => !signal.aborted));
+      assert(f.model.getSnapshot().items.every(item => item.status === 'loading'));
+      f.model.cancelPreview();
+      pending.resolve({ units: '42' });
+      await tick();
+      assert.deepEqual(f.model.getSnapshot().items.map(item => [item.status, item.units]), [
+        ['available', '42'], ['available', '42'],
+      ]);
+      assert.equal(signals.length, grouped ? 1 : 2);
+      assert.equal(f.mutations.length, 0);
+    } finally { disconnect(); pending.resolve({ units: '42' }); }
+  });
+
+test('cancelling metadata preview retires only its own request and scope changes still retire both', async () => {
+  const balance = deferred<{ units: string }>(), preview = deferred<{ metadata: typeof metadata; units: string }>();
+  let balanceSignal: AbortSignal | undefined, previewSignal: AbortSignal | undefined;
+  const candidate = { ...metadata, contractAddress: B };
+  const f = fixture({ items: [metadata], reader: {
+    readBalance(_network, _account, _token, signal) { balanceSignal = signal; return balance.promise; },
+    readToken(_network, _account, _contract, signal) { previewSignal = signal; return preview.promise; },
+  } });
+  const disconnect = f.model.connect();
+  try {
+    await tick();
+    const work = f.model.preview(B);
+    await tick();
+    f.model.cancelPreview();
+    assert.equal(previewSignal?.aborted, true);
+    assert.equal(balanceSignal?.aborted, false);
+    preview.resolve({ metadata: candidate, units: '9' });
+    await work;
+    assert.equal(f.model.getSnapshot().preview, null);
+    f.change(null);
+    assert.equal(balanceSignal?.aborted, true);
+    balance.resolve({ units: '42' });
+    await tick();
+    assert.equal(f.model.getSnapshot().status, 'unavailable');
+    assert.deepEqual(f.model.getSnapshot().items, []);
+  } finally { disconnect(); balance.resolve({ units: '42' }); preview.resolve({ metadata: candidate, units: '9' }); }
+});
+
+test('an uncertain token import keeps its inventory error while editing and reloads the committed list before retry', async () => {
+  const f = fixture();
+  const disconnect = f.model.connect();
+  try {
+    await tick();
+    const add = f.runtime.add;
+    f.runtime.add = async (...args) => { await add(...args); throw Error('Lost response after commit'); };
+    await f.model.preview(metadata.contractAddress);
+    await f.model.confirmPreview();
+    const error = f.model.getSnapshot().error;
+    assert(error); assert.equal(f.model.getSnapshot().status, 'error');
+    f.model.cancelPreview();
+    assert.equal(f.model.getSnapshot().error, error);
+    await f.model.preview(metadata.contractAddress);
+    assert.equal(f.model.getSnapshot().preview, null);
+    assert.equal(f.mutations.length, 1);
+    await f.model.refresh();
+    assert.equal(f.model.getSnapshot().status, 'ready');
+    assert.equal(f.model.getSnapshot().error, null);
+    assert.equal(f.model.getSnapshot().items[0]?.metadata.contractAddress, metadata.contractAddress);
+    await f.model.preview(metadata.contractAddress);
+    assert.match(f.model.getSnapshot().error!, /already in your list/);
+    assert.equal(f.mutations.length, 1, 'recovery does not repeat a possibly committed mutation');
+  } finally { disconnect(); }
+});
+
+for (const committed of [false, true]) test(`targeted refresh reloads the inventory after an uncertain removal (committed ${committed})`, async () => {
+  const f = fixture({ items: [metadata] });
+  const disconnect = f.model.connect();
+  try {
+    await tick();
+    const remove = f.runtime.remove;
+    f.runtime.remove = async (...args) => { if (committed) await remove(...args); throw Error('Unknown token mutation'); };
+    await f.model.remove(metadata.contractAddress);
+    assert.equal(f.model.getSnapshot().status, 'error');
+    await f.model.refresh(metadata.contractAddress);
+    assert.equal(f.model.getSnapshot().status, 'ready');
+    assert.equal(f.model.getSnapshot().error, null);
+    assert.equal(f.model.getSnapshot().items.length, committed ? 0 : 1);
+    f.runtime.remove = remove;
+    await f.model.remove(metadata.contractAddress);
+    await tick();
+    assert.deepEqual(f.model.getSnapshot().items, []);
+    assert.equal(f.mutations.length, 1, 'a confirmed removal is never repeated');
+  } finally { disconnect(); }
+});
 
 test('connection replay drains an old registry read before starting the new scope', async () => {
   const f = fixture();

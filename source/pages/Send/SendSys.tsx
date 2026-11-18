@@ -12,7 +12,7 @@ import { useLocation } from 'react-router-dom';
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { Button, Fee, Icon, Tooltip } from 'components/index';
-import { ToastActionFooter } from 'components/ToastActionFooter';
+import { PageActionFooter } from 'components/PageActionFooter';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useRequestScope } from 'hooks/useRequestScope';
@@ -252,6 +252,16 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     // So we keep the full balance in the amount field
     // The isMaxSend flag tells the backend to subtract fees
   }, []);
+
+  const handleRawFeeChange = useCallback(
+    (fee: string) => {
+      feeWasChosen.current = true;
+      const values = { ...form.getFieldsValue(), fee };
+      formValuesRef.current = values;
+      void saveCurrentState(values);
+    },
+    [form, saveCurrentState]
+  );
 
   // ✅ OPTIMIZED: Fee fetching with proper dependencies
   useEffect(() => {
@@ -887,7 +897,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   // The MAX button already handles the calculation properly
 
   return (
-    <div className="w-full pb-20 md:max-w-sm md:pb-0">
+    <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">
         <Tooltip content={t('home.viewOnExplorer')}>
           <button
@@ -1208,6 +1218,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                   name="amount"
                   id="with-max-button"
                   type="number"
+                  step="any"
                   placeholder={t('send.amount')}
                   onBlur={handleFieldBlur}
                 />
@@ -1221,6 +1232,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           recommend={feeRate}
           form={form}
           onFeeChange={handleFeeChange}
+          onRawFeeChange={handleRawFeeChange}
         />
 
         <div className="flex justify-between w-full">
@@ -1272,7 +1284,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           </Form.Item>
         </div>
 
-        <ToastActionFooter className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
+        <PageActionFooter>
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
@@ -1282,7 +1294,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           >
             {t('buttons.next')}
           </Button>
-        </ToastActionFooter>
+        </PageActionFooter>
       </Form>
       <SavedUtxoTransfers symbol={activeNetwork.currency.toUpperCase()} />
     </div>

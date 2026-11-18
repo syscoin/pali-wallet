@@ -84,6 +84,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let recoveryOpens = 0;
   const openedLinks: string[] = [];
   const lifecycleEvents: string[] = [];
+  const transferRequests: string[] = [];
   const resumedSmart: {id: string; signal: AbortSignal; check: () => void}[] = [];
   const resumedInfrastructure: {id: string; signal: AbortSignal; check: () => void}[] = [];
   const psbtLifecycle = {
@@ -329,7 +330,10 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     openGuardianPolicy: async (_draft: unknown, _signal: AbortSignal, check: () => void) => { check(); guardianOpens++; return { dispose() {} }; },
     readGuardianRecovery: async (_signal: AbortSignal, check: () => void) => { check(); guardianReads++; return { status: 'no-compatible-policy' }; },
     balanceReader: {},
-    transfers: {},
+    transfers: {
+      async recover() { transferRequests.push('recover'); throw Error('Retained read is outside parent routing'); },
+      async confirm() { transferRequests.push('confirm'); throw Error('Signing/broadcast is outside parent routing'); },
+    },
     tokens: {},
     activity: {},
   };
@@ -552,6 +556,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     wrapper: () => module.exports.NativeWalletScreen({ onExit() {} }),
     content: module.exports.NativeWalletContent,
     lifecycle: () => lifecycleEvents,
+    transferRequests: () => transferRequests,
     resumedSmart: () => resumedSmart,
     resumedInfrastructure: () => resumedInfrastructure,
     showTools() { if (realNavigation) liveShell.select('tools'); else shellTab = 'tools'; },
@@ -1309,6 +1314,33 @@ for (const action of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`Smar
     assert.equal(completed.props.initialTarget.networkId, 'ethereum'); assert.equal(completed.props.initialTarget.hash, result);
     review.props.onViewTransaction(hash);
     assert.equal(find(f.render(), node => node.type === 'AllNetworksActivity')!.props.initialTarget.hash, result);
+  } finally { f.dispose(); }
+});
+
+test('Smart Activity saved opens the exact retained review route without new authorization or broadcast', async () => {
+  const f = await mounted(true, true, false, false);
+  try {
+    f.showActivity();
+    const activity = find(f.render(), node => node.type === 'AllNetworksActivity'); assert(activity);
+    assert.equal(typeof activity.props.onAction, 'function');
+    const hash = '0x' + 'ab'.repeat(32), choice = f.activityChoice();
+    await activity.props.onAction({ choice, row: { hash } }, 'saved', hash, () => undefined);
+    await settle(); f.render(); await settle();
+    const review = f.render();
+    assert.equal(review.type, 'NativeSend');
+    assert.equal(review.props.savedHash, hash);
+    assert.equal(review.props.replacement, undefined);
+    assert.equal(review.props.account.address, f.authoritySnapshot().account.address);
+    assert.equal(review.props.account.network, 'ethereum');
+    assert.deepEqual(f.transferRequests(), []);
+    assert.deepEqual(f.resumedSmart(), []);
+    assert.deepEqual(f.authenticatorGuards(), []);
+    assert.equal(f.viewAuthorizations(), 0);
+    review.props.onBack();
+    assert(find(f.render(), node => node.type === 'AllNetworksActivity'));
+    f.background();
+    await assert.rejects(activity.props.onAction({ choice, row: { hash } }, 'saved', hash, () => undefined), /CANCELLED/);
+    assert.deepEqual(f.transferRequests(), []);
   } finally { f.dispose(); }
 });
 

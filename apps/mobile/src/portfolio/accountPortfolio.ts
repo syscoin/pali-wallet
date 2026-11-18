@@ -4,6 +4,7 @@ import type { FiatCurrency } from '../core/fiatPreference.ts';
 import type { PublicCustodySource } from './nativePortfolio.ts';
 import type { NotificationChoice } from '../notifications/choices.ts';
 import type { NativeNotificationScope } from '../notifications/types.ts';
+import { NativeBalanceChainMismatchError, NativeBalanceMethodError } from '../platformRpc.ts';
 import { formatTokenUnits, type Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import type { SavedCollectible } from './tokenRegistry.ts';
 import { abortable } from '../../../../source/shared/boundedHttp.ts';
@@ -55,10 +56,12 @@ export class AccountPortfolioController {
   private connection: object | null = null;
   private unsubscribe: (() => void) | null = null;
   private request: AbortController | null = null;
+  private quoteRequest: AbortController | null = null;
   private generation = 0;
   private filterIntent = 0;
   private filterPending = false;
   private filterFailed = false;
+  private filterRead: Promise<void> | null = null;
   private owner = '';
   private cache = new Map<string, AccountPortfolioRow>();
   private readonly ports: Ports;
@@ -70,7 +73,7 @@ export class AccountPortfolioController {
     if (!current && this.state.status === 'unavailable' && this.state.accountId === null && !this.state.choices.length && !this.state.rows.length)
       return this.state;
     if (!current || current.owner !== this.owner || JSON.stringify(current.choices) !== JSON.stringify(this.state.choices)) {
-      this.request?.abort(); this.generation++; this.cache.clear(); this.owner = current?.owner ?? '';
+      this.request?.abort(); this.quoteRequest?.abort(); this.generation++; this.cache.clear(); this.owner = current?.owner ?? '';
       this.state = Object.freeze({ ...empty(), filter: this.state.filter, currency: this.state.currency,
         status: current && !this.filterFailed ? this.state.filter === null ? 'loading' : 'ready' : 'unavailable',
         accountId: current?.id ?? null, choices: current?.choices ?? [] });
@@ -83,10 +86,12 @@ export class AccountPortfolioController {
     let value = 0, known = false, partial = false;
     const real = next.rows.filter(row => !('testnet' in row.choice.scope.network && row.choice.scope.network.testnet));
     for (const row of real) {
-      if (row.status !== 'available' || row.units === null) { partial = true; continue; }
-      const amount = Number(formatBaseUnits(row.units, row.decimals));
-      if (amount === 0) known = true;
-      else if (row.price !== null && Number.isFinite(amount * row.price)) { value += amount * row.price; known = true; } else partial = true;
+      if (row.status !== 'available' || row.units === null) partial = true;
+      else {
+        const amount = Number(formatBaseUnits(row.units, row.decimals));
+        if (amount === 0) known = true;
+        else if (row.price !== null && Number.isFinite(amount * row.price)) { value += amount * row.price; known = true; } else partial = true;
+      }
       if (!row.assetsAvailable) partial = true;
       for (const token of row.tokens) {
         if (token.status !== 'available' || token.units === null) { partial = true; continue; }
@@ -116,12 +121,12 @@ export class AccountPortfolioController {
     let current: ReturnType<AccountPortfolioController['context']> = null;
     try { current = this.context(); } catch { /* Full public identity is required. */ }
     if (!current) {
-      this.request?.abort(); this.generation++; this.owner = ''; this.cache.clear();
+      this.request?.abort(); this.quoteRequest?.abort(); this.generation++; this.owner = ''; this.cache.clear();
       this.publish({ status: 'unavailable', accountId: null, choices: [], rows: [], refreshing: false });
       return null;
     }
     if (this.owner !== current.owner) {
-      this.request?.abort(); this.generation++; this.cache.clear(); this.owner = current.owner;
+      this.request?.abort(); this.quoteRequest?.abort(); this.generation++; this.cache.clear(); this.owner = current.owner;
     }
     const allowed = new Set(current.choices.map(scopeKey));
     for (const [key] of this.cache) if (!allowed.has(key)) this.cache.delete(key);
@@ -135,26 +140,47 @@ export class AccountPortfolioController {
   }
   setCurrency(currency: FiatCurrency | null) {
     if (currency === this.state.currency) return;
-    this.request?.abort(); this.generation++;
+    this.quoteRequest?.abort();
     for (const [key, row] of this.cache) this.cache.set(key, { ...row, price: null, tokens: row.tokens.map(token => ({ ...token, price: null })) });
     this.publish({ currency, rows: this.state.rows.map(row => ({ ...row, price: null, tokens: row.tokens.map(token => ({ ...token, price: null })) })) });
-    if (this.connection && this.state.filter !== null) void this.refresh();
+    if (this.connection && this.state.filter !== null && !this.request) void this.refreshQuotes();
+  }
+  private loadFilter(): Promise<void> {
+    if (!this.connection || this.filterPending) return Promise.resolve();
+    if (this.filterRead) return this.filterRead;
+    const connection = this.connection, intent = this.filterIntent;
+    const current = () => this.connection === connection && this.filterIntent === intent && !this.filterPending;
+    this.request?.abort(); this.quoteRequest?.abort(); this.generation++;
+    this.filterFailed = false;
+    this.state = { ...this.state, filter: null };
+    const read = Promise.resolve().then(async () => {
+      if (!current()) return;
+      const filter = await this.ports.filter.load();
+      if (!current()) return;
+      this.filterFailed = false;
+      this.state = { ...this.state, filter };
+      if (this.synchronize()) void this.refresh();
+    }).catch(() => {
+      if (!current()) return;
+      this.filterFailed = true;
+      this.publish({ status: 'unavailable', rows: [], refreshing: false });
+    }).finally(() => { if (this.filterRead === read) this.filterRead = null; });
+    this.filterRead = read;
+    this.publish({ status: 'loading', rows: [], refreshing: false });
+    return read;
   }
   connect = () => {
-    this.unsubscribe?.(); this.request?.abort();
+    this.unsubscribe?.(); this.request?.abort(); this.quoteRequest?.abort();
+    this.filterIntent++; this.filterPending = false; this.filterFailed = false; this.filterRead = null;
     const connection = {}; this.connection = connection;
     const changed = () => { if (this.connection === connection && this.synchronize() && this.state.filter !== null && !this.filterPending && !this.filterFailed) void this.refresh(); };
     this.unsubscribe = this.ports.source.subscribe(changed);
     this.state = { ...empty(), currency: this.state.currency };
-    void this.ports.filter.load().then(filter => {
-      if (this.connection !== connection) return;
-      if (!this.filterPending) this.filterFailed = false;
-      this.state = { ...this.state, filter };
-      if (this.synchronize()) void this.refresh();
-    }).catch(() => { if (this.connection === connection) this.publish({ status: 'unavailable' }); });
+    void this.loadFilter();
     return () => {
       if (this.connection !== connection) return;
-      this.connection = null; this.generation++; this.request?.abort(); this.request = null;
+      this.connection = null; this.generation++; this.filterIntent++; this.filterPending = false; this.filterRead = null;
+      this.request?.abort(); this.quoteRequest?.abort(); this.request = null;
       this.unsubscribe?.(); this.unsubscribe = null;
       // Keep only the separately owner-checked source-sheet cache; no detached
       // view may render the departing account's observations.
@@ -163,18 +189,19 @@ export class AccountPortfolioController {
   };
   async selectFilter(filter: string) {
     if (!this.connection || filter !== 'all' && !this.state.choices.some(choice => choice.scope.network.id === filter)) return;
-    this.request?.abort(); this.generation++;
-    const intent = ++this.filterIntent;
+    this.request?.abort(); this.quoteRequest?.abort(); this.generation++;
+    const intent = ++this.filterIntent, connection = this.connection;
+    this.filterRead = null;
     this.filterPending = true;
     try {
       await this.ports.filter.save(filter);
-      if (this.filterIntent !== intent) return;
+      if (this.connection !== connection || this.filterIntent !== intent) return;
       this.filterPending = false;
       this.filterFailed = false;
       this.state = { ...this.state, filter };
       if (this.connection && this.synchronize()) await this.refresh();
     } catch (error) {
-      if (this.filterIntent === intent) {
+      if (this.connection === connection && this.filterIntent === intent) {
         this.filterPending = false;
         this.filterFailed = true;
         this.publish({ status: 'unavailable', rows: [], refreshing: false });
@@ -200,91 +227,112 @@ export class AccountPortfolioController {
     return row?.assetsAvailable ? { tokens: row.tokens, collectibles: row.collectibles } : undefined;
   }
   refresh = async () => {
-    if (!this.connection || this.state.filter === null || this.filterPending || this.filterFailed) return;
+    if (!this.connection || this.filterPending) return;
+    if (this.state.filter === null || this.filterFailed) { await this.loadFilter(); return; }
     const current = this.synchronize(); if (!current) return;
-    this.request?.abort(); const request = new AbortController(); this.request = request;
-    const generation = ++this.generation, filter = this.state.filter, currency = this.state.currency;
+    this.request?.abort(); this.quoteRequest?.abort(); const request = new AbortController(); this.request = request;
+    const generation = ++this.generation, filter = this.state.filter;
     const choices = current.choices.filter(choice => filter === 'all' || choice.scope.network.id === filter);
     const check = () => {
       const next = this.context();
       if (!this.connection || this.request !== request || request.signal.aborted || this.generation !== generation ||
           !next || next.owner !== current.owner || next.state.revision !== current.state.revision || this.state.filter !== filter ||
-          this.state.currency !== currency ||
           JSON.stringify(next.choices) !== JSON.stringify(current.choices)) throw Error('CANCELLED');
     };
     this.publish({ refreshing: choices.length > 0 });
-    const quotes: ((signal: AbortSignal) => Promise<void>)[] = [];
-    const queueQuote = (read: (signal: AbortSignal) => Promise<number | null>, apply: (price: number | null) => void) => {
-      quotes.push(async signal => {
-        check();
-        const price = await abortable(read(signal), signal);
-        check();
-        if (signal.aborted) return;
-        apply(price);
-        this.synchronize();
-      });
-    };
     let index = 0;
     const worker = async () => {
       while (index < choices.length && !request.signal.aborted) {
         const choice = choices[index++]!, key = scopeKey(choice), original = this.cache.get(key) ?? this.blank(choice);
         try {
           check(); this.cache.set(key, { ...original, status: 'loading' }); this.synchronize();
-          const raw = await this.ports.reader.readBalance(choice.scope.network.id, choice.scope.accountAddress, request.signal);
-          if (String(raw.chainId) !== choice.scope.network.chainId) throw Error('Wrong network');
-          assertBaseUnits(raw.units); const units = raw.units;
+          let units: string | null = null;
+          try {
+            const raw = await this.ports.reader.readBalance(choice.scope.network.id, choice.scope.accountAddress, request.signal);
+            if (String(raw.chainId) !== choice.scope.network.chainId) throw new NativeBalanceChainMismatchError('Wrong network');
+            assertBaseUnits(raw.units);
+            units = raw.units;
+          } catch (error) {
+            if (!(error instanceof NativeBalanceMethodError)) throw error;
+          }
           check();
-          this.cache.set(key, { ...original, status: 'available', units, updatedAt: (this.ports.now ?? Date.now)(), price: null, tokens: [], collectibles: [], assetsAvailable: false });
+          const status = units === null ? 'error' : 'available';
+          this.cache.set(key, { ...original, status, units, updatedAt: (this.ports.now ?? Date.now)(), price: null, tokens: [], collectibles: [], assetsAvailable: false });
           this.synchronize();
           let assets: PortfolioAssets = { tokens: [], collectibles: [] }, assetsAvailable = false;
           if (this.ports.assets) {
             try { assets = await this.ports.assets(choice.scope, request.signal, check); assetsAvailable = true; } catch { check(); }
           }
           check();
-          this.cache.set(key, { choice, status: 'available', units, decimals: original.decimals, updatedAt: (this.ports.now ?? Date.now)(), price: null,
+          this.cache.set(key, { choice, status, units, decimals: original.decimals, updatedAt: (this.ports.now ?? Date.now)(), price: null,
             tokens: assets.tokens.map(token => ({ ...token, price: null })), collectibles: assets.collectibles, assetsAvailable });
           this.synchronize();
-          const testnet = 'testnet' in choice.scope.network && choice.scope.network.testnet;
-          if (!testnet && currency) {
-            const nativePrice = this.ports.nativePrice, tokenPrice = this.ports.tokenPrice;
-            if (units !== '0' && nativePrice) queueQuote(signal => nativePrice(choice, currency, signal), price => {
-              const row = this.cache.get(key)!;
-              this.cache.set(key, { ...row, price });
-            });
-            if (tokenPrice) assets.tokens.forEach((token, tokenIndex) => {
-              if (token.status === 'available' && token.units !== null && token.units !== '0')
-                queueQuote(signal => tokenPrice(choice, token.metadata, currency, signal), price => {
-                  const row = this.cache.get(key)!;
-                  this.cache.set(key, { ...row, tokens: row.tokens.map((value, index) => index === tokenIndex ? { ...value, price } : value) });
-                });
-            });
-          }
-        } catch {
+        } catch (error) {
           if (request.signal.aborted || this.generation !== generation) return;
-          this.cache.set(key, { ...original, status: 'error' }); this.synchronize();
+          const row = this.blank(choice);
+          this.cache.set(key, error instanceof NativeBalanceChainMismatchError
+            ? { ...row, status: 'error' }
+            : { ...row, status: 'error', units: original.units, decimals: original.decimals, updatedAt: original.updatedAt,
+                tokens: original.tokens.map(token => ({ ...token, status: 'error', price: null })) });
+          this.synchronize();
         }
       }
     };
     await Promise.all([worker(), worker()]);
-    // Market availability never holds a balance worker or hides observed assets.
-    // All optional quotes share one deadline, including readers that ignore abort.
-    if (quotes.length && !request.signal.aborted) {
-      const quoteRequest = new AbortController(), cancel = () => quoteRequest.abort();
-      request.signal.addEventListener('abort', cancel, { once: true });
-      const timer = setTimeout(cancel, QUOTE_PHASE_BUDGET_MS);
-      let quoteIndex = 0;
-      const quoteWorker = async () => {
-        while (quoteIndex < quotes.length && !quoteRequest.signal.aborted) {
-          try { await quotes[quoteIndex++]!(quoteRequest.signal); }
-          catch {
-            if (quoteRequest.signal.aborted) return;
-            try { check(); } catch { return; }
-          }
-        }
-      };
-      try { await Promise.all([quoteWorker(), quoteWorker()]); }
-      finally { clearTimeout(timer); request.signal.removeEventListener('abort', cancel); cancel(); }
+    if (this.request === request) {
+      this.request = null;
+      await this.refreshQuotes();
+      if (this.generation === generation && !this.request) this.publish({ refreshing: false });
     }
-    if (this.request === request) { this.request = null; this.publish({ refreshing: false }); }
   };
+
+  private async refreshQuotes() {
+    this.quoteRequest?.abort();
+    const current = this.synchronize(), currency = this.state.currency;
+    if (!this.connection || !current || !currency || this.filterPending || this.filterFailed) return;
+    const request = new AbortController(); this.quoteRequest = request;
+    const generation = this.generation, filter = this.state.filter;
+    const check = () => {
+      const next = this.context();
+      if (!this.connection || this.quoteRequest !== request || request.signal.aborted || this.generation !== generation ||
+          !next || next.owner !== current.owner || next.state.revision !== current.state.revision ||
+          this.state.filter !== filter || this.state.currency !== currency ||
+          JSON.stringify(next.choices) !== JSON.stringify(current.choices)) throw Error('CANCELLED');
+    };
+    const quotes: (() => Promise<void>)[] = [];
+    const queue = (read: () => Promise<number | null>, apply: (price: number | null) => void) => {
+      quotes.push(async () => {
+        check(); const price = await abortable(read(), request.signal); check();
+        apply(price); this.synchronize();
+      });
+    };
+    for (const { choice } of this.state.rows) {
+      const key = scopeKey(choice), row = this.cache.get(key);
+      if (!row || 'testnet' in choice.scope.network && choice.scope.network.testnet) continue;
+      const nativePrice = this.ports.nativePrice, tokenPrice = this.ports.tokenPrice;
+      if (row.status === 'available' && row.units !== null && row.units !== '0' && nativePrice) queue(() => nativePrice(choice, currency, request.signal), price => {
+        this.cache.set(key, { ...this.cache.get(key)!, price });
+      });
+      if (tokenPrice) row.tokens.forEach((token, tokenIndex) => {
+        if (token.status === 'available' && token.units !== null && token.units !== '0')
+          queue(() => tokenPrice(choice, token.metadata, currency, request.signal), price => {
+            const latest = this.cache.get(key)!;
+            this.cache.set(key, { ...latest, tokens: latest.tokens.map((value, index) => index === tokenIndex ? { ...value, price } : value) });
+          });
+      });
+    }
+    const timer = setTimeout(() => request.abort(), QUOTE_PHASE_BUDGET_MS);
+    let index = 0;
+    const worker = async () => {
+      while (index < quotes.length && !request.signal.aborted) {
+        try { await quotes[index++]!(); }
+        catch { try { check(); } catch { return; } }
+      }
+    };
+    try { await Promise.all([worker(), worker()]); }
+    finally {
+      clearTimeout(timer); request.abort();
+      if (this.quoteRequest === request) this.quoteRequest = null;
+    }
+  }
 }

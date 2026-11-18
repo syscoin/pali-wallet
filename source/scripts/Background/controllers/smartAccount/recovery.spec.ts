@@ -53,6 +53,7 @@ describe('guardian recovery policy freshness', () => {
   let getRecoveryScheduleHash: jest.Mock;
   let sign: jest.Mock;
   let send: jest.Mock;
+  let review: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -89,6 +90,12 @@ describe('guardian recovery policy freshness', () => {
     }));
     sign = jest.fn().mockResolvedValue('0x1234');
     send = jest.fn().mockResolvedValue({ wait: jest.fn() });
+    review = jest.fn().mockResolvedValue({
+      id: 'reviewed-recovery',
+      transaction: { from: GUARDIAN },
+      maximumFeeUnits: '42000',
+      maximumTotalUnits: '42000',
+    });
     const transaction = { web3Provider: {} };
     controller = new SmartAccountController({
       captureSmartAccountPendingRecords: async () => ({
@@ -98,6 +105,7 @@ describe('guardian recovery policy freshness', () => {
       getEthereumTransaction: () => transaction,
       getWalletStateGeneration: () => 1,
       sendAndSaveEthTransaction: send,
+      reviewSettingsEvmFee: review,
       signSmartAccountRecoveryOwner: sign,
     } as any);
     controller.getGuardianRecoveryStatusForAccount = jest
@@ -363,9 +371,72 @@ describe('guardian recovery policy freshness', () => {
       guardian: GUARDIAN,
       approval: { guardian: GUARDIAN, signature: '0x1234' },
       operation: makeOperation(),
+      feeReviewId: 'reviewed-recovery',
     });
     expect(send).toHaveBeenCalledTimes(1);
     expect(send.mock.calls[0][0].to).toBe(MODULE);
+    expect(send.mock.calls[0][4].genericReviewId).toBe('reviewed-recovery');
+  });
+
+  it('returns the schedule fee quote without sending, then forwards only the confirmed fee capability', async () => {
+    const params = {
+      claimHash: makeOperation().hash,
+      account: ACCOUNT,
+      guardian: GUARDIAN,
+      approval: { guardian: GUARDIAN, signature: '0x1234' },
+      operation: makeOperation(),
+    };
+    const result =
+      await controller.submitPreparedSmartAccountGuardianStartRecovery(params);
+    expect(result).toMatchObject({
+      operation: params.operation,
+      feeReview: { id: 'reviewed-recovery', maximumFeeUnits: '42000' },
+    });
+    expect(send).not.toHaveBeenCalled();
+    expect(review.mock.calls[0][2]).toMatchObject({
+      smartAccountGuardianRecovery: true,
+      smartAccountRecoveryAccount: ACCOUNT,
+    });
+    await controller.submitPreparedSmartAccountGuardianStartRecovery({
+      ...params,
+      feeReviewId: result.feeReview.id,
+    });
+    expect(review).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0]).toEqual(review.mock.calls[0][0]);
+    expect(send.mock.calls[0][2]).toEqual(review.mock.calls[0][1]);
+    expect(send.mock.calls[0][4]).toMatchObject({
+      genericReviewId: 'reviewed-recovery',
+    });
+  });
+
+  it('returns a finalize fee quote and exact durable claim hash without waiting or sending', async () => {
+    controller.claimGuardianRecovery = jest
+      .fn()
+      .mockResolvedValue(claimFixture().claim);
+    const params = {
+      claim: claimFixture().claim,
+      expectedClaimHash: makeOperation().hash,
+    };
+    const result = await controller.finalizeSmartAccountGuardianRecovery(
+      params
+    );
+    expect(result).toMatchObject({
+      claimHash: makeOperation().hash,
+      feeReview: { id: 'reviewed-recovery' },
+    });
+    expect(send).not.toHaveBeenCalled();
+    expect(review.mock.calls[0][2]).toMatchObject({
+      smartAccountGuardianRecoveryFinalize: true,
+    });
+    await controller.finalizeSmartAccountGuardianRecovery({
+      ...params,
+      feeReviewId: result.feeReview.id,
+    });
+    expect(review).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0]).toEqual(review.mock.calls[0][0]);
+    expect(send.mock.calls[0][4].genericReviewId).toBe('reviewed-recovery');
   });
 });
 

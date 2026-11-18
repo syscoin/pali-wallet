@@ -6,12 +6,124 @@ import omit from 'lodash/omit';
 import sortBy from 'lodash/sortBy';
 import uniqWith from 'lodash/uniqWith';
 
+import { ensureEvmDisplayIdentity } from '../providers/evmDisplayIdentity';
 import store from 'state/store';
 import { IAccountAssets } from 'state/vault/types';
 import { IKeyringAccountState, INetwork, INetworkType } from 'types/network';
 import { ITokenEthProps } from 'types/tokens';
 
-import { ISysTokensAssetReponse } from './types';
+import { ISysTokensAssetReponse, type AssetReadOwner } from './types';
+import type { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+
+/** Keep contract reads attached to this refresh without retiring the shared provider. */
+export const ownedAssetProvider = (
+  provider: CustomJsonRpcProvider,
+  owner?: AssetReadOwner
+): CustomJsonRpcProvider => {
+  if (!owner) return provider;
+  const read = async <T>(work: () => Promise<T>): Promise<T> => {
+    owner.assertCurrent();
+    const { chainId } = await provider.getNetwork();
+    await ensureEvmDisplayIdentity(
+      provider,
+      chainId,
+      owner.signal,
+      owner.identityContext
+    );
+    owner.assertCurrent();
+    const result = await work();
+    await ensureEvmDisplayIdentity(
+      provider,
+      chainId,
+      owner.signal,
+      owner.identityContext
+    );
+    owner.assertCurrent();
+    return result;
+  };
+  const request = (method: string, params: any[]) =>
+    read(async () => {
+      const [result] = await provider.readMany([{ method, params }], {
+        signal: owner.signal,
+      });
+      if (!result) throw new Error('Asset response unavailable');
+      if (result.status === 'rejected') throw result.reason;
+      return result.value;
+    });
+  return new Proxy(provider, {
+    get(target, key) {
+      if (key === 'signal') return owner.signal;
+      if (key === 'call')
+        return (transaction: Parameters<CustomJsonRpcProvider['call']>[0]) =>
+          request('eth_call', [
+            target.getRpcTransaction(transaction),
+            transaction.blockTag ?? 'latest',
+          ]);
+      if (key === 'getCode')
+        return (address: string) => request('eth_getCode', [address, 'latest']);
+      if (key === 'readMany')
+        return (requests: Parameters<CustomJsonRpcProvider['readMany']>[0]) =>
+          read(() => target.readMany(requests, { signal: owner.signal }));
+      const value = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+};
+
+/** Collect independent Contract calls in this refresh through the owned reader. */
+export const batchAssetCalls = (
+  provider: CustomJsonRpcProvider
+): CustomJsonRpcProvider => {
+  if (
+    typeof provider.readMany !== 'function' ||
+    typeof provider.getRpcTransaction !== 'function'
+  )
+    return provider;
+  let pending: Array<{
+    params: unknown[];
+    reject(error: unknown): void;
+    resolve(value: unknown): void;
+  }> = [];
+  const flush = async () => {
+    const calls = pending;
+    pending = [];
+    if (!calls.length) return;
+    try {
+      const results = await provider.readMany(
+        calls.map(({ params }) => ({ method: 'eth_call', params }))
+      );
+      if (results.length !== calls.length)
+        throw new Error('Asset response unavailable');
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') calls[index].resolve(result.value);
+        else calls[index].reject(result.reason);
+      });
+    } catch (error) {
+      calls.forEach((call) => call.reject(error));
+    }
+  };
+  return new Proxy(provider, {
+    get(target, key) {
+      if (key === 'call')
+        return (transaction: Parameters<CustomJsonRpcProvider['call']>[0]) =>
+          new Promise((resolve, reject) => {
+            pending.push({
+              params: [
+                target.getRpcTransaction(transaction),
+                transaction.blockTag ?? 'latest',
+              ],
+              resolve,
+              reject,
+            });
+            if (pending.length === 1) queueMicrotask(() => void flush());
+            // Bound each collection wave using the existing reader's normal size.
+            if (pending.length === 40) void flush();
+          });
+      const value = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+};
 
 export const canCommitAssetUpdate = ({
   account,

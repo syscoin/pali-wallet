@@ -42,7 +42,7 @@ import {
   normalizeDappCapabilitiesRequest,
   projectDappCapabilities,
 } from '../../../../source/shared/dappCapabilities.ts';
-import { EthereumRpcErrorHandler } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
+import { EthereumRpcErrorHandler, serializePublicRpcError } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
 import {
   isDappMessageMethod,
   readDappMessageRequest,
@@ -579,6 +579,8 @@ export class NativeConnectionsController {
       this.revalidateReads();
       const previous = this.publishedScope;
       const current = this.publicScope();
+      if (phase !== 'ready' || !current || current.network !== previous?.network || current.accounts !== previous?.accounts)
+        this.host?.reads.reset?.();
       this.publishedScope = current;
       if (current && previous)
         for (const connection of this.connections.values()) {
@@ -618,6 +620,7 @@ export class NativeConnectionsController {
   }
   private unavailable() {
     if (!this.disposed) {
+      this.host?.reads.reset?.();
       for (const read of this.reads.values()) read.lifetime.abort();
       this.accountChanges.clear(); this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.preparations.clear(); this.handoffs.cancelDapp();
       this.restored = false;
@@ -1983,7 +1986,7 @@ export class NativeConnectionsController {
     const context = this.host!.context(), origin = wire.session.binding.origin;
     const grant = connection?.engine.get(origin);
     const account = grant && context.accounts.find(value => value.index === grant.accountId && value.type === grant.accountType);
-    const respond = (response: { result: unknown } | { error: { code: number; message: string; data?: string } }, check: () => void = () => this.check()) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => undefined);
+    const respond = (response: { result: unknown } | { error: { code: number; message: string; data?: unknown } }, check: () => void = () => this.check()) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => undefined);
     if (!connection || connection.session.binding.origin !== origin || !grant || !account || !context.unlocked || this.options.source.getSnapshot().phase !== 'ready' || !connection.engine.isConnected(origin)) return respond({ error: { code: 4100, message: 'Account is unavailable' } });
     const scope = this.chainScope(context), syscoin = isDappSyscoinRead(wire.method), walletRead = isDappWalletRead(wire.method);
     if (grant.chain !== scope.kind || grant.chainId !== scope.chainId || !walletRead && syscoin !== (scope.kind === 'syscoin')) return respond({ error: { code: 4901, message: 'Requested chain is not selected' } });
@@ -2013,7 +2016,7 @@ export class NativeConnectionsController {
       await respond({ result }, check);
     } catch (cause) {
       check();
-      await respond({ error: cause instanceof EthereumRpcErrorHandler ? { code: cause.code, message: cause.message.slice(0, 256), ...(typeof cause.data === 'string' ? { data: cause.data } : {}) } : { code: -32603, message: 'RPC read unavailable' } }, check);
+      await respond({ error: cause instanceof EthereumRpcErrorHandler ? serializePublicRpcError(cause, 256) : { code: -32603, message: 'RPC read unavailable' } }, check);
     } finally { clearTimeout(timer); lifetime.abort(); if (this.reads.get(key) === entry) this.reads.delete(key); finish(); }
   }
   private async respond(request: WalletConnectRequest) {
@@ -2618,7 +2621,8 @@ export class NativeConnectionsController {
       } else if (isDappEncryptionMethod(wire.method)) {
         request = readDappEncryptionRequest(wire.method, wire.params, account.address);
       } else {
-        assertDappTypedDataValid(wire.method, wire.params);
+        assertDappTypedDataValid(wire.method, wire.params,
+          account.type === 'SmartAccount' ? undefined : context.network.chainId);
         request = readDappMessageRequest(
           wire.method,
           wire.params,
@@ -3657,6 +3661,7 @@ export class NativeConnectionsController {
   }
   async dispose(): Promise<void> {
     return this.disposal.close(() => {
+      this.host?.reads.reset?.();
       this.dismissStatus();
       this.disposed = true;
       this.clearDeadlines(); this.canceledPairings.clear();

@@ -17,6 +17,8 @@ import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions
 import { Transaction } from 'ethers/transaction';
 import { recoverAddress } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
+import { createSmartAccountJournalFixture } from 'tests/fixtures/smartAccountJournal';
 
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -31,25 +33,26 @@ import {
 
 import SmartAccountController from './index';
 
-const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const INTENDED_TARGET = '0x2222222222222222222222222222222222222222';
 const ATTACKER = '0x3333333333333333333333333333333333333333';
 const VALIDATOR = '0x4444444444444444444444444444444444444444';
 const PRIVATE_KEY = `0x${'11'.repeat(32)}`; // Deliberately public synthetic key.
 const owner = new Wallet(PRIVATE_KEY);
+const identity = smartAccountAddressFixture(1, owner.address);
+const ACCOUNT = identity.account.address;
 const gasPayer = {
   address: owner.address,
   id: 0,
   type: KeyringAccountType.HDAccount,
 };
 const metadata = {
+  ...identity.account.smartAccount,
   auth: {
     data: encodeEcdsaValidatorInitData([owner.address], 1),
     module: 'ecdsa',
     validator: VALIDATOR,
   },
   chainId: 1,
-  deploymentSalt: `0x${'00'.repeat(32)}`,
   installedModules: [
     {
       address: VALIDATOR,
@@ -99,6 +102,26 @@ describe('smart-account owner signing intent', () => {
         }),
         send: jest.fn(async (method, params) => {
           if (method === 'eth_chainId') return '0x1';
+          if (method === 'eth_getBlockByNumber') {
+            expect(params).toEqual(['latest', false]);
+            return {
+              hash: '0x' + 'aa'.repeat(32),
+              number: '0x10',
+              gasLimit: '0x100000',
+              baseFeePerGas: '0x1',
+            };
+          }
+          if (method === 'eth_getTransactionCount') return '0x0';
+          if (method === 'eth_simulateV1') {
+            expect(params[0]).toEqual({
+              blockStateCalls: [{ calls: [] }],
+              validation: true,
+              returnFullTransactions: true,
+              traceTransfers: false,
+            });
+            expect(params[1]).toBe('latest');
+            return [{ calls: [], transactions: [] }];
+          }
           if (method === 'eth_getBalance') return '0xffffffffffffffff';
           if (method === 'eth_call') {
             if (
@@ -132,6 +155,7 @@ describe('smart-account owner signing intent', () => {
           maxPriorityFeePerGas: 1,
         }),
       };
+      const journal = createSmartAccountJournalFixture();
       const broadcast = jest.fn();
       const send = jest.fn(async (transaction) => {
         await provider.estimateGas(transaction);
@@ -152,14 +176,14 @@ describe('smart-account owner signing intent', () => {
         vaultGlobal: { activeSlip44: 60 },
       });
       const controller: any = new SmartAccountController({
-        captureSmartAccountPendingRecords: async () => ({
-          profileId: '0x' + '11'.repeat(32),
-          read: async () => [],
-        }),
+        ...journal,
         getEthereumTransaction: () => ethereumTransaction,
         sendAndSaveEthTransaction: send,
       } as any);
-      const active = { account: { address: ACCOUNT, id: 7 }, metadata };
+      const active = {
+        account: { ...identity.account, smartAccount: metadata, id: 7 },
+        metadata,
+      };
       controller.assertSmartAccountExecutionTargetsAllowed = jest.fn();
       controller.getSmartAccountById = jest.fn(() => active);
       controller.getWalletGasPayerCandidates = jest.fn(() => []);
@@ -170,6 +194,10 @@ describe('smart-account owner signing intent', () => {
       const prepared = await controller.prepareSmartAccountExecutions(
         [{ data: '0x', target: INTENDED_TARGET, value: '0x0' }],
         7
+      );
+      controller.approveSmartAccountExecutionFeeQuote(
+        prepared.executionContextId,
+        prepared.entryPointFeeQuote
       );
 
       // Exercise the published sysweb3 ethSign implementation and the actual
@@ -249,6 +277,14 @@ describe('smart-account owner signing intent', () => {
       expect(broadcast).not.toHaveBeenCalled();
       expect(prepared.actionHash).not.toBe(unrelatedTransaction.unsignedHash);
       expect(getUserOpHash).not.toHaveBeenCalled();
+      const retained = await journal.records.readSmartAccountAuthorizationExact(
+        journal.session(captureSubmissionGuard(controller)),
+        '1',
+        ACCOUNT,
+        prepared.actionHash
+      );
+      expect(retained?.userOperation.signature).toBe(signature.signature);
+      expect(journal.stored()).not.toContain(signature.signature);
     }
   );
 });

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable @typescript-eslint/no-var-requires */
 
+const { Buffer } = require('node:buffer');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -41,20 +42,33 @@ const constant = (source, name) => {
   return match[1];
 };
 
-const literal = (source, key) => {
-  const match = source.match(
-    new RegExp(`\\b${key}:\\s*\\n\\s*'(0x[0-9a-fA-F]+)'`)
+const bytecodePattern = (key) =>
+  new RegExp(
+    `(\\b${key}:\\s*)(?:'(0x[0-9a-fA-F]+)'|decodeBytecode\\(\\s*'([A-Za-z0-9+/]+={0,2})'\\s*\\))`
   );
+
+const literal = (source, key) => {
+  const match = source.match(bytecodePattern(key));
   if (!match) throw new Error(`Missing deployment bytecode literal: ${key}`);
-  return match[1].toLowerCase();
+  if (match[2]) return match[2].toLowerCase();
+  const bytes = Buffer.from(match[3], 'base64');
+  if (!bytes.length || bytes.toString('base64') !== match[3])
+    throw new Error(`Invalid deployment bytecode encoding: ${key}`);
+  return `0x${bytes.toString('hex')}`;
 };
 
 const replaceLiteral = (source, key, value) => {
-  const pattern = new RegExp(`(\\b${key}:\\s*\\n\\s*)'(0x[0-9a-fA-F]+)'`);
+  const pattern = bytecodePattern(key);
   if (!pattern.test(source)) {
     throw new Error(`Missing deployment bytecode literal: ${key}`);
   }
-  return source.replace(pattern, `$1'${value}'`);
+  return source.replace(pattern, (_match, prefix, hex) =>
+    hex
+      ? `${prefix}'${value}'`
+      : `${prefix}decodeBytecode('${Buffer.from(value.slice(2), 'hex').toString(
+          'base64'
+        )}')`
+  );
 };
 
 const artifactBytecode = (sourceName, contractName, deployed = false) => {

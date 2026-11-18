@@ -296,3 +296,70 @@ it('applies verified coverage to gas only and binds it to the exact approval', a
     })
   ).toThrow('does not match');
 });
+
+it.each([0, 2] as const)(
+  'checks current base fee against approved type %s without repricing',
+  (type) => {
+    const transaction: EvmFeeEnvelope =
+      type === 0
+        ? {
+            type: 0,
+            from: envelope.from,
+            to: envelope.to,
+            chainId: '1',
+            value: '0',
+            data: '0x',
+            nonce: '0',
+            gasLimit: '25200',
+            gasPrice: '7',
+          }
+        : {
+            ...envelope,
+            chainId: '1',
+            value: '0',
+            maxFeePerGas: '7',
+            maxPriorityFeePerGas: '1',
+          };
+    const approval = capture(transaction);
+    const sample = { ...observation, baseFeePerGas: BigInt(8) };
+    expect(() =>
+      assertEvmFeeEstimateApproved(
+        approval,
+        sample,
+        10,
+        captureNativeEvmFeeCoverage(approval)
+      )
+    ).toThrow('base fee');
+    expect(() =>
+      assertEvmFeeEstimateApproved(
+        approval,
+        { ...sample, baseFeePerGas: BigInt(7) },
+        10,
+        captureNativeEvmFeeCoverage(approval)
+      )
+    ).not.toThrow();
+    const legacySample = {
+      balance: sample.balance,
+      estimatedGas: sample.estimatedGas,
+      sampledBlockGasLimit: sample.sampledBlockGasLimit,
+    };
+    if (type === 0)
+      expect(() =>
+        assertEvmFeeEstimateApproved(
+          approval,
+          legacySample,
+          10,
+          captureNativeEvmFeeCoverage(approval)
+        )
+      ).not.toThrow();
+    else
+      expect(() =>
+        assertEvmFeeEstimateApproved(
+          approval,
+          legacySample,
+          10,
+          captureNativeEvmFeeCoverage(approval)
+        )
+      ).toThrow('base fee');
+  }
+);

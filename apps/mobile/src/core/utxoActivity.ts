@@ -317,6 +317,8 @@ export class UtxoActivity {
   private detailRequest: AbortController | null = null;
   private active = false;
   private focused = true;
+  /** Retained display pages are not fresh offset coverage after a new prefix. */
+  private olderContinuation: number | null = null;
   private pages = new Map<number, { rows: readonly UtxoActivityRow[]; hasMore: boolean; freshPending?: WeakSet<UtxoActivityRow> }>();
   private readonly authority: UtxoActivityOwner;
   private readonly foreground: () => boolean;
@@ -331,7 +333,7 @@ export class UtxoActivity {
     this.stop = this.authority.subscribe(() => { if (!sameUtxoActivityContext(this.state.context, this.capture())) { this.revoke(); void this.load(); } });
     this.revoke(); void this.load();
   }
-  revoke(): void { this.detailRequest?.abort(); this.detailRequest = null; this.authority.releaseUtxoActivity(); this.epoch++; this.pending?.abort(); this.pending = null; this.pages.clear(); this.publish(this.empty()); }
+  revoke(): void { this.detailRequest?.abort(); this.detailRequest = null; this.authority.releaseUtxoActivity(); this.epoch++; this.pending?.abort(); this.pending = null; this.olderContinuation = null; this.pages.clear(); this.publish(this.empty()); }
   dispose(): void { this.active = false; this.stop?.(); this.stop = null; this.revoke(); }
   setFocused(value: boolean): void { this.focused = value; if (!value) this.revoke(); else void this.load(); }
   isCurrent(expected = this.state.context): boolean { return this.active && this.focused && this.foreground() && sameUtxoActivityContext(expected, this.capture()); }
@@ -357,61 +359,89 @@ export class UtxoActivity {
   retryDetail = (): Promise<void> => this.state.detail ? this.selectDetail(this.state.detail.txid) : Promise.resolve();
   load = async (): Promise<void> => { await this.run('refresh'); };
   refresh = (): Promise<UtxoActivityConfirmation | undefined> => this.run('refresh', true);
-  loadMore = async (): Promise<void> => { if (this.state.status === 'ready' && this.state.hasMore) await this.run('older'); };
+  loadMore = async (): Promise<void> => { if (this.state.status === 'ready' && this.state.hasMore) await this.run('older', false, this.olderContinuation !== null); };
   loadNewer = async (): Promise<void> => { if (this.state.status === 'ready' && this.state.hasNewer) await this.run('newer'); };
-  private async run(mode: 'refresh' | 'older' | 'newer', indicate = false): Promise<UtxoActivityConfirmation | undefined> {
+  private async run(mode: 'refresh' | 'older' | 'newer', indicate = false, fillOlder = false): Promise<UtxoActivityConfirmation | undefined> {
     if (this.pending || !this.isCurrent()) return;
-    const before = this.state, owner = before.context!, epoch = ++this.epoch, pending = new AbortController();
-    const page = mode === 'older' ? before.page + 1 : mode === 'newer' ? before.firstPage - 1 : 1;
+    let before = this.state;
+    const owner = before.context!, epoch = ++this.epoch, pending = new AbortController();
+    let page = mode === 'older' ? this.olderContinuation ?? before.page + 1 : mode === 'newer' ? before.firstPage - 1 : 1;
     this.pending = pending;
-    const current = () => this.pending === pending && epoch === this.epoch && !pending.signal.aborted && this.isCurrent(owner);
+    const seen = new Set(before.rows.map(row => row.txid));
+    const deadline = fillOlder ? Date.now() + UTXO_ACTIVITY_LIMITS.timeoutMs : undefined;
+    const timer = fillOlder ? setTimeout(() => pending.abort(), UTXO_ACTIVITY_LIMITS.timeoutMs) : undefined;
+    const owned = () => this.pending === pending && epoch === this.epoch && this.isCurrent(owner);
+    const current = () => !pending.signal.aborted && owned();
     try {
       this.clearDetail();
       if (!current()) return;
       this.publish({ ...this.state, status: 'loading' });
-      if (!current()) return;
-      const value = await this.authority.readUtxoActivityPage({ page }, pending.signal);
-      if (!current()) return;
-      if (!sameUtxoActivityContext(value.context, owner) || value.page !== page) return fail('CHANGED');
-      const previous = this.pages.get(page);
-      const previousPending = indicate && before.status === 'ready'
-        ? previous?.rows.filter((row) => previous.freshPending?.has(row))
-        : undefined;
-      if (mode === 'refresh' && before.firstPage > 1 || value.emptyAccount && !before.rows.some((row) => row.block === null)) this.pages.clear();
-      for (const [number, saved] of this.pages) {
-        const retained = mergeFreshBlockbookHistory(value.rows, saved.rows).slice(value.rows.length);
-        this.pages.set(number, { ...saved, rows: retained });
+      // Repair revisited offsets within one owner, signal and total deadline.
+      for (let read = 0; read < (fillOlder ? UTXO_ACTIVITY_LIMITS.windowPages : 1); read++) {
+        if (!current()) return;
+        if (deadline !== undefined && Date.now() >= deadline) { pending.abort(); return fail('CANCELLED'); }
+        const value = await this.authority.readUtxoActivityPage({ page }, pending.signal);
+        if (pending.signal.aborted) return fail('CANCELLED');
+        if (!current()) return;
+        if (!sameUtxoActivityContext(value.context, owner) || value.page !== page) return fail('CHANGED');
+        const previous = this.pages.get(page);
+        const prefixChanged = mode === 'refresh' && previous &&
+          (value.rows.length !== Math.min(previous.rows.length, UTXO_ACTIVITY_LIMITS.pageSize) ||
+          value.rows.some((row, index) => row.txid !== previous.rows[index]?.txid));
+        const previousPending = indicate && before.status === 'ready'
+          ? previous?.rows.filter((row) => previous.freshPending?.has(row))
+          : undefined;
+        if (mode === 'refresh' && before.firstPage > 1 || value.emptyAccount && !before.rows.some((row) => row.block === null)) {
+          this.pages.clear(); this.olderContinuation = null;
+        }
+        for (const [number, saved] of this.pages) {
+          const retained = mergeFreshBlockbookHistory(value.rows, saved.rows).slice(value.rows.length);
+          this.pages.set(number, { ...saved, rows: retained });
+        }
+        const prior = this.pages.get(page)?.rows ?? [];
+        // Mark only observations in this response. The page can retain older rows
+        // for display, but weak membership gives those rows no fresh evidence.
+        const freshPending = mode === 'refresh'
+          ? new WeakSet(value.rows.filter((row) => row.block === null && row.observedConfirmations === 0))
+          : undefined;
+        this.pages.set(page, { rows: mergeFreshBlockbookHistory(value.rows, prior), hasMore: value.hasMore, freshPending });
+        while (this.pages.size > UTXO_ACTIVITY_LIMITS.windowPages) {
+          const indices = [...this.pages.keys()]; this.pages.delete(mode === 'newer' ? Math.max(...indices) : Math.min(...indices));
+        }
+        const indices = [...this.pages.keys()].sort((a, b) => a - b), firstPage = indices[0]!, lastPage = indices.at(-1)!;
+        if (mode === 'older' && this.olderContinuation !== null)
+          this.olderContinuation = value.hasMore && page < lastPage ? page + 1 : null;
+        const flattened = indices.flatMap((number) => this.pages.get(number)!.rows);
+        if (prefixChanged && (this.olderContinuation !== null || flattened.length > UTXO_ACTIVITY_LIMITS.displayRows ||
+            !value.rows.some(row => previous!.rows.some(retained => retained.txid === row.txid)))) {
+          // Restart at the first shifted offset if rows were pruned or the new
+          // prefix does not join retained history. Small complete lists need no repair.
+          this.olderContinuation = value.hasMore ? 2 : null;
+        }
+        const rows = Object.freeze(selectEvmHistoryRepresentatives(flattened.map(wrap), UTXO_ACTIVITY_LIMITS.displayRows).map((entry) => entry.row));
+        const retainedRows = new Set(rows);
+        for (const [number, saved] of this.pages) this.pages.set(number, { ...saved, rows: saved.rows.filter((row) => retainedRows.has(row)) });
+        this.authority.retainUtxoActivityRows(rows);
+        if (!current()) return;
+        const next: UtxoActivityState = { status: 'ready', context: owner, rows, detail: null, firstPage, page: lastPage,
+          hasMore: mode === 'older' && !value.hasMore ? false : this.olderContinuation !== null || this.pages.get(lastPage)!.hasMore, hasNewer: firstPage > 1,
+          windowed: firstPage > 1 || flattened.length > UTXO_ACTIVITY_LIMITS.displayRows };
+        const continueOlder = fillOlder && read + 1 < UTXO_ACTIVITY_LIMITS.windowPages && next.hasMore && !rows.some(row => !seen.has(row.txid));
+        this.publish(continueOlder ? { ...next, status: 'loading' } : next);
+        if (continueOlder) { before = next; page = this.olderContinuation ?? lastPage + 1; continue; }
+        const confirmed = previousPending?.some((priorRow) => rows.some((row) =>
+          row.txid === priorRow.txid && row.block !== null && row.observedConfirmations > 0 && value.rows.includes(row)));
+        if (confirmed && current()) {
+          let consumed = false;
+          return Object.freeze({ consume: () => {
+            if (consumed) return false;
+            consumed = true;
+            return this.isCurrent(owner) && this.epoch === epoch;
+          } });
+        }
+        return;
       }
-      const prior = this.pages.get(page)?.rows ?? [];
-      // Mark only observations in this response. The page can retain older rows
-      // for display, but weak membership gives those rows no fresh evidence.
-      const freshPending = mode === 'refresh'
-        ? new WeakSet(value.rows.filter((row) => row.block === null && row.observedConfirmations === 0))
-        : undefined;
-      this.pages.set(page, { rows: mergeFreshBlockbookHistory(value.rows, prior), hasMore: value.hasMore, freshPending });
-      while (this.pages.size > UTXO_ACTIVITY_LIMITS.windowPages) {
-        const indices = [...this.pages.keys()]; this.pages.delete(mode === 'newer' ? Math.max(...indices) : Math.min(...indices));
-      }
-      const indices = [...this.pages.keys()].sort((a, b) => a - b), firstPage = indices[0]!, lastPage = indices.at(-1)!;
-      const flattened = indices.flatMap((number) => this.pages.get(number)!.rows);
-      const rows = Object.freeze(selectEvmHistoryRepresentatives(flattened.map(wrap), UTXO_ACTIVITY_LIMITS.displayRows).map((entry) => entry.row));
-      const retainedRows = new Set(rows);
-      for (const [number, saved] of this.pages) this.pages.set(number, { ...saved, rows: saved.rows.filter((row) => retainedRows.has(row)) });
-      this.authority.retainUtxoActivityRows(rows);
-      if (!current()) return;
-      this.publish({ status: 'ready', context: owner, rows, detail: null, firstPage, page: lastPage,
-        hasMore: this.pages.get(lastPage)!.hasMore, hasNewer: firstPage > 1, windowed: firstPage > 1 || flattened.length > UTXO_ACTIVITY_LIMITS.displayRows });
-      const confirmed = previousPending?.some((priorRow) => rows.some((row) =>
-        row.txid === priorRow.txid && row.block !== null && row.observedConfirmations > 0 && value.rows.includes(row)));
-      if (confirmed && current()) {
-        let consumed = false;
-        return Object.freeze({ consume: () => {
-          if (consumed) return false;
-          consumed = true;
-          return this.isCurrent(owner) && this.epoch === epoch;
-        } });
-      }
-    } catch { if (current()) this.publish({ ...before, detail: null, status: before.rows.length ? 'stale' : 'unavailable', hasMore: false }); }
-    finally { pending.abort(); if (this.pending === pending) this.pending = null; }
+    } catch { if (owned()) this.publish({ ...before, detail: null, status: before.rows.length ? 'stale' : 'unavailable', hasMore: false }); }
+    finally { clearTimeout(timer); pending.abort(); if (this.pending === pending) this.pending = null; }
   }
 }

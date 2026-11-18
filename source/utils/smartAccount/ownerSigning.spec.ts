@@ -7,7 +7,10 @@ import {
   type SmartAccountOwnerSigningSdk,
   type SmartAccountOwnerIdentity,
 } from './ownerSigning';
-import { createSmartAccountRawSigningIntent } from './ownerSigningIntent';
+import {
+  createSmartAccountRawSigningIntent,
+  createSmartAccountTypedSigningIntent,
+} from './ownerSigningIntent';
 
 const wallet = new Wallet('0x' + '31'.repeat(32)),
   SMART = '0x' + '41'.repeat(20);
@@ -174,3 +177,49 @@ it('rejects a different selected Smart before either SDK route', async () => {
   expect(request.rawSign).not.toHaveBeenCalled();
   expect(request.signTypedData).not.toHaveBeenCalled();
 });
+
+it.each(['HDAccount', 'Imported', 'Ledger', 'Trezor'] as const)(
+  'preserves a separate typed policy-possession digest for %s and binds its account before dispatch',
+  async (type) => {
+    const request = input(type);
+    const domain = {
+      name: 'Pali combined approval possession',
+      version: '1',
+      chainId: 1,
+      verifyingContract: SMART,
+    };
+    const types = {
+      CombinedApprovalPossession: [
+        { name: 'policyHash', type: 'bytes32' },
+        { name: 'nonce', type: 'bytes32' },
+      ],
+    };
+    const message = {
+      policyHash: '0x' + '51'.repeat(32),
+      nonce: '0x' + '61'.repeat(32),
+    };
+    const possession = createSmartAccountTypedSigningIntent(
+      'policy-possession',
+      { domain, types, message },
+      TypedDataEncoder.hash(domain, types, message)
+    );
+    expect(possession.actionHash).not.toBe(intent.actionHash);
+    await expect(
+      signSmartAccountOwnerIntent({ ...request, intent: possession })
+    ).resolves.toBe(wallet.signingKey.sign(possession.actionHash).serialized);
+    request.rawSign.mockClear();
+    request.signTypedData.mockClear();
+    await expect(
+      signSmartAccountOwnerIntent({
+        ...request,
+        intent: possession,
+        selectedSmart: {
+          ...request.selectedSmart,
+          expectedAddress: '0x' + '79'.repeat(20),
+        },
+      })
+    ).rejects.toThrow('account changed');
+    expect(request.rawSign).not.toHaveBeenCalled();
+    expect(request.signTypedData).not.toHaveBeenCalled();
+  }
+);

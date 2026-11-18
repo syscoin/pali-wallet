@@ -1,4 +1,10 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  useMemo,
+} from 'react';
 import { useSelector } from 'react-redux';
 
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
@@ -60,7 +66,11 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
 
   // Generate unique key for request deduplication
   const getCacheKey = useCallback(() => {
-    const networkKey = `${activeNetwork.kind}-${activeNetwork.chainId}`;
+    const networkKey = JSON.stringify([
+      activeNetwork.kind,
+      activeNetwork.chainId,
+      activeNetwork.url,
+    ]);
     return `${accountType}-${account.id}-${account.address}-${networkKey}`;
   }, [
     account.address,
@@ -68,6 +78,7 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     accountType,
     activeNetwork.chainId,
     activeNetwork.kind,
+    activeNetwork.url,
   ]);
 
   // Check if we can make a request based on rate limiting
@@ -120,11 +131,18 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     pendingRequests.set(cacheKey, fetchPromise);
 
     return fetchPromise;
-  }, [account, accountType, activeNetwork, getCacheKey]);
+  }, [account, accountType, activeNetwork, getCacheKey, controllerEmitter]);
+
+  const loadOwner = useMemo(
+    () => ({}),
+    [account, activeNetwork, fetchOnMissingBalance, fetchBalance, onBalanceLoad]
+  );
+  const currentLoadOwner = useRef(loadOwner);
+  currentLoadOwner.current = loadOwner;
 
   // Load balance with rate limiting
   const loadBalance = useCallback(async () => {
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || currentLoadOwner.current !== loadOwner) return;
     const requestId = ++loadRequestIdRef.current;
 
     // The legacy balances field has no timestamp, so only short-circuit with
@@ -174,7 +192,13 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
       }
 
       fetchTimeoutRef.current = setTimeout(() => {
-        loadBalance();
+        if (
+          currentLoadOwner.current !== loadOwner ||
+          requestId !== loadRequestIdRef.current
+        )
+          return;
+        fetchTimeoutRef.current = null;
+        void loadBalance();
       }, RATE_LIMIT_WINDOW);
 
       return;
@@ -183,7 +207,12 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     try {
       const balanceValue = await fetchBalance();
 
-      if (!mountedRef.current || requestId !== loadRequestIdRef.current) return;
+      if (
+        !mountedRef.current ||
+        currentLoadOwner.current !== loadOwner ||
+        requestId !== loadRequestIdRef.current
+      )
+        return;
 
       setBalance(balanceValue);
       setIsLoading(false);
@@ -192,7 +221,12 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
         onBalanceLoad(balanceValue);
       }
     } catch (err) {
-      if (!mountedRef.current || requestId !== loadRequestIdRef.current) return;
+      if (
+        !mountedRef.current ||
+        currentLoadOwner.current !== loadOwner ||
+        requestId !== loadRequestIdRef.current
+      )
+        return;
 
       setError('Failed to load balance');
       setIsLoading(false);
@@ -206,6 +240,7 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     canMakeRequest,
     fetchBalance,
     onBalanceLoad,
+    loadOwner,
   ]);
 
   // Track the actual component lifetime separately from balance refreshes.
@@ -224,6 +259,11 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   // Load on mount and re-read live Redux balances when account data changes.
   useEffect(() => {
     void loadBalance();
+    return () => {
+      loadRequestIdRef.current += 1;
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+      fetchTimeoutRef.current = null;
+    };
   }, [loadBalance]);
 
   // Refresh a mounted card when its current cache entry reaches the TTL.

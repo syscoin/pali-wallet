@@ -204,12 +204,12 @@ beforeEach(async () => {
       } else throw new Error(`Unexpected external read ${request.method}`);
       return { jsonrpc: '2.0', id: request.id, result };
     };
-    return {
-      ok: true,
-      status: 200,
-      json: async () =>
-        Array.isArray(payload) ? payload.map(answer) : answer(payload),
-    } as Response;
+    return new Response(
+      JSON.stringify(
+        Array.isArray(payload) ? payload.map(answer) : answer(payload)
+      ),
+      { status: 200, headers: { 'content-type': 'application/json' } }
+    );
   }) as typeof fetch;
   provider = new CustomJsonRpcProvider(
     new AbortController().signal,

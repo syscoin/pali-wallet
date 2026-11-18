@@ -86,7 +86,9 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     });
     await authority.initialize();
     const rpc = new NativeTransferRpc({ networkId: 'ethereum',
-      fetch: async (_url, init) => {
+      fetch: async function fetchFixture(_url, init): Promise<Response> {
+        const request = JSON.parse(String(init.body));
+        if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetchFixture(_url, { ...init, body: JSON.stringify(row) })).json())));
         const b = JSON.parse(String(init.body));
         let result: unknown;
         if (b.method === 'eth_chainId') result = '0x1';

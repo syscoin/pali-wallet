@@ -180,6 +180,16 @@ const renderProviderTransaction = async (
 ) => {
   const hash = nextHash();
   const provider = {
+    signal: new AbortController().signal,
+    _getConnection: () => ({ url: 'https://synthetic.invalid' }),
+    readMany: jest.fn(
+      async (requests: { method: string; params: unknown[] }[]) =>
+        requests.map(({ method, params }) => {
+          if (method !== 'eth_chainId' || params.length)
+            throw Error('Unexpected identity RPC');
+          return { status: 'fulfilled', value: '0x1644' };
+        })
+    ),
     getTransaction: jest.fn(async () => ({
       hash,
       from: ACCOUNT,
@@ -195,6 +205,9 @@ const renderProviderTransaction = async (
       type: 2,
     })),
     getTransactionReceipt: jest.fn(async () => ({
+      transactionHash: hash,
+      from: ACCOUNT,
+      to: TARGET,
       blockNumber: 42,
       blockHash: `0x${'33'.repeat(32)}`,
       gasUsed: BigInt(21000),
@@ -203,7 +216,11 @@ const renderProviderTransaction = async (
       logs: [],
     })),
     getBlockNumber: jest.fn(async () => 44),
-    getBlock: jest.fn(async () => ({ timestamp: 1700000000 })),
+    getBlock: jest.fn(async () => ({
+      number: 42,
+      hash: `0x${'33'.repeat(32)}`,
+      timestamp: 1700000000,
+    })),
   };
   Object.defineProperty(mockWallet, 'ethereumTransaction', {
     value: { web3Provider: provider },

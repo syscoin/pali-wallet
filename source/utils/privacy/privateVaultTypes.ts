@@ -29,6 +29,19 @@ export interface IPrivateNoteView extends Omit<IPrivateNoteStatus, 'phase'> {
 }
 
 export type PrivateVaultCapacity = 128 | 256 | 512;
+export interface IPrivateArchivedNoteView {
+  amount: string;
+  archivedAt: number;
+  createdAt: number;
+  id: string;
+  poolId: PrivacyPoolId;
+}
+export interface IPrivateVaultArchiveView {
+  bundleLimitBytes: number;
+  limit: number;
+  notes: IPrivateArchivedNoteView[];
+  storedBytes: number;
+}
 
 export interface IPrivateVaultCapacity {
   bundleLimitBytes: number;
@@ -38,18 +51,29 @@ export interface IPrivateVaultCapacity {
 }
 
 export interface IPrivateVaultView {
+  archiveSummary?: Omit<IPrivateVaultArchiveView, 'notes'> & {
+    noteCount: number;
+  };
   notes: IPrivateNoteView[];
 }
 
 export interface IPrivateVaultController {
+  clearArchive: (
+    password: WalletAuthentication
+  ) => Promise<{ removed: number }>;
   clearCompletedNotes: (
     ids: string[]
   ) => Promise<{ removed: string[]; unresolved: string[] }>;
   createDepositNote: (poolId: PrivacyPoolId) => Promise<IPrivateNoteView>;
+  getArchivedNotes: () => Promise<IPrivateVaultArchiveView>;
   getCapacity: () => Promise<IPrivateVaultCapacity>;
-  getNotes: () => Promise<IPrivateVaultView>;
+  getNotes: (includeArchiveSummary?: boolean) => Promise<IPrivateVaultView>;
   importNote: (note: string) => Promise<IPrivateNoteView>;
   recoverFailedWithdrawal: (
+    id: string,
+    password: WalletAuthentication
+  ) => Promise<void>;
+  restoreArchivedNote: (
     id: string,
     password: WalletAuthentication
   ) => Promise<void>;

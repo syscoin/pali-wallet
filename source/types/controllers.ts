@@ -45,7 +45,7 @@ export interface IDAppController {
    */
   getAccount: (host: string) => IOmmitedAccount | null;
   getAll: () => { [host: string]: IDApp };
-  getNetwork: () => INetwork;
+  getNetwork: () => Omit<INetwork, 'apiUrl' | 'url'>;
   getState: () => any;
   /**
    * Update state and emit events to all connected dApps

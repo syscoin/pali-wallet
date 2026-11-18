@@ -1,10 +1,17 @@
-import { SMART_ACCOUNT_CONTROLLER_PORT } from '../../../shared/smartAccountControllerAuthority';
+import {
+  SMART_ACCOUNT_CONTROLLER_PORT,
+  SMART_ACCOUNT_FEE_APPROVAL,
+  SMART_ACCOUNT_FEE_REVIEW,
+} from '../../../shared/smartAccountControllerAuthority';
 import { SMART_ACCOUNT_EXECUTION_LIFETIME_MS } from '../../../utils/smartAccount/prepareOperation';
 
 import { handleMasterControllerResponses } from './handleMasterControllerResponses';
 
 const methods = [
   'signSmartAccountPreparedOwner',
+  'approveSmartAccountExecutionFeeQuote',
+  'signSmartAccountCompositeOwner',
+  'verifySmartAccountCompositePossession',
   'registerSmartAccountOnChain',
   'submitSmartAccountExecution',
 ] as const;
@@ -25,6 +32,23 @@ const sender = () => ({
   url: 'chrome-extension://pali/app.html#/send/confirm',
 });
 const tick = () => new Promise(setImmediate);
+const feeReview = (id = 'actual-envelope-fee') => ({
+  id,
+  maximumFeeUnits: '42000',
+  maximumTotalUnits: '42000',
+  validForMs: 90_000,
+  transaction: {
+    chainId: '57',
+    from: '0x' + '11'.repeat(20),
+    to: '0x' + '22'.repeat(20),
+    value: '0',
+    data: '0x',
+    nonce: '0',
+    gasLimit: '21000',
+    type: 0,
+    gasPrice: '2',
+  },
+});
 function connect(source: unknown = sender()) {
   const onMessage = event<(value: unknown) => void>();
   const onDisconnect = event<() => void>();
@@ -47,7 +71,12 @@ const request = (method: string, params?: unknown[]) => ({
     methods: ['wallet', method],
     params:
       params ??
-      (method === 'signSmartAccountPreparedOwner'
+      (method === 'approveSmartAccountExecutionFeeQuote'
+        ? ['prepared-context', { maximumFeeWei: '1000' }]
+        : method === 'verifySmartAccountCompositePossession'
+        ? ['prepared-context', ['0x1234']]
+        : method === 'signSmartAccountPreparedOwner' ||
+          method === 'signSmartAccountCompositeOwner'
         ? ['prepared-context', { id: 4, type: 'Ledger' }]
         : [{}]),
   },
@@ -91,6 +120,116 @@ it.each(methods)(
     expect(next.postMessage).toHaveBeenCalledWith({ hash: 'acknowledged' });
   }
 );
+it.each([true, false])(
+  'holds the actual payer behind a matching explicit fee reply (approve=%s)',
+  async (approved) => {
+    const sign = jest.fn();
+    operation.mockImplementationOnce(async (_params, authority) => {
+      const id = await authority.confirmFee(feeReview());
+      authority.assertCurrent();
+      if (id === null) throw new Error('Fee approval cancelled');
+      expect(id).toBe('actual-envelope-fee');
+      sign();
+      return { hash: 'acknowledged' };
+    });
+    const port = connect();
+    port.onMessage.emit(request('submitSmartAccountExecution'));
+    await tick();
+    expect(sign).not.toHaveBeenCalled();
+    expect(port.postMessage).toHaveBeenLastCalledWith({
+      type: SMART_ACCOUNT_FEE_REVIEW,
+      review: feeReview(),
+    });
+    port.onMessage.emit({
+      type: SMART_ACCOUNT_FEE_APPROVAL,
+      id: 'actual-envelope-fee',
+      approved,
+    });
+    await tick();
+    expect(sign).toHaveBeenCalledTimes(approved ? 1 : 0);
+    expect(operation).toHaveBeenCalledTimes(1);
+    expect(port.disconnect).toHaveBeenCalledTimes(1);
+  }
+);
+it.each(['disconnect', 'wrong-id', 'extra-fields'])(
+  'rejects a fee approval after %s without reaching the payer',
+  async (failure) => {
+    const sign = jest.fn();
+    operation.mockImplementationOnce(async (_params, authority) => {
+      await authority.confirmFee(feeReview());
+      authority.assertCurrent();
+      return sign();
+    });
+    const port = connect();
+    port.onMessage.emit(request('submitSmartAccountExecution'));
+    await tick();
+    if (failure === 'disconnect') port.onDisconnect.emit();
+    else
+      port.onMessage.emit({
+        type: SMART_ACCOUNT_FEE_APPROVAL,
+        id: failure === 'wrong-id' ? 'another-fee' : 'actual-envelope-fee',
+        approved: true,
+        ...(failure === 'extra-fields' ? { authority: true } : {}),
+      });
+    await tick();
+    expect(sign).not.toHaveBeenCalled();
+    expect(operation.mock.calls[0].at(-1).signal.aborted).toBe(true);
+    expect(port.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ hash: expect.any(String) })
+    );
+  }
+);
+it('reviews prefunding and handleOps separately and refuses a third or replayed envelope', async () => {
+  const signed = jest.fn();
+  operation.mockImplementationOnce(async (_params, authority) => {
+    for (const id of ['prefund-fee', 'handle-ops-fee', 'unexpected-third']) {
+      expect(await authority.confirmFee(feeReview(id))).toBe(id);
+      authority.assertCurrent();
+      signed(id);
+    }
+  });
+  const port = connect();
+  port.onMessage.emit(request('submitSmartAccountExecution'));
+  for (const id of ['prefund-fee', 'handle-ops-fee']) {
+    await tick();
+    expect(port.postMessage).toHaveBeenLastCalledWith({
+      type: SMART_ACCOUNT_FEE_REVIEW,
+      review: feeReview(id),
+    });
+    port.onMessage.emit({
+      type: SMART_ACCOUNT_FEE_APPROVAL,
+      id,
+      approved: true,
+    });
+  }
+  await tick();
+  expect(signed.mock.calls).toEqual([['prefund-fee'], ['handle-ops-fee']]);
+  expect(port.postMessage).not.toHaveBeenCalledWith({
+    type: SMART_ACCOUNT_FEE_REVIEW,
+    review: feeReview('unexpected-third'),
+  });
+});
+it('expires an unanswered numerical fee review before payer signing', async () => {
+  jest.useFakeTimers();
+  const sign = jest.fn();
+  operation.mockImplementationOnce(async (_params, authority) => {
+    await authority.confirmFee({ ...feeReview(), validForMs: 100 });
+    authority.assertCurrent();
+    return sign();
+  });
+  const port = connect();
+  port.onMessage.emit(request('submitSmartAccountExecution'));
+  await jest.advanceTimersByTimeAsync(0);
+  await jest.advanceTimersByTimeAsync(100);
+  port.onMessage.emit({
+    type: SMART_ACCOUNT_FEE_APPROVAL,
+    id: 'actual-envelope-fee',
+    approved: true,
+  });
+  await jest.advanceTimersByTimeAsync(0);
+  expect(sign).not.toHaveBeenCalled();
+  expect(operation.mock.calls[0].at(-1).signal.aborted).toBe(true);
+});
 it.each(methods)(
   'refuses the old one-shot onMessage route for %s',
   async (method) => {

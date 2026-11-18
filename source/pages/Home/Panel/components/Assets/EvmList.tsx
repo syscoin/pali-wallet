@@ -89,7 +89,6 @@ const DefaultEvmAssets = React.memo(
     const filteredAssets = useMemo(() => {
       const tokens = currentChainAssets || [];
       const lowercaseSearchValue = searchValue?.trim().toLowerCase() || '';
-      const isHexSearch = lowercaseSearchValue.startsWith('0x');
 
       let working = tokens;
       if (lowercaseSearchValue.length > 0) {
@@ -97,10 +96,11 @@ const DefaultEvmAssets = React.memo(
           const lowercaseTokenName = token.name?.toLowerCase() || '';
           const lowercaseTokenSymbol = token.tokenSymbol.toLowerCase();
           const lowercaseContractAddress = token.contractAddress.toLowerCase();
-          return isHexSearch
-            ? lowercaseContractAddress.includes(lowercaseSearchValue)
-            : lowercaseTokenName.includes(lowercaseSearchValue) ||
-                lowercaseTokenSymbol.includes(lowercaseSearchValue);
+          return (
+            lowercaseTokenName.includes(lowercaseSearchValue) ||
+            lowercaseTokenSymbol.includes(lowercaseSearchValue) ||
+            lowercaseContractAddress.includes(lowercaseSearchValue)
+          );
         });
       }
       if (sortByValue?.length > 0) {
@@ -161,7 +161,7 @@ const DefaultEvmAssets = React.memo(
             <AssetSearchEmptyState onClearSearch={onClearSearch} />
           ) : (
             <p className="py-6 text-sm text-brand-white">
-              {t('home.youHaveNoTokens')}
+              {t('home.youHaveNoFungibleTokens')}
             </p>
           ))}
         {visibleItems.map((token: ITokenEthProps) => (

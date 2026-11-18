@@ -27,6 +27,7 @@ import {
   ITxState,
   TransactionType,
 } from '../../types/transactions';
+import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import {
   Button,
   Icon,
@@ -80,6 +81,7 @@ import {
 } from 'utils/smartAccount';
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { buildSmartAccountErc20Transfer } from 'utils/smartAccount/erc20Transfer';
+import { isSmartAccountPayerPendingError } from 'utils/smartAccount/executionSimulationError';
 import { prepareSmartAccountNativeMaximum } from 'utils/smartAccount/nativeMaximum';
 import { buildSmartAccountNftTransfer } from 'utils/smartAccount/nftTransfer';
 import { isSmartAccountPendingReviewError } from 'utils/smartAccountErrors';
@@ -176,6 +178,15 @@ export const SendConfirm = () => {
     connectionUnavailable,
   });
   const { state } = submission;
+  const { forExecution, feeConfirmation } = useSmartAccountFeeConfirmation(
+    JSON.stringify([
+      activeAccountMeta,
+      activeNetwork.chainId,
+      activeNetwork.url,
+      submission.reviewScope,
+      state?.walletScope,
+    ])
+  );
   const tokenReviewPort = useRef<ReturnType<typeof openWalletTokenReview>>();
   useEffect(() => {
     const retireOnDeparture = () => {
@@ -936,6 +947,18 @@ export const SendConfirm = () => {
           accountId: activeAccountMeta.id,
           controllerEmitter,
           executions: [candidate],
+          ...(transactionType === TransactionType.ERC20
+            ? {
+                expectedErc20Transfers: [
+                  {
+                    contractAddress: basicTxValues.token.contractAddress,
+                    recipient: target,
+                    amountUnits: reviewedErc20Units!,
+                    decimals: basicTxValues.token.decimals,
+                  },
+                ],
+              }
+            : {}),
           feeOverrides: overrides,
         });
       };
@@ -981,7 +1004,9 @@ export const SendConfirm = () => {
         const pendingReview = isSmartAccountPendingReviewError(error);
         setSmartAccountQuoteError({
           message: t(
-            pendingReview
+            isSmartAccountPayerPendingError(error)
+              ? 'send.smartAccountPayerPending'
+              : pendingReview
               ? 'send.smartAccountPendingReview'
               : 'send.unableToCalculateFees'
           ),
@@ -1349,8 +1374,29 @@ export const SendConfirm = () => {
             }),
             controllerEmitter: submitEmitter,
             executions: [{ target, value, data }],
+            ...(transactionType === TransactionType.ERC20
+              ? {
+                  expectedErc20Transfers: [
+                    {
+                      contractAddress: basicTxValues.token.contractAddress,
+                      recipient: destinationTo,
+                      amountUnits: reviewedErc20Units!,
+                      decimals: basicTxValues.token.decimals,
+                    },
+                  ],
+                }
+              : {}),
             feeOverrides,
             approvedFeeQuote: smartAccountQuote,
+            feeConsent: forExecution({
+              account: activeAccount.address,
+              smartAccount: activeAccount.address,
+              chainId: activeNetwork.chainId,
+              symbol: activeNetwork.currency,
+              label: t('buttons.send'),
+              assertCurrent: assertSmartAccountConfirmationCurrent,
+            }),
+            onBeforeAuthentication: assertSmartAccountConfirmationCurrent,
             onPrepared: assertSmartAccountConfirmationCurrent,
             onBeforeSubmit: async () => {
               assertSmartAccountConfirmationCurrent();
@@ -1370,6 +1416,15 @@ export const SendConfirm = () => {
             smartAccount: activeAccount.smartAccount,
           });
         } catch (error) {
+          if (
+            publicationRequested &&
+            error?.code === 4001 &&
+            error?.transactionNotBroadcast === true &&
+            submission.isActive()
+          ) {
+            setSmartAccountQuote(undefined);
+            setSmartAccountQuoteNeedsRefresh(true);
+          }
           // A same-text error after the publication boundary is not evidence
           // that refreshing/re-signing is safe, regardless of its marker.
           if (
@@ -2356,6 +2411,7 @@ export const SendConfirm = () => {
 
   return (
     <>
+      {feeConfirmation}
       <EditPriorityModal
         showModal={isOpenEditFeeModal}
         setIsOpen={setIsOpenEditFeeModal}

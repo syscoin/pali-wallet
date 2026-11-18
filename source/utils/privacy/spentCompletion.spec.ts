@@ -1,4 +1,5 @@
 import { Interface } from 'ethers';
+
 import {
   prepareSpentCompletion,
   type SpentCompletionRequest,
@@ -238,4 +239,176 @@ it('aborts and fails closed when the proof run exceeds its total deadline', asyn
   } finally {
     jest.useRealTimers();
   }
+});
+
+it('selects a finalized matching replacement while preserving the original hash and exact prewrite evidence', async () => {
+  const f = fixture();
+  delete f.request.deposit;
+  f.request.withdrawal = {
+    phase: 'submitted',
+    mode: 'relayed',
+    transactionHash: dHash,
+    transactionHashes: [dHash, wHash],
+  };
+  f.receipts[dHash] = null;
+  const proof = await prepareSpentCompletion(f.request);
+  expect(f.request.withdrawal.transactionHash).toBe(dHash);
+  f.rpc.mockClear();
+  await proof.revalidate();
+  expect(
+    f.rpc.mock.calls
+      .filter(([method]) => method === 'eth_getTransactionReceipt')
+      .map(([, params]) => params[0])
+  ).toEqual([wHash]);
+  f.receipts[wHash].logs[0].data = abi.encodeEventLog(
+    abi.getEvent('Withdrawal')!,
+    [account, nullifier, relayer, BigInt(1)]
+  ).data;
+  await expect(proof.revalidate()).rejects.toThrow(
+    'privacy_spent_proof_unavailable'
+  );
+});
+
+it.each([
+  'unmined',
+  'failed',
+  'wrong-event',
+  'wrong-chain',
+  'reorg',
+  'over-capacity',
+  'duplicate',
+])('does not treat candidate/status hints as completion: %s', async (kind) => {
+  const f = fixture();
+  delete f.request.deposit;
+  f.request.withdrawal = {
+    phase: 'submitted',
+    mode: 'relayed',
+    transactionHash: dHash,
+    transactionHashes: [dHash, wHash],
+  };
+  f.receipts[dHash] = null;
+  if (kind === 'unmined') f.receipts[wHash] = null;
+  if (kind === 'failed') f.receipts[wHash].status = '0x0';
+  if (kind === 'wrong-event') f.receipts[wHash].logs[0].address = account;
+  if (kind === 'reorg') f.blocks['0x70'].hash = dBlock;
+  if (kind === 'wrong-chain') {
+    const rpc = f.request.rpc;
+    f.request.rpc = async (...args) =>
+      args[0] === 'eth_chainId' ? '0x2' : rpc(...args);
+  }
+  if (kind === 'over-capacity')
+    (f.request.withdrawal as any).transactionHashes = Array.from(
+      { length: 17 },
+      (_, i) => '0x' + (i + 1).toString(16).padStart(64, '0')
+    );
+  if (kind === 'duplicate')
+    (f.request.withdrawal as any).transactionHashes = [dHash, dHash];
+  await expect(prepareSpentCompletion(f.request)).rejects.toThrow(
+    'privacy_spent_proof_unavailable'
+  );
+});
+
+it('checks sixteen healthy candidates within one bounded operation using four workers and shared blocks', async () => {
+  jest.useFakeTimers();
+  try {
+    const f = fixture();
+    delete f.request.deposit;
+    const hashes = Array.from(
+      { length: 16 },
+      (_, i) => '0x' + (i + 1).toString(16).padStart(64, '0')
+    );
+    hashes[15] = wHash;
+    f.request.withdrawal = {
+      phase: 'submitted',
+      mode: 'relayed',
+      transactionHash: hashes[0],
+      transactionHashes: hashes,
+    };
+    const rpc = f.request.rpc;
+    let active = 0,
+      max = 0;
+    f.request.rpc = async (...args) => {
+      active++;
+      max = Math.max(max, active);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        if (args[0] === 'eth_getTransactionReceipt' && args[1][0] !== wHash)
+          return null;
+        return rpc(...args);
+      } finally {
+        active--;
+      }
+    };
+    const start = Date.now();
+    const promise = prepareSpentCompletion(f.request);
+    await jest.advanceTimersByTimeAsync(10500);
+    await expect(promise).resolves.toBeDefined();
+    expect(max).toBe(4);
+    expect(Date.now() - start).toBeLessThan(15000);
+    expect(
+      f.rpc.mock.calls.filter(
+        ([method, params]) =>
+          method === 'eth_getBlockByNumber' && params[0] === '0x70'
+      )
+    ).toHaveLength(1);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it.each(['rejects', 'stalls'] as const)(
+  'an unrelated candidate that %s cannot veto a finalized matching replacement',
+  async (failure) => {
+    const f = fixture();
+    delete f.request.deposit;
+    f.request.withdrawal = {
+      phase: 'submitted',
+      mode: 'relayed',
+      transactionHash: dHash,
+      transactionHashes: [dHash, wHash],
+    };
+    const rpc = f.request.rpc;
+    let held: AbortSignal | undefined;
+    f.request.rpc = async (...args) => {
+      if (args[0] === 'eth_getTransactionReceipt' && args[1][0] === dHash) {
+        held = args[2];
+        if (failure === 'rejects') {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          throw Error('Unavailable unrelated candidate');
+        }
+        return new Promise(() => undefined);
+      }
+      return rpc(...args);
+    };
+    const proof = await prepareSpentCompletion(f.request);
+    expect(held?.aborted).toBe(true);
+    await proof.revalidate();
+    expect(
+      f.rpc.mock.calls
+        .filter(([method]) => method === 'eth_getTransactionReceipt')
+        .every(([, params]) => params[0] === wHash)
+    ).toBe(true);
+  }
+);
+
+it('owner retirement during candidate exploration remains fatal even when a matching event is available', async () => {
+  const f = fixture();
+  delete f.request.deposit;
+  f.request.withdrawal = {
+    phase: 'submitted',
+    mode: 'relayed',
+    transactionHash: dHash,
+    transactionHashes: [dHash, wHash],
+  };
+  const rpc = f.request.rpc;
+  f.request.rpc = async (...args) => {
+    if (args[0] === 'eth_getTransactionReceipt' && args[1][0] === dHash) {
+      f.invalidate();
+      throw Error('retired');
+    }
+    return rpc(...args);
+  };
+  await expect(prepareSpentCompletion(f.request)).rejects.toThrow(
+    'privacy_spent_proof_unavailable'
+  );
 });

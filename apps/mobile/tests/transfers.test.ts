@@ -178,7 +178,9 @@ function fixture(maximumAccountType?: 'HDAccount' | 'Imported' | 'Ledger' | 'Tre
     },
   };
   const rpc = new NativeTransferRpc({ networkId: 'ethereum',
-    fetch: async (_url, init) => {
+    fetch: async function fetchFixture(_url, init): Promise<Response> {
+      const request = JSON.parse(String(init.body));
+      if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetchFixture(_url, { ...init, body: JSON.stringify(row) })).json())));
       const body = JSON.parse(String(init.body));
       rpcMethods.push(body.method);
       if (Object.keys(records).length && body.method === 'eth_call' && String(body.params[0].data).startsWith('0x70a08231') && postJournalTokenRead) { const hook = postJournalTokenRead; postJournalTokenRead = undefined; await hook(); }

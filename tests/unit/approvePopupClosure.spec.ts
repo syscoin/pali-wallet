@@ -51,7 +51,11 @@ describe('approval popup closure preserves original request settlement', () => {
       locator: jest.fn(() => ({
         waitFor: jest.fn().mockResolvedValue(undefined),
       })),
-      getByRole: jest.fn(() => ({ last: () => button })),
+      getByRole: jest.fn((role: string) =>
+        role === 'dialog'
+          ? { filter: () => ({ isVisible: async () => false }) }
+          : { last: () => button }
+      ),
     };
     const page = {
       evaluate: jest.fn(async (read: (id: number) => unknown, id: number) => {

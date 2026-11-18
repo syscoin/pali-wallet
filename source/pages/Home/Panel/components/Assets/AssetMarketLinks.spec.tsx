@@ -20,7 +20,7 @@ it.each([null, 7, {}, { toString: null }, ''])(
     expect(screen.getAllByRole('link')).toHaveLength(1);
     expect(
       screen.getByRole('link', { name: 'Payments' }).getAttribute('href')
-    ).toBe('https://www.coingecko.com/en/categories/payments');
+    ).toBe('https://www.coingecko.com/en/categories');
     expect(screen.queryByText('translated:tokens.viewOnCoinGecko')).toBeNull();
   }
 );
@@ -65,7 +65,7 @@ it('filters invalid category members while preserving every valid category link'
   expect(screen.getAllByRole('link')).toHaveLength(6);
   expect(
     screen.getByRole('link', { name: 'Layer 2' }).getAttribute('href')
-  ).toBe('https://www.coingecko.com/en/categories/layer-2');
+  ).toBe('https://www.coingecko.com/en/categories');
   expect(screen.queryByText(/^\+\d+\s+\S.*$/)).toBeNull();
 });
 
@@ -83,9 +83,7 @@ it('preserves every category without a phantom additional-count label beyond fiv
   for (const category of categories) {
     const link = screen.getByRole('link', { name: category });
     expect(link.getAttribute('href')).toBe(
-      `https://www.coingecko.com/en/categories/${category
-        .toLowerCase()
-        .replace(/\s+/g, '-')}`
+      'https://www.coingecko.com/en/categories'
     );
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
@@ -93,6 +91,33 @@ it('preserves every category without a phantom additional-count label beyond fiv
   expect(screen.queryByText(/^\+\d+\s+\S.*$/)).toBeNull();
   expect(screen.getByText('translated:tokens.categories')).toBeTruthy();
   expect(screen.queryByText('translated:tokens.viewOnCoinGecko')).toBeNull();
+});
+
+it('opens the category directory for name-only metadata without guessing IDs or changing coin links', () => {
+  render(
+    <AssetMarketLinks
+      marketData={{
+        id: 'shiba-inu',
+        categories: ['Meme', 'Layer 1 (L1)', 'Smart Contract Platform'],
+      }}
+      t={t}
+    />
+  );
+  for (const name of ['Meme', 'Layer 1 (L1)', 'Smart Contract Platform']) {
+    expect(screen.getByRole('link', { name })).toHaveAttribute(
+      'href',
+      'https://www.coingecko.com/en/categories'
+    );
+  }
+  expect(
+    screen.getByRole('link', { name: 'translated:tokens.tokenPage' })
+  ).toHaveAttribute('href', 'https://www.coingecko.com/en/coins/shiba-inu');
+  expect(
+    screen.getByRole('link', { name: 'translated:tokens.historicalData' })
+  ).toHaveAttribute(
+    'href',
+    'https://www.coingecko.com/en/coins/shiba-inu/historical_data'
+  );
 });
 
 it('keeps the exact coin and historical links, translations and link identity on rerender', () => {

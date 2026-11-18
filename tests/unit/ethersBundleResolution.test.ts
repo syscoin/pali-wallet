@@ -290,16 +290,23 @@ describe('ethers public browser bundle resolution', () => {
   it('keeps SDK RPC response correlation fail-closed after its bounded read retry', async () => {
     const { api, fetch } = runtime();
     fetch.mockImplementation(async (_url, options) => {
+      expect(_url).toBe('https://rpc.invalid');
+      expect(options.method).toBe('POST');
       const rpcRequests = JSON.parse(options.body);
+      const replies = (
+        Array.isArray(rpcRequests) ? rpcRequests : [rpcRequests]
+      ).map((request) => {
+        expect(request.method).toBe('eth_getBalance');
+        expect(request.params).toEqual(['0x' + '22'.repeat(20), 'latest']);
+        return {
+          jsonrpc: '2.0',
+          id: request.id + 1000,
+          result: '0x1',
+        };
+      });
       return new Response(
-        JSON.stringify(
-          rpcRequests.map((request) => ({
-            jsonrpc: '2.0',
-            id: request.id + 1000,
-            result: '0x1',
-          }))
-        ),
-        { status: 200 }
+        JSON.stringify(Array.isArray(rpcRequests) ? replies : replies[0]),
+        { status: 200, headers: { 'content-type': 'application/json' } }
       );
     });
     await expect(api.sdkRead()).rejects.toThrow('SYSWEB3_RPC_RESPONSE_INVALID');

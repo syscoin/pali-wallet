@@ -317,6 +317,7 @@
     "viewOnNamedExplorer": "View on {{explorer}} Explorer",
     "importToken": "Import Token",
     "youHaveNoTokens": "You have no tokens or NFTs.",
+    "youHaveNoFungibleTokens": "You have no tokens.",
     "youHaveNoTxs": "You have no transaction history.",
     "historyMayBeIncomplete": "Transaction history may be incomplete without an explorer API.",
     "seeAllTxs": "See all your transactions",
@@ -335,7 +336,10 @@
     "ifYouHaveAHardWallet": "If you have a hard wallet you can connect now!",
     "congratulations": "Congratulations",
     "youWalletWas": "Your wallet was successfully imported.",
-    "youHaveNoNfts": "You have no NFTs."
+    "youHaveNoNfts": "You have no NFTs.",
+    "noIndexedActivity": "No activity found. NFT and internal transfers may not appear here.",
+    "savedActivityUnavailable": "Saved activity could not be loaded.",
+    "retrySavedActivity": "Retry saved activity"
   },
   "titles": {
     "assetDetails": "ASSET DETAILS",
@@ -593,6 +597,7 @@
     "calculating": "Calculating...",
     "unableToLoad": "Unable to load",
     "smartAccountPendingReview": "A saved Smart Account transaction is unresolved. Open Activity to review it before sending another transaction.",
+    "smartAccountPayerPending": "An earlier fee-payer transaction must confirm before this action can continue. Wait for confirmation, then try again.",
     "feeUnavailable": "Fee unavailable",
     "plusGasFee": " + Gas Fee",
     "plusNetworkFee": " + Network Fee",
@@ -1023,7 +1028,10 @@
     "smartAccountGuardianRecoveryExpired": "This recovery request expired before it was finished. Start recovery again.",
     "invalidAddress": "Invalid address",
     "changeHardwareDevice": "Change device",
-    "closeHardwareSetup": "Close setup"
+    "closeHardwareSetup": "Close setup",
+    "smartAccountFeeReviewTitle": "Review network fee",
+    "smartAccountFeeReviewSelectedAccount": "Selected account",
+    "smartAccountFeeReviewMaximumTotal": "Maximum total cost"
   },
   "start": {
     "eraseAndStartFresh": "Erase and start fresh",
@@ -1098,6 +1106,21 @@
     "coinGeckoListingUnavailable": "Listing unavailable"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "Original reference",
+      "title": "Signed instructions",
+      "empty": "No saved signed instructions",
+      "mayExecute": "Instruction may still execute",
+      "nonceConsumedUnknown": "Nonce consumed; outcome unknown",
+      "observedSuccess": "Observed successful instruction",
+      "observedFailure": "Observed failed instruction",
+      "checkStatus": "Check status",
+      "cancelInstruction": "Cancel instruction",
+      "unavailable": "Signed instructions unavailable. Try again.",
+      "operationHash": "Operation hash"
+    },
+    "smartAccountCancelUnavailable": "This operation could not be cancelled. Its signed instruction may still execute.",
+    "smartAccountCancelDescription": "Cancel this Smart Account instruction by submitting an empty operation with the same nonce. The original may confirm first. Cancellation completes only when the network confirms the replacement.",
     "feePayer": "Fee payer",
     "labelCopied": "{{label}} copied to clipboard",
     "decodeDetailsFailed": "Failed to decode transaction details",
@@ -1279,6 +1302,7 @@
     "checkYourDevice": "Check your {{device}} to approve this request",
     "useYourPasskey": "Use your passkey",
     "passkeyPrompt": "Follow your browser prompt to sign with your passkey",
+    "smartAccountAuthorizationRetained": "The Smart Account instruction is already signed. Declining this gas fee does not revoke it; it may still execute until its nonce is consumed.",
     "cancelFeePreview": "Checking the cancellation network fee…",
     "cancelFeeConsent": "Cancel this transaction with a maximum gas fee of {{fee}} {{currency}}?",
     "cancelFeeUnavailable": "Unable to check the cancellation fee. Please try again.",
@@ -1331,7 +1355,8 @@
         "erc721": "NFT transfer",
         "erc1155": "NFT transfer"
       }
-    }
+    },
+    "detailsUnavailable": "Couldn’t load transaction details. Try again."
   },
   "switchNetworkPage": {
     "chainFallback": "Chain {{chainId}}",
@@ -1440,7 +1465,8 @@
     "firstAccessTitle": "Grab ${{token}} with our faucet to begin experiencing the {{network}} network!",
     "firstAccessDescription": "You can get {{token}} per wallet address every 24h.",
     "grabTokens": "Go to Faucet",
-    "rateLimited": "The faucet is rate limiting requests. Visit the faucet for more information."
+    "rateLimited": "The faucet is rate limiting requests. Visit the faucet for more information.",
+    "requestTimedOut": "Request timed out. Check your balance before requesting tokens again."
   },
   "nftDetails": {
     "information": "NFT Information",
@@ -1773,7 +1799,7 @@
       "reconciliation": "Review restored notes before withdrawing. Recorded withdrawal activity must be resolved first. Saved history never restarts a withdrawal.",
       "expires": "This review expires after five minutes.",
       "confirmRestore": "Restore notes",
-      "restored": "Restoration confirmed. Review restored notes before withdrawing; notes with recorded withdrawal activity remain blocked until resolved.",
+      "restored": "Notes restored. Check their pool status before withdrawing.",
       "unconfirmed": "Restoration is unconfirmed. It may already be saved. Check the receipt; do not submit again.",
       "checkReceipt": "Check restore receipt",
       "receiptUnavailable": "No matching receipt was confirmed. This does not prove restoration failed. Check your saved notes before starting again.",
@@ -1861,10 +1887,10 @@
       "error": "Could not change the limit. Check that your saved notes fit and try again.",
       "save": "Save limit",
       "reportedSpent": "Reported spent notes ({{count}})",
-      "clear": "Clear completed notes",
-      "clearHelp": "The selected Ethereum RPC will receive the known withdrawal transaction hash and, when present, the related deposit transaction hash. This can link the deposit and withdrawal at that provider. Only notes with completion and related deposit settlement confirmed as finalized by that RPC are removed; unverified notes remain saved.",
-      "confirmClear": "Verify and clear",
-      "clearResult": "Removed: {{removed}}. Still saved: {{unresolved}}.",
+      "clear": "Archive completed notes",
+      "clearHelp": "The selected Ethereum RPC receives known withdrawal and related deposit transaction hashes, which can link them at that provider. Only notes that this RPC reports finalized are moved to encrypted archives; others stay active. Archived notes do not count toward the active limit.",
+      "confirmClear": "Verify and archive",
+      "clearResult": "Archived: {{removed}}. Still active: {{unresolved}}.",
       "clearError": "Could not finish checking notes. Refresh to see what remains.",
       "clearProgress": "Checked {{checked}} of {{total}} notes.",
       "storedBytes": "Serialized encrypted vault: {{bytes}} bytes."
@@ -1901,6 +1927,9 @@
       "backupFailed": "Could not open the note backup. Try again."
     },
     "withdrawal": {
+      "pendingProofWarning": "Any earlier withdrawal may still complete. Continuing does not cancel it, and a competing transaction may fail and cost fees.",
+      "competingConfirm": "Submit competing withdrawal",
+      "previousAttempts": "Previous withdrawals",
       "watchOnlyDirectUnavailable": "Direct withdrawal requires a private key. This account is watch-only.",
       "title": "Withdraw note",
       "open": "Withdraw",
@@ -1946,12 +1975,12 @@
       "notBroadcast": "The transaction was not sent. Refresh the review before confirming again."
     },
     "recovery": {
-      "action": "Recover failed withdrawal",
-      "help": "Recovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.",
-      "disclosure": "This check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.",
+      "action": "Check withdrawal recovery",
+      "help": "Recovery requires a finalized check that the disclosed proof root is no longer accepted and the note remains unspent. Direct withdrawals also require a finalized failed transaction or consumed payer nonce. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.",
+      "disclosure": "This check shares the original proof root and public note nullifier with your selected Ethereum RPC. Direct withdrawal checks also share the payer address and transaction hash. An older relayer job may be read to recover its saved proof inputs.",
       "password": "Wallet password",
       "failed": "Recovery could not be confirmed. The original proof may still be usable, the note may be spent, or the evidence may be unavailable. Refresh before trying again.",
-      "checking": "Checking finalized transaction and proof expiry…",
+      "checking": "Checking finalized proof expiry…",
       "confirm": "Check and recover"
     },
     "restoreReview": {
@@ -1960,11 +1989,29 @@
       "disclosure": "Restoring does not cancel earlier withdrawals or invalidate other copies of this note.",
       "snapshot": "Verified pool data as of block {{block}}. This is saved data, not a live chain check.",
       "noSnapshot": "Prepare or refresh pool data before reviewing this note.",
-      "pending": "This note has recorded withdrawal activity. Resolve its status before starting another withdrawal.",
+      "pending": "Previous withdrawal activity is saved. Review it before submitting another withdrawal.",
       "password": "Wallet password",
       "confirm": "Confirm note review",
       "busy": "Saving review…",
       "failed": "The review could not be saved. Check your password and pool data, then try again."
+    },
+    "archive": {
+      "title": "Archived notes",
+      "help": "Completed notes stay encrypted here until you restore them or clear the archive. They do not count toward your active note limit.",
+      "empty": "No archived notes",
+      "restore": "Restore note",
+      "restored": "Note restored to your active notes",
+      "clear": "Clear archive",
+      "confirmClear": "Permanently delete archived notes",
+      "warning": "Your recovery phrase cannot recover these notes. Permanently delete the archive only after confirming the notes are spent or keeping a usable backup.",
+      "confirmBackup": "I confirmed these notes are spent or kept a usable backup",
+      "clearResult": "Deleted {{count}} archived notes",
+      "loadError": "Could not load the archive. Try again.",
+      "actionError": "Could not update the archive. Refresh before trying again.",
+      "full": "Archive storage is full. Export an encrypted backup before clearing the archive to make space.",
+      "capacity": "{{count}} / {{limit}} archived notes",
+      "activeFull": "Your active note limit is full. Archive completed notes or increase the limit before restoring.",
+      "alreadyArchived": "This note is archived. Open Archived notes and restore it to use it again."
     }
   },
   "mobile": {
@@ -2513,7 +2560,7 @@
         "addNotesFromAnEncryptedFile": "Add notes from an encrypted file",
         "changeTheSavedNoteLimit": "Change the saved note limit",
         "manageCompletedNotes": "Manage completed notes",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Clear completed notes or recover a failed withdrawal",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Archive completed notes or recover a failed withdrawal",
         "serviceOriginAndPublicPoolData": "Service origin and public pool data",
         "verifyBackup": "Verify backup",
         "backupVerified": "Backup verified",
@@ -2597,7 +2644,7 @@
       },
       "maintenance": {
         "chooseNote": "Select one saved note to verify and clear. Each attempt checks only that note.",
-        "clearHelp": "The selected Ethereum RPC will receive this note’s known withdrawal transaction hash and, when present, its related deposit transaction hash. This can link its deposit and withdrawal at that provider. Only this note is removed, and only when that RPC confirms completion and the related deposit settlement as finalized. Otherwise it remains saved."
+        "clearHelp": "The selected Ethereum RPC receives known withdrawal and related deposit transaction hashes, which can link them at that provider. Only notes that this RPC reports finalized are moved to encrypted archives; others stay active. Archived notes do not count toward the active limit."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Could not load the note limit.",
@@ -3092,13 +3139,10 @@
         "thisReviewExpiredPrepareAFreshReviewBeforeConfirming": "This review expired. Prepare a fresh review before confirming.",
         "thisNoteHasASavedWithdrawalCheckItsStatusBefore": "This note has a saved withdrawal. Check its status before trying again.",
         "checkThePoolDataBeforePreparingThisWithdrawal": "Check the pool data before preparing this withdrawal.",
-        "couldNotReviewThisRestoredNoteTryAgain": "Could not review this restored note. Try again.",
         "thisWithdrawalIsUnavailableInTheCurrentAccountOrNetwork": "This withdrawal is unavailable in the current account or network.",
         "couldNotCompleteThisRequestCheckThePoolDataAnd": "Could not complete this request. Check the pool data and your network, then try again.",
-        "reviewingNote": "Reviewing note…",
         "preparingProof": "Preparing proof…",
         "ethereumMainnetPrivateNote": "Ethereum Mainnet · Private note",
-        "reviewThisRestoredNoteBeforeWithdrawing": "Review this restored note before withdrawing.",
         "withdrawalDelivery": "Withdrawal delivery",
         "thisAccountCannotSignADirectWithdrawal": "This account cannot sign a direct withdrawal.",
         "refreshRelayers": "Refresh relayers",
@@ -3801,7 +3845,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "Day {{day}} of 7",
       "priceHistory": "Price history",
       "inspectHint": "Swipe up or down to move between price samples.",
       "nextPrice": "Next price",

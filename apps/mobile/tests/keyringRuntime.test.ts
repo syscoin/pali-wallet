@@ -41,7 +41,9 @@ import { sameRecoverySnapshot } from '../src/storage/recoverySnapshot.ts';
 import { NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
 import type { DappGrant } from '../../../source/shared/dappTypes.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
+import { captureSmartAccountCallsIdentity } from '../../../source/shared/dappCallsStatus.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
+import { UTXO_SIGNED_RECORD_KEY } from '../../../source/wallet/utxoSignedRecords.ts';
 import { encrypt, recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
 const softwarePsbtHandoff = { id: 'software-fixture', expiresAt: Number.MAX_SAFE_INTEGER, beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
@@ -108,7 +110,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   let identityHook: (() => Promise<void>) | undefined;
   let utxoSigned: string | undefined;
   const utxoPort: NonNullable<OpenWalletStorage['utxoSignedRecords']> = {
-    async read() { return utxoSigned; },
+    async read() { const value = utxoSigned; await recordHook?.('get', UTXO_SIGNED_RECORD_KEY); return value; },
     async compareAndSet(_profile, expected, next, guard) { guard(); if (utxoSigned !== expected) return false; utxoSigned = next; return true; },
   };
   const originalFetch = globalThis.fetch;
@@ -377,19 +379,12 @@ test('connection host retains its wallet owner across lock while disclosing only
   }
 });
 
-test('connection UTXO public reads use the real SDK and reject a retired owner after held Blockbook discovery', async () => {
-  const { getUtxoNetwork } = await import('../src/core/utxoNetworks.ts');
+test('connection UTXO public derivations use the real local allocator and reject a retired owner after its held record read', async () => {
   const [{ getNetworkConfig }, { utils }] = await Promise.all([import('@sidhujag/sysweb3-network'), import('syscoinjs-lib')]);
-  const network = getUtxoNetwork('bitcoin'), requests: string[] = [];
-  let hold: (() => Promise<void>) | undefined;
-  const disk = memoryDisk(undefined, undefined, undefined, undefined, async (input, init) => {
+  const requests: string[] = [];
+  const disk = memoryDisk(undefined, undefined, undefined, undefined, async (input) => {
     const url = String(input); requests.push(url);
-    assert.equal(init?.method, 'GET'); assert.equal(init?.credentials, 'omit'); assert.equal(init?.redirect, 'error');
-    assert.match(url, /^https:\/\//);
-    assert(url.startsWith(network.endpoint + '/api/v2/xpub/'));
-    assert(url.endsWith('?tokens=used&details=tokens'));
-    await hold?.();
-    const response = Response.json({ tokens: [] }); Object.defineProperty(response, 'url', { value: url }); return response;
+    throw Error('Local public derivation must not request Blockbook discovery');
   });
   const runtime = await disk.factory.open() as KeyringRuntime;
   const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
@@ -409,21 +404,26 @@ test('connection UTXO public reads use the real SDK and reject a retired owner a
       assert.equal(await runtime.readConnectionUtxoPublic('getCurrentAddressPubkey', scope, change, signal, () => undefined), hd.Signer.accounts.get(account.index).getPublicKey(0, change));
       assert.equal(await runtime.readConnectionUtxoPublic('getBip32Path', scope, change, signal, () => undefined), `m/84'/0'/0'/${change ? 1 : 0}/0`);
     }
-    assert.equal(requests.length, 5);
+    assert.equal(requests.length, 0, 'All five address, public-key and path reads use the durable local allocator');
     const before = requests.length;
     await assert.rejects(runtime.readConnectionUtxoPublic('getBip32Path', { ...scope, accountId: 'hd:0:999' }, false, signal, () => undefined));
     assert.equal(requests.length, before, 'a different account cannot disclose its xpub');
     let current = true;
-    hold = async () => { entered.resolve(); await release.promise; };
+    disk.onRecord(async (kind, key) => {
+      if (kind === 'get' && key === UTXO_SIGNED_RECORD_KEY) {
+        disk.onRecord(); entered.resolve(); await release.promise;
+      }
+    });
     const work = runtime.readConnectionUtxoPublic('getCurrentAddressPubkey', scope, false, signal, () => { if (!current) throw Error('retired request owner'); });
-    const refused = assert.rejects(work);
+    const refused = assert.rejects(work, /retired request owner/);
     await entered.promise; current = false; release.resolve(); await refused;
-    assert.equal(requests.length, before + 1);
-  } finally { release.resolve(); await owner.dispose(); disk.restoreNetwork(); }
+    assert.equal(requests.length, before, 'A retired local derivation never falls back to discovery RPC');
+  } finally { release.resolve(); disk.onRecord(); await owner.dispose(); disk.restoreNetwork(); }
 });
 
 test('connection external PSBT runtime captures the selected account and aborts held prevout reads before a facade exists', async () => {
   const { getUtxoNetwork } = await import('../src/core/utxoNetworks.ts');
+  const { metadata } = await import('./publicWatchFixtures.ts');
   const [{ utils }, { PsbtUtils }] = await Promise.all([
     import('syscoinjs-lib'), import('@sidhujag/sysweb3-keyring/cjs/utils/psbt.js'),
   ]);
@@ -439,6 +439,11 @@ test('connection external PSBT runtime captures the selected account and aborts 
     calls++; const url = String(input);
     assert.equal(observed.isUnlocked(), false, 'PSBT prevout and derivation reads must finish before signing key release');
     assert.equal(init?.method, 'GET'); assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error');
+    if (url === `${network.endpoint}/api/v2/` || url === `${network.endpoint}/api/v2/block-index/0`) {
+      const response = Response.json(url.endsWith('/api/v2/') ? metadata(network.id) : { blockHash: network.genesisHash });
+      Object.defineProperty(response, 'url', { value: url });
+      return response;
+    }
     if (url === `${network.endpoint}/api/v2/xpub/${accountXpub}?tokens=used&details=tokens`) {
       const response = Response.json({ tokens: [{ name: accountAddress, path: "m/84'/0'/0'/0/0" }] });
       Object.defineProperty(response, 'url', { value: url }); return response;
@@ -815,15 +820,45 @@ async function readySmartCreationAuthority(beforeAddress: () => Promise<void> = 
 
 test('native Smart saved replay uses its recorded payer and displays the inner transfer without reopening signing keys', async () => {
   const broadcasts: string[] = [];
+  const blockHash = '0x' + '44'.repeat(32);
+  let signedRaw: string;
+  let simulations = 0;
   const fetcher = async (_url: string, init: RequestInit) => {
-    const request = JSON.parse(String(init.body));
-    let result: unknown;
-    if (request.method === 'eth_chainId') result = '0x1';
-    else if (request.method === 'eth_getTransactionCount') result = '0x0';
-    else if (request.method === 'eth_getTransactionReceipt') result = null;
-    else if (request.method === 'eth_sendRawTransaction') { broadcasts.push(request.params[0]); result = Transaction.from(request.params[0]).hash; }
-    else throw Error(`Unexpected replay RPC: ${request.method}`);
-    return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { status: 200, headers: { 'content-type': 'application/json' } });
+    const payload = JSON.parse(String(init.body));
+    const reply = (request: { id: unknown; method: string; params: unknown[] }) => {
+      let result: unknown;
+      if (request.method === 'eth_chainId') result = '0x1';
+      else if (request.method === 'eth_getTransactionCount') {
+        assert.equal(String(request.params[0]).toLowerCase(), ADDRESS.toLowerCase());
+        assert(['latest', 'pending', '0x10'].includes(String(request.params[1])));
+        result = '0x0';
+      } else if (request.method === 'eth_getTransactionReceipt') result = null;
+      else if (request.method === 'eth_getBlockByNumber') {
+        assert(['latest', '0x10'].includes(String(request.params[0])));
+        assert.equal(request.params[1], false);
+        result = { number: '0x10', hash: blockHash, gasLimit: '0x100000' };
+      } else if (request.method === 'eth_simulateV1') {
+        const tx = Transaction.from(signedRaw);
+        const expected = { from: ADDRESS, to: getPaliEntryPointAddress(1), data: tx.data, chainId: '0x1',
+          gas: '0x493e0', nonce: '0x0', value: '0x0', type: '0x0', gasPrice: '0x2' };
+        assert.deepEqual(request.params, [{ blockStateCalls: [{ calls: [expected] }], validation: true,
+          returnFullTransactions: true, traceTransfers: false }, '0x10']);
+        const operation = paliEntryPointInterface.decodeFunctionData('handleOps', tx.data)[0][0];
+        const identity = captureSmartAccountCallsIdentity(operation, 1);
+        const event = paliEntryPointInterface.encodeEventLog(paliEntryPointInterface.getEvent('UserOperationEvent')!,
+          [identity.userOpHash, operation.sender, '0x' + '00'.repeat(20), operation.nonce, true, 1, 1]);
+        simulations++;
+        result = [{ number: '0x11', parentHash: blockHash, transactions: [{ ...expected, input: expected.data }],
+          calls: [{ status: '0x1', gasUsed: '0x100', logs: [{ ...event, address: expected.to }] }] }];
+      } else if (request.method === 'eth_sendRawTransaction') {
+        assert.equal(request.params[0], signedRaw);
+        assert.equal(simulations, 1, 'exact execution admission must precede broadcast');
+        broadcasts.push(signedRaw); result = Transaction.from(signedRaw).hash;
+      } else throw Error(`Unexpected replay RPC: ${request.method}`);
+      return { jsonrpc: '2.0', id: request.id, result };
+    };
+    return new Response(JSON.stringify(Array.isArray(payload) ? payload.map(reply) : reply(payload)),
+      { status: 200, headers: { 'content-type': 'application/json' } });
   };
   const f = await readySmartCreationAuthority(undefined, fetcher);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fetcher }) });
@@ -836,6 +871,7 @@ test('native Smart saved replay uses its recorded payer and displays the inner t
       preVerificationGas: 21000, gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03', paymasterAndData: '0x', signature: '0x1234' };
     const raw = await HDNodeWallet.fromPhrase(PHRASE).signTransaction({ chainId: 1, nonce: 0, type: 0, gasPrice: 2, gasLimit: 300000,
       to: getPaliEntryPointAddress(1), value: 0, data: paliEntryPointInterface.encodeFunctionData('handleOps', [[operation], ADDRESS]) });
+    signedRaw = raw;
     const access = f.keyring.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1', 'org.syscoin.pali.evm.signed.chunk.v1',
       'org.syscoin.pali.utxo.signed.root.v1', 'org.syscoin.pali.utxo.signed.chunk.v1']);
     const profile = await access.getPrivateRecordProfileId();
@@ -852,6 +888,7 @@ test('native Smart saved replay uses its recorded payer and displays the inner t
     assert.equal(f.disk.credentialPort.secretReads, reads);
     await transfers.confirm(review.id, { method: 'device' });
     assert.deepEqual(broadcasts, [raw]);
+    assert.equal(simulations, 1);
     assert.equal(f.disk.credentialPort.secretReads, reads);
     await transfers.recover(true, Transaction.from(raw).hash!);
     const expired = transfers.getSnapshot().review!;
@@ -1421,9 +1458,10 @@ function localTransferRpc(networkId: TransferTestNetwork = 'ethereum', selected:
   let included = false;
   let reading: { method: string; entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
   let gate: { entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
-  const rpc = new NativeTransferRpc({ networkId, registration: selected, fetch: async (url, init) => {
+  const rpc = new NativeTransferRpc({ networkId, registration: selected, fetch: async function fixtureFetch(url, init): Promise<Response> {
     assert.equal(url, selected.rpcUrl);
     const body = JSON.parse(String(init.body));
+    if (Array.isArray(body)) return Response.json(await Promise.all(body.map(async row => (await fixtureFetch(url, { ...init, body: JSON.stringify(row) })).json())));
     requests.push(structuredClone({ method: body.method, params: body.params }));
     if (reading && reading.method === body.method) { const current = reading; current.entered.resolve(); await current.released.promise; }
     let result: unknown;
@@ -1936,7 +1974,7 @@ for (const expensiveAfterReview of [false, true]) {
       }
       assert.equal(signatures, expensiveAfterReview ? 0 : 1);
       const estimates = network.requests.filter((request) => request.method === 'eth_estimateGas');
-      assert.equal(estimates.length, 2);
+      assert.equal(estimates.length, expensiveAfterReview ? 2 : 3);
       for (const request of estimates) {
         assert.equal(request.params[1], 'pending');
         assert.deepEqual(request.params[0], {
@@ -2230,6 +2268,8 @@ test('scoped portfolio inventory reads only the selected account on an inactive 
     const activitySnapshot = await activity.load(() => undefined);
     assert.equal(activitySnapshot.scope.network.id, 'base');
     assert.equal(activitySnapshot.scope.address, ADDRESS);
+    assert.deepEqual(activitySnapshot.assets, [{ chainId: Number(base.chainId), ...baseToken }]);
+    assert.deepEqual((await f.runtime.activity!.load(() => undefined)).assets, [{ chainId: 1, ...ethToken }]);
     assert.equal(f.authority.getSnapshot(), before);
     assert.deepEqual([...f.disk.records], records);
     await assert.rejects(f.runtime.tokens!.loadScoped!({ ...target, accountId: 'hd:60:1' }, () => undefined), /CANCELLED/);
@@ -3031,7 +3071,10 @@ test('connection transactions use real SDK signing and durable shared submission
   let loseResponse = false, pendingNonce = '0x0';
   let assertBundleAdmission: ((hash: string) => Promise<void>) | undefined;
   let f!: Awaited<ReturnType<typeof readyAccounts>>;
-  const fetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async (_url, init) => {
+  const fetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async function connectionFixtureFetch(_url, init): Promise<Response> {
+    const payload = JSON.parse(String(init?.body));
+    if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async request =>
+      (await connectionFixtureFetch(_url, { ...init, body: JSON.stringify(request) })).json())));
     const { id, method, params } = JSON.parse(String(init?.body));
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';
@@ -3112,7 +3155,10 @@ test('connection transactions use real SDK signing and durable shared submission
 
 for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject', 'lock'] as const) test(`connection account selection publishes real authority context before ${outcome}`, async () => {
   const submitted: string[] = [];
-  const connectionFetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async (_url, init) => {
+  const connectionFetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async function accountSelectionFixtureFetch(_url, init): Promise<Response> {
+    const payload = JSON.parse(String(init?.body));
+    if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async request =>
+      (await accountSelectionFixtureFetch(_url, { ...init, body: JSON.stringify(request) })).json())));
     const { id, method, params } = JSON.parse(String(init?.body));
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';
@@ -3356,7 +3402,9 @@ test('Trezor runtime uses shared allocation, preserves records on unlock and sig
     assert.equal(parsed.hash, signed.hash);
     assert.equal(runtime.trezor.getSnapshot(), runtime.trezor.getSnapshot());
     let broadcasts = 0;
-    const rpc = new NativeTransferRpc({ networkId: 'ethereum', fetch: async (_url, init) => {
+    const rpc = new NativeTransferRpc({ networkId: 'ethereum', fetch: async function hardwareTransferFetch(_url, init): Promise<Response> {
+      const payload = JSON.parse(String(init.body));
+      if(Array.isArray(payload))return Response.json(await Promise.all(payload.map(async row=>(await hardwareTransferFetch(_url,{...init,body:JSON.stringify(row)})).json())));
       const request = JSON.parse(String(init.body));
       const result = await (async () => {
         switch (request.method) {

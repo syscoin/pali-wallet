@@ -80,9 +80,11 @@ jest.mock('utils/ethersV6Compat', () => ({
 
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
+import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import { KeyringAccountType } from 'types/network';
 import { Contract } from 'utils/ethersV6Compat';
 
+import AssetsManager from './assets';
 import { ReceiptBalanceRefresh } from './balances/ReceiptBalanceRefresh';
 import MainController from './MainController';
 import { CancellablePromises } from './promises/cancellablesPromises';
@@ -119,6 +121,15 @@ beforeEach(() => {
     },
   };
   provider = {
+    signal: new AbortController().signal,
+    _getConnection: () => ({ url: 'https://rpc.test' }),
+    readMany: jest.fn(async (requests) =>
+      requests.map(({ method }) => {
+        if (method !== 'eth_chainId')
+          throw new Error(`Unexpected identity read ${method}`);
+        return { status: 'fulfilled', value: '0x1' };
+      })
+    ),
     getBalance: jest.fn().mockResolvedValue(BigInt('1000000000000000000')),
     send: jest.fn().mockResolvedValue('0xb'),
   };
@@ -140,6 +151,7 @@ beforeEach(() => {
   (Contract as jest.Mock).mockReturnValue({ balanceOf });
   controller = Object.create(MainController.prototype);
   Object.assign(controller, {
+    rpcReadCapabilities: createRpcReadCapabilitiesOwner(),
     receiptBalanceRefresh: new ReceiptBalanceRefresh(),
     targetedBalanceVersions: new Map(),
     targetedBalanceEvictions: 0,
@@ -350,6 +362,146 @@ it('preserves AA inner-token hints through the actual pending-to-receipt update'
   ).toEqual([T]);
 });
 
+it('skips the head read while a directly observed transaction has no receipt', async () => {
+  const hash = `0x${'ab'.repeat(32)}`;
+  provider.getTransaction = jest.fn().mockResolvedValue({
+    hash,
+    from: A,
+    to: T,
+    value: BigInt(0),
+    chainId: 1,
+    data: '0x',
+  });
+  provider.getTransactionReceipt = jest.fn().mockResolvedValue(null);
+  provider.getBlockNumber = jest.fn().mockResolvedValue(11);
+  provider.getBlock = jest.fn();
+  const transaction = await controller.getEvmTransactionFromProvider(hash);
+  expect(transaction).toMatchObject({
+    hash,
+    status: 'pending',
+    confirmations: 0,
+    blockNumber: null,
+  });
+  expect(provider.getBlockNumber).not.toHaveBeenCalled();
+  expect(provider.getBlock).not.toHaveBeenCalled();
+});
+
+it.each(['receipt', 'header', 'from', 'height', 'healthy'])(
+  'requires coherent direct transaction details (%s)',
+  async (kind) => {
+    const hash = `0x${'ab'.repeat(32)}`,
+      blockHash = `0x${'cd'.repeat(32)}`;
+    provider.getTransaction = jest.fn(async () => ({
+      hash,
+      from: A,
+      to: T,
+      blockNumber: 10,
+      blockHash,
+      value: BigInt(0),
+      chainId: 1,
+      data: '0x',
+    }));
+    provider.getTransactionReceipt = jest.fn(async () => ({
+      transactionHash: kind === 'receipt' ? `0x${'ef'.repeat(32)}` : hash,
+      from: kind === 'from' ? U : A,
+      to: T,
+      blockNumber: kind === 'height' ? 11 : 10,
+      blockHash,
+      status: 1,
+    }));
+    provider.getBlockNumber = jest.fn(async () => 12);
+    provider.getBlock = jest.fn(async () => ({
+      number: 10,
+      hash: kind === 'header' ? `0x${'ef'.repeat(32)}` : blockHash,
+      timestamp: 1000,
+    }));
+    const result = await controller.getEvmTransactionFromProvider(hash);
+    if (kind === 'healthy')
+      expect(result).toMatchObject({ hash, blockNumber: 10, success: true });
+    else expect(result).toBeNull();
+    expect(provider.getTransaction).toHaveBeenCalledTimes(1);
+    expect(provider.getTransactionReceipt).toHaveBeenCalledTimes(1);
+    expect(provider.getBlock).toHaveBeenCalledTimes(1);
+    expect(provider.getBlockNumber).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each([
+  'absent',
+  'pending',
+  'transport',
+  'receipt',
+  'mined without receipt',
+  'header',
+  'wrong identity',
+])(
+  'distinguishes unavailable detail reads from successful absence with opt-in errors (%s)',
+  async (kind) => {
+    const hash = `0x${'ab'.repeat(32)}`,
+      blockHash = `0x${'cd'.repeat(32)}`;
+    provider.getTransaction = jest.fn(async () => {
+      if (kind === 'transport')
+        throw new Error('https://rpc.test/private-token');
+      if (kind === 'absent') return null;
+      return {
+        hash: kind === 'wrong identity' ? `0x${'ef'.repeat(32)}` : hash,
+        from: A,
+        to: T,
+        value: BigInt(0),
+        chainId: 1,
+        data: '0x',
+        ...(kind === 'pending' ? {} : { blockNumber: 10, blockHash }),
+      };
+    });
+    provider.getTransactionReceipt = jest.fn(async () => {
+      if (kind === 'receipt') throw new Error('Synthetic receipt unavailable');
+      if (kind === 'pending' || kind === 'mined without receipt') return null;
+      return {
+        transactionHash: hash,
+        from: A,
+        to: T,
+        blockNumber: 10,
+        blockHash,
+        status: 1,
+      };
+    });
+    provider.getBlockNumber = jest.fn(async () => 12);
+    provider.getBlock = jest.fn(async () => {
+      if (kind === 'header') throw new Error('Synthetic header unavailable');
+      return { number: 10, hash: blockHash, timestamp: 1000 };
+    });
+    if (kind === 'absent') {
+      await expect(
+        controller.getEvmTransactionFromProvider(hash, true)
+      ).resolves.toBeNull();
+      expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+    } else if (kind === 'pending') {
+      await expect(
+        controller.getEvmTransactionFromProvider(hash, true)
+      ).resolves.toMatchObject({
+        hash,
+        status: 'pending',
+        blockNumber: null,
+        confirmations: 0,
+      });
+      expect(provider.getBlockNumber).not.toHaveBeenCalled();
+    } else {
+      await expect(
+        controller.getEvmTransactionFromProvider(hash, true)
+      ).rejects.toThrow('EVM_TRANSACTION_LOOKUP_UNAVAILABLE');
+      // Replay/replacement and existing generic callers retain their nullable API.
+      if (
+        kind === 'transport' ||
+        kind === 'header' ||
+        kind === 'wrong identity'
+      )
+        await expect(
+          controller.getEvmTransactionFromProvider(hash)
+        ).resolves.toBeNull();
+    }
+  }
+);
+
 it('carries actual router receipt Transfer logs through direct confirmation into targeted refresh', async () => {
   const hash = `0x${'aa'.repeat(32)}`;
   const router = `0x${'66'.repeat(20)}`;
@@ -375,12 +527,20 @@ it('carries actual router receipt Transfer logs through direct confirmation into
     data: '0x1234',
   });
   provider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    transactionHash: hash,
+    from: A,
+    to: router,
+    blockHash: `0x${'11'.repeat(32)}`,
     blockNumber: 10,
     status: 1,
     logs,
   });
   provider.getBlockNumber = jest.fn().mockResolvedValue(11);
-  provider.getBlock = jest.fn().mockResolvedValue({ timestamp: 1000 });
+  provider.getBlock = jest.fn().mockResolvedValue({
+    number: 10,
+    hash: `0x${'11'.repeat(32)}`,
+    timestamp: 1000,
+  });
   const transaction = await controller.getEvmTransactionFromProvider(hash);
   expect(transaction.logs).toBe(logs);
   expect(transaction.balanceRefreshBlockNumber).toBe(11);
@@ -407,12 +567,20 @@ it('waits for the actual receipt height when a different RPC backend reports an 
     data: '0x1234',
   });
   provider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    transactionHash: hash,
+    from: A,
+    to: T,
+    blockHash: `0x${'11'.repeat(32)}`,
     blockNumber: 10,
     status: 1,
     logs: [],
   });
   provider.getBlockNumber = jest.fn().mockResolvedValue(9);
-  provider.getBlock = jest.fn().mockResolvedValue({ timestamp: 1000 });
+  provider.getBlock = jest.fn().mockResolvedValue({
+    number: 10,
+    hash: `0x${'11'.repeat(32)}`,
+    timestamp: 1000,
+  });
   provider.send.mockResolvedValue('0x9');
 
   const transaction = await controller.getEvmTransactionFromProvider(hash);
@@ -430,7 +598,7 @@ it('waits for the actual receipt height when a different RPC backend reports an 
   expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
 });
 
-it('keeps an in-flight transaction detail lookup on its original provider after a network change', async () => {
+it('retires an in-flight transaction detail lookup after a network change', async () => {
   const hash = `0x${'dd'.repeat(32)}`;
   const originalProvider = provider;
   let resolveTransaction!: (value: any) => void;
@@ -440,14 +608,24 @@ it('keeps an in-flight transaction detail lookup on its original provider after 
     })
   );
   originalProvider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    transactionHash: hash,
+    from: A,
+    to: T,
+    blockHash: `0x${'11'.repeat(32)}`,
     blockNumber: 10,
     status: 1,
     logs: [],
   });
   originalProvider.getBlockNumber = jest.fn().mockResolvedValue(11);
-  originalProvider.getBlock = jest.fn().mockResolvedValue({ timestamp: 1000 });
+  originalProvider.getBlock = jest.fn().mockResolvedValue({
+    number: 10,
+    hash: `0x${'11'.repeat(32)}`,
+    timestamp: 1000,
+  });
 
   const lookup = controller.getEvmTransactionFromProvider(hash);
+  await jest.advanceTimersByTimeAsync(0);
+  expect(originalProvider.getTransaction).toHaveBeenCalledWith(hash);
   provider = {
     getTransactionReceipt: jest.fn().mockResolvedValue({
       blockNumber: 50,
@@ -468,18 +646,10 @@ it('keeps an in-flight transaction detail lookup on its original provider after 
   });
 
   const transaction = await lookup;
-  expect(transaction).toMatchObject({
-    hash,
-    chainId: 1,
-    blockNumber: 10,
-    balanceRefreshBlockNumber: 11,
-    confirmations: 2,
-    timestamp: 1000,
-    success: true,
-  });
-  expect(originalProvider.getTransactionReceipt).toHaveBeenCalledWith(hash);
-  expect(originalProvider.getBlockNumber).toHaveBeenCalledTimes(1);
-  expect(originalProvider.getBlock).toHaveBeenCalledWith(10);
+  expect(transaction).toBeNull();
+  expect(originalProvider.getTransactionReceipt).not.toHaveBeenCalled();
+  expect(originalProvider.getBlockNumber).not.toHaveBeenCalled();
+  expect(originalProvider.getBlock).not.toHaveBeenCalled();
   expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
   expect(provider.getBlockNumber).not.toHaveBeenCalled();
   expect(provider.getBlock).not.toHaveBeenCalled();
@@ -1558,3 +1728,65 @@ it('fails closed after an absent key was targeted then evicted, without starving
   expect(state.vault.accountAssets[type][0].ethereum[1].balance).toBe(26);
   expect(controller.targetedBalanceVersions.size).toBe(512);
 });
+
+it.each([
+  'healthy',
+  'non-active',
+  'cancelled',
+  'account',
+  'network',
+  'session',
+] as const)(
+  'owns concurrent collection reads through the actual assets manager (%s)',
+  async (mode) => {
+    const tokens = Array.from({ length: 9 }, (_, index) => ({
+      ...asset(`0x${(index + 1).toString(16).padStart(40, '0')}`),
+      isNft: true,
+      tokenStandard: 'ERC-721',
+      tokenId: '1',
+    }));
+    state.vault.accountAssets[type][0].ethereum = tokens;
+    state.vault.accounts[type][1] = { address: U };
+    if (mode === 'non-active') state.vault.activeAccount = { type, id: 1 };
+    const requestedAccount = { type, id: 0 };
+    controller.walletSessionGeneration = 0;
+    controller.networkRequestGeneration = 0;
+    controller.assertWalletReadyForSigning = () => undefined;
+    controller.assetsManager = AssetsManager();
+    const releases: Array<() => void> = [];
+    balanceOf.mockImplementation(
+      () =>
+        new Promise<bigint>((resolve) => {
+          releases.push(() => resolve(BigInt(9)));
+        })
+    );
+    const pending = controller.updateAssetsFromCurrentAccount({
+      activeAccount: requestedAccount,
+      activeNetwork: state.vault.activeNetwork,
+      isBitcoinBased: false,
+      isPolling: true,
+    });
+    const outcome = pending.catch((error: unknown) => error);
+    await jest.advanceTimersByTimeAsync(100);
+    expect(balanceOf).toHaveBeenCalledTimes(9);
+    if (mode === 'cancelled')
+      controller.cancellablePromises.assetsPromise.cancel();
+    else if (mode === 'account') state.vault.activeAccount = { type, id: 1 };
+    else if (mode === 'network')
+      state.vault.activeNetwork = {
+        ...state.vault.activeNetwork,
+        url: 'https://other.test',
+      };
+    else if (mode === 'session') controller.walletSessionGeneration++;
+    releases.forEach((release) => release());
+    await jest.advanceTimersByTimeAsync(400);
+    await outcome;
+    const healthy = mode === 'healthy' || mode === 'non-active';
+    expect(balanceOf).toHaveBeenCalledTimes(9);
+    expect(
+      state.vault.accountAssets[type][0].ethereum.every(
+        (token: any) => token.balance === (healthy ? 9 : 5)
+      )
+    ).toBe(true);
+  }
+);

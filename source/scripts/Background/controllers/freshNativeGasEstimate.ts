@@ -238,7 +238,8 @@ export async function recheckReviewedNativeEvmTransfer(
         header?.gasLimit,
         'block gas limit'
       ),
-      ...(tx.type === 2
+      ...(tx.type === 2 ||
+      (header?.baseFeePerGas !== undefined && header?.baseFeePerGas !== null)
         ? {
             baseFeePerGas: parseEvmFeeQuantity(
               header?.baseFeePerGas,

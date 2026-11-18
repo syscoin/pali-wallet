@@ -1,5 +1,6 @@
 import { defaultAbiCoder, formatUnits, id } from '../utils/ethersV6Compat.ts';
 
+import { decodeAssetTransfer } from './assetTransfer.ts';
 import {
   formatTokenUnits,
   parseErc20Decimals,
@@ -48,6 +49,7 @@ export type EvmTransactionDisplayInfo = {
   isErc20Transfer: boolean;
   isNft: boolean;
   nftQuantity?: string;
+  nftTransfers?: readonly Readonly<{ quantity: string; tokenId: string }>[];
   tokenId?: string;
 };
 export type EvmDisplayContext = {
@@ -65,6 +67,9 @@ const ERC721_SAFE_TRANSFER_DATA_SIGNATURE =
 const TOKEN_TRANSFER_FROM_SIGNATURE = 'transferFrom(address,address,uint256)';
 const ERC1155_SAFE_TRANSFER_SIGNATURE =
   'safeTransferFrom(address,address,uint256,uint256,bytes)';
+const ERC1155_BATCH_TRANSFER_SELECTOR = id(
+  'safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)'
+).slice(0, 10);
 
 // Use the existing uint8 precision policy; external string metadata is decoded
 // once, while absent/non-scalar metadata stays unknown.
@@ -334,6 +339,47 @@ export const getEvmTransactionDisplayInfo = async (
     };
   }
 
+  if (isERC1155BatchTransfer(tx)) {
+    const batch = decodeAssetTransfer(tx.input, tx.to);
+    if (!batch || batch.method !== 'safeBatchTransferFrom')
+      return {
+        actualRecipient: '',
+        displaySymbol: 'NFT',
+        displayValue: '?',
+        formattedValue: '?',
+        isErc20Transfer: true,
+        isNft: true,
+        amountUnavailable: true,
+      };
+    const chainId = Number(tx.chainId ?? context.chainId);
+    const token = context.assets?.find(
+      (asset) =>
+        Number(asset.chainId) === chainId &&
+        asset.contractAddress?.toLowerCase() === batch.contract.toLowerCase() &&
+        (asset.isNft || asset.tokenStandard === 'ERC-1155')
+    );
+    const symbol = token?.tokenSymbol ?? token?.symbol;
+    const total = batch.items
+      .reduce((sum, item) => sum + BigInt(item.units), BigInt(0))
+      .toString();
+    return {
+      actualRecipient: batch.recipient,
+      displaySymbol:
+        typeof symbol === 'string' && symbol ? symbol.toUpperCase() : 'NFT',
+      displayValue: total,
+      formattedValue: total,
+      isErc20Transfer: true,
+      isNft: true,
+      nftTransfers: Object.freeze(
+        batch.items.map((item) =>
+          Object.freeze({
+            tokenId: item.tokenId!,
+            quantity: item.units,
+          })
+        )
+      ),
+    };
+  }
   const isTokenTx = isTokenTransfer(tx);
   if (isTokenTx) {
     const isErc1155Tx = isERC1155Transfer(tx);
@@ -527,6 +573,10 @@ export const isERC1155Transfer = (tx: EvmDisplayTransaction) => {
   return false;
 };
 
+export const isERC1155BatchTransfer = (tx: EvmDisplayTransaction) =>
+  typeof tx?.input === 'string' &&
+  tx.input.slice(0, 10).toLowerCase() === ERC1155_BATCH_TRANSFER_SELECTOR;
+
 export const isERC20Transfer = (tx: EvmDisplayTransaction) => {
   // This detects ERC20 and ERC721 transfers (they use the same method signatures)
   const transferSelector = id('transfer(address,uint256)').slice(0, 10);
@@ -553,7 +603,7 @@ export const isERC20Transfer = (tx: EvmDisplayTransaction) => {
 };
 
 export const isTokenTransfer = (tx: EvmDisplayTransaction) =>
-  isERC20Transfer(tx) || isERC1155Transfer(tx);
+  isERC20Transfer(tx) || isERC1155Transfer(tx) || isERC1155BatchTransfer(tx);
 
 export const getERC20TransferValue = (tx: EvmDisplayTransaction) => {
   const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
@@ -650,6 +700,8 @@ export const getERC721TokenId = (tx: EvmDisplayTransaction): string | null => {
 };
 
 export const getERC20Recipient = (tx: EvmDisplayTransaction): string | null => {
+  if (isERC1155BatchTransfer(tx))
+    return decodeAssetTransfer(tx.input, tx.to)?.recipient ?? null;
   const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
   const transferFromMethodSignature = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(
     0,

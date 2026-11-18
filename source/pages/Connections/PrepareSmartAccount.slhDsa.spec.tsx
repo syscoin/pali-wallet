@@ -1,8 +1,18 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { Wallet } from 'ethers/wallet';
 import React from 'react';
+import {
+  SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  withReviewedSmartAccountExecution,
+} from 'tests/fixtures/reviewedSmartAccountExecution';
 
 import { KeyringAccountType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
@@ -33,6 +43,14 @@ jest.mock('components/index', () => ({
     </button>
   ),
   Card: ({ children }: any) => <div>{children}</div>,
+  ConfirmationModal: ({ show, children, title, onClick, onClose }: any) =>
+    show ? (
+      <div role="dialog" aria-label={title}>
+        {children}
+        <button onClick={onClick}>Confirm fee</button>
+        <button onClick={onClose}>Cancel fee</button>
+      </div>
+    ) : null,
   Icon: () => <span />,
 }));
 jest.mock('components/Loading', () => ({ PqOperationStatus: () => null }));
@@ -54,7 +72,13 @@ jest.mock('react-redux', () => ({
             0: { id: 0, address: mockOwnerWallet.address },
           },
         },
-        activeNetwork: { chainId: 57057 },
+        activeNetwork: {
+          chainId: 57057,
+          currency: 'ZKSYS',
+          kind: 'ethereum',
+          url: 'https://rpc.example',
+          slip44: 60,
+        },
       },
     }),
 }));
@@ -99,6 +123,26 @@ const BOOTSTRAP = {
 };
 
 const methods = () => mockEmitter.mock.calls.map(([[, method]]) => method);
+const approveBothEntryPointCharges = async () => {
+  for (let index = 0; index < 2; index++) {
+    const dialog = await screen.findByRole('dialog', {
+      name: 'settings.smartAccountFeeReviewTitle',
+    });
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([[, method]]) => method === 'signSmartAccountPreparedOwner'
+      )
+    ).toHaveLength(index);
+    fireEvent.click(within(dialog).getByText('Confirm fee'));
+    await waitFor(() =>
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([[, method]]) => method === 'approveSmartAccountExecutionFeeQuote'
+        )
+      ).toHaveLength(index + 1)
+    );
+  }
+};
 
 describe('wallet-managed SLH-DSA creation boundary', () => {
   beforeEach(() => {
@@ -117,7 +161,6 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
               smartAccount: BOOTSTRAP,
             };
           case 'setAccount':
-          case 'registerSmartAccountOnChain':
           case 'connect':
           case 'assertSmartAccountPreparedNonce':
           case 'assertSmartAccountExecutionContext':
@@ -130,7 +173,10 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
             return {
               accountId: ACCOUNT_ID,
               actionHash: `0x${'55'.repeat(32)}`,
-              executionContextId: 'local-pq-install',
+              executionContextId:
+                params[0][0].data === '0x'
+                  ? 'local-pq-register'
+                  : 'local-pq-install',
               executions: params[0],
               smartAccount: BOOTSTRAP,
             };
@@ -160,6 +206,23 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
             throw new Error(`Unexpected controller method ${method}`);
         }
       }
+    );
+    const rawTransport = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation(
+      withReviewedSmartAccountExecution(
+        {
+          controllerEmitter: rawTransport,
+          executions: [],
+          smartAccount: BOOTSTRAP as any,
+        },
+        {
+          payer: { address: OWNER, id: 0, type: 'HDAccount' },
+          userOperation: {
+            ...SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+            sender: ACCOUNT,
+          },
+        }
+      ).controllerEmitter
     );
   });
 
@@ -208,13 +271,14 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
   it('provisions the new account locally before installing or connecting its validator', async () => {
     render(<PrepareSmartAccount />);
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await approveBothEntryPointCharges();
     await waitFor(() => expect(mockClose).toHaveBeenCalledTimes(1));
 
     expect(methods().slice(0, 4)).toEqual([
       'createSmartAccount',
       'setAccount',
       'provisionSLHDSASmartAccountValidator',
-      'registerSmartAccountOnChain',
+      'prepareSmartAccountExecutions',
     ]);
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'setAccount'],
@@ -226,7 +290,9 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
       600000
     );
     const prepare = mockEmitter.mock.calls.find(
-      ([[, method]]) => method === 'prepareSmartAccountExecutions'
+      ([[, method], payload]) =>
+        method === 'prepareSmartAccountExecutions' &&
+        payload[0][0].data !== '0x'
     )!;
     expect(prepare[1][1]).toBe(ACCOUNT_ID);
     const [install, removeBootstrap] = prepare[1][0];
@@ -290,10 +356,11 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
     });
     render(<PrepareSmartAccount />);
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await approveBothEntryPointCharges();
     await screen.findByText('connections.smartAccountPrepareFailed');
     expect(
       methods().filter((method) => method === 'submitSmartAccountExecution')
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     expect(methods()).not.toContain('connect');
     expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
     expect(mockClose).not.toHaveBeenCalled();
@@ -302,11 +369,12 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
     expect(hydrationReads).toBe(2);
     for (const method of [
       'createSmartAccount',
-      'registerSmartAccountOnChain',
       'provisionSLHDSASmartAccountValidator',
-      'submitSmartAccountExecution',
     ])
       expect(methods().filter((value) => value === method)).toHaveLength(1);
+    expect(
+      methods().filter((value) => value === 'submitSmartAccountExecution')
+    ).toHaveLength(2);
     expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
   });
 });

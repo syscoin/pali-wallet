@@ -401,6 +401,167 @@ describe('PSBT approval context', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  const decoderController = () => {
+    // Initialize the actual decoder arrow field without starting unrelated
+    // keyring/service startup. Its owned read and publication remain real.
+    const initialize = jest
+      .spyOn(MainController.prototype as any, 'initializeKeyring')
+      .mockImplementation(() => undefined);
+    const startup = jest
+      .spyOn(globalThis, 'setTimeout')
+      .mockReturnValue(0 as unknown as ReturnType<typeof setTimeout>);
+    try {
+      return Object.assign(new MainController(), wallet);
+    } finally {
+      initialize.mockRestore();
+      startup.mockRestore();
+    }
+  };
+
+  it.each([false, true])(
+    'binds decoded burn publication to the verified PSBT version (mismatch=%s)',
+    async (mismatch) => {
+      const psbt = syntheticPsbt(BigInt(1000));
+      psbt.setVersion(141);
+      const destination = `0x${'22'.repeat(20)}`;
+      wallet.verifySyscoinPsbt.mockResolvedValue({
+        psbt,
+        summary: {
+          ...syntheticSummary(psbt),
+          outputValuesSatoshis: psbt.txOutputs.map(({ value }) =>
+            value.toString()
+          ),
+          assetAllocations: [],
+          inputAssets: [],
+          burnDestination: destination,
+        },
+      });
+      keyring.syscoinTransaction.decodeRawTransaction.mockReturnValue({
+        version: 2,
+        vout: psbt.txOutputs.map(() => ({})),
+        syscoin: {
+          burn: {
+            ethaddress: (mismatch ? '11' : '22').repeat(20),
+            allocation: ['legacy-decoy'],
+          },
+        },
+      });
+      const decoder = decoderController();
+      if (mismatch)
+        await expect(
+          decoder.decodeRawTransaction(signedEnvelope())
+        ).rejects.toThrow('Unable to verify Syscoin bridge burn destination');
+      else {
+        const decoded = await decoder.decodeRawTransaction(signedEnvelope());
+        expect(decoded.syscoin.burn).toEqual({ ethaddress: destination });
+        expect(decoded.syscoin.allocations).toBeNull();
+      }
+      expect(wallet.getRetainedUtxoRecords).not.toHaveBeenCalled();
+      expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([138, 2])(
+    'preserves non-NEVM-burn decoder shape for verified version %s',
+    async (version) => {
+      const psbt = syntheticPsbt(BigInt(1000));
+      psbt.setVersion(version);
+      wallet.verifySyscoinPsbt.mockResolvedValue({
+        psbt,
+        summary: {
+          ...syntheticSummary(psbt),
+          outputValuesSatoshis: psbt.txOutputs.map(({ value }) =>
+            value.toString()
+          ),
+          assetAllocations: [],
+          inputAssets: [],
+        },
+      });
+      const burn = { ethaddress: '', allocation: ['legacy-non-NEVM'] };
+      keyring.syscoinTransaction.decodeRawTransaction.mockReturnValue({
+        version: 141,
+        vout: psbt.txOutputs.map(() => ({})),
+        ...(version === 138 ? { syscoin: { burn } } : {}),
+      });
+      const decoded = await decoderController().decodeRawTransaction(
+        signedEnvelope()
+      );
+      if (version === 138) expect(decoded.syscoin.burn).toBe(burn);
+      else expect(decoded.syscoin).toBeUndefined();
+    }
+  );
+
+  it('verifies an ordinary PSBT without opening the unused address-allocation journal', async () => {
+    const psbt = syntheticPsbt(BigInt(1000));
+    const outputValuesSatoshis = psbt.txOutputs.map(({ value }) =>
+      value.toString()
+    );
+    wallet.verifySyscoinPsbt.mockResolvedValue({
+      psbt,
+      summary: {
+        ...syntheticSummary(psbt),
+        outputValuesSatoshis,
+        assetAllocations: [],
+        inputAssets: [],
+      },
+    });
+    await expect(
+      wallet
+        .captureUtxoSigningContext()
+        .withRead((read: any) =>
+          wallet.verifySyscoinPsbt(signedEnvelope(), read)
+        )
+    ).resolves.toMatchObject({
+      summary: { feeSatoshis: '1000', outputValuesSatoshis },
+    });
+    expect(wallet.verifySyscoinPsbt).toHaveBeenCalledTimes(1);
+    expect(wallet.getRetainedUtxoRecords).not.toHaveBeenCalled();
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps actual address allocation unavailable on an unverified network before selecting or signing', async () => {
+    delete state.vaultGlobal.networks.syscoin[57].utxoBackendChain;
+    const select = jest.fn();
+    await expect(
+      wallet
+        .captureUtxoSigningContext()
+        .withRead(async (read: any) => read.allocateUtxoAddress(select))
+    ).rejects.toThrow(
+      'Verify this UTXO network before submitting a transaction'
+    );
+    expect(select).not.toHaveBeenCalled();
+    expect(wallet.getRetainedUtxoRecords).not.toHaveBeenCalled();
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses lazy allocation after its captured wallet session retires', async () => {
+    const select = jest.fn();
+    await expect(
+      wallet.captureUtxoSigningContext().withRead(async (read: any) => {
+        wallet.walletSessionGeneration++;
+        return read.allocateUtxoAddress(select);
+      })
+    ).rejects.toThrow(UTXO_SIGNING_CONTEXT_CHANGED);
+    expect(select).not.toHaveBeenCalled();
+    expect(wallet.getRetainedUtxoRecords).not.toHaveBeenCalled();
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+  });
+
+  it('does not let an allocation callback outlive its owned read', async () => {
+    const select = jest.fn();
+    let allocate!: (choose: unknown) => Promise<unknown>;
+    await wallet.captureUtxoSigningContext().withRead(async (read: any) => {
+      allocate = read.allocateUtxoAddress;
+    });
+    expect(() => allocate(select)).toThrow();
+    expect(select).not.toHaveBeenCalled();
+    expect(wallet.getRetainedUtxoRecords).not.toHaveBeenCalled();
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+  });
+
   it.each(['quote', 'submit'])(
     'refuses a Bitcoin Gold ordinary software %s before funding or signing',
     async (operation) => {
@@ -792,7 +953,7 @@ describe('PSBT approval context', () => {
         expect(review.feeSatoshis).toBe('1000');
         if (scenario === 'bridge' || scenario === 'external') {
           expect(review.outputs[1]).toEqual({
-            address: Buffer.from(data).toString('hex'),
+            script: { kind: 'data', hex: Buffer.from(data).toString('hex') },
             amountSatoshis: '0',
           });
           expect(review.outputs[0]).not.toHaveProperty('asset');

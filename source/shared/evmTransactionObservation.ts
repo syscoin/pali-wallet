@@ -60,13 +60,112 @@ const object = (value: unknown): Record<string, unknown> =>
     : invalid();
 
 /** Optional receipt display fields; present values must fit the native unit domain. */
-export function readEvmReceiptFeeUnits(value: unknown): string | null {
+export function readEvmReceiptFeeUnits(
+  value: unknown,
+  chainId: string
+): string | null {
   const receipt = object(value);
   if (receipt.gasUsed === undefined || receipt.effectiveGasPrice === undefined)
     return null;
-  const fee = quantity(receipt.gasUsed) * quantity(receipt.effectiveGasPrice);
+  let fee = quantity(receipt.gasUsed) * quantity(receipt.effectiveGasPrice);
+  const blobReceipt =
+    receipt.type !== undefined && quantity(receipt.type) === BigInt(3);
+  if (
+    blobReceipt ||
+    receipt.blobGasUsed !== undefined ||
+    receipt.blobGasPrice !== undefined
+  ) {
+    // Blob gas is charged independently of execution, including reverted calls.
+    if (!blobReceipt) return null;
+    try {
+      const used = quantity(receipt.blobGasUsed),
+        price = quantity(receipt.blobGasPrice);
+      if (
+        used === BigInt(0) ||
+        used % BigInt(131072) !== BigInt(0) ||
+        price === BigInt(0)
+      )
+        return null;
+      fee += used * price;
+    } catch {
+      return null;
+    }
+  }
+  if (chainId === '8453' || chainId === '84532') {
+    // Base receipts expose the L1 data charge separately from execution gas.
+    // A receipt with an operator charge needs a fork-aware total.
+    try {
+      if (
+        quantity(receipt.operatorFeeScalar ?? '0x0') !== BigInt(0) ||
+        quantity(receipt.operatorFeeConstant ?? '0x0') !== BigInt(0)
+      )
+        return null;
+      fee += quantity(receipt.l1Fee);
+      if (fee >= BigInt(1) << BigInt(256)) return null;
+    } catch {
+      return null;
+    }
+  }
   if (fee >= BigInt(1) << BigInt(256)) invalid();
   return fee.toString();
+}
+
+/** Correlate already-fetched raw or ethers-normalized receipt observations. */
+const normalizedQuantity = (input: unknown) =>
+  typeof input === 'bigint' ||
+  (typeof input === 'number' && Number.isSafeInteger(input) && input >= 0)
+    ? quantity(`0x${BigInt(input).toString(16)}`)
+    : quantity(input);
+type ReceiptIdentity = {
+  blockHash?: unknown;
+  blockNumber?: unknown;
+  from: string;
+  hash: string;
+  to: string | null;
+};
+export function assertEvmReceiptIdentity(
+  expected: ReceiptIdentity,
+  value: unknown
+) {
+  const receipt = object(value);
+  try {
+    if (
+      hash(receipt.transactionHash ?? receipt.hash) !== hash(expected.hash) ||
+      getAddress(receipt.from as string) !== getAddress(expected.from) ||
+      (receipt.to === null ? null : getAddress(receipt.to as string)) !==
+        (expected.to === null ? null : getAddress(expected.to))
+    )
+      invalid();
+  } catch {
+    invalid();
+  }
+}
+export function assertEvmReceiptCoherence(
+  expected: ReceiptIdentity,
+  value: unknown,
+  header: unknown
+) {
+  const receipt = object(value),
+    block = object(header);
+  assertEvmReceiptIdentity(expected, receipt);
+  try {
+    const number = normalizedQuantity(receipt.blockNumber),
+      blockHash = hash(receipt.blockHash);
+    const status = normalizedQuantity(receipt.status);
+    if (status !== BigInt(0) && status !== BigInt(1)) invalid();
+    if (
+      normalizedQuantity(block.number) !== number ||
+      hash(block.hash) !== blockHash ||
+      (expected.blockNumber !== undefined &&
+        normalizedQuantity(expected.blockNumber) !== number) ||
+      (expected.blockHash !== undefined &&
+        hash(expected.blockHash) !== blockHash)
+    )
+      invalid();
+    return { number, blockHash, status };
+  } catch {
+    return invalid();
+  }
 }
 
 /** One ordinary canonical-receipt observation, shared by both host transports. */
@@ -142,16 +241,7 @@ export async function observeEvmTransaction(
     });
   }
   const receipt = object(value);
-  try {
-    if (
-      hash(receipt.transactionHash) !== wantedHash ||
-      getAddress(receipt.from as string) !== from ||
-      (receipt.to === null ? null : getAddress(receipt.to as string)) !== to
-    )
-      invalid();
-  } catch {
-    invalid();
-  }
+  assertEvmReceiptIdentity({ hash: wantedHash, from, to }, receipt);
   const status = quantity(receipt.status),
     number = quantity(receipt.blockNumber),
     blockHash = hash(receipt.blockHash);
@@ -189,7 +279,7 @@ export async function observeEvmTransaction(
   void nonce;
   let feeUnits: string | undefined;
   try {
-    feeUnits = readEvmReceiptFeeUnits(receipt) ?? undefined;
+    feeUnits = readEvmReceiptFeeUnits(receipt, input.chainId) ?? undefined;
   } catch {
     /* Optional display metadata cannot invalidate the canonical outcome. */
   }

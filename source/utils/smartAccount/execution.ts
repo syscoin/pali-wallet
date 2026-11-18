@@ -1,3 +1,4 @@
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard';
 import { signP256WebAuthnActionHash } from '../passkey/authenticator';
 import type {
   ISmartAccountMetadata,
@@ -15,14 +16,25 @@ import {
 import { getSmartAccountUserOpRequiredPrefund } from './account';
 import {
   signSmartAccountActionHash as dispatchSmartAccountActionHash,
+  signSmartAccountWithValidator,
   type SmartAccountAuthenticatorPorts,
   type SmartAccountAuthenticatorSigningCallback,
   type SmartAccountLocalOwner,
   type SmartAccountLocalEcdsaSigner,
   type SmartAccountSLHDSASigner,
 } from './authenticatorDispatch';
+import {
+  collectCompositePolicyPossession,
+  type createCompositePolicyPossession,
+} from './compositePossession';
+import {
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from './erc20Transfer';
+import { assertSmartAccountOwnerSigningIntent } from './ownerSigningIntent';
 import type { SmartAccountAuthenticatorSignature } from './signature';
 import { canUseReservedSLHDSASignature } from './slhDsaPurpose';
+import type { SmartAccountControllerCallOptions } from '../../shared/smartAccountControllerAuthority';
 import type { SmartAccountFeeQuote } from '../../shared/smartAccountFeeQuote';
 
 export type { SmartAccountFeeQuote } from '../../shared/smartAccountFeeQuote';
@@ -41,7 +53,8 @@ type ControllerEmitter = (
   methods: string[],
   payload?: any[],
   timeout?: number,
-  retryConnection?: boolean
+  retryConnection?: boolean,
+  options?: SmartAccountControllerCallOptions
 ) => Promise<any>;
 
 export type SmartAccountExecutionIntent = {
@@ -88,6 +101,7 @@ const getSmartAccountSubmitJobKey = async ({
   accountAddress,
   accountId,
   executions,
+  expectedErc20Transfers,
   expectedContext,
   feeOverrides,
   approvedFeeQuote,
@@ -101,6 +115,7 @@ const getSmartAccountSubmitJobKey = async ({
   >;
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   feeOverrides?: SmartAccountFeeOverrides;
   smartAccount: ISmartAccountMetadata;
 }) =>
@@ -118,6 +133,7 @@ const getSmartAccountSubmitJobKey = async ({
         target: execution.target.toLowerCase(),
         value: execution.value,
       })),
+      expectedErc20Transfers: expectedErc20Transfers ?? null,
       expectedContext: expectedContext ?? null,
       feeOverrides: {
         gasPrice: feeOverrides?.gasPrice ?? null,
@@ -127,6 +143,13 @@ const getSmartAccountSubmitJobKey = async ({
       approvedFeeQuote: approvedFeeQuote ?? null,
     })
   );
+
+export type SmartAccountExecutionFeeConsent =
+  SmartAccountControllerCallOptions & {
+    confirmEntryPoint(
+      quote: SmartAccountFeeQuote & { executionContextId: string }
+    ): Promise<string | null>;
+  };
 
 export type SubmitSmartAccountExecutionsParams = {
   accountAddress?: string;
@@ -139,15 +162,17 @@ export type SubmitSmartAccountExecutionsParams = {
   controllerEmitter: ControllerEmitter;
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
+  feeConsent?: SmartAccountExecutionFeeConsent;
   feeOverrides?: SmartAccountFeeOverrides;
   onAssertionResolved?: () => void;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
+  onBeforeAuthentication?: () => void;
   onBeforeSubmit?: (
     prepared: Readonly<{ executionContextId: string }>
   ) => Promise<void>;
   onPrepared?: () => void;
-  onSubmissionNotBroadcast?: () => Promise<void>;
   skipRapidPolling?: boolean;
   smartAccount: ISmartAccountMetadata;
   /** Internal wallet controls share only the same exact approval context. */
@@ -169,6 +194,7 @@ export const prepareSmartAccountFeeQuote = async ({
   accountId,
   controllerEmitter,
   executions,
+  expectedErc20Transfers,
   expectedContext,
   feeOverrides,
   maximumGasUnits,
@@ -178,6 +204,7 @@ export const prepareSmartAccountFeeQuote = async ({
   controllerEmitter: ControllerEmitter;
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   feeOverrides?: SmartAccountFeeOverrides;
   maximumGasUnits?: string;
 }): Promise<SmartAccountFeeQuote> => {
@@ -215,7 +242,13 @@ export const prepareSmartAccountFeeQuote = async ({
     [
       executions,
       accountId,
-      { ...(expectedContext ? { expectedContext } : {}), feeOverrides },
+      {
+        ...(expectedContext ? { expectedContext } : {}),
+        feeOverrides,
+        expectedErc20Transfers: snapshotSmartAccountExpectedErc20Transfers(
+          expectedErc20Transfers
+        ),
+      },
     ],
     300000
   );
@@ -285,77 +318,9 @@ type P256WebAuthnAuthenticatorRuntimeContext = {
 };
 
 type SLHDSAAuthenticatorRuntimeContext = {
+  availableKeyIds?: readonly string[];
   signActionHash?: SmartAccountSLHDSASigner;
   signMessageActionHash?: (keyId: string, validator: string) => Promise<string>;
-};
-
-const stringifyError = (error: unknown): string => {
-  if (!error || typeof error !== 'object') {
-    return '';
-  }
-
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return '';
-  }
-};
-
-const getErrorText = (error: unknown, depth = 0): string => {
-  if (!error || depth > 4) {
-    return '';
-  }
-  if (typeof error === 'string') {
-    try {
-      return [error, getErrorText(JSON.parse(error), depth + 1)]
-        .filter(Boolean)
-        .join(' ');
-    } catch {
-      return error;
-    }
-  }
-  if (typeof error !== 'object') {
-    return String(error);
-  }
-
-  const errorRecord = error as Record<string, unknown>;
-  const parts = [
-    errorRecord.message,
-    errorRecord.reason,
-    errorRecord.code,
-    errorRecord.data,
-    errorRecord.error,
-    errorRecord.body,
-    errorRecord.response,
-    errorRecord.info,
-    stringifyError(error),
-    ...Object.getOwnPropertyNames(error)
-      .filter((key) => key !== 'stack')
-      .map((key) => errorRecord[key]),
-  ].flatMap((value) => {
-    if (!value) {
-      return [];
-    }
-    if (typeof value === 'string') {
-      try {
-        return [value, getErrorText(JSON.parse(value), depth + 1)];
-      } catch {
-        return [value];
-      }
-    }
-    return [getErrorText(value, depth + 1)];
-  });
-
-  return parts.filter(Boolean).join(' ');
-};
-
-const isSmartAccountSignatureError = (error: unknown) => {
-  const message = getErrorText(error);
-  return (
-    message.includes('AA24') ||
-    message.includes('PALI_SMART_ACCOUNT_SIGNATURE_ERROR') ||
-    message.includes('41413234207369676e6174757265206572726f72')
-  );
 };
 
 export const getSmartAccountLocalOwnerContexts = ({
@@ -464,6 +429,9 @@ function extensionAuthenticatorPorts(
     },
     slhDsa: slh
       ? {
+          ...(slh.availableKeyIds !== undefined && {
+            availableKeyIds: slh.availableKeyIds,
+          }),
           signActionHash: slh.signActionHash ?? null,
           signMessageActionHash: slh.signMessageActionHash ?? null,
         }
@@ -495,21 +463,26 @@ export const signAndSubmitSmartAccountExecutions = async (
     authenticatorContexts,
     controllerEmitter,
     executions,
+    expectedErc20Transfers: suppliedExpectedTransfers,
     expectedContext,
     feeOverrides,
     approvedFeeQuote,
+    feeConsent,
     onAssertionResolved,
+    onBeforeAuthentication,
     onAuthenticatorSigningResolved,
     onAuthenticatorSigningStarted,
     onBeforeSubmit,
     onPrepared,
-    onSubmissionNotBroadcast,
     skipRapidPolling,
     trackLocalSubmission,
     smartAccount,
     useCachedMetadata,
     waitForConfirmation,
   } = params;
+  const expectedErc20Transfers = snapshotSmartAccountExpectedErc20Transfers(
+    suppliedExpectedTransfers
+  );
   const validatorIdForJob =
     smartAccount.auth?.module || smartAccount.auth?.scheme;
   // An external approval owns its own context checks and durable submit marker.
@@ -521,6 +494,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         accountAddress,
         accountId,
         executions,
+        expectedErc20Transfers,
         expectedContext,
         feeOverrides,
         approvedFeeQuote,
@@ -528,11 +502,9 @@ export const signAndSubmitSmartAccountExecutions = async (
       })
     : '';
 
-  let submissionStarted = false;
-  const prepareSignAndSubmit = async (useCachedMetadataOverride?: boolean) => {
-    submissionStarted = false;
+  const prepareSignAndSubmit = async () => {
     const retainedContextId =
-      useCachedMetadataOverride !== false
+      useCachedMetadata !== false
         ? approvedFeeQuote?.executionContextId
         : undefined;
     const prepared = (await controllerEmitter(
@@ -548,7 +520,8 @@ export const signAndSubmitSmartAccountExecutions = async (
         {
           ...(expectedContext ? { expectedContext } : {}),
           feeOverrides,
-          useCachedMetadata: useCachedMetadataOverride,
+          expectedErc20Transfers,
+          useCachedMetadata,
           ...(retainedContextId
             ? { executionContextId: retainedContextId }
             : {}),
@@ -586,14 +559,126 @@ export const signAndSubmitSmartAccountExecutions = async (
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
       });
+    const assertClientCurrent = () => {
+      if (onBeforeAuthentication)
+        assertSynchronousEvmFeeGuard(onBeforeAuthentication);
+    };
     const assertContext = async () => {
+      assertClientCurrent();
       if (prepared.executionContextId)
         await controllerEmitter(
           ['wallet', 'assertSmartAccountExecutionContext'],
           [prepared.executionContextId, prepared.actionHash]
         );
+      assertClientCurrent();
     };
     await assertContext();
+
+    const entryPointQuote = prepared.entryPointFeeQuote as
+      | (SmartAccountFeeQuote & { executionContextId: string })
+      | undefined;
+    if (entryPointQuote) {
+      if (
+        entryPointQuote.executionContextId !== prepared.executionContextId ||
+        entryPointQuote.maximumFeeWei !==
+          getSmartAccountUserOpRequiredPrefund(
+            prepared.userOperation
+          ).toString() ||
+        entryPointQuote.feePayer.id !== prepared.gasPayer?.id ||
+        entryPointQuote.feePayer.type !== prepared.gasPayer?.type ||
+        entryPointQuote.feePayer.address.toLowerCase() !==
+          prepared.gasPayer?.address?.toLowerCase()
+      )
+        throw new Error(INVALID_FEE_QUOTE_ERROR);
+      if (!approvedFeeQuote) {
+        if (!feeConsent)
+          throw new Error('Smart account fee approval is required');
+        const accepted = await feeConsent.confirmEntryPoint(entryPointQuote);
+        await assertContext();
+        if (accepted !== prepared.executionContextId)
+          throw Object.assign(
+            new Error('Smart account fee approval cancelled'),
+            { code: 4001, transactionNotBroadcast: true }
+          );
+      }
+      await controllerEmitter(
+        ['wallet', 'approveSmartAccountExecutionFeeQuote'],
+        [prepared.executionContextId, entryPointQuote]
+      );
+      await assertContext();
+    } else {
+      throw new Error(INVALID_FEE_QUOTE_ERROR);
+    }
+
+    if (prepared.requiresCompositePossession === true) {
+      const challenge = (await controllerEmitter(
+        ['wallet', 'getSmartAccountCompositePossession'],
+        [prepared.executionContextId]
+      )) as ReturnType<typeof createCompositePolicyPossession> & {
+        accountId: number;
+        executionContextId: string;
+      };
+      await assertContext();
+      if (
+        !challenge ||
+        challenge.accountId !== prepared.accountId ||
+        challenge.executionContextId !== prepared.executionContextId ||
+        challenge.intent.purpose !== 'policy-possession' ||
+        challenge.intent.actionHash.toLowerCase() ===
+          prepared.actionHash.toLowerCase()
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      assertSmartAccountOwnerSigningIntent(challenge.intent);
+      const basePorts = extensionAuthenticatorPorts(authenticatorContexts);
+      const ports: SmartAccountAuthenticatorPorts = {
+        ...basePorts,
+        ecdsa: basePorts.ecdsa && {
+          ...basePorts.ecdsa,
+          signActionHash: ({ owner }) =>
+            controllerEmitter(
+              ['wallet', 'signSmartAccountCompositeOwner'],
+              [prepared.executionContextId, { id: owner.id, type: owner.type }],
+              owner.type === 'Ledger' || owner.type === 'Trezor'
+                ? 300000
+                : 10000
+            ),
+        },
+        // Possession has its own prepared-context digest; never substitute a
+        // general message-signing callback or the current transaction digest.
+        slhDsa: basePorts.slhDsa && {
+          signActionHash: basePorts.slhDsa.signActionHash,
+          signMessageActionHash: null,
+        },
+      };
+      await collectCompositePolicyPossession({
+        proposal: challenge.proposal,
+        assertCurrent: assertClientCurrent,
+        sign: async (validator) => {
+          const proof = await signSmartAccountWithValidator({
+            assertBeforeAuthentication: assertContext,
+            accountId: prepared.accountId,
+            actionHash: challenge.intent.actionHash,
+            executionContextId: prepared.executionContextId,
+            onAuthenticatorSigningResolved,
+            onAuthenticatorSigningStarted,
+            ports,
+            smartAccount: challenge.smartAccount,
+            validator,
+          });
+          return proof.signature;
+        },
+        verify: async (signatures) => {
+          await assertContext();
+          const result = await controllerEmitter(
+            ['wallet', 'verifySmartAccountCompositePossession'],
+            [prepared.executionContextId, [...signatures]]
+          );
+          await assertContext();
+          return result;
+        },
+      });
+      await assertContext();
+    }
 
     const signature = await signSmartAccountActionHash({
       assertBeforeAuthentication: assertContext,
@@ -619,12 +704,12 @@ export const signAndSubmitSmartAccountExecutions = async (
       })
     );
     await assertContext();
-    submissionStarted = true;
     return controllerEmitter(
       ['wallet', 'submitSmartAccountExecution'],
       [
         {
           executionCalldata: prepared.executionCalldata,
+          expectedErc20Transfers,
           executions: prepared.executions,
           accountId: prepared.accountId,
           executionContextId: prepared.executionContextId,
@@ -642,32 +727,16 @@ export const signAndSubmitSmartAccountExecutions = async (
         },
       ],
       300000,
-      false
+      false,
+      feeConsent ? { confirmFee: feeConsent.confirmFee } : undefined
     );
   };
 
-  const run = async () => {
-    try {
-      return await prepareSignAndSubmit(useCachedMetadata);
-    } catch (error) {
-      if (
-        useCachedMetadata !== false &&
-        isSmartAccountSignatureError(error) &&
-        !(error as any)?.transactionHash &&
-        (error as any)?.transactionNotBroadcast !== false &&
-        (!submissionStarted || (error as any)?.transactionNotBroadcast === true)
-      ) {
-        // A host's durable begin must be settled before a refreshed operation
-        // can acquire the reservation. Unknown submissions never reach here.
-        if (submissionStarted) await onSubmissionNotBroadcast?.();
-        return await prepareSignAndSubmit(false);
-      }
-      throw error;
-    }
-  };
-
+  // A signed UserOperation may already be executable after an estimate or
+  // simulation, even when no outer payer transaction was broadcast. A failed
+  // attempt must never create a fresh nonce authorization under this approval.
   if (!shouldTrackJob) {
-    return run();
+    return prepareSignAndSubmit();
   }
 
   const inFlightJob = smartAccountSubmitJobs.get(submitJobKey);
@@ -675,7 +744,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     return inFlightJob;
   }
 
-  const job = run();
+  const job = prepareSignAndSubmit();
   smartAccountSubmitJobs.set(submitJobKey, job);
   try {
     return await job;

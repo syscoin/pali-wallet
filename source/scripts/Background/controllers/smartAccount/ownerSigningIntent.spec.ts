@@ -29,11 +29,29 @@ function capture(change: Record<string, unknown> = {}) {
         actionHash: intent.actionHash,
         accountId: 9,
         expiresAt: Date.now() + 300000,
+        entryPointFeeQuote: {
+          executionContextId: 'private-context',
+          feePayer: {
+            id: 0,
+            type: 'HDAccount',
+            address: '0x' + '33'.repeat(20),
+          },
+          gasUnits: '1',
+          maximumFeeWei: '0',
+        },
         snapshot: { chainId: 1 },
         ...change,
       },
     ],
   ]);
+  if (
+    controller.executionContexts.get('private-context').purpose ===
+    'user-operation'
+  )
+    controller.approveSmartAccountExecutionFeeQuote(
+      'private-context',
+      controller.executionContexts.get('private-context').entryPointFeeQuote
+    );
   return controller;
 }
 it('derives only from the original private prepared UserOperation', () => {

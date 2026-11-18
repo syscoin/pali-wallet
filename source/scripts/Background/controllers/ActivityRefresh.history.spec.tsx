@@ -133,6 +133,7 @@ const currentRows = () =>
 let fixture = 0;
 const originalChrome = global.chrome;
 beforeEach(() => {
+  jest.useFakeTimers({ doNotFake: ['Date', 'setImmediate'] });
   jest.clearAllMocks();
   mockEvmPolling.mockReset();
   jest.spyOn(Date, 'now').mockReturnValue(1000);
@@ -220,6 +221,7 @@ it.each([7000, 62000])(
     });
     expect(mockTransport).toHaveBeenCalledTimes(1);
     expect(currentRows().map((tx: any) => tx.txid)).toEqual([first.txid]);
+    await jest.advanceTimersByTimeAsync(100);
     jest.mocked(Date.now).mockReturnValue(now);
     render(
       <Provider store={mockStore}>
@@ -245,6 +247,7 @@ it('the existing explicit forced history path bypasses the young completed cache
     activeNetwork: network,
     isPolling: true,
   });
+  await jest.advanceTimersByTimeAsync(100);
   jest.mocked(Date.now).mockReturnValue(7000);
   await mockController.updateUserTransactionsState({
     isBitcoinBased: true,
@@ -265,6 +268,7 @@ it('routine polling retains the completed history cache inside its lifetime', as
     activeNetwork: network,
     isPolling: true,
   });
+  await jest.advanceTimersByTimeAsync(100);
   jest.mocked(Date.now).mockReturnValue(7000);
   await mockController.getLatestUpdateForCurrentAccount(true);
   await mockController.cancellablePromises.transactionPromise
@@ -280,6 +284,7 @@ it('repeated explicit refreshes share the existing in-flight transport', async (
     activeNetwork: network,
     isPolling: true,
   });
+  await jest.advanceTimersByTimeAsync(100);
   jest.mocked(Date.now).mockReturnValue(7000);
   let finish!: (value: any) => void;
   mockTransport.mockReturnValue(

@@ -961,12 +961,11 @@ test('approval metadata from a retired wallet context cannot supply allowance un
           popup,
           'cancel the retired approval before retrying',
           async () => {
+            // The fixture's verified token bytecode must not produce the
+            // warning reserved for calldata sent to an address without code.
             await expect(
               popup.getByText(en.send.potentialMistake, { exact: true })
-            ).toBeVisible();
-            await popup
-              .getByRole('button', { name: en.settings.gotIt, exact: true })
-              .click();
+            ).toHaveCount(0);
             const rejected = await dismissRejectedApproval({
               click: () =>
                 popup

@@ -56,6 +56,8 @@ jest.mock('react-redux', () => ({
   useSelector: (selector: any) =>
     selector({
       vault: {
+        activeAccount: { id: 0, type: 'HDAccount' },
+        accounts: { HDAccount: { 0: { address: ACCOUNT, id: 0 } } },
         activeNetwork: { chainId: 1, currency: 'eth', apiUrl: mockApiUrl },
         isBitcoinBased: false,
       },

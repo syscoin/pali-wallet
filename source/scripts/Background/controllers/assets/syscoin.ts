@@ -13,7 +13,11 @@ import { ITokenSysProps, ISysAssetMetadata } from 'types/tokens';
 import { formatUnits } from 'utils/ethersV6Compat';
 
 import { ASSET_CACHE_DURATION, USER_TOKENS_CACHE_DURATION } from './constants';
-import { ISysAssetsController, ISysTokensAssetReponse } from './types';
+import {
+  ISysAssetsController,
+  ISysTokensAssetReponse,
+  type AssetReadOwner,
+} from './types';
 import { ensureTrailingSlash } from './utils';
 
 const projectHolding = (
@@ -92,6 +96,17 @@ const SysAssetsControler = (): ISysAssetsController => {
       `[SysAssetsController] Fetching fresh asset data for ${assetGuid}`
     );
     const assetData = await getAsset(networkUrl, assetGuid);
+    // The SDK resolves undefined on transport failure. Only successful metadata
+    // may consume the long cache TTL; a user retry must reach a recovered node.
+    if (
+      !assetData ||
+      typeof assetData.symbol !== 'string' ||
+      !assetData.symbol ||
+      !Number.isInteger(assetData.decimals) ||
+      assetData.decimals < 0 ||
+      assetData.decimals > 8
+    )
+      return null;
 
     // Cache the result
     assetCache.set(cacheKey, {
@@ -261,19 +276,25 @@ const SysAssetsControler = (): ISysAssetsController => {
     xpubOrAddress: string,
     networkUrl: string,
     networkChainId: number,
-    existingAssets: ITokenSysProps[] = []
+    existingAssets: ITokenSysProps[] = [],
+    owner?: AssetReadOwner
   ): Promise<ISysTokensAssetReponse[]> => {
     if (!supportsSptUtxoChain(networkChainId)) return [];
+    owner?.assertCurrent();
+    if (!existingAssets.length) return [];
     // Refresh persisted/imported assets from all used SPT entries so zero-balance
     // tokens still keep their historical sent/received counters.
     const requestOptions = 'details=tokenBalances&tokens=used';
 
+    owner?.assertCurrent();
     const accountData = await fetchBackendAccountCached(
       ensureTrailingSlash(networkUrl),
       xpubOrAddress,
       requestOptions,
-      true
+      true,
+      owner?.signal
     );
+    owner?.assertCurrent();
     const inventory = parseSptInventory(accountData, xpubOrAddress);
 
     // Update all manually imported tokens

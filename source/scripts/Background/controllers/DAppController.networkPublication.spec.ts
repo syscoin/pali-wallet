@@ -603,7 +603,7 @@ it.each(['chain', 'endpoint', 'UTXO endpoint'] as const)(
     expect(provider.chainId).toBe(`0x${latest.chainId.toString(16)}`);
     expect(provider.isBitcoinBased()).toBe(isBitcoinBased);
     if (provider instanceof PaliInpageProviderSys)
-      expect(await provider.activeExplorer()).toBe(latest.url);
+      expect(await provider.activeExplorer()).toBeNull();
     expect(executed.slice(1)).toEqual([
       {
         method: PaliEvents.chainChanged,
@@ -616,7 +616,7 @@ it.each(['chain', 'endpoint', 'UTXO endpoint'] as const)(
       { method: PaliEvents.isBitcoinBased, params: { isBitcoinBased } },
       {
         method: PaliSyscoinEvents.blockExplorerChanged,
-        params: isBitcoinBased ? latest.url : null,
+        params: null,
       },
     ]);
     expect(old).toHaveLength(2);

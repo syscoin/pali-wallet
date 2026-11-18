@@ -1,4 +1,4 @@
-import { deviceAuthorizationPrompt, authenticateNativeOperation, refuseNativeOperation } from './operationAuthentication';
+import { deviceAuthorizationPrompt } from './operationAuthentication';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const baseURL = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179';
@@ -417,29 +417,15 @@ test('whole invalid recipient is rejected instead of accepting a truncated prefi
   ).toHaveLength(0);
 });
 
-test('restored prerequisite uses shared authentication and returns to ordinary explicit review', async ({
-  page,
-}) => {
-  await open(page, '&restored');
-  await page
-    .getByRole('button', { name: 'Review restored note', exact: true })
-    .click();
-  await refuseNativeOperation(page);
-  await expect(page.getByRole('alert')).toHaveText(
-    'Could not review this restored note. Try again.'
-  );
-  await page.getByRole('button', { name: 'Review restored note', exact: true }).click();
-  await authenticateNativeOperation(page);
+test('restored provenance uses only the ordinary withdrawal review and confirmation', async ({page}) => {
+  await open(page,'&restored');
+  await expect(page.getByRole('button',{name:'Review restored note',exact:true})).toHaveCount(0);
   await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   await prepare(page);
-  await expect(
-    page.getByRole('button', { name: 'Confirm withdrawal', exact: true })
-  ).toBeVisible();
-  expect(
-    (
-      await page.evaluate(() => window.__privateWithdrawalFixture.events())
-    ).filter((event) => event.startsWith('confirm:'))
-  ).toHaveLength(0);
+  await expect(page.getByText('Any earlier withdrawal may still complete. Continuing does not cancel it, and a competing transaction may fail and cost fees.')).toBeVisible();
+  expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(0);
+  await page.getByRole('button',{name:'Confirm withdrawal',exact:true}).click();
+  expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(1);
 });
 
 test('cancel waits for a pending open and late disposal before reloading inventory', async ({
@@ -542,7 +528,7 @@ test('proven-unsent failure needs a fresh review before another confirmation', a
   ).toHaveLength(1);
 });
 
-test('saved withdrawal history opens status without requiring new-note eligibility', async ({
+test('saved withdrawal history remains visible and fresh verified pool status allows a competing review', async ({
   page,
 }) => {
   await page.goto('/?private-withdrawal&history');
@@ -552,17 +538,24 @@ test('saved withdrawal history opens status without requiring new-note eligibili
     .click();
   await expect(
     page.getByRole('heading', {
-      name: 'Submission status unknown',
+      name: 'Withdraw note',
       exact: true,
     })
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Review withdrawal', exact: true })
-  ).toHaveCount(0);
-  await expect(page.getByRole('textbox')).toHaveCount(0);
+  ).toBeDisabled();
+  await expect(page.getByRole('textbox',{name:'Recipient address'})).toBeVisible();
+  await expect(page.getByText(`0x${'ab'.repeat(32)}`,{exact:true})).toBeVisible();
   expect(
     await page.evaluate(() => window.__privateWithdrawalFixture.events())
   ).not.toContain('note:status');
+  await page.getByRole('button',{name:'Check status',exact:true}).click();
+  await prepare(page);
+  await expect(page.getByText('Previous withdrawals',{exact:true})).toBeVisible();
+  expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(0);
+  await page.getByRole('button',{name:'Submit competing withdrawal',exact:true}).click();
+  expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(1);
 });
 
 test('a spent saved note retains status and does not offer a withdrawal', async ({

@@ -92,7 +92,9 @@ test('only the root-owned timer receives fixed apt commands and positional depen
   assert.equal(call.name, 'sudo-real');
   assert.deepEqual(call.args.slice(0, 7), [
     '-n',
-    '/usr/bin/timeout',
+    fs.existsSync('/usr/bin/gnutimeout')
+      ? '/usr/bin/gnutimeout'
+      : '/usr/bin/timeout',
     '--signal=TERM',
     '--kill-after=15s',
     '480s',

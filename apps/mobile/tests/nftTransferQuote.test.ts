@@ -58,7 +58,9 @@ function fixture(options: {
   responseUrl?: string;
 } = {}) {
   const calls: Call[] = [];
-  const fetch = async (url: string, init: RequestInit) => {
+  const fetch = async (url: string, init: RequestInit): Promise<Response> => {
+      const request = JSON.parse(String(init.body));
+      if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetch(url, { ...init, body: JSON.stringify(row) })).json())));
       assert.equal(url, network.rpcUrl);
       assert.equal(init.method, 'POST');
       assert.equal(init.redirect, 'error');
@@ -147,6 +149,20 @@ function fixture(options: {
 }
 const signal = () => new AbortController().signal;
 const current = () => undefined;
+
+for (const standard of ['ERC-721', 'ERC-1155'] as const) test(`custom ${standard} fees work when every recommendation is unavailable`, async () => {
+  const f = fixture({ rewrite(call, reply) {
+    return ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)
+      ? { error: { code: -32000, message: 'Fee recommendations unavailable' } } : reply;
+  } });
+  const selected = { ...selection, saved: standard === 'ERC-1155' ? { contractAddress: target, tokenStandard: standard, tokenId: max } : selection.saved };
+  const input = standard === 'ERC-721' ? request : { recipient, tokenId: max, amountUnits: '1' };
+  const quote = await f.rpc.prepareNft(selected, input, signal(), current, undefined, emptyNoncePlanner,
+    { kind: 'custom', type: 2, maxFeePerGas: '200', maxPriorityFeePerGas: '2', gasLimit: '40000' });
+  assert.equal(quote.envelope.gasLimit, '40000');
+  assert.equal(f.calls.some(call => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)), false);
+  assert(f.calls.some(call => call.method === 'eth_estimateGas'));
+});
 const admission = (rpc: NativeTransferRpc, approval: EvmNftPreparedQuote, assertCurrent = current, onDispatch = current) => {
   let validated = false;
   const inventorySignal = signal();
@@ -607,3 +623,18 @@ for (const phase of ['quote', 'dispatch'] as const) {
     assert.equal(f.calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
   });
 }
+
+test('EOA ERC721 quote and final dispatch preserve the bound missing-ID negative probe', async () => {
+  const f = fixture();
+  const quote = await f.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner);
+  await f.rpc.requoteNft(selection, quote, signal(), current, emptyNoncePlanner);
+  const before = f.calls.length;
+  await f.rpc.verifyForDispatch(quote.envelope, signal(), current, emptyNoncePlanner,
+    { standard: 'ERC721', contractAddress: target, tokenId: '0', amountUnits: '1' }, undefined, quote.intent);
+  await f.rpc.verifyNftForDispatch(quote.intent, quote.envelope, signal(), current, false, undefined, emptyNoncePlanner);
+  const ownership = f.calls.filter(call => call.method === 'eth_call' && !simulation(call));
+  assert.equal(ownership.length, 8);
+  assert.equal(ownership.filter(call => abi.parseTransaction(call.params[0] as { data: string })!.args[0] === 0n).length, 4);
+  assert(f.calls.slice(before).some(call => call.method === 'eth_estimateGas'));
+  assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
+});

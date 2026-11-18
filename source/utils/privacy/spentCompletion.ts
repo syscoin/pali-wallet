@@ -1,5 +1,7 @@
 import { Interface } from 'ethers';
 
+import { MAX_PRIVACY_RELAY_TRANSACTIONS } from './withdrawalTransactionTypes.ts';
+
 // The caller must bind the journal and identity to a freshly re-read encrypted
 // note under the persistence mutex and revalidate immediately before storage.
 const ABI = new Interface([
@@ -20,23 +22,29 @@ type Rpc = (
   signal: AbortSignal
 ) => Promise<unknown>;
 type SubmittedWithdrawal = { phase: 'submitted'; transactionHash: string } & (
-  | { mode: 'direct'; from: string; nonce: string }
-  | { mode: 'relayed'; from?: never; nonce?: never }
+  | { from: string; mode: 'direct'; nonce: string }
+  | {
+      from?: never;
+      mode: 'relayed';
+      nonce?: never;
+      transactionHashes?: readonly string[];
+    }
 );
-interface SubmittedDeposit {
-  phase: 'submitted';
-  transactionHash: string;
+interface ISubmittedDeposit {
   from: string;
   nonce: string;
+  phase: 'submitted';
+  transactionHash: string;
 }
-export interface SpentCompletionRequest {
-  poolAddress: string;
-  nullifierHash: string; // Kept local; never put into RPC arguments.
-  withdrawal: SubmittedWithdrawal;
-  deposit?: SubmittedDeposit;
-  rpc: Rpc;
+interface ISpentCompletionRequest {
   assertCurrent: () => void;
+  deposit?: ISubmittedDeposit;
+  nullifierHash: string; // Kept local; never put into RPC arguments.
+  poolAddress: string;
+  rpc: Rpc;
+  withdrawal: SubmittedWithdrawal;
 }
+export type SpentCompletionRequest = ISpentCompletionRequest;
 const lower = (x: unknown) => (typeof x === 'string' ? x.toLowerCase() : '');
 const obj = (x: unknown): Record<string, any> => {
   if (!x || typeof x !== 'object' || Array.isArray(x))
@@ -105,30 +113,66 @@ export async function prepareSpentCompletion(
   if (d && (d.phase !== 'submitted' || !HASH.test(d.transactionHash)))
     throw new Error('privacy_spent_proof_unavailable');
   if (d) expectedAccount(d.from, d.nonce);
+  const candidates =
+    req.withdrawal.mode === 'relayed' &&
+    req.withdrawal.transactionHashes !== undefined
+      ? [...req.withdrawal.transactionHashes]
+      : [w.transactionHash];
+  if (
+    !candidates.length ||
+    candidates.length > MAX_PRIVACY_RELAY_TRANSACTIONS ||
+    candidates[0] !== w.transactionHash ||
+    candidates.some((hash) => !HASH.test(hash)) ||
+    new Set(candidates).size !== candidates.length
+  )
+    throw new Error('privacy_spent_proof_unavailable');
+  type Evidence = {
+    anchor: { hash: string; number: string };
+    blockHash: string;
+    blockNumber: string;
+    event: string;
+    hash: string;
+  };
+  let evidence: Evidence | undefined;
 
   const run = async () => {
     const deadline = Date.now() + MAX_RUN_MS;
-    const read = async (method: string, params: unknown[]) => {
+    const activeReads = new Set<AbortController>();
+    let retired = false;
+    const read = async (
+      method: string,
+      params: unknown[],
+      candidate = false
+    ) => {
       assertCurrent();
-      const remaining = deadline - Date.now();
+      if (retired) throw new Error('invalid');
+      // A multi-candidate lookup reserves time for the final canonical checks.
+      const remaining =
+        deadline - Date.now() - (candidate && candidates.length > 1 ? 4000 : 0);
       if (remaining <= 0) throw new Error('invalid');
       const controller = new AbortController();
+      activeReads.add(controller);
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let removeAbort: () => void = () => undefined;
       try {
         const timeout = new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => {
-            controller.abort();
-            reject(new Error('invalid'));
-          }, remaining);
+          const abort = () => reject(new Error('invalid'));
+          controller.signal.addEventListener('abort', abort, { once: true });
+          removeAbort = () =>
+            controller.signal.removeEventListener('abort', abort);
+          timer = setTimeout(() => controller.abort(), remaining);
         });
         const result = await Promise.race([
           rpc(method, params, controller.signal),
           timeout,
         ]);
         assertCurrent();
+        if (retired) throw new Error('invalid');
         return result;
       } finally {
         if (timer !== undefined) clearTimeout(timer);
+        removeAbort();
+        activeReads.delete(controller);
       }
     };
     if ((await read('eth_chainId', [])) !== '0x1') throw new Error('invalid');
@@ -137,21 +181,30 @@ export async function prepareSpentCompletion(
     );
     const finalizedNumber = quantity(finalized.number);
     if (!HASH.test(lower(finalized.hash))) throw new Error('invalid');
+    const anchor = evidence?.anchor ?? {
+      number: finalized.number,
+      hash: lower(finalized.hash),
+    };
     const finalizedAtHeight = obj(
-      await read('eth_getBlockByNumber', [finalized.number, false])
+      await read('eth_getBlockByNumber', [anchor.number, false])
     );
     if (
-      quantity(finalizedAtHeight.number) !== finalizedNumber ||
-      lower(finalizedAtHeight.hash) !== lower(finalized.hash)
+      finalizedAtHeight.number !== anchor.number ||
+      quantity(anchor.number) > finalizedNumber ||
+      lower(finalizedAtHeight.hash) !== anchor.hash
     )
       throw new Error('invalid');
 
+    const blocks = new Map<string, Promise<Record<string, any>>>();
     const verify = async (
       hash: string,
       account?: { from?: string; nonce?: string },
-      requireEvent = false
+      requireEvent = false,
+      candidate = false
     ) => {
-      const receipt = obj(await read('eth_getTransactionReceipt', [hash]));
+      const value = await read('eth_getTransactionReceipt', [hash], candidate);
+      if (candidate && value === null) return null;
+      const receipt = obj(value);
       if (
         lower(receipt.transactionHash) !== hash ||
         !HASH.test(lower(receipt.blockHash)) ||
@@ -160,13 +213,22 @@ export async function prepareSpentCompletion(
         throw new Error('invalid');
       const blockNumber = quantity(receipt.blockNumber);
       if (
-        blockNumber > finalizedNumber ||
+        blockNumber > quantity(anchor.number) ||
         (requireEvent && receipt.status !== '0x1')
-      )
+      ) {
+        if (candidate) return null;
         throw new Error('invalid');
-      const canonical = obj(
-        await read('eth_getBlockByNumber', [receipt.blockNumber, false])
-      );
+      }
+      let block = blocks.get(receipt.blockNumber);
+      if (!block) {
+        block = read(
+          'eth_getBlockByNumber',
+          [receipt.blockNumber, false],
+          candidate
+        ).then(obj);
+        blocks.set(receipt.blockNumber, block);
+      }
+      const canonical = await block;
       if (
         quantity(canonical.number) !== blockNumber ||
         lower(canonical.hash) !== lower(receipt.blockHash)
@@ -183,15 +245,16 @@ export async function prepareSpentCompletion(
         )
           throw new Error('invalid');
       }
+      let event = '';
       if (requireEvent) {
         if (
           !Array.isArray(receipt.logs) ||
           receipt.logs.length > MAX_RECEIPT_LOGS
         )
           throw new Error('invalid');
-        const matching = receipt.logs.filter((candidate: unknown) => {
+        const matching = receipt.logs.filter((item: unknown) => {
           try {
-            const log = obj(candidate);
+            const log = obj(item);
             if (
               lower(log.address) !== pool ||
               lower(log.transactionHash) !== hash ||
@@ -214,21 +277,81 @@ export async function prepareSpentCompletion(
             return false;
           }
         });
-        if (matching.length !== 1) throw new Error('invalid');
+        if (matching.length !== 1) {
+          if (candidate) return null;
+          throw new Error('invalid');
+        }
+        event = JSON.stringify([
+          lower(matching[0].data),
+          matching[0].topics.map(lower),
+        ]);
       }
+      return {
+        anchor,
+        hash,
+        blockHash: lower(receipt.blockHash),
+        blockNumber: receipt.blockNumber as string,
+        event,
+      };
     };
-    await verify(w.transactionHash, w.mode === 'direct' ? w : undefined, true);
+    let selected: Evidence | null = null;
+    if (evidence || candidates.length === 1) {
+      selected = await verify(
+        evidence?.hash ?? w.transactionHash,
+        w.mode === 'direct' ? w : undefined,
+        true
+      );
+    } else {
+      // Four bounded workers share block reads and the operation deadline.
+      let next = 0;
+      try {
+        await Promise.all(
+          Array.from({ length: Math.min(4, candidates.length) }, async () => {
+            while (!selected && next < candidates.length) {
+              const index = next++;
+              try {
+                const value = await verify(
+                  candidates[index]!,
+                  undefined,
+                  true,
+                  true
+                );
+                if (value && !selected) {
+                  selected = value;
+                  // A verified replacement ends hint exploration. Peers cannot
+                  // hold it hostage with a missing or stalled unrelated hash.
+                  for (const controller of activeReads) controller.abort();
+                }
+              } catch {
+                // Hints are not authority: a failed candidate cannot veto an
+                // independently verified event. Owner retirement still aborts.
+                assertCurrent();
+              }
+            }
+          })
+        );
+      } catch (error) {
+        retired = true;
+        for (const controller of activeReads) controller.abort();
+        throw error;
+      }
+    }
+    if (
+      !selected ||
+      (evidence && JSON.stringify(selected) !== JSON.stringify(evidence))
+    )
+      throw new Error('invalid');
     if (d) await verify(d.transactionHash, d);
     // Check that the exact finalized anchor has not changed during the reads.
     const after = obj(
-      await read('eth_getBlockByNumber', [finalized.number, false])
+      await read('eth_getBlockByNumber', [anchor.number, false])
     );
-    if (
-      quantity(after.number) !== finalizedNumber ||
-      lower(after.hash) !== lower(finalized.hash)
-    )
+    if (after.number !== anchor.number || lower(after.hash) !== anchor.hash)
+      throw new Error('invalid');
+    if (candidates.length > 1 && (await read('eth_chainId', [])) !== '0x1')
       throw new Error('invalid');
     assertCurrent();
+    evidence = selected;
   };
   const revalidate = async () => {
     try {

@@ -27,10 +27,12 @@ function harness() {
   let promptHook: (() => Promise<void>) | undefined;
   let postHook: ((id: string) => Promise<void>) | undefined;
   let pruneHook: (() => Promise<void>) | undefined;
+  let unregisterHook: (() => Promise<void>) | undefined;
+  let backgroundHook: (() => Promise<void>) | undefined;
   const ports: ConstructorParameters<typeof NativeNotificationCoordinator>[0] = { store,
     delivery: {
-      permission: async (request) => { if (request) { prompts++; await promptHook?.(); } return permission; }, backgroundStatus: async () => 'available',
-      register: async () => { registered = true; }, unregister: async () => { registered = false; },
+      permission: async (request) => { if (request) { prompts++; await promptHook?.(); } return permission; }, backgroundStatus: async () => { await backgroundHook?.(); return 'available'; },
+      register: async () => { registered = true; }, unregister: async () => { await unregisterHook?.(); registered = false; },
       post: async (id) => { posted.push(id); await postHook?.(id); }, remove: async (id) => { removed.push(id); },
       prune: async (keep) => { await pruneHook?.(); for (const id of posted) if (!keep.includes(id) && !removed.includes(id)) removed.push(id); },
     }, normalize: (value) => structuredClone(value),
@@ -44,9 +46,93 @@ function harness() {
     get initialized() { return initialized; },
     rows: (next: unknown[]) => { rows = next; }, permission: (next: typeof permission) => { permission = next; }, hook: (next: typeof readHook) => { readHook = next; },
     commitHook: (next: typeof commitHook) => { commitHook = next; }, promptHook: (next: typeof promptHook) => { promptHook = next; }, postHook: (next: typeof postHook) => { postHook = next; },
-    pruneHook: (next: typeof pruneHook) => { pruneHook = next; }, storageUnavailable: (next: boolean) => { storageUnavailable = next; } };
+    pruneHook: (next: typeof pruneHook) => { pruneHook = next; }, unregisterHook: (next: typeof unregisterHook) => { unregisterHook = next; },
+    backgroundHook: (next: typeof backgroundHook) => { backgroundHook = next; }, storageUnavailable: (next: boolean) => { storageUnavailable = next; } };
 }
 const transfer = (hash = 'a', changes = {}) => ({ hash: '0x' + hash.repeat(64), from: external, to: address, ...changes });
+
+for (const permission of ['denied', 'granted'] as const)
+  for (const second of [false, true]) test(`an older ${permission} permission load preserves a newer grant (${second ? 'shared' : 'same'} coordinator)`, async () => {
+    const h = harness(); h.permission(permission); await h.coordinator.load();
+    const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    h.backgroundHook(async () => { entered.resolve(); await release.promise; });
+    const loader = second ? h.secondCoordinator() : h.coordinator;
+    const loading = loader.load(); await entered.promise;
+    h.permission('granted');
+    await h.coordinator.enable([scope()], () => undefined, { requestPermission: true });
+    assert.equal(h.document.scopes.length, 1); assert.equal(h.registered, true);
+    release.resolve(); await loading;
+    assert.equal(h.document.scopes.length, 1); assert.equal(h.registered, true);
+    assert.equal(h.coordinator.getSnapshot().permission, 'granted');
+    assert.deepEqual(h.posted, [], 'the initial baseline remains silent');
+  });
+
+test('a settled current denied load still revokes enrollment and its OS task', async () => {
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+  h.permission('denied'); await h.coordinator.load();
+  assert.equal(h.document.scopes.length, 0); assert.equal(h.registered, false);
+  assert.equal(h.coordinator.getSnapshot().permission, 'denied');
+});
+
+for (const permission of ['granted', 'denied'] as const)
+  for (const second of [false, true]) test(`a newer ${permission} load owns reconciliation after an older opposite decision (${second ? 'shared' : 'same'} coordinator)`, async () => {
+    const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+    const generation = h.document.scopes[0]!.generation;
+    const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    let first = true;
+    h.backgroundHook(async () => { if (first) { first = false; entered.resolve(); await release.promise; } });
+    h.permission(permission === 'granted' ? 'denied' : 'granted');
+    const older = h.coordinator.load(); await entered.promise;
+    const latest = second ? h.secondCoordinator() : h.coordinator;
+    h.permission(permission); await latest.load();
+    release.resolve(); await older;
+    assert.equal(h.document.scopes[0]?.generation, permission === 'granted' ? generation : undefined);
+    assert.equal(h.registered, permission === 'granted'); assert.equal(latest.getSnapshot().permission, permission);
+  });
+
+test('a newer grant retires an older denied transaction before its durable commit', async () => {
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+  const generation = h.document.scopes[0]!.generation;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let first = true;
+  h.commitHook(async () => { if (first) { first = false; entered.resolve(); await release.promise; } });
+  h.permission('denied'); const loading = h.coordinator.load(); await entered.promise;
+  h.permission('granted'); const enabling = h.coordinator.enable([scope()], () => undefined, { requestPermission: true });
+  await new Promise<void>(resolve => setImmediate(resolve)); release.resolve();
+  await Promise.all([loading, enabling]);
+  assert.equal(h.document.scopes[0]!.generation, generation, 'the stale revocation cannot reset the existing enrollment');
+  assert.equal(h.registered, true); assert.equal(h.coordinator.getSnapshot().permission, 'granted');
+});
+
+test('only explicit valid taps advance the public retry revision, including same-ID taps', async () => {
+  const h = harness(), id = 'pali-alert-' + 'ab'.repeat(16);
+  assert.equal(h.coordinator.getSnapshot().tapRevision, undefined);
+  h.coordinator.recordTap(id); const first = h.coordinator.getSnapshot().tapRevision;
+  await h.coordinator.load(); assert.equal(h.coordinator.getSnapshot().tapRevision, first);
+  h.coordinator.recordTap('invalid'); assert.equal(h.coordinator.getSnapshot().tapRevision, first);
+  h.coordinator.recordTap(id); assert.equal(h.coordinator.getSnapshot().tapRevision, first! + 1);
+});
+
+test('older OS cleanup cannot unregister a newer enrollment, including a second coordinator load', async () => {
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  h.unregisterHook(async () => { entered.resolve(); await release.promise; });
+  const disabling = h.coordinator.disableAll(); await entered.promise;
+  const loading = h.secondCoordinator().load();
+  const enabling = h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+  for (let turn = 0; turn < 10 && !h.document.scopes.length; turn++) await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(h.document.scopes.length, 1);
+  release.resolve(); await Promise.all([disabling, loading, enabling]);
+  assert.equal(h.registered, true); assert.equal(h.document.scopes.length, 1);
+  assert.deepEqual(h.posted, []);
+});
+
+test('settled disable remains absent and a later enable restores OS registration', async () => {
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+  await h.coordinator.disableAll(); assert.equal(h.registered, false); assert.equal(h.document.scopes.length, 0);
+  await h.coordinator.enable([scope()], () => undefined, { requestPermission: false });
+  assert.equal(h.registered, true); assert.equal(h.document.scopes.length, 1); assert.deepEqual(h.posted, []);
+});
 
 test('load does not prompt; enrollment baselines history and first external incoming movement into an empty account alerts', async () => {
   const h = harness(); await h.coordinator.load(); assert.equal(h.prompts, 0);
@@ -242,4 +328,42 @@ test('previously enabled unsupported scopes remain loadable and removable', asyn
   assert.equal(h.prompts, 0);
   await h.coordinator.disableScope(unsupported.id);
   assert.deepEqual(h.coordinator.getSnapshot().enabledScopeIds, []); assert.equal(h.registered, false);
+});
+
+
+test('queued alerts deliver before repeated slow account reads exhaust the unchanged run budget', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = harness(), scopes = Array.from({ length: 4 }, (_, index) => scope(`watch:${index}`));
+  await h.coordinator.enable(scopes, () => undefined, { requestPermission: true });
+  h.hook(async (value, signal) => {
+    h.rows(value.id === scopes[0]!.id ? [transfer()] : []);
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(done, 8000);
+      const cancel = () => { clearTimeout(timer); reject(Error('Read cancelled')); };
+      function done() { signal.removeEventListener('abort', cancel); resolve(); }
+      signal.addEventListener('abort', cancel, { once: true });
+    });
+  });
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  const finishSlowRun = async (run: Promise<void>) => {
+    await settle();
+    for (const ms of [8000, 8000, 8000, 1000]) { t.mock.timers.tick(ms); await settle(); }
+    await run;
+  };
+  await finishSlowRun(h.coordinator.runForeground());
+  assert.equal(h.posted.length, 0);
+  const queued = h.document.events[0]!;
+  assert.equal(queued.scopeId, scopes[0]!.id); assert.equal(queued.attempted, false);
+  const cancelled = new AbortController(); cancelled.abort();
+  const readCount = h.reads.length;
+  await h.coordinator.run(cancelled.signal);
+  assert.equal(h.document.events[0]!.attempted, false);
+  assert.equal(h.posted.length, 0); assert.equal(h.reads.length, readCount);
+  const retry = h.coordinator.runForeground(); await settle();
+  assert.deepEqual(h.posted, [queued.id], 'durable delivery gets time before another slow read');
+  await finishSlowRun(retry);
+  await finishSlowRun(h.coordinator.runForeground());
+  assert.deepEqual(h.posted, [queued.id], 'successive slow runs never duplicate the notice');
+  assert.equal(h.document.events[0]!.attempted, true);
+  assert.equal(h.coordinator.getSnapshot().status, 'ready');
 });

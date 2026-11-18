@@ -40,6 +40,7 @@ import {
   consumeGenericEvmFeeReview,
   bindGenericEvmFeeDispatch,
 } from './nativeEvmFeeReviews';
+import type { GenericEvmFeeAuthority } from './nativeEvmFeeReviews';
 
 describe('infrastructure transaction broadcast boundary', () => {
   let wallet: any;
@@ -63,7 +64,8 @@ describe('infrastructure transaction broadcast boundary', () => {
   };
   const admitDispatch = (
     input: unknown,
-    nonce: { nonce: number; source: 'automatic' | 'manual' }
+    nonce: { nonce: number; source: 'automatic' | 'manual' },
+    authority: GenericEvmFeeAuthority = { kind: 'wallet' }
   ) => {
     const transaction = snapshotPreparedEvmTransaction(input);
     const vault = currentState.vault;
@@ -82,7 +84,6 @@ describe('infrastructure transaction broadcast boundary', () => {
         transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas
       )
     ).toString();
-    const authority = { kind: 'wallet' as const };
     const id = issueGenericEvmFeeReview(
       wallet,
       {
@@ -115,6 +116,40 @@ describe('infrastructure transaction broadcast boundary', () => {
     );
     bindGenericEvmFeeDispatch(wallet, id, context, async () => undefined, null);
     return id;
+  };
+
+  const reviewedInfrastructure = (
+    data = '0x',
+    options: Record<string, unknown> = {}
+  ) => {
+    const transaction = snapshotPreparedEvmTransaction({
+      type: 2,
+      chainId: '1',
+      from: currentState.vault.accounts[account.type][account.id].address,
+      to: `0x${'22'.repeat(20)}`,
+      nonce: '7',
+      value: '0',
+      gasLimit: '21000',
+      maxFeePerGas: '2',
+      maxPriorityFeePerGas: '1',
+      accessList: [],
+      data,
+    });
+    const dappNonceApproval = { nonce: 7, source: 'automatic' as const };
+    const genericDispatchId = admitDispatch(transaction, dappNonceApproval, {
+      kind: 'settings',
+      intent: 'deploy:factory',
+      metadata,
+    });
+    return {
+      transaction,
+      approval: {
+        ...internalApproval,
+        genericDispatchId,
+        dappNonceApproval,
+        ...options,
+      },
+    };
   };
 
   beforeEach(() => {
@@ -177,6 +212,25 @@ describe('infrastructure transaction broadcast boundary', () => {
       expect(send).not.toHaveBeenCalled();
     }
   );
+
+  it('requires the consumed reviewed fee capability for a settings deployment even with internal approval', async () => {
+    await expect(
+      wallet.sendAndSaveEthTransaction(
+        { chainId: 1, nonce: 7 },
+        false,
+        account,
+        metadata,
+        internalApproval
+      )
+    ).rejects.toMatchObject({
+      message: 'Reviewed transaction fees are required',
+      transactionNotBroadcast: true,
+    });
+    expect(
+      getBlacklistTargetsForEvmCallWithContractType
+    ).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
 
   it('does not let a software account choose the hardware approval lane', async () => {
     wallet.assertAssetMutationContext = jest.fn();
@@ -351,13 +405,14 @@ describe('infrastructure transaction broadcast boundary', () => {
         });
       }
 
+      const reviewed = reviewedInfrastructure('0x', { assertCurrentContext });
       await expect(
         wallet.sendAndSaveEthTransaction(
-          { chainId: 1, nonce: 7 },
+          reviewed.transaction,
           false,
           account,
           metadata,
-          { assertCurrentContext }
+          reviewed.approval
         )
       ).rejects.toMatchObject({
         message: error.message,
@@ -376,17 +431,20 @@ describe('infrastructure transaction broadcast boundary', () => {
       }
     );
     send.mockRejectedValueOnce(error);
+    const reviewed = reviewedInfrastructure('0x', {
+      assertCurrentContext: jest.fn(),
+    });
     await expect(
       wallet.sendAndSaveEthTransaction(
-        { chainId: 1, nonce: 7 },
+        reviewed.transaction,
         false,
         account,
         metadata,
-        { assertCurrentContext: jest.fn() }
+        reviewed.approval
       )
     ).rejects.toBe(error);
     expect(send).toHaveBeenCalledTimes(1);
-    expect(error).not.toHaveProperty('transactionNotBroadcast');
+    expect(error).toHaveProperty('transactionNotBroadcast', false);
   });
 
   it('marks a specialized preflight failure as definitely not broadcast', async () => {
@@ -430,12 +488,16 @@ describe('infrastructure transaction broadcast boundary', () => {
       if (currentState.vault.activeNetwork.chainId !== 1)
         throw new Error('Wallet context changed');
     });
+    const reviewed = reviewedInfrastructure('0x1234', {
+      onBroadcast,
+      assertCurrentContext,
+    });
     const sending = wallet.sendAndSaveEthTransaction(
-      { chainId: 1, nonce: 7, data: '0x1234' },
+      reviewed.transaction,
       false,
       account,
       metadata,
-      { onBroadcast, assertCurrentContext }
+      reviewed.approval
     );
     const rejected = expect(sending).rejects.toMatchObject({
       message: 'Wallet context changed',
@@ -470,12 +532,16 @@ describe('infrastructure transaction broadcast boundary', () => {
         })
     );
     const assertCurrentContext = jest.fn();
+    const reviewed = reviewedInfrastructure('0x', {
+      onBroadcast,
+      assertCurrentContext,
+    });
     const sending = wallet.sendAndSaveEthTransaction(
-      { chainId: 1, nonce: 7 },
+      reviewed.transaction,
       false,
       account,
       metadata,
-      { onBroadcast, assertCurrentContext }
+      reviewed.approval
     );
     await journalStarted;
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
@@ -489,13 +555,17 @@ describe('infrastructure transaction broadcast boundary', () => {
     const onBroadcast = jest
       .fn()
       .mockRejectedValue(new Error('Storage unavailable'));
+    const reviewed = reviewedInfrastructure('0x', {
+      onBroadcast,
+      assertCurrentContext: jest.fn(),
+    });
     await expect(
       wallet.sendAndSaveEthTransaction(
-        { chainId: 1, nonce: 7 },
+        reviewed.transaction,
         false,
         account,
         metadata,
-        { onBroadcast, assertCurrentContext: jest.fn() }
+        reviewed.approval
       )
     ).rejects.toMatchObject({
       message: 'Storage unavailable',

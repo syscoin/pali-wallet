@@ -212,7 +212,10 @@ export function createBlockbookAccountHistory(
       }
     } catch (error) {
       check();
-      if (!requestOptions.includes('details=txsummary')) {
+      if (
+        (error instanceof Error && error.name === 'AbortError') ||
+        !requestOptions.includes('details=txsummary')
+      ) {
         throw error;
       }
 

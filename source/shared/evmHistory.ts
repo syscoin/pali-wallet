@@ -1,5 +1,70 @@
 import { isTransactionInBlock as isHistoryTransactionInBlock } from './transactionBlockStatus.ts';
 
+const orphanedPlacement = Symbol('orphanedPlacement');
+const incompleteHistory = Symbol('incompleteHistory');
+
+export const markEvmHistoryIncomplete = <T>(transactions: T[]): T[] =>
+  Object.defineProperty(transactions, incompleteHistory, { value: true });
+
+export const isEvmHistoryIncomplete = (transactions: unknown): boolean =>
+  Array.isArray(transactions) &&
+  (transactions as unknown[] & { [incompleteHistory]?: true })[
+    incompleteHistory
+  ] === true;
+
+/** A verified inner outcome applies only to this exact mined placement. */
+export function markEvmSmartOutcome<
+  T extends { blockHash?: string; blockNumber?: number }
+>(transaction: T, success: boolean, smartAccount: string) {
+  return {
+    ...transaction,
+    smartAccountOutcome: {
+      blockHash: transaction.blockHash,
+      blockNumber: transaction.blockNumber,
+      success,
+      smartAccount: smartAccount.toLowerCase(),
+    },
+  };
+}
+const smartOutcome = (tx: any) => {
+  const outcome = tx?.smartAccountOutcome;
+  return outcome &&
+    typeof outcome.success === 'boolean' &&
+    Number.isSafeInteger(outcome.blockNumber) &&
+    outcome.blockNumber >= 0 &&
+    typeof outcome.blockHash === 'string' &&
+    /^0x[0-9a-f]{64}$/i.test(outcome.blockHash) &&
+    typeof outcome.smartAccount === 'string' &&
+    /^0x[0-9a-f]{40}$/i.test(outcome.smartAccount) &&
+    outcome.smartAccount.toLowerCase() ===
+      tx.smartAccountExecutionFrom?.toLowerCase() &&
+    outcome.blockNumber === Number(tx.blockNumber) &&
+    outcome.blockHash.toLowerCase() === tx.blockHash?.toLowerCase()
+    ? outcome
+    : undefined;
+};
+
+/** Carry a checked old placement only through this in-memory history merge. */
+export const markEvmHistoryOrphaned = <
+  T extends { blockHash?: string; blockNumber?: number }
+>(
+  transaction: T
+) => ({
+  ...transaction,
+  blockNumber: null,
+  blockHash: null,
+  confirmations: 0,
+  status: 'pending',
+  success: null,
+  isError: null,
+  // eslint-disable-next-line camelcase
+  txreceipt_status: null,
+  [orphanedPlacement]: {
+    blockHash: transaction.blockHash,
+    blockNumber: Number(transaction.blockNumber),
+  },
+});
+
 export const EVM_TRANSACTION_HISTORY_SOURCE = {
   ExplorerPending: 'explorer-pendingtxlist',
   ExplorerTokenTransfer: 'explorer-tokentx',
@@ -156,7 +221,9 @@ export function explorerApiError(
     return typeof reply.result === 'string' && reply.result
       ? reply.result
       : String(reply.message || 'Explorer API error');
-  return undefined;
+  return reply.status === '1' && Array.isArray(reply.result)
+    ? undefined
+    : 'Invalid explorer history response';
 }
 
 const evmHistorySourcePriority = (tx: any): number => {
@@ -236,19 +303,33 @@ export type EvmHistoryDirection = 'sent' | 'received' | 'self' | 'unknown';
 export function getEvmHistoryDirection(
   tx: {
     from?: string | null;
+    historySource?: unknown;
     to?: string | null;
     tokenRecipient?: string | null;
+    tokenTransfer?: unknown;
+    value?: unknown;
   },
   owner: string,
   transfers: readonly { from: string; to: string }[] = []
 ): EvmHistoryDirection {
   const address = owner.toLowerCase();
+  // A return in another asset cannot turn the rendered native debit into self.
+  // Token-event placeholders carry token units in value, not a native payment.
+  const value = String(tx.value ?? '0');
+  const nativePayment =
+    tx.historySource !== EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer &&
+    !tx.tokenTransfer &&
+    /^(?:0x[0-9a-f]+|\d+)$/i.test(value) &&
+    !/^(?:0x)?0+$/i.test(value);
   const outgoing =
     tx.from?.toLowerCase() === address ||
-    transfers.some((event) => event.from.toLowerCase() === address);
+    (!nativePayment &&
+      transfers.some((event) => event.from.toLowerCase() === address));
   const incoming =
-    (tx.tokenRecipient || tx.to)?.toLowerCase() === address ||
-    transfers.some((event) => event.to.toLowerCase() === address);
+    (nativePayment ? tx.to : tx.tokenRecipient || tx.to)?.toLowerCase() ===
+      address ||
+    (!nativePayment &&
+      transfers.some((event) => event.to.toLowerCase() === address));
   return outgoing && incoming
     ? 'self'
     : outgoing
@@ -268,6 +349,7 @@ export function belongsToEvmHistoryAccount(
 ): boolean {
   return (
     getEvmHistoryDirection(tx, owner) !== 'unknown' ||
+    tx.tokenRecipient?.toLowerCase() === owner.toLowerCase() ||
     tx.smartAccountExecutionFrom?.toLowerCase?.() === owner.toLowerCase()
   );
 }
@@ -279,6 +361,11 @@ export const selectEvmHistoryRepresentatives = <
 ): T[] => {
   // Group transactions by their ID and keep the best version
   const txMap = new Map<string, any>();
+  const verifiedOutcomes = new Map<string, any>();
+  const outcomeKey = (tx: any) =>
+    `${tx.hash?.toLowerCase()}:${tx.blockHash?.toLowerCase()}:${Number(
+      tx.blockNumber
+    )}:${tx.smartAccountExecutionFrom?.toLowerCase()}`;
   // A token event's sender and outer nonce do not identify an EOA transaction.
   // Once its real body is present, keep that body's existing nonce grouping.
   const outerHashes = new Set<string>();
@@ -287,6 +374,8 @@ export const selectEvmHistoryRepresentatives = <
     const hash = 'hash' in tx ? tx.hash : tx.txid;
     if (evmHistorySourcePriority(tx) > 0 && typeof hash === 'string' && hash)
       outerHashes.add(hash.toLowerCase());
+    const outcome = smartOutcome(tx);
+    if (outcome) verifiedOutcomes.set(outcomeKey(tx), outcome);
   }
 
   for (const input of transactions) {
@@ -333,6 +422,14 @@ export const selectEvmHistoryRepresentatives = <
         String((existing as any).blockHash).toLowerCase() !==
           String((tx as any).blockHash).toLowerCase()
     );
+    const orphan = tx[orphanedPlacement];
+    const isOrphanedPlacement = Boolean(
+      sameTransaction &&
+        orphan &&
+        Number(existing.blockNumber) === orphan.blockNumber &&
+        String(existing.blockHash).toLowerCase() ===
+          String(orphan.blockHash).toLowerCase()
+    );
 
     // Update if: no existing tx, more confirmations, reorg replacement, or
     // transaction just got into a block
@@ -340,6 +437,7 @@ export const selectEvmHistoryRepresentatives = <
       !existing ||
       tx.confirmations > existing.confirmations ||
       isReorgReplacement ||
+      isOrphanedPlacement ||
       (existing &&
         !isHistoryTransactionInBlock(existing) &&
         isHistoryTransactionInBlock(tx));
@@ -417,7 +515,23 @@ export const selectEvmHistoryRepresentatives = <
   }
 
   // Convert to array and sort
-  const deduplicatedTxs = Array.from(txMap.values());
+  const deduplicatedTxs = Array.from(txMap.values()).map((tx) => {
+    const outcome = verifiedOutcomes.get(outcomeKey(tx));
+    return outcome
+      ? {
+          ...tx,
+          smartAccountOutcome: outcome,
+          smartAccountExecution: true,
+          isError: outcome.success ? '0' : '1',
+          // eslint-disable-next-line camelcase
+          txreceipt_status: outcome.success ? '1' : '0',
+          ...(tx.success === undefined ? {} : { success: outcome.success }),
+          ...(tx.status === undefined
+            ? {}
+            : { status: outcome.success ? 'success' : 'failed' }),
+        }
+      : tx;
+  });
 
   // Sort by confirmations ascending (pending first), then by timestamp descending
   deduplicatedTxs.sort((a, b) => {

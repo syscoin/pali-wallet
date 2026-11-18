@@ -1,4 +1,5 @@
-import { Interface } from '../ethersV6Compat.ts';
+import { ERC20_MULTICALL_RUNTIME_HASH } from '../../shared/erc20BalanceBatch.ts';
+import { Interface, keccak256 } from '../ethersV6Compat.ts';
 
 import type { Result } from '../ethersV6Compat.ts';
 import {
@@ -33,6 +34,8 @@ export type AggregateCallResult =
   | { result?: undefined; success: false };
 
 type EthCallProvider = {
+  readonly signal?: AbortSignal;
+  _getConnection?: () => { url: string };
   call: (transaction: { data: string; to: string }) => Promise<string>;
   getCode: (address: string) => Promise<string>;
   sendBatch?: (method: string, params: Array<any[]>) => Promise<any[]>;
@@ -42,15 +45,26 @@ const MULTICALL3_INTERFACE = new Interface([
   'function aggregate3((address target,bool allowFailure,bytes callData)[] calls) view returns ((bool success,bytes returnData)[] returnData)',
 ]);
 
-const MULTICALL3_NEGATIVE_CACHE_TTL_MS = 5 * 60 * 1000;
+const MULTICALL3_CACHE_TTL_MS = 5 * 60 * 1000;
 
 type Multicall3CacheEntry = {
   address: string | null;
   checkedAt: number;
 };
 
-const multicall3AddressCache = new Map<number, Multicall3CacheEntry>();
-const inflightMulticall3Probes = new Map<number, Promise<string | null>>();
+const multicall3AddressCache = new Map<string, Multicall3CacheEntry>();
+const inflightMulticall3Probes = new Map<string, Promise<string | null>>();
+const providerIds = new WeakMap<EthCallProvider, number>();
+let nextProviderId = 0;
+const scopeKey = (provider: EthCallProvider, chainId: number) => {
+  const url = provider._getConnection?.().url;
+  let id = providerIds.get(provider);
+  if (id === undefined) {
+    id = ++nextProviderId;
+    providerIds.set(provider, id);
+  }
+  return JSON.stringify([chainId, id, url ?? null]);
+};
 
 export const clearMulticall3AddressCache = (chainId?: number) => {
   // Detach in-flight probes too: after an explicit invalidation (e.g. infra
@@ -61,8 +75,10 @@ export const clearMulticall3AddressCache = (chainId?: number) => {
     inflightMulticall3Probes.clear();
     return;
   }
-  multicall3AddressCache.delete(chainId);
-  inflightMulticall3Probes.delete(chainId);
+  for (const key of multicall3AddressCache.keys())
+    if (JSON.parse(key)[0] === chainId) multicall3AddressCache.delete(key);
+  for (const key of inflightMulticall3Probes.keys())
+    if (JSON.parse(key)[0] === chainId) inflightMulticall3Probes.delete(key);
 };
 
 const probeMulticall3Address = async (
@@ -75,7 +91,12 @@ const probeMulticall3Address = async (
   for (const candidate of candidates) {
     try {
       const code = await provider.getCode(candidate);
-      if (code && code !== '0x') {
+      if (
+        typeof code === 'string' &&
+        /^0x(?:[\da-f]{2})+$/i.test(code) &&
+        code.length <= 32770 &&
+        keccak256(code) === ERC20_MULTICALL_RUNTIME_HASH
+      ) {
         return candidate;
       }
     } catch {
@@ -89,47 +110,59 @@ const probeMulticall3Address = async (
 /**
  * Resolve a deployed Multicall3 address for the chain: the canonical
  * deployment when present, otherwise the Pali CREATE2 infrastructure
- * deployment. Positive results are cached for the session; negative results
- * are re-probed after a short TTL (e.g. after infrastructure deployment).
+ * deployment. Results expire after a bounded observation lifetime and remain
+ * isolated to their exact endpoint, or provider instance for scoped facades.
  * Concurrent cold-cache callers share a single in-flight probe.
  */
 export const resolveMulticall3Address = async (
   provider: EthCallProvider,
-  chainId: number
+  chainId: number,
+  capabilityProvider: EthCallProvider = provider
 ): Promise<string | null> => {
-  const cached = multicall3AddressCache.get(chainId);
+  const key = scopeKey(capabilityProvider, chainId);
+  // Completed observations belong to the stable endpoint. A live probe belongs
+  // to its current read owner and cannot inherit another owner's cancellation.
+  const probeKey = JSON.stringify([chainId, key, scopeKey(provider, chainId)]);
+  const cached = multicall3AddressCache.get(key);
   if (cached) {
-    const isFreshNegative =
-      cached.address === null &&
-      Date.now() - cached.checkedAt < MULTICALL3_NEGATIVE_CACHE_TTL_MS;
-    if (cached.address !== null || isFreshNegative) {
+    if (Date.now() - cached.checkedAt < MULTICALL3_CACHE_TTL_MS) {
       return cached.address;
     }
   }
 
-  const inflight = inflightMulticall3Probes.get(chainId);
+  const inflight = inflightMulticall3Probes.get(probeKey);
   if (inflight) {
     return inflight;
   }
+  if (inflightMulticall3Probes.size >= 64) return null;
 
   const probe: Promise<string | null> = probeMulticall3Address(provider)
     .then((address) => {
+      if (
+        provider.signal?.aborted ||
+        scopeKey(capabilityProvider, chainId) !== key
+      )
+        return null;
       // Only the still-current probe may write the cache; a probe detached
       // by clearMulticall3AddressCache() reflects pre-invalidation state.
-      if (inflightMulticall3Probes.get(chainId) === probe) {
-        multicall3AddressCache.set(chainId, {
+      if (inflightMulticall3Probes.get(probeKey) === probe) {
+        multicall3AddressCache.set(key, {
           address,
           checkedAt: Date.now(),
         });
+        if (multicall3AddressCache.size > 64)
+          multicall3AddressCache.delete(
+            multicall3AddressCache.keys().next().value!
+          );
       }
       return address;
     })
     .finally(() => {
-      if (inflightMulticall3Probes.get(chainId) === probe) {
-        inflightMulticall3Probes.delete(chainId);
+      if (inflightMulticall3Probes.get(probeKey) === probe) {
+        inflightMulticall3Probes.delete(probeKey);
       }
     });
-  inflightMulticall3Probes.set(chainId, probe);
+  inflightMulticall3Probes.set(probeKey, probe);
   return probe;
 };
 
@@ -233,6 +266,7 @@ export const aggregateContractCalls = async (
     try {
       return await aggregateViaMulticall3(provider, multicallAddress, calls);
     } catch (error) {
+      multicall3AddressCache.delete(scopeKey(provider, chainId));
       console.warn(
         '[smartAccount/aggregate] Multicall3 aggregation failed, falling back to JSON-RPC batch:',
         error

@@ -36,24 +36,22 @@ export const AssetMarketLinks = ({
             {t('tokens.categories')}
           </span>
           <div className="flex flex-wrap gap-1">
-            {categories.map((category, index) => {
-              const categorySlug = category.toLowerCase().replace(/\s+/g, '-');
-              return (
-                <a
-                  key={index}
-                  href={`https://www.coingecko.com/en/categories/${categorySlug}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-2 py-1 bg-brand-royalblue bg-opacity-20 text-brand-royalbluemedium text-xs rounded hover:bg-opacity-30 hover:text-brand-white transition-all duration-200 flex items-center gap-1 group"
-                >
-                  {category}
-                  <ExternalLinkIcon
-                    size={10}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-                  />
-                </a>
-              );
-            })}
+            {categories.map((category, index) => (
+              <a
+                key={index}
+                // The coin response supplies display names, not category IDs.
+                href="https://www.coingecko.com/en/categories"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-2 py-1 bg-brand-royalblue bg-opacity-20 text-brand-royalbluemedium text-xs rounded hover:bg-opacity-30 hover:text-brand-white transition-all duration-200 flex items-center gap-1 group"
+              >
+                {category}
+                <ExternalLinkIcon
+                  size={10}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                />
+              </a>
+            ))}
           </div>
         </div>
       )}

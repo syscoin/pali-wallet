@@ -7,6 +7,10 @@ import {
   trustedAssetIconUri,
   type AssetIconIdentity,
 } from '../shared/assetIconIdentity';
+import {
+  fetchPublicImage,
+  MAX_PUBLIC_IMAGE_BYTES,
+} from '../shared/publicImage';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { NftFallbackSvg } from 'components/Icon/Icon';
 import { Tooltip } from 'components/Tooltip/Tooltip';
@@ -23,8 +27,7 @@ const tokenImageCache = new Map<string, TokenImageResource>();
 const tokenImageFailureTs = new Map<string, number>();
 // Retry failed icon fetches after a short cooldown (prevents permanent "stuck" fallbacks)
 const FAILURE_RETRY_MS = 5 * 60 * 1000; // 5 minutes
-// If an image is too large to safely base64-cache, fall back to rendering the URL directly
-const MAX_CACHED_BLOB_BYTES = 256 * 1024; // 256KB
+const MAX_CACHED_BLOB_BYTES = MAX_PUBLIC_IMAGE_BYTES;
 const isReviewImage = (url: string | null | undefined): url is string =>
   typeof url === 'string' &&
   url.length <= Math.ceil((MAX_CACHED_BLOB_BYTES * 4) / 3) + 128 &&
@@ -43,12 +46,44 @@ const pruneTokenImageCache = () => {
   }
 };
 
+/** One bounded loader serves ordinary rendering and preloading. */
+const loadTokenIcon = (url: string): Promise<TokenImageResource | null> => {
+  const existing = pendingTokenRequests.get(url);
+  if (existing) return existing;
+  const pending = (async () => {
+    let resource: TokenImageResource;
+    try {
+      const blob = await fetchPublicImage(fetch, url);
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () =>
+          typeof reader.result === 'string'
+            ? resolve(reader.result)
+            : reject(new Error('Image conversion failed'));
+        reader.onerror = () => reject(new Error('Image conversion failed'));
+        reader.readAsDataURL(blob);
+      });
+      resource = { url: data };
+      tokenImageFailureTs.delete(url);
+    } catch {
+      resource = { url: null };
+      tokenImageFailureTs.set(url, Date.now());
+    }
+    pruneTokenImageCache();
+    tokenImageCache.set(url, resource);
+    return resource;
+  })();
+  pendingTokenRequests.set(url, pending);
+  void pending.finally(() => pendingTokenRequests.delete(url));
+  return pending;
+};
+
 /**
  * Token Icon Cache Strategy:
  *
  * tokenImageCache: Maps tokenKey → a loaded resource record
  * - Key: Unique identifier (contractAddress for EVM, assetGuid for UTXO, or logo URL)
- * - Value: Immutable identity with a data URL, direct URL, or null for failure
+ * - Value: Immutable identity with bounded raster bytes or null for failure
  * - Purpose: Prevents ALL HTTP requests by storing actual image data
  */
 
@@ -268,80 +303,17 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       if (
         knownLogo ||
         resolvedLogo === PaliLogo ||
-        resolvedLogo === NFT_FALLBACK_IMAGE
+        resolvedLogo === NFT_FALLBACK_IMAGE ||
+        isReviewImage(resolvedLogo)
       ) {
         applyResult({ url: resolvedLogo });
         // Don't cache local assets
         return cleanup;
       }
 
-      // Check if there's already a pending request
-      const existingRequest = pendingTokenRequests.get(cacheKey);
-      if (existingRequest) {
-        existingRequest.then(applyResult, () => applyResult(null));
-        return cleanup;
-      }
-
-      // Create fetch promise for deduplication
-      const fetchIcon = async (): Promise<TokenImageResource> => {
-        try {
-          const response = await fetch(resolvedLogo);
-          if (!response.ok) throw new Error('Failed to fetch');
-
-          const blob = await response.blob();
-          // If it's too large for base64 caching, just cache the URL so it can still render reliably
-          if (blob.size > MAX_CACHED_BLOB_BYTES) {
-            // Enforce LRU cap
-            pruneTokenImageCache();
-            const resource = { url: resolvedLogo };
-            tokenImageCache.set(cacheKey, resource);
-            tokenImageFailureTs.delete(cacheKey);
-            return resource;
-          }
-          const reader = new FileReader();
-
-          return new Promise<TokenImageResource>((resolve) => {
-            reader.onloadend = () => {
-              const resource = { url: reader.result as string };
-              // Enforce LRU cap
-              pruneTokenImageCache();
-              tokenImageCache.set(cacheKey, resource);
-              tokenImageFailureTs.delete(cacheKey);
-              resolve(resource);
-            };
-
-            reader.onerror = () => {
-              pruneTokenImageCache();
-              const resource = { url: null };
-              tokenImageCache.set(cacheKey, resource);
-              tokenImageFailureTs.set(cacheKey, Date.now());
-              resolve(resource);
-            };
-
-            reader.readAsDataURL(blob);
-          });
-        } catch (err) {
-          // Cache the failure to prevent repeated attempts
-          const resource = { url: null };
-          tokenImageCache.set(cacheKey, resource);
-          tokenImageFailureTs.set(cacheKey, Date.now());
-          return resource;
-        }
-      };
-
-      // No delay - start fetching immediately to prevent flicker
-      const promise = fetchIcon();
-      pendingTokenRequests.set(cacheKey, promise);
-
-      promise
-        .then((dataUrl) => {
-          applyResult(dataUrl);
-          pendingTokenRequests.delete(cacheKey); // Clean up
-        })
-        .catch(() => {
-          applyResult(null);
-          pendingTokenRequests.delete(cacheKey); // Clean up
-        });
+      void loadTokenIcon(resolvedLogo).then(applyResult, () =>
+        applyResult(null)
+      );
       return cleanup;
     }, [resolvedLogo, cacheKey, cacheOnly, knownLogo, identityKey]);
 
@@ -558,55 +530,11 @@ export const clearTokenIconCache = () => {
   tokenImageCache.clear();
 };
 
-// Export a function to preload token icons
+// Preloading uses the same URL policy, byte ceiling and shared cache as rendering.
 export const preloadTokenIcons = async (logoUrls: string[]) => {
-  const promises = logoUrls.map(async (url) => {
-    if (!url || tokenImageCache.has(url)) return;
-
-    // Check if already being fetched
-    const existingRequest = pendingTokenRequests.get(url);
-    if (existingRequest) {
-      return existingRequest;
-    }
-
-    const fetchPromise = (async () => {
-      try {
-        const response = await fetch(url);
-        if (!response.ok) return null;
-
-        const blob = await response.blob();
-        // Skip caching very large images to avoid memory bloat (~256KB)
-        if (blob.size > 256 * 1024) return null;
-        const reader = new FileReader();
-
-        return new Promise<TokenImageResource>((resolve) => {
-          reader.onloadend = () => {
-            const resource = { url: reader.result as string };
-            pruneTokenImageCache();
-            tokenImageCache.set(url, resource);
-            resolve(resource);
-          };
-          reader.onerror = () => {
-            pruneTokenImageCache();
-            const resource = { url: null };
-            tokenImageCache.set(url, resource);
-            resolve(resource);
-          };
-          reader.readAsDataURL(blob);
-        });
-      } catch {
-        // Ignore errors in preloading
-        return null;
-      }
-    })();
-
-    pendingTokenRequests.set(url, fetchPromise);
-    fetchPromise.finally(() => {
-      pendingTokenRequests.delete(url);
-    });
-
-    return fetchPromise;
-  });
-
-  await Promise.all(promises);
+  await Promise.all(
+    logoUrls.map((url) =>
+      !url || tokenImageCache.has(url) ? undefined : loadTokenIcon(url)
+    )
+  );
 };

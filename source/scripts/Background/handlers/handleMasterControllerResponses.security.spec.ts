@@ -3,7 +3,10 @@ import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import { isValidMethod } from '../controllers/message-handler/method-registry';
 import * as sendCallsBundles from '../controllers/message-handler/sendCallsBundles';
 
-import { watchApprovalSubmission } from './approvalSubmission';
+import {
+  captureDappEvmSubmission,
+  watchApprovalSubmission,
+} from './approvalSubmission';
 import {
   controllerErrorResponse,
   handleMasterControllerResponses,
@@ -878,6 +881,132 @@ describe('document-bound dapp nonce dispatch', () => {
     }
   });
 
+  it('registers an automatic nonce from the same completed worker fee quote', async () => {
+    const quote = jest.fn<Promise<any>, unknown[]>(async () => ({
+      id: 'quote',
+      transaction: { nonce: '4' },
+    }));
+    handleMasterControllerResponses({
+      wallet: { reviewDappEvmFee: quote },
+    } as any);
+    const add = chrome.runtime.onMessage.addListener as jest.Mock;
+    const listener = add.mock.calls[add.mock.calls.length - 1][0];
+    const stop = watchApprovalSubmission(documentId, jest.fn(), evmReview());
+    try {
+      await expect(
+        invoke(listener, ['wallet', 'reviewDappEvmFee'], [{}])
+      ).resolves.toMatchObject({ id: 'quote' });
+      expect(quote.mock.calls[0][2]).toBeUndefined();
+      expect(captureDappEvmSubmission(sender)!.reviewNonce(4)).toEqual({
+        nonce: 4,
+        source: 'automatic',
+      });
+      expect(() => captureDappEvmSubmission(sender)!.reviewNonce(5)).toThrow();
+    } finally {
+      stop();
+    }
+  });
+
+  it.each(['document', 'newer-quote'] as const)(
+    'refuses automatic quote registration after its %s ownership changes',
+    async (change) => {
+      let release!: () => void;
+      let start!: () => void;
+      const started = new Promise<void>((resolve) => {
+        start = resolve;
+      });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const quote = jest.fn(async () => {
+        start();
+        await held;
+        return { id: 'quote', transaction: { nonce: '4' } };
+      });
+      handleMasterControllerResponses({
+        wallet: { reviewDappEvmFee: quote },
+      } as any);
+      const add = chrome.runtime.onMessage.addListener as jest.Mock;
+      const listener = add.mock.calls[add.mock.calls.length - 1][0];
+      const stop = watchApprovalSubmission(documentId, jest.fn(), evmReview());
+      const logging = jest.spyOn(console, 'error').mockImplementation();
+      try {
+        const pending = invoke(listener, ['wallet', 'reviewDappEvmFee'], [{}]);
+        await started;
+        if (change === 'document') stop();
+        else captureDappEvmSubmission(sender)!.beginFeeQuote(undefined);
+        release();
+        await expect(pending).resolves.toMatchObject({ success: false });
+        if (change === 'newer-quote')
+          expect(() =>
+            captureDappEvmSubmission(sender)!.reviewNonce(4)
+          ).toThrow();
+      } finally {
+        release();
+        stop();
+        logging.mockRestore();
+      }
+    }
+  );
+
+  it('keeps explicit and batch nonce authorization mandatory', () => {
+    const stop = watchApprovalSubmission(
+      documentId,
+      jest.fn(),
+      evmReview({ originalNonce: 4 })
+    );
+    try {
+      const owner = captureDappEvmSubmission(sender)!;
+      expect(() => owner.beginFeeQuote(undefined)).toThrow();
+      expect(owner.beginFeeQuote(4).approval).toEqual({
+        nonce: 4,
+        source: 'manual',
+      });
+      expect(() => owner.beginFeeQuote(5)).toThrow();
+    } finally {
+      stop();
+    }
+    const stopBatch = watchApprovalSubmission(
+      documentId,
+      jest.fn(),
+      evmReview({
+        batch: {
+          host: 'test.invalid',
+          id: 'bundle',
+          reservationId: 'reservation',
+          callCount: 2,
+        },
+      })
+    );
+    try {
+      expect(() =>
+        captureDappEvmSubmission(sender)!.beginFeeQuote(undefined)
+      ).toThrow();
+    } finally {
+      stopBatch();
+    }
+  });
+
+  it('expires a nonce registered by a completed fee quote and honors context guards', () => {
+    const clock = jest.spyOn(performance, 'now').mockReturnValue(1000);
+    const review = evmReview();
+    const stop = watchApprovalSubmission(documentId, jest.fn(), review);
+    try {
+      const owner = captureDappEvmSubmission(sender)!;
+      owner.beginFeeQuote(undefined).record!(4);
+      expect(owner.reviewNonce(4)).toEqual({ nonce: 4, source: 'automatic' });
+      clock.mockReturnValue(301001);
+      expect(() => owner.reviewNonce(4)).toThrow();
+      review.assertCurrent.mockImplementation(() => {
+        throw new Error('context changed');
+      });
+      expect(() => owner.beginFeeQuote(undefined)).toThrow('context changed');
+    } finally {
+      stop();
+      clock.mockRestore();
+    }
+  });
+
   it('rejects a forged manual route from a different or missing approval document', async () => {
     const logging = jest.spyOn(console, 'error').mockImplementation();
     handleMasterControllerResponses({ wallet: {} } as any);
@@ -1166,34 +1295,52 @@ describe('document-bound dapp nonce dispatch', () => {
   );
 });
 
-it.each(['EVM_LEGACY_PENDING', 'EVM_LEGACY_VERIFICATION_UNAVAILABLE'])(
-  'preserves local %s classification through controller IPC',
-  (code) => {
-    expect(
-      controllerErrorResponse(
-        Object.assign(new Error('guard'), {
-          code,
-          transactionNotBroadcast: true,
-        })
-      )
-    ).toEqual({
-      success: false,
-      error: expect.objectContaining({
-        message: 'guard',
+it.each([
+  'EVM_LEGACY_PENDING',
+  'EVM_LEGACY_VERIFICATION_UNAVAILABLE',
+  'COMPOSITE_CHILD_UNAVAILABLE',
+])('preserves local %s classification through controller IPC', (code) => {
+  expect(
+    controllerErrorResponse(
+      Object.assign(new Error('guard'), {
         code,
         transactionNotBroadcast: true,
-      }),
-    });
-    expect(
-      controllerErrorResponse(
-        Object.assign(new Error('guard'), {
-          code,
-          transactionNotBroadcast: false,
-        })
-      ).error
-    ).not.toHaveProperty('code');
-  }
-);
+      })
+    )
+  ).toEqual({
+    success: false,
+    error: expect.objectContaining({
+      message: 'guard',
+      code,
+      transactionNotBroadcast: true,
+    }),
+  });
+  expect(
+    controllerErrorResponse(
+      Object.assign(new Error('guard'), {
+        code,
+        transactionNotBroadcast: false,
+      })
+    ).error
+  ).not.toHaveProperty('code');
+});
+
+it('does not expose optional-child unavailability as a fallback after financial handoff', () => {
+  const failure = Object.assign(new Error('Missing local child'), {
+    code: 'COMPOSITE_CHILD_UNAVAILABLE',
+    transactionNotBroadcast: true,
+  });
+  expect(
+    controllerErrorResponse(failure, { hash: '0x' + 'ab'.repeat(32) }).error
+  ).not.toHaveProperty('code');
+  expect(
+    controllerErrorResponse(
+      Object.assign(new Error('Missing local child'), {
+        code: 'COMPOSITE_CHILD_UNAVAILABLE',
+      })
+    ).error
+  ).not.toHaveProperty('code');
+});
 
 it('keeps the asset-review code only for definite local no-broadcast failures', () => {
   const code = 'EVM_ASSET_REVIEW_REQUIRED';

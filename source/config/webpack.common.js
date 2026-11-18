@@ -436,12 +436,18 @@ module.exports = {
               .split(String.fromCharCode(92))
               .join('/');
             return (
-              // Both lazy fee-review routes otherwise package this page twice.
-              /\/source\/pages\/Send\/EditPriority\.tsx$/.test(resource) ||
-              /\/source\/utils\/smartAccount\/(?:adapter|aggregate|authenticatorDispatch|authenticators|capabilities|custom|erc7739|execution|gas|guardianPolicy|index|modules|ownerSigningIntent|recovery|signature|slhDsaPurpose|templates|userOperationHash|validatorSignability)\.ts$/.test(
+              // Review routes share their fee controls without duplicating the
+              // dialog in each lazy approval and settings page.
+              /\/source\/pages\/(?:Send\/EditPriority|Settings\/SmartAccountFeeConfirmation)\.tsx$/.test(
+                resource
+              ) ||
+              /\/source\/utils\/smartAccount\/(?:adapter|aggregate|authenticatorDispatch|authenticators|capabilities|custom|erc7739|execution|gas|guardianPolicy|index|modules|ownerSigningIntent|recovery|signature|slhDsaPurpose|templates|userOperationHash|validatorSignability|validatorSwitch)\.ts$/.test(
                 resource
               ) ||
               /\/source\/utils\/(?:evmTransactionContext|smartAccountErrors|slhDsa\/constants)\.ts$/.test(
+                resource
+              ) ||
+              /\/node_modules\/@sidhujag\/sysweb3-keyring\/cjs\/(?:transactions\/evm-envelope|evm-fees)\.js$/.test(
                 resource
               ) ||
               /\/node_modules\/ethers\/lib\.esm\/(?:crypto\/(?:signature|signing-key)|constants\/hashes|transaction\/(?:address|transaction))\.js$/.test(
@@ -500,7 +506,7 @@ module.exports = {
               .split(String.fromCharCode(92))
               .join('/');
             return (
-              /\/source\/utils\/privacy\/(?:note|relayers|withdrawal)\.ts$/.test(
+              /\/source\/utils\/privacy\/(?:note|relayers|relayJobs|withdrawal|withdrawTypes)\.ts$/.test(
                 resource
               ) ||
               resource.endsWith(

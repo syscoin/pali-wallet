@@ -204,6 +204,7 @@ for (const width of [400, 320]) {
       releaseNonce = resolve;
     });
     const nonceReads: { params: unknown; phase: string }[] = [];
+    let simulationProbes = 0;
     const entryPointDepositReads: unknown[] = [];
     const entryPoint = getPaliEntryPointAddress(VISUAL_FIXTURE_CHAIN_ID);
     const entryPointDepositData = paliEntryPointInterface.encodeFunctionData(
@@ -268,7 +269,19 @@ for (const width of [400, 320]) {
         if (route.request().method() !== 'POST') return route.fallback();
         const payload = route.request().postDataJSON();
         const calls = Array.isArray(payload) ? payload : [payload];
-        const override = (call: any): string | undefined => {
+        const override = (call: any): unknown => {
+          if (call.method === 'eth_simulateV1') {
+            expect(call.params).toEqual([
+              {
+                blockStateCalls: [{ calls: [] }],
+                validation: true,
+                returnFullTransactions: true,
+                traceTransfers: false,
+              },
+              'latest',
+            ]);
+            return [];
+          }
           // The real spendability check reads this account's empty deposit.
           if (isEntryPointDepositRead(call))
             return abi.encode(['uint256'], [0]);
@@ -326,6 +339,7 @@ for (const width of [400, 320]) {
           }
           const value = override(call);
           if (value !== undefined) {
+            if (call.method === 'eth_simulateV1') simulationProbes++;
             observedReads.push(
               `${call.method}:${String(
                 call.params[0]?.to || call.params[0]
@@ -453,6 +467,7 @@ for (const width of [400, 320]) {
             height: width === 400 ? 620 : 360,
           });
           await expect.poll(() => nonceReads.length).toBeGreaterThan(0);
+          expect(simulationProbes).toBeGreaterThan(0);
           const sign = popup.getByRole('button', {
             name: en.send.sign,
             exact: true,
@@ -523,8 +538,8 @@ for (const width of [400, 320]) {
           await expect(sign).toBeEnabled();
           expect(entryPointDepositReads.length).toBeGreaterThan(0);
           await expect(refresh).toHaveCount(0);
-          // Exact known ECDSA fixture:311000 gas units at3gwei maximum.
-          await expect(maximumFee).toHaveText('0.000933 tsys');
+          // The zkSYS fixture retains the full estimate: 332,000 gas at 3 gwei.
+          await expect(maximumFee).toHaveText('0.000996 tsys');
           await expect(
             popup.getByText(en.send.calculating, { exact: true })
           ).toHaveCount(0);

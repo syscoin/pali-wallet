@@ -49,9 +49,15 @@ test('uses actual uncached keyring wire chain identity after a same-URL network 
       })
     ).rejects.toThrow('network changed');
     expect(
-      fetch.mock.calls
-        .slice(1)
-        .every(([, options]) => Array.isArray(JSON.parse(options.body)))
+      fetch.mock.calls.slice(1).every(([, options]) => {
+        const body = JSON.parse(options.body);
+        return (Array.isArray(body) ? body : [body]).every(
+          (request) =>
+            request.jsonrpc === '2.0' &&
+            Number.isSafeInteger(request.id) &&
+            ['eth_chainId', 'eth_getBlockByNumber'].includes(request.method)
+        );
+      })
     ).toBe(true);
   } finally {
     provider.destroy();
@@ -59,87 +65,71 @@ test('uses actual uncached keyring wire chain identity after a same-URL network 
   }
 });
 
-test('refuses missing or malformed live-chain batch capability', async () => {
+test('refuses missing or malformed settled read capability', async () => {
   await expect(
     guardianStatusProvider({}).send('eth_chainId', [])
   ).rejects.toThrow('unavailable');
   await expect(
-    guardianStatusProvider({ _send: async () => [] }).send('eth_chainId', [])
+    guardianStatusProvider({ readMany: async () => [] }).send('eth_chainId', [])
   ).rejects.toThrow('Invalid');
 });
 
 test.each([
+  [],
+  [null],
+  [{ status: 'unknown' }],
   [
-    { jsonrpc: '2.0', id: 0, result: '0x1' },
-    { jsonrpc: '2.0', id: 0, result: '0x2' },
+    { status: 'fulfilled', value: '0x1' },
+    { status: 'fulfilled', value: 'extra' },
   ],
-  [
-    { jsonrpc: '2.0', id: 0, result: '0x1' },
-    { jsonrpc: '2.0', id: 2, result: '0x2' },
-  ],
-  [
-    { jsonrpc: '2.0', id: 0, result: '0x1' },
-    { jsonrpc: '2.0', id: '1', result: '0x2' },
-  ],
-  [
-    { jsonrpc: '2.0', id: 0, result: '0x1' },
-    { jsonrpc: '2.0', id: 1, error: { message: 'unavailable' } },
-  ],
-  [
-    { jsonrpc: '2.0', id: 0, result: '0x1' },
-    { jsonrpc: '2.0', id: 1, result: '0x2', error: {} },
-  ],
-  [
-    { jsonrpc: '2.0', id: 0, result: '0x1' },
-    { id: 1, result: '0x2' },
-  ],
-  [{ jsonrpc: '2.0', id: 0, result: '0x1' }],
 ])(
-  'rejects malformed mixed responses without a single-call fallback: %j',
-  async (...responses) => {
-    const _send = jest.fn(async () => responses);
+  'rejects malformed settled results without a single-call fallback: %j',
+  async (...results) => {
+    const readMany = jest.fn(async () => results as any);
     await expect(
-      guardianStatusProvider({ _send }).batch([
-        { method: 'eth_chainId', params: [] },
-        { method: 'eth_getBlockByNumber', params: ['latest', false] },
-      ])
+      guardianStatusProvider({ readMany }).send('eth_chainId', [])
     ).rejects.toThrow('Invalid guardian recovery batch response');
-    expect(_send).toHaveBeenCalledTimes(1);
+    expect(readMany).toHaveBeenCalledTimes(1);
   }
 );
 
-test('mixed batches preserve the provider receiver and require its correlated response order', async () => {
+test('retains settled member errors and provider receiver without constructing wire IDs', async () => {
+  const failure = new Error('storage unavailable');
+  const requests = [
+    { method: 'eth_chainId' as const, params: [] },
+    {
+      method: 'eth_getStorageAt' as const,
+      params: [`0x${'11'.repeat(20)}`, '0x0', 'latest'],
+    },
+  ];
   const provider = {
-    async _send() {
+    async readMany(actual: typeof requests) {
       expect(this).toBe(provider);
+      expect(actual).toEqual(requests);
       return [
-        { jsonrpc: '2.0', id: 0, result: 'chain' },
-        { jsonrpc: '2.0', id: 1, result: 'block' },
+        { status: 'fulfilled' as const, value: '0x1' },
+        { status: 'rejected' as const, reason: failure },
       ];
     },
   };
-  await expect(
-    guardianStatusProvider(provider).batch([
-      { method: 'eth_chainId', params: [] },
-      { method: 'eth_getBlockByNumber', params: ['latest', false] },
-    ])
-  ).resolves.toEqual(['chain', 'block']);
+  expect(await guardianStatusProvider(provider).readMany(requests)).toEqual([
+    { status: 'fulfilled', value: '0x1' },
+    { status: 'rejected', reason: failure },
+  ]);
 });
 
-test('rejects a write before dispatch and does not retry a failed batch', async () => {
-  const _send = jest.fn(async () => {
-    throw new Error('batch rejected');
-  });
-  const provider = guardianStatusProvider({ _send });
+test('rejects a write before dispatch and preserves a failed member error', async () => {
+  const failure = new Error('read rejected');
+  const readMany = jest.fn(async () => [
+    { status: 'rejected' as const, reason: failure },
+  ]);
+  const provider = guardianStatusProvider({ readMany });
   await expect(
-    // Simulate an untyped caller without widening the read-only provider type.
     Reflect.apply(provider.send, provider, ['eth_sendRawTransaction', ['0x00']])
   ).rejects.toThrow('Unsupported');
-  expect(_send).not.toHaveBeenCalled();
-  await expect(provider.send('eth_chainId', [])).rejects.toThrow(
-    'batch rejected'
-  );
-  expect(_send).toHaveBeenCalledTimes(1);
+  expect(readMany).not.toHaveBeenCalled();
+  await expect(provider.send('eth_chainId', [])).rejects.toBe(failure);
+  expect(readMany).toHaveBeenCalledTimes(1);
 });
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
@@ -165,8 +155,8 @@ function wireFixture(active: string) {
   };
   let block = { ...BLOCK };
   global.fetch = jest.fn(async (_url, options: any) => {
-    const requests = JSON.parse(options.body);
-    expect(Array.isArray(requests)).toBe(true);
+    const payload = JSON.parse(options.body);
+    const requests = Array.isArray(payload) ? payload : [payload];
     batches.push(requests);
     const replies = await Promise.all(
       requests.map(async (request: any) => {
@@ -225,8 +215,12 @@ function wireFixture(active: string) {
       ok: true,
       status: 200,
       headers: { get: () => null },
-      text: async () => JSON.stringify([...replies].reverse()),
-      json: async () => [...replies].reverse(),
+      text: async () =>
+        JSON.stringify(
+          Array.isArray(payload) ? [...replies].reverse() : replies[0]
+        ),
+      json: async () =>
+        Array.isArray(payload) ? [...replies].reverse() : replies[0],
     } as unknown as Response;
   }) as any;
   const provider = new CustomJsonRpcProvider(

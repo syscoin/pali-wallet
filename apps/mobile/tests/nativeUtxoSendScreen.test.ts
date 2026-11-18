@@ -493,3 +493,28 @@ test('Trezor UTXO resume keeps custom seven sat/vB, MAX and RBF in the actual fo
     assert.equal(f.signatures(), 0);
   } finally { f.close(); }
 });
+
+
+test('saved UTXO review identifies raw data and script outputs and keeps the exact hex after resend', async () => {
+  const f = fixture();
+  try {
+    f.seedRetryReview({ transactionOptions: { rbf: true }, feeSatoshis: '100', outputs: [
+      { script: { kind: 'data', hex: '6a0161' }, amountSatoshis: '0' },
+      { script: { kind: 'script', hex: '51' }, amountSatoshis: '1000' },
+    ] });
+    f.render(); await tick();
+    f.edit('Recipient address', 'bc1qreviewedrecipient'); f.edit('Amount in BTC', '0.12345678');
+    f.review(); await tick(); f.failSubmissionUnknown();
+    f.press('Confirm and send'); await tick();
+    f.press('Review saved transfer'); await tick();
+    const review = all(f.render()).filter(node => node.type === 'Text').map(node => node.children.join(''));
+    assert(review.includes('6a0161'));
+    assert(review.includes('51'));
+    assert(review.includes('OP_RETURN (Data)'));
+    assert(review.includes('Output script'));
+    f.press('Resend saved transfer'); await tick();
+    const outcome = all(f.render());
+    assert(outcome.some(node => node.type === 'Text' && node.children.join('') === 'OP_RETURN (Data)'));
+    assert.equal(outcome.find(node => node.props.testID === 'native-utxo-outcome-recipient')?.children.join(''), '6a0161');
+  } finally { f.close(); }
+});

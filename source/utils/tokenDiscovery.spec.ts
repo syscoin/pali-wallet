@@ -1,9 +1,7 @@
-import {
-  fetchOwnedTokenRows,
-  fetchRoutescan,
-  isRoutescanApiUrl,
-  TokenDiscoveryError,
-} from './tokenDiscovery';
+let fetchOwnedTokenRows: typeof import('./tokenDiscovery').fetchOwnedTokenRows;
+let fetchRoutescan: typeof import('./tokenDiscovery').fetchRoutescan;
+let isRoutescanApiUrl: typeof import('./tokenDiscovery').isRoutescanApiUrl;
+let TokenDiscoveryError: typeof import('./tokenDiscovery').TokenDiscoveryError;
 
 const API = 'https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api';
 const TOKEN = `0x${'33'.repeat(20)}`;
@@ -34,6 +32,16 @@ beforeEach(() => {
   account = `0x${testId.toString(16).padStart(40, '0')}`;
   jest.useFakeTimers().setSystemTime(new Date(2033, 0, testId));
   global.fetch = jest.fn();
+  // A reset fake monotonic clock needs a fresh transport owner. Calls within
+  // each case still share the actual queue, pacing and discovery cache.
+  jest.isolateModules(() => {
+    ({
+      fetchOwnedTokenRows,
+      fetchRoutescan,
+      isRoutescanApiUrl,
+      TokenDiscoveryError,
+    } = jest.requireActual('./tokenDiscovery'));
+  });
 });
 afterEach(() => {
   jest.useRealTimers();

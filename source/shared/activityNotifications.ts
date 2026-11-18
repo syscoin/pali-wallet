@@ -444,9 +444,11 @@ export function detectActivityNotifications({
   transactions,
   guardianObservation,
   historyReadSucceeded = true,
+  historyReadComplete = true,
   observedAt = Date.now(),
 }: {
   guardianObservation?: GuardianRecoveryObservation;
+  historyReadComplete?: boolean;
   historyReadSucceeded?: boolean;
   observedAt?: number;
   previous: ActivityNotificationBaseline | null;
@@ -485,6 +487,7 @@ export function detectActivityNotifications({
   let snapshots = priorTransactions;
   if (
     historyReadSucceeded &&
+    (historyReadComplete || historyInitialized) &&
     Array.isArray(transactions) &&
     transactions.length <= MAX_HISTORY
   ) {
@@ -516,16 +519,30 @@ export function detectActivityNotifications({
         // Losing a receipt during a reorg is never a fresh pending intent.
         if (before && before.status !== 'pending' && next.status === 'pending')
           continue;
+        // A healthy partial feed can omit the receipt for the same mined block.
+        // Missing evidence does not supersede an already known outcome.
+        if (
+          before &&
+          ['confirmed', 'failed'].includes(before.status) &&
+          next.status === 'status-unknown' &&
+          before.blockNumber === next.blockNumber &&
+          (!before.blockHash ||
+            !next.blockHash ||
+            before.blockHash === next.blockHash)
+        )
+          continue;
         if (before?.status === next.status) continue;
         // A later-discovered older page is baseline history, not new activity.
         if (
           !before &&
           next.status !== 'pending' &&
-          ((historyStartedAt > 0 &&
-            next.timestamp !== undefined &&
-            next.timestamp * 1000 <= historyStartedAt) ||
-            (next.timestamp === undefined &&
-              (next.blockNumber ?? 0) <= historyInitialBlock))
+          (historyInitialBlock > 0 && next.blockNumber !== undefined
+            ? next.blockNumber <= historyInitialBlock
+            : (historyStartedAt > 0 &&
+                next.timestamp !== undefined &&
+                next.timestamp * 1000 <= historyStartedAt) ||
+              (next.timestamp === undefined &&
+                (next.blockNumber ?? 0) <= historyInitialBlock))
         )
           continue;
         emit(

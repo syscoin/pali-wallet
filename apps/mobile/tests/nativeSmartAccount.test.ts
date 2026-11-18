@@ -1,4 +1,5 @@
 import { Wallet } from 'ethers/wallet';
+import { TypedDataEncoder } from 'ethers/hash';
 import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import type { NativeTrezorClient } from '../src/hardware/trezorHost.ts';
@@ -28,6 +29,7 @@ import { prepareSmartAccountMessage, encodeSmartAccountMessageSignature } from '
 import { getPaliErc7739PersonalSignHash } from '../../../source/utils/smartAccount/erc7739.ts';
 import { encodeSmartAccountAuthenticatorSignature } from '../../../source/utils/smartAccount/signature.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
+import { assertDappTypedDataValid } from '../../../source/shared/dappTypedDataValidation.ts';
 import type { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts';
@@ -86,18 +88,32 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let credentialReads = 0, secretLeases = 0, completedSecretLeases = 0;
   let afterSecretLease: (() => void) | undefined;
   const signatures: { address: string; digest: string; signature: string; intentPersisted: boolean }[] = [];
+  const typedSigningRequests: { address: string; typedData: unknown; version: unknown }[] = [];
   let onCredentialRequest: ((check: () => void) => void | Promise<void>) | undefined;
   const submitted: string[] = [];
   const payerSignatures: string[] = [];
+  const possessionViews: { validator: string; hash: string; proof: string }[] = [];
+  const signedDisclosures: { operationHash: string; signature: string }[] = [];
+  let checkAuthorizationAtDisclosure = false;
+  const externalFinancialProofs: {hash:string;signature:string}[] = [];
+  let possessionVerifier: ((validator: string, hash: string, proof: string) => boolean | string | undefined | Promise<boolean | string | undefined>) | undefined;
   const infrastructureBroadcasts: { rawTransaction: string; pending: NativeInfrastructurePending }[] = [];
   const missingInfrastructure = new Set<string>();
   let failInfrastructureBroadcast = false;
   let initialEoaNonce = 0;
+  let consumedPayerNonce: number | undefined;
+  let externalPendingNonces = 0;
   let physicalStorageCloses = 0;
-  const spendabilityReads = { native: 0, deposit: 0 };
+  const spendabilityReads = { native: 0, deposit: 0, token: 0 };
   const rpcBatches: string[][] = [];
+  let observedHead = { number: '0x10', hash: '0x' + 'aa'.repeat(32) };
   const tokens = new Map<string, { balance: bigint; decimals: number }>();
-  const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)']);
+  const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)', 'function name() view returns(string)', 'function symbol() view returns(string)', 'function supportsInterface(bytes4) view returns(bool)']);
+  const nfts = new Map<string, { standard: 'ERC-721' | 'ERC-1155'; balance: bigint; owner: string }>();
+  const assetCodes = new Map<string, string>();
+  const nftInterface = new Interface(['function supportsInterface(bytes4) view returns(bool)', 'function ownerOf(uint256) view returns(address)',
+    'function balanceOf(address,uint256) view returns(uint256)', 'function balanceOfBatch(address[],uint256[]) view returns(uint256[])',
+    'function transferFrom(address,address,uint256)', 'function safeTransferFrom(address,address,uint256)', 'function safeTransferFrom(address,address,uint256,uint256,bytes)']);
   let deployed = false;
   let deployedCode = '0x01';
   let readReceipts = true;
@@ -105,6 +121,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let nonceReset = false;
   let deployedByBroadcast = false;
   let externalSmartNonce = 0n;
+  let onInnerNonceRead: ((tag: string) => void) | undefined;
   let wrongChain = false;
   let blockedRecipient = false;
   let smartBalance = '0x0';
@@ -113,6 +130,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let interruptAfterReceipt = false;
   let smartCodeRead: (() => void | Promise<void>) | undefined;
   let beforeSignature: (() => void | Promise<void>) | undefined;
+  let afterPayerSignature: (() => void) | undefined;
   let afterBroadcast: (() => void | Promise<void>) | undefined;
   let guardian: ReturnType<typeof createGuardianRecoveryFixture> | undefined;
   let externalOwner = false;
@@ -121,6 +139,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let observedThreshold = 1;
   let smartGuardianMetadata: { address: string; owners: string[]; threshold: number; compositeThreshold?: number; deployed: boolean } | undefined;
   const estimatedSenders: string[] = [];
+  let innerGasEstimate = '0x186a0';
   let composite: { threshold: number; ecdsaFirst: boolean; children?: string[] } | undefined;
   const customValidators = new Map<string, { installed: boolean; compatible: boolean }>();
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
@@ -158,6 +177,21 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         }
         const request = payload;
         calls.push(request.method);
+        if (checkAuthorizationAtDisclosure && ['eth_estimateGas','eth_simulateV1'].includes(request.method)) {
+          const calls = request.method === 'eth_estimateGas' ? [request.params[0]] : request.params[0].blockStateCalls.flatMap((block: any) => block.calls);
+          for (const call of calls) {
+            if (call.to?.toLowerCase() !== getPaliEntryPointAddress(Number(network.chainId)).toLowerCase()) continue;
+            const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', call.data);
+            for (const operation of operations) {
+              const operationHash=getSmartAccountUserOpHash(operation,Number(network.chainId));
+              if (!signatures.some(proof=>proof.digest===operationHash) && !externalFinancialProofs.some(proof=>proof.hash===operationHash&&operation.signature.includes(proof.signature.slice(2)))) continue; // Exclude preparation's dummy proof.
+              const identity=(await storage.recovery.readIdentity())!.root!;
+              const saved=await storage.signedRecords.read(identity.profileId); assert(saved);
+              assert(JSON.parse(saved).authorizations.some((row:any)=>row.operationHash===operationHash), 'usable signed UserOp must be durable before any estimate/simulation disclosure');
+              signedDisclosures.push({operationHash,signature:operation.signature});
+            }
+          }
+        }
         if (request.method === 'eth_getBalance' && request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase()) spendabilityReads.native++;
         if (request.method === 'eth_call' && request.params[0].to.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && request.params[0].data.startsWith(paliEntryPointInterface.getFunction('balanceOf')!.selector)) spendabilityReads.deposit++;
         const guardianModule = getConfiguredAuthenticatorAddress(Number(network.chainId), 'guardian-recovery').toLowerCase();
@@ -174,7 +208,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const target = request.params[0].toLowerCase();
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
-          result = builtIn || customValidators.has(target) || tokens.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
+          result = builtIn || customValidators.has(target) || tokens.has(target) || nfts.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
+          result = assetCodes.get(target) ?? result;
           if (missingInfrastructure.has(target)) result = '0x';
           if (smartGuardianMetadata && smartGuardianMetadata.address.toLowerCase() === target && !smartGuardianMetadata.deployed) result = '0x';
           if (smartTarget) {
@@ -185,7 +220,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             }
           }
         }
-        else if (request.method === 'eth_getTransactionCount') result = nonceReset ? '0x0' : `0x${(initialEoaNonce + (request.params[1] === 'pending' || readReceipts ? submitted.length : 0)).toString(16)}`;
+        else if (request.method === 'eth_getTransactionCount') result = consumedPayerNonce === undefined
+          ? nonceReset ? '0x0' : `0x${(initialEoaNonce + (request.params[1] === 'pending' ? externalPendingNonces : 0) + (request.params[1] === 'pending' || readReceipts ? submitted.length : 0)).toString(16)}`
+          : '0x'+(consumedPayerNonce+(request.params[1]==='pending'?externalPendingNonces+submitted.filter(raw=>{const tx=Transaction.from(raw);return tx.from!.toLowerCase()===request.params[0].toLowerCase()&&tx.nonce>=consumedPayerNonce!;}).length:0)).toString(16);
         else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? smartBalance : payerBalance;
         else if (request.method === 'eth_gasPrice') result = '0x2';
         else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
@@ -195,18 +232,51 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           if (call.to?.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase()) {
             const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', call.data);
             for (const op of operations) {
-              const earlier = submitted.filter(raw => Transaction.from(raw).to === getPaliEntryPointAddress(Number(network.chainId))).length;
+              // EntryPoint sequences are scoped to sender AND validator nonce
+              // key. Activating a different validator does not consume its key.
+              const earlier = submitted.flatMap(raw => {
+                const tx = Transaction.from(raw);
+                if (tx.to !== getPaliEntryPointAddress(Number(network.chainId))) return [];
+                if(consumedPayerNonce!==undefined&&!readReceipts&&tx.nonce<consumedPayerNonce)return[];
+                const [previous] = paliEntryPointInterface.decodeFunctionData('handleOps', tx.data);
+                return [...previous].filter(saved => saved.sender.toLowerCase() === op.sender.toLowerCase() && (saved.nonce >> 64n) === (op.nonce >> 64n));
+              }).length;
               const sequence = request.params[1] === 'pending' || readReceipts ? earlier : 0;
               assert.equal(op.nonce & ((1n << 64n) - 1n), BigInt(sequence) + externalSmartNonce, 'handleOps must estimate against matching pending state');
             }
           }
-          result = '0x186a0';
+          result = call.from?.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() ? innerGasEstimate : '0x186a0';
+        }
+        else if (request.method === 'eth_simulateV1') {
+          if (request.params[0].blockStateCalls[0].calls.length === 0) return Response.json({jsonrpc:'2.0', id:request.id, result:[{calls:[], transactions:[]}]});
+          const calls = request.params[0].blockStateCalls[0].calls;
+          const guardianParent = guardian && await guardian.fetch(network.rpcUrl, {
+            ...init,
+            body: JSON.stringify({jsonrpc:'2.0', id:request.id, method:'eth_getBlockByNumber', params:[request.params[1], false]}),
+          });
+          const simulationParent = guardianParent ? (await guardianParent.json()).result : observedHead;
+          result = [{parentHash: simulationParent.hash, number: `0x${(BigInt(simulationParent.number)+1n).toString(16)}`,
+            transactions: calls.map((call: any) => ({...call, input: call.data})),
+            calls: calls.map((call: any) => {
+              if (call.to.toLowerCase() !== getPaliEntryPointAddress(Number(network.chainId)).toLowerCase()) return {status:'0x1', gasUsed:'0x5208', logs:[]};
+              const [ops] = paliEntryPointInterface.decodeFunctionData('handleOps', call.data);
+              const op = ops[0];
+              const operation = {sender: op.sender, nonce: op.nonce.toString(), initCode: op.initCode, callData: op.callData,
+                accountGasLimits: op.accountGasLimits, preVerificationGas: op.preVerificationGas.toString(), gasFees: op.gasFees,
+                paymasterAndData: op.paymasterAndData, signature: op.signature};
+              const success = BigInt(innerGasEstimate) <= (BigInt(op.accountGasLimits) & ((1n<<128n)-1n)) + BigInt(21000);
+              const event = paliEntryPointInterface.encodeEventLog(paliEntryPointInterface.getEvent('UserOperationEvent')!,
+                [getSmartAccountUserOpHash(operation, Number(network.chainId)), op.sender, '0x'+'00'.repeat(20), op.nonce, success, 100, 50]);
+              return {status: '0x1', gasUsed: '0x186a0', logs: [{...event, address: call.to}]};
+            })}];
         }
         else if (request.method === 'eth_getTransactionByHash') {
           const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
           const transaction = raw ? Transaction.from(raw) : undefined;
           result = transaction ? { hash: transaction.hash, from: transaction.from, to: transaction.to, value: `0x${transaction.value.toString(16)}`,
-            nonce: `0x${transaction.nonce.toString(16)}`, blockNumber: null, blockHash: null, transactionIndex: null } : null;
+            nonce: `0x${transaction.nonce.toString(16)}`, input: transaction.data, chainId: `0x${transaction.chainId.toString(16)}`,
+            type: `0x${transaction.type!.toString(16)}`, gas: `0x${transaction.gasLimit.toString(16)}`,
+            ...(transaction.gasPrice === null ? { maxFeePerGas: `0x${transaction.maxFeePerGas!.toString(16)}`, maxPriorityFeePerGas: `0x${transaction.maxPriorityFeePerGas!.toString(16)}`, accessList: transaction.accessList } : {gasPrice: `0x${transaction.gasPrice.toString(16)}`}), blockNumber: null, blockHash: null, transactionIndex: null } : null;
         }
         else if (request.method === 'eth_getTransactionReceipt') {
           const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
@@ -226,12 +296,18 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           result = transaction && readReceipts ? { transactionHash: transaction.hash, from: transaction.from, to: transaction.to, status: '0x1',
             blockNumber: '0x10', blockHash: '0x' + 'aa'.repeat(32), gasUsed: '0x186a0', logs } : null;
         }
-        else if (request.method === 'eth_getBlockByNumber') result = { number: '0x10', hash: '0x' + 'aa'.repeat(32), gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
+        else if (request.method === 'eth_getBlockByNumber') result = { ...observedHead, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
+        else if (request.method === 'eth_getLogs') {
+          const filter=request.params[0];assert.equal(filter.address.toLowerCase(),getPaliEntryPointAddress(Number(network.chainId)).toLowerCase());
+          assert.equal(filter.topics.length,3);assert(BigInt(filter.toBlock)-BigInt(filter.fromBlock)<2048n);result=[];
+        }
         else if (request.method === 'eth_sendRawTransaction') {
           const identity = (await storage.recovery.readIdentity())!.root!;
           const saved = await storage.signedRecords.read(identity.profileId);
           assert(saved);
-          assert.equal(inspectEvmSignedBundle(saved, identity.profileId).transactions, submitted.length + 1);
+          const inventory = inspectEvmSignedBundle(saved, identity.profileId);
+          const authorizations = JSON.parse(saved).authorizations?.length ?? 0;
+          assert.equal(inventory.transactions, submitted.length + 1 + authorizations);
           if (Transaction.from(request.params[0]).to?.toLowerCase() === PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase()) {
             const signed = Transaction.from(request.params[0]);
             assert(readPreparedRecord);
@@ -256,15 +332,53 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const ownGuardian = smartGuardianMetadata?.address.toLowerCase() === to ? smartGuardianMetadata : undefined;
           const smartComposite = ownGuardian ? ownGuardian.compositeThreshold !== undefined : !!composite;
           const token = tokens.get(to);
-          if (token) {
+          const nft = nfts.get(to);
+          if (data.startsWith(paliEcdsaValidatorInterface.getFunction('isValidSignatureWithSender')!.selector)) {
+            const [sender, hash, proof] = paliEcdsaValidatorInterface.decodeFunctionData('isValidSignatureWithSender', data);
+            assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === sender.toLowerCase()));
+            assert.equal(request.params[0].from.toLowerCase(), sender.toLowerCase());
+            possessionViews.push({ validator: to, hash, proof });
+            let valid = await possessionVerifier?.(to, hash, proof);
+            if (valid === undefined) {
+              valid = false;
+              if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && observedEcdsaInstalled) {
+                const ownerAddress = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === 'hd:60:0')!.address;
+                const configured = observedOwners ?? [recoveredOwner ?? (externalOwner ? '0x' + '66'.repeat(20) : ownerAddress)];
+                const proofs: readonly string[] = observedThreshold === 1 ? [proof] : [...coder.decode(['bytes[]'], proof)[0]];
+                const recovered = proofs.map(signature => recoverAddress(hash, signature).toLowerCase());
+                valid = recovered.length === observedThreshold && new Set(recovered).size === recovered.length &&
+                  recovered.every(address => configured.some(owner => owner.toLowerCase() === address));
+              }
+            }
+            result = typeof valid === 'string' ? valid : paliEcdsaValidatorInterface.encodeFunctionResult('isValidSignatureWithSender', [valid ? '0x1626ba7e' : '0xffffffff']);
+          } else if (nft) {
+            const call = nftInterface.parseTransaction({ data }); assert(call);
+            if (call.name === 'supportsInterface') result = nftInterface.encodeFunctionResult(call.fragment,
+              [call.args[0] === (nft.standard === 'ERC-721' ? '0x80ac58cd' : '0xd9b67a26')]);
+            else if (call.name === 'ownerOf') {
+              if (call.args[0] !== 0n) return Response.json({ jsonrpc: '2.0', id: request.id, error: { code: 3, message: 'execution reverted', data: '0x' } });
+              result = nftInterface.encodeFunctionResult(call.fragment, [nft.balance > 0n ? nft.owner : '0x1111111111111111111111111111111111111111']);
+            } else if (call.name === 'balanceOf') result = nftInterface.encodeFunctionResult(call.fragment, [call.args[1] === 0n ? nft.balance : 0n]);
+            else if (call.name === 'balanceOfBatch') result = nftInterface.encodeFunctionResult(call.fragment,
+              [[...call.args[1]].map(id => id === 0n ? nft.balance : 0n)]);
+            else {
+              assert(['safeTransferFrom', 'transferFrom'].includes(call.name));
+              assert(nft.balance >= (nft.standard === 'ERC-721' ? 1n : call.args[3]));
+              result = '0x';
+            }
+          } else if (token) {
             const call = tokenInterface.parseTransaction({ data }); assert(call);
-            if (call.name === 'decimals') result = tokenInterface.encodeFunctionResult(call.fragment, [token.decimals]);
+            if (call.name === 'balanceOf') spendabilityReads.token++;
+            if (call.name === 'supportsInterface') result = tokenInterface.encodeFunctionResult(call.fragment, [false]);
+            else if (call.name === 'name') result = tokenInterface.encodeFunctionResult(call.fragment, ['Token']);
+            else if (call.name === 'symbol') result = tokenInterface.encodeFunctionResult(call.fragment, ['TOK']);
+            else if (call.name === 'decimals') result = tokenInterface.encodeFunctionResult(call.fragment, [token.decimals]);
             else if (call.name === 'balanceOf') {
               assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.address.toLowerCase() === call.args[0].toLowerCase()));
               result = tokenInterface.encodeFunctionResult(call.fragment, [token.balance]);
             } else {
               assert.equal(call.name, 'transfer');
-              assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === request.params[0].from?.toLowerCase()));
+              assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.address.toLowerCase() === request.params[0].from?.toLowerCase()));
               assert(call.args[1] <= token.balance);
               result = tokenInterface.encodeFunctionResult(call.fragment, [true]);
             }
@@ -298,15 +412,18 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             const guardianConfig = paliEcdsaValidatorInterface.decodeFunctionData('threshold', data)[0].toLowerCase() === smartGuardianMetadata?.address.toLowerCase() ? smartGuardianMetadata : undefined;
             result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [guardianConfig?.threshold ?? observedThreshold]);
           } else if (to === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && data.startsWith(paliEntryPointInterface.getFunction('getNonce')!.selector)) {
-            assert.equal(request.params[1], 'pending');
+            assert(['pending','latest'].includes(request.params[1])||/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(request.params[1]));
+            onInnerNonceRead?.(request.params[1]);
             const [sender, key] = paliEntryPointInterface.decodeFunctionData('getNonce', data);
             const matching = submitted.flatMap(raw => {
               const tx = Transaction.from(raw);
               if (tx.to !== getPaliEntryPointAddress(Number(network.chainId))) return [];
+              if(consumedPayerNonce!==undefined&&!readReceipts&&tx.nonce<consumedPayerNonce)return[];
               const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', tx.data);
               return [...operations].filter(op => op.sender.toLowerCase() === sender.toLowerCase() && (op.nonce >> BigInt(64)) === key);
             });
-            result = coder.encode(['uint256'], [(key << BigInt(64)) + BigInt(matching.length) + externalSmartNonce]);
+            const included = request.params[1] === 'pending' || readReceipts ? matching.length : 0;
+            result = coder.encode(['uint256'], [(key << BigInt(64)) + BigInt(nonceReset ? 0 : included) + externalSmartNonce]);
           } else if (to !== PALI_CANONICAL_FACTORY_ADDRESS.toLowerCase()) {
             result = coder.encode(['uint256'], [0]);
           } else {
@@ -402,6 +519,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             signatures.push({ address: input[0][0]!, digest: input[0][1]!, signature, intentPersisted: !!saved.guardianRecoveryIntents?.length });
             return signature;
           };
+          const originalTypedSign = this.ethereumTransaction.signTypedData.bind(this.ethereumTransaction);
+          this.ethereumTransaction.signTypedData = async (...input: Parameters<typeof originalTypedSign>) => {
+            typedSigningRequests.push({ address: input[0], typedData: input[1], version: input[2] });
+            return originalTypedSign(...input);
+          };
           const signPrepared = this.signPreparedEvmTransaction.bind(this);
           readPreparedRecord = async (chainId, from, hash) => {
             const entry = await new EvmSignedRecords(storage.signedRecords).readExact(
@@ -411,6 +533,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           this.signPreparedEvmTransaction = (...input: Parameters<typeof signPrepared>) => {
             const signed = signPrepared(...input);
             payerSignatures.push(signed.rawTransaction);
+            afterPayerSignature?.();
             return signed;
           };
         }
@@ -443,6 +566,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     get credentialReads() { return credentialReads; },
     get secretLeases() { return secretLeases; },
     get completedSecretLeases() { return completedSecretLeases; },
+    signedDisclosures,
+    checkAuthorizationAtDisclosure() {checkAuthorizationAtDisclosure=true;},
+    recordFinancialProof(hash:string,signature:string){externalFinancialProofs.push({hash,signature});},
     afterSecretLease(hook?: () => void) { afterSecretLease = hook; },
     assertNoSigningKeys() { for (const instance of sdkInstances) assert.equal(instance.isUnlocked(), false); },
     assertOneSigningOperation() { assert.equal(sdkInstances.filter(instance => instance.isUnlocked()).length, 1); },
@@ -452,13 +578,19 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; },
     transferRpc: new NativeTransferRpc({ registration: getNativeNetwork('ethereum'), fetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init) }),
     get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
-    get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
+    increaseInnerGas() { innerGasEstimate = '0x493e0'; },
+    failInnerExecution() { innerGasEstimate = '0xffffffff'; },
+    get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, typedSigningRequests, payerSignatures, possessionViews, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
       const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
       if (present) missingInfrastructure.delete(address); else missingInfrastructure.add(address);
+      observedHead = { number: `0x${(BigInt(observedHead.number) + 1n).toString(16)}`, hash: `0x${(BigInt(observedHead.hash) + 1n).toString(16).padStart(64, '0')}` };
     },
+    advanceHead() { observedHead = { number: '0x11', hash: '0x' + 'bb'.repeat(32) }; },
     infrastructureResponseLost() { failInfrastructureBroadcast = true; },
     initialEoaNonce(value: number) { assert(Number.isSafeInteger(value) && value >= 0); initialEoaNonce = value; },
+    consumePayerNonce(value:number) {assert(Number.isSafeInteger(value)&&value>=0);consumedPayerNonce=value;},
+    externalPayerPending(value: number) { externalPendingNonces = value; },
     smartGuardian(address: string, owners: string[], options: { compositeThreshold?: number; threshold?: number; deployed?: boolean } = {}) {
       smartGuardianMetadata = { address, owners: [...owners], threshold: options.threshold ?? 1, compositeThreshold: options.compositeThreshold, deployed: options.deployed ?? true };
     },
@@ -470,6 +602,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       deployed = true;
       return guardian;
     },
+    verifyPossessionWith(callback: NonNullable<typeof possessionVerifier>) { possessionVerifier = callback; },
     externalOwner() { externalOwner = true; },
     recoveredOwner(address: string) { recoveredOwner = address; },
     observedEcdsaOwners(addresses: string[], threshold: number) { observedOwners = addresses; observedThreshold = threshold; },
@@ -486,9 +619,17 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     loseGasCredit() { gasCredit = 0n; },
     wrongChain() { wrongChain = true; },
     advanceSmartNonce() { externalSmartNonce++; },
+    onInnerNonceRead(hook: (tag: string) => void) {onInnerNonceRead=hook;},
     fundedSmart() { smartBalance = '0x1000000000000000'; },
     smartBalance(value: bigint) { smartBalance = '0x' + value.toString(16); },
     tokenBalance(contract: string, balance: bigint, decimals: number) { tokens.set(contract.toLowerCase(), { balance, decimals }); },
+    assetCode(contract: string, bytes: number) { assetCodes.set(contract.toLowerCase(), `0x${'60'.repeat(bytes)}`); },
+    nftBalance(contract: string, standard: 'ERC-721' | 'ERC-1155', balance: bigint) {
+      const snapshot = runtime.catalogue.getSnapshot()!;
+      const owner = nfts.get(contract.toLowerCase())?.owner ?? snapshot.accounts.find(account => account.type === 'SmartAccount')?.address ??
+        snapshot.accounts.find(account => account.id === snapshot.active.accountId)!.address;
+      nfts.set(contract.toLowerCase(), { standard, balance, owner });
+    },
     holdReceipts() { readReceipts = false; },
     showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
     reorg() { readReceipts = false; nonceReset = true; },
@@ -499,6 +640,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     onSmartCodeRead(hook: () => void | Promise<void>) { smartCodeRead = hook; },
     onCredentialRequest(hook: (check: () => void) => void | Promise<void>) { onCredentialRequest = hook; },
     onSignature(hook: () => void | Promise<void>) { beforeSignature = hook; },
+    onPayerSignature(hook: () => void) { afterPayerSignature = hook; },
     onBroadcast(hook: () => void | Promise<void>) { afterBroadcast = hook; },
     substitute() { substituteAddress = true; }, hold(value: () => Promise<void>) { hold = value; },
     async change(request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) {
@@ -538,6 +680,24 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     async captureOriginalJournal() { assert(captureJournal); return captureJournal(); },
     async close() { await owner.dispose(); await rm(directory, { recursive: true, force: true }); },
   };
+}
+
+async function assertRetainedSmartSendRecords(
+  f: Awaited<ReturnType<typeof fixture>>,
+  expectedOuterTransactions: number
+) {
+  const identity = (await f.storage.recovery.readIdentity())!.root!;
+  const retained = await f.storage.signedRecords.read(identity.profileId);
+  assert(retained, 'the signed authorization remains durable after admission refuses submission');
+  assert.equal(f.signatures.length, 1);
+  assert.equal(f.payerSignatures.length, expectedOuterTransactions);
+  assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, expectedOuterTransactions + 1);
+  const physical = JSON.parse(retained) as {
+    entries: { hash: string }[];
+    authorizations: { operationHash: string }[];
+  };
+  assert.deepEqual(physical.authorizations.map(entry => entry.operationHash), f.signatures.map(proof => proof.digest));
+  assert.deepEqual(physical.entries.map(entry => entry.hash), f.payerSignatures.map(raw => Transaction.from(raw).hash!));
 }
 
 async function readyLedgerInfrastructure(hooks: {before?: SqlHook; after?: SqlHook} = {}) {
@@ -1632,6 +1792,62 @@ test('Smart Activity speeds up the exact outer transaction using its original lo
   } finally { operation?.dispose(); transfers?.dispose(); await f.close(); }
 });
 
+test('native unhydrated preparations retain canonical infrastructure cache checks', async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Infrastructure cache' });
+    f.fundedSmart(); f.deployed();
+    f.rpcBatches.length = 0;
+    const prepare = async () => {
+      operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+      await operation.prepare();
+      assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+      operation.dispose(); operation = undefined;
+    };
+    const codeBatches = () => f.rpcBatches.filter(batch => batch.length === SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.length && batch.every(method => method === 'eth_getCode')).length;
+    await prepare();
+    assert.equal(codeBatches(), 1);
+    await prepare();
+    assert.equal(codeBatches(), 1, 'same-head second operation reuses only infrastructure code');
+    f.advanceHead();
+    await prepare();
+    assert.equal(codeBatches(), 2, 'unhydrated account still checks all infrastructure at a new head');
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const deployed of [true, false]) for (const maximum of [true, false]) test(`native transfer observes deployment before choosing infrastructure policy (deployed=${deployed},maximum=${maximum})`, async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Infrastructure policy' });
+    f.fundedSmart(); f.guardianStatus('no-policy');
+    const prepare = async () => {
+      operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', maximum ? { kind: 'maximum' } : { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+      await operation.prepare();
+    };
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    await prepare();
+    assert.equal(operation!.getSnapshot().phase, 'authorize');
+    operation!.dispose(); operation = undefined;
+    f.infrastructureCode('slhDsaValidator', false);
+    if (!deployed) { f.deployed(); f.undeployed(); }
+    f.advanceHead(); f.rpcBatches.length = 0;
+    await prepare();
+    const catalogueReads = f.rpcBatches.filter(batch => batch.length === SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.length && batch.every(method => method === 'eth_getCode')).length;
+    if (deployed) {
+      assert.equal(operation!.getSnapshot().phase, 'authorize', JSON.stringify(operation!.getSnapshot()));
+      assert.equal(catalogueReads, 0);
+    } else {
+      assert.equal(operation!.getSnapshot().phase, 'failed');
+      assert.equal(catalogueReads, 1, 'empty account code requires the complete deployment catalogue');
+    }
+    assert.equal(f.submitted.length, 0);
+    assert.equal(f.signatures.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
 for (const alreadyDeployed of [false, true]) test(`real SDK smart native send authorizes exact value and submits without waiting (${alreadyDeployed ? 'deployed' : 'counterfactual'})`, async () => {
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
@@ -1652,12 +1868,15 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     assert.equal(f.submitted.length, 0);
     assert.equal(ready.authorization!.initCode === '0x', alreadyDeployed);
     const pending = operation.authorize(ready.revision);
+    const estimatesBeforeAuthorize = f.estimatedSenders.length;
     for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
       await new Promise(resolve => setTimeout(resolve, 5));
     const review = operation.getSnapshot().payerReview;
     assert(review, JSON.stringify(operation.getSnapshot()));
     assert.equal(review.transaction.from, payer);
     assert.equal(review.purpose, 'submit-operation');
+    // The generic payer quote is the sole initial outer estimate.
+    assert.equal(f.estimatedSenders.length - estimatesBeforeAuthorize, 1);
     assert.equal(f.submitted.length, 0);
     let submissionAtWire = false;
     f.onBroadcast(() => { submissionAtWire = operation!.getSnapshot().userOperationSubmissionStarted; });
@@ -1677,9 +1896,9 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     assert.equal('0x' + execution.slice(2, 42), recipient);
     assert.equal(BigInt('0x' + execution.slice(42, 106)), 9n);
     assert.equal(f.calls.includes('eth_getTransactionReceipt'), false);
-    // Preparation, owner signing and payer authorization each observe spendability.
+    // Preparation, owner signing, payer review and durable dispatch each observe spendability.
     // Counterfactual sends also recheck before prefunding and in prefund calculation.
-    const expectedReads = alreadyDeployed ? 3 : 5;
+    const expectedReads = alreadyDeployed ? 4 : 6;
     assert.equal(f.spendabilityReads.native - initialReads.native, expectedReads);
     assert.equal(f.spendabilityReads.deposit - initialReads.deposit, expectedReads);
   } finally { operation?.dispose(); await f.close(); }
@@ -1748,6 +1967,142 @@ test('locking a native Smart send at payer review retires its signed operation w
     assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(f.submitted.length, 0);
   } finally { operation?.dispose(); await f.close(); }
+});
+
+test('native standalone authorization is encrypted before signed RPC disclosure with no extra OS prompt and survives payer decline/restart', async () => {
+ const f=await fixture({},true); let operation:NativeSmartAccountOperation|undefined;
+ try {
+  await f.change({kind:'create-smart',label:'Retention'}); f.fundedSmart(); f.deployed(); f.holdReceipts(); f.checkAuthorizationAtDisclosure();
+  const smart=f.owner.getSnapshot().account!;
+  operation=await f.runtime.openSmartAccountSend('0x'+'22'.repeat(20),{kind:'exact',amount:'0.000000000000000009'},()=>undefined,null);
+  await operation.prepare(); const reviewed=operation.getSnapshot(), reads=f.credentialReads, leases=f.secretLeases;
+  const ready=Promise.withResolvers<void>();
+  const unsubscribe=operation.subscribe(()=>{const state=operation!.getSnapshot(); if(state.payerReview)ready.resolve();else if(state.phase==='failed')ready.reject(Error(JSON.stringify(state)));});
+  const sending=operation.authorize(reviewed.revision);
+  await ready.promise; unsubscribe();
+  assert.equal(f.credentialReads-reads,1); assert.equal(f.secretLeases-leases,1); f.assertNoSigningKeys();
+  const identity=(await f.storage.recovery.readIdentity())!.root!, encrypted=await f.storage.signedRecords.read(identity.profileId); assert(encrypted);
+  assert.equal(JSON.parse(encrypted).entries.length,0,'standalone authorization has no synthetic payer transaction');
+  assert.equal(JSON.parse(encrypted).authorizations.length,1);
+  assert(f.signedDisclosures.length>0);
+  const row=await new EvmSignedRecords(f.storage.signedRecords).readSmartAccountAuthorizationExact({keyring:f.sdkHost.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1','org.syscoin.pali.evm.signed.chunk.v1','org.syscoin.pali.utxo.signed.root.v1','org.syscoin.pali.utxo.signed.chunk.v1']),assertCurrent:()=>assert(f.sdkHost.hasPublicSession())},'1',smart.address,reviewed.userOperationHash!); assert(row);
+  assert.equal(row.operationNonce,reviewed.authorization!.nonce); assert.equal(row.userOperation.callData,reviewed.authorization!.callData);
+  assert.deepEqual(row.observedAt,{number:'16',hash:'0x'+'aa'.repeat(32)});
+  assert(f.signedDisclosures.every(value=>value.operationHash===row.operationHash&&value.signature===row.userOperation.signature));
+  assert(!encrypted.includes(row.userOperation.signature)); assert(!encrypted.includes(row.userOperation.callData));
+  operation.cancel(); await sending; await operation.dispose(); operation=undefined;
+  assert.equal(f.submitted.length,0); assert.equal(f.payerSignatures.length,0);
+  await f.reopen(); await f.owner.unlock();
+  assert.equal(await f.storage.signedRecords.read(identity.profileId),encrypted);
+  const retained=await f.captureOriginalJournal();
+  assert((await retained.readAuthorizations!(true)).some(value=>value.operationHash===row.operationHash));
+  const canonical=Promise.withResolvers<void>();f.onInnerNonceRead(tag=>{if(tag==='latest')canonical.resolve();});
+  const signed=f.signatures.length, prompts=f.credentialReads;
+  operation=await f.runtime.openSmartAccountSend('0x'+'22'.repeat(20),{kind:'exact',amount:'0.000000000000000009'},()=>undefined,null);
+  const blocked=Promise.withResolvers<void>();const unwatch=operation.subscribe(()=>{if(operation!.getSnapshot().error==='Waiting for the network to include the earlier pending operation.')blocked.resolve();});
+  const preparing=operation.prepare();await Promise.all([canonical.promise,blocked.promise]);unwatch();assert.equal(operation.getSnapshot().phase,'preparing');operation.cancel();await preparing;
+  assert.equal(f.signatures.length,signed);assert.equal(f.credentialReads,prompts);assert.equal(f.submitted.length,0);
+  assert.equal(await f.storage.signedRecords.read(identity.profileId),encrypted,'ordinary preparation cannot consume/remove the old authorization');
+ }finally{await operation?.dispose(); await f.close();}
+});
+
+for (const committed of [false,true]) test(`native standalone storage refusal prevents signed RPC disclosure (committed: ${committed})`, async()=>{
+ let armed=false,wrote=false;
+ const f=await fixture({before(kind,sql){if(armed&&!committed&&kind==='run'&&sql.startsWith('INSERT INTO evm_signed_records'))throw Error('Synthetic retention storage full');},after(kind,sql){if(!armed)return;if(kind==='run'&&sql.startsWith('INSERT INTO evm_signed_records'))wrote=true;if(committed&&wrote&&kind==='exec'&&sql==='COMMIT'){armed=false;throw Error('Synthetic lost retention acknowledgement');}}},true);
+ let operation:NativeSmartAccountOperation|undefined;
+ try{
+  await f.change({kind:'create-smart',label:'Retention failure'});f.fundedSmart();f.deployed();f.checkAuthorizationAtDisclosure();
+  operation=await f.runtime.openSmartAccountSend('0x'+'22'.repeat(20),{kind:'exact',amount:'0.000000000000000009'},()=>undefined,null);
+  await operation.prepare();const reviewed=operation.getSnapshot(), estimates=f.estimatedSenders.length;
+  armed=true; await operation.authorize(reviewed.revision);armed=false;
+  assert.equal(operation.getSnapshot().phase,'failed');assert.equal(f.signatures.length,1);assert.equal(f.payerSignatures.length,0);assert.equal(f.submitted.length,0);
+  assert.equal(f.signedDisclosures.length,0);assert.equal(f.estimatedSenders.length,estimates);f.assertNoSigningKeys();
+  await operation.dispose();operation=undefined;
+  if(committed)await f.reopenQuarantined();else await f.reopen();await f.owner.unlock();
+  const identity=(await f.storage.recovery.readIdentity())!.root!,saved=await f.storage.signedRecords.read(identity.profileId);
+  if(committed){assert(saved);assert.equal(JSON.parse(saved).authorizations[0].operationHash,reviewed.userOperationHash);assert.equal(JSON.parse(saved).entries.length,0);}else assert.equal(saved,undefined);
+ }finally{armed=false;await operation?.dispose();await f.close();}
+});
+
+test('native standalone retention rechecks owner cancellation inside the held SQLite commit and discloses nothing', async()=>{
+ const entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>(); let armed=false;
+ const f=await fixture({async before(kind,sql){if(armed&&kind==='run'&&sql.startsWith('INSERT INTO evm_signed_records')){armed=false;entered.resolve();await release.promise;}}},true);
+ let operation:NativeSmartAccountOperation|undefined;
+ try{
+  await f.change({kind:'create-smart',label:'Retired retention'});f.fundedSmart();f.deployed();f.checkAuthorizationAtDisclosure();
+  operation=await f.runtime.openSmartAccountSend('0x'+'22'.repeat(20),{kind:'exact',amount:'0.000000000000000009'},()=>undefined,null);
+  await operation.prepare();armed=true;const sending=operation.authorize(operation.getSnapshot().revision);
+  await entered.promise; operation.cancel();release.resolve();await sending;
+  assert.equal(operation.getSnapshot().phase,'failed');assert.equal(f.signatures.length,1);assert.equal(f.signedDisclosures.length,0);assert.equal(f.payerSignatures.length,0);assert.equal(f.submitted.length,0);f.assertNoSigningKeys();
+  await operation.dispose();operation=undefined;await f.reopen();await f.owner.unlock();
+  const identity=(await f.storage.recovery.readIdentity())!.root!;assert.equal(await f.storage.signedRecords.read(identity.profileId),undefined);
+ }finally{armed=false;release.resolve();await operation?.dispose();await f.close();}
+});
+
+for(const path of ['standalone','pending-outer','consumed-outer','pending-counterfactual'] as const)test(`native Smart cancellation revokes the same inner nonce using ${path} delivery`,async()=>{
+ const f=await fixture({},true);let original:NativeSmartAccountOperation|undefined,cancel:NativeSmartAccountOperation|undefined;
+ const complete=async(operation:NativeSmartAccountOperation,confirm:boolean)=>{
+  const ready=Promise.withResolvers<void>();const unwatch=operation.subscribe(()=>{const state=operation.getSnapshot();if(state.payerReview){ready.resolve();if(confirm)operation.confirmPayer(state.payerReview.id);}else if(state.phase==='failed')ready.reject(Error(JSON.stringify(state)));});
+  const pending=operation.authorize(operation.getSnapshot().revision);await ready.promise;if(!confirm)operation.cancel();await pending;unwatch();
+ };
+ try{
+  await f.change({kind:'create-smart',label:'Revocation'});f.fundedSmart();if(path!=='pending-counterfactual')f.deployed();f.holdReceipts();f.checkAuthorizationAtDisclosure();
+  const smart=f.owner.getSnapshot().account!,signal=new AbortController();
+  original=await f.runtime.openSmartAccountSend('0x'+'22'.repeat(20),{kind:'exact',amount:'0.000000000000000009'},()=>undefined,null);
+  await original.prepare();const first=original.getSnapshot();await complete(original,path!=='standalone');
+  if(path!=='standalone')assert.equal(original.getSnapshot().phase,'complete',JSON.stringify(original.getSnapshot()));
+  await original.dispose();original=undefined;
+  const outer=f.submitted[0]?Transaction.from(f.submitted[0]):undefined;
+  if(path==='pending-counterfactual')f.undeployed();
+  if(path==='consumed-outer')f.consumePayerNonce(1);
+  const prompts=f.credentialReads,lease=f.secretLeases;
+  const page=await f.runtime.listSmartAccountAuthorizations({maximum:20},signal.signal,()=>undefined);
+  assert.equal(page.entries.length,1);assert.equal(page.entries[0]!.operationHash,first.userOperationHash);
+  assert.equal((await f.runtime.readSmartAccountAuthorizationStatus(first.userOperationHash!,signal.signal,()=>undefined)).kind,'pending');
+  assert(!JSON.stringify(page).includes('signature'));assert(!JSON.stringify(page).includes(first.authorization!.callData));
+  // The standalone list knows only the operation hash, even when an outer exists.
+  const reference={originalHash:first.userOperationHash!,operationHash:first.userOperationHash!};
+  cancel=await f.runtime.openSmartAccountCancellation(reference,()=>undefined,null);await cancel.prepare();
+  assert.equal(cancel.getSnapshot().phase,'authorize',JSON.stringify(cancel.getSnapshot()));
+  assert.equal(cancel.getSnapshot().authorization!.nonce,first.authorization!.nonce);assert.equal(f.credentialReads,prompts,'authenticated record preparation does not prompt for an OS secret');
+  const transactionStart=f.submitted.length;await complete(cancel,true);
+  assert.equal(cancel.getSnapshot().phase,'complete',JSON.stringify(cancel.getSnapshot()));
+  assert.equal(f.credentialReads-prompts,2,'new current-policy proof and payer keep their separate existing OS authorizations');assert.equal(f.secretLeases-lease,2);f.assertNoSigningKeys();
+  assert.equal(f.submitted.length,transactionStart+1);
+  const revoke=Transaction.from(f.submitted.at(-1)!);const [ops,beneficiary]=paliEntryPointInterface.decodeFunctionData('handleOps',revoke.data);
+  assert.equal(ops[0].nonce.toString(),first.authorization!.nonce);assert.equal(ops[0].sender.toLowerCase(),smart.address.toLowerCase());assert.equal(beneficiary,revoke.from);
+  const [,execution]=paliSmartAccountInterface.decodeFunctionData('execute',ops[0].callData);
+  assert.equal(execution.toLowerCase(),'0x'+smart.address.slice(2).toLowerCase()+'0'.repeat(64));assert.equal(revoke.value,0n);
+  if(path==='pending-outer'||path==='pending-counterfactual'){assert.equal(revoke.nonce,outer!.nonce);assert.equal(revoke.from,outer!.from);assert(revoke.maxFeePerGas!>outer!.maxFeePerGas!);assert(revoke.maxPriorityFeePerGas!>outer!.maxPriorityFeePerGas!);}else assert.equal(revoke.nonce,path==='standalone'?0:1);
+  if(path==='pending-counterfactual')assert.equal(ops[0].initCode,first.authorization!.initCode);
+  const retained=await f.runtime.listSmartAccountAuthorizations({maximum:20},signal.signal,()=>undefined);
+  assert.equal(retained.entries.length,2);assert.equal(retained.entries[0]!.replacesOperationHash,first.userOperationHash);
+  f.advanceSmartNonce();const publicReads=f.credentialReads,publicLeases=f.secretLeases;
+  const status=await f.runtime.readSmartAccountAuthorizationStatus(first.userOperationHash!,signal.signal,()=>undefined);
+  assert.equal(f.credentialReads,publicReads,'manual status and near-cap retirement use only the existing public record capability');assert.equal(f.secretLeases,publicLeases);
+  assert.equal(status.kind,'nonce-consumed','without an exact event, canonical nonce consumption proves neither original payment nor cancellation success');
+  assert.equal((await f.runtime.listSmartAccountAuthorizations({maximum:20},signal.signal,()=>undefined)).entries.length,2);
+ }finally{await original?.dispose();await cancel?.dispose();await f.close();}
+});
+
+for(const change of ['inner nonce','current validator','wrong operation','cancelled owner'] as const)test(`native Smart cancellation refuses ${change} without a new private proof`,async()=>{
+ const f=await fixture({},true);let original:NativeSmartAccountOperation|undefined,cancel:NativeSmartAccountOperation|undefined;
+ try{
+  await f.change({kind:'create-smart',label:'Revocation guard'});f.fundedSmart();f.deployed();f.holdReceipts();
+  original=await f.runtime.openSmartAccountSend('0x'+'22'.repeat(20),{kind:'exact',amount:'0.000000000000000009'},()=>undefined,null);await original.prepare();
+  const first=original.getSnapshot(),ready=Promise.withResolvers<void>();const stop=original.subscribe(()=>{if(original!.getSnapshot().payerReview)ready.resolve();});
+  const sending=original.authorize(first.revision);await ready.promise;stop();original.cancel();await sending;await original.dispose();original=undefined;
+  const signed=f.signatures.length,reads=f.credentialReads;let current=true;
+  if(change==='inner nonce')f.advanceSmartNonce();if(change==='current validator'){f.observedPasskey();f.retainActiveValidator('p256-webauthn');}
+  if(change==='wrong operation'){
+   await assert.rejects(f.runtime.openSmartAccountCancellation({originalHash:first.userOperationHash!,operationHash:'0x'+'99'.repeat(32)},()=>undefined,null));
+  }else{
+   cancel=await f.runtime.openSmartAccountCancellation({originalHash:first.userOperationHash!},()=>{if(!current)throw Error('Retired owner');},null);
+   if(change==='cancelled owner')current=false;
+   await cancel.prepare();assert.equal(cancel.getSnapshot().phase,'failed',JSON.stringify(cancel.getSnapshot()));
+  }
+  assert.equal(f.signatures.length,signed);assert.equal(f.credentialReads,reads);assert.equal(f.submitted.length,0);assert.equal(f.payerSignatures.length,0);f.assertNoSigningKeys();
+ }finally{await original?.dispose();await cancel?.dispose();await f.close();}
 });
 
 
@@ -2056,6 +2411,93 @@ test('counterfactual Smart ERC20 balance loss after owner signing prevents deplo
   } finally { operation?.dispose(); await f.close(); }
 });
 
+for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`counterfactual Smart ERC20 balance loss during ${boundary} prevents prefund broadcast`, async () => {
+  let loseBalance: (() => void) | undefined;
+  let changed = false;
+  let readsAtChange = 0;
+  const f = await fixture({ after(kind, sql) {
+    if (boundary === 'payer-persistence' && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && loseBalance) {
+      changed = true;
+      loseBalance();
+      loseBalance = undefined;
+    }
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Late token prefund guard' });
+    const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 0, name: 'Token', symbol: 'TOKEN' };
+    f.tokenBalance(token.contractAddress, 9n, token.decimals);
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.add(registry.revision, token, () => undefined);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', {
+      kind: 'erc20', contractAddress: token.contractAddress, amount: '9',
+    }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    assert.notEqual(operation.getSnapshot().authorization!.initCode, '0x');
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview;
+    assert(review, JSON.stringify(operation.getSnapshot()));
+    assert.equal(review.purpose, 'fund-account');
+    const lose = () => { changed = true; readsAtChange = f.spendabilityReads.token; f.tokenBalance(token.contractAddress, 0n, token.decimals); };
+    if (boundary === 'payer-signing') f.onPayerSignature(lose);
+    else loseBalance = lose;
+    f.onBroadcast(() => operation!.cancel());
+    operation.confirmPayer(review.id);
+    await sending;
+    assert.equal(changed, true, 'the failure is injected after the payer review');
+    assert.equal(f.payerSignatures.length, 1);
+    assert(f.spendabilityReads.token > readsAtChange, 'final admission observes the changed token balance');
+    assert.equal(operation.getSnapshot().phase, 'failed', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 0);
+    // The exact signed prefund and its standalone owner authorization both remain durable.
+    await assertRetainedSmartSendRecords(f, 1);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+
+for (const change of ['balance', 'nonce'] as const) for (const boundary of ['payer-review', 'payer-signing', 'payer-persistence'] as const) test(`deployed Smart final admission rejects ${change} change during ${boundary}`, async () => {
+  let changeState: (() => void) | undefined;
+  let changed = false;
+  const f = await fixture({ after(kind, sql) {
+    if (boundary === 'payer-persistence' && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && changeState) {
+      changeState(); changeState = undefined;
+    }
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Late native admission' });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    assert.equal(operation.getSnapshot().authorization!.initCode, '0x');
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview;
+    assert(review, JSON.stringify(operation.getSnapshot()));
+    assert.equal(review.purpose, 'submit-operation');
+    const mutate = () => { changed = true; if (change === 'balance') f.smartBalance(8n); else f.advanceSmartNonce(); };
+    if (boundary === 'payer-review') mutate();
+    else if (boundary === 'payer-signing') f.onPayerSignature(mutate);
+    else changeState = mutate;
+    f.onBroadcast(() => operation!.cancel());
+    operation.confirmPayer(review.id);
+    await sending;
+    assert(changed, 'the fixture must reach the post-review boundary');
+    assert.equal(f.payerSignatures.length, boundary === 'payer-review' ? 0 : 1);
+    assert.equal(operation.getSnapshot().phase, change === 'nonce' ? 'authorize' : 'failed', JSON.stringify(operation.getSnapshot()));
+    if (change === 'nonce') {
+      assert.equal(BigInt(operation.getSnapshot().authorization!.nonce) & ((1n << 64n) - 1n), 1n);
+      assert.equal(operation.getSnapshot().transactionHash, null);
+    }
+    assert.equal(f.submitted.length, 0);
+    await assertRetainedSmartSendRecords(f, boundary === 'payer-review' ? 0 : 1);
+  } finally { operation?.dispose(); await f.close(); }
+});
 
 for (const standard of ['ERC-721', 'ERC-1155'] as const) test(`Smart ${standard} uses the shared safe transfer and retains inner failure after restart`, async () => {
   const f = await fixture();
@@ -2167,17 +2609,43 @@ for (const [data, self] of [['0x', false], ['0x12345678', false], ['0x', true]] 
 });
 
 
-for (const existing of [false, true]) test(`two real Smart sends queue before mining (${existing ? 'deployed' : 'first deployment'})`, async () => {
-  const f = await fixture();
+for (const existing of [false, true]) test(`a second real Smart send waits for canonical predecessor inclusion (${existing ? 'deployed' : 'first deployment'})`, { timeout: 20_000 }, async ({ signal }) => {
+  const f = await fixture({}, true);
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  const cancel = () => operation?.cancel();
+  signal.addEventListener('abort', cancel, { once: true });
   try {
+    signal.throwIfAborted();
     await f.change({ kind: 'create-smart', label: 'Queued Smart',});
     f.fundedSmart(); f.holdReceipts();
     if (existing) f.deployed();
     const nonces: bigint[] = [];
     for (let index = 0; index < 2; index++) {
       operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
-      await operation.prepare();
+      if (index === 0) await operation.prepare();
+      else {
+        const waiting = Promise.withResolvers<void>();
+        const nonceTags: string[] = [];
+        f.onInnerNonceRead(tag => nonceTags.push(tag));
+        const unsubscribe = operation.subscribe(() => {
+          const state = operation!.getSnapshot();
+          if (state.error === 'Waiting for the network to include the earlier pending operation.') waiting.resolve();
+          else if (state.phase === 'failed') waiting.reject(Error(JSON.stringify(state)));
+        });
+        const preparing = operation.prepare();
+        try {
+          await waiting.promise;
+          assert.equal(operation.getSnapshot().phase, 'preparing');
+          assert.equal(operation.getSnapshot().authorization, null);
+          assert.equal(operation.getSnapshot().payerReview, null);
+          assert(nonceTags.includes('latest'), 'pending-only nonce advancement cannot release a retained authorization');
+          assert.equal(f.signatures.length, 1);
+          assert.equal(f.payerSignatures.length, 1);
+          assert.equal(f.submitted.length, 1);
+          f.showReceipts();
+          await preparing;
+        } finally { unsubscribe(); }
+      }
       const ready = operation.getSnapshot();
       assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
       nonces.push(BigInt(ready.authorization!.nonce));
@@ -2190,11 +2658,13 @@ for (const existing of [false, true]) test(`two real Smart sends queue before mi
       operation.confirmPayer(review.id);
       await submission;
       assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
-      operation.dispose();
+      await operation.dispose();
     }
     assert.equal(nonces[1], nonces[0]! + 1n);
+    assert.equal(f.signatures.length, 2);
+    assert.equal(f.payerSignatures.length, 2);
     assert.equal(f.submitted.length, 2);
-  } finally { operation?.dispose(); await f.close(); }
+  } finally { signal.removeEventListener('abort', cancel); await operation?.dispose(); await f.close(); }
 });
 
 
@@ -3252,6 +3722,90 @@ async function smartMessageApproval(f: Awaited<ReturnType<typeof fixture>>) {
   return { host, selected, approval, revoke() { grant = undefined; } };
 }
 
+for (const method of ['eth_signTypedData', 'eth_signTypedData_v3', 'eth_signTypedData_v4'] as const)
+for (const malformed of ['changed', 'captured'] as const)
+test(`typed bool ${method} ${malformed} payload is refused by the actual native host before secret or SDK callbacks`, async () => {
+  const f = await fixture({}, true);
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  try {
+    const host = await f.runtime.openConnectionHost(), context = host.context();
+    const selected = context.accounts.find(account => account.id === context.activeAccountId)!;
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType,
+      chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: 'https://fixture.example', date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({
+      account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant,
+      network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration(),
+    }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    const value = { allowed: false }, field = { name: 'allowed', type: 'bool', value: false };
+    const typedData = method === 'eth_signTypedData' ? [field] : {
+      domain: {}, types: { EIP712Domain: [], Permit: [{ name: 'allowed', type: 'bool' }] }, primaryType: 'Permit', message: value,
+    };
+    // Admission saw a real bool; the actual host must independently capture and
+    // validate it, including fields omitted by the JSON snapshot.
+    assertDappTypedDataValid(method, [selected.address, typedData], 1);
+    const target = method === 'eth_signTypedData' ? field : value, key = method === 'eth_signTypedData' ? 'value' : 'allowed';
+    Object.defineProperty(target, key, malformed === 'changed' ? { value: 'false', enumerable: true } : { value: false, enumerable: false });
+    const reads = f.credentialReads, leases = f.secretLeases, rpc = f.calls.length;
+    const request: DappMessageRequest = { method, address: selected.address, version: method === 'eth_signTypedData' ? 'V1' : method === 'eth_signTypedData_v3' ? 'V3' : 'V4', typedData };
+    await assert.rejects(async () => host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval: approval!, request }, null),
+      malformed === 'changed' ? { code: 'INVALID_INPUT' } : { code: -32602 });
+    assert.equal(f.credentialReads, reads); assert.equal(f.secretLeases, leases);
+    assert.equal(f.typedSigningRequests.length, 0); assert.equal(f.signatures.length, 0);
+    assert.equal(f.calls.length, rpc); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
+  } finally { approval?.dispose(); await f.close(); }
+});
+
+for (const method of ['eth_signTypedData_v3', 'eth_signTypedData_v4'] as const)
+test(`EOA typed domain ${method} is checked by the actual native host before secret access or SDK signing`, async () => {
+  const f = await fixture({}, true);
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  try {
+    const host = await f.runtime.openConnectionHost(), context = host.context();
+    const selected = context.accounts.find(account => account.id === context.activeAccountId)!;
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType,
+      chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: 'https://fixture.example', date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({
+      account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant,
+      network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration(),
+    }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    const reads = f.credentialReads, leases = f.secretLeases, rpc = f.calls.length;
+    const request: DappMessageRequest = { method, address: selected.address, version: method === 'eth_signTypedData_v3' ? 'V3' : 'V4', typedData: {
+      domain: { chainId: 10 }, types: { EIP712Domain: [{ name: 'chainId', type: 'uint256' }], Note: [{ name: 'text', type: 'string' }] },
+      primaryType: 'Note', message: { text: 'Another chain' },
+    } };
+    await assert.rejects(async () => host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval: approval!, request }, null), { code: -32602 });
+    assert.equal(f.credentialReads, reads); assert.equal(f.secretLeases, leases);
+    assert.equal(f.typedSigningRequests.length, 0); assert.equal(f.signatures.length, 0);
+    assert.equal(f.calls.length, rpc); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
+  } finally { approval?.dispose(); await f.close(); }
+});
+
+for (const method of ['eth_signTypedData_v3', 'eth_signTypedData_v4'] as const)
+for (const chainId of ['0x01', undefined]) test(`EOA typed domain ${method} preserves matching or absent chain ${chainId} at the actual SDK boundary`, async () => {
+  const f = await fixture({}, true);
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  try {
+    const host = await f.runtime.openConnectionHost(), context = host.context();
+    const selected = context.accounts.find(account => account.id === context.activeAccountId)!;
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType,
+      chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: 'https://fixture.example', date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({
+      account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant,
+      network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration(),
+    }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    const typedData = { domain: chainId === undefined ? {} : { chainId },
+      types: { EIP712Domain: chainId === undefined ? [] : [{ name: 'chainId', type: 'uint256' }], Note: [{ name: 'text', type: 'string' }] },
+      primaryType: 'Note', message: { text: 'Exact domain' } };
+    const version = method === 'eth_signTypedData_v3' ? 'V3' : 'V4';
+    const request: DappMessageRequest = { method, address: selected.address, version, typedData };
+    const rpc = f.calls.length;
+    const signed = await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval, request }, null);
+    assert.match(signed, /^0x[0-9a-f]{130}$/i);
+    assert.deepEqual(f.typedSigningRequests, [{ address: selected.address, typedData, version }]);
+    assert.equal(f.calls.length, rpc); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
+  } finally { approval?.dispose(); await f.close(); }
+});
+
 /** Actual continuation ownership for SDK-port tests; relay/UI qualification is separate. */
 function ownedSmartSdkHandoff(connection: Awaited<ReturnType<typeof smartMessageApproval>>, id: string, expiresAt: number, method: string) {
   const wire: WalletConnectRequest = {id:1,method,params:[],chainId:'eip155:1',freshness:'fresh',expiresAt,
@@ -4256,14 +4810,14 @@ test('actual Smart credential replacement authenticates retained SLH ciphertext 
   } finally { await f.close(); }
 });
 
-async function readyLedgerSmartOwner(count = 1) {
+async function readyLedgerSmartOwner(count = 1, passkeys: KeyringRuntimeDependencies['passkeys'] = null) {
   const device = nativeSmartLedgerDevice();
   let disconnect!: () => Promise<void>;
   const f = await fixture({}, true, null, async scope => {
     const transport = await device.factory(scope);
     disconnect = () => transport.host.disconnect();
     return transport;
-  });
+  }, undefined, passkeys);
   const picker = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'import');
   try {
     for (let index = 0; index < count; index++) {
@@ -4279,6 +4833,30 @@ async function readyLedgerSmartOwner(count = 1) {
 async function connectLedgerSmart(f: Awaited<ReturnType<typeof readyLedgerSmartOwner>>) {
   await f.connection.start(); await f.connection.select(f.connection.getSnapshot().devices[0]!.id); await f.connection.finishConnection();
 }
+
+test('Smart speed-up refuses a frozen inner gas shortfall before broadcasting', async () => {
+  const owned = await readyLedgerSmartOwner(), { f } = owned;
+  let operation: NativeSmartAccountOperation | undefined, transfers: NativeTransfers | undefined;
+  try {
+    await connectLedgerSmart(owned); f.holdReceipts(); f.deployed();
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, null);
+    await operation.prepare();
+    const stop = operation.subscribe(() => { const review = operation!.getSnapshot().payerReview; if (review) operation!.confirmPayer(review.id); });
+    try { await operation.authorize(operation.getSnapshot().revision); } finally { stop(); }
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    const original = Transaction.from(f.submitted[0]!);
+    await operation.dispose(); operation = undefined;
+    transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    await transfers.prepareSpeedUp(original.hash!);
+    const review = transfers.getSnapshot().review; assert(review, JSON.stringify(transfers.getSnapshot()));
+    f.failInnerExecution();
+    const before = f.calls.filter(method => method === 'eth_simulateV1').length;
+    await assert.rejects(transfers.confirm(review.id, { method: 'device' }));
+    assert.equal(f.calls.filter(method => method === 'eth_simulateV1').length, before + 1, 'speed-up must simulate once');
+    assert.notEqual(transfers.getSnapshot().phase, 'pending', JSON.stringify(transfers.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+  } finally { await operation?.dispose(); transfers?.dispose(); await owned.close(); }
+});
 
 test('Smart fee replacement uses only the retained software payer despite a disconnected Ledger owner', async () => {
   const owned = await readyLedgerSmartOwner(), { f, device } = owned;
@@ -5049,6 +5627,34 @@ test('local Smart Trezor wallet send resumes through a fresh operation and separ
 });
 
 
+test('native Smart cancellation Suite return reloads only the authenticated reference and retains before payer review',async()=>{
+ const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+ let original:NativeSmartAccountOperation|undefined,cancel:NativeSmartAccountOperation|undefined,resumed:NativeSmartAccountOperation|undefined;
+ try{
+  f.holdReceipts();f.checkAuthorizationAtDisclosure();
+  original=await f.runtime.openSmartAccountSend('0x'+'55'.repeat(20),{kind:'exact',amount:'0.000001'},()=>undefined,null);await original.prepare();
+  const first=original.getSnapshot(),ready=Promise.withResolvers<void>();const stop=original.subscribe(()=>{if(original!.getSnapshot().payerReview)ready.resolve();else if(original!.getSnapshot().phase==='failed')ready.reject(Error(JSON.stringify(original!.getSnapshot())));});
+  const signing=original.authorize(first.revision);await ready.promise;stop();original.cancel();await signing;await original.dispose();original=undefined;
+  cancel=await f.runtime.openSmartAccountCancellation({originalHash:first.userOperationHash!},()=>undefined,null);await cancel.prepare();const quoted=cancel.getSnapshot();
+  assert.equal(quoted.authorization!.nonce,first.authorization!.nonce);
+  device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){
+   f.recordFinancialProof(quoted.userOperationHash!,device.signatures.at(-1)!.signature);entered.resolve();await release.promise;
+  }});
+  const revoking=cancel.authorize(quoted.revision);await Promise.race([entered.promise,revoking.then(()=>{throw Error('Expected cancellation Suite departure');})]);
+  cancel.background();f.runtime.trezor.background();f.owner.lock();await revoking;release.resolve();await new Promise(resolve=>setImmediate(resolve));
+  await f.owner.unlock();const draft=await f.runtime.trezor.resumeSend();assert.equal(draft.kind,'smart-operation');
+  resumed=await f.runtime.resumeSmartAccountOperation(draft.id,new AbortController().signal,()=>undefined,null);await resumed.prepare();
+  const resumedState=resumed.getSnapshot();assert.equal(resumedState.phase,'authorize',JSON.stringify(resumedState));assert.deepEqual(resumedState.intent.kind==='cancel-operation'&&resumedState.intent.reference,{originalHash:first.userOperationHash});
+  assert.equal(resumed.getSnapshot().userOperationHash,quoted.userOperationHash);assert.equal(device.signatures.length,2);
+  const payerReady=Promise.withResolvers<void>();const unwatch=resumed.subscribe(()=>{const state=resumed!.getSnapshot();if(state.payerReview)payerReady.resolve();else if(state.phase==='failed')payerReady.reject(Error(JSON.stringify(state)));});
+  const continuation=resumed.authorize(resumed.getSnapshot().revision);await payerReady.promise;unwatch();
+  assert.equal(device.signatures.length,2,'accepted cancellation device proof is reused only for the same rebuilt intent');
+  const page=await f.runtime.listSmartAccountAuthorizations({maximum:20},new AbortController().signal,()=>undefined);assert.equal(page.entries.length,2);assert.equal(page.entries[0]!.replacesOperationHash,first.userOperationHash);
+  assert(f.signedDisclosures.some(value=>value.operationHash===quoted.userOperationHash));assert.equal(f.submitted.length,0);assert.equal(f.payerSignatures.length,0);f.assertNoSigningKeys();
+  resumed.cancel();await continuation;
+ }finally{release.resolve();await original?.dispose();await cancel?.dispose();await resumed?.dispose();await close();}
+});
+
 async function suspendedLocalTrezorSend(bundle:Awaited<ReturnType<typeof readyTrezorSmartOwner>>){
   const {f,device}=bundle,entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
   let operation:NativeSmartAccountOperation|undefined;
@@ -5299,7 +5905,9 @@ test('module management composite uses shared execution and reconciles its exact
     f.onBroadcast(() => f.observedCompositeChildren(children));
     await confirmModuleOperation(operation);
     assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
-    assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1);
+    assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 2);
+    assert.equal(f.possessionViews.length, 1);
+    assert.notEqual(f.signatures[0]!.digest, f.signatures[1]!.digest, 'possession cannot authorize the financial UserOp');
     const observed = await f.runtime.readSmartAccountModules(new AbortController().signal, () => undefined);
     assert.equal(observed.auth?.module, 'composite');
     assert.equal(f.runtime.canSignSmartAccount(), true);
@@ -6074,4 +6682,684 @@ test('unknown additive Passkey receipt survives cold reopen and the same profile
       request:{method:'personal_sign',address:connection.selected.address,message:'Retained Combined passkey'}},binding);
     assert.equal(assertions,1);assert.equal(creates,1);assert.equal(f.submitted.length,1);f.assertNoSigningKeys();
   } finally {scope.retire();connection?.approval.dispose();await operation?.dispose();await f.close();}
+});
+
+for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`sponsored native final admission rejects credit loss during ${boundary}`, async () => {
+  let loseCredit: (() => void) | undefined;
+  const f = await fixture({ after(kind, sql) {
+    if (boundary === 'payer-persistence' && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && loseCredit) { loseCredit(); loseCredit = undefined; }
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.selectNetwork('zksys-testnet');
+    await f.change({ kind: 'create-smart', label: 'Late sponsored admission' });
+    f.fundedSmart(); f.deployed(); f.holdReceipts(); f.gasSponsored();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview; assert(review, JSON.stringify(operation.getSnapshot()));
+    assert.equal(review.coveredFeeUnits, review.maximumFeeUnits);
+    let changed = false;
+    const mutate = () => { changed = true; f.loseGasCredit(); };
+    if (boundary === 'payer-signing') f.onPayerSignature(mutate); else loseCredit = mutate;
+    operation.confirmPayer(review.id); await sending;
+    assert(changed);
+    assert.equal(f.payerSignatures.length, 1);
+    assert.equal(f.submitted.length, 0);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+test('unknown pending payer transaction stops preparation before signing and can be retried after confirmation', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Pending payer' });
+    f.fundedSmart(); f.deployed(); f.externalPayerPending(1);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.match(operation.getSnapshot().error!, /earlier fee-payer transaction must confirm/);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.payerSignatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+    await operation.dispose();
+    f.initialEoaNonce(1); f.externalPayerPending(0);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
+for (const sponsored of [false, true]) test(`counted native warm Smart payer phases (${sponsored ? 'sponsored' : 'ordinary'})`, async () => {
+  const f = await fixture({}, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    if (sponsored) await f.selectNetwork('zksys-testnet');
+    await f.change({ kind: 'create-smart', label: 'Counted payer phases' });
+    f.fundedSmart(); f.deployed();
+    f.mutateSelectedSmart(account => {
+      account.smartAccount!.isDeployed = true;
+      account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(Number(account.smartAccount!.chainId), 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
+    });
+    f.deployed(); f.holdReceipts();
+    if (sponsored) f.gasSponsored();
+    f.calls.length = 0; f.rpcBatches.length = 0;
+    const measure = () => ({ methods: f.calls.length,
+      http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
+      chains: f.calls.filter(method => method === 'eth_chainId').length });
+    const delta = (before: ReturnType<typeof measure>) => { const after = measure(); return { methods: after.methods - before.methods, http: after.http - before.http, chains: after.chains - before.chains }; };
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    const start = measure(); await operation.prepare(); const preparation = delta(start);
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    const reviewed = measure(); const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview; assert(review, JSON.stringify(operation.getSnapshot()));
+    const payerReview = delta(reviewed), confirmed = measure();
+    const payerMethods = f.calls.slice(reviewed.methods);
+    assert.equal(payerMethods.filter(method => method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas').length, 0);
+    assert.deepEqual(payerReview, { methods: 15, http: 11, chains: 4 });
+    operation.confirmPayer(review.id); await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    // Includes one early simulation capability check and the exact canonical payer nonce.
+    assert.deepEqual(measure(), { methods: 57, http: sponsored ? 42 : 39, chains: 10 });
+    console.log('NATIVE_PHASE_COUNTS', JSON.stringify({ sponsored, preparation, payerReview, confirmation: delta(confirmed), total: measure() }));
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`Smart final admission refuses a larger inner estimate after ${boundary}`, async () => {
+  let afterPersist: (() => void) | undefined;
+  const f = await fixture({ after(kind, sql) {
+    if (kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records')) afterPersist?.();
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Inner gas admission' });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    f.mutateSelectedSmart(account => {
+      account.smartAccount!.isDeployed = true;
+      account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(Number(account.smartAccount!.chainId), 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
+    });
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview;
+    assert(review, JSON.stringify(operation.getSnapshot()));
+    if (boundary === 'payer-signing') f.onPayerSignature(f.increaseInnerGas);
+    else afterPersist = f.increaseInnerGas;
+    operation.confirmPayer(review.id); await sending;
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.payerSignatures.length, 1);
+    assert.equal(f.submitted.length, 0);
+    await assertRetainedSmartSendRecords(f, 1);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const)
+for (const codeBytes of [1, 20 * 1024]) test(`counted native Smart asset payer phases (${standard}, code ${codeBytes})`, async () => {
+  const f = await fixture({}, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Counted asset' });
+    const contractAddress = '0x5555555555555555555555555555555555555555';
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    if (standard === 'ERC20') {
+      f.tokenBalance(contractAddress, 9n, 0);
+      await f.runtime.tokens!.add(registry.revision, { contractAddress, name: 'Asset', symbol: 'ASSET', decimals: 0 }, () => undefined);
+    } else {
+      f.nftBalance(contractAddress, standard, 9n);
+      await f.runtime.tokens!.addCollectible!(registry.revision, standard === 'ERC-721'
+        ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, () => undefined);
+    }
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    f.assetCode(contractAddress, codeBytes);
+    f.mutateSelectedSmart(account => {
+      account.smartAccount!.isDeployed = true;
+      account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(Number(account.smartAccount!.chainId), 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
+    });
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', standard === 'ERC20'
+      ? { kind: 'erc20', contractAddress, amount: '1' }
+      : { kind: 'nft', collectible: standard === 'ERC-721'
+        ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, tokenId: '0', amountUnits: '1' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview; assert(review, JSON.stringify(operation.getSnapshot()));
+    f.calls.length = 0; f.rpcBatches.length = 0;
+    operation.confirmPayer(review.id); await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    const counts = { methods: f.calls.length,
+      http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
+      chains: f.calls.filter(method => method === 'eth_chainId').length };
+    // The final canonical check is fresh even when this phase already read its parent.
+    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 33 : 35, http: standard === 'ERC20' ? 23 : 27, chains: 4 });
+    console.log('NATIVE_ASSET_CONFIRM_COUNTS', JSON.stringify({ standard, ...counts }));
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const)
+for (const boundary of ['payer-review', 'payer-signing', 'payer-persistence'] as const)
+test(`deployed Smart ${standard} final admission rejects asset loss during ${boundary}`, async () => {
+  let loseBalance: (() => void) | undefined, changed = false;
+  const f = await fixture({ after(kind, sql) {
+    if (boundary === 'payer-persistence' && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && loseBalance) {
+      loseBalance(); loseBalance = undefined;
+    }
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Late asset loss' });
+    const contractAddress = '0x5555555555555555555555555555555555555555';
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    if (standard === 'ERC20') {
+      f.tokenBalance(contractAddress, 9n, 0);
+      await f.runtime.tokens!.add(registry.revision, { contractAddress, name: 'Asset', symbol: 'ASSET', decimals: 0 }, () => undefined);
+    } else {
+      f.nftBalance(contractAddress, standard, 9n);
+      await f.runtime.tokens!.addCollectible!(registry.revision, standard === 'ERC-721'
+        ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, () => undefined);
+    }
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', standard === 'ERC20'
+      ? { kind: 'erc20', contractAddress, amount: '1' }
+      : { kind: 'nft', collectible: standard === 'ERC-721'
+        ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, tokenId: '0', amountUnits: '1' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview; assert(review, JSON.stringify(operation.getSnapshot()));
+    const lose = () => {
+      changed = true;
+      if (standard === 'ERC20') f.tokenBalance(contractAddress, 0n, 0);
+      else f.nftBalance(contractAddress, standard, 0n);
+    };
+    if (boundary === 'payer-review') lose();
+    else if (boundary === 'payer-signing') f.onPayerSignature(lose);
+    else loseBalance = lose;
+    operation.confirmPayer(review.id); await sending;
+    assert(changed);
+    assert.equal(f.payerSignatures.length, boundary === 'payer-review' ? 0 : 1);
+    assert.equal(f.submitted.length, 0);
+    assert.equal(operation.getSnapshot().phase, 'failed', JSON.stringify(operation.getSnapshot()));
+    await assertRetainedSmartSendRecords(f, boundary === 'payer-review' ? 0 : 1);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const standard of ['native', 'ERC20', 'ERC-721', 'ERC-1155'] as const)
+for (const codeBytes of standard === 'native' ? [1] : [1, 20 * 1024]) test(`counted actual native EOA transfer (${standard}, code ${codeBytes})`, async () => {
+  const f = await fixture({}, true);
+  const transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+  try {
+    const contractAddress = '0x5555555555555555555555555555555555555555';
+    const recipient = '0x2222222222222222222222222222222222222222';
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    if (standard === 'ERC20') {
+      f.tokenBalance(contractAddress, 9n, 0);
+      await f.runtime.tokens!.add(registry.revision, { contractAddress, name: 'Asset', symbol: 'ASSET', decimals: 0 }, () => undefined);
+    } else if (standard !== 'native') {
+      f.nftBalance(contractAddress, standard, 9n);
+      await f.runtime.tokens!.addCollectible!(registry.revision, standard === 'ERC-721'
+        ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, () => undefined);
+    }
+    if (standard !== 'native') f.assetCode(contractAddress, codeBytes);
+    f.holdReceipts(); f.calls.length = 0; f.rpcBatches.length = 0;
+    const measure = () => ({ methods: f.calls.length,
+      http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
+      chains: f.calls.filter(method => method === 'eth_chainId').length });
+    if (standard === 'native') await transfers.prepare(recipient, '0.000000000000000001');
+    else if (standard === 'ERC20') await transfers.prepareToken(contractAddress, recipient, '1');
+    else await transfers.prepareCollectible(standard === 'ERC-721'
+      ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, recipient, '0', '1');
+    const review = transfers.getSnapshot().review; assert(review, JSON.stringify(transfers.getSnapshot()));
+    const preparation = measure(); f.calls.length = 0; f.rpcBatches.length = 0;
+    await transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.submitted.length, 1, JSON.stringify(transfers.getSnapshot()));
+    assert.deepEqual(preparation, standard === 'native'
+      ? { methods: 12, http: 7, chains: 2 } : { methods: 17, http: 12, chains: 2 });
+    assert.deepEqual(measure(), standard === 'native'
+      ? { methods: 21, http: 13, chains: 4 }
+      : { methods: 31, http: 23, chains: 4 });
+    console.log('NATIVE_EOA_COUNTS', JSON.stringify({ standard, preparation, confirm: measure() }));
+  } finally { transfers.dispose(); await f.close(); }
+});
+
+
+for (const boundary of ['prepare', 'owner-signing', 'after-owner-signing', 'payer-review', 'payer-signing', 'payer-persistence'] as const)
+test(`Smart ERC20 reviewed precision rejects changes at ${boundary}`, async () => {
+  let changePrecision: (() => void) | undefined;
+  const f = await fixture({ after(kind, sql) {
+    if (boundary === 'payer-persistence' && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && changePrecision) {
+      changePrecision(); changePrecision = undefined;
+    }
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Precision admission' });
+    const token = { contractAddress: '0x5555555555555555555555555555555555555555', name: 'Token', symbol: 'TKN', decimals: 0 };
+    f.tokenBalance(token.contractAddress, 9n, 0);
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.add(registry.revision, token, () => undefined);
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'erc20', contractAddress: token.contractAddress, amount: '1' }, () => undefined, null);
+    const change = () => f.tokenBalance(token.contractAddress, 9n, 18);
+    if (boundary === 'prepare') change();
+    await operation.prepare();
+    if (boundary !== 'prepare') {
+      assert.equal(operation.getSnapshot().phase, 'authorize');
+      if (boundary === 'owner-signing') change();
+      if (boundary === 'after-owner-signing') f.onSignature(change);
+      const sending = operation.authorize(operation.getSnapshot().revision);
+      if (boundary !== 'owner-signing') {
+        for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+        const review = operation.getSnapshot().payerReview;
+        if (boundary.startsWith('payer-')) assert(review, JSON.stringify(operation.getSnapshot()));
+        if (boundary === 'payer-review') change();
+        if (boundary === 'payer-signing') f.onPayerSignature(change);
+        if (boundary === 'payer-persistence') changePrecision = change;
+        if (review) operation.confirmPayer(review.id);
+      }
+      await sending;
+    }
+    assert.equal(operation.getSnapshot().phase, 'failed', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 0);
+    assert.equal(f.signatures.length, boundary === 'prepare' || boundary === 'owner-signing' ? 0 : 1);
+    if (boundary === 'payer-signing' || boundary === 'payer-persistence') {
+      assert.equal(f.payerSignatures.length, 1);
+      await assertRetainedSmartSendRecords(f, 1);
+    }
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+test('Smart approval display observes a repeated token contract once per request', async () => {
+  const f = await fixture({}, true);
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Repeated display metadata' });
+    const contract = '0x' + '66'.repeat(20);
+    f.tokenBalance(contract, 9n, 18);
+    const host = await f.runtime.openConnectionHost();
+    const selected = host.context().accounts.find(account => account.type === 'SmartAccount')!;
+    const origin = 'https://metadata.example', bundleId = '0x0103', reservationId = 'metadata';
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType, chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: origin, date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({ account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant, network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration() }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    assert.equal(await host.calls.reserveSendCallsBundle(origin, bundleId, { atomic: true, smartAccount: true, chainId: 1 }, reservationId, selected.address), true);
+    const abi = new Interface(['function approve(address,uint256)', 'function transfer(address,uint256)']);
+    const calls = [{ to: contract, data: '0x12345678', value: '0x0' },
+      { to: contract, data: abi.encodeFunctionData('approve', ['0x' + '22'.repeat(20), 7]), value: '0x0' },
+      { to: contract, data: abi.encodeFunctionData('transfer', ['0x' + '33'.repeat(20), 8]), value: '0x0' }];
+    f.calls.length = 0; f.rpcBatches.length = 0;
+    const prepared = await host.prepareCalls({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', calls: { version: '2.0.0', from: selected.address, chainId: '0x1', atomicRequired: true, calls }, origin, bundleId, reservationId, approval }, () => undefined, null);
+    operation = prepared.operation;
+    assert.equal(f.calls.filter(method => method === 'eth_getCode').length, 1);
+    assert.equal(f.calls.filter(method => method === 'eth_chainId').length, 2);
+    assert.equal(f.calls.length, 11);
+    assert.equal(f.calls.length - f.rpcBatches.reduce((total, batch) => total + batch.length - 1, 0), 5);
+    assert.equal(prepared.batchApprovals?.[0], null);
+    assert.equal(prepared.batchApprovals?.[1]?.amountUnits, '7');
+    assert.equal(prepared.batchAssetTransfers?.[2]?.items[0]?.units, '8');
+    assert.equal(f.submitted.length, 0);
+    operation.dispose();
+    f.calls.length = 0; f.rpcBatches.length = 0;
+    const repeated = await host.prepareCalls({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', calls: { version: '2.0.0', from: selected.address, chainId: '0x1', atomicRequired: true, calls }, origin, bundleId, reservationId, approval }, () => undefined, null);
+    operation = repeated.operation;
+    assert.equal(f.calls.length, 11, 'a subsequent request must reobserve its own metadata');
+    assert.equal(f.calls.filter(method => method === 'eth_chainId').length, 2);
+  } finally { operation?.dispose(); approval?.dispose(); await f.close(); }
+});
+
+for (const count of [1, 10, 20]) test(`Smart ERC20 batch classification groups ${count} independent contracts`, async () => {
+  const f = await fixture({}, true);
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Counted asset batch' });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    f.mutateSelectedSmart(account => {
+      account.smartAccount!.isDeployed = true;
+      account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(1, 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
+    });
+    const contracts = Array.from({ length: count }, (_, i) => '0x' + (100 + i).toString(16).padStart(40, '0'));
+    contracts.forEach(contract => f.tokenBalance(contract, 9n, 18));
+    const host = await f.runtime.openConnectionHost(), selected = host.context().accounts.find(account => account.type === 'SmartAccount')!;
+    const origin = 'https://batch.example', bundleId = '0x0102', reservationId = 'reserved';
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType, chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: origin, date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({ account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant, network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration() }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    assert.equal(await host.calls.reserveSendCallsBundle(origin, bundleId, { atomic: true, smartAccount: true, chainId: 1 }, reservationId, selected.address), true);
+    const calls = contracts.map(to => ({ to, value: '0x0', data: new Interface(['function transfer(address,uint256)']).encodeFunctionData('transfer', ['0x2222222222222222222222222222222222222222', 1]) }));
+    const prepared = await host.prepareCalls({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', calls: { version: '2.0.0', from: selected.address, chainId: '0x1', atomicRequired: true, calls }, origin, bundleId, reservationId, approval }, () => undefined, null);
+    operation = prepared.operation;
+    f.calls.length = 0; f.rpcBatches.length = 0;
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+    const classification = f.rpcBatches.filter(batch => batch.length === count * 2 && batch.every(method => method === 'eth_call'));
+    assert.equal(classification.length, 1, JSON.stringify(f.rpcBatches));
+    const counts = { methods: f.calls.length, http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0) };
+    console.log('SMART_BATCH_CLASSIFICATION_COUNTS', JSON.stringify({ count, ...counts }));
+  } finally { operation?.dispose(); approval?.dispose(); await f.close(); }
+});
+
+async function combinedPossessionFixture(signProof: (index:number) => string = () => mixedPasskeyProof) {
+  let f!: Awaited<ReturnType<typeof fixture>>, prompt = false;
+  let assertion: ((request: Parameters<NonNullable<KeyringRuntimeDependencies['passkeys']>['sign']>[0]) => Promise<void>) | undefined;
+  const hashes: string[] = [];
+  const scope = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('No credential creation during policy proof'); },
+    async recover() { throw Error('No credential replacement during policy proof'); },
+    async sign(request) {
+      prompt = true;
+      try { request.assertCurrent(); f.assertNoSigningKeys(); hashes.push(request.actionHash); await assertion?.(request); request.assertCurrent(); const signature=signProof(hashes.length); f.recordFinancialProof(request.actionHash,signature); return { signature }; }
+      finally { prompt = false; }
+    },
+  };
+  f = await fixture({}, true, null, undefined, undefined, passkeys);
+  try {
+    await f.change({ kind: 'create-smart', label: 'Combined possession' });
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.observedPasskey(); f.retainActiveValidator('ecdsa');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    return { f, binding, hashes, assertion(work: NonNullable<typeof assertion>) { assertion = work; },
+      async close() { scope.retire(); await f.close(); } };
+  } catch (error) { scope.retire(); await f.close(); throw error; }
+}
+
+for(const policy of ['p256','composite'] as const)test(`native repeated ${policy} cancellation resolves the first retained randomized proof before disclosure`,async()=>{
+ const proofs:string[]=[];
+ const {f,binding,hashes,close}=await combinedPossessionFixture(index=>{
+  const signature=encodePasskeyWebAuthnProof({authenticatorData:'0x'+'01'.repeat(37),clientDataJSON:'0x'+'02'.repeat(128),
+   typeOffset:1,challengeOffset:2,originOffset:3,r:'0x'+index.toString(16).padStart(64,'0'),s:'0x'+'04'.repeat(32)});
+  proofs.push(signature);return signature;
+ });
+ let operation:NativeSmartAccountOperation|undefined;
+ const decline=async()=>{
+  const ready=Promise.withResolvers<void>();const stop=operation!.subscribe(()=>{const state=operation!.getSnapshot();if(state.payerReview)ready.resolve();else if(state.phase==='failed')ready.reject(Error(JSON.stringify(state)));});
+  const pending=operation!.authorize(operation!.getSnapshot().revision);await ready.promise;stop();operation!.cancel();await pending;await operation!.dispose();operation=undefined;
+ };
+ try{
+  f.guardianStatus('no-policy');f.holdReceipts();f.checkAuthorizationAtDisclosure();
+  if(policy==='p256')f.retainActiveValidator('p256-webauthn');
+  else{f.observedEcdsaOwners(['0x'+'77'.repeat(20)],1);f.observedComposite(1,false);f.retainActiveValidator('composite');}
+  await f.runtime.refreshSmartAccountMetadata(new AbortController().signal,()=>undefined);
+  const smart=f.owner.getSnapshot().account!;
+  operation=await f.runtime.openSmartAccountSend('0x'+'22'.repeat(20),{kind:'exact',amount:'0.000000000000000009'},()=>undefined,binding);
+  await operation.prepare();const original=operation.getSnapshot();await decline();
+  const reference={originalHash:original.userOperationHash!};
+  operation=await f.runtime.openSmartAccountCancellation(reference,()=>undefined,binding);await operation.prepare();
+  const first=operation.getSnapshot();assert.equal(first.phase,'authorize',JSON.stringify(first));await decline();
+  const identity=(await f.storage.recovery.readIdentity())!.root!,encrypted=await f.storage.signedRecords.read(identity.profileId);assert(encrypted);
+  const records=new EvmSignedRecords(f.storage.signedRecords),session={keyring:f.sdkHost.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1','org.syscoin.pali.evm.signed.chunk.v1','org.syscoin.pali.utxo.signed.root.v1','org.syscoin.pali.utxo.signed.chunk.v1']),assertCurrent:()=>assert(f.sdkHost.hasPublicSession())};
+  const retained=await records.readSmartAccountAuthorizationExact(session,'1',smart.address,first.userOperationHash!);assert(retained);
+  assert.equal(retained.replacesOperationHash,original.userOperationHash);assert(retained.userOperation.signature.includes(proofs[1]!.slice(2)));
+  const start=f.signedDisclosures.length,reads=f.credentialReads;
+  operation=await f.runtime.openSmartAccountCancellation(reference,()=>undefined,binding);await operation.prepare();
+  assert.equal(operation.getSnapshot().userOperationHash,first.userOperationHash);await decline();
+  assert.equal(hashes.length,3);assert.notEqual(proofs[1],proofs[2]);
+  assert.equal(f.credentialReads-reads,0,'passkey proof and journal reuse their existing capabilities; declining payer review never opens an OS secret lease');
+  assert.equal(await f.storage.signedRecords.read(identity.profileId),encrypted,'repeat proof cannot overwrite the first authenticated no-op bytes');
+  const disclosed=f.signedDisclosures.slice(start);assert(disclosed.length>0);
+  assert(disclosed.every(value=>value.operationHash===retained.operationHash&&value.signature===retained.userOperation.signature));
+  assert(disclosed.every(value=>!value.signature.includes(proofs[2]!.slice(2))),'unstored randomized proof never reaches estimation/simulation');
+  assert.equal(JSON.parse(encrypted).authorizations.length,2);assert.equal(JSON.parse(encrypted).entries.length,0);assert.equal(f.submitted.length,0);assert.equal(f.payerSignatures.length,0);f.assertNoSigningKeys();
+ }finally{await operation?.dispose();await close();}
+});
+
+for (const threshold of [1, 2]) test(`combined possession rejects unavailable required passkey before current-policy signing (threshold ${threshold})`, async () => {
+  const { f, binding, hashes, assertion, close } = await combinedPossessionFixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    assertion(async () => { throw new DOMException('Credential unavailable or cancelled', 'NotAllowedError'); });
+    const passkey = getConfiguredAuthenticatorAddress(1, 'p256-webauthn');
+    const children = threshold === 1 ? [passkey] : [getConfiguredAuthenticatorAddress(1, 'ecdsa'), passkey];
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children, threshold }, new AbortController().signal, () => undefined, binding);
+    await operation.prepare(); const hash = operation.getSnapshot().userOperationHash;
+    assert.equal(operation.getSnapshot().phase, 'authorize'); assert(operation.getSnapshot().maximumPrefundUnits);
+    assert.equal(hashes.length, 0); assert.equal(f.signatures.length, 0, 'initial numerical fee consent precedes all possession work');
+    await authorizeReviewedModule(operation);
+    assert.equal(operation.getSnapshot().phase, 'failed'); assert.equal(hashes.length, 1);
+    assert.equal(f.signatures.length, threshold - 1); assert(f.signatures.every(entry => entry.digest !== hash));
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.auth.module, 'ecdsa');
+  } finally { await operation?.dispose(); await close(); }
+});
+
+test('combined possession optional lost passkey permits later transfer and policy repair with original child slots', async () => {
+  const { f, binding, hashes, assertion, close } = await combinedPossessionFixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    assertion(async () => { throw Error('The optional passkey must not be requested'); });
+    const children = [getConfiguredAuthenticatorAddress(1, 'p256-webauthn'), getConfiguredAuthenticatorAddress(1, 'ecdsa')];
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children, threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    f.onBroadcast(() => { f.observedCompositeChildren(children); f.retainActiveValidator('composite'); });
+    await confirmModuleOperation(operation);
+    assert.equal(hashes.length, 0); assert.equal(f.possessionViews.length, 1); assert.equal(f.signatures.length, 2);
+    assert.notEqual(f.signatures[0]!.digest, f.signatures[1]!.digest);
+    await operation.dispose(); operation = undefined;
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, binding);
+    await confirmPolicyOperation(operation);
+    assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 2); assert.equal(hashes.length, 0);
+    const [sent] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[1]!).data);
+    const [sentSlots] = coder.decode(['bytes[]'], sent[0].signature);
+    assert.deepEqual([...sentSlots], ['0x', f.signatures[2]!.signature], 'the working second child keeps its original contract index');
+    await operation.dispose(); operation = undefined;
+    const repaired = [getConfiguredAuthenticatorAddress(1, 'ecdsa')];
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: repaired, threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    f.onBroadcast(() => { f.observedCompositeChildren(repaired); f.retainActiveValidator('composite'); });
+    await confirmModuleOperation(operation);
+    assert.equal(f.submitted.length, 3); assert.equal(hashes.length, 0); assert.equal(f.possessionViews.length, 2);
+    const [repair] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[2]!).data);
+    const [repairSlots] = coder.decode(['bytes[]'], repair[0].signature);
+    assert.deepEqual([...repairSlots], ['0x', f.signatures[4]!.signature], 'repair is signed by the still-active old policy before changing its children');
+    const observed = await f.runtime.readSmartAccountModules(new AbortController().signal, () => undefined);
+    const composite = observed.installedModules?.find(module => module.type === 'validator' && module.id === 'composite');
+    assert(composite?.type === 'validator' && composite.id === 'composite');
+    assert.deepEqual(composite.config.childValidators.map(address => address.toLowerCase()), repaired.map(address => address.toLowerCase()));
+  } finally { await operation?.dispose(); await close(); }
+});
+
+for (const admitted of [false, true]) test(`combined possession requires installed passkey verification with no credential hint (valid ${admitted})`, async () => {
+  const { f, binding, hashes, assertion, close } = await combinedPossessionFixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    const passkey = getConfiguredAuthenticatorAddress(1, 'p256-webauthn');
+    assertion(async request => { assert.equal(request.credentialId, undefined); assert.equal(request.expectedPublicKey.x, '0x' + '01'.repeat(32)); });
+    f.verifyPossessionWith((validator, hash, proof) => {
+      assert.equal(validator, passkey.toLowerCase()); assert.equal(hash, hashes[0]); assert.equal(proof, mixedPasskeyProof);
+      assert.equal(f.signatures.length, 0, 'the current policy cannot sign before child verification');
+      return admitted;
+    });
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [passkey], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    if (admitted) {
+      f.onBroadcast(() => { f.observedCompositeChildren([passkey]); f.retainActiveValidator('composite'); });
+      await confirmModuleOperation(operation); assert.equal(f.signatures.length, 1); assert.equal(f.submitted.length, 1);
+      assert.notEqual(hashes[0], f.signatures[0]!.digest);
+    } else {
+      await operation.prepare(); await authorizeReviewedModule(operation);
+      assert.equal(operation.getSnapshot().phase, 'failed'); assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    }
+    assert.equal(hashes.length, 1); assert.equal(f.possessionViews.length, 1);
+  } finally { await operation?.dispose(); await close(); }
+});
+
+for (const changed of ['nonce', 'lock', 'source configuration'] as const) test(`combined possession rechecks ${changed} after a held proposed proof`, async () => {
+  const { f, binding, assertion, close } = await combinedPossessionFixture();
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    assertion(async () => { entered.resolve(); await release.promise; });
+    f.verifyPossessionWith(() => true);
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [getConfiguredAuthenticatorAddress(1, 'p256-webauthn')], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    await operation.prepare(); const authorizing = authorizeReviewedModule(operation);
+    await Promise.race([entered.promise, authorizing.then(() => { throw Error('Expected held assertion'); })]);
+    if (changed === 'nonce') f.advanceSmartNonce();
+    else if (changed === 'lock') f.owner.lock();
+    else f.mutateSelectedSmart(account => { account.smartAccount!.auth = { ...account.smartAccount!.auth!, data: encodeEcdsaValidatorInitData(['0x' + '88'.repeat(20)], 1) }; });
+    release.resolve(); await authorizing;
+    assert.equal(operation.getSnapshot().phase, 'failed'); assert.equal(f.signatures.length, 0); assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { release.resolve(); await operation?.dispose(); await close(); }
+});
+
+test('combined possession retains the passkey phase and exact challenge across current Trezor Suite return', async () => {
+  let assertions = 0, prompt = false;
+  const hashes: string[] = [], entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const auth = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(auth, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('No new credential'); }, async recover() { throw Error('No replacement credential'); },
+    async sign(request) { prompt = true; try { request.assertCurrent(); assertions++; hashes.push(request.actionHash); return { signature: mixedPasskeyProof }; } finally { prompt = false; } },
+  };
+  const { f, device, close } = await readyTrezorSmartOwner(null, 1, passkeys);
+  let original: NativeSmartAccountOperation | undefined, resumed: NativeSmartAccountOperation | undefined;
+  try {
+    const passkey = getConfiguredAuthenticatorAddress(1, 'p256-webauthn');
+    f.observedPasskey(); f.retainActiveValidator('ecdsa');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    f.verifyPossessionWith((validator, hash, proof) => {
+      assert.equal(validator, passkey.toLowerCase()); assert.equal(hash, hashes[0]); assert.equal(proof, mixedPasskeyProof); return true;
+    });
+    device.onBeforeCallback(async request => { if (request.method === 'ethereumSignTypedData') { entered.resolve(); await release.promise; } });
+    original = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [passkey], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    await original.prepare(); const originalHash = original.getSnapshot().userOperationHash;
+    assert.equal(assertions, 0, 'the initial numerical fee review precedes possession');
+    const signing = authorizeReviewedModule(original);
+    await Promise.race([entered.promise, signing.then(() => { throw Error('Expected Suite departure'); })]);
+    assert.equal(assertions, 1); assert.equal(f.possessionViews.length, 1);
+    assert.notEqual(hashes[0], originalHash);
+    original.background(); f.runtime.trezor.background(); f.owner.lock(); await signing;
+    release.resolve(); await new Promise(resolve => setImmediate(resolve)); assert.equal(device.sessions.getSnapshot()?.phase, 'response-ready');
+    await f.owner.unlock(); const resume = await f.runtime.trezor.resumeSend(); assert.equal(resume.kind, 'smart-operation');
+    resumed = await f.runtime.resumeSmartAccountOperation(resume.id, new AbortController().signal, () => undefined, binding);
+    await resumed.prepare(); assert.equal(resumed.getSnapshot().phase, 'authorize'); assert.equal(resumed.getSnapshot().userOperationHash, originalHash);
+    const opened = device.urls.length;
+    f.onBroadcast(() => { f.observedCompositeChildren([passkey]); f.retainActiveValidator('composite'); });
+    const authorizing = authorizeReviewedModule(resumed);
+    for (let index = 0; index < 1000 && !resumed.getSnapshot().payerReview && resumed.getSnapshot().phase !== 'failed'; index++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(resumed.getSnapshot().payerReview, JSON.stringify(resumed.getSnapshot()));
+    assert.equal(assertions, 1, 'a retained non-Trezor possession phase is not requested again after Suite return');
+    assert.equal(device.urls.length, opened); assert.equal(device.signatures.length, 1);
+    assert.equal(f.submitted.length, 0); resumed.confirmPayer(resumed.getSnapshot().payerReview!.id); await authorizing;
+    assert.equal(resumed.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 1);
+  } finally { release.resolve(); auth.retire(); await original?.dispose(); await resumed?.dispose(); await close(); }
+});
+
+test('combined possession connects only the proposed inactive Ledger owner and keeps transaction/payer reviews separate', async () => {
+  let assertions = 0, prompt = false;
+  const auth = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(auth, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('No new credential'); }, async recover() { throw Error('No replacement credential'); },
+    async sign(request) { prompt = true; try { request.assertCurrent(); assertions++; return { signature: mixedPasskeyProof }; } finally { prompt = false; } },
+  };
+  const owned = await readyLedgerSmartOwner(1, passkeys), { f, device } = owned;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    f.observedPasskey(); f.retainActiveValidator('p256-webauthn');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), []);
+    const ecdsa = getConfiguredAuthenticatorAddress(1, 'ecdsa');
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [ecdsa], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);
+    assert.equal(f.runtime.ledger.isConnected(), false); await connectLedgerSmart(owned); assert.equal(f.runtime.ledger.isConnected(), true);
+    await operation.prepare(); assert.equal(device.signatures.length, 0); assert.equal(assertions, 0);
+    f.onBroadcast(() => { f.observedCompositeChildren([ecdsa]); f.retainActiveValidator('composite'); });
+    await confirmModuleOperation(operation);
+    assert.equal(device.signatures.length, 1); assert.equal(f.possessionViews.length, 1); assert.equal(assertions, 1);
+    assert.equal(device.signatures[0]!.digest, f.possessionViews[0]!.hash);
+    assert.notEqual(device.signatures[0]!.digest, operation.getSnapshot().userOperationHash);
+    assert.equal(f.submitted.length, 1); assert.equal(f.payerSignatures.length, 1);
+  } finally { auth.retire(); await operation?.dispose(); await owned.close(); }
+});
+
+test('combined possession proves a proposed inactive Trezor validator before the current passkey signs', async () => {
+  const hashes: string[] = []; let prompt = false;
+  const auth = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(auth, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('No new credential'); }, async recover() { throw Error('No replacement credential'); },
+    async sign(request) { prompt = true; try { request.assertCurrent(); hashes.push(request.actionHash); return { signature: mixedPasskeyProof }; } finally { prompt = false; } },
+  };
+  const { f, device, close } = await readyTrezorSmartOwner(null, 1, passkeys);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    f.observedPasskey(); f.retainActiveValidator('p256-webauthn');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    const ecdsa = getConfiguredAuthenticatorAddress(1, 'ecdsa');
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [ecdsa], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize'); assert.equal(device.signatures.length, 0); assert.equal(hashes.length, 0);
+    f.onBroadcast(() => { f.observedCompositeChildren([ecdsa]); f.retainActiveValidator('composite'); });
+    const authorizing = authorizeReviewedModule(operation);
+    for (let index = 0; index < 1000 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; index++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    assert.equal(device.signatures.length, 1); assert.equal(f.possessionViews.length, 1); assert.equal(hashes.length, 1);
+    const signed = device.signatures[0]!.data, types = { ...signed.types }; delete types.EIP712Domain;
+    const digest = TypedDataEncoder.hash(signed.domain, types, signed.message);
+    assert.equal(digest, f.possessionViews[0]!.hash); assert.notEqual(digest, hashes[0]);
+    assert.equal(hashes[0], operation.getSnapshot().userOperationHash); assert.equal(f.submitted.length, 0);
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await authorizing; assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 1);
+  } finally { auth.retire(); await operation?.dispose(); await close(); }
+});
+
+test('combined possession aborts malformed child responses instead of trying an optional credential', async () => {
+  const { f, binding, hashes, close } = await combinedPossessionFixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    f.verifyPossessionWith(() => '0x1234');
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [getConfiguredAuthenticatorAddress(1, 'ecdsa'), getConfiguredAuthenticatorAddress(1, 'p256-webauthn')], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    await operation.prepare(); const transactionHash = operation.getSnapshot().userOperationHash;
+    await authorizeReviewedModule(operation); assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.possessionViews.length, 1); assert.equal(hashes.length, 0); assert.equal(f.signatures.length, 1);
+    assert.notEqual(f.signatures[0]!.digest, transactionHash); assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await operation?.dispose(); await close(); }
+});
+
+test('combined possession missing SLH alternative permits later passkey transfer and policy repair with original slots', async () => {
+  const backend = slhSmartBackend(); let assertions = 0, prompt = false;
+  const auth = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(auth, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('No new credential'); }, async recover() { throw Error('No replacement credential'); },
+    async sign(request) { prompt = true; try { request.assertCurrent(); assertions++; return { signature: mixedPasskeyProof }; } finally { prompt = false; } },
+  };
+  const { f, device, close } = await readyTrezorSmartOwner(backend.capability, 1, passkeys);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    f.observedPasskey(); f.observedSlh({ pkRoot: '0x' + '44'.repeat(16) + '00'.repeat(16), pkSeed: '0x' + '33'.repeat(16) + '00'.repeat(16) }); f.retainActiveValidator('ecdsa');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    const passkey = getConfiguredAuthenticatorAddress(1, 'p256-webauthn'), children = [getConfiguredAuthenticatorAddress(1, 'slh-dsa'), passkey];
+    f.verifyPossessionWith((validator, _hash, proof) => { assert.equal(validator, passkey.toLowerCase()); assert.equal(proof, mixedPasskeyProof); return true; });
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children, threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
+    f.onBroadcast(() => { f.observedCompositeChildren(children); f.retainActiveValidator('composite'); });
+    const authorizing = authorizeReviewedModule(operation);
+    for (let index = 0; index < 1000 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; index++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    assert.equal(backend.opened, 0, 'missing encrypted SLH state is rejected before private authentication/crypto');
+    assert.deepEqual(f.slhDerivations, []); assert.equal(assertions, 1); assert.equal(f.possessionViews.length, 1); assert.equal(device.signatures.length, 1); assert.equal(f.submitted.length, 0);
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await authorizing; assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 1);
+    await operation.dispose(); operation = undefined;
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, binding);
+    await confirmPolicyOperation(operation); assert.equal(operation.getSnapshot().phase, 'complete');
+    assert.equal(assertions, 2); assert.equal(f.submitted.length, 2); assert.equal(backend.opened, 0);
+    const [sent] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[1]!).data);
+    const [sentSlots] = coder.decode(['bytes[]'], sent[0].signature);
+    assert.deepEqual([...sentSlots], ['0x', mixedPasskeyProof], 'the absent first SLH child is an empty slot, not an attempted signer');
+    await operation.dispose(); operation = undefined;
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children: [passkey], threshold: 1 }, new AbortController().signal, () => undefined, binding);
+    f.onBroadcast(() => { f.observedCompositeChildren([passkey]); f.retainActiveValidator('composite'); });
+    await confirmModuleOperation(operation);
+    assert.equal(assertions, 4); assert.equal(f.submitted.length, 3); assert.equal(backend.opened, 0); assert.equal(device.signatures.length, 1);
+    const [repair] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[2]!).data);
+    const [repairSlots] = coder.decode(['bytes[]'], repair[0].signature);
+    assert.deepEqual([...repairSlots], ['0x', mixedPasskeyProof]);
+    const observed = await f.runtime.readSmartAccountModules(new AbortController().signal, () => undefined);
+    const composite = observed.installedModules?.find(module => module.type === 'validator' && module.id === 'composite');
+    assert(composite?.type === 'validator' && composite.id === 'composite'); assert.deepEqual(composite.config.childValidators.map(address => address.toLowerCase()), [passkey.toLowerCase()]);
+  } finally { auth.retire(); await operation?.dispose(); await close(); }
 });

@@ -59,6 +59,7 @@ export type LocalActivityRecord = Omit<
   Readonly<{
     recipient: string | null;
     inspectionOnly?: true;
+    cancellationUnavailable?: true;
     speedUpEligible?: true;
     /** Public navigation hint only; the selected-network host rebuilds every review. */
     reviewNavigation?: Readonly<{ speedUp: boolean }>;

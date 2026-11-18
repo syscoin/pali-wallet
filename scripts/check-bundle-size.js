@@ -35,7 +35,25 @@ const budget = {
   // DMK's isolated ESM host adds device/signing code. After byte-identical BN
   // deduplication and page-only translations, the composed package is 12.05 MB.
   // Keep normal wallet startup caps fixed and allow 12.15 MB for this feature.
-  package: 12150000,
+  // Provider-owned write cancellation and bounded response decoding add about
+  // 2 KB to the package. Allow 5 KB for this shared transport protection.
+  // Bounded public-read coalescing and response splitting add about 2 KB.
+  // Allow 5 KB for these transport changes; all startup caps stay fixed.
+  // Endpoint identity leases, canonical history repair and public RPC envelope
+  // checks add 5,978 measured bytes. Reserve 10 KB for these checked fixes.
+  // Retained replacement admission, retired read ownership and bounded CCIP
+  // add 6,974 bytes at e7555588 / SDK 5a3d3563. Reserve 10 KB for these fixes.
+  // Execution bounds, Smart precision, coherent history and UTXO ownership
+  // add 12,919 bytes at round 11. Reserve 15 KB after removing the UI import
+  // that pulled 93,768 unnecessary bytes into the package.
+  // Owned guardian observations, replay admission and legacy normalization
+  // add 2,823 measured bytes to the preceding candidate. Reserve 5 KB for
+  // these fixes while preserving all startup and RPC ceilings.
+  // Exact signed Smart simulation and final replay admission add about 2 KB
+  // to the 12.20 MB package. Reserve 10 KB; startup and RPC caps stay fixed.
+  // Bounded artwork/Blockbook responses and retained activity/disclosure fixes
+  // add 7,288 bytes at b36a1116b: 12,217,155 total. Startup/RPC caps stay fixed.
+  package: 12220000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -68,6 +86,7 @@ const scripts = {
       'js/privacy-withdrawal.bundle.js',
       'js/privacy-prover.bundle.js',
       'js/privacy-background-shared.bundle.js',
+      'js/smart-account.bundle.js',
       'js/sentry-controller.bundle.js',
       'js/sentry-sdk.bundle.js',
       // Required by the Sentry SDK's evaluation-time preload when present.

@@ -3,6 +3,10 @@ import { Signature } from 'ethers/crypto';
 import { recoverAddress } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { createRequire } from 'module';
+import {
+  SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  withReviewedSmartAccountExecution,
+} from 'tests/fixtures/reviewedSmartAccountExecution';
 
 import { defaultAbiCoder } from '../ethersV6Compat';
 
@@ -15,6 +19,14 @@ import {
 } from './authenticatorDispatch';
 import { signAndSubmitSmartAccountExecutions } from './execution';
 import type { ISmartAccountMetadata } from '../../types/network';
+
+const reviewedFixture = (
+  params: Parameters<typeof signAndSubmitSmartAccountExecutions>[0]
+) =>
+  withReviewedSmartAccountExecution(params, {
+    payer: { address: '0x' + '44'.repeat(20), id: 0, type: 'HDAccount' },
+    userOperation: SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  });
 
 const sdkRequire = createRequire(
   require.resolve('@sidhujag/sysweb3-keyring/package.json')
@@ -303,20 +315,22 @@ it.each([false, true])(
       if (method === 'submitSmartAccountExecution') return params[0].signature;
       throw new Error(`Unexpected method ${method}`);
     });
-    const work = signAndSubmitSmartAccountExecutions({
-      accountAddress: SMART,
-      accountId: 7,
-      smartAccount,
-      executions: [{ target: owners[0].address, value: '0x0', data: '0x' }],
-      controllerEmitter: emitter,
-      authenticatorContexts: {
-        ecdsa: {
-          localOwners: owners,
-          signActionHash: async () => (valid ? raw() : raw(0, OTHER_HASH)),
+    const work = signAndSubmitSmartAccountExecutions(
+      reviewedFixture({
+        accountAddress: SMART,
+        accountId: 7,
+        smartAccount,
+        executions: [{ target: owners[0].address, value: '0x0', data: '0x' }],
+        controllerEmitter: emitter,
+        authenticatorContexts: {
+          ecdsa: {
+            localOwners: owners,
+            signActionHash: async () => (valid ? raw() : raw(0, OTHER_HASH)),
+          },
         },
-      },
-      onBeforeSubmit: beforeSubmit,
-    });
+        onBeforeSubmit: beforeSubmit,
+      })
+    );
     if (valid) {
       expect(await work).toBe(raw());
       expect(beforeSubmit).toHaveBeenCalledTimes(1);

@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+import '@testing-library/jest-dom';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -241,6 +242,36 @@ it('displays a reported zero price instead of hiding available market data', asy
   expect(screen.getByText('$0')).toBeTruthy();
 });
 
+it.each([
+  ['btc', 0.0000003, '₿3e-7'],
+  ['btc', 0.000001, '₿0.000001'],
+  ['btc', 0, '₿0.000000'],
+  ['usd', 0.02, '$0.020000'],
+])(
+  'uses the real price formatter for %s quote %s',
+  async (currency, quote, expected) => {
+    const formatUtils = jest.requireMock('utils/index');
+    const formatter = jest
+      .spyOn(formatUtils, 'formatCurrency')
+      .mockImplementation(jest.requireActual('utils/format').formatCurrency);
+    try {
+      mockState.price.fiat.asset = currency;
+      const data: any = market(Number(quote));
+      data['market_data']['current_price'] = { [currency]: quote };
+      data['market_data']['market_cap'] = { [currency]: 10 };
+      render(<EvmAssetDetails id={tokens[0].id} />);
+      await act(async () => pending.get(tokens[0].contractAddress)!(data));
+      const price = screen.getByText('tokens.currentPrice').parentElement!;
+      expect(price).toHaveTextContent(expected);
+      expect(formatter).toHaveBeenCalledWith(String(quote), 6, true);
+      expect(formatter).toHaveBeenCalledWith('10', 0);
+      if (Number(quote) > 0) expect(price).not.toHaveTextContent('₿0.000000');
+    } finally {
+      formatter.mockRestore();
+    }
+  }
+);
+
 it.each([undefined, null, NaN, Infinity])(
   'omits unavailable optional market values without hiding the price (%s)',
   async (value) => {
@@ -340,5 +371,33 @@ it.each(['BALS', 'B'.repeat(32), 'C'.repeat(64)])(
     });
     expect(copy.classList.contains('h-11')).toBe(true);
     expect(copy.classList.contains('w-11')).toBe(true);
+  }
+);
+
+/* eslint-disable camelcase -- Exact CoinGecko response fields. */
+it.each([true, false])(
+  'matches price and daily change to selected currency, globalPresent=%s',
+  async (globalPresent) => {
+    const data = {
+      market_data: {
+        current_price: { usd: 100, eur: 90 },
+        ...(globalPresent ? { price_change_percentage_24h: -1 } : {}),
+        price_change_percentage_24h_in_currency: { usd: -1, eur: 2 },
+      },
+    };
+
+    const view = render(<EvmAssetDetails id={tokens[0].id} />);
+    await act(async () => pending.get(tokens[0].contractAddress)!(data));
+    expect(screen.getByText('-1.00% (24h)')).toHaveClass('text-red-500');
+    mockState.price.fiat.asset = 'eur';
+    view.rerender(<EvmAssetDetails id={tokens[0].id} />);
+    expect(screen.getByText('€90')).toBeTruthy();
+    expect(screen.getByText('+2.00% (24h)')).toHaveClass('text-green-500');
+    expect(screen.queryByText('-1.00% (24h)')).toBeNull();
+    delete (data.market_data.price_change_percentage_24h_in_currency as any)
+      .eur;
+    view.rerender(<EvmAssetDetails id={tokens[0].id} />);
+    expect(screen.queryByText('+2.00% (24h)')).toBeNull();
+    expect(screen.queryByText('-1.00% (24h)')).toBeNull();
   }
 );

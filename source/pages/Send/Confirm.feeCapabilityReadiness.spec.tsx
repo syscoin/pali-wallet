@@ -7,6 +7,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { randomUUID } from 'crypto';
 import React from 'react';
 
+import { createRpcReadCapabilitiesOwner } from '../../shared/rpcReadCapabilities';
 import { EvmSignedRecords } from '../../wallet/evmSignedRecords';
 import MainController from 'scripts/Background/controllers/MainController';
 import { BigNumber } from 'utils/ethersV6Compat';
@@ -313,6 +314,7 @@ beforeEach(() => {
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   wallet = Object.create(MainController.prototype);
+  wallet.rpcReadCapabilities = createRpcReadCapabilitiesOwner();
   const keyring = {
     ethereumTransaction: sdk,
     getPrivateRecordProfileId: async () => '0x' + '55'.repeat(32),

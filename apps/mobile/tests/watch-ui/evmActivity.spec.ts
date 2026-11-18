@@ -28,9 +28,9 @@ async function open(page: Page, mode = 'value', android = false, tokenMetadata?:
   ).toBeVisible();
 }
 async function loaded(page: Page, owner = OWNER) {
-  await expect(row(page, owner, 1)).toHaveAccessibleName(/^1\.000000000000000001 ETH, Confirmed\./);
+  await expect(row(page, owner, 1)).toHaveAccessibleName(/^Sent\. 1\.000000000000000001 ETH, Confirmed\./);
   await expect(row(page, owner, 1)).toContainText('Confirmed');
-  await expect(row(page, owner, 3)).toHaveAccessibleName(new RegExp(`^${LARGE} RAW,`));
+  await expect(row(page, owner, 3)).toHaveAccessibleName(new RegExp(`^Received\\. ${LARGE} RAW,`));
 }
 async function noSigning(page: Page) {
   await expect(
@@ -58,7 +58,7 @@ test('compact activity amounts fit narrow rows while their accessible labels ret
   await page.setViewportSize({ width: 320, height: 568 });
   await open(page);
   const item = row(page, OWNER, 3);
-  await expect(item).toHaveAccessibleName(new RegExp(`^${LARGE} RAW,`));
+  await expect(item).toHaveAccessibleName(new RegExp(`^Received\\. ${LARGE} RAW,`));
   const amount = item.getByText('≈+1.23456e+35 RAW', { exact: true });
   await expect(amount).toBeVisible();
   expect(await amount.evaluate(element => {
@@ -417,7 +417,7 @@ test('same-address network change closes old details and pending copy feedback',
       exact: true,
     })
   ).toHaveCount(0);
-  await expect(row(page, OWNER, 1)).toHaveAccessibleName(/^1\.000000000000000001 SYS, Confirmed\./);
+  await expect(row(page, OWNER, 1)).toHaveAccessibleName(/^Sent\. 1\.000000000000000001 SYS, Confirmed\./);
   await expect(row(page, OWNER, 1)).toContainText('Confirmed');
   expect(await page.evaluate(() => window.__evmDelayedCopy.calls)).toEqual([
     OWNER,

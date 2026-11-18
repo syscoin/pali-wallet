@@ -514,6 +514,11 @@ for (const targetViewport of [
                 });
                 await expect(importToken).toBeEnabled();
                 expect(discoveries.length).toBeGreaterThan(0);
+                observations.importBadges = await observeTokenBadges(
+                  page,
+                  info,
+                  'import-' + scenario.id + '-' + targetViewport.width
+                );
                 await importToken.click();
                 await expect
                   .poll(
@@ -521,11 +526,7 @@ for (const targetViewport of [
                   )
                   .toBe(scenario.quantity);
                 observations.imported = await currentState();
-                observations.importBadges = await observeTokenBadges(
-                  page,
-                  info,
-                  'import-' + scenario.id + '-' + targetViewport.width
-                );
+                await expect(importToken).toBeHidden();
               }
             );
             await wallet.step(

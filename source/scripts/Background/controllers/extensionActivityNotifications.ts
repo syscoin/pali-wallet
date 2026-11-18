@@ -25,6 +25,7 @@ export class ExtensionActivityNotifications {
 
   public history(input: {
     deliver: (fact: ActivityNotificationFact) => void;
+    historyReadSucceeded?: boolean;
     isCurrent: () => boolean;
     namespace: number;
     previousTransactions: readonly unknown[];
@@ -45,6 +46,7 @@ export class ExtensionActivityNotifications {
       scope: input.scope,
       previous,
       transactions: input.transactions,
+      historyReadSucceeded: input.historyReadSucceeded,
     });
     if (!input.isCurrent()) return [];
     this.remember(key, result.baseline);

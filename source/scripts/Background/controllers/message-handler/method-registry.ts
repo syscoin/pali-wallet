@@ -667,6 +667,18 @@ export const METHOD_REGISTRY: MethodRegistry = {
     hasPopup: false,
   },
 
+  eth_maxPriorityFeePerGas: {
+    name: 'eth_maxPriorityFeePerGas',
+    handlerType: MethodHandlerType.Eth,
+    requiresTabId: true,
+    requiresAuth: false,
+    requiresConnection: false,
+    allowHardwareWallet: true,
+    networkPreference: NetworkPreference.EVM,
+    networkEnforcement: NetworkEnforcement.Never,
+    hasPopup: false,
+  },
+
   eth_blockNumber: {
     name: 'eth_blockNumber',
     handlerType: MethodHandlerType.Eth,

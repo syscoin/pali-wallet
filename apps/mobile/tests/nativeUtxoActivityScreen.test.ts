@@ -4,6 +4,9 @@ import type { UtxoActivityRow, UtxoActivityState } from '../src/core/utxoActivit
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { formatSyscoinTokenAmount } from '../../../source/shared/utxoTokenAmounts.ts';
+import { createUtxoActivityReader } from '../src/core/utxoActivity.ts';
+import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { formatBaseUnits } from '../src/core/amounts.ts';
 
 function fixture(row: UtxoActivityRow) {
   const context = { accountId: 'watch', networkId: 'syscoin' as const, address: 'sys1public', generation: 1 };
@@ -28,7 +31,7 @@ function fixture(row: UtxoActivityRow) {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-clipboard': { setStringAsync() { throw Error('No clipboard read during status render'); } },
     '../../../../source/shared/utxoTokenAmounts': { formatSyscoinTokenAmount },
-    '../core/amounts': { formatBaseUnits: (value: string) => value },
+    '../core/amounts': { formatBaseUnits },
     '../core/utxoActivity': { UtxoActivity: Activity },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'IconButton', 'Notice', 'SegmentedControl', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
     './ActivityListRow': { ActivityListRow: 'ActivityListRow', activityDate: () => ({ key: 'day', label: 'Today', time: '' }) },
@@ -100,3 +103,42 @@ test('expanded asset detail keeps an unavailable quantity distinct from known ze
     assert.equal(exact.props.accessibilityLabel, 'Asset amount unavailable');
   } finally { f.close(); }
 });
+
+for (const kind of ['sent', 'self', 'received'] as const)
+  test(`UTXO ${kind} list and detail use the real reader's transfer amount and direction`, async () => {
+    const network = getUtxoNetwork('syscoin');
+    const address = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
+    const incoming = kind === 'received', self = kind === 'self';
+    const tx = { txid: 'e'.repeat(64), blockHeight: 190, blockHash: 'f'.repeat(64), confirmations: 11,
+      blockTime: 1700000000, fees: '100000',
+      valueIn: incoming ? '100100000' : '200000000', value: incoming ? '100000000' : '199900000',
+      addressValueIn: incoming ? '0' : '200000000', addressValueOut: incoming ? '100000000' : self ? '199900000' : '99900000',
+      vin: [{ value: incoming ? '100100000' : '200000000', isOwn: !incoming }],
+      vout: incoming ? [{ value: '100000000', isOwn: true }] : self ? [{ value: '199900000', isOwn: true }]
+        : [{ value: '99900000', isOwn: true }, { value: '100000000', isOwn: false }],
+    };
+    const reader = createUtxoActivityReader({ fetch: async (url) => {
+      const path = new URL(url).pathname;
+      const body = path === '/api/v2/'
+        ? { blockbook: { coin: network.blockbookCoin, network: network.symbol, decimals: 8, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 200 }, backend: { chain: 'main' } }
+        : path === '/api/v2/block-index/0' ? { blockHash: network.genesisHash }
+          : { address, txs: 1, unconfirmedTxs: 0, page: 1, totalPages: 1, itemsOnPage: 20, transactions: [tx] };
+      return Response.json(body);
+    } });
+    const page = await reader.readPage({ context: { accountId: 'watch', networkId: 'syscoin', address, generation: 1 }, identifier: address, isAccount: false }, { page: 1 }, new AbortController().signal);
+    const row = page.rows[0]!;
+    assert.equal(row.nativeTransfer?.kind, self ? 'self' : incoming ? 'received' : 'external');
+    assert.equal(row.transactionFeeUnits, '100000');
+    const f = fixture(row);
+    try {
+      const item = f.row();
+      assert.equal(item.props.direction, kind);
+      assert.equal(item.props.title, self ? 'Self transfer' : incoming ? 'Received' : 'Sent');
+      assert.equal(item.props.amount, self ? '1.999 SYS' : incoming ? '+1 SYS' : '-1 SYS');
+      item.props.onPress();
+      const detail = f.render().find(item => item.type === 'TransactionDetailLayout')!;
+      assert.equal(detail.props.amount, self ? '1.999 SYS' : incoming ? '+1.0 SYS' : '−1.0 SYS');
+      assert.equal(detail.props.direction, item.props.title);
+      assert.equal(detail.props.rows.find((entry: { label: string }) => entry.label === 'Network Fee').value, '0.001 SYS');
+    } finally { f.close(); }
+  });

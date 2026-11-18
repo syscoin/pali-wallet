@@ -254,6 +254,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     if (snapshot.status !== 'ready' || viewLock.phase === 'locked') watchIdle.allowNewInput();
   }, [snapshot.status, viewLock.phase]);
   const [watchAuthority, setWatchAuthority] = useState<WatchOnlyAuthority | null>(null);
+  const [watchConnection, setWatchConnection] = useState<'opening' | 'ready' | 'unavailable'>('opening');
   const notificationSnapshot = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
   const routedNotification = useRef<string | null>(null);
   const route: Route =
@@ -348,7 +349,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   };
   const openWatch = useCallback(async (selection: AccountSelection, resumingPermission = false) => {
     const local = authority.current, navigation = navigationGeneration.current, lifecycle = lifecycleGeneration.current;
-    if (openingView.current || !foreground.current || selection.kind !== 'watch' || watchAccounts.getSnapshot().status !== 'ready' || !local?.getSnapshot().accounts.some((account) => account.id === selection.id)) return;
+    const saved = watchAccounts.getSnapshot();
+    if (openingView.current || !foreground.current || selection.kind !== 'watch' || saved.status !== 'ready' || saved.busy || !local?.getSnapshot().accounts.some((account) => account.id === selection.id) || JSON.stringify(local.getSnapshot().accounts) !== JSON.stringify(saved.accounts)) return;
     openingView.current = true; setViewBusy(true); setViewError(false);
     const check = () => {
       if (authority.current !== local || navigationGeneration.current !== navigation || lifecycleGeneration.current !== lifecycle ||
@@ -422,20 +424,27 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const connect = useCallback(async (accounts: readonly PublicAccount[]) => {
     openingWatch.current?.abort();
     const opening = new AbortController(); openingWatch.current = opening;
+    const navigation = navigationGeneration.current, lifecycle = lifecycleGeneration.current;
+    const privacy = publicViewLock.getSnapshot();
     removeListener.current?.();
-    authority.current?.lock();
-    let next: WatchOnlyAuthority;
+    removeListener.current = null;
+    const previous = authority.current;
+    previous?.lock();
+    if (previous) setSnapshot(previous.getSnapshot());
+    authority.current = null; setWatchAuthority(null); setWatchConnection('opening');
+    let next: WatchOnlyAuthority | undefined;
     const owner = {};
+    try {
     next = await WatchOnlyAuthority.openRecords({ repository: publicAccountRecords, reader: balanceReader, historyReader: activityReader, evmActivityReaders, signal: opening.signal,
       idle: { begin: () => watchIdle.begin(owner, () => {
-        try { void publicViewLock.lock().catch(() => undefined); } finally { next.lock(); }
+        try { void publicViewLock.lock().catch(() => undefined); } finally { next?.lock(); }
       }), check: () => watchIdle.check(owner), stop: () => watchIdle.stop(owner) },
     });
-    if (opening.signal.aborted || openingWatch.current !== opening || JSON.stringify(next.getSnapshot().accounts) !== JSON.stringify(accounts)) throw new Error(nativeI18n.t('mobile.shellViews.app.savedWatchAccountsChangedReopenThem'));
+    if (opening.signal.aborted || openingWatch.current !== opening || navigationGeneration.current !== navigation || lifecycleGeneration.current !== lifecycle || publicViewLock.getSnapshot() !== privacy || JSON.stringify(next.getSnapshot().accounts) !== JSON.stringify(accounts)) throw new Error(nativeI18n.t('mobile.shellViews.app.savedWatchAccountsChangedReopenThem'));
     const remembered = lastSelection.current;
     if (remembered?.kind === 'watch') next.restoreSelection(remembered.id, remembered.networkId);
-    openingWatch.current = null;
     authority.current = next; setWatchAuthority(next);
+    setWatchConnection('ready');
     setSnapshot(next.getSnapshot());
     removeListener.current = next.subscribe(state => {
       setSnapshot(state);
@@ -443,6 +452,13 @@ function AppContent({ availableWatchNetworks }: AppProps) {
         rememberSelection({ kind: 'watch', id: state.selectedAccountId, networkId: state.selectedNetworkId });
     });
     return next;
+    } catch (error) {
+      next?.lock();
+      if (openingWatch.current === opening && !opening.signal.aborted) setWatchConnection('unavailable');
+      throw error;
+    } finally {
+      if (openingWatch.current === opening) openingWatch.current = null;
+    }
   }, [rememberSelection]);
   const loadAccounts = async () => {
     await watchAccounts.load();
@@ -606,13 +622,25 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     const wasReady = authority.current?.getSnapshot().status === 'ready';
     const navigation = navigationGeneration.current;
     const lifecycle = lifecycleGeneration.current;
+    const privacy = publicViewLock.getSnapshot();
     let accounts: readonly PublicAccount[];
     try { accounts = await watchAccounts.change(change); }
     catch (cause) {
       if (watchAccounts.getSnapshot().status === 'unavailable') setStartupError(nativeI18n.t('mobile.shellViews.app.theWatchAccountChangeCouldNotBeVerified'));
       throw cause;
     }
-    const next = await connect(accounts);
+    const saved = watchAccounts.getSnapshot();
+    if (saved.busy || JSON.stringify(saved.accounts) !== JSON.stringify(accounts)) return null;
+    if (!foreground.current || navigation !== navigationGeneration.current || lifecycle !== lifecycleGeneration.current || publicViewLock.getSnapshot() !== privacy) {
+      if (JSON.stringify(authority.current?.getSnapshot().accounts ?? []) !== JSON.stringify(accounts)) setWatchConnection('unavailable');
+      return null;
+    }
+    let next: WatchOnlyAuthority;
+    try { next = await connect(accounts); }
+    catch {
+      // The list write committed. Retry only its public connection, never Add.
+      return null;
+    }
     if (lastSelection.current?.kind === 'watch' && !accounts.some((entry) => entry.id === lastSelection.current?.id))
       rememberSelection(accounts[0] ? { kind: 'watch', id: accounts[0].id } : null);
     if (wasReady && publicViewLock.getSnapshot().phase === 'unlocked' && accounts.length && foreground.current && navigation === navigationGeneration.current && lifecycle === lifecycleGeneration.current) {
@@ -627,11 +655,13 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     addingAccount.current = true;
     const startNavigation = navigationGeneration.current;
     const startLifecycle = lifecycleGeneration.current;
+    const startPrivacy = publicViewLock.getSnapshot();
     try {
       // IDs are local to the watch store. Authority routing always also checks kind.
       const id = `watch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-      await changeWatch({ kind: 'add', id, name, address, ...(network ? { network } : {}) });
-      if (!foreground.current || startNavigation !== navigationGeneration.current || startLifecycle !== lifecycleGeneration.current) return;
+      const next = await changeWatch({ kind: 'add', id, name, address, ...(network ? { network } : {}) });
+      if (!foreground.current || startNavigation !== navigationGeneration.current || startLifecycle !== lifecycleGeneration.current || publicViewLock.getSnapshot() !== startPrivacy) return;
+      if (!next) { go('accounts'); return; }
       openWatch({ kind: 'watch', id });
     } finally { addingAccount.current = false; }
   };
@@ -697,7 +727,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     networkSettings: watchUtxoNetworkSettings,
     onNetworksChanged: async () => { await loadAccounts(); },
   } : {};
-  const accountActions = { ...watchNetworkActions, watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
+  const accountActions = { ...watchNetworkActions, watch: watchState, watchConnection: { status: watchConnection, accountIds: watchAuthority?.getSnapshot().accounts.map(account => account.id) ?? [] }, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
   const selectionNotice = selectionError ? <Notice title={nativeI18n.t('mobile.shellViews.app.accountChoiceNotSaved')} body={selectionError} tone="amber" /> : null;
   if (route === 'native') return <><NativeWalletScreen onExit={exit} incomingPairing={incomingPairing} onPairingHandled={pairingHandled} initialAccountId={requestedHdId} initialSetup={initialSetup} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
   if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}

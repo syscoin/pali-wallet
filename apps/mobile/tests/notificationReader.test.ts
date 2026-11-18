@@ -7,13 +7,14 @@ import { createNativeNetwork, getNativeNetwork } from '../src/custody/networkCon
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { createGuardianRecoveryFixture, GUARDIAN_FIXTURE_ACCOUNT } from './native-watch-ui/guardianRecoveryFixture.ts';
 import { GUARDIAN_FIXTURE_RUNTIME } from './guardianRecoveryRuntime.ts';
+import { NativeNotificationCoordinator, emptyNotificationDocument } from '../src/notifications/coordinator.ts';
 
 // Node selects the web test adapter; Metro retains its native platform resolution.
 const readerUrl = new URL('../src/notifications/reader.ts', import.meta.url).href;
 const hook = registerHooks({ resolve(specifier, context, next) {
   return next(context.parentURL === readerUrl && specifier === '../platform/http' ? '../platform/http.ts' : specifier, context);
 } });
-const { createNotificationReader } = await import(readerUrl) as typeof import('../src/notifications/reader.ts');
+const { createNotificationReader, normalizeNotificationScope, notificationFactScope } = await import(readerUrl) as typeof import('../src/notifications/reader.ts');
 hook.deregister();
 
 const scope = (network = getNativeNetwork('ethereum'), guardian = false): NativeNotificationScope => ({
@@ -69,4 +70,77 @@ test('successful transaction history remains usable when guardian coverage is un
   const result = await createNotificationReader()(scope(getNativeNetwork('ethereum'), true), null, new AbortController().signal, () => {});
   assert.equal(result.historyReadSucceeded, true); assert.deepEqual(result.transactions, []);
   assert.equal('guardianObservation' in result ? result.guardianObservation : undefined, undefined);
+});
+
+for (const healthy of ['txlist', 'tokentx']) for (const failedBody of ['status', 'invalid-json']) {
+  test(`initialized notifications retain ${healthy} while the other feed has ${failedBody}`, async t => {
+    let document = emptyNotificationDocument(), sequence = 0, hasEvent = false, failing = false;
+    const posted: string[] = [];
+    const selected = scope();
+    const event = { hash: `0x${'ab'.repeat(32)}`, from: `0x${'22'.repeat(20)}`, to: selected.accountAddress,
+      blockNumber: '123', timeStamp: '1700000000', txreceipt_status: '1', value: '7',
+      contractAddress: `0x${'33'.repeat(20)}`, tokenSymbol: 'TEST', tokenDecimal: '18' };
+    t.mock.method(globalThis, 'fetch', async (url: RequestInfo | URL) => {
+      const feed = new URL(String(url)).searchParams.get('action');
+      if (failing && feed !== healthy) return failedBody === 'status' ? new Response(null, { status: 503 }) : new Response('{');
+      return Response.json({ status: '1', message: 'OK', result: hasEvent && feed === healthy ? [event] : [] });
+    });
+    const coordinator = new NativeNotificationCoordinator({
+      store: { initialize: async () => {}, transact: async (action, guard) => {
+        guard(); const next = structuredClone(document); const output = await action(next); guard(); document = next; return output;
+      } },
+      delivery: { permission: async () => 'granted', backgroundStatus: async () => 'available',
+        register: async () => {}, unregister: async () => {}, post: async id => { posted.push(id); },
+        remove: async () => {}, prune: async () => {} },
+      normalize: normalizeNotificationScope, factScope: notificationFactScope, read: createNotificationReader(),
+      randomId: () => `pali-alert-${(++sequence).toString(16).padStart(32, '0')}`, now: () => 1700000010000,
+    });
+    await coordinator.load();
+    await coordinator.enable([selected], () => {}, { requestPermission: true });
+    assert.equal(document.scopes[0]?.baseline?.historyInitialized, true);
+    hasEvent = true; failing = true;
+    await coordinator.runForeground();
+    assert.equal(posted.length, 1);
+    assert.equal(document.events[0]?.fact.kind, 'transaction-confirmed');
+    failing = false;
+    await coordinator.runForeground();
+    assert.equal(posted.length, 1);
+  });
+}
+
+test('first partial history cannot initialize a notification baseline', async t => {
+  t.mock.method(globalThis, 'fetch', async (url: RequestInfo | URL) => new URL(String(url)).searchParams.get('action') === 'tokentx'
+    ? new Response(null, { status: 503 }) : Response.json({ status: '1', result: [] }));
+  await assert.rejects(createNotificationReader()(scope(), null, new AbortController().signal, () => {}), /observations unavailable/);
+});
+
+test('losing the receipt feed for an unchanged mined token transfer does not post new activity', async t => {
+  let document = emptyNotificationDocument(), sequence = 0, failing = false, reads = 0;
+  const posted: string[] = [], selected = scope();
+  const event = { hash: `0x${'ab'.repeat(32)}`, from: `0x${'22'.repeat(20)}`, to: selected.accountAddress,
+    blockNumber: '123', blockHash: `0x${'44'.repeat(32)}`, timeStamp: '1700000000', value: '7',
+    contractAddress: `0x${'33'.repeat(20)}`, tokenSymbol: 'TEST', tokenDecimal: '18' };
+  t.mock.method(globalThis, 'fetch', async (url: RequestInfo | URL) => {
+    reads++; const feed = new URL(String(url)).searchParams.get('action');
+    if (failing && feed === 'txlist') return new Response(null, { status: 503 });
+    return Response.json({ status: '1', message: 'OK', result: [{ ...event, ...(feed === 'txlist' ? { txreceipt_status: '1' } : {}) }] });
+  });
+  const coordinator = new NativeNotificationCoordinator({
+    store: { initialize: async () => {}, transact: async (action, guard) => {
+      guard(); const next = structuredClone(document); const output = await action(next); guard(); document = next; return output;
+    } },
+    delivery: { permission: async () => 'granted', backgroundStatus: async () => 'available',
+      register: async () => {}, unregister: async () => {}, post: async id => { posted.push(id); },
+      remove: async () => {}, prune: async () => {} },
+    normalize: normalizeNotificationScope, factScope: notificationFactScope, read: createNotificationReader(),
+    randomId: () => `pali-alert-${(++sequence).toString(16).padStart(32, '0')}`, now: () => 1700000010000,
+  });
+  await coordinator.load(); await coordinator.enable([selected], () => {}, { requestPermission: true });
+  assert.equal(reads, 2); assert.equal(posted.length, 0);
+  assert.equal(document.scopes[0]?.baseline?.transactions[0]?.status, 'confirmed');
+  failing = true; await coordinator.runForeground();
+  assert.equal(reads, 4); assert.equal(posted.length, 0); assert.equal(document.events.length, 0);
+  assert.equal(document.scopes[0]?.baseline?.transactions[0]?.status, 'confirmed');
+  failing = false; await coordinator.runForeground();
+  assert.equal(reads, 6); assert.equal(posted.length, 0);
 });

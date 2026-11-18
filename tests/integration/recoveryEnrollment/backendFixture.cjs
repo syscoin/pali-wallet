@@ -1,11 +1,15 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
 const assert = require('node:assert/strict');
+const { Buffer } = require('node:buffer');
+const { spawn } = require('node:child_process');
 const { createHash } = require('node:crypto');
+const { once } = require('node:events');
 const { readFileSync } = require('node:fs');
 const { createRequire } = require('node:module');
 const { createServer } = require('node:net');
-const { spawn } = require('node:child_process');
-const { once } = require('node:events');
 const path = require('node:path');
+const vm = require('node:vm');
+
 const pins = require('./pins.cjs');
 
 const [backendRoot, paliRoot, ownerAddress] = process.argv.slice(2);
@@ -41,10 +45,107 @@ async function launch() {
     createHash('sha256').update(text).digest('hex'),
     pins.deploymentSourceSha256
   );
+  // Evaluate the hash-attested descriptor source rather than its presentation
+  // syntax. Only the existing compat module and explicit Buffer import are
+  // available; no backend, filesystem or process port enters the VM.
+  const requirePali = createRequire(path.join(paliRoot, 'package.json'));
+  const ts = requirePali('typescript');
+  const evaluate = (source, filename, load, maximumBytes) => {
+    assert.ok(
+      Buffer.byteLength(source) <= maximumBytes,
+      'Oversized deployment source'
+    );
+    const result = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+      reportDiagnostics: true,
+    });
+    assert.ok(
+      !result.diagnostics?.some(
+        ({ category }) => category === ts.DiagnosticCategory.Error
+      ),
+      'Invalid deployment source'
+    );
+    const module = { exports: {} };
+    vm.runInNewContext(
+      result.outputText,
+      { module, exports: module.exports, require: load },
+      {
+        filename,
+        timeout: 1000,
+        contextCodeGeneration: { strings: false, wasm: false },
+      }
+    );
+    return module.exports;
+  };
+  const compatPath = path.join(paliRoot, 'source/utils/ethersV6Compat.ts');
+  const compat = evaluate(
+    readFileSync(compatPath, 'utf8'),
+    compatPath,
+    (name) => {
+      assert.ok(
+        [
+          'ethers/abi',
+          'ethers/address',
+          'ethers/contract',
+          'ethers/crypto',
+          'ethers/hash',
+          'ethers/utils',
+        ].includes(name),
+        `Unexpected compat dependency: ${name}`
+      );
+      return requirePali(name);
+    },
+    64 * 1024
+  );
+  const deployment = evaluate(
+    text,
+    'deployment.ts',
+    (name) => {
+      if (name === 'buffer') return { Buffer };
+      assert.equal(
+        name,
+        '../ethersV6Compat.ts',
+        'Unexpected deployment dependency'
+      );
+      return compat;
+    },
+    512 * 1024
+  );
+  const descriptors = deployment.PALI_INFRASTRUCTURE_CONTRACTS;
+  assert.ok(Array.isArray(descriptors));
+  assert.deepEqual(
+    [...descriptors.map(({ id }) => id)].sort(),
+    Object.keys(pins.deploymentPayloadSha256).sort()
+  );
+  for (const descriptor of descriptors) {
+    assert.match(descriptor.deployCalldata, /^0x[0-9a-f]+$/);
+    assert.ok(
+      descriptor.deployCalldata.length <= 256 * 1024 &&
+        descriptor.deployCalldata.length > 66
+    );
+    assert.equal(
+      descriptor.deployCalldata.slice(0, 66),
+      descriptor.salt.toLowerCase()
+    );
+    assert.equal(
+      createHash('sha256')
+        .update(Buffer.from(descriptor.deployCalldata.slice(2), 'hex'))
+        .digest('hex'),
+      pins.deploymentPayloadSha256[descriptor.id],
+      `Changed deployment payload: ${descriptor.id}`
+    );
+    assert.equal(
+      keccak256('0x' + descriptor.deployCalldata.slice(66)),
+      descriptor.bytecodeHash
+    );
+  }
   const pick = (name) => {
-    const match = text.match(new RegExp(`${name}:\\s*'(0x[0-9a-f]+)'`));
-    assert.ok(match, `Missing bytecode: ${name}`);
-    return match[1];
+    const descriptor = descriptors.find(({ id }) => id === name);
+    assert.ok(descriptor, `Missing bytecode: ${name}`);
+    return '0x' + descriptor.deployCalldata.slice(66);
   };
   // Reuse the backend's pinned delegatecall proxy rather than synthesizing an
   // ERC1271 mock. No signature construction exists in this fixture.

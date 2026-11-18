@@ -3,11 +3,109 @@ import { defaultAbiCoder, id } from '../utils/ethersV6Compat';
 import { EVM_TRANSACTION_HISTORY_SOURCE } from './evmHistory';
 import {
   getEvmTransactionDisplayInfo,
+  getERC20Recipient,
   type EvmDisplayContext,
 } from './evmTransactionDisplay';
 
 const CONTRACT = `0x${'22'.repeat(20)}`;
 const RECIPIENT = `0x${'33'.repeat(20)}`;
+const batchTransfer = (ids = ['7', '8'], quantities = ['2', '5']) => ({
+  chainId: 1,
+  to: CONTRACT,
+  value: '0',
+  input:
+    id(
+      'safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)'
+    ).slice(0, 10) +
+    defaultAbiCoder
+      .encode(
+        ['address', 'address', 'uint256[]', 'uint256[]', 'bytes'],
+        [`0x${'11'.repeat(20)}`, RECIPIENT, ids, quantities, '0x']
+      )
+      .slice(2),
+});
+
+it.each([false, true])(
+  'decodes bounded ERC1155 batch history with metadata=%s without extra reads',
+  async (known) => {
+    const lookupToken = jest.fn();
+    const result = await getEvmTransactionDisplayInfo(batchTransfer(), 'ETH', {
+      chainId: 1,
+      lookupToken,
+      assets: known
+        ? [
+            {
+              chainId: 1,
+              contractAddress: CONTRACT,
+              tokenSymbol: 'ITEM',
+              isNft: true,
+            },
+          ]
+        : [],
+    });
+    expect(result).toMatchObject({
+      actualRecipient: RECIPIENT,
+      displayValue: '7',
+      formattedValue: '7',
+      displaySymbol: known ? 'ITEM' : 'NFT',
+      isNft: true,
+      isErc20Transfer: true,
+      nftTransfers: [
+        { tokenId: '7', quantity: '2' },
+        { tokenId: '8', quantity: '5' },
+      ],
+    });
+    expect(result.tokenId).toBeUndefined();
+    expect(getERC20Recipient(batchTransfer())).toBe(RECIPIENT);
+    expect(lookupToken).not.toHaveBeenCalled();
+  }
+);
+
+it('keeps batch identifiers and quantities exact and ignores metadata from another chain', async () => {
+  const huge = ((BigInt(1) << BigInt(256)) - BigInt(1)).toString();
+  const result = await getEvmTransactionDisplayInfo(
+    batchTransfer([huge, '0'], [huge, '1']),
+    'ETH',
+    {
+      chainId: 1,
+      assets: [
+        {
+          chainId: 2,
+          contractAddress: CONTRACT,
+          isNft: true,
+          tokenSymbol: 'WRONG',
+        },
+      ],
+    }
+  );
+  expect(result.displaySymbol).toBe('NFT');
+  expect(result.formattedValue).toBe((BigInt(huge) + BigInt(1)).toString());
+  expect(result.nftTransfers?.[0]).toEqual({ tokenId: huge, quantity: huge });
+});
+
+it.each(['mismatch', 'empty', 'too many', 'trailing', 'truncated'])(
+  'never presents malformed batch history as a zero native payment (%s)',
+  async (kind) => {
+    const tx =
+      kind === 'mismatch'
+        ? batchTransfer(['7', '8'], ['2'])
+        : kind === 'empty'
+        ? batchTransfer([], [])
+        : kind === 'too many'
+        ? batchTransfer(Array(129).fill('7'), Array(129).fill('1'))
+        : batchTransfer();
+    if (kind === 'trailing') tx.input += '00';
+    if (kind === 'truncated') tx.input = tx.input.slice(0, -2);
+    const result = await getEvmTransactionDisplayInfo(tx, 'ETH');
+    expect(result).toMatchObject({
+      isNft: true,
+      isErc20Transfer: true,
+      amountUnavailable: true,
+      formattedValue: '?',
+      displaySymbol: 'NFT',
+    });
+  }
+);
 const transfer = (units: string) => ({
   chainId: 1,
   to: CONTRACT,

@@ -93,7 +93,7 @@ const SMART = `0x${'22'.repeat(20)}`;
 const TARGET = `0x${'33'.repeat(20)}`;
 const REPLACEMENT = `0x${'55'.repeat(32)}`;
 const CHAIN = 5700;
-const APPROVED_MAXIMUM_FEE = '100000000000';
+const APPROVED_MAXIMUM_FEE = '100000000';
 const owner = { type: KeyringAccountType.SmartAccount, id: 7 };
 const signedOriginal = (
   legacy = false,
@@ -387,9 +387,10 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
   };
 
   const setupDurableReplacement = async (
-    firstPost?: (signed: Transaction) => Promise<void>
+    firstPost?: (signed: Transaction) => Promise<void>,
+    legacy = true
   ) => {
-    setSignedOriginal(true, 0, 25_000);
+    setSignedOriginal(legacy, legacy ? 0 : 2, 25_000);
     useActualLifecycle = true;
     const payer = { id: 3, type: KeyringAccountType.HDAccount };
     mockState.vault.activeAccount = payer;
@@ -428,12 +429,44 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       CHAIN
     );
     const posts: Transaction[] = [];
-    jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
+    let balance = BigInt('1000000000');
+    let pendingBalance: bigint | undefined;
+    let baseFee = 150;
+    let blockGasLimit = 30_000_000;
+    const reads: string[] = [];
+    const fixtureFetch = async (url, init): Promise<Response> => {
       expect(url).toBe('https://offline.example');
-      const { jsonrpc, method, id, params } = JSON.parse(init!.body as string);
+      const payload = JSON.parse(init!.body as string);
+      if (Array.isArray(payload)) {
+        const responses = await Promise.all(
+          payload.map((row) =>
+            fixtureFetch(url, { ...init, body: JSON.stringify(row) }).then(
+              (reply) => reply.json()
+            )
+          )
+        );
+        return new Response(JSON.stringify(responses), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      const { jsonrpc, method, id, params } = payload;
+      reads.push(method);
       let result: unknown;
       if (method === 'eth_chainId') result = `0x${CHAIN.toString(16)}`;
       else if (method === 'eth_getTransactionCount') result = '0x8';
+      else if (method === 'eth_getBalance')
+        result = `0x${(params[1] === 'pending'
+          ? pendingBalance ?? balance
+          : balance
+        ).toString(16)}`;
+      else if (method === 'eth_getBlockByNumber')
+        result = {
+          number: '0x64',
+          hash: `0x${'71'.repeat(32)}`,
+          gasLimit: `0x${blockGasLimit.toString(16)}`,
+          baseFeePerGas: `0x${baseFee.toString(16)}`,
+        };
       else if (method === 'eth_getCode') result = '0x';
       else if (method === 'eth_sendRawTransaction') {
         const signed = Transaction.from(params[0]);
@@ -443,16 +476,18 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       } else throw new Error(`unexpected ${method}`);
       return new Response(JSON.stringify({ jsonrpc, id, result }), {
         status: 200,
+        headers: { 'content-type': 'application/json' },
       });
-    });
-    let baseFee = 150;
+    };
+    jest.spyOn(global, 'fetch').mockImplementation(fixtureFetch);
     provider.getGasPrice = jest.fn(async () => BigNumber.from(baseFee));
     provider.getBlock = jest.fn(async () => ({
-      gasLimit: BigNumber.from(30_000_000),
+      gasLimit: BigNumber.from(blockGasLimit),
       baseFeePerGas: BigNumber.from(baseFee),
     }));
     provider.getNetwork = jest.fn(async () => ({ chainId: BigInt(CHAIN) }));
-    provider._send = rpc._send.bind(rpc);
+    provider.getBalance = jest.fn(async () => BigNumber.from(balance));
+    provider.readMany = rpc.readMany.bind(rpc);
     provider.send = rpc.send.bind(rpc);
     provider.sendTransaction = jest.fn(async (raw: string) => {
       const hash = await rpc.send('eth_sendRawTransaction', [raw]);
@@ -462,12 +497,264 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       journal,
       journalSession,
       posts,
+      reads,
+      setBalance(value: bigint) {
+        balance = value;
+      },
+      setPendingBalance(value: bigint) {
+        pendingBalance = value;
+      },
       setBaseFee(value: number) {
         baseFee = value;
+      },
+      setBlockGasLimit(value: number) {
+        blockGasLimit = value;
       },
       dispose: () => rpc.destroy(),
     };
   };
+
+  it.each(
+    [true, false].flatMap((legacy) =>
+      ['before-confirm', 'before-persist', 'after-persist', 'healthy'].map(
+        (boundary) => ({ legacy, boundary })
+      )
+    )
+  )(
+    'checks ordinary replacement affordability at dispatch ($boundary, legacy $legacy)',
+    async ({ legacy, boundary }) => {
+      const { journal, journalSession, posts, reads, setBalance, dispose } =
+        await setupDurableReplacement(undefined, legacy);
+      try {
+        const walletScope = getWalletNavigationScope();
+        const preview = await wallet.speedUpEvmTransaction(
+          ORIGINAL,
+          legacy,
+          CHAIN,
+          PAYER,
+          { previewOnly: true, walletScope }
+        );
+        if (boundary === 'before-confirm') setBalance(BigInt(0));
+        const append = journal.append.bind(journal);
+        jest.spyOn(journal, 'append').mockImplementation(async (...args) => {
+          if (boundary === 'before-persist') setBalance(BigInt(0));
+          const entry = await append(...args);
+          if (boundary === 'after-persist') setBalance(BigInt(0));
+          return entry;
+        });
+        reads.length = 0;
+        const result = await wallet.speedUpEvmTransaction(
+          ORIGINAL,
+          legacy,
+          CHAIN,
+          PAYER,
+          { approvedMaximumFee: preview.maximumFee, walletScope }
+        );
+        const entries = await journal.listSender(
+          journalSession,
+          String(CHAIN),
+          PAYER
+        );
+        if (boundary === 'healthy') {
+          expect(result).toMatchObject({ isSpeedUp: true });
+          expect(posts).toHaveLength(1);
+          expect(entries).toHaveLength(1);
+          expect(posts[0]!.nonce).toBe(8);
+          expect(posts[0]!.value).toBe(BigInt(7));
+          expect(posts[0]!.data).toBe('0x1234');
+          expect(posts[0]!.gasLimit).toBe(BigInt(30_000));
+        } else {
+          expect(result).toMatchObject({ isSpeedUp: false });
+          expect(posts).toHaveLength(0);
+          expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+        }
+        if (boundary !== 'before-confirm') {
+          expect(
+            reads.filter((method) => method === 'eth_getBalance')
+          ).toHaveLength(2);
+          expect(
+            reads.filter((method) => method === 'eth_getBlockByNumber')
+          ).toHaveLength(boundary === 'healthy' ? 2 : 1);
+        }
+      } finally {
+        dispose();
+      }
+    }
+  );
+
+  it.each(
+    ['base-fee', 'block-gas-limit'].flatMap((constraint) =>
+      ['before-confirm', 'before-persist', 'after-persist', 'healthy'].map(
+        (boundary) => ({ constraint, boundary })
+      )
+    )
+  )(
+    'retains the reviewed execution bounds ($constraint, $boundary)',
+    async ({ constraint, boundary }) => {
+      const {
+        journal,
+        journalSession,
+        posts,
+        setBaseFee,
+        setBlockGasLimit,
+        dispose,
+      } = await setupDurableReplacement();
+      try {
+        setBaseFee(100);
+        setBlockGasLimit(30_010);
+        const walletScope = getWalletNavigationScope();
+        const preview = await wallet.speedUpEvmTransaction(
+          ORIGINAL,
+          true,
+          CHAIN,
+          PAYER,
+          { previewOnly: true, walletScope }
+        );
+        const invalidate = () =>
+          constraint === 'base-fee'
+            ? setBaseFee(125)
+            : setBlockGasLimit(29_990);
+        if (boundary === 'before-confirm') invalidate();
+        const append = journal.append.bind(journal);
+        jest.spyOn(journal, 'append').mockImplementation(async (...args) => {
+          if (boundary === 'before-persist') invalidate();
+          const entry = await append(...args);
+          if (boundary === 'after-persist') invalidate();
+          return entry;
+        });
+        const submission = wallet.speedUpEvmTransaction(
+          ORIGINAL,
+          true,
+          CHAIN,
+          PAYER,
+          {
+            approvedMaximumFee: preview.maximumFee,
+            walletScope,
+          }
+        );
+        if (boundary === 'before-confirm') {
+          await expect(submission).rejects.toThrow();
+          expect(posts).toHaveLength(0);
+          expect(
+            await journal.listSender(journalSession, String(CHAIN), PAYER)
+          ).toHaveLength(0);
+          return;
+        }
+        const result = await submission;
+        const entries = await journal.listSender(
+          journalSession,
+          String(CHAIN),
+          PAYER
+        );
+        expect(posts).toHaveLength(boundary === 'healthy' ? 1 : 0);
+        expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+        expect(result.isSpeedUp).toBe(boundary === 'healthy');
+      } finally {
+        dispose();
+      }
+    }
+  );
+
+  it.each(['before-confirm', 'before-persist', 'after-persist', 'healthy'])(
+    'checks canonical cancellation funds (%s)',
+    async (boundary) => {
+      const { journal, journalSession, posts, setBalance, dispose } =
+        await setupDurableReplacement();
+      try {
+        const walletScope = getWalletNavigationScope();
+        const preview = await wallet.cancelEvmTransaction(
+          ORIGINAL,
+          true,
+          8,
+          PAYER,
+          { chainId: CHAIN, walletScope },
+          { previewOnly: true }
+        );
+        if (boundary === 'before-confirm') setBalance(BigInt(0));
+        const append = journal.append.bind(journal);
+        jest.spyOn(journal, 'append').mockImplementation(async (...args) => {
+          if (boundary === 'before-persist') setBalance(BigInt(0));
+          const entry = await append(...args);
+          if (boundary === 'after-persist') setBalance(BigInt(0));
+          return entry;
+        });
+        const submission = wallet.cancelEvmTransaction(
+          ORIGINAL,
+          true,
+          8,
+          PAYER,
+          { chainId: CHAIN, walletScope },
+          { approvedMaximumFee: preview.maximumFee }
+        );
+        if (boundary === 'before-confirm')
+          await expect(submission).rejects.toThrow('Insufficient funds');
+        else expect((await submission).isCanceled).toBe(boundary === 'healthy');
+        const entries = await journal.listSender(
+          journalSession,
+          String(CHAIN),
+          PAYER
+        );
+        expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+        expect(posts).toHaveLength(boundary === 'healthy' ? 1 : 0);
+      } finally {
+        dispose();
+      }
+    }
+  );
+
+  it('refuses an unfunded cancellation preview without signing or persistence', async () => {
+    const { journal, journalSession, posts, setBalance, dispose } =
+      await setupDurableReplacement();
+    try {
+      setBalance(BigInt(0));
+      await expect(
+        wallet.cancelEvmTransaction(
+          ORIGINAL,
+          true,
+          8,
+          PAYER,
+          { chainId: CHAIN, walletScope: getWalletNavigationScope() },
+          { previewOnly: true }
+        )
+      ).rejects.toThrow('Insufficient funds');
+      expect(posts).toHaveLength(0);
+      expect(
+        await journal.listSender(journalSession, String(CHAIN), PAYER)
+      ).toHaveLength(0);
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+    } finally {
+      dispose();
+    }
+  });
+
+  it('retains canonical funding for cancellation when the pending balance is zero', async () => {
+    const { posts, setPendingBalance, dispose } =
+      await setupDurableReplacement();
+    try {
+      setPendingBalance(BigInt(0));
+      const walletScope = getWalletNavigationScope();
+      const preview = await wallet.cancelEvmTransaction(
+        ORIGINAL,
+        true,
+        8,
+        PAYER,
+        { chainId: CHAIN, walletScope },
+        { previewOnly: true }
+      );
+      const result = await wallet.cancelEvmTransaction(
+        ORIGINAL,
+        true,
+        8,
+        PAYER,
+        { chainId: CHAIN, walletScope },
+        { approvedMaximumFee: preview.maximumFee }
+      );
+      expect(result.isCanceled).toBe(true);
+      expect(posts).toHaveLength(1);
+    } finally {
+      dispose();
+    }
+  });
 
   it.each([false, true])(
     'blocks the spending replacement after durable Cancel with a held ACK (already persisted: %s)',
@@ -795,10 +1082,15 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       provider.getTransaction.mockResolvedValue(null);
       provider.getGasPrice = jest.fn(async () => BigNumber.from(100));
       provider.getNetwork = jest.fn(async () => ({ chainId: BigInt(CHAIN) }));
-      provider._send = jest.fn(async ({ id, method }) => {
-        expect(method).toBe('eth_chainId');
-        return [{ jsonrpc: '2.0', id, result: `0x${CHAIN.toString(16)}` }];
-      });
+      provider.readMany = jest.fn(async (requests) =>
+        Promise.allSettled(
+          requests.map(({ method, params }) =>
+            method === 'eth_chainId'
+              ? `0x${CHAIN.toString(16)}`
+              : provider.send(method, params)
+          )
+        )
+      );
       let movedNonce = false;
       let mined = false;
       let balance = outcome === 'low-preview' ? '0x0' : '0xffffff';
@@ -1279,6 +1571,17 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     provider.getTransaction.mockResolvedValue(wrongTransaction);
     provider.getTransactionReceipt = jest.fn().mockResolvedValue(null);
     provider.getBlockNumber = jest.fn().mockResolvedValue(123);
+    provider.signal = new AbortController().signal;
+    provider._getConnection = () => ({
+      url: mockState.vault.activeNetwork.url,
+    });
+    provider.readMany = jest.fn(async (requests) =>
+      requests.map(({ method, params }) => {
+        if (method !== 'eth_chainId' || params.length)
+          throw new Error('Unexpected identity read');
+        return { status: 'fulfilled', value: `0x${CHAIN.toString(16)}` };
+      })
+    );
 
     await expect(
       wallet.getEvmTransactionFromProvider(ORIGINAL)

@@ -165,9 +165,15 @@ it('uses the actual verifier twice with exact order, bounded replies and one cap
       blockTimestamp: 1694498816000,
     });
     await expect(owner.verify(signal())).rejects.toThrow('privacy_cancelled');
-    expect(f.calls).toEqual([...order, ...order]);
+    expect(f.calls).toEqual([
+      ...order,
+      'chainId',
+      'block',
+      'block',
+      'isKnownRoot',
+    ]);
     expect(f.released).toEqual(f.calls);
-    expect(new Set(f.ids).size).toBe(16);
+    expect(new Set(f.ids).size).toBe(12);
     expect(new Set(f.bindings).size).toBe(1);
     expect(Object.isFrozen(f.bindings[0])).toBe(true);
     expect(f.bindings[0]).toEqual({

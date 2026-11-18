@@ -65,6 +65,10 @@ describe('spam counting at the actual approval boundary', () => {
     mockGetState.mockImplementation(() => ({
       spamFilter: state,
       vaultGlobal: { networkStatus: 'idle' },
+      vault: {
+        activeAccount: { type: 'HDAccount', id: 0 },
+        activeNetwork: { chainId: 1 },
+      },
     }));
     mockDispatch.mockImplementation((action) => {
       state = reducer(state, action);

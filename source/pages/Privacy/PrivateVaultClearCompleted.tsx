@@ -19,7 +19,7 @@ export default function PrivateVaultClearCompleted({
     removed: number;
     unresolved: number;
   }>();
-  const [error, setError] = useState(false);
+  const [error, setError] = useState('');
   const [progress, setProgress] = useState({ checked: 0, total: 0 });
   const owner = useRef({ active: true, busy: false, revision: 0 });
   const current = (revision: number) =>
@@ -39,7 +39,7 @@ export default function PrivateVaultClearCompleted({
     const revision = ++owner.current.revision;
     const ids = [...new Set(noteIds)];
     setPending(true);
-    setError(false);
+    setError('');
     setResult(undefined);
     setProgress({ checked: 0, total: ids.length });
     let removed = 0;
@@ -80,8 +80,14 @@ export default function PrivateVaultClearCompleted({
         setConfirming(false);
         onComplete();
       }
-    } catch {
-      if (current(revision)) setError(true);
+    } catch (failure) {
+      if (current(revision))
+        setError(
+          failure instanceof Error &&
+            failure.message === 'privacy_archive_limit'
+            ? 'privacy.archive.full'
+            : 'privacy.capacity.clearError'
+        );
       onComplete();
     } finally {
       if (current(revision)) {
@@ -132,7 +138,7 @@ export default function PrivateVaultClearCompleted({
       {result && (
         <p role="status">{t('privacy.capacity.clearResult', result)}</p>
       )}
-      {error && <p role="alert">{t('privacy.capacity.clearError')}</p>}
+      {error && <p role="alert">{t(error)}</p>}
     </div>
   );
 }

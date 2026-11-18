@@ -5,6 +5,7 @@ import test from 'node:test';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { EvmAutoNonceAcceptance } from '../../../source/shared/evmAutoNonce.ts';
+import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { signedRecordTestSession } from './signedRecordTestSession.ts';
@@ -19,8 +20,11 @@ const request={hash,from,to,nonce:'0'};
 const signal=()=>new AbortController().signal;
 type Call={method:string;params:unknown[];signal:AbortSignal};
 function fixture(network=getNativeNetwork('ethereum'), override?:(call:Call)=>unknown|Promise<unknown>){
- const calls:Call[]=[];
- const rpc=new EvmTransferReadRpc(network,{monotonicMilliseconds:()=>1000,fetch:async(url,init)=>{
+ const calls:Call[]=[], requests: string[][] = [];
+ const fetcher = async(url: string,init: RequestInit, record = true): Promise<Response>=>{
+  const request = JSON.parse(String(init.body));
+  if (record) requests.push((Array.isArray(request) ? request : [request]).map(row => row.method));
+  if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetcher(url, { ...init, body: JSON.stringify(row) }, false)).json())));
   assert.equal(url,network.rpcUrl);assert.equal(init.redirect,'error');assert.equal(init.credentials,'omit');
   const body=JSON.parse(String(init.body));const call={...body,signal:init.signal} as Call;calls.push(call);
   const inspect=(value:unknown):void=>{if(Array.isArray(value))value.forEach(inspect);else if(value&&typeof value==='object')Object.values(value).forEach(inspect);else if(typeof value==='string'&&/^0x[0-9a-f]+$/i.test(value)){let tx:Transaction|undefined;try{tx=Transaction.from(value)}catch{/* Not a transaction. */}assert.equal(tx?.isSigned()??false,false);}};
@@ -36,7 +40,7 @@ function fixture(network=getNativeNetwork('ethereum'), override?:(call:Call)=>un
    else throw Error('Unexpected read method '+call.method);
   }
   return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result}),{headers:{'content-type':'application/json'}});
- }});return {rpc,calls};
+ }; const rpc=new EvmTransferReadRpc(network,{monotonicMilliseconds:()=>1000,fetch:fetcher});return {rpc,calls,requests};
 }
 
 for(const network of [...NATIVE_NETWORKS,custom])test(`${network.id} quotes the same exact unsigned envelope without chain profiles`,async()=>{
@@ -45,6 +49,21 @@ for(const network of [...NATIVE_NETWORKS,custom])test(`${network.id} quotes the 
  assert.equal(f.calls.filter(c=>c.method==='eth_estimateGas').length,1);
  assert.deepEqual(f.calls.find(c=>c.method==='eth_estimateGas')!.params,[{from,to,data:'0x',accessList:[],value:'0x64',maxFeePerGas:'0xa',maxPriorityFeePerGas:'0x2',type:'0x2',chainId:'0x'+BigInt(network.chainId).toString(16),nonce:'0x0'},'pending']);
  assert.equal(f.calls.some(c=>['eth_call','eth_getCode','eth_getStorageAt'].includes(c.method)||c.params.includes('finalized')),false);
+});
+
+test('calls status verifies one chain scope and batches the exact receipt hashes', async () => {
+  const hashes = Array.from({ length: 20 }, (_, index) => '0x' + (index + 1).toString(16).padStart(64, '0'));
+  const f = fixture(undefined, call => call.method === 'eth_getTransactionReceipt'
+    ? { transactionHash: call.params[0], blockHash, blockNumber: '0x50' } : undefined);
+  const result = await f.rpc.callsStatusPhase(signal(), () => undefined, async read => ({
+    receipts: await read.receipts(hashes), blocks: await read.blockHashes(['0x50']),
+  }));
+  assert.equal(result.receipts.length, 20);
+  assert.deepEqual(result.blocks, [blockHash]);
+  assert.deepEqual(f.requests, [
+    ['eth_chainId'], hashes.map(() => 'eth_getTransactionReceipt'), ['eth_getBlockByNumber'], ['eth_chainId'],
+  ]);
+  assert.deepEqual(f.calls.filter(call => call.method === 'eth_getTransactionReceipt').map(call => call.params[0]), hashes);
 });
 
 test('input snapshots survive mutation and A-B-A/async guards reject stale quote work',async()=>{
@@ -95,6 +114,16 @@ test('separate bounded block responses preserve ordinary response caps',async()=
  await assert.rejects(huge.rpc.quoteFees(transaction(),signal(),()=>undefined),{code:'INVALID_RESPONSE'});
  const ordinary=fixture(undefined,c=>c.method==='eth_chainId'?'0x'+'1'.repeat(17000):undefined);
  await assert.rejects(ordinary.rpc.quoteFees(transaction(),signal(),()=>undefined),{code:'INVALID_RESPONSE'});
+});
+
+test('internal contract reads allow 32 KiB runtime bytes and retain scalar limits', async () => {
+ const deployed = `0x${'60'.repeat(32 * 1024)}`;
+ const f = fixture(undefined, call => call.method === 'eth_getCode' ? deployed : undefined);
+ assert.equal(await f.rpc.smartAccountRead('eth_getCode', [to, 'pending'], signal(), () => {}), deployed);
+ const scalar = fixture(undefined, call => call.method === 'eth_getBalance' ? deployed : undefined);
+ await assert.rejects(scalar.rpc.smartAccountRead('eth_getBalance', [from, 'pending'], signal(), () => {}), { code: 'INVALID_RESPONSE' });
+ const oversized = fixture(undefined, call => call.method === 'eth_getCode' ? `0x${'60'.repeat(33 * 1024)}` : undefined);
+ await assert.rejects(oversized.rpc.smartAccountRead('eth_getCode', [to, 'pending'], signal(), () => {}), { code: 'INVALID_RESPONSE' });
 });
 
 test('aborted input emits no request and malformed RPC envelopes never become fees',async()=>{
@@ -349,6 +378,61 @@ for (const maximum of [false, true]) test(`explicit fees bind the initial ${maxi
   await assert.rejects(f.rpc.prepare({ from, to, value: quote.transaction.value, data: '0x' }, signal(), () => undefined, quote.transaction, undefined, emptyNoncePlanner), { code: 'REVIEW_REQUIRED' });
 });
 
+for (const type of [0, 2] as const) for (const maximum of [false, true]) test(`custom type ${type} ${maximum ? 'MAX' : 'native'} preparation needs no fee recommendations`, async () => {
+  const f = fixture(custom, call => {
+    if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)) throw Error('Fee recommendations unavailable');
+    if (call.method === 'eth_getBlockByNumber') return { number: call.params[0] === 'latest' ? '0x64' : call.params[0], hash: blockHash, baseFeePerGas: type === 0 ? null : '0x4', gasLimit: '0x1c9c380' };
+  });
+  const choice = type === 0 ? { kind: 'custom' as const, type, gasPrice: '12', gasLimit: '30000' }
+    : { kind: 'custom' as const, type, maxFeePerGas: '12', maxPriorityFeePerGas: '2', gasLimit: '30000' };
+  const quote = maximum ? await f.rpc.prepareMaximum(from, to, 0n, signal(), () => {}, undefined, emptyNoncePlanner, choice)
+    : await f.rpc.prepare({ from, to, value: '100', data: '0x' }, signal(), () => {}, undefined, undefined, emptyNoncePlanner, undefined, undefined, choice);
+  assert.equal(quote.transaction.type, type);
+  assert.equal(quote.transaction.gasLimit, '30000');
+  assert.equal(f.calls.some(call => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)), false);
+  assert(f.calls.some(call => call.method === 'eth_estimateGas'));
+});
+
+test('custom ERC20 preparation retains decimals and simulation checks without fee recommendations', async () => {
+  const contract = `0x${'33'.repeat(20)}`;
+  const f = fixture(custom, call => {
+    if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)) throw Error('Fee recommendations unavailable');
+    if (call.method === 'eth_getCode') return '0x6000';
+    if (call.method === 'eth_call') {
+      const tx = call.params[0] as { from?: string; data: string };
+      return tx.from ? '0x' : '0x' + (tx.data === '0x313ce567' ? 18 : 1000).toString(16).padStart(64, '0');
+    }
+  });
+  const quote = await f.rpc.prepare({ from, to: contract, value: '0', data: encodeErc20Transfer(to, '100') }, signal(), () => {}, undefined, undefined,
+    emptyNoncePlanner, { standard: 'ERC20', contractAddress: contract, amountUnits: '100' }, 18,
+    { kind: 'custom', type: 2, maxFeePerGas: '12', maxPriorityFeePerGas: '2', gasLimit: '30000' });
+  assert.equal(quote.assetBalanceUnits, '1000');
+  assert(f.calls.some(call => call.method === 'eth_call' && (call.params[0] as { data: string }).data === '0x313ce567'));
+  assert(f.calls.some(call => call.method === 'eth_call' && (call.params[0] as { from?: string }).from));
+  assert.equal(f.calls.some(call => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)), false);
+});
+
+for (const failure of ['wrong-type', 'base-fee', 'changed-block', 'gas-growth', 'funds'] as const) test(`custom fees preserve ${failure} refusal without recommendations`, async () => {
+  const f = fixture(custom, call => {
+    if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)) throw Error('Fee recommendations unavailable');
+    if (call.method === 'eth_getBlockByNumber') return { number: call.params[0] === 'latest' ? '0x64' : call.params[0], hash: failure === 'changed-block' && call.params[0] !== 'latest' ? hash : blockHash,
+      baseFeePerGas: failure === 'wrong-type' ? null : failure === 'base-fee' ? '0xd' : '0x4', gasLimit: '0x1c9c380' };
+    if (failure === 'gas-growth' && call.method === 'eth_estimateGas') return '0x9c40';
+    if (failure === 'funds' && call.method === 'eth_getBalance') return '0x1';
+  });
+  await assert.rejects(f.rpc.prepare({ from, to, value: '100', data: '0x' }, signal(), () => {}, undefined, undefined, emptyNoncePlanner, undefined, undefined,
+    { kind: 'custom', type: 2, maxFeePerGas: '12', maxPriorityFeePerGas: '2', gasLimit: '30000' }));
+  assert.equal(f.calls.some(call => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)), false);
+});
+
+test('automatic fees still require recommendations', async () => {
+  const f = fixture(custom, call => {
+    if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)) throw Error('Fee recommendations unavailable');
+  });
+  await assert.rejects(f.rpc.prepare({ from, to, value: '100', data: '0x' }, signal(), () => {}, undefined, undefined, emptyNoncePlanner));
+  assert(f.calls.some(call => call.method === 'eth_gasPrice'));
+});
+
 for (const [gasLimit, fee, balance] of [['21000', '12', '0xffffffffffff'], ['30000001', '12', '0xffffffffffff'], ['30000', '12000000000', '0x100']] as const) {
   test(`custom fee quote rejects insufficient gas/bounds/funding ${gasLimit}/${fee}/${balance}`, async () => {
     const f = fixture(custom, call => call.method === 'eth_gasPrice' ? '0xa'
@@ -361,3 +445,58 @@ for (const [gasLimit, fee, balance] of [['21000', '12', '0xffffffffffff'], ['300
     assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
   });
 }
+
+for (const type of [0, 2] as const) test(`native final admission validates exact execution and fee limits (type ${type})`, async () => {
+ let estimate = 22000;
+ let baseFee = '0x4';
+ let blockGasLimit = '0x1c9c380';
+ const f = fixture(custom, call => {
+  if (call.method === 'eth_getTransactionCount') return '0x0';
+  if (call.method === 'eth_estimateGas') return '0x' + estimate.toString(16);
+  if (call.method === 'eth_getBlockByNumber') return {
+   number: call.params[0] === 'latest' ? '0x64' : call.params[0], hash: blockHash,
+   gasLimit: blockGasLimit, ...(type === 2 ? { baseFeePerGas: baseFee } : {}),
+  };
+ });
+ const common = { from, to, chainId: custom.chainId, nonce: '0', value: '100', gasLimit: '25200', data: '0x' };
+ const envelope: EvmUnsignedTransfer = type === 0
+  ? { ...common, type, gasPrice: '10' }
+  : { ...common, type, accessList: [], maxFeePerGas: '10', maxPriorityFeePerGas: '2' };
+ const validate = () => f.rpc.verifyForDispatch(envelope, signal(), () => {}, emptyNoncePlanner);
+ assert.throws(() => f.rpc.verifyForDispatch({ ...envelope, value: '0' }, signal(), () => {}, emptyNoncePlanner), { code: 'INVALID_INPUT' });
+ assert.equal(f.calls.length, 0, 'ordinary zero-value transfers remain rejected before any RPC');
+ await validate();
+ const estimated = f.calls.filter(call => call.method === 'eth_estimateGas');
+ assert.equal(estimated.length, 1);
+ assert.deepEqual(estimated[0]!.params, [{ from, to, data: '0x', value: '0x64', nonce: '0x0',
+  chainId: '0x' + BigInt(custom.chainId).toString(16), type: type === 0 ? '0x0' : '0x2',
+  ...(type === 0 ? { gasPrice: '0xa' } : { accessList: [], maxFeePerGas: '0xa', maxPriorityFeePerGas: '0x2' }) }, 'pending']);
+ assert.equal(f.calls.some(call => ['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(call.method)), false);
+ estimate = 25201;
+ await assert.rejects(validate(), { code: 'REVIEW_REQUIRED' });
+ estimate = 22000;
+ blockGasLimit = '0x6000';
+ await assert.rejects(validate(), { code: 'REVIEW_REQUIRED' });
+ blockGasLimit = '0x1c9c380';
+ if (type === 2) {
+  baseFee = '0xb';
+  await assert.rejects(validate(), { code: 'REVIEW_REQUIRED' });
+ }
+});
+
+test('native final execution read preserves cancellation and canonical revalidation', async () => {
+ for (const revoke of [true, false]) {
+  let changed = false;
+  const f = fixture(custom, call => {
+   if (call.method === 'eth_getTransactionCount') return '0x0';
+   if (call.method === 'eth_estimateGas') changed = true;
+   if (!revoke && changed && call.method === 'eth_getBlockByNumber' && call.params[0] === '0x64')
+    return { number: '0x64', hash, gasLimit: '0x1c9c380', baseFeePerGas: '0x4' };
+   return undefined;
+  });
+  await assert.rejects(f.rpc.verifyForDispatch(transaction(custom), signal(), () => {
+   if (revoke && changed) throw Error('revoked');
+  }, emptyNoncePlanner), { code: revoke ? 'CANCELLED' : 'PROFILE_CHANGED' });
+  assert.equal(f.calls.some(call => call.method === 'eth_estimateGas'), true);
+ }
+});

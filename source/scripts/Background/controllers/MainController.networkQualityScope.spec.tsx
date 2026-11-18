@@ -27,6 +27,7 @@ import { clearCustomRpcDrafts } from 'pages/Settings/customRpcDraft';
 import BalancesManager from 'scripts/Background/controllers/balances';
 import MainController from 'scripts/Background/controllers/MainController';
 import { CancellablePromises } from 'scripts/Background/controllers/promises/cancellablesPromises';
+import { walletHttpIdentity } from 'scripts/Background/controllers/providers/walletHttpIdentity';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import { restoreVaultSnapshot, setActiveAccount } from 'state/vault';
@@ -287,6 +288,9 @@ beforeEach(async () => {
     return {
       ok: true,
       status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () =>
+        JSON.stringify(Array.isArray(body) ? responses : responses[0]),
       json: async () => (Array.isArray(body) ? responses : responses[0]),
     } as Response;
   }) as any;
@@ -317,6 +321,9 @@ beforeEach(async () => {
   );
   store.dispatch(actions.switchNetworkSuccess());
   store.dispatch(actions.resetNetworkQualityForNewNetwork());
+  // Model startup's acknowledged rule installation before ordinary balance reads.
+  await walletHttpIdentity().configure([]);
+  await walletHttpIdentity().configure([OLD.url]);
 
   wallet = Object.assign(Object.create(MainController.prototype), {
     walletStateGeneration: 0,
@@ -342,6 +349,7 @@ beforeEach(async () => {
     balancesManager: BalancesManager(),
     setFiat: jest.fn().mockResolvedValue(undefined),
     setSignerNetwork: jest.fn(async (network: typeof OLD) => {
+      await walletHttpIdentity().configure([network.url]);
       currentProvider = providerFor(network);
       return { success: true };
     }),
@@ -582,10 +590,12 @@ it('an explicit reconnect to the exact same endpoint preserves recent known late
 it('stale latency is cleared even for the same endpoint', async () => {
   await oldSlowRead();
   await advance(300001);
+  armHydration();
   act(() => {
     pendingSwitch = wallet.setActiveNetwork(OLD);
     void pendingSwitch!.catch(() => undefined);
   });
+  await waitForHydration();
   expect(store.getState().vaultGlobal.networkQuality).toBeUndefined();
 });
 

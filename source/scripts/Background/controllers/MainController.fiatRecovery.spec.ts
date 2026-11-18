@@ -13,6 +13,7 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockStore.getState(),
+    subscribe: (fn: () => void) => mockStore.subscribe(fn),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
   persistCommittedWalletState: jest.fn().mockResolvedValue(undefined),
@@ -92,7 +93,8 @@ const deferred = <T>() => {
 const response = (coin = first.coingeckoId, price = 4, currency = 'eur') =>
   ({
     ok: true,
-    json: async () => ({ [coin]: { [currency]: price } }),
+    headers: new Headers(),
+    text: async () => JSON.stringify({ [coin]: { [currency]: price } }),
   } as Response);
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 let wallet: any;
@@ -206,7 +208,9 @@ it('refreshes the retained context once after actual signer setup fails', async 
 
 it('retains an explicit currency quote through the real failed-switch signer epoch', async () => {
   const pending = deferred<Response>();
-  fetchPrice.mockReturnValueOnce(pending.promise);
+  fetchPrice
+    .mockReturnValueOnce(pending.promise)
+    .mockResolvedValueOnce(response());
   const update = wallet.setFiat('eur');
   await flush();
   expect(mockStore.getState().price.fiat).toEqual({
@@ -229,10 +233,10 @@ it('retains an explicit currency quote through the real failed-switch signer epo
   });
   expect(mockStore.getState().vaultGlobal.networkStatus).toBe('error');
   expect(quote.mock.calls).toEqual([
-    [1, 'eur'],
-    [1, 'eur'],
+    [1, 'eur', expect.any(AbortSignal)],
+    [1, 'eur', expect.any(AbortSignal)],
   ]);
-  expect(fetchPrice).toHaveBeenCalledTimes(1);
+  expect(fetchPrice).toHaveBeenCalledTimes(2);
 });
 
 it('settles at zero on a genuine price-read failure without an error loop', async () => {
@@ -245,7 +249,7 @@ it('settles at zero on a genuine price-read failure without an error loop', asyn
   );
   const invalidResponse = new Response('{}', { status: 200 });
   jest
-    .spyOn(invalidResponse, 'json')
+    .spyOn(invalidResponse, 'text')
     .mockRejectedValue(new Error('Synthetic quote decode failure'));
   pending.resolve(invalidResponse);
   await update;
@@ -273,7 +277,7 @@ it('uses only the normal success refresh after an actual successful signer switc
     available: true,
     price: 2,
   });
-  expect(quote.mock.calls).toEqual([[137, 'usd']]);
+  expect(quote.mock.calls).toEqual([[137, 'usd', expect.any(AbortSignal)]]);
 });
 
 it('does not enqueue failure recovery for a superseded signer switch', async () => {
@@ -290,7 +294,7 @@ it('does not enqueue failure recovery for a superseded signer switch', async () 
   expect(await staleResult).toBe('Network change cancelled');
   await latest;
   await flush();
-  expect(quote.mock.calls).toEqual([[1, 'usd']]);
+  expect(quote.mock.calls).toEqual([[1, 'usd', expect.any(AbortSignal)]]);
   expect(mockStore.getState().price.fiat).toEqual({
     asset: 'usd',
     available: true,
@@ -361,11 +365,77 @@ it.each(['lock', 'reset'] as const)(
     await queuedCurrency;
     await finishReset;
     await flush();
-    expect(quote).toHaveBeenCalledTimes(1);
+    expect(quote).toHaveBeenCalledTimes(3);
     expect(mockStore.getState().price.fiat).toEqual({
-      asset: 'eur',
+      asset: 'gbp',
       available: false,
       price: 0,
     });
+  }
+);
+
+it.each(['ethereum', 'syscoin'] as const)(
+  'releases a retired %s quote body before the next network quote',
+  async (kind) => {
+    let cancelled = false;
+    let physical!: AbortSignal;
+    const old = {
+      ...first,
+      kind,
+      chainId: kind === 'syscoin' ? 57 : 1,
+      slip44: kind === 'syscoin' ? 57 : 60,
+    };
+    mockStore.dispatch({ type: 'vault/setActiveNetwork', payload: old });
+    mockStore.dispatch({
+      type: 'vault/setIsBitcoinBased',
+      payload: kind === 'syscoin',
+    });
+    // The controller uses the actual quote reader and real bounded response body.
+    fetchPrice
+      .mockImplementationOnce(async (_url, init) => {
+        physical = init!.signal as AbortSignal;
+        return new Response(
+          new ReadableStream({
+            cancel() {
+              cancelled = true;
+            },
+          })
+        );
+      })
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify(
+            kind === 'syscoin'
+              ? { rates: { usd: 2 } }
+              : { [next.coingeckoId]: { usd: 2 } }
+          )
+        )
+      );
+    const oldRead = wallet.setFiat();
+    await flush();
+    wallet.setActiveNetworkLogic = (
+      network: any,
+      resolve: (value: unknown) => void
+    ) => {
+      mockStore.dispatch({ type: 'vault/setActiveNetwork', payload: network });
+      resolve({ chainId: network.chainId, isBitcoinBased: kind === 'syscoin' });
+    };
+    await wallet.setActiveNetwork({
+      ...next,
+      kind,
+      chainId: kind === 'syscoin' ? 58 : 137,
+      slip44: old.slip44,
+    });
+    await oldRead;
+    await flush();
+    expect(physical.aborted).toBe(true);
+    expect(cancelled).toBe(true);
+    await wallet.setFiat();
+    expect(mockStore.getState().price.fiat).toMatchObject({
+      asset: 'usd',
+      price: 2,
+      available: true,
+    });
+    expect(fetchPrice).toHaveBeenCalledTimes(2);
   }
 );

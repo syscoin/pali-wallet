@@ -69,6 +69,30 @@ for (const method of ['sys_sign', 'sys_signAndSend'] as const) test(`${method} r
   } finally { f.close(); }
 });
 
+for (const method of ['sys_sign', 'sys_signAndSend'] as const) test(`${method} displays the full verified NEVM burn destination beside explicit consent`, async () => {
+  const f = fixture(method), destination = '0x' + '22'.repeat(20), decoy = '0x' + '11'.repeat(20);
+  Object.assign(f.review.details!, { burnDestination: destination, transactionType: 'assetallocationburn_to_ethereum', burn: { ethaddress: decoy } });
+  try {
+    const elements = f.render(), output = text(elements);
+    assert(output.includes(translation('transactions.bridgeToNevm')));
+    assert(output.includes(translation('transactions.nevmAddress')));
+    const address = elements.find(element => element.props.testID === 'native-psbt-burn-destination');
+    assert(address); assert.equal(address.props.selectable, true);
+    assert.deepEqual(address.children, [destination]);
+    assert(!output.includes(decoy)); assert(output.includes('0.00000123'));
+    assert.equal(f.button().props.disabled, false);
+    await f.button().props.onPress(); assert.deepEqual(f.approvals, [['psbt-1', 7]]);
+  } finally { f.close(); }
+});
+
+test('ordinary reviews do not acquire a bridge destination label', () => {
+  const f = fixture();
+  try {
+    assert(!f.render().some(element => element.props.testID === 'native-psbt-burn'));
+    assert(!text(f.render()).includes(translation('transactions.nevmAddress')));
+  } finally { f.close(); }
+});
+
 test('busy double tap admits exactly one identifier-only approval', async () => {
   const held = Promise.withResolvers<void>(), f = fixture(); f.hold(held.promise);
   try {

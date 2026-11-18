@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+import '@testing-library/jest-dom';
 import { act, render, screen } from '@testing-library/react';
 import React from 'react';
 
@@ -86,6 +87,8 @@ const market = (price: number) => ({
     current_price: { usd: price },
     // eslint-disable-next-line camelcase
     price_change_percentage_24h: 0,
+    // eslint-disable-next-line camelcase
+    price_change_percentage_24h_in_currency: { usd: 0 },
   },
 });
 beforeEach(() => {
@@ -140,6 +143,37 @@ it('loads known-asset prices and permits a fresh attempt after leaving the asset
     warn.mockRestore();
   }
 });
+
+it.each([
+  ['btc', 0.0000003, '₿3e-7'],
+  ['btc', 0.000001, '₿0.000001'],
+  ['btc', 0, '₿0.000000'],
+  ['usd', 0.02, '$0.020000'],
+])(
+  'uses the real price formatter for %s quote %s',
+  async (currency, quote, expected) => {
+    const formatUtils = jest.requireMock('utils/index');
+    const formatter = jest
+      .spyOn(formatUtils, 'formatCurrency')
+      .mockImplementation(jest.requireActual('utils/format').formatCurrency);
+    try {
+      mockState.price.fiat.asset = currency;
+      const data: any = market(Number(quote));
+      data['market_data']['current_price'] = { [currency]: quote };
+      data['market_data']['market_cap'] = { [currency]: 10 };
+      mockFetch.mockResolvedValue({ ok: true, json: async () => data });
+      render(<SyscoinAssetDetails id={asset.assetGuid} />);
+      await act(async () => undefined);
+      const price = screen.getByText('tokens.currentPrice').parentElement!;
+      expect(price).toHaveTextContent(expected);
+      expect(formatter).toHaveBeenCalledWith(String(quote), 6, true);
+      expect(formatter).toHaveBeenCalledWith('10', 0);
+      if (Number(quote) > 0) expect(price).not.toHaveTextContent('₿0.000000');
+    } finally {
+      formatter.mockRestore();
+    }
+  }
+);
 
 it('ignores the first visit response after leaving and returning to the same asset', async () => {
   const replies: ((value: any) => void)[] = [];
@@ -231,6 +265,8 @@ it.each([undefined, null, NaN, Infinity])(
           current_price: { usd: 55 },
           // eslint-disable-next-line camelcase
           price_change_percentage_24h: change,
+          // eslint-disable-next-line camelcase
+          price_change_percentage_24h_in_currency: { usd: change },
         },
       }),
     });
@@ -256,6 +292,9 @@ it.each([
   const data = market(55);
   // eslint-disable-next-line camelcase
   data.market_data.price_change_percentage_24h = change as number;
+  // eslint-disable-next-line camelcase
+  data.market_data.price_change_percentage_24h_in_currency.usd =
+    change as number;
   mockFetch.mockResolvedValue({ ok: true, json: async () => data });
   render(<SyscoinAssetDetails id={asset.assetGuid} />);
   await act(async () => undefined);
@@ -405,3 +444,31 @@ describe('focused Close visibility after asynchronous market changes', () => {
     }
   });
 });
+
+/* eslint-disable camelcase -- Exact CoinGecko response fields. */
+it.each([true, false])(
+  'matches price and daily change to selected currency, globalPresent=%s',
+  async (globalPresent) => {
+    const data = {
+      market_data: {
+        current_price: { usd: 100, eur: 90 },
+        ...(globalPresent ? { price_change_percentage_24h: -1 } : {}),
+        price_change_percentage_24h_in_currency: { usd: -1, eur: 2 },
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, json: async () => data });
+    const view = render(<SyscoinAssetDetails id={asset.assetGuid} />);
+    await act(async () => undefined);
+    expect(screen.getByText('-1.00% (24h)')).toHaveClass('text-red-500');
+    mockState.price.fiat.asset = 'eur';
+    view.rerender(<SyscoinAssetDetails id={asset.assetGuid} />);
+    expect(screen.getByText('€90')).toBeTruthy();
+    expect(screen.getByText('+2.00% (24h)')).toHaveClass('text-green-500');
+    expect(screen.queryByText('-1.00% (24h)')).toBeNull();
+    delete (data.market_data.price_change_percentage_24h_in_currency as any)
+      .eur;
+    view.rerender(<SyscoinAssetDetails id={asset.assetGuid} />);
+    expect(screen.queryByText('+2.00% (24h)')).toBeNull();
+    expect(screen.queryByText('-1.00% (24h)')).toBeNull();
+  }
+);

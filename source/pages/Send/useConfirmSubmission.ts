@@ -280,6 +280,7 @@ export const useConfirmSubmission = ({
   };
 
   return {
+    reviewScope: ownsRoute() ? entryRef.current : location.key,
     blocked: blocked || scopeChanged || !trustedAuth,
     pending,
     unknown,

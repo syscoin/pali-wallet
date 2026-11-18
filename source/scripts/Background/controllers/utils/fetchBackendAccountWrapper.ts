@@ -1,32 +1,51 @@
 import * as sys from 'syscoinjs-lib';
 
-// Cache for in-flight requests to prevent duplicate network calls
-const requestCache = new Map<
-  string,
-  {
-    abortController?: AbortController;
-    details: string;
-    detailsLevel: number;
-    promise: Promise<any>;
-    scopeKey: string;
-    timestamp: number;
-  }
->();
+import {
+  boundedResponseText,
+  cancelResponseBody,
+} from '../../../../shared/boundedHttp';
 
-// Cache cleanup - remove entries older than 5 seconds
-const CACHE_TTL = 5000;
-const cleanupCache = () => {
-  const now = Date.now();
-  requestCache.forEach((entry, key) => {
-    if (now - entry.timestamp > CACHE_TTL) {
-      // Cancel any pending request before removing
-      if (entry.abortController) {
-        entry.abortController.abort();
-      }
-      requestCache.delete(key);
-    }
-  });
+type AccountRequest = {
+  abortController: AbortController;
+  details: string;
+  detailsLevel: number;
+  promise: Promise<any>;
+  scopeKey: string;
+  settled: boolean;
+  subscribers: number;
 };
+const requestCache = new Map<string, AccountRequest>();
+const REQUEST_TIMEOUT_MS = 30_000;
+const ACCOUNT_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+const cancelled = () =>
+  Object.assign(new Error('Request was cancelled'), { name: 'AbortError' });
+
+function subscribe(entry: AccountRequest, signal?: AbortSignal): Promise<any> {
+  entry.subscribers++;
+  return new Promise((resolve, reject) => {
+    let finished = false;
+    const done = (complete: () => void) => {
+      if (finished) return;
+      finished = true;
+      signal?.removeEventListener('abort', abort);
+      entry.abortController.signal.removeEventListener('abort', abort);
+      entry.subscribers--;
+      if (!entry.settled && !entry.subscribers) entry.abortController.abort();
+      complete();
+    };
+    const abort = () => done(() => reject(cancelled()));
+    signal?.addEventListener('abort', abort, { once: true });
+    entry.abortController.signal.addEventListener('abort', abort, {
+      once: true,
+    });
+    if (signal?.aborted || entry.abortController.signal.aborted) abort();
+    entry.promise.then(
+      (value) => done(() => resolve(value)),
+      (error) => done(() => reject(error))
+    );
+  });
+}
 
 // Blockbook `details=` levels are strictly cumulative: every level includes the
 // summary fields (balance, unconfirmedBalance, txs, unconfirmedTxs, ...) that a
@@ -58,7 +77,10 @@ const createScopeKey = (
   networkUrl: string,
   xpubOrAddress: string,
   isXpub: boolean
-): string => `${networkUrl}::${isXpub ? 'xpub' : 'addr'}::${xpubOrAddress}`;
+): string =>
+  `${networkUrl.replace(/\/$/, '')}::${
+    isXpub ? 'xpub' : 'addr'
+  }::${xpubOrAddress}`;
 
 // Create a unique key for the request
 const createRequestKey = (scopeKey: string, requestOptions: string): string =>
@@ -80,8 +102,7 @@ export const fetchBackendAccountCached = async (
   _parseData: boolean,
   signal?: AbortSignal
 ): Promise<any> => {
-  // Clean up old entries
-  cleanupCache();
+  if (signal?.aborted) throw cancelled();
 
   // Detect whether the identifier is an XPUB-like or descriptor; descriptors use xpub endpoint
   const looksLikeXpub = /^(xpub|tpub|zpub|vpub)/i.test(xpubOrAddress);
@@ -102,7 +123,9 @@ export const fetchBackendAccountCached = async (
     console.log(
       `[fetchBackendAccountWrapper] Using in-flight request for ${cacheKey}`
     );
-    return cachedEntry.promise;
+    if (!cachedEntry.abortController.signal.aborted)
+      return subscribe(cachedEntry, signal);
+    requestCache.delete(cacheKey);
   }
 
   // Level-aware reuse: a basic request only needs the summary fields, which every
@@ -112,75 +135,126 @@ export const fetchBackendAccountCached = async (
       if (
         entry.scopeKey === scopeKey &&
         entry.detailsLevel >= BASIC_LEVEL &&
-        entry.details !== 'txsummary'
+        entry.details !== 'txsummary' &&
+        !entry.abortController.signal.aborted
       ) {
         console.log(
           `[fetchBackendAccountWrapper] Satisfying basic request from in-flight higher-level request for ${scopeKey}`
         );
-        return entry.promise;
+        return subscribe(entry, signal);
       }
     }
   }
 
-  // Create abort controller for this request
   const abortController = new AbortController();
-
-  // If an external signal is provided, link it to our abort controller
-  if (signal) {
-    signal.addEventListener('abort', () => {
-      abortController.abort();
-    });
-  }
-
-  // Create new request and cache it
-  console.log(
-    `[fetchBackendAccountWrapper] Creating new request for ${cacheKey}`
-  );
-
+  const timer = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
   const requestPromise = sys.utils
-    .fetchBackendAccount(networkUrl, xpubOrAddress, requestOptions, isXpub)
-    .catch((error) => {
-      // If the request was aborted, throw a specific error
-      if (abortController.signal.aborted) {
-        throw new Error('Request was cancelled');
+    .fetchBackendAccount(
+      networkUrl,
+      xpubOrAddress,
+      requestOptions,
+      isXpub,
+      undefined,
+      {
+        signal: abortController.signal,
+        fetch: async (url: string, init: RequestInit) => {
+          const requested = new URL(url);
+          if (
+            !['http:', 'https:'].includes(requested.protocol) ||
+            requested.username ||
+            requested.password ||
+            requested.hash
+          )
+            throw new Error('Invalid Blockbook endpoint');
+          const response = await fetch(url, {
+            ...init,
+            signal: abortController.signal,
+            credentials: 'omit',
+            redirect: 'error',
+            cache: 'no-store',
+            referrerPolicy: 'no-referrer',
+          });
+          try {
+            if (abortController.signal.aborted) throw cancelled();
+            if (
+              response.redirected ||
+              (response.status >= 300 && response.status < 400) ||
+              (response.url && new URL(response.url).href !== requested.href)
+            )
+              throw new Error('Blockbook response endpoint changed');
+            if (!response.ok) {
+              cancelResponseBody(response);
+              return response;
+            }
+            const text = await boundedResponseText(
+              response,
+              abortController.signal,
+              ACCOUNT_RESPONSE_BYTES
+            );
+            if (abortController.signal.aborted) throw cancelled();
+            let data: unknown;
+            try {
+              data = JSON.parse(text);
+            } catch {
+              // The SDK matches error text for retries. Keep body content out of it.
+              throw new Error('Invalid Blockbook response');
+            }
+            // The pinned SDK consumes only these fields; its parser receives
+            // data admitted through the byte limit and the same physical owner.
+            return {
+              ok: response.ok,
+              status: response.status,
+              statusText: response.statusText,
+              json: async () => data,
+            };
+          } catch (error) {
+            cancelResponseBody(response);
+            throw error;
+          }
+        },
       }
-      throw error;
+    )
+    .then((value: any) => {
+      if (abortController.signal.aborted) throw cancelled();
+      return value;
     });
-
-  // Store the promise in cache with abort controller
-  requestCache.set(cacheKey, {
-    promise: requestPromise,
-    timestamp: Date.now(),
+  const entry: AccountRequest = {
     abortController,
     details,
     detailsLevel,
+    promise: requestPromise,
     scopeKey,
-  });
-
-  // Clean up cache entry after request completes
+    settled: false,
+    subscribers: 0,
+  };
+  requestCache.set(cacheKey, entry);
+  abortController.signal.addEventListener(
+    'abort',
+    () => {
+      clearTimeout(timer);
+      if (requestCache.get(cacheKey) === entry) requestCache.delete(cacheKey);
+    },
+    { once: true }
+  );
   void requestPromise
     .finally(() => {
-      // An expired request must not remove the replacement using its key.
+      clearTimeout(timer);
+      entry.settled = true;
+      // Only completed results have a short reuse lifetime. Pending work keeps
+      // its owner until completion, cancellation or its physical deadline.
       setTimeout(() => {
-        if (requestCache.get(cacheKey)?.promise === requestPromise)
-          requestCache.delete(cacheKey);
+        if (requestCache.get(cacheKey) === entry) requestCache.delete(cacheKey);
       }, 100);
     })
-    .catch(() => {
-      // The original promise still rejects to its caller; consume only the
-      // derived cleanup chain so it cannot produce another unhandled rejection.
-    });
-
-  return requestPromise;
+    .catch(() => undefined);
+  return subscribe(entry, signal);
 };
 
-// Export a function to clear all cached requests
-export const clearFetchBackendAccountCache = () => {
-  // Cancel all pending requests
-  requestCache.forEach((entry) => {
-    if (entry.abortController) {
-      entry.abortController.abort();
-    }
-  });
-  requestCache.clear();
+/** Retiring a context cancels work; refreshing values only invalidates completed observations. */
+export const clearFetchBackendAccountCache = (completedOnly = false) => {
+  for (const [key, entry] of requestCache) {
+    if (completedOnly && !entry.settled) continue;
+    entry.abortController.abort();
+    requestCache.delete(key);
+  }
 };

@@ -37,6 +37,46 @@ const mockIconFetch = jest.fn();
 const mockCopy = jest.fn();
 const mockCopyAlert = { info: jest.fn(), error: jest.fn() };
 const originalFetch = global.fetch;
+const customIcon = (url: string) =>
+  url.includes('-current.png')
+    ? {
+        mime: 'image/webp',
+        base64:
+          'UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEALmk0mk0iIiIiIgBoSygABc6zbAAA',
+      }
+    : {
+        mime: 'image/png',
+        base64:
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=',
+      };
+const customIconSrc = (url: string) => {
+  if (!url.startsWith('https://icons.example/')) return url;
+  const { mime, base64 } = customIcon(url);
+  return `data:${mime};base64,${base64}`;
+};
+const iconResponse = (url: string) => {
+  const { mime, base64 } = customIcon(url);
+  let sent = false;
+  const cancel = async () => undefined;
+  return {
+    ok: true,
+    headers: { get: (name: string) => (name === 'content-type' ? mime : null) },
+    body: {
+      cancel,
+      getReader: () => ({
+        cancel,
+        read: async () => {
+          if (sent) return { done: true };
+          sent = true;
+          return {
+            done: false,
+            value: Uint8Array.from(Buffer.from(base64, 'base64')),
+          };
+        },
+      }),
+    },
+  };
+};
 const originalClipboard = Object.getOwnPropertyDescriptor(
   navigator,
   'clipboard'
@@ -166,7 +206,9 @@ const setAccountAssets = (syscoin: any[], id = 0) => {
 };
 const expectAmountIcon = async (amount: string, logo: string) => {
   const icon = await screen.findByAltText(/./);
-  await waitFor(() => expect(icon.getAttribute('src')).toBe(logo));
+  await waitFor(() =>
+    expect(icon.getAttribute('src')).toBe(customIconSrc(logo))
+  );
   expect(screen.getByText(amount).parentElement!.contains(icon)).toBe(true);
   return icon;
 };
@@ -206,12 +248,8 @@ beforeEach(() => {
     value: { writeText: mockCopy },
   });
   clearTokenIconCache();
-  // Exercise the real icon/cache component without making any image request.
-  // A synthetic oversized blob keeps the requested URL as the rendered src.
-  mockIconFetch.mockResolvedValue({
-    ok: true,
-    blob: async () => ({ size: 256 * 1024 + 1 }),
-  });
+  // Exercise the real bounded icon/cache path with distinct streamed raster bytes.
+  mockIconFetch.mockImplementation(async (url: string) => iconResponse(url));
   global.fetch = mockIconFetch as any;
   mockHash = 'abc' + (++mockSequence).toString(16).padStart(61, '0');
   mockState = {
@@ -928,20 +966,22 @@ it.each(['account', 'network', 'asset-guid', 'hash'])(
     expect(
       screen
         .queryAllByRole('img', { hidden: true })
-        .some((img) => img.getAttribute('src') === oldLogo)
+        .some((img) => img.getAttribute('src') === customIconSrc(oldLogo))
     ).toBe(false);
-    await waitFor(() => expect(mockIconFetch).toHaveBeenCalledWith(nextLogo));
+    await waitFor(() =>
+      expect(mockIconFetch).toHaveBeenCalledWith(
+        nextLogo,
+        expect.objectContaining({ credentials: 'omit', redirect: 'error' })
+      )
+    );
     await act(async () => {
-      currentImage.resolve({
-        ok: true,
-        blob: async () => ({ size: 256 * 1024 + 1 }),
-      });
+      currentImage.resolve(iconResponse(nextLogo));
     });
     await expectAmountIcon('1 CUSTOM', nextLogo);
     expect(
       screen
         .queryAllByRole('img', { hidden: true })
-        .some((img) => img.getAttribute('src') === oldLogo)
+        .some((img) => img.getAttribute('src') === customIconSrc(oldLogo))
     ).toBe(false);
   }
 );

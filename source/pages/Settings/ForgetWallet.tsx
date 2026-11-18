@@ -13,6 +13,7 @@ import {
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useSecretDisclosure } from 'hooks/useSecretDisclosure';
 import { RootState } from 'state/store';
 import { navigateBack } from 'utils/navigationState';
 
@@ -39,49 +40,26 @@ const ForgetWalletView = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState('');
 
-  // Cached seed for display (view-only)
-  const [cachedSeed, setCachedSeed] = useState<string>('');
-
-  // Password validation state
-  const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
-
   const [form] = Form.useForm();
-
-  // Password validation function for ValidatedPasswordInput
-  const validatePassword = useCallback(async (password: string) => {
-    const seed = await controllerEmitter(['wallet', 'getSeed'], [password]);
-    if (!seed) {
-      throw new Error('Invalid password');
-    }
-    return seed;
-  }, []);
-
-  // Handle successful password validation
-  const handleValidationSuccess = useCallback(
-    (seed: string) => {
-      setIsPasswordValid(true);
-      setCachedSeed(String(seed));
-
-      // Auto-fill seed field so user can copy it when they have funds
-      if (hasAccountFunds) {
-        form.setFieldsValue({ seed: String(seed) });
-      }
-    },
-    [hasAccountFunds, form]
+  const disclosure = useSecretDisclosure(
+    JSON.stringify([
+      location.key,
+      location.pathname,
+      location.search,
+      location.hash,
+    ]),
+    () => form.resetFields()
   );
-
-  // Handle failed password validation
-  const handleValidationError = useCallback(() => {
-    setIsPasswordValid(false);
-    setCachedSeed('');
-
-    if (hasAccountFunds) {
-      form.setFieldsValue({ seed: '' }); // Clear seed field
-    }
-  }, [hasAccountFunds, form]);
+  const validatePassword = (password: string) =>
+    disclosure.read(async () => {
+      const seed = await controllerEmitter(['wallet', 'getSeed'], [password]);
+      if (!seed) throw new Error('Invalid password');
+      return String(seed);
+    });
 
   const onSubmit = useCallback(
     async ({ password }: { password: string }) => {
+      if (!disclosure.isCurrent()) return;
       setIsSubmitting(true);
       setSubmissionError('');
 
@@ -99,13 +77,15 @@ const ForgetWalletView = () => {
         setIsSubmitting(false);
       }
     },
-    [controllerEmitter, navigate, t]
+    [controllerEmitter, navigate, t, disclosure.isCurrent]
   );
 
   // Navigation callbacks
   const handleCancel = useCallback(() => {
+    disclosure.reset();
+    form.resetFields();
     navigateBack(navigate, location);
-  }, [navigate, location]);
+  }, [navigate, location, disclosure.reset, form]);
 
   const handleSubmit = useCallback(() => {
     form.submit();
@@ -141,9 +121,9 @@ const ForgetWalletView = () => {
         >
           <ValidatedPasswordInput
             onValidate={validatePassword}
-            onValidationSuccess={handleValidationSuccess}
-            onValidationError={handleValidationError}
-            onValidationReset={handleValidationError}
+            onValidationSuccess={disclosure.accept}
+            onValidationError={disclosure.reset}
+            onValidationReset={disclosure.reset}
             placeholder={t('settings.enterYourPassword')}
             id="forget_password"
             form={form}
@@ -153,19 +133,11 @@ const ForgetWalletView = () => {
 
           {hasAccountFunds && (
             <>
-              <Form.Item
-                name="seed"
-                className="w-full md:max-w-md"
-                rules={[
-                  {
-                    required: hasAccountFunds,
-                    message: t('import.pasteYourWalletSeed'),
-                  },
-                ]}
-              >
+              <Form.Item className="w-full md:max-w-md">
                 <SeedPhraseDisplay
-                  seedPhrase={cachedSeed}
-                  isEnabled={isPasswordValid}
+                  seedPhrase={disclosure.secret}
+                  isEnabled={!!disclosure.secret}
+                  copyAuthorization={disclosure.isCurrent}
                   showEyeToggle={true}
                   displayMode="textarea"
                 />
@@ -221,7 +193,7 @@ const ForgetWalletView = () => {
             variant="primary"
             type="button"
             onClick={handleSubmit}
-            disabled={!isPasswordValid || isSubmitting}
+            disabled={!disclosure.secret || isSubmitting}
             loading={isSubmitting}
           >
             {t('buttons.forget')}

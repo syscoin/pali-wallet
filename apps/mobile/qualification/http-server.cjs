@@ -100,8 +100,9 @@ async function createHttpFixture() {
     if (HELD_ROUTES.includes(route)) {
       let selfClosed = false;
       // The production quote deadline is eight seconds. Server retirement
-      // must be later and can never count as proof that the client cancelled.
-      const timeout = setTimeout(() => { selfClosed = true; response.destroy(); }, route === STALLED_QUOTE_ROUTE ? 12_000 : 7000);
+      // must follow the eight-second owner deadline, including asynchronous
+      // native cancellation, and can never count as proof that the client cancelled.
+      const timeout = setTimeout(() => { selfClosed = true; response.destroy(); }, QUOTE_ROUTES.includes(route) ? 12_000 : 7000);
       let interval;
       response.once('close', () => {
         clearTimeout(timeout); clearInterval(interval);

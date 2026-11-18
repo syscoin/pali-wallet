@@ -129,6 +129,10 @@ module.exports = {
         slideIn: 'slideIn 0.2s ease-out',
       },
       keyframes: {
+        shimmer: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(100%)' },
+        },
         dropFadeInDown: {
           '0%': { opacity: '0', transform: 'translateY(40px)' },
           '100%': { opacity: '1', transform: 'none' },

@@ -290,7 +290,7 @@ for (const family of ['SPT', 'EVM'] as const) {
               await expect(
                 page.getByText('$42.000000', { exact: true })
               ).toBeAttached();
-              expect(marketReads).toBe(family === 'EVM' ? 2 : 1);
+              expect(marketReads).toBe(1);
             }
           );
           await wallet.step(

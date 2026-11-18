@@ -188,12 +188,62 @@ it('explains an invalid recipient after blur and clears the error when corrected
   expect(next).toBeEnabled();
 });
 
+it('keeps known prior details in the final review and requires one explicit competing confirmation', async () => {
+  const oldRecipient = '0x3333333333333333333333333333333333333333';
+  const original = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path, ...args) =>
+    path[1] === 'prepareWithdrawal'
+      ? {
+          ...review('direct'),
+          previousWithdrawals: [
+            {
+              mode: 'direct',
+              outcome: 'unknown',
+              recipient: oldRecipient,
+              transactionHash: HASH,
+            },
+          ],
+        }
+      : original(path, ...args)
+  );
+  mount();
+  await prepare();
+  expect(
+    screen.getByText(en.privacy.withdrawal.pendingProofWarning)
+  ).toBeVisible();
+  expect(
+    screen.getByText(en.privacy.withdrawal.previousAttempts)
+  ).toBeVisible();
+  expect(screen.getByText(oldRecipient)).toBeVisible();
+  expect(screen.getByText(HASH)).toBeVisible();
+  expect(
+    mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
+  ).toHaveLength(0);
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.withdrawal.competingConfirm })
+  );
+  await screen.findByRole('button', { name: en.privacy.deposit.done });
+  expect(
+    mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
+  ).toEqual([
+    [
+      ['privacyWithdrawals', 'submitWithdrawal'],
+      [INTENT_ID, { acceptPreviousWithdrawalRisk: true }],
+      120000,
+      false,
+    ],
+  ]);
+});
+
 it('reviews the exact recipient, gas payer and receive amount, then submits once explicitly', async () => {
   mount();
   await prepare();
   expect(screen.getByText(RECIPIENT)).toBeVisible();
   expect(screen.getByText(ADDRESS)).toBeVisible();
   expect(screen.getByText('0.065 ETH')).toBeVisible();
+  expect(
+    screen.getByText(en.privacy.withdrawal.pendingProofWarning)
+  ).toBeVisible();
   expect(screen.getAllByText('1 ETH')).toHaveLength(2);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['privacyWithdrawals', 'prepareWithdrawal'],
@@ -208,6 +258,12 @@ it('reviews the exact recipient, gas payer and receive amount, then submits once
   expect(
     mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
   ).toHaveLength(1);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['privacyWithdrawals', 'submitWithdrawal'],
+    [INTENT_ID, { acceptPreviousWithdrawalRisk: true }],
+    120000,
+    false
+  );
   expect(
     mockEmitter.mock.calls.some(([path]) => path[1] === 'getRelayers')
   ).toBe(false);
@@ -443,6 +499,35 @@ it.each([
     expect(
       mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
     ).toHaveLength(0);
+  }
+);
+
+it.each([
+  ['privacy_withdrawal_nonce_conflict', en.send.savedNonceConflict],
+  ['privacy_vault_unavailable', en.privacy.withdrawal.prepareFailed],
+])(
+  'renders the preparation diagnostic for %s without allowing submission',
+  async (code, message) => {
+    const original = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path, ...rest) =>
+      path[1] === 'prepareWithdrawal'
+        ? Promise.reject(new Error(code))
+        : original(path, ...rest)
+    );
+    mount();
+    fireEvent.change(screen.getByLabelText(en.privacy.withdrawal.recipient), {
+      target: { value: RECIPIENT },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(
+      screen.queryByRole('button', { name: en.privacy.withdrawal.confirm })
+    ).not.toBeInTheDocument();
+    expect(
+      mockEmitter.mock.calls.some(([path]) => path[1] === 'submitWithdrawal')
+    ).toBe(false);
   }
 );
 

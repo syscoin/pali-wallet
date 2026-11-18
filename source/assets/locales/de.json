@@ -317,6 +317,7 @@
     "viewOnNamedExplorer": "Im {{explorer}}-Explorer anzeigen",
     "importToken": "Token importieren",
     "youHaveNoTokens": "Keine Token oder NFTs vorhanden",
+    "youHaveNoFungibleTokens": "Keine Token vorhanden.",
     "youHaveNoTxs": "Keine Transaktionshistorie",
     "historyMayBeIncomplete": "Ohne eine Explorer-API ist der Transaktionsverlauf möglicherweise unvollständig.",
     "seeAllTxs": "Alle Transaktionen anzeigen",
@@ -335,7 +336,10 @@
     "ifYouHaveAHardWallet": "Wenn Sie eine Hardware-Wallet haben, können Sie diese jetzt verbinden!",
     "congratulations": "Glückwunsch!",
     "youWalletWas": "Ihre Wallet wurde erfolgreich importiert",
-    "youHaveNoNfts": "Du hast keine NFTs."
+    "youHaveNoNfts": "Du hast keine NFTs.",
+    "noIndexedActivity": "Keine Aktivitäten gefunden. NFT- und interne Transfers werden hier möglicherweise nicht angezeigt.",
+    "savedActivityUnavailable": "Gespeicherte Aktivitäten konnten nicht geladen werden.",
+    "retrySavedActivity": "Gespeicherte Aktivitäten erneut laden"
   },
   "titles": {
     "assetDetails": "ASSET-DETAILS",
@@ -593,6 +597,7 @@
     "calculating": "Berechnung läuft...",
     "unableToLoad": "Kann nicht geladen werden",
     "smartAccountPendingReview": "Eine gespeicherte Smart-Account-Transaktion ist noch ungeklärt. Öffne Aktivität, um sie zu prüfen, bevor du eine weitere Transaktion sendest.",
+    "smartAccountPayerPending": "Eine frühere Transaktion des Gebührenzahlers muss bestätigt werden, bevor diese Aktion fortgesetzt werden kann. Warte auf die Bestätigung und versuche es erneut.",
     "feeUnavailable": "Gebühr nicht verfügbar",
     "plusGasFee": " + Gasgebühr",
     "plusNetworkFee": " + Netzwerkgebühr",
@@ -1023,7 +1028,10 @@
     "smartAccountGuardianRecoveryExpired": "Diese Wiederherstellungsanfrage ist abgelaufen, bevor sie abgeschlossen wurde. Starten Sie die Wiederherstellung erneut.",
     "invalidAddress": "Ungültige Adresse",
     "changeHardwareDevice": "Gerät wechseln",
-    "closeHardwareSetup": "Einrichtung schließen"
+    "closeHardwareSetup": "Einrichtung schließen",
+    "smartAccountFeeReviewTitle": "Netzwerkgebühr prüfen",
+    "smartAccountFeeReviewSelectedAccount": "Ausgewähltes Konto",
+    "smartAccountFeeReviewMaximumTotal": "Maximale Gesamtkosten"
   },
   "start": {
     "eraseAndStartFresh": "Löschen und neu starten",
@@ -1098,6 +1106,21 @@
     "coinGeckoListingUnavailable": "Eintrag nicht verfügbar"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "Ursprüngliche Referenz",
+      "title": "Signierte Anweisungen",
+      "empty": "Keine signierten Anweisungen gespeichert",
+      "mayExecute": "Die Anweisung kann noch ausgeführt werden",
+      "nonceConsumedUnknown": "Nonce verbraucht; Ergebnis unbekannt",
+      "observedSuccess": "Erfolgreiche Anweisung beobachtet",
+      "observedFailure": "Fehlgeschlagene Anweisung beobachtet",
+      "checkStatus": "Status prüfen",
+      "cancelInstruction": "Anweisung abbrechen",
+      "unavailable": "Signierte Anweisungen nicht verfügbar. Erneut versuchen.",
+      "operationHash": "Operationshash"
+    },
+    "smartAccountCancelUnavailable": "Diese Operation kann nicht abgebrochen werden. Ihre signierte Anweisung kann weiterhin ausgeführt werden.",
+    "smartAccountCancelDescription": "Brechen Sie diese Smart-Account-Anweisung mit einer leeren Operation mit derselben Nonce ab. Die ursprüngliche Operation kann zuerst bestätigt werden. Der Abbruch ist erst abgeschlossen, wenn das Netzwerk die Ersatzoperation bestätigt.",
     "feePayer": "Gebührenzahler",
     "labelCopied": "{{label}} in die Zwischenablage kopiert",
     "decodeDetailsFailed": "Transaktionsdetails konnten nicht dekodiert werden",
@@ -1279,6 +1302,7 @@
     "checkYourDevice": "Prüfen Sie Ihr {{device}}, um diese Anfrage zu genehmigen",
     "useYourPasskey": "Verwenden Sie Ihren Passkey",
     "passkeyPrompt": "Folgen Sie der Browser-Aufforderung, um mit Ihrem Passkey zu signieren",
+    "smartAccountAuthorizationRetained": "Die Smart-Account-Anweisung ist bereits signiert. Das Ablehnen dieser Gasgebühr widerruft sie nicht; sie kann weiterhin ausgeführt werden, bis ihre Nonce verbraucht ist.",
     "cancelFeePreview": "Netzwerkgebühr für den Abbruch wird geprüft…",
     "cancelFeeConsent": "Transaktion mit einer maximalen Gasgebühr von {{fee}} {{currency}} abbrechen?",
     "cancelFeeUnavailable": "Die Abbruchgebühr konnte nicht geprüft werden. Bitte erneut versuchen.",
@@ -1331,7 +1355,8 @@
         "erc721": "NFT-Transfer",
         "erc1155": "NFT-Transfer"
       }
-    }
+    },
+    "detailsUnavailable": "Transaktionsdetails konnten nicht geladen werden. Versuche es erneut."
   },
   "switchNetworkPage": {
     "chainFallback": "Chain {{chainId}}",
@@ -1440,7 +1465,8 @@
     "firstAccessTitle": "Holen Sie sich ${{token}} mit unserem Faucet, um das {{network}} Netzwerk zu erleben!",
     "firstAccessDescription": "Sie können {{token}} pro Wallet-Adresse alle 24 Stunden erhalten.",
     "grabTokens": "Zum Faucet gehen",
-    "rateLimited": "Der Faucet begrenzt Anfragen. Weitere Informationen finden Sie beim Faucet."
+    "rateLimited": "Der Faucet begrenzt Anfragen. Weitere Informationen finden Sie beim Faucet.",
+    "requestTimedOut": "Zeitüberschreitung der Anfrage. Prüfe dein Guthaben, bevor du erneut Tokens anforderst."
   },
   "nftDetails": {
     "information": "NFT-Informationen",
@@ -1773,7 +1799,7 @@
       "reconciliation": "Prüfe wiederhergestellte Notizen vor einer Auszahlung. Aufgezeichnete Auszahlungen müssen zuerst geklärt werden. Der gespeicherte Verlauf startet niemals eine Auszahlung erneut.",
       "expires": "Diese Prüfung läuft nach fünf Minuten ab.",
       "confirmRestore": "Notizen wiederherstellen",
-      "restored": "Wiederherstellung bestätigt. Prüfe wiederhergestellte Notizen vor einer Auszahlung; Notizen mit aufgezeichneten Auszahlungen bleiben bis zur Klärung gesperrt.",
+      "restored": "Noten wiederhergestellt. Prüfe vor einer Auszahlung ihren Poolstatus.",
       "unconfirmed": "Wiederherstellung unbestätigt. Sie könnte bereits gespeichert sein. Prüfe den Beleg; sende den Auftrag nicht erneut.",
       "checkReceipt": "Wiederherstellungsbeleg prüfen",
       "receiptUnavailable": "Kein passender Beleg bestätigt. Das beweist nicht, dass die Wiederherstellung fehlgeschlagen ist. Prüfe deine gespeicherten Notizen, bevor du erneut beginnst.",
@@ -1861,10 +1887,10 @@
       "error": "Das Limit konnte nicht geändert werden. Prüfe, ob die gespeicherten Notizen hineinpassen, und versuche es erneut.",
       "save": "Limit speichern",
       "reportedSpent": "Als ausgegeben gemeldete Notizen ({{count}})",
-      "clear": "Abgeschlossene Notizen entfernen",
-      "clearHelp": "Der ausgewählte Ethereum-RPC erhält den bekannten Auszahlungs-Hash und gegebenenfalls den zugehörigen Einzahlungs-Hash. Der Anbieter kann dadurch Einzahlung und Auszahlung verknüpfen. Nur Notizen, deren Abschluss und zugehörige Einzahlung dieser RPC als final bestätigt, werden entfernt; ungeprüfte bleiben gespeichert.",
-      "confirmClear": "Prüfen und entfernen",
-      "clearResult": "Entfernt: {{removed}}. Weiter gespeichert: {{unresolved}}.",
+      "clear": "Abgeschlossene Notizen archivieren",
+      "clearHelp": "Der ausgewählte Ethereum-RPC erhält bekannte Transaktions-Hashes für Auszahlungen und zugehörige Einzahlungen. Der Anbieter kann diese verknüpfen. Nur von diesem RPC als endgültig bestätigte Notizen werden verschlüsselt archiviert; andere bleiben aktiv. Archivierte Notizen zählen nicht zum aktiven Limit.",
+      "confirmClear": "Prüfen und archivieren",
+      "clearResult": "Archiviert: {{removed}}. Noch aktiv: {{unresolved}}.",
       "clearError": "Die Prüfung konnte nicht abgeschlossen werden. Aktualisiere die Liste.",
       "clearProgress": "{{checked}} von {{total}} Notizen geprüft.",
       "storedBytes": "Serialisierter verschlüsselter Tresor: {{bytes}} Byte."
@@ -1901,6 +1927,9 @@
       "backupFailed": "Die Notizsicherung konnte nicht geöffnet werden. Versuche es erneut."
     },
     "withdrawal": {
+      "pendingProofWarning": "Eine frühere Auszahlung kann weiterhin abgeschlossen werden. Wenn du fortfährst, wird sie nicht storniert. Eine konkurrierende Transaktion kann fehlschlagen und Gebühren verursachen.",
+      "competingConfirm": "Konkurrierende Auszahlung senden",
+      "previousAttempts": "Frühere Auszahlungen",
       "watchOnlyDirectUnavailable": "Für eine direkte Auszahlung ist ein privater Schlüssel erforderlich. Dieses Konto dient nur zur Beobachtung.",
       "title": "Notiz auszahlen",
       "open": "Auszahlen",
@@ -1946,12 +1975,12 @@
       "notBroadcast": "Die Transaktion wurde nicht gesendet. Aktualisiere die Prüfung vor einer erneuten Bestätigung."
     },
     "recovery": {
-      "action": "Fehlgeschlagene Auszahlung wiederherstellen",
-      "help": "Die Wiederherstellung ist erst nach endgültig fehlgeschlagener Transaktion möglich, wenn der ursprüngliche Nachweis nicht mehr ausführbar ist. Notiz und Verlauf bleiben gespeichert. Eine neue Auszahlung erfordert eine neue Prüfung.",
-      "disclosure": "Diese Prüfung übermittelt Transaktionshash, ursprüngliche Nachweiswurzel und öffentlichen Nullifikator der Notiz an deinen ausgewählten Ethereum-RPC.",
+      "action": "Wiederherstellung der Auszahlung prüfen",
+      "help": "Die Wiederherstellung erfordert eine endgültig bestätigte Prüfung, dass die offengelegte Beweiswurzel nicht mehr akzeptiert wird und die Note ungenutzt bleibt. Bei direkten Auszahlungen muss zusätzlich die Transaktion endgültig fehlgeschlagen oder die Nonce des Gebührenzahlers endgültig verbraucht sein. Note und Auszahlungsverlauf bleiben gespeichert. Eine neue Auszahlung erfordert eine neue Prüfung.",
+      "disclosure": "Diese Prüfung teilt die ursprüngliche Beweiswurzel und den öffentlichen Nullifier der Note mit Ihrem ausgewählten Ethereum-RPC. Bei direkten Auszahlungen werden auch die Adresse des Gebührenzahlers und der Transaktionshash geteilt. Ein älterer Relayer-Auftrag kann abgefragt werden, um seine gespeicherten Beweiseingaben wiederherzustellen.",
       "password": "Wallet-Passwort",
       "failed": "Die Wiederherstellung konnte nicht bestätigt werden. Der ursprüngliche Nachweis ist eventuell noch nutzbar, die Notiz bereits ausgegeben oder der Beleg nicht verfügbar. Aktualisiere vor einem erneuten Versuch.",
-      "checking": "Endgültige Transaktion und Ablauf des Nachweises werden geprüft…",
+      "checking": "Endgültiger Ablauf des Nachweises wird geprüft…",
       "confirm": "Prüfen und wiederherstellen"
     },
     "restoreReview": {
@@ -1960,11 +1989,29 @@
       "disclosure": "Die Wiederherstellung storniert keine früheren Auszahlungen und macht andere Kopien dieser Notiz nicht ungültig.",
       "snapshot": "Verifizierte Pool-Daten bis Block {{block}}. Dies sind gespeicherte Daten, keine Live-Prüfung.",
       "noSnapshot": "Bereite die Pool-Daten vor oder aktualisiere sie, bevor du diese Notiz prüfst.",
-      "pending": "Für diese Notiz ist eine Auszahlung erfasst. Kläre ihren Status, bevor du eine weitere Auszahlung startest.",
+      "pending": "Frühere Auszahlungsaktivitäten sind gespeichert. Prüfe sie, bevor du eine weitere Auszahlung sendest.",
       "password": "Wallet-Passwort",
       "confirm": "Notizprüfung bestätigen",
       "busy": "Prüfung wird gespeichert…",
       "failed": "Die Prüfung konnte nicht gespeichert werden. Prüfe Passwort und Pool-Daten und versuche es erneut."
+    },
+    "archive": {
+      "title": "Archivierte Notizen",
+      "help": "Abgeschlossene Notizen bleiben hier verschlüsselt, bis du sie wiederherstellst oder das Archiv leerst. Sie zählen nicht zum Limit aktiver Notizen.",
+      "empty": "Keine archivierten Notizen",
+      "restore": "Notiz wiederherstellen",
+      "restored": "Notiz zu den aktiven Notizen wiederhergestellt",
+      "clear": "Archiv leeren",
+      "confirmClear": "Archivierte Notizen dauerhaft löschen",
+      "warning": "Deine Wiederherstellungsphrase kann diese Notizen nicht wiederherstellen. Lösche das Archiv nur, wenn die Notizen ausgegeben sind oder du eine verwendbare Sicherung hast.",
+      "confirmBackup": "Ich habe bestätigt, dass die Notizen ausgegeben sind, oder eine verwendbare Sicherung aufbewahrt",
+      "clearResult": "{{count}} archivierte Notizen gelöscht",
+      "loadError": "Archiv konnte nicht geladen werden. Versuche es erneut.",
+      "actionError": "Archiv konnte nicht aktualisiert werden. Aktualisiere die Ansicht und versuche es erneut.",
+      "full": "Der Archivspeicher ist voll. Exportiere vor dem Leeren eine verschlüsselte Sicherung.",
+      "capacity": "{{count}} / {{limit}} archivierte Notizen",
+      "activeFull": "Das Limit aktiver Notizen ist erreicht. Archiviere abgeschlossene Notizen oder erhöhe das Limit vor der Wiederherstellung.",
+      "alreadyArchived": "Diese Notiz ist archiviert. Öffne Archivierte Notizen und stelle sie wieder her, um sie erneut zu verwenden."
     }
   },
   "mobile": {
@@ -2513,7 +2560,7 @@
         "addNotesFromAnEncryptedFile": "Notizen aus verschlüsselter Datei hinzufügen",
         "changeTheSavedNoteLimit": "Limit gespeicherter Notizen ändern",
         "manageCompletedNotes": "Abgeschlossene Notizen verwalten",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Abgeschlossene Notizen löschen oder fehlgeschlagene Abhebung wiederherstellen",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Abgeschlossene Notizen archivieren oder eine fehlgeschlagene Auszahlung wiederherstellen",
         "serviceOriginAndPublicPoolData": "Dienstursprung und öffentliche Pool-Daten",
         "verifyBackup": "Sicherung prüfen",
         "backupVerified": "Sicherung geprüft",
@@ -2597,7 +2644,7 @@
       },
       "maintenance": {
         "chooseNote": "Wähle eine gespeicherte Note zum Prüfen und Entfernen aus. Jeder Versuch prüft nur diese Note.",
-        "clearHelp": "Der ausgewählte Ethereum-RPC erhält den bekannten Transaktionshash der Auszahlung dieser Note und, falls vorhanden, den des zugehörigen Deposits. Dadurch kann dieser Anbieter Deposit und Auszahlung verknüpfen. Nur diese Note wird entfernt, und nur wenn dieser RPC den Abschluss und die Abwicklung des zugehörigen Deposits als endgültig bestätigt. Andernfalls bleibt sie gespeichert."
+        "clearHelp": "Der ausgewählte Ethereum-RPC erhält bekannte Transaktions-Hashes für Auszahlungen und zugehörige Einzahlungen. Der Anbieter kann diese verknüpfen. Nur von diesem RPC als endgültig bestätigte Notizen werden verschlüsselt archiviert; andere bleiben aktiv. Archivierte Notizen zählen nicht zum aktiven Limit."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Notizlimit konnte nicht geladen werden.",
@@ -3092,13 +3139,10 @@
         "thisReviewExpiredPrepareAFreshReviewBeforeConfirming": "Diese Prüfung ist abgelaufen. Vor der Bestätigung eine neue Prüfung vorbereiten.",
         "thisNoteHasASavedWithdrawalCheckItsStatusBefore": "Für diese Note ist eine Auszahlung gespeichert. Vor einem erneuten Versuch ihren Status prüfen.",
         "checkThePoolDataBeforePreparingThisWithdrawal": "Vor dieser Auszahlung die Pool-Daten prüfen.",
-        "couldNotReviewThisRestoredNoteTryAgain": "Diese wiederhergestellte Note konnte nicht geprüft werden. Erneut versuchen.",
         "thisWithdrawalIsUnavailableInTheCurrentAccountOrNetwork": "Diese Auszahlung ist für das aktuelle Konto oder Netzwerk nicht verfügbar.",
         "couldNotCompleteThisRequestCheckThePoolDataAnd": "Die Anfrage konnte nicht abgeschlossen werden. Pool-Daten und Netzwerk prüfen und erneut versuchen.",
-        "reviewingNote": "Note wird geprüft…",
         "preparingProof": "Beweis wird vorbereitet…",
         "ethereumMainnetPrivateNote": "Ethereum-Mainnet · Private Note",
-        "reviewThisRestoredNoteBeforeWithdrawing": "Diese wiederhergestellte Note vor dem Abheben prüfen.",
         "withdrawalDelivery": "Auszahlungsmethode",
         "thisAccountCannotSignADirectWithdrawal": "Dieses Konto kann keine direkte Auszahlung signieren.",
         "refreshRelayers": "Relayer aktualisieren",
@@ -3801,7 +3845,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "Tag {{day}} von 7",
       "priceHistory": "Preisverlauf",
       "inspectHint": "Wische nach oben oder unten, um zwischen Preispunkten zu wechseln.",
       "nextPrice": "Nächster Preis",

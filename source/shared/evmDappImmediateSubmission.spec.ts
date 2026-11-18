@@ -96,6 +96,32 @@ function fixture() {
 }
 
 describe('immediate owned EVM submission', () => {
+  test('a display-only quote never grants the immediate admission shortcut', async () => {
+    const f = fixture();
+    const display = await f.prepare(request, f.check, 'review', undefined);
+    f.prepare.mockClear();
+    const prepareDisplay = jest.fn(async () => display);
+    await expect(
+      prepareAndSubmitEvmDappReview(
+        request,
+        {
+          ...f.ports,
+          prepareDisplay,
+        },
+        {
+          assertCurrent: f.check,
+          onBroadcast: f.onBroadcast,
+          onPrepared: () => expect(f.prepare).not.toHaveBeenCalled(),
+          submission: { kind: 'transaction' },
+        }
+      )
+    ).resolves.toBe(hash);
+    expect(prepareDisplay).toHaveBeenCalledTimes(1);
+    expect(f.prepare.mock.calls.map((call) => call[2])).toEqual([
+      'review',
+      'dispatch',
+    ]);
+  });
   test('prepares once before entering send and retains the later dispatch refresh', async () => {
     const f = fixture();
     let admitted: EvmDappReview<string> | undefined;

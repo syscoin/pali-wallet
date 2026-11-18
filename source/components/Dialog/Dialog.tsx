@@ -99,7 +99,7 @@ export const DialogPrimitive = ({
           <HeadlessDialog.Overlay className="fixed inset-0" />
 
           <div
-            className={`relative flex w-full justify-center animate-slideIn transition-transform duration-200 motion-reduce:transition-none ${
+            className={`relative flex w-full justify-center motion-safe:animate-[slideIn_200ms_ease-in-out] transition-transform duration-200 motion-reduce:transition-none ${
               show ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
             }`}
           >

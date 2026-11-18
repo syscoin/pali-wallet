@@ -5,6 +5,10 @@ import { Wallet } from 'ethers/wallet';
 import { createInstance } from 'i18next';
 import React from 'react';
 import { useSelector } from 'react-redux';
+import {
+  SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  withReviewedSmartAccountExecution,
+} from 'tests/fixtures/reviewedSmartAccountExecution';
 
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -36,6 +40,18 @@ jest.mock('components/index', () => ({
   Icon: 'span',
 }));
 jest.mock('components/Loading', () => ({ PqOperationStatus: 'div' }));
+// This manual-hook fixture isolates credential staging; real fee dialogs have
+// separate rendered controls and the execution helper still validates its ACK.
+jest.mock('../Settings/SmartAccountFeeConfirmation', () => ({
+  useSmartAccountFeeConfirmation: () => ({
+    feeConfirmation: null,
+    forExecution: () => ({
+      confirmEntryPoint: async (quote: any) => quote.executionContextId,
+      confirmFee: async (quote: any) => quote.id,
+    }),
+  }),
+}));
+
 jest.mock('hooks/useController', () => ({ useController: jest.fn() }));
 jest.mock('hooks/index', () => ({ useQueryData: jest.fn() }));
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }));
@@ -241,6 +257,23 @@ describe('smart-account creation passkey ownership and retention', () => {
         return { hash: `0x${'99'.repeat(32)}` };
       throw new Error(`Unexpected fixture controller method: ${method}`);
     });
+    const rawTransport = emitter.getMockImplementation()!;
+    emitter.mockImplementation(
+      withReviewedSmartAccountExecution(
+        {
+          controllerEmitter: rawTransport,
+          executions: [],
+          smartAccount: bootstrap as any,
+        },
+        {
+          payer: { address: OWNER, id: 0, type: 'HDAccount' },
+          userOperation: {
+            ...SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+            sender: createdAccount,
+          },
+        }
+      ).controllerEmitter
+    );
     (useController as jest.Mock).mockReturnValue({
       controllerEmitter: emitter,
       handleWalletLockedError: () => false,

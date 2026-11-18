@@ -24,7 +24,7 @@ for (const width of [390, 320]) test(`selected EVM account overview and source s
   await expect(page.getByTestId('network-source-balance-native:hd:60:0:base:native')).toHaveText('2 ETH available');
   await page.screenshot({ path: info.outputPath(`account-source-${width}.png`), animations: 'disabled' });
   await expect(page.getByRole('radio', { name: /USDC/ })).toHaveCount(0);
-  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
   expect(await page.evaluate(() => window.__accountPortfolio.sends)).toEqual(['base:ETH']);
   await expect(page.getByRole('button', { name: 'Choose network filter, All networks', exact: true })).toBeVisible();
 });
@@ -36,7 +36,7 @@ test('concrete filter persists through reopen and never queries hidden networks 
   await page.screenshot({ path: info.outputPath('account-ethereum-390.png') });
   expect(await page.evaluate(() => window.__accountPortfolio.reads)).toEqual(['ethereum:0x' + '1'.padStart(40, '0')]);
   await page.getByRole('button', { name: 'Choose network filter, Ethereum', exact: true }).click();
-  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Choose network filter, Base', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByTestId('account-portfolio-value')).toContainText('2,012.00');
@@ -70,7 +70,7 @@ for (const filter of ['all', 'ethereum']) test(`unbacked ${filter} Send chooses 
   expect(await page.evaluate(() => window.__accountPortfolio.backups())).toBe(0);
   if (filter === 'all') {
     await expect(page.getByRole('heading', { name: 'Send from', exact: true })).toBeVisible();
-    await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+    await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
   }
   expect(await page.evaluate(() => window.__accountPortfolio.sends)).toEqual([filter === 'all' ? 'base:ETH' : 'ethereum:ETH']);
 });
@@ -87,12 +87,12 @@ for (const width of [390, 320]) test(`cached balances and filter errors remain c
   await page.evaluate(() => window.__accountPortfolio.failFilter(true));
   await page.getByRole('button', { name: 'Choose network filter, Ethereum', exact: true }).click();
   const sheet = page.getByTestId('network-source-sheet');
-  await sheet.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await sheet.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
   await expect(sheet.getByRole('alert')).toHaveText('Could not complete this request. Try again.');
   await expect(sheet.getByRole('alert')).toBeInViewport({ ratio: 1 });
   await page.screenshot({ path: info.outputPath(`filter-error-${width}.png`), animations: 'disabled' });
   await page.evaluate(() => window.__accountPortfolio.failFilter(false));
-  await sheet.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await sheet.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Choose network filter, Base', exact: true })).toBeVisible();
 });

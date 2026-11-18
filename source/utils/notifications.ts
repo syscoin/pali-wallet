@@ -6,7 +6,7 @@ export interface INotificationOptions {
   buttons?: Array<{
     title: string;
   }>;
-  clickAction?: () => void;
+  clickAction?: () => void | Promise<void>;
   clickUrl?: string;
   eventTime?: number;
   iconUrl?: string;
@@ -35,6 +35,62 @@ export interface ITransactionNotification {
 
 // Track notification IDs to their metadata
 const notificationMap = new Map<string, INotificationOptions>();
+const GENERIC_WALLET_NOTICE = /^pali_wallet_(?:buttons_)?\d{1,16}_[a-z0-9]+$/;
+
+const notificationIsCurrent = (
+  notification?: INotificationOptions
+): boolean => {
+  try {
+    return notification?.isCurrent?.() !== false;
+  } catch {
+    return false;
+  }
+};
+
+const openNotificationWallet = async (
+  isCurrent: () => boolean = () => true
+): Promise<void> => {
+  if (!isCurrent()) return;
+  try {
+    if (typeof chrome.action?.openPopup === 'function') {
+      await chrome.action.openPopup();
+      return;
+    }
+  } catch {
+    // Older ordinary installations may expose the API but reject its use.
+  }
+  if (!isCurrent()) return;
+  try {
+    await chrome.tabs.create({ url: chrome.runtime.getURL('app.html') });
+  } catch {
+    // The user can still open the wallet from the extension action.
+  }
+};
+
+/** Only our wallet-only identity plus a still-held OS notice survives worker retirement. */
+const isHeldGenericNotice = (id: string, button: boolean): Promise<boolean> => {
+  if (
+    !GENERIC_WALLET_NOTICE.test(id) ||
+    (button && !id.startsWith('pali_wallet_buttons_'))
+  )
+    return Promise.resolve(false);
+  return new Promise((resolve) => {
+    try {
+      chrome.notifications.getAll((all) => {
+        if (
+          chrome.runtime.lastError ||
+          !Object.prototype.hasOwnProperty.call(all, id)
+        ) {
+          resolve(false);
+          return;
+        }
+        resolve(true);
+      });
+    } catch {
+      resolve(false);
+    }
+  });
+};
 
 // Check if browser supports notifications
 export const isNotificationSupported = (): boolean =>
@@ -55,9 +111,17 @@ export const createNotification = async (
   if (popupOpen && !options.requireInteraction) {
     return null;
   }
-  const notificationId = `pali_${Date.now()}_${Math.random()
-    .toString(36)
-    .substring(7)}`;
+  const genericWallet =
+    options.clickAction === undefined &&
+    options.clickUrl === undefined &&
+    options.isCurrent === undefined;
+  const notificationId = `${
+    genericWallet
+      ? options.buttons?.length
+        ? 'pali_wallet_buttons'
+        : 'pali_wallet'
+      : 'pali'
+  }_${Date.now()}_${Math.random().toString(36).slice(2) || '0'}`;
 
   const baseOptions: any = {
     type: options.type || 'basic',
@@ -121,10 +185,7 @@ export const showActivityNotification = async (
     message: notify(`notifications.${messages[fact.kind]}`),
     isCurrent,
     isClickable: true,
-    clickAction: () => {
-      if (!isCurrent()) return;
-      void chrome.action.openPopup();
-    },
+    clickAction: () => openNotificationWallet(isCurrent),
   });
 };
 
@@ -236,10 +297,7 @@ export const showTransactionNotification = async (
     type: 'basic',
     priority: notification.type === 'failed' ? 2 : 1,
     isClickable: true,
-    clickAction: () => {
-      // Open wallet when notification is clicked
-      chrome.action.openPopup();
-    },
+    clickAction: () => openNotificationWallet(),
   });
 };
 
@@ -337,34 +395,41 @@ export const setupNotificationListeners = (): void => {
   if (!isNotificationSupported()) return;
 
   // Handle notification clicks
-  chrome.notifications.onClicked.addListener((notificationId) => {
+  chrome.notifications.onClicked.addListener(async (notificationId) => {
     const notification = notificationMap.get(notificationId);
-
-    if (notification) {
-      if (notification.clickUrl) {
-        chrome.tabs.create({ url: notification.clickUrl });
-      } else if (notification.clickAction) {
-        notification.clickAction();
+    try {
+      if (!notification && !(await isHeldGenericNotice(notificationId, false)))
+        return;
+      if (!notificationIsCurrent(notification)) return;
+      if (notification?.clickUrl) {
+        await chrome.tabs.create({ url: notification.clickUrl });
+      } else if (notification?.clickAction) {
+        await notification.clickAction();
       } else {
-        // Default action: open the wallet
-        chrome.action.openPopup();
+        await openNotificationWallet(() => notificationIsCurrent(notification));
       }
+    } catch {
+      // A custom action must not escape the notification event handler.
+    } finally {
+      await clearNotification(notificationId);
     }
-
-    // Clear the notification after click
-    clearNotification(notificationId);
   });
 
   // Handle button clicks
-  chrome.notifications.onButtonClicked.addListener((notificationId) => {
+  chrome.notifications.onButtonClicked.addListener(async (notificationId) => {
     const notification = notificationMap.get(notificationId);
-
-    if (notification && notification.buttons) {
-      // Handle button action - for now, just open the popup
-      chrome.action.openPopup();
+    try {
+      if (
+        notification
+          ? !notification.buttons
+          : !(await isHeldGenericNotice(notificationId, true))
+      )
+        return;
+      if (!notificationIsCurrent(notification)) return;
+      await openNotificationWallet(() => notificationIsCurrent(notification));
+    } finally {
+      await clearNotification(notificationId);
     }
-
-    clearNotification(notificationId);
   });
 
   // Clean up closed notifications from our map

@@ -1,6 +1,9 @@
+import { JsonRpcProvider } from 'ethers/providers';
+
+import { selectEvmHistoryRepresentatives } from '../../../../shared/evmHistory';
+
 import TransactionsManager from './index';
 import { findUserTxsInProviderByBlocksRange } from './utils';
-
 let scope: any;
 let mockPollingEvmTransactions: (...args: any[]) => Promise<any>;
 jest.mock('scripts/Background', () => ({
@@ -35,6 +38,10 @@ const fixture = () => {
   const abort = new AbortController();
   const provider = {
     signal: abort.signal,
+    _wrapTransactionResponse: Reflect.get(
+      JsonRpcProvider.prototype,
+      '_wrapTransactionResponse'
+    ),
     readMany: jest.fn(async (requests: any[], options: any) => {
       if (stalled)
         return new Promise<any[]>((_, reject) => {
@@ -59,8 +66,15 @@ const fixture = () => {
               ? [
                   {
                     hash: hash(number + 100),
-                    from: 'owner',
-                    to: 'other',
+                    from: '0x' + '11'.repeat(20),
+                    to: '0x' + '22'.repeat(20),
+                    gas: '0x5208',
+                    gasPrice: '0x1',
+                    value: '0x0',
+                    input: '0x',
+                    r: '0x' + '01'.padStart(64, '0'),
+                    s: '0x' + '02'.padStart(64, '0'),
+                    v: '0x25',
                     chainId: '0x1',
                     blockNumber: hex(number),
                     nonce: '0x0',
@@ -102,7 +116,7 @@ beforeEach(() => {
     isBitcoinBased: false,
     activeNetwork: { chainId: 1, url: 'https://rpc.example/' },
     activeAccount: { type: 'HDAccount', id: 0 },
-    accounts: { HDAccount: { 0: { address: 'owner' } } },
+    accounts: { HDAccount: { 0: { address: '0x' + '11'.repeat(20) } } },
   };
 });
 afterEach(() => jest.useRealTimers());
@@ -127,6 +141,31 @@ it('invalidates bodies on a reorg and fills a deeper requested range', async () 
   f.reorg();
   await f.scan(10);
   expect(f.fullReads()).toHaveLength(22);
+});
+it('carries disproved EOA placements through the actual history merge', async () => {
+  const f = fixture();
+  const first = (await f.scan(1)).map((row) => ({
+    ...row,
+    blockHash: hash(Number(row.blockNumber)),
+    nonce: Number(row.blockNumber),
+  }));
+  scope.accountTransactions = { HDAccount: { 0: { ethereum: { 1: first } } } };
+  const original = f.provider.readMany.getMockImplementation()!;
+  f.reorg();
+  f.provider.readMany.mockImplementation(async (...args) => {
+    const rows = await original(...args);
+    return rows.map((row: any) =>
+      row.value?.transactions?.length
+        ? { ...row, value: { ...row.value, transactions: [] } }
+        : row
+    );
+  });
+  const next = await f.scan(1);
+  const merged = selectEvmHistoryRepresentatives([...first, ...next]);
+  expect(merged).toHaveLength(first.length);
+  expect(
+    merged.every((row) => row.confirmations === 0 && row.blockNumber === null)
+  ).toBe(true);
 });
 it('does not reuse another network or account scope', async () => {
   const f = fixture();
@@ -187,7 +226,7 @@ it('reuses immutable bodies after the manager display cache expires and rejects 
   mockPollingEvmTransactions = () => f.scan();
   const poll = () =>
     manager.utils.updateTransactionsFromCurrentAccount(
-      { address: 'quiet-history-owner' } as any,
+      { address: scope.accounts.HDAccount[0].address } as any,
       false,
       scope.activeNetwork.url,
       { ethereum: { 1: [] } } as any,

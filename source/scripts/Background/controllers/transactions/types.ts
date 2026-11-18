@@ -136,7 +136,10 @@ export interface IEvmTransactionsController {
     address: string,
     chainId: number,
     apiUrl?: string,
-    includePending?: boolean
+    includePending?: boolean,
+    web3Provider?: CustomJsonRpcProvider,
+    isCurrentRead?: () => boolean,
+    signal?: AbortSignal
   ) => Promise<{
     error?: string;
     hasMore?: boolean;
@@ -161,7 +164,8 @@ export interface IEvmTransactionsController {
     web3Provider: CustomJsonRpcProvider,
     isPolling?: boolean,
     isRapidPolling?: boolean,
-    isCurrentRead?: () => boolean
+    isCurrentRead?: () => boolean,
+    signal?: AbortSignal
   ) => Promise<IEvmTransactionResponse[]>;
   testExplorerApi: (
     apiUrl: string
@@ -269,7 +273,8 @@ export interface ITransactionsManagerUtils {
     forceRefresh?: boolean,
     requestScope?: string,
     isCurrentRead?: () => boolean,
-    bypassCompletedCache?: boolean
+    bypassCompletedCache?: boolean,
+    signal?: AbortSignal
   ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {

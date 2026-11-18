@@ -21,6 +21,22 @@ test('shared explorer merge keeps the real transaction body and token ownership 
   assert.equal(belongsToEvmHistoryAccount(row, owner), true);
 });
 
+test('a returned token cannot change the native payment direction or genuine self transfers', () => {
+  const event = { hash: hash(9), from: contract, to: owner, contractAddress: other, value: '2000000' };
+  for (const value of ['1000000000000000000', '0xde0b6b3a7640000']) {
+    const native = mapEvmExplorerTransaction({ hash: hash(9), from: owner, to: contract, value }, 1);
+    const merged = mergeEvmExplorerTransactions([native], [event], 1, true)[0]!;
+    assert.equal(getEvmHistoryDirection(merged, owner), 'sent');
+    assert.equal(getEvmHistoryDirection({ ...merged, to: owner }, owner), 'self');
+    assert.equal(getEvmHistoryDirection({ ...merged, from: other, to: owner }, owner), 'received');
+    const receiptOnlyOwner = { ...merged, from: other };
+    assert.equal(getEvmHistoryDirection(receiptOnlyOwner, owner), 'unknown');
+    assert.equal(belongsToEvmHistoryAccount(receiptOnlyOwner, owner), true);
+  }
+  const tokenOnly = mergeEvmExplorerTransactions([], [event], 1)[0]!;
+  assert.equal(getEvmHistoryDirection(tokenOnly, owner), 'received');
+});
+
 test('shared representative selection preserves sender identity, reorg placement and input rows', () => {
   const first = { hash: hash(1), from: owner, nonce: 2, confirmations: 10, blockNumber: 1, blockHash: hash(10), timestamp: 100 };
   const reorg = { ...first, confirmations: 1, blockNumber: 3, blockHash: hash(11), timestamp: 200 };

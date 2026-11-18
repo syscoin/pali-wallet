@@ -7,7 +7,7 @@ describe('privacy module evaluation', () => {
     jest.restoreAllMocks();
   });
 
-  it('evaluates the actual optional modules without RPC, public downloads, custody reads or offscreen work', async () => {
+  it('evaluates optional privacy and Smart modules without RPC, downloads, custody reads or offscreen work', async () => {
     jest.resetModules();
     jest.useFakeTimers();
     const transport = jest
@@ -32,6 +32,8 @@ describe('privacy module evaluation', () => {
       require('utils/privacy/relayers');
       require('utils/privacy/withdrawal');
       require('utils/privacy/prover');
+      require('../../utils/smartAccount/authorizationStatus');
+      require('../../wallet/smartAccountAuthorizationRetirement');
     });
     await Promise.resolve();
     expect(transport).not.toHaveBeenCalled();

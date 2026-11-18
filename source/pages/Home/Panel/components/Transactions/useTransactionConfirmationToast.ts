@@ -19,7 +19,7 @@ export const useTransactionConfirmationToast = (
   if (contextRef.current.scope !== scope) contextRef.current = { scope };
   const context = contextRef.current;
   const previous = useRef<{
-    confirmations: Map<string, number>;
+    awaitingSuccess: Set<string>;
     context: typeof context;
     lastToast: number;
   }>();
@@ -35,23 +35,19 @@ export const useTransactionConfirmationToast = (
     if (!Array.isArray(transactions)) return;
     const baseline = previous.current;
     const sameContext = baseline?.context === context;
-    const confirmations = new Map<string, number>();
+    const awaitingSuccess = new Set<string>();
     let newlyConfirmed = false;
     for (const tx of transactions) {
       const id = tx[identifier];
       const count = tx.confirmations || 0;
-      confirmations.set(id, count);
-      if (
-        sameContext &&
-        baseline.confirmations.get(id) === 0 &&
-        count > 0 &&
-        isSuccessful(tx)
-      )
-        newlyConfirmed = true;
+      const wasPending = sameContext && baseline.awaitingSuccess.has(id);
+      const successful = count > 0 && isSuccessful(tx);
+      if (count <= 0 || (wasPending && !successful)) awaitingSuccess.add(id);
+      if (sameContext && wasPending && successful) newlyConfirmed = true;
     }
     const next = {
       context,
-      confirmations,
+      awaitingSuccess,
       lastToast: sameContext ? baseline.lastToast : 0,
     };
     previous.current = next;

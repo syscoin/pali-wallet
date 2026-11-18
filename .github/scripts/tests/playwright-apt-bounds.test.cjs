@@ -9,9 +9,13 @@ const { test } = require('node:test');
 
 const scripts = path.resolve(__dirname, '..');
 const wrapper = path.join(scripts, 'with-playwright-apt-diagnostics.sh');
-const nativeTimeout = spawnSync('sh', ['-c', 'command -v timeout'], {
-  encoding: 'utf8',
-}).stdout.trim();
+const nativeTimeout = spawnSync(
+  'sh',
+  ['-c', 'command -v gnutimeout || command -v timeout'],
+  {
+    encoding: 'utf8',
+  }
+).stdout.trim();
 const stub = `#!${process.execPath}
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
@@ -22,7 +26,7 @@ const run = (cmd, argv) => {
   if (result.error) throw result.error;
   process.exit(result.status === null ? 137 : result.status);
 };
-if (name === 'timeout') {
+if (name === 'timeout' || name === 'gnutimeout') {
   if (args[2] === '600s' && process.env.APT_TEST_REAL_TIMEOUT === '1')
     run(process.env.APT_TEST_TIMEOUT, ['--signal=TERM','--kill-after=0.2s','0.5s',...args.slice(3)]);
   const end = args.findIndex(arg => /^[0-9]+s$/.test(arg));
@@ -30,8 +34,8 @@ if (name === 'timeout') {
   run(args[end+1], args.slice(end+2));
 }
 if (name === 'sudo') {
-  if (args[0] === '-n' && args[1] === 'timeout') run('timeout', args.slice(2));
-  if ((args[0] === '-n' && args[1] === 'python3') || args[0] === '-u') process.exit(0);
+  if (args[0] === '-n' && ['timeout','gnutimeout'].includes(path.basename(args[1]))) run(args[1], args.slice(2));
+  if (args[0] === '-n' && ['python3','namei','-u'].includes(args[1]) || args[0] === '-u') process.exit(0);
   throw Error('Unexpected sudo command');
 }
 if (name === 'apt-get') process.exit(Number(process.env.APT_TEST_UPDATE_STATUS || '0'));
@@ -65,6 +69,7 @@ function fixture(t) {
   for (const name of [
     'sudo',
     'timeout',
+    'gnutimeout',
     'apt-get',
     'dpkg-deb',
     'apt-cache',
@@ -141,7 +146,9 @@ test('bounds the real metadata command and retains signed SHA256 cache verificat
           JSON.stringify(call.args) ===
             JSON.stringify([
               '-n',
-              'timeout',
+              fs.existsSync('/usr/bin/gnutimeout')
+                ? '/usr/bin/gnutimeout'
+                : 'timeout',
               '--signal=TERM',
               '--kill-after=15s',
               '300s',
@@ -207,9 +214,13 @@ for (const status of [0, 37, 124, 137])
     assert.equal(result.status, status, result.stderr);
     const calls = f.calls(),
       primary = calls.filter(
-        (call) => call.name === 'timeout' && call.args[2] === '600s'
+        (call) => call.name === 'gnutimeout' && call.args[2] === '600s'
       );
     assert.equal(primary.length, 1);
+    assert(
+      !calls.some((call) => call.name === 'timeout'),
+      'GNU timeout takes precedence over the fallback'
+    );
     assert.deepEqual(primary[0].args, [
       '--signal=TERM',
       '--kill-after=15s',
@@ -220,7 +231,7 @@ for (const status of [0, 37, 124, 137])
       'argument with spaces',
     ]);
     const probes = calls.filter(
-      (call) => call.name === 'timeout' && call.args[2] !== '600s'
+      (call) => call.name === 'gnutimeout' && call.args[2] !== '600s'
     );
     assert.equal(probes.length, status === 0 ? 0 : 15);
     for (const probe of probes)
@@ -252,23 +263,43 @@ test('wrapper timeout terminates an ignoring command and its owned child process
   if (fs.existsSync(pids)) owned = JSON.parse(fs.readFileSync(pids, 'utf8'));
   assert.equal(result.status, 137, result.stderr);
   assert.equal(owned.length, 2);
+  const states = new Map();
   const live = (pid) => {
     try {
       process.kill(pid, 0);
     } catch (error) {
-      if (error.code === 'ESRCH') return false;
+      if (error.code === 'ESRCH') {
+        states.set(pid, { exists: false });
+        return false;
+      }
       throw error;
     }
-    const state = spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], {
-      encoding: 'utf8',
+    const state = spawnSync(
+      'ps',
+      ['-o', 'stat=,ppid=,pgid=,args=', '-p', String(pid)],
+      {
+        encoding: 'utf8',
+      }
+    );
+    states.set(pid, {
+      exists: true,
+      status: state.status,
+      error: state.error?.code,
+      stdout: state.stdout,
+      stderr: state.stderr,
     });
     if (state.status === 0 && /^\s*Z/.test(state.stdout)) return false;
     return true;
   };
   for (let i = 0; i < 40 && owned.some(live); i++)
     await new Promise((resolve) => setTimeout(resolve, 25));
+  const stopped = owned.map((pid) => !live(pid));
   assert(
-    owned.every((pid) => !live(pid)),
-    'No timed-out parent or child may remain running'
+    stopped.every(Boolean),
+    `No timed-out parent or child may remain running: ${JSON.stringify({
+      timeout: nativeTimeout,
+      states: Object.fromEntries(states),
+      wrapperStderr: result.stderr,
+    })}`
   );
 });

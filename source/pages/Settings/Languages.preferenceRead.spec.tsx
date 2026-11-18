@@ -97,6 +97,48 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup();
   delete (chrome.runtime as any).lastError;
+  jest.dontMock('assets/locales/pt.json');
+});
+
+it('keeps a failed dictionary Save recoverable without marking the requested locale as current', async () => {
+  let unavailable = true;
+  const loads = jest.fn();
+  const errorLog = jest.spyOn(console, 'error').mockImplementation();
+  jest.doMock('assets/locales/pt.json', () => {
+    loads();
+    if (unavailable)
+      throw new Error('Packaged Portuguese dictionary unavailable');
+    return jest.requireActual('assets/locales/pt.json');
+  });
+  try {
+    const view = render(<Languages />);
+    await waitFor(() => expect(trigger().textContent).toContain('Français'));
+    await choose('Portuguese Português');
+    fireEvent.click(save());
+    await screen.findByRole('alert');
+    expect(stored).toBe('fr');
+    expect(language.i18next.language).toBe('fr');
+    expect(language.i18next.hasResourceBundle('pt', 'translation')).toBe(false);
+    expect(within(currentCard()).getByText('French')).toBeTruthy();
+    expect(save()).not.toBeDisabled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+    view.unmount();
+    unavailable = false;
+    render(<Languages />);
+    await waitFor(() => expect(trigger().textContent).toContain('Français'));
+    await choose('Portuguese Português');
+    fireEvent.click(save());
+    await waitFor(() => expect(stored).toBe('pt'));
+    expect(loads).toHaveBeenCalledTimes(2);
+    expect(language.i18next.t('buttons.next')).toBe(
+      jest.requireActual('assets/locales/pt.json').buttons.next
+    );
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(chrome.storage.local.set).toHaveBeenCalledTimes(1);
+  } finally {
+    errorLog.mockRestore();
+  }
 });
 
 it('healthy French read agrees with the restored runtime language and saved preference', async () => {

@@ -47,6 +47,7 @@ import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
 
+import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import { getController } from 'scripts/Background';
 import { createBrowserKeyringHost } from 'scripts/Background/controllers/browserKeyringHost';
 import MainController from 'scripts/Background/controllers/MainController';
@@ -314,6 +315,7 @@ describe.each(['Trezor', 'Ledger'] as const)(
         receiptBalanceRefresh: new ReceiptBalanceRefresh(),
         keyrings: new Map([[60, manager]]),
         persistentProviders: new Map(),
+        rpcReadCapabilities: createRpcReadCapabilitiesOwner(),
         persistentProviderAbortControllers: new Map(),
         cancellablePromises: {},
         getActiveKeyring: () => manager,

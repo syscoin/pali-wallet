@@ -7,6 +7,23 @@ import type { IEvmTransactionContext } from '../evmTransactionContext';
 
 export type IPrivacyWithdrawalSession = IPrivacyDepositSession;
 export type IPrivacyWithdrawalTransaction = PrivacyDepositTransaction;
+export const MAX_PRIVACY_RELAY_TRANSACTIONS = 16;
+/** Public proof inputs retained only in encrypted custody and explicit backups. */
+export interface IPrivacyWithdrawalPublicInputs {
+  fee: string;
+  nullifierHash: string;
+  recipient: string;
+  refund: '0';
+  relayer: string;
+  root: string;
+}
+
+/** Canonical positive root observation retained with a withdrawal instruction. */
+export interface IPrivacyWithdrawalRootAnchor {
+  blockHash: string;
+  blockNumber: string;
+  root: string;
+}
 
 interface IWithdrawalAttemptBase {
   context: IPrivacyWithdrawalSession['context'];
@@ -23,6 +40,8 @@ interface IWithdrawalAttemptBase {
   refund: '0';
   relayer: string;
   root: string;
+  /** Absent only in legacy retained attempts; fresh reservations require it. */
+  rootAnchor?: Readonly<IPrivacyWithdrawalRootAnchor>;
 }
 
 export type IPrivacyWithdrawalAttempt = Readonly<
@@ -37,6 +56,7 @@ export type IPrivacyWithdrawalAttempt = Readonly<
           ensHash: string;
           mode: 'relayed';
           rewardAccount: string;
+          rootAnchor: Readonly<IPrivacyWithdrawalRootAnchor>;
         }
     )
 >;
@@ -50,6 +70,7 @@ export interface IPrivacyWithdrawalRecoveryReceipt {
   blockHash: string;
   /** Canonical decimal Ethereum block number. */
   blockNumber: string;
+  kind?: 'relayed-proof-expired';
   root: string;
 }
 
@@ -78,16 +99,17 @@ interface IPrivacyWithdrawalJournalFields {
   nonce?: string;
   phase: 'unknown' | 'submitted';
   proofHash: string;
+  publicInputs?: IPrivacyWithdrawalPublicInputs;
+  rootAnchor?: Readonly<IPrivacyWithdrawalRootAnchor>;
   transactionHash?: string;
+  transactionHashes?: readonly string[];
 }
 
-/** Inert local evidence retained when a recovered note starts a fresh attempt. */
+/** Inert local evidence retained when a note starts a fresh approved attempt. */
 export interface IPrivacyRetiredWithdrawal
   extends IPrivacyWithdrawalJournalFields {
-  mode: 'direct';
-  phase: 'submitted';
-  recovery: IPrivacyWithdrawalRecovery;
-  transactionHash: string;
+  recovery?: IPrivacyWithdrawalRecovery;
+  unsigned?: IPrivacyUnsignedWithdrawal;
 }
 
 export interface IPrivacyWithdrawalJournal

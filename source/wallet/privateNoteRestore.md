@@ -22,33 +22,56 @@ journals. Imported hints remain separate from local journals; both contribute
 to the combined export and admission budget. Hints never recreate reservations,
 proofs, relay endpoints or active jobs.
 
-**Review restored note** requires a fresh wallet password. The authority reloads
-the note under the shared persistence mutex and requires an existing verified
-public-pool observation before and immediately before the write. That observation
-is the verifier-owned local snapshot, subject to its existing 45-minute freshness
-policy; this action does not make a live or note-specific RPC request. Missing,
-spent or unverified notes do not gain review consent. The local-only `reviewedAt`
-field records this consent, not exclusive ownership or cancellation of another
-proof. It is strictly validated in encrypted storage and never accepted from or
-exported in a portable backup.
+Imported history is provenance, not proof that a note is permanently blocked or
+that an earlier payment was cancelled. Preparing a withdrawal reads the note and
+its verified public-pool status under authenticated custody. Spent, missing or
+unverified notes cannot proceed. The same read captures a hash of the retained
+withdrawal history and bounded public summaries. The existing single-use intent
+binds that history, the note, recipient, fees, mode and session.
 
-A reviewed note with no imported withdrawal hints may enter the ordinary
-withdrawal flow, which still requires its own current snapshot, proof, explicit
-review and submission guards. Deposit-only history does not block this review.
-Imported unknown/submitted withdrawal hints and unresolved local withdrawals
-remain blocked. Exact known failed-local-withdrawal recovery may run without
-clearing the restore guard; it preserves all metadata and uses its existing
-transaction/proof checks. Restored notes can never be reused as new deposits.
+Every final withdrawal review warns that an earlier proof may still complete and
+that a competing transaction can fail and cost fees. Known earlier attempts show
+their available public details and use the explicit **Submit competing
+withdrawal** action. Every submit requires literal acknowledgement; the backend
+copies its captured history binding into the reservation and rechecks unchanged
+history before committing admission. This consent is transient, is not a recovery
+receipt, and does not certify proof expiry. Changed history/details require a new
+review. Both attempts remain retained. No additional import approval screen or
+persisted override state is needed.
+
+All available history, public inputs and root anchors remain portable, including
+an anchor with missing inputs. Export does not wait for transaction finality and
+does not discard provenance. Imported hints never become live jobs or trusted
+recovery receipts. The separate automatic recovery path keeps its exact
+transaction, nonce and canonical proof-expiry checks; user consent never fabricates
+that evidence. A duplicate raw import cannot strip a guard or local journal.
+Restored notes cannot become new deposits.
 
 Importing new withdrawal evidence or an explicit reconciliation marker revokes
-local review consent. Recording the outcome of an existing local attempt remains
-permitted and does not itself revoke consent. A copied bearer note may still be
+earlier admission. Recording an outcome remains permitted for its exact retained
+attempt and changes the history seen by a later review. A copied bearer note may still be
 held or used elsewhere; restoring it does not cancel previous withdrawals.
 
 The one canonical version-1 writer always authenticates a required `restore`
 root field, even when empty. The prior pre-release five-field root is accepted
 only without per-note guards; its next write is canonical. Its old strict
 five-field reader rejects the new six-field root, preventing silent guard loss.
+
+Completed-note cleanup moves the complete secret and its journals into encrypted
+archive shards. The optional authenticated `archiveCount` root field and each
+archive reference's full identity digests bind their count and contents. Ordinary
+active reads and writes preserve these ciphertext shards without decrypting or
+deriving archived notes or querying their chain status. Explicit archive viewing,
+authenticated reveal, backup and restoration can read them. Older strict root
+readers reject the archive extension.
+
+The archive has independent limits of 512 notes and 4 MiB, including its encrypted
+root-index contribution. Active capacity remains 128, 256 or 512 notes with its
+existing 4, 8 or 16 MiB quota. Both share the existing 16 MiB storage ceiling and
+64 KiB encrypted-root bound. Failed admission or storage never evicts secrets.
+Restoring an archived note requires authentication and an available active slot,
+and retains all withdrawal history and review guards. Permanently clearing the
+archive is a separate authenticated action that leaves active notes intact.
 
 The shared limit is sixteen distinct history hints per note, counting imported,
 retained and current local evidence together. Admission reserves one further
@@ -80,9 +103,7 @@ source digest, timestamp and token ID, not bearer notes. Export freshly
 authenticates and reads only the current profile's exact storage key; retained
 keys from other wallets are never enumerated as ownership.
 
-The extension implements encrypted whole-note backup/restore and the explicit
-ordinary-note review action. Imported withdrawal histories still need a separate,
-evidence-specific reconciliation path; this review cannot clear them. The
-single raw-note import policy is unchanged, and a duplicate raw import preserves
-the existing restore metadata and history. Mobile file and review integration
-remain separate implementation work.
+Extension and mobile use the same encrypted backup, restore guard and explicit
+withdrawal authority. Both hosts bind live recovery reads to the
+captured wallet, account, network and session. A duplicate raw-note import
+preserves the existing history and restore guard.

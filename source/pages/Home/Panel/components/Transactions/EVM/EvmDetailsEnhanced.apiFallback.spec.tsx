@@ -297,16 +297,17 @@ it('falls back after the real emitter deadline while the genuine explorer HTTP r
   expect(mockRpc).toHaveBeenCalledTimes(1);
 });
 
-it('keeps an RPC refusal neutral without fabricating details or triggering writes', async () => {
+it('offers an explicit retry after RPC refusal without fabricating details or triggering writes', async () => {
   replyToFetch = async () => response(null);
   mockRpc.mockRejectedValue(new Error('Synthetic provider unavailable'));
   const { hash } = mount();
   await flush();
   expect(mockRpc).toHaveBeenCalledTimes(1);
   expect(mockRpc).toHaveBeenCalledWith(hash);
-  expect(
-    screen.getByText(en.transactions.transactionNotFoundOrPending)
-  ).toBeVisible();
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    en.transactions.detailsUnavailable
+  );
+  expect(screen.getByRole('button', { name: en.receive.retry })).toBeEnabled();
   expect(
     screen.queryByRole('button', {
       name: `${en.buttons.copy}: ${en.send.transactionId}`,
@@ -424,9 +425,25 @@ it.each(['null', 'wrong hash', 'wrong chain', 'partial'] as const)(
     expect(apiRequests()).toHaveLength(1);
     expect(mockRpc).toHaveBeenCalledTimes(1);
     expect(mockRpc).toHaveBeenCalledWith(hash);
-    expect(
-      screen.getByText(en.transactions.transactionNotFoundOrPending)
-    ).toBeVisible();
+    if (kind === 'null') {
+      expect(
+        screen.getByText(en.transactions.transactionNotFoundOrPending)
+      ).toBeVisible();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: en.receive.retry })
+      ).toBeNull();
+    } else {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        en.transactions.detailsUnavailable
+      );
+      expect(
+        screen.getByRole('button', { name: en.receive.retry })
+      ).toBeEnabled();
+      expect(
+        screen.queryByText(en.transactions.transactionNotFoundOrPending)
+      ).toBeNull();
+    }
     expect(
       screen.queryByRole('button', {
         name: `${en.buttons.copy}: ${en.send.transactionId}`,
@@ -449,9 +466,12 @@ it.each(['rejection', 'timeout'] as const)(
     expect(apiRequests()).toHaveLength(1);
     expect(mockRpc).toHaveBeenCalledTimes(1);
     expect(mockRpc).toHaveBeenCalledWith(hash);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      en.transactions.detailsUnavailable
+    );
     expect(
-      screen.getByText(en.transactions.transactionNotFoundOrPending)
-    ).toBeVisible();
+      screen.getByRole('button', { name: en.receive.retry })
+    ).toBeEnabled();
     expect(
       screen.queryByRole('button', {
         name: `${en.buttons.copy}: ${en.send.transactionId}`,
@@ -461,5 +481,72 @@ it.each(['rejection', 'timeout'] as const)(
     await flush(10000);
     expect(apiRequests()).toHaveLength(1);
     expect(mockRpc).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('retries only after the explicit action and recovers the same restored hash', async () => {
+  replyToFetch = async () => response(null);
+  mockRpc.mockRejectedValueOnce(new Error('Synthetic provider unavailable'));
+  const { hash, view } = mount();
+  await flush();
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    en.transactions.detailsUnavailable
+  );
+  view.rerender(<EvmTransactionDetailsEnhanced hash={hash} />);
+  fireEvent(window, new Event('focus'));
+  await flush(15000);
+  expect(mockRpc).toHaveBeenCalledTimes(1);
+  expect(
+    requests.filter(({ method }) => method === 'getEvmTransactionFromProvider')
+  ).toEqual([
+    { method: 'getEvmTransactionFromProvider', params: [hash, true] },
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: en.receive.retry }));
+  await expectDetails(hash);
+  expect(mockRpc).toHaveBeenCalledTimes(2);
+  expect(apiRequests()).toHaveLength(2);
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByRole('button', { name: en.receive.retry })).toBeNull();
+});
+
+it.each(['account', 'rpc'] as const)(
+  'retires a held manual retry after the %s changes',
+  async (kind) => {
+    replyToFetch = async () => response(null);
+    mockRpc.mockRejectedValueOnce(new Error('Synthetic provider unavailable'));
+    const { hash, view } = mount();
+    await flush();
+    const staleBody = transaction(hash);
+    let resolveRetry!: (value: any) => void;
+    mockRpc.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRetry = resolve;
+        })
+    );
+    fireEvent.click(screen.getByRole('button', { name: en.receive.retry }));
+    await flush();
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: en.receive.retry })).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(
+      screen.queryByText(en.transactions.transactionNotFoundOrPending)
+    ).toBeNull();
+    if (kind === 'account') mockState.account = { id: 1, address: OTHER_OWNER };
+    else
+      mockState.vault.activeNetwork = {
+        ...mockState.vault.activeNetwork,
+        url: `${RPC}/retry-replacement`,
+      };
+    mockRpc.mockImplementation(async (requestedHash: string) =>
+      transaction(requestedHash, '9000000000000000000')
+    );
+    view.rerender(<EvmTransactionDetailsEnhanced hash={hash} />);
+    await expectDetails(hash, '9');
+    await act(async () => resolveRetry(staleBody));
+    await flush();
+    expect(screen.getByText('9 SYS')).toBeVisible();
+    expect(screen.queryByText('7 SYS')).toBeNull();
+    expect(mockRpc).toHaveBeenCalledTimes(3);
   }
 );

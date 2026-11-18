@@ -21,15 +21,29 @@ function fixture(options: { ios?: boolean; severity?: string; store?: string | n
     severity: 'routine', title: 'Latest improvements', summary: 'Cumulative improvements.',
     publishedAt: '2026-01-02T00:00:00Z', releaseNotesUrl: 'https://github.com/syscoin/pali-wallet/releases/tag/v5.0.2',
     availability: { status: 'published' } }] : [])] });
-  let permission = true, failRead = false, registered = false, interval = 0;
+  let permission = true, failPermission = false, failRead = false, registered = false, interval = 0;
   let hold: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  let noticeWriteHold: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>> } | undefined;
   let backgroundHold: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>> } | undefined;
-  const store = { getItem: async (key: string) => { if (failRead) { failRead = false; throw Error('read failed'); } return data.get(key) ?? null; },
-    setItem: async (key: string, value: string) => { data.set(key, value); },
+  let alertFailure: 'before' | 'after' | undefined, failAlertRead = false, failReconciliation = false, alertWrites = 0;
+  let alertWriteHold: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>> } | undefined;
+  const store = { getItem: async (key: string) => { if (failRead) { failRead = false; throw Error('read failed'); } if (key === 'pali.update-alerts.v1' && failAlertRead) throw Error('preference unavailable'); return data.get(key) ?? null; },
+    setItem: async (key: string, value: string) => {
+      if (key === 'pali.update-alerts.v1') {
+        alertWrites++;
+        if (alertWriteHold) { const gate = alertWriteHold; alertWriteHold = undefined; gate.entered.resolve(); await gate.release.promise; }
+        const failure = alertFailure; alertFailure = undefined;
+        if (failure && failReconciliation) failAlertRead = true;
+        if (failure === 'before') throw Error('write refused before commit');
+        data.set(key, value);
+        if (failure === 'after') throw Error('write result unavailable after commit');
+      } else data.set(key, value);
+      if (key === 'pali.update-notice.v1' && noticeWriteHold) { const gate = noticeWriteHold; noticeWriteHold = undefined; gate.entered.resolve(); await gate.release.promise; }
+    },
     removeItem: async (key: string) => { data.delete(key); } };
   const notifications = { IosAuthorizationStatus: { PROVISIONAL: 3 }, AndroidImportance: { DEFAULT: 3 },
     async getPermissionsAsync() { if (hold) { const item = hold; hold = undefined; await item.promise; } return { granted: permission }; },
-    async requestPermissionsAsync() { requests++; return { granted: permission }; },
+    async requestPermissionsAsync() { requests++; if (failPermission) { failPermission = false; throw Error('Permission request failed'); } return { granted: permission }; },
     async setNotificationChannelAsync() {},
     async scheduleNotificationAsync() { posts++; if (failPost) throw Error('refused'); },
     async cancelScheduledNotificationAsync(id: string) { removed.push(id); },
@@ -64,9 +78,15 @@ function fixture(options: { ios?: boolean; severity?: string; store?: string | n
     get interval() { return interval; },
     failPost(value: boolean) { failPost = value; }, failFeed() { failFeed = true; },
     failReadOnce() { failRead = true; },
+    failAlertsWrite(phase: 'before' | 'after', unreadable = false) { alertFailure = phase; failReconciliation = unreadable; },
+    recoverAlertReads() { failAlertRead = false; },
+    get alertWrites() { return alertWrites; },
     permission(value: boolean) { permission = value; },
+    failPermissionOnce() { failPermission = true; },
     holdPermission() { hold = Promise.withResolvers<void>(); return hold; },
+    holdNoticeWrite() { return noticeWriteHold = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() }; },
     holdBackground() { return backgroundHold = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() }; },
+    holdAlertsWrite() { return alertWriteHold = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() }; },
   };
 }
 
@@ -78,6 +98,59 @@ test('public update monitoring posts and deduplicates important releases without
   const id = f.data.get('pali.update-notice.v1')!;
   assert.equal(await f.isReleaseUpdateNotification(id), true);
   assert.equal(await f.isReleaseUpdateNotification('pali-update-android-9.0.0-100'), false);
+});
+
+for (const initial of [false, true]) for (const failure of ['before', 'after', undefined] as const)
+test(`update-alert acknowledgment follows persisted bytes after ${failure ?? 'healthy'} ${initial ? 'disable' : 'enable'}`, async () => {
+  const f = fixture({ severity: 'routine' }); f.data.set('pali.update-alerts.v1', initial ? 'on' : 'off');
+  await f.mobileUpdates.check();
+  if (failure) f.failAlertsWrite(failure);
+  const changed = f.mobileUpdates.setAlerts(!initial);
+  if (failure) await assert.rejects(changed); else await changed;
+  const expected = failure === 'before' ? initial : !initial;
+  assert.equal(f.mobileUpdates.getSnapshot().alertsEnabled, expected);
+  assert.equal(f.data.get('pali.update-alerts.v1'), expected ? 'on' : 'off');
+  f.advance();
+  await f.mobileUpdates.check(true);
+  assert.equal(f.mobileUpdates.getSnapshot().alertsEnabled, expected);
+  const cold = fixture({ severity: 'routine' }); for (const [key, value] of f.data) cold.data.set(key, value);
+  await cold.mobileUpdates.check(); assert.equal(cold.mobileUpdates.getSnapshot().alertsEnabled, expected);
+  assert.equal(f.alertWrites, 1); assert.equal(f.reads, 2); assert.equal(f.posts + cold.posts, 0);
+});
+
+test('unreadable ambiguous update preference suppresses alerts until a successful reload', async () => {
+  const f = fixture({ severity: 'routine' }); await f.mobileUpdates.check();
+  f.failAlertsWrite('after', true); await assert.rejects(f.mobileUpdates.setAlerts(false));
+  assert.equal(f.data.get('pali.update-alerts.v1'), 'off'); assert.equal(f.registered, false);
+  await assert.rejects(f.mobileUpdates.check(true)); assert.equal(f.posts, 0);
+  f.recoverAlertReads(); await f.mobileUpdates.check(true);
+  assert.equal(f.mobileUpdates.getSnapshot().alertsEnabled, false); assert.equal(f.registered, false);
+});
+
+test('a pending opt-out blocks fresh delivery before its storage write settles', async () => {
+  const f = fixture(), gate = f.holdAlertsWrite();
+  const disabling = f.mobileUpdates.setAlerts(false); await gate.entered.promise;
+  await f.mobileUpdates.check(true); assert.equal(f.posts, 0);
+  gate.release.resolve(); await disabling; assert.equal(f.registered, false); assert.equal(f.posts, 0);
+});
+
+test('serialized update preference writes let the latest toggle win over an older held write', async () => {
+  const f = fixture({ severity: 'routine' }); f.data.set('pali.update-alerts.v1', 'off'); await f.mobileUpdates.check();
+  const gate = f.holdAlertsWrite(), enabling = f.mobileUpdates.setAlerts(true); await gate.entered.promise;
+  const disabling = f.mobileUpdates.setAlerts(false); gate.release.resolve(); await Promise.all([enabling, disabling]);
+  await f.mobileUpdates.check(true);
+  assert.equal(f.data.get('pali.update-alerts.v1'), 'off'); assert.equal(f.mobileUpdates.getSnapshot().alertsEnabled, false);
+  assert.equal(f.alertWrites, 2); assert.equal(f.registered, false); assert.equal(f.posts, 0);
+});
+
+test('a newer failed permission action reloads an older committed write before acknowledging state', async () => {
+  const f = fixture({ severity: 'routine' }); f.data.set('pali.update-alerts.v1', 'off'); await f.mobileUpdates.check();
+  const gate = f.holdAlertsWrite(), older = f.mobileUpdates.setAlerts(true); await gate.entered.promise;
+  f.failPermissionOnce(); const newer = assert.rejects(f.mobileUpdates.setAlerts(true));
+  gate.release.resolve(); await Promise.all([older, newer]);
+  assert.equal(f.data.get('pali.update-alerts.v1'), 'on');
+  assert.equal(f.mobileUpdates.getSnapshot().alertsEnabled, true);
+  f.advance(); await f.mobileUpdates.check(true); assert.equal(f.mobileUpdates.getSnapshot().alertsEnabled, true);
 });
 test('routine updates get a badge but no notification', async () => {
   const f = fixture({ severity: 'routine' }); await f.mobileUpdates.check();
@@ -149,4 +222,25 @@ test('cold background invocations throttle release I/O without changing worker c
   await cold.runMobileUpdateBackground(); assert.equal(cold.reads, 0);
   // Foreground entry still loads the badge even when background I/O is throttled.
   await cold.mobileUpdates.check(); assert.equal(cold.reads, 1);
+});
+
+
+test('opt-out during notice persistence forgets the unsent marker and allows one later opted-in delivery', async () => {
+  const f = fixture(), gate = f.holdNoticeWrite();
+  const checking = f.mobileUpdates.check(); await gate.entered.promise;
+  await f.mobileUpdates.setAlerts(false); gate.release.resolve(); await checking;
+  assert.equal(f.posts, 0); assert.equal(f.data.has('pali.update-notice.v1'), false);
+  await f.mobileUpdates.setAlerts(true); await f.mobileUpdates.check(true);
+  assert.equal(f.posts, 1); assert.equal(f.mobileUpdates.getSnapshot().alertsEnabled, true);
+  await f.mobileUpdates.check(true); f.advance(); await f.mobileUpdates.check();
+  assert.equal(f.posts, 1);
+});
+
+test('retired unsent notice cleanup preserves another marker written before its continuation', async () => {
+  const f = fixture(), gate = f.holdNoticeWrite();
+  const checking = f.mobileUpdates.check(); await gate.entered.promise;
+  await f.mobileUpdates.setAlerts(false);
+  const newer = 'pali-update-android-6.0.0-3'; f.data.set('pali.update-notice.v1', newer);
+  gate.release.resolve(); await checking;
+  assert.equal(f.posts, 0); assert.equal(f.data.get('pali.update-notice.v1'), newer);
 });

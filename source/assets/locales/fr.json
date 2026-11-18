@@ -317,6 +317,7 @@
     "viewOnNamedExplorer": "Voir dans l’explorateur {{explorer}}",
     "importToken": "Importer un jeton",
     "youHaveNoTokens": "Vous n'avez pas de jetons ou NFTs",
+    "youHaveNoFungibleTokens": "Vous n'avez pas de jetons.",
     "youHaveNoTxs": "Aucun historique de transactions",
     "historyMayBeIncomplete": "L’historique des transactions peut être incomplet sans API d’explorateur.",
     "seeAllTxs": "Voir toutes les transactions",
@@ -335,7 +336,10 @@
     "ifYouHaveAHardWallet": "Si vous avez un portefeuille matériel, vous pouvez vous connecter maintenant !",
     "congratulations": "Félicitations !",
     "youWalletWas": "Votre portefeuille a été importé avec succès",
-    "youHaveNoNfts": "Vous n'avez pas de NFT."
+    "youHaveNoNfts": "Vous n'avez pas de NFT.",
+    "noIndexedActivity": "Aucune activité trouvée. Certains transferts, notamment de NFT ou internes, peuvent ne pas apparaître ici.",
+    "savedActivityUnavailable": "Impossible de charger l’activité enregistrée.",
+    "retrySavedActivity": "Réessayer l’activité enregistrée"
   },
   "titles": {
     "assetDetails": "Détails de l'actif",
@@ -593,6 +597,7 @@
     "calculating": "Calcul en cours...",
     "unableToLoad": "Impossible de charger",
     "smartAccountPendingReview": "Une transaction enregistrée du compte intelligent reste non résolue. Ouvrez Activité pour la consulter avant d’envoyer une autre transaction.",
+    "smartAccountPayerPending": "Une transaction précédente du payeur des frais doit être confirmée avant de continuer. Attendez la confirmation, puis réessayez.",
     "feeUnavailable": "Frais non disponibles",
     "plusGasFee": " + Frais de Gas",
     "plusNetworkFee": " + Frais de réseau",
@@ -1023,7 +1028,10 @@
     "smartAccountGuardianRecoveryExpired": "Cette demande de récupération a expiré avant d'être terminée. Relancez la récupération.",
     "invalidAddress": "Adresse invalide",
     "changeHardwareDevice": "Changer d’appareil",
-    "closeHardwareSetup": "Fermer la configuration"
+    "closeHardwareSetup": "Fermer la configuration",
+    "smartAccountFeeReviewTitle": "Vérifier les frais réseau",
+    "smartAccountFeeReviewSelectedAccount": "Compte sélectionné",
+    "smartAccountFeeReviewMaximumTotal": "Coût total maximal"
   },
   "start": {
     "eraseAndStartFresh": "Effacer et recommencer",
@@ -1098,6 +1106,21 @@
     "coinGeckoListingUnavailable": "Référencement indisponible"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "Référence initiale",
+      "title": "Instructions signées",
+      "empty": "Aucune instruction signée enregistrée",
+      "mayExecute": "Cette instruction peut encore être exécutée",
+      "nonceConsumedUnknown": "Nonce consommé ; résultat inconnu",
+      "observedSuccess": "Instruction réussie observée",
+      "observedFailure": "Instruction échouée observée",
+      "checkStatus": "Vérifier le statut",
+      "cancelInstruction": "Annuler l’instruction",
+      "unavailable": "Instructions signées indisponibles. Réessayez.",
+      "operationHash": "Hash de l’opération"
+    },
+    "smartAccountCancelUnavailable": "Cette opération ne peut pas être annulée. Son instruction signée peut encore être exécutée.",
+    "smartAccountCancelDescription": "Annulez cette instruction Smart Account en envoyant une opération vide avec le même nonce. L’originale peut être confirmée en premier. L’annulation est terminée uniquement lorsque le réseau confirme le remplacement.",
     "feePayer": "Payeur des frais",
     "labelCopied": "{{label}} copié dans le presse-papiers",
     "decodeDetailsFailed": "Impossible de décoder les détails de la transaction",
@@ -1279,6 +1302,7 @@
     "checkYourDevice": "Vérifiez votre {{device}} pour approuver cette demande",
     "useYourPasskey": "Utilisez votre clé d'accès",
     "passkeyPrompt": "Suivez les instructions du navigateur pour signer avec votre clé d'accès",
+    "smartAccountAuthorizationRetained": "L’instruction du compte intelligent est déjà signée. Refuser ces frais de gas ne la révoque pas ; elle peut encore être exécutée tant que son nonce n’est pas consommé.",
     "cancelFeePreview": "Vérification des frais réseau d’annulation…",
     "cancelFeeConsent": "Annuler cette transaction avec des frais de gaz maximum de {{fee}} {{currency}} ?",
     "cancelFeeUnavailable": "Impossible de vérifier les frais d’annulation. Réessayez.",
@@ -1331,7 +1355,8 @@
         "erc721": "Transfert de NFT",
         "erc1155": "Transfert de NFT"
       }
-    }
+    },
+    "detailsUnavailable": "Impossible de charger les détails de la transaction. Réessayez."
   },
   "switchNetworkPage": {
     "chainFallback": "Chaîne {{chainId}}",
@@ -1440,7 +1465,8 @@
     "firstAccessTitle": "Obtenez des ${{token}} avec notre robinet pour commencer à découvrir le réseau {{network}} !",
     "firstAccessDescription": "Vous pouvez obtenir {{token}} par adresse de portefeuille toutes les 24 heures.",
     "grabTokens": "Aller au Faucet",
-    "rateLimited": "Le faucet limite les requêtes. Consultez le faucet pour plus d’informations."
+    "rateLimited": "Le faucet limite les requêtes. Consultez le faucet pour plus d’informations.",
+    "requestTimedOut": "La demande a expiré. Vérifiez votre solde avant de demander à nouveau des jetons."
   },
   "nftDetails": {
     "information": "Informations sur le NFT",
@@ -1773,7 +1799,7 @@
       "reconciliation": "Vérifiez les notes restaurées avant tout retrait. Toute activité de retrait enregistrée doit d’abord être résolue. L’historique enregistré ne relance jamais un retrait.",
       "expires": "Cet examen expire après cinq minutes.",
       "confirmRestore": "Restaurer les notes",
-      "restored": "Restauration confirmée. Vérifiez les notes restaurées avant tout retrait ; celles ayant une activité de retrait enregistrée restent bloquées jusqu’à sa résolution.",
+      "restored": "Notes restaurées. Vérifiez leur état dans le pool avant de retirer.",
       "unconfirmed": "Restauration non confirmée. Elle est peut-être déjà enregistrée. Vérifiez le reçu ; ne la soumettez pas à nouveau.",
       "checkReceipt": "Vérifier le reçu",
       "receiptUnavailable": "Aucun reçu correspondant n’a été confirmé. Cela ne prouve pas l’échec de la restauration. Vérifiez vos notes enregistrées avant de recommencer.",
@@ -1861,10 +1887,10 @@
       "error": "Impossible de modifier la limite. Vérifiez que les notes enregistrées tiennent dans la limite, puis réessayez.",
       "save": "Enregistrer la limite",
       "reportedSpent": "Notes signalées comme dépensées ({{count}})",
-      "clear": "Effacer les notes terminées",
-      "clearHelp": "Le RPC Ethereum sélectionné recevra le hash du retrait connu et, le cas échéant, celui du dépôt associé. Le fournisseur peut ainsi relier les deux. Seules les notes dont ce RPC confirme la finalisation du retrait et du dépôt associé sont supprimées ; les autres restent enregistrées.",
-      "confirmClear": "Vérifier et effacer",
-      "clearResult": "Supprimées : {{removed}}. Conservées : {{unresolved}}.",
+      "clear": "Archiver les notes terminées",
+      "clearHelp": "Le RPC Ethereum sélectionné reçoit les hachages connus des retraits et dépôts associés, ce qui peut permettre au fournisseur de les relier. Seules les notes que ce RPC confirme comme finalisées sont archivées sous forme chiffrée ; les autres restent actives. Les notes archivées ne comptent pas dans la limite active.",
+      "confirmClear": "Vérifier et archiver",
+      "clearResult": "Archivées : {{removed}}. Encore actives : {{unresolved}}.",
       "clearError": "La vérification est incomplète. Actualisez pour voir les notes restantes.",
       "clearProgress": "{{checked}} notes vérifiées sur {{total}}.",
       "storedBytes": "Coffre chiffré sérialisé : {{bytes}} octets."
@@ -1901,6 +1927,9 @@
       "backupFailed": "Impossible d’ouvrir la sauvegarde de la note. Réessayez."
     },
     "withdrawal": {
+      "pendingProofWarning": "Un retrait précédent peut encore aboutir. Continuer ne l’annule pas, et une transaction concurrente peut échouer et entraîner des frais.",
+      "competingConfirm": "Soumettre un retrait concurrent",
+      "previousAttempts": "Retraits précédents",
       "watchOnlyDirectUnavailable": "Un retrait direct nécessite une clé privée. Ce compte est en lecture seule.",
       "title": "Retirer une note",
       "open": "Retirer",
@@ -1946,12 +1975,12 @@
       "notBroadcast": "La transaction n’a pas été envoyée. Actualisez la vérification avant de confirmer à nouveau."
     },
     "recovery": {
-      "action": "Récupérer un retrait échoué",
-      "help": "La récupération est possible uniquement après la finalisation de l’échec et lorsque la preuve d’origine ne peut plus être exécutée. La note et son historique sont conservés. Un nouveau retrait exige une nouvelle vérification.",
-      "disclosure": "Cette vérification partage le hash de transaction, la racine de la preuve et le nullifiant public de la note avec votre RPC Ethereum sélectionné.",
+      "action": "Vérifier la récupération du retrait",
+      "help": "La récupération nécessite une vérification finalisée confirmant que la racine de preuve divulguée n’est plus acceptée et que la note reste non dépensée. Pour un retrait direct, il faut aussi une transaction définitivement échouée ou un nonce du payeur définitivement consommé. La note et l’historique du retrait sont conservés. Un nouveau retrait nécessite une nouvelle vérification.",
+      "disclosure": "Cette vérification partage la racine de preuve initiale et le nullifier public de la note avec votre RPC Ethereum sélectionné. Pour un retrait direct, elle partage aussi l’adresse du payeur et le hash de transaction. Une ancienne tâche du relais peut être consultée pour retrouver les entrées de preuve enregistrées.",
       "password": "Mot de passe du portefeuille",
       "failed": "La récupération n’a pas pu être confirmée. La preuve peut rester utilisable, la note peut être dépensée ou les données indisponibles. Actualisez avant de réessayer.",
-      "checking": "Vérification de la transaction finalisée et de l’expiration de la preuve…",
+      "checking": "Vérification de l’expiration finalisée de la preuve…",
       "confirm": "Vérifier et récupérer"
     },
     "restoreReview": {
@@ -1960,11 +1989,29 @@
       "disclosure": "La restauration n’annule pas les retraits antérieurs et n’invalide pas les autres copies de cette note.",
       "snapshot": "Données du pool vérifiées au bloc {{block}}. Il s’agit de données enregistrées, pas d’une vérification en direct.",
       "noSnapshot": "Préparez ou actualisez les données du pool avant d’examiner cette note.",
-      "pending": "Cette note comporte une activité de retrait enregistrée. Vérifiez son état avant de lancer un autre retrait.",
+      "pending": "L’activité des retraits précédents est conservée. Vérifiez-la avant de soumettre un autre retrait.",
       "password": "Mot de passe du portefeuille",
       "confirm": "Confirmer l’examen de la note",
       "busy": "Enregistrement de l’examen…",
       "failed": "Impossible d’enregistrer l’examen. Vérifiez le mot de passe et les données du pool, puis réessayez."
+    },
+    "archive": {
+      "title": "Notes archivées",
+      "help": "Les notes terminées restent chiffrées ici jusqu’à leur restauration ou la suppression de l’archive. Elles ne comptent pas dans la limite des notes actives.",
+      "empty": "Aucune note archivée",
+      "restore": "Restaurer la note",
+      "restored": "Note restaurée parmi vos notes actives",
+      "clear": "Vider l’archive",
+      "confirmClear": "Supprimer définitivement les notes archivées",
+      "warning": "Votre phrase de récupération ne peut pas restaurer ces notes. Supprimez l’archive uniquement après avoir confirmé leur dépense ou conservé une sauvegarde utilisable.",
+      "confirmBackup": "J’ai confirmé que les notes sont dépensées ou conservé une sauvegarde utilisable",
+      "clearResult": "{{count}} notes archivées supprimées",
+      "loadError": "Impossible de charger l’archive. Réessayez.",
+      "actionError": "Impossible de modifier l’archive. Actualisez avant de réessayer.",
+      "full": "L’archive est pleine. Exportez une sauvegarde chiffrée avant de la vider pour libérer de l’espace.",
+      "capacity": "{{count}} / {{limit}} notes archivées",
+      "activeFull": "La limite des notes actives est atteinte. Archivez des notes terminées ou augmentez la limite avant de restaurer.",
+      "alreadyArchived": "Cette note est archivée. Ouvrez Notes archivées et restaurez-la pour la réutiliser."
     }
   },
   "mobile": {
@@ -2513,7 +2560,7 @@
         "addNotesFromAnEncryptedFile": "Ajouter les notes d’un fichier chiffré",
         "changeTheSavedNoteLimit": "Modifier la limite de notes enregistrées",
         "manageCompletedNotes": "Gérer les notes terminées",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Effacer les notes terminées ou récupérer un retrait échoué",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "Archiver les notes terminées ou récupérer un retrait échoué",
         "serviceOriginAndPublicPoolData": "Origine du service et données publiques du pool",
         "verifyBackup": "Vérifier la sauvegarde",
         "backupVerified": "Sauvegarde vérifiée",
@@ -2597,7 +2644,7 @@
       },
       "maintenance": {
         "chooseNote": "Sélectionnez une note enregistrée à vérifier et à supprimer. Chaque tentative ne vérifie que cette note.",
-        "clearHelp": "Le RPC Ethereum sélectionné recevra le hash connu de la transaction de retrait de cette note et, le cas échéant, celui du dépôt associé. Ce fournisseur pourra ainsi relier le dépôt et le retrait. Seule cette note sera supprimée, et uniquement si ce RPC confirme la finalisation de l’opération et du règlement du dépôt associé. Sinon, elle restera enregistrée."
+        "clearHelp": "Le RPC Ethereum sélectionné reçoit les hachages connus des retraits et dépôts associés, ce qui peut permettre au fournisseur de les relier. Seules les notes que ce RPC confirme comme finalisées sont archivées sous forme chiffrée ; les autres restent actives. Les notes archivées ne comptent pas dans la limite active."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Impossible de charger la limite de notes.",
@@ -3092,13 +3139,10 @@
         "thisReviewExpiredPrepareAFreshReviewBeforeConfirming": "Cette vérification a expiré. Préparez-en une nouvelle avant de confirmer.",
         "thisNoteHasASavedWithdrawalCheckItsStatusBefore": "Cette note a un retrait enregistré. Vérifiez son état avant de réessayer.",
         "checkThePoolDataBeforePreparingThisWithdrawal": "Vérifiez les données du pool avant de préparer ce retrait.",
-        "couldNotReviewThisRestoredNoteTryAgain": "Impossible de vérifier cette note restaurée. Réessayez.",
         "thisWithdrawalIsUnavailableInTheCurrentAccountOrNetwork": "Ce retrait est indisponible pour le compte ou le réseau actuel.",
         "couldNotCompleteThisRequestCheckThePoolDataAnd": "Impossible de terminer la demande. Vérifiez les données du pool et le réseau, puis réessayez.",
-        "reviewingNote": "Vérification de la note…",
         "preparingProof": "Préparation de la preuve…",
         "ethereumMainnetPrivateNote": "Réseau principal Ethereum · Note privée",
-        "reviewThisRestoredNoteBeforeWithdrawing": "Vérifiez cette note restaurée avant le retrait.",
         "withdrawalDelivery": "Mode de retrait",
         "thisAccountCannotSignADirectWithdrawal": "Ce compte ne peut pas signer un retrait direct.",
         "refreshRelayers": "Actualiser les relais",
@@ -3801,7 +3845,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "Jour {{day}} sur 7",
       "priceHistory": "Historique des prix",
       "inspectHint": "Balayez vers le haut ou le bas pour parcourir les points de prix.",
       "nextPrice": "Prix suivant",

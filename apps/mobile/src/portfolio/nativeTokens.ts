@@ -87,6 +87,7 @@ const idleDiscovery: TokenDiscovery = Object.freeze({
 });
 export type NativeTokenSnapshot = Readonly<{
   account: NativePortfolioAccount | null;
+  selectedContract?: string;
   network?: Pick<NativeSendContext, 'name' | 'chainId' | 'symbol' | 'testnet'> | null;
   status: 'unavailable' | 'loading' | 'ready' | 'error';
   items: readonly NativeTokenItem[];
@@ -98,6 +99,11 @@ export type NativeTokenSnapshot = Readonly<{
   canEnumerateCollectible?: true;
   busy: boolean;
   error: string | null;
+}>;
+type TokenConnectionScope = Readonly<{
+  account: NativePortfolioAccount;
+  registrationHash: string;
+  token?: Erc20Metadata;
 }>;
 export type NativeTokenView = Readonly<
   Pick<
@@ -158,7 +164,7 @@ export class NativeTokens {
   readonly view: NativeTokenView = Object.freeze({
     getSnapshot: () => this.getSnapshot(),
     subscribe: (listener: () => void) => this.subscribe(listener),
-    connect: () => this.connect(),
+    connect: (scope?: TokenConnectionScope) => this.connect(scope),
     preview: (contract: string) => this.preview(contract),
     confirmPreview: () => this.confirmPreview(),
     cancelPreview: () => this.cancelPreview(),
@@ -179,10 +185,11 @@ export class NativeTokens {
   });
   private state = initial();
   private listeners = new Set<() => void>();
-  private connection: object | null = null;
+  private connection: Readonly<{ scope?: TokenConnectionScope }> | null = null;
   private unsubscribe: (() => void) | null = null;
   private epoch = 0;
   private request: Request | null = null;
+  private previewRequest: Request | null = null;
   private discoveryRequest: AbortController | null = null;
   private collectibleRequest: AbortController | null = null;
   private collectibleReview: CollectibleReview | null = null;
@@ -263,6 +270,11 @@ export class NativeTokens {
     this.epoch++;
     this.request?.controller.abort();
     this.request = null;
+    this.cancelPreviewRequest();
+  }
+  private cancelPreviewRequest(): void {
+    this.previewRequest?.controller.abort();
+    this.previewRequest = null;
   }
   private stopDiscovery(): void {
     this.clearCollectibleReview();
@@ -297,7 +309,13 @@ export class NativeTokens {
     if (notify) this.emit();
   }
   private synchronize(notify: boolean): boolean {
-    const scope = this.connection ? this.readScope() : null;
+    let scope = this.connection ? this.readScope() : null;
+    const owner = this.connection?.scope;
+    if (owner && (
+      !scope || !sameNativePortfolioAccount(scope.account, owner.account) ||
+      scope.network.registrationHash !== owner.registrationHash
+    )) scope = null;
+    const token = owner?.token;
     const account = scope?.account ?? null;
     const registrationHash = scope?.network.registrationHash ?? null;
     const apiUrl = scope?.apiUrl ?? '';
@@ -317,6 +335,12 @@ export class NativeTokens {
       this.state = Object.freeze({
         ...initial(account),
         network: scope?.network ?? null,
+        ...(token && account ? {
+          selectedContract: token.contractAddress,
+          items: Object.freeze([Object.freeze({
+            metadata: token, status: 'unknown' as const, units: null, updatedAt: null,
+          })]),
+        } : {}),
         discovery: this.discoveryApi ? idleDiscovery : null,
         ...(canCheckCollectible ? { canCheckCollectible } : {}),
         ...(canEnumerateCollectible ? { canEnumerateCollectible } : {}),
@@ -339,9 +363,13 @@ export class NativeTokens {
       this.listeners.delete(listener);
     };
   };
-  connect = (): (() => void) => {
+  connect = (input?: TokenConnectionScope): (() => void) => {
     const old = this.unsubscribe;
-    const connection = {};
+    const connection = input ? { scope: Object.freeze({
+      account: Object.freeze({ ...input.account }),
+      registrationHash: input.registrationHash,
+      token: input.token ? parseErc20Metadata(input.token) : undefined,
+    }) } : {};
     this.connection = connection;
     this.unsubscribe = null;
     this.cancel();
@@ -419,7 +447,8 @@ export class NativeTokens {
     const connection = this.connection;
     const account = this.state.account;
     if (!connection || !account || !sameNativePortfolioAccount(expected, account)) return null;
-    this.cancel();
+    if (kind === 'preview') this.cancelPreviewRequest();
+    else this.cancel();
     const request = {
       kind,
       epoch: this.epoch,
@@ -427,13 +456,14 @@ export class NativeTokens {
       account,
       controller: new AbortController(),
     };
-    this.request = request;
+    if (kind === 'preview') this.previewRequest = request;
+    else this.request = request;
     return request;
   }
   private current(request: Request): boolean {
     this.synchronize(true);
     return (
-      this.request === request &&
+      (request.kind === 'preview' ? this.previewRequest : this.request) === request &&
       this.connection === request.connection &&
       this.epoch === request.epoch &&
       sameNativePortfolioAccount(this.state.account, request.account)
@@ -598,7 +628,8 @@ export class NativeTokens {
         contractAddress, tokenStandard: 'ERC-721' }, request.signal, current), request.signal);
       current();
       if (!Array.isArray(result.tokenIds) || result.tokenIds.length > MAX_ENUMERATED_NFTS ||
-          typeof result.hasMore !== 'boolean' || !['enumeration', 'manual'].includes(result.method))
+          typeof result.hasMore !== 'boolean' || (result.partial !== undefined && typeof result.partial !== 'boolean') ||
+          !['enumeration', 'manual'].includes(result.method))
         throw new Erc20ReadError('INVALID_RESPONSE');
       let tokenIds: string[], totalOwned: string | undefined;
       try {
@@ -607,7 +638,7 @@ export class NativeTokens {
       }
       catch { throw new Erc20ReadError('INVALID_RESPONSE'); }
       return Object.freeze({ tokenIds: Object.freeze(tokenIds),
-        ...(totalOwned === undefined ? {} : { totalOwned }), hasMore: result.hasMore, method: result.method });
+        ...(totalOwned === undefined ? {} : { totalOwned }), hasMore: result.hasMore, ...(result.partial ? { partial: true } : {}), method: result.method });
     } finally {
       signal.removeEventListener('abort', stop);
       if (this.collectibleRequest === request) this.collectibleRequest = null;
@@ -741,6 +772,11 @@ export class NativeTokens {
     } catch {
       return;
     }
+    const selected = this.connection?.scope?.token?.contractAddress;
+    if (selected) {
+      if (target && target !== selected) return;
+      target = selected;
+    }
     if (
       target &&
       !this.state.items.some((item) => item.metadata.contractAddress === target)
@@ -748,8 +784,12 @@ export class NativeTokens {
       return;
     const request = this.begin('refresh');
     if (!request) return;
+    const reloadInventory = !target || this.inventoryRevision === null && this.state.status === 'error';
+    // An uncertain mutation invalidates the list revision. A balance-only
+    // refresh cannot restore permission to edit that list.
+    if (reloadInventory && !selected) target = undefined;
     this.publish({
-      status: target ? 'ready' : 'loading',
+      status: reloadInventory ? 'loading' : 'ready',
       preview: null,
       previewStatus: 'idle',
       error: null,
@@ -765,7 +805,7 @@ export class NativeTokens {
       this.guard(request);
       const runtime = this.runtime();
       if (!runtime) throw new Error('UNAVAILABLE');
-      if (!target) {
+      if (reloadInventory) {
         const inventory = await this.loadInventory(request, runtime);
         this.guard(request);
         this.install(inventory);
@@ -893,13 +933,6 @@ export class NativeTokens {
       preview: null,
       previewStatus: 'loading',
       error: null,
-      items: Object.freeze(
-        this.state.items.map((item) =>
-          item.status === 'loading'
-            ? Object.freeze({ ...item, status: 'unknown' as const })
-            : item
-        )
-      ),
     });
     const timer = setTimeout(() => request.controller.abort(), 15_000);
     try {
@@ -924,14 +957,14 @@ export class NativeTokens {
       const metadata = parseErc20Metadata(result.metadata);
       const units = parseErc20Units(result.units);
       if (metadata.contractAddress !== address) throw new Error('INVALID');
-      this.request = null;
+      this.previewRequest = null;
       this.publish({
         preview: Object.freeze({ metadata, units }),
         previewStatus: 'ready',
       });
     } catch (error) {
       if (this.current(request)) {
-        this.request = null;
+        this.previewRequest = null;
         this.publish({
           preview: null,
           previewStatus: 'error',
@@ -949,8 +982,8 @@ export class NativeTokens {
   cancelPreview = (): void => {
     if (this.state.busy) return;
     // Opening or leaving Import clears its state without retiring balance reads.
-    if (this.request?.kind === 'preview') this.cancel();
-    this.publish({ preview: null, previewStatus: 'idle', error: null });
+    this.cancelPreviewRequest();
+    this.publish({ preview: null, previewStatus: 'idle', error: this.inventoryRevision === null ? this.state.error : null });
   };
   confirmPreview = async (): Promise<void> => {
     const account = this.state.account;

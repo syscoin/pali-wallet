@@ -5,6 +5,7 @@ import {
 import type { EvmAssetState, EvmTransferAsset } from './evmAssetState.ts';
 import type { EvmSignedRecordSummary } from '../wallet/evmSignedRecords';
 import type { RetainedSmartAccountOperation } from '../wallet/smartAccountActivity';
+import type { SmartAccountAuthorizationSummary } from '../wallet/smartAccountAuthorization';
 
 type NonceIdentity = Pick<
   EvmSignedRecordSummary,
@@ -17,6 +18,16 @@ export type EvmAutoNonceSnapshot = Readonly<{
   owner: string;
   readAssetDebit(hash: string, asset: EvmTransferAsset): Promise<bigint>;
   readMaximumCost(hash: string): Promise<bigint>;
+  readSignedTransaction?(hash: string): Promise<string>;
+  readSmartAccountAuthorizations?(
+    chainId: string,
+    address: string
+  ): Promise<
+    readonly Pick<
+      SmartAccountAuthorizationSummary,
+      'account' | 'chainId' | 'operationHash' | 'operationNonce'
+    >[]
+  >;
   readSmartAccountOperations?(
     chainId: string,
     address: string
@@ -137,6 +148,68 @@ async function nativeReservations(
   }
   assertCurrent();
   return Object.freeze({ canonical: canonicalCost, pending: pendingCost });
+}
+
+/** Replacement alternatives share a nonce; retain other commitments and external pending debits. */
+export async function availableEvmReplacementBalance(
+  snapshot: EvmAutoNonceSnapshot,
+  chainId: string,
+  from: string,
+  latest: number,
+  pending: number,
+  candidateNonce: number,
+  candidateCost: bigint,
+  balances: Readonly<{ canonical: bigint; pending: bigint }>,
+  assertCurrent: () => void,
+  mode: 'replacement' | 'cancellation' = 'replacement'
+): Promise<bigint> {
+  assertCurrent();
+  if (
+    !validNonce(latest) ||
+    !validNonce(pending) ||
+    !validNonce(candidateNonce) ||
+    candidateNonce < latest ||
+    latest < snapshot.minimumNonce ||
+    typeof candidateCost !== 'bigint' ||
+    candidateCost < BigInt(0)
+  )
+    throw new EvmAssetStateError('REVIEW_REQUIRED');
+  if (mode === 'cancellation' && candidateNonce !== latest)
+    throw new EvmAssetStateError('REVIEW_REQUIRED');
+  const sender = from.toLowerCase();
+  let sameNonceMaximum = candidateCost;
+  const retained = [];
+  for (const entry of snapshot.retained) {
+    if (!sameSender(entry, chainId, sender)) continue;
+    if (entry.nonce !== candidateNonce) {
+      retained.push(entry);
+      continue;
+    }
+    if (mode === 'cancellation') continue;
+    const cost = await snapshot.readMaximumCost(entry.hash);
+    assertCurrent();
+    if (typeof cost !== 'bigint' || cost < BigInt(0))
+      throw new EvmAssetStateError('INVALID_RESPONSE');
+    if (cost > sameNonceMaximum) sameNonceMaximum = cost;
+  }
+  const reservations = await nativeReservations(
+    { ...snapshot, retained },
+    chainId,
+    sender,
+    latest,
+    pending,
+    assertCurrent
+  );
+  // Cancellation uses canonical funds after removing the superseded nonce.
+  // Other replacements keep pending funds without crediting an unproven original debit.
+  return availableEvmNativeBalance(
+    balances,
+    {
+      canonical: reservations.canonical + sameNonceMaximum - candidateCost,
+      pending: reservations.pending,
+    },
+    mode === 'cancellation' || pending < latest ? 'latest' : 'pending'
+  );
 }
 
 /** The host supplies fresh evidence from the same captured RPC endpoint. A

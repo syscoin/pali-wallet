@@ -2,7 +2,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
+import { mapEvmExplorerTransaction } from '../../../../../../shared/evmHistory';
 import { decodeSmartAccountOperations } from '../../../../../../wallet/smartAccountActivity';
+import { getTransactionTypeLabel } from 'utils/commonMethodSignatures';
 import { defaultAbiCoder, id } from 'utils/ethersV6Compat';
 import { encodeERC7579Executions } from 'utils/smartAccount/account';
 import {
@@ -29,11 +31,13 @@ let mockRows: any[] = [];
 let mockAccountAddress = ACCOUNT;
 let mockFiatAvailable = true;
 let mockFiatText = '0 USD';
+let mockUseRealLabels = false;
 const mockGetFiatAmount = () => mockFiatText;
 beforeEach(() => {
   mockFiatAvailable = true;
   mockFiatText = '0 USD';
   mockAccountAddress = ACCOUNT;
+  mockUseRealLabels = false;
   mockVault.accountAssets.HDAccount[0].ethereum = [];
 });
 const mockEnsCache = {
@@ -57,6 +61,14 @@ jest.mock('state/vault/selectors', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (copyKey: string, copyValues?: any) =>
+      (mockUseRealLabels
+        ? copyKey
+            .split('.')
+            .reduce(
+              (value, key) => value?.[key],
+              jest.requireActual('assets/locales/en.json')
+            )
+        : undefined) ??
       jest
         .requireActual('../../../../../../../tests/helpers/localizedUiCopy')
         .localizedUiCopy(copyKey, copyValues) ??
@@ -142,6 +154,51 @@ const show = (input: string, hashDigit = 'a') => {
   ];
   render(<EvmTransactionsList userTransactions={mockRows} />);
 };
+
+it.each([
+  [
+    'zero payment',
+    `0x${'0'.repeat(40)}`,
+    '1000000000000000000',
+    '0x',
+    'Sent',
+    '1 ETH',
+  ],
+  ['zero-value message', `0x${'0'.repeat(40)}`, '0', '0x', 'Sent', '0 ETH'],
+  ['ordinary payment', TARGET, '1000000000000000000', '0x', 'Sent', '1 ETH'],
+  ['contract creation', null, '0', '0x60006000f3', 'Contract Deploy', '0 ETH'],
+])(
+  'classifies actual indexed %s by destination presence',
+  async (_name, to, value, input, label, amount) => {
+    mockUseRealLabels = true;
+    mockRows = [
+      mapEvmExplorerTransaction(
+        {
+          hash: `0x${'f'.repeat(64)}`,
+          from: ACCOUNT,
+          to,
+          value,
+          nonce: '1',
+          blockNumber: '42',
+          timeStamp: '1700000000',
+          confirmations: '1',
+          isError: '0',
+          txreceipt_status: '1',
+          input,
+        },
+        1
+      ),
+    ];
+    expect(mockRows[0].to).toBe(to);
+    expect(getTransactionTypeLabel(mockRows[0], true)).toBe(
+      to === null ? 'Contract Deploy' : 'Sent'
+    );
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    expect(await screen.findByText(label)).toBeTruthy();
+    expect(await screen.findByText(amount)).toBeTruthy();
+    if (to !== null) expect(screen.queryByText('Contract Deploy')).toBeNull();
+  }
+);
 
 it.each(['0', '2'])(
   'shows ERC1155 quantity separately from token ID %s',

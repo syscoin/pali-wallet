@@ -93,7 +93,7 @@ it.each([1, MAX_ENUMERATED_NFTS, 12, MAX_UINT256])(
   }
 );
 
-it.each(['supportsInterface', 'balanceOf', 'tokenOfOwnerByIndex'])(
+it.each(['supportsInterface', 'balanceOf'])(
   'returns manual entry without partial IDs after %s fails',
   async (method) => {
     const { runner } = enumerableRunner(MAX_ENUMERATED_NFTS, true, method);
@@ -116,4 +116,20 @@ it('does not make enumeration calls for ERC1155', async () => {
     await discoverNftTokens(CONTRACT, OWNER, 'ERC-1155', { call })
   ).toEqual({ method: 'manual', tokens: [], requiresManualEntry: true });
   expect(call).not.toHaveBeenCalled();
+});
+
+it('retains verified enumeration members when one index fails', async () => {
+  const { runner } = enumerableRunner(
+    MAX_ENUMERATED_NFTS,
+    true,
+    'tokenOfOwnerByIndex'
+  );
+  const result = await discoverNftTokens(CONTRACT, OWNER, 'ERC-721', runner);
+  expect(result).toMatchObject({
+    method: 'enumeration',
+    requiresManualEntry: true,
+    partial: true,
+  });
+  expect(result.tokens.length).toBeGreaterThan(0);
+  expect(result.tokens.every((token) => token.verified)).toBe(true);
 });

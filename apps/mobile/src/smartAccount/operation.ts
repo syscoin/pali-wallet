@@ -1,4 +1,5 @@
 import type { NativeSmartModuleCommand, NativeSmartModuleConsent } from './modules.ts';
+import type { SmartAccountCancellationRequest } from '../../../../source/wallet/smartAccountCancellation.ts';
 import { isSmartAccountPendingStateError } from '../../../../source/utils/smartAccount/pendingState.ts';
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import type { SmartAccountBuiltinInstall } from '../../../../source/utils/smartAccount/moduleCommands.ts';
@@ -27,9 +28,11 @@ import {
   type prepareSmartAccountOperation,
 } from '../../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
+import { ExecutionSimulationUnsupportedError, SmartAccountPayerPendingError } from '../../../../source/utils/smartAccount/executionSimulationError.ts';
 
 export type NativeSmartAccountResolvedIntent = (
   | Readonly<{ kind: 'deploy' }>
+  | Readonly<{ kind: 'cancel-operation'; reference: SmartAccountCancellationRequest }>
   | Readonly<{
       kind: 'authenticator';
       command: SmartAccountValidatorSwitch | SmartAccountBuiltinInstall;
@@ -355,6 +358,12 @@ export class NativeSmartAccountOperation {
           })
         )
           throw new Error('Guardian policy review changed');
+      } else if (intent.kind === 'cancel-operation') {
+        const requested = this.host.intent, execution = prepared.executions[0];
+        if (requested.kind !== intent.kind || requested.reference.originalHash !== intent.reference.originalHash ||
+            requested.reference.operationHash !== intent.reference.operationHash || prepared.executions.length !== 1 ||
+            execution?.target.toLowerCase() !== this.host.account.toLowerCase() || BigInt(execution.value) !== BigInt(0) || execution.data !== '0x')
+          throw new Error('SMART_OPERATION_EXPIRED');
       } else if (intent.kind === 'dapp-batch') {
         const requested = this.host.intent;
         if (requested.kind !== 'dapp-batch' || requested.calls !== intent.calls)
@@ -378,6 +387,7 @@ export class NativeSmartAccountOperation {
         if (
           requested.kind === 'dapp-batch' ||
           requested.kind === 'guardian-policy' ||
+          requested.kind === 'cancel-operation' ||
           requested.kind === 'authenticator' || requested.kind === 'modules'
         )
           throw new Error('SMART_OPERATION_EXPIRED');
@@ -455,7 +465,7 @@ export class NativeSmartAccountOperation {
         // A late read cannot replace cancellation or a departed view's outcome.
         try { this.check(); preparationFailure = 'INSUFFICIENT_ASSET'; } catch { /* Preserve lifecycle failure. */ }
       }
-      this.fail(preparationFailure);
+      this.fail(preparationFailure, error);
     } finally {
       this.preparing = false;
       finish();
@@ -539,7 +549,7 @@ export class NativeSmartAccountOperation {
           payerReview: null,
         });
         await this.prepare();
-      } else this.fail();
+      } else this.fail(undefined, error);
     } finally {
       finish();
     }
@@ -620,8 +630,12 @@ export class NativeSmartAccountOperation {
       this.cancel();
     }
   }
-  private fail(preparationFailure?: 'INSUFFICIENT_ASSET') {
+  private fail(preparationFailure?: 'INSUFFICIENT_ASSET', cause?: unknown) {
     if (this.disposed || this.snapshot.phase === 'complete') return;
+    let simulationMessage: string | undefined;
+    if (cause instanceof ExecutionSimulationUnsupportedError || cause instanceof SmartAccountPayerPendingError) {
+      try { this.check(); simulationMessage = cause.message; } catch { /* Preserve lifecycle failure. */ }
+    }
     this.prepared = null;
     this.pendingPayer?.reject(new Error('SMART_OPERATION_EXPIRED'));
     this.pendingPayer = null;
@@ -631,7 +645,9 @@ export class NativeSmartAccountOperation {
       phase: 'failed',
       payerReview: null,
       preparationFailure: this.signingStarted ? undefined : preparationFailure,
-      error: this.signingStarted
+      error: simulationMessage
+        ? simulationMessage + (this.signingStarted ? ' Check the account and Activity before starting again.' : '')
+        : this.signingStarted
         ? 'Authorization ended. Check the account and Activity before starting again.'
         : 'This operation could not be prepared. Return to your account and try again.',
     });

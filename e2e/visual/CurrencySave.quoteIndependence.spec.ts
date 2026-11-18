@@ -110,10 +110,10 @@ test('CurrencySave acknowledges durable preferences before delayed quotes and ke
   let heldGbpQuoteFinished: Promise<void> | undefined;
   const quotes: Array<{
     currency: string;
+    fulfilledAt?: number;
     phase: string;
     receivedAt: number;
     releasedAt?: number;
-    fulfilledAt?: number;
   }> = [];
   const unsupportedQuotes: string[] = [];
   const pageErrors: string[] = [];
@@ -350,8 +350,20 @@ test('CurrencySave acknowledges durable preferences before delayed quotes and ke
         };
         await capture(page);
         await closeSuccess();
+        await expect.poll(() => Boolean(releaseGbpQuote)).toBe(true);
+        expect(
+          quotes.some((row) => row.currency === 'cad' && row.fulfilledAt)
+        ).toBe(false);
+        releaseGbpQuote!();
+        releaseGbpQuote = undefined;
+        await heldGbpQuoteFinished;
+        await expect
+          .poll(async () => (await publicState(page)).live)
+          .toEqual({ asset: 'gbp', price: PRICES.gbp });
+        observations.genuineGbpAppliedBeforeCad = await publicState(page);
         // Keep the original long-latency stimulus, but only AFTER both save
-        // acknowledgements. Neither save is permitted to wait for this release.
+        // acknowledgements and the independent GBP quote. The retired CAD
+        // request must not block the current quote or either preference save.
         await new Promise<void>((resolve) =>
           setTimeout(
             resolve,
@@ -361,18 +373,17 @@ test('CurrencySave acknowledges durable preferences before delayed quotes and ke
         await expect(page.getByRole('alert')).toHaveCount(0);
         expect((await publicState(page)).live).toEqual({
           asset: 'gbp',
-          price: 0,
+          price: PRICES.gbp,
         });
         expect((await publicState(page)).saved.asset).toBe('gbp');
       }
     );
     await wallet.step(
-      'late CAD cannot overwrite GBP and the subsequent genuine GBP quote applies',
+      'late CAD cannot overwrite the independently applied GBP quote',
       async () => {
         releaseQuote!();
         releaseQuote = undefined;
         await heldQuoteFinished;
-        await expect.poll(() => Boolean(releaseGbpQuote)).toBe(true);
         await expect
           .poll(() =>
             quotes.some(
@@ -380,33 +391,19 @@ test('CurrencySave acknowledges durable preferences before delayed quotes and ke
             )
           )
           .toBe(true);
-        // GBP HTTP arrival proves the older serialized quote has completed and
-        // released the quote mutex. Observe before fulfilling GBP itself.
+        // The current quote has already completed while CAD was held.
         await page.evaluate(async () => {
           await new Promise<void>((resolve) =>
             requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
           );
         });
         const afterCad = await publicState(page);
-        expect(afterCad.live).toEqual({ asset: 'gbp', price: 0 });
+        expect(afterCad.live).toEqual({ asset: 'gbp', price: PRICES.gbp });
         expect(afterCad.saved.asset).toBe('gbp');
         expect(
           quotes.some((row) => row.currency === 'gbp' && row.fulfilledAt)
-        ).toBe(false);
-        observations.lateCadDidNotPublish = afterCad;
-        releaseGbpQuote!();
-        releaseGbpQuote = undefined;
-        await heldGbpQuoteFinished;
-        await expect
-          .poll(async () => (await publicState(page)).live)
-          .toEqual({ asset: 'gbp', price: PRICES.gbp });
-        await expect
-          .poll(async () => (await publicState(page)).saved.asset)
-          .toBe('gbp');
-        expect(
-          quotes.some((row) => row.currency === 'gbp' && row.fulfilledAt)
         ).toBe(true);
-        observations.genuineGbpApplied = await publicState(page);
+        observations.lateCadDidNotPublish = afterCad;
       }
     );
     await wallet.step(

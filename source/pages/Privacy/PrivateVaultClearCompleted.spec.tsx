@@ -2,7 +2,9 @@
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
+
 import en from 'assets/locales/en.json';
+
 import PrivateVaultClearCompleted from './PrivateVaultClearCompleted';
 
 const mockTranslate = (key: string, params: any = {}) =>
@@ -42,7 +44,9 @@ it('asks before verification, uses bounded batches, and reports unresolved recor
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
-  expect(await screen.findByText('Removed: 16. Still saved: 1.')).toBeVisible();
+  expect(
+    await screen.findByText('Archived: 16. Still active: 1.')
+  ).toBeVisible();
   expect(emit).toHaveBeenCalledTimes(17);
   expect(emit.mock.calls[0][1][0]).toHaveLength(1);
   expect(emit.mock.calls[1][1][0]).toHaveLength(1);

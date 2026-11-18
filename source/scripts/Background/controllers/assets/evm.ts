@@ -30,8 +30,8 @@ import {
   hasInvisibleOwnedTokenName,
   projectOwnedNftRow,
 } from '../../../../shared/ownedNftRow';
+import { readPublicJson } from '../../../../shared/publicMarketRead';
 import { BatchBalanceController } from '../balances/BatchBalanceController';
-import { Queue } from '../transactions/queue';
 import { getController } from 'scripts/Background';
 import store from 'state/store';
 import {
@@ -39,18 +39,30 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
-import { formatUnits, isAddress } from 'utils/ethersV6Compat';
+import { isAddress } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { fetchOwnedTokenRows, TokenDiscoveryError } from 'utils/tokenDiscovery';
 
-import { IEvmAssetsController } from './types';
-import { validateAndManageUserAssets } from './utils';
+import { IEvmAssetsController, type AssetReadOwner } from './types';
+import {
+  batchAssetCalls,
+  ownedAssetProvider,
+  validateAndManageUserAssets,
+} from './utils';
 
 // SYSCOIN: Shared across short-lived polling controllers; never hammer an
 // unavailable discovery endpoint. This does not block on-chain balance reads.
 const discoveryCooldowns = new Map<string, number>();
 const DISCOVERY_COOLDOWN_MS = 60_000;
 const MAX_DISCOVERY_ENDPOINTS = 64;
+
+const metadataRunner = (provider: CustomJsonRpcProvider) => ({
+  provider: null,
+  call: provider.call.bind(provider),
+  ...(typeof provider.readMany === 'function'
+    ? { readMany: provider.readMany.bind(provider) }
+    : {}),
+});
 
 const coolDownDiscovery = (key: string, retryAfterMs = 0) => {
   discoveryCooldowns.delete(key);
@@ -80,11 +92,6 @@ const EvmAssetsController = (): IEvmAssetsController => {
     }
   >();
 
-  const pendingPriceData = new Map<
-    string,
-    Promise<{ available: boolean; price: number; priceChange24h?: number }>
-  >();
-
   // Cache for token details
   const tokenDetailsCache = new Map<
     string,
@@ -92,6 +99,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
       details: any;
       timestamp: number;
     }
+  >();
+  const marketDataCache = new Map<
+    string,
+    { details: any; timestamp: number }
   >();
 
   // Cache for CoinGecko ID detection results
@@ -167,19 +178,14 @@ const EvmAssetsController = (): IEvmAssetsController => {
             )
               return null;
 
-            // Safely parse decimals: preserve 0, fallback to 18 only if missing/invalid
-            const parsed = Number(token.decimals);
-            const safeDecimals =
-              token.decimals === null || token.decimals === undefined
-                ? 18
-                : parsed;
-            if (
-              !Number.isInteger(safeDecimals) ||
-              safeDecimals < 0 ||
-              safeDecimals > 80
-            ) {
-              return null;
-            }
+            const precision = token.decimals;
+            const raw = token.balance;
+            const amount = formatErc20Balance(
+              typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0
+                ? String(raw)
+                : raw,
+              precision
+            );
 
             return {
               id: `${token.contractAddress.toLowerCase()}-${
@@ -188,10 +194,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
               symbol: cleanTokenSymbol(String(token.symbol || 'Unknown')),
               name: String(token.name || 'Unknown Token'),
               contractAddress: token.contractAddress,
-              balance: parseFloat(
-                formatUnits(token.balance || '0', safeDecimals)
-              ),
-              decimals: safeDecimals,
+              ...amount,
+              decimals: Number(precision),
               tokenStandard: tokenType,
             };
           } catch {
@@ -322,7 +326,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
    */
   const getTokenPriceData = async (
     chainId: number,
-    currency = 'usd'
+    currency = 'usd',
+    signal: AbortSignal = new AbortController().signal
   ): Promise<{
     available: boolean;
     price: number;
@@ -351,46 +356,27 @@ const EvmAssetsController = (): IEvmAssetsController => {
       return cached.data;
     }
 
-    const active = pendingPriceData.get(cacheKey);
-    if (active) return active;
-    const request = (async () => {
-      try {
-        const priceResponse = await retryableFetch(
-          coinGeckoNativeQuoteUrl(network.coingeckoId, currency)
-        );
-        if (priceResponse.ok) {
-          const result = readCoinGeckoNativeQuote(
-            await priceResponse.json(),
-            network.coingeckoId,
-            currency
-          );
-          if (result) {
-            priceDataCache.set(cacheKey, { data: result, timestamp: now });
-            console.log(
-              `[EvmAssetsController] Fetched and cached price data for ${network.coingeckoId}`
-            );
-            return result;
-          }
-        }
-
-        console.warn(
-          `[EvmAssetsController] Failed to fetch price for ${network.coingeckoId}`
-        );
-        return { available: false, price: 0 };
-      } catch (error) {
-        console.error(
-          `[EvmAssetsController] Error fetching price for chain ${chainId}:`,
-          error
-        );
-        return { available: false, price: 0 };
-      }
-    })();
-    pendingPriceData.set(cacheKey, request);
     try {
-      return await request;
-    } finally {
-      if (pendingPriceData.get(cacheKey) === request)
-        pendingPriceData.delete(cacheKey);
+      const body = await readPublicJson(
+        fetch,
+        coinGeckoNativeQuoteUrl(network.coingeckoId, currency),
+        16 * 1024,
+        signal
+      );
+      if (signal.aborted) throw new Error('Quote context changed');
+      const result = readCoinGeckoNativeQuote(
+        body,
+        network.coingeckoId,
+        currency
+      );
+      if (result) {
+        priceDataCache.set(cacheKey, { data: result, timestamp: Date.now() });
+        return result;
+      }
+      return { available: false, price: 0 };
+    } catch (error) {
+      if (signal.aborted) throw error;
+      return { available: false, price: 0 };
     }
   };
 
@@ -501,9 +487,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
     currentNetworkChainId: number,
     w3Provider: CustomJsonRpcProvider,
     accountAssets: ITokenEthProps[],
-    onBalanceRead?: (token: ITokenEthProps) => void
+    onBalanceRead?: (token: ITokenEthProps) => void,
+    owner?: AssetReadOwner
   ): Promise<ITokenEthProps[]> => {
+    owner?.assertCurrent();
     if (isEmpty(accountAssets)) return [];
+    const capabilityProvider = w3Provider;
+    w3Provider = ownedAssetProvider(w3Provider, owner);
 
     // Filter assets for current network
     const currentNetworkAssets = accountAssets.filter(
@@ -527,13 +517,18 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Use BatchBalanceController for regular ERC-20 tokens
     let updatedRegularTokens: ITokenEthProps[] = [];
     if (regularTokens.length > 0) {
-      const batchController = new BatchBalanceController(w3Provider);
+      const batchController = new BatchBalanceController(
+        w3Provider,
+        owner,
+        capabilityProvider
+      );
 
       const balances = await batchController.getBatchTokenBalances(
         regularTokens,
         account.address
       );
 
+      owner?.assertCurrent();
       updatedRegularTokens = regularTokens.map((token) => {
         const balance = balances.get(token.contractAddress.toLowerCase());
         if (balance === undefined) return token;
@@ -546,6 +541,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Handle NFTs separately (they need different ABI calls)
     let updatedNftAssets: ITokenEthProps[] = [];
     if (nftAssets.length > 0) {
+      const nftProvider = batchAssetCalls(w3Provider);
       // Separate ERC-721 and ERC-1155 tokens for different processing
       const erc721Assets = nftAssets.filter(
         (asset) => (asset.tokenStandard || 'ERC-721') === 'ERC-721'
@@ -556,6 +552,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       // Process ERC-1155 tokens with batching by contract address
       const updatedErc1155Assets: ITokenEthProps[] = [];
+      const erc1155Reads: Promise<ITokenEthProps[]>[] = [];
       if (erc1155Assets.length > 0) {
         // Group ERC-1155 tokens by contract address for batch calls
         const erc1155ByContract = new Map<string, ITokenEthProps[]>();
@@ -576,45 +573,51 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         // Process each contract's tokens in batch
         for (const [contractAddress, contractAssets] of erc1155ByContract) {
-          try {
-            const tokenIds = contractAssets.map((asset) => asset.tokenId!);
-            const ownershipInfo = await verifyERC1155OwnershipHelper(
-              contractAddress,
-              account.address,
-              tokenIds,
-              w3Provider
-            );
-
-            console.log(
-              `[EvmAssetsController] Batch updated ${ownershipInfo.length} ERC-1155 tokens from ${contractAddress}`
-            );
-
-            // Map results back to assets
-            contractAssets.forEach((asset, index) => {
-              const info = ownershipInfo[index];
-              if (info && info.verified) {
-                const updated = {
-                  ...asset,
-                  balance: info.balance,
-                  rawBalance: info.rawBalance,
-                };
-                onBalanceRead?.(updated);
-                updatedErc1155Assets.push(updated);
-              } else {
-                console.warn(
-                  `[EvmAssetsController] Failed to verify ERC-1155 token ${contractAddress}#${asset.tokenId}`
+          erc1155Reads.push(
+            (async () => {
+              owner?.assertCurrent();
+              try {
+                const tokenIds = contractAssets.map((asset) => asset.tokenId!);
+                const ownershipInfo = await verifyERC1155OwnershipHelper(
+                  contractAddress,
+                  account.address,
+                  tokenIds,
+                  nftProvider
                 );
-                updatedErc1155Assets.push(asset); // Keep unchanged
+
+                owner?.assertCurrent();
+                console.log(
+                  `[EvmAssetsController] Batch updated ${ownershipInfo.length} ERC-1155 tokens from ${contractAddress}`
+                );
+
+                // Map results back to assets
+                return contractAssets.map((asset, index) => {
+                  const info = ownershipInfo[index];
+                  if (info && info.verified) {
+                    const updated = {
+                      ...asset,
+                      balance: info.balance,
+                      rawBalance: info.rawBalance,
+                    };
+                    onBalanceRead?.(updated);
+                    return updated;
+                  } else {
+                    console.warn(
+                      `[EvmAssetsController] Failed to verify ERC-1155 token ${contractAddress}#${asset.tokenId}`
+                    );
+                    return asset;
+                  }
+                });
+              } catch (error) {
+                console.error(
+                  `[EvmAssetsController] Error batch updating ERC-1155 tokens from ${contractAddress}:`,
+                  error
+                );
+                // Add all assets unchanged on error
+                return contractAssets;
               }
-            });
-          } catch (error) {
-            console.error(
-              `[EvmAssetsController] Error batch updating ERC-1155 tokens from ${contractAddress}:`,
-              error
-            );
-            // Add all assets unchanged on error
-            updatedErc1155Assets.push(...contractAssets);
-          }
+            })()
+          );
         }
       }
 
@@ -626,17 +629,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
         members.push(asset);
         erc721ByContract.set(key, members);
       });
-      const queue = new Queue(3);
-      for (const collection of erc721ByContract.values()) {
-        queue.execute(async () => {
-          await new Promise((resolve) => setTimeout(resolve, 100));
+      const erc721Reads = [...erc721ByContract.values()].map(
+        async (collection) => {
+          owner?.assertCurrent();
           try {
             const contract = new Contract(
               collection[0].contractAddress,
               getErc21Abi(),
-              w3Provider
+              nftProvider
             );
             const result = await contract.balanceOf(account.address);
+            owner?.assertCurrent();
             const rawBalance = parseErc20Units(result).toString();
             const balance = Number(rawBalance);
             if (!Number.isFinite(balance))
@@ -653,10 +656,15 @@ const EvmAssetsController = (): IEvmAssetsController => {
             );
             return collection;
           }
-        });
-      }
-      const erc721Results = await queue.done();
-      const updatedErc721Assets = erc721Results.flatMap(({ result }) => result);
+        }
+      );
+      const [erc1155Results, erc721Results] = await Promise.all([
+        Promise.all(erc1155Reads),
+        Promise.all(erc721Reads),
+      ]);
+      owner?.assertCurrent();
+      updatedErc1155Assets.push(...erc1155Results.flat());
+      const updatedErc721Assets = erc721Results.flat();
 
       // Combine ERC-721 and ERC-1155 results
       updatedNftAssets = [...updatedErc1155Assets, ...updatedErc721Assets];
@@ -669,6 +677,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       ...otherNetworkAssets,
     ];
 
+    owner?.assertCurrent();
     return validateAndManageUserAssets(
       true,
       allUpdatedAssets,
@@ -722,7 +731,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
   const getTokenDetails = async (
     contractAddress: string,
     walletAddress: string,
-    w3Provider: CustomJsonRpcProvider
+    w3Provider: CustomJsonRpcProvider,
+    observeErc20?: (
+      metadata: Awaited<ReturnType<typeof getTokenStandardMetadata>>
+    ) => void
   ): Promise<ITokenDetails | null> => {
     // Check cache first - no balance needed, so cache is more effective
     const context = metadataContext();
@@ -770,13 +782,20 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         const isNft = contractType === 'ERC-721' || contractType === 'ERC-1155';
         let basicTokenDetails: ITokenDetails;
+        let cacheMetadata = true;
 
         if (isNft) {
           // For NFTs, use NFT-specific metadata function
-          const nftMetadata = await getNftStandardMetadata(
+          const nftMetadata: {
+            metadataUnavailable?: true;
+            name: string;
+            symbol: string;
+          } = await getNftStandardMetadata(
             contractAddress,
-            w3Provider
+            metadataRunner(w3Provider),
+            contractType === 'ERC-721' ? 'ERC-721' : 'ERC-1155'
           );
+          cacheMetadata = nftMetadata.metadataUnavailable !== true;
 
           basicTokenDetails = {
             id: `${contractAddress.toLowerCase()}-${context.chainId}`,
@@ -797,6 +816,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
             walletAddress,
             w3Provider
           );
+          observeErc20?.(metadata);
 
           basicTokenDetails = {
             id: `${contractAddress.toLowerCase()}-${context.chainId}`,
@@ -813,14 +833,16 @@ const EvmAssetsController = (): IEvmAssetsController => {
         }
 
         if (!contextIsCurrent(context.key)) return null;
-        // Cache the basic details for future use
-        tokenDetailsCache.set(cacheKey, {
-          details: basicTokenDetails,
-          timestamp: now,
-        });
+        // A temporary optional-field failure may display a fallback now, but
+        // a later request must be able to recover its descriptive metadata.
+        if (cacheMetadata)
+          tokenDetailsCache.set(cacheKey, {
+            details: basicTokenDetails,
+            timestamp: now,
+          });
 
         console.log(
-          `[EvmAssetsController] Cached basic details for ${contractType} token ${basicTokenDetails.symbol}`
+          `[EvmAssetsController] Read basic details for ${contractType} token ${basicTokenDetails.symbol}`
         );
         return basicTokenDetails;
       } catch (error) {
@@ -851,11 +873,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
   ): Promise<ITokenDetails | null> => {
     const context = metadataContext();
     try {
-      // Get basic details first (cached)
+      // This invocation alone may reuse the balance read while loading cold metadata.
+      let initialRead:
+        | Awaited<ReturnType<typeof getTokenStandardMetadata>>
+        | undefined;
       const basicDetails = await getTokenDetails(
         contractAddress,
         walletAddress,
-        w3Provider
+        w3Provider,
+        (metadata) => {
+          initialRead = metadata;
+        }
       );
       if (!basicDetails || !contextIsCurrent(context.key)) return null;
 
@@ -899,15 +927,20 @@ const EvmAssetsController = (): IEvmAssetsController => {
         return details;
       }
 
-      // For ERC-20 tokens, get fresh balance
-      const metadata = await getTokenStandardMetadata(
+      const token = new Contract(
         contractAddress,
-        walletAddress,
+        [
+          'function decimals() view returns (uint8)',
+          'function balanceOf(address) view returns (uint256)',
+        ],
         w3Provider
       );
-      const decimals = parseErc20Decimals(metadata.decimals ?? 18);
+      const [observedPrecision, observedBalance] = initialRead
+        ? [initialRead.decimals ?? 18, initialRead.balance]
+        : await Promise.all([token.decimals(), token.balanceOf(walletAddress)]);
+      const decimals = parseErc20Decimals(observedPrecision);
       const { balance, rawBalance } = formatErc20Balance(
-        metadata.balance,
+        observedBalance,
         decimals
       );
 
@@ -935,93 +968,28 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddress: string,
     w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenDetails | null> => {
-    // Check cache first for enhanced data
     const context = metadataContext();
-    const currentPlatform = getCurrentNetworkPlatform();
-    const cacheKey = `${context.key}:${contractAddress.toLowerCase()}:enhanced`;
-    const cached = tokenDetailsCache.get(cacheKey);
-    const now = Date.now();
-
     try {
-      // Get basic details and fresh balance
       const detailsWithBalance = await getTokenDetailsWithBalance(
         contractAddress,
         walletAddress,
         w3Provider
       );
       if (!detailsWithBalance || !contextIsCurrent(context.key)) return null;
-
-      // Check if we have cached enhanced market data
-      if (cached && now - cached.timestamp < TOKEN_DETAILS_CACHE_DURATION) {
-        console.log(
-          `[EvmAssetsController] Using cached market data for ${contractAddress}`
-        );
-        // Cached metadata must not supply a balance after a failed fresh read.
-        const details = { ...cached.details };
-        if (detailsWithBalance.balance === undefined) delete details.balance;
-        else details.balance = detailsWithBalance.balance;
-        if (detailsWithBalance.rawBalance !== undefined) {
-          details.rawBalance = detailsWithBalance.rawBalance;
-          details.decimals = detailsWithBalance.decimals;
-        }
-        return details;
-      }
-
-      // Try to enhance with CoinGecko market data
-      try {
-        if (currentPlatform) {
-          // Check if token exists in CoinGecko
-          const response = await retryableFetch(
-            `https://api.coingecko.com/api/v3/coins/${currentPlatform}/contract/${contractAddress}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
-          );
-
-          if (response.ok) {
-            const coinGeckoData = await response.json();
-            if (!contextIsCurrent(context.key)) return null;
-
-            // Clean CoinGecko symbol before merging
-            if (coinGeckoData.symbol) {
-              coinGeckoData.symbol = cleanTokenSymbol(coinGeckoData.symbol);
-            }
-
-            // Merge CoinGecko data with our token details
-            const enhancedDetails = {
-              ...coinGeckoData, // All CoinGecko fields (with cleaned symbol)
-              ...detailsWithBalance, // Our wallet-specific data (symbol, decimals, balance, etc.)
-              isVerified: true,
-            };
-            // Only the wallet's on-chain read supplies atomic units.
-            if (detailsWithBalance.rawBalance === undefined)
-              delete enhancedDetails.rawBalance;
-
-            console.log(
-              `[EvmAssetsController] Enhanced ${detailsWithBalance.tokenStandard} token ${contractAddress} with CoinGecko market data`
-            );
-
-            // Both balance representations come from a fresh read.
-            const cacheableData = { ...enhancedDetails };
-            delete cacheableData.balance;
-            delete cacheableData.rawBalance;
-            tokenDetailsCache.set(cacheKey, {
-              details: cacheableData,
-              timestamp: now,
-            });
-
-            return enhancedDetails;
-          }
-        }
-      } catch (coinGeckoError) {
-        console.warn(
-          `[EvmAssetsController] Failed to fetch CoinGecko market data for ${contractAddress}:`,
-          coinGeckoError
-        );
-      }
-
-      // Return basic details with balance if market data fails
-      console.log(
-        `[EvmAssetsController] No market data available for ${contractAddress}, returning basic details with balance`
-      );
-      return contextIsCurrent(context.key) ? detailsWithBalance : null;
+      const marketData = await getOnlyMarketData(contractAddress);
+      if (!contextIsCurrent(context.key)) return null;
+      if (!marketData) return detailsWithBalance;
+      const enhancedDetails = {
+        ...marketData,
+        ...detailsWithBalance,
+        isVerified: true,
+      };
+      // Only the fresh on-chain read may supply a balance.
+      if (detailsWithBalance.balance === undefined)
+        delete enhancedDetails.balance;
+      if (detailsWithBalance.rawBalance === undefined)
+        delete enhancedDetails.rawBalance;
+      return enhancedDetails;
     } catch (error) {
       console.error(
         '[EvmAssetsController] Error getting token details with market data:',
@@ -1041,13 +1009,20 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Check cache first
     const context = metadataContext();
     const currentPlatform = getCurrentNetworkPlatform();
+    if (!currentPlatform) {
+      const { activeNetwork } = store.getState().vault;
+      console.log(
+        `[EvmAssetsController] No platform ID configured for network: ${activeNetwork.label} (chainId: ${activeNetwork.chainId})`
+      );
+      return null;
+    }
     const cacheKey = `${
       context.key
-    }:${contractAddress.toLowerCase()}:marketonly`;
-    const cached = tokenDetailsCache.get(cacheKey);
+    }:${currentPlatform}:${contractAddress.toLowerCase()}:marketonly`;
+    const cached = marketDataCache.get(cacheKey);
     const now = Date.now();
 
-    if (cached && now - cached.timestamp < TOKEN_DETAILS_CACHE_DURATION) {
+    if (cached && now - cached.timestamp < PRICE_CACHE_DURATION) {
       console.log(
         `[EvmAssetsController] Using cached market data for ${contractAddress}`
       );
@@ -1066,14 +1041,6 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Create the promise and store it
     const requestPromise = (async () => {
       try {
-        if (!currentPlatform) {
-          const { activeNetwork } = store.getState().vault;
-          console.log(
-            `[EvmAssetsController] No platform ID configured for network: ${activeNetwork.label} (chainId: ${activeNetwork.chainId})`
-          );
-          return null;
-        }
-
         // Only fetch market data from CoinGecko
         const response = await retryableFetch(
           `https://api.coingecko.com/api/v3/coins/${currentPlatform}/contract/${contractAddress}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
@@ -1081,7 +1048,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         if (response.ok) {
           const coinGeckoData = await response.json();
-          if (!contextIsCurrent(context.key)) return null;
+          if (
+            !contextIsCurrent(context.key) ||
+            getCurrentNetworkPlatform() !== currentPlatform
+          )
+            return null;
 
           // Clean the symbol and return in ITokenDetails format
           const marketData = {
@@ -1095,7 +1066,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
           );
 
           // Cache the market data
-          tokenDetailsCache.set(cacheKey, {
+          marketDataCache.set(cacheKey, {
             details: marketData,
             timestamp: now,
           });
@@ -1113,16 +1084,19 @@ const EvmAssetsController = (): IEvmAssetsController => {
           error
         );
         return null;
-      } finally {
-        // Clean up the pending request
-        pendingRequests.delete(pendingKey);
       }
     })();
 
     // Store the pending request
     pendingRequests.set(pendingKey, requestPromise);
 
-    return requestPromise;
+    // Even a synchronous transport failure must clean up after insertion.
+    try {
+      return await requestPromise;
+    } finally {
+      if (pendingRequests.get(pendingKey) === requestPromise)
+        pendingRequests.delete(pendingKey);
+    }
   };
 
   /**
@@ -1178,7 +1152,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       );
 
       const result = (discovery.tokens || []) as any;
-      result.hasMore = discovery.hasMore || false;
+      result.hasMore = Boolean(discovery.hasMore || discovery.partial);
       result.requiresManualEntry = discovery.requiresManualEntry;
 
       return result;
@@ -1279,7 +1253,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
         // First get NFT metadata (name/symbol) using proper NFT ABI
         const nftMetadata = await getNftStandardMetadata(
           contractAddress,
-          w3Provider
+          metadataRunner(w3Provider),
+          'ERC-721'
         );
 
         // Then get balance using ERC-721 specific balance function

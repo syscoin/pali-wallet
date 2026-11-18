@@ -194,6 +194,13 @@ beforeEach(async () => {
   // allocates the account ID. No signing or broadcasting is exposed.
   const provider = {
     getNetwork: async () => ({ chainId: BigInt(1) }),
+    send: async (method: string, params: unknown[]) => {
+      expect(method).toBe('eth_getBlockByNumber');
+      expect(['latest', '0x10']).toContain(params[0]);
+      expect(params[1]).toBe(false);
+      infrastructureReads.push(params[0] === 'latest' ? 'head' : 'canonical');
+      return { number: '0x10', hash: `0x${'ab'.repeat(32)}` };
+    },
     verifyConfiguredChainId: async (fresh: boolean) => {
       expect(fresh).toBe(true);
       infrastructureReads.push('chain');
@@ -324,7 +331,16 @@ it('persists the ordinary derived smart account with the SDK-allocated ID and de
   );
   expect(factorySalts).toEqual([account.smartAccount.deploymentSalt]);
   expect(factoryReads).toEqual(['getInitData', 'getAddress']);
-  expect(infrastructureReads).toEqual(['chain', 'journal', 'journal', 'batch']);
+  expect(infrastructureReads).toEqual([
+    'chain',
+    'journal',
+    'journal',
+    'chain',
+    'head',
+    'batch',
+    'chain',
+    'canonical',
+  ]);
   expect(projection(await loadSlip44State(60))).toEqual(
     projection(store.getState().vault)
   );
@@ -486,7 +502,7 @@ it.each(['journal', 'infrastructure'] as const)(
     expect(infrastructureReads).toEqual(
       probe === 'journal'
         ? ['chain', 'journal']
-        : ['chain', 'journal', 'journal', 'batch']
+        : ['chain', 'journal', 'journal', 'chain', 'head', 'batch']
     );
     expect(factoryReads).toEqual([]);
     expect(commits).toBe(0);

@@ -22,6 +22,7 @@ import { ConfirmationModal } from 'components/Modal';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { TransactionOptions } from 'components/TransactionOptions';
+import { SmartAccountAuthorizations } from 'components/TransactionOptions/SmartAccountAuthorizations';
 import { useContextualState } from 'hooks/useContextualState';
 import { usePrice } from 'hooks/usePrice';
 import { useRequestScope } from 'hooks/useRequestScope';
@@ -45,6 +46,7 @@ import {
   buildEvmMinedNonceIndex,
   buildEvmTransactionHashIndex,
   getEvmSettlementStatus,
+  hasEvmExecutionSucceeded,
   hasEvmCancellationIntent,
   evmSettlementLabel,
   evmSettlementClass,
@@ -817,7 +819,7 @@ export const EvmTransactionsList = ({
     paginationContext,
     currentAccountTransactions?.ethereum?.[chainId],
     'hash',
-    (tx) => getEvmSettlementStatus(tx, chainId) === 'confirmed'
+    (tx) => hasEvmExecutionSucceeded(tx, chainId)
   );
 
   const getTxOptions = useCallback(
@@ -921,6 +923,9 @@ export const EvmTransactionsList = ({
   return (
     <>
       <ConfirmationModal show={isOpenModal} {...modalData} />
+      <div className="mb-3">
+        <SmartAccountAuthorizations />
+      </div>
       {Object?.entries(groupedTransactions)?.map(
         ([date, transactions]: any) => (
           <div key={date} className="relative mb-[20px]">

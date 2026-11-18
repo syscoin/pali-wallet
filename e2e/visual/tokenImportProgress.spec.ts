@@ -518,7 +518,16 @@ for (const family of ['evm', 'utxo'] as const) {
               live: [...identifiers].sort(),
               saved: [...identifiers].sort(),
             });
-          await expect(importAction(1)).toBeDisabled();
+          if (family === 'evm') {
+            // Saved EVM membership removes owned rows from discovery eligibility.
+            await expect(importAction(0)).toHaveCount(0);
+            await expect(importAction(1)).toHaveCount(0);
+            await expect(
+              page.getByText(en.tokens.noAdditionalTokensFound, { exact: true })
+            ).toBeVisible();
+          } else {
+            await expect(importAction(1)).toBeDisabled();
+          }
           observations.afterSecond = await publicProjection(page, family);
           const message = en.tokens.hasBeenAddedToYourWallet.replace(
             '{{token}}',

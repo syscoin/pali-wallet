@@ -8,6 +8,7 @@ export type AssetMarket = Readonly<{
   low24h: number | null;
   marketCap: number | null;
   price: number;
+  priceTimestamps?: readonly number[];
   prices: readonly number[];
   updatedAt: number;
 }>;
@@ -21,6 +22,17 @@ const positive = (value: unknown): number | null =>
     : null;
 export const validMarketId = (value: unknown): value is string =>
   typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,127}$/.test(value);
+
+/** Coin details expose daily performance separately for each denomination. */
+export function marketChangeForCurrency(
+  market: unknown,
+  currency: string
+): number | null {
+  const change = record(
+    record(market)?.price_change_percentage_24h_in_currency
+  )?.[currency.toLowerCase()];
+  return typeof change === 'number' && Number.isFinite(change) ? change : null;
+}
 
 /** Six units contain the four-unit marker plus its one-unit outer stroke. */
 export const ASSET_MARKET_CHART = Object.freeze({
@@ -99,7 +111,10 @@ export function assetMarketHistoryUrl(id: string, currency: string): string {
   return `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=${currency}&days=7`;
 }
 
-const samplePrices = (prices: readonly number[]): readonly number[] =>
+type MarketHistoryPoint = Readonly<{ price: number; timestamp: number }>;
+const samplePrices = (
+  prices: readonly MarketHistoryPoint[]
+): readonly MarketHistoryPoint[] =>
   Object.freeze(
     prices.filter(
       (_, index) =>
@@ -112,7 +127,7 @@ const samplePrices = (prices: readonly number[]): readonly number[] =>
 export function readAssetMarketHistory(
   body: unknown,
   now: number
-): readonly number[] {
+): readonly MarketHistoryPoint[] {
   const raw = record(body)?.prices;
   if (
     !Number.isFinite(now) ||
@@ -122,7 +137,7 @@ export function readAssetMarketHistory(
   )
     return [];
   let previous = -1;
-  const prices: number[] = [];
+  const prices: MarketHistoryPoint[] = [];
   for (const point of raw) {
     if (
       !Array.isArray(point) ||
@@ -135,7 +150,7 @@ export function readAssetMarketHistory(
     )
       return [];
     previous = point[0];
-    prices.push(point[1]);
+    prices.push(Object.freeze({ timestamp: point[0], price: point[1] }));
   }
   return previous < now - 86_400_000 ? [] : samplePrices(prices);
 }

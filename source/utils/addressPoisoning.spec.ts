@@ -17,6 +17,51 @@ const TOKEN_CONTRACT = '0x5555555555555555555555555555555555555555';
 const ENTRYPOINT = '0x433709009b8330fda32311df1c2afa402ed8d009';
 const ZERO_BYTES32 = `0x${'00'.repeat(32)}`;
 
+it('uses the canonical ERC1155 batch recipient instead of its contract', () => {
+  const input =
+    id(
+      'safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)'
+    ).slice(0, 10) +
+    defaultAbiCoder
+      .encode(
+        ['address', 'address', 'uint256[]', 'uint256[]', 'bytes'],
+        [ACTIVE_ACCOUNT, LEGITIMATE_RECIPIENT, [7, 8], [2, 5], '0x']
+      )
+      .slice(2);
+  expect(
+    getTrustedEvmRecipients(
+      [
+        {
+          from: ACTIVE_ACCOUNT,
+          to: TOKEN_CONTRACT,
+          input,
+          value: '0',
+          blockNumber: 10,
+          confirmations: 1,
+          isError: '0',
+        },
+      ],
+      ACTIVE_ACCOUNT
+    )
+  ).toEqual([LEGITIMATE_RECIPIENT]);
+  expect(
+    getTrustedEvmRecipients(
+      [
+        {
+          from: ACTIVE_ACCOUNT,
+          to: TOKEN_CONTRACT,
+          input: input.slice(0, -2),
+          value: '0',
+          blockNumber: 10,
+          confirmations: 1,
+          isError: '0',
+        },
+      ],
+      ACTIVE_ACCOUNT
+    )
+  ).toEqual([]);
+});
+
 const encodeTransfer = (recipient: string, value = 1) =>
   `${id('transfer(address,uint256)').slice(0, 10)}${defaultAbiCoder
     .encode(['address', 'uint256'], [recipient, value])

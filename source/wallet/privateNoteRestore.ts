@@ -9,11 +9,17 @@ import {
   validateNoteBackupHistory,
 } from './noteBackupHistory.ts';
 import type { INoteBackupHistory } from './noteBackupHistory.ts';
+import { MAX_ARCHIVED_NOTES, MAX_VAULT_NOTES } from './privateVaultEnvelope.ts';
 import type { identifyClassicNote } from '../utils/privacy/note.ts';
+import type {
+  IPrivacyWithdrawalPublicInputs,
+  IPrivacyWithdrawalRootAnchor,
+} from '../utils/privacy/withdrawalTransactionTypes.ts';
 
 // Backup decoding and envelope validation belong to the codec. This leaf only
 // projects restored entries, persists conservative evidence, and plans a merge.
 export interface IPrivateNoteRestoreEntry {
+  archivedAt?: number;
   createdAt: number;
   history?: Readonly<INoteBackupHistory>;
   note: string;
@@ -41,14 +47,20 @@ export interface IPrivateNoteRestoreMetadata {
 }
 interface ILocalJournal {
   from?: string;
+  inputHash?: string;
   jobId?: string;
   mode?: 'direct' | 'relayed';
   nonce?: string;
   phase: 'unknown' | 'submitted';
+  proofHash?: string;
+  publicInputs?: Readonly<IPrivacyWithdrawalPublicInputs>;
   retired?: readonly ILocalJournal[];
+  rootAnchor?: Readonly<IPrivacyWithdrawalRootAnchor>;
   transactionHash?: string;
+  transactionHashes?: readonly string[];
 }
 export interface IRestorableNote {
+  archivedAt?: number;
   createdAt: number;
   deposit?: ILocalJournal;
   id: string;
@@ -58,7 +70,7 @@ export interface IRestorableNote {
 }
 type IRestoredNote = Pick<
   IRestorableNote,
-  'createdAt' | 'id' | 'note' | 'restoreGuard'
+  'archivedAt' | 'createdAt' | 'id' | 'note' | 'restoreGuard'
 >;
 const HASH = /^0x[0-9a-f]{64}$/;
 const UUID =
@@ -113,7 +125,7 @@ export const hasImportedWithdrawalHistory = (
   guard: IPrivateNoteRestoreGuard | undefined
 ): boolean => Boolean(guard?.history?.withdrawals?.length);
 
-/** Review is local consent, not evidence of exclusive ownership or proof revocation. */
+/** Ordinary local review never revokes an imported withdrawal proof. */
 export const restoredNoteBlocksWithdrawal = (
   guard: IPrivateNoteRestoreGuard | undefined
 ): boolean =>
@@ -139,10 +151,11 @@ export function readPrivateNoteRestoreMetadata(
     !HASH.test(receipt.sourceHash) ||
     !date(receipt.createdAt) ||
     ![receipt.added, receipt.duplicates, receipt.guarded].every(
-      (count) => Number.isSafeInteger(count) && count >= 0 && count <= 512
+      (count) =>
+        Number.isSafeInteger(count) && count >= 0 && count <= MAX_VAULT_NOTES
     ) ||
     receipt.added + receipt.duplicates < 1 ||
-    receipt.added + receipt.duplicates > 512 ||
+    receipt.added + receipt.duplicates > MAX_VAULT_NOTES ||
     receipt.guarded > receipt.added + receipt.duplicates
   )
     return invalid();
@@ -151,16 +164,17 @@ export function readPrivateNoteRestoreMetadata(
 export function snapshotPrivateNoteRestoreEntries(
   value: unknown
 ): IPrivateNoteRestoreEntry[] {
-  const entries = snapshotBackupArray(value, 512);
+  const entries = snapshotBackupArray(value, MAX_VAULT_NOTES);
   if (!entries.length) return invalid();
   return entries.map((raw) => {
     const entry = data(
       raw,
-      ['createdAt', 'note', 'history', 'reconciliationRequired'],
+      ['archivedAt', 'createdAt', 'note', 'history', 'reconciliationRequired'],
       ['createdAt', 'note']
     );
     if (
       !date(entry.createdAt) ||
+      (entry.archivedAt !== undefined && !date(entry.archivedAt)) ||
       typeof entry.note !== 'string' ||
       !entry.note.length ||
       entry.note.length > 256 ||
@@ -171,6 +185,9 @@ export function snapshotPrivateNoteRestoreEntries(
       return invalid();
     return {
       createdAt: entry.createdAt,
+      ...(entry.archivedAt === undefined
+        ? {}
+        : { archivedAt: entry.archivedAt }),
       note: entry.note,
       ...(entry.history === undefined
         ? {}
@@ -184,7 +201,7 @@ export function snapshotPrivateNoteRestoreEntries(
 export const privateNoteRestoreDigest = (value: unknown): string =>
   keccak256(toUtf8Bytes(JSON.stringify(value)));
 
-/** Excludes endpoints, proofs, intent IDs and other active-job authority. */
+/** Excludes endpoints, proof bytes, intent IDs and other active-job authority. */
 export function privateNoteCurrentHistory(
   note: IRestorableNote
 ): Readonly<INoteBackupHistory> | undefined {
@@ -216,6 +233,21 @@ export function privateNoteCurrentHistory(
                 ? { transactionHash: entry.transactionHash }
                 : {}),
               ...(entry.jobId ? { jobId: entry.jobId } : {}),
+              ...(entry.proofHash === undefined
+                ? {}
+                : { proofHash: entry.proofHash }),
+              ...(entry.inputHash === undefined
+                ? {}
+                : { inputHash: entry.inputHash }),
+              ...(entry.publicInputs === undefined
+                ? {}
+                : { publicInputs: entry.publicInputs }),
+              ...(entry.rootAnchor === undefined
+                ? {}
+                : { rootAnchor: entry.rootAnchor }),
+              ...(entry.transactionHashes === undefined
+                ? {}
+                : { transactionHashes: entry.transactionHashes }),
             })
           ),
         }
@@ -233,17 +265,21 @@ export function privateNoteExportHistory(
   );
   const count =
     (history?.deposits?.length ?? 0) + (history?.withdrawals?.length ?? 0);
+  const withdrawals = note.withdrawal
+    ? [note.withdrawal, ...(note.withdrawal.retired ?? [])]
+    : [];
   const pending =
     Number(note.deposit?.phase === 'unknown') +
-    (note.withdrawal?.phase === 'unknown'
-      ? note.withdrawal.mode === 'relayed'
-        ? 2
-        : 1
-      : Number(
-          note.withdrawal?.mode === 'relayed' &&
-            note.withdrawal.phase === 'submitted' &&
-            !note.withdrawal.transactionHash
-        ));
+    withdrawals.reduce(
+      (total, entry) =>
+        total +
+        (entry.phase === 'unknown'
+          ? entry.mode === 'relayed'
+            ? 2
+            : 1
+          : Number(entry.mode === 'relayed' && !entry.transactionHash)),
+      0
+    );
   if (count + pending > NOTE_BACKUP_MAX_HISTORY_HINTS)
     throw new Error('privacy_note_limit');
   return history;
@@ -267,7 +303,10 @@ export function planPrivateNoteRestore<T extends IRestorableNote>(input: {
   const { capacity, existing, identify, importedAt, randomId } = input;
   if (
     ![128, 256, 512].includes(capacity) ||
-    existing.length > capacity ||
+    existing.filter((note) => note.archivedAt === undefined).length >
+      capacity ||
+    existing.filter((note) => note.archivedAt !== undefined).length >
+      MAX_ARCHIVED_NOTES ||
     !date(importedAt)
   )
     return invalid();
@@ -326,7 +365,18 @@ export function planPrivateNoteRestore<T extends IRestorableNote>(input: {
       }
       continue;
     }
-    if (notes.length >= capacity) throw new Error('privacy_note_limit');
+    if (
+      entry.archivedAt === undefined
+        ? notes.filter((note) => note.archivedAt === undefined).length >=
+          capacity
+        : notes.filter((note) => note.archivedAt !== undefined).length >=
+          MAX_ARCHIVED_NOTES
+    )
+      throw new Error(
+        entry.archivedAt === undefined
+          ? 'privacy_note_limit'
+          : 'privacy_archive_limit'
+      );
     const id = randomId();
     if (typeof id !== 'string' || !UUID.test(id) || ids.has(id))
       return invalid();
@@ -335,6 +385,9 @@ export function planPrivateNoteRestore<T extends IRestorableNote>(input: {
       id,
       note: entry.note,
       createdAt: entry.createdAt,
+      ...(entry.archivedAt === undefined
+        ? {}
+        : { archivedAt: entry.archivedAt }),
       restoreGuard: {
         version: 1,
         importedAt,

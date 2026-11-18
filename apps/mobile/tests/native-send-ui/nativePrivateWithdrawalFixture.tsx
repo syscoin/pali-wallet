@@ -6,7 +6,7 @@ import type { NativePrivateAuthenticationScope } from '../../src/custody/private
 import { NativeNoteInventory } from '../../src/screens/NativeNoteInventory';
 import { PRIVACY_POOLS } from '../../../../source/utils/privacy/registry';
 import { Text } from '../../src/ui';
-import { FixtureDeviceAuthorization, fixtureDeviceAuthorization } from './fixtureDeviceAuthorization';
+import { FixtureDeviceAuthorization } from './fixtureDeviceAuthorization';
 
 // Public presentation only. No note secret, proof worker, network or signer.
 type Snapshot = ReturnType<View['getSnapshot']>;
@@ -35,7 +35,7 @@ export function NativePrivateWithdrawalFixture() {
       const note = Object.freeze({
         amount: '1',
         createdAt: 1762000000000,
-        ...(query.has('history') ||
+        ...(query.has('restored') ? {reconciliation:'restored-note' as const} : query.has('history') ||
         events.some((event) => event.startsWith('confirm:'))
           ? { reconciliation: 'withdrawal-history' as const }
           : {}),
@@ -78,7 +78,6 @@ export function NativePrivateWithdrawalFixture() {
               blockNumber: 100,
             },
             checking: false,
-            restored: query.has('restored'),
             error: null,
           });
           const listeners = new Set<(snapshot: Snapshot) => void>();
@@ -162,6 +161,7 @@ export function NativePrivateWithdrawalFixture() {
                     (pool) => pool.id === 'eth-1'
                   )!.address,
                   mode: request.mode,
+                  ...(query.has('history') ? {previousWithdrawals:[{mode:'direct' as const,outcome:'unknown' as const,transactionHash:hash}]} : {}),
                   recipient: request.recipient,
                   account: {
                     id: 0,
@@ -205,6 +205,7 @@ export function NativePrivateWithdrawalFixture() {
               const relayed = snapshot.review.mode === 'relayed';
               publish({
                 phase: query.has('unknown') ? 'unknown' : 'submitted',
+                status: null,
                 result: {
                   intentId,
                   noteId,
@@ -232,20 +233,12 @@ export function NativePrivateWithdrawalFixture() {
                   : {}),
                 noteStatus: {
                   phase:
-                    query.has('unknown') && !query.has('reconciled-spent')
+                    query.has('history') || (query.has('unknown') && !query.has('reconciled-spent'))
                       ? 'verified'
                       : 'spent',
                   blockNumber: 101,
                 },
               });
-            },
-            async reviewRestored() {
-              check();
-              try { await fixtureDeviceAuthorization.request('private-reconciliation', signal, check); }
-              catch (cause) { check(); publish({ error: 'restored' }); throw cause; }
-              check();
-              events.push('restore:review');
-              publish({ restored: false, error: null });
             },
             async dispose() {
               if (!disposed) {

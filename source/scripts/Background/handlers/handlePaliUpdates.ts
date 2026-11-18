@@ -2,6 +2,7 @@ import { getController } from '..';
 import { isPollingRunNotValid } from 'scripts/Background/utils/isPollingRunNotValid';
 import { saveMainState } from 'state/store';
 import { updateMutex } from 'utils/asyncMutex';
+import { isExternalWalletUrl } from 'utils/extensionContexts';
 
 export async function checkForUpdates(
   isPolling?: boolean,
@@ -19,7 +20,7 @@ export async function checkForUpdates(
     // Hardware wallet pages don't need balance/asset/transaction updates
     try {
       const tabs = await chrome.tabs.query({});
-      const isExternal = tabs.some((tab) => tab.url?.includes('external'));
+      const isExternal = tabs.some((tab) => isExternalWalletUrl(tab.url));
       if (isExternal) {
         console.log(
           '⏸️ checkForUpdates: Skipping updates - external wallet page is open'

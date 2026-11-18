@@ -1,8 +1,8 @@
-import { normalizeDappRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import { getPrivacyPool, PRIVACY_CHAIN_ID } from '../../../../source/utils/privacy/registry.ts';
 import { prepareSpentCompletion, type SpentCompletionRequest } from '../../../../source/utils/privacy/spentCompletion.ts';
 import { prepareWithdrawalRecovery } from '../../../../source/utils/privacy/withdrawalRecovery.ts';
+import { readPrivacyRelayerJobPublicInputs, type PrivacyRelayerJobFetch } from '../../../../source/utils/privacy/relayJobs.ts';
 import type { IPrivateVaultHost } from '../../../../source/wallet/privateVault.ts';
 import type { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
@@ -15,17 +15,18 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
   network: NativeNetworkRegistration;
   signal: AbortSignal;
   assertCurrent(): void;
-  rpc: Pick<EvmTransferReadRpc, 'retirementRead' | 'dappRequest'>;
+  rpc: Pick<EvmTransferReadRpc, 'noteMaintenanceRead'>;
+  relayerFetch?: PrivacyRelayerJobFetch;
+  readOriginalRawTransaction?(from: string, hash: string, assertCurrent: () => void): Promise<string | null>;
 }>): NativeNoteMaintenanceProofs {
   const network = snapshotNativeNetwork(options.network);
   if (network.chainId !== String(PRIVACY_CHAIN_ID) ||
-      typeof options.rpc?.retirementRead !== 'function' || typeof options.rpc?.dappRequest !== 'function' ||
+      typeof options.rpc?.noteMaintenanceRead !== 'function' ||
       typeof options.signal?.aborted !== 'boolean' || typeof options.signal.addEventListener !== 'function' ||
       typeof options.signal.removeEventListener !== 'function')
     throw new Error('privacy_spent_proof_unavailable');
   const { signal, assertCurrent } = options;
-  const retirementRead = options.rpc.retirementRead.bind(options.rpc);
-  const dappRequest = options.rpc.dappRequest.bind(options.rpc);
+  const noteMaintenanceRead = options.rpc.noteMaintenanceRead.bind(options.rpc);
   const check = () => {
     assertSynchronousEvmFeeGuard(assertCurrent);
     if (signal.aborted) throw new Error('privacy_vault_session_changed');
@@ -39,14 +40,7 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
     const current = () => { check(); guard(); if (external.aborted || lifetime.signal.aborted) throw new Error('privacy_vault_session_changed'); };
     try {
       current();
-      let result: unknown;
-      switch (method) {
-        case 'eth_chainId': case 'eth_getBlockByNumber': case 'eth_getTransactionReceipt':
-          result = await retirementRead(method, params, lifetime.signal, current); break;
-        case 'eth_call': case 'eth_getTransactionByHash':
-          result = await dappRequest(normalizeDappRpcRequest(method, params), lifetime.signal, current); break;
-        default: throw new Error('privacy_rpc_unavailable');
-      }
+      const result = await noteMaintenanceRead(method, params, lifetime.signal, current);
       current(); return result;
     } finally {
       signal.removeEventListener('abort', abort); external.removeEventListener('abort', abort); lifetime.abort();
@@ -63,7 +57,8 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
       const submitted: SpentCompletionRequest['withdrawal'] = withdrawal.mode === 'direct'
         ? { phase: 'submitted', mode: 'direct', transactionHash: withdrawal.transactionHash,
             from: withdrawal.from!, nonce: withdrawal.nonce! }
-        : { phase: 'submitted', mode: 'relayed', transactionHash: withdrawal.transactionHash };
+        : { phase: 'submitted', mode: 'relayed', transactionHash: withdrawal.transactionHash,
+            ...(withdrawal.transactionHashes ? { transactionHashes: withdrawal.transactionHashes } : {}) };
       return prepareSpentCompletion({ poolAddress: getPrivacyPool(identity.poolId).address,
         nullifierHash: identity.nullifierHash, withdrawal: submitted,
         ...(deposit ? { deposit: { phase: 'submitted', transactionHash: deposit.transactionHash!, from: deposit.from, nonce: deposit.nonce } } : {}),
@@ -73,7 +68,18 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
       const guard = () => { check(); assertSynchronousEvmFeeGuard(session.assertCurrent); };
       guard();
       return prepareWithdrawalRecovery({ poolAddress: getPrivacyPool(identity.poolId).address,
-        nullifierHash: identity.nullifierHash, withdrawal, assertCurrent: guard, rpc: read(guard) });
+        nullifierHash: identity.nullifierHash, withdrawal, assertCurrent: guard, rpc: read(guard),
+        ...(withdrawal.mode === 'relayed' && withdrawal.jobId && withdrawal.endpoint ? {
+          readRelayedPublicInputs: (signal: AbortSignal) => readPrivacyRelayerJobPublicInputs({
+            endpoint: withdrawal.endpoint!, jobId: withdrawal.jobId!, poolId: identity.poolId,
+            inputHash: withdrawal.inputHash, proofHash: withdrawal.proofHash,
+          }, { assertCurrent: guard, signal, fetcher: options.relayerFetch }),
+        } : {}),
+        ...(options.readOriginalRawTransaction ? { readOriginalRawTransaction: async () => {
+          guard();
+          const raw = await options.readOriginalRawTransaction!(withdrawal.from!, withdrawal.transactionHash!, guard);
+          guard(); return raw;
+        } } : {}) });
     },
   });
 }

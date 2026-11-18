@@ -20,6 +20,7 @@ import { Interface } from 'ethers/abi';
 import http from 'http';
 import https from 'https';
 
+import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import { restoreVaultSnapshot, setAccountAssets } from 'state/vault';
@@ -169,6 +170,8 @@ beforeEach(async () => {
     signalBalance = resolve;
   });
   const provider = {
+    _getConnection: () => ({ url: 'https://receipt.synthetic.invalid' }),
+    getRpcTransaction: (transaction: object) => transaction,
     getCode: async (address: string) =>
       [TOKEN, OTHER].includes(address.toLowerCase()) ? '0x6000' : '0x',
     getNetwork: async () => ({ chainId: BigInt(5700) }),
@@ -221,6 +224,8 @@ beforeEach(async () => {
     ) =>
       Promise.allSettled(
         requests.map(({ method, params }) => {
+          if (method === 'eth_chainId' && params.length === 0)
+            return Promise.resolve('0x1644');
           if (method !== 'eth_call')
             throw new Error('Unexpected token RPC ' + method);
           return provider.call({
@@ -238,6 +243,7 @@ beforeEach(async () => {
   };
   wallet = Object.create(MainController.prototype);
   Object.assign(wallet, {
+    rpcReadCapabilities: createRpcReadCapabilitiesOwner(),
     walletSessionGeneration: 0,
     walletStateGeneration: 0,
     targetedBalanceVersions: new Map(),

@@ -4,7 +4,8 @@ import test from 'node:test';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { keccak256 } from 'ethers/crypto';
-import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import { NativeTransferRpc, captureNativeOwnedDappAdmission } from '../src/custody/transferRpc.ts';
+import { snapshotPreparedEvmTransaction, serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { assertEvmCancellationNonceReady } from '../../../source/shared/evmCancellationPayer.ts';
 import { EvmReplayError, type EvmReplayDispatchAdmission } from '../../../source/wallet/evmSignedReplay.ts';
 const sender = Wallet.fromPhrase(
@@ -12,7 +13,7 @@ const sender = Wallet.fromPhrase(
 );
 const recipient = '0x1111111111111111111111111111111111111111';
 const signal = () => new AbortController().signal;
-function fixture(overrides: Record<string, unknown> = {}) {
+function fixture(overrides: Record<string, unknown> = {}, scalarOnly = false) {
   const calls: { method: string; params: unknown[]; init: RequestInit }[] = [];
   const values: Record<string, unknown> = {
     eth_chainId: '0x1',
@@ -26,7 +27,11 @@ function fixture(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
   const rpc = new NativeTransferRpc({ networkId: 'ethereum',
-    fetch: async (_url, init) => {
+    fetch: async function fetchFixture(_url, init): Promise<Response> {
+      const request = JSON.parse(String(init.body));
+      if (Array.isArray(request) && scalarOnly)
+        return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch requests not supported' } });
+      if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetchFixture(_url, { ...init, body: JSON.stringify(row) })).json())));
       const body = JSON.parse(String(init.body));
       calls.push({ ...body, init });
       const raw = values[body.method];
@@ -40,6 +45,44 @@ function fixture(overrides: Record<string, unknown> = {}) {
   });
   return { rpc, calls };
 }
+
+test('owned dapp admission delegates identity to its exact one-use host preflight', async () => {
+  const transaction = snapshotPreparedEvmTransaction({ from: sender.address, to: recipient,
+    chainId: '1', nonce: '0', data: '0x', value: '1', gasLimit: '21000', type: 0, gasPrice: '101' });
+  const raw = await sender.signTransaction(Transaction.from(serializePreparedEvmTransaction(transaction)));
+  const hash = keccak256(raw), f = fixture({ eth_sendRawTransaction: hash });
+  let finalChecks = 0;
+  const admit = async (send: () => Promise<string>, preflight?: () => Promise<void>) => {
+    await preflight?.();
+    finalChecks++;
+    return send();
+  };
+  const token = captureNativeOwnedDappAdmission(f.rpc, admit, hash);
+  await assert.rejects(f.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined, {}), { code: 'REVIEW_REQUIRED' });
+  assert.equal(f.calls.length, 0);
+  assert.equal(await f.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined, token), hash);
+  assert.equal(finalChecks, 1);
+  assert.deepEqual(f.calls.map(call => call.method), ['eth_sendRawTransaction']);
+  await assert.rejects(f.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined, token), { code: 'REVIEW_REQUIRED' });
+  assert.equal(f.calls.length, 1);
+  const defaultRpc = fixture({ eth_sendRawTransaction: hash });
+  assert.equal(await defaultRpc.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined), hash);
+  assert.deepEqual(defaultRpc.calls.map(call => call.method), ['eth_chainId', 'eth_sendRawTransaction']);
+});
+
+test('owned dapp identity cannot authorize a different sender and still respects final refusal', async () => {
+  const transaction = snapshotPreparedEvmTransaction({ from: sender.address, to: recipient,
+    chainId: '1', nonce: '0', data: '0x', value: '1', gasLimit: '21000', type: 0, gasPrice: '101' });
+  const raw = await sender.signTransaction(Transaction.from(serializePreparedEvmTransaction(transaction)));
+  const hash = keccak256(raw), f = fixture({ eth_sendRawTransaction: hash });
+  const admit = async (_send: () => Promise<string>, preflight?: () => Promise<void>) => { await preflight?.(); throw new Error('late wrong chain'); };
+  const other = fixture();
+  const foreign = captureNativeOwnedDappAdmission(other.rpc, admit, hash);
+  await assert.rejects(f.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined, foreign), { code: 'REVIEW_REQUIRED' });
+  const token = captureNativeOwnedDappAdmission(f.rpc, admit, hash);
+  await assert.rejects(f.rpc.broadcastDapp(raw, hash, transaction, signal(), admit, () => undefined, () => undefined, token), /late wrong chain/);
+  assert.equal(f.calls.length, 0);
+});
 test('new cancellation preserves a saved legacy nonce and rejects unsupported original types before RPC', async () => {
   const legacy = await sender.signTransaction({
     type: 0, chainId: 1, nonce: 1, to: recipient, value: 1,
@@ -219,7 +262,7 @@ test('aborts unresolved sibling requests when one quote component fails', async 
       observed = init.signal as AbortSignal;
       return new Promise(() => undefined);
     },
-  });
+  }, true);
   await assert.rejects(f.rpc.prepare(sender.address, recipient, '1', signal(), undefined, emptyNoncePlanner));
   assert.equal(observed?.aborted, true);
 });
@@ -359,7 +402,7 @@ test('an endpoint chain change during the wire pending-nonce read prevents a new
       return send();
     },
   });
-  const rejected = assert.rejects(pending, { code: 'INVALID_RESPONSE' });
+  const rejected = assert.rejects(pending, { code: 'REVIEW_REQUIRED' });
   await nonceEntered.promise;
   chain = '0x2';
   nonceResponse.resolve('0x0');

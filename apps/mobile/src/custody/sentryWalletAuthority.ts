@@ -29,40 +29,38 @@ export function createNativeSentryWalletAuthority(ports: Ports) {
   });
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
   const endpoint = ports.network.endpoint.replace(/\/$/, '');
+  const single = ports.imported && account.xpub === account.address;
+  let inventory: Promise<string[]> | undefined;
+  function paths() {
+    if (single) return Promise.resolve([]);
+    return inventory ??= ports.readJson(
+      `${endpoint}/api/v2/xpub/${encodeURIComponent(account.xpub)}?tokens=derived&details=tokens`,
+      2 * 1024 * 1024,
+      check
+    ).then(response => {
+      check();
+      const tokens = (response as { tokens?: unknown } | undefined)?.tokens;
+      if (!Array.isArray(tokens) || tokens.length > 10_000)
+        throw new Error('Cannot verify the wallet address paths');
+      return tokens.map(token => token?.path);
+    }).finally(() => { inventory = undefined; });
+  }
   async function find(address: string) {
     check();
     if (!ports.hasPrivateMaterial) return undefined;
-    const single = ports.imported && account.xpub === account.address;
-    const response = single
-      ? undefined
-      : await ports.readJson(
-          `${endpoint}/api/v2/xpub/${encodeURIComponent(
-            account.xpub
-          )}?tokens=derived&details=tokens`,
-          2 * 1024 * 1024,
-          check
-        );
+    const candidates = await paths();
     check();
-    const tokens = (response as { tokens?: unknown } | undefined)?.tokens;
-    if (!single && (!Array.isArray(tokens) || tokens.length > 10_000))
-      throw new Error('Cannot verify the wallet address paths');
-    return {
-      path: findSentryWalletPath(
-        address,
-        Array.isArray(tokens) ? tokens.map((token) => token?.path) : [],
-        addressScope
-      ),
-    };
+    return { path: findSentryWalletPath(address, candidates, addressScope) };
+  }
+  async function has(address: string) {
+    const found = await find(address);
+    check();
+    return !!found && (found.path !== undefined || canDeferSentryWifMatch(address, addressScope));
   }
   return Object.freeze({
-    async has(address: string) {
-      const found = await find(address);
-      check();
-      return (
-        !!found &&
-        (found.path !== undefined ||
-          canDeferSentryWifMatch(address, addressScope))
-      );
+    has,
+    async hasMany(addresses: readonly string[]) {
+      return Promise.all(addresses.map(has));
     },
     async prepare(
       address: string,
@@ -122,6 +120,6 @@ export function createNativeSentryWalletAuthority(ports: Ports) {
   });
 }
 
-export type NativeSentryWalletAuthority = ReturnType<
-  typeof createNativeSentryWalletAuthority
->;
+type NativeWalletAuthority = ReturnType<typeof createNativeSentryWalletAuthority>;
+export type NativeSentryWalletAuthority = Omit<NativeWalletAuthority, 'hasMany'> &
+  Partial<Pick<NativeWalletAuthority, 'hasMany'>>;

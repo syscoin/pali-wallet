@@ -107,7 +107,8 @@ export function assertSmartAccountCallsIdentity(
 export function getSmartAccountCallsOutcome(
   identity: SmartAccountCallsIdentity | undefined,
   chainId: number,
-  receipts: readonly any[]
+  receipts: readonly any[],
+  expected?: Readonly<{ nonce: bigint; paymaster: string }>
 ): boolean | undefined {
   if (!identity) return;
   try {
@@ -140,6 +141,10 @@ export function getSmartAccountCallsOutcome(
         if (
           !parsed ||
           parsed.args.sender.toLowerCase() !== identity.sender ||
+          (expected !== undefined &&
+            (parsed.args.nonce !== expected.nonce ||
+              parsed.args.paymaster.toLowerCase() !==
+                expected.paymaster.toLowerCase())) ||
           receipt.status !== 1 ||
           ++matches !== 1
         )

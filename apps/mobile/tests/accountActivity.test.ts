@@ -12,7 +12,7 @@ const hash = '0x' + 'a'.repeat(64);
 const networks = [getNativeNetwork('ethereum'), getNativeNetwork('rollux')];
 const tick = async () => { for (let i = 0; i < 8; i++) await new Promise<void>(resolve => setImmediate(resolve)); };
 
-function fixture(initialFilter: string | Promise<string> = 'all', direction: 'received' | 'self' = 'received') {
+function fixture(initialFilter: string | Promise<string> | (() => Promise<string>) = 'all', direction: 'received' | 'self' = 'received') {
   let currentId = 'hd:60:0', revision = 1;
   const listeners = new Set<(snapshot: any) => void>();
   const calls: { id: string; account: string; signal: AbortSignal }[] = [], loads: string[] = [], savedLoads: string[] = [];
@@ -29,8 +29,9 @@ function fixture(initialFilter: string | Promise<string> = 'all', direction: 're
     subscribe: (listener: (snapshot: any) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   };
   let selected = typeof initialFilter === 'string' ? initialFilter : 'all';
+  let filterReads = 0, filterLoad = initialFilter;
   const model = new AccountActivityController({ source, choices: () => choices,
-    filter: { load: () => Promise.resolve(initialFilter), save: async value => { await saveHeld; selected = value; } },
+    filter: { load: () => { filterReads++; return typeof filterLoad === 'function' ? filterLoad() : Promise.resolve(filterLoad); }, save: async value => { await saveHeld; selected = value; } },
     runtime: (scope, guard) => ({
       async load(check) {
         guard(); check(); loads.push(scope.accountId + ':' + scope.network.id);
@@ -60,6 +61,7 @@ function fixture(initialFilter: string | Promise<string> = 'all', direction: 're
     receipts: { async read() { throw Error('List rendering must not request receipts'); } },
   });
   return { model, calls, loads, savedLoads, selected: () => selected,
+    filterReads: () => filterReads, setFilterLoad(value: typeof initialFilter) { filterLoad = value; },
     hold(value: Promise<void> | undefined) { held = value; },
     holdSave(value: Promise<void> | undefined) { saveHeld = value; },
     failNetwork(value: string | undefined) { failedNetwork = value; },
@@ -292,4 +294,141 @@ test('explorer pages, retained observations and detail receipts consume the same
   assert.deepEqual(new Set(f.calls.map(call => call.kind)), new Set(['local', 'page', 'receipt']));
   assert.equal(f.maximum(), 4);
   stop();
+});
+
+for (const paired of [false, true]) test(
+  paired ? 'wallet account Activity preserves the same-network receipt wave' : 'wallet account Activity composition shares automatic receipt work with explicit details',
+  async () => {
+  const { ActivityReceiptReader } = await import('../src/activity/receiptReader.ts');
+  const network = networks[0]!, blockHash = '0x' + 'b'.repeat(64);
+  const held = Promise.withResolvers<void>(), started = Promise.withResolvers<void>();
+  const hashes = paired ? [hash, '0x' + 'd'.repeat(64)] : [hash];
+  const batches: string[][] = [];
+  const receipts = new ActivityReceiptReader({ fetch: async (_url, init) => {
+    const input = JSON.parse(String(init.body));
+    const requests = Array.isArray(input) ? input : [input];
+    batches.push(requests.map(request => request.method));
+    const replies = await Promise.all(requests.map(async request => {
+      let result: unknown;
+      if (request.method === 'eth_chainId') result = '0x1';
+      else if (request.method === 'eth_getTransactionReceipt') {
+        started.resolve(); await held.promise;
+        result = { transactionHash: request.params[0], from: owner, to: outsider, status: '0x1', blockNumber: '0x50', blockHash, transactionIndex: '0x0', logs: [] };
+      } else if (request.method === 'eth_getTransactionByHash') result = { hash, from: owner, to: outsider, value: '0x1', nonce: '0x1', blockHash, blockNumber: '0x50', transactionIndex: '0x0' };
+      else if (request.method === 'eth_getBlockByNumber') result = { number: '0x50', hash: blockHash, timestamp: '0x6553f100', gasLimit: '0x1c9c380' };
+      else throw Error(request.method);
+      return { jsonrpc: '2.0', id: request.id, result };
+    }));
+    return Response.json(Array.isArray(input) ? replies : replies[0]);
+  } });
+  const scope = createActivityScope('b'.repeat(64), 'hd:60:0', owner, network);
+  const choice: NotificationChoice = { label: 'Account', networkName: network.name, symbol: network.symbol,
+    scope: { id: 'native:hd:60:0:ethereum', accountId: 'hd:60:0', accountType: 'HDAccount', accountAddress: owner, network, guardian: false } };
+  const source = { getSnapshot: () => ({ phase: 'ready', revision: 1, account: { address: owner, network: network.id } }) as any,
+    getCatalogue: () => ({ active: { accountId: 'hd:60:0', networkId: network.id }, revision: 1 }) as any,
+    subscribe: () => () => {} };
+  let persisted = 0;
+  const model = new AccountActivityController({ source, choices: () => [choice],
+    filter: { async load() { return 'all'; }, async save() {} },
+    runtime: () => ({
+      async load() { return { scope, saved: { archived: [], candidates: [], truncated: false, view: DEFAULT_ACTIVITY_VIEW },
+        locals: hashes.map((item, index) => ({ walletFingerprint: 'b'.repeat(64), accountId: 'hd:60:0', address: owner, networkId: network.id,
+          registrationHash: network.registrationHash, chainId: network.chainId, hash: item, phase: 'submitted' as const,
+          nonce: index + 1, createdAt: 1000, recipient: outsider, amountUnits: '1', maximumFeeUnits: '21000' })) }; },
+      async observeLocal(record, check, signal, observe) {
+        const request = { chainId: network.chainId, from: owner, to: outsider, hash: record.hash, nonce: String(record.nonce) };
+        const result = observe ? await observe(request) : await receipts.observe(request, signal, check, network, 'runtime-owned');
+        check(); assert.equal(signal.aborted, false); persisted++; return result;
+      },
+      async saveCache() {}, async saveView() {},
+    }),
+    explorer: { async page() { return []; } }, receipts,
+  });
+  const stop = model.connect();
+  try {
+    await started.promise;
+    if (!paired) {
+      model.getNetwork(network.id)!.controller.inspect(hash);
+      await tick();
+      assert.equal(batches.flat().filter(method => method === 'eth_getTransactionByHash').length, 1);
+    }
+    held.resolve(); await tick();
+    const row = model.findRow(network.id, hash)!.row;
+    assert.equal(row.retainedObservation?.status, 'mined');
+    if (paired) {
+      assert.equal(model.findRow(network.id, hashes[1]!)?.row.retainedObservation?.status, 'mined');
+      assert.equal(persisted, 2);
+      assert.deepEqual(batches, [['eth_chainId'], ['eth_getTransactionReceipt', 'eth_getTransactionReceipt'], ['eth_getBlockByNumber'], ['eth_chainId']]);
+    } else {
+      assert.equal(row.observation?.status, 'confirmed');
+      assert.equal(persisted, 1);
+      assert.deepEqual(batches, [['eth_chainId'], ['eth_getTransactionReceipt'], ['eth_getTransactionByHash'], ['eth_getBlockByNumber'], ['eth_chainId']]);
+    }
+  } finally { held.resolve(); stop(); }
+});
+
+test('failed filter reads survive source updates and explicit refresh retries the exact prerequisite', async () => {
+  let reject!: (cause: Error) => void;
+  const f = fixture(new Promise<string>((_resolve, fail) => { reject = fail; }));
+  const stop = f.model.connect();
+  try {
+    f.model.getSnapshot(); await tick();
+    reject(Error('Public preference temporarily unavailable')); await tick();
+    assert.equal(f.filterReads(), 1); assert.equal(f.calls.length, 0);
+    const failure = f.model.getSnapshot().error;
+    assert.equal(f.model.getSnapshot().status, 'unavailable'); assert(failure);
+    f.refreshSource(); await f.model.setView({ filter: 'received' });
+    assert.equal(f.model.getSnapshot().status, 'unavailable');
+    assert.equal(f.model.getSnapshot().error, failure); assert.equal(f.filterReads(), 1);
+    f.setFilterLoad('ethereum');
+    await f.model.refresh(); await tick();
+    assert.equal(f.filterReads(), 2); assert.equal(f.model.getSnapshot().filter, 'ethereum');
+    assert.equal(f.model.getSnapshot().status, 'ready'); assert.equal(f.model.getSnapshot().error, null);
+    assert(f.calls.length > 0); assert(f.calls.every(call => call.id === 'ethereum'));
+  } finally { stop(); }
+});
+
+test('concurrent refreshes join a pending filter read without broadening its eventual concrete selection', async () => {
+  let resolve!: (filter: string) => void;
+  const f = fixture(new Promise<string>(done => { resolve = done; }));
+  const stop = f.model.connect();
+  try {
+    const first = f.model.refresh(), second = f.model.refresh();
+    f.refreshSource(); await tick();
+    assert.equal(f.filterReads(), 1); assert.equal(f.model.getSnapshot().status, 'loading'); assert.equal(f.calls.length, 0);
+    resolve('rollux'); await Promise.all([first, second]); await tick();
+    assert.equal(f.filterReads(), 1); assert.equal(f.model.getSnapshot().filter, 'rollux');
+    assert(f.calls.length > 0); assert(f.calls.every(call => call.id === 'rollux'));
+  } finally { stop(); }
+});
+
+test('an immediate failed retry stays recoverable, and a retired read cannot replace a reconnected filter', async () => {
+  const f = fixture(() => Promise.reject(Error('Preference unavailable')));
+  let stop = f.model.connect();
+  try {
+    await tick(); await f.model.refresh(); f.refreshSource(); await tick();
+    assert.equal(f.filterReads(), 2); assert.equal(f.model.getSnapshot().status, 'unavailable'); assert(f.model.getSnapshot().error);
+    let release!: (filter: string) => void;
+    f.setFilterLoad(new Promise<string>(resolve => { release = resolve; }));
+    const retired = f.model.refresh(); await tick(); stop();
+    f.setFilterLoad('ethereum'); stop = f.model.connect(); await tick();
+    release('all'); await retired; await tick();
+    assert.equal(f.model.getSnapshot().filter, 'ethereum');
+    assert(f.calls.every(call => call.id === 'ethereum'));
+  } finally { stop(); }
+});
+
+test('a synchronous loading subscriber joins the owned filter read', async () => {
+  let resolve!: (filter: string) => void;
+  const f = fixture(new Promise<string>(done => { resolve = done; }));
+  let retry: Promise<void> | undefined;
+  const unsubscribe = f.model.subscribe(() => {
+    if (!retry && f.model.getSnapshot().status === 'loading') retry = f.model.refresh();
+  });
+  const stop = f.model.connect();
+  try {
+    await tick(); assert.equal(f.filterReads(), 1);
+    resolve('ethereum'); await retry; await tick();
+    assert.equal(f.model.getSnapshot().filter, 'ethereum'); assert.equal(f.filterReads(), 1);
+  } finally { unsubscribe(); stop(); }
 });

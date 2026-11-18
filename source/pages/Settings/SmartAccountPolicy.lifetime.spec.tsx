@@ -10,6 +10,7 @@ import {
 } from '@testing-library/react';
 import { Wallet } from 'ethers/wallet';
 import React from 'react';
+import { acknowledgedGuardianRecoveryClaim } from 'tests/fixtures/guardianRecoveryClaim';
 
 import { KeyringAccountType } from 'types/network';
 import { toP256WebAuthnRecoveryTarget } from 'utils/passkey';
@@ -18,7 +19,13 @@ import {
   setActivePasskeyRecord,
   signP256WebAuthnActionHash,
 } from 'utils/passkey';
-import { encodeEcdsaValidatorInitData } from 'utils/smartAccount/account';
+import {
+  buildSmartAccountUserOperation,
+  encodeEcdsaValidatorInitData,
+  encodeSmartAccountGasFees,
+  encodeSmartAccountGasLimits,
+  getSmartAccountUserOpRequiredPrefund,
+} from 'utils/smartAccount/account';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
 import { captureGuardianRecoveryClaim } from 'utils/smartAccount/guardianRecoveryClaim';
 import { getGuardianRecoveryOperationId } from 'utils/smartAccount/guardianStatus';
@@ -47,8 +54,22 @@ jest.mock('components/index', () => ({
       {children}
     </button>
   ),
-  ConfirmationModal: ({ show, title }: any) =>
-    show ? <div>{title}</div> : null,
+  ConfirmationModal: ({
+    show,
+    title,
+    children,
+    buttonText,
+    onClick,
+    onClose,
+  }: any) =>
+    show ? (
+      <div role="dialog" aria-label={title}>
+        {title}
+        {children}
+        <button onClick={onClose}>Cancel review</button>
+        <button onClick={onClick}>{buttonText}</button>
+      </div>
+    ) : null,
   Icon: () => <span />,
 }));
 jest.mock('components/Loading', () => ({
@@ -140,6 +161,59 @@ const metadata = (isDeployed = true) => ({
   isDeployed,
 });
 
+const preparedExecution = (
+  executions: unknown,
+  smartAccount = metadata(),
+  executionContextId = 'policy-operation'
+) => {
+  const gasPayer = {
+    id: 0,
+    type: KeyringAccountType.HDAccount,
+    address: OWNER,
+  };
+  const userOperation = buildSmartAccountUserOperation({
+    sender: ACCOUNT,
+    nonce: '0',
+    callData: '0x',
+    initCode: '0x',
+    accountGasLimits: encodeSmartAccountGasLimits({
+      callGasLimit: 1,
+      verificationGasLimit: 1,
+    }),
+    gasFees: encodeSmartAccountGasFees({
+      maxFeePerGas: 2,
+      maxPriorityFeePerGas: 1,
+    }),
+    preVerificationGas: '1',
+  });
+  return {
+    accountId: 1,
+    actionHash: `0x${'77'.repeat(32)}`,
+    executionContextId,
+    executions,
+    smartAccount,
+    gasPayer,
+    userOperation,
+    entryPointFeeQuote: {
+      executionContextId,
+      feePayer: gasPayer,
+      gasUnits: '3',
+      maximumFeeWei:
+        getSmartAccountUserOpRequiredPrefund(userOperation).toString(),
+    },
+  };
+};
+
+const approveInitialFee = async () => {
+  const dialog = await screen.findByRole('dialog', {
+    name: 'settings.smartAccountFeeReviewTitle',
+  });
+  expect(within(dialog).getByText('send.smartAccountMaxFee')).toBeTruthy();
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'buttons.confirm' })
+  );
+};
+
 const setNativeEntry = (path = POLICY_ROUTE, key = 'policy-entry') => {
   window.history.replaceState({ key }, '', `/#${path}`);
 };
@@ -180,7 +254,11 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         },
       },
       activeAccount: { id: 1, type: KeyringAccountType.SmartAccount },
-      activeNetwork: { chainId: CHAIN_ID, url: 'https://rpc.test' },
+      activeNetwork: {
+        chainId: CHAIN_ID,
+        url: 'https://rpc.test',
+        currency: 'TSYS',
+      },
     };
     mockHandleLockedError.mockReturnValue(false);
     mockEmitter.mockImplementation(async ([, method]: string[]) => {
@@ -231,6 +309,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       }
       if (method === 'getSmartAccountNativeGasStatus')
         return { hasNativeGas: true };
+      if (method === 'approveSmartAccountExecutionFeeQuote') return;
       throw new Error(`Unexpected controller method ${method}`);
     });
   });
@@ -309,6 +388,152 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     return { ...pending, view };
   };
 
+  const feeReview = () => ({
+    id: 'guardian-fee',
+    maximumFeeUnits: '21000',
+    maximumTotalUnits: '21000',
+    validForMs: 90000,
+    transaction: {
+      from: OWNER,
+      to: GUARDIAN,
+      chainId: String(CHAIN_ID),
+      nonce: '0',
+      value: '0',
+      gasLimit: '21000',
+      type: 0,
+      gasPrice: '1',
+      data: '0x',
+    },
+  });
+  for (const action of ['start', 'finalize'] as const)
+    for (const approve of [false, true])
+      it(`${action} recovery ${
+        approve
+          ? 'waits for explicit fee confirmation'
+          : 'cancellation never submits the quoted transaction'
+      }`, async () => {
+        const method =
+          action === 'start'
+            ? 'submitPreparedSmartAccountGuardianStartRecovery'
+            : 'finalizeSmartAccountGuardianRecovery';
+        mockVault.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
+        let claimHash: string;
+        if (action === 'finalize') {
+          const pending = await beginRecoveryFinalization();
+          claimHash =
+            mockVault.accounts.SmartAccount[1].smartAccount
+              .guardianRecoveryClaim.intent.operation.hash;
+          const original = mockEmitter.getMockImplementation()!;
+          mockEmitter.mockImplementation(
+            (path: string[], params: any[] = [], ...rest: any[]) =>
+              path[1] === method && params[0]?.feeReviewId
+                ? Promise.resolve({ hash: '0x' + '77'.repeat(32) })
+                : original(path, params, ...rest)
+          );
+          await act(async () =>
+            pending.resolve({ feeReview: feeReview(), claimHash })
+          );
+        } else {
+          const original = mockEmitter.getMockImplementation()!;
+          mockEmitter.mockImplementation(
+            async (path: string[], params: any[] = [], ...rest: any[]) => {
+              if (path[1] === 'prepareSmartAccountGuardianStartRecovery') {
+                const operation = buildSmartAccountGuardianRecoveryOperation({
+                  account: ACCOUNT,
+                  chainId: CHAIN_ID,
+                  policyEpoch: '7',
+                  recoveryModule: getPaliModuleAddress(
+                    CHAIN_ID,
+                    'guardian-recovery'
+                  ),
+                  salt: '0x' + '66'.repeat(32),
+                  target: params[0].target,
+                });
+                claimHash = operation.hash;
+                const prepared = {
+                  operation,
+                  approval: { guardian: GUARDIAN, signature: '0x11' },
+                };
+                return {
+                  ...prepared,
+                  claim: acknowledgedGuardianRecoveryClaim(params[0], prepared),
+                };
+              }
+              if (path[1] === method)
+                return params[0]?.feeReviewId
+                  ? {
+                      operation: {},
+                      transaction: { hash: '0x' + '77'.repeat(32) },
+                    }
+                  : { operation: {}, feeReview: feeReview() };
+              return original(path, params, ...rest);
+            }
+          );
+          render(<SmartAccountPolicy />);
+          fireEvent.click(
+            await screen.findByRole('button', {
+              name: 'settings.smartAccountGuardianRecoveryShowOptions',
+            })
+          );
+          fireEvent.click(
+            await screen.findByRole('button', {
+              name: 'settings.ecdsaAuthenticator settings.recoveryAuthenticatorEcdsaDescription',
+            })
+          );
+          fireEvent.change(
+            screen.getByPlaceholderText(
+              'settings.recoveryAuthenticatorEcdsaOwner'
+            ),
+            { target: { value: OWNER } }
+          );
+          const start = screen.getByRole('button', {
+            name: 'settings.smartAccountGuardianRecoveryStart',
+          });
+          await waitFor(() =>
+            expect((start as HTMLButtonElement).disabled).toBe(false)
+          );
+          fireEvent.click(start);
+        }
+        const dialog = await screen.findByRole('dialog', {
+          name: 'settings.smartAccountFeeReviewTitle',
+        });
+        const calls = () =>
+          mockEmitter.mock.calls.filter(([path]) => path[1] === method);
+        expect(calls()).toHaveLength(1);
+        expect(calls()[0][1][0].feeReviewId).toBeUndefined();
+        expect(
+          within(dialog).getByText(
+            'settings.smartAccountFeeReviewSelectedAccount'
+          ).nextElementSibling?.textContent
+        ).toBe(OWNER);
+        expect(
+          within(dialog).getByText('smartAccountHub.accountAddress')
+            .nextElementSibling?.textContent
+        ).toBe(ACCOUNT);
+        expect(
+          within(dialog).getByText('transactions.feePayer').nextElementSibling
+            ?.textContent
+        ).toBe(OWNER);
+        expect(
+          within(dialog).getAllByText('0.000000000000021 TSYS')
+        ).toHaveLength(2);
+        fireEvent.click(
+          within(dialog).getByRole('button', {
+            name: approve ? 'buttons.confirm' : 'Cancel review',
+          })
+        );
+        if (approve) {
+          await waitFor(() => expect(calls()).toHaveLength(2));
+          expect(calls()[1][1][0].feeReviewId).toBe('guardian-fee');
+          if (action === 'finalize')
+            expect(calls()[1][1][0].expectedClaimHash).toBe(claimHash!);
+        } else {
+          await act(async () => undefined);
+          expect(calls()).toHaveLength(1);
+          expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+        }
+      });
+
   it.each(['unavailable', 'stale', 'receipt unavailable'])(
     'keeps a submitted wallet-owner rotation with %s metadata and retries only verification',
     async (mode) => {
@@ -345,13 +570,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
           return applied;
         }
         if (path[1] === 'prepareSmartAccountExecutions')
-          return {
-            accountId: 1,
-            actionHash: `0x${'77'.repeat(32)}`,
-            executionContextId: 'wallet-owner-change',
-            executions: params[0],
-            smartAccount: initial,
-          };
+          return preparedExecution(params[0], initial, 'wallet-owner-change');
         if (
           path[1] === 'assertSmartAccountExecutionContext' ||
           path[1] === 'assertSmartAccountPreparedNonce'
@@ -377,6 +596,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
           name: 'settings.useSmartAccountValidator',
         })
       );
+      await approveInitialFee();
       await screen.findByText('notifications.submitted');
       expect(screen.getByText(hash)).toBeTruthy();
       const count = (method: string) =>
@@ -453,13 +673,9 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       } else if (changed === 'session') mockGeneration++;
       else depart('route', view);
       await act(async () =>
-        pending.resolve({
-          accountId: 1,
-          actionHash: `0x${'77'.repeat(32)}`,
-          executionContextId: 'wallet-owner-change',
-          executions: preparation[1][0],
-          smartAccount: initial,
-        })
+        pending.resolve(
+          preparedExecution(preparation[1][0], initial, 'wallet-owner-change')
+        )
       );
       expect(
         mockEmitter.mock.calls.some(
@@ -952,7 +1168,20 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     const original = mockEmitter.getMockImplementation()!;
     let hydrationReads = 0;
     mockEmitter.mockImplementation((path: string[], ...args: any[]) => {
-      if (path[1] === 'registerSmartAccountOnChain') return pending.promise;
+      if (path[1] === 'prepareSmartAccountExecutions')
+        return Promise.resolve(
+          preparedExecution(args[0][0], metadata(false), 'registration')
+        );
+      if (
+        path[1] === 'assertSmartAccountExecutionContext' ||
+        path[1] === 'assertSmartAccountPreparedNonce'
+      )
+        return Promise.resolve();
+      if (path[1] === 'signSmartAccountPreparedOwner')
+        return Promise.resolve(
+          mockOwnerWallet.signingKey.sign(`0x${'77'.repeat(32)}`).serialized
+        );
+      if (path[1] === 'submitSmartAccountExecution') return pending.promise;
       if (path[1] === 'hydrateSmartAccount') {
         if (++hydrationReads === 1) return Promise.resolve(metadata(false));
         if (hydrate) return hydrate;
@@ -967,10 +1196,11 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         name: 'settings.registerSmartAccount',
       })
     );
+    await approveInitialFee();
     await waitFor(() =>
       expect(
         mockEmitter.mock.calls.some(
-          ([path]) => path[1] === 'registerSmartAccountOnChain'
+          ([path]) => path[1] === 'submitSmartAccountExecution'
         )
       ).toBe(true)
     );
@@ -1067,13 +1297,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
   });
 
   describe('policy approval lifetime before signing', () => {
-    const prepared = (executions: unknown) => ({
-      accountId: 1,
-      actionHash: `0x${'77'.repeat(32)}`,
-      executionContextId: 'policy-operation',
-      executions,
-      smartAccount: metadata(),
-    });
+    const prepared = (executions: unknown) => preparedExecution(executions);
     const install = async (slow: 'gas' | 'prepare' | 'none') => {
       const pending = deferred<any>();
       const original = mockEmitter.getMockImplementation()!;
@@ -1128,6 +1352,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
 
     it('retains ordinary current-context signing as a control', async () => {
       const { view } = await install('none');
+      await approveInitialFee();
       await waitFor(() =>
         expect(
           mockEmitter.mock.calls.some(

@@ -14,6 +14,7 @@ export type NetworkSourceOption = Readonly<{
   symbol: string;
   testnet?: boolean;
   chainId?: string;
+  contractAddress?: string;
   iconId?: string;
   assetIcon?: AssetIconIdentity;
   iconRegistrationHash?: string;
@@ -65,13 +66,17 @@ export function NetworkSourceSheet({ purpose, options, selectedId, busy = false,
           return <IdlePressable key={option.id} accessibilityRole="radio"
             accessibilityLabel={t('mobile.networks.networkLabel', { name: option.name, symbol: option.symbol,
               chain: option.chainId ? t('mobile.networks.chainSuffix', { chainId: option.chainId }) : '',
-              testnet: option.testnet ? t('mobile.networks.testSuffix') : '', capability: '' })}
+              testnet: option.testnet ? t('mobile.networks.testSuffix') : '', capability: '' }) +
+              (option.contractAddress ? `, ${t('settings.contractAddress')}: ${option.contractAddress}` : '')}
             accessibilityHint={option.available === undefined ? undefined : hidden ? HIDDEN_BALANCE : `${option.available} ${option.symbol}`}
             accessibilityState={{ checked: selected, disabled: busy }} aria-checked={selected} disabled={busy}
             onPress={() => { void onSelect(option.id); }} style={({ pressed }) => [s.row, index > 0 && s.divider, pressed && s.pressed]}>
             {option.id === 'all' ? <View style={{ width: 38, alignItems: 'center' }}><Icon name="globe" size={26} color={colors.blue} /></View> : <Coin id={option.iconId ?? option.id} asset={option.assetIcon} registrationHash={option.iconRegistrationHash} fallbackSymbol={option.symbol} size={38} />}
             <View style={s.details}>
               <Text style={s.name} numberOfLines={2}>{option.name}</Text>
+              {!!(option.contractAddress || option.chainId) && <Text testID={`network-source-identity-${option.id}`} style={s.identity}>
+                {option.contractAddress ?? t('mobile.networks.chain', { chainId: option.chainId })}
+              </Text>}
               {option.testnet && <Text style={s.testnet}>{t('mobile.common.testNetwork')}</Text>}
               {option.id !== 'all' && <Text testID={`network-source-balance-${option.id}`} style={s.balance} numberOfLines={2}>{balance}</Text>}
             </View>
@@ -105,6 +110,7 @@ const s = StyleSheet.create({
   details: { flex: 1, minWidth: 0, gap: 4 },
   name: { fontSize: 15, lineHeight: 21, fontWeight: '500' },
   balance: { fontSize: 13, lineHeight: 19, color: colors.muted, fontVariant: ['tabular-nums'] },
+  identity: { fontSize: 12, lineHeight: 18, color: colors.muted },
   testnet: { fontSize: 12, lineHeight: 17, color: colors.muted },
   selection: { width: 24, alignItems: 'center' },
   pressed: { opacity: 0.7 },

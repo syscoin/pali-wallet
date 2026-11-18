@@ -59,6 +59,11 @@ const scopeOf = (snapshot: NativeTokenSnapshot) =>
   snapshot.account
     ? `${snapshot.account.revision}:${snapshot.account.network}:${snapshot.account.address}`
     : 'unavailable';
+const sameSavedCollectible = (left: SavedCollectible, right: SavedCollectible) =>
+  left.tokenStandard === right.tokenStandard &&
+  left.contractAddress.toLowerCase() === right.contractAddress.toLowerCase() &&
+  (left.tokenStandard === 'ERC-721' ||
+    (right.tokenStandard === 'ERC-1155' && left.tokenId === right.tokenId));
 
 /** Issuer metadata is display-only. The controller owns all reads and mutations. */
 export function NativeTokens({ controller, ...props }: Props) {
@@ -112,6 +117,11 @@ function TokenContent({
             route.contract.toLowerCase()
         )
       : undefined;
+  // Reloads issue new objects. Resolve the route's display identity within this
+  // owner's retained snapshot; readiness and controller guards own every action.
+  const savedCollectible = route.kind === 'collectible' && route.source === 'saved' && route.account === snapshot.account
+    ? snapshot.collectibles?.find(item => sameSavedCollectible(item, route.item))
+    : undefined;
   const busy = snapshot.busy || snapshot.previewStatus === 'loading';
   const hasNativeAsset = nativeAsset != null;
   const canSendToken = !!onSend && !!snapshot.account;
@@ -438,32 +448,33 @@ function TokenContent({
             </View>
           ) : route.kind === 'collectible' && route.account === snapshot.account &&
             (route.source === 'explorer' ? discovery?.collectibles?.includes(route.item)
-              : route.source === 'saved' ? snapshot.collectibles?.includes(route.item)
+              : route.source === 'saved' ? !!savedCollectible
               : snapshot.canCheckCollectible) ? (
             <CollectibleOwnership
-              item={route.source === 'manual' ? null : route.item}
+              item={route.source === 'manual' ? null : route.source === 'saved' ? savedCollectible! : route.item}
               network={network.name}
               busy={busy}
+              savedItemReady={route.source !== 'saved' || snapshot.status === 'ready'}
               canCheck={snapshot.canCheckCollectible === true}
               enumerate={snapshot.canEnumerateCollectible ? (query, signal) =>
                 controller.enumerateCollectible(route.account, query, signal) : undefined}
               check={(query, signal) => route.source === 'explorer'
                 ? controller.checkCollectible(route.item, query.tokenId, signal)
                 : route.source === 'saved'
-                ? controller.checkSavedCollectible(route.account, route.item, query.tokenId, signal)
+                ? controller.checkSavedCollectible(route.account, savedCollectible!, query.tokenId, signal)
                 : controller.checkManualCollectible(route.account, query, signal)}
               onSave={(ticket) => run(async () => {
                 if (!(await controller.saveCollectible(ticket))) throw new Error('CHANGED');
               }, returnToCollectibles)}
               onRemove={route.source === 'saved' ? () => run(async () => {
-                if (!(await controller.removeCollectible(route.account, route.item)))
+                if (!(await controller.removeCollectible(route.account, savedCollectible!)))
                   throw new Error('CHANGED');
               }, returnToCollectibles) : undefined}
               onSend={route.source === 'saved' && onSendCollectible ? () => {
                 const current = controller.getSnapshot();
                 if (!lifetime.current.alive || lifetime.current.running || current.busy || current.account !== route.account ||
-                    !current.collectibles?.includes(route.item)) return;
-                onSendCollectible(route.item);
+                    current.status !== 'ready' || !current.collectibles?.includes(savedCollectible!)) return;
+                onSendCollectible(savedCollectible!);
               } : undefined}
               onLeaveChange={setCollectibleLeave}
             />
@@ -501,7 +512,7 @@ function TokenContent({
                     ? t('mobile.sendAssetViews.tokens.readingToken')
                     : t('mobile.sendAssetViews.tokens.reviewToken')
                 }
-                disabled={busy || !contract.trim()}
+                disabled={busy || snapshot.status !== 'ready' || !contract.trim()}
                 onPress={() => run(() => controller.preview(contract))}
                 testID="native-token-review"
               />
@@ -648,7 +659,7 @@ function TokenContent({
                   <Button
                     title={t('mobile.sendAssetViews.tokens.removeTokenFromList')}
                     variant="danger"
-                    disabled={busy}
+                    disabled={busy || snapshot.status !== 'ready'}
                     onPress={() => {
                       const selected = token.metadata.contractAddress;
                       void run(
@@ -728,7 +739,7 @@ function TokenContent({
                   <Button
                     title={t('mobile.sendAssetViews.tokens.removeToken')}
                     variant="danger" size="compact" icon="trash"
-                    disabled={busy}
+                    disabled={busy || snapshot.status !== 'ready'}
                     onPress={() =>
                       setRoute({
                         kind: 'remove',
@@ -755,6 +766,10 @@ function TokenContent({
               {error}
             </Text>
           )}
+          {route.kind !== 'list' && snapshot.status === 'error' && (route.kind === 'import' || !!token || route.kind === 'collectibles' || route.kind === 'collectible') && (
+            <Button title={t('mobile.sendAssetViews.tokens.refreshTokens')} icon="refresh" variant="secondary"
+              disabled={busy} onPress={() => run(() => controller.refresh())} testID="native-token-recover-inventory" />
+          )}
 
         </>
       )}
@@ -764,10 +779,11 @@ function TokenContent({
 
 const collectibleStandards = ['ERC-721', 'ERC-1155'] as const;
 
-export function CollectibleOwnership({ item, network, check, enumerate, busy, canCheck, onSave, onRemove, onSend, onLeaveChange }: {
+export function CollectibleOwnership({ item, network, check, enumerate, busy, savedItemReady = true, canCheck, onSave, onRemove, onSend, onLeaveChange }: {
   item: OwnedCollectibleSuggestion | SavedCollectible | null;
   network: string;
   busy: boolean;
+  savedItemReady?: boolean;
   canCheck: boolean;
   check(query: CollectibleQuery, signal: AbortSignal): ReturnType<NativeTokenView['checkCollectible']>;
   enumerate?(query: { contractAddress: string; tokenStandard: 'ERC-721' }, signal: AbortSignal): ReturnType<NativeTokenView['enumerateCollectible']>;
@@ -778,6 +794,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
 }) {
   useNativeTranslation();
   const { hidden: hideBalances } = useBalancePrivacy();
+  const actionsDisabled = busy || !savedItemReady;
   const fixedId = item && 'tokenId' in item ? item.tokenId : undefined;
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [draft, setDraft] = useState<{
@@ -787,7 +804,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
   }>({ contractAddress: item?.contractAddress ?? '', tokenId: fixedId ?? '', tokenStandard: item?.tokenStandard ?? null });
   const currentDraft = useRef(draft);
   type Enumeration = { kind: 'idle' | 'loading' | 'error' } | {
-    kind: 'ready'; draft: typeof draft; tokenIds: readonly string[]; hasMore: boolean; method: 'enumeration' | 'manual'; totalOwned?: string;
+    kind: 'ready'; draft: typeof draft; tokenIds: readonly string[]; hasMore: boolean; partial?: boolean; method: 'enumeration' | 'manual'; totalOwned?: string;
   };
   const [enumeration, setEnumeration] = useState<Enumeration>({ kind: 'idle' });
   const enumerationRequest = useRef<AbortController | null>(null);
@@ -829,7 +846,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
     };
   }, [cancel, item, onLeaveChange]);
   const edit = (fields: Partial<typeof draft>) => {
-    if (!alive.current || busy) return;
+    if (!alive.current || actionsDisabled) return;
     cancel();
     const next = { ...currentDraft.current, ...fields };
     currentDraft.current = next;
@@ -838,7 +855,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
     setEnumeration({ kind: 'idle' });
   };
   const read = async (selected?: CollectibleQuery) => {
-    if (!alive.current || active.current || enumerationRequest.current || busy || !canCheck) return;
+    if (!alive.current || active.current || enumerationRequest.current || actionsDisabled || !canCheck) return;
     const preserveEnumeration = enumerationResult.current?.draft === currentDraft.current;
     cancel(preserveEnumeration);
     if (!preserveEnumeration) setEnumeration({ kind: 'idle' });
@@ -866,7 +883,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
     }
   };
   const findTokenIds = async () => {
-    if (!alive.current || busy || active.current || enumerationRequest.current || !enumerate) return;
+    if (!alive.current || actionsDisabled || active.current || enumerationRequest.current || !enumerate) return;
     const selected = currentDraft.current;
     if (selected.tokenStandard !== 'ERC-721' || fixedId !== undefined) return;
     let contractAddress: string;
@@ -892,7 +909,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
     }
   };
   const selectTokenId = (listing: Extract<Enumeration, { kind: 'ready' }>, tokenId: string) => {
-    if (!alive.current || busy || active.current || enumerationResult.current !== listing || currentDraft.current !== listing.draft || !listing.tokenIds.includes(tokenId)) return;
+    if (!alive.current || actionsDisabled || active.current || enumerationResult.current !== listing || currentDraft.current !== listing.draft || !listing.tokenIds.includes(tokenId)) return;
     const selected = { contractAddress: listing.draft.contractAddress, tokenStandard: 'ERC-721' as const, tokenId };
     currentDraft.current = selected;
     setDraft(selected);
@@ -902,7 +919,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
     void read(selected);
   };
   useEffect(() => {
-    if (!alive.current || !item || item.tokenStandard !== 'ERC-721' || fixedId !== undefined || !enumerate || busy || autoEnumerated.current?.item === item) return;
+    if (!alive.current || !item || item.tokenStandard !== 'ERC-721' || fixedId !== undefined || !enumerate || actionsDisabled || autoEnumerated.current?.item === item) return;
     const request = { item };
     autoEnumerated.current = request;
     void Promise.resolve().then(() => {
@@ -924,7 +941,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
       <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.checkAccountNetwork', { network })}</Text>
       <View style={s.field}>
         <Text style={s.label}>{t('settings.contractAddress')}</Text>
-        <IdleTextInput accessibilityLabel={t('mobile.sendAssetViews.tokens.collectibleContractAddress')} value={draft.contractAddress} editable={!busy}
+        <IdleTextInput accessibilityLabel={t('mobile.sendAssetViews.tokens.collectibleContractAddress')} value={draft.contractAddress} editable={!actionsDisabled}
           onChangeText={(contractAddress) => edit({ contractAddress })}
           autoCapitalize="none" autoCorrect={false} spellCheck={false}
           autoComplete="off" textContentType="none" maxLength={128} style={s.input}
@@ -941,7 +958,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 aria-pressed={selected}
-                disabled={busy}
+                disabled={actionsDisabled}
                 onPress={() => {
                   if (currentDraft.current.tokenStandard !== tokenStandard)
                     edit({ tokenStandard });
@@ -958,23 +975,23 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
         </View>
       </View>
     </>}
-    {!confirmRemove && onSend && <Button title={t('mobile.smartSendViews.sendCollectible')} icon="arrow-up-right" disabled={busy || result.kind === 'loading' || enumeration.kind === 'loading'}
+    {!confirmRemove && onSend && <Button title={t('mobile.smartSendViews.sendCollectible')} icon="arrow-up-right" disabled={actionsDisabled || result.kind === 'loading' || enumeration.kind === 'loading'}
       onPress={() => {
-        if (!alive.current || active.current || enumerationRequest.current || busy) return;
+        if (!alive.current || active.current || enumerationRequest.current || actionsDisabled) return;
         cancel();
         setResult({ kind: 'idle' });
         onSend();
       }} />}
     {!confirmRemove && canCheck && fixedId === undefined && <View style={s.field}>
       <Text style={s.label}>{t('send.tokenId')}</Text>
-      <IdleTextInput accessibilityLabel={t('send.tokenId')} value={draft.tokenId} editable={!busy}
+      <IdleTextInput accessibilityLabel={t('send.tokenId')} value={draft.tokenId} editable={!actionsDisabled}
         onChangeText={(tokenId) => edit({ tokenId })}
         keyboardType="number-pad" autoCapitalize="none" autoCorrect={false}
         maxLength={256} style={s.input} />
     </View>}
     {!confirmRemove && enumerate && draft.tokenStandard === 'ERC-721' && fixedId === undefined && <>
       <Button title={enumeration.kind === 'loading' ? t('mobile.sendAssetViews.tokens.findingTokenIDs') : enumeration.kind === 'ready' ? t('mobile.sendAssetViews.tokens.refreshTokenIDs') : t('mobile.sendAssetViews.tokens.findTokenIDs')} variant="secondary"
-        disabled={busy || !draft.contractAddress.trim() || result.kind === 'loading' || enumeration.kind === 'loading'} onPress={() => void findTokenIds()} />
+        disabled={actionsDisabled || !draft.contractAddress.trim() || result.kind === 'loading' || enumeration.kind === 'loading'} onPress={() => void findTokenIds()} />
       {enumeration.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel={t('mobile.sendAssetViews.tokens.findingTokenIDs2')} />}
       {enumeration.kind === 'error' && <Notice title={t('mobile.sendAssetViews.tokens.tokenIDsUnavailable')} body={t('mobile.sendAssetViews.tokens.theNetworkCouldntListTokenIDsTryAgainOrEnter')} tone="amber" />}
       {enumeration.kind === 'ready' && <Card style={s.tokenRow} testID="native-collectible-enumeration">
@@ -987,8 +1004,9 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
           : <>
             <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.chooseATokenIDToCheckOwnership')}</Text>
             {enumeration.tokenIds.map(tokenId => <Button key={tokenId} title={t('mobile.sendAssetViews.tokens.tokenId', { id: tokenId })} variant="secondary" size="compact"
-              icon={draft.tokenId === tokenId ? 'check' : undefined} disabled={busy || result.kind === 'loading'} onPress={() => selectTokenId(enumeration, tokenId)} />)}
-            {enumeration.hasMore && <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.showingTheFirst10TokenIDsEnterAnotherTokenID')}</Text>}
+              icon={draft.tokenId === tokenId ? 'check' : undefined} disabled={actionsDisabled || result.kind === 'loading'} onPress={() => selectTokenId(enumeration, tokenId)} />)}
+            {enumeration.partial ? <Text style={styles.muted}>{t('send.errorLoadingNfts')}</Text>
+              : enumeration.hasMore && <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.showingTheFirst10TokenIDsEnterAnotherTokenID')}</Text>}
           </>}
       </Card>}
     </>}
@@ -999,23 +1017,26 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
     </Text>}
     {!confirmRemove && canCheck && <Button title={result.kind === 'loading' ? t('mobile.sendAssetViews.tokens.checkingOwnership') : t('mobile.sendAssetViews.tokens.checkOwnership')}
       variant={onSend ? 'secondary' : 'primary'}
-      disabled={busy || !draft.contractAddress.trim() || !draft.tokenId.trim() || !draft.tokenStandard || result.kind === 'loading' || enumeration.kind === 'loading'}
+      disabled={actionsDisabled || !draft.contractAddress.trim() || !draft.tokenId.trim() || !draft.tokenStandard || result.kind === 'loading' || enumeration.kind === 'loading'}
       onPress={() => void read()} />}
     {result.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel={t('mobile.sendAssetViews.tokens.checkingOwnership2')} />}
     {result.kind === 'ready' && result.alreadySaved && <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.alreadyInYourSavedList')}</Text>}
     {result.kind === 'ready' && result.ticket && <Button
-      title={t('mobile.sendAssetViews.tokens.saveCollectible')} variant="secondary" disabled={busy}
+      title={t('mobile.sendAssetViews.tokens.saveCollectible')} variant="secondary" disabled={actionsDisabled}
       onPress={() => {
-        if (!alive.current || busy || !result.ticket || reviewed.current?.ticket !== result.ticket) return;
+        if (!alive.current || actionsDisabled || !result.ticket || reviewed.current?.ticket !== result.ticket) return;
         setResult({ kind: 'ready', units: result.units });
         void onSave(result.ticket);
       }}
     />}
     {onRemove && (confirmRemove ? <>
       <Notice title={t('mobile.sendAssetViews.tokens.removeThisCollectible')} body={t('mobile.sendAssetViews.tokens.itWillBeRemovedFromYourSavedListItsOwnership')} />
-      <Button title={t('mobile.sendAssetViews.tokens.removeFromSavedList')} variant="danger" disabled={busy} onPress={() => void onRemove()} />
+      <Button title={t('mobile.sendAssetViews.tokens.removeFromSavedList')} variant="danger" disabled={actionsDisabled} onPress={() => {
+        if (alive.current && !actionsDisabled) void onRemove();
+      }} />
       <Button title={t('buttons.cancel')} variant="secondary" size="compact" disabled={busy} onPress={() => setConfirmRemove(false)} />
-    </> : <Button title={t('mobile.sendAssetViews.tokens.removeCollectible')} variant="danger" size="compact" icon="trash" disabled={busy} onPress={() => {
+    </> : <Button title={t('mobile.sendAssetViews.tokens.removeCollectible')} variant="danger" size="compact" icon="trash" disabled={actionsDisabled} onPress={() => {
+      if (!alive.current || actionsDisabled) return;
       cancel();
       setResult({ kind: 'idle' });
       setEnumeration({ kind: 'idle' });

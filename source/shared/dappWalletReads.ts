@@ -1,7 +1,7 @@
 import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.ts';
 import {
   assertProviderRequestBudget,
-  assertJsonWorkBudget,
+  assertPublicResponseBudget,
 } from '../utils/requestPayloadBudget.ts';
 
 import { formatTokenUnits } from './erc20.ts';
@@ -34,16 +34,81 @@ export function normalizeDappWalletRead(
 }
 
 /** Existing public API response; never a transaction/funding amount. */
+const isWalletBalance = (value: unknown): value is number | string =>
+  (typeof value === 'string' &&
+    /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) ||
+  (typeof value === 'number' && Number.isFinite(value) && value >= 0);
 export function projectWalletBalance(value: unknown): number | string | null {
   if (value === null || value === undefined) return null;
-  if (
-    typeof value === 'string' &&
-    /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)
-  )
-    return value;
-  if (typeof value === 'number' && Number.isFinite(value) && value >= 0)
-    return value;
+  if (isWalletBalance(value)) return value;
   throw new EthereumRpcErrorHandler(-32603, 'Balance unavailable');
+}
+
+export type DappWalletAccount = Readonly<{
+  address: string;
+  balances?: Readonly<{
+    ethereum?: number | string;
+    syscoin?: number | string;
+  }>;
+  id?: number;
+  isImported?: boolean;
+  isLedgerWallet?: boolean;
+  isSmartAccount?: boolean;
+  isTrezorWallet?: boolean;
+  label?: string;
+  slip44?: number;
+  type?: string;
+  xpub?: string;
+}>;
+
+/** Provider data is an allowlist, never an internal account minus its private key. */
+export function projectWalletAccount(value: unknown): DappWalletAccount | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const account = value as Record<string, unknown>;
+  if (typeof account.address !== 'string') return null;
+  const result: {
+    -readonly [K in keyof DappWalletAccount]: DappWalletAccount[K];
+  } = { address: account.address };
+  for (const field of ['xpub', 'label'] as const)
+    if (typeof account[field] === 'string') result[field] = account[field];
+  for (const field of ['id', 'slip44'] as const)
+    if (
+      typeof account[field] === 'number' &&
+      Number.isSafeInteger(account[field]) &&
+      account[field] >= 0
+    )
+      result[field] = account[field];
+  for (const field of [
+    'isImported',
+    'isLedgerWallet',
+    'isSmartAccount',
+    'isTrezorWallet',
+  ] as const)
+    if (typeof account[field] === 'boolean') result[field] = account[field];
+  if (
+    typeof account.type === 'string' &&
+    ['HDAccount', 'Imported', 'Ledger', 'Trezor', 'SmartAccount'].includes(
+      account.type
+    )
+  )
+    result.type = account.type;
+  if (
+    account.balances &&
+    typeof account.balances === 'object' &&
+    !Array.isArray(account.balances)
+  ) {
+    const balances = account.balances as Record<string, unknown>;
+    result.balances = Object.fromEntries(
+      ['ethereum', 'syscoin']
+        // Legacy -1/loading and absent balances are optional hints, not amounts.
+        .filter(
+          (chain) =>
+            Object.hasOwn(balances, chain) && isWalletBalance(balances[chain])
+        )
+        .map((chain) => [chain, balances[chain]])
+    );
+  }
+  return result;
 }
 export function projectWalletBalanceUnits(
   units: string,
@@ -149,7 +214,7 @@ export function projectWalletTokens(
       (scope.family === 'ethereum' && scope.chainId === 0))
   )
     throw new EthereumRpcErrorHandler(-32603, 'Invalid token response chain');
-  assertJsonWorkBudget(value);
+  assertPublicResponseBudget(value);
   if (Array.isArray(value)) {
     if (value.length)
       throw new EthereumRpcErrorHandler(

@@ -25,8 +25,24 @@ jest.mock('utils/navigationState', () => ({
   clearTransactionNavigationState: jest.fn().mockResolvedValue(undefined),
 }));
 
+import { recoverAddress } from 'ethers/transaction';
+import { Wallet } from 'ethers/wallet';
+
 import { getController } from '..';
-import { buildSmartAccountUserOperation } from '../../../utils/smartAccount/account';
+import { defaultAbiCoder, Interface } from '../../../utils/ethersV6Compat';
+import * as slhSetup from '../../../utils/slhDsa/smartAccountSetup';
+import * as slhState from '../../../utils/slhDsa/state';
+import {
+  buildSmartAccountUserOperation,
+  encodeEcdsaValidatorInitData,
+} from '../../../utils/smartAccount/account';
+import {
+  captureCompositePolicyChange,
+  collectCompositePolicyPossession,
+  createCompositePolicyPossession,
+} from '../../../utils/smartAccount/compositePossession';
+import { getPaliModuleAddress } from '../../../utils/smartAccount/contracts';
+import { buildCompositeValidatorExecutions } from '../../../utils/smartAccount/moduleCommands';
 import { createSmartAccountRawSigningIntent } from '../../../utils/smartAccount/ownerSigningIntent';
 import { buildSmartAccountUserOpSigningIntent } from '../../../utils/smartAccount/userOperationHash';
 import store from 'state/store';
@@ -144,10 +160,579 @@ describe('smart-account signing and outer broadcast context', () => {
         )
           throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
       }),
+      captureCompositeSlhSigningMetadata: jest.fn((id, digest) => {
+        wallet.smartAccount.assertSmartAccountExecutionContext(id, digest);
+        return undefined;
+      }),
     };
   });
 
   afterEach(() => jest.restoreAllMocks());
+
+  describe('prepared combined approval possession', () => {
+    const signer = new Wallet('0x' + '71'.repeat(32));
+    const ecdsa = getPaliModuleAddress(1, 'ecdsa');
+    const passkey = getPaliModuleAddress(1, 'p256-webauthn');
+    const validatorInterface = new Interface([
+      'function isValidSignatureWithSender(address sender,bytes32 hash,bytes signature) view returns (bytes4)',
+    ]);
+    function prepare(
+      threshold: number,
+      children = [ecdsa, passkey],
+      approveFee = true
+    ) {
+      const value: any = {
+        chainId: 1,
+        isDeployed: true,
+        auth: {
+          module: 'ecdsa',
+          validator: ecdsa,
+          data: encodeEcdsaValidatorInitData([signer.address], 1),
+        },
+        installedModules: [
+          {
+            type: 'validator',
+            id: 'ecdsa',
+            address: ecdsa,
+            data: encodeEcdsaValidatorInitData([signer.address], 1),
+            config: { owners: [signer.address], threshold: 1 },
+          },
+          {
+            type: 'validator',
+            id: 'p256-webauthn',
+            address: passkey,
+            data: '0x',
+            config: {
+              publicKey: {
+                x: '0x' + '01'.repeat(32),
+                y: '0x' + '02'.repeat(32),
+              },
+            },
+          },
+        ],
+      };
+      currentState.vault.accounts.HDAccount[0].address = signer.address;
+      Object.assign(currentState.vault.accounts.SmartAccount[1], {
+        isSmartAccount: true,
+        smartAccount: value,
+      });
+      const controller: any = new SmartAccountController({
+        getEthereumTransaction: () => keyring.ethereumTransaction,
+        getWalletSessionGeneration: () => wallet.walletSessionGeneration,
+      } as any);
+      const executions = buildCompositeValidatorExecutions({
+        accountAddress: SMART_ACCOUNT_ADDRESS,
+        metadata: value,
+        children,
+        threshold,
+        compositeValidatorAddress: getPaliModuleAddress(1, 'composite'),
+        isAlgorithmAvailable: () => true,
+      });
+      const proposal = captureCompositePolicyChange({
+        accountAddress: SMART_ACCOUNT_ADDRESS,
+        metadata: value,
+        executions,
+      })!;
+      const expiresAt = Date.now() + 300000;
+      const challenge = createCompositePolicyPossession({
+        proposal,
+        accountAddress: SMART_ACCOUNT_ADDRESS,
+        chainId: 1,
+        executionContextId: EXECUTION_CONTEXT_ID,
+        preparedActionHash: ACTION_HASH,
+        expiresAt,
+        nonce: '0x' + '89'.repeat(32),
+      });
+      const call = jest.fn(async (transaction: any) => {
+        const [sender, hash, signature] = validatorInterface.decodeFunctionData(
+          'isValidSignatureWithSender',
+          transaction.data
+        );
+        let valid = false;
+        if (
+          transaction.to.toLowerCase() === ecdsa.toLowerCase() &&
+          sender === SMART_ACCOUNT_ADDRESS
+        ) {
+          try {
+            valid = recoverAddress(hash, signature) === signer.address;
+          } catch {
+            /* invalid proof */
+          }
+        }
+        return defaultAbiCoder.encode(
+          ['bytes4'],
+          [valid ? '0x1626ba7e' : '0xffffffff']
+        );
+      });
+      const context = {
+        accountId: 1,
+        actionHash: ACTION_HASH,
+        purpose: 'user-operation',
+        expiresAt,
+        entryPointFeeQuote: {
+          executionContextId: EXECUTION_CONTEXT_ID,
+          feePayer: {
+            id: 0,
+            type: KeyringAccountType.HDAccount,
+            address: signer.address,
+          },
+          gasUnits: '1',
+          maximumFeeWei: '0',
+        },
+        entryPointFeeApproved: false,
+        entryPointFeeConsumed: false,
+        snapshot: controller.infrastructureContext(),
+        userOperation: buildSmartAccountUserOperation({
+          sender: SMART_ACCOUNT_ADDRESS,
+          nonce: '1',
+          callData: '0x',
+          initCode: '0x',
+          accountGasLimits: '0x' + '00'.repeat(32),
+          gasFees: '0x' + '00'.repeat(32),
+          preVerificationGas: '1',
+        }),
+        pending: {
+          withReadPhase: async (work: any) => work({ provider: { call } }),
+        },
+        compositePossession: {
+          proposal,
+          challenge,
+          proofs: new Map(),
+          accepted: false,
+          sourceMetadata: JSON.stringify({
+            auth: value.auth,
+            installedModules: value.installedModules,
+          }),
+        },
+      };
+      controller.executionContexts.set(EXECUTION_CONTEXT_ID, context);
+      jest
+        .spyOn(controller, 'assertSmartAccountPreparedNonce')
+        .mockResolvedValue(undefined);
+      wallet.smartAccount = controller;
+      if (approveFee)
+        wallet.approveSmartAccountExecutionFeeQuote(
+          EXECUTION_CONTEXT_ID,
+          context.entryPointFeeQuote,
+          documentAuthority()
+        );
+      return {
+        controller,
+        context,
+        challenge,
+        call,
+        value,
+        signature: signer.signingKey.sign(challenge.intent.actionHash)
+          .serialized,
+      };
+    }
+
+    it('requires explicit exact EntryPoint fee consent before proposed signing and refuses changed or consumed quotes', async () => {
+      const fixture = prepare(1, [ecdsa], false),
+        quote = fixture.context.entryPointFeeQuote;
+      await expect(
+        wallet.signSmartAccountCompositeOwner(
+          EXECUTION_CONTEXT_ID,
+          owner,
+          documentAuthority()
+        )
+      ).rejects.toThrow('Approve the Smart account fee');
+      for (const changed of [
+        { ...quote, maximumFeeWei: '100000000000000000000' },
+        { ...quote, gasUnits: '2' },
+        { ...quote, feePayer: { ...quote.feePayer, address: OWNER_ADDRESS } },
+        { ...quote, executionContextId: 'another-operation' },
+      ])
+        expect(() =>
+          wallet.approveSmartAccountExecutionFeeQuote(
+            EXECUTION_CONTEXT_ID,
+            changed,
+            documentAuthority()
+          )
+        ).toThrow('fee quote changed');
+      expect(sign).not.toHaveBeenCalled();
+      wallet.approveSmartAccountExecutionFeeQuote(
+        EXECUTION_CONTEXT_ID,
+        quote,
+        documentAuthority()
+      );
+      await expect(
+        wallet.signSmartAccountCompositeOwner(
+          EXECUTION_CONTEXT_ID,
+          owner,
+          documentAuthority()
+        )
+      ).resolves.toBe('owner-signature');
+      fixture.context.entryPointFeeConsumed = true;
+      expect(() =>
+        wallet.approveSmartAccountExecutionFeeQuote(
+          EXECUTION_CONTEXT_ID,
+          quote,
+          documentAuthority()
+        )
+      ).toThrow('fee quote changed');
+      await expect(
+        wallet.signSmartAccountCompositeOwner(
+          EXECUTION_CONTEXT_ID,
+          owner,
+          documentAuthority()
+        )
+      ).rejects.toThrow('Approve the Smart account fee');
+    });
+
+    it.each([1, 2])(
+      'does not release current-policy signing or submission after unavailable passkey proof at threshold %i',
+      async (threshold) => {
+        const fixture = prepare(
+          threshold,
+          threshold === 1 ? [passkey] : [ecdsa, passkey]
+        );
+        const signatures =
+          threshold === 1 ? ['0xdead'] : [fixture.signature, '0xdead'];
+        const result = await wallet.verifySmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID,
+          signatures,
+          documentAuthority()
+        );
+        expect(result.satisfied).toBe(false);
+        await expect(
+          wallet.signSmartAccountPreparedOwner(
+            EXECUTION_CONTEXT_ID,
+            owner,
+            documentAuthority()
+          )
+        ).rejects.toThrow('Prove the proposed');
+        await expect(
+          fixture.controller.submitSmartAccountExecution(
+            { executionContextId: EXECUTION_CONTEXT_ID },
+            () => undefined
+          )
+        ).rejects.toThrow('Prove the proposed');
+        expect(sign).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
+        expect(fixture.context.compositePossession.accepted).toBe(false);
+      }
+    );
+
+    it('accepts a sufficient actual ECDSA child proof, memoizes it, and only then releases a different transaction digest', async () => {
+      const fixture = prepare(1);
+      expect(fixture.challenge.intent.actionHash).not.toBe(ACTION_HASH);
+      await expect(
+        wallet.signSmartAccountCompositeOwner(
+          EXECUTION_CONTEXT_ID,
+          owner,
+          documentAuthority()
+        )
+      ).resolves.toBe('owner-signature');
+      expect(sign).toHaveBeenLastCalledWith(
+        [signer.address, fixture.challenge.intent.actionHash],
+        expect.any(Object)
+      );
+      sign.mockClear();
+      const vector = [fixture.signature, '0x'];
+      await expect(
+        wallet.verifySmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID,
+          vector,
+          documentAuthority()
+        )
+      ).resolves.toMatchObject({ satisfied: true, threshold: 1 });
+      await wallet.verifySmartAccountCompositePossession(
+        EXECUTION_CONTEXT_ID,
+        vector,
+        documentAuthority()
+      );
+      expect(fixture.call).toHaveBeenCalledTimes(1);
+      await wallet.signSmartAccountPreparedOwner(
+        EXECUTION_CONTEXT_ID,
+        owner,
+        documentAuthority()
+      );
+      expect(sign).toHaveBeenLastCalledWith(
+        [signer.address, ACTION_HASH],
+        expect.any(Object)
+      );
+    });
+
+    it('rejects a transaction authorization signature offered as a possession proof', async () => {
+      const fixture = prepare(1, [ecdsa]);
+      const signature = signer.signingKey.sign(ACTION_HASH).serialized;
+      await expect(
+        wallet.verifySmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID,
+          [signature],
+          documentAuthority()
+        )
+      ).resolves.toMatchObject({ satisfied: false });
+      expect(
+        fixture.controller.getSmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID
+        ).intent.actionHash
+      ).toBe(fixture.challenge.intent.actionHash);
+      expect(() =>
+        fixture.controller.captureOwnerSigningIntent(EXECUTION_CONTEXT_ID)
+      ).toThrow('Prove the proposed');
+    });
+
+    it('joins concurrent verification of the same child without a duplicate physical contract read', async () => {
+      const fixture = prepare(1, [ecdsa]);
+      const original = fixture.call.getMockImplementation()!;
+      let entered!: () => void, release!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      fixture.call.mockImplementation(async (transaction) => {
+        entered();
+        await held;
+        return original(transaction);
+      });
+      const first = wallet.verifySmartAccountCompositePossession(
+        EXECUTION_CONTEXT_ID,
+        [fixture.signature],
+        documentAuthority()
+      );
+      await started;
+      const second = wallet.verifySmartAccountCompositePossession(
+        EXECUTION_CONTEXT_ID,
+        [fixture.signature],
+        documentAuthority()
+      );
+      release();
+      await expect(Promise.all([first, second])).resolves.toEqual([
+        expect.objectContaining({ satisfied: true }),
+        expect.objectContaining({ satisfied: true }),
+      ]);
+      expect(fixture.call).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not cache an apparently valid child when final canonical phase validation fails', async () => {
+      const fixture = prepare(1, [ecdsa]);
+      let failFinalCheck = true;
+      fixture.context.pending.withReadPhase = async (work: any) => {
+        const result = await work({ provider: { call: fixture.call } });
+        if (failFinalCheck) throw new Error('canonical block changed');
+        return result;
+      };
+      await expect(
+        wallet.verifySmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID,
+          [fixture.signature],
+          documentAuthority()
+        )
+      ).rejects.toThrow('canonical block changed');
+      expect(fixture.context.compositePossession.proofs.size).toBe(0);
+      expect(fixture.context.compositePossession.accepted).toBe(false);
+      failFinalCheck = false;
+      fixture.call.mockResolvedValueOnce(
+        defaultAbiCoder.encode(['bytes4'], ['0xffffffff'])
+      );
+      await expect(
+        wallet.verifySmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID,
+          [fixture.signature],
+          documentAuthority()
+        )
+      ).resolves.toMatchObject({ satisfied: false });
+      expect(fixture.call).toHaveBeenCalledTimes(2);
+    });
+
+    it('aborts collection on a transport failure, publishes no proof cache, and permits a healthy retry', async () => {
+      const fixture = prepare(1),
+        original = fixture.call.getMockImplementation()!;
+      fixture.call.mockRejectedValueOnce(new Error('invalid UTF-8 response'));
+      const proposedSigner = jest.fn(async () => fixture.signature);
+      await expect(
+        collectCompositePolicyPossession({
+          proposal: fixture.context.compositePossession.proposal,
+          assertCurrent: () => undefined,
+          sign: proposedSigner,
+          verify: (signatures) =>
+            wallet.verifySmartAccountCompositePossession(
+              EXECUTION_CONTEXT_ID,
+              signatures,
+              documentAuthority()
+            ),
+        })
+      ).rejects.toThrow('invalid UTF-8 response');
+      expect(proposedSigner).toHaveBeenCalledTimes(1);
+      expect(fixture.context.compositePossession.proofs.size).toBe(0);
+      expect(fixture.context.compositePossession.accepted).toBe(false);
+      expect(sign).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+      fixture.call.mockImplementation(original);
+      await expect(
+        wallet.verifySmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID,
+          [fixture.signature, '0x'],
+          documentAuthority()
+        )
+      ).resolves.toMatchObject({ satisfied: true });
+      expect(fixture.call).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['nonce changed', 'insufficient Smart account balance'])(
+      'keeps fresh transaction admission after possession when %s',
+      async (reason) => {
+        const fixture = prepare(1, [ecdsa]);
+        await wallet.signSmartAccountCompositeOwner(
+          EXECUTION_CONTEXT_ID,
+          owner,
+          documentAuthority()
+        );
+        expect(
+          fixture.controller.assertSmartAccountPreparedNonce
+        ).not.toHaveBeenCalled();
+        await wallet.verifySmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID,
+          [fixture.signature],
+          documentAuthority()
+        );
+        sign.mockClear();
+        fixture.controller.assertSmartAccountPreparedNonce.mockRejectedValueOnce(
+          new Error(reason)
+        );
+        await expect(
+          wallet.signSmartAccountPreparedOwner(
+            EXECUTION_CONTEXT_ID,
+            owner,
+            documentAuthority()
+          )
+        ).rejects.toThrow(reason);
+        expect(
+          fixture.controller.assertSmartAccountPreparedNonce
+        ).toHaveBeenCalledTimes(1);
+        expect(sign).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
+      }
+    );
+
+    it('rejects metadata changes and retired documents while validation is pending, without opening transaction signing', async () => {
+      const fixture = prepare(1);
+      const authority = documentAuthority();
+      fixture.call.mockImplementationOnce(async () => {
+        fixture.value.auth.data = '0x00';
+        return defaultAbiCoder.encode(['bytes4'], ['0x1626ba7e']);
+      });
+      await expect(
+        wallet.verifySmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID,
+          [fixture.signature, '0x'],
+          authority
+        )
+      ).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);
+      expect(fixture.context.compositePossession.accepted).toBe(false);
+      const next = prepare(1);
+      const lifetime = new AbortController();
+      next.call.mockImplementationOnce(async () => {
+        lifetime.abort();
+        return defaultAbiCoder.encode(['bytes4'], ['0x1626ba7e']);
+      });
+      await expect(
+        wallet.verifySmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID,
+          [next.signature, '0x'],
+          { ...documentAuthority(), signal: lifetime.signal }
+        )
+      ).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);
+      expect(next.context.compositePossession.accepted).toBe(false);
+      expect(sign).not.toHaveBeenCalled();
+    });
+
+    it('refuses expired contexts and unrelated local owners before a possession signature or validation read', async () => {
+      const fixture = prepare(1);
+      currentState.vault.accounts.HDAccount[2] = {
+        id: 2,
+        type: KeyringAccountType.HDAccount,
+        address: OWNER_ADDRESS,
+      };
+      await expect(
+        wallet.signSmartAccountCompositeOwner(
+          EXECUTION_CONTEXT_ID,
+          { id: 2, type: KeyringAccountType.HDAccount },
+          documentAuthority()
+        )
+      ).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);
+      fixture.context.expiresAt = Date.now() - 1;
+      await expect(
+        wallet.verifySmartAccountCompositePossession(
+          EXECUTION_CONTEXT_ID,
+          [fixture.signature, '0x'],
+          documentAuthority()
+        )
+      ).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);
+      expect(sign).not.toHaveBeenCalled();
+      expect(fixture.call).not.toHaveBeenCalled();
+    });
+
+    it('classifies only missing encrypted composite state as an optional unavailable SLH child', async () => {
+      prepare(1);
+      const load = jest
+        .spyOn(slhState, 'loadEncryptedSLHDSAState')
+        .mockResolvedValue(null);
+      const setup = jest
+        .spyOn(slhSetup, 'getSLHDSASmartAccountSetupStatus')
+        .mockResolvedValue(null);
+      wallet.getSLHDSASessionStateCrypto = jest.fn(() => ({}));
+      const slh = getPaliModuleAddress(1, 'slh-dsa'),
+        composite = getPaliModuleAddress(1, 'composite');
+      const proposed: any = {
+        chainId: 1,
+        auth: { module: 'composite', validator: composite, data: '0x' },
+        installedModules: [
+          {
+            type: 'validator',
+            id: 'slh-dsa',
+            address: slh,
+            config: { keyId: 'configured-key' },
+          },
+          {
+            type: 'validator',
+            id: 'composite',
+            address: composite,
+            config: { childValidators: [slh], threshold: 1 },
+          },
+        ],
+      };
+      const request = {
+        accountId: 1,
+        actionHash: '0x' + '38'.repeat(32),
+        keyId: 'configured-key',
+      };
+      await expect(
+        wallet.hydrateActiveSLHDSAStateForSigning(request, 0, proposed)
+      ).rejects.toMatchObject({
+        code: 'COMPOSITE_CHILD_UNAVAILABLE',
+        transactionNotBroadcast: true,
+      });
+      load.mockRejectedValueOnce(new Error('corrupt encrypted signer'));
+      await expect(
+        wallet.hydrateActiveSLHDSAStateForSigning(request, 0, proposed)
+      ).rejects.toEqual(new Error('corrupt encrypted signer'));
+      setup.mockResolvedValueOnce({
+        config: { keyId: 'different-local-key' },
+      } as any);
+      await expect(
+        wallet.hydrateActiveSLHDSAStateForSigning(request, 0, proposed)
+      ).rejects.not.toHaveProperty('code');
+      currentState.vault.accounts.SmartAccount[1].smartAccount = proposed;
+      await expect(
+        wallet.hydrateActiveSLHDSAStateForSigning(request, 0)
+      ).rejects.toMatchObject({
+        code: 'COMPOSITE_CHILD_UNAVAILABLE',
+        transactionNotBroadcast: true,
+      });
+      currentState.vault.accounts.SmartAccount[1].smartAccount = {
+        ...proposed,
+        auth: { module: 'slh-dsa', validator: slh, data: '0x' },
+      };
+      await expect(
+        wallet.hydrateActiveSLHDSAStateForSigning(request, 0)
+      ).rejects.not.toHaveProperty('code');
+    });
+  });
 
   it('rejects a stale prepared nonce before starting the SLH signing path', async () => {
     wallet.configureSLHDSASessionStateCrypto = jest.fn();

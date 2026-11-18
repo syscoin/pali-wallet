@@ -1,7 +1,10 @@
+jest.mock('../providers/evmDisplayIdentity', () => ({
+  ensureEvmDisplayIdentity: jest.fn().mockResolvedValue(undefined),
+}));
 import { IAccountAssets } from 'state/vault/types';
 import { INetworkType } from 'types/network';
 
-import { canCommitAssetUpdate } from './utils';
+import { canCommitAssetUpdate, ownedAssetProvider } from './utils';
 
 const network = {
   chainId: 57,
@@ -158,4 +161,46 @@ describe('asset update commit guard', () => {
       ).toBe(false);
     }
   });
+});
+
+it('passes the asset owner through contract reads without destroying the shared provider', async () => {
+  const controller = new AbortController();
+  let current = true;
+  const check = jest.fn(() => {
+    if (!current) throw Error('retired');
+  });
+  const readMany = jest.fn(async () => [
+    { status: 'fulfilled', value: '0x1234' },
+  ]);
+  const provider = {
+    readMany,
+    getNetwork: async () => ({ chainId: 1 }),
+    destroy: jest.fn(),
+    getRpcTransaction: jest.fn((transaction) => transaction),
+    call: jest.fn(),
+    getCode: jest.fn(),
+    marker() {
+      return this;
+    },
+  };
+  const owned = ownedAssetProvider(provider as any, {
+    signal: controller.signal,
+    assertCurrent: check,
+  });
+  const transaction = { to: '0x' + '11'.repeat(20), data: '0xabcd' };
+  expect(await owned.call(transaction)).toBe('0x1234');
+  expect(readMany).toHaveBeenCalledWith(
+    [{ method: 'eth_call', params: [transaction, 'latest'] }],
+    { signal: controller.signal }
+  );
+  expect((owned as any).marker()).toBe(provider);
+  await owned.getCode(transaction.to);
+  expect(readMany).toHaveBeenLastCalledWith(
+    [{ method: 'eth_getCode', params: [transaction.to, 'latest'] }],
+    { signal: controller.signal }
+  );
+  current = false;
+  await expect(owned.call(transaction)).rejects.toThrow('retired');
+  expect(readMany).toHaveBeenCalledTimes(2);
+  expect(provider.destroy).not.toHaveBeenCalled();
 });

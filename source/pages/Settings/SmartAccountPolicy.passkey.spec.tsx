@@ -4,6 +4,7 @@ import { webcrypto } from 'crypto';
 import { Wallet } from 'ethers/wallet';
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { SYNTHETIC_ENTRYPOINT_USER_OPERATION } from 'tests/fixtures/reviewedSmartAccountExecution';
 
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
@@ -78,6 +79,44 @@ jest.mock('utils/passkey', () => ({
   signalAcceptedPasskeyCredentials: jest.fn(),
 }));
 
+// This direct-handler harness suppresses React effects. Model an explicit fee
+// confirmation here; the mounted fee UI and its lifetime use separate suites.
+let mockPendingFeeReview:
+  | { assertCurrent(): void; quote: any; resolve(id: string | null): void }
+  | undefined;
+jest.mock('./SmartAccountFeeConfirmation', () => ({
+  useSmartAccountFeeConfirmation: () => ({
+    forExecution: (details: { assertCurrent(): void }) => ({
+      confirmEntryPoint: (quote: any) =>
+        new Promise<string | null>((resolve) => {
+          details.assertCurrent();
+          if (mockPendingFeeReview) throw new Error('Fee review already open');
+          mockPendingFeeReview = {
+            quote,
+            resolve,
+            assertCurrent: details.assertCurrent,
+          };
+        }),
+      confirmFee: async () => {
+        throw new Error('No outer payer fee was emitted by this unit fixture');
+      },
+    }),
+    feeConfirmation: mockPendingFeeReview
+      ? React.createElement('confirmation', {
+          show: true,
+          title: 'settings.smartAccountFeeReviewTitle',
+          quote: mockPendingFeeReview.quote,
+          onClick() {
+            const review = mockPendingFeeReview!;
+            review.assertCurrent();
+            mockPendingFeeReview = undefined;
+            review.resolve(review.quote.executionContextId);
+          },
+        })
+      : null,
+  }),
+}));
+
 const CHAIN_ID = 57057;
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const mockOwnerWallet = new Wallet('0x' + '32'.repeat(32));
@@ -142,12 +181,41 @@ describe('SmartAccountPolicy passkey preservation', () => {
   const waitForTerminalResult = async () => {
     const deadline = Date.now() + 5000;
     while (!alert.error.mock.calls.length && !alert.success.mock.calls.length) {
+      approvePendingFee();
       if (Date.now() >= deadline)
         throw new Error(
           'Passkey recreation did not report a terminal result within 5 seconds'
         );
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
+  };
+  const approvePendingFee = () => {
+    const confirmation = find(
+      render(),
+      (element) => element.props.title === 'settings.smartAccountFeeReviewTitle'
+    );
+    if (!confirmation) return;
+    expect(confirmation.props.quote).toEqual({
+      executionContextId: 'policy-operation',
+      feePayer: { address: OWNER, id: 0, type: KeyringAccountType.HDAccount },
+      gasUnits: '3',
+      maximumFeeWei: '3',
+    });
+    confirmation.props.onClick();
+  };
+  const withFeeReview = async (operation: () => Promise<unknown>) => {
+    let settled = false;
+    const work = operation().finally(() => {
+      settled = true;
+    });
+    const deadline = Date.now() + 5000;
+    while (!settled) {
+      approvePendingFee();
+      if (Date.now() >= deadline)
+        throw new Error('Operation did not settle after fee review');
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await work;
   };
   const recreate = async (add = false) => {
     await clickUsePasskey(add);
@@ -167,6 +235,7 @@ describe('SmartAccountPolicy passkey preservation', () => {
     states = [];
     refs = [];
     storageFails = false;
+    mockPendingFeeReview = undefined;
     Object.defineProperty(globalThis, 'crypto', {
       configurable: true,
       value: webcrypto,
@@ -268,7 +337,39 @@ describe('SmartAccountPolicy passkey preservation', () => {
           executionContextId: 'policy-operation',
           smartAccount: metadata,
           executions: params[0],
+          userOperation: SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+          gasPayer: {
+            address: OWNER,
+            id: 0,
+            type: KeyringAccountType.HDAccount,
+          },
+          entryPointFeeQuote: {
+            executionContextId: 'policy-operation',
+            feePayer: {
+              address: OWNER,
+              id: 0,
+              type: KeyringAccountType.HDAccount,
+            },
+            gasUnits: '3',
+            maximumFeeWei: '3',
+          },
         };
+      if (method === 'approveSmartAccountExecutionFeeQuote') {
+        expect(params).toEqual([
+          'policy-operation',
+          {
+            executionContextId: 'policy-operation',
+            feePayer: {
+              address: OWNER,
+              id: 0,
+              type: KeyringAccountType.HDAccount,
+            },
+            gasUnits: '3',
+            maximumFeeWei: '3',
+          },
+        ]);
+        return;
+      }
       if (method === 'hydrateSmartAccount') return metadata;
       if (method === 'signSmartAccountPreparedOwner')
         return mockOwnerWallet.signingKey.sign(`0x${'77'.repeat(32)}`)
@@ -673,7 +774,7 @@ describe('SmartAccountPolicy passkey preservation', () => {
           'settings.addToCombinedApprovals'
         )
     )!;
-    await add.props.onClick();
+    await withFeeReview(() => add.props.onClick());
     expect(alert.error).not.toHaveBeenCalled();
     expect(alert.success).toHaveBeenCalled();
     expect(metadata.auth).toEqual(source.auth);
@@ -826,7 +927,7 @@ describe('SmartAccountPolicy passkey preservation', () => {
         (element) => element.props.title === 'settings.slhDsaAuthenticator'
       )!;
       expect(confirmation.props.show).toBe(true);
-      await confirmation.props.onClick();
+      await withFeeReview(() => confirmation.props.onClick());
       const methods = emitter.mock.calls.map(([[, method]]) => method);
       expect(
         methods.filter((method) => method === 'submitSmartAccountExecution')

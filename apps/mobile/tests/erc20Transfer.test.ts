@@ -46,7 +46,10 @@ function fixture(
   const requests: Request[] = [];
   let blocks = 0;
   const rpc = new NativeTransferRpc({ networkId: 'ethereum',
-    fetch: async (_url, init) => {
+    fetch: async function fixtureFetch(_url, init): Promise<Response> {
+      const payload = JSON.parse(String(init.body));
+      if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async row =>
+        (await fixtureFetch(_url, {...init, body: JSON.stringify(row)})).json())));
       const request = JSON.parse(String(init.body)) as Request;
       requests.push(request);
       let result: unknown;

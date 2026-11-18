@@ -110,22 +110,22 @@ export const TransactionsPanel = () => {
     () => (
       <div className="flex items-center justify-center pt-3 pb-6 text-brand-white text-sm">
         <p
-          role={historyMayBeIncomplete ? 'status' : undefined}
+          role={!isBitcoinBased ? 'status' : undefined}
           className={
-            historyMayBeIncomplete
-              ? 'min-w-0 break-words px-4 text-center'
-              : undefined
+            !isBitcoinBased ? 'min-w-0 break-words px-4 text-center' : undefined
           }
         >
           {t(
             historyMayBeIncomplete
               ? 'home.historyMayBeIncomplete'
-              : 'home.youHaveNoTxs'
+              : isBitcoinBased
+              ? 'home.youHaveNoTxs'
+              : 'home.noIndexedActivity'
           )}
         </p>
       </div>
     ),
-    [historyMayBeIncomplete, t]
+    [historyMayBeIncomplete, isBitcoinBased, t]
   );
 
   const TransactionSkeleton = useMemo(
@@ -314,11 +314,24 @@ export const TransactionsPanel = () => {
           {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
           <button
             type="button"
-            className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center underline"
+            className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
             disabled={historyState === 'pending' || isRetrying}
             onClick={retryHistory}
           >
             {t('receive.retry')}
+          </button>
+        </div>
+      )}
+      {saved.unavailable && (
+        <div className="mt-4 text-center text-sm text-brand-gray200">
+          <p role="status">{t('home.savedActivityUnavailable')}</p>
+          <button
+            type="button"
+            className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
+            disabled={saved.loading}
+            onClick={() => void saved.retry()}
+          >
+            {t('home.retrySavedActivity')}
           </button>
         </div>
       )}
@@ -327,7 +340,7 @@ export const TransactionsPanel = () => {
           id="activity-panel-empty"
           className="w-full mt-8 text-white bg-brand-blue600"
         >
-          {!historyUnavailable && NoTransactionsComponent}
+          {!historyUnavailable && !saved.unavailable && NoTransactionsComponent}
           {OpenTransactionExplorer}
           {/* <Fullscreen /> */}
         </div>

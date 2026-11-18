@@ -20,7 +20,10 @@ const envelope = (network: NativeNetworkRegistration, gas: bigint): EvmUnsignedT
 });
 function fixture(network: NativeNetworkRegistration, estimate: bigint, blockGas = 30000000n) {
   const calls: string[] = [];
-  const rpc = new EvmTransferReadRpc(network, { fetch: async (_url, init) => {
+  const rpc = new EvmTransferReadRpc(network, { fetch: async function fixtureFetch(_url, init): Promise<Response> {
+      const payload = JSON.parse(String(init.body));
+      if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async row =>
+        (await fixtureFetch(_url, {...init, body: JSON.stringify(row)})).json())));
     const request = JSON.parse(String(init.body));
     calls.push(request.method);
     const results: Record<string, unknown> = {
@@ -78,7 +81,10 @@ for (const type of [0, 2] as const) test(`type ${type} raw broadcasting validate
     const raw = await wallet.signTransaction({ type, to, nonce: 0, chainId: BigInt(network.chainId), value: 1n, gasLimit,
       ...(type === 0 ? { gasPrice: 2n } : { maxFeePerGas: 2n, maxPriorityFeePerGas: 1n }) });
     const hash = keccak256(raw), methods: string[] = [];
-    const rpc = new NativeTransferRpc({ networkId: network.id, registration: network, fetch: async (_url, init) => {
+    const rpc = new NativeTransferRpc({ networkId: network.id, registration: network, fetch: async function fixtureFetch(_url, init): Promise<Response> {
+      const payload = JSON.parse(String(init.body));
+      if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async row =>
+        (await fixtureFetch(_url, {...init, body: JSON.stringify(row)})).json())));
       const request = JSON.parse(String(init.body)); methods.push(request.method);
       assert(['eth_chainId', 'eth_getTransactionCount', 'eth_sendRawTransaction'].includes(request.method));
       if (request.method === 'eth_getTransactionCount')

@@ -6,7 +6,7 @@ import { bindNativePrivateAuthentication, bindNativePrivateAuthenticationChild, 
 import type { NativeSmartModuleManagement } from '../smartAccount/moduleManagement.ts';
 import { createNativePrivacyServiceSettings } from './privacyServiceSettings.native';
 import type { NativePrivacyControls } from '../privacy/privacyControls';
-import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime';
+import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory, NativeNoteArchiveInventory, NativeNoteArchiveMutation } from '../custody/noteBackupRuntime';
 import type { NativeSlhDsaManagement } from '../smartAccount/slhDsaManagement';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard';
 import { NativeLedgerAccounts } from '../custody/ledgerAccounts.ts';
@@ -322,11 +322,17 @@ export function createNativeWalletControllers() {
       const captured = runtime, connection = await captured.openConnectionHost();
       if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
       const reads = createNativeDappRpcReadHost({ fetch: walletFetch, registration: readRegistration,
+        context() {
+          if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
+          const state = authority.getSnapshot(), catalogue = authority.getCatalogue();
+          if (state.phase !== 'ready' || !catalogue) throw new CustodyOperationError('CANCELLED');
+          return JSON.stringify([state.revision, catalogue.revision, catalogue.active.accountId, catalogue.active.networkId]);
+        },
         verifyPersonalMessage(message, signature) {
           if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
           return connection.verifyPersonalMessage(message, signature);
         } });
-      const walletReads = createNativeWalletReadHost({ fetch: walletFetch,
+      const walletReads = createNativeWalletReadHost({ fetch: walletFetch, reads,
         network: () => {
           if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
           return connection.context().network.kind === 'syscoin' ? syscoin.registration() : readRegistration();
@@ -467,6 +473,7 @@ export function createNativeWalletControllers() {
   );
   const stopTokenObservation = tokens.view.subscribe(() => {
     const value = tokens.view.getSnapshot(), catalogue = authority.getCatalogue(), state = authority.getSnapshot(), owner = runtime;
+    if (value.selectedContract) return;
     const network = catalogue?.networks.find(item => item.id === value.account?.network);
     if (!owner || !catalogue || !value.account || !network || state.revision !== value.account.revision ||
         state.account?.address !== value.account.address || catalogue.active.networkId !== value.account.network) return;
@@ -755,6 +762,22 @@ export function createNativeWalletControllers() {
     const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     return observeFailure(() => selected.openWalletAuthenticator('replace', signal, assertCurrent, binding));
   };
+  const openSmartAccountCancellation = async (reference: Parameters<KeyringRuntime['openSmartAccountCancellation']>[0], assertOwner: () => void, signal: AbortSignal, authentication: NativePrivateAuthenticationScope) => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
+    const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
+    check(); return observeFailure(() => selected.openSmartAccountCancellation(reference, check, binding));
+  };
+  const listSmartAccountAuthorizations = async (options: Parameters<KeyringRuntime['listSmartAccountAuthorizations']>[0], signal: AbortSignal, assertOwner: () => void) => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
+    check(); return observeFailure(() => selected.listSmartAccountAuthorizations(options, signal, check));
+  };
+  const readSmartAccountAuthorizationStatus = async (operationHash: string, signal: AbortSignal, assertOwner: () => void) => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
+    check(); return observeFailure(() => selected.readSmartAccountAuthorizationStatus(operationHash, signal, check));
+  };
   const openSmartAccountSend = async (recipient: string, amount: Parameters<KeyringRuntime['openSmartAccountSend']>[1], assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
     const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
@@ -826,9 +849,27 @@ export function createNativeWalletControllers() {
     const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const read = selected.readNoteInventory;
     if (!read) throw new CustodyOperationError('NOT_READY');
-    const inventory = await observeFailure(() => read(assertCurrent, binding));
-    assertCurrent();
-    return Object.freeze<NativeNoteInventory>({
+    const wrapMutation = (result: NativeNoteArchiveMutation): NativeNoteArchiveMutation => Object.freeze({
+      inventory: wrapInventory(result.inventory), archive: wrapArchive(result.archive),
+    });
+    const wrapArchive = (archive: NativeNoteArchiveInventory): NativeNoteArchiveInventory => Object.freeze<NativeNoteArchiveInventory>({
+      ...archive,
+      revealNote: (...args) => observeFailure(() => archive.revealNote(...args)),
+      async restoreNote(...args) {
+        const result = await observeFailure(() => archive.restoreNote(...args));
+        assertCurrent(); return wrapMutation(result);
+      },
+      async clearArchive(...args) {
+        const result = await observeFailure(() => archive.clearArchive(...args));
+        assertCurrent(); return Object.freeze({ ...wrapMutation(result), removed: result.removed });
+      },
+    });
+    const wrapInventory = (inventory: NativeNoteInventory): NativeNoteInventory => Object.freeze<NativeNoteInventory>({
+      ...(inventory.archiveSummary ? { archiveSummary: inventory.archiveSummary } : {}),
+      ...(inventory.archive ? { archive: Object.freeze({ async open(...args: Parameters<NonNullable<NativeNoteInventory['archive']>['open']>) {
+        const archive = await observeFailure(() => inventory.archive!.open(...args));
+        assertCurrent(); return wrapArchive(archive);
+      } }) } : {}),
       notes: inventory.notes,
       ...(inventory.checkNote ? { checkNote: (...args: Parameters<NonNullable<NativeNoteInventory['checkNote']>>) => observeFailure(() => inventory.checkNote!(...args)) } : {}),
       ...(inventory.openWithdrawal ? {
@@ -848,6 +889,8 @@ export function createNativeWalletControllers() {
         return secret;
       },
     });
+    const inventory = await observeFailure(() => read(assertCurrent, binding));
+    assertCurrent(); return wrapInventory(inventory);
   };
   const openPrivateDeposit = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
@@ -939,6 +982,6 @@ export function createNativeWalletControllers() {
       networkId: scope.network.id, registrationHash: 'registrationHash' in scope.network ? scope.network.registrationHash : '' }, check);
   };
   const activityReaders = Object.freeze({ explorer: new ActivityExplorerReader(walletFetch), receipts: new ActivityReceiptReader({ fetch: walletFetch }) });
-  return { getNotificationChoices, readPortfolioAssets, getScopedActivityRuntime, activityReaders, authority, saveIdlePreference, sentry, recipientResolver, openSmartInfrastructure, openResumedSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: { isActive: (owner: AbortSignal) => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner), isAnyPromptActive: () => isNativeCredentialPromptActive() || isBoundNativePasskeyPromptActive(), cancel: () => nativeCredentialAuthentication.cancel(), run: nativeCredentialAuthentication.run }, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, refreshSmartAccountMetadata, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { getNotificationChoices, readPortfolioAssets, getScopedActivityRuntime, activityReaders, authority, saveIdlePreference, sentry, recipientResolver, openSmartInfrastructure, openResumedSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: { isActive: (owner: AbortSignal) => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner), isAnyPromptActive: () => isNativeCredentialPromptActive() || isBoundNativePasskeyPromptActive(), cancel: () => nativeCredentialAuthentication.cancel(), run: nativeCredentialAuthentication.run }, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, refreshSmartAccountMetadata, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openSmartAccountCancellation, listSmartAccountAuthorizations, readSmartAccountAuthorizationStatus, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => { stopTokenObservation(); tokens.dispose(); }, disposeTransfers: () => transfers.dispose() };
 }

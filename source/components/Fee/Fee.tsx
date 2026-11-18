@@ -57,10 +57,12 @@ export const Fee = ({
   disabled,
   form,
   onFeeChange,
+  onRawFeeChange,
 }: {
   disabled: boolean;
   form: any;
   onFeeChange?: (newFee: number) => void;
+  onRawFeeChange?: (value: string) => void;
   recommend?: number;
 }) => {
   const { t } = useTranslation();
@@ -265,6 +267,7 @@ export const Fee = ({
                         setCurrentFee(newValue); // Update local state for real-time validation
                         // Manually set form value to ensure it's in sync
                         form.setFieldsValue({ fee: newValue });
+                        onRawFeeChange?.(newValue);
                         // Trigger form validation to update the visual feedback
                         void form
                           .validateFields(['fee'])

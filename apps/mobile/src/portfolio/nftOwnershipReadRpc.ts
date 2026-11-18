@@ -26,6 +26,7 @@ export type NftEnumerationResult = Readonly<{
   tokenIds: readonly string[];
   totalOwned?: string;
   hasMore: boolean;
+  partial?: boolean;
   method: 'enumeration' | 'manual';
 }>;
 
@@ -129,6 +130,7 @@ export function createNftEnumerationReader(
           tokenIds: Object.freeze((discovery.tokens ?? []).map(token => normalizeNftTokenId(token.tokenId))),
           ...(discovery.totalOwned === undefined ? {} : { totalOwned: parseErc20Units(discovery.totalOwned) }),
           hasMore: discovery.hasMore === true,
+          ...(discovery.partial ? { partial: true } : {}),
           method: discovery.method,
         });
       });

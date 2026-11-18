@@ -1,3 +1,6 @@
+import { isReadOnlyRpcMethod } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
+import { keccak256 } from 'ethers/crypto';
+
 jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -19,7 +22,10 @@ jest.mock(
 );
 jest.mock('utils/ethUtil', () => ({ decodeTransactionData: jest.fn() }));
 
-import { normalizeDappRpcRequest } from '../../shared/dappRpcReads';
+import {
+  classifyDappRpcMethod,
+  normalizeDappRpcRequest,
+} from '../../shared/dappRpcReads';
 import { getController } from 'scripts/Background';
 import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
@@ -55,7 +61,7 @@ const HOST = 'https://transaction.test';
 const HASH = `0x${'44'.repeat(32)}`;
 const NODE_PUBLIC_CASES = [
   ['eth_coinbase', [], OTHER_FROM],
-  ['web3_sha3', ['0Xabcd'], HASH],
+  ['eth_maxPriorityFeePerGas', [], '0x77359400'],
   ['eth_getFilterChanges', ['0x0000aBcD'], []],
   ['eth_getFilterLogs', ['opaque-filter-ID'], []],
   ['eth_newBlockFilter', [], 'opaque-block-filter'],
@@ -74,7 +80,7 @@ const stateMock = store.getState as jest.Mock;
 const popupMock = popupPromise as jest.Mock;
 const decodeMock = decodeTransactionData as jest.Mock;
 const coordinateMock = requestCoordinator.coordinatePopupRequest as jest.Mock;
-const rpc = { getBlock: jest.fn(), send: jest.fn() };
+const rpc = { getBlock: jest.fn(), readMany: jest.fn(), send: jest.fn() };
 const connectedAccountMock = jest.fn();
 const sessionGenerationMock = jest.fn();
 let wallet: any;
@@ -107,6 +113,16 @@ beforeEach(() => {
   requestLifetime = new AbortController();
   (getUnrestrictedMethods as jest.Mock).mockReturnValue([]);
   rpc.getBlock.mockResolvedValue({ baseFeePerGas: '0x3b9aca00' });
+  rpc.readMany.mockImplementation(
+    (requests: readonly { method: string; params: unknown[] }[]) =>
+      Promise.allSettled(
+        requests.map((request) =>
+          request.method === 'eth_chainId'
+            ? Promise.resolve('0x1')
+            : rpc.send(request.method, [...request.params])
+        )
+      )
+  );
   popupMock.mockResolvedValue(HASH);
   decodeMock.mockResolvedValue({
     method: 'Contract Interaction',
@@ -198,14 +214,27 @@ describe('EthProvider public RPC admission and errors', () => {
         },
       });
       expect(
-        await native.read(expected, new AbortController().signal, () => {})
+        await native.read(
+          expected,
+          new AbortController().signal,
+          () => undefined
+        )
       ).toEqual(extensionResult);
       expect(rpc.send).toHaveBeenCalledTimes(1);
-      expect(rpc.send).toHaveBeenCalledWith(method, [...expected.params]);
+      expect(rpc.send).toHaveBeenCalledWith(
+        method,
+        [...expected.params],
+        ...(!isReadOnlyRpcMethod(String(method)) ||
+        classifyDappRpcMethod(String(method)) === 'node-control'
+          ? [expect.objectContaining({ signal: requestLifetime.signal })]
+          : [])
+      );
       expect(observed.map((value) => value.method)).toEqual([
         'eth_chainId',
         method,
-        'eth_chainId',
+        ...(classifyDappRpcMethod(String(method)) === 'node-control'
+          ? ['eth_chainId']
+          : []),
       ]);
       expect(observed[1]!.params).toEqual(expected.params);
       expect(popupMock).not.toHaveBeenCalled();
@@ -287,6 +316,20 @@ describe('EthProvider public RPC admission and errors', () => {
     expect(popupMock).not.toHaveBeenCalled();
   });
 
+  it.each(['0Xabcd', '', '0x'])(
+    'hashes %j locally without a node request',
+    async (input) => {
+      (getUnrestrictedMethods as jest.Mock).mockReturnValue(['web3_sha3']);
+      await expect(
+        EthProvider(HOST, readContext()).unrestrictedRPCMethods('web3_sha3', [
+          input,
+        ])
+      ).resolves.toBe(keccak256(`0x${input.slice(2)}`));
+      expect(rpc.send).not.toHaveBeenCalled();
+      expect(popupMock).not.toHaveBeenCalled();
+    }
+  );
+
   it('requires an explicit request lifetime before public read execution', async () => {
     (getUnrestrictedMethods as jest.Mock).mockReturnValue(['net_listening']);
     const context = readContext();
@@ -302,10 +345,15 @@ describe('EthProvider public RPC admission and errors', () => {
     async (change) => {
       (getUnrestrictedMethods as jest.Mock).mockReturnValue(['eth_getLogs']);
       let release!: (value: unknown) => void;
+      let started!: () => void;
+      const dispatched = new Promise<void>((resolve) => {
+        started = resolve;
+      });
       rpc.send.mockImplementationOnce(
         () =>
           new Promise((resolve) => {
             release = resolve;
+            started();
           })
       );
       const reading = EthProvider(HOST, readContext()).unrestrictedRPCMethods(
@@ -315,6 +363,7 @@ describe('EthProvider public RPC admission and errors', () => {
       const rejected = expect(reading).rejects.toMatchObject({
         code: change === 'document' ? 4001 : 4100,
       });
+      await dispatched;
       if (change === 'network')
         vault.activeNetwork = {
           ...vault.activeNetwork,
@@ -577,6 +626,28 @@ describe('EthProvider transaction admission', () => {
         } as any)
       ).rejects.toMatchObject({ code: 4200 });
       expectNoRpcOrPopup();
+    }
+  );
+
+  it.each([
+    [{}, false],
+    [{ type: '0x0' }, true],
+    [{ gasPrice: '0x0' }, true],
+    [{ gasPrice: '0xba43b7400' }, true],
+  ])(
+    'leaves network fee-mode discovery to the quote when no London-only feature was requested: %p',
+    async (fields, legacy) => {
+      await EthProvider(HOST, readContext()).sendTransaction({
+        ...transaction,
+        ...fields,
+        data: '0x',
+      } as any);
+      expect(rpc.getBlock).not.toHaveBeenCalled();
+      expect(popupMock.mock.calls[0][0].data.txMetadata.isLegacyTx).toBe(
+        legacy
+      );
+      expect(decodeMock).toHaveBeenCalledTimes(1);
+      expect(popupMock).toHaveBeenCalledTimes(1);
     }
   );
 
@@ -895,4 +966,149 @@ describe('EthProvider transaction admission', () => {
       data: { tx: { value: '0x0' } },
     });
   });
+});
+
+it.each([
+  'origin',
+  'account',
+  'network',
+  'registration',
+  'session',
+  'document',
+  'frame',
+  'tab',
+  'provider',
+  'missing-document',
+])('keeps held identical public reads isolated across %s', async (change) => {
+  (getUnrestrictedMethods as jest.Mock).mockReturnValue(['eth_getBalance']);
+  const releases: Array<(value: PromiseSettledResult<unknown>[]) => void> = [];
+  const readMany = jest.fn((requests: readonly { method: string }[]) =>
+    requests.every((request) => request.method === 'eth_chainId')
+      ? Promise.resolve(
+          requests.map(() => ({ status: 'fulfilled' as const, value: '0x1' }))
+        )
+      : new Promise<PromiseSettledResult<unknown>[]>((resolve) =>
+          releases.push(resolve)
+        )
+  );
+  wallet.ethereumTransaction.web3Provider = { send: jest.fn(), readMany };
+  const firstContext = readContext();
+  firstContext.originalRequest.sender = {
+    documentId: 'first',
+    frameId: 0,
+    tab: { id: 1 },
+  } as chrome.runtime.MessageSender;
+  if (change === 'missing-document')
+    delete firstContext.originalRequest.sender.documentId;
+  const first = EthProvider(HOST, firstContext).unrestrictedRPCMethods(
+    'eth_getBalance',
+    [FROM, 'latest']
+  );
+  const firstResult = first.catch((error) => error);
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  const secondContext = readContext();
+  secondContext.originalRequest.sender = {
+    ...firstContext.originalRequest.sender,
+  };
+  if (change === 'account')
+    vault.activeAccount = { ...vault.activeAccount, id: 1 };
+  if (change === 'network')
+    vault.activeNetwork = {
+      ...vault.activeNetwork,
+      url: 'https://second.invalid',
+    };
+  if (change === 'registration')
+    vault.activeNetwork = { ...vault.activeNetwork, id: 'registered-again' };
+  if (change === 'session') sessionGenerationMock.mockReturnValue(2);
+  if (change === 'document')
+    secondContext.originalRequest.sender.documentId = 'second';
+  if (change === 'frame') secondContext.originalRequest.sender.frameId = 1;
+  if (change === 'tab')
+    secondContext.originalRequest.sender.tab = { id: 2 } as chrome.tabs.Tab;
+  if (change === 'provider')
+    wallet.ethereumTransaction.web3Provider = { send: jest.fn(), readMany };
+  const second = EthProvider(
+    change === 'origin' ? 'https://other.invalid' : HOST,
+    secondContext
+  ).unrestrictedRPCMethods('eth_getBalance', [FROM, 'latest']);
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  expect(
+    readMany.mock.calls.filter(
+      ([requests]) => requests[0]?.method !== 'eth_chainId'
+    )
+  ).toHaveLength(2);
+  releases.forEach((resolve) =>
+    resolve([{ status: 'fulfilled', value: '0x1' }])
+  );
+  await expect(second).resolves.toBe('0x1');
+  const result = await firstResult;
+  if (
+    ['account', 'network', 'registration', 'session', 'provider'].includes(
+      change
+    )
+  )
+    expect(result).toMatchObject({ code: 4100 });
+  else expect(result).toBe('0x1');
+});
+
+it('retires an old document subscriber while a new document completes independently', async () => {
+  (getUnrestrictedMethods as jest.Mock).mockReturnValue(['eth_getBalance']);
+  const replies: Array<(value: PromiseSettledResult<unknown>[]) => void> = [];
+  const readMany = jest.fn(
+    (
+      _requests: readonly { method: string }[],
+      _options: { signal: AbortSignal }
+    ) => {
+      if (_requests.every((request) => request.method === 'eth_chainId'))
+        return Promise.resolve(
+          _requests.map(() => ({ status: 'fulfilled' as const, value: '0x1' }))
+        );
+      return new Promise<PromiseSettledResult<unknown>[]>((resolve) => {
+        expect(_requests).toHaveLength(1);
+        expect(_options.signal.aborted).toBe(false);
+        replies.push(resolve);
+      });
+    }
+  );
+  wallet.ethereumTransaction.web3Provider = { send: jest.fn(), readMany };
+  const firstContext = readContext();
+  firstContext.originalRequest.sender = {
+    documentId: 'old',
+    frameId: 0,
+    tab: { id: 1 },
+  } as chrome.runtime.MessageSender;
+  const first = EthProvider(HOST, firstContext).unrestrictedRPCMethods(
+    'eth_getBalance',
+    [FROM, 'latest']
+  );
+  const rejected = expect(first).rejects.toMatchObject({ code: 4001 });
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  requestLifetime.abort();
+  await rejected;
+  expect(
+    readMany.mock.calls.find(
+      ([requests]) => requests[0]?.method !== 'eth_chainId'
+    )![1].signal.aborted
+  ).toBe(true);
+  requestLifetime = new AbortController();
+  const nextContext = readContext();
+  nextContext.originalRequest.sender = {
+    documentId: 'new',
+    frameId: 0,
+    tab: { id: 1 },
+  } as chrome.runtime.MessageSender;
+  const next = EthProvider(HOST, nextContext).unrestrictedRPCMethods(
+    'eth_getBalance',
+    [FROM, 'latest']
+  );
+  await new Promise((resolve) => setTimeout(resolve, 8));
+  replies.forEach((resolve) =>
+    resolve([{ status: 'fulfilled', value: '0x1' }])
+  );
+  await expect(next).resolves.toBe('0x1');
+  expect(
+    readMany.mock.calls.filter(
+      ([requests]) => requests[0]?.method !== 'eth_chainId'
+    )
+  ).toHaveLength(2);
 });

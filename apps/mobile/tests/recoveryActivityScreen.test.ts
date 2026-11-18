@@ -6,12 +6,14 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { AbiCoder, id } from 'ethers';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
 import { NativeActivity, type NativeActivityRuntime } from '../src/activity/nativeActivity.ts';
+import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
 import { activityAssetIcon } from '../src/activity/assetIcon.ts';
-import { getEvmTransactionDisplayInfo } from '../../../source/shared/evmTransactionDisplay.ts';
+import { getEvmTransactionDisplayInfo, type EvmDisplayTokenMetadata } from '../../../source/shared/evmTransactionDisplay.ts';
 import { mapEvmExplorerTokenTransfer, mapEvmExplorerTransaction } from '../../../source/shared/evmHistory.ts';
 import { activityRowDirection, matchesActivityView, zeroOnlyActivity } from '../src/activity/activityFiltering.ts';
 import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
@@ -236,6 +238,95 @@ function all(value: unknown): Element[] {
   return [node, ...node.children.flat(Infinity).flatMap(all)];
 }
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+async function indexedHistory(body: Record<string, unknown> | null, event?: Record<string, unknown>, assets: readonly EvmDisplayTokenMetadata[] = []) {
+  const scope = createActivityScope('a'.repeat(64), 'hd:60:0', '0x' + '22'.repeat(20), 'ethereum');
+  const requests: string[] = [];
+  const explorer = new ActivityExplorerReader(async (url, init) => {
+    assert.equal(init.body, undefined, 'list history never starts RPC'); requests.push(url);
+    return Response.json({ status: '1', message: 'OK', result: new URL(url).searchParams.get('action') === 'tokentx' ? event ? [event] : [] : body ? [body] : [] });
+  });
+  const runtime: NativeActivityRuntime = {
+    async load(check) { check(); return { scope, locals: [], assets, saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false } }; },
+    async saveCache(_scope, _rows, check) { check(); }, async saveView(_scope, _view, check) { check(); },
+  };
+  const controller = new NativeActivity({ getSnapshot: () => ({ phase: 'ready', revision: 1 }), subscribe: () => () => {} }, () => runtime,
+    explorer, { async read() { throw Error('No detail RPC expected'); } });
+  await controller.refresh();
+  return { controller, requests };
+}
+
+test('saved scoped metadata supplies the shared ERC20 amount while another chain remains unknown', async () => {
+  const owner = '0x' + '22'.repeat(20), recipient = '0x' + '33'.repeat(20), contract = '0x' + '44'.repeat(20);
+  const body = { hash, from: owner, to: contract, value: '0', blockNumber: '123', timeStamp: '1700000000', nonce: '0', isError: '0',
+    input: id('transfer(address,uint256)').slice(0, 10) + AbiCoder.defaultAbiCoder().encode(['address', 'uint256'], [recipient, '2000000']).slice(2) };
+  const event = { ...body, to: recipient, contractAddress: contract, value: '2000000', tokenSymbol: 'USDC', tokenDecimal: '6' };
+  for (const scenario of [{ chainId: 1, eventOnly: false }, { chainId: 137, eventOnly: false }, { chainId: 137, eventOnly: true }]) {
+    const { controller, requests } = await indexedHistory(scenario.eventOnly ? null : body, event,
+      [{ chainId: scenario.chainId, contractAddress: contract, decimals: 6, symbol: 'USDC' }]);
+    const f = fixture(undefined, false, { controller, externallyConnected: true });
+    try {
+      const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+      const row = controller.getSnapshot().rows[0]!;
+      const preview = list.props.renderItem({ item: row, index: 0 });
+      if (scenario.chainId === 1 || scenario.eventOnly) {
+        assert.equal(preview.props.amount, '-2 USDC'); assert.equal(preview.props.title, 'Sent');
+        assert.match(preview.props.label, /2(?:\.0+)? USDC/);
+      } else { assert.equal(preview.props.amount, ''); assert.equal(row.display?.hasUnknownDecimals, true); }
+      assert.equal(requests.length, 2);
+    } finally { f.dispose(); }
+  }
+});
+
+test('native-to-token swaps retain the displayed ETH debit and Received filtering preserves genuine self transfers', async () => {
+  const owner = '0x' + '22'.repeat(20), router = '0x' + '33'.repeat(20), pool = '0x' + '44'.repeat(20), contract = '0x' + '55'.repeat(20);
+  for (const kind of ['swap', 'ordinary', 'self'] as const) {
+    const body = { hash, from: owner, to: kind === 'self' ? owner : router, value: '1000000000000000000',
+      blockNumber: '123', timeStamp: '1700000000', nonce: '0', isError: '0',
+      input: kind === 'swap' ? id('swapExactETHForTokens(uint256,address[],address,uint256)').slice(0, 10) +
+        AbiCoder.defaultAbiCoder().encode(['uint256', 'address[]', 'address', 'uint256'], ['0', [router, contract], owner, '2000000000']).slice(2) : '0x' };
+    const event = { ...body, from: pool, to: owner, contractAddress: contract, value: '2000000', tokenSymbol: 'USDC', tokenDecimal: '6' };
+    const { controller, requests } = await indexedHistory(body, kind === 'swap' ? event : undefined);
+    const f = fixture(undefined, false, { controller, externallyConnected: true });
+    try {
+      let list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+      const preview = list.props.renderItem({ item: controller.getSnapshot().rows[0], index: 0 });
+      assert.equal(preview.props.title, kind === 'self' ? 'Self transfer' : 'Sent');
+      assert.equal(preview.props.amount, kind === 'self' ? '1 ETH' : '-1 ETH');
+      await controller.setView({ filter: 'received' });
+      list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+      assert.equal(list.props.data.length, kind === 'self' ? 1 : 0);
+      assert.equal(requests.length, 2);
+    } finally { f.dispose(); }
+  }
+});
+test('an already loaded indexed transaction opens without waiting for saved inventory', async () => {
+  const owner = '0x' + '22'.repeat(20);
+  const scope = createActivityScope('a'.repeat(64), 'hd:60:0', owner, 'ethereum');
+  const indexed = mapEvmExplorerTransaction({ hash, from: owner, to: '0x' + '33'.repeat(20), value: '1',
+    blockNumber: '123', timeStamp: '1700000000', nonce: '0', isError: '0', input: '0x' }, 1);
+  let savedReads = 0, detailReads = 0;
+  const held = new Promise<never>(() => {});
+  const runtime: NativeActivityRuntime = {
+    async load(check) { check(); return { scope, locals: [], saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false } }; },
+    async loadSavedPending() { savedReads++; return held; },
+    async saveCache(_scope, _rows, check) { check(); },
+    async saveView(_scope, _view, check) { check(); },
+  };
+  const controller = new NativeActivity({ getSnapshot: () => ({ phase: 'ready', revision: 1 }), subscribe: () => () => {} }, () => runtime,
+    { async page(_scope, feed) { return feed === 'txlist' ? [{ hash, blockNumber: '123', timestamp: 1700000000000, tokenHint: false, indexed }] : []; } },
+    { async read() { detailReads++; return null; } });
+  await controller.refresh();
+  const f = fixture(hash, true, { controller, detailOnly: true, externallyConnected: true });
+  try {
+    f.render();
+    await settle();
+    const tree = f.render();
+    assert.equal(savedReads, 0);
+    assert.equal(detailReads, 1);
+    assert(all(tree).some(node => node.type === 'TransactionDetailLayout'));
+  } finally { f.dispose(); }
+});
+
 test('actual Activity opens the saved record once and never replays it', async () => {
   const f = fixture(hash);
   try {
@@ -307,6 +398,61 @@ test('privacy masks Activity list quantities and accessibility labels but keeps 
     preview.props.onPress(); await settle();
     const detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
     assert.equal(detail.props.amount, '-1.25 ETH');
+  } finally { f.dispose(); }
+});
+
+test('common Activity accessibility labels retain localized direction with visible and hidden amounts', () => {
+  const owner = '0x' + '22'.repeat(20), other = '0x' + '33'.repeat(20);
+  for (const [from, to, movement] of [[owner, other, 'Sent'], [other, owner, 'Received'], [owner, owner, 'Self transfer'], [other, other, 'Activity']]) {
+    const row = { hash, checking: false, unavailable: false, observation: { from, to, status: 'confirmed', timestamp: 1700000000000,
+      valueUnits: '1000000000000000000', feeUnits: '21000', nonce: '0', block: { hash, number: '1' }, events: [] } };
+    const f = fixture();
+    try {
+      f.rows([row]);
+      for (const hidden of [false, true]) {
+        f.privacy(hidden);
+        const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+        const preview = list.props.renderItem({ item: row, index: 0 });
+        assert.equal(preview.props.title, movement);
+        assert(preview.props.label.startsWith(`${movement}. `));
+        assert.equal(preview.props.label.includes('ETH'), !hidden);
+        assert.equal(preview.props.label.includes('Amount hidden'), hidden);
+      }
+    } finally { f.dispose(); }
+  }
+});
+
+test('decoded ERC1155 batches retain total units and per-token quantities in Activity with privacy controls', async () => {
+  const owner = '0x' + '22'.repeat(20), recipient = '0x' + '33'.repeat(20), contract = '0x' + '55'.repeat(20);
+  const input = id('safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)').slice(0, 10) +
+    AbiCoder.defaultAbiCoder().encode(['address', 'address', 'uint256[]', 'uint256[]', 'bytes'],
+      [owner, recipient, ['7', '8'], ['2', '5'], '0x']).slice(2);
+  const indexed = mapEvmExplorerTransaction({ hash, from: owner, to: contract, value: '0', input,
+    blockNumber: '123', timeStamp: '1700000000', nonce: '0', isError: '0' }, 1);
+  const display = await getEvmTransactionDisplayInfo(indexed, 'ETH', {
+    chainId: 1, assets: [{ chainId: 1, contractAddress: contract, isNft: true, tokenSymbol: 'ITEM' }],
+    lookupToken: async () => { throw Error('Batch summary must not initiate metadata reads'); },
+  });
+  const row = { hash, indexed, display, indexedStatus: 'confirmed', checking: false, unavailable: false };
+  const f = fixture();
+  try {
+    f.rows([row]);
+    const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    const preview = list.props.renderItem({ item: row, index: 0 });
+    assert.equal(preview.props.amount, '-7 ITEM');
+    assert(!preview.props.label.includes('0 ETH'));
+    preview.props.onPress(); await settle();
+    let detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+    assert.equal(detail.props.amount, '-7 ITEM');
+    assert.deepEqual(display.nftTransfers, [{ tokenId: '7', quantity: '2' }, { tokenId: '8', quantity: '5' }]);
+    for (const [tokenId, quantity] of [['7', '2'], ['8', '5']])
+      assert.equal(detail.props.rows.find((item: { label: string }) => item.label === `ITEM #${tokenId}`)?.value, quantity);
+    f.privacy(true);
+    detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+    for (const tokenId of ['7', '8'])
+      assert.equal(detail.props.rows.find((item: { label: string }) => item.label === `ITEM #${tokenId}`)?.value, '••••');
+    const hiddenList = all(f.render()).find(node => node.type === 'FlatList'); assert(hiddenList);
+    assert.equal(hiddenList.props.renderItem({ item: row, index: 0 }).props.amount, '••••');
   } finally { f.dispose(); }
 });
 
@@ -423,15 +569,17 @@ test('Smart Activity details show the observed outer network fee and its actual 
     { retainedObservation: { status: 'missing', latestNonce: '0' }, expected: 'Actual fee not verified' },
     { retainedObservation: observation, observation: base.observation, expected: 'Actual fee not verified' },
     { retainedObservation: observation, unavailable: true, expected: 'Actual fee not verified' },
-    { retainedObservation: observation, indexed: {}, indexedStatus: 'pending', expected: 'Actual fee not verified' },
+    { retainedObservation: observation, indexed: {}, indexedStatus: 'pending', expected: '0.000000000000042 ETH' },
     { retainedObservation: observation, observation: { ...base.observation, status: 'confirmed', block: { hash: blockHash, number: '2' }, feeUnits: null }, expected: 'Actual fee not verified' },
     { retainedObservation: observation, observation: { ...base.observation, status: 'confirmed', block: { hash: blockHash, number: '2' }, feeUnits: '1' }, expected: '0.000000000000000001 ETH' },
+    { observation: { ...base.observation, status: 'unknown', block: { hash: blockHash, number: '3000000' }, feeUnits: '21000000000000' }, expected: '0.000021 ETH' },
+    { observation: { ...base.observation, status: 'unknown', block: null, feeUnits: '21000000000000' }, expected: 'Actual fee not verified' },
   ]) {
     const { expected, ...fields } = scenario, f = fixture();
     try {
       const tree = await openFixtureRow(f, { ...base, observation: undefined, local, ...fields });
       const detail = all(tree).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
-      assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.networkFee')).value, expected);
+      assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.networkFee')).value, expected, JSON.stringify(fields));
       assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('transactions.feePayer')).value, payer);
     } finally { f.dispose(); }
   }
@@ -610,7 +758,7 @@ test('scoped Smart Activity exposes replacement navigation without direct signer
     Object.assign(row.local, { accountId: 'smart:60:0', smartAccount: { payer: row.local.address,
       operations: [{ operationHash: '0x' + 'ab'.repeat(32), operationNonce: '0' }] } });
     const tree = await openFixtureRow(f, row);
-    for (const title of ['Speed Up', 'Cancel pending transaction']) {
+    for (const title of ['Speed Up', 'Cancel instruction']) {
       const button = all(tree).find(node => node.type === 'Button' && node.props.title === title); assert(button, title);
       button.props.onPress(); await settle();
     }
@@ -653,12 +801,12 @@ for (const scenario of [
     await openFixtureRow(f, row);
     f.rows([row, ...(scenario.descendant ? [speedUp] : []), cancellation]);
     const tree = all(f.render());
-    for (const title of ['Speed Up', 'Cancel pending transaction']) {
+    for (const title of ['Speed Up', 'Cancel instruction']) {
       const button = tree.find(node => node.type === 'Button' && node.props.title === title);
-      assert.equal(!!button, scenario.allowed, title);
+      assert.equal(!!button, title === 'Cancel instruction' || scenario.allowed, title);
       if (button) { button.props.onPress(); await settle(); }
     }
-    assert.deepEqual(navigation, scenario.allowed ? [['speed-up', hash], ['cancel', hash]] : []);
+    assert.deepEqual(navigation, scenario.allowed ? [['speed-up', hash], ['cancel', hash]] : [['cancel', hash]]);
   } finally { f.dispose(); }
 });
 
@@ -876,4 +1024,33 @@ for (const language of ['fr', 'ja']) test(`production Activity controller messag
       } finally { f.dispose(); c.controller.invalidate(); }
     });
   } finally { await englishI18n.changeLanguage('en'); }
+});
+
+for (const status of ['pending', 'missing'] as const) for (const privateWithdrawal of [false, true])
+test(`Activity ${status} generic Cancel respects retained private-withdrawal authority (${privateWithdrawal})`, async () => {
+  const f = fixture(undefined, false, { onReplay() {}, onCancelPending() {}, onCancelSaved() {} });
+  try {
+    const base = pendingScopedRow();
+    const row = { ...base, local: { ...base.local, inspectionOnly: false,
+      ...(privateWithdrawal ? { cancellationUnavailable: true } : {}) },
+      ...(status === 'missing' ? { observation: undefined, retainedObservation: { status: 'missing', latestNonce: '0' } } : {}) };
+    const tree = all(await openFixtureRow(f, row));
+    const title = status === 'pending' ? 'Cancel pending transaction' : 'Cancel saved transaction';
+    assert.equal(tree.some(node => node.type === 'Button' && node.props.title === title), !privateWithdrawal);
+    assert(tree.some(node => node.type === 'Button' && node.props.title === 'Review resend'), 'existing retained bytes remain reviewable');
+  } finally { f.dispose(); }
+});
+
+for(const blocked of ['none','private-withdrawal','cancellation','multiple'] as const)test(`historical Smart instruction cancellation is independent of its consumed outer nonce (${blocked})`,async()=>{
+ const navigation:[string,string][]=[];const f=fixture(undefined,false,{onNavigateToReview:(action:string,value:string)=>navigation.push([action,value])});
+ try{
+  const base=pendingScopedRow();
+  const row={...base,observation:undefined,retainedObservation:{status:'missing',latestNonce:'1'},local:{...base.local,phase:'reverted',
+    ...(blocked==='private-withdrawal'?{cancellationUnavailable:true}:{}),smartAccount:{payer:base.local.address,
+      operations:Array.from({length:blocked==='multiple'?2:1},(_,i)=>({operationHash:'0x'+(i?'cd':'ab').repeat(32),operationNonce:'0'})),
+      ...(blocked==='cancellation'?{cancellation:true}:{})}}};
+  const tree=all(await openFixtureRow(f,row));const action=tree.find(node=>node.type==='Button'&&node.props.title==='Cancel instruction');
+  assert.equal(!!action,blocked==='none');assert(!tree.some(node=>node.type==='Button'&&['Cancel pending transaction','Cancel saved transaction'].includes(node.props.title)));
+  if(action){action.props.onPress();await settle();assert.deepEqual(navigation,[['cancel',hash]]);}
+ }finally{f.dispose();}
 });

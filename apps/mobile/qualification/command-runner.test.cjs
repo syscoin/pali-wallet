@@ -32,7 +32,7 @@ const zksysEvidence = (phase = 'create') => ({
   zksysAddress: '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA',
   zksysTransferHash: '0x' + '9'.repeat(64), zksysChainId: '57057', zksysJournalContainerVersion: 1,
   zksysSignatures: phase === 'create' ? 1 : 0, zksysAuthorizations: phase === 'create' ? 0 : 1,
-  zksysInjectedBroadcasts: 1, zksysFeeEstimates: phase === 'create' ? 2 : 0,
+  zksysInjectedBroadcasts: 1, zksysFeeEstimates: phase === 'create' ? 3 : 0,
   zksysRestoredFromJournal: phase === 'restart',
 });
 

@@ -1,6 +1,6 @@
 import { Menu } from '@headlessui/react';
 import { Badge } from 'antd';
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -55,15 +55,11 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
   // Check if there are ANY connected dapps
   const hasAnyConnectedDapps = Object.keys(dapps).length > 0;
 
-  const [currentTab, setCurrentTab] = useState({
-    host: '',
-    isConnected: false,
-  });
+  const [currentTabHost, setCurrentTabHost] = useState('');
   const resetSearchOnOpen = useRef(false);
 
-  // Use hasAnyConnectedDapps OR current tab connection for the icon color
-  const className =
-    hasAnyConnectedDapps || currentTab.isConnected ? 'success' : 'error';
+  // Membership comes from current Redux state, never an older tab observation.
+  const className = hasAnyConnectedDapps ? 'success' : 'error';
 
   const handleSettingsNavigation = (pathname: string) =>
     navigateWithContext(
@@ -79,26 +75,24 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
     navigate('/');
   };
 
-  // Function to check current tab connection status
-  const checkTabConnectionStatus = useCallback(async () => {
-    try {
-      const tabs = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-      if (tabs[0]?.url) {
-        const host = getDappOrigin(tabs[0].url) || '';
-        const isConnected = !!dapps[host];
-        setCurrentTab({ host, isConnected });
-      }
-    } catch (error) {
-      console.error('Error checking tab connection status:', error);
-    }
-  }, [dapps]);
-
   useEffect(() => {
-    checkTabConnectionStatus();
-  }, [checkTabConnectionStatus]);
+    let current = true;
+    void (async () => {
+      try {
+        const tabs = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        if (current) setCurrentTabHost(getDappOrigin(tabs[0]?.url || '') || '');
+      } catch (error) {
+        if (current) setCurrentTabHost('');
+        console.error('Error checking tab connection status:', error);
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [dapps]);
 
   // State updates are handled automatically by the background script
   // via CONTROLLER_STATE_CHANGE messages and Redux store updates
@@ -109,7 +103,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
     >
       {({ open }) => (
         <>
-          <Tooltip content={truncate(currentTab.host)}>
+          <Tooltip content={truncate(currentTabHost)}>
             <button
               type="button"
               aria-label={t('settings.connectedSites')}

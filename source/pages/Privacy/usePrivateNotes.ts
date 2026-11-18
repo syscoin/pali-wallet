@@ -51,7 +51,7 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
     poolId: pool.id,
     amount: pool.amount,
     createdAt: note.createdAt,
-    phase: withdrawal && note.phase !== 'spent' ? 'waiting' : note.phase,
+    phase: note.phase,
     ...(note.restoration ? { restoration: note.restoration } : {}),
     ...(withdrawal
       ? {

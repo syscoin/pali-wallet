@@ -317,6 +317,7 @@
     "viewOnNamedExplorer": "{{explorer}} エクスプローラーで表示",
     "importToken": "トークンインポート",
     "youHaveNoTokens": "トークンやNFTがありません",
+    "youHaveNoFungibleTokens": "トークンがありません。",
     "youHaveNoTxs": "取引履歴がありません",
     "historyMayBeIncomplete": "エクスプローラー API がない場合、取引履歴が不完全になる可能性があります。",
     "seeAllTxs": "全取引を表示",
@@ -335,7 +336,10 @@
     "ifYouHaveAHardWallet": "ハードウェアウォレットをお持ちの場合は、今すぐ接続できます！",
     "congratulations": "おめでとう！",
     "youWalletWas": "ウォレットのインポートに成功しました",
-    "youHaveNoNfts": "NFTはありません。"
+    "youHaveNoNfts": "NFTはありません。",
+    "noIndexedActivity": "アクティビティは見つかりませんでした。NFTや内部転送はここに表示されない場合があります。",
+    "savedActivityUnavailable": "保存されたアクティビティを読み込めませんでした。",
+    "retrySavedActivity": "保存されたアクティビティを再読み込み"
   },
   "titles": {
     "assetDetails": "資産詳細",
@@ -593,6 +597,7 @@
     "calculating": "計算中...",
     "unableToLoad": "読み込めません",
     "smartAccountPendingReview": "保存されたスマートアカウントの取引が未解決です。別の取引を送信する前に、アクティビティを開いて確認してください。",
+    "smartAccountPayerPending": "この操作を続行するには、手数料支払者の先行トランザクションが承認される必要があります。承認を待ってから、もう一度お試しください。",
     "feeUnavailable": "手数料が利用できません",
     "plusGasFee": " + ガス手数料",
     "plusNetworkFee": " + ネットワーク手数料",
@@ -1023,7 +1028,10 @@
     "smartAccountGuardianRecoveryExpired": "この復元リクエストは完了前に期限切れになりました。もう一度復元を開始してください。",
     "invalidAddress": "無効なアドレスです",
     "changeHardwareDevice": "デバイスを変更",
-    "closeHardwareSetup": "設定を閉じる"
+    "closeHardwareSetup": "設定を閉じる",
+    "smartAccountFeeReviewTitle": "ネットワーク手数料を確認",
+    "smartAccountFeeReviewSelectedAccount": "選択したアカウント",
+    "smartAccountFeeReviewMaximumTotal": "最大合計費用"
   },
   "start": {
     "eraseAndStartFresh": "消去して最初から始める",
@@ -1098,6 +1106,21 @@
     "coinGeckoListingUnavailable": "掲載情報を取得できません"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "元の参照",
+      "title": "署名済みの指示",
+      "empty": "保存された署名済み指示はありません",
+      "mayExecute": "この指示はまだ実行される可能性があります",
+      "nonceConsumedUnknown": "nonceは使用済みですが結果は不明です",
+      "observedSuccess": "指示の成功を確認",
+      "observedFailure": "指示の失敗を確認",
+      "checkStatus": "状態を確認",
+      "cancelInstruction": "指示を取り消す",
+      "unavailable": "署名済み指示を取得できません。再試行してください。",
+      "operationHash": "オペレーションハッシュ"
+    },
+    "smartAccountCancelUnavailable": "この操作は取り消せません。署名済みの指示が引き続き実行される可能性があります。",
+    "smartAccountCancelDescription": "同じnonceで空の操作を送信し、このスマートアカウントの指示を取り消します。元の操作が先に承認される場合があります。ネットワークが置換操作を承認した時点で取り消しが完了します。",
     "feePayer": "手数料の支払元",
     "labelCopied": "{{label}}をクリップボードにコピーしました",
     "decodeDetailsFailed": "トランザクション詳細をデコードできませんでした",
@@ -1279,6 +1302,7 @@
     "checkYourDevice": "{{device}} でこのリクエストを承認してください",
     "useYourPasskey": "パスキーを使用してください",
     "passkeyPrompt": "ブラウザの指示に従ってパスキーで署名してください",
+    "smartAccountAuthorizationRetained": "スマートアカウントの操作はすでに署名されています。このガス代を拒否しても操作は取り消されず、nonce が使用されるまで実行される可能性があります。",
     "cancelFeePreview": "キャンセルのネットワーク手数料を確認中…",
     "cancelFeeConsent": "最大ガス手数料 {{fee}} {{currency}} でこの取引をキャンセルしますか？",
     "cancelFeeUnavailable": "キャンセル手数料を確認できません。もう一度お試しください。",
@@ -1331,7 +1355,8 @@
         "erc721": "NFT 送信",
         "erc1155": "NFT 送信"
       }
-    }
+    },
+    "detailsUnavailable": "取引の詳細を読み込めませんでした。もう一度お試しください。"
   },
   "switchNetworkPage": {
     "chainFallback": "チェーン{{chainId}}",
@@ -1440,7 +1465,8 @@
     "firstAccessTitle": "フォーセットで ${{token}} を取得して {{network}} ネットワークの体験を始めましょう！",
     "firstAccessDescription": "ウォレットアドレスごとに24時間ごとに{{token}}を取得できます。",
     "grabTokens": "フォーセットに移動",
-    "rateLimited": "フォーセットはリクエストを制限しています。詳しくはフォーセットをご確認ください。"
+    "rateLimited": "フォーセットはリクエストを制限しています。詳しくはフォーセットをご確認ください。",
+    "requestTimedOut": "リクエストがタイムアウトしました。再度トークンを受け取る前に残高を確認してください。"
   },
   "nftDetails": {
     "information": "NFT 情報",
@@ -1773,7 +1799,7 @@
       "reconciliation": "出金前に復元したノートを確認してください。記録された出金処理を先に解決する必要があります。保存された履歴から出金が再実行されることはありません。",
       "expires": "この確認は5分後に期限切れになります。",
       "confirmRestore": "ノートを復元",
-      "restored": "復元を確認しました。出金前に復元したノートを確認してください。出金処理が記録されたノートは、解決するまで使用できません。",
+      "restored": "ノートを復元しました。出金する前にプール内の状態を確認してください。",
       "unconfirmed": "復元は未確認です。すでに保存されている可能性があります。受領記録を確認し、再送信しないでください。",
       "checkReceipt": "復元の受領記録を確認",
       "receiptUnavailable": "一致する受領記録は確認できませんでした。復元の失敗を意味するものではありません。やり直す前に保存済みのノートを確認してください。",
@@ -1861,10 +1887,10 @@
       "error": "上限を変更できませんでした。保存済みノートが上限内に収まることを確認して再試行してください。",
       "save": "上限を保存",
       "reportedSpent": "使用済みと報告されたノート（{{count}}件）",
-      "clear": "完了したノートを消去",
-      "clearHelp": "選択中のEthereum RPCには、既知の引き出しのハッシュと、存在する場合は関連する入金のハッシュが送られ、プロバイダーが両者を関連付ける可能性があります。そのRPCが引き出しの完了と関連する入金の確定を確認したノートのみ削除し、未確認のノートは保存します。",
-      "confirmClear": "確認して消去",
-      "clearResult": "削除: {{removed}}件。保存継続: {{unresolved}}件。",
+      "clear": "完了したノートをアーカイブ",
+      "clearHelp": "選択したEthereum RPCに既知の出金と関連する入金のトランザクションハッシュが送信され、提供者がそれらを関連付けられる場合があります。このRPCが確定済みと報告したノートのみ暗号化してアーカイブし、その他はアクティブなまま残します。アーカイブ済みノートはアクティブなノートの上限に含まれません。",
+      "confirmClear": "確認してアーカイブ",
+      "clearResult": "アーカイブ済み：{{removed}}件。引き続きアクティブ：{{unresolved}}件。",
       "clearError": "ノートの確認を完了できませんでした。更新して残りを確認してください。",
       "clearProgress": "{{total}}件中{{checked}}件を確認しました。",
       "storedBytes": "シリアル化された暗号化保管庫: {{bytes}}バイト。"
@@ -1901,6 +1927,9 @@
       "backupFailed": "ノートのバックアップを開けませんでした。再試行してください。"
     },
     "withdrawal": {
+      "pendingProofWarning": "以前の出金が完了する可能性があります。続行しても以前の出金は取り消されず、競合するトランザクションが失敗して手数料が発生することがあります。",
+      "competingConfirm": "競合する出金を送信",
+      "previousAttempts": "以前の出金",
       "watchOnlyDirectUnavailable": "直接出金には秘密鍵が必要です。このアカウントは閲覧専用です。",
       "title": "ノートを出金",
       "open": "出金",
@@ -1946,12 +1975,12 @@
       "notBroadcast": "トランザクションは送信されませんでした。再度確定する前に確認を更新してください。"
     },
     "recovery": {
-      "action": "失敗した出金を復旧",
-      "help": "取引の失敗が確定し、元の証明が実行できなくなった場合にのみ復旧できます。ノートと出金履歴は保持されます。新しい出金には再確認が必要です。",
-      "disclosure": "この確認では、取引ハッシュ、元の証明のルート、ノートの公開ヌリファイアを選択中のEthereum RPCに送信します。",
+      "action": "出金の復旧可否を確認",
+      "help": "復旧には、公開済み証明のルートが受け付けられず、ノートが未使用であることをファイナライズ済みの状態で確認する必要があります。直接出金では、トランザクションの失敗または手数料支払者のnonceの使用もファイナライズされている必要があります。ノートと出金履歴は保持されます。新たな出金には再確認が必要です。",
+      "disclosure": "この確認では、元の証明ルートとノートの公開nullifierを選択中のEthereum RPCと共有します。直接出金では、手数料支払者のアドレスとトランザクションハッシュも共有します。保存済みの証明入力を復元するため、過去のリレージョブを照会する場合があります。",
       "password": "ウォレットのパスワード",
       "failed": "復旧を確認できませんでした。元の証明がまだ有効、ノートが使用済み、または証拠が取得できない可能性があります。更新してから再試行してください。",
-      "checking": "確定済み取引と証明の失効を確認中…",
+      "checking": "ファイナライズ済みの状態で証明の失効を確認中…",
       "confirm": "確認して復旧"
     },
     "restoreReview": {
@@ -1960,11 +1989,29 @@
       "disclosure": "復元しても以前の出金は取り消されず、このノートの他のコピーも無効にはなりません。",
       "snapshot": "ブロック {{block}} まで検証済みのプールデータです。保存されたデータであり、リアルタイムのチェーン確認ではありません。",
       "noSnapshot": "このノートを確認する前に、プールデータを準備または更新してください。",
-      "pending": "このノートには出金記録があります。新たな出金を開始する前に、その状態を確認してください。",
+      "pending": "以前の出金履歴が保存されています。別の出金を送信する前に確認してください。",
       "password": "ウォレットのパスワード",
       "confirm": "ノートの確認を承認",
       "busy": "確認結果を保存中…",
       "failed": "確認結果を保存できませんでした。パスワードとプールデータを確認し、もう一度お試しください。"
+    },
+    "archive": {
+      "title": "アーカイブ済みノート",
+      "help": "完了したノートは、復元するかアーカイブを消去するまで暗号化して保管されます。アクティブなノートの上限には含まれません。",
+      "empty": "アーカイブ済みノートはありません",
+      "restore": "ノートを復元",
+      "restored": "アクティブなノートに復元しました",
+      "clear": "アーカイブを消去",
+      "confirmClear": "アーカイブ済みノートを完全に削除",
+      "warning": "リカバリーフレーズではこれらのノートを復元できません。使用済みであることを確認するか、利用可能なバックアップを保管してから削除してください。",
+      "confirmBackup": "使用済みであることを確認したか、利用可能なバックアップを保管しました",
+      "clearResult": "{{count}}件のアーカイブ済みノートを削除しました",
+      "loadError": "アーカイブを読み込めませんでした。再試行してください。",
+      "actionError": "アーカイブを更新できませんでした。画面を更新してから再試行してください。",
+      "full": "アーカイブの保存容量がいっぱいです。空き容量を作るために消去する前に、暗号化バックアップをエクスポートしてください。",
+      "capacity": "アーカイブ済みノート：{{count}} / {{limit}}",
+      "activeFull": "アクティブなノートの上限に達しています。完了したノートをアーカイブするか、上限を増やしてから復元してください。",
+      "alreadyArchived": "このノートはアーカイブ済みです。再び使用するには「アーカイブ済みノート」を開き、復元してください。"
     }
   },
   "mobile": {
@@ -2513,7 +2560,7 @@
         "addNotesFromAnEncryptedFile": "暗号化ファイルからノートを追加",
         "changeTheSavedNoteLimit": "保存ノート数の上限を変更",
         "manageCompletedNotes": "完了したノートを管理",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "完了したノートを削除、または失敗した出金を復旧",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "完了したノートのアーカイブ、または失敗した出金の復旧",
         "serviceOriginAndPublicPoolData": "サービスのオリジンと公開プールデータ",
         "verifyBackup": "バックアップを確認",
         "backupVerified": "バックアップ確認済み",
@@ -2597,7 +2644,7 @@
       },
       "maintenance": {
         "chooseNote": "検証して削除する保存済みノートを1つ選択してください。各試行では、そのノートだけを確認します。",
-        "clearHelp": "選択した Ethereum RPC には、このノートの既知の出金トランザクションハッシュと、存在する場合は関連する入金トランザクションハッシュが送信されます。これにより、そのプロバイダーが入金と出金を関連付ける可能性があります。この RPC が処理の完了と関連する入金の決済が確定したことを確認した場合にのみ、このノートだけが削除されます。それ以外の場合は保存されたままです。"
+        "clearHelp": "選択したEthereum RPCに既知の出金と関連する入金のトランザクションハッシュが送信され、提供者がそれらを関連付けられる場合があります。このRPCが確定済みと報告したノートのみ暗号化してアーカイブし、その他はアクティブなまま残します。アーカイブ済みノートはアクティブなノートの上限に含まれません。"
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "ノート数の上限を読み込めませんでした。",
@@ -3092,13 +3139,10 @@
         "thisReviewExpiredPrepareAFreshReviewBeforeConfirming": "この確認は期限切れです。確定前に新しく確認を準備してください。",
         "thisNoteHasASavedWithdrawalCheckItsStatusBefore": "このノートには保存済みの引き出しがあります。再試行前に状態を確認してください。",
         "checkThePoolDataBeforePreparingThisWithdrawal": "この引き出しを準備する前にプールのデータを確認してください。",
-        "couldNotReviewThisRestoredNoteTryAgain": "復元したノートを確認できませんでした。再試行してください。",
         "thisWithdrawalIsUnavailableInTheCurrentAccountOrNetwork": "この引き出しは現在のアカウントまたはネットワークでは利用できません。",
         "couldNotCompleteThisRequestCheckThePoolDataAnd": "リクエストを完了できませんでした。プールのデータとネットワークを確認し、再試行してください。",
-        "reviewingNote": "ノートを確認中…",
         "preparingProof": "証明を準備中…",
         "ethereumMainnetPrivateNote": "Ethereumメインネット · プライベートノート",
-        "reviewThisRestoredNoteBeforeWithdrawing": "引き出す前に復元したノートを確認してください。",
         "withdrawalDelivery": "引き出し方法",
         "thisAccountCannotSignADirectWithdrawal": "このアカウントでは直接引き出しに署名できません。",
         "refreshRelayers": "リレイヤーを更新",
@@ -3801,7 +3845,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "7日中{{day}}日目",
       "priceHistory": "価格履歴",
       "inspectHint": "上下にスワイプして価格の各時点を移動します。",
       "nextPrice": "次の価格",

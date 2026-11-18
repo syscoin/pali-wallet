@@ -2,19 +2,27 @@ import { emptyNoncePlanner } from './noncePlannerFixture.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { createNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
 
 const from = '0x1111111111111111111111111111111111111111';
 const to = '0x2222222222222222222222222222222222222222';
 const hash = `0x${'a'.repeat(64)}`;
 const blockHash = `0x${'b'.repeat(64)}`;
-function fixture(network: NativeNetworkRegistration, legacy = false) {
+function fixture(network: NativeNetworkRegistration, legacy = false, scalarOnly = false) {
   const calls: { method: string; params: unknown[] }[] = [];
+  let requests = 0;
   let receipt: unknown = { transactionHash: hash, from, to, status: '0x1', blockNumber: '0x10', blockHash };
   let nonce = '0x1', gas = '0x5208', balance = '0xffffffffffffffff';
   let wrongChain = false, unsupportedTip = false;
   let estimateHook: (() => void) | undefined;
-  const fetcher = async (_url: string, init: RequestInit) => {
+  const fetcher = async (_url: string, init: RequestInit): Promise<Response> => {
+    const request = JSON.parse(String(init.body));
+    if (Array.isArray(request)) {
+      if (scalarOnly) { requests++; return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch requests not supported' } }); }
+      return Response.json(await Promise.all(request.map(async row => (await fetcher(_url, { ...init, body: JSON.stringify(row) })).json())));
+    }
+    requests++;
     assert.equal(_url, network.rpcUrl);
     const body = JSON.parse(String(init.body));
     calls.push(body);
@@ -37,11 +45,37 @@ function fixture(network: NativeNetworkRegistration, legacy = false) {
     }
     return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), { headers: { 'content-type': 'application/json' } });
   };
-  return { calls, rpc: new NativeTransferRpc({ registration: network, fetch: fetcher }), setReceipt: (value: unknown) => { receipt = value; },
+  return { calls, get requests() { return requests; }, rpc: new NativeTransferRpc({ registration: network, fetch: fetcher }),
+    readRpc: new EvmTransferReadRpc(network, { fetch: fetcher }), setReceipt: (value: unknown) => { receipt = value; },
     setNonce: (value: string) => { nonce = value; }, setGas: (value: string) => { gas = value; }, setBalance: (value: string) => { balance = value; },
     onEstimate: (hook: () => void) => { estimateHook = hook; },
     wrongChain: () => { wrongChain = true; }, unsupportedTip: () => { unsupportedTip = true; } };
 }
+test('a scalar-only custom endpoint retains quote and requote while approved fees avoid market reads', async () => {
+  const f = fixture(createNativeNetwork({ id: 'scalar-network', name: 'Scalar network', kind: 'evm', chainId: '921343', slip44: 60,
+    rpcUrl: 'https://scalar.example/rpc', symbol: 'TST', decimals: 18, testnet: true }), false, true);
+  const signal = new AbortController().signal;
+  const quote = await f.rpc.prepare(from, to, '100', signal, undefined, emptyNoncePlanner);
+  const offset = f.calls.length;
+  const refresh = await f.rpc.requote(quote.transaction, signal, undefined, undefined, emptyNoncePlanner);
+  assert.deepEqual(refresh.transaction, quote.transaction);
+  assert.equal(f.calls.slice(offset).some(call => call.method === 'eth_gasPrice' || call.method === 'eth_maxPriorityFeePerGas'), false);
+  assert.equal(f.calls.slice(offset).filter(call => call.method === 'eth_chainId').length, 2);
+  assert(f.requests > 0);
+});
+test('private withdrawal fee observations retain shared nonce and fixed-gas funding checks', async () => {
+  const f = fixture(createNativeNetwork({ id: 'private-fees', name: 'Private fees', kind: 'evm', chainId: '921344', slip44: 60,
+    rpcUrl: 'https://private-fees.example/rpc', symbol: 'TST', decimals: 18, testnet: true }));
+  const fees = await f.readRpc.withdrawalFees(from, emptyNoncePlanner, new AbortController().signal, () => {});
+  assert(fees);
+  assert.equal(f.calls.filter(call => call.method === 'eth_chainId').length, 2);
+  assert.equal(f.calls.filter(call => call.method === 'eth_getTransactionCount').length, 3);
+  assert.equal(f.calls.filter(call => call.method === 'eth_getBalance').length, 2);
+  f.calls.length = 0;
+  assert(BigInt(await f.readRpc.withdrawalGasPrice(new AbortController().signal, () => {})) > 0n);
+  assert.equal(f.calls.filter(call => call.method === 'eth_chainId').length, 2);
+  assert.equal(f.calls.some(call => call.method === 'eth_getBalance' || call.method === 'eth_getTransactionCount'), false);
+});
 const custom = (id: string, chainId: string) => createNativeNetwork({ id, name: id, kind: 'evm', chainId, slip44: 60, rpcUrl: `https://${id}.example/rpc`, symbol: 'TEST', decimals: 18, testnet: true });
 for (const legacy of [false, true]) test(`native MAX quotes an unlisted ${legacy ? 'legacy' : 'dynamic-fee'} chain with exact fee coverage`, async () => {
   const f = fixture(custom('maximum-chain', '98760'), legacy), signal = new AbortController().signal;

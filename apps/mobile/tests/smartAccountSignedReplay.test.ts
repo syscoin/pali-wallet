@@ -6,6 +6,7 @@ import { createSmartAccountSignedReplay } from '../../../source/wallet/smartAcco
 import { observeSmartAccountOperations } from '../../../source/wallet/smartAccountActivity.ts';
 import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
 import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
+import { captureSmartAccountCallsIdentity } from '../../../source/shared/dappCallsStatus.ts';
 import { encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
 import {
   getPaliEntryPointAddress,
@@ -29,7 +30,14 @@ async function fixture() {
     wrongPayer = false,
     rpcFailed = false,
     receipt: any = null;
+  let simulationSuccess = true,
+    pendingNonce = 0,
+    canonicalHash = blockHash,
+    reorgDuringSimulation = false;
+  const accepted = new Map<string, Transaction>();
+  const simulations: any[][] = [];
   let beforeRead: (() => Promise<void>) | undefined;
+  let beforeSimulation: (() => Promise<void>) | undefined;
   const dispatched: string[] = [],
     calls: string[] = [];
   const session = signedRecordTestSession();
@@ -60,14 +68,77 @@ async function fixture() {
       url: 'https://offline.invalid',
     },
   };
-  const read = async (method: string) => {
+  const read = async (method: string, params: readonly unknown[] = []) => {
     calls.push(method);
     if (rpcFailed) throw new Error('RPC unavailable');
     if (method === 'eth_chainId') return '0x1';
-    if (method === 'eth_getTransactionCount') return '0x0';
+    if (method === 'eth_getTransactionCount')
+      return params[1] === 'pending' ? `0x${pendingNonce.toString(16)}` : '0x0';
     if (method === 'eth_getTransactionReceipt') return receipt;
     if (method === 'eth_getBlockByNumber')
-      return { number: '0x10', hash: blockHash, gasLimit: '0x100000' };
+      return { number: '0x10', hash: canonicalHash, gasLimit: '0x100000' };
+    if (method === 'eth_getTransactionByHash') {
+      const tx = accepted.get(String(params[0]));
+      return tx
+        ? {
+            hash: tx.hash,
+            blockHash: null,
+            blockNumber: null,
+            from: tx.from,
+            to: tx.to,
+            input: tx.data,
+            chainId: `0x${tx.chainId.toString(16)}`,
+            gas: `0x${tx.gasLimit.toString(16)}`,
+            gasPrice: `0x${tx.gasPrice!.toString(16)}`,
+            nonce: `0x${tx.nonce.toString(16)}`,
+            type: '0x0',
+            value: `0x${tx.value.toString(16)}`,
+          }
+        : null;
+    }
+    if (method === 'eth_simulateV1') {
+      await beforeSimulation?.();
+      const transactions = (params[0] as any).blockStateCalls[0].calls;
+      simulations.push(transactions);
+      const last = transactions[transactions.length - 1];
+      const operation = paliEntryPointInterface.decodeFunctionData(
+        'handleOps',
+        last.data
+      )[0][0];
+      const identity = captureSmartAccountCallsIdentity(operation, 1);
+      const event = paliEntryPointInterface.encodeEventLog(
+        paliEntryPointInterface.getEvent('UserOperationEvent')!,
+        [
+          identity.userOpHash,
+          operation.sender,
+          '0x' + '00'.repeat(20),
+          operation.nonce,
+          simulationSuccess,
+          1,
+          1,
+        ]
+      );
+      const parent = canonicalHash;
+      if (reorgDuringSimulation) canonicalHash = '0x' + '55'.repeat(32);
+      return [
+        {
+          number: '0x11',
+          parentHash: parent,
+          transactions: transactions.map((tx: any) => ({
+            ...tx,
+            input: tx.data,
+          })),
+          calls: transactions.map((_: unknown, index: number) => ({
+            status: '0x1',
+            gasUsed: '0x100',
+            logs:
+              index === transactions.length - 1
+                ? [{ ...event, address: last.to }]
+                : [],
+          })),
+        },
+      ];
+    }
     throw new Error(method);
   };
   const replay = createSmartAccountSignedReplay(
@@ -84,9 +155,15 @@ async function fixture() {
         chainId: '1',
         recordSession: { ...session, assertCurrent: check },
         assertCurrent: check,
-        read: async (method, _params, current) => {
+        read: async (method, params, current) => {
           current();
-          return read(method);
+          return read(method, params);
+        },
+        runReadPhase: async (current, work) => {
+          current();
+          const result = await work({ send: read });
+          current();
+          return result;
         },
         capturePayer: () => ({
           context: wrongPayer
@@ -188,6 +265,7 @@ async function fixture() {
       },
       options.metadata
     );
+    accepted.set(entry.hash, tx);
     return { entry, operation };
   }
   return {
@@ -198,6 +276,16 @@ async function fixture() {
     append,
     dispatched,
     calls,
+    simulations,
+    failExecution() {
+      simulationSuccess = false;
+    },
+    reorgDuringSimulation() {
+      reorgDuringSimulation = true;
+    },
+    pendingNonce(value: number) {
+      pendingNonce = value;
+    },
     wrongPayer() {
       wrongPayer = true;
     },
@@ -218,6 +306,9 @@ async function fixture() {
     },
     beforeRead(callback: () => Promise<void>) {
       beforeRead = callback;
+    },
+    beforeSimulation(callback: () => Promise<void>) {
+      beforeSimulation = callback;
     },
     mined(value: any) {
       receipt = value;
@@ -556,6 +647,74 @@ test('the existing replay engine consumes confirmation once', async () => {
   });
   await first;
   assert.deepEqual(f.dispatched, [entry.rawTransaction]);
+  assert.equal(f.simulations.length, 1);
+});
+
+test('a retained Smart resend rechecks frozen execution before dispatch', async () => {
+  const f = await fixture(),
+    { entry } = await f.append();
+  const review = await f.replay.prepare(entry.hash);
+  if (review.status !== 'review') assert.fail();
+  f.failExecution();
+  await assert.rejects(
+    f.replay.confirm(review.review.id),
+    /Unable to verify smart account execution/
+  );
+  assert.equal(f.simulations.length, 1);
+  assert.equal(f.dispatched.length, 0);
+});
+
+test('a retained Smart resend rejects a reorg during final simulation', async () => {
+  const f = await fixture(),
+    { entry } = await f.append();
+  const review = await f.replay.prepare(entry.hash);
+  if (review.status !== 'review') assert.fail();
+  f.reorgDuringSimulation();
+  await assert.rejects(
+    f.replay.confirm(review.review.id),
+    /Unable to verify smart account execution/
+  );
+  assert.equal(f.dispatched.length, 0);
+});
+
+test('a queued Smart resend obtains its exact predecessor from the admission snapshot', async () => {
+  const f = await fixture(),
+    { entry } = await f.append({ nonce: 1 });
+  f.pendingNonce(1);
+  const review = await f.replay.prepare(entry.hash);
+  if (review.status !== 'review') assert.fail();
+  const prior = await f.append({ plain: true });
+  await f.replay.confirm(review.review.id);
+  assert.equal(f.simulations[0]?.length, 2);
+  assert.equal(f.simulations[0]?.[0].to.toLowerCase(), recipient.toLowerCase());
+  assert.equal(f.simulations[0]?.[0].nonce, '0x0');
+  assert.deepEqual(f.dispatched, [entry.rawTransaction]);
+  assert.notEqual(prior.entry.hash, entry.hash);
+});
+
+test('revoking a Smart resend while simulation is held prevents dispatch', async () => {
+  const f = await fixture(),
+    { entry } = await f.append();
+  const review = await f.replay.prepare(entry.hash);
+  if (review.status !== 'review') assert.fail();
+  let started!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let resume!: () => void;
+  const held = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  f.beforeSimulation(async () => {
+    started();
+    await held;
+  });
+  const confirmation = f.replay.confirm(review.review.id);
+  await waiting;
+  f.replay.cancel();
+  resume();
+  await assert.rejects(confirmation, /Owner changed|CONTEXT_CHANGED/);
+  assert.equal(f.dispatched.length, 0);
 });
 
 test('an explicit missing-nonce predecessor keeps selected Smart authority and replays its original payer bytes', async () => {

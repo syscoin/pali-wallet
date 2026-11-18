@@ -32,27 +32,40 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-const recoveredPair = async (directUrl: boolean) => {
+const png =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=';
+const webp =
+  'UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEALmk0mk0iIiIiIgBoSygABc6zbAAA';
+const recoveredPair = async (sameBytes: boolean) => {
   const url = `https://icons.synthetic.invalid/shared-${caseNumber}.png`;
   const now = 1_000_000;
   const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
   let valid = false;
   global.fetch = jest.fn(async (requested) => {
     expect(requested).toBe(url);
+    const mime = valid && !sameBytes ? 'image/webp' : 'image/png';
+    const bytes = Uint8Array.from(
+      Buffer.from(valid && !sameBytes ? webp : png, 'base64')
+    );
+    let sent = false;
+    const cancel = async () => undefined;
     return {
       ok: true,
-      blob: async () =>
-        directUrl
-          ? new Blob(['x'.repeat(256 * 1024 + 1)], { type: 'image/png' })
-          : new Blob(
-              [
-                valid
-                  ? '<svg xmlns="http://www.w3.org/2000/svg"></svg>'
-                  : '<html>image endpoint temporarily unavailable</html>',
-              ],
-              { type: valid ? 'image/svg+xml' : 'text/html' }
-            ),
-    } as Response;
+      headers: {
+        get: (name: string) => (name === 'content-type' ? mime : null),
+      },
+      body: {
+        cancel,
+        getReader: () => ({
+          cancel,
+          read: async () => {
+            if (sent) return { done: true };
+            sent = true;
+            return { done: false, value: bytes };
+          },
+        }),
+      },
+    } as unknown as Response;
   }) as typeof fetch;
 
   const first = render(<TokenIcon logo={url} symbol="OLD" />);
@@ -60,9 +73,7 @@ const recoveredPair = async (directUrl: boolean) => {
   const oldImage = image(first)!;
   const oldSrc = oldImage.getAttribute('src');
   expect(oldImage).toHaveAttribute('loading', 'lazy');
-  expect(oldSrc).toEqual(
-    directUrl ? url : expect.stringContaining('data:text/html;')
-  );
+  expect(oldSrc).toEqual(expect.stringContaining('data:image/png;'));
   const second = render(<TokenIcon logo={url} symbol="SECOND" />);
   await waitFor(() => expect(image(second)).toHaveAttribute('src', oldSrc));
   expect(fetch).toHaveBeenCalledTimes(1);
@@ -78,7 +89,9 @@ const recoveredPair = async (directUrl: boolean) => {
   await waitFor(() =>
     expect(image(recovered)).toHaveAttribute(
       'src',
-      directUrl ? url : expect.stringContaining('data:image/svg+xml;')
+      expect.stringContaining(
+        sameBytes ? 'data:image/png;' : 'data:image/webp;'
+      )
     )
   );
   expect(fetch).toHaveBeenCalledTimes(2);
@@ -89,11 +102,11 @@ const recoveredPair = async (directUrl: boolean) => {
 };
 
 describe.each([false, true])(
-  'shared logo resource, directURL=%s',
-  (directUrl) => {
+  'shared raster resource, identicalBytes=%s',
+  (sameBytes) => {
     it('does not let a still-mounted old resource error poison a refreshed shared success', async () => {
       const { first, oldImage, recovered, url } = await recoveredPair(
-        directUrl
+        sameBytes
       );
       const goodSrc = image(recovered)!.getAttribute('src');
       fireEvent.error(oldImage);
@@ -109,7 +122,7 @@ describe.each([false, true])(
     });
 
     it('reuses the recovered shared cache when the old resource never errors', async () => {
-      const { recovered, url } = await recoveredPair(directUrl);
+      const { recovered, url } = await recoveredPair(sameBytes);
       const later = render(<TokenIcon logo={url} symbol="LATER" />);
       expect(image(later)).toHaveAttribute(
         'src',
@@ -120,7 +133,7 @@ describe.each([false, true])(
 
     it('does not transfer shared-cache ownership to an old image on presentation rerender', async () => {
       const { first, oldImage, recovered, url } = await recoveredPair(
-        directUrl
+        sameBytes
       );
       first.rerender(<TokenIcon logo={url} symbol="OLD REFRESHED" size={32} />);
       expect(image(first)).toBe(oldImage);
@@ -142,7 +155,7 @@ describe.each([false, true])(
 
     it('does not poison shared success after the old consumer unmounts', async () => {
       const { first, oldImage, recovered, url } = await recoveredPair(
-        directUrl
+        sameBytes
       );
       first.unmount();
       fireEvent.error(oldImage);
@@ -155,7 +168,7 @@ describe.each([false, true])(
     });
 
     it('still caches a native error from the current recovered resource', async () => {
-      const { recovered, url } = await recoveredPair(directUrl);
+      const { recovered, url } = await recoveredPair(sameBytes);
       fireEvent.error(image(recovered)!);
       expect(image(recovered)).toBeNull();
       const later = render(<TokenIcon logo={url} symbol="LATER" />);

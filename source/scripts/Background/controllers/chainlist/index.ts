@@ -101,7 +101,7 @@ class ChainListService {
         '[ChainListService] Failed to save chain data to cache:',
         error
       );
-      throw error;
+      // This optional public cache cannot invalidate a healthy in-memory list.
     }
   }
 

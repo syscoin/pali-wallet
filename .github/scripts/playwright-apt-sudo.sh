@@ -25,9 +25,11 @@ for package in "${packages[@]}"; do
   fi
 done
 
+timeout_command=/usr/bin/timeout
+if [ -x /usr/bin/gnutimeout ]; then timeout_command=/usr/bin/gnutimeout; fi
 # The timer and its APT descendants have the same root authority, including
 # the final KILL deadline. The caller and browser downloads remain unprivileged.
-exec /usr/bin/sudo -n /usr/bin/timeout --signal=TERM --kill-after=15s 480s /bin/sh -c '
+exec /usr/bin/sudo -n "$timeout_command" --signal=TERM --kill-after=15s 480s /bin/sh -c '
   /usr/bin/apt-get -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Acquire::Retries=1 -o APT::Update::Error-Mode=any update &&
   /usr/bin/apt-get -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Acquire::Retries=1 install -y --no-install-recommends "$@"
 ' pali-playwright-apt "${packages[@]}"

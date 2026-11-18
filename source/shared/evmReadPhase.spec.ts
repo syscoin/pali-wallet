@@ -1,4 +1,8 @@
-import { withEvmReadPhase, EVM_READ_PHASE_TIMEOUT_MS } from './evmReadPhase';
+import {
+  withEvmReadPhase,
+  verifyEvmCanonicalBlock,
+  EVM_READ_PHASE_TIMEOUT_MS,
+} from './evmReadPhase';
 
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
@@ -21,7 +25,7 @@ const fixture = () => {
       }));
     }),
     getNetwork: jest.fn(async () => ({ chainId: BigInt(1) })),
-    getFeeData: jest.fn(async () => ({ gasPrice: '0x1' })),
+    getFeeData: jest.fn<Promise<any>, any[]>(async () => ({ gasPrice: '0x1' })),
     getSigner: jest.fn(),
     broadcastTransaction: jest.fn(),
   };
@@ -29,6 +33,87 @@ const fixture = () => {
 };
 beforeEach(() => jest.useFakeTimers({ doNotFake: ['queueMicrotask'] }));
 afterEach(() => jest.useRealTimers());
+
+it('shares canonical parent fences only at phase exit after every estimate', async () => {
+  const { provider } = fixture();
+  const block = { number: '5', hash: '0x' + 'ab'.repeat(32) };
+  const reads: string[] = [];
+  provider.readMany.mockImplementation(async (requests) =>
+    requests.map((request) => {
+      reads.push(request.method);
+      return {
+        status: 'fulfilled',
+        value:
+          request.method === 'eth_getBlockByNumber'
+            ? { ...block, number: '0x5' }
+            : '0x5208',
+      };
+    })
+  );
+  await expect(
+    withEvmReadPhase(
+      provider,
+      () => undefined,
+      async (phase) => {
+        await verifyEvmCanonicalBlock(phase, block, () => undefined);
+        await phase.send('eth_estimateGas', [{ to: 'target' }]);
+        await verifyEvmCanonicalBlock(phase, block, () => undefined);
+        expect(reads).toEqual(['eth_estimateGas']);
+        return 'admitted';
+      }
+    )
+  ).resolves.toBe('admitted');
+  expect(reads).toEqual(['eth_estimateGas', 'eth_getBlockByNumber']);
+  expect(provider.readMany).toHaveBeenCalledTimes(2);
+});
+
+it.each(['reorg', 'number', 'retire', 'abort'] as const)(
+  'rejects %s at the shared final canonical fence before returning admission',
+  async (change) => {
+    const { provider, abort } = fixture();
+    const block = { number: '5', hash: '0x' + 'ab'.repeat(32) };
+    let current = true;
+    const check = () => {
+      if (!current) throw new Error('retired');
+    };
+    provider.readMany.mockImplementation(async () => {
+      if (change === 'retire') current = false;
+      if (change === 'abort') abort.abort(new Error('cancelled'));
+      return [
+        {
+          status: 'fulfilled',
+          value: {
+            hash: change === 'reorg' ? '0x' + 'cd'.repeat(32) : block.hash,
+            number: change === 'number' ? '0x6' : '0x5',
+          },
+        },
+      ];
+    });
+    const published = jest.fn();
+    await expect(
+      withEvmReadPhase(provider, check, async (phase) => {
+        await verifyEvmCanonicalBlock(phase, block, check);
+        await verifyEvmCanonicalBlock(phase, block, check);
+      }).then(published)
+    ).rejects.toThrow();
+    expect(published).not.toHaveBeenCalled();
+    expect(provider.readMany).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('verifies canonical parents immediately outside an owned phase', async () => {
+  const block = { number: '5', hash: '0x' + 'ab'.repeat(32) };
+  const sendFresh = jest.fn(async () => ({ ...block, number: '0x5' }));
+  const send = jest.fn(async () => {
+    throw new Error('must be fresh');
+  });
+  await verifyEvmCanonicalBlock({ send, sendFresh }, block, () => undefined);
+  expect(sendFresh).toHaveBeenCalledWith('eth_getBlockByNumber', [
+    '0x5',
+    false,
+  ]);
+  expect(send).not.toHaveBeenCalled();
+});
 
 it('joins exact reads, batches distinct selectors and gives each consumer its own result', async () => {
   const { provider } = fixture();
@@ -74,6 +159,35 @@ it('retires all exposed methods and never exposes signer or broadcast methods', 
     'phase ended'
   );
   expect(provider.getSigner).not.toHaveBeenCalled();
+});
+it('routes delegated fee reads through the phase batch and shares its header', async () => {
+  const { provider } = fixture();
+  provider.getFeeData.mockImplementation(async (reader) => {
+    const [block, gasPrice, priorityFee] = await Promise.all([
+      reader.getBlock('latest'),
+      reader.send('eth_gasPrice', []),
+      reader.send('eth_maxPriorityFeePerGas', []),
+    ]);
+    return { block, gasPrice, priorityFee };
+  });
+  await withEvmReadPhase(
+    provider,
+    () => undefined,
+    async (phase) => {
+      await Promise.all([
+        phase.getFeeData(),
+        phase.send('eth_getBlockByNumber', ['latest', false]),
+      ]);
+      await phase.getFeeData();
+    }
+  );
+  expect(provider.getFeeData).toHaveBeenCalledTimes(1);
+  expect(provider.readMany).toHaveBeenCalledTimes(1);
+  expect(provider.readMany.mock.calls[0][0]).toEqual([
+    { method: 'eth_getBlockByNumber', params: ['latest', false] },
+    { method: 'eth_gasPrice', params: [] },
+    { method: 'eth_maxPriorityFeePerGas', params: [] },
+  ]);
 });
 it('fresh verification does not reuse completed or in-flight observations', async () => {
   const { provider } = fixture();
@@ -148,6 +262,27 @@ it('enforces the total timeout and cancels the phase transport', async () => {
   await jest.advanceTimersByTimeAsync(EVM_READ_PHASE_TIMEOUT_MS);
   await failed;
   expect(provider.readMany.mock.calls[0][1]!.signal.aborted).toBe(true);
+  expect(jest.getTimerCount()).toBe(0);
+});
+it('retires the fee operation signal on expiry without retiring its provider', async () => {
+  const { provider } = fixture();
+  let operationSignal: AbortSignal | undefined;
+  provider.getFeeData.mockImplementation((reader) => {
+    operationSignal = reader.signal;
+    return new Promise(() => undefined);
+  });
+  const run = withEvmReadPhase(
+    provider,
+    () => undefined,
+    async (phase) => phase.getFeeData()
+  );
+  const failed = expect(run).rejects.toThrow('phase timed out');
+  await jest.advanceTimersByTimeAsync(0);
+  expect(operationSignal?.aborted).toBe(false);
+  await jest.advanceTimersByTimeAsync(EVM_READ_PHASE_TIMEOUT_MS);
+  await failed;
+  expect(operationSignal?.aborted).toBe(true);
+  expect(provider.signal.aborted).toBe(false);
   expect(jest.getTimerCount()).toBe(0);
 });
 it('rejects a late helper result after owner retirement', async () => {

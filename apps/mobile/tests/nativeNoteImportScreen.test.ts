@@ -15,7 +15,7 @@ type Element = {
   children: unknown[];
 };
 const sample = `tornado-eth-1-1-0x${'01'.repeat(62)}`;
-function fixture() {
+function fixture(failure?: string) {
   let index = 0,
     backs = 0,
     imports = 0;
@@ -116,6 +116,7 @@ function fixture() {
     {
       module,
       exports: module.exports,
+      Error,
       require: (name: string) => { const walletUi = walletUiFixture(name, importsByName); if (walletUi) return walletUi;
         assert(name in importsByName, name);
         return importsByName[name];
@@ -129,6 +130,7 @@ function fixture() {
       imports++;
       await pending;
       check();
+      if (failure) throw new Error(failure);
       return { amount: '1', phase: 'verified' as const };
     },
     async dispose() {},
@@ -202,4 +204,21 @@ test('Back during verification clears text and rejects a late saved result', asy
     nodes(f.render()).some((node) => node.type === 'Notice'),
     false
   );
+});
+
+test('an archived import directs the user to restore it without reporting a saved note', async () => {
+  const f = fixture('privacy_note_archived');
+  input(f.render()).props.onChangeText(sample);
+  button(f.render(), 'Import note').props.onPress();
+  await flush();
+  f.release();
+  await flush();
+  const tree = f.render();
+  const alerts = nodes(tree).filter((node) => node.props.accessibilityRole === 'alert');
+  assert.equal(f.imports, 1);
+  assert.deepEqual(alerts.flatMap((node) => node.children), [
+    'This note is archived. Open Archived notes and restore it to use it again.',
+  ]);
+  assert.equal(input(tree).props.value, '');
+  assert.equal(nodes(tree).some((node) => node.type === 'Notice'), false);
 });

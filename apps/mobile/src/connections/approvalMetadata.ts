@@ -1,7 +1,7 @@
 import type { ApprovalContractMetadata } from '../../../../source/shared/approval.ts';
 import {
-  createErc20Reader,
-  createSelectedNftReadOperation,
+  createSelectedAssetReadOperation,
+  parseScopedErc20Metadata,
 } from '../portfolio/erc20ReadRpc.ts';
 import { guardedRead } from '../custody/evmFeeContracts.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
@@ -25,19 +25,22 @@ export async function readNativeApprovalMetadata(
   const options = { fetch, registrations: () => [network] };
   check();
   try {
-    const standard = await createSelectedNftReadOperation(options)(
+    return await createSelectedAssetReadOperation(options)(
       network.id,
       owner,
       contract,
       signal,
       check,
-      async ({ call }) => {
+      async ({ call, holder, target }) => {
         const standards: ('ERC-721' | 'ERC-1155')[] = [];
-        for (const [id, name] of [
+        const interfaces = [
           ['80ac58cd', 'ERC-721'],
           ['d9b67a26', 'ERC-1155'],
-        ] as const) {
-          const response = await call(`0x01ffc9a7${id.padEnd(64, '0')}`);
+        ] as const;
+        const observations = await Promise.all(interfaces.map(([id]) =>
+          call(`0x01ffc9a7${id.padEnd(64, '0')}`)));
+        for (const [index, [, name]] of interfaces.entries()) {
+          const response = observations[index]!;
           check();
           if (
             response.kind === 'result' &&
@@ -45,24 +48,22 @@ export async function readNativeApprovalMetadata(
           )
             standards.push(name);
         }
-        return standards.length > 1 ? 'ambiguous' as const : standards[0];
+        if (standards.length > 1) return undefined;
+        if (standards[0]) return Object.freeze({ standard: standards[0] });
+        const values = await Promise.all([
+          '0x06fdde03', '0x95d89b41', '0x313ce567',
+          `0x70a08231${holder.slice(2).toLowerCase().padStart(64, '0')}`,
+        ].map(data => call(data)));
+        check();
+        const data = values.map(value => {
+          if (value.kind !== 'result') throw new Error('ERC20 metadata unavailable');
+          return value.data;
+        });
+        return Object.freeze({ standard: 'ERC-20' as const,
+          token: parseScopedErc20Metadata(target, data[0], data[1], data[2], data[3]),
+        });
       }
     );
-    check();
-    if (standard === 'ambiguous') return undefined;
-    if (standard) return Object.freeze({ standard });
-  } catch {
-    check();
-  }
-  try {
-    const { metadata } = await createErc20Reader(options).readToken(
-      network.id,
-      owner,
-      contract,
-      signal
-    );
-    check();
-    return Object.freeze({ standard: 'ERC-20', token: metadata });
   } catch {
     check();
     return undefined;

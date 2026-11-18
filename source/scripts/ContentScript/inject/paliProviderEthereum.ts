@@ -407,7 +407,11 @@ export class PaliInpageProviderEth extends BaseProvider {
             (request) =>
               new Promise((resolve) => {
                 const fail = (error: unknown) =>
-                  resolve({ id: request?.id || 1, jsonrpc: '2.0', error });
+                  resolve({
+                    id: request?.id === undefined ? 1 : request.id,
+                    jsonrpc: '2.0',
+                    error,
+                  });
                 this._rpcRequest(request, (error, response) => {
                   if (error) fail(error);
                   else resolve(response);

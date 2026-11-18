@@ -317,6 +317,7 @@
     "viewOnNamedExplorer": "{{explorer}} 탐색기에서 보기",
     "importToken": "토큰 가져오기",
     "youHaveNoTokens": "토큰이나 NFT가 없습니다",
+    "youHaveNoFungibleTokens": "토큰이 없습니다.",
     "youHaveNoTxs": "거래 내역이 없습니다",
     "historyMayBeIncomplete": "탐색기 API가 없으면 거래 내역이 불완전할 수 있습니다.",
     "seeAllTxs": "모든 거래 보기",
@@ -335,7 +336,10 @@
     "ifYouHaveAHardWallet": "하드웨어 지갑이 있다면 지금 연결할 수 있습니다!",
     "congratulations": "축하합니다!",
     "youWalletWas": "지갑을 성공적으로 가져왔습니다",
-    "youHaveNoNfts": "NFT가 없습니다."
+    "youHaveNoNfts": "NFT가 없습니다.",
+    "noIndexedActivity": "활동을 찾을 수 없습니다. NFT 및 내부 전송은 여기에 표시되지 않을 수 있습니다.",
+    "savedActivityUnavailable": "저장된 활동을 불러오지 못했습니다.",
+    "retrySavedActivity": "저장된 활동 다시 시도"
   },
   "titles": {
     "assetDetails": "자산 상세정보",
@@ -593,6 +597,7 @@
     "calculating": "계산 중...",
     "unableToLoad": "로드할 수 없음",
     "smartAccountPendingReview": "저장된 스마트 계정 거래가 아직 해결되지 않았습니다. 다른 거래를 보내기 전에 활동을 열어 확인하세요.",
+    "smartAccountPayerPending": "이 작업을 계속하려면 수수료 지불 계정의 이전 거래가 확인되어야 합니다. 확인을 기다린 후 다시 시도하세요.",
     "feeUnavailable": "수수료 사용 불가",
     "plusGasFee": " + 가스 수수료",
     "plusNetworkFee": " + 네트워크 수수료",
@@ -1023,7 +1028,10 @@
     "smartAccountGuardianRecoveryExpired": "이 복구 요청은 완료되기 전에 만료되었습니다. 복구를 다시 시작하세요.",
     "invalidAddress": "유효하지 않은 주소입니다",
     "changeHardwareDevice": "기기 변경",
-    "closeHardwareSetup": "설정 닫기"
+    "closeHardwareSetup": "설정 닫기",
+    "smartAccountFeeReviewTitle": "네트워크 수수료 검토",
+    "smartAccountFeeReviewSelectedAccount": "선택한 계정",
+    "smartAccountFeeReviewMaximumTotal": "최대 총비용"
   },
   "start": {
     "eraseAndStartFresh": "지우고 새로 시작",
@@ -1098,6 +1106,21 @@
     "coinGeckoListingUnavailable": "등록 정보를 확인할 수 없습니다"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "원래 참조",
+      "title": "서명된 지시",
+      "empty": "저장된 서명 지시가 없습니다",
+      "mayExecute": "아직 실행될 수 있는 지시입니다",
+      "nonceConsumedUnknown": "nonce 사용됨; 결과 알 수 없음",
+      "observedSuccess": "성공한 지시 확인됨",
+      "observedFailure": "실패한 지시 확인됨",
+      "checkStatus": "상태 확인",
+      "cancelInstruction": "지시 취소",
+      "unavailable": "서명된 지시를 불러올 수 없습니다. 다시 시도하세요.",
+      "operationHash": "작업 해시"
+    },
+    "smartAccountCancelUnavailable": "이 작업은 취소할 수 없습니다. 서명된 지시는 여전히 실행될 수 있습니다.",
+    "smartAccountCancelDescription": "동일한 nonce로 빈 작업을 전송하여 이 스마트 계정 지시를 취소합니다. 원래 작업이 먼저 확정될 수 있습니다. 네트워크가 대체 작업을 확정해야 취소가 완료됩니다.",
     "feePayer": "수수료 지불 계정",
     "labelCopied": "{{label}} 클립보드에 복사됨",
     "decodeDetailsFailed": "거래 세부 정보를 디코딩하지 못했습니다",
@@ -1279,6 +1302,7 @@
     "checkYourDevice": "{{device}}에서 이 요청을 승인하세요",
     "useYourPasskey": "패스키를 사용하세요",
     "passkeyPrompt": "브라우저 안내에 따라 패스키로 서명하세요",
+    "smartAccountAuthorizationRetained": "스마트 계정 명령은 이미 서명되었습니다. 이 가스 수수료를 거절해도 명령은 취소되지 않으며, 해당 논스가 사용될 때까지 실행될 수 있습니다.",
     "cancelFeePreview": "취소 네트워크 수수료 확인 중…",
     "cancelFeeConsent": "최대 가스 수수료 {{fee}} {{currency}}로 이 거래를 취소하시겠습니까?",
     "cancelFeeUnavailable": "취소 수수료를 확인할 수 없습니다. 다시 시도하세요.",
@@ -1331,7 +1355,8 @@
         "erc721": "NFT 전송",
         "erc1155": "NFT 전송"
       }
-    }
+    },
+    "detailsUnavailable": "거래 세부 정보를 불러오지 못했습니다. 다시 시도하세요."
   },
   "switchNetworkPage": {
     "chainFallback": "체인 {{chainId}}",
@@ -1440,7 +1465,8 @@
     "firstAccessTitle": "수도꼭지로 ${{token}}을 받아 {{network}} 네트워크를 경험해 보세요!",
     "firstAccessDescription": "지갑 주소당 24시간마다 {{token}}을 받을 수 있습니다.",
     "grabTokens": "수도꼭지로 이동",
-    "rateLimited": "수도꼭지에서 요청을 제한하고 있습니다. 자세한 내용은 수도꼭지를 확인하세요."
+    "rateLimited": "수도꼭지에서 요청을 제한하고 있습니다. 자세한 내용은 수도꼭지를 확인하세요.",
+    "requestTimedOut": "요청 시간이 초과되었습니다. 토큰을 다시 요청하기 전에 잔액을 확인하세요."
   },
   "nftDetails": {
     "information": "NFT 정보",
@@ -1773,7 +1799,7 @@
       "reconciliation": "출금 전에 복원된 노트를 검토하세요. 기록된 출금 활동을 먼저 해결해야 합니다. 저장된 기록으로 출금이 다시 실행되지는 않습니다.",
       "expires": "이 검토는 5분 후 만료됩니다.",
       "confirmRestore": "노트 복원",
-      "restored": "복원이 확인되었습니다. 출금 전에 복원된 노트를 검토하세요. 출금 활동이 기록된 노트는 해결될 때까지 계속 차단됩니다.",
+      "restored": "노트를 복원했습니다. 출금하기 전에 풀 상태를 확인하세요.",
       "unconfirmed": "복원이 확인되지 않았습니다. 이미 저장되었을 수 있습니다. 수신 기록을 확인하고 다시 제출하지 마세요.",
       "checkReceipt": "복원 수신 기록 확인",
       "receiptUnavailable": "일치하는 수신 기록이 확인되지 않았습니다. 복원 실패를 의미하지는 않습니다. 다시 시작하기 전에 저장된 노트를 확인하세요.",
@@ -1861,10 +1887,10 @@
       "error": "한도를 변경하지 못했습니다. 저장된 노트가 한도에 맞는지 확인하고 다시 시도하세요.",
       "save": "한도 저장",
       "reportedSpent": "사용 완료로 표시된 노트 ({{count}}개)",
-      "clear": "완료된 노트 지우기",
-      "clearHelp": "선택한 Ethereum RPC에 알려진 출금 해시와 관련 입금 해시가 있으면 함께 전송되어 제공자가 둘을 연결할 수 있습니다. 해당 RPC가 출금 완료와 관련 입금의 확정을 확인한 노트만 삭제하며 미확인 노트는 보관합니다.",
-      "confirmClear": "확인 후 지우기",
-      "clearResult": "삭제: {{removed}}개. 보관 중: {{unresolved}}개.",
+      "clear": "완료된 노트 보관",
+      "clearHelp": "선택한 Ethereum RPC에 알려진 출금 및 관련 입금 거래 해시가 전송되므로 제공자가 이를 연결할 수 있습니다. 이 RPC가 최종 확정으로 보고한 노트만 암호화하여 보관하고 나머지는 활성 상태로 유지합니다. 보관된 노트는 활성 한도에 포함되지 않습니다.",
+      "confirmClear": "확인 후 보관",
+      "clearResult": "보관됨: {{removed}}개. 활성 유지: {{unresolved}}개.",
       "clearError": "노트 확인을 완료하지 못했습니다. 새로고침하여 남은 노트를 확인하세요.",
       "clearProgress": "{{total}}개 중 {{checked}}개 확인됨.",
       "storedBytes": "직렬화된 암호화 보관함: {{bytes}}바이트."
@@ -1901,6 +1927,9 @@
       "backupFailed": "노트 백업을 열지 못했습니다. 다시 시도하세요."
     },
     "withdrawal": {
+      "pendingProofWarning": "이전 출금이 완료될 수 있습니다. 계속 진행해도 이전 출금은 취소되지 않으며, 경쟁하는 거래가 실패하고 수수료가 발생할 수 있습니다.",
+      "competingConfirm": "경쟁 출금 제출",
+      "previousAttempts": "이전 출금",
       "watchOnlyDirectUnavailable": "직접 출금하려면 개인 키가 필요합니다. 이 계정은 보기 전용입니다.",
       "title": "노트 출금",
       "open": "출금",
@@ -1946,12 +1975,12 @@
       "notBroadcast": "트랜잭션이 전송되지 않았습니다. 다시 확인하기 전에 검토를 새로고침하세요."
     },
     "recovery": {
-      "action": "실패한 출금 복구",
-      "help": "거래 실패가 최종 확정되고 원래 증명을 더 이상 실행할 수 없을 때만 복구할 수 있습니다. 노트와 출금 기록은 보존됩니다. 새 출금에는 다시 검토가 필요합니다.",
-      "disclosure": "이 확인은 거래 해시, 원래 증명의 루트와 노트의 공개 무효화 식별자를 선택한 Ethereum RPC에 전송합니다.",
+      "action": "출금 복구 가능 여부 확인",
+      "help": "복구하려면 공개된 증명 루트가 더 이상 허용되지 않고 노트가 미사용 상태임을 최종 확정된 상태에서 확인해야 합니다. 직접 출금은 트랜잭션 실패 또는 수수료 지불자의 nonce 사용도 최종 확정되어야 합니다. 노트와 출금 내역은 보존됩니다. 새 출금에는 새로운 검토가 필요합니다.",
+      "disclosure": "이 확인은 원래 증명 루트와 노트의 공개 nullifier를 선택한 Ethereum RPC와 공유합니다. 직접 출금은 수수료 지불자 주소와 트랜잭션 해시도 공유합니다. 저장된 증명 입력을 복원하기 위해 이전 릴레이 작업을 조회할 수 있습니다.",
       "password": "지갑 비밀번호",
       "failed": "복구를 확인할 수 없습니다. 원래 증명이 아직 유효하거나, 노트가 사용되었거나, 증거를 가져올 수 없을 수 있습니다. 새로 고친 후 다시 시도하세요.",
-      "checking": "최종 확정 거래와 증명 만료 확인 중…",
+      "checking": "최종 확정된 상태에서 증명 만료 확인 중…",
       "confirm": "확인 및 복구"
     },
     "restoreReview": {
@@ -1960,11 +1989,29 @@
       "disclosure": "복원해도 이전 출금이 취소되거나 이 노트의 다른 사본이 무효화되지 않습니다.",
       "snapshot": "블록 {{block}}까지 검증된 풀 데이터입니다. 저장된 데이터이며 실시간 체인 확인이 아닙니다.",
       "noSnapshot": "이 노트를 검토하기 전에 풀 데이터를 준비하거나 새로 고치세요.",
-      "pending": "이 노트에는 출금 활동이 기록되어 있습니다. 다른 출금을 시작하기 전에 해당 상태를 확인하세요.",
+      "pending": "이전 출금 내역이 저장되어 있습니다. 다른 출금을 제출하기 전에 확인하세요.",
       "password": "지갑 비밀번호",
       "confirm": "노트 검토 확인",
       "busy": "검토 결과 저장 중…",
       "failed": "검토 결과를 저장하지 못했습니다. 비밀번호와 풀 데이터를 확인한 후 다시 시도하세요."
+    },
+    "archive": {
+      "title": "보관된 노트",
+      "help": "완료된 노트는 복원하거나 보관함을 비울 때까지 암호화되어 보관됩니다. 활성 노트 한도에는 포함되지 않습니다.",
+      "empty": "보관된 노트가 없습니다",
+      "restore": "노트 복원",
+      "restored": "활성 노트로 복원했습니다",
+      "clear": "보관함 비우기",
+      "confirmClear": "보관된 노트 영구 삭제",
+      "warning": "복구 문구로는 이 노트를 복원할 수 없습니다. 사용 완료를 확인하거나 사용 가능한 백업을 보관한 후에만 삭제하세요.",
+      "confirmBackup": "노트의 사용 완료를 확인했거나 사용 가능한 백업을 보관했습니다",
+      "clearResult": "보관된 노트 {{count}}개를 삭제했습니다",
+      "loadError": "보관함을 불러오지 못했습니다. 다시 시도하세요.",
+      "actionError": "보관함을 업데이트하지 못했습니다. 새로 고친 후 다시 시도하세요.",
+      "full": "보관함 저장 공간이 가득 찼습니다. 비우기 전에 암호화된 백업을 내보내세요.",
+      "capacity": "보관된 노트 {{count}} / {{limit}}개",
+      "activeFull": "활성 노트 한도에 도달했습니다. 완료된 노트를 보관하거나 한도를 늘린 후 복원하세요.",
+      "alreadyArchived": "이 노트는 보관되어 있습니다. 다시 사용하려면 보관된 노트를 열고 복원하세요."
     }
   },
   "mobile": {
@@ -2513,7 +2560,7 @@
         "addNotesFromAnEncryptedFile": "암호화된 파일에서 노트 추가",
         "changeTheSavedNoteLimit": "저장된 노트 수 한도 변경",
         "manageCompletedNotes": "완료된 노트 관리",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "완료된 노트 정리 또는 실패한 출금 복구",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "완료된 노트 보관 또는 실패한 출금 복구",
         "serviceOriginAndPublicPoolData": "서비스 출처 및 공개 풀 데이터",
         "verifyBackup": "백업 확인",
         "backupVerified": "백업 확인됨",
@@ -2597,7 +2644,7 @@
       },
       "maintenance": {
         "chooseNote": "확인하고 삭제할 저장된 노트 하나를 선택하세요. 각 시도는 해당 노트만 확인합니다.",
-        "clearHelp": "선택한 Ethereum RPC는 이 노트의 알려진 출금 거래 해시와, 존재하는 경우 관련 입금 거래 해시를 받습니다. 이로 인해 해당 제공자가 입금과 출금을 연결할 수 있습니다. 이 RPC가 작업 완료와 관련 입금 정산의 최종 확정을 확인한 경우에만 이 노트 하나가 삭제됩니다. 그렇지 않으면 저장된 상태로 유지됩니다."
+        "clearHelp": "선택한 Ethereum RPC에 알려진 출금 및 관련 입금 거래 해시가 전송되므로 제공자가 이를 연결할 수 있습니다. 이 RPC가 최종 확정으로 보고한 노트만 암호화하여 보관하고 나머지는 활성 상태로 유지합니다. 보관된 노트는 활성 한도에 포함되지 않습니다."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "노트 한도를 불러올 수 없습니다.",
@@ -3092,13 +3139,10 @@
         "thisReviewExpiredPrepareAFreshReviewBeforeConfirming": "이 검토가 만료되었습니다. 확인하기 전에 새 검토를 준비하세요.",
         "thisNoteHasASavedWithdrawalCheckItsStatusBefore": "이 노트에 저장된 출금이 있습니다. 다시 시도하기 전에 상태를 확인하세요.",
         "checkThePoolDataBeforePreparingThisWithdrawal": "이 출금을 준비하기 전에 풀 데이터를 확인하세요.",
-        "couldNotReviewThisRestoredNoteTryAgain": "복원된 노트를 검토하지 못했습니다. 다시 시도하세요.",
         "thisWithdrawalIsUnavailableInTheCurrentAccountOrNetwork": "현재 계정 또는 네트워크에서 이 출금을 사용할 수 없습니다.",
         "couldNotCompleteThisRequestCheckThePoolDataAnd": "요청을 완료하지 못했습니다. 풀 데이터와 네트워크를 확인한 후 다시 시도하세요.",
-        "reviewingNote": "노트 검토 중…",
         "preparingProof": "증명 준비 중…",
         "ethereumMainnetPrivateNote": "Ethereum 메인넷 · 비공개 노트",
-        "reviewThisRestoredNoteBeforeWithdrawing": "출금하기 전에 복원된 노트를 검토하세요.",
         "withdrawalDelivery": "출금 방식",
         "thisAccountCannotSignADirectWithdrawal": "이 계정은 직접 출금에 서명할 수 없습니다.",
         "refreshRelayers": "릴레이어 새로고침",
@@ -3801,7 +3845,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "7일 중 {{day}}일",
       "priceHistory": "가격 기록",
       "inspectHint": "위아래로 쓸어 가격 지점을 이동하세요.",
       "nextPrice": "다음 가격",

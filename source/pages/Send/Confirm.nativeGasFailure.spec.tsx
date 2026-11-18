@@ -15,6 +15,7 @@ import { randomUUID } from 'crypto';
 import React from 'react';
 
 import { EvmAutoNonceAcceptance } from '../../shared/evmAutoNonce';
+import { createRpcReadCapabilitiesOwner } from '../../shared/rpcReadCapabilities';
 import MainController from 'scripts/Background/controllers/MainController';
 import { BigNumber } from 'utils/ethersV6Compat';
 
@@ -306,6 +307,7 @@ beforeEach(() => {
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   wallet = Object.create(MainController.prototype);
+  wallet.rpcReadCapabilities = createRpcReadCapabilitiesOwner();
   const keyring = { ethereumTransaction: sdk, isUnlocked: () => true };
   wallet.getActiveKeyring = () => keyring;
   wallet.getRetainedEvmRecords = () => ({

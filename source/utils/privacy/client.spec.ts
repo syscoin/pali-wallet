@@ -1,6 +1,7 @@
 import { Interface, parseEther, toQuantity } from 'ethers';
 
 import {
+  createSnapshotAnchorVerifier,
   fetchPrivacySnapshot,
   readCompletionRpc,
   readWithdrawalRecoveryRpc,
@@ -387,6 +388,26 @@ test('independently checks block hash, leaf count, pool parameters and accepted 
   );
 });
 
+test('shared extension verifier reuses only the admitted snapshot across two checks', async () => {
+  const fetch = mockRpc(),
+    verify = createSnapshotAnchorVerifier(),
+    rpcUrl = 'https://rpc.example/';
+  await verify(id, snapshot, rpcUrl, signal());
+  expect(fetch).toHaveBeenCalledTimes(8);
+  await verify(id, snapshot, rpcUrl, signal());
+  const final = fetch.mock.calls
+    .slice(8)
+    .map(([, init]) => JSON.parse(init.body).method);
+  expect(final).toEqual([
+    'eth_chainId',
+    'eth_getBlockByNumber',
+    'eth_getBlockByNumber',
+    'eth_call',
+  ]);
+  await verify(id, { ...snapshot }, rpcUrl, signal());
+  expect(fetch).toHaveBeenCalledTimes(20);
+});
+
 test('verifies busy block anchors whose transaction hashes exceed 64 KiB', async () => {
   mockRpc({ transactions: 1100 });
   await expect(
@@ -569,4 +590,45 @@ test('completion RPC bounds receipt response before parsing and rejects mismatch
       signal()
     )
   ).rejects.toThrow();
+});
+
+it('permits finalized numeric-block payer nonce recovery reads but no pending/latest or arbitrary account query', async () => {
+  const payer = '0x' + '12'.repeat(20);
+  global.fetch = jest.fn(async (_url, init) => {
+    const request = JSON.parse(String(init?.body));
+    return Response.json({ jsonrpc: '2.0', id: request.id, result: '0x2' });
+  });
+  await expect(
+    readWithdrawalRecoveryRpc(
+      'https://rpc.example',
+      'eth_getTransactionCount',
+      [payer, '0x10'],
+      signal()
+    )
+  ).resolves.toBe('0x2');
+  for (const params of [
+    [payer, 'latest'],
+    [payer, 'pending'],
+    [payer, 'finalized'],
+    [payer, '0x010'],
+    ['wrong-address', '0x10'],
+    [payer, '0x10', 'extra'],
+  ])
+    await expect(
+      readWithdrawalRecoveryRpc(
+        'https://rpc.example',
+        'eth_getTransactionCount',
+        params,
+        signal()
+      )
+    ).rejects.toThrow('privacy_rpc_unavailable');
+  await expect(
+    readCompletionRpc(
+      'https://rpc.example',
+      'eth_getTransactionCount',
+      [payer, '0x10'],
+      signal()
+    )
+  ).rejects.toThrow('privacy_rpc_unavailable');
+  expect(global.fetch).toHaveBeenCalledTimes(1);
 });

@@ -42,6 +42,9 @@ export type DappUtxoReview = TransactionApprovalDocument &
 
 export type DappSmartAccountMethod =
   | 'signSmartAccountPreparedOwner'
+  | 'approveSmartAccountExecutionFeeQuote'
+  | 'signSmartAccountCompositeOwner'
+  | 'verifySmartAccountCompositePossession'
   | 'registerSmartAccountOnChain'
   | 'submitSmartAccountExecution';
 
@@ -240,6 +243,28 @@ export const captureDappEvmSubmission = (
       return reviewedExtensionNonce(nonce, 'automatic');
     throw transactionApprovalExpired();
   };
+  const beginNonceRecommendation = (address: unknown) => {
+    assertCurrent();
+    if (watch.batchActive) throw transactionApprovalExpired();
+    if (
+      typeof address !== 'string' ||
+      address.toLowerCase() !==
+        watch.evmSend!.context.account.address.toLowerCase()
+    )
+      throw transactionApprovalExpired();
+    const generation = ++watch.nonceGeneration;
+    watch.recommendation = undefined;
+    return (value: unknown) => {
+      assertCurrent();
+      if (generation !== watch.nonceGeneration)
+        throw transactionApprovalExpired();
+      const nonce = reviewedExtensionNonce(value, 'automatic').nonce;
+      watch.recommendation = {
+        nonce,
+        expires: performance.now() + WALLET_TOKEN_REVIEW_TTL_MS,
+      };
+    };
+  };
   return {
     batch: watch.evmSend.batch,
     owner: watch,
@@ -247,26 +272,21 @@ export const captureDappEvmSubmission = (
     assertCurrent,
     checkDocument,
     reviewNonce,
-    beginNonceRecommendation(address: unknown) {
+    beginNonceRecommendation,
+    beginFeeQuote(value: unknown) {
       assertCurrent();
-      if (watch.batchActive) throw transactionApprovalExpired();
+      if (value !== undefined) return { approval: reviewNonce(value) };
       if (
-        typeof address !== 'string' ||
-        address.toLowerCase() !==
-          watch.evmSend!.context.account.address.toLowerCase()
+        watch.evmSend!.batch ||
+        watch.originallyExplicit ||
+        watch.nonceClaimed
       )
         throw transactionApprovalExpired();
-      const generation = ++watch.nonceGeneration;
-      watch.recommendation = undefined;
-      return (value: unknown) => {
-        assertCurrent();
-        if (generation !== watch.nonceGeneration)
-          throw transactionApprovalExpired();
-        const nonce = reviewedExtensionNonce(value, 'automatic').nonce;
-        watch.recommendation = {
-          nonce,
-          expires: performance.now() + WALLET_TOKEN_REVIEW_TTL_MS,
-        };
+      return {
+        approval: undefined,
+        record: beginNonceRecommendation(
+          watch.evmSend!.context.account.address
+        ),
       };
     },
     approveManualNonce(value: unknown) {

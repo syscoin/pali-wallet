@@ -6,10 +6,46 @@ import {
   classifyDappRpcMethod,
   executeDappRpcRequest,
   normalizeDappRpcRequest,
+  publicRpcReadKey,
 } from './dappRpcReads';
 
 const address = `0x${'11'.repeat(20)}`,
   hash = `0x${'22'.repeat(32)}`;
+
+it.each([10, 100])(
+  'returns a supported 1024-block fee history with %i percentiles',
+  async (percentiles) => {
+    const result = {
+      oldestBlock: '0x1',
+      baseFeePerGas: Array(1025).fill('0x1'),
+      gasUsedRatio: Array(1024).fill(0.5),
+      reward: Array.from({ length: 1024 }, () =>
+        Array(percentiles).fill('0x1')
+      ),
+    };
+    const request = jest.fn().mockResolvedValue(result);
+    await expect(
+      executeDappRpcRequest(
+        {
+          method: 'eth_feeHistory',
+          params: [
+            '0x400',
+            'latest',
+            Array.from({ length: percentiles }, (_, i) => i),
+          ],
+        },
+        {
+          assertCurrent() {},
+          request,
+          verifyPersonalMessage() {
+            throw Error('Unexpected signing');
+          },
+        }
+      )
+    ).resolves.toBe(result);
+    expect(request).toHaveBeenCalledTimes(1);
+  }
+);
 it.each([
   null,
   {},
@@ -61,13 +97,15 @@ it.each([
     );
   }
 );
-it.each(['web3_clientVersion', 'net_listening', 'net_peerCount'])(
-  '%s accepts exactly zero arguments',
-  (method) => {
-    expect(normalizeDappRpcRequest(method, undefined).params).toEqual([]);
-    expect(() => normalizeDappRpcRequest(method, [null])).toThrow();
-  }
-);
+it.each([
+  'web3_clientVersion',
+  'net_listening',
+  'net_peerCount',
+  'eth_maxPriorityFeePerGas',
+])('%s accepts exactly zero arguments', (method) => {
+  expect(normalizeDappRpcRequest(method, undefined).params).toEqual([]);
+  expect(() => normalizeDappRpcRequest(method, [null])).toThrow();
+});
 it.each([
   ['eth_getLogs', []],
   ['eth_getLogs', [{ topics: ['0x1'] }]],
@@ -210,12 +248,12 @@ it.each([false, true])(
 );
 it('classifies the exact unrestricted registry, including custom and unsupported methods, with no default forwarding', () => {
   const registry = getUnrestrictedMethods();
-  expect(registry).toHaveLength(47);
+  expect(registry).toHaveLength(48);
   expect(Object.keys(DAPP_RPC_METHOD_CLASSIFICATION).sort()).toEqual(
     [...registry].sort()
   );
-  expect(DAPP_PUBLIC_RPC_METHODS).toHaveLength(42);
-  expect(new Set(DAPP_PUBLIC_RPC_METHODS).size).toBe(42);
+  expect(DAPP_PUBLIC_RPC_METHODS).toHaveLength(43);
+  expect(new Set(DAPP_PUBLIC_RPC_METHODS).size).toBe(43);
   expect(
     Object.entries(DAPP_RPC_METHOD_CLASSIFICATION)
       .filter(([, kind]) => kind === 'custom')
@@ -518,4 +556,52 @@ it.each([
   ['eth_call', [{ to: address, data: `0x${'00'.repeat(1024 * 1024)}` }]],
 ])('rejects malformed or oversized %s before any RPC', (method, params) => {
   expect(() => normalizeDappRpcRequest(method as string, params)).toThrow();
+});
+
+it('keys normalized public reads by every field and selector with stable object ordering', () => {
+  const call = {
+    to: address,
+    from: address,
+    data: '0x1234',
+    value: '0x1',
+    gas: '0x5208',
+    gasPrice: '0x2',
+    accessList: [{ address, storageKeys: [hash] }],
+  };
+  const key = (transaction: unknown, block: unknown = 'pending') =>
+    publicRpcReadKey(normalizeDappRpcRequest('eth_call', [transaction, block]));
+  const expected = key(call);
+  expect(
+    key({
+      accessList: call.accessList,
+      gasPrice: '0x02',
+      gas: '0x05208',
+      value: '0x01',
+      data: '0x1234',
+      from: address,
+      to: address,
+    })
+  ).toBe(expected);
+  for (const [field, value] of Object.entries({
+    from: `0x${'33'.repeat(20)}`,
+    to: `0x${'44'.repeat(20)}`,
+    data: '0xabcd',
+    value: '0x2',
+    gas: '0x5209',
+    gasPrice: '0x3',
+    accessList: [{ address, storageKeys: [hash, hash] }],
+  }))
+    expect(key({ ...call, [field]: value })).not.toBe(expected);
+  for (const selector of [
+    'latest',
+    '0x1',
+    { blockHash: hash },
+    { blockHash: hash, requireCanonical: true },
+  ])
+    expect(key(call, selector)).not.toBe(expected);
+  const topics = (items: unknown[]) =>
+    publicRpcReadKey(
+      normalizeDappRpcRequest('eth_getLogs', [{ topics: items }])
+    );
+  expect(topics([hash, null])).not.toBe(topics([null, hash]));
 });

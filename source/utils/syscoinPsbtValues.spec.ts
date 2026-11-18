@@ -20,6 +20,84 @@ const CORE_WITNESS_COMMITMENT = Buffer.concat([
   Buffer.alloc(32),
 ]);
 
+describe('verified NEVM burn destination', () => {
+  const destination = Buffer.alloc(20, 0x22);
+  const create = (
+    address = destination,
+    prefix?: Buffer,
+    suffix = Buffer.alloc(0)
+  ) => {
+    const { bitcoinjs } = syscoinUtils;
+    const allocations = syscointx.bufferUtils.serializeAssetAllocations([
+      {
+        assetGuid: '123456',
+        values: [{ n: 1, value: new syscoinUtils.BN('100000000') }],
+      },
+    ]);
+    const payload = Buffer.concat([
+      allocations,
+      syscointx.bufferUtils.serializeAllocationBurn({ ethaddress: address }),
+      suffix,
+    ]);
+    const script = bitcoinjs.payments.embed({
+      data: prefix ? [prefix, payload] : [payload],
+    }).output!;
+    const psbt = new bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(141);
+    psbt.addInput({
+      hash: Buffer.alloc(32),
+      index: 0,
+      witnessUtxo: {
+        script: Buffer.from('0014' + '00'.repeat(20), 'hex'),
+        value: BigInt(10000),
+      },
+    });
+    psbt.addOutput({
+      script: Buffer.from('0014' + '11'.repeat(20), 'hex'),
+      value: BigInt(9000),
+    });
+    psbt.addOutput({ script, value: BigInt(0) });
+    return psbt;
+  };
+
+  it.each([undefined, CORE_WITNESS_COMMITMENT])(
+    'derives the destination from the Core-selected payload with prefix %p',
+    (prefix) => {
+      const summary = getSyscoinPsbtValueSummary(create(destination, prefix));
+      expect(summary.burnDestination).toBe('0x' + '22'.repeat(20));
+      expect(summary.feeSatoshis).toBe('1000');
+      expect(summary.assetAllocations).toEqual([
+        { assetGuid: '123456', values: [{ n: 1, value: '100000000' }] },
+      ]);
+    }
+  );
+
+  it.each([0, 19, 21])(
+    'rejects a %i-byte destination before review',
+    (length) => {
+      expect(() =>
+        getSyscoinPsbtValueSummary(create(Buffer.alloc(length, 0x22)))
+      ).toThrow('Unable to verify Syscoin bridge burn destination');
+    }
+  );
+
+  it('rejects the all-zero destination rejected by Core', () => {
+    expect(() => getSyscoinPsbtValueSummary(create(Buffer.alloc(20)))).toThrow(
+      'Unable to verify Syscoin bridge burn destination'
+    );
+  });
+
+  it('rejects trailing data after an otherwise valid burn address', () => {
+    expect(() =>
+      getSyscoinPsbtValueSummary(
+        create(destination, undefined, Buffer.from([0]))
+      )
+    ).toThrow('Unable to verify Syscoin bridge burn destination');
+  });
+});
+
 it.each([
   { values: ['999999999999999999'], valid: true },
   { values: ['1000000000000000000'], valid: false },

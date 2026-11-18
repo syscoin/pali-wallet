@@ -44,9 +44,14 @@ const code = ts.transpileModule(source, {
 }).outputText;
 function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, collectible?: SavedCollectible, recipientResolver?: NativeRecipientResolver) {
   let privacyHidden = false;
+  let nativeBalance: any = undefined, balanceConnections = 0;
   let account={ address: '0x1111111111111111111111111111111111111111', network: 'ethereum', revision: 1 };
   const balance = { account, status: 'available', units: '5000000000000000000' };
   const inventory = { status: 'ready', account, items: token ? [{ metadata: token, status: 'available', units: '100' }] : [] };
+  const tokenConnections: unknown[] = [];
+  const tokenView = token ? { subscribe: () => () => {}, connect(selection?: unknown) {
+    tokenConnections.push(selection); return () => {};
+  }, getSnapshot: () => inventory } : undefined;
   const events = new Map<string, (...args: any[]) => void>();
   let cameraPrompt = false, hardware: (() => boolean) | undefined, backs = 0;
   const cells: any[] = [],
@@ -122,6 +127,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
           return balance;
         }
         connect() {
+          balanceConnections++;
           return () => {};
         }
       },
@@ -170,13 +176,12 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     return module.exports.NativeSmartAccountSend({
       open,
       feeRecommendations: async () => ({ type: 2, maxFeePerGas: '2000000000', maxPriorityFeePerGas: '1000000000' }),
-      account,recipientResolver,
+      account,recipientResolver,nativeBalance,
       context: getNativeSendContext('ethereum'),
       accountLabel: 'Smart account',
       source: {},
       reader: {},
-      token, collectible, tokenView: token ? { subscribe: () => () => {}, connect: () => () => {},
-        getSnapshot: () => inventory } : undefined,
+      token, collectible, tokenView,
       onBack() { backs++; },
     }) as Element;
   };
@@ -196,6 +201,9 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
   };
   return {
     render,
+    balanceConnections: () => balanceConnections,
+    tokenConnections,
+    shareBalance(units: string, stale = false) { nativeBalance = { ...balance, units, account: stale ? { ...account, revision: 0 } : account }; },
     privacy(hidden: boolean) { privacyHidden = hidden; },
     edit,
     press,
@@ -409,6 +417,8 @@ test('Smart token form presents the selected contract and routes exact decimal i
     const details = all(f.render()).find(node => node.type === 'Button' && node.props.title === 'Details'); assert(details); details.props.onPress();
     assert(all(f.render()).some(node => node.children.includes(token.contractAddress)));
     assert(all(f.render()).some(node => node.type === 'TokenMaximum'));
+    assert.equal(f.tokenConnections.length, 1);
+    assert.equal((f.tokenConnections[0] as { token: unknown }).token, token);
     f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
     const amount = '0.' + '0'.repeat(254) + '9';
     f.edit('Amount in EXACT', amount);
@@ -723,4 +733,26 @@ test('Smart send announces available, loading and unavailable balance with its u
     f.setBalanceStatus('error');
     assert(all(f.render()).some(node => node.props.accessibilityLabel === 'Balance unavailable · ETH'));
   } finally { f.close(); }
+});
+
+
+test('Smart send reuses the parent balance, updates it and refuses stale-scope MAX', () => {
+  const f = fixture(async () => ({ dispose() {} }));
+  f.shareBalance('7000000000000000000');
+  let tree = all(f.render());
+  assert.equal(f.balanceConnections(), 0);
+  assert(tree.some(node => node.props.accessibilityLabel === 'Available 7.0 ETH'));
+  f.shareBalance('6000000000000000000');
+  tree = all(f.render());
+  assert(tree.some(node => node.props.accessibilityLabel === 'Available 6.0 ETH'));
+  const max = tree.find(node => node.type === 'Button' && node.props.title === 'MAX');
+  assert(max);
+  max.props.onPress();
+  assert.equal(all(f.render()).find(node => node.props.label === 'Amount in ETH')!.props.value, '6.0');
+  f.shareBalance('8000000000000000000', true);
+  tree = all(f.render());
+  assert(!tree.some(node => node.props.accessibilityLabel === 'Available 8.0 ETH'));
+  const staleMax = tree.find(node => node.type === 'Button' && node.props.title === 'MAX selected');
+  assert(staleMax?.props.disabled);
+  f.close();
 });

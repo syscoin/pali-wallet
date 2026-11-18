@@ -25,6 +25,7 @@ import {
   type EvmRetainedSignedRecord,
   type EvmSignedRecordSummary,
 } from './evmSignedRecords.ts';
+import type { EvmAutoNonceSnapshot } from '../shared/evmAutoNonce.ts';
 import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
 
 export type EvmReplayCandidate = Pick<
@@ -33,6 +34,7 @@ export type EvmReplayCandidate = Pick<
 >;
 export type EvmSavedTransaction = EvmReplayCandidate &
   Readonly<{
+    cancellationUnavailable?: true;
     chainId: string;
     collectibleTransfer?: NftTransferIntent;
     createdAt: number;
@@ -133,7 +135,7 @@ function replaySubmissionDiagnostic(
 }
 export type EvmReplayDispatchAdmission = (
   send: () => Promise<string>,
-  preflight: () => Promise<void>
+  preflight: (snapshot?: EvmAutoNonceSnapshot) => Promise<void>
 ) => Promise<string>;
 export type EvmReplayDispatchContext = Pick<
   EvmSignedRecordSummary,
@@ -240,6 +242,9 @@ export function projectSavedEvmTransaction(
     hash: entry.hash,
     nonce: entry.nonce,
     operation: entry.operation,
+    ...(Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal')
+      ? { cancellationUnavailable: true as const }
+      : {}),
     ...(entry.originalHash ? { originalHash: entry.originalHash } : {}),
     chainId: entry.chainId,
     from: entry.from,
@@ -681,11 +686,11 @@ export class EvmSignedReplay {
               undefined,
               {
                 assertCurrent: checkAdmission,
-                run: async () => {
+                run: async (_owner, autoNonceSnapshot) => {
                   preflightExpires = await this.waitReplayPreflight(
                     pending.expires,
                     checkAdmission,
-                    preflight
+                    () => preflight(autoNonceSnapshot())
                   );
                 },
               }

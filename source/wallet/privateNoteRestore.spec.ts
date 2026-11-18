@@ -105,7 +105,7 @@ test('imported uncertainty only adds a guard, retaining local journals byte for 
   expect(privateNoteExportHistory(merged)?.withdrawals).toHaveLength(2);
   const projection = JSON.stringify(privateNoteCurrentHistory(merged));
   expect(projection).not.toContain('endpoint');
-  expect(projection).not.toContain('proofHash');
+  expect(JSON.parse(projection).withdrawals[0].proofHash).toBe(HASH);
 });
 test('a restored reconciliation marker cannot disappear on duplicate import', () => {
   const local = { ...entry(), id: id(1) };
@@ -314,4 +314,62 @@ test('a duplicate deposit-only backup keeps local withdrawal journals separate f
   expect(imported.restoreGuard?.history?.withdrawals).toBeUndefined();
   expect((imported as IRestorableNote).withdrawal).toBe(local.withdrawal);
   expect(privateNoteExportHistory(imported)?.withdrawals).toHaveLength(1);
+});
+
+test('archive restoration stays outside the active quota and retains its unreviewed recovery guard', () => {
+  const existing: IRestorableNote[] = Array.from(
+    { length: 128 },
+    (_, index) => ({
+      ...entry(`active-${index}`),
+      id: id(index + 100),
+    })
+  );
+  let next = 10000;
+  const result = planPrivateNoteRestore({
+    capacity: 128,
+    entries: Array.from({ length: 512 }, (_, index) => ({
+      ...entry(`archive-${index}`),
+      archivedAt: 17,
+    })),
+    existing,
+    identify,
+    importedAt: 23,
+    randomId: () => id(next++),
+  });
+  expect(
+    result.notes.filter((note) => note.archivedAt === undefined)
+  ).toHaveLength(128);
+  expect(
+    result.notes.filter((note) => note.archivedAt !== undefined)
+  ).toHaveLength(512);
+  expect(result.notes[128]).toMatchObject({
+    archivedAt: 17,
+    restoreGuard: { importedAt: 23 },
+  });
+  expect(restoredNoteBlocksWithdrawal(result.notes[128]!.restoreGuard)).toBe(
+    true
+  );
+  const before = JSON.stringify(existing);
+  expect(() =>
+    planPrivateNoteRestore({
+      capacity: 128,
+      entries: Array.from({ length: 513 }, (_, index) => ({
+        ...entry(`archive-${index}`),
+        archivedAt: 17,
+      })),
+      existing,
+      identify,
+      importedAt: 23,
+      randomId: () => id(next++),
+    })
+  ).toThrow('privacy_archive_limit');
+  expect(JSON.stringify(existing)).toBe(before);
+});
+
+test('a duplicate backup entry never silently reactivates an archived local secret', () => {
+  const archived = { ...entry(), id: id(1), archivedAt: 18 };
+  expect(plan([entry()], [archived]).notes[0]).toBe(archived);
+  expect(() =>
+    snapshotPrivateNoteRestoreEntries([{ ...entry(), archivedAt: -1 }])
+  ).toThrow('privacy_restore_invalid');
 });

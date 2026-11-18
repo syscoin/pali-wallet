@@ -22,8 +22,8 @@ function fixture(prices = [10, 20, 30, 40, 50, 60, 70, 80], options: { read?: Ma
     'react-native-svg': { __esModule: true, default: 'Svg', Path: 'Path', Circle: 'Circle', Line: 'Line' },
     '../../../../source/shared/assetMarket.ts': { ASSET_MARKET_CHART, assetMarketCoordinates, assetMarketIndexAt, assetMarketLine },
     '../platform/fiatPreferences.ts': { useFiatCurrency: () => ({ status: 'ready', currency: 'usd' }) },
-    '../platform/http.ts': { walletFetch() { assert.fail('Reader adapter is mocked'); } },
-    './nativeAssetMarket.ts': { createNativeAssetMarketReader: () => options.read ?? (async () => { reads++; return { data, expiresAt: 300_000 }; }),
+    '../platform/http': { walletFetch() { assert.fail('Reader adapter is mocked'); } },
+    './nativeAssetMarket.ts': { nativeAssetMarketReaders: () => ({ history: options.read ?? (async () => { reads++; return { data, expiresAt: 300_000 }; }) }),
       nativeAssetMarketNow: () => options.timing?.now() ?? 0,
       nativeAssetMarketSource: (asset: { networkId: string }) => ({ kind: 'native', id: asset.networkId }), rememberNativeAssetMarketIcon() {} },
     '../ui': { Card: 'Card', Button: 'Button', Text: 'Text', colors: {} },
@@ -172,5 +172,38 @@ test('narrow chart touches select the plotted endpoint and keep the whole marker
       }
     }
     assert.equal(f.reads(), 1);
+  } finally { f.close(); }
+});
+
+test('actual hourly history retains selected timestamps in visible and accessible chart labels', async () => {
+  const now = Date.now(), hour = 3_600_000, start = now - 168 * hour;
+  let requests = 0;
+  const read = createNativeAssetMarketReader(async url => {
+    requests++;
+    if (url.includes('/market_chart?')) return Response.json({
+      prices: Array.from({ length: 169 }, (_, index) => [start + index * hour, 100 + index]),
+    });
+    return Response.json([{ id: 'ethereum', current_price: 268, last_updated: new Date(now).toISOString() }]);
+  }, 'history');
+  const f = fixture(undefined, { read });
+  try {
+    f.render(); await settle();
+    let elements = f.render();
+    const points = assetMarketCoordinates(Array.from({ length: 169 }, (_, index) => 100 + index))!;
+    const chart = () => elements.find(element => element.props.testID === 'asset-market-chart')!;
+    assert(chart());
+    chart().props.onLayout({ nativeEvent: { layout: { width: 300 } } });
+    for (const index of [0, 23, 24, 167, 168]) {
+      chart().props.onTouchMove({ nativeEvent: { locationX: points[index]!.x } });
+      elements = f.render();
+      const expectedTime = new Date(start + index * hour).toLocaleString('en', {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      });
+      assert(elements.some(element => element.children.includes(expectedTime)), `actual sample time at ${index} hours`);
+      assert.equal(chart().props.accessibilityValue.now, index + 1);
+      assert.equal(chart().props.accessibilityValue.text, `${100 + index} USD, ${expectedTime}`);
+      assert(!chart().props.accessibilityValue.text.includes('Day '));
+    }
+    assert.equal(requests, 2, 'sample inspection stays local to the captured quote/history');
   } finally { f.close(); }
 });

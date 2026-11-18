@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { marketChangeForCurrency } from '../../../../../shared/assetMarket';
 import {
   FiExternalLink as ExternalLinkIcon,
   FiCopy as CopyIcon,
@@ -292,6 +293,10 @@ export const SyscoinAssetDetails = ({
 
     // Get user's preferred currency
     const userCurrency = (fiat.asset || 'usd').toLowerCase();
+    const change24h = marketChangeForCurrency(
+      marketData.market_data,
+      userCurrency
+    );
     const currencySymbol = getSymbolFromCurrency(userCurrency.toUpperCase());
 
     return (
@@ -327,26 +332,18 @@ export const SyscoinAssetDetails = ({
                 {currencySymbol || ''}
                 {formatCurrency(
                   marketData.market_data.current_price[userCurrency].toString(),
-                  6
+                  6,
+                  true
                 )}
               </span>
-              {Number.isFinite(
-                marketData.market_data?.price_change_percentage_24h
-              ) && (
+              {change24h !== null && (
                 <span
                   className={`text-sm ${
-                    marketData.market_data.price_change_percentage_24h >= 0
-                      ? 'text-green-500'
-                      : 'text-red-500'
+                    change24h >= 0 ? 'text-green-500' : 'text-red-500'
                   }`}
                 >
-                  {marketData.market_data.price_change_percentage_24h >= 0
-                    ? '+'
-                    : ''}
-                  {marketData.market_data.price_change_percentage_24h.toFixed(
-                    2
-                  )}
-                  % (24h)
+                  {change24h >= 0 ? '+' : ''}
+                  {change24h.toFixed(2)}% (24h)
                 </span>
               )}
             </div>

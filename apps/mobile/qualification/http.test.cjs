@@ -13,6 +13,7 @@ const { createCommandRunner } = require('./command-runner.cjs');
 const { createHttpFixture, ROUTES, HELD_ROUTES, snapshotFixtureControl } = require('./http-server.cjs');
 const { startHttpCompanion, assertAudit } = require('./http-companion.cjs');
 const { qualifyNativeHttp, qualifyNativeSnapshotBridge, qualifyNativeSnapshot } = require('./http-native.ts');
+const { createNativeCoinQuoteReader } = require('../src/portfolio/nativeCoinQuote.ts');
 const { qualifyNativePost } = require('./post-native.ts');
 const { paliHttpHeaders } = require('../../../source/shared/paliHttpIdentity.ts');
 
@@ -244,6 +245,68 @@ test('actual loopback fixture exercises all helper cases and independent server 
     assertAudit(fixture.snapshot(expected.token), expected.token, fixture.port);
   } finally { await fixture.close(); }
 });
+test('early quote close evidence remains available across asynchronous native cancellation', async () => {
+  const fixture = await createHttpFixture(); fixture.begin(expected.token);
+  const physical = new AbortController();
+  let cancelTimer;
+  try {
+    const endpoint = `http://127.0.0.1:${fixture.port}/${expected.token}/quote-oversize`;
+    const owner = new AbortController();
+    let requestSignal;
+    const read = createNativeCoinQuoteReader(async (url, init) => {
+      requestSignal = init.signal;
+      init.signal.addEventListener('abort', () => {
+        cancelTimer = setTimeout(() => physical.abort(), 1800);
+      }, { once: true });
+      const response = await fetch(url, { ...init, signal: physical.signal, headers: paliHttpHeaders(init.headers) });
+      // The native bridge delivers headers asynchronously and dispatches native
+      // cancellation after the JS signal. Both fit the existing client budget.
+      await new Promise(resolve => setTimeout(resolve, 5500));
+      return {
+        ok: response.ok, status: response.status, url: response.url,
+        redirected: response.redirected, headers: response.headers,
+        body: { cancel: async () => undefined },
+      };
+    });
+    const started = performance.now();
+    assert.equal(await read({ kind: 'utxo', endpoint }, 'usd', owner.signal), null);
+    assert(performance.now() - started < 6000);
+    assert(requestSignal.aborted && !owner.signal.aborted);
+    const closed = await fetch(`http://127.0.0.1:${fixture.port}/${expected.token}/quote-oversize-closed?q=exact`, { headers: paliHttpHeaders() });
+    assert.equal(closed.status, 200);
+    const evidence = fixture.inspect(expected.token);
+    assert.equal(evidence.closed['quote-oversize'], true);
+    assert.equal(evidence.invalid, 0);
+  } finally {
+    clearTimeout(cancelTimer);
+    physical.abort();
+    await fixture.close();
+  }
+});
+
+test('server retirement cannot count as early quote cancellation', async () => {
+  const fixture = await createHttpFixture(); fixture.begin(expected.token);
+  const physical = new AbortController();
+  try {
+    const endpoint = `http://127.0.0.1:${fixture.port}/${expected.token}/quote-oversize`;
+    const read = createNativeCoinQuoteReader(async (url, init) => {
+      const response = await fetch(url, { ...init, signal: physical.signal, headers: paliHttpHeaders(init.headers) });
+      return { ok: response.ok, status: response.status, url: response.url,
+        redirected: response.redirected, headers: response.headers,
+        body: { cancel: async () => undefined } };
+    });
+    assert.equal(await read({ kind: 'utxo', endpoint }, 'usd', new AbortController().signal), null);
+    const closed = await fetch(`http://127.0.0.1:${fixture.port}/${expected.token}/quote-oversize-closed?q=exact`, { headers: paliHttpHeaders() });
+    assert.equal(closed.status, 408);
+    const evidence = fixture.inspect(expected.token);
+    assert.equal(evidence.closed['quote-oversize'], false);
+    assert.equal(evidence.invalid, 1);
+  } finally {
+    physical.abort();
+    await fixture.close();
+  }
+});
+
 test('a transport failure after opening the stalled quote cannot prove the production deadline', async () => {
   const fixture = await createHttpFixture(); fixture.begin(expected.token);
   try {

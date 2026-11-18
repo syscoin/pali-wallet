@@ -12,6 +12,8 @@ import { getPrivacyPool } from './registry.ts';
 import type {
   IPrivacyWithdrawalAttempt,
   IPrivacyWithdrawalJournal,
+  IPrivacyWithdrawalPublicInputs,
+  IPrivacyWithdrawalRootAnchor,
 } from './withdrawalTransactionTypes.ts';
 import type { EvmRetainedSignedRecord } from '../../wallet/evmSignedRecords.ts';
 
@@ -23,6 +25,9 @@ const HASH = /^0x[0-9a-f]{64}$/;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const UINT256_MAX = (BigInt(1) << BigInt(256)) - BigInt(1);
+const FIELD_SIZE = BigInt(
+  '21888242871839275222246405745257275088548364400416034343698204186575808495617'
+);
 const invalid = (): never => {
   throw new Error('privacy_withdrawal_attempt_invalid');
 };
@@ -38,6 +43,88 @@ function uint(value: unknown, positive = false): bigint {
   if (parsed > UINT256_MAX || (positive && parsed === BigInt(0)))
     return invalid();
   return parsed;
+}
+
+export function captureWithdrawalPublicInputs(
+  value: unknown,
+  inputHash?: string
+): Readonly<IPrivacyWithdrawalPublicInputs> {
+  const v = readEvmOwnData(value, [
+    'root',
+    'nullifierHash',
+    'recipient',
+    'relayer',
+    'fee',
+    'refund',
+  ]);
+  if (
+    typeof v.root !== 'string' ||
+    !HASH.test(v.root) ||
+    BigInt(v.root) === BigInt(0) ||
+    BigInt(v.root) >= FIELD_SIZE ||
+    typeof v.nullifierHash !== 'string' ||
+    !HASH.test(v.nullifierHash) ||
+    BigInt(v.nullifierHash) >= FIELD_SIZE ||
+    typeof v.recipient !== 'string' ||
+    !ADDRESS.test(v.recipient) ||
+    BigInt(v.recipient) === BigInt(0) ||
+    typeof v.relayer !== 'string' ||
+    !ADDRESS.test(v.relayer) ||
+    typeof v.fee !== 'string' ||
+    !/^(0|[1-9][0-9]{0,76})$/.test(v.fee) ||
+    uint(v.fee) > UINT256_MAX ||
+    v.refund !== '0'
+  )
+    return invalid();
+  const inputs: IPrivacyWithdrawalPublicInputs = {
+    root: String(v.root).toLowerCase(),
+    nullifierHash: String(v.nullifierHash).toLowerCase(),
+    recipient: String(v.recipient).toLowerCase(),
+    relayer: String(v.relayer).toLowerCase(),
+    fee: v.fee,
+    refund: '0',
+  };
+  const hash = keccak256(
+    AbiCoder.defaultAbiCoder().encode(
+      Array(6).fill('uint256'),
+      [
+        inputs.root,
+        inputs.nullifierHash,
+        inputs.recipient,
+        inputs.relayer,
+        inputs.fee,
+        inputs.refund,
+      ].map((input) => BigInt(input).toString())
+    )
+  );
+  if (inputHash !== undefined && hash !== inputHash.toLowerCase())
+    return invalid();
+  return Object.freeze(inputs);
+}
+
+export function captureWithdrawalRootAnchor(
+  value: unknown,
+  root?: string
+): Readonly<IPrivacyWithdrawalRootAnchor> {
+  const anchor = readEvmOwnData(value, ['root', 'blockNumber', 'blockHash']);
+  if (
+    typeof anchor.root !== 'string' ||
+    !HASH.test(anchor.root) ||
+    (root !== undefined && anchor.root !== root) ||
+    BigInt(anchor.root) === BigInt(0) ||
+    BigInt(anchor.root) >= FIELD_SIZE ||
+    typeof anchor.blockHash !== 'string' ||
+    !HASH.test(anchor.blockHash) ||
+    typeof anchor.blockNumber !== 'string' ||
+    !/^(?:0|[1-9][0-9]{0,77})$/.test(anchor.blockNumber) ||
+    BigInt(anchor.blockNumber) > UINT256_MAX
+  )
+    return invalid();
+  return Object.freeze({
+    root: anchor.root,
+    blockNumber: anchor.blockNumber,
+    blockHash: anchor.blockHash,
+  });
 }
 
 export function createPrivateWithdrawalJournal(
@@ -62,6 +149,7 @@ export function createPrivateWithdrawalJournal(
       'refund',
       'relayer',
       'root',
+      'rootAnchor',
       'mode',
     ];
     const keys =
@@ -117,6 +205,10 @@ export function createPrivateWithdrawalJournal(
       throw new Error();
     let modeFields: object;
     let direct: { from: string; nonce: string } | undefined;
+    const rootAnchor =
+      attempt.rootAnchor === undefined
+        ? undefined
+        : captureWithdrawalRootAnchor(attempt.rootAnchor, attempt.root);
     if (attempt.mode === 'direct') {
       const tx = attempt.transaction;
       if (
@@ -186,6 +278,7 @@ export function createPrivateWithdrawalJournal(
           value: '0',
           ...fees,
         },
+        ...(rootAnchor ? { rootAnchor } : {}),
       };
     } else if (attempt.mode === 'relayed') {
       if (
@@ -208,10 +301,12 @@ export function createPrivateWithdrawalJournal(
         endpoint.hash
       )
         throw new Error();
+      if (!rootAnchor) throw new Error();
       modeFields = {
         endpoint: attempt.endpoint,
         ensHash: attempt.ensHash,
         rewardAccount: attempt.rewardAccount.toLowerCase(),
+        rootAnchor,
       };
     } else throw new Error();
     const inputHash = keccak256(
@@ -263,10 +358,25 @@ export function createPrivateWithdrawalJournal(
       phase: 'unknown',
       proofHash,
       inputHash,
+      publicInputs: captureWithdrawalPublicInputs(
+        {
+          root: attempt.root,
+          nullifierHash: attempt.nullifierHash,
+          recipient: attempt.recipient,
+          relayer: attempt.relayer,
+          fee: attempt.fee,
+          refund: attempt.refund,
+        },
+        inputHash
+      ),
+      ...(rootAnchor ? { rootAnchor } : {}),
       attemptHash: keccak256(toUtf8Bytes(JSON.stringify(normalized))),
       ...direct,
       ...(attempt.mode === 'relayed'
-        ? { endpoint: attempt.endpoint, ensHash: attempt.ensHash }
+        ? {
+            endpoint: attempt.endpoint,
+            ensHash: attempt.ensHash,
+          }
         : {}),
     };
   } catch {
@@ -278,6 +388,10 @@ export function createPrivateWithdrawalJournal(
 export function capturePrivateWithdrawalAttempt(
   value: unknown
 ): Readonly<Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>> {
+  const hasRootAnchor =
+    value !== null &&
+    typeof value === 'object' &&
+    Object.getOwnPropertyDescriptor(value, 'rootAnchor') !== undefined;
   const input = readEvmOwnData(value, [
     'context',
     'createdAt',
@@ -292,6 +406,7 @@ export function capturePrivateWithdrawalAttempt(
     'refund',
     'relayer',
     'root',
+    ...(hasRootAnchor ? ['rootAnchor'] : []),
     'mode',
     'transaction',
   ]);
@@ -328,6 +443,14 @@ export function capturePrivateWithdrawalAttempt(
     invalid();
   const attempt = {
     ...input,
+    ...(input.rootAnchor === undefined
+      ? {}
+      : {
+          rootAnchor: captureWithdrawalRootAnchor(
+            input.rootAnchor,
+            input.root as string
+          ),
+        }),
     context: { ...context, account: { ...account } },
     transaction: { ...transaction },
   } as unknown as Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>;

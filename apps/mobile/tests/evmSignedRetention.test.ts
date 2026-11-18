@@ -15,7 +15,7 @@ import {
   consumeSignedEvmCapacityRefusal,
   type EvmSignedRecordStorage,
 } from '../../../source/wallet/evmSignedRecords.ts';
-import { ERC7579_MODE_SINGLE_DEFAULT } from '../../../source/utils/smartAccount/account.ts';
+import { ERC7579_MODE_SINGLE_DEFAULT, encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
 import { signedRecordTestSession } from './signedRecordTestSession.ts';
 
 Object.defineProperty(globalThis, 'crypto', {
@@ -1119,6 +1119,24 @@ test('an elapsed deadline yields its group even before timeout callbacks run', a
 });
 
 
+test('Smart preparation reads only scoped payer summaries without opening signed payloads', async () => {
+  const f = fixture(), session = f.session();
+  await f.records.append(session, await signed(0, signer, '1'));
+  await f.records.append(session, await signed(0, otherSigner, '1'));
+  await f.records.append(session, await signed(0, signer, '2'));
+  const opened: string[] = [];
+  const decrypt = session.keyring.decryptPrivateRecord.bind(session.keyring);
+  session.keyring.decryptPrivateRecord = async input => { opened.push(input.recordId); return decrypt(input); };
+  const reader = await f.records.captureSmartAccountPendingRecords(session, '1', '0x1111111111111111111111111111111111111111');
+  const records = await reader.readPayerRecords!(signer.address);
+  assert.equal(records.length, 1);
+  assert.equal(records[0]!.from.toLowerCase(), signer.address.toLowerCase());
+  assert.equal(records[0]!.chainId, '1');
+  assert(opened.every(id => id === 'manifest'));
+  f.revoke();
+  await assert.rejects(async () => reader.readPayerRecords!(signer.address), /revoked/);
+});
+
 test('Smart nonce projection caches one owned snapshot and invalidates on writes, final refresh and lock', async () => {
   const f = fixture(), session = f.session();
   const smart = '0x1111111111111111111111111111111111111111';
@@ -1132,23 +1150,35 @@ test('Smart nonce projection caches one owned snapshot and invalidates on writes
     return { ...submission, type: 0, rawTransaction: bytes, hash: Transaction.from(bytes).hash! };
   };
   await f.records.append(session, await create(0, signer));
-  let decryptions = 0;
+  let decryptions = 0, storageReads = 0;
   const original = session.keyring.decryptPrivateRecord.bind(session.keyring);
   session.keyring.decryptPrivateRecord = async (input) => { decryptions++; return original(input); };
+  const readStorage = f.port.read.bind(f.port);
+  f.port.read = async (id) => { storageReads++; return readStorage(id); };
   const reader = await f.records.captureSmartAccountPendingRecords(session, '1', smart);
   const first = await reader.read(false);
-  const firstDecryptions = decryptions;
+  const firstDecryptions = decryptions, firstStorageReads = storageReads;
   assert.equal(first.length, 1);
-  assert.strictEqual(await reader.read(false), first);
+  const cached = await reader.read(false);
+  assert.deepEqual(cached, first);
+  assert.strictEqual(cached[0], first[0]);
   assert.equal(decryptions, firstDecryptions);
+  assert.equal(storageReads, firstStorageReads);
   await f.records.append(session, await create(1, otherSigner));
-  assert.equal((await reader.read(false)).length, 2);
-  assert(decryptions > firstDecryptions);
+  const afterWriteDecryptions = decryptions, afterWriteStorageReads = storageReads;
+  const updated = await reader.read(false);
+  assert.equal(updated.length, 2);
+  assert(decryptions > afterWriteDecryptions);
+  assert(storageReads > afterWriteStorageReads);
+  const updatedDecryptions = decryptions, updatedStorageReads = storageReads;
   f.replace(undefined);
-  assert.equal((await reader.read(false)).length, 2);
+  assert.deepEqual(await reader.read(false), updated);
+  assert.equal(decryptions, updatedDecryptions);
+  assert.equal(storageReads, updatedStorageReads);
   assert.equal((await reader.read(true)).length, 0);
+  assert(storageReads > updatedStorageReads);
   f.revoke();
-  await assert.rejects(reader.read(false), /revoked/);
+  await assert.rejects(async () => reader.read(false), /revoked/);
 });
 
 
@@ -1198,59 +1228,99 @@ test('the existing owned Smart projection retains removal identity through phase
     rawTransaction,
     hash,
   });
+  let decryptions = 0, storageReads = 0;
+  const decrypt = session.keyring.decryptPrivateRecord.bind(session.keyring);
+  session.keyring.decryptPrivateRecord = async (input) => { decryptions++; return decrypt(input); };
+  const readStorage = f.port.read.bind(f.port);
+  f.port.read = async (id) => { storageReads++; return readStorage(id); };
   const reader = await f.records.captureSmartAccountPendingRecords(
     session,
     '1',
     smart
   );
   const first = await reader.read(false);
+  const firstDecryptions = decryptions, firstStorageReads = storageReads;
   assert.deepEqual(first[0]!.guardianRemoval, { moduleAddress });
-  assert.strictEqual(await reader.read(false), first);
+  const cached = await reader.read(false);
+  assert.deepEqual(cached, first);
+  assert.strictEqual(cached[0], first[0]);
+  assert.equal(decryptions, firstDecryptions);
+  assert.equal(storageReads, firstStorageReads);
   await f.records.updatePhase(session, '1', signer.address, hash, 'confirmed');
+  const afterWriteDecryptions = decryptions, afterWriteStorageReads = storageReads;
   const updated = await reader.read(false);
-  assert.notStrictEqual(updated, first);
+  assert.notStrictEqual(updated[0], first[0]);
+  assert(decryptions > afterWriteDecryptions);
+  assert(storageReads > afterWriteStorageReads);
   assert.deepEqual(updated[0]!.guardianRemoval, { moduleAddress });
   const reopened = await new EvmSignedRecords(
     f.port
   ).captureSmartAccountPendingRecords(session, '1', smart);
   assert.deepEqual(await reopened.read(true), updated);
+  const updatedDecryptions = decryptions, updatedStorageReads = storageReads;
   f.replace(undefined);
-  assert.strictEqual(await reader.read(false), updated);
+  assert.deepEqual(await reader.read(false), updated);
+  assert.equal(decryptions, updatedDecryptions);
+  assert.equal(storageReads, updatedStorageReads);
   assert.deepEqual(await reader.read(true), []);
+  assert(storageReads > updatedStorageReads);
   f.revoke();
-  await assert.rejects(reader.read(false), /revoked/);
+  await assert.rejects(async () => reader.read(false), /revoked/);
 });
 
 test('signed Smart dispatch projects its authenticated journal inside the admission queue', async () => {
   const { createSmartAccountPendingState } = await import('../../../source/utils/smartAccount/pendingState.ts');
   const f = fixture(), session = f.session();
   const smart = '0x1111111111111111111111111111111111111111';
-  const operation = { sender: smart, nonce: '0', initCode: '0x', callData: '0x12345678',
+  const execution = encodeERC7579Executions([{ target: signer.address, value: '0', data: '0x' }]);
+  const operation = { sender: smart, nonce: '0', initCode: '0x', callData: paliSmartAccountInterface.encodeFunctionData('execute', [execution.mode, execution.executionCalldata]),
     accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1',
     gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03', paymasterAndData: '0x', signature: '0x1234' };
   const rawTransaction = await signer.signTransaction({ chainId: 1, nonce: 0, to: getPaliEntryPointAddress(1), gasLimit: 500000, gasPrice: 2,
     data: paliEntryPointInterface.encodeFunctionData('handleOps', [[operation], signer.address]) });
   const record = { ...await signed(0, signer, '1'), type: 0, rawTransaction, hash: Transaction.from(rawTransaction).hash! };
-  let projectionReads = 0;
+  const receipt = await f.records.retainSmartAccountAuthorization(session, {
+    chainId: 1,
+    observedAt: { number: '1', hash: '0x' + '44'.repeat(32) },
+    payer: signer.address,
+    userOperation: operation,
+  });
+  const records = await f.records.captureSmartAccountPendingRecords(session, '1', smart);
+  const authorizedRecords = records.forAuthorization!(receipt);
+  let projectionReads = 0, broadcasts = 0;
+  const nonceTags: unknown[] = [];
   const lifecycle = createEvmSignedRecordLifecycle(f.records, session, {
     retirementReadForChain: null,
     preflight: async (current, check, snapshot) => {
       assert(snapshot.readSmartAccountOperations);
       const provider = {
-        verifyConfiguredChainId: async () => undefined,
+        verifyConfiguredChainId: async (fresh: boolean) => { assert.equal(fresh, true); },
         send: async (method: string, params: readonly any[]) => {
-          if (method === 'eth_getCode') return '0x';
-          if (method === 'eth_getBalance') return '0x100';
           assert.equal(method, 'eth_call');
-          return params[0].data.startsWith(paliEntryPointInterface.getFunction('balanceOf')!.selector)
-            ? paliEntryPointInterface.encodeFunctionResult('balanceOf', [0])
-            : paliEntryPointInterface.encodeFunctionResult('getNonce', [0]);
+          assert.deepEqual(params[0], {
+            to: getPaliEntryPointAddress(1),
+            data: paliEntryPointInterface.encodeFunctionData('getNonce', [smart, 0]),
+          });
+          nonceTags.push(params[1]);
+          return paliEntryPointInterface.encodeFunctionResult('getNonce', [0]);
         },
       };
+      // A historical outer alone must not exempt a disclosed instruction.
+      // Only its current opaque, durably issued receipt grants that exception.
+      await assert.rejects(
+        createSmartAccountPendingState(provider, {
+          ...records,
+          read: async () => { throw new Error('Storage queue reentry'); },
+          readAuthorizations: async () => { throw new Error('Storage queue reentry'); },
+        }, 1, smart, check).onProvider(provider, current.hash, snapshot).assertNonce(operation),
+        /SMART_ACCOUNT_PENDING_STATE/
+      );
+      assert.equal(broadcasts, 0);
       const readOperations = snapshot.readSmartAccountOperations!;
       const pending = createSmartAccountPendingState(provider, {
-        profileId: snapshot.owner,
+        ...authorizedRecords,
         read: async () => { throw new Error('Storage queue reentry'); },
+        readAuthorizations: async () => { throw new Error('Storage queue reentry'); },
       }, 1, smart, check).onProvider(provider, current.hash, {
         ...snapshot,
         readSmartAccountOperations: async (chainId, address) => {
@@ -1262,7 +1332,7 @@ test('signed Smart dispatch projects its authenticated journal inside the admiss
     },
   });
   await lifecycle.persistSigned(record);
-  let broadcasts = 0, timeout: ReturnType<typeof setTimeout> | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const result = await Promise.race([
       lifecycle.dispatchSigned(record, async () => { broadcasts++; return 'submitted'; }, async () => undefined),
@@ -1272,13 +1342,15 @@ test('signed Smart dispatch projects its authenticated journal inside the admiss
   } finally { clearTimeout(timeout); }
   assert.equal(projectionReads, 1);
   assert.equal(broadcasts, 1);
+  assert.deepEqual(nonceTags, ['latest', 'pending']);
 });
 
 test('admission Smart projection includes other payers from the authenticated full manifest', async () => {
   const f = fixture(), session = f.session();
   const smart = '0x1111111111111111111111111111111111111111';
   const make = async (wallet: Wallet) => {
-    const operation = { sender: smart, nonce: '0', initCode: '0x', callData: '0x12345678',
+    const execution = encodeERC7579Executions([{ target: signer.address, value: '0', data: '0x' }]);
+    const operation = { sender: smart, nonce: '0', initCode: '0x', callData: paliSmartAccountInterface.encodeFunctionData('execute', [execution.mode, execution.executionCalldata]),
       accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1',
       gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03', paymasterAndData: '0x', signature: '0x1234' };
     const rawTransaction = await wallet.signTransaction({ chainId: 1, nonce: 0, to: getPaliEntryPointAddress(1), gasLimit: 500000, gasPrice: 2,
@@ -1301,5 +1373,5 @@ test('admission Smart projection includes other payers from the authenticated fu
     },
   });
   f.revoke();
-  await assert.rejects(initial.readSmartAccountOperations!('1', smart), /revoked/);
+  await assert.rejects(async () => initial.readSmartAccountOperations!('1', smart), /revoked/);
 });

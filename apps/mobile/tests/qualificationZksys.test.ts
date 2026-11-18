@@ -58,7 +58,7 @@ const evidence = (phase: 'create' | 'restart') => ({
   zksysSignatures: phase === 'create' ? 1 : 0,
   zksysAuthorizations: phase === 'create' ? 0 : 1,
   zksysInjectedBroadcasts: 1,
-  zksysFeeEstimates: phase === 'create' ? 2 : 0,
+  zksysFeeEstimates: phase === 'create' ? 3 : 0,
   zksysRestoredFromJournal: phase === 'restart',
 });
 

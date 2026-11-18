@@ -8,6 +8,14 @@ import type {
   EvmSignedRecordStorage,
 } from './evmSignedRecords.ts';
 import {
+  validUtxoDiscoveryState,
+  validUtxoIssuedAddress,
+  type UtxoAddressSelection,
+  type UtxoDiscoveryMetadata,
+  type UtxoDiscoveryState,
+  type UtxoIssuedAddress,
+} from './utxoAddressDiscovery.ts';
+import {
   capacity,
   CHUNK_BYTES,
   CHUNK_DOMAIN,
@@ -52,6 +60,7 @@ export type UtxoRecordOwner = UtxoRecordChain &
 
 export type UtxoDurableSubmission = Readonly<{
   feeSatoshis: string;
+  issuedPaths?: readonly UtxoIssuedAddress[];
   operation: 'wallet' | 'external';
   outpoints: readonly string[];
   owner: UtxoRecordOwner;
@@ -73,6 +82,7 @@ export function snapshotUtxoSubmission(
     outpoints,
     feeSatoshis,
     virtualSize,
+    issuedPaths,
   } = record;
   return Object.freeze({
     owner: Object.freeze({
@@ -92,6 +102,13 @@ export function snapshotUtxoSubmission(
     outpoints: Object.freeze([...outpoints]),
     feeSatoshis,
     virtualSize,
+    ...(issuedPaths === undefined
+      ? {}
+      : {
+          issuedPaths: Object.freeze(
+            issuedPaths.map((path) => Object.freeze({ ...path }))
+          ),
+        }),
   });
 }
 const queues = new WeakMap<object, Promise<void>>();
@@ -194,7 +211,19 @@ function checkRecord(record: UtxoDurableSubmission): string {
     !tx.outs.length ||
     tx.outs.length > PSBT_WORK_LIMITS.outputs ||
     JSON.stringify(utxoInputOutpoints(tx.ins)) !==
-      JSON.stringify(record.outpoints)
+      JSON.stringify(record.outpoints) ||
+    (record.issuedPaths !== undefined &&
+      (!Array.isArray(record.issuedPaths) ||
+        record.issuedPaths.length === 0 ||
+        record.issuedPaths.length > 2 ||
+        !record.issuedPaths.every(
+          (path) =>
+            validUtxoIssuedAddress(path) &&
+            tx.outs.some(
+              (output: { script: Uint8Array }) =>
+                Buffer.from(output.script).toString('hex') === path.script
+            )
+        )))
   )
     return corrupt();
   return owner;
@@ -334,7 +363,13 @@ export class UtxoSignedRecords {
       .catch((error) => this.storageFailure(error));
     guard(session);
     if (raw === undefined)
-      return { profile, raw, revision: -1, entries: [] as readonly Entry[] };
+      return {
+        profile,
+        raw,
+        revision: -1,
+        entries: [] as readonly Entry[],
+        discovery: undefined as readonly UtxoDiscoveryMetadata[] | undefined,
+      };
     const bundle = inspectUtxoSignedBundle(raw, profile);
     const root = await session.keyring.decryptPrivateRecord({
       domain: ROOT_DOMAIN,
@@ -345,26 +380,41 @@ export class UtxoSignedRecords {
       guard(session);
       if (
         new TextDecoder().decode(root) !==
-        JSON.stringify([bundle.revision, entriesDigest(bundle.entries)])
+        JSON.stringify([
+          bundle.revision,
+          entriesDigest(bundle.entries),
+          ...(bundle.discovery === undefined ? [] : [digest(bundle.discovery)]),
+        ])
       )
         return corrupt();
     } finally {
       root.fill(0);
     }
-    return { profile, raw, revision: bundle.revision, entries: bundle.entries };
+    return {
+      profile,
+      raw,
+      revision: bundle.revision,
+      entries: bundle.entries,
+      discovery: bundle.discovery,
+    };
   }
 
   private async write(
     session: UtxoRecordSession,
     before: Awaited<ReturnType<UtxoSignedRecords['load']>>,
-    entries: readonly Entry[]
+    entries: readonly Entry[],
+    discovery = before.discovery
   ) {
     const revision = before.revision + 1;
     if (!Number.isSafeInteger(revision) || entries.length > MAX_RECORDS)
       return capacity();
     guard(session);
     const plaintext = encoder.encode(
-      JSON.stringify([revision, entriesDigest(entries)])
+      JSON.stringify([
+        revision,
+        entriesDigest(entries),
+        ...(discovery === undefined ? [] : [digest(discovery)]),
+      ])
     );
     let root: IEncryptedPrivateRecord;
     try {
@@ -385,6 +435,7 @@ export class UtxoSignedRecords {
       revision,
       root,
       entries,
+      ...(discovery === undefined ? {} : { discovery }),
     });
     if (next.length > UTXO_SIGNED_RECORD_BYTES) return capacity();
     const committed = await this.storage
@@ -395,6 +446,66 @@ export class UtxoSignedRecords {
       return this.requireReopen();
     }
     return committed;
+  }
+
+  /** Same owner/CAS/root as signed bytes; a read never consumes a change index. */
+  addressDiscovery(session: UtxoRecordSession, owner: UtxoRecordOwner) {
+    const identity = ownerId(owner);
+    return Object.freeze({
+      allocateUtxoAddress: (
+        select: (state: UtxoDiscoveryState | undefined) => UtxoAddressSelection
+      ): Promise<UtxoIssuedAddress> =>
+        this.exclusive(async () => {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const before = await this.load(session);
+            const previous = before.discovery?.find(
+              (item) => item.owner === identity
+            );
+            guard(session);
+            const chosen = select(
+              previous && Object.freeze({ ...previous.state })
+            );
+            guard(session);
+            if (
+              !chosen ||
+              !validUtxoDiscoveryState(chosen.state) ||
+              !validUtxoIssuedAddress(chosen.issued) ||
+              chosen.issued.index !==
+                (chosen.issued.branch === 1
+                  ? chosen.state.changeIndex
+                  : chosen.state.receivingIndex) ||
+              (previous &&
+                (chosen.state.changeIndex !== previous.state.changeIndex ||
+                  chosen.state.receivingIndex < previous.state.receivingIndex ||
+                  chosen.state.receivingIndex >
+                    previous.state.receivingIndex + 1))
+            )
+              return corrupt();
+            const issued = Object.freeze({ ...chosen.issued });
+            const next: UtxoDiscoveryMetadata = {
+              owner: identity,
+              state: { ...chosen.state },
+              paths: [
+                ...(previous?.paths ?? []).filter(
+                  (path) => path.branch !== issued.branch
+                ),
+                issued,
+              ].sort((a, b) => a.branch - b.branch),
+            };
+            if (previous && JSON.stringify(previous) === JSON.stringify(next))
+              return issued;
+            const discovery = previous
+              ? before.discovery!.map((item) =>
+                  item === previous ? next : item
+                )
+              : [...(before.discovery ?? []), next];
+            if (discovery.length > MAX_RECORDS) return capacity();
+            if (await this.write(session, before, before.entries, discovery))
+              return issued;
+          }
+          throw new Error('UTXO_SIGNED_RECORD_CONFLICT');
+        }),
+    });
   }
 
   persist(
@@ -428,7 +539,24 @@ export class UtxoSignedRecords {
         )
       )
         throw new Error('UTXO_SIGNED_OUTPOINT_PENDING');
-      const serialized = encoder.encode(JSON.stringify(record));
+      // Retain only locally issued paths whose scripts occur in these exact
+      // signed bytes. They survive restart/replay, independently of backend hints.
+      const transaction = syscoinUtils.bitcoinjs.Transaction.fromHex(
+        record.rawTransaction
+      );
+      const issuedPaths = before.discovery
+        ?.find((item) => item.owner === owner)
+        ?.paths.filter((path) =>
+          transaction.outs.some(
+            (output: { script: Uint8Array }) =>
+              Buffer.from(output.script).toString('hex') === path.script
+          )
+        );
+      const retainedRecord = snapshotUtxoSubmission({
+        ...record,
+        issuedPaths: issuedPaths?.length ? issuedPaths : undefined,
+      });
+      const serialized = encoder.encode(JSON.stringify(retainedRecord));
       const chunks: IEncryptedPrivateRecord[] = [];
       try {
         if (serialized.length > 2 * RAW_BYTES + 64 * 1024) return capacity();
@@ -530,7 +658,8 @@ export class UtxoSignedRecords {
     txid: string,
     phase: Summary['phase'],
     onlyFrom?: Summary['phase'],
-    observedChunks?: Entry['chunks']
+    observedChunks?: Entry['chunks'],
+    confirmedPaths?: readonly UtxoIssuedAddress[]
   ) {
     const identity = ownerId(owner),
       key = recordKey(chainKey(owner), txid);
@@ -550,15 +679,34 @@ export class UtxoSignedRecords {
       )
         throw new Error('UTXO observation changed');
       if (!match) return corrupt();
+      let discovery = before.discovery;
+      if (phase === 'confirmed' && confirmedPaths?.length) {
+        const previous = discovery?.find((item) => item.owner === identity);
+        if (!previous) return corrupt();
+        let changeIndex = previous.state.changeIndex;
+        for (const path of confirmedPaths) {
+          if (path.branch !== 1) continue;
+          if (path.index > changeIndex) return corrupt();
+          if (path.index === changeIndex && changeIndex < 0x7fffffff)
+            changeIndex++;
+        }
+        if (changeIndex !== previous.state.changeIndex)
+          discovery = discovery!.map((item) =>
+            item === previous
+              ? { ...item, state: { ...item.state, changeIndex } }
+              : item
+          );
+      }
       if (
-        match.phase === phase ||
+        (match.phase === phase && discovery === before.discovery) ||
         (onlyFrom !== undefined && match.phase !== onlyFrom) ||
         (await this.write(
           session,
           before,
           before.entries.map((entry) =>
             entry === match ? { ...entry, phase } : entry
-          )
+          ),
+          discovery
         ))
       )
         return;
@@ -903,7 +1051,8 @@ export class UtxoSignedRecords {
           // An unverified observation revokes terminal eviction authority.
           // Preserve any earlier submission ACK on an already retained record.
           matches ? undefined : 'confirmed',
-          match.entry.chunks
+          match.entry.chunks,
+          confirmed ? retained.issuedPaths : undefined
         )
       );
       return confirmed ? 'confirmed' : matches ? 'seen' : 'unknown';

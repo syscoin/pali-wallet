@@ -49,8 +49,7 @@ export type EvmDappTransactionRequest = Readonly<{
   value: string;
 }>;
 
-export type EvmDappPreparedQuote = Readonly<{
-  balanceUnits: string;
+export type EvmDappQuote = Readonly<{
   coveredFeeUnits: string;
   expiresAtMonotonicMilliseconds: number;
   feeComparison: EvmDappFeeComparison;
@@ -58,6 +57,8 @@ export type EvmDappPreparedQuote = Readonly<{
   maximumTotalUnits: string;
   transaction: PreparedEvmTransaction;
 }>;
+export type EvmDappPreparedQuote = EvmDappQuote &
+  Readonly<{ balanceUnits: string }>;
 
 export class EvmDappReviewRequiredError extends Error {
   constructor() {
@@ -69,6 +70,12 @@ export class EvmDappReviewRequiredError extends Error {
 export type EvmDappBlock = Readonly<{
   baseFee: bigint | null;
   gasLimit: bigint;
+  hash: string;
+  number: string;
+}>;
+export type EvmDappFeeDisplayBlock = Readonly<{
+  baseFeePerGas?: string | null;
+  gasLimit: string;
   hash: string;
   number: string;
 }>;
@@ -93,6 +100,7 @@ export type EvmDappPreparationPorts<Sample extends NonceSample> = Readonly<{
   feePolicy?: 'fixed';
   fees(block: EvmDappBlock): Promise<FeeData>;
   funding: EvmFeeFunding;
+  fundingProvider?: unknown;
   gasPolicy: EvmGasPolicy;
   nonce(block: EvmDappBlock, requested: number | undefined): Promise<Sample>;
   now(): number;
@@ -150,8 +158,34 @@ export function captureEvmGasPolicy(value: EvmGasPolicy): EvmGasPolicy {
 export async function prepareEvmDappQuote<Sample extends NonceSample>(
   input: EvmDappTransactionRequest,
   ports: EvmDappPreparationPorts<Sample>,
-  approved?: EvmDappPreparedQuote
+  approved?: EvmDappQuote
 ): Promise<EvmDappPreparedQuote> {
+  return (await prepareQuote(
+    input,
+    ports,
+    approved,
+    false
+  )) as EvmDappPreparedQuote;
+}
+
+/** Display an exact fee ceiling; admission is always repeated after consent. */
+export async function prepareEvmDappDisplayQuote<Sample extends NonceSample>(
+  input: EvmDappTransactionRequest,
+  ports: EvmDappPreparationPorts<Sample>,
+  displayBlock?: EvmDappFeeDisplayBlock
+): Promise<EvmDappQuote> {
+  const sampled =
+    displayBlock === undefined ? undefined : readBlock(displayBlock);
+  return prepareQuote(input, ports, undefined, true, sampled);
+}
+
+async function prepareQuote<Sample extends NonceSample>(
+  input: EvmDappTransactionRequest,
+  ports: EvmDappPreparationPorts<Sample>,
+  approved: EvmDappQuote | undefined,
+  displayOnly: boolean,
+  displayBlock?: EvmDappBlock
+): Promise<EvmDappQuote & Readonly<{ balanceUnits?: string }>> {
   const gasPolicy = captureEvmGasPolicy(ports.gasPolicy);
   ports = Object.freeze({
     ...ports,
@@ -173,11 +207,12 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
   });
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
   check();
-  await ports.verifyChain();
+  if (!displayOnly) await ports.verifyChain();
   check();
-  const sampled = readBlock(
-    await ports.read('eth_getBlockByNumber', ['latest', false])
-  );
+  const sampled =
+    displayOnly && displayBlock
+      ? displayBlock
+      : readBlock(await ports.read('eth_getBlockByNumber', ['latest', false]));
   check();
   const pendingHeader =
     approved || ports.feePolicy === 'fixed'
@@ -219,7 +254,7 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
   const nonceState = ports.nonce(sampled, request.nonce);
   const [sample, balance, fees] = await Promise.all([
     nonceState,
-    ports.balance(sampled, nonceState),
+    displayOnly ? undefined : ports.balance(sampled, nonceState),
     approved
       ? Promise.resolve(null)
       : fixedFees ?? ports.fees({ ...sampled, baseFee: feeBase }),
@@ -290,6 +325,7 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
     // the same native fee cap as the final check; funded quotes still estimate.
     if (
       ports.funding === NATIVE_EVM_FEE_FUNDING &&
+      balance !== undefined &&
       balance <
         getEvmTransferCost(
           BigInt(request.value),
@@ -331,26 +367,33 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
     approved?.expiresAtMonotonicMilliseconds ??
     now + EVM_FEE_APPROVAL_LIFETIME_MS;
   const approval = captureEvmFeeApproval(transaction, ports.scope, expiry);
-  const coverage = await resolveEvmFeeFunding(ports.funding, approval, check);
+  const coverage = await resolveEvmFeeFunding(
+    ports.funding,
+    approval,
+    check,
+    ports.gasPolicy.kind === 'estimate' ? executionGas : undefined,
+    ports.fundingProvider
+  );
   try {
-    assertEvmFeeEstimateApproved(
-      approval,
-      {
-        balance,
-        estimatedGas: executionGas,
-        sampledBlockGasLimit: feeGasLimit,
-        ...(feeBase === null ? {} : { baseFeePerGas: feeBase }),
-      },
-      ports.now(),
-      coverage
-    );
+    if (!displayOnly)
+      assertEvmFeeEstimateApproved(
+        approval,
+        {
+          balance: balance!,
+          estimatedGas: executionGas,
+          sampledBlockGasLimit: feeGasLimit,
+          ...(feeBase === null ? {} : { baseFeePerGas: feeBase }),
+        },
+        ports.now(),
+        coverage
+      );
   } catch (error) {
     if (error instanceof EvmFeeBalanceError) throw error;
     throw new EvmDappReviewRequiredError();
   }
-  await ports.verifyBlock(sampled);
+  if (!displayOnly) await ports.verifyBlock(sampled);
   check();
-  await ports.verifyChain();
+  if (!displayOnly) await ports.verifyChain();
   check();
   const coveredFee = getEvmCoveredFee(approval, coverage);
   return Object.freeze({
@@ -389,7 +432,7 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
         fees!
       ),
     transaction,
-    balanceUnits: balance.toString(),
+    ...(balance === undefined ? {} : { balanceUnits: balance.toString() }),
     maximumFeeUnits: approval.maximumFeeUnits,
     maximumTotalUnits: (
       BigInt(approval.maximumTotalUnits) - coveredFee

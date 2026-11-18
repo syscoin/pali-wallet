@@ -7,6 +7,8 @@ jest.mock('state/store', () => ({
 jest.mock('scripts/Background', () => ({
   getController: () => getControllerMock(),
 }));
+import { initialActiveHdAccountState } from 'types/network';
+
 import { SysProvider } from './SysProvider';
 
 describe('SysProvider account privacy', () => {
@@ -38,6 +40,53 @@ describe('SysProvider account privacy', () => {
     expect(provider.getTransactions()).toEqual([connectedTx]);
     expect(provider.transaction(['connected'])).toEqual(connectedTx);
     expect(provider.transaction(['unrelated'])).toBeNull();
+  });
+
+  it('projects the actual sys_getAccount provider result without private RPC caches or nested metadata', () => {
+    const privateUrl =
+      'https://private-rpc.example/v3/private-api-token?key=private-query-token';
+    const publicAccount = {
+      id: 1,
+      address: 'sys1connected',
+      xpub: 'approved-public-xpub',
+      label: 'Account 2',
+      balances: { syscoin: '12', ethereum: 0 },
+      isImported: false,
+      isLedgerWallet: false,
+      isTrezorWallet: true,
+      isSmartAccount: false,
+      slip44: 57,
+    };
+    const stored = {
+      ...publicAccount,
+      xprv: 'encrypted-private-key',
+      balances: {
+        ...publicAccount.balances,
+        [privateUrl]: { endpoint: privateUrl },
+      },
+      nativeBalanceCache: {
+        [JSON.stringify(['ethereum', 1, privateUrl])]: { balance: '12' },
+      },
+      smartAccount: {
+        descriptor: { rpcUrl: privateUrl },
+        localSigner: 'internal-storage-reference',
+      },
+      storageMetadata: { nested: { endpoint: privateUrl } },
+    };
+    getControllerMock().dapp.getAccount = () => stored;
+    const provider = SysProvider('https://connected.test');
+    const result = provider.getAccount();
+    expect(result).toEqual(publicAccount);
+    expect(provider.getPublicKey()).toBe(publicAccount.xpub);
+    expect(JSON.stringify(result)).not.toMatch(
+      /private-api-token|private-query-token|encrypted-private-key|internal-storage-reference|nativeBalanceCache/
+    );
+    expect(
+      Object.hasOwn(
+        stored.nativeBalanceCache,
+        JSON.stringify(['ethereum', 1, privateUrl])
+      )
+    ).toBe(true);
   });
 
   it('keeps internal provenance out of both public history methods without changing transaction data', () => {
@@ -91,6 +140,27 @@ describe('SysProvider account privacy', () => {
       `${'12'.repeat(32)}:0`,
     ]);
     expect(provider.transaction(['unrelated'])).toBeNull();
+  });
+
+  it('keeps the initial UTXO account and xpub available while its legacy balances are still loading', () => {
+    const account = {
+      ...initialActiveHdAccountState,
+      address: 'sys1initialaccount',
+      xpub: 'approved-initial-xpub',
+      // The vault reducer initializes both chain-family observations to -1.
+      balances: { ethereum: -1, syscoin: -1 },
+    };
+    getControllerMock().dapp.getAccount = () => account;
+    const provider = SysProvider('https://connected.test');
+    expect(provider.getAccount()).toMatchObject({
+      address: account.address,
+      xpub: account.xpub,
+      balances: {},
+    });
+    expect(provider.getPublicKey()).toBe(account.xpub);
+    expect(provider.getAccount()!.balances).not.toHaveProperty('syscoin');
+    expect(provider.getAccount()!.balances).not.toHaveProperty('ethereum');
+    expect(account.balances).toEqual({ ethereum: -1, syscoin: -1 });
   });
 
   it('hides accounts, public keys and history while locked', () => {

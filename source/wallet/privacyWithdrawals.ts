@@ -8,6 +8,7 @@ import {
   validatePrivacyRelayerEndpoint,
 } from '../utils/privacy/relayers.ts';
 import { readPrivacyRelayerJob } from '../utils/privacy/relayJobs.ts';
+import { capturePreviousWithdrawalAttempts } from '../utils/privacy/withdrawTypes.ts';
 
 import type {
   IPrivacyRelayerDirectory,
@@ -74,8 +75,10 @@ const PUBLIC_ERRORS = new Set([
   'privacy_withdrawal_snapshot_invalid',
   'privacy_withdrawal_invalid',
   'privacy_withdrawal_attempt_exists',
+  'privacy_withdrawal_nonce_conflict',
   'privacy_withdrawal_attempt_invalid',
   'privacy_withdrawal_quote_changed',
+  'privacy_withdrawal_risk_not_accepted',
   'privacy_withdrawal_insufficient_funds',
 ]);
 const ABI = new Interface([
@@ -85,6 +88,7 @@ interface IIntent {
   abort: AbortController;
   attempt?: IPrivacyWithdrawalAttempt;
   expiresAt?: number;
+  historyBinding?: string;
   lease?: IPrivacySnapshotAccess;
   selection?: Readonly<IPrivacyRelayerSelection>;
   session: IPrivacyWithdrawalSession;
@@ -265,7 +269,8 @@ export function createPrivacyWithdrawalsController(
   };
   const relay = async (
     attempt: Extract<IPrivacyWithdrawalAttempt, { mode: 'relayed' }>,
-    assertBeforeSubmit: () => void
+    assertBeforeSubmit: () => void,
+    beforeDispatch: () => Promise<void>
   ) => {
     // Exact Classic relayer POST schema from tornadocash/tornado-relayer
     // @2247730603f2c249f90da0b07058325619435387, src/modules/validator.js.
@@ -282,7 +287,7 @@ export function createPrivacyWithdrawalsController(
       // This is still before fetch entry, so a rejected final fence is known
       // not to have broadcast and may clear only its matching reservation.
       try {
-        await host.beforeDispatch(attempt);
+        await beforeDispatch();
         assertBeforeSubmit();
       } catch (error) {
         const rejected = sanitize(error);
@@ -434,12 +439,11 @@ export function createPrivacyWithdrawalsController(
         );
         assertCurrent();
         if (
-          record.transactionHash &&
           observation.transactionHash &&
-          record.transactionHash.toLowerCase() !== observation.transactionHash
-        )
-          throw fail('privacy_relayer_job_invalid');
-        if (observation.transactionHash && !record.transactionHash) {
+          !(record.transactionHashes ?? [record.transactionHash]).includes(
+            observation.transactionHash
+          )
+        ) {
           await host.recordJobStatus(
             noteId,
             record.attemptHash,
@@ -536,7 +540,7 @@ export function createPrivacyWithdrawalsController(
             const review = await host.withNote(
               request.noteId,
               intent.session,
-              async (note, poolId) => {
+              async (note, poolId, history) => {
                 if (used) throw fail('privacy_withdrawal_note_invalid');
                 used = true;
                 current(intent);
@@ -555,6 +559,16 @@ export function createPrivacyWithdrawalsController(
                 )
                   throw fail('privacy_withdrawal_note_invalid');
                 originalIdentity = identity;
+                if (
+                  !history ||
+                  typeof history.binding !== 'string' ||
+                  !history.binding
+                )
+                  throw fail('privacy_withdrawal_note_invalid');
+                intent.historyBinding = history.binding;
+                const previousWithdrawals = capturePreviousWithdrawalAttempts(
+                  history.previousWithdrawals
+                );
                 const access = await host.getSnapshot(poolId);
                 if (typeof access?.getPath !== 'function')
                   throw fail('privacy_verification_pending');
@@ -655,6 +669,11 @@ export function createPrivacyWithdrawalsController(
                   root: intent.lease.snapshot.root,
                   nullifierHash: identity.nullifierHash,
                   proof: proof.proof,
+                  rootAnchor: Object.freeze({
+                    root: intent.lease.snapshot.root,
+                    blockNumber: String(intent.lease.snapshot.asOfBlockNumber),
+                    blockHash: intent.lease.snapshot.asOfBlockHash,
+                  }),
                 };
                 intent.attempt =
                   request.mode === 'direct'
@@ -694,6 +713,9 @@ export function createPrivacyWithdrawalsController(
                   intentId: id,
                   noteId: request.noteId,
                   poolId,
+                  ...(previousWithdrawals.length
+                    ? { previousWithdrawals }
+                    : {}),
                   amount: pool.amount,
                   poolAddress: pool.address,
                   mode: request.mode,
@@ -740,6 +762,7 @@ export function createPrivacyWithdrawalsController(
             intent.expiresAt = undefined;
             intent.lease = undefined;
             intent.selection = undefined;
+            intent.historyBinding = undefined;
             current(intent);
             if (intents.get(id) !== intent) throw error;
             const remaining =
@@ -785,7 +808,16 @@ export function createPrivacyWithdrawalsController(
         }
       }
     },
-    submitWithdrawal: async (id) => {
+    submitWithdrawal: async (id, approval) => {
+      if (
+        !approval ||
+        typeof approval !== 'object' ||
+        Array.isArray(approval) ||
+        Object.keys(approval).length !== 1 ||
+        approval.acceptPreviousWithdrawalRisk !== true
+      )
+        throw fail('privacy_withdrawal_risk_not_accepted');
+
       const intent = intents.get(id);
       if (!intent?.attempt || now() >= intent.expiresAt!) {
         remove(id);
@@ -800,6 +832,11 @@ export function createPrivacyWithdrawalsController(
         throw sanitize(error);
       }
       const attempt = intent.attempt;
+      if (!intent.historyBinding) throw fail('privacy_withdrawal_note_invalid');
+      const accepted = Object.freeze({
+        acceptPreviousWithdrawalRisk: true as const,
+        historyBinding: intent.historyBinding,
+      });
       if (submitting.has(attempt.noteId))
         throw fail('privacy_withdrawal_note_busy');
       submitting.add(attempt.noteId);
@@ -842,7 +879,10 @@ export function createPrivacyWithdrawalsController(
           );
           current(intent);
         }
-        const assertReservedCurrent = await host.beforeSubmission(attempt);
+        const assertReservedCurrent = await host.beforeSubmission(
+          attempt,
+          accepted
+        );
         const assertBeforeSign = () => {
           current(intent);
           if (typeof assertReservedCurrent !== 'function')
@@ -859,10 +899,15 @@ export function createPrivacyWithdrawalsController(
             intent.session,
             (ack) => record({ transactionHash: ack.hash.toLowerCase() }),
             assertBeforeSign,
-            () => host.beforeDispatch(attempt)
+            () => host.beforeDispatch(attempt, accepted)
           );
           await record({ transactionHash: result.hash.toLowerCase() });
-        } else await record(await relay(attempt, assertBeforeSign));
+        } else
+          await record(
+            await relay(attempt, assertBeforeSign, () =>
+              host.beforeDispatch(attempt, accepted)
+            )
+          );
         return {
           intentId: id,
           noteId: attempt.noteId,

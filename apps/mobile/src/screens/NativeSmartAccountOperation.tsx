@@ -333,6 +333,7 @@ export function NativeSmartAccountOperationContent({
     {nativeUnits !== '0' && <View style={s.transferFact}><Text style={s.label}>{t('mobile.dappConsent.transactionReview.alsoSending')}</Text><Text selectable style={s.transferAddress}>{formatBaseUnits(nativeUnits, network.decimals)} {network.symbol}</Text></View>}
   </>;
   const batch = state.intent.kind === 'dapp-batch' ? state.intent : null;
+  const cancellation = state.intent.kind === 'cancel-operation' ? state.intent : null;
   const guardian =
     state.intent.kind === 'guardian-policy' ? state.intent.command : null;
   const authenticator =
@@ -342,6 +343,7 @@ export function NativeSmartAccountOperationContent({
   const methodName = (id: string) => id === 'ecdsa' ? t('mobile.recoveryStatusViews.operation.walletOwners') : id === 'p256-webauthn' ? t('settings.passkeyAuthenticator') : id === 'slh-dsa' ? t('mobile.recoveryStatusViews.operation.postquantumKey') : id === 'composite' ? t('mobile.recoveryStatusViews.operation.combinedApprovalMethods') : t('mobile.recoveryStatusViews.operation.customApprovalMethod');
   const transfer =
     state.intent.kind !== 'deploy' &&
+    state.intent.kind !== 'cancel-operation' &&
     state.intent.kind !== 'dapp-batch' &&
     state.intent.kind !== 'guardian-policy' &&
     state.intent.kind !== 'authenticator' &&
@@ -357,7 +359,9 @@ export function NativeSmartAccountOperationContent({
   const primary = state.phase === 'authorize' ? (
             <Button
               title={
-                modules
+                cancellation
+                  ? t('transactions.smartAuthorizations.cancelInstruction')
+                  : modules
                   ? t('mobile.smartAccountModules.authorize')
                   : authenticator
                   ? t('mobile.recoveryStatusViews.operation.authorizeApprovalChange')
@@ -381,6 +385,8 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? t('mobile.recoveryStatusViews.operation.confirmFunding')
+                  : cancellation
+                  ? t('mobile.recoveryStatusViews.operation.confirmTransaction')
                   : modules
                   ? t('mobile.smartAccountModules.confirm')
                   : authenticator
@@ -413,7 +419,7 @@ export function NativeSmartAccountOperationContent({
       }} />}<Button title={t(viewableHash && onViewTransaction ? 'privacy.deposit.done' : 'buttons.close')} variant="secondary" size="compact" onPress={close} /></>}>
         <Header
           title={
-            state.phase === 'authorize'
+            cancellation ? t('transactions.smartAuthorizations.cancelInstruction') : state.phase === 'authorize'
               ? modules
                 ? t('mobile.smartAccountModules.review')
                 : authenticator
@@ -455,6 +461,12 @@ export function NativeSmartAccountOperationContent({
           </View>
           <Text selectable style={s.address}>{state.account}</Text>
         </Card>
+        {cancellation && <>
+          <Notice title={t('transactions.smartAuthorizations.cancelInstruction')} body={t('transactions.smartAccountCancelDescription')} tone="amber" />
+          <Card style={s.card}><Text style={s.label}>{t('transactions.smartAuthorizations.reference')}</Text>
+            <Text selectable style={s.address}>{cancellation.reference.originalHash}</Text>
+          </Card>
+        </>}
         {modules && (
           <Card style={s.card}>
             <Text style={s.label}>{t(modules.draft.kind === 'install-custom' ? 'smartAccountHub.install' : modules.draft.kind === 'uninstall' ? 'smartAccountHub.uninstall' : 'smartAccountHub.compositeSavePolicy')}</Text>
@@ -625,7 +637,9 @@ export function NativeSmartAccountOperationContent({
           <>
             <Notice
               title={
-                modules
+                cancellation
+                  ? t('transactions.smartAuthorizations.cancelInstruction')
+                  : modules
                   ? t('mobile.smartAccountModules.authorize')
                   : authenticator
                   ? t('mobile.recoveryStatusViews.operation.authorizeApprovalChange')
@@ -642,7 +656,9 @@ export function NativeSmartAccountOperationContent({
                   : t('mobile.recoveryStatusViews.operation.createThisAccountOnTheNetwork')
               }
               body={
-                modules
+                cancellation
+                  ? t('transactions.smartAccountCancelDescription')
+                  : modules
                   ? t('mobile.smartAccountModules.authorizationHint')
                   : authenticator
                   ? additiveAuthenticator
@@ -723,6 +739,8 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? t('mobile.recoveryStatusViews.operation.fundTheAccountCharge')
+                  : cancellation
+                  ? t('transactions.smartAuthorizations.cancelInstruction')
                   : modules
                   ? t('mobile.smartAccountModules.submit')
                   : authenticator
@@ -742,6 +760,8 @@ export function NativeSmartAccountOperationContent({
               body={
                 payer.purpose === 'fund-account'
                   ? t('mobile.recoveryStatusViews.operation.moveThisAmountToYourSmartAccountSoItCan')
+                  : cancellation
+                  ? t('transactions.smartAccountAuthorizationRetained')
                   : modules
                   ? t('mobile.smartAccountModules.submitHint')
                   : authenticator
@@ -800,6 +820,8 @@ export function NativeSmartAccountOperationContent({
                   : t('mobile.recoveryStatusViews.operation.preparingGuardianPolicy')
                 : batch
                 ? t('mobile.recoveryStatusViews.operation.preparingCalls')
+                : cancellation
+                ? t('buttons.loading')
                 : transfer
                 ? t('mobile.recoveryStatusViews.operation.preparingTransfer')
                 : t('mobile.recoveryStatusViews.operation.preparingDeployment')}
@@ -809,7 +831,9 @@ export function NativeSmartAccountOperationContent({
         {state.phase === 'complete' && (
           <Notice
             title={
-              modules
+              cancellation
+                ? t('privacy.deposit.submitted')
+                : modules
                 ? t('mobile.smartAccountModules.confirmed')
                 : authenticator
                 ? additiveAuthenticator
@@ -830,7 +854,9 @@ export function NativeSmartAccountOperationContent({
                 : t('mobile.recoveryStatusViews.operation.smartAccountDeployed')
             }
             body={
-              modules
+              cancellation
+                ? t('transactions.smartAccountCancelDescription')
+                : modules
                 ? t('mobile.smartAccountModules.confirmedHint')
                 : authenticator
                 ? additiveAuthenticator

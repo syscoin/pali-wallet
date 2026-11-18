@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NativePrivateWithdrawal } from '../src/custody/privateWithdrawal.ts';
+import type { IPrivateNoteStatus } from '../../../source/utils/privacy/privateVaultTypes.ts';
 import type {
   IPrivacyWithdrawalReview,
   IPrivacyWithdrawalStatus,
@@ -18,14 +19,13 @@ function held() {
   });
   return { promise, release };
 }
-function fixture(canSign = true, restored = false) {
+function fixture(canSign = true) {
   const owner = new AbortController();
   let prepares = 0,
     submits = 0,
     disposals = 0,
     discarded = 0,
-    reads = 0,
-    reviews = 0;
+    reads = 0;
   let failure: unknown;
   let retired = false;
   let afterSubmit: (() => void) | undefined;
@@ -34,11 +34,12 @@ function fixture(canSign = true, restored = false) {
     noteId: 'owned-note',
     phase: 'none',
   };
+  let noteStatus:IPrivateNoteStatus={phase:'verified'};
   const requests: unknown[] = [];
+  const approvals: unknown[] = [];
   const model = new NativePrivateWithdrawal(
     {
       canSign,
-      restored,
       noteId: 'owned-note',
       poolId: 'eth-1',
       assertCurrent() {
@@ -61,7 +62,8 @@ function fixture(canSign = true, restored = false) {
             if (failure) throw failure;
             return { ...review, intentId: `review-${prepares}` };
           },
-          async submitWithdrawal(intentId) {
+          async submitWithdrawal(intentId, approval) {
+            approvals.push({ intentId, approval });
             submits++;
             afterSubmit?.();
             if (failure) throw failure;
@@ -96,10 +98,7 @@ function fixture(canSign = true, restored = false) {
       async readNoteStatus() {
         reads++;
         await delay;
-        return { phase: 'verified' };
-      },
-      async reviewRestored() {
-        reviews++;
+        return noteStatus;
       },
       async close() {},
     },
@@ -109,7 +108,8 @@ function fixture(canSign = true, restored = false) {
     model,
     owner,
     requests,
-    counts: () => ({ prepares, submits, disposals, discarded, reads, reviews }),
+    approvals,
+    counts: () => ({ prepares, submits, disposals, discarded, reads }),
     retireAfterSubmit() {
       afterSubmit = () => {
         retired = true;
@@ -121,6 +121,7 @@ function fixture(canSign = true, restored = false) {
     hold(promise: Promise<void>) {
       delay = promise;
     },
+    poolStatus(next:IPrivateNoteStatus){noteStatus=next;},
     status(next: IPrivacyWithdrawalStatus) {
       status = next;
     },
@@ -137,6 +138,7 @@ test('withdrawal model binds its note and requires one matching explicit confirm
   assert.equal(f.counts().submits, 0);
   await Promise.all([f.model.confirm('review-1'), f.model.confirm('review-1')]);
   assert.equal(f.counts().submits, 1);
+  assert.deepEqual(f.approvals, [{intentId:'review-1', approval:{acceptPreviousWithdrawalRisk:true}}]);
   assert.equal(f.model.getSnapshot().phase, 'submitted');
 });
 
@@ -212,12 +214,9 @@ test('watch-only model can prepare relayed mode but cannot invoke direct mode', 
   assert.equal(f.counts().prepares, 1);
 });
 
-test('restored review is explicit and status/directory reads are serialized', async () => {
-  const f = fixture(true, true),
+test('status and directory reads remain serialized without an extra restoration action', async () => {
+  const f = fixture(true),
     gate = held();
-  await f.model.reviewRestored();
-  assert.equal(f.counts().reviews, 1);
-  assert.equal(f.model.getSnapshot().restored, false);
   f.hold(gate.promise);
   const reading = f.model.refresh();
   assert.equal(f.model.getSnapshot().checking, true);
@@ -240,4 +239,35 @@ test('late owner retirement preserves an acknowledged transaction hash for recov
     f.model.getSnapshot().result?.transactionHash,
     '0x' + 'ab'.repeat(32)
   );
+});
+
+
+test('a saved prior attempt remains visible while a new owned intent prepares and confirms separately', async () => {
+  const f = fixture();
+  const previous = {noteId:'owned-note',phase:'unknown' as const,transactionHash:'0x'+'bc'.repeat(32)};
+  f.status(previous); await f.model.refresh();
+  await f.model.prepare({recipient:'new-recipient',mode:'direct'});
+  assert.equal(f.model.getSnapshot().phase,'review');
+  assert.deepEqual(f.model.getSnapshot().status,previous);
+  assert.equal(f.model.getSnapshot().result,null);
+  assert.equal(f.counts().submits,0);
+  await f.model.confirm('review-1');
+  assert.deepEqual(f.approvals,[{intentId:'review-1',approval:{acceptPreviousWithdrawalRisk:true}}]);
+  assert.equal(f.model.getSnapshot().result?.transactionHash,'0x'+'ab'.repeat(32));
+  assert.equal(f.model.getSnapshot().status,null,'Confirm retires the old observed attempt');
+  const refreshed={noteId:'owned-note',phase:'submitted' as const,transactionHash:'0x'+'de'.repeat(32)};
+  f.status(refreshed);await f.model.refresh();
+  assert.deepEqual(f.model.getSnapshot().status,refreshed);
+  assert.equal(f.model.getSnapshot().result?.transactionHash,'0x'+'ab'.repeat(32));
+});
+
+
+test('fresh spent status retires the review and prevents another proof or stale confirmation', async()=>{
+  const f=fixture();
+  await f.model.prepare({recipient:'recipient',mode:'direct'});
+  f.poolStatus({phase:'spent'}); await f.model.refresh();
+  await f.model.confirm('review-1');
+  await f.model.prepare({recipient:'recipient',mode:'direct'});
+  assert.equal(f.counts().prepares,1); assert.equal(f.counts().submits,0);
+  assert.equal(f.model.getSnapshot().review,null);
 });

@@ -10,6 +10,12 @@ import {
   ISysAssetMetadata,
 } from 'types/tokens';
 
+export type AssetReadOwner = Readonly<{
+  assertCurrent(): void;
+  identityContext?: string;
+  signal: AbortSignal;
+}>;
+
 // SYS TYPES
 
 export interface IAssetsManager {
@@ -30,7 +36,8 @@ export interface IAssetsManagerUtils {
     networkChainId: number,
     web3Provider: CustomJsonRpcProvider,
     currentAssets: IAccountAssets,
-    onBalanceRead?: (token: ITokenEthProps) => void
+    onBalanceRead?: (token: ITokenEthProps) => void,
+    owner?: AssetReadOwner
   ) => Promise<IAssetsManagerUtilsResponse>;
 }
 
@@ -47,7 +54,8 @@ export interface ISysAssetsController {
     xpub: string,
     networkUrl: string,
     networkChainId: number,
-    existingAssets?: ITokenSysProps[]
+    existingAssets?: ITokenSysProps[],
+    owner?: AssetReadOwner
   ) => Promise<ISysTokensAssetReponse[]>;
   getUserOwnedTokens: (xpub: string) => Promise<ISysTokensAssetReponse[]>;
   validateSPTOnly: (
@@ -147,7 +155,8 @@ export interface IEvmAssetsController {
   // CoinGecko-based token functionality
   getTokenPriceData: (
     chainId: number,
-    currency?: string
+    currency?: string,
+    signal?: AbortSignal
   ) => Promise<{
     available: boolean;
     price: number;
@@ -162,7 +171,8 @@ export interface IEvmAssetsController {
     currentNetworkChainId: number,
     w3Provider: CustomJsonRpcProvider,
     accountAssets: ITokenEthProps[],
-    onBalanceRead?: (token: ITokenEthProps) => void
+    onBalanceRead?: (token: ITokenEthProps) => void,
+    owner?: AssetReadOwner
   ) => Promise<ITokenEthProps[]>;
 
   // Simplified ERC-20 validation with minimal ETH calls

@@ -41,6 +41,7 @@ import {
   PALI_INFRASTRUCTURE_METADATA_BY_ID,
   PALI_MULTICALL3_CANONICAL_ADDRESS,
 } from 'utils/smartAccount';
+import { PALI_INFRASTRUCTURE_BY_ID } from 'utils/smartAccount/deployment';
 
 let mockStore: any;
 const mockEmitter = jest.fn();
@@ -121,10 +122,19 @@ const ABI = new Interface([
   'function balanceOf(address) view returns (uint256)',
 ]);
 let unavailable: boolean;
+let metadataFailure: 'both' | 'name' | 'symbol' | 'absent' | undefined;
+let metadataReads: { name: number; symbol: number };
 let owned: string;
 let fungibleDecimals: number | undefined;
 let multicallDeployed: boolean;
 const multicallAddress = PALI_MULTICALL3_CANONICAL_ADDRESS.toLowerCase();
+const multicallCreation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+  2 + 0x20 * 2
+)}`;
+const multicallRuntime = `0x${multicallCreation.slice(
+  2 + 0x20 * 2,
+  2 + (0x20 + 0xee0) * 2
+)}`;
 const multicallAbi = new Interface([
   'function aggregate3((address target,bool allowFailure,bytes callData)[] calls) view returns ((bool success,bytes returnData)[] returnData)',
 ]);
@@ -143,7 +153,9 @@ const runner = {
       PALI_INFRASTRUCTURE_METADATA_BY_ID.multicall3.address.toLowerCase(),
     ]).toContain(target);
     reads.push({ name: 'multicallCode' });
-    return target === multicallAddress && multicallDeployed ? '0x6000' : '0x';
+    return target === multicallAddress && multicallDeployed
+      ? multicallRuntime
+      : '0x';
   },
   readMany: async (
     requests: readonly { method: string; params: unknown[] }[]
@@ -159,13 +171,23 @@ const runner = {
     if (transaction.to.toLowerCase() === multicallAddress) {
       expect(multicallDeployed).toBe(true);
       const { args } = multicallAbi.parseTransaction(transaction)!;
-      const [[target, allowFailure, data]] = args[0];
-      expect(target.toLowerCase()).toBe(CONTRACT);
-      expect(allowFailure).toBe(true);
-      expect(data).toBe(ABI.encodeFunctionData('balanceOf', [OWNER]));
+      const calls = args[0];
+      expect(calls).toHaveLength(2);
+      for (const [target, allowFailure] of calls) {
+        expect(target.toLowerCase()).toBe(CONTRACT);
+        expect(allowFailure).toBe(true);
+      }
+      expect(calls[0][2]).toBe(ABI.encodeFunctionData('decimals'));
+      expect(calls[1][2]).toBe(ABI.encodeFunctionData('balanceOf', [OWNER]));
       reads.push({ name: 'aggregate3' });
       return multicallAbi.encodeFunctionResult('aggregate3', [
         [
+          {
+            success: true,
+            returnData: ABI.encodeFunctionResult('decimals', [
+              fungibleDecimals,
+            ]),
+          },
           {
             success: !unavailable,
             returnData: unavailable
@@ -183,10 +205,23 @@ const runner = {
         fungibleDecimals === undefined && decoded.args[0] === '0x80ac58cd',
       ]);
     }
-    if (decoded.name === 'name')
-      return ABI.encodeFunctionResult(decoded.name, ['Recovery Collection']);
-    if (decoded.name === 'symbol')
-      return ABI.encodeFunctionResult(decoded.name, [SYMBOL]);
+    if (decoded.name === 'name' || decoded.name === 'symbol') {
+      metadataReads[decoded.name]++;
+      if (
+        metadataFailure === decoded.name ||
+        metadataFailure === 'both' ||
+        metadataFailure === 'absent'
+      )
+        throw Object.assign(
+          new Error('Synthetic optional metadata read failed'),
+          metadataFailure === 'absent'
+            ? { code: 'CALL_EXCEPTION', data: '0x' }
+            : { code: 'NETWORK_ERROR' }
+        );
+      return ABI.encodeFunctionResult(decoded.name, [
+        decoded.name === 'name' ? 'Recovery Collection' : SYMBOL,
+      ]);
+    }
     if (decoded.name === 'decimals' && fungibleDecimals !== undefined)
       return ABI.encodeFunctionResult(decoded.name, [fungibleDecimals]);
     expect(decoded.name).toBe('balanceOf');
@@ -218,6 +253,8 @@ beforeEach(() => {
   jest.spyOn(console, 'warn').mockImplementation();
   jest.spyOn(console, 'log').mockImplementation();
   unavailable = false;
+  metadataFailure = undefined;
+  metadataReads = { name: 0, symbol: 0 };
   owned = '3';
   fungibleDecimals = undefined;
   multicallDeployed = false;
@@ -295,7 +332,7 @@ afterEach(() => {
   else Reflect.deleteProperty(globalThis, 'fetch');
 });
 
-const openManualImport = async () => {
+const renderManualImport = () =>
   render(
     <Provider store={mockStore}>
       <MemoryRouter initialEntries={['/tokens/add?tab=custom']}>
@@ -306,10 +343,15 @@ const openManualImport = async () => {
       </MemoryRouter>
     </Provider>
   );
+const editContract = async (value: string) => {
   fireEvent.change(screen.getByLabelText(en.settings.contractAddress), {
-    target: { value: CONTRACT },
+    target: { value },
   });
   await act(async () => jest.advanceTimersByTimeAsync(500));
+};
+const openManualImport = async () => {
+  renderManualImport();
+  await editContract(CONTRACT);
   expect(importButton()).toBeEnabled();
 };
 
@@ -706,5 +748,84 @@ it.each(['list', 'collection'] as const)(
     expect(
       screen.getByText(`0 ${en.nftDetails.items}`, { exact: view === 'list' })
     ).toBeVisible();
+  }
+);
+
+it.each(['both', 'name', 'symbol'] as const)(
+  'mounted NFT import recovers temporary optional %s metadata through the compiled SDK',
+  async (failure) => {
+    metadataFailure = failure;
+    renderManualImport();
+    await editContract(CONTRACT);
+    const firstName =
+      failure === 'both'
+        ? 'ERC-721 Collection'
+        : failure === 'name'
+        ? SYMBOL
+        : 'Recovery Collection';
+    const firstSymbol = failure === 'name' ? SYMBOL : 'NFT';
+    expect(screen.getByText(firstSymbol, { exact: true })).toBeVisible();
+    expect(
+      screen.getByRole('button', {
+        name: en.tokens.importNamedToken.replace('{{symbol}}', firstSymbol),
+      })
+    ).toBeEnabled();
+    expect(actualResults.at(-1)?.result).toMatchObject({
+      name: firstName,
+      symbol: firstSymbol,
+      balance: 3,
+    });
+    expect(metadataReads).toEqual({ name: 1, symbol: 1 });
+    expect(reads.filter((read) => read.name === 'balanceOf')).toHaveLength(1);
+
+    metadataFailure = undefined;
+    await editContract('');
+    await editContract(CONTRACT);
+    expect(screen.getByText(SYMBOL, { exact: true })).toBeVisible();
+    expect(importButton()).toBeEnabled();
+    expect(actualResults.at(-1)?.result).toMatchObject({
+      name: 'Recovery Collection',
+      symbol: SYMBOL,
+      balance: 3,
+    });
+    expect(metadataReads).toEqual({ name: 2, symbol: 2 });
+    expect(reads.filter((read) => read.name === 'balanceOf')).toHaveLength(2);
+
+    await editContract('');
+    await editContract(CONTRACT);
+    expect(metadataReads).toEqual({ name: 2, symbol: 2 });
+    expect(reads.filter((read) => read.name === 'balanceOf')).toHaveLength(3);
+    expect(
+      actualResults.filter(
+        (result) => result.method !== 'getTokenDetailsWithMarketData'
+      )
+    ).toEqual([]);
+  }
+);
+
+it.each(['healthy', 'absent'] as const)(
+  'mounted NFT import retains cacheable %s optional metadata for 24 hours with fresh counts',
+  async (mode) => {
+    metadataFailure = mode === 'absent' ? 'absent' : undefined;
+    renderManualImport();
+    await editContract(CONTRACT);
+    const name =
+      mode === 'absent' ? 'ERC-721 Collection' : 'Recovery Collection';
+    expect(
+      screen.getByText(mode === 'absent' ? 'NFT' : SYMBOL, { exact: true })
+    ).toBeVisible();
+    expect(actualResults.at(-1)?.result).toMatchObject({ name, balance: 3 });
+    expect(metadataReads).toEqual({ name: 1, symbol: 1 });
+    jest.setSystemTime(Date.now() + 24 * 60 * 60_000 - 10_000);
+    await editContract('');
+    await editContract(CONTRACT);
+    expect(actualResults.at(-1)?.result).toMatchObject({ name, balance: 3 });
+    expect(metadataReads).toEqual({ name: 1, symbol: 1 });
+    expect(reads.filter((read) => read.name === 'balanceOf')).toHaveLength(2);
+    await act(async () => jest.advanceTimersByTimeAsync(10_000));
+    await editContract('');
+    await editContract(CONTRACT);
+    expect(metadataReads).toEqual({ name: 2, symbol: 2 });
+    expect(reads.filter((read) => read.name === 'balanceOf')).toHaveLength(3);
   }
 );

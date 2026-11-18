@@ -6,6 +6,7 @@ import {
   buildEvmTransactionHashIndex,
   getEvmReplacementRootHash,
   getEvmSettlementStatus,
+  hasEvmExecutionSucceeded,
   hasEvmCancellationIntent,
   isEvmStalePendingNonce,
 } from './evmReplacement';
@@ -35,6 +36,23 @@ const winner = (fields: any = {}) =>
   });
 const status = (tx: any, rows: any[] = []) =>
   getEvmSettlementStatus(tx, 5700, buildEvmMinedNonceIndex(rows, 5700));
+
+it.each([
+  [{}, false],
+  [{ txreceipt_status: 'invalid', isError: null }, false],
+  [{ txreceipt_status: 1, isError: '1' }, true],
+  [{ txreceipt_status: 0, isError: '0' }, false],
+  [{ success: true }, true],
+  [{ success: false, isError: '0' }, false],
+  [{ isError: '0' }, true],
+  [{ isError: '1' }, false],
+  [{ txreceipt_status: 1, blockNumber: null }, false],
+  [{ txreceipt_status: 1, chainId: 1 }, false],
+])('requires positive execution evidence %j', (fields, successful) => {
+  expect(
+    hasEvmExecutionSucceeded(original({ blockNumber: 123, ...fields }), 5700)
+  ).toBe(successful);
+});
 
 it('keeps a submitted replacement pending until a competing hash mines', () => {
   const tx = original({ isReplaced: true, status: 'replaced' });

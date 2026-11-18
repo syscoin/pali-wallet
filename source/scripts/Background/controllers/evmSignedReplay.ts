@@ -25,43 +25,34 @@ import type {
 
 type Captured = Omit<EvmReplaySession, 'observe' | 'dispatch'> &
   Readonly<{
-    provider: Pick<CustomJsonRpcProvider, 'send' | '_send'>;
+    provider: Pick<CustomJsonRpcProvider, 'send' | 'readMany'>;
   }>;
 
 export async function readLiveEvmChainId(
-  provider: Pick<CustomJsonRpcProvider, '_send'>,
+  provider: Pick<CustomJsonRpcProvider, 'readMany'>,
   assertCurrent: () => void
 ): Promise<string> {
   assertCurrent();
-  // The provider's ordinary send method caches eth_chainId.
-  const id = 0;
-  const replies = await provider._send({
-    jsonrpc: '2.0',
-    id,
-    method: 'eth_chainId',
-    params: [],
-  });
+  // Direct reads bypass the provider's ordinary completed chain-ID cache.
+  const results = await provider.readMany([
+    { method: 'eth_chainId', params: [] },
+  ]);
   assertCurrent();
-  const response: unknown =
-    Array.isArray(replies) && replies.length === 1 ? replies[0] : null;
+  if (!Array.isArray(results) || results.length !== 1)
+    throw new EvmReplayError('CONTEXT_CHANGED');
+  const result = results[0];
+  if (result?.status === 'rejected') throw result.reason;
   if (
-    !response ||
-    typeof response !== 'object' ||
-    !('jsonrpc' in response) ||
-    response.jsonrpc !== '2.0' ||
-    !('id' in response) ||
-    response.id !== id ||
-    'error' in response ||
-    !('result' in response) ||
-    typeof response.result !== 'string' ||
-    !/^0x[1-9a-f][0-9a-f]{0,63}$/i.test(response.result)
+    result?.status !== 'fulfilled' ||
+    typeof result.value !== 'string' ||
+    !/^0x[1-9a-f][0-9a-f]{0,63}$/i.test(result.value)
   )
     throw new EvmReplayError('CONTEXT_CHANGED');
-  return response.result;
+  return result.value;
 }
 
 export async function assertLiveEvmReplacementChain(
-  provider: Pick<CustomJsonRpcProvider, '_send'>,
+  provider: Pick<CustomJsonRpcProvider, 'readMany'>,
   chainId: string | number,
   assertCurrent: () => void
 ): Promise<void> {
@@ -171,10 +162,18 @@ export function createExtensionEvmReplaySession(
           captured.assertCurrent
         );
         if (speedUp) {
-          const [nonce, block] = await Promise.all([
-            send('eth_getTransactionCount', [context.from, 'latest']),
-            send('eth_getBlockByNumber', ['latest', false]),
-          ]);
+          const reads = [
+            {
+              method: 'eth_getTransactionCount',
+              params: [context.from, 'latest'],
+            },
+            { method: 'eth_getBlockByNumber', params: ['latest', false] },
+          ];
+          const results = await captured.provider.readMany(reads);
+          const [nonce, block] = results.map((result) => {
+            if (result.status === 'rejected') throw result.reason;
+            return result.value;
+          });
           captured.assertCurrent();
           assertEvmSpeedUpExecutable(speedUp, nonce, block);
           await assertLiveEvmReplacementChain(

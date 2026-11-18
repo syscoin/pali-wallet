@@ -20,6 +20,7 @@ jest.mock('utils/smartAccount/adapter', () => ({
 }));
 
 import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
+import { createSmartAccountJournalFixture } from 'tests/fixtures/smartAccountJournal';
 
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -33,6 +34,7 @@ import {
   estimateSmartAccountUserOpGas,
   toPaliSmartAccount,
 } from 'utils/smartAccount';
+import * as executionMetadata from 'utils/smartAccount/executionMetadata';
 
 import SmartAccountController from './index';
 
@@ -75,6 +77,7 @@ describe('smart-account execution approval context', () => {
   let controller: any;
   let send: jest.Mock;
   let provider: any;
+  let pendingBaseFee: number | null;
   const expectedContext = {
     account: { address: ADDRESS, id: 7, type: KeyringAccountType.SmartAccount },
     chainId: 1,
@@ -95,12 +98,16 @@ describe('smart-account execution approval context', () => {
   };
   const prepare = () =>
     controller.prepareSmartAccountExecutions(calls, 7, { expectedContext });
-  const submit = (
+  const submit = async (
     prepared: any,
     changes: any = {},
     assertCurrent: () => void = workerAuthority().assertCurrent
-  ) =>
-    controller.submitSmartAccountExecution(
+  ) => {
+    controller.approveSmartAccountExecutionFeeQuote(
+      prepared.executionContextId,
+      prepared.entryPointFeeQuote
+    );
+    return controller.submitSmartAccountExecution(
       {
         accountId: 7,
         executionContextId: prepared.executionContextId,
@@ -114,6 +121,7 @@ describe('smart-account execution approval context', () => {
       },
       assertCurrent
     );
+  };
 
   it.each([async () => undefined, () => true, false])(
     'rejects non-synchronous required guards in submission and local signing facades',
@@ -146,6 +154,7 @@ describe('smart-account execution approval context', () => {
   };
 
   beforeEach(() => {
+    pendingBaseFee = null;
     jest
       .mocked(toPaliSmartAccount)
       .mockImplementation(
@@ -199,6 +208,27 @@ describe('smart-account execution approval context', () => {
       }),
       send: jest.fn(async (method, params) => {
         if (method === 'eth_chainId') return '0x1';
+        if (method === 'eth_getTransactionCount') return '0x0';
+        if (method === 'eth_simulateV1') {
+          expect(params[0]).toEqual({
+            blockStateCalls: [{ calls: [] }],
+            validation: true,
+            returnFullTransactions: true,
+            traceTransfers: false,
+          });
+          expect(params[1]).toBe('latest');
+          return [{ calls: [], transactions: [] }];
+        }
+        if (method === 'eth_getBlockByNumber')
+          return {
+            baseFeePerGas:
+              pendingBaseFee === null
+                ? null
+                : '0x' + pendingBaseFee.toString(16),
+            hash: HASH,
+            number: '0x10',
+            gasLimit: '0x100000',
+          };
         if (method === 'eth_getBalance') return '0xde0b6b3a7640000';
         if (method === 'eth_call') {
           if (
@@ -236,10 +266,7 @@ describe('smart-account execution approval context', () => {
       return { hash: HASH };
     });
     controller = new SmartAccountController({
-      captureSmartAccountPendingRecords: async () => ({
-        profileId: '0x' + '11'.repeat(32),
-        read: async () => [],
-      }),
+      ...createSmartAccountJournalFixture(),
       getEthereumTransaction: () => transaction,
       getWalletSessionGeneration: () => generation,
       sendAndSaveEthTransaction: send,
@@ -248,6 +275,87 @@ describe('smart-account execution approval context', () => {
     controller.getWalletGasPayerCandidates = jest.fn(() => []);
     controller.getWalletGasPayerAccount = jest.fn().mockResolvedValue(payer);
     controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
+  });
+
+  it('uses freshly observed deployment and caches hydrated metadata under the exact context', async () => {
+    state.vault.accounts.SmartAccount[7].smartAccount = {
+      ...metadata,
+      isDeployed: false,
+    };
+    const hydrate = jest
+      .spyOn(executionMetadata, 'readSmartAccountValidatorMetadata')
+      .mockResolvedValue(metadata as any);
+    controller.assertInfrastructureSupported = jest.fn(() => {
+      throw Error('Unrelated infrastructure unavailable');
+    });
+    try {
+      const first = await prepare();
+      expect(first.userOperation.initCode).toBe('0x');
+      expect(hydrate).toHaveBeenCalledTimes(1);
+      expect(
+        provider.send.mock.calls.filter(
+          ([method, params]) =>
+            method === 'eth_getCode' && params[0] === ADDRESS
+        )
+      ).toHaveLength(1);
+      const cachedTimestamp = controller.hydratedMetadataCache.get(
+        `execution:1:${ADDRESS.toLowerCase()}`
+      ).timestamp;
+      await prepare();
+      expect(hydrate).toHaveBeenCalledTimes(1);
+      expect(
+        controller.hydratedMetadataCache.get(
+          `execution:1:${ADDRESS.toLowerCase()}`
+        ).timestamp
+      ).toBe(cachedTimestamp);
+      expect(controller.assertInfrastructureSupported).not.toHaveBeenCalled();
+      expect(() =>
+        controller.reuseSmartAccountExecutions(calls, 7, {
+          executionContextId: first.executionContextId,
+          expectedContext,
+        })
+      ).not.toThrow();
+      generation++;
+      await controller.prepareSmartAccountExecutions(calls, 7);
+      expect(hydrate).toHaveBeenCalledTimes(2);
+    } finally {
+      hydrate.mockRestore();
+    }
+  });
+
+  it('empty live account code retains full infrastructure checks despite deployed metadata', async () => {
+    const sendBefore = provider.send.getMockImplementation();
+    provider.send.mockImplementation((method, params) =>
+      method === 'eth_getCode' ? '0x' : sendBefore(method, params)
+    );
+    controller.assertInfrastructureSupported = jest.fn(() => {
+      throw Error('Missing infrastructure');
+    });
+    await expect(prepare()).rejects.toThrow('Missing infrastructure');
+    expect(controller.assertInfrastructureSupported).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('does not cache a hydrated deployment when the owned phase changes', async () => {
+    state.vault.accounts.SmartAccount[7].smartAccount = {
+      ...metadata,
+      isDeployed: false,
+    };
+    const hydrate = jest
+      .spyOn(executionMetadata, 'readSmartAccountValidatorMetadata')
+      .mockImplementation(async () => {
+        generation++;
+        return metadata as any;
+      });
+    try {
+      await expect(prepare()).rejects.toThrow(
+        'PALI_TRANSACTION_CONTEXT_CHANGED'
+      );
+      expect(controller.hydratedMetadataCache.size).toBe(0);
+      expect(controller.executionContexts.size).toBe(0);
+    } finally {
+      hydrate.mockRestore();
+    }
   });
 
   it('reuses the exact retained candidate without repeating preparation reads', async () => {
@@ -269,6 +377,48 @@ describe('smart-account execution approval context', () => {
     expect(reused.userOperation).toBe(prepared.userOperation);
     expect(provider.send).toHaveBeenCalledTimes(reads);
     expect(provider.estimateGas).toHaveBeenCalledTimes(estimates);
+  });
+
+  it('binds retained reuse to wallet-authored token precision', async () => {
+    const prepared = await prepare();
+    const transfers = [
+      {
+        contractAddress: TARGET,
+        recipient: OWNER,
+        amountUnits: '1',
+        decimals: 6,
+      },
+    ];
+    const context = controller.executionContexts.get(
+      prepared.executionContextId
+    );
+    context.prepared.expectedErc20Transfers = transfers;
+    context.executionIntent = JSON.stringify({
+      ...JSON.parse(context.executionIntent),
+      expectedErc20Transfers: transfers,
+    });
+    const options = {
+      executionContextId: prepared.executionContextId,
+      expectedContext,
+      expectedErc20Transfers: transfers,
+    };
+    expect(
+      controller.reuseSmartAccountExecutions(calls, 7, options)
+        .expectedErc20Transfers
+    ).toEqual(transfers);
+    expect(() =>
+      controller.reuseSmartAccountExecutions(calls, 7, {
+        ...options,
+        expectedErc20Transfers: undefined,
+      })
+    ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+    expect(() =>
+      controller.reuseSmartAccountExecutions(calls, 7, {
+        ...options,
+        expectedErc20Transfers: [{ ...transfers[0], decimals: 18 }],
+      })
+    ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+    expect(send).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -632,7 +782,8 @@ describe('smart-account execution approval context', () => {
       );
       expect(controller.submitSmartAccountExecution).toHaveBeenCalledWith(
         expect.objectContaining({ expectedContext }),
-        expect.any(Function)
+        expect.any(Function),
+        undefined
       );
       expect(store.dispatch).toHaveBeenCalledTimes(1);
     });
@@ -1112,6 +1263,7 @@ describe('smart-account execution approval context', () => {
   });
 
   it('keeps an explicit zero legacy price instead of treating it as an absent override', async () => {
+    pendingBaseFee = 0;
     provider.getFeeData.mockResolvedValue({
       gasPrice: 1000,
       lastBaseFeePerGas: 0,
@@ -1135,6 +1287,7 @@ describe('smart-account execution approval context', () => {
   });
 
   it('rejects an explicit legacy price below a known protocol base fee without substituting the recommendation', async () => {
+    pendingBaseFee = 20;
     provider.getFeeData.mockResolvedValue({
       gasPrice: 1000,
       lastBaseFeePerGas: 20,

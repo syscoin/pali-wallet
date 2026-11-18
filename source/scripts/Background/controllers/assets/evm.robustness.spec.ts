@@ -28,6 +28,8 @@ import {
   cleanTokenSymbol,
   contractChecker,
   getTokenStandardMetadata,
+  getNftStandardMetadata,
+  getERC721StandardBalance,
 } from '@sidhujag/sysweb3-utils';
 
 import { verifyERC1155OwnershipHelper } from '../../../../shared/nftReads';
@@ -46,6 +48,7 @@ const response = (data: any, status = 200) => ({
   status,
   headers: { get: () => null },
   json: async () => data,
+  text: async () => JSON.stringify(data),
 });
 const deferred = () => {
   let resolve!: (value: any) => void;
@@ -71,6 +74,150 @@ beforeEach(() => {
 afterEach(() => {
   jest.useRealTimers();
   global.fetch = originalFetch;
+});
+
+it('recovers market reads when platform metadata arrives on the same controller', async () => {
+  const controller = EvmAssetsController();
+  await expect(controller.getOnlyMarketData(TOKEN)).resolves.toBeNull();
+  expect(retryableFetch).not.toHaveBeenCalled();
+  jest.advanceTimersByTime(24 * 60 * 60_000);
+  network = { ...network, coingeckoPlatformId: 'ethereum' };
+  jest
+    .mocked(retryableFetch)
+    .mockResolvedValue(response({ symbol: 'TST', price: 7 }) as any);
+  await expect(controller.getOnlyMarketData(TOKEN)).resolves.toMatchObject({
+    price: 7,
+  });
+  expect(retryableFetch).toHaveBeenCalledTimes(1);
+  delete network.coingeckoPlatformId;
+  await expect(controller.getOnlyMarketData(TOKEN)).resolves.toBeNull();
+  expect(retryableFetch).toHaveBeenCalledTimes(1);
+});
+
+it('isolates market cache and pending completions by current platform metadata', async () => {
+  network.coingeckoPlatformId = 'first-platform';
+  const controller = EvmAssetsController();
+  const first = deferred();
+  jest.mocked(retryableFetch).mockReturnValueOnce(first.promise);
+  const pending = controller.getOnlyMarketData(TOKEN);
+  network = { ...network, coingeckoPlatformId: 'second-platform' };
+  jest
+    .mocked(retryableFetch)
+    .mockResolvedValueOnce(response({ symbol: 'TST', price: 9 }) as any);
+  await expect(controller.getOnlyMarketData(TOKEN)).resolves.toMatchObject({
+    price: 9,
+  });
+  first.resolve(response({ symbol: 'TST', price: 7 }));
+  await expect(pending).resolves.toBeNull();
+  await expect(controller.getOnlyMarketData(TOKEN)).resolves.toMatchObject({
+    price: 9,
+  });
+  expect(retryableFetch).toHaveBeenCalledTimes(2);
+  network.coingeckoPlatformId = 'first-platform';
+  jest
+    .mocked(retryableFetch)
+    .mockResolvedValueOnce(response({ symbol: 'TST', price: 11 }) as any);
+  await expect(controller.getOnlyMarketData(TOKEN)).resolves.toMatchObject({
+    price: 11,
+  });
+  expect(retryableFetch).toHaveBeenCalledTimes(3);
+});
+
+it.each(['synchronous', 'asynchronous'])(
+  'cleans up a %s market failure so the same controller can retry',
+  async (mode) => {
+    network.coingeckoPlatformId = 'ethereum';
+    const controller = EvmAssetsController();
+    if (mode === 'synchronous')
+      jest.mocked(retryableFetch).mockImplementationOnce(() => {
+        throw new Error('Market offline');
+      });
+    else
+      jest
+        .mocked(retryableFetch)
+        .mockRejectedValueOnce(new Error('Market offline'));
+    await expect(controller.getOnlyMarketData(TOKEN)).resolves.toBeNull();
+    jest
+      .mocked(retryableFetch)
+      .mockResolvedValueOnce(response({ symbol: 'TST', price: 7 }) as any);
+    await expect(controller.getOnlyMarketData(TOKEN)).resolves.toMatchObject({
+      price: 7,
+    });
+    expect(retryableFetch).toHaveBeenCalledTimes(2);
+  }
+);
+
+it('expires token market data independently of descriptive metadata and shares a refresh', async () => {
+  network.coingeckoPlatformId = 'ethereum';
+  const controller = EvmAssetsController();
+  const fetch = jest.mocked(retryableFetch);
+  fetch.mockResolvedValue(
+    response({
+      symbol: 'TST',
+      ['market_data']: { ['current_price']: { usd: 11 } },
+    }) as any
+  );
+  expect(
+    (await controller.getOnlyMarketData(TOKEN))?.market_data.current_price.usd
+  ).toBe(11);
+  jest.advanceTimersByTime(299999);
+  expect(
+    (await controller.getOnlyMarketData(TOKEN))?.market_data.current_price.usd
+  ).toBe(11);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  jest.advanceTimersByTime(1);
+  const pending = deferred();
+  fetch.mockReturnValueOnce(pending.promise);
+  const first = controller.getOnlyMarketData(TOKEN);
+  const second = controller.getOnlyMarketData(TOKEN);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  pending.resolve(
+    response({
+      symbol: 'TST',
+      ['market_data']: { ['current_price']: { usd: 22 } },
+    })
+  );
+  const values = await Promise.all([first, second]);
+  expect(values.map((value) => value?.market_data.current_price.usd)).toEqual([
+    22, 22,
+  ]);
+});
+
+it('enhanced token details refresh market prices while reusing descriptive metadata', async () => {
+  network.coingeckoPlatformId = 'ethereum';
+  (contractChecker as jest.Mock).mockResolvedValue({ type: 'ERC-20' });
+  (getTokenStandardMetadata as jest.Mock).mockResolvedValue({
+    tokenSymbol: 'TST',
+    decimals: 6,
+    balance: '1000000',
+  });
+  const quote = (price: number) => ({
+    symbol: 'TST',
+    ['market_data']: { ['current_price']: { usd: price } },
+  });
+  jest.mocked(retryableFetch).mockResolvedValue(response(quote(11)) as any);
+  (Contract as unknown as jest.Mock).mockImplementation(() => ({
+    decimals: async () => BigInt(6),
+    balanceOf: async () => BigInt(1000000),
+  }));
+  const controller = EvmAssetsController();
+  const first = await controller.getTokenDetailsWithMarketData(
+    TOKEN,
+    ACCOUNT,
+    {} as any
+  );
+  expect(first?.market_data.current_price.usd).toBe(11);
+  expect(first?.isVerified).toBe(true);
+  jest.advanceTimersByTime(300000);
+  jest.mocked(retryableFetch).mockResolvedValue(response(quote(22)) as any);
+  const second = await controller.getTokenDetailsWithMarketData(
+    TOKEN,
+    ACCOUNT,
+    {} as any
+  );
+  expect(second?.market_data.current_price.usd).toBe(22);
+  expect(contractChecker).toHaveBeenCalledTimes(1);
+  expect(retryableFetch).toHaveBeenCalledTimes(2);
 });
 
 describe('ERC20 shared metadata boundary', () => {
@@ -158,6 +305,69 @@ describe('ERC20 shared metadata boundary', () => {
 });
 
 describe('discovery availability is not an empty wallet', () => {
+  it.each([0, 6, 18, 80, 81, 100, 255])(
+    'normalizes owned ERC20 precision %i with the shared full-range formatter',
+    async (precision) => {
+      network.apiUrl = `https://owned-erc20-precision.test/api?case=${precision}`;
+      const rawBalance = '9007199254740993';
+      jest.mocked(fetch).mockResolvedValue(
+        response({
+          status: '1',
+          result: [
+            {
+              contractAddress: TOKEN,
+              name: 'Full precision token',
+              symbol: 'FULL',
+              decimals: String(precision),
+              balance: rawBalance,
+              type: 'ERC-20',
+            },
+          ],
+        }) as any
+      );
+      const result = await EvmAssetsController().getUserOwnedTokens(ACCOUNT);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ decimals: precision, rawBalance });
+      expect(result[0].balance).toBe(Number(`${rawBalance}e-${precision}`));
+      expect(result[0].balance).toBeGreaterThan(0);
+    }
+  );
+
+  it('keeps valid zero/safe numeric API holdings and isolates malformed ERC20 rows', async () => {
+    network.apiUrl = 'https://owned-erc20-validation.test/api';
+    const base = {
+      contractAddress: TOKEN,
+      name: 'Validated token',
+      symbol: 'VALID',
+      type: 'ERC-20',
+    };
+    jest.mocked(fetch).mockResolvedValue(
+      response({
+        status: '1',
+        result: [
+          { ...base, decimals: 0, balance: 0 },
+          { ...base, decimals: '255', balance: '1' },
+          { ...base, decimals: '6', balance: '1000000' },
+          { ...base, balance: '1000000' },
+          { ...base, decimals: null, balance: '1000000' },
+          { ...base, decimals: 6 },
+          { ...base, decimals: 6, balance: null },
+          { ...base, decimals: 256, balance: '1' },
+          { ...base, decimals: -1, balance: '1' },
+          { ...base, decimals: 1.5, balance: '1' },
+          { ...base, decimals: '', balance: '1' },
+          { ...base, decimals: 6, balance: Number.MAX_SAFE_INTEGER + 1 },
+        ],
+      }) as any
+    );
+    await expect(
+      EvmAssetsController().getUserOwnedTokens(ACCOUNT)
+    ).resolves.toMatchObject([
+      { decimals: 0, balance: 0, rawBalance: '0' },
+      { decimals: 255, balance: 1e-255, rawBalance: '1' },
+      { decimals: 6, balance: 1, rawBalance: '1000000' },
+    ]);
+  });
   it.each([
     '0',
     '42',
@@ -305,6 +515,7 @@ describe('discovery availability is not an empty wallet', () => {
         symbol: 'RST',
         decimals: 6,
         balance: 1.234567,
+        rawBalance: '1234567',
         tokenStandard: 'ERC-20',
       },
     ]);
@@ -476,6 +687,24 @@ it('deduplicates same-chain metadata but not a switched chain; old results canno
   expect(await duplicate).toBeNull();
   expect(next).toMatchObject({ symbol: 'NEW', chainId: 2 });
   expect(getTokenStandardMetadata).toHaveBeenCalledTimes(2);
+});
+
+it('reuses cold import metadata once and keeps balances out of the basic cache', async () => {
+  const controller = EvmAssetsController();
+  (contractChecker as jest.Mock).mockResolvedValue({ type: 'ERC-20' });
+  (getTokenStandardMetadata as jest.Mock).mockResolvedValue({
+    tokenSymbol: 'T',
+    decimals: 6,
+    balance: '1000000',
+  });
+  expect(
+    await controller.getTokenDetailsWithBalance(TOKEN, ACCOUNT, {} as any)
+  ).toMatchObject({ balance: 1, rawBalance: '1000000' });
+  expect(getTokenStandardMetadata).toHaveBeenCalledTimes(1);
+  expect(
+    await controller.getTokenDetails(TOKEN, ACCOUNT, {} as any)
+  ).toMatchObject({ balance: 0, decimals: 6 });
+  expect(getTokenStandardMetadata).toHaveBeenCalledTimes(1);
 });
 
 it('reports a successful unchanged balance read even when the legacy result is an empty update', async () => {
@@ -653,11 +882,11 @@ it('coalesces concurrent native price reads by market identity and currency', as
     },
   }));
   const held = deferred();
-  (retryableFetch as jest.Mock).mockReturnValue(held.promise);
+  (global.fetch as jest.Mock).mockReturnValue(held.promise);
   const controller = EvmAssetsController();
   const first = controller.getTokenPriceData(1, 'usd');
   const second = controller.getTokenPriceData(10, 'usd');
-  expect(retryableFetch).toHaveBeenCalledTimes(1);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
   held.resolve(response({ ethereum: { usd: 12, eur: 11 } }));
   expect(await first).toEqual({
     available: true,
@@ -666,9 +895,9 @@ it('coalesces concurrent native price reads by market identity and currency', as
   });
   expect(await second).toEqual(await first);
   await controller.getTokenPriceData(1, 'usd');
-  expect(retryableFetch).toHaveBeenCalledTimes(1);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
   await controller.getTokenPriceData(1, 'eur');
-  expect(retryableFetch).toHaveBeenCalledTimes(2);
+  expect(global.fetch).toHaveBeenCalledTimes(2);
 });
 
 it('does not cache a failed native price read or hold later retries behind it', async () => {
@@ -677,7 +906,7 @@ it('does not cache a failed native price read or hold later retries behind it', 
     vaultGlobal: { networks: { ethereum: { 1: { coingeckoId: 'ethereum' } } } },
   }));
   const controller = EvmAssetsController();
-  (retryableFetch as jest.Mock)
+  (global.fetch as jest.Mock)
     .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValue(response({ ethereum: { usd: 5 } }));
   expect(await controller.getTokenPriceData(1, 'usd')).toEqual({
@@ -685,5 +914,271 @@ it('does not cache a failed native price read or hold later retries behind it', 
     price: 0,
   });
   expect((await controller.getTokenPriceData(1, 'usd')).price).toBe(5);
-  expect(retryableFetch).toHaveBeenCalledTimes(2);
+  expect(global.fetch).toHaveBeenCalledTimes(2);
+});
+
+it('passes the stable provider identity separately from the active asset read owner', async () => {
+  const provider = {};
+  const owner = {
+    signal: new AbortController().signal,
+    assertCurrent: jest.fn(),
+  };
+  (BatchBalanceController as jest.Mock).mockImplementation(() => ({
+    getBatchTokenBalances: async () => new Map(),
+  }));
+  await EvmAssetsController().updateAllEvmTokens(
+    { address: ACCOUNT } as any,
+    1,
+    provider as any,
+    [
+      {
+        contractAddress: TOKEN,
+        chainId: 1,
+        decimals: 0,
+        isNft: false,
+        tokenSymbol: 'T',
+      },
+    ] as any,
+    undefined,
+    owner
+  );
+  expect(BatchBalanceController).toHaveBeenCalledWith(
+    expect.anything(),
+    owner,
+    provider
+  );
+  expect((BatchBalanceController as jest.Mock).mock.calls[0][0]).not.toBe(
+    provider
+  );
+});
+
+it('keeps cold import balances private to each concurrent holder and skips symbol on warm reads', async () => {
+  (contractChecker as jest.Mock).mockResolvedValue({ type: 'ERC-20' });
+  const pending = deferred();
+  (getTokenStandardMetadata as jest.Mock).mockReturnValue(pending.promise);
+  const balanceOf = jest.fn(async () => BigInt(2000000));
+  const decimals = jest.fn(async () => BigInt(6));
+  (Contract as unknown as jest.Mock).mockImplementation(() => ({
+    balanceOf,
+    decimals,
+  }));
+  const controller = EvmAssetsController();
+  const first = controller.getTokenDetailsWithBalance(
+    TOKEN,
+    ACCOUNT,
+    {} as any
+  );
+  const otherHolder = `0x${'22'.repeat(20)}`;
+  const second = controller.getTokenDetailsWithBalance(
+    TOKEN,
+    otherHolder,
+    {} as any
+  );
+  await Promise.resolve();
+  pending.resolve({ tokenSymbol: 'T', decimals: 6, balance: '1000000' });
+  expect((await first)?.rawBalance).toBe('1000000');
+  expect((await second)?.rawBalance).toBe('2000000');
+  expect(balanceOf).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledWith(otherHolder);
+  expect(decimals).toHaveBeenCalledTimes(1);
+  expect(getTokenStandardMetadata).toHaveBeenCalledTimes(1);
+});
+
+it('does not commit a grouped precision mismatch as a fresh balance', async () => {
+  const RealBatch = jest.requireActual(
+    '../balances/BatchBalanceController'
+  ).BatchBalanceController;
+  (BatchBalanceController as jest.Mock).mockImplementation(
+    (...args) => new RealBatch(...args)
+  );
+  const provider = {
+    getNetwork: async () => ({ chainId: 1 }),
+    getCode: async () => '0x',
+    readMany: async (requests) =>
+      requests.map((request) => ({
+        status: 'fulfilled',
+        value: `0x${BigInt(
+          request.params[0].data === '0x313ce567' ? 18 : '1000000000000000000'
+        )
+          .toString(16)
+          .padStart(64, '0')}`,
+      })),
+  };
+  const token = {
+    contractAddress: TOKEN,
+    chainId: 1,
+    balance: 7,
+    rawBalance: '7000000',
+    decimals: 6,
+    isNft: false,
+    tokenSymbol: 'T',
+  };
+  const onBalanceRead = jest.fn();
+  const result = await EvmAssetsController().updateAllEvmTokens(
+    { address: ACCOUNT } as any,
+    1,
+    provider as any,
+    [token],
+    onBalanceRead
+  );
+  expect(result).toEqual([]);
+  expect(onBalanceRead).not.toHaveBeenCalled();
+  expect(token).toMatchObject({
+    balance: 7,
+    rawBalance: '7000000',
+    decimals: 6,
+  });
+});
+
+describe('NFT optional metadata caching', () => {
+  const runner = { call: jest.fn() };
+  const read = (controller: ReturnType<typeof EvmAssetsController>) =>
+    controller.getTokenDetailsWithMarketData(TOKEN, ACCOUNT, runner as any);
+  beforeEach(() => {
+    jest.mocked(getNftStandardMetadata).mockReset();
+    jest.mocked(contractChecker).mockResolvedValue({ type: 'ERC-721' } as any);
+    jest.mocked(getERC721StandardBalance).mockResolvedValue(3);
+  });
+
+  it('retries transient descriptive metadata on a later request while refreshing the exact count', async () => {
+    jest
+      .mocked(getNftStandardMetadata)
+      .mockResolvedValueOnce({
+        name: 'ERC-721 Collection',
+        symbol: 'NFT',
+        metadataUnavailable: true,
+      } as any)
+      .mockResolvedValueOnce({ name: 'Recovered collection', symbol: 'RPC' });
+    const controller = EvmAssetsController();
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'ERC-721 Collection',
+      symbol: 'NFT',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(60_000);
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Recovered collection',
+      symbol: 'RPC',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+    expect(getERC721StandardBalance).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { name: 'Healthy collection', symbol: 'HEALTHY' },
+    { name: 'ERC-721 Collection', symbol: 'NFT' },
+  ])(
+    'preserves the healthy 24-hour cache including legitimate optional absence: %o',
+    async (metadata) => {
+      jest.mocked(getNftStandardMetadata).mockResolvedValue(metadata);
+      const controller = EvmAssetsController();
+      await expect(read(controller)).resolves.toMatchObject({
+        ...metadata,
+        balance: 3,
+      });
+      jest.advanceTimersByTime(24 * 60 * 60_000 - 1);
+      await expect(read(controller)).resolves.toMatchObject({
+        ...metadata,
+        balance: 3,
+      });
+      expect(getNftStandardMetadata).toHaveBeenCalledTimes(1);
+      expect(getERC721StandardBalance).toHaveBeenCalledTimes(2);
+      jest.advanceTimersByTime(1);
+      await read(controller);
+      expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it('returns a successful name during a partial failure and refreshes the failed symbol later', async () => {
+    jest
+      .mocked(getNftStandardMetadata)
+      .mockResolvedValueOnce({
+        name: 'Healthy name',
+        symbol: 'NFT',
+        metadataUnavailable: true,
+      } as any)
+      .mockResolvedValueOnce({ name: 'Healthy name', symbol: 'RECOVERED' });
+    const controller = EvmAssetsController();
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Healthy name',
+      symbol: 'NFT',
+      balance: 3,
+    });
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Healthy name',
+      symbol: 'RECOVERED',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares one incomplete metadata request without retrying until the next invocation', async () => {
+    const pending = deferred();
+    jest.mocked(getNftStandardMetadata).mockReturnValueOnce(pending.promise);
+    const controller = EvmAssetsController();
+    const first = read(controller);
+    const overlapping = read(controller);
+    await Promise.resolve();
+    pending.resolve({
+      name: 'Partial fallback',
+      symbol: 'NFT',
+      metadataUnavailable: true,
+    });
+    const results = await Promise.all([first, overlapping]);
+    expect(results.map((value) => value?.name)).toEqual([
+      'Partial fallback',
+      'Partial fallback',
+    ]);
+    expect(results.map((value) => value?.balance)).toEqual([3, 3]);
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(1);
+    jest
+      .mocked(getNftStandardMetadata)
+      .mockResolvedValue({ name: 'Recovered collection', symbol: 'RPC' });
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Recovered collection',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache a cancelled metadata request and permits the next owned request', async () => {
+    const cancelled = Object.assign(new Error('cancelled'), {
+      name: 'AbortError',
+    });
+    jest.mocked(getNftStandardMetadata).mockRejectedValueOnce(cancelled);
+    const controller = EvmAssetsController();
+    await expect(read(controller)).resolves.toBeNull();
+    expect(getERC721StandardBalance).not.toHaveBeenCalled();
+    jest
+      .mocked(getNftStandardMetadata)
+      .mockResolvedValue({ name: 'Recovered collection', symbol: 'RPC' });
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Recovered collection',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+    expect(getERC721StandardBalance).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not publish or cache an optional-metadata read after the endpoint changes', async () => {
+    const pending = deferred();
+    jest.mocked(getNftStandardMetadata).mockReturnValueOnce(pending.promise);
+    const controller = EvmAssetsController();
+    const first = read(controller);
+    await Promise.resolve();
+    network = { ...network, url: 'https://other-rpc.test' };
+    pending.resolve({ name: 'Old endpoint name', symbol: 'OLD' });
+    await expect(first).resolves.toBeNull();
+    jest
+      .mocked(getNftStandardMetadata)
+      .mockResolvedValue({ name: 'Current endpoint name', symbol: 'CURRENT' });
+    await expect(read(controller)).resolves.toMatchObject({
+      name: 'Current endpoint name',
+      symbol: 'CURRENT',
+      balance: 3,
+    });
+    expect(getNftStandardMetadata).toHaveBeenCalledTimes(2);
+  });
 });

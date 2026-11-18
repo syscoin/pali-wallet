@@ -8,21 +8,29 @@ Backups matter because Pali is non-custodial. The wallet cannot recover a seed p
 
 Write down your wallet seed phrase and keep it offline. Anyone with the seed phrase can control the derived accounts.
 
+## Updating from v4
+
+Update the existing extension in the same browser profile. The v4 → v5 upgrade keeps saved accounts, including separately imported private keys. Installing a separate extension or restoring only the seed phrase does not transfer those imported keys.
+
 ## Unlock password
 
 The optional **Suggest a memorable password** action creates an unlock password, not your Secret Recovery Phrase. Save it in your password manager. A smart-account passkey does not replace the wallet unlock password.
 
 ## Private note backups
 
-Before recovering, forgetting, erasing or replacing a wallet, separately back up every private note while the wallet is unlocked and you still know its password. In Privacy, choose **Reveal for backup** for each saved note and keep the backup secret: anyone who has it can withdraw. The recovery phrase does not recreate randomly generated notes, and recovery deletes the saved private notes. If the password is already forgotten, you cannot use Pali to reveal the old encrypted notes and create a new backup before recovery.
+Separately back up every private note before forgetting, erasing or replacing a wallet. In Privacy, choose **Reveal for backup** for each saved note while the wallet is unlocked and keep the backup secret: anyone who has it can withdraw. Matching-phrase password recovery on the same device keeps supported saved private notes. The phrase alone cannot recreate missing notes or restore them on a new device. If you forget the password, keep the existing wallet data while recovering access.
+
+**Archive completed notes** checks the recorded withdrawal and moves completed notes into an encrypted archive. Archived notes retain their secrets and can be restored, revealed for backup or included in an encrypted backup. They do not use the active-note allowance. The archive has its own limit of 512 notes and 4 MiB; the wallet's existing total storage limit still applies. Nothing is automatically erased to make space.
+
+**Clear archive** permanently deletes only archived notes after authorization and a separate confirmation. Confirm that the notes are spent or keep a usable backup first. Your seed phrase cannot recreate deleted note secrets.
 
 ## If you forget the password
 
-On the locked screen, select **Forgot password? Recover with seed**, enter this wallet's Secret Recovery Phrase, and choose a new password. The old password is not required. A different phrase is refused before the wallet is reset.
+On the extension's locked screen, select **Forgot password? Recover with seed**, enter this wallet's Secret Recovery Phrase, and choose a new password. The old password is not required. A different phrase is refused before any wallet data is changed.
 
-The current flow recreates the first seed-derived HD account. Re-add other seed-derived accounts in their original derivation order. Recovery does not move your funds.
+With the saved wallet data intact, this flow preserves supported saved accounts, their derivation indexes, settings, private notes and signing records. Imported accounts are retained when their saved encrypted recovery copies are available. If required recovery data is missing or unsupported, recovery stops and preserves the existing wallet. Recovery does not move your funds.
 
-Your seed cannot decrypt separately imported keys encrypted with the forgotten password; keep their own backups. Reconnect hardware wallets. Custom settings and smart-account/passkey setup need their own records or backups and are not guaranteed by seed recovery alone.
+A clean installation or lost browser profile needs separate backups for imported private keys and private notes. The seed phrase alone restores seed-derived accounts; add them in their original derivation order. Hardware wallets may need to reconnect. Keep the relevant smart-account records and passkey authenticators backed up for recovery on another device.
 
 If recovery fails, check your phrase and retry. If it keeps failing, restart your browser. Never clear wallet storage to work around an operational error.
 

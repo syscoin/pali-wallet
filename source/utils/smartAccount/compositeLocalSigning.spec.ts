@@ -1,5 +1,9 @@
 import { webcrypto } from 'crypto';
 import { Wallet } from 'ethers/wallet';
+import {
+  SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  withReviewedSmartAccountExecution,
+} from 'tests/fixtures/reviewedSmartAccountExecution';
 
 import type {
   ISmartAccountMetadata,
@@ -22,6 +26,14 @@ import {
   SmartAccountExternalSignatureRequired,
 } from './execution';
 import { isPaliValidatorAlgorithmSupported } from './validatorSignability';
+
+const reviewedFixture = (
+  params: Parameters<typeof signAndSubmitSmartAccountExecutions>[0]
+) =>
+  withReviewedSmartAccountExecution(params, {
+    payer: { address: '0x' + '44'.repeat(20), id: 0, type: 'HDAccount' },
+    userOperation: SYNTHETIC_ENTRYPOINT_USER_OPERATION,
+  });
 
 jest.mock('utils/passkey/authenticator', () => ({
   ...jest.requireActual('utils/passkey/authenticator'),
@@ -223,7 +235,7 @@ describe('normal local composite approvals', () => {
   });
 
   it('does not silently fall back after a passkey rejection', async () => {
-    const smartAccount = metadata(1);
+    const smartAccount = metadata(2);
     compositeModule(smartAccount).config.childValidators = [P256, ECDSA];
     const denied = Object.assign(new Error('Passkey rejected'), {
       name: 'NotAllowedError',
@@ -418,14 +430,16 @@ describe('composite submission and SLH reserve policy', () => {
     async (_name, executions, expected) => {
       const smartAccount = slhComposite();
       const signSlh = jest.fn().mockResolvedValue(SLH_SIGNATURE);
-      await signAndSubmitSmartAccountExecutions({
-        accountAddress: ACCOUNT,
-        accountId: 7,
-        smartAccount,
-        authenticatorContexts: { 'slh-dsa': { signActionHash: signSlh } },
-        controllerEmitter: emitterFor(smartAccount),
-        executions: [...executions],
-      });
+      await signAndSubmitSmartAccountExecutions(
+        reviewedFixture({
+          accountAddress: ACCOUNT,
+          accountId: 7,
+          smartAccount,
+          authenticatorContexts: { 'slh-dsa': { signActionHash: signSlh } },
+          controllerEmitter: emitterFor(smartAccount),
+          executions: [...executions],
+        })
+      );
       expect(signSlh).toHaveBeenCalledWith(
         expect.objectContaining({
           accountId: 7,
@@ -468,8 +482,8 @@ describe('composite submission and SLH reserve policy', () => {
     let results: any[];
     try {
       results = await Promise.all([
-        signAndSubmitSmartAccountExecutions(params),
-        signAndSubmitSmartAccountExecutions(params),
+        signAndSubmitSmartAccountExecutions(reviewedFixture(params)),
+        signAndSubmitSmartAccountExecutions(reviewedFixture(params)),
       ]);
     } finally {
       observedDigest.mockRestore();
@@ -494,6 +508,7 @@ describe('composite submission and SLH reserve policy', () => {
   ])('does not skip a PQ child after %s', async (message) => {
     const smartAccount = slhComposite();
     compositeModule(smartAccount).config.childValidators = [SLH, ECDSA];
+    compositeModule(smartAccount).config.threshold = 2;
     const signEcdsa = jest.fn().mockResolvedValue(ECDSA_SIGNATURE);
     const failure = new Error(message);
     await expect(
@@ -613,7 +628,7 @@ describe('one shared capability and connection plan', () => {
       );
     }
   );
-  it('does not require an unused later Ledger child when the earlier interactive child satisfies the threshold', () => {
+  it('chooses the same ECDSA threshold subset as possession despite a prior passkey slot', () => {
     const smartAccount = metadata(1);
     compositeModule(smartAccount).config.childValidators = [P256, ECDSA];
     const plan = getSmartAccountSigningPlan(smartAccount, {
@@ -622,12 +637,14 @@ describe('one shared capability and connection plan', () => {
       slhDsa: false,
     })!;
     expect(plan.authenticators.map((entry) => entry.validator.address)).toEqual(
-      [P256]
+      [ECDSA]
     );
-    expect(plan.authenticators.flatMap((entry) => entry.owners)).toEqual([]);
+    expect(plan.authenticators.flatMap((entry) => entry.owners)).toEqual([
+      { address: OWNER, id: 7, type: 'Ledger' },
+    ]);
   });
   it('retires a chosen child that loses capability without switching to a later unconnected owner', async () => {
-    const smartAccount = metadata(1);
+    const smartAccount = metadata(2);
     compositeModule(smartAccount).config.childValidators = [P256, ECDSA];
     const ledger = jest.fn(async () => ECDSA_SIGNATURE);
     const unavailable = new SmartAccountExternalSignatureRequired({

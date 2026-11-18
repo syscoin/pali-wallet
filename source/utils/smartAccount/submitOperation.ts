@@ -1,5 +1,17 @@
+import { Transaction } from 'ethers/transaction';
+
 import { NATIVE_EVM_FEE_FUNDING } from '../../shared/evmFeeApproval.ts';
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
+import {
+  assertSmartAccountAuthorizationReceipt,
+  resolveSmartAccountAuthorization,
+  type SmartAccountAuthorizationReceipt,
+} from '../../wallet/evmSignedRecords.ts';
+import {
+  assertSmartAccountCancellationOperation,
+  smartAccountCancellationMetadata,
+  type SmartAccountCancellation,
+} from '../../wallet/smartAccountCancellation.ts';
 import {
   BigNumber,
   Contract,
@@ -25,6 +37,11 @@ import {
 } from './contracts.ts';
 import { getZkSysGasTankAddress } from './deploymentMetadata.ts';
 import {
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from './erc20Transfer.ts';
+import { assertSignedSmartAccountExecution } from './executionSimulation.ts';
+import {
   hasNativeGasFailure,
   hasSmartAccountSignatureFailure,
 } from './operationErrors.ts';
@@ -34,6 +51,7 @@ import {
   getExplicitSmartAccountGasPrice,
   type SmartAccountGasPayer,
 } from './prepareOperation.ts';
+import { getSmartAccountUserOpHash } from './userOperationHash.ts';
 import type { EvmAutoNonceSnapshot } from '../../shared/evmAutoNonce.ts';
 import type {
   IKeyringAccountState,
@@ -43,13 +61,13 @@ import type {
 import type { IEvmTransactionContext } from '../evmTransactionContext.ts';
 const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
 const SMART_ACCOUNT_SIGNATURE_ERROR = 'PALI_SMART_ACCOUNT_SIGNATURE_ERROR';
-const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
 export type SmartAccountSubmitParams = {
   accountId: number;
   executionCalldata?: string;
   executionContextId: string;
   executions?: SmartAccountExecution[];
   expectedContext?: IEvmTransactionContext;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   gasPayer?: {
     address: string;
     id: number;
@@ -69,6 +87,22 @@ type SmartAccountRecord = {
   account: IKeyringAccountState;
   metadata: ISmartAccountMetadata;
 };
+export type SmartAccountSubmissionChecks = {
+  assertAssetState(provider?: any): Promise<void>;
+  assertPendingState(
+    provider?: any,
+    currentSignedHash?: string,
+    admission?: EvmAutoNonceSnapshot,
+    signedRaw?: string
+  ): Promise<void>;
+  readonly assertPendingStateIncludesAssets?: true;
+  readonly feeDisplayBlock?: import('../../shared/evmDappPreparation.ts').EvmDappFeeDisplayBlock;
+  prepareReadPhase?(
+    provider: any,
+    currentSignedHash?: string,
+    admission?: EvmAutoNonceSnapshot
+  ): Promise<void>;
+};
 export type SmartAccountSubmitHost<
   TResponse extends { hash: string; wait(): Promise<unknown> }
 > = {
@@ -76,7 +110,6 @@ export type SmartAccountSubmitHost<
     context: IEvmTransactionContext,
     id?: number
   ): void;
-  assertGasTankCoversTransaction(params: any): Promise<BigNumber>;
   assertSmartAccountExecutionContext(id: string): void;
   chainId: number;
   ensureDeploymentPrefund(
@@ -85,7 +118,7 @@ export type SmartAccountSubmitHost<
     entryPoint: string,
     payer: SmartAccountGasPayer,
     chainId: number,
-    options: {
+    options: SmartAccountSubmissionChecks & {
       assertBeforeSign: () => void;
       assertCurrentContext(): void;
       onAcknowledged(): void;
@@ -95,7 +128,11 @@ export type SmartAccountSubmitHost<
   getExecutionContext(id: string):
     | {
         accountId: number;
+        cancellation?: SmartAccountCancellation;
+        expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
+        feeDisplayBlock?: import('../../shared/evmDappPreparation.ts').EvmDappFeeDisplayBlock;
         gasPrice?: string;
+        replaceOuter?: boolean;
         userOperation: SmartAccountPackedUserOperation;
       }
     | undefined;
@@ -111,6 +148,11 @@ export type SmartAccountSubmitHost<
   invalidateMetadata(address: string): void;
   pending: SmartAccountPendingState;
   provider: any;
+  retainAuthorization(
+    operation: SmartAccountPackedUserOperation,
+    payer: SmartAccountGasPayer,
+    assertCurrent: () => void
+  ): Promise<SmartAccountAuthorizationReceipt>;
   sendTransaction(
     params: any,
     isLegacy?: boolean,
@@ -126,6 +168,9 @@ function snapshotSubmitParams(
   return Object.freeze({
     ...params,
     userOperation: Object.freeze({ ...params.userOperation }),
+    expectedErc20Transfers: snapshotSmartAccountExpectedErc20Transfers(
+      params.expectedErc20Transfers
+    ),
     ...(params.gasPayer
       ? { gasPayer: Object.freeze({ ...params.gasPayer }) }
       : {}),
@@ -205,6 +250,12 @@ async function submitOwnedSmartAccountOperation<
         !suppliedOperation ||
         !context.userOperation ||
         params.gasPrice !== context.gasPrice ||
+        JSON.stringify(params.expectedErc20Transfers) !==
+          JSON.stringify(
+            snapshotSmartAccountExpectedErc20Transfers(
+              context.expectedErc20Transfers
+            )
+          ) ||
         Object.entries(context.userOperation).some(
           ([key, value]) =>
             suppliedOperation[key as keyof SmartAccountPackedUserOperation] !==
@@ -258,9 +309,142 @@ async function submitOwnedSmartAccountOperation<
     assertCurrent();
     const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
     const entryPoint = new Contract(entryPointAddress, PALI_ENTRYPOINT_V09_ABI);
-    const signedUserOperation: SmartAccountPackedUserOperation = {
+    let signedUserOperation: SmartAccountPackedUserOperation = {
       ...params.userOperation,
       signature: params.signature,
+    };
+    const cancellationContext = host.getExecutionContext(
+      params.executionContextId
+    );
+    const cancellation = cancellationContext?.cancellation;
+    const replaceOuter = cancellationContext?.replaceOuter === true;
+    if (cancellation) {
+      assertSmartAccountCancellationOperation(
+        cancellation,
+        signedUserOperation,
+        active.metadata.auth!.validator
+      );
+      if (
+        replaceOuter &&
+        (!cancellation.outer ||
+          cancellation.outer.from.toLowerCase() !==
+            gasPayer.address.toLowerCase() ||
+          cancellation.outer.signer.id !== gasPayer.id ||
+          cancellation.outer.signer.type !== gasPayer.type)
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    } else if (replaceOuter) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+
+    const retained = await host.retainAuthorization(
+      signedUserOperation,
+      gasPayer,
+      assertCurrent
+    );
+    assertCurrent();
+    signedUserOperation = resolveSmartAccountAuthorization(
+      retained,
+      {
+        chainId: active.metadata.chainId,
+        payer: gasPayer.address,
+        userOperation: signedUserOperation,
+      },
+      assertCurrent
+    );
+    assertSmartAccountAuthorizationReceipt(
+      retained,
+      {
+        chainId: active.metadata.chainId,
+        payer: gasPayer.address,
+        userOperation: signedUserOperation,
+      },
+      assertCurrent
+    );
+    host = { ...host, pending: host.pending.withAuthorization(retained) };
+    const phases = new WeakMap<
+      object,
+      {
+        hash: string | undefined;
+        pending: SmartAccountPendingState;
+        snapshot: EvmAutoNonceSnapshot | undefined;
+      }
+    >();
+    const pendingPhase = (
+      provider?: any,
+      hash?: string,
+      snapshot?: EvmAutoNonceSnapshot
+    ) => {
+      if (!provider) return host.pending;
+      const existing = phases.get(provider);
+      if (existing && existing.hash === hash && existing.snapshot === snapshot)
+        return existing.pending;
+      const pending = host.pending.onProvider(provider, hash, snapshot);
+      phases.set(provider, { hash, snapshot, pending });
+      return pending;
+    };
+    const submissionChecks: SmartAccountSubmissionChecks = {
+      ...(cancellationContext?.feeDisplayBlock
+        ? { feeDisplayBlock: cancellationContext.feeDisplayBlock }
+        : {}),
+      assertPendingStateIncludesAssets: true,
+      async prepareReadPhase(provider, hash, snapshot) {
+        assertCurrent();
+        await pendingPhase(provider, hash, snapshot).prime();
+        assertCurrent();
+      },
+      async assertPendingState(
+        provider,
+        currentSignedHash,
+        admission,
+        signedRaw
+      ) {
+        const phase = pendingPhase(provider, currentSignedHash, admission);
+        await phase.assertNonce(signedUserOperation);
+        await assertSmartAccountSpendability({
+          provider: phase.provider,
+          chainId: active.metadata.chainId,
+          userOperation: signedUserOperation,
+          expectedErc20Transfers: params.expectedErc20Transfers,
+          assertCurrent,
+        });
+        if (currentSignedHash) {
+          if (!signedRaw)
+            throw new Error('Missing signed smart account payer transaction');
+          const signed = Transaction.from(signedRaw);
+          // Deployment prefunding has its own signed admission and is not handleOps.
+          if (
+            signed.to?.toLowerCase() !== entryPointAddress.toLowerCase() ||
+            signed.data !== callData
+          ) {
+            if (
+              signed.to?.toLowerCase() ===
+                active.account.address.toLowerCase() &&
+              signed.data === '0x'
+            )
+              return;
+            throw new Error('Smart account payer transaction changed');
+          }
+          await assertSignedSmartAccountExecution(
+            phase.provider,
+            signedRaw,
+            currentSignedHash,
+            signedUserOperation,
+            active.metadata.chainId,
+            admission,
+            assertCurrent
+          );
+        }
+        assertCurrent();
+      },
+      assertAssetState: (provider) =>
+        assertSmartAccountAssetSpendability({
+          provider: provider
+            ? host.pending.onProvider(provider).provider
+            : host.provider,
+          chainId: active.metadata.chainId,
+          userOperation: signedUserOperation,
+          expectedErc20Transfers: params.expectedErc20Transfers,
+          assertCurrent,
+        }),
     };
     assertCurrent();
     const callData = entryPoint.interface.encodeFunctionData('handleOps', [
@@ -276,21 +460,6 @@ async function submitOwnedSmartAccountOperation<
     const usesZkSysGasTank =
       Boolean(getZkSysGasTankAddress(active.metadata.chainId)) &&
       signedUserOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES;
-    let outerGasLimit: BigNumber | undefined;
-    if (usesZkSysGasTank) {
-      outerGasLimit = await host.assertGasTankCoversTransaction({
-        chainId: active.metadata.chainId,
-        gasPayerAddress: gasPayer.address,
-        gasPrice: legacyGasPrice,
-        maxFeePerGas: legacyGasPrice ?? params.maxFeePerGas,
-        transaction: {
-          data: callData,
-          to: entryPointAddress,
-          value: '0x0',
-        },
-      });
-      assertCurrent();
-    }
     // Self-funded first-UserOp deployment: an op carrying initCode validates
     // before anything executes, so the counterfactual account must already
     // cover the EntryPoint prefund.
@@ -305,6 +474,7 @@ async function submitOwnedSmartAccountOperation<
           provider: phase.provider,
           chainId: active.metadata.chainId,
           userOperation: signedUserOperation,
+          expectedErc20Transfers: params.expectedErc20Transfers,
           assertCurrent,
         });
       });
@@ -316,6 +486,7 @@ async function submitOwnedSmartAccountOperation<
         gasPayer,
         active.metadata.chainId,
         {
+          ...submissionChecks,
           assertBeforeSign: assertCurrent,
           assertCurrentContext: assertContext,
           onSubmissionAttempt() {
@@ -328,26 +499,6 @@ async function submitOwnedSmartAccountOperation<
       );
       assertCurrent();
     }
-    // A supplied legacy price must reach the actual handleOps preflight;
-    // estimation must not validate a different fee model from publication.
-    // Existing EIP-1559 estimation stays fee-less. Tank mode reuses its exact
-    // preflight, and the resolved gas limit avoids a second signer estimate.
-    if (!outerGasLimit && initCode && initCode !== '0x') {
-      const provider = host.provider;
-      if (!provider) {
-        throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-      }
-      outerGasLimit = BigNumber.from(
-        await provider.estimateGas({
-          data: callData,
-          from: gasPayer.address,
-          ...(legacyGasPrice !== undefined ? { gasPrice: legacyGasPrice } : {}),
-          to: entryPointAddress,
-          value: '0x0',
-        })
-      );
-      assertCurrent();
-    }
     assertCurrent();
     financialSubmissionAttempted = true;
     handleOpsStarted = true;
@@ -356,7 +507,9 @@ async function submitOwnedSmartAccountOperation<
         chainId: active.metadata.chainId,
         data: callData,
         from: gasPayer.address,
-        ...(outerGasLimit ? { gasLimit: outerGasLimit.toString() } : {}),
+        ...(replaceOuter && cancellation?.outer
+          ? { nonce: cancellation.outer.nonce }
+          : {}),
         ...(legacyGasPrice !== undefined
           ? { gasPrice: legacyGasPrice }
           : params.maxFeePerGas && params.maxPriorityFeePerGas
@@ -373,6 +526,22 @@ async function submitOwnedSmartAccountOperation<
       {
         smartAccountExecution: true,
         smartAccountExecutionFrom: active.account.address,
+        smartAccountOperationHash: getSmartAccountUserOpHash(
+          signedUserOperation,
+          active.metadata.chainId
+        ).toLowerCase(),
+        ...(cancellation
+          ? {
+              smartAccountOperationCancellation:
+                smartAccountCancellationMetadata(
+                  cancellation,
+                  getSmartAccountUserOpHash(
+                    signedUserOperation,
+                    active.metadata.chainId
+                  )
+                ),
+            }
+          : {}),
         // SYSCOIN: The outer handleOps recipient is not the affected token.
         balanceRefreshTokenAddresses: (params.executions || []).map(
           (execution) => execution.target
@@ -393,6 +562,15 @@ async function submitOwnedSmartAccountOperation<
         ],
       },
       {
+        ...(cancellation
+          ? {
+              smartAccountCancellation: Object.freeze({
+                cancellation,
+                replaceOuter,
+                userOperation: signedUserOperation,
+              }),
+            }
+          : {}),
         feeFunding: usesZkSysGasTank
           ? createSmartAccountGasTankFunding(
               host.provider,
@@ -408,32 +586,7 @@ async function submitOwnedSmartAccountOperation<
           : NATIVE_EVM_FEE_FUNDING,
         assertBeforeSign: assertCurrent,
         assertCurrentContext: assertContext,
-        async assertPendingState(
-          provider?: any,
-          currentSignedHash?: string,
-          admission?: EvmAutoNonceSnapshot
-        ) {
-          const phase = provider
-            ? host.pending.onProvider(provider, currentSignedHash, admission)
-            : host.pending;
-          await phase.assertNonce(params.userOperation);
-          await assertSmartAccountSpendability({
-            provider: phase.provider,
-            chainId: active.metadata.chainId,
-            userOperation: signedUserOperation,
-            assertCurrent,
-          });
-          assertCurrent();
-        },
-        assertAssetState: (provider?: any) =>
-          assertSmartAccountAssetSpendability({
-            provider: provider
-              ? host.pending.onProvider(provider).provider
-              : host.provider,
-            chainId: active.metadata.chainId,
-            userOperation: signedUserOperation,
-            assertCurrent,
-          }),
+        ...submissionChecks,
         clearNavigation: true,
         async onBroadcast(broadcast: { hash: string }) {
           acknowledgedHandleOpsHash = broadcast.hash;

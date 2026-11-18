@@ -6,6 +6,11 @@ import { notificationCapabilities } from './capabilities.ts';
 export const NOTIFICATION_LIMITS = Object.freeze({ scopes: 64, events: 128, scopesPerRun: 8, runMs: 25000 });
 export const emptyNotificationDocument = (): NotificationDocument => ({ scopes: [], events: [], cursor: 0 });
 const aborted = () => { throw new Error('Notification work expired'); };
+// Foreground/background coordinators share the same physical OS delivery owner.
+const taskSync = new WeakMap<NotificationDelivery, Promise<void>>();
+// Permission observations and explicit grants share one owner across both runtimes.
+const permissionOwners = new WeakMap<NotificationDelivery, object>();
+const supersededPermission = new Error('Notification permission changed');
 
 /** The injected reader has only public read capabilities, never a live wallet controller. */
 export class NativeNotificationCoordinator {
@@ -17,7 +22,7 @@ export class NativeNotificationCoordinator {
     store: NotificationStore; delivery: NotificationDelivery;
     normalize(scope: NativeNotificationScope): NativeNotificationScope;
     factScope(scope: NativeNotificationScope): ActivityNotificationScope;
-    read(scope: NativeNotificationScope, previous: ActivityNotificationBaseline | null, signal: AbortSignal, guard: () => void): Promise<{ transactions: readonly unknown[]; guardianObservation?: GuardianRecoveryObservation; historyReadSucceeded: boolean }>;
+    read(scope: NativeNotificationScope, previous: ActivityNotificationBaseline | null, signal: AbortSignal, guard: () => void): Promise<{ transactions: readonly unknown[]; guardianObservation?: GuardianRecoveryObservation; historyReadSucceeded: boolean; historyReadComplete?: boolean }>;
     randomId(): string; now?: () => number;
   };
   constructor(ports: NativeNotificationCoordinator['ports']) { this.ports = ports; }
@@ -32,23 +37,38 @@ export class NativeNotificationCoordinator {
     const enabledScopeIds = await this.transact((doc) => Object.freeze(doc.scopes.map((entry) => entry.scope.id)));
     this.publish({ status: 'ready', enabledScopeIds });
   }
+  private syncTask() {
+    const { delivery } = this.ports;
+    const work = (taskSync.get(delivery) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+      let enabled: boolean;
+      try { enabled = await this.transact(doc => doc.scopes.length > 0); }
+      catch (error) { await delivery.unregister(); throw error; }
+      if (enabled) await delivery.register(); else await delivery.unregister();
+    });
+    taskSync.set(delivery, work);
+    return work;
+  }
   async load() {
+    const permissionOwner = {};
+    permissionOwners.set(this.ports.delivery, permissionOwner);
+    const current = () => { if (permissionOwners.get(this.ports.delivery) !== permissionOwner) throw supersededPermission; };
     try {
       const permission = await this.ports.delivery.permission(false);
       const background = await this.ports.delivery.backgroundStatus();
+      current();
       this.publish({ permission, background });
-      if (permission !== 'granted') await this.disableAll();
+      if (permission !== 'granted') await this.revoke(() => true, current);
       else {
         const ids = await this.transact((doc) => doc.events.map((event) => event.id));
         await this.ports.delivery.prune(ids);
         await this.refresh();
-        if (this.snapshot.enabledScopeIds.length) await this.ports.delivery.register();
-        else await this.ports.delivery.unregister();
+        await this.syncTask();
       }
     } catch {
+      if (permissionOwners.get(this.ports.delivery) !== permissionOwner) return;
       this.publish({ status: 'unavailable' });
       // Corrupt/unreadable enrollment cannot authorize an old OS notification.
-      await Promise.allSettled([this.ports.delivery.prune([]), this.ports.delivery.unregister()]);
+      await Promise.allSettled([this.ports.delivery.prune([]), this.syncTask()]);
     }
   }
   async enable(inputs: readonly NativeNotificationScope[], assertCurrent: () => void, options: NotificationEnableOptions) {
@@ -63,6 +83,7 @@ export class NativeNotificationCoordinator {
     })) throw new Error('Alerts are unavailable for this account and network');
     const permission = await this.ports.delivery.permission(options.requestPermission, options.onPermissionPresentation);
     check();
+    if (permission === 'granted') permissionOwners.set(this.ports.delivery, {});
     this.publish({ permission });
     if (permission !== 'granted') throw new Error('Allow notifications in device settings to enable alerts');
     await this.ports.store.initialize();
@@ -84,7 +105,7 @@ export class NativeNotificationCoordinator {
       check();
     }, check);
     check();
-    await this.ports.delivery.register();
+    await this.syncTask();
     check();
     await this.refresh();
     check();
@@ -135,10 +156,10 @@ export class NativeNotificationCoordinator {
     const keep = await this.transact((doc) => doc.events.map((event) => event.id));
     await this.ports.delivery.prune(keep);
     await this.refresh();
-    if (!this.snapshot.enabledScopeIds.length) await this.ports.delivery.unregister();
+    await this.syncTask();
     if (this.snapshot.pendingEventId && !keep.includes(this.snapshot.pendingEventId)) this.publish({ pendingEventId: null });
   }
-  recordTap(id: unknown) { if (typeof id === 'string' && /^pali-alert-[0-9a-f]{32}$/.test(id)) this.publish({ pendingEventId: id }); }
+  recordTap(id: unknown) { if (typeof id === 'string' && /^pali-alert-[0-9a-f]{32}$/.test(id)) this.publish({ pendingEventId: id, tapRevision: (this.snapshot.tapRevision ?? 0) + 1 }); }
   async getPendingOwner(): Promise<Readonly<{ accountId: string; accountType: string }> | null> {
     const id = this.snapshot.pendingEventId;
     if (!id) return null;
@@ -188,6 +209,9 @@ export class NativeNotificationCoordinator {
     return this.running;
   }
   private async poll(external?: AbortSignal) {
+    const permissionOwner = {};
+    permissionOwners.set(this.ports.delivery, permissionOwner);
+    const current = () => { if (permissionOwners.get(this.ports.delivery) !== permissionOwner) throw supersededPermission; };
     const controller = new AbortController();
     const abort = () => controller.abort();
     external?.addEventListener('abort', abort, { once: true });
@@ -195,8 +219,11 @@ export class NativeNotificationCoordinator {
     const timer = setTimeout(abort, NOTIFICATION_LIMITS.runMs);
     try {
       const permission = await this.ports.delivery.permission(false);
+      current();
       this.publish({ permission });
-      if (permission !== 'granted') { await this.disableAll(); return; }
+      if (permission !== 'granted') { await this.revoke(() => true, current); return; }
+      // Already queued notices must get time before slow public reads use the run budget.
+      await this.deliverPending(controller.signal);
       const work = await this.transact((doc) => {
         const sorted = [...doc.scopes].sort((a, b) => a.scope.id.localeCompare(b.scope.id));
         const count = Math.min(sorted.length, NOTIFICATION_LIMITS.scopesPerRun);
@@ -240,32 +267,37 @@ export class NativeNotificationCoordinator {
           if (this.inflight.get(entry.scope.id) === active) this.inflight.delete(entry.scope.id);
         }
       }
-      // Persist the attempt before entering the OS: process interruption may lose one notice,
-      // but never replays a historical event. Do not hold a DB lock across OS callbacks:
-      // the foreground presentation handler itself revalidates the same enrollment.
-      const pending = await this.transact((doc) => doc.events.filter((event) => !event.attempted).map((event) => event.id));
-      for (const id of pending) {
-        if (controller.signal.aborted) break;
-        const claimed = await this.transact((doc) => {
-          const event = doc.events.find((entry) => entry.id === id);
-          if (!event || event.attempted || !doc.scopes.some((entry) => entry.scope.id === event.scopeId && entry.generation === event.generation)) return false;
-          event.attempted = true;
-          return true;
-        });
-        if (!claimed) continue;
-        if (controller.signal.aborted) aborted();
-        if (!(await this.shouldPresent(id))) continue;
-        try { await this.ports.delivery.post(id); }
-        finally {
-          // Disable/removal may win while the OS call is pending. Cancel both
-          // queued and already-presented forms before allowing the task to end.
-          if (!(await this.shouldPresent(id).catch(() => false))) await this.ports.delivery.remove(id);
-        }
-      }
+      await this.deliverPending(controller.signal);
       const keep = await this.transact((doc) => doc.events.map((event) => event.id));
       await this.ports.delivery.prune(keep);
       this.publish({ lastRunAt: this.now() });
       await this.refresh();
+    } catch (error) {
+      if (error !== supersededPermission) throw error;
     } finally { clearTimeout(timer); external?.removeEventListener('abort', abort); controller.abort(); }
+  }
+  private async deliverPending(signal: AbortSignal) {
+    // Persist the attempt before entering the OS: process interruption may lose one notice,
+    // but never replays a historical event. Do not hold a DB lock across OS callbacks:
+    // the foreground presentation handler itself revalidates the same enrollment.
+    const pending = await this.transact((doc) => doc.events.filter((event) => !event.attempted).map((event) => event.id));
+    for (const id of pending) {
+      if (signal.aborted) break;
+      const claimed = await this.transact((doc) => {
+        const event = doc.events.find((entry) => entry.id === id);
+        if (!event || event.attempted || !doc.scopes.some((entry) => entry.scope.id === event.scopeId && entry.generation === event.generation)) return false;
+        event.attempted = true;
+        return true;
+      });
+      if (!claimed) continue;
+      if (signal.aborted) aborted();
+      if (!(await this.shouldPresent(id))) continue;
+      try { await this.ports.delivery.post(id); }
+      finally {
+        // Disable/removal may win while the OS call is pending. Cancel both
+        // queued and already-presented forms before allowing the task to end.
+        if (!(await this.shouldPresent(id).catch(() => false))) await this.ports.delivery.remove(id);
+      }
+    }
   }
 }

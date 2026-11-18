@@ -14,6 +14,7 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockStore.getState(),
+    subscribe: (fn: () => void) => mockStore.subscribe(fn),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
   persistCommittedWalletState: jest.fn().mockResolvedValue(undefined),
@@ -224,15 +225,19 @@ it.each([0, 1, 2, 3])(
     });
     const json = deferred<any>();
     const pendingResponse = new Response('{}', { status: 200 });
-    jest.spyOn(pendingResponse, 'json').mockReturnValue(json.promise);
-    fetchPrice.mockResolvedValue(pendingResponse);
+    jest.spyOn(pendingResponse, 'text').mockReturnValue(json.promise);
+    fetchPrice.mockResolvedValueOnce(pendingResponse).mockResolvedValue(
+      new Response(JSON.stringify({ [first.coingeckoId]: { eur: 4 } }), {
+        status: 200,
+      })
+    );
     const updating = wallet.setFiat('eur');
     await flush();
     const switching = wallet.setActiveNetwork(target);
     const outcome = switching.catch((error: any) => error);
     await flush();
     expect(loadPasskeyCredentialProfileState).toHaveBeenCalledWith(57);
-    json.resolve({ [first.coingeckoId]: { eur: 4 } });
+    json.resolve(JSON.stringify({ [first.coingeckoId]: { eur: 4 } }));
     for (let n = 0; n < turns; n++) await Promise.resolve();
     profile.resolve({});
     await updating;
@@ -245,9 +250,9 @@ it.each([0, 1, 2, 3])(
     expect(mockStore.getState().price.fiat.available).toBe(true);
     expect(mockStore.getState().vaultGlobal.networkStatus).toBe('error');
     expect(quote.mock.calls).toEqual([
-      [1, 'eur'],
-      [1, 'eur'],
+      [1, 'eur', expect.any(AbortSignal)],
+      [1, 'eur', expect.any(AbortSignal)],
     ]);
-    expect(fetchPrice).toHaveBeenCalledTimes(1);
+    expect(fetchPrice).toHaveBeenCalledTimes(2);
   }
 );

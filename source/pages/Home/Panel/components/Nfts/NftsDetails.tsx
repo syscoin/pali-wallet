@@ -87,17 +87,35 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
   >([]);
   const [isLoadingTokenIds, setIsLoadingTokenIds] = useState(false);
   const [nftView, setNftView] = useHomeBrowsingState<{
+    explicitTokenId: string | null;
     manualTokenId: string;
     selectedTokenId: string | null;
   }>('nftView', nftScope, {
+    explicitTokenId: null,
     selectedTokenId: null,
     manualTokenId: '',
   });
   const { selectedTokenId, manualTokenId } = nftView;
-  const setSelectedTokenId = (tokenId: string | null) =>
-    setNftView((previous) => ({ ...previous, selectedTokenId: tokenId }));
-  const setManualTokenId = (tokenId: string) =>
-    setNftView((previous) => ({ ...previous, manualTokenId: tokenId }));
+  // Explicit inspection survives ownership changes; automatic choices follow
+  // complete enumeration results instead of retaining an ID that disappeared.
+  const reconcileSelection = (
+    tokens: { balance: number; tokenId: string }[],
+    complete: boolean
+  ) =>
+    setNftView((previous) => {
+      if (
+        previous.manualTokenId ||
+        (previous.explicitTokenId &&
+          previous.explicitTokenId === previous.selectedTokenId) ||
+        tokens.some((token) => token.tokenId === previous.selectedTokenId) ||
+        (previous.selectedTokenId && !complete)
+      )
+        return previous;
+      const selected = tokens[0]?.tokenId ?? null;
+      return selected === previous.selectedTokenId
+        ? previous
+        : { ...previous, selectedTokenId: selected };
+    });
   const [hasMoreTokens, setHasMoreTokens] = useState(false);
   const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
   const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
@@ -120,6 +138,8 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
       currentNft.balance <= 0 ||
       currentNft.tokenStandard === 'ERC-1155'
     ) {
+      if (currentNft?.tokenStandard === 'ERC-721' && currentNft.balance <= 0)
+        reconcileSelection([], true);
       setIsLoadingTokenIds(false);
       return;
     }
@@ -139,9 +159,12 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
         const tokens = result?.tokens || [];
         setNftTokenIds(tokens);
         setHasMoreTokens(result?.hasMore || false);
-        if (tokens.length > 0 && !selectedTokenId && !manualTokenId) {
-          setSelectedTokenId(tokens[0].tokenId);
-        }
+        reconcileSelection(
+          tokens,
+          // Unsupported enumeration also returns an empty manual-entry list.
+          result?.hasMore === false &&
+            (tokens.length > 0 || result?.requiresManualEntry === false)
+        );
       } catch (error) {
         console.error('Error loading NFT token IDs:', error);
       } finally {
@@ -221,8 +244,12 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   // Handle manual token ID input with debounced verification
   const handleManualTokenIdChange = (value: string) => {
-    setManualTokenId(value);
-    setSelectedTokenId(value || null);
+    setNftView((previous) => ({
+      ...previous,
+      explicitTokenId: null,
+      manualTokenId: value,
+      selectedTokenId: value || null,
+    }));
     setVerifiedTokenBalance(null);
     setVerificationError(null);
   };
@@ -246,6 +273,13 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     currentNft?.tokenStandard === 'ERC-1155'
       ? currentNft.tokenId || '' // ERC-1155 may not have tokenId during search
       : manualTokenId || selectedTokenId; // ERC-721 uses manual/selected
+  const copySelection = useRef({ id: displayTokenId, revision: 0 });
+  if (copySelection.current.id !== displayTokenId) {
+    copySelection.current = {
+      id: displayTokenId,
+      revision: copySelection.current.revision + 1,
+    };
+  }
 
   // Extract image URL with fallback logic similar to MetaMask
   const getNftImage = () => {
@@ -271,12 +305,18 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     };
   }, []);
 
-  const copy = async (value: string, successMessage: string) => {
+  const copy = async (
+    value: string,
+    successMessage: string,
+    selectionSensitive = false
+  ) => {
     const scope = nftScope;
+    const selection = copySelection.current.revision;
     const sequence = ++copySequenceRef.current;
     const isCurrent = () =>
       copyContextRef.current.active &&
       copyContextRef.current.scope === scope &&
+      (!selectionSensitive || copySelection.current.revision === selection) &&
       copySequenceRef.current === sequence;
     try {
       await navigator.clipboard.writeText(value);
@@ -344,8 +384,12 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                           key={token.tokenId}
                           type="button"
                           onClick={() => {
-                            setSelectedTokenId(token.tokenId);
-                            setManualTokenId('');
+                            setNftView((previous) => ({
+                              ...previous,
+                              explicitTokenId: token.tokenId,
+                              selectedTokenId: token.tokenId,
+                              manualTokenId: '',
+                            }));
                           }}
                           className={`max-w-full break-all px-3 py-1.5 rounded-lg text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
                             selectedTokenId === token.tokenId && !manualTokenId
@@ -541,7 +585,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                       ? ellipsis(displayTokenId)
                       : displayTokenId,
                     `${t('buttons.copy')} ${t('send.tokenId')}`,
-                    () => void copy(displayTokenId, 'components.copied')
+                    () => void copy(displayTokenId, 'components.copied', true)
                   )}
 
                 {renderCopyRow(

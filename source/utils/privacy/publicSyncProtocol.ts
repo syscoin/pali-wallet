@@ -235,18 +235,25 @@ type PrivacyAnchorFacts = Pick<
   'asOfBlockNumber' | 'asOfBlockHash' | 'leafCount' | 'root'
 >;
 
+type HistoricalAnchorScalars = readonly [bigint, string, bigint, bigint];
+type AnchorHistory = {
+  remember(scalars: HistoricalAnchorScalars): void;
+  scalars?: HistoricalAnchorScalars;
+};
+
 type PrivacyAnchorAccess =
   | ReturnType<typeof createPrivacyRpc>
   | Readonly<{ read(kind: PrivacyAnchorRead): Promise<unknown> }>;
 
 // Read the selected Ethereum RPC independently of Sysnode, never its RPC URL.
 // Number-pinned eth_call is guarded by matching block hashes before and after.
-export async function verifyPrivacySnapshotAnchor(
+async function verifyAnchor(
   poolId: PrivacyPoolId,
   snapshot: PrivacyAnchorFacts,
   rpcUrl: string,
   signal: AbortSignal,
-  access: PrivacyAnchorAccess
+  access: PrivacyAnchorAccess,
+  history?: AnchorHistory
 ): Promise<{ blockTimestamp: number }> {
   const pool = getPrivacyPool(poolId);
   const url = validatePrivacyRpcUrl(rpcUrl);
@@ -288,10 +295,13 @@ export async function verifyPrivacySnapshotAnchor(
     ]);
     return PRIVACY_POOL_ABI.decodeFunctionResult(fn, result as string)[0];
   };
-  const scalars = owned ? [] : await Promise.all(anchorScalars.map(read));
-  if (owned) {
-    for (const fn of anchorScalars) scalars.push(await read(fn));
-  }
+  let scalars: readonly unknown[];
+  if (history?.scalars) scalars = history.scalars;
+  else if (owned) {
+    const observed: unknown[] = [];
+    for (const fn of anchorScalars) observed.push(await read(fn));
+    scalars = observed;
+  } else scalars = await Promise.all(anchorScalars.map(read));
   const [count, root, levels, denomination] = scalars;
   const after = await block();
   if (
@@ -302,6 +312,7 @@ export async function verifyPrivacySnapshotAnchor(
     throw new Error('privacy_anchor_changed');
   if (
     count !== BigInt(snapshot.leafCount) ||
+    typeof root !== 'string' ||
     root.toLowerCase() !== snapshot.root ||
     levels !== BigInt(PRIVACY_TREE_LEVELS) ||
     denomination !== parseEther(pool.amount)
@@ -320,5 +331,46 @@ export async function verifyPrivacySnapshotAnchor(
     ])) as string
   )[0];
   if (known !== true) throw new Error('privacy_snapshot_stale');
+  if (signal.aborted) throw new Error('privacy_cancelled');
+  history?.remember([count, root, levels, denomination]);
   return { blockTimestamp };
+}
+
+export function verifyPrivacySnapshotAnchor(
+  poolId: PrivacyPoolId,
+  snapshot: PrivacyAnchorFacts,
+  rpcUrl: string,
+  signal: AbortSignal,
+  access: PrivacyAnchorAccess
+) {
+  return verifyAnchor(poolId, snapshot, rpcUrl, signal, access);
+}
+
+/** One controller can reuse verified historical scalars for its exact in-memory snapshot. */
+export function createPrivacySnapshotAnchorVerifier(
+  rpc: ReturnType<typeof createPrivacyRpc>
+) {
+  const verified = new WeakMap<
+    PrivacySnapshot,
+    { poolId: PrivacyPoolId; scalars: HistoricalAnchorScalars; url: string }
+  >();
+  return async (
+    poolId: PrivacyPoolId,
+    snapshot: PrivacySnapshot,
+    rpcUrl: string,
+    signal: AbortSignal
+  ) => {
+    const previous = verified.get(snapshot);
+    verified.delete(snapshot);
+    const matching =
+      previous?.poolId === poolId && previous.url === rpcUrl
+        ? previous
+        : undefined;
+    return verifyAnchor(poolId, snapshot, rpcUrl, signal, rpc, {
+      scalars: matching?.scalars,
+      remember(scalars) {
+        if (!matching) verified.set(snapshot, { poolId, url: rpcUrl, scalars });
+      },
+    });
+  };
 }

@@ -137,16 +137,10 @@ function setup() {
     }),
     getBalance: jest.fn(async () => BigInt(65000000)),
   };
-  (provider as any)._send = jest.fn(
-    async ({
-      id,
-      method,
-      params,
-    }: {
-      id: number;
-      method: string;
-      params: unknown[];
-    }) => [{ jsonrpc: '2.0', id, result: await provider.send(method, params) }]
+  (provider as any).readMany = jest.fn(async (requests) =>
+    Promise.allSettled(
+      requests.map(({ method, params }) => provider.send(method, params))
+    )
   );
   const vault = {
     getWithdrawalAttempt: jest.fn(async (_id, session) => {
@@ -166,7 +160,7 @@ function setup() {
     }),
     withWithdrawalNote: jest.fn(async (_id, session, use) => {
       session.assertCurrent();
-      return use(NOTE, 'eth-1');
+      return use(NOTE, 'eth-1', { binding: HASH, previousWithdrawals: [] });
     }),
     reserveWithdrawalAttempt: jest.fn(
       async (_attempt, session, _lifetime, onIdentity) => {
@@ -447,7 +441,9 @@ it.each([
       await release.promise;
     });
   }
-  const submission = controller.submitWithdrawal(review.intentId);
+  const submission = controller.submitWithdrawal(review.intentId, {
+    acceptPreviousWithdrawalRisk: true,
+  });
   if (scenario === 'reservation interrupted') {
     const rejected = expect(submission).rejects.toMatchObject({
       transactionNotBroadcast: true,
@@ -476,13 +472,13 @@ it.each([
     if (scenario === 'healthy accepted' || scenario === 'watch-only accepted') {
       expect(result).toMatchObject({ phase: 'submitted', jobId });
       expect((await run.wallet.getPrivateVaultNotes()).notes[0]).toMatchObject({
-        phase: 'waiting',
+        phase: 'verified',
         withdrawal: { mode: 'relayed', phase: 'submitted', jobId },
       });
     } else {
       expect(result).toMatchObject({ phase: 'unknown' });
       expect((await run.wallet.getPrivateVaultNotes()).notes[0]).toMatchObject({
-        phase: 'waiting',
+        phase: 'verified',
         withdrawal: { mode: 'relayed', phase: 'unknown' },
       });
     }

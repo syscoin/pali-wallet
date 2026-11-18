@@ -42,6 +42,7 @@ import SpeedUp from '../../assets/all_assets/speedUp.svg';
 import Wallet from '../../assets/all_assets/wallet.svg';
 
 const icons = {
+  archive: AntIcons.InboxOutlined,
   'arrow-down': AntIcons.ArrowDownOutlined,
   'arrow-left': AntIcons.ArrowLeftOutlined,
   'arrow-up': AntIcons.ArrowUpOutlined,

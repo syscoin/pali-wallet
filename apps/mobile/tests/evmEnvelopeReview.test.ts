@@ -12,7 +12,9 @@ const hash='0x'+'a'.repeat(64),signal=()=>new AbortController().signal;
 const network=createNativeNetwork({id:'review-custom',name:'Review custom chain',kind:'evm',chainId:'454544',slip44:60,rpcUrl:'https://review-custom.example/rpc',symbol:'TEST',decimals:18,testnet:true});
 type Call={method:string;params:any[];url:string;id:number};
 function fixture(options:{legacy?:boolean;update?:(call:Call,result:unknown)=>unknown;onCall?:(call:Call)=>void}={}){
- const calls:Call[]=[];const fetcher=async(url:string,init:RequestInit)=>{
+ const calls:Call[]=[];const fetcher=async(url:string,init:RequestInit):Promise<Response>=>{
+  const payload=JSON.parse(String(init.body));
+  if(Array.isArray(payload))return Response.json(await Promise.all(payload.map(async row=>(await fetcher(url,{...init,body:JSON.stringify(row)})).json())));
   const c:Call={...JSON.parse(String(init.body)),url};calls.push(c);options.onCall?.(c);let r:unknown;
   switch(c.method){
    case 'eth_chainId':r='0x'+BigInt(network.chainId).toString(16);break;

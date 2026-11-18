@@ -59,9 +59,31 @@ describe('smart-account infrastructure deployment lifecycle', () => {
   let receipts: Record<string, any>;
   let generation: number;
   let journalStorage: Record<string, any>;
+  let head: { hash: string; number: string };
+  let reviews: Map<string, any>;
+  // These lifecycle cases simulate an explicit user confirmation for every
+  // returned envelope. Preparation itself never authorizes a submission.
+  const deployApproved = async (target: any) => {
+    const deployed = new Set<string>();
+    let result = await target.deploySmartAccountInfrastructure();
+    for (let envelope = 0; envelope < 3; envelope++) {
+      for (const id of result.deployed) deployed.add(id);
+      if (!result.feeReview)
+        return {
+          ...result,
+          deployed: [...deployed],
+          skipped: result.skipped.filter((id: string) => !deployed.has(id)),
+        };
+      result = await target.deploySmartAccountInfrastructure({
+        feeReviewId: result.feeReview.id,
+      });
+    }
+    throw Error('Unexpected additional infrastructure envelope');
+  };
 
   beforeEach(() => {
     jest.useFakeTimers();
+    head = { number: '0x1', hash: hash(100) };
     generation = 0;
     journalStorage = {};
     (chromeStorage.getItem as jest.Mock).mockImplementation(
@@ -78,6 +100,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       [factory]: '0x',
     };
     receipts = {};
+    reviews = new Map();
     state = {
       vaultGlobal: { activeSlip44: 60 },
       vault: {
@@ -98,12 +121,18 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     };
     (store.getState as jest.Mock).mockImplementation(() => state);
     provider = {
+      verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
+      sendFresh: jest.fn(async () => ({ ...head })),
       sendBatch: jest.fn(async (_method, addresses) =>
         addresses.map(([address]: [string]) => codes[address])
       ),
       getCode: jest.fn(async (address) => codes[address]),
       send: jest.fn(async (method, params) =>
-        method === 'eth_getTransactionCount' ? '0x0' : codes[params[0]]
+        method === 'eth_getBlockByNumber'
+          ? { number: '0x1', hash: hash(100) }
+          : method === 'eth_getTransactionCount'
+          ? '0x0'
+          : codes[params[0]]
       ),
       getTransactionReceipt: jest.fn(
         async (txHash) => receipts[txHash] || null
@@ -111,6 +140,27 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     };
     transaction = { web3Provider: provider };
     deps = {
+      reviewSettingsEvmFee: jest.fn(
+        async (command, _account, metadata, options) => {
+          options.assertCurrentContext();
+          const id = `infrastructure-fee-${reviews.size + 1}`;
+          const review = {
+            id,
+            transaction: { ...command, nonce: String(command.nonce) },
+          };
+          reviews.set(id, { ...review, metadata: { ...metadata } });
+          return review;
+        }
+      ),
+      readSettingsEvmFeeNonce: jest.fn((id, contractId) => {
+        const review = reviews.get(id);
+        if (!review) throw Error('Unknown infrastructure fee review');
+        if (review.metadata.smartAccountInfrastructureId !== contractId)
+          throw Error(
+            'Infrastructure fee review changed. Review deployment again.'
+          );
+        return Number(review.transaction.nonce);
+      }),
       captureSmartAccountPendingRecords: async () => ({
         profileId: '0x' + '11'.repeat(32),
         read: async () => [],
@@ -124,6 +174,10 @@ describe('smart-account infrastructure deployment lifecycle', () => {
           const contractAddress =
             params.data === '0x01' ? implementation : factory;
           codes[contractAddress] = '0x11';
+          head = {
+            number: '0x' + (BigInt(head.number) + BigInt(1)).toString(16),
+            hash: hash(Number(BigInt(head.number)) + 100),
+          };
           receipts[txHash] = { status: 1, hash: txHash };
           const response = {
             hash: txHash,
@@ -151,9 +205,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
   });
 
   it('uses explicit monotonically advancing nonces even when raw pending count remains stale', async () => {
-    await expect(
-      controller.deploySmartAccountInfrastructure()
-    ).resolves.toEqual({
+    await expect(deployApproved(controller)).resolves.toEqual({
       deployed: ['accountImplementation', 'factory'],
       skipped: [],
     });
@@ -177,19 +229,55 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     const first = controller.deploySmartAccountInfrastructure();
     const second = controller.deploySmartAccountInfrastructure();
     expect(first).toBe(second);
-    await first;
+    const prepared = await first;
+    expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+    expect(journalStorage[journalKey]).toBeUndefined();
+    const confirmed = controller.deploySmartAccountInfrastructure({
+      feeReviewId: prepared.feeReview.id,
+    });
+    const concurrent = controller.deploySmartAccountInfrastructure({
+      feeReviewId: prepared.feeReview.id,
+    });
+    expect(confirmed).toBe(concurrent);
+    const next = await confirmed;
+    expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+    await controller.deploySmartAccountInfrastructure({
+      feeReviewId: next.feeReview.id,
+    });
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not apply an approved contract fee to another contract if another deployer finishes it', async () => {
+    const prepared = await controller.deploySmartAccountInfrastructure();
+    expect(prepared.contractName).toBe('Implementation');
+    expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+    codes[implementation] = '0x11';
+    jest.mocked(chromeStorage.setItem).mockClear();
+    await expect(
+      controller.deploySmartAccountInfrastructure({
+        feeReviewId: prepared.feeReview.id,
+      })
+    ).rejects.toThrow(
+      'Infrastructure fee review changed. Review deployment again.'
+    );
+    expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    expect(journalStorage[journalKey]).toBeUndefined();
+    const fresh = await controller.deploySmartAccountInfrastructure();
+    expect(fresh.contractName).toBe('Factory');
+    expect(fresh.feeReview.id).not.toBe(prepared.feeReview.id);
+    expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
 
   it('rejects an alias start before the original reservation is written', async () => {
     jest.mocked(chromeStorage.setItem).mockClear();
-    const first = controller.deploySmartAccountInfrastructure();
+    const first = deployApproved(controller);
     const firstRejected = expect(first).rejects.toThrow(
       'Wallet context changed'
     );
     expect(chromeStorage.setItem).not.toHaveBeenCalled();
     state.vault.activeNetwork.url = 'https://alias-b.example';
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+    await expect(deployApproved(controller)).rejects.toThrow(
       'Another infrastructure deployment is pending'
     );
     await firstRejected;
@@ -210,7 +298,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
           entered();
         })
     );
-    const first = controller.deploySmartAccountInfrastructure();
+    const first = deployApproved(controller);
     const firstRejected = expect(first).rejects.toThrow(
       'Wallet context changed'
     );
@@ -226,7 +314,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         transactionNotBroadcast: false,
       })
     );
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+    await expect(deployApproved(controller)).rejects.toThrow(
       'Second chain submission acknowledgement lost'
     );
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(2);
@@ -262,9 +350,9 @@ describe('smart-account infrastructure deployment lifecycle', () => {
             : {}),
         });
       });
-      await expect(
-        controller.deploySmartAccountInfrastructure()
-      ).rejects.toThrow('Network request timed out');
+      await expect(deployApproved(controller)).rejects.toThrow(
+        'Network request timed out'
+      );
       const original = { ...journalStorage[journalKey] };
       // Alias B sees the SAME chain's pending nonce and absent runtime code.
       state.vault.activeNetwork.url = 'https://alias-b.example';
@@ -284,9 +372,9 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       await expect(
         restarted.getSmartAccountInfrastructureStatus(true)
       ).resolves.toMatchObject({ pending: original });
-      await expect(
-        restarted.deploySmartAccountInfrastructure()
-      ).resolves.toMatchObject({ pending: original });
+      await expect(deployApproved(restarted)).resolves.toMatchObject({
+        pending: original,
+      });
       expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
       expect(provider.send).not.toHaveBeenCalled();
       expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
@@ -303,7 +391,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     }
   );
 
-  it('expires cached status and separates RPC endpoints on the same chain', async () => {
+  it('refreshes cached code on a new canonical block and separates RPC endpoints', async () => {
     expect(
       (await controller.getSmartAccountInfrastructureStatus()).missing
     ).toHaveLength(2);
@@ -312,6 +400,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       (await controller.getSmartAccountInfrastructureStatus()).missing
     ).toHaveLength(2);
     await jest.advanceTimersByTimeAsync(5001);
+    head = { number: '0x2', hash: hash(101) };
     expect(
       (await controller.getSmartAccountInfrastructureStatus()).missing
     ).toEqual(['factory']);
@@ -331,9 +420,9 @@ describe('smart-account infrastructure deployment lifecycle', () => {
           transactionNonce: 0,
         })
       );
-      await expect(
-        controller.deploySmartAccountInfrastructure()
-      ).rejects.toThrow('Network request timed out');
+      await expect(deployApproved(controller)).rejects.toThrow(
+        'Network request timed out'
+      );
       const originalKey = Object.keys(journalStorage).find(
         (key) => journalStorage[key]?.transactionHash === hash(1)
       )!;
@@ -353,9 +442,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         method === 'eth_getTransactionCount' ? '0x0' : codes[params[0]]
       );
       const restarted = new SmartAccountController(deps);
-      await expect(
-        restarted.deploySmartAccountInfrastructure()
-      ).resolves.toMatchObject({
+      await expect(deployApproved(restarted)).resolves.toMatchObject({
         pending: { transactionHash: hash(1) },
       });
       expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
@@ -373,9 +460,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     codes[implementation] = '0x11';
     receipts[hash(1)] = { status: 1, hash: hash(1) };
     provider.send.mockResolvedValue('0x9');
-    await expect(
-      controller.deploySmartAccountInfrastructure()
-    ).resolves.toMatchObject({
+    await expect(deployApproved(controller)).resolves.toMatchObject({
       pending: legacy,
     });
     expect(journalStorage['pali.infrastructure.pending.v1.1']).toEqual(legacy);
@@ -397,9 +482,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       ];
       codes[implementation] = '0x11';
       receipts[hash(1)] = { status: 1, hash: hash(1) };
-      await expect(
-        controller.deploySmartAccountInfrastructure()
-      ).resolves.toMatchObject({
+      await expect(deployApproved(controller)).resolves.toMatchObject({
         pending: { transactionHash: hash(1) },
       });
       expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
@@ -421,9 +504,9 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     ).resolves.toMatchObject({
       pending: { transactionHash: hash(1), rpcUrl: 'https://fork-b.example' },
     });
-    await expect(
-      controller.deploySmartAccountInfrastructure()
-    ).resolves.toMatchObject({ pending: { transactionHash: hash(1) } });
+    await expect(deployApproved(controller)).resolves.toMatchObject({
+      pending: { transactionHash: hash(1) },
+    });
     expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
     expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
@@ -437,9 +520,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       },
     ];
     codes[implementation] = codes[factory] = '0x11';
-    await expect(
-      controller.deploySmartAccountInfrastructure()
-    ).resolves.toMatchObject({
+    await expect(deployApproved(controller)).resolves.toMatchObject({
       pending: { contractId: 'future-contract', transactionHash: hash(1) },
     });
     expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
@@ -450,7 +531,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
   it('rejects malformed code probes instead of treating them as missing deployments', async () => {
     provider.sendBatch.mockResolvedValue([null]);
     provider.getCode.mockResolvedValue(undefined);
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+    await expect(deployApproved(controller)).rejects.toThrow(
       'Invalid infrastructure code response'
     );
     expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
@@ -460,9 +541,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     provider.send.mockImplementation(async (method) =>
       method === 'eth_getCode' ? '0x11' : '0x0'
     );
-    await expect(
-      controller.deploySmartAccountInfrastructure()
-    ).resolves.toEqual({
+    await expect(deployApproved(controller)).resolves.toEqual({
       deployed: [],
       skipped: ['accountImplementation', 'factory'],
     });
@@ -473,13 +552,12 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     deps.sendAndSaveEthTransaction
       .mockImplementationOnce(async () => {
         codes[implementation] = '0x11';
+        head = { number: '0x2', hash: hash(101) };
         receipts[hash(1)] = { status: 1, hash: hash(1) };
         return { hash: hash(1) };
       })
       .mockRejectedValueOnce(Error('nonce too low'));
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
-      'nonce too low'
-    );
+    await expect(deployApproved(controller)).rejects.toThrow('nonce too low');
     expect(
       (await controller.getSmartAccountInfrastructureStatus()).missing
     ).toEqual(['factory']);
@@ -498,7 +576,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         return response;
       }
     );
-    const deployment = controller.deploySmartAccountInfrastructure();
+    const deployment = deployApproved(controller);
     await flush();
     await jest.advanceTimersByTimeAsync(16000);
     await expect(deployment).resolves.toMatchObject({
@@ -513,9 +591,9 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       7: { id: 7, address: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
     };
     const restarted = new SmartAccountController(deps);
-    await expect(
-      restarted.deploySmartAccountInfrastructure()
-    ).resolves.toMatchObject({ pending: { transactionHash: hash(1) } });
+    await expect(deployApproved(restarted)).resolves.toMatchObject({
+      pending: { transactionHash: hash(1) },
+    });
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
   });
 
@@ -526,7 +604,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       generation += 1;
       return { hash: hash(1) };
     });
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+    await expect(deployApproved(controller)).rejects.toThrow(
       'Wallet context changed'
     );
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
@@ -547,9 +625,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         transactionHash: hash(9),
       },
     });
-    await expect(
-      controller.deploySmartAccountInfrastructure()
-    ).resolves.toMatchObject({
+    await expect(deployApproved(controller)).resolves.toMatchObject({
       pending: { transactionHash: hash(9) },
     });
     expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
@@ -560,16 +636,12 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     'Wallet context changed',
   ])('releases a definitely rejected reservation: %s', async (message) => {
     deps.sendAndSaveEthTransaction.mockRejectedValueOnce(Error(message));
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
-      message
-    );
+    await expect(deployApproved(controller)).rejects.toThrow(message);
     expect(journalStorage[journalKey]).toBeNull();
     expect(
       (await controller.getSmartAccountInfrastructureStatus(true)).pending
     ).toBeUndefined();
-    await expect(
-      controller.deploySmartAccountInfrastructure()
-    ).resolves.toMatchObject({
+    await expect(deployApproved(controller)).resolves.toMatchObject({
       deployed: ['accountImplementation', 'factory'],
     });
   });
@@ -591,17 +663,13 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         expect(journalStorage[journalKey].nonce).toBeUndefined();
         throw Error(rejection);
       });
-      await expect(
-        controller.deploySmartAccountInfrastructure()
-      ).rejects.toThrow(rejection);
+      await expect(deployApproved(controller)).rejects.toThrow(rejection);
       expect(journalStorage[journalKey]).toBeNull();
       expect(
         (await controller.getSmartAccountInfrastructureStatus(true)).pending
       ).toBeUndefined();
       const restarted = new SmartAccountController(deps);
-      await expect(
-        restarted.deploySmartAccountInfrastructure()
-      ).resolves.toMatchObject({
+      await expect(deployApproved(restarted)).resolves.toMatchObject({
         deployed: ['accountImplementation', 'factory'],
       });
       expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(3);
@@ -615,13 +683,9 @@ describe('smart-account infrastructure deployment lifecycle', () => {
   it('does not classify the hardware signing error as a local-account rejection', async () => {
     const rejection = 'Transaction Signature Failed. Error: [object Object]';
     deps.sendAndSaveEthTransaction.mockRejectedValueOnce(Error(rejection));
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
-      rejection
-    );
+    await expect(deployApproved(controller)).rejects.toThrow(rejection);
     const restarted = new SmartAccountController(deps);
-    await expect(
-      restarted.deploySmartAccountInfrastructure()
-    ).resolves.toMatchObject({
+    await expect(deployApproved(restarted)).resolves.toMatchObject({
       pending: { contractId: 'accountImplementation' },
     });
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
@@ -637,20 +701,20 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       expect(journalStorage[journalKey].attemptId).toMatch(/^0x[0-9a-f]{64}$/);
       throw Error('Network request timed out');
     });
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+    await expect(deployApproved(controller)).rejects.toThrow(
       'Network request timed out'
     );
     const restarted = new SmartAccountController(deps);
-    await expect(
-      restarted.deploySmartAccountInfrastructure()
-    ).resolves.toMatchObject({
+    await expect(deployApproved(restarted)).resolves.toMatchObject({
       pending: { contractId: 'accountImplementation' },
     });
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
     codes[implementation] = '0x11';
-    await expect(restarted.deploySmartAccountInfrastructure()).resolves.toEqual(
-      { deployed: ['factory'], skipped: ['accountImplementation'] }
-    );
+    head = { number: '0x2', hash: hash(101) };
+    await expect(deployApproved(restarted)).resolves.toEqual({
+      deployed: ['factory'],
+      skipped: ['accountImplementation'],
+    });
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(2);
   });
 
@@ -673,14 +737,12 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         }
       }
     );
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+    await expect(deployApproved(controller)).rejects.toThrow(
       'disk unavailable'
     );
     expect(journalStorage[journalKey].transactionHash).toBeUndefined();
     const restarted = new SmartAccountController(deps);
-    await expect(
-      restarted.deploySmartAccountInfrastructure()
-    ).resolves.toMatchObject({
+    await expect(deployApproved(restarted)).resolves.toMatchObject({
       pending: { contractId: 'accountImplementation' },
     });
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
@@ -718,17 +780,15 @@ describe('smart-account infrastructure deployment lifecycle', () => {
           }
         }
       );
-      await expect(
-        controller.deploySmartAccountInfrastructure()
-      ).rejects.toThrow('disk temporarily unavailable');
+      await expect(deployApproved(controller)).rejects.toThrow(
+        'disk temporarily unavailable'
+      );
       expect(journalStorage[journalKey]).toMatchObject({
         transactionHash: hash(1),
         nonce: 7,
       });
       const restarted = new SmartAccountController(deps);
-      await expect(
-        restarted.deploySmartAccountInfrastructure()
-      ).resolves.toMatchObject({
+      await expect(deployApproved(restarted)).resolves.toMatchObject({
         pending: { transactionHash: hash(1), nonce: 7 },
       });
       expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
@@ -737,9 +797,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         (await restarted.getSmartAccountInfrastructureStatus(true)).pending
       ).toBeUndefined();
       expect(journalStorage[journalKey]).toBeNull();
-      await expect(
-        restarted.deploySmartAccountInfrastructure()
-      ).resolves.toMatchObject({
+      await expect(deployApproved(restarted)).resolves.toMatchObject({
         deployed: ['accountImplementation', 'factory'],
       });
       expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(3);
@@ -757,7 +815,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         transactionNonce: 7,
       })
     );
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+    await expect(deployApproved(controller)).rejects.toThrow(
       'Signing context restoration failed'
     );
     expect(journalStorage[journalKey]).toMatchObject({
@@ -790,9 +848,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       },
     };
     receipts[hash(1)] = { status: 0, hash: hash(1) };
-    await expect(
-      controller.deploySmartAccountInfrastructure()
-    ).resolves.toMatchObject({
+    await expect(deployApproved(controller)).resolves.toMatchObject({
       pending: {
         contractId: 'factory',
         rpcUrl: networkContext.url,
@@ -820,7 +876,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         (await controller.getSmartAccountInfrastructureStatus(true)).pending
       ).toBeUndefined();
       expect(journalStorage[journalKey]).toBeNull();
-      await controller.deploySmartAccountInfrastructure();
+      await deployApproved(controller);
       expect(deps.sendAndSaveEthTransaction.mock.calls[0][0].nonce).toBe(4);
     }
   );
@@ -837,7 +893,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         return response;
       }
     );
-    const deploying = controller.deploySmartAccountInfrastructure();
+    const deploying = deployApproved(controller);
     await flush();
     await jest.advanceTimersByTimeAsync(16000);
     await expect(deploying).resolves.toMatchObject({ pending: { nonce: 7 } });
@@ -906,9 +962,9 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       provider.send.mockImplementation(async (method, params) =>
         method === 'eth_getTransactionCount' ? nonce : codes[params[0]]
       );
-      await expect(
-        controller.deploySmartAccountInfrastructure()
-      ).rejects.toThrow('Invalid deployment nonce response');
+      await expect(deployApproved(controller)).rejects.toThrow(
+        'Invalid deployment nonce response'
+      );
       expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
       expect(journalStorage[journalKey]).toBeUndefined();
     }
@@ -931,7 +987,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
             };
           })
       );
-      const deploying = controller.deploySmartAccountInfrastructure();
+      const deploying = deployApproved(controller);
       const rejected = expect(deploying).rejects.toThrow(
         'Infrastructure RPC timed out'
       );
@@ -943,9 +999,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       await flush();
       expect(journalStorage[journalKey]).toBeNull();
       const restarted = new SmartAccountController(deps);
-      await expect(
-        restarted.deploySmartAccountInfrastructure()
-      ).resolves.toMatchObject({
+      await expect(deployApproved(restarted)).resolves.toMatchObject({
         deployed: ['accountImplementation', 'factory'],
       });
     }
@@ -962,7 +1016,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
           };
         })
     );
-    const deploying = controller.deploySmartAccountInfrastructure();
+    const deploying = deployApproved(controller);
     const rejected = expect(deploying).rejects.toThrow(
       'Infrastructure RPC timed out'
     );
@@ -988,12 +1042,12 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         transactionNotBroadcast: true,
       })
     );
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+    await expect(deployApproved(controller)).rejects.toThrow(
       'Fee discovery unavailable'
     );
     expect(journalStorage[journalKey]).toBeNull();
     await expect(
-      new SmartAccountController(deps).deploySmartAccountInfrastructure()
+      deployApproved(new SmartAccountController(deps))
     ).resolves.toMatchObject({
       deployed: ['accountImplementation', 'factory'],
     });
@@ -1031,7 +1085,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         journalStorage[key] = value;
         return Promise.resolve();
       });
-      const deploying = controller.deploySmartAccountInfrastructure();
+      const deploying = deployApproved(controller);
       const rejected = expect(deploying).rejects.toThrow(
         'Infrastructure RPC timed out'
       );
@@ -1054,9 +1108,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         expect(status.pending).toEqual(newer);
       } else {
         expect(status.pending).toBeUndefined();
-        await expect(
-          controller.deploySmartAccountInfrastructure()
-        ).resolves.toMatchObject({
+        await expect(deployApproved(controller)).resolves.toMatchObject({
           deployed: ['accountImplementation', 'factory'],
         });
       }
@@ -1083,7 +1135,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       journalStorage[key] = value;
       return Promise.resolve();
     });
-    const deploying = controller.deploySmartAccountInfrastructure();
+    const deploying = deployApproved(controller);
     const rejected = expect(deploying).rejects.toThrow(
       'Infrastructure RPC timed out'
     );
@@ -1117,15 +1169,13 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       deps.sendAndSaveEthTransaction.mockRejectedValueOnce(
         Object.assign(Error(message), { transactionNotBroadcast: false })
       );
-      await expect(
-        controller.deploySmartAccountInfrastructure()
-      ).rejects.toThrow(message);
+      await expect(deployApproved(controller)).rejects.toThrow(message);
       expect(journalStorage[journalKey]).toMatchObject({
         contractId: 'accountImplementation',
         rpcUrl: networkContext.url,
       });
       await expect(
-        new SmartAccountController(deps).deploySmartAccountInfrastructure()
+        deployApproved(new SmartAccountController(deps))
       ).resolves.toMatchObject({
         pending: { contractId: 'accountImplementation' },
       });
@@ -1140,7 +1190,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         transactionHash: hash(1),
       })
     );
-    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+    await expect(deployApproved(controller)).rejects.toThrow(
       'Fee discovery unavailable'
     );
     expect(controller.pendingInfrastructure.get(networkKey)).toMatchObject({

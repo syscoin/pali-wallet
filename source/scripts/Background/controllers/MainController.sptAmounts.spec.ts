@@ -19,6 +19,7 @@ jest.mock('state/store', () => ({
   default: {
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
+    subscribe: (listener: () => void) => mockStore.subscribe(listener),
   },
   // This adapter exercises the native prepare/assert/dispatch contract. It is
   // intentionally not evidence of browser storage durability.
@@ -78,13 +79,13 @@ const refresh = () =>
     isPolling: true,
   });
 const reply = (...rows: any[]) =>
-  fetchSpy.mockResolvedValue({
-    ok: true,
-    json: async () =>
-      JSON.parse(
-        JSON.stringify({ address: 'zpub-fixture', tokensAsset: rows })
-      ),
-  });
+  fetchSpy.mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({ address: 'zpub-fixture', tokensAsset: rows }),
+        { headers: { 'content-type': 'application/json' } }
+      )
+  );
 
 beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation();
@@ -139,7 +140,8 @@ it('reads a healthy SPT inventory through the installed SDK and real reducer', a
   await refresh();
   expect(fetchSpy).toHaveBeenCalledTimes(1);
   expect(fetchSpy).toHaveBeenCalledWith(
-    'https://synthetic-blockbook.invalid/api/v2/xpub/zpub-fixture?details=tokenBalances&tokens=used'
+    'https://synthetic-blockbook.invalid/api/v2/xpub/zpub-fixture?details=tokenBalances&tokens=used',
+    expect.objectContaining({ method: 'GET', signal: expect.any(AbortSignal) })
   );
   expect(currentToken()).toMatchObject({
     balance: '7.0',

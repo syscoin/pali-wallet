@@ -10,6 +10,7 @@ import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 type ReadMethod = Parameters<EvmTransferReadRpc['smartAccountRead']>[0];
 type NativeSmartAccountProvider = Readonly<{
   send(method: string, params: readonly unknown[]): Promise<unknown>;
+  sendFresh(method: string, params: readonly unknown[]): Promise<unknown>;
   readMany(
     requests: readonly { method: string; params: readonly unknown[] }[]
   ): Promise<PromiseSettledResult<unknown>[]>;
@@ -26,7 +27,7 @@ type NativeSmartAccountProvider = Readonly<{
   getBalance(address: string): Promise<BigNumber>;
   estimateGas(input: Record<string, unknown>): Promise<BigNumber>;
   call(input: Record<string, unknown>): Promise<string>;
-  getFeeData(): Promise<{
+  getFeeData(options?: { getBlock?(tag: 'latest'): Promise<unknown> }): Promise<{
     gasPrice: BigNumber;
     maxFeePerGas: BigNumber | null;
     maxPriorityFeePerGas: BigNumber | null;
@@ -39,9 +40,10 @@ export function createNativeSmartAccountProvider(
   network: NativeNetworkRegistration,
   rpc: EvmTransferReadRpc,
   signal: AbortSignal,
-  assertCurrent: () => void
+  assertCurrent: () => void,
+  phase?: NativeSmartAccountReadPhase
 ) {
-  return smartAccountProvider(network, rpc, signal, assertCurrent);
+  return smartAccountProvider(network, rpc, signal, assertCurrent, phase);
 }
 
 function smartAccountProvider(
@@ -83,7 +85,13 @@ function smartAccountProvider(
     return output;
   };
   return {
+    sendFresh(method: string, params: readonly unknown[]) {
+      return phase?.readFresh
+        ? phase.readFresh(method as ReadMethod, params)
+        : read(method as ReadMethod, params);
+    },
     send(method: string, params: readonly unknown[]) {
+      if (method === 'eth_getTransactionByHash') return read(method, params);
       if (
         method === 'eth_getTransactionReceipt' ||
         method === 'eth_getTransactionCount'
@@ -158,9 +166,9 @@ function smartAccountProvider(
         throw new Error('Invalid smart account response');
       return hexlify(result);
     },
-    async getFeeData() {
+    async getFeeData(options?: { getBlock?(tag: 'latest'): Promise<unknown> }) {
       const fees = await (phase
-        ? phase.feeData()
+        ? phase.feeData(options?.getBlock ? () => options.getBlock!('latest') : undefined)
         : rpc.smartAccountFeeData(signal, assertCurrent));
       return {
         gasPrice: BigNumber.from(fees.gasPrice),

@@ -8,7 +8,7 @@ test('all-network Activity shows newest first, network badges and full accessibl
   const rows = page.locator('[data-testid^="account-activity-row-"]');
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toHaveAttribute('data-testid', `account-activity-row-base-${hash}`);
-  await expect(rows.nth(1)).toHaveAccessibleName(/1\.23456789 ETH, Confirmed.*Network: Ethereum/);
+  await expect(rows.nth(1)).toHaveAccessibleName(/^Received\. 1\.23456789 ETH, Confirmed.*Network: Ethereum/);
   await expect(rows.nth(0).getByText('Base', { exact: true })).toBeVisible();
   await expect(rows.nth(0).getByTestId('activity-network-icon-base')).toBeVisible();
   await expect(rows.nth(1).getByTestId('activity-network-icon-ethereum')).toBeVisible();
@@ -40,7 +40,7 @@ test('concrete and direction filters stay scoped, and hidden balances do not lea
   await expect(page.getByTestId(`account-activity-row-ethereum-${hash}`).getByText('Ethereum', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('activity-network-icon-ethereum')).toHaveCount(0);
   await page.evaluate(() => window.__allActivityFixture.hideBalances(true));
-  await expect(page.getByTestId(`account-activity-row-ethereum-${hash}`)).toHaveAccessibleName(/^Amount hidden, Confirmed/);
+  await expect(page.getByTestId(`account-activity-row-ethereum-${hash}`)).toHaveAccessibleName(/^Received\. Amount hidden, Confirmed/);
 });
 
 test('network icons and badges stay within a 320px Activity layout', async ({ page }, info) => {
@@ -76,7 +76,7 @@ for (const width of [390, 320]) test(`saved pending keeps older inventory and re
   await expect(page.getByTestId('network-source-sheet')).toBeInViewport({ ratio: 1 });
   await expect(page.getByRole('radio')).toHaveCount(2);
   await page.screenshot({ path: info.outputPath(`saved-pending-networks-${width}.png`), animations: 'disabled' });
-  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Saved pending', exact: true })).toBeVisible();
   await expect(page.getByText('Public test account · Base', { exact: true })).toBeVisible();
   await expect(page.getByTestId(`activity-row-${olderHash}`)).toBeVisible();
@@ -94,7 +94,7 @@ for (const width of [390, 320]) test(`saved pending keeps older inventory and re
   await expect(page.getByRole('button', { name: 'Activity network: All networks', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Activity options', exact: true }).click();
   await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await page.getByRole('radio', { name: 'Ethereum, ETH', exact: true }).click();
+  await page.getByRole('radio', { name: 'Ethereum, ETH, Chain ID 1', exact: true }).click();
   await page.getByTestId(`activity-row-${olderHash}`).click();
   await page.getByRole('button', { name: 'Review resend', exact: true }).click();
   expect(await page.evaluate(() => window.__allActivityFixture.actions())).toEqual([`base:saved:${olderHash}`, `ethereum:saved:${olderHash}`]);
@@ -116,7 +116,7 @@ test('scoped pending actions navigate through the selected network host', async 
   await page.goto('/?all-networks=1&pending=1');
   await page.getByRole('button', { name: 'Activity options', exact: true }).click();
   await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
   await page.getByTestId(`activity-row-${olderHash}`).click();
   await page.getByRole('button', { name: 'Speed Up', exact: true }).click();
   await page.getByRole('button', { name: 'Review resend', exact: true }).click();
@@ -137,7 +137,7 @@ test('returning from a detail or saved inventory restores the aggregate scroll p
   await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeCloseTo(offset, 0);
   await page.getByRole('button', { name: 'Activity options', exact: true }).click();
   await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Saved pending', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeCloseTo(offset, 0);

@@ -317,6 +317,7 @@
     "viewOnNamedExplorer": "在 {{explorer}} 浏览器中查看",
     "importToken": "导入代币",
     "youHaveNoTokens": "暂无代币或NFT",
+    "youHaveNoFungibleTokens": "暂无代币。",
     "youHaveNoTxs": "暂无交易记录",
     "historyMayBeIncomplete": "没有区块浏览器 API，交易记录可能不完整。",
     "seeAllTxs": "查看所有交易",
@@ -335,7 +336,10 @@
     "ifYouHaveAHardWallet": "如果您有硬件钱包，现在就可以连接！",
     "congratulations": "恭喜！",
     "youWalletWas": "您的钱包已成功导入",
-    "youHaveNoNfts": "您没有 NFT。"
+    "youHaveNoNfts": "您没有 NFT。",
+    "noIndexedActivity": "未找到活动。NFT 和内部转账可能不会显示在此处。",
+    "savedActivityUnavailable": "无法加载已保存的活动。",
+    "retrySavedActivity": "重试加载已保存的活动"
   },
   "titles": {
     "assetDetails": "资产详情",
@@ -593,6 +597,7 @@
     "calculating": "计算中...",
     "unableToLoad": "无法加载",
     "smartAccountPendingReview": "已保存的智能账户交易尚未解决。请先打开“活动”查看该交易，再发送其他交易。",
+    "smartAccountPayerPending": "费用支付账户的上一笔交易必须先确认，才能继续此操作。请等待确认后重试。",
     "feeUnavailable": "费用不可用",
     "plusGasFee": " + 燃气费",
     "plusNetworkFee": " + 网络手续费",
@@ -1023,7 +1028,10 @@
     "smartAccountGuardianRecoveryExpired": "此恢复请求在完成前已过期。请重新开始恢复。",
     "invalidAddress": "无效地址",
     "changeHardwareDevice": "更换设备",
-    "closeHardwareSetup": "关闭设置"
+    "closeHardwareSetup": "关闭设置",
+    "smartAccountFeeReviewTitle": "查看网络费用",
+    "smartAccountFeeReviewSelectedAccount": "所选账户",
+    "smartAccountFeeReviewMaximumTotal": "最高总费用"
   },
   "start": {
     "eraseAndStartFresh": "清除并重新开始",
@@ -1098,6 +1106,21 @@
     "coinGeckoListingUnavailable": "暂无法获取收录信息"
   },
   "transactions": {
+    "smartAuthorizations": {
+      "reference": "原始引用",
+      "title": "已签署的指令",
+      "empty": "没有保存的已签署指令",
+      "mayExecute": "此指令仍可能执行",
+      "nonceConsumedUnknown": "Nonce 已使用；结果未知",
+      "observedSuccess": "已观察到成功的指令",
+      "observedFailure": "已观察到失败的指令",
+      "checkStatus": "检查状态",
+      "cancelInstruction": "取消指令",
+      "unavailable": "已签署的指令暂不可用。请重试。",
+      "operationHash": "操作哈希"
+    },
+    "smartAccountCancelUnavailable": "此操作无法取消。其已签署的指令仍可能执行。",
+    "smartAccountCancelDescription": "通过提交具有相同 nonce 的空操作来取消此智能账户指令。原始操作可能先得到确认。只有网络确认替换操作后，取消才算完成。",
     "feePayer": "手续费支付账户",
     "labelCopied": "已将{{label}}复制到剪贴板",
     "decodeDetailsFailed": "无法解码交易详情",
@@ -1279,6 +1302,7 @@
     "checkYourDevice": "请在 {{device}} 上批准此请求",
     "useYourPasskey": "使用您的通行密钥",
     "passkeyPrompt": "请按照浏览器提示使用通行密钥签名",
+    "smartAccountAuthorizationRetained": "智能账户指令已签名。拒绝支付这笔 Gas 费不会撤销该指令；在其 nonce 被使用前，指令仍可能执行。",
     "cancelFeePreview": "正在检查取消交易的网络费用…",
     "cancelFeeConsent": "以最高 {{fee}} {{currency}} 的 gas 费用取消此交易？",
     "cancelFeeUnavailable": "无法检查取消费用。请重试。",
@@ -1331,7 +1355,8 @@
         "erc721": "NFT 转移",
         "erc1155": "NFT 转移"
       }
-    }
+    },
+    "detailsUnavailable": "无法加载交易详情。请重试。"
   },
   "switchNetworkPage": {
     "chainFallback": "链 {{chainId}}",
@@ -1440,7 +1465,8 @@
     "firstAccessTitle": "使用我们的水龙头获取 ${{token}} 开始体验 {{network}} 网络！",
     "firstAccessDescription": "您可以每24小时每个钱包地址获得{{token}}。",
     "grabTokens": "前往水龙头",
-    "rateLimited": "水龙头正在限制请求。请访问水龙头了解更多信息。"
+    "rateLimited": "水龙头正在限制请求。请访问水龙头了解更多信息。",
+    "requestTimedOut": "请求超时。再次领取代币前，请先检查余额。"
   },
   "nftDetails": {
     "information": "NFT 信息",
@@ -1773,7 +1799,7 @@
       "reconciliation": "提款前请检查恢复的票据。必须先处理已记录的提款活动。保存的历史记录绝不会重新发起提款。",
       "expires": "本次检查将在五分钟后过期。",
       "confirmRestore": "恢复票据",
-      "restored": "已确认恢复。提款前请检查恢复的票据；有提款活动记录的票据在处理完成前仍会被阻止使用。",
+      "restored": "凭证已恢复。提款前请检查其在池中的状态。",
       "unconfirmed": "恢复尚未确认，可能已经保存。请检查回执，不要重复提交。",
       "checkReceipt": "检查恢复回执",
       "receiptUnavailable": "未确认匹配的回执。这并不表示恢复失败。再次开始前，请检查已保存的票据。",
@@ -1861,10 +1887,10 @@
       "error": "无法更改上限。请确认已保存票据数量符合上限后重试。",
       "save": "保存上限",
       "reportedSpent": "标记为已使用的票据（{{count}}）",
-      "clear": "清除已完成票据",
-      "clearHelp": "所选 Ethereum RPC 将收到已知提款哈希，以及存在时相关存款的哈希，服务商可能将两者关联。仅删除该 RPC 确认提款及相关存款均已最终确定的票据；未验证的票据仍会保存。",
-      "confirmClear": "验证并清除",
-      "clearResult": "已删除：{{removed}}。仍保存：{{unresolved}}。",
+      "clear": "归档已完成票据",
+      "clearHelp": "所选Ethereum RPC会收到已知的提现及相关存款交易哈希，因此提供方可能将它们关联起来。只有此RPC报告已最终确认的票据才会移至加密归档，其他票据仍保持活跃。已归档票据不占用活跃额度。",
+      "confirmClear": "验证并归档",
+      "clearResult": "已归档：{{removed}}。仍活跃：{{unresolved}}。",
       "clearError": "无法完成票据检查。请刷新以查看剩余票据。",
       "clearProgress": "已检查 {{total}} 张票据中的 {{checked}} 张。",
       "storedBytes": "序列化后的加密保险库：{{bytes}} 字节。"
@@ -1901,6 +1927,9 @@
       "backupFailed": "无法打开票据备份。请重试。"
     },
     "withdrawal": {
+      "pendingProofWarning": "任何先前的提款仍可能完成。继续操作不会取消该提款，竞争交易可能失败并产生手续费。",
+      "competingConfirm": "提交竞争提款",
+      "previousAttempts": "先前的提款",
       "watchOnlyDirectUnavailable": "直接提款需要私钥。此账户为只读账户。",
       "title": "凭证提款",
       "open": "提款",
@@ -1946,12 +1975,12 @@
       "notBroadcast": "交易未发送。再次确认之前，请刷新核对信息。"
     },
     "recovery": {
-      "action": "恢复失败的提款",
-      "help": "只有在交易最终确定失败且原证明无法再执行后才能恢复。票据和提款历史会保留。新的提款需要重新审核。",
-      "disclosure": "此检查会将交易哈希、原证明根和票据的公共作废标识发送给所选的以太坊 RPC。",
+      "action": "检查提款恢复条件",
+      "help": "恢复前，需要在已最终确定的状态下确认：已公开的证明根不再被接受，且凭证仍未花费。直接提款还要求原交易已最终确定为失败，或付款方的 nonce 已最终确定为已使用。凭证和提款记录会保留。新提款需要重新审核。",
+      "disclosure": "此检查会将原始证明根和凭证的公开 nullifier 发送给所选的 Ethereum RPC。直接提款检查还会发送付款方地址和交易哈希。为恢复已保存的证明输入，可能会读取之前的中继任务。",
       "password": "钱包密码",
       "failed": "无法确认恢复。原证明可能仍然有效，票据可能已花费，或证据暂不可用。请刷新后再试。",
-      "checking": "正在检查已最终确定的交易和证明是否失效…",
+      "checking": "正在按已最终确定的状态检查证明是否失效…",
       "confirm": "检查并恢复"
     },
     "restoreReview": {
@@ -1960,11 +1989,29 @@
       "disclosure": "恢复不会取消之前的提款，也不会使此票据的其他副本失效。",
       "snapshot": "资金池数据已验证至区块 {{block}}。这是保存的数据，并非实时链上检查。",
       "noSnapshot": "检查此票据前，请准备或刷新资金池数据。",
-      "pending": "此票据有已记录的提款活动。发起另一笔提款前，请先确认其状态。",
+      "pending": "先前的提款记录已保留。提交另一笔提款前请先查看。",
       "password": "钱包密码",
       "confirm": "确认票据检查",
       "busy": "正在保存检查结果…",
       "failed": "无法保存检查结果。请检查密码和资金池数据后重试。"
+    },
+    "archive": {
+      "title": "已归档票据",
+      "help": "已完成的票据会在此加密保存，直到您恢复票据或清空归档。它们不占用活跃票据额度。",
+      "empty": "没有已归档票据",
+      "restore": "恢复票据",
+      "restored": "票据已恢复至活跃列表",
+      "clear": "清空归档",
+      "confirmClear": "永久删除已归档票据",
+      "warning": "恢复助记词无法找回这些票据。仅在确认票据已花费或保留可用备份后，才永久删除归档。",
+      "confirmBackup": "我已确认这些票据已花费，或已保留可用备份",
+      "clearResult": "已删除 {{count}} 张归档票据",
+      "loadError": "无法加载归档，请重试。",
+      "actionError": "无法更新归档，请刷新后重试。",
+      "full": "归档存储空间已满。清空归档以释放空间前，请先导出加密备份。",
+      "capacity": "已归档票据：{{count}} / {{limit}}",
+      "activeFull": "活跃票据额度已满。请先归档已完成的票据或提高额度，再恢复票据。",
+      "alreadyArchived": "此票据已归档。请打开“已归档票据”并恢复，然后再次使用。"
     }
   },
   "mobile": {
@@ -2513,7 +2560,7 @@
         "addNotesFromAnEncryptedFile": "从加密文件添加票据",
         "changeTheSavedNoteLimit": "更改已保存票据数量上限",
         "manageCompletedNotes": "管理已完成票据",
-        "clearCompletedNotesOrRecoverAFailedWithdrawal": "清理已完成票据或恢复失败的提款",
+        "clearCompletedNotesOrRecoverAFailedWithdrawal": "归档已完成票据或恢复失败的提现",
         "serviceOriginAndPublicPoolData": "服务源及公开池数据",
         "verifyBackup": "验证备份",
         "backupVerified": "备份已验证",
@@ -2597,7 +2644,7 @@
       },
       "maintenance": {
         "chooseNote": "选择一条已保存的票据进行验证并清除。每次尝试只检查该票据。",
-        "clearHelp": "所选的以太坊 RPC 将收到此票据已知的提款交易哈希，以及相关存款交易的哈希（如有）。这可能使该服务提供商关联其存款和提款。只有当该 RPC 确认操作完成且相关存款结算已最终确定时，才会删除这一条票据。否则，它将继续保存。"
+        "clearHelp": "所选Ethereum RPC会收到已知的提现及相关存款交易哈希，因此提供方可能将它们关联起来。只有此RPC报告已最终确认的票据才会移至加密归档，其他票据仍保持活跃。已归档票据不占用活跃额度。"
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "无法加载票据上限。",
@@ -3092,13 +3139,10 @@
         "thisReviewExpiredPrepareAFreshReviewBeforeConfirming": "此次审核已过期。确认前请准备新的审核。",
         "thisNoteHasASavedWithdrawalCheckItsStatusBefore": "此票据有已保存的提现。重试前请检查其状态。",
         "checkThePoolDataBeforePreparingThisWithdrawal": "准备此次提现前请检查资金池数据。",
-        "couldNotReviewThisRestoredNoteTryAgain": "无法审核此已恢复票据，请重试。",
         "thisWithdrawalIsUnavailableInTheCurrentAccountOrNetwork": "当前账户或网络无法进行此次提现。",
         "couldNotCompleteThisRequestCheckThePoolDataAnd": "无法完成请求。请检查资金池数据和网络后重试。",
-        "reviewingNote": "正在审核票据…",
         "preparingProof": "正在准备证明…",
         "ethereumMainnetPrivateNote": "以太坊主网 · 隐私票据",
-        "reviewThisRestoredNoteBeforeWithdrawing": "提现前请审核此已恢复票据。",
         "withdrawalDelivery": "提现方式",
         "thisAccountCannotSignADirectWithdrawal": "此账户无法签署直接提现。",
         "refreshRelayers": "刷新中继者",
@@ -3801,7 +3845,6 @@
       }
     },
     "chartInteraction": {
-      "historyDay": "第 {{day}} 天，共 7 天",
       "priceHistory": "价格历史",
       "inspectHint": "向上或向下轻扫以切换价格数据点。",
       "nextPrice": "下一个价格",

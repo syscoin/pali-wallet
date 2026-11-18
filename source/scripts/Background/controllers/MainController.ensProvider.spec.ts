@@ -35,6 +35,7 @@ jest.mock('@sidhujag/sysweb3-keyring', () => {
   };
 });
 
+import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import { selectEnsNameToAddress } from 'state/vault/selectors';
 import vaultGlobalReducer from 'state/vaultGlobal';
 
@@ -83,6 +84,7 @@ beforeEach(() => {
   wallet.walletStateGeneration = 0;
   wallet.ensResolutionRequests = new Map();
   wallet.persistentProviders = new Map();
+  wallet.rpcReadCapabilities = createRpcReadCapabilitiesOwner();
   wallet.persistentProviderAbortControllers = new Map();
 });
 

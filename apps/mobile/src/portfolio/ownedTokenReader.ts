@@ -46,6 +46,44 @@ export type OwnedTokenReader = (
   assertCurrent: () => void
 ) => Promise<OwnedTokenSuggestions>;
 
+function selectTokenSuggestions(
+  rows: readonly Record<string, unknown>[],
+  seen: Set<string>,
+  tokens: OwnedTokenSuggestions['tokens'][number][]
+): boolean {
+  for (const row of rows) {
+    if (
+      !row ||
+      (row.type !== undefined && row.type !== 'ERC-20') ||
+      row.id !== undefined
+    )
+      continue;
+    try {
+      const balance = Number.isSafeInteger(row.balance)
+        ? String(row.balance)
+        : row.balance;
+      if (parseErc20Units(balance) === '0') continue;
+      const { contractAddress, name, symbol } = parseErc20Metadata({
+        contractAddress: row.contractAddress,
+        name: row.name,
+        symbol: row.symbol,
+        decimals:
+          typeof row.decimals === 'string' &&
+          /^[0-9]{1,3}$/.test(row.decimals)
+            ? Number(row.decimals)
+            : row.decimals,
+      });
+      if (seen.has(contractAddress)) continue;
+      if (tokens.length === MAX_SUGGESTIONS) return true;
+      seen.add(contractAddress);
+      tokens.push(Object.freeze({ contractAddress, name, symbol }));
+    } catch {
+      // Malformed provider rows are not suggestions.
+    }
+  }
+  return false;
+}
+
 /** One operation's indexer observations. Only its contract address can enter review. */
 export function createOwnedTokenReader(
   fetcher: WalletHttpFetch
@@ -66,10 +104,18 @@ export function createOwnedTokenReader(
       if (signal.aborted) throw new Error('CANCELLED');
     };
     current();
-    let bytes = 0;
+    let bytes = 0, checked = 0, stopped = false;
+    const seen = new Set(saved);
+    const tokens: OwnedTokenSuggestions['tokens'][number][] = [];
     const rows = await fetchOwnedTokenRows(apiUrl, address, chainId, !!collectiblesOnly, {
       signal,
       collectiblesOnly,
+      stopTokenPages(rows) {
+        selectTokenSuggestions(rows.slice(checked), seen, tokens);
+        checked = rows.length;
+        stopped = tokens.length === MAX_SUGGESTIONS;
+        return stopped;
+      },
       async fetch(url, init, paced) {
         current();
         if (new URL(url).origin !== api.origin)
@@ -161,42 +207,7 @@ export function createOwnedTokenReader(
         limited,
       });
     }
-    const seen = new Set(saved);
-    const tokens: OwnedTokenSuggestions['tokens'][number][] = [];
-    let limited = false;
-    for (const row of rows) {
-      if (
-        !row ||
-        (row.type !== undefined && row.type !== 'ERC-20') ||
-        row.id !== undefined
-      )
-        continue;
-      try {
-        const balance = Number.isSafeInteger(row.balance)
-          ? String(row.balance)
-          : row.balance;
-        if (parseErc20Units(balance) === '0') continue;
-        const { contractAddress, name, symbol } = parseErc20Metadata({
-          contractAddress: row.contractAddress,
-          name: row.name,
-          symbol: row.symbol,
-          decimals:
-            typeof row.decimals === 'string' &&
-            /^[0-9]{1,3}$/.test(row.decimals)
-              ? Number(row.decimals)
-              : row.decimals,
-        });
-        if (seen.has(contractAddress)) continue;
-        if (tokens.length === MAX_SUGGESTIONS) {
-          limited = true;
-          break;
-        }
-        seen.add(contractAddress);
-        tokens.push(Object.freeze({ contractAddress, name, symbol }));
-      } catch {
-        // Malformed provider rows are not suggestions.
-      }
-    }
-    return Object.freeze({ tokens: Object.freeze(tokens), limited });
+    const result = selectTokenSuggestions(rows.slice(checked), seen, tokens);
+    return Object.freeze({ tokens: Object.freeze(tokens), limited: stopped || result });
   };
 }

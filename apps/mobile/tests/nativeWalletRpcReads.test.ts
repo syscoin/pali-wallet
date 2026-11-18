@@ -97,3 +97,49 @@ for (const failure of ['changed', 'abort', 'offline'] as const) test(`wallet rea
     } });
   await assert.rejects(host.read('wallet_estimateFee', account, abort.signal, () => { if (!current) throw Error('CONTEXT_CHANGED'); }));
 });
+
+for (const method of ['wallet_getBalance', 'wallet_estimateFee'] as const) test(`overlapping ${method} uses one selected public observation`, async () => {
+  const calls: string[] = [];
+  const host = createNativeWalletReadHost({ network: () => network, async loadTokens() { throw Error('unused'); }, cachedTokens: () => undefined, observeUtxo() {},
+    async fetch(_url, init) {
+      const value = JSON.parse(String(init.body));
+      const reply = (request: any) => { calls.push(request.method); return { id: request.id, jsonrpc: '2.0', result: request.method === 'eth_chainId' ? '0x1' : '0xde0b6b3a7640000' }; };
+      return Response.json(Array.isArray(value) ? value.map(reply) : reply(value));
+    } });
+  const results = await Promise.all([host.read(method, account, new AbortController().signal, () => {}), host.read(method, account, new AbortController().signal, () => {})]);
+  assert.deepEqual(results, method === 'wallet_getBalance' ? ['1.0', '1.0'] : ['1000000000000000000', '1000000000000000000']);
+  assert.deepEqual(calls, ['eth_chainId', method === 'wallet_getBalance' ? 'eth_getBalance' : 'eth_gasPrice']);
+});
+
+for (const method of ['wallet_getBalance', 'wallet_estimateFee'] as const) test(`${method} subscriber cancellation preserves a concurrent public read`, async () => {
+  const { createNativeDappRpcReadHost } = await import('../src/custody/dappRpcReads.ts');
+  const held = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+  let methods = 0;
+  const fetch = async (_url: string, init: RequestInit) => {
+    const payload = JSON.parse(String(init.body));
+    const rows = Array.isArray(payload) ? payload : [payload];
+    methods += rows.length;
+    if (rows[0].method !== 'eth_chainId') { entered.resolve(); await held.promise; }
+    const replies = rows.map((row: {id: number; method: string}) => ({ id: row.id, jsonrpc: '2.0', result: row.method === 'eth_chainId' ? '0x1' : '0x1' }));
+    return Response.json(Array.isArray(payload) ? replies : replies[0]);
+  };
+  const reads = createNativeDappRpcReadHost({ registration: () => network, fetch, verifyPersonalMessage() { throw Error('unused'); } });
+  const host = createNativeWalletReadHost({ reads, network: () => network, fetch, async loadTokens() { throw Error('unused'); }, cachedTokens: () => undefined, observeUtxo() {} });
+  const cancelled = new AbortController();
+  const first = host.read(method, account, cancelled.signal, () => {});
+  const second = host.read(method, account, new AbortController().signal, () => {});
+  try {
+    await entered.promise;
+    const rejected = assert.rejects(first); cancelled.abort(); await rejected;
+    held.resolve(); assert.equal(await second, method === 'wallet_getBalance' ? '0.000000000000000001' : '1');
+    assert.equal(methods, 2);
+  } finally { held.resolve(); reads.reset?.(); }
+});
+
+for (const method of ['wallet_getBalance', 'wallet_estimateFee'] as const) test(`${method} refuses a wrong endpoint before wallet data`, async () => {
+  const calls: string[] = [];
+  const host = createNativeWalletReadHost({ network: () => network, async loadTokens() { throw Error('unused'); }, cachedTokens: () => undefined, observeUtxo() {},
+    async fetch(_url, init) { const request = JSON.parse(String(init.body)); calls.push(request.method); return Response.json({ id: request.id, jsonrpc: '2.0', result: '0x2' }); } });
+  await assert.rejects(host.read(method, account, new AbortController().signal, () => {}));
+  assert.deepEqual(calls, ['eth_chainId']);
+});

@@ -338,6 +338,8 @@ jobs:
           PALI_TEST_DAPP_REVISION: ${{ github.sha }}
           PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
           PALI_RPC_EXTENDED: '1'
+          PALI_RPC_ERC1155: '1'
+          PALI_RPC_CANCELLATION: '1'
         run: yarn e2e:harness rpc-request-budget.journey.spec.ts
       - name: Check RPC fallback budget and transfer receipts
         env:
@@ -345,9 +347,17 @@ jobs:
           PALI_TEST_DAPP_REVISION: ${{ github.sha }}
           PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
           PALI_RPC_EXTENDED: '1'
+          PALI_RPC_ERC1155: '1'
           PALI_RPC_NO_MULTICALL: '1'
           PALI_RPC_REJECT_BATCH: '1'
         run: yarn e2e:harness rpc-request-budget.journey.spec.ts
+      - name: Check gas-tank and deployment-prefund request budgets
+        env:
+          PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
+          PALI_TEST_DAPP_REVISION: ${{ github.sha }}
+        run: |
+          PALI_E2E_RUN_ID=rpc-gas-tank-${{ github.run_id }}-${{ github.run_attempt }} PALI_RPC_GAS_TANK=1 yarn e2e:harness rpc-request-budget.journey.spec.ts
+          PALI_E2E_RUN_ID=rpc-prefund-${{ github.run_id }}-${{ github.run_attempt }} PALI_RPC_PREFUND=1 yarn e2e:harness rpc-request-budget.journey.spec.ts
       - name: Upload conformance evidence
         if: always()
         uses: actions/upload-artifact@v7

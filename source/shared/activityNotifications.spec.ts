@@ -137,6 +137,36 @@ it('does not call missing receipt status success and never re-alerts after a reo
   ).toEqual([]);
 });
 
+it.each([1, 0])(
+  'retains a known receipt outcome %s when a partial feed loses evidence for the same block',
+  (status) => {
+    const blockHash = `0x${'01'.repeat(32)}`;
+    const first = poll(null, [
+      { ...incoming, blockNumber: 10, blockHash, status },
+    ]);
+    for (const hash of [blockHash, undefined]) {
+      const partial = poll(
+        first.baseline,
+        [{ ...incoming, blockNumber: 10, blockHash: hash }],
+        { historyReadComplete: false }
+      );
+      expect(partial.facts).toEqual([]);
+      expect(partial.baseline.transactions).toEqual(
+        first.baseline.transactions
+      );
+      expect(
+        poll(partial.baseline, [
+          { ...incoming, blockNumber: 10, blockHash, status },
+        ]).facts
+      ).toEqual([]);
+    }
+    const reorg = poll(first.baseline, [
+      { ...incoming, blockNumber: 10, blockHash: `0x${'02'.repeat(32)}` },
+    ]);
+    expect(reorg.facts[0].kind).toBe('transaction-status-unknown');
+  }
+);
+
 it('preserves a successful empty baseline over failed or oversized reads', () => {
   const first = poll(null, []);
   const failed = poll(first.baseline, [incoming], {
@@ -186,7 +216,27 @@ it('silently rebases on account, endpoint or chain changes and rejects corrupted
   ).toEqual(first.baseline);
 });
 
-it('suppresses newly discovered old pages while preserving a tracked pending confirmation', () => {
+it('processes partial history only after a valid same-scope baseline and retains absent identities', () => {
+  const partial = poll(null, [incoming], { historyReadComplete: false });
+  expect(partial.baseline.historyInitialized).toBe(false);
+  expect(partial.facts).toEqual([]);
+  const first = poll(null, []);
+  const observed = poll(first.baseline, [incoming], {
+    historyReadComplete: false,
+  });
+  expect(observed.facts).toHaveLength(1);
+  const absent = poll(observed.baseline, [], { historyReadComplete: false });
+  expect(absent.baseline.transactions).toEqual(observed.baseline.transactions);
+  expect(poll(absent.baseline, [incoming]).facts).toEqual([]);
+  expect(
+    poll(first.baseline, [incoming], {
+      historyReadComplete: false,
+      scope: { ...scope, networkKey: 'other' },
+    }).facts
+  ).toEqual([]);
+});
+
+it('uses block ordering for newly discovered history and preserves a tracked pending confirmation', () => {
   const first = poll(null, [{ ...incoming, blockNumber: 10, status: 1 }]);
   expect(
     poll(first.baseline, [
@@ -203,7 +253,7 @@ it('suppresses newly discovered old pages while preserving a tracked pending con
         status: 1,
       },
     ]).facts
-  ).toEqual([]);
+  ).toEqual([expect.objectContaining({ kind: 'transaction-confirmed' })]);
   const pending = poll(null, [incoming]);
   expect(
     poll(pending.baseline, [
@@ -211,6 +261,78 @@ it('suppresses newly discovered old pages while preserving a tracked pending con
     ]).facts[0].kind
   ).toBe('transaction-confirmed');
 });
+
+it.each(['evm', 'utxo'] as const)(
+  'notifies a genuinely higher %s block despite a device clock ahead of the chain',
+  (networkType) => {
+    const selectedScope = { ...scope, networkType };
+    const observedAt = 1_000_300_000;
+    const firstRow =
+      networkType === 'evm'
+        ? { ...incoming, blockNumber: 100, timestamp: 1_000_000, status: 1 }
+        : {
+            txid: txHash.slice(2),
+            blockHeight: 100,
+            blockTime: 1_000_000,
+            addressValueIn: '0',
+            addressValueOut: '1',
+          };
+    const initial = poll(null, [firstRow], {
+      scope: selectedScope,
+      observedAt,
+    });
+    const nextRow =
+      networkType === 'evm'
+        ? {
+            ...firstRow,
+            hash: `0x${'bb'.repeat(32)}`,
+            blockNumber: 101,
+            timestamp: 1_000_012,
+          }
+        : {
+            ...firstRow,
+            txid: 'bb'.repeat(32),
+            blockHeight: 101,
+            blockTime: 1_000_012,
+          };
+    const next = poll(initial.baseline, [firstRow, nextRow], {
+      scope: selectedScope,
+      observedAt: observedAt + 12000,
+    });
+    expect(next.facts).toEqual([
+      expect.objectContaining({
+        kind: 'transaction-confirmed',
+        blockNumber: 101,
+      }),
+    ]);
+    expect(
+      poll(next.baseline, [firstRow, nextRow], {
+        scope: selectedScope,
+        observedAt: 1_000_012_000,
+      }).facts
+    ).toEqual([]);
+    const oldRow =
+      networkType === 'evm'
+        ? {
+            ...firstRow,
+            hash: `0x${'cc'.repeat(32)}`,
+            blockNumber: 99,
+            timestamp: 1_000_500,
+          }
+        : {
+            ...firstRow,
+            txid: 'cc'.repeat(32),
+            blockHeight: 99,
+            blockTime: 1_000_500,
+          };
+    expect(
+      poll(next.baseline, [oldRow], {
+        scope: selectedScope,
+        observedAt: observedAt + 20000,
+      }).facts
+    ).toEqual([]);
+  }
+);
 
 it('handles raw xpub ownership and the native projection without requiring one fixed receive address', () => {
   const utxoScope = {

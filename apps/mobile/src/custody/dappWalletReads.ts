@@ -2,13 +2,13 @@ import { normalizeDappRpcRequest } from '../../../../source/shared/dappRpcReads.
 import { normalizeDappWalletRead, projectWalletBalanceUnits, projectWalletAvailableBalanceUnits, projectWalletTokens, readWalletFee,
   walletTokenChainId, type DappWalletReadMethod, type DappWalletTokens } from '../../../../source/shared/dappWalletReads.ts';
 import type { NativeConnectionAccount } from '../connections/host.ts';
-import { createBalanceReader } from '../platformRpc.ts';
+import { parseRpcQuantity } from '../platformRpc.ts';
+import { createNativeDappRpcReadHost, type NativeConnectionReadHost } from './dappRpcReads.ts';
 import { createUtxoBalanceReader, type UtxoBalance } from '../core/utxoBalanceReader.ts';
 import { openUtxoReadSession } from '../core/utxoReadSession.ts';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier.ts';
 import type { UtxoNetwork } from '../core/utxoNetworks.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
-import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import type { NativeTokenInventory } from '../portfolio/tokenRegistry.ts';
 
 export type WalletReadNetwork = NativeNetworkRegistration | UtxoNetwork;
@@ -25,7 +25,13 @@ export function createNativeWalletReadHost(ports: Readonly<{
   loadTokens(accountId: string, networkId: string, assertCurrent: () => void): Promise<NativeTokenInventory>;
   cachedTokens(key: string): DappWalletTokens | undefined;
   observeUtxo(account: NativeConnectionAccount, network: UtxoNetwork, balance: UtxoBalance): void;
+  reads?: NativeConnectionReadHost;
 }>): NativeWalletReadHost {
+  const reads = ports.reads ?? createNativeDappRpcReadHost({ fetch: ports.fetch, registration() {
+    const selected = ports.network();
+    if (selected.kind !== 'evm') throw Error('CONTEXT_CHANGED');
+    return snapshotNativeNetwork(selected);
+  }, verifyPersonalMessage() { throw Error('Unsupported wallet read'); } });
   return Object.freeze({ async read(method, account, signal, assertCurrent) {
     normalizeDappWalletRead(method, []);
     const selected = ports.network(), identity = JSON.stringify(selected);
@@ -55,8 +61,8 @@ export function createNativeWalletReadHost(ports: Readonly<{
     if (method === 'wallet_getBalance') {
       if (selected.kind === 'evm') {
         const network = snapshotNativeNetwork(selected);
-        const value = await createBalanceReader({ fetch: ports.fetch, registrations: () => [network] }).readBalance(network.id, account.address, signal);
-        check(); return projectWalletBalanceUnits(value.units, network.decimals);
+        const value = await reads.read(normalizeDappRpcRequest('eth_getBalance', [account.address, 'latest']), signal, check);
+        check(); return projectWalletBalanceUnits(parseRpcQuantity(value).toString(), network.decimals);
       }
       const reader = createUtxoBalanceReader({ fetch: ports.fetch });
       const identity = parseUtxoPublicIdentifier(account.xpub, selected);
@@ -68,8 +74,7 @@ export function createNativeWalletReadHost(ports: Readonly<{
     }
     return readWalletFee(async () => {
       if (selected.kind === 'evm') {
-        return await new EvmTransferReadRpc(snapshotNativeNetwork(selected), { fetch: ports.fetch })
-          .dappRequest(normalizeDappRpcRequest('eth_gasPrice', []), signal, check).then(value => BigInt(value as string).toString());
+        return await reads.read(normalizeDappRpcRequest('eth_gasPrice', []), signal, check).then(value => parseRpcQuantity(value).toString());
       }
       // Public views and EVM reads must not initialize the Syscoin SDK graph.
       const { readPublicSyscoinFee } = await import('@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core.js');

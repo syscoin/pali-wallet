@@ -103,6 +103,10 @@ import {
   isSmartAccountSignatureError,
 } from 'utils/smartAccountErrors';
 
+import {
+  useSmartAccountFeeConfirmation,
+  type SettingsFeeReviewResult,
+} from './SmartAccountFeeConfirmation';
 import type { GuardianRemovalInspection } from '../../wallet/guardianRemoval';
 
 const shortAddress = (address: string) =>
@@ -599,6 +603,8 @@ const SmartAccountPolicy = () => {
     useState<WalletAuthenticatorReconciliation | null>(null);
   const walletAuthenticatorPendingRef = useRef(walletAuthenticatorPending);
   walletAuthenticatorPendingRef.current = walletAuthenticatorPending;
+  const { confirmFee, feeConfirmation, forExecution } =
+    useSmartAccountFeeConfirmation(metadataEntryKey);
   useEffect(() => {
     setLoading(false);
     setModuleActionKey('');
@@ -1443,6 +1449,15 @@ const SmartAccountPolicy = () => {
         controllerEmitter,
         executions,
         expectedContext: approval.expectedContext,
+        feeConsent: forExecution({
+          account: approval.expectedContext.account.address,
+          smartAccount: account.address,
+          chainId: activeNetwork.chainId,
+          symbol: activeNetwork.currency,
+          label: t('settings.smartAccountAccountPolicy'),
+          assertCurrent: approval.assertCurrent,
+        }),
+        onBeforeAuthentication: approval.assertCurrent,
         onPrepared: approval.assertCurrent,
         onBeforeSubmit: async () => {
           await assertApprovalSession(approval);
@@ -1543,6 +1558,15 @@ const SmartAccountPolicy = () => {
         controllerEmitter,
         executions: command.executions.map((execution) => ({ ...execution })),
         expectedContext: approval.expectedContext,
+        feeConsent: forExecution({
+          account: approval.expectedContext.account.address,
+          smartAccount: account.address,
+          chainId: activeNetwork.chainId,
+          symbol: activeNetwork.currency,
+          label: t('settings.smartAccountAccountPolicy'),
+          assertCurrent: approval.assertCurrent,
+        }),
+        onBeforeAuthentication: approval.assertCurrent,
         onPrepared: approval.assertCurrent,
         onBeforeSubmit: async () => {
           // refreshMetadata retains the existing approval/session check before
@@ -1609,11 +1633,11 @@ const SmartAccountPolicy = () => {
     setLoading(true);
     try {
       const approval = await capturePolicyApproval();
-      await controllerEmitter(
-        ['wallet', 'registerSmartAccountOnChain'],
-        [{ accountId: account.id, expectedContext: approval.expectedContext }],
-        300000
-      );
+      if (!metadata.isDeployed)
+        await submitModuleExecutions(
+          [{ target: account.address, data: '0x', value: '0x0' }],
+          { approval, waitForConfirmation: true, refreshAfterSubmit: false }
+        );
       await refreshMetadata(approval, false).catch(() => null);
       if (isCurrentUi()) alert.success(t('settings.smartAccountRegistered'));
     } catch (error: any) {
@@ -3015,22 +3039,39 @@ const SmartAccountPolicy = () => {
         throw new Error(t('settings.smartAccountGuardianRecoveryStartFailed'));
       }
       await assertApprovalSession(policyApproval);
-      await controllerEmitter(
+      const submission = {
+        account: smartAccountAddress,
+        claimHash: claimedRecovery.intent.operation.hash,
+        executionContextId: preparedRecovery.executionContextId,
+        expectedContext: policyApproval.expectedContext,
+        approval,
+        gasPayer: preparedRecovery.gasPayer,
+        guardian,
+        operation: recoveryIntent.operation,
+      };
+      const review = (await controllerEmitter(
         ['wallet', 'submitPreparedSmartAccountGuardianStartRecovery'],
-        [
-          {
-            account: smartAccountAddress,
-            claimHash: claimedRecovery.intent.operation.hash,
-            executionContextId: preparedRecovery.executionContextId,
-            expectedContext: policyApproval.expectedContext,
-            approval,
-            gasPayer: preparedRecovery.gasPayer,
-            guardian,
-            operation: recoveryIntent.operation,
-          },
-        ],
+        [submission],
         300000
-      );
+      )) as SettingsFeeReviewResult;
+      if (!isCurrentUi()) return;
+      if (review?.feeReview) {
+        const feeReviewId = await confirmFee(review.feeReview, {
+          account: policyApproval.expectedContext.account.address,
+          smartAccount: smartAccountAddress,
+          chainId: activeNetwork.chainId,
+          symbol: activeNetwork.currency,
+          label: t('settings.smartAccountGuardianRecoveryStart'),
+          assertCurrent: policyApproval.assertCurrent,
+        });
+        if (!feeReviewId) return;
+        await assertApprovalSession(policyApproval);
+        await controllerEmitter(
+          ['wallet', 'submitPreparedSmartAccountGuardianStartRecovery'],
+          [{ ...submission, feeReviewId }],
+          300000
+        );
+      }
       if (isCurrentUi()) {
         alert.success(t('settings.smartAccountGuardianRecoveryStarted'));
       }
@@ -3194,18 +3235,43 @@ const SmartAccountPolicy = () => {
           300000
         );
       } else {
-        await controllerEmitter(
+        const finalization = {
+          claim,
+          expectedClaimHash:
+            durableGuardianClaim?.intent.operation.hash ?? null,
+          expectedContext: approval.expectedContext,
+        };
+        const review = (await controllerEmitter(
           ['wallet', 'finalizeSmartAccountGuardianRecovery'],
-          [
-            {
-              claim,
-              expectedClaimHash:
-                durableGuardianClaim?.intent.operation.hash ?? null,
-              expectedContext: approval.expectedContext,
-            },
-          ],
+          [finalization],
           300000
-        );
+        )) as SettingsFeeReviewResult;
+        if (review?.feeReview) {
+          if (!isCurrentUi()) return;
+          if (review.claimHash !== claim.intent.operation.hash)
+            throw new Error('Recovery intent changed');
+          const feeReviewId = await confirmFee(review.feeReview, {
+            account: approval.expectedContext.account.address,
+            smartAccount: smartAccountAddress,
+            chainId: activeNetwork.chainId,
+            symbol: activeNetwork.currency,
+            label: t('settings.smartAccountGuardianRecoveryFinalize'),
+            assertCurrent: approval.assertCurrent,
+          });
+          if (!feeReviewId) return;
+          await assertApprovalSession(approval);
+          await controllerEmitter(
+            ['wallet', 'finalizeSmartAccountGuardianRecovery'],
+            [
+              {
+                ...finalization,
+                expectedClaimHash: review.claimHash,
+                feeReviewId,
+              },
+            ],
+            300000
+          );
+        }
       }
       // Preserve previous credentials: other chains or composite policies can
       // still reference them even after this account's recovery is finalized.
@@ -3492,6 +3558,7 @@ const SmartAccountPolicy = () => {
         className="remove-scrollbar flex h-full w-full flex-col items-center overflow-y-auto px-4 pb-24 text-left"
       >
         {guardianDisableDialog}
+        {feeConfirmation}
         <PqSigningOverlay
           expectedSeconds={60}
           show={isSLHDSASigning}
@@ -3656,6 +3723,7 @@ const SmartAccountPolicy = () => {
       data-navigation-scroll="smart-account-policy"
       className="remove-scrollbar flex h-full w-full flex-col items-center overflow-y-auto px-4 pb-24 text-left"
     >
+      {feeConfirmation}
       <PqSigningOverlay
         expectedSeconds={60}
         show={isSLHDSASigning}

@@ -248,7 +248,12 @@ const importOriginalAndStartRead = async () => {
     network.url,
     original.address,
     expect.stringContaining('details=txsummary'),
-    false
+    false,
+    undefined,
+    expect.objectContaining({
+      signal: expect.any(AbortSignal),
+      fetch: expect.any(Function),
+    })
   );
   expect(transport).toHaveBeenCalledTimes(2);
   return { pending };
@@ -326,15 +331,14 @@ it('must not attach old A history to durably imported C at the reused ID after n
   ).not.toHaveBeenLastCalledWith([oldRow]);
 });
 
-it('accepts an older successful read after a newer read fails in the same account', async () => {
+it('joins an older pending read after five seconds for an unchanged account', async () => {
   const { pending } = await importOriginalAndStartRead();
-  // Expire the real transport deduplication window, without changing ownership.
   await jest.advanceTimersByTimeAsync(5100);
-  transport.mockRejectedValueOnce(new Error('Newer summary unavailable'));
-  transport.mockRejectedValueOnce(new Error('Newer fallback unavailable'));
-  await expect(refresh()).rejects.toThrow('Newer fallback unavailable');
+  const joined = refresh();
+  for (let index = 0; index < 4; index += 1) await Promise.resolve();
+  expect(transport).toHaveBeenCalledTimes(2);
   oldRead.resolve(body([oldRow]));
-  await pending;
+  await Promise.all([pending, joined]);
   expect(rows().map((tx: any) => tx.txid)).toEqual([oldRow.txid]);
 });
 

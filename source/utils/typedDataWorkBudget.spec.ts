@@ -30,6 +30,112 @@ const mail = () => ({
 });
 
 describe('typed-data schema work budget', () => {
+  const boolData = (type: string, value: unknown) => ({
+    types: {
+      EIP712Domain: [],
+      Message: [{ name: 'allowed', type }],
+    },
+    primaryType: 'Message',
+    domain: {},
+    message: { allowed: value },
+  });
+
+  it.each(['false', 'true', '', 0, 1, null, undefined, {}, []])(
+    'rejects a schema bool truthiness substitute %p',
+    (value) => {
+      expect(() => assertTypedDataWorkBudget(boolData('bool', value))).toThrow(
+        'bool values must be boolean'
+      );
+    }
+  );
+
+  it.each([
+    ['bool[]', [true, 'false']],
+    ['bool[2]', [true, 0]],
+    [
+      'bool[2][]',
+      [
+        [true, false],
+        [false, 'true'],
+      ],
+    ],
+    ['bool[][2]', [[true], [null]]],
+    ['bool[1][1][]', [[[1]]]],
+    ['bool[2]', 'false'],
+  ])('rejects coerced bool leaves in %s', (type, value) => {
+    expect(() =>
+      assertTypedDataWorkBudget(boolData(type as string, value))
+    ).toThrow('bool values must be boolean');
+  });
+
+  it('checks nested struct arrays and the encoded domain, including missing domain bools', () => {
+    const data = {
+      ...boolData('Child[1][]', [[{ allowed: false }]]),
+      types: {
+        EIP712Domain: [{ name: 'enabled', type: 'bool' }],
+        Message: [{ name: 'allowed', type: 'Child[1][]' }],
+        Child: [{ name: 'allowed', type: 'bool' }],
+      },
+      domain: { enabled: true },
+    };
+    expect(() => assertTypedDataWorkBudget(data)).not.toThrow();
+    expect(() =>
+      assertTypedDataWorkBudget({ ...data, domain: { enabled: 'false' } })
+    ).toThrow('bool values must be boolean');
+    expect(() =>
+      assertTypedDataWorkBudget({ ...data, domain: undefined })
+    ).toThrow('bool values must be boolean');
+    expect(() =>
+      assertTypedDataWorkBudget({
+        ...data,
+        message: { allowed: [[{ allowed: 'false' }]] },
+      })
+    ).toThrow('bool values must be boolean');
+    expect(() =>
+      assertTypedDataWorkBudget({ ...data, message: { allowed: [[false]] } })
+    ).toThrow('bool values must be boolean');
+  });
+
+  it('preserves real booleans and V4 null structs without mutating the payload', () => {
+    const data = {
+      ...boolData('Child[2][]', [[{ allowed: true }, null]]),
+      types: {
+        Message: [{ name: 'allowed', type: 'Child[2][]' }],
+        Child: [{ name: 'allowed', type: 'bool' }],
+      },
+    };
+    const before = JSON.stringify(data);
+    expect(() => assertTypedDataWorkBudget(data)).not.toThrow();
+    for (const value of [true, false]) {
+      expect(() =>
+        assertTypedDataWorkBudget(boolData('bool', value))
+      ).not.toThrow();
+      expect(() =>
+        assertTypedDataWorkBudget(boolData('bool[][2]', [[value], []]))
+      ).not.toThrow();
+    }
+    expect(JSON.stringify(data)).toBe(before);
+  });
+
+  it('checks legacy bool fields and arrays without changing unrelated V1 values', () => {
+    for (const [type, value] of [
+      ['bool', 'false'],
+      ['bool[2][]', [[true, 1]]],
+    ] as const) {
+      expect(() =>
+        assertTypedDataWorkBudget([{ name: 'allowed', type, value }])
+      ).toThrow('bool values must be boolean');
+    }
+    const data = [
+      { name: 'allowed', type: 'bool', value: false },
+      { name: 'flags', type: 'bool[2][]', value: [[true, false]] },
+      { name: 'amount', type: 'uint256', value: '1' },
+    ];
+    const before = JSON.stringify(data);
+    expect(() => assertTypedDataWorkBudget(data)).not.toThrow();
+    expect(JSON.stringify(data)).toBe(before);
+  });
+
   it('accepts nested EIP-712 mail, permits and a fifty-item order without mutation', () => {
     const data = mail();
     const before = JSON.stringify(data);

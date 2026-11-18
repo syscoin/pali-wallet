@@ -112,9 +112,12 @@ describe('cancellation controller account and network admission', () => {
       ethereumTransaction: {
         cancelSentTransaction: cancel,
         web3Provider: {
-          send: jest.fn(async (method) =>
-            method === 'eth_getTransactionCount' ? '0x7' : '0x'
-          ),
+          send: jest.fn(async (method) => {
+            if (method === 'eth_getTransactionCount') return '0x7';
+            if (method === 'eth_getBalance') return '0x100000000';
+            if (method === 'eth_getCode') return '0x';
+            throw new Error('Unexpected cancellation read ' + method);
+          }),
         },
       },
     };

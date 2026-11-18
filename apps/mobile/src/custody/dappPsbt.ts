@@ -4,7 +4,7 @@ import { isSentryTransactionVersion } from '../../../../source/wallet/sentryFeeA
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
 import { assertUtxoSoftwareSpend } from '../../../../source/shared/utxoSoftwareCustody.ts';
 import { utxoInputOutpoints } from '../../../../source/utils/utxoAcknowledgedInputs.ts';
-import { hasUtxoEndpointOverride, type UtxoNetwork } from '../core/utxoNetworks.ts';
+import { canonicalUtxoEndpoint, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { verifySavedUtxoEndpoint } from '../core/utxoReadSession.ts';
 import type { NativePsbtRequest } from '../connections/psbtRequests.ts';
 import type { createNativeSentryCollateral } from './sentryNodeManagement.ts';
@@ -29,7 +29,10 @@ export async function prepareNativeDappPsbt(request: NativePsbtRequest, lifetime
   const sentryChain = Object.values(SENTRY_NETWORKS).some(item => item.chainId === scope.network.chainId && item.genesisHash === scope.network.genesisHash);
   const supplied = collateral !== null && typeof collateral === 'object' && !!collateral.registry && !!collateral.scope;
   if ((collateral !== null && !supplied) || sentryChain !== supplied ||
-      collateral && collateral.scope.genesisHash !== scope.network.genesisHash)
+      collateral && collateral.scope.genesisHash !== scope.network.genesisHash ||
+      canonicalUtxoEndpoint(scope.network.url) !== network.endpoint ||
+      scope.network.chainId !== network.chainId || scope.network.slip44 !== network.slip44 ||
+      scope.network.genesisHash !== network.genesisHash)
     throw new Error('PSBT_CUSTODY_UNAVAILABLE');
   let disposed = false;
   let prepared: PreparedPsbtApproval | undefined;
@@ -45,18 +48,17 @@ export async function prepareNativeDappPsbt(request: NativePsbtRequest, lifetime
   lifetime.addEventListener('abort', dispose, { once: true });
   const verifyEndpoint = (signal: AbortSignal, current: () => void) =>
     verifySavedUtxoEndpoint(network, { fetch: ports.fetch, timeoutMs: 10_000 }, signal, current);
-  const ownedEndpoint = hasUtxoEndpointOverride(network);
   const sender: PsbtApprovalHost['sdk'] = {
     decodeRawTransaction: (...args) => sdk.decodeRawTransaction(...args),
     signPSBT: (...args) => sdk.signPSBT(...args),
-    sendTransaction: (raw, authority) => sdk.sendTransaction(raw, ownedEndpoint ? {
+    sendTransaction: (raw, authority) => sdk.sendTransaction(raw, {
       ...authority,
       async prepare(candidate) {
         await authority.prepare(candidate);
         await verifyEndpoint(authority.signal, authority.assertCurrent);
         authority.assertCurrent();
       },
-    } : authority),
+    }),
   };
   const assertUnprotected: PsbtApprovalHost['assertUnprotected'] = async (resolve, current) => {
     check(); current();
@@ -85,7 +87,7 @@ export async function prepareNativeDappPsbt(request: NativePsbtRequest, lifetime
       lifetime.addEventListener('abort', abort, { once: true });
       const owned = () => { check(); current(); if (signal.aborted || controller.signal.aborted) throw new Error('CONTEXT_CHANGED'); };
       try {
-        owned(); if (ownedEndpoint) await verifyEndpoint(controller.signal, owned);
+        owned(); await verifyEndpoint(controller.signal, owned);
         const read = createOwnedUtxoBlockbookRead({ kind: 'wallet', url: scope.network.url, xpub: scope.account.xpub, address: scope.account.address }, controller.signal, owned, ports.fetch);
         const result = await operation(read); owned(); return result;
       } finally { signal.removeEventListener('abort', abort); lifetime.removeEventListener('abort', abort); controller.abort(); }
@@ -97,7 +99,7 @@ export async function prepareNativeDappPsbt(request: NativePsbtRequest, lifetime
       lifetime.addEventListener('abort', abort, { once: true });
       const owned = () => { check(); current(); if (signal.aborted || controller.signal.aborted) throw new Error('CONTEXT_CHANGED'); };
       try {
-        owned(); if (ownedEndpoint) await verifyEndpoint(controller.signal, owned);
+        owned(); await verifyEndpoint(controller.signal, owned);
         const read = createOwnedUtxoBlockbookRead({ kind: 'asset', assetGuid: guid, url: scope.network.url }, controller.signal, owned, ports.fetch);
         const response = await read.fetch(psbtAssetMetadataUrl(scope.network.url, guid), { method: 'GET', signal: controller.signal });
         owned(); if (!response.ok) throw new Error('PSBT_ASSET_UNAVAILABLE');

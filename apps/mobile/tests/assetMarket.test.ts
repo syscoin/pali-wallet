@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ASSET_MARKET_CHART, assetMarketCoordinates, assetMarketIndexAt, assetMarketHistoryUrl, assetMarketLine, assetMarketUrl, readAssetMarket, readAssetMarketHistory, readTokenMarketId } from '../../../source/shared/assetMarket.ts';
-import { createNativeAssetMarketReader, nativeAssetMarketSource } from '../src/portfolio/nativeAssetMarket.ts';
+import { createNativeAssetMarketReader, createNativeAssetMarketReaders, nativeAssetMarketSource } from '../src/portfolio/nativeAssetMarket.ts';
 
 const now = Date.now();
 const market = (extra = {}) => [{ id: 'ethereum', current_price: 2200, last_updated: new Date(now).toISOString(),
@@ -26,9 +26,10 @@ const history = (prices: number[] = [7700, 8080]) => ({
 });
 
 test('requested-currency history accepts ordered finite samples and rejects malformed or stale history', () => {
-  assert.deepEqual(readAssetMarketHistory(history(), now), [7700, 8080]);
+  assert.deepEqual(readAssetMarketHistory(history(), now), [{ timestamp: now - 60000, price: 7700 }, { timestamp: now, price: 8080 }]);
   const sampled = readAssetMarketHistory(history(Array.from({ length: 1024 }, (_, index) => index)), now);
-  assert(sampled.length <= 241); assert.equal(sampled[0], 0); assert.equal(sampled.at(-1), 1023);
+  assert(sampled.length <= 241); assert.equal(sampled[0]?.price, 0); assert.equal(sampled.at(-1)?.price, 1023);
+  for (const point of sampled) assert.equal(point.timestamp, now - (1023 - point.price) * 60000);
   for (const value of [null, {}, { prices: [] }, history([1]), history(Array(1025).fill(1)),
     { prices: [[now, 1], [now, 2]] }, { prices: [[now, 1], [now - 1, 2]] },
     { prices: [[now - 1, 1], [now, NaN]] }, { prices: [[now - 1, 1], [now, -1]] },
@@ -120,9 +121,31 @@ test('portfolio native and token pricing request no history in any display curre
       assert.deepEqual(data?.data.prices, []);
       assert.equal(await read(source, currency, new AbortController().signal), data);
     }
-    assert.equal(urls.length - before, source.kind === 'native' ? 2 : 4, 'Each native price needs one quote; a token also needs identity');
+    assert.equal(urls.length - before, source.kind === 'native' ? 2 : 1, 'Verified aliases reuse fresh quotes across matching market IDs');
   }
   assert.throws(() => createNativeAssetMarketReader(async () => Response.json([]), undefined as never));
+});
+
+test('price-to-chart navigation reuses market identity and quote without extending expiry', async () => {
+  let time = 1;
+  const urls: string[] = [], contract = '0x' + '11'.repeat(20);
+  const { price, history: chart } = createNativeAssetMarketReaders(async url => {
+    urls.push(url);
+    if (url.includes('/contract/')) return Response.json({ id: 'ethereum', platforms: { ethereum: contract } });
+    if (url.includes('/market_chart?')) return Response.json(history());
+    return Response.json(market());
+  }, () => time);
+  const source = { kind: 'token' as const, platform: 'ethereum', contract };
+  const signal = new AbortController().signal;
+  const first = await price(source, 'usd', signal);
+  assert.equal(urls.length, 2); assert.deepEqual(first?.data.prices, []);
+  time += 30_000;
+  const second = await chart(source, 'usd', signal);
+  assert.equal(urls.length, 3); assert.deepEqual(second?.data.prices, [7700, 8080]);
+  assert.equal(second?.expiresAt, first?.expiresAt);
+  time = first!.expiresAt;
+  assert.equal((await chart(source, 'usd', signal))?.data.price, 2200);
+  assert.equal(urls.length, 5);
 });
 
 test('AED history comes from the requested-currency endpoint and stays separate from cached USD', async () => {
@@ -267,4 +290,67 @@ test('simultaneous token price and chart share public identity and quote reads',
   assert.equal(urls.length, 3);
   assert.equal(quote?.data.price, 2200);
   assert.deepEqual(graph?.data.prices, [7700, 8080]);
+});
+
+test('validated token identity outlives price quotes while contracts and expiry stay isolated', async () => {
+  let elapsed = 0;
+  const contracts = ['0x' + '11'.repeat(20), '0x' + '22'.repeat(20)];
+  const urls: string[] = [];
+  const read = createNativeAssetMarketReader(async url => {
+    urls.push(url);
+    if (url.includes('/contract/')) return Response.json({ id: 'ethereum', platforms: { ethereum: url.split('/').at(-1) } });
+    return Response.json(market());
+  }, 'price', () => elapsed);
+  const source = { kind: 'token' as const, platform: 'ethereum', contract: contracts[0]! };
+  await read(source, 'usd', new AbortController().signal);
+  elapsed = 300_000;
+  await read(source, 'usd', new AbortController().signal);
+  await read(source, 'aed', new AbortController().signal);
+  assert.equal(urls.filter(url => url.includes('/contract/')).length, 1);
+  assert.equal(urls.length, 4);
+  await read({ ...source, contract: contracts[1]! }, 'usd', new AbortController().signal);
+  assert.equal(urls.filter(url => url.includes('/contract/')).length, 2);
+  elapsed = 86_400_000;
+  await read(source, 'usd', new AbortController().signal);
+  assert.equal(urls.filter(url => url.includes('/contract/')).length, 3);
+});
+
+test('invalid token identity is retried and never seeds the metadata cache', async () => {
+  const contract = '0x' + '11'.repeat(20);
+  let attempts = 0;
+  const read = createNativeAssetMarketReader(async url => {
+    if (url.includes('/contract/')) {
+      attempts++;
+      return Response.json({ id: 'ethereum', platforms: { ethereum: attempts === 1 ? '0x' + '22'.repeat(20) : contract } });
+    }
+    return Response.json(market());
+  }, 'price');
+  const source = { kind: 'token' as const, platform: 'ethereum', contract };
+  assert.equal(await read(source, 'usd', new AbortController().signal), null);
+  assert.equal((await read(source, 'usd', new AbortController().signal))?.data.price, 2200);
+  assert.equal(attempts, 2);
+});
+
+test('concurrent currency quotes join one identity read and cancel independently', async () => {
+  const contract = '0x' + '11'.repeat(20);
+  let identities = 0;
+  let finish!: (response: Response) => void;
+  const read = createNativeAssetMarketReader(async url => {
+    if (url.includes('/contract/')) {
+      identities++;
+      return new Promise<Response>(resolve => { finish = resolve; });
+    }
+    return Response.json(market());
+  }, 'price');
+  const source = { kind: 'token' as const, platform: 'ethereum', contract };
+  const owner = new AbortController();
+  const usd = read(source, 'usd', owner.signal);
+  const aed = read(source, 'aed', new AbortController().signal);
+  assert.equal(identities, 1);
+  owner.abort();
+  assert.equal(await usd, null);
+  finish(Response.json({ id: 'ethereum', platforms: { ethereum: contract } }));
+  assert.equal((await aed)?.data.price, 2200);
+  assert.equal((await read(source, 'usd', new AbortController().signal))?.data.price, 2200);
+  assert.equal(identities, 1);
 });

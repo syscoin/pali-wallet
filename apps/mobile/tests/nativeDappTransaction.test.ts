@@ -15,10 +15,11 @@ import { getNativeNetwork } from '../src/custody/networkContext.ts';
 const wallet = new Wallet(`0x${'11'.repeat(32)}`);
 const recipient = `0x${'22'.repeat(20)}`;
 const network = getNativeNetwork('ethereum');
-function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance = '0x100000000000000', pendingHeader: 'normal' | 'null' | 'malformed' = 'normal') {
+function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance = '0x100000000000000', pendingHeader: 'normal' | 'null' | 'malformed' = 'normal', priorityFeeError?: number) {
   let current = true, now = 1, estimate = 21_000, estimates = 0, signs = 0, broadcasts = 0;
   let signingHook = () => {};
   let metadataReads = 0;
+  let assertRefreshedState: ((provider: unknown) => Promise<void>) | undefined;
   let metadataReader = async (_contract: string): Promise<ApprovalContractMetadata | undefined> => undefined;
   const nonceOverrides: (number | undefined)[] = [];
   const calls: { method: string; params: any[] }[] = [];
@@ -28,9 +29,13 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
     input.assertCurrent(); nonceOverrides.push(input.nonceOverride);
     return { kind: 'ready', nonce: input.nonceOverride ?? 4, balanceState: 'pending', nativeReservations: { canonical: 0n, pending: 0n } };
   };
-  const fetcher = async (_url: string, init: RequestInit) => {
-    const request = JSON.parse(String(init.body)); calls.push(request);
+  const fetcher = async (_url: string, init: RequestInit): Promise<Response> => {
+    const request = JSON.parse(String(init.body));
+    if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetcher(_url, { ...init, body: JSON.stringify(row) })).json())));
+    calls.push(request);
     const { method, params, id } = request;
+    if (method === 'eth_maxPriorityFeePerGas' && priorityFeeError !== undefined)
+      return Response.json({ jsonrpc: '2.0', id, error: { code: priorityFeeError, message: 'Priority fee request failed' } });
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';
     else if (method === 'eth_getTransactionCount') result = '0x0';
@@ -39,6 +44,7 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
       ? pendingHeader === 'null' ? null : []
       : { number: params[0] === 'latest' ? '0x10' : params[0], hash: `0x${'aa'.repeat(32)}`, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
     else if (method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas') result = '0x2';
+    else if (method === 'eth_feeHistory') result = { reward: [['0x2', '0x2', '0x2']] };
     else if (method === 'eth_estimateGas') { estimates++; result = `0x${estimate.toString(16)}`; }
     else if (method === 'eth_sendRawTransaction') { broadcasts++; result = keccak256(params[0]); }
     else throw new Error(`Unexpected ${method}`);
@@ -48,6 +54,7 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
   const sender = new NativeTransferRpc({ registration: network, fetch: fetcher });
   const prepare = (input: unknown) => prepareNativeConnectionTransaction(input, {
     funding, gasPolicy: { kind: 'estimate' }, network, rpc, planner, signal: lifetime.signal, assertCurrent: guard, now: () => now,
+    assertRefreshedState: provider => assertRefreshedState?.(provider) ?? Promise.resolve(),
     async readApprovalMetadata(contract, check) { metadataReads++; check(); const result = await metadataReader(contract); check(); return result; },
     async sign(transaction, assertCurrent) {
       assertCurrent(); signs++; signingHook(); assertCurrent();
@@ -64,9 +71,27 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
   return { prepare, calls, nonceOverrides, guard, retire() { current = false; lifetime.abort(); },
     expire() { now += 90_000; }, increaseEstimate() { estimate = 40_000; },
     onSign(hook: () => void) { signingHook = hook; },
+    onRefresh(hook: (provider: unknown) => Promise<void>) { assertRefreshedState = hook; },
     setMetadataReader(read: typeof metadataReader) { metadataReader = read; }, get metadataReads() { return metadataReads; },
     get signs() { return signs; }, get broadcasts() { return broadcasts; }, get estimates() { return estimates; } };
 }
+
+test('private full admission uses the owned refresh phase and retires before signing', async () => {
+  const f = fixture();
+  const phases: { send(method: string, params: unknown[]): Promise<unknown> }[] = [];
+  f.onRefresh(async value => {
+    const phase = value as (typeof phases)[number];
+    phases.push(phase);
+    await phase.send('eth_getBalance', [wallet.address, 'pending']);
+  });
+  const review = await f.prepare({ from: wallet.address, to: recipient });
+  assert.equal(phases.length, 0);
+  f.onSign(() => assert.equal(phases.length, 1));
+  await review.submit(f.guard, () => {}, { kind: 'transaction' });
+  assert.equal(phases.length, 2);
+  for (const phase of phases) await assert.rejects(async () => phase.send('eth_getBalance', [wallet.address, 'pending']), { code: 'CANCELLED' });
+  assert.equal(f.broadcasts, 1);
+});
 
 for (const destination of [recipient, null]) test(`generic dapp ${destination === null ? 'creation' : 'call'} keeps exact access list and explicit nonce`, async () => {
   const f = fixture();
@@ -149,7 +174,7 @@ for (const lose of ['never', 'before-confirm', 'during-sign'] as const) test(`ve
     await review.submit(f.guard, () => undefined, { kind: 'transaction' });
     assert.equal(f.signs, 1); assert.equal(f.broadcasts, 1); assert.equal(checks, 3);
   } else {
-    await assert.rejects(review.submit(f.guard, () => undefined, { kind: 'transaction' }), { code: 'UNAVAILABLE' });
+    await assert.rejects(review.submit(f.guard, () => undefined, { kind: 'transaction' }), /credit unavailable/);
     assert.equal(f.broadcasts, 0);
     assert.equal(f.signs, lose === 'during-sign' ? 1 : 0);
   }
@@ -170,6 +195,37 @@ test('null pending block uses canonical fee bounds while malformed pending data 
   const malformed = fixture(NATIVE_EVM_FEE_FUNDING, '0x100000000000000', 'malformed');
   await assert.rejects(malformed.prepare({ from: wallet.address, to: recipient }), { code: 'INVALID_RESPONSE' });
   assert.equal(malformed.signs, 0);
+});
+
+test('external dapp requests retain market fee observation with complete explicit fees', async () => {
+  for (const fees of [{ gasPrice: '0x7' }, { type: '0x2', maxFeePerGas: '0x7', maxPriorityFeePerGas: '0x2' }]) {
+    const f = fixture();
+    await f.prepare({ from: wallet.address, to: recipient, ...fees });
+    assert(f.calls.some(call => call.method === 'eth_getBlockByNumber' && call.params[0] === 'pending'));
+    assert(f.calls.some(call => call.method === 'eth_gasPrice'));
+    assert(f.calls.some(call => call.method === 'eth_maxPriorityFeePerGas'));
+    assert.equal(f.signs, 0);
+    assert.equal(f.broadcasts, 0);
+  }
+});
+
+for (const code of [-32601, 4200]) test(`dapp preparation and submission preserve fee-history fallback for unsupported priority RPC ${code}`, async () => {
+  const f = fixture(NATIVE_EVM_FEE_FUNDING, '0x100000000000000', 'normal', code);
+  const review = await f.prepare({ from: wallet.address, to: recipient, value: '0x1', data: '0x1234' });
+  assert.equal(review.transaction.type, 2);
+  if (review.transaction.type === 2) assert.equal(review.transaction.maxPriorityFeePerGas, '3');
+  assert.deepEqual(f.calls.filter(call => call.method === 'eth_feeHistory').map(call => call.params), [['0x5', 'latest', [25, 50, 75]]]);
+  await review.submit(f.guard, () => undefined, { kind: 'transaction' });
+  assert.equal(f.signs, 1);
+  assert.equal(f.broadcasts, 1);
+});
+
+test('dapp preparation does not use fee-history fallback for other priority RPC errors', async () => {
+  const f = fixture(NATIVE_EVM_FEE_FUNDING, '0x100000000000000', 'normal', -32005);
+  await assert.rejects(f.prepare({ from: wallet.address, to: recipient, value: '0x1' }));
+  assert.equal(f.calls.filter(call => call.method === 'eth_feeHistory').length, 0);
+  assert.equal(f.signs, 0);
+  assert.equal(f.broadcasts, 0);
 });
 
 test('recognized asset call obtains bound display metadata without signing', async () => {

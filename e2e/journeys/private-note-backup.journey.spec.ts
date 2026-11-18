@@ -638,100 +638,28 @@ test('private note files: real download, saved-file verification and fenced rest
       }
     );
     await wallet.step(
-      'restored-note review clears canceled passwords and pagehide events and refuses unverified pool data',
+      'restored note needs no separate restore review and becomes withdrawable after public verification',
       async () => {
         const page = wallet!.page;
-        const row = noteRows(page).filter({
-          has: page.getByText('1 ETH', { exact: true }),
-        });
-        const review = en.privacy.restoreReview;
         const unchanged = await privateStorage(page);
-        expect(
-          await row
-            .getByRole('button', { name: review.action, exact: true })
-            .evaluate((element) => getComputedStyle(element).fontSize)
-        ).toBe('12px');
-        await row
-          .getByRole('button', { name: review.action, exact: true })
-          .click();
         await expect(
-          row.getByText(review.disclosure, { exact: true })
-        ).toBeVisible();
-        await expect(
-          row.getByText(review.noSnapshot, { exact: true })
-        ).toBeVisible();
-        await row
-          .getByLabel(review.password, { exact: true })
-          .fill(SOURCE_PASSWORD);
-        await row
-          .getByRole('button', { name: en.buttons.cancel, exact: true })
-          .click();
-        await expect(
-          row.getByLabel(review.password, { exact: true })
+          noteRows(page).getByRole('button', {
+            name: en.privacy.withdrawal.open,
+            exact: true,
+          })
         ).toHaveCount(0);
-        await row
-          .getByRole('button', { name: review.action, exact: true })
-          .click();
-        await expect(
-          row.getByLabel(review.password, { exact: true })
-        ).toHaveValue('');
-        await row
-          .getByLabel(review.password, { exact: true })
-          .fill(SOURCE_PASSWORD);
-        // Headless Chromium keeps background tabs visible. Dispatch the browser
-        // lifecycle event without replacing visibility state or production
-        // APIs; the visibility-change handler is covered separately in jsdom.
-        await page.evaluate(() =>
-          window.dispatchEvent(new PageTransitionEvent('pagehide'))
-        );
-        await expect(
-          row.getByLabel(review.password, { exact: true })
-        ).toHaveCount(0);
-        await page.evaluate(() =>
-          window.dispatchEvent(new PageTransitionEvent('pageshow'))
-        );
-        await row
-          .getByRole('button', { name: review.action, exact: true })
-          .click();
-        await expect(
-          row.getByLabel(review.password, { exact: true })
-        ).toHaveValue('');
-        await row
-          .getByLabel(review.password, { exact: true })
-          .fill(SOURCE_PASSWORD);
-        await row
-          .getByRole('button', { name: review.confirm, exact: true })
-          .click();
-        await expect(row.getByRole('alert')).toHaveText(review.failed, {
-          timeout: 120000,
-        });
-        await expect(
-          row.getByLabel(review.password, { exact: true })
-        ).toHaveValue('');
-        expect(await privateStorage(page)).toEqual(unchanged);
         expect(
           poolFixture!.reads.filter(
             (method) => method === 'public-pool-snapshot'
           )
         ).toEqual([]);
-        await row
-          .getByRole('button', { name: en.buttons.cancel, exact: true })
-          .click();
-        observations.unverifiedReview = {
-          refused: true,
-          custodyUnchanged: true,
-          canceledPasswordCleared: true,
-          pagehideEventPasswordCleared: true,
-          nativeTabVisibilityQualified: false,
-          noImplicitPoolSync: true,
-        };
-      }
-    );
-    await wallet.step(
-      'ordinary restored note accepts a fresh password only after public pool verification',
-      async () => {
-        const page = wallet!.page;
-        const review = en.privacy.restoreReview;
+        expect(await privateStorage(page)).toEqual(unchanged);
+        await expect(
+          page.getByRole('button', {
+            name: en.privacy.restoreReview.action,
+            exact: true,
+          })
+        ).toHaveCount(0);
         await page
           .getByRole('button', { name: en.buttons.back, exact: true })
           .click();
@@ -755,64 +683,26 @@ test('private note files: real download, saved-file verification and fenced rest
         const row = noteRows(page).filter({
           has: page.getByText('1 ETH', { exact: true }),
         });
-        const unchanged = await privateStorage(page);
-        await row
-          .getByRole('button', { name: review.action, exact: true })
-          .click();
         await expect(
-          row.getByText(
-            review.snapshot.replace('{{block}}', String(poolFixture!.block)),
-            { exact: true }
-          )
-        ).toBeVisible();
+          row.getByRole('button', {
+            name: en.privacy.withdrawal.open,
+            exact: true,
+          })
+        ).toBeEnabled();
+        await expect(
+          row.getByRole('button', {
+            name: en.privacy.restoreReview.action,
+            exact: true,
+          })
+        ).toHaveCount(0);
         expect(
           await row.evaluate(
             (element) => element.scrollWidth <= element.clientWidth
           )
         ).toBe(true);
-        screenshots.push(await wallet!.shot('restored-note-review-320x480'));
-        await row
-          .getByLabel(review.password, { exact: true })
-          .fill('WrongPublicPassword!2026');
-        await row
-          .getByRole('button', { name: review.confirm, exact: true })
-          .click();
-        await expect(row.getByRole('alert')).toHaveText(review.failed, {
-          timeout: 120000,
-        });
-        expect(await privateStorage(page)).toEqual(unchanged);
-        await expect(
-          row.getByLabel(review.password, { exact: true })
-        ).toHaveValue('');
-        await row
-          .getByLabel(review.password, { exact: true })
-          .fill(SOURCE_PASSWORD);
-        await row
-          .getByRole('button', { name: review.confirm, exact: true })
-          .click();
-        await expect(
-          row.getByRole('button', { name: review.action, exact: true })
-        ).toHaveCount(0, { timeout: 120000 });
-        await expect(
-          row.getByRole('button', {
-            name: en.privacy.withdrawal.open,
-            exact: true,
-          })
-        ).toBeVisible();
-        expect(await privateStorage(page)).not.toEqual(unchanged);
-        // Reopen the document through the ordinary app path; the local review
-        // must survive without another password being held by this form.
-        await page.reload();
-        await wallet!.waitAppReady();
-        await expect(
-          row.getByRole('button', { name: review.action, exact: true })
-        ).toHaveCount(0);
-        await expect(
-          row.getByRole('button', {
-            name: en.privacy.withdrawal.open,
-            exact: true,
-          })
-        ).toBeVisible();
+        screenshots.push(
+          await wallet!.shot('restored-note-withdraw-ready-320x480')
+        );
         expect(
           poolFixture!.reads.filter(
             (method) => method === 'public-pool-snapshot'
@@ -821,12 +711,18 @@ test('private note files: real download, saved-file verification and fenced rest
         expect(
           poolFixture!.reads.filter((method) => method === 'eth_call').length
         ).toBeGreaterThan(0);
+        await page.reload();
+        await wallet!.waitAppReady();
+        await expect(
+          row.getByRole('button', {
+            name: en.privacy.withdrawal.open,
+            exact: true,
+          })
+        ).toBeEnabled();
         await noPlaintextUi(page);
         observations.ordinaryReview = {
-          realPasswordAuthentication: true,
-          wrongPasswordRefused: true,
+          noSeparateRestoreReview: true,
           publicMerkleRootVerified: true,
-          cachedAsOfBlock: poolFixture!.block,
           withdrawalControlEnabled: true,
           persistedOnReopen: true,
           withdrawalNotStarted: true,
@@ -1028,13 +924,13 @@ test('private note files: real download, saved-file verification and fenced rest
         screenshots.push(await wallet!.shot('backup-restore-preview-320x480'));
         await confirmRestore(page, DESTINATION_PASSWORD, capture);
         await expect(noteRows(page)).toHaveCount(2);
-        // A source wallet's local review is never a portable authorization.
+        // Import keeps history as information; normal withdrawal readiness still needs public pool verification.
         await expect(
           noteRows(page).getByRole('button', {
             name: en.privacy.restoreReview.action,
             exact: true,
           })
-        ).toHaveCount(2);
+        ).toHaveCount(0);
         await expect(
           noteRows(page).getByRole('button', {
             name: en.privacy.withdrawal.open,
@@ -1055,7 +951,7 @@ test('private note files: real download, saved-file verification and fenced rest
             .profileSha256
         );
         observations.differentSeedAndPasswordVerified = true;
-        observations.localReviewNotTransferred = true;
+        observations.noExtraRestoredReview = true;
       }
     );
     await wallet.step(

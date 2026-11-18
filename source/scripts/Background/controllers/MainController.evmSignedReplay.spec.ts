@@ -45,6 +45,11 @@ import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import { blacklistService } from 'utils/security/blacklistService';
+import { buildSmartAccountUserOperation } from 'utils/smartAccount/account';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+} from 'utils/smartAccount/contracts';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -76,7 +81,12 @@ let mockState: any;
 let wallet: any;
 let keyring: any;
 let records: any;
-let provider: { _send: jest.Mock; send: jest.Mock };
+let provider: {
+  liveChainRead: jest.Mock;
+  readMany: jest.Mock;
+  send: jest.Mock;
+  verifyConfiguredChainId?: jest.Mock;
+};
 let raw: string;
 let entry: any;
 const observed = () => ({ entry, revision: 1 });
@@ -182,7 +192,16 @@ beforeEach(() => {
     reconcileMinedCancellation: jest.fn(async () => undefined),
   };
   provider = {
-    _send: jest.fn(async ({ id }) => [{ jsonrpc: '2.0', id, result: '0x7b' }]),
+    liveChainRead: jest.fn(async () => '0x7b'),
+    readMany: jest.fn(async (requests) =>
+      Promise.allSettled(
+        requests.map(({ method, params }) =>
+          method === 'eth_chainId'
+            ? provider.liveChainRead()
+            : provider.send(method, params)
+        )
+      )
+    ),
     send: jest.fn(async (method: string, params: unknown[]) => {
       if (method === 'eth_chainId') return '0x7b';
       if (method === 'eth_getTransactionReceipt') return null;
@@ -454,7 +473,7 @@ it('normal shared SDK submission rejects a network request epoch change after pe
 });
 
 it.each([false, true])(
-  'checks a direct empty self fee replacement only when self=%s',
+  'uses the final funds phase or empty-self code check when self=%s',
   async (self) => {
     const replacement = self
       ? await signer.signTransaction({
@@ -479,9 +498,21 @@ it.each([false, true])(
       () => undefined,
       () => lifecycle
     );
+    const phaseChecks = jest.fn(async () => {
+      expect(await provider.liveChainRead()).toBe('0x7b');
+    });
+    Object.assign(provider, { verifyConfiguredChainId: phaseChecks });
     provider.send.mockImplementation(async (method) => {
       if (method === 'eth_getTransactionCount') return '0x0';
       if (method === 'eth_getCode') return '0xef0100' + '33'.repeat(20);
+      if (method === 'eth_getBalance') return '0x100000';
+      if (method === 'eth_getBlockByNumber')
+        return {
+          number: '0x1',
+          hash: '0x' + '55'.repeat(32),
+          baseFeePerGas: '0x1',
+          gasLimit: '0x100000',
+        };
       throw Error('Unexpected RPC');
     });
     const dispatch = jest.fn(async (bytes: string) => {
@@ -499,12 +530,20 @@ it.each([false, true])(
       await expect(submit).rejects.toThrow(
         'Unable to verify a code-free cancellation payer'
       );
-      expect(provider._send).toHaveBeenCalledTimes(1);
+      expect(provider.liveChainRead).toHaveBeenCalledTimes(1);
       expect(dispatch).not.toHaveBeenCalled();
     } else {
       await expect(submit).resolves.toBe(entry.hash);
-      expect(provider._send).not.toHaveBeenCalled();
-      expect(provider.send).not.toHaveBeenCalled();
+      expect(phaseChecks).toHaveBeenCalledTimes(2);
+      expect(provider.liveChainRead).toHaveBeenCalledTimes(2);
+      expect(provider.send.mock.calls.map(([method]) => method)).toEqual([
+        'eth_getBlockByNumber',
+        'eth_getTransactionCount',
+        'eth_getTransactionCount',
+        'eth_getBalance',
+        'eth_getBalance',
+        'eth_getBlockByNumber',
+      ]);
       expect(dispatch).toHaveBeenCalledTimes(1);
     }
   }
@@ -538,6 +577,9 @@ it.each([1, 2])(
       () => undefined,
       () => lifecycle
     );
+    provider.verifyConfiguredChainId = jest.fn(async () => {
+      expect(await provider.liveChainRead()).toBe('0x7b');
+    });
     provider.send.mockImplementation(async (method) => {
       if (method === 'eth_getTransactionCount') return '0x0';
       if (method === 'eth_getCode') return '0x';
@@ -558,9 +600,85 @@ it.each([1, 2])(
       )
     ).resolves.toBe(hash);
     expect(dispatch).toHaveBeenCalledWith(replacement);
-    expect(provider._send).toHaveBeenCalledTimes(1);
+    expect(provider.liveChainRead).toHaveBeenCalledTimes(2);
   }
 );
+
+it('rejects a Smart speed-up with failed frozen execution before broadcast', async () => {
+  const operation = buildSmartAccountUserOperation({
+    sender: receiver,
+    nonce: '0',
+    callData: '0x',
+  });
+  const replacement = await signer.signTransaction({
+    type: 2,
+    chainId: 123,
+    nonce: 0,
+    to: getPaliEntryPointAddress(123),
+    value: 0,
+    data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+      [operation],
+      signer.address,
+    ]),
+    gasLimit: 200000,
+    maxFeePerGas: 4,
+    maxPriorityFeePerGas: 2,
+  });
+  const speedUp = {
+    ...context,
+    operation: 'speed-up' as const,
+    originalHash: entry.hash,
+  };
+  const lifecycle = wallet.captureEvmSignedSubmission(keyring, speedUp);
+  const boundary = captureEvmSubmission(
+    speedUp,
+    () => undefined,
+    () => lifecycle
+  );
+  provider.verifyConfiguredChainId = jest.fn(async () => undefined);
+  provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getTransactionCount') return '0x0';
+    if (method === 'eth_getBalance') return '0x10000000';
+    if (method === 'eth_getBlockByNumber')
+      return {
+        number: '0x1',
+        hash: '0x' + '55'.repeat(32),
+        baseFeePerGas: '0x1',
+        gasLimit: '0x100000',
+      };
+    if (method === 'eth_simulateV1') {
+      const transactions = (params[0] as any).blockStateCalls[0].calls;
+      return [
+        {
+          number: '0x2',
+          parentHash: '0x' + '55'.repeat(32),
+          transactions: transactions.map((tx: any) => ({
+            ...tx,
+            input: tx.data,
+          })),
+          calls: [{ status: '0x0', gasUsed: '0x100', logs: [] }],
+        },
+      ];
+    }
+    throw Error('Unexpected RPC');
+  });
+  const dispatch = jest.fn(
+    async (bytes: string) => Transaction.from(bytes).hash!
+  );
+  await expect(
+    submitSignedEvmTransaction(
+      replacement,
+      ({ rawTransaction, admit }) => admit(() => dispatch(rawTransaction)),
+      boundary,
+      undefined,
+      Transaction.from(replacement).unsignedSerialized
+    )
+  ).rejects.toThrow('Unable to verify smart account execution');
+  expect(
+    provider.send.mock.calls.filter(([method]) => method === 'eth_simulateV1')
+  ).toHaveLength(1);
+  expect(dispatch).not.toHaveBeenCalled();
+});
 
 it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
   'handles %s after durable cancellation persistence through the installed SDK',
@@ -586,6 +704,9 @@ it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
       () => undefined,
       () => lifecycle
     );
+    provider.verifyConfiguredChainId = jest.fn(async () => {
+      expect(await provider.liveChainRead()).toBe('0x7b');
+    });
     const entered = deferred(),
       released = deferred();
     records.append.mockImplementationOnce(async () => {
@@ -608,6 +729,7 @@ it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
     provider.send.mockImplementation(async (method, [, tag]) => {
       if (method === 'eth_getTransactionCount')
         return blocked === 'consumed' ? '0x1' : '0x0';
+      if (method === 'eth_getBalance') return '0xffffff';
       expect(method).toBe('eth_getCode');
       return tag === blocked || (delegated && tag === 'latest')
         ? `0xef0100${'33'.repeat(20)}`
@@ -648,6 +770,7 @@ it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
     }
     expect(provider.send.mock.calls).toEqual([
       ['eth_getTransactionCount', [signer.address, 'latest']],
+      ['eth_getBalance', [signer.address, 'latest']],
       ...(blocked === 'consumed'
         ? []
         : [
@@ -697,7 +820,33 @@ it('fresh explicit replay uses exact stored bytes and consumes its confirmation 
   ).toBe(false);
   // Prepare and confirm each bracket observation with live chain reads.
   // Dispatch then checks the chain once more under admission.
-  expect(provider._send).toHaveBeenCalledTimes(5);
+  expect(provider.liveChainRead).toHaveBeenCalledTimes(5);
+});
+
+it('does not poll while a reviewed replay waits for confirmation', async () => {
+  const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+  expect(prepared.status).toBe('review');
+  const readsBeforeConfirmation = provider.send.mock.calls.length;
+  const chainReadsBeforeConfirmation = provider.liveChainRead.mock.calls.length;
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(provider.send).toHaveBeenCalledTimes(readsBeforeConfirmation);
+  expect(provider.liveChainRead).toHaveBeenCalledTimes(
+    chainReadsBeforeConfirmation
+  );
+  await expect(
+    wallet.confirmEvmSignedReplay(prepared.review.id)
+  ).resolves.toEqual({
+    status: 'submitted',
+    hash: entry.hash,
+  });
+  expect(provider.send.mock.calls.map(([method]) => method)).toEqual([
+    'eth_getTransactionReceipt',
+    'eth_getTransactionCount',
+    'eth_getTransactionReceipt',
+    'eth_getTransactionCount',
+    'eth_sendRawTransaction',
+  ]);
+  expect(provider.liveChainRead).toHaveBeenCalledTimes(5);
 });
 
 it('refuses the exact provider send when final shared replay admission fails', async () => {
@@ -780,7 +929,7 @@ it.each(['latest', 'pending', 'queued', 'consumed', 'ready'])(
           : 'Unable to verify a code-free cancellation payer'
       );
     // Both observations and the final admitted dispatch use the live chain.
-    expect(provider._send).toHaveBeenCalledTimes(5);
+    expect(provider.liveChainRead).toHaveBeenCalledTimes(5);
     expect(nonceReads).toBe(3);
     expect(
       provider.send.mock.calls.filter(([method]) => method === 'eth_getCode')
@@ -952,10 +1101,8 @@ it('does not POST when an ordinary replay expires during the fresh chain check',
   const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
   expect(prepared.status).toBe('review');
   const reached = deferred(),
-    response = deferred<unknown[]>();
-  let requestId: number | undefined;
-  provider._send.mockImplementationOnce(async ({ id }) => {
-    requestId = id;
+    response = deferred<string>();
+  provider.liveChainRead.mockImplementationOnce(async () => {
     reached.resolve();
     return response.promise;
   });
@@ -969,7 +1116,7 @@ it('does not POST when an ordinary replay expires during the fresh chain check',
     ])
   ).toBe('preflight');
   jest.spyOn(replay, 'now').mockReturnValue(now + 90_001);
-  response.resolve([{ jsonrpc: '2.0', id: requestId, result: '0x7b' }]);
+  response.resolve('0x7b');
   await expect(confirmation).rejects.toThrow('EXPIRED');
   expect(
     provider.send.mock.calls.some(
@@ -1314,7 +1461,13 @@ it.each([
       verifyConfiguredChainId: jest.fn(async () => undefined),
       send: jest.fn(async (method: string, params: unknown[]) => {
         if (method === 'eth_getBlockByNumber')
-          return { number: '0x10', hash: '0x' + 'a'.repeat(64) };
+          return {
+            number: '0x10',
+            hash: '0x' + 'a'.repeat(64),
+            gasLimit: '0x1c9c380',
+            baseFeePerGas: '0x1',
+          };
+        if (method === 'eth_estimateGas') return '0x5208';
         if (method === 'eth_getTransactionCount')
           return params[1] === 'pending' && change === 'pending count'
             ? '0x1'
@@ -1339,6 +1492,7 @@ it.each([
     wallet.captureFreshEvmRead = jest.fn(() => ({
       keyring: sdkKeyring,
       network: context.network,
+      overrides: {},
       assertCurrent: () => undefined,
       run: (work: (freshProvider: typeof rpc) => unknown) => work(rpc),
     }));
@@ -1968,7 +2122,7 @@ describe('worker-owned token state at review and initial held POST', () => {
             const activeAuthority = {
               nonce: 0,
               signal: active.signal,
-              assertCurrent: () => {},
+              assertCurrent: () => undefined,
             };
             send.mockImplementationOnce(async () => {
               throw failure;

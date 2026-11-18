@@ -1,7 +1,67 @@
 import {
+  bindVerifiedSyscoinBurn,
   getAssetReviewRows,
   getSyscoinPsbtReviewError,
 } from './syscoinPsbtReview';
+
+describe('verified Syscoin bridge burn binding', () => {
+  const destination = `0x${'ab'.repeat(20)}`;
+  it.each(['ab'.repeat(20), `0x${'AB'.repeat(20)}`])(
+    'publishes only the matching canonical destination from legacy %s',
+    (ethaddress) => {
+      const legacy = { ethaddress, allocation: [{ assetGuid: 'decoy' }] };
+      const bound = bindVerifiedSyscoinBurn(141, legacy, destination);
+      expect(bound).toEqual({ ethaddress: destination });
+      expect(Object.isFrozen(bound)).toBe(true);
+      expect(legacy.allocation).toEqual([{ assetGuid: 'decoy' }]);
+    }
+  );
+  it.each([
+    undefined,
+    null,
+    {},
+    { ethaddress: '' },
+    { ethaddress: '11'.repeat(20) },
+    { ethaddress: ` ${'ab'.repeat(20)}` },
+    { ethaddress: 'ab'.repeat(21) },
+    { ethaddress: `0X${'ab'.repeat(20)}` },
+    { ethaddress: 'gg'.repeat(20) },
+  ])(
+    'rejects missing, malformed or disagreeing legacy metadata %j',
+    (legacy) => {
+      expect(() => bindVerifiedSyscoinBurn(141, legacy, destination)).toThrow(
+        'Unable to verify Syscoin bridge burn destination'
+      );
+    }
+  );
+  it.each([undefined, '', 'ab'.repeat(20), `0x${'AB'.repeat(20)}`])(
+    'requires the verified canonical destination %s',
+    (verified) => {
+      expect(() =>
+        bindVerifiedSyscoinBurn(141, { ethaddress: destination }, verified)
+      ).toThrow('Unable to verify Syscoin bridge burn destination');
+    }
+  );
+  it('does not invoke a legacy address getter', () => {
+    const get = jest.fn(() => destination);
+    expect(() =>
+      bindVerifiedSyscoinBurn(
+        141,
+        Object.defineProperty({}, 'ethaddress', { get }),
+        destination
+      )
+    ).toThrow('Unable to verify Syscoin bridge burn destination');
+    expect(get).not.toHaveBeenCalled();
+  });
+  it.each([138, 2])(
+    'leaves version %s metadata to its existing publication path',
+    (version) => {
+      expect(
+        bindVerifiedSyscoinBurn(version, { ethaddress: '' })
+      ).toBeUndefined();
+    }
+  );
+});
 
 const decodedTransfer = (assetGuid: string, value: string) => ({
   feeSatoshis: '1000',

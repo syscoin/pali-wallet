@@ -1,3 +1,5 @@
+import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { BigNumber, Contract, hexConcat } from '../ethersV6Compat.ts';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from '../evmTransactionContext.ts';
@@ -16,6 +18,11 @@ import {
   paliSmartAccountInterface,
 } from './contracts.ts';
 import { smartAccountDeploymentStateFromCode } from './deploymentState.ts';
+import {
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from './erc20Transfer.ts';
+import { normalizeExecutionSimulationError } from './executionSimulationError.ts';
 import {
   estimateSmartAccountUserOpGas,
   getSmartAccountValidatorProfile,
@@ -90,6 +97,7 @@ export async function prepareSmartAccountOperation({
   account,
   chainId,
   executions,
+  expectedErc20Transfers,
   feeOverrides = {},
   knownDeployed,
   pending,
@@ -102,6 +110,7 @@ export async function prepareSmartAccountOperation({
   assertCurrent(): void;
   chainId: number;
   executions: Array<{ data?: string; target: string; value: string }>;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   feeOverrides?: SmartAccountFeeOverrides;
   knownDeployed: boolean;
   pending: SmartAccountPendingState;
@@ -111,11 +120,15 @@ export async function prepareSmartAccountOperation({
     maxFeePerGas: BigNumber
   ): Promise<{ gasPayer: SmartAccountGasPayer; useGasTank: boolean }>;
 }) {
+  expectedErc20Transfers = snapshotSmartAccountExpectedErc20Transfers(
+    expectedErc20Transfers
+  );
   return pending.withReadPhase((phase) =>
     prepareOperation({
       account,
       chainId,
       executions,
+      expectedErc20Transfers,
       feeOverrides,
       knownDeployed,
       pending: phase,
@@ -130,6 +143,7 @@ async function prepareOperation({
   account,
   chainId,
   executions,
+  expectedErc20Transfers,
   feeOverrides = {},
   knownDeployed,
   provider,
@@ -137,6 +151,20 @@ async function prepareOperation({
   selectGasPayer,
   assertCurrent,
 }: Parameters<typeof prepareSmartAccountOperation>[0]) {
+  try {
+    await provider.send('eth_simulateV1', [
+      {
+        blockStateCalls: [{ calls: [] }],
+        validation: true,
+        returnFullTransactions: true,
+        traceTransfers: false,
+      },
+      'latest',
+    ]);
+  } catch (error) {
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    throw normalizeExecutionSimulationError(error);
+  }
   assertSynchronousEvmFeeGuard(assertCurrent);
   await pending.verify();
   feeOverrides = { ...feeOverrides };
@@ -185,23 +213,41 @@ async function prepareOperation({
   const nonce = await pending.readNonce(BigInt(smartAccount.getNonceKey()));
   assertSynchronousEvmFeeGuard(assertCurrent);
   const callData = smartAccount.encodeCalls(executions);
-  const feeData = await provider.getFeeData();
+  const hasCompleteFeeOverrides =
+    legacyGasPrice !== undefined ||
+    (feeOverrides.maxFeePerGas !== undefined &&
+      feeOverrides.maxFeePerGas !== null &&
+      feeOverrides.maxPriorityFeePerGas !== undefined &&
+      feeOverrides.maxPriorityFeePerGas !== null);
+  const feeData = hasCompleteFeeOverrides ? {} : await provider.getFeeData();
   assertSynchronousEvmFeeGuard(assertCurrent);
-  if (
-    legacyGasPrice !== undefined &&
-    feeData.lastBaseFeePerGas !== null &&
-    feeData.lastBaseFeePerGas !== undefined &&
-    BigNumber.from(legacyGasPrice).lt(feeData.lastBaseFeePerGas)
-  )
-    throw Object.assign(
-      new Error(
-        'Legacy gas price is below the current base fee. Refresh the app quote.'
-      ),
-      { transactionNotBroadcast: true }
-    );
+  if (legacyGasPrice !== undefined) {
+    // A complete legacy price needs the base-fee safety check, without fetching
+    // gas-price or priority-fee recommendations that cannot change the quote.
+    const block = await provider.send('eth_getBlockByNumber', [
+      'latest',
+      false,
+    ]);
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    if (!block || typeof block !== 'object' || Array.isArray(block))
+      throw new Error('Invalid block fee data');
+    if (
+      block.baseFeePerGas !== undefined &&
+      block.baseFeePerGas !== null &&
+      BigInt(legacyGasPrice) <
+        parseEvmFeeQuantity(block.baseFeePerGas, 'base fee')
+    )
+      throw Object.assign(
+        new Error(
+          'Legacy gas price is below the current base fee. Refresh the app quote.'
+        ),
+        { transactionNotBroadcast: true }
+      );
+  }
   const validatorProfile = getSmartAccountValidatorProfile(metadata);
   const gasEstimate = await estimateSmartAccountUserOpGas(provider, {
     callData,
+    chainId,
     childValidatorCount: validatorProfile.childValidatorCount,
     entryPointAddress,
     isDeployed: deployed,
@@ -221,22 +267,39 @@ async function prepareOperation({
         feeData.maxPriorityFeePerGas !== null &&
         feeData.maxPriorityFeePerGas !== undefined));
   const maxFeePerGas = BigNumber.from(
-    legacyGasPrice ??
-      feeOverrides.maxFeePerGas ??
-      feeData.maxFeePerGas ??
-      feeData.gasPrice ??
-      0
+    parseEvmFeeQuantity(
+      legacyGasPrice ??
+        feeOverrides.maxFeePerGas ??
+        feeData.maxFeePerGas ??
+        feeData.gasPrice ??
+        0,
+      'smart-account maximum fee'
+    )
   );
   const maxPriorityFeePerGas = BigNumber.from(
-    legacyGasPrice ??
-      feeOverrides.maxPriorityFeePerGas ??
-      feeData.maxPriorityFeePerGas ??
-      0
+    parseEvmFeeQuantity(
+      legacyGasPrice ??
+        feeOverrides.maxPriorityFeePerGas ??
+        feeData.maxPriorityFeePerGas ??
+        0,
+      'smart-account priority fee'
+    )
   );
+  if (
+    maxFeePerGas.lt(0) ||
+    maxFeePerGas.gte(BigNumber.from(2).pow(128)) ||
+    maxPriorityFeePerGas.lt(0) ||
+    maxPriorityFeePerGas.gt(maxFeePerGas)
+  )
+    throw Object.assign(new Error('Invalid smart-account fee caps'), {
+      transactionNotBroadcast: true,
+    });
   const { gasPayer, useGasTank } = await selectGasPayer(
     gasEstimate,
     maxFeePerGas
   );
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  await pending.assertPayerPredecessors(gasPayer.address);
   assertSynchronousEvmFeeGuard(assertCurrent);
   const userOperation = buildSmartAccountUserOperation({
     accountGasLimits: encodeSmartAccountGasLimits({
@@ -261,6 +324,7 @@ async function prepareOperation({
     provider,
     chainId,
     userOperation,
+    expectedErc20Transfers,
     assertCurrent,
   });
   const actionHash = getSmartAccountUserOpHash(userOperation, chainId);
@@ -271,6 +335,7 @@ async function prepareOperation({
   }));
   return {
     actionHash,
+    ...(expectedErc20Transfers ? { expectedErc20Transfers } : {}),
     execution: orderedExecutions[0],
     executionCalldata: prepared.executionCalldata,
     executions: orderedExecutions,

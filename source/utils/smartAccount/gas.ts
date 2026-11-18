@@ -1,8 +1,10 @@
-import type { ISmartAccountMetadata } from '../../types/network.ts';
+import { Network } from 'ethers/providers';
+
 import { BigNumber } from '../ethersV6Compat.ts';
-import type { Provider } from '../ethersV6Compat.ts';
 
 import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts.ts';
+import type { ISmartAccountMetadata } from '../../types/network.ts';
+import type { Provider } from '../ethersV6Compat.ts';
 
 // ---------------------------------------------------------------------------
 // Shared UserOperation gas estimator (ERC-4337 / EntryPoint v0.9).
@@ -16,8 +18,8 @@ import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts.ts';
 //      failing entirely.
 //
 // callGasLimit:        eth_estimateGas (from = EntryPoint, to = sender,
-//                      data = execute calldata) + a margin capped below the
-//                      penalty threshold so the penalty can never trigger.
+//                      data = execute calldata), less qualified transaction
+//                      overhead, plus a bounded execution margin.
 // verificationGasLimit: static per-validator table. Limits are inside the
 //                      signed userOpHash, so they cannot be tuned after
 //                      signing. Unused verification gas is neither charged
@@ -39,13 +41,9 @@ export const SMART_ACCOUNT_PRE_VERIFICATION_GAS = 50_000;
  */
 export const SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS = 130_000;
 
-// eth_estimateGas includes the 21k intrinsic transaction cost, which the
-// inner EntryPoint -> account call never pays.
-const TX_INTRINSIC_GAS = 21_000;
-
 // callGasLimit headroom: covers state drift between estimation and
-// inclusion. Capped below the penalty threshold (with the intrinsic-gas
-// overshoot accounted for) so unused gas stays penalty-free.
+// inclusion. A transaction calldata floor can leave additional conservative
+// allowance in the estimate even after ordinary intrinsic gas is removed.
 const CALL_GAS_MARGIN_MIN = 12_000;
 const CALL_GAS_MARGIN_MAX = 35_000;
 
@@ -207,42 +205,69 @@ export const getSmartAccountValidatorProfile = (
   };
 };
 
-/**
- * Estimates the execution-phase gas for a userOp by simulating the
- * EntryPoint -> account execute call. Returns the limit including margin.
- */
-export const estimateSmartAccountCallGasLimit = async (
+type SmartExecutionGasInput = {
+  callData: string;
+  chainId?: number;
+  entryPointAddress?: string;
+  sender: string;
+};
+
+/** Transaction intrinsic is excluded only for the qualified chain model. */
+async function readSmartAccountExecutionGas(
   provider: Provider,
   {
     callData,
+    chainId,
     entryPointAddress = PALI_ENTRYPOINT_V09_ADDRESS,
-    isDeployed,
     sender,
-  }: {
-    callData: string;
-    entryPointAddress?: string;
-    isDeployed: boolean;
-    sender: string;
-  }
+  }: SmartExecutionGasInput
+): Promise<bigint> {
+  if (typeof callData !== 'string' || !/^0x(?:[0-9a-f]{2})*$/i.test(callData))
+    throw new Error('Invalid smart account execution calldata');
+  const estimate = await provider.estimateGas({
+    data: callData,
+    from: entryPointAddress,
+    to: sender,
+  });
+  const encoded =
+    typeof estimate === 'bigint' ? estimate.toString() : estimate?.toString();
+  if (typeof encoded !== 'string' || !/^(?:0|[1-9][0-9]*)$/.test(encoded))
+    throw new Error('Invalid smart account execution gas estimate');
+  const estimated = BigInt(encoded);
+  // Mainnet and Hoodi retain ordinary transaction intrinsic pricing through
+  // Fusaka. Sepolia's activated Glamsterdam and unqualified EVM/L2 models
+  // retain the full transaction estimate until their model is qualified.
+  // https://blog.ethereum.org/2026/10/22/glamsterdam-hoodi-delay
+  // Under EIP-7623, estimate = max(intrinsic + execution, calldata floor).
+  // Removing only ordinary intrinsic preserves an execution upper bound.
+  const intrinsic =
+    chainId === 1 || chainId === 560048
+      ? BigInt(
+          Network.from(chainId).computeIntrinsicGas({
+            to: sender,
+            data: callData,
+          })
+        )
+      : BigInt(0);
+  if (estimated < intrinsic || estimated > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new Error('Invalid smart account execution gas estimate');
+  return estimated - intrinsic;
+}
+
+/** Estimate the execution budget plus margin. Undeployed or unavailable quotes use the existing fallback. */
+export const estimateSmartAccountCallGasLimit = async (
+  provider: Provider,
+  { isDeployed, ...input }: SmartExecutionGasInput & { isDeployed: boolean }
 ): Promise<number> => {
-  if (!isDeployed) {
-    return SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT;
-  }
+  if (!isDeployed) return SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT;
   try {
-    const estimate = await provider.estimateGas({
-      data: callData,
-      from: entryPointAddress,
-      to: sender,
-    });
-    const inner = Math.max(estimate.toNumber() - TX_INTRINSIC_GAS, 0);
+    const inner = Number(await readSmartAccountExecutionGas(provider, input));
     const margin = Math.min(
       Math.max(Math.floor(inner / 10), CALL_GAS_MARGIN_MIN),
       CALL_GAS_MARGIN_MAX
     );
     return inner + margin;
-  } catch (error) {
-    // Estimation reverts bubble up at submission time with a clearer error;
-    // here we fall back so signing flows can still present the op.
+  } catch {
     return SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT;
   }
 };
@@ -251,6 +276,7 @@ export const estimateSmartAccountUserOpGas = async (
   provider: Provider,
   {
     callData,
+    chainId,
     childValidatorCount = 0,
     entryPointAddress,
     isDeployed,
@@ -259,6 +285,7 @@ export const estimateSmartAccountUserOpGas = async (
     validatorKind,
   }: {
     callData: string;
+    chainId?: number;
     childValidatorCount?: number;
     entryPointAddress?: string;
     isDeployed: boolean;
@@ -269,6 +296,7 @@ export const estimateSmartAccountUserOpGas = async (
 ): Promise<SmartAccountUserOpGasEstimate> => {
   const callGasLimit = await estimateSmartAccountCallGasLimit(provider, {
     callData,
+    chainId,
     entryPointAddress,
     isDeployed,
     sender,

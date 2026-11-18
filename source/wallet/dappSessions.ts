@@ -370,6 +370,9 @@ export function createDappSessions<Account extends DappPublicAccount>(
     origin: string,
     data: DappSessionEvent
   ): DappSessionEvent => {
+    // The selected backend is private configuration, including on later updates.
+    if (data.method === 'pali_blockExplorerChanged')
+      return { method: data.method, params: null };
     if (![ACCOUNT_EVENT, XPUB_EVENT, LOCK_EVENT].includes(data.method))
       return data;
     const wallet = host.wallet(),

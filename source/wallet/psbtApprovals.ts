@@ -15,6 +15,7 @@ import {
 } from '../shared/utxoTransactionOptions.ts';
 import { assertJsonWorkBudget } from '../utils/requestPayloadBudget.ts';
 import {
+  bindVerifiedSyscoinBurn,
   getAssetReviewRows,
   getCanonicalOutputRecipient,
   getSyscoinPsbtReviewError,
@@ -58,6 +59,7 @@ export type PsbtNetwork = Readonly<{
 }>;
 export type PsbtOwnedRead = Parameters<ISyscoinTransactions['signPSBT']>[1];
 export type PsbtApprovalReview = Readonly<{
+  burnDestination?: string;
   complete: boolean;
   feeSatoshis: string;
   inputs: readonly Readonly<{
@@ -434,12 +436,18 @@ export async function preparePsbtApproval(
       decoded.vout.length !== summary.outputValuesSatoshis.length
     )
       throw new Error('Decoded outputs do not match the PSBT');
+    const burn = bindVerifiedSyscoinBurn(
+      psbt.version,
+      decoded.syscoin?.burn,
+      summary.burnDestination
+    );
     const verified = {
       ...decoded,
       feeSatoshis: summary.feeSatoshis,
       ...(sentry ? { sentry } : {}),
       syscoin: {
         ...decoded.syscoin,
+        ...(burn ? { burn } : {}),
         allocations: summary.assetAllocations.length
           ? { assets: summary.assetAllocations }
           : null,
@@ -467,6 +475,7 @@ export async function preparePsbtApproval(
     );
     const assetRows = getAssetReviewRows(verified, metadata);
     const review: PsbtApprovalReview = Object.freeze({
+      ...(burn ? { burnDestination: burn.ethaddress } : {}),
       method,
       origin,
       feeSatoshis: summary.feeSatoshis,

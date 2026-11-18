@@ -1,3 +1,4 @@
+import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import { AUTOMATIC_FEE, snapshotEvmFeeChoice, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice.ts';
 import { Transaction } from 'ethers/transaction';
 import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/shared/evmSignedRecordLimits.ts';
@@ -86,7 +87,7 @@ export interface NativeTransferJournalHandle {
   saveSigned(rawTransaction:string,intent?:Erc20TransferIntent):Promise<TransferJournalEntry>;
   transition(hash:string,phase:Exclude<TransferJournalEntry['phase'],'signed'>):Promise<TransferJournalEntry>;
 }
-export type NativeTransferDispatchValidation = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void) => Promise<void>;
+export type NativeTransferDispatchValidation = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void, snapshot?: EvmAutoNonceSnapshot) => Promise<void>;
 export type NativeTransferReplay = Pick<EvmSignedReplay, 'confirm' | 'cancel' | 'list'> & {
   prepare(hash: string, mode: 'inspect' | 'resend'): Promise<EvmReplayPreparation | SmartAccountReplayPreparation | Readonly<{ status: 'unknown' | 'confirmed' | 'reverted' | 'nonce-consumed'; hash: string; transaction: EvmSavedTransaction }>>;
   preparePredecessor?(parentReviewId: string, hash: string): Promise<EvmReplayPreparation | SmartAccountReplayPreparation>;
@@ -747,7 +748,7 @@ export class NativeTransfers {
         this.showReview(quote.transaction, undefined, context,
           { replacement: Object.freeze({ mode, source, original: quote.original, feePlan: quote.feePlan, binding: original.binding }) });
       } else {
-        const quote = await rpc.prepareSpeedUp(hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, assertCurrent, original.rates, original.intent);
+        const quote = await rpc.prepareSpeedUp(hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, assertCurrent, original.rates, original.intent, original.collectible);
         assertCurrent();
         this.showReview(quote.transaction, original.intent, context, { replacement: Object.freeze({ mode, original: quote.original, binding: original.binding }),
           replacementCollectible: original.collectible, smartAccount: original.smartAccount });
@@ -1065,8 +1066,7 @@ export class NativeTransfers {
       };
       const journal = await runtime.journal(guard);
       guard();
-      const ordinary = !approved.replacement;
-      const validatesAsset = ordinary && (!!approved.public.intent || !!collectible);
+      const validatesAsset = !!approved.public.intent || !!collectible;
       const planner = journal.planAutomaticNonce;
       this.publish({
         phase: 'signing',
@@ -1085,8 +1085,8 @@ export class NativeTransfers {
             throw new NativeTransferError('EXPIRED');
           latest = mode === 'cancel'
             ? await rpc[replacement.source === 'saved' ? 'prepareSavedCancellation' : 'prepareCancellation'](
-              original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates)
-            : await rpc.prepareSpeedUp(original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, retained.intent);
+              original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, approved.transaction!)
+            : await rpc.prepareSpeedUp(original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, retained.intent, retained.collectible);
         } else if (collectible) {
           freshCollectible = await withNftInventorySignal(signal, collectible.inventorySignal, (owned) =>
             rpc.requoteNft(collectible.selection, collectible.quote, owned, guard, planner))
@@ -1147,26 +1147,30 @@ export class NativeTransfers {
         message: null,
       });
       let dispatchVerified = false;
-      const validateDispatch = ordinary;
-      const assertDispatchAdmission = validateDispatch ? () => {
+      const assertDispatchAdmission = () => {
         guard();
         if (!dispatchVerified) throw new NativeTransferRpcError('REVIEW_REQUIRED');
-      } : undefined;
-      const verifyDispatch: NativeTransferDispatchValidation | undefined = validateDispatch
-        ? async (heldPlanner, assertAdmission) => {
-          const check = () => { guard(); assertAdmission(); };
-          const verify = (owned: AbortSignal) =>
-            rpc.verifyForDispatch(approved.transaction!, owned, check, heldPlanner, freshCollectible, approved.public.intent, approved.public.nonceOverride);
-          if (collectible) {
-            if (!freshCollectible) throw new NativeTransferError('EXPIRED');
-            await withNftInventorySignal(signal, collectible.inventorySignal, verify);
-          } else {
-            await verify(signal);
-          }
+      };
+      const verifyDispatch: NativeTransferDispatchValidation = async (heldPlanner, assertAdmission, snapshot) => {
+        const check = () => { guard(); assertAdmission(); };
+        if (approved.replacement) {
+          if (!snapshot) throw new NativeTransferError('EXPIRED');
+          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible, approved.replacement.mode, rawTransaction);
           check();
           dispatchVerified = true;
+          return;
         }
-        : undefined;
+        const verify = (owned: AbortSignal) =>
+          rpc.verifyForDispatch(approved.transaction!, owned, check, heldPlanner, freshCollectible, approved.public.intent, approved.public.nonceOverride);
+        if (collectible) {
+          if (!freshCollectible) throw new NativeTransferError('EXPIRED');
+          await withNftInventorySignal(signal, collectible.inventorySignal, verify);
+        } else {
+          await verify(signal);
+        }
+        check();
+        dispatchVerified = true;
+        };
       try {
         await runtime.submit(
           rawTransaction,
@@ -1193,7 +1197,7 @@ export class NativeTransfers {
                 ? 'cancel-saved' : approved.replacement.mode,
               original: approved.replacement.original,
               ...(approved.replacement.mode === 'speed-up' && approved.public.intent ? { intent: approved.public.intent } : {}),
-              admit: atDispatch,
+              assertDispatchAdmission: assertDispatchAdmission!, admit: atDispatch,
             } : {
               mode: 'new-send',
               nonceOverride: approved.public.nonceOverride,

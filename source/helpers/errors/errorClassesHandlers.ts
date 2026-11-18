@@ -1,6 +1,38 @@
 import safeStringify from 'fast-safe-stringify';
 
+import { assertPublicResponseBudget } from '../../utils/requestPayloadBudget.ts';
+
 import type { IEthereumRpcErrorHandlerSerialized, Json } from './types.ts';
+
+/** Copy only bounded public JSON-RPC fields, excluding stacks and internal data. */
+export function serializePublicRpcError(
+  error: unknown,
+  maxMessageLength = 4096
+): Omit<IEthereumRpcErrorHandlerSerialized, 'stack'> {
+  const property = (name: string) =>
+    error && typeof error === 'object'
+      ? Object.getOwnPropertyDescriptor(error, name)
+      : undefined;
+  const code = property('code')?.value;
+  const message = property('message')?.value;
+  const response: Omit<IEthereumRpcErrorHandlerSerialized, 'stack'> = {
+    code: Number.isSafeInteger(code) ? code : -32603,
+    message:
+      typeof message === 'string'
+        ? message.slice(0, maxMessageLength)
+        : 'Internal error',
+  };
+  const data = property('data');
+  if (data && 'value' in data && data.value !== undefined) {
+    try {
+      assertPublicResponseBudget(data.value);
+      response.data = JSON.parse(JSON.stringify(data.value));
+    } catch {
+      // Invalid node data cannot cross the public boundary.
+    }
+  }
+  return response;
+}
 
 /**
  * Error subclass implementing JSON RPC 2.0 errors and Ethereum RPC errors

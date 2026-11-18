@@ -1,5 +1,5 @@
+import { PALI_INFRASTRUCTURE_BY_ID } from '../../../source/utils/smartAccount/deployment.ts';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { Interface } from 'ethers/abi';
 import { keccak256 } from 'ethers/crypto';
@@ -9,13 +9,9 @@ import {
 } from '../../../source/shared/erc20BalanceBatch.ts';
 import { PALI_MULTICALL3_CANONICAL_ADDRESS } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 
-const source = readFileSync(
-  new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url),
-  'utf8'
-);
-const creation = source.match(
-  /const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/
-)![1]!;
+const creation = `0x${PALI_INFRASTRUCTURE_BY_ID.multicall3.deployCalldata!.slice(
+  2 + 0x20 * 2
+)}`;
 const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
 const calls = [
   { target: `0x${'11'.repeat(20)}`, data: '0x313ce567' },
@@ -118,7 +114,7 @@ test('unrecognized runtime uses bounded direct getters at the same block', async
   assert.equal(probes, 2);
 });
 
-test('arbitrary calls and unanchored selectors never enter aggregation', async () => {
+test('arbitrary calls and pending selectors never enter aggregation', async () => {
   let touched = false;
   const reader = {
     async read() {
@@ -139,35 +135,72 @@ test('arbitrary calls and unanchored selectors never enter aggregation', async (
     /Invalid token balance getter/
   );
   await assert.rejects(
-    createErc20BalanceBatch()(reader, calls, 'latest'),
+    createErc20BalanceBatch()(reader, calls, 'pending'),
     /Invalid token balance block/
   );
   assert.equal(touched, false);
 });
 
 test('a failed aggregate chunk retries only its own getters and preserves successful chunks', async () => {
-  const all = Array.from({ length: 42 }, (_, index) => ({ ...calls[0]!,
-    target: `0x${(index + 1).toString(16).padStart(40, '0')}` }));
+  const all = Array.from({ length: 42 }, (_, index) => ({
+    ...calls[0]!,
+    target: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+  }));
   const direct: string[] = [];
   const batch = createErc20BalanceBatch();
-  const result = await batch({
-    async read(method, params) {
-      if (method === 'eth_getCode') return runtime;
-      direct.push((params[0] as { to: string }).to);
-      if (direct.length === 2) throw new Error('Bad token');
-      return '0x' + '0'.repeat(63) + '5';
+  const result = await batch(
+    {
+      async read(method, params) {
+        if (method === 'eth_getCode') return runtime;
+        throw new Error('Fallback must preserve readMany batching');
+      },
+      async readMany(requests) {
+        assert.equal(requests.length, 2);
+        if (
+          (requests[0]!.params[0] as { to: string }).to !==
+          PALI_MULTICALL3_CANONICAL_ADDRESS
+        ) {
+          direct.push(
+            ...requests.map(
+              (request) => (request.params[0] as { to: string }).to
+            )
+          );
+          assert(requests.every((request) => request.params[1] === '0x123'));
+          return [
+            { status: 'fulfilled', value: '0x' + '0'.repeat(63) + '5' },
+            { status: 'rejected', reason: new Error('Bad token') },
+          ];
+        }
+        return [
+          {
+            status: 'fulfilled',
+            value: abi.encodeFunctionResult('aggregate3', [
+              Array.from({ length: 40 }, () => ({
+                success: true,
+                returnData: '0x' + '0'.repeat(63) + '9',
+              })),
+            ]),
+          },
+          { status: 'rejected', reason: new Error('Oversized aggregate') },
+        ];
+      },
     },
-    async readMany(requests) {
-      assert.equal(requests.length, 2);
-      return [
-        { status: 'fulfilled', value: abi.encodeFunctionResult('aggregate3', [Array.from({ length: 40 }, () => ({ success: true, returnData: '0x' + '0'.repeat(63) + '9' }))]) },
-        { status: 'rejected', reason: new Error('Oversized aggregate') },
-      ];
-    },
-  }, all, '0x123');
+    all,
+    '0x123'
+  );
   assert.equal(result.length, 42);
-  assert(result.slice(0, 40).every(value => value.status === 'fulfilled' && BigInt(value.value as string) === 9n));
-  assert.deepEqual(direct, all.slice(40).map(call => call.target));
+  assert(
+    result
+      .slice(0, 40)
+      .every(
+        (value) =>
+          value.status === 'fulfilled' && BigInt(value.value as string) === 9n
+      )
+  );
+  assert.deepEqual(
+    direct,
+    all.slice(40).map((call) => call.target)
+  );
   assert.equal(result[40]!.status, 'fulfilled');
   assert.equal(result[41]!.status, 'rejected');
 });

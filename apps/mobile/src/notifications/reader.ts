@@ -1,7 +1,8 @@
 import { getAddress } from 'ethers/address';
 import { keccak256 } from 'ethers/crypto';
 import { toUtf8Bytes } from 'ethers/utils';
-import { activityNotificationScopeKey, type ActivityNotificationBaseline, type ActivityNotificationScope } from '../../../../source/shared/activityNotifications.ts';
+import { activityNotificationScopeKey, decodeActivityNotificationBaseline, type ActivityNotificationBaseline, type ActivityNotificationScope } from '../../../../source/shared/activityNotifications.ts';
+import { createRpcReadCapabilitiesOwner } from '../../../../source/shared/rpcReadCapabilities.ts';
 import { assertPublicWatchOnlyIdentifier } from '../../../../source/utils/watchOnlyIdentifier.ts';
 import { ActivityExplorerReader } from '../activity/explorerReader.ts';
 import { createActivityReadScope } from '../activity/types.ts';
@@ -41,6 +42,7 @@ export function notificationFactScope(scope: NativeNotificationScope): ActivityN
 }
 /** Reuses the wallet's existing bounded explorer, Blockbook and guardian RPC readers. */
 export function createNotificationReader() {
+  const capabilities = createRpcReadCapabilitiesOwner();
   const explorer = new ActivityExplorerReader(walletFetch);
   const utxo = createUtxoActivityReader({ fetch: walletFetch, timeoutMs: 10000 });
   return async (scope: NativeNotificationScope, previous: ActivityNotificationBaseline | null, signal: AbortSignal, guard: () => void) => {
@@ -54,12 +56,19 @@ export function createNotificationReader() {
     }
     const key = keccak256(toUtf8Bytes(activityNotificationScopeKey(notificationFactScope(scope))));
     const historyScope = createActivityReadScope(key, scope.accountAddress, scope.network);
-    const history = historyScope.apiUrl ? Promise.all([
+    const history = historyScope.apiUrl ? Promise.allSettled([
       explorer.page(historyScope, 'txlist', 1, signal, guard),
       explorer.page(historyScope, 'tokentx', 1, signal, guard),
-    ]).then((pages) => pages.flat().map((row) => row.indexed)) : Promise.reject(new Error('No registered activity explorer'));
+    ]).then((pages) => ({
+      transactions: pages.flatMap(page => page.status === 'fulfilled' ? page.value.map(row => row.indexed) : []),
+      historyReadSucceeded: pages.some(page => page.status === 'fulfilled'),
+      historyReadComplete: pages.every(page => page.status === 'fulfilled'),
+    })) : Promise.resolve({ transactions: [], historyReadSucceeded: false, historyReadComplete: false });
     // This class is the existing read-only endpoint adapter; no authority, vault or signer is constructed.
-    const reader = scope.guardian ? new EvmTransferReadRpc(scope.network, { fetch: walletFetch, timeoutMs: 10000 }) : null;
+    const reader = scope.guardian ? new EvmTransferReadRpc(scope.network, {
+      fetch: walletFetch, timeoutMs: 10000,
+      capabilities: capabilities.get(scope.network.registrationHash, scope.network.rpcUrl),
+    }) : null;
     const operationId = previous?.guardian?.trackedOperationId;
     const guardian = reader ? (operationId ? reader.readGuardianRecoveryOperation(scope.accountAddress, operationId, signal, guard)
       : reader.readGuardianRecoveryStatus(scope.accountAddress, signal, guard)) : Promise.resolve(null);
@@ -67,8 +76,12 @@ export function createNotificationReader() {
     guard();
     const guardianValue = guardianResult.status === 'fulfilled' ? guardianResult.value : null;
     const guardianObservation = guardianValue?.status === 'observed' ? guardianValue.observation : undefined;
-    if (historyResult.status === 'rejected' && !guardianObservation) throw new Error('Alert observations unavailable');
-    return { transactions: historyResult.status === 'fulfilled' ? historyResult.value : [], historyReadSucceeded: historyResult.status === 'fulfilled',
+    const observedHistory = historyResult.status === 'fulfilled' ? historyResult.value
+      : { transactions: [], historyReadSucceeded: false, historyReadComplete: false };
+    const initialized = decodeActivityNotificationBaseline(previous, notificationFactScope(scope))?.historyInitialized === true;
+    if ((!observedHistory.historyReadSucceeded || (!observedHistory.historyReadComplete && !initialized)) && !guardianObservation)
+      throw new Error('Alert observations unavailable');
+    return { ...observedHistory,
       ...(guardianObservation ? { guardianObservation } : {}) };
   };
 }

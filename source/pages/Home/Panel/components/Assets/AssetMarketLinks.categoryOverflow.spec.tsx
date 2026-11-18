@@ -46,9 +46,7 @@ it.each([0, 1, 5, 6, 8])(
       expect(link).toBeVisible();
       expect(link).toHaveAttribute(
         'href',
-        `https://www.coingecko.com/en/categories/${category
-          .toLowerCase()
-          .replace(/\s+/g, '-')}`
+        'https://www.coingecko.com/en/categories'
       );
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');

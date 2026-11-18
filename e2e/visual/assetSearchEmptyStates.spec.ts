@@ -221,7 +221,7 @@ test('token and NFT searches distinguish empty results and clear back to the ful
       ).toBeVisible();
       await expect(
         page.getByText(
-          isNft ? en.home.youHaveNoNfts : en.home.youHaveNoTokens,
+          isNft ? en.home.youHaveNoNfts : en.home.youHaveNoFungibleTokens,
           { exact: true }
         )
       ).toHaveCount(0);

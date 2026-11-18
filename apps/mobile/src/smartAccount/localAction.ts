@@ -36,6 +36,14 @@ export function snapshotNativeSmartLocalAction(action: NativeSmartLocalAction): 
   }
   if (action.kind !== 'operation' || !action.intent) return invalid();
   const intent = action.intent;
+  if (intent.kind === 'cancel-operation') {
+    const reference = intent.reference;
+    if (!reference || typeof reference !== 'object' || Object.keys(reference).some(key => !['originalHash','operationHash'].includes(key)) ||
+        typeof reference.originalHash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(reference.originalHash) ||
+        reference.operationHash !== undefined && (typeof reference.operationHash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(reference.operationHash))) return invalid();
+    return Object.freeze({kind:action.kind,intent:Object.freeze({kind:intent.kind,reference:Object.freeze({originalHash:reference.originalHash.toLowerCase(),
+      ...(reference.operationHash === undefined ? {} : {operationHash:reference.operationHash.toLowerCase()})})})});
+  }
   const choice = intent.feeChoice === undefined ? undefined : snapshotEvmFeeChoice(intent.feeChoice);
   if (choice && (choice.kind !== 'custom' || choice.gasLimit !== undefined)) return invalid();
   const fees = choice ? { feeChoice: choice } : {};

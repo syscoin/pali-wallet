@@ -30,14 +30,17 @@ describe('approval screenshot evidence', () => {
         expect(closed).toBe(false);
         events.push('screenshot approval');
       }),
-      getByRole: () => ({
-        last: () => ({
-          click: async () => {
-            events.push('click approval');
-            closed = true;
-          },
-        }),
-      }),
+      getByRole: (role: string) =>
+        role === 'dialog'
+          ? { filter: () => ({ isVisible: async () => false }) }
+          : {
+              last: () => ({
+                click: async () => {
+                  events.push('click approval');
+                  closed = true;
+                },
+              }),
+            },
     };
     const page = {
       evaluate: jest.fn(async () => (closed ? result : { settled: false })),

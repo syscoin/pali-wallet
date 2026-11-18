@@ -53,8 +53,11 @@ function fixture({
     network,
   ];
   const requests: { wire: Wire; url: string; init: RequestInit }[] = [];
+  let posts = 0;
   const fetch = async (url: string, init: RequestInit) => {
-    const wire: Wire = JSON.parse(String(init.body));
+    const payload = JSON.parse(String(init.body)) as Wire | Wire[];
+    posts++;
+    const respond = async (wire: Wire) => {
     requests.push({ wire, url, init });
     const envelope = { jsonrpc: '2.0', id: wire.id };
     let reply: Envelope;
@@ -102,7 +105,9 @@ function fixture({
       default:
         assert.fail('Unowned RPC method');
     }
-    return new Response(JSON.stringify(await rewrite(wire, reply)), {
+    return rewrite(wire, reply);
+    };
+    return new Response(JSON.stringify(Array.isArray(payload) ? await Promise.all(payload.map(respond)) : await respond(payload)), {
       headers: { 'Content-Type': 'application/json' },
     });
   };
@@ -113,6 +118,7 @@ function fixture({
   return {
     read,
     requests,
+    posts: () => posts,
     setRegistrations: (next: typeof registrations) => {
       registrations = next;
     },
@@ -122,10 +128,11 @@ const signal = () => new AbortController().signal;
 const current = () => undefined;
 
 test('selected ERC721 uses the registered endpoint and one block for exact probe and ownership', async () => {
-  const { read, requests } = fixture();
+  const { read, requests, posts } = fixture();
   const observation = await read(selection, signal(), current);
   assert.deepEqual(observation, { tokenId, units: '1' });
   assert.equal(Object.isFrozen(observation), true);
+  assert.equal(posts(), 5);
   assert.deepEqual(
     requests.map(({ wire }) => wire.method),
     [
@@ -150,6 +157,16 @@ test('selected ERC721 uses the registered endpoint and one block for exact probe
     assert.equal(init.credentials, 'omit');
     assert.equal(init.cache, 'no-store');
   }
+});
+
+for (const reportedOwner of [owner, other]) test(`bounded nested revert evidence permits the selected NFT read for ${reportedOwner}`, async () => {
+  const f = fixture({ reportedOwner, rewrite(wire, reply) {
+    if (wire.method !== 'eth_call' || !reply.error) return reply;
+    return { ...reply, error: { ...reverted, data: { data: reverted.data, message: 'execution reverted' } } };
+  } });
+  assert.deepEqual(await f.read(selection, signal(), current), { tokenId, units: reportedOwner === owner ? '1' : '0' });
+  assert.equal(f.requests.filter(({ wire }) => wire.method === 'eth_call').length, 2);
+  assert.equal(f.posts(), 5);
 });
 
 test('successful different ERC721 owner and exact ERC1155 amounts retain their meaning', async () => {

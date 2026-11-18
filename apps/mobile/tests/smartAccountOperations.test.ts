@@ -1,6 +1,9 @@
 import { createSmartAccountPendingState } from '../../../source/utils/smartAccount/pendingState.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { webcrypto } from 'node:crypto';
+import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import { EvmSignedRecords, type EvmSignedRecordStorage } from '../../../source/wallet/evmSignedRecords.ts';
 import { AbiCoder, Interface } from 'ethers/abi';
 import { Wallet } from 'ethers/wallet';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
@@ -14,11 +17,13 @@ import { submitSmartAccountOperation } from '../../../source/utils/smartAccount/
 import { assertSmartAccountNativeSpendability } from '../../../source/utils/smartAccount/nativeSpendability.ts';
 import type { IKeyringAccountState, KeyringAccountType } from '../../../source/types/network.ts';
 
+Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
 const owner = '0x1111111111111111111111111111111111111111';
 const payer = { id: 0, type: 'HDAccount' as KeyringAccountType, address: owner };
 const chainId = 1;
 function fixture() {
   const funds = { balance: BigInt(0), deposit: BigInt(0), failEstimate: false, balanceReads: 0, depositReads: 0 };
+  const feeReads = { recommendations: 0, headers: 0, baseFee: '0x1' as string | null };
   const factoryAddress = getPaliSmartAccountFactoryAddress(chainId);
   const descriptor = getPaliSmartAccountDescriptor({ accountIndex: 0, chainId, factoryAddress, accountVersion: PALI_SMART_ACCOUNT_VERSION,
     anchor: `pali:eip155:${chainId}:${owner}:smart-account-v1` });
@@ -32,6 +37,7 @@ function fixture() {
     async verifyConfiguredChainId() { assert.equal(await rawProvider.send('eth_chainId', []), '0x1'); },
     send: async (method: string, params: any[]) => {
       if (method === 'eth_chainId') return '0x1';
+      if (method === 'eth_getBlockByNumber') { assert.deepEqual(params, ['latest', false]); feeReads.headers++; return { baseFeePerGas: feeReads.baseFee }; }
       if (method === 'eth_getCode') return '0x';
       if (method === 'eth_getBalance') { funds.balanceReads++; return '0x' + funds.balance.toString(16); }
       if (method === 'eth_estimateGas' && funds.failEstimate) throw new Error('execution reverted');
@@ -44,12 +50,12 @@ function fixture() {
     },
     getCode: async () => '0x',
     call: async () => AbiCoder.defaultAbiCoder().encode(['uint256'], [0]),
-    getFeeData: async () => ({ maxFeePerGas: BigNumber.from(2), maxPriorityFeePerGas: BigNumber.from(1), gasPrice: BigNumber.from(2), lastBaseFeePerGas: BigNumber.from(1) }),
+    getFeeData: async () => { feeReads.recommendations++; return { maxFeePerGas: BigNumber.from(2), maxPriorityFeePerGas: BigNumber.from(1), gasPrice: BigNumber.from(2), lastBaseFeePerGas: BigNumber.from(1) }; },
     getBalance: async () => BigNumber.from(0),
     estimateGas: async () => BigNumber.from(100000),
   };
   const pending = createSmartAccountPendingState(rawProvider, { profileId: '0x' + '11'.repeat(32), read: async () => [] }, chainId, account.address, () => undefined);
-  return { account, metadata, deployment, provider: pending.provider, rawProvider, pending, funds };
+  return { account, metadata, deployment, provider: pending.provider, rawProvider, pending, funds, feeReads };
 }
 
 const nativeRecipient = '0x2222222222222222222222222222222222222222';
@@ -59,12 +65,33 @@ async function prepareNative(f: ReturnType<typeof fixture>, value: string, asser
     async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent });
 }
 
-function nativeSubmitHost(f: ReturnType<typeof fixture>, prepared: Awaited<ReturnType<typeof prepareNative>>, send: (...args: any[]) => Promise<any>) {
+async function nativeSubmitHost(f: ReturnType<typeof fixture>, prepared: Awaited<ReturnType<typeof prepareNative>>, send: (...args: any[]) => Promise<any>) {
+  // Issue a real encrypted journal receipt: the submit boundary must never be
+  // satisfied by an invented capability or an unretained signature.
+  const keyring: any = Object.create(SoftwareKeyring.prototype);
+  keyring.sessionPassword = { isCleared: () => false };
+  keyring.sessionMnemonic = { isCleared: () => false };
+  keyring.privateRecordSessionRevision = 0;
+  keyring.getDecryptedMnemonic = () => 'synthetic native submit journal root';
+  let stored: string | undefined;
+  const storage: EvmSignedRecordStorage = { async read() { return stored; }, async compareAndSet(_id, expected, next, guard) {
+    guard(); if (stored !== expected) return false; stored = next; return true;
+  } };
+  const records = new EvmSignedRecords(storage);
+  const session = { keyring, assertCurrent() {} };
+  const captured = await records.captureSmartAccountPendingRecords(session, String(chainId), f.account.address);
+  const pending = createSmartAccountPendingState(f.rawProvider, captured, chainId, f.account.address, () => undefined);
   return {
-    chainId, provider: f.provider, pending: f.pending, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
+    chainId, provider: pending.provider, pending, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
+    async retainAuthorization(userOperation: import('../../../source/utils/smartAccount/account.ts').SmartAccountPackedUserOperation, gasPayer: import('../../../source/utils/smartAccount/prepareOperation.ts').SmartAccountGasPayer, guard: () => void) {
+      guard();
+      return records.retainSmartAccountAuthorization({ ...session, assertCurrent: guard }, {
+        chainId, payer: gasPayer.address, userOperation, observedAt: { number: '1', hash: '0x' + 'aa'.repeat(32) },
+      });
+    },
     getExecutionContext: () => ({ accountId: 0, userOperation: prepared.userOperation }),
     getSmartAccountById: () => ({ account: f.account, metadata: f.metadata }),
-    getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [], assertGasTankCoversTransaction: async () => BigNumber.from(100000),
+    getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [],
     ensureDeploymentPrefund: async () => { throw new Error('Unexpected deployment prefund'); },
     sendTransaction: send, invalidateMetadata() {},
   };
@@ -96,7 +123,7 @@ test('shared asset preparation and the separate late dispatch check reject a cha
   const prepared = await prepare('7');
   f.funds.failEstimate = false;
   let dispatched = 0;
-  const host = nativeSubmitHost(f, prepared, async (...args) => {
+  const host = await nativeSubmitHost(f, prepared, async (...args) => {
     // The outer record is now reserved: its own nonce cannot be checked again.
     balance = 6n;
     await args[4].assertAssetState();
@@ -147,7 +174,7 @@ test('shared submission rechecks Smart balance after authenticator signing and i
   f.funds.balance = BigInt(122);
   let sends = 0;
   await assert.rejects(submitSmartAccountOperation({ ...prepared, executions: [], accountId: 0, executionContextId: 'fixture', signature: '0x1234' },
-    nativeSubmitHost(f, prepared, async (...args) => { await args[4].assertPendingState(); sends++; throw new Error('Unexpected send'); }), () => {}),
+    await nativeSubmitHost(f, prepared, async (...args) => { await args[4].assertPendingState(); sends++; throw new Error('Unexpected send'); }), () => {}),
     (error: any) => error.transactionNotBroadcast === true);
   assert.equal(sends, 0);
 });
@@ -159,7 +186,7 @@ test('ordinary native submission succeeds and rechecks balance at the payer auth
   assert.equal(f.funds.balanceReads, 1);
   assert.equal(f.funds.depositReads, 1);
   let sends = 0;
-  const host = nativeSubmitHost(f, prepared, async (...args) => {
+  const host = await nativeSubmitHost(f, prepared, async (...args) => {
     await args[4].assertPendingState();
     sends++;
     return { hash: '0x' + 'ab'.repeat(32), async wait() {} };
@@ -190,7 +217,7 @@ test('cancelled native authorization cannot submit', async () => {
   let sends = 0;
   current = false;
   await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' },
-    nativeSubmitHost(f, prepared, async () => { sends++; throw new Error('Unexpected send'); }), () => { assert(current, 'cancelled'); }), /cancelled/);
+    await nativeSubmitHost(f, prepared, async () => { sends++; throw new Error('Unexpected send'); }), () => { assert(current, 'cancelled'); }), /cancelled/);
   assert.equal(sends, 0);
 });
 
@@ -247,6 +274,77 @@ test('portable shared preparation uses the canonical deployment and local UserOp
   assert.equal(prepared.execution!.target, f.account.address);
 });
 
+test('complete smart-account fee overrides avoid market recommendations while retaining legacy base-fee checks', async () => {
+  for (const feeOverrides of [
+    { maxFeePerGas: '2', maxPriorityFeePerGas: '1' },
+    { maxFeePerGas: '0', maxPriorityFeePerGas: '0' },
+    { gasPrice: '2' },
+    { gasPrice: '0' },
+  ]) {
+    const f = fixture();
+    f.feeReads.baseFee = '0x0';
+    const prepared = await prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+      executions: [{ target: f.account.address, value: '0', data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending, feeOverrides,
+      async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent() {} });
+    assert.equal(f.feeReads.recommendations, 0);
+    assert.equal(f.feeReads.headers, feeOverrides.gasPrice === undefined ? 0 : 1);
+    assert.equal(prepared.gasPrice, feeOverrides.gasPrice);
+    assert.equal(prepared.maxFeePerGas, feeOverrides.maxFeePerGas);
+    assert.equal(prepared.maxPriorityFeePerGas, feeOverrides.maxPriorityFeePerGas);
+  }
+});
+
+test('partial smart-account fee overrides still obtain missing recommendations', async () => {
+  const f = fixture();
+  const prepared = await prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+    executions: [{ target: f.account.address, value: '0', data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending,
+    feeOverrides: { maxFeePerGas: '3' }, async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent() {} });
+  assert.equal(f.feeReads.recommendations, 1);
+  assert.equal(prepared.maxFeePerGas, '3');
+  assert.equal(prepared.maxPriorityFeePerGas, '1');
+});
+
+test('explicit legacy smart-account fees fail below the observed base fee without fetching recommendations', async () => {
+  const f = fixture();
+  f.feeReads.baseFee = '0x3';
+  await assert.rejects(prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+    executions: [{ target: f.account.address, value: '0', data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending,
+    feeOverrides: { gasPrice: '2' }, async selectGasPayer() { assert.fail('Invalid fee reached payer selection'); }, assertCurrent() {} }), /below the current base fee/);
+  assert.equal(f.feeReads.recommendations, 0);
+  assert.equal(f.feeReads.headers, 1);
+});
+
+test('legacy smart-account fee checks reject malformed base fees and account changes during the header read', async () => {
+  for (const changeContext of [false, true]) {
+    const f = fixture();
+    f.feeReads.baseFee = changeContext ? '0x1' : 'invalid';
+    let current = true;
+    const read = f.rawProvider.send;
+    f.rawProvider.send = async (method, params) => {
+      const result = await read(method, params);
+      if (changeContext && method === 'eth_getBlockByNumber') current = false;
+      return result;
+    };
+    await assert.rejects(prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+      executions: [{ target: f.account.address, value: '0', data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending,
+      feeOverrides: { gasPrice: '2' }, async selectGasPayer() { assert.fail('Invalid fee or context reached payer selection'); }, assertCurrent() { assert(current, 'account changed'); } }),
+    changeContext ? /account changed/ : /Invalid base fee/);
+    assert.equal(f.feeReads.recommendations, 0);
+  }
+});
+
+test('complete smart-account fee overrides remain bounded and internally consistent', async () => {
+  for (const [maxFeePerGas, maxPriorityFeePerGas] of [
+    ['-1', '0'], ['1', '2'], [(BigInt(1) << BigInt(128)).toString(), '1'], ['1.5', '0'], ['bad', '0'],
+  ]) {
+    const f = fixture();
+    await assert.rejects(prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+      executions: [{ target: f.account.address, value: '0', data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending,
+      feeOverrides: { maxFeePerGas, maxPriorityFeePerGas }, async selectGasPayer() { assert.fail('Invalid fee reached payer selection'); }, assertCurrent() {} }));
+    assert.equal(f.feeReads.recommendations, 0);
+  }
+});
+
 test('shared ECDSA operation signing rejects an owner change before releasing the signature', async () => {
   const f = fixture(); let current = true;
   const signer = new Wallet('0x' + '01'.padStart(64, '0'));
@@ -287,12 +385,30 @@ function payerSelectionFixture() {
   return { wallet, watched, signer, preferred };
 }
 
-test('funded watch-only imports are excluded before selecting a real payer', async () => {
+test('watch-only imports are excluded and cold selection uses HD zero without probing unrelated signers', async () => {
   const f = payerSelectionFixture();
   const payer = await selectSmartAccountGasPayer(f.wallet, {}, f.preferred);
-  assert.deepEqual(payer, { id: f.signer.id, type: 'Imported', address: f.signer.address });
+  assert.deepEqual(payer, { id: 0, type: 'HDAccount', address: owner });
   assert.deepEqual(getSmartAccountGasPayerCandidates(f.wallet, f.preferred).map(candidate => candidate.address),
     [owner, f.signer.address]);
+});
+
+test('explicit gas payer selection never queries other imported addresses', async () => {
+  const f = payerSelectionFixture();
+  const reads: string[] = [];
+  const selected = { id: f.signer.id, type: 'Imported' as KeyringAccountType, address: f.signer.address };
+  const provider = {
+    async getBalance(address: string) { reads.push(address); return 0; },
+    async getFeeData() { return { gasPrice: 1 }; },
+    async estimateGas(tx: { from: string }) { reads.push(tx.from); return 21000; },
+  };
+  assert.deepEqual(await selectSmartAccountGasPayer(f.wallet, provider, selected), selected);
+  assert.deepEqual(reads, []);
+  await assert.rejects(selectSmartAccountGasPayer(f.wallet, provider, selected, { to: owner }), /PALI_NATIVE_GAS_REQUIRED/);
+  assert.deepEqual(reads, [selected.address, selected.address]);
+  const withoutDefault = { ...f.wallet, accounts: { ...f.wallet.accounts, HDAccount: {} } };
+  await assert.rejects(selectSmartAccountGasPayer(withoutDefault, provider), /local EVM account is required/);
+  assert.deepEqual(reads, [selected.address, selected.address]);
 });
 
 test('a pinned watch-only payer is rejected instead of switching after consent', async () => {
@@ -321,13 +437,10 @@ test('portable deployment preserves prefund acknowledgement if handleOps submiss
     await args[4]?.onBroadcast?.({ hash: '0x' + 'ab'.repeat(32) });
     return { hash: '0x' + 'ab'.repeat(32), async wait() {} };
   };
+  const host = await nativeSubmitHost(f, prepared, send);
   await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' }, {
-    chainId, provider: f.provider, pending: f.pending, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
-    getExecutionContext: () => ({ accountId: 0, userOperation: prepared.userOperation }),
-    getSmartAccountById: () => ({ account: f.account, metadata: f.metadata }),
-    getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [], assertGasTankCoversTransaction: async () => BigNumber.from(100000),
-    ensureDeploymentPrefund: (...args) => ensureSmartAccountDeploymentPrefund(f.provider, send, ...args),
-    sendTransaction: send, invalidateMetadata() {},
+    ...host,
+    ensureDeploymentPrefund: (...args) => ensureSmartAccountDeploymentPrefund(host.provider, send, ...args),
   }, () => undefined), (error: any) => error.transactionNotBroadcast === false && error.transactionHash === undefined);
   assert.equal(sends.length, 2);
 });

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AccountPortfolioController } from '../src/portfolio/accountPortfolio.ts';
 import { createPortfolioFilter } from '../src/portfolio/portfolioFilter.ts';
+import { NativeBalanceMethodError } from '../src/platformRpc.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import type { PublicCustodySource } from '../src/portfolio/nativePortfolio.ts';
 import type { NotificationChoice } from '../src/notifications/choices.ts';
@@ -22,6 +23,8 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
   let tokenQuoteHeld: Promise<void> | undefined;
   let rejectPrices = false, includeCollectible = false, activeQuotes = 0, maximumQuotes = 0;
   const unavailableNetworks = new Set<string>();
+  const wrongChains = new Set<string>();
+  const failedNativeMethods = new Set<string>();
   const quoteSignals: AbortSignal[] = [];
   const price = async (kind: 'native' | 'token', choice: NotificationChoice, currency: string, signal: AbortSignal) => {
     prices.push(`${kind}:${choice.scope.network.id}`); quoteSignals.push(signal);
@@ -35,7 +38,7 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
   const preference = createPortfolioFilter({ get: async () => saved, set: async value => { saved = value; } });
   const make = (filter = preference) => {
     const model = new AccountPortfolioController({ source, choices: () => choices, filter,
-      reader: { async readBalance(network, address) { reads.push(`${network}:${address}`); await held; if (unavailableNetworks.has(network)) throw Error('Network offline'); return { chainId: Number(getNativeNetwork(network).chainId), units: '1000000000000000000' }; } },
+      reader: { async readBalance(network, address) { reads.push(`${network}:${address}`); await held; if (unavailableNetworks.has(network)) throw Error('Network offline'); if (failedNativeMethods.has(network)) throw new NativeBalanceMethodError(); return { chainId: wrongChains.has(network) ? 999 : Number(getNativeNetwork(network).chainId), units: '1000000000000000000' }; } },
       async assets(scope, _signal, check) { check(); tokens.push(`${scope.network.id}:${scope.accountId}`); return {
         tokens: Array.from({ length: tokenCount }, (_, index) => ({ metadata: { contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`, name: 'Saved token', symbol: 'TOK', decimals: tokenDecimals }, status: 'available' as const, units: tokenDecimals === 255 ? '1' : '250' })),
         collectibles: includeCollectible ? [{ collectible: { contractAddress: '0x' + 'ab'.repeat(20), tokenStandard: 'ERC-721' as const }, status: 'available' as const, units: '1' }] : [] }; },
@@ -49,7 +52,9 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
     holdQuote(value: Promise<void>) { quoteHeld = value; },
     holdTokenQuote(value: Promise<void>) { tokenQuoteHeld = value; },
     rejectPrices() { rejectPrices = true; },
+    rejectNativeBalance(id: string) { failedNativeMethods.add(id); },
     offline(id: string) { unavailableNetworks.add(id); },
+    wrongChain(id: string) { unavailableNetworks.delete(id); wrongChains.add(id); },
     includeCollectible() { includeCollectible = true; },
     select(index: number) { selected = index; revision++; for (const listener of listeners) listener(); },
     lock() { phase = 'locked'; revision++; for (const listener of listeners) listener(); } };
@@ -166,6 +171,36 @@ test('currency changes clear old quotes before displaying the new currency', asy
     assert.equal(model.getSnapshot().knownValue, null);
     assert.equal(model.getSnapshot().currency, 'eur');
     await settle(); assert.equal(model.getSnapshot().knownValue, 30);
+  } finally { stop(); }
+});
+
+test('currency-only changes preserve all observed chain rows and request only quotes', async () => {
+  const f = fixture('ethereum', ['ethereum'], 2, 20), model = f.make(), stop = model.connect();
+  try {
+    await settle();
+    const observed = model.getSnapshot().rows.map(row => ({ units: row.units, updatedAt: row.updatedAt, tokens: row.tokens.map(token => token.units) }));
+    const chainCalls = [f.reads.length, f.tokens.length];
+    f.prices.length = 0;
+    model.setCurrency('eur'); await settle();
+    assert.deepEqual([f.reads.length, f.tokens.length], chainCalls);
+    assert.equal(f.prices.length, 21);
+    assert.deepEqual(model.getSnapshot().rows.map(row => ({ units: row.units, updatedAt: row.updatedAt, tokens: row.tokens.map(token => token.units) })), observed);
+    f.prices.length = 0;
+    model.setCurrency(null); await settle();
+    assert.deepEqual([f.reads.length, f.tokens.length], chainCalls);
+    assert.equal(f.prices.length, 0);
+    assert.equal(model.getSnapshot().rows[0]?.price, null);
+  } finally { stop(); }
+});
+
+test('changing fiat during a balance request does not retire the chain observation', async () => {
+  const f = fixture(), held = Promise.withResolvers<void>(); f.hold(held.promise);
+  const model = f.make(), stop = model.connect();
+  try {
+    await settle(); model.setCurrency('eur'); held.resolve(); await settle();
+    assert.equal(f.reads.length, 1);
+    assert.equal(model.getSnapshot().rows[0]?.status, 'available');
+    assert.equal(model.getSnapshot().rows[0]?.price, 20);
   } finally { stop(); }
 });
 
@@ -320,4 +355,85 @@ test('account changes abort held quotes and old results cannot price the new own
     held.resolve(); await settle();
     assert.strictEqual(model.getSnapshot(), current);
   } finally { held.resolve(); stop(); }
+});
+
+test('a verified native balance method error retains healthy token holdings and partial value', async () => {
+  const f = fixture(); f.rejectNativeBalance('ethereum');
+  const model = f.make(), stop = model.connect();
+  try {
+    await settle();
+    const snapshot = model.getSnapshot();
+    assert.equal(snapshot.rows[0]?.status, 'error');
+    assert.equal(snapshot.rows[0]?.units, null);
+    assert.equal(snapshot.rows[0]?.tokens[0]?.units, '250');
+    assert.equal(snapshot.knownValue, 5);
+    assert.equal(snapshot.partial, true);
+  } finally { stop(); }
+});
+
+test('last known balances survive an outage and clear on a confirmed endpoint chain mismatch', async () => {
+  const f = fixture('ethereum', ['ethereum']), model = f.make(), stop = model.connect();
+  try {
+    await settle();
+    const original = model.getSnapshot().rows[0]!;
+    f.offline('ethereum'); await model.refresh();
+    const stale = model.getSnapshot().rows[0]!;
+    assert.equal(stale.status, 'error');
+    assert.equal(stale.units, original.units);
+    assert.equal(stale.updatedAt, original.updatedAt);
+    assert.equal(stale.tokens[0]?.status, 'error');
+    assert.equal(stale.tokens[0]?.units, original.tokens[0]?.units);
+    assert.equal(model.getSnapshot().knownValue, null);
+    f.wrongChain('ethereum'); await model.refresh();
+    const wrongChain = model.getSnapshot().rows[0]!;
+    assert.equal(wrongChain.status, 'error');
+    assert.equal(wrongChain.units, null);
+    assert.equal(wrongChain.updatedAt, null);
+    assert.deepEqual(wrongChain.tokens, []);
+    assert.equal(f.tokens.length, 1);
+  } finally { stop(); }
+});
+
+test('a failed portfolio filter stays unavailable across source updates and explicit Refresh retries only that prerequisite', async () => {
+  const f = fixture(); let loads = 0, failed = true;
+  const model = f.make({ async load() { loads++; if (failed) throw Error('Preference unavailable'); return 'base'; }, async save() {} });
+  const stop = model.connect();
+  try {
+    model.getSnapshot(); await settle();
+    assert.equal(loads, 1); assert.equal(model.getSnapshot().status, 'unavailable');
+    f.select(0); await settle(); assert.equal(model.getSnapshot().status, 'unavailable');
+    assert.deepEqual(f.reads, []); assert.deepEqual(f.tokens, []); assert.deepEqual(f.prices, []);
+    failed = false; await Promise.all([model.refresh(), model.refresh()]); await settle();
+    assert.equal(loads, 2); assert.equal(model.getSnapshot().filter, 'base'); assert.equal(model.getSnapshot().status, 'ready');
+    assert.deepEqual(f.reads, [`base:${f.accounts[0]!.address}`]); assert.deepEqual(f.tokens, ['base:hd:60:0']);
+  } finally { stop(); }
+});
+
+test('pending portfolio preference reads are joined and never broaden IO during an account change', async () => {
+  const f = fixture(), pending = Promise.withResolvers<string>(); let loads = 0;
+  const model = f.make({ load() { loads++; return pending.promise; }, async save() {} }), stop = model.connect();
+  try {
+    const retry = model.refresh(); f.select(14); await settle();
+    assert.equal(loads, 1); assert.equal(model.getSnapshot().status, 'loading');
+    assert.deepEqual(f.reads, []); assert.deepEqual(f.tokens, []); assert.deepEqual(f.prices, []);
+    pending.resolve('base'); await retry; await settle();
+    assert.equal(loads, 1); assert.deepEqual(f.reads, [`base:${f.accounts[14]!.address}`]);
+    assert.equal(model.getSnapshot().filter, 'base');
+  } finally { stop(); }
+});
+
+test('repeated preference failures remain retryable and a retired retry cannot replace a reconnected selection', async () => {
+  const f = fixture(); let load: () => Promise<string> = async () => { throw Error('Preference unavailable'); }, loads = 0;
+  const model = f.make({ load() { loads++; return load(); }, async save() {} });
+  let stop = model.connect();
+  try {
+    await settle(); await model.refresh(); f.select(0); await settle();
+    assert.equal(loads, 2); assert.equal(model.getSnapshot().status, 'unavailable'); assert.deepEqual(f.reads, []);
+    const held = Promise.withResolvers<string>(); load = () => held.promise;
+    const retired = model.refresh(); await settle(); stop();
+    load = async () => 'base'; stop = model.connect(); await settle();
+    held.resolve('all'); await retired; await settle();
+    assert.equal(model.getSnapshot().filter, 'base');
+    assert.deepEqual(f.reads, [`base:${f.accounts[0]!.address}`]);
+  } finally { stop(); }
 });

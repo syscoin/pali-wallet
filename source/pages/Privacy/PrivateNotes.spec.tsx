@@ -418,6 +418,7 @@ it('opens direct withdrawal from a verified note for a signer with an empty reci
 it('keeps a reserved withdrawal out of balance and checks a saved relay job only on request', async () => {
   const saved = {
     ...note,
+    phase: 'waiting',
     withdrawal: {
       mode: 'relayed',
       phase: 'submitted',
@@ -531,6 +532,78 @@ it.each([
   }
 );
 
+it.each([
+  ['direct', 'unknown'],
+  ['direct', 'submitted'],
+  ['relayed', 'unknown'],
+  ['relayed', 'submitted'],
+])(
+  'preserves verified %s %s history and opens the normal withdrawal form',
+  async (mode, phase) => {
+    const saved = {
+      ...note,
+      withdrawal: {
+        mode,
+        phase,
+        transactionHash: depositHash,
+        ...(mode === 'relayed' ? { jobId: depositIntentId } : {}),
+      },
+    };
+    mockState.vault.accounts.Imported[0].xprv = 'synthetic-withdrawal-signer';
+    mockEmitter.mockResolvedValue({ notes: [saved] });
+    render(<PrivateNotes />);
+    expect(
+      await screen.findByText(en.privacy.notePhase.verified)
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        phase === 'unknown'
+          ? en.privacy.withdrawal.statusUnknown
+          : en.privacy.withdrawal.statusPending
+      )
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.withdrawal.open })
+    );
+    expect(screen.getByLabelText(en.privacy.withdrawal.recipient)).toHaveValue(
+      ''
+    );
+    expect(mockEmitter.mock.calls).toEqual([
+      [['privateVault', 'getNotes'], [], 10000, false],
+    ]);
+  }
+);
+
+it.each(['prepared', 'waiting', 'not-found', 'spent'])(
+  'does not promote %s notes with withdrawal history to verified or expose Withdraw',
+  async (phase) => {
+    mockEmitter.mockResolvedValue({
+      notes: [
+        {
+          ...note,
+          phase,
+          withdrawal: {
+            mode: 'direct',
+            phase: 'unknown',
+            transactionHash: depositHash,
+          },
+        },
+      ],
+    });
+    render(<PrivateNotes />);
+    if (phase === 'spent')
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Reported spent notes (1)' })
+      );
+    expect(
+      await screen.findByText(mockTranslate(`privacy.notePhase.${phase}`))
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: en.privacy.withdrawal.open })
+    ).not.toBeInTheDocument();
+  }
+);
+
 it('projects only public withdrawal metadata and validates its hash and job ID', () => {
   const value = {
     ...note,
@@ -545,7 +618,6 @@ it('projects only public withdrawal metadata and validates its hash and job ID',
   };
   expect(readPrivateNote(value)).toEqual({
     ...note,
-    phase: 'waiting',
     withdrawal: {
       mode: 'relayed',
       phase: 'submitted',
@@ -771,6 +843,23 @@ it.each([
     (en.privacy as any)[key]
   );
   expect(screen.queryByText(code)).not.toBeInTheDocument();
+});
+
+it('directs an already archived import to restore it from Archived notes', async () => {
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getNotes') return { notes: [] };
+    throw new Error('privacy_note_archived');
+  });
+  render(<PrivateNotes />);
+  const input = await openImport();
+  fireEvent.change(input, { target: { value: 'typed-private-note' } });
+  fireEvent.click(screen.getByRole('button', { name: en.privacy.importNote }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'This note is archived. Open Archived notes and restore it to use it again.'
+  );
+  expect(input).not.toHaveAttribute('aria-invalid');
+  expect(screen.queryByText('privacy_note_archived')).not.toBeInTheDocument();
+  expect(mockCopy).not.toHaveBeenCalled();
 });
 
 it('associates an invalid note error with the import field and clears it on edit', async () => {
@@ -1090,74 +1179,24 @@ it('projects only safe metadata fields and rejects invalid phases or blocks', ()
   ).toMatchObject({ phase: 'prepared', amount: '0.1' });
 });
 
-it('opens a separate password review for a restored note before exposing withdrawal', async () => {
-  let reviewed = false;
-  mockEmitter.mockImplementation(async ([, method]) => {
-    if (method === 'getNotes')
-      return {
-        notes: [
-          {
-            ...note,
-            phase: reviewed ? 'verified' : 'waiting',
-            restoration: reviewed ? 'reviewed' : 'review-required',
-          },
-        ],
-      };
-    if (method === 'reviewRestoredNote') {
-      reviewed = true;
-      return undefined;
-    }
-    throw new Error('Unexpected call');
-  });
-  render(<PrivateNotes />);
-  fireEvent.click(
-    await screen.findByRole('button', { name: en.privacy.restoreReview.action })
-  );
-  expect(
-    screen.queryByRole('button', { name: en.privacy.withdrawal.open })
-  ).not.toBeInTheDocument();
-  expect(screen.getByText(en.privacy.restoreReview.disclosure)).toBeVisible();
-  fireEvent.change(screen.getByLabelText(en.privacy.restoreReview.password), {
-    target: { value: 'synthetic-password' },
-  });
-  fireEvent.click(
-    screen.getByRole('button', { name: en.privacy.restoreReview.confirm })
-  );
-  await screen.findByRole('button', { name: en.privacy.withdrawal.open });
-  expect(
-    mockEmitter.mock.calls.filter(
-      ([methods]) => methods[1] === 'reviewRestoredNote'
-    )
-  ).toEqual([
-    [
-      ['privateVault', 'reviewRestoredNote'],
-      [note.id, 'synthetic-password'],
-      120000,
-      false,
-    ],
-  ]);
-  expect(
-    mockEmitter.mock.calls.every(([methods]) =>
-      ['getNotes', 'reviewRestoredNote'].includes(methods[1])
-    )
-  ).toBe(true);
-});
-
-it('explains imported withdrawal uncertainty without offering restored-note review', async () => {
-  mockEmitter.mockResolvedValue({
-    notes: [{ ...note, phase: 'waiting', restoration: 'withdrawal-pending' }],
-  });
-  render(<PrivateNotes />);
-  expect(
-    await screen.findByText(en.privacy.restoreReview.pending)
-  ).toBeVisible();
-  expect(
-    screen.queryByRole('button', { name: en.privacy.restoreReview.action })
-  ).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole('button', { name: en.privacy.withdrawal.open })
-  ).not.toBeInTheDocument();
-});
+it.each(['review-required', 'withdrawal-pending'] as const)(
+  'allows a verified imported note with %s provenance to reach normal withdrawal confirmation',
+  async (restoration) => {
+    mockEmitter.mockResolvedValue({ notes: [{ ...note, restoration }] });
+    render(<PrivateNotes />);
+    expect(
+      await screen.findByRole('button', { name: en.privacy.withdrawal.open })
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: en.privacy.restoreReview.action })
+    ).not.toBeInTheDocument();
+    if (restoration === 'withdrawal-pending')
+      expect(screen.getByText(en.privacy.restoreReview.pending)).toBeVisible();
+    expect(
+      mockEmitter.mock.calls.every(([methods]) => methods[1] === 'getNotes')
+    ).toBe(true);
+  }
+);
 
 it('quietly polls saved-note status every 15 seconds without clearing displayed metadata', async () => {
   jest.useFakeTimers();
@@ -1373,7 +1412,9 @@ it('keeps pending withdrawals visible and retains an unverified reported-spent n
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
-  expect(await screen.findByText('Removed: 0. Still saved: 2.')).toBeVisible();
+  expect(
+    await screen.findByText('Archived: 0. Still active: 2.')
+  ).toBeVisible();
   expect(screen.getByText(en.privacy.withdrawal.statusPending)).toBeVisible();
   fireEvent.click(
     screen.getByRole('button', { name: 'Reported spent notes (1)' })
@@ -1417,7 +1458,9 @@ it('does not restore a cleared note from a list request started before the clear
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
-  expect(await screen.findByText('Removed: 1. Still saved: 0.')).toBeVisible();
+  expect(
+    await screen.findByText('Archived: 1. Still active: 0.')
+  ).toBeVisible();
   await waitFor(() => expect(reads).toBe(3));
   await act(async () => oldRead.resolve({ notes: [saved] }));
   expect(
@@ -1491,7 +1534,7 @@ it.each(['resolve', 'reject'] as const)(
       screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
     );
     expect(
-      await screen.findByText('Removed: 1. Still saved: 0.')
+      await screen.findByText('Archived: 1. Still active: 0.')
     ).toBeVisible();
     await act(async () => {
       if (outcome === 'resolve') resolveStatus({ claimedStatus: 'CONFIRMED' });
@@ -1614,4 +1657,50 @@ it('explains unsupported development data without showing an empty vault or over
   expect(
     screen.queryByText(en.privacy.notesUnsupported)
   ).not.toBeInTheDocument();
+});
+
+it('keeps archived-only notes outside the active balance and enables their encrypted bundle export after opening the separate archive', async () => {
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getNotes') return { notes: [] };
+    if (method === 'getArchivedNotes')
+      return {
+        limit: 512,
+        storedBytes: 1234,
+        bundleLimitBytes: 4194304,
+        notes: [
+          {
+            id: note.id,
+            poolId: note.poolId,
+            amount: note.amount,
+            createdAt: note.createdAt,
+            archivedAt: 5678,
+          },
+        ],
+      };
+    throw Error('Unexpected archive operation');
+  });
+  render(<PrivateNotes />);
+  expect(await screen.findByText(en.privacy.noNotes)).toBeVisible();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  fireEvent.click(
+    screen.getByRole('button', { name: mockTranslate('privacy.archive.title') })
+  );
+  expect(
+    await screen.findByRole('button', { name: en.privacy.revealNote })
+  ).toBeVisible();
+  expect(
+    screen.getByText(mockTranslate('privacy.verifiedBalance', { amount: '0' }))
+  ).toBeVisible();
+  expect(
+    screen.queryByText(en.privacy.notePhase.verified)
+  ).not.toBeInTheDocument();
+  const exports = screen.getAllByRole('button', {
+    name: en.privacy.bundle.exportTitle,
+  });
+  expect(exports).toHaveLength(2);
+  exports.forEach((button) => expect(button).toBeEnabled());
+  expect(mockEmitter.mock.calls.map(([path]) => path[1])).toEqual([
+    'getNotes',
+    'getArchivedNotes',
+  ]);
 });

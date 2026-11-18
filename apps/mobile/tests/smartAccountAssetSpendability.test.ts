@@ -11,6 +11,7 @@ import {
   paliSmartAccountInterface,
 } from '../../../source/utils/smartAccount/contracts.ts';
 import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
+import { getAddress } from 'ethers/address';
 import { EvmAssetStateError } from '../../../source/shared/evmAssetState.ts';
 
 const owner = '0x1111111111111111111111111111111111111111';
@@ -368,4 +369,93 @@ test('cancellation after a pending read cannot release a successful asset check'
     f.state.current = false;
   });
   await assert.rejects(run(f, operation([nftCall('1')])), /cancelled/);
+});
+
+for (const expected of [0, 18]) test(`wallet-authored Smart ERC20 compares reviewed precision ${expected}`, async () => {
+  const f = fixture('ERC20');
+  const request = {
+    provider: f.provider,
+    chainId: 1,
+    userOperation: operation([{ target: token, value: '0', data: encodeErc20Transfer(recipient, '1') }]),
+    assertCurrent: f.check,
+    expectedErc20Transfers: [{ contractAddress: token, recipient, amountUnits: '1', decimals: expected }],
+  };
+  if (expected === 18) await assertSmartAccountAssetSpendability(request);
+  else await assert.rejects(assertSmartAccountAssetSpendability(request), { code: 'REVIEW_REQUIRED' });
+});
+
+test('Smart classification uses one settled batch and preserves the exact ordered execution', async () => {
+  const f = fixture('ERC20');
+  const requests: { method: string; params: unknown[] }[][] = [];
+  const provider = { ...f.provider, async readMany(batch: { method: string; params: unknown[] }[]) {
+    requests.push(batch);
+    return Promise.allSettled(batch.map(request => f.provider.send(request.method, request.params)));
+  } };
+  const calls = Array.from({ length: 20 }, (_, index) => ({
+    target: '0x' + (index + 100).toString(16).padStart(40, '0'), value: '0', data: encodeErc20Transfer(recipient, '1'),
+  }));
+  const op = operation(calls);
+  await assertSmartAccountAssetSpendability({ provider, chainId: 1, userOperation: op, assertCurrent: f.check });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]!.length, 40);
+  assert.deepEqual(requests[0], calls.flatMap(call => [
+    { method: 'eth_call', params: [{ to: getAddress(call.target), data: '0x70a08231' + owner.slice(2).padStart(64, '0') }, 'pending'] },
+    { method: 'eth_call', params: [{ to: getAddress(call.target), data: '0x313ce567' }, 'pending'] },
+  ]));
+  const simulations = f.calls.filter(call => call.params[0]?.from);
+  assert.equal(simulations.length, 1);
+  assert.equal(simulations[0]!.params[0].data, op.callData);
+});
+
+test('Smart classification deduplicates repeated observations while keeping the ordered batch', async () => {
+  const f = fixture('ERC20');
+  const batches: { method: string; params: unknown[] }[][] = [];
+  const provider = { ...f.provider, async readMany(requests: { method: string; params: unknown[] }[]) {
+    batches.push(requests);
+    return Promise.allSettled(requests.map(request => f.provider.send(request.method, request.params)));
+  } };
+  const op = operation([1, 2].map(amount => ({ target: token, value: '0', data: encodeErc20Transfer(recipient, String(amount)) })));
+  await assertSmartAccountAssetSpendability({ provider, chainId: 1, userOperation: op, assertCurrent: f.check });
+  assert.equal(batches.length, 1);
+  assert.equal(batches[0]!.length, 2);
+  assert.equal(f.calls.filter(call => call.params[0]?.from).length, 1);
+  assert.equal(f.calls.find(call => call.params[0]?.from)!.params[0].data, op.callData);
+});
+
+for (const failure of ['revert', 'transport', 'cancel'] as const)
+test(`Smart classification preserves independent member ${failure}`, async () => {
+  const f = fixture('ERC20');
+  const transportError = new Error('transport unavailable');
+  const provider = { ...f.provider, async readMany(requests: { method: string; params: unknown[] }[]) {
+    const results = await Promise.allSettled(requests.map(request => f.provider.send(request.method, request.params)));
+    if (failure === 'cancel') f.state.current = false;
+    else results[1] = { status: 'rejected', reason: failure === 'revert' ? reverted() : transportError };
+    return results;
+  } };
+  const run = () => assertSmartAccountAssetSpendability({ provider, chainId: 1,
+    userOperation: operation([{ target: token, value: '0', data: encodeErc20Transfer(recipient, '1') }]), assertCurrent: f.check });
+  if (failure === 'revert') await run();
+  else await assert.rejects(run(), failure === 'cancel' ? /cancelled/ : error => error === transportError);
+  assert.equal(f.calls.some(call => call.params[0]?.from), false);
+  assert(f.calls.some(call => call.params[0]?.data.startsWith('0x70a08231')));
+});
+
+for (const field of ['recipient', 'amountUnits', 'contractAddress'] as const)
+test(`Smart expected token intent must match the exact ${field}`, async () => {
+  const f = fixture('ERC20');
+  const expected = { contractAddress: token, recipient, amountUnits: '1', decimals: 18,
+    [field]: field === 'amountUnits' ? '2' : owner };
+  await assert.rejects(assertSmartAccountAssetSpendability({ provider: f.provider, chainId: 1,
+    userOperation: operation([{ target: token, value: '0', data: encodeErc20Transfer(recipient, '1') }]),
+    expectedErc20Transfers: [expected], assertCurrent: f.check }), { code: 'REVIEW_REQUIRED' });
+  assert.equal(f.calls.length, 0);
+});
+
+test('conflicting precision expectations for the same exact call fail before reading', async () => {
+  const f = fixture('ERC20');
+  await assert.rejects(assertSmartAccountAssetSpendability({ provider: f.provider, chainId: 1,
+    userOperation: operation([{ target: token, value: '0', data: encodeErc20Transfer(recipient, '1') }]),
+    expectedErc20Transfers: [0, 18].map(decimals => ({ contractAddress: token, recipient, amountUnits: '1', decimals })),
+    assertCurrent: f.check }), { code: 'INVALID_INPUT' });
+  assert.equal(f.calls.length, 0);
 });

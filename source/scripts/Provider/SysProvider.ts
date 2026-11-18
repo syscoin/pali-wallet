@@ -1,4 +1,5 @@
 import { projectDappSyscoinTransactions } from '../../shared/dappSyscoinReads.ts';
+import { projectWalletAccount } from '../../shared/dappWalletReads';
 import { sentryDappCapabilities } from '../../shared/sentryDappCapabilities.ts';
 // isValidSYSAddress removed - validation should use message passing to background
 import { getController } from 'scripts/Background';
@@ -108,7 +109,7 @@ export const SysProvider = (host: string) => {
       return sentryDappCapabilities();
     },
     // Connection & Account methods
-    getAccount,
+    getAccount: () => projectWalletAccount(getAccount()),
     isConnected,
     getNetwork,
     getPublicKey,

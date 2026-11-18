@@ -22,6 +22,10 @@ import {
   getPaliEntryPointAddress,
   paliSmartAccountInterface,
 } from './contracts.ts';
+import {
+  snapshotSmartAccountExpectedErc20Transfers,
+  type SmartAccountExpectedErc20Transfer,
+} from './erc20Transfer.ts';
 import { assertSmartAccountNativeSpendability } from './nativeSpendability.ts';
 
 export async function assertSmartAccountSpendability(
@@ -41,15 +45,20 @@ export async function assertSmartAccountAssetSpendability({
   provider,
   chainId,
   userOperation,
+  expectedErc20Transfers,
   assertCurrent,
 }: {
   assertCurrent(): void;
   chainId: number;
+  expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   provider: any;
   userOperation: SmartAccountPackedUserOperation;
 }): Promise<void> {
   const check = () => assertSynchronousEvmFeeGuard(assertCurrent);
   check();
+  const expected = snapshotSmartAccountExpectedErc20Transfers(
+    expectedErc20Transfers
+  );
   const operation = { ...userOperation },
     from = getAddress(operation.sender);
   const [mode, payload] = paliSmartAccountInterface.decodeFunctionData(
@@ -92,6 +101,25 @@ export async function assertSmartAccountAssetSpendability({
       (item) =>
         item.decoded && (!item.decoded.from || item.decoded.from === from)
     );
+  const expectedByCall = new Map<
+    (typeof calls)[number],
+    SmartAccountExpectedErc20Transfer
+  >();
+  for (const transfer of expected ?? []) {
+    const match = candidates.find(
+      ({ call, decoded }) =>
+        call.to === transfer.contractAddress &&
+        call.value === '0' &&
+        decoded?.method === 'transfer' &&
+        decoded.recipient === transfer.recipient &&
+        decoded.items[0]?.units === transfer.amountUnits
+    );
+    if (!match) throw new EvmAssetStateError('REVIEW_REQUIRED');
+    const previous = expectedByCall.get(match.call);
+    if (previous && previous.decimals !== transfer.decimals)
+      throw new EvmAssetStateError('INVALID_INPUT');
+    expectedByCall.set(match.call, transfer);
+  }
   if (!candidates.length) return;
   await provider.verifyConfiguredChainId(true);
   check();
@@ -101,39 +129,92 @@ export async function assertSmartAccountAssetSpendability({
     check();
     return value;
   };
-  const probe = async (to: string, data: string) => {
-    try {
-      return await read('eth_call', [{ to, data }, 'pending']);
-    } catch (error) {
-      check();
-      if (
-        normalizeNftExecutionRevert(error, { to, data }) ||
-        (isCallException(error) &&
-          error.action === 'call' &&
-          typeof error.data === 'string' &&
-          error.data.length <= 8194 &&
-          isHexString(error.data, true))
-      )
-        return null;
-      throw error;
+  const requests: Array<{
+    method: 'eth_call';
+    params: [{ data: string; to: string }, 'pending'];
+  }> = [];
+  const probeIndices = new Map<string, number>();
+  const addProbe = (to: string, data: string) => {
+    const key = to.toLowerCase() + data;
+    const existing = probeIndices.get(key);
+    if (existing !== undefined) return existing;
+    const index = requests.length;
+    requests.push({ method: 'eth_call', params: [{ to, data }, 'pending'] });
+    probeIndices.set(key, index);
+    return index;
+  };
+  const classified = candidates.map(({ call, decoded }) => {
+    const possibleNft =
+      decoded!.standard === 'ERC-721' ||
+      decoded!.standard === 'ERC-1155' ||
+      decoded!.method === 'transferFrom';
+    const type =
+      decoded!.standard === 'ERC-1155'
+        ? ('ERC-1155' as const)
+        : ('ERC-721' as const);
+    const nft = possibleNft
+      ? addProbe(
+          call.to,
+          '0x01ffc9a7' +
+            (type === 'ERC-1155' ? 'd9b67a26' : '80ac58cd').padEnd(64, '0')
+        )
+      : undefined;
+    const erc20 =
+      decoded!.standard === 'Unknown' && decoded!.method === 'transfer'
+        ? ([
+            addProbe(
+              call.to,
+              '0x70a08231' + from.slice(2).toLowerCase().padStart(64, '0')
+            ),
+            addProbe(call.to, '0x313ce567'),
+          ] as const)
+        : undefined;
+    return { call, decoded: decoded!, type, nft, erc20 };
+  });
+  const results: PromiseSettledResult<unknown>[] = [];
+  if (requests.length) {
+    if (typeof provider.readMany === 'function') {
+      results.push(...(await provider.readMany(requests)));
+    } else {
+      for (let offset = 0; offset < requests.length; offset += 4)
+        results.push(
+          ...(await Promise.allSettled(
+            requests
+              .slice(offset, offset + 4)
+              .map((request) => read(request.method, request.params))
+          ))
+        );
     }
+    check();
+    if (results.length !== requests.length)
+      throw new EvmAssetStateError('INVALID_RESPONSE');
+  }
+  const probeResult = (index: number) => {
+    const result = results[index];
+    if (!result) throw new EvmAssetStateError('INVALID_RESPONSE');
+    if (result.status === 'fulfilled') return result.value;
+    const error = result.reason;
+    const call = requests[index]!.params[0];
+    if (
+      normalizeNftExecutionRevert(error, call) ||
+      (isCallException(error) &&
+        error.action === 'call' &&
+        typeof error.data === 'string' &&
+        error.data.length <= 8194 &&
+        isHexString(error.data, true))
+    )
+      return null;
+    throw error;
   };
   const known: Array<{
     assets: EvmTransferAsset[];
     balance?: unknown;
     call: (typeof calls)[number];
   }> = [];
-  for (const { call, decoded } of candidates) {
-    if (!decoded) continue;
-    const possibleNft =
-      decoded.standard === 'ERC-721' ||
-      decoded.standard === 'ERC-1155' ||
-      decoded.method === 'transferFrom';
+  for (const { call, decoded, type, nft: nftProbe, erc20 } of classified) {
     let nft: 'ERC-721' | 'ERC-1155' | undefined;
-    if (possibleNft) {
-      const type = decoded.standard === 'ERC-1155' ? 'ERC-1155' : 'ERC-721';
-      const id = type === 'ERC-1155' ? 'd9b67a26' : '80ac58cd';
-      const result = await probe(call.to, '0x01ffc9a7' + id.padEnd(64, '0'));
+    if (nftProbe !== undefined) {
+      const result = probeResult(nftProbe);
       if (word(result) && BigInt(result as string) === BigInt(1)) nft = type;
     }
     if (nft) {
@@ -157,19 +238,24 @@ export async function assertSmartAccountAssetSpendability({
       decoded.standard === 'Unknown' &&
       decoded.method === 'transfer'
     ) {
-      const [balance, decimals] = await Promise.all([
-        probe(
-          call.to,
-          '0x70a08231' + from.slice(2).toLowerCase().padStart(64, '0')
-        ),
-        probe(call.to, '0x313ce567'),
-      ]);
-      if (!word(decimals)) continue;
-      try {
-        parseErc20Decimals(BigInt(decimals as string));
-      } catch {
+      const balance = probeResult(erc20![0]);
+      const decimals = probeResult(erc20![1]);
+      const expectedTransfer = expectedByCall.get(call);
+      if (!word(decimals)) {
+        if (expectedTransfer) throw new EvmAssetStateError('REVIEW_REQUIRED');
         continue;
       }
+      let precision: number;
+      try {
+        precision = parseErc20Decimals(BigInt(decimals as string));
+      } catch {
+        if (expectedTransfer) throw new EvmAssetStateError('REVIEW_REQUIRED');
+        continue;
+      }
+      if (expectedTransfer && precision !== expectedTransfer.decimals)
+        throw new EvmAssetStateError('REVIEW_REQUIRED');
+      if (expectedTransfer && !word(balance))
+        throw new EvmAssetStateError('INVALID_RESPONSE');
       if (word(balance) && decoded.items[0]?.units !== '0')
         known.push({
           call,

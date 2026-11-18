@@ -1,4 +1,5 @@
 import { ethErrors } from 'helpers/errors';
+import { serializePublicRpcError } from 'helpers/errors/errorClassesHandlers';
 
 import { getController } from 'scripts/Background';
 import store from 'state/store';
@@ -56,12 +57,7 @@ export const onMessage = async (
         throw cleanErrorStack(ethErrors.rpc.methodNotFound());
     }
   } catch (error) {
-    return {
-      error: {
-        message: error.message || 'Internal error',
-        code: error.code || -32603,
-      },
-    };
+    return { error: serializePublicRpcError(error) };
   } finally {
     lifetime.dispose();
   }

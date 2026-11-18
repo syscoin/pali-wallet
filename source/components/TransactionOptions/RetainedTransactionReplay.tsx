@@ -14,6 +14,7 @@ import { KeyringAccountType } from 'types/network';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
+import { useSmartAccountCancellation } from './useSmartAccountCancellation';
 import type {
   EvmReplayPreparation,
   EvmReplayReview,
@@ -61,6 +62,7 @@ export const RetainedTransactionReplay = ({
       vault.activeAccount.type === KeyringAccountType.SmartAccount
   );
   const network = useSelector((state: RootState) => state.vault.activeNetwork);
+  const smartCancellation = useSmartAccountCancellation(hash);
   const walletScope = useSelector(getWalletNavigationScope, shallowEqual);
   const canSignRetainedCancellation = useSelector(({ vault }: RootState) => {
     const account = vault.activeAccount;
@@ -507,21 +509,28 @@ export const RetainedTransactionReplay = ({
           ? t('buttons.loading')
           : t('transactions.replay.review')}
       </button>
-      {canSignRetainedCancellation &&
+      {(canSignRetainedCancellation || smartCancellation.available) &&
         retained.hash === hash.toLowerCase() &&
+        retained.cancellationUnavailable !== true &&
         !view.cancellationHash &&
+        !retained.smartAccount?.cancellation &&
         retained.operation !== 'cancel' &&
         (retained.type === 0 || retained.type === 2) &&
         ['signed', 'attempted', 'submitted'].includes(retained.phase) && (
           <button
             type="button"
-            onClick={() => void prepare(hash, 'cancel')}
-            disabled={Boolean(view.busy)}
+            onClick={() =>
+              smartCancellation.available
+                ? void smartCancellation.request()
+                : void prepare(hash, 'cancel')
+            }
+            disabled={Boolean(view.busy) || smartCancellation.busy}
             className="mt-2 w-full rounded-lg border border-bkg-white200 px-4 py-3 text-sm text-white hover:bg-alpha-whiteAlpha50 disabled:opacity-60"
           >
             {t('transactions.replay.reviewCancellation')}
           </button>
         )}
+      {smartCancellation.content}
       {view.message && (
         <div
           role="status"

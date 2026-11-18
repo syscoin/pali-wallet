@@ -33,7 +33,9 @@ export function hardwareDappRpc() {
   const rawTransactions: string[] = [], reports: string[] = [];
   let admission: ((hash: string, raw: string) => Promise<void>) | undefined;
   let loseReply = false;
-  const fetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async (_url, init) => {
+  const fetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async function hardwareFixtureFetch(_url, init): Promise<Response> {
+    const payload = JSON.parse(String(init?.body));
+    if(Array.isArray(payload))return Response.json(await Promise.all(payload.map(async row=>(await hardwareFixtureFetch(_url,{...init,body:JSON.stringify(row)})).json())));
     const { id, method, params } = JSON.parse(String(init?.body));
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';

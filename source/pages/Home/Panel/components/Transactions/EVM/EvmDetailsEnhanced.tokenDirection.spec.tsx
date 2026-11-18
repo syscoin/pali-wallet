@@ -457,6 +457,16 @@ it.each(cases)(
         ]
       : [];
     const provider = {
+      signal: new AbortController().signal,
+      _getConnection: () => ({ url: RPC }),
+      readMany: jest.fn(
+        async (requests: { method: string; params: unknown[] }[]) =>
+          requests.map(({ method, params }) => {
+            if (method !== 'eth_chainId' || params.length)
+              throw Error('Unexpected identity RPC');
+            return { status: 'fulfilled', value: '0x1' };
+          })
+      ),
       getTransaction: jest.fn(async (requested: string) => {
         expect(requested).toBe(hash);
         return {
@@ -475,6 +485,9 @@ it.each(cases)(
       getTransactionReceipt: jest.fn(async (requested: string) => {
         expect(requested).toBe(hash);
         return {
+          transactionHash: hash,
+          from: scenario.outerFrom,
+          to: scenario.token ? TOKEN : scenario.to,
           blockNumber: 42,
           blockHash: BLOCK_HASH,
           gasUsed: BigInt(45000),
@@ -486,7 +499,7 @@ it.each(cases)(
       getBlockNumber: jest.fn(async () => 44),
       getBlock: jest.fn(async (block: number) => {
         expect(block).toBe(42);
-        return { timestamp: 1700000000 };
+        return { number: 42, hash: BLOCK_HASH, timestamp: 1700000000 };
       }),
     };
     mockWallet = Object.create(MainController.prototype);

@@ -61,7 +61,7 @@ const statusTag = (row: ActivityRow) => {
     return observation.status === 'confirmed'
       ? 'confirmed'
       : 'reverted';
-  if (!observation && !row.unavailable && !row.indexed && row.retainedObservation?.status === 'mined')
+  if (!observation && !row.unavailable && row.retainedObservation?.status === 'mined')
     return row.retainedObservation.outcome === 'confirmed' ? 'confirmed' : 'reverted';
   if (row.replacementStatus === 'replaced') return 'replaced';
   if (observation) return 'pending';
@@ -163,21 +163,22 @@ export function nativeActivityRowPresentation(row: ActivityRow, context: {
   const tag = context.savedPending ? savedPendingStatusTag(row) : statusTag(row);
   const numeric = !!rowMonetaryAmount(row), state = statusLabels[tag]();
   const date = rowDate(row);
+  const movement = flow === 'sent' ? t('send.sent') : flow === 'received' ? t('send.received') : flow === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity');
   const statusSummary = `${state}${row.unavailable && tag !== 'unavailable' ? ` · ${t('mobile.activityViews.nativeActivity.detailsUnavailable')}` : ''}`;
   return {
     date, direction: flow, status: state, statusSummary, fullAmount, numeric,
-    title: !numeric ? fullAmount : flow === 'sent' ? t('send.sent') : flow === 'received' ? t('send.received') : flow === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity'),
+    title: !numeric ? fullAmount : movement,
     subtitle: `${context.networkName} · ${statusSummary}`,
     amount: numeric && context.hideBalances ? HIDDEN_BALANCE : numeric ? compactActivityAmountLabel(`${/^[+−-]/.test(fullAmount) ? '' : flow === 'received' ? '+' : flow === 'sent' ? '-' : ''}${fullAmount}`.replace(/^−/, '-')) : '',
-    label: t('mobile.activityViews.nativeActivity.transactionLabel', { amount: context.hideBalances && numeric ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: state, date: date.label, time: date.time }),
+    label: `${movement}. ${t('mobile.activityViews.nativeActivity.transactionLabel', { amount: context.hideBalances && numeric ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: state, date: date.label, time: date.time })}`,
   };
 }
 function fee(row: ActivityRow, symbol: string): string {
   try {
     const units = row.unavailable ? undefined : row.observation
-      ? row.observation.block && (row.observation.status === 'confirmed' || row.observation.status === 'reverted')
+      ? row.observation.block
         ? row.observation.feeUnits : undefined
-      : !row.indexed && row.retainedObservation?.status === 'mined'
+      : row.retainedObservation?.status === 'mined'
         ? row.retainedObservation.feeUnits : undefined;
     if (units !== null && units !== undefined)
       return `${formatBaseUnits(units, 18)} ${symbol}`;
@@ -210,6 +211,7 @@ export function NativeActivityScreen({
   onCancelSaved,
   onSpeedUpPending,
   onNavigateToReview,
+  onSignedInstructions,
   initialHash,
   externallyConnected = false,
   detailOnly = false,
@@ -225,6 +227,7 @@ export function NativeActivityScreen({
   onSpeedUpPending?(hash: string): void;
   /** Navigation to a canonical selected-network review, never direct authorization. */
   onNavigateToReview?(action: NativeActivityReviewAction, hash: string): void;
+  onSignedInstructions?(): void;
   initialHash?: string;
   externallyConnected?: boolean;
   detailOnly?: boolean;
@@ -250,6 +253,7 @@ export function NativeActivityScreen({
       onCancelSaved={onCancelSaved}
       onSpeedUpPending={onSpeedUpPending}
       onNavigateToReview={onNavigateToReview}
+      onSignedInstructions={onSignedInstructions}
       initialHash={initialHash}
       detailOnly={detailOnly}
       savedPendingOnly={savedPendingOnly}
@@ -267,6 +271,7 @@ function NativeActivityContent({
   onCancelSaved,
   onSpeedUpPending,
   onNavigateToReview,
+  onSignedInstructions,
   initialHash,
   detailOnly,
   savedPendingOnly,
@@ -281,6 +286,7 @@ function NativeActivityContent({
   onCancelSaved?(hash: string): void;
   onSpeedUpPending?(hash: string): void;
   onNavigateToReview?(action: NativeActivityReviewAction, hash: string): void;
+  onSignedInstructions?(): void;
   initialHash?: string;
   detailOnly?: boolean;
   savedPendingOnly?: boolean;
@@ -301,14 +307,19 @@ function NativeActivityContent({
     if (!target || snapshot.status !== 'ready' || !snapshot.scopeKey || arrival.current === target) return;
     arrival.current = target;
     const epoch = lifetime.current.epoch;
-    void controller.loadSavedPending().then(() => {
-      if (!initialHash || lifetime.current.epoch !== epoch || arrival.current !== target) return;
+    const selectLoaded = () => {
+      if (!initialHash || lifetime.current.epoch !== epoch || arrival.current !== target) return false;
       const current = controller.getSnapshot();
+      if (current.status !== 'ready' || current.scopeKey !== snapshot.scopeKey) return false;
       if (current.savedPending?.rows.some(row => row.hash === initialHash) || current.rows.some(row => row.hash === initialHash)) {
         setSelected(initialHash);
         controller.inspect(initialHash);
+        return true;
       }
-    }).catch(() => undefined);
+      return false;
+    };
+    if (selectLoaded()) return;
+    void controller.loadSavedPending().then(selectLoaded).catch(() => undefined);
   }, [controller, initialHash, savedPendingOnly, snapshot.scopeKey, snapshot.status]);
   const list = useRef<FlatList<ActivityRow>>(null);
   const listBounds = useRef<React.ComponentRef<typeof View>>(null);
@@ -361,6 +372,7 @@ function NativeActivityContent({
     chosenObservation?.status === 'pending' && chosenObservation.from.toLowerCase() === (chosen.local.smartAccount?.payer ?? owner).toLowerCase() &&
     chosenObservation.nonce === String(chosen.local.nonce);
   const canCancelSaved = chosen?.replacementStatus !== 'replaced' && chosen?.local && !chosen.checking && !chosenObservation &&
+    !chosen.local.cancellationUnavailable &&
     chosen.local.operation !== 'cancel' && !replacementBlocksReview &&
     (chosen.local.transactionType === 0 || chosen.local.transactionType === 2) &&
     ['signed', 'attempted', 'submitted'].includes(chosen.local.phase) &&
@@ -378,6 +390,10 @@ function NativeActivityContent({
     ? reviewAction('speed-up', onSpeedUpPending) : undefined;
   const cancelPending = reviewAction('cancel', onCancelPending);
   const cancelSaved = reviewAction('cancel-saved', onCancelSaved);
+  // An outer receipt/nonce does not revoke its independently usable inner proof.
+  const canCancelSmartInstruction = chosen?.local?.smartAccount && !chosen.checking &&
+    !chosen.local.cancellationUnavailable && !chosen.local.smartAccount.cancellation &&
+    chosen.local.operation !== 'cancel' && chosen.local.smartAccount.operations.length === 1;
   const observedStatus = chosen && (savedPending ? savedPendingStatusTag(chosen) : statusTag(chosen));
   const replay = observedStatus === 'confirmed' || observedStatus === 'reverted' || observedStatus === 'replaced'
     ? undefined : reviewAction('saved', onReplay);
@@ -542,6 +558,7 @@ function NativeActivityContent({
           }`}
           onBack={detailOnly || !navigation || chosen || savedPending || copyAddress ? close : undefined}
           right={!chosen && !detailOnly ? <View style={s.toolbar}>
+            {onSignedInstructions && !savedPending && <IconButton label={t('transactions.smartAuthorizations.title')} icon="clock" onPress={onSignedInstructions} />}
             <IconButton label={t('mobile.activityViews.nativeActivity.refreshActivity')} icon="refresh"
               disabled={snapshot.status === 'loading' || snapshot.loadingMore || savedPending?.status === 'loading'}
               onPress={() => {
@@ -686,6 +703,10 @@ function NativeActivityContent({
               { label: t('send.to'), value: recipient(chosen) ?? (chosen.indexed?.to === null || chosen.indexed?.to === '' || chosen.local?.recipient === null ? t('transactions.replay.creation') : t('mobile.activityViews.nativeActivity.notAvailable')),
                 actionLabel: t('mobile.activityViews.nativeActivity.copyRecipientAddress'), ...(recipient(chosen) ? { onPress: () => setCopyAddress(recipient(chosen)) } : {}) },
               { label: t('send.networkFee'), value: fee(chosen, snapshot.nativeSymbol ?? 'ETH') },
+              ...(chosen.display?.nftTransfers?.map(item => ({
+                label: `${chosen.display!.displaySymbol} #${item.tokenId}`,
+                value: hideBalances ? HIDDEN_BALANCE : item.quantity,
+              })) ?? []),
               ...(chosen.local?.smartAccount ? [{ label: t('transactions.feePayer'), value: chosen.local.smartAccount.payer,
                 actionLabel: t('transactions.copyAddress'), onPress: () => setCopyAddress(chosen.local!.smartAccount!.payer) }] : []),
               { label: t('send.transactionId'), value: chosen.hash },
@@ -812,10 +833,13 @@ function NativeActivityContent({
           {canReplace && speedUp && (
             <Button title={t('header.speedUp')} variant="secondary" onPress={() => void afterPositionSaved(() => speedUp(chosen.hash))} />
           )}
-          {canReplace && cancelPending && (
+          {canCancelSmartInstruction && cancelPending && (
+            <Button title={t('transactions.smartAuthorizations.cancelInstruction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />
+          )}
+          {canReplace && !chosen.local?.smartAccount && !chosen.local?.cancellationUnavailable && cancelPending && (
             <Button title={t('mobile.activityViews.nativeActivity.cancelPendingTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />
           )}
-          {canCancelSaved && cancelSaved && (
+          {canCancelSaved && !chosen.local?.smartAccount && cancelSaved && (
             <Button title={t('mobile.activityViews.nativeActivity.cancelSavedTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelSaved(chosen.hash))} />
           )}
           {replay && (

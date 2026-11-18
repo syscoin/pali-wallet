@@ -1,9 +1,10 @@
 import { getAddress } from 'ethers/address';
+import { keccak256 } from 'ethers/crypto';
 
 import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.ts';
 import { normalizeNftTokenId } from '../utils/nftTokenId.ts';
 import {
-  assertJsonWorkBudget,
+  assertPublicResponseBudget,
   assertProviderRequestBudget,
 } from '../utils/requestPayloadBudget.ts';
 
@@ -13,6 +14,7 @@ import { assertSynchronousEvmFeeGuard } from './evmFeeGuard.ts';
 export const DAPP_RPC_METHOD_CLASSIFICATION = Object.freeze({
   eth_blockNumber: 'node-query',
   eth_gasPrice: 'node-query',
+  eth_maxPriorityFeePerGas: 'node-query',
   eth_protocolVersion: 'node-query',
   eth_syncing: 'node-query',
   eth_getBalance: 'node-query',
@@ -41,7 +43,7 @@ export const DAPP_RPC_METHOD_CLASSIFICATION = Object.freeze({
   net_peerCount: 'node-query',
   personal_ecRecover: 'local-verification',
   eth_coinbase: 'node-query',
-  web3_sha3: 'node-query',
+  web3_sha3: 'local-verification',
   eth_getFilterLogs: 'node-query',
   eth_getFilterChanges: 'node-control',
   eth_newBlockFilter: 'node-control',
@@ -325,6 +327,7 @@ export function normalizeDappRpcRequest(
     [
       'eth_blockNumber',
       'eth_gasPrice',
+      'eth_maxPriorityFeePerGas',
       'eth_protocolVersion',
       'eth_syncing',
       'web3_clientVersion',
@@ -469,6 +472,19 @@ export function normalizeDappRpcRequest(
   return Object.freeze({ method, params: Object.freeze(params) });
 }
 
+/** Stable identity for a normalized query, preserving every field and array position. */
+export function publicRpcReadKey(request: DappPublicRpcRequest): string {
+  return JSON.stringify(request, (_name, value) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((name) => [name, value[name]])
+        )
+      : value
+  );
+}
+
 /** One owned request per node query/control; controls never retry automatically. */
 export async function executeDappRpcRequest(
   input: DappPublicRpcRequest,
@@ -482,18 +498,21 @@ export async function executeDappRpcRequest(
   const request = normalizeDappRpcRequest(input.method, input.params);
   let result: unknown;
   try {
-    result =
-      classifyDappRpcMethod(request.method) === 'local-verification'
-        ? getAddress(
-            ports.verifyPersonalMessage(
-              request.params[0] as string,
-              request.params[1] as string
-            )
-          )
-        : await ports.request(request);
+    if (request.method === 'web3_sha3') {
+      result = keccak256(bytes(request.params[0] || '0x'));
+    } else if (request.method === 'personal_ecRecover') {
+      result = getAddress(
+        ports.verifyPersonalMessage(
+          request.params[0] as string,
+          request.params[1] as string
+        )
+      );
+    } else {
+      result = await ports.request(request);
+    }
   } finally {
     assertSynchronousEvmFeeGuard(() => ports.assertCurrent());
   }
-  assertJsonWorkBudget(result);
+  assertPublicResponseBudget(result);
   return result;
 }

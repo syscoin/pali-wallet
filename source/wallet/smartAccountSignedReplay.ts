@@ -10,6 +10,7 @@ import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
 } from '../utils/smartAccount/contracts.ts';
+import { assertRetainedSmartAccountExecution } from '../utils/smartAccount/executionSimulation.ts';
 
 import {
   EvmSignedRecords,
@@ -91,6 +92,12 @@ export type SmartAccountReplayOwner = Readonly<{
     assertCurrent: () => void
   ): Promise<unknown>;
   recordSession: EvmSignedRecordSession;
+  runReadPhase<T>(
+    assertCurrent: () => void,
+    work: (provider: {
+      send(method: string, params: unknown[]): Promise<unknown>;
+    }) => Promise<T>
+  ): Promise<T>;
 }>;
 
 export function projectSmartAccountSavedTransaction(
@@ -333,6 +340,33 @@ export function createSmartAccountSignedReplay(
         ...payer,
         assertCurrent: checkPayer,
         recordSession: { ...payer.recordSession, assertCurrent: checkPayer },
+        dispatch: (raw, admit, context) => {
+          checkPayer();
+          if (allowed.get(context.hash) !== raw)
+            throw new EvmReplayError('CONTEXT_CHANGED');
+          const replayIntent = intents.get(context.hash);
+          return payer.dispatch(
+            raw,
+            (send, preflight) =>
+              admit(send, async (snapshot) => {
+                await preflight(snapshot);
+                checkPayer();
+                if (!replayIntent || replayIntent.cancellation) return;
+                await captured.runReadPhase(checkPayer, (provider) =>
+                  assertRetainedSmartAccountExecution(
+                    provider,
+                    raw,
+                    context.hash,
+                    Number(chainId),
+                    snapshot,
+                    checkPayer
+                  )
+                );
+                checkPayer();
+              }),
+            context
+          );
+        },
         observe: async (expected) => {
           checkPayer();
           if (

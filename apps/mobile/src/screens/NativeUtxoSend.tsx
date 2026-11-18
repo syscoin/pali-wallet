@@ -64,13 +64,18 @@ function summarizeReview(review: NativeUtxoReview): ReviewedTransferSummary {
   return Object.freeze({
     recipientLabel: review.retryTxid ? t('mobile.sendAssetViews.utxo.output1') : t('assetTransfer.recipient'),
     recipient: Object.freeze({
-      address: recipient.address,
       amountSatoshis: recipient.amountSatoshis,
       ...(recipient.asset ? { asset: Object.freeze({ ...recipient.asset }) } : {}),
+      ...(recipient.script ? { script: Object.freeze({ ...recipient.script }) } : { address: recipient.address }),
     }),
     ...(review.assetDisplay ? { assetDisplay: Object.freeze({ ...review.assetDisplay }) } : {}),
     feeSatoshis: review.feeSatoshis,
   });
+}
+
+function outputScriptLabel(output: NativeUtxoReview['outputs'][number]): string | undefined {
+  if (!output.script) return;
+  return t(output.script.kind === 'data' ? 'transactions.opReturnData' : 'transactions.outputScript');
 }
 
 function describe(error: unknown): string {
@@ -440,8 +445,9 @@ export function NativeUtxoSendScreen({
               <Card>
                 {outcome.summary && <>
                   <Text style={styles.muted}>{outcome.summary.recipientLabel}</Text>
+                  {outcome.summary.recipient.script && <Text style={styles.muted}>{outputScriptLabel(outcome.summary.recipient)}</Text>}
                   <Text selectable style={s.address} testID="native-utxo-outcome-recipient">
-                    {outcome.summary.recipient.address}
+                    {outcome.summary.recipient.address ?? outcome.summary.recipient.script?.hex}
                   </Text>
                   {outcome.summary.recipient.asset && <>
                     <Text style={styles.muted}>{t('mobile.activityViews.utxoActivityScreen.assetId')}</Text>
@@ -487,12 +493,13 @@ export function NativeUtxoSendScreen({
                 <Text style={styles.muted}>
                   {review.retryTxid ? t('mobile.sendAssetViews.utxo.output1') : t('assetTransfer.recipient')}
                 </Text>
+                {recipient?.script && <Text style={styles.muted}>{outputScriptLabel(recipient)}</Text>}
                 <Text
                   selectable
                   style={s.address}
                   testID="native-utxo-recipient"
                 >
-                  {recipient!.address}
+                  {recipient!.address ?? recipient!.script?.hex}
                 </Text>
                 {recipient?.asset && (
                   <>
@@ -530,8 +537,9 @@ export function NativeUtxoSendScreen({
                       {units(output.amountSatoshis)}
                     </Text>
                     {output.asset && <Text>{assetUnits(output.asset)}</Text>}
+                    {output.script && <Text style={styles.muted}>{outputScriptLabel(output)}</Text>}
                     <Text selectable style={s.address}>
-                      {output.address}
+                      {output.address ?? output.script?.hex}
                     </Text>
                   </View>
                 ))}

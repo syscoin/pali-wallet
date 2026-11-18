@@ -301,12 +301,22 @@ export type CallsBundlePorts = Readonly<{
     write(next: CallsBundleStore, assertCurrent: () => void): Promise<void>;
   }>;
 }>;
+type CallsStatusProvider = Readonly<{
+  getBlockHash(blockNumber: string): Promise<string | null>;
+  getTransactionReceipt(hash: string): Promise<unknown>;
+}>;
+export type CallsStatusPhase = Readonly<{
+  blockHashes(heights: readonly string[]): Promise<readonly unknown[]>;
+  receipts(hashes: readonly string[]): Promise<readonly unknown[]>;
+}>;
 export type CallsStatusRpc = Readonly<{
   assertCurrent(): void;
-  forChain(chainId: number): Readonly<{
-    getBlockHash(blockNumber: string): Promise<string | null>;
-    getTransactionReceipt(hash: string): Promise<any>;
-  }> | null;
+  forChain(chainId: number):
+    | CallsStatusProvider
+    | Readonly<{
+        run<T>(work: (reads: CallsStatusPhase) => Promise<T>): Promise<T>;
+      }>
+    | null;
 }>;
 export type CallsBundleStatus = Readonly<{
   atomic: boolean;
@@ -845,48 +855,67 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
       );
     }
 
-    const observedReceipts = await Promise.all(
-      descriptor.txHashes.map(async (hash) => {
-        checkQuery();
-        const receipt = await provider
-          .getTransactionReceipt(hash)
-          .catch(() => null);
-        checkQuery();
+    const collect = async (reads: CallsStatusPhase) => {
+      checkQuery();
+      const values = await reads.receipts(descriptor.txHashes);
+      checkQuery();
+      if (values.length !== descriptor.txHashes.length)
+        throw new Error('Invalid calls receipts');
+      const observed = descriptor.txHashes.map((hash, index) => {
         try {
-          return normalizeDappCallsReceipt(receipt, hash);
+          return normalizeDappCallsReceipt(values[index], hash);
         } catch (error) {
           if (descriptor.stoppedTransactionHash) return null;
           throw error;
         }
-      })
-    );
-    checkQuery();
-    // Receipt presence alone cannot establish that its block is still canonical.
-    // Share each height lookup only within this query so later queries observe reorgs.
-    const blockHashes = new Map<string, Promise<string | null>>();
-    const receipts = await Promise.all(
-      observedReceipts.map(async (receipt) => {
-        if (!receipt) return null;
-        let blockHash = blockHashes.get(receipt.blockNumber);
-        if (!blockHash) {
-          blockHash = (async () => {
-            checkQuery();
-            try {
-              const value = await provider.getBlockHash(receipt.blockNumber);
-              checkQuery();
-              return readEvmRpcHash(value);
-            } catch {
-              checkQuery();
-              return null;
-            }
-          })();
-          blockHashes.set(receipt.blockNumber, blockHash);
-        }
-        const canonicalHash = await blockHash;
-        checkQuery();
-        return canonicalHash === receipt.blockHash ? receipt : null;
-      })
-    );
+      });
+      const heights = [
+        ...new Set(
+          observed.flatMap((receipt) => (receipt ? [receipt.blockNumber] : []))
+        ),
+      ];
+      const hashes = heights.length ? await reads.blockHashes(heights) : [];
+      checkQuery();
+      if (hashes.length !== heights.length)
+        throw new Error('Invalid calls blocks');
+      const canonical = new Map(
+        heights.map((height, index) => {
+          try {
+            return [height, readEvmRpcHash(hashes[index])] as const;
+          } catch {
+            return [height, null] as const;
+          }
+        })
+      );
+      return observed.map((receipt) =>
+        receipt && canonical.get(receipt.blockNumber) === receipt.blockHash
+          ? receipt
+          : null
+      );
+    };
+    const readAvailable = async <T>(
+      items: readonly string[],
+      read: (item: string) => Promise<T>
+    ) =>
+      Promise.all(
+        items.map(async (item) => {
+          checkQuery();
+          const value = await read(item).catch(() => null);
+          checkQuery();
+          return value;
+        })
+      );
+    const receipts =
+      'run' in provider
+        ? await provider.run(collect)
+        : await collect({
+            receipts: (hashes) =>
+              readAvailable(hashes, (hash) =>
+                provider.getTransactionReceipt(hash)
+              ),
+            blockHashes: (heights) =>
+              readAvailable(heights, (height) => provider.getBlockHash(height)),
+          });
     checkQuery();
     const receiptStatuses = receipts.map((receipt) =>
       receipt ? (receipt.status === 0 ? '0x0' : '0x1') : null

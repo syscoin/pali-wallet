@@ -135,6 +135,11 @@ async function fixture(
     mode: 'direct',
     proof: '0x' + 'ab'.repeat(256),
     root: '0x' + '01'.repeat(32),
+    rootAnchor: {
+      root: '0x' + '01'.repeat(32),
+      blockNumber: '8',
+      blockHash: '0x' + '55'.repeat(32),
+    },
     nullifierHash: identifyClassicNote(NOTE).nullifierHash,
     recipient: signer.address,
     relayer: '0x' + '00'.repeat(20),
@@ -315,6 +320,10 @@ async function fixture(
     sent,
     records,
     privateAuthorizations,
+    storedJournal: () =>
+      JSON.stringify(
+        Object.entries(values).filter(([key]) => key.startsWith('signed:'))
+      ),
     context,
     restart() {
       generation++;
@@ -439,7 +448,7 @@ it('binds private metadata under the records admission queue', async () => {
 });
 
 it.each(['deposit', 'withdrawal'] as const)(
-  'refuses tagged private %s speed-up and preserves its reservation after an explicit cancel ACK',
+  'refuses tagged private %s speed-up without changing its reservation',
   async (kind) => {
     const f = await fixture(true, true, kind);
     const records = f.records();
@@ -461,59 +470,96 @@ it.each(['deposit', 'withdrawal'] as const)(
         operation: 'speed-up',
       })
     ).rejects.toThrow('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
-    const binding = await records.captureVerifiedReplacement(f.session(), {
+    expect(f.sent).toEqual([]);
+    expect(f.privateAuthorizations).not.toHaveBeenCalled();
+  }
+);
+
+it('refuses generic private withdrawal cancellation and preserves the encrypted reservation after restart', async () => {
+  const f = await fixture(true, true, 'withdrawal');
+  const before = f.storedJournal();
+  const reservation = await f
+    .vault()
+    .getWithdrawalAttempt(f.attempt.noteId, f.session());
+  await expect(
+    f
+      .records()
+      .readReplacement(f.session(), '1', signer.address, f.tx.hash!, 'cancel')
+  ).resolves.toBeNull();
+  await expect(
+    f.records().captureVerifiedReplacement(f.session(), {
       chainId: '1',
       from: signer.address,
       nonce: 0,
       originalHash: f.tx.hash!,
       operation: 'cancel',
-    });
-    const rawTransaction = await signer.signTransaction({
-      chainId: 1,
-      nonce: 0,
-      to: signer.address,
-      value: 0,
-      data: '0x',
-      type: 2,
-      gasLimit: 42000,
-      maxFeePerGas: 4,
-      maxPriorityFeePerGas: 2,
-    });
-    const tx = Transaction.from(rawTransaction);
-    await records.append(
-      f.session(),
-      {
-        context: {
-          ...f.context,
-          operation: 'cancel',
-          originalHash: f.tx.hash!,
-        },
-        rawTransaction,
-        hash: tx.hash!,
-        from: signer.address,
-        chainId: '1',
-        nonce: 0,
-        type: 2,
+    })
+  ).rejects.toThrow('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
+  expect(f.storedJournal()).toBe(before);
+  f.restart();
+  expect(
+    await f.vault().getWithdrawalAttempt(f.attempt.noteId, f.session())
+  ).toEqual(reservation);
+  expect(
+    (await f.records().readExact(f.session(), '1', signer.address, f.tx.hash!))
+      ?.rawTransaction
+  ).toBe(f.raw);
+  expect(f.sent).toEqual([]);
+  expect(f.privateAuthorizations).not.toHaveBeenCalled();
+});
+
+it('preserves a private deposit reservation after an explicit outer cancel ACK', async () => {
+  const f = await fixture();
+  const records = f.records();
+  const binding = await records.captureVerifiedReplacement(f.session(), {
+    chainId: '1',
+    from: signer.address,
+    nonce: 0,
+    originalHash: f.tx.hash!,
+    operation: 'cancel',
+  });
+  const rawTransaction = await signer.signTransaction({
+    chainId: 1,
+    nonce: 0,
+    to: signer.address,
+    value: 0,
+    data: '0x',
+    type: 2,
+    gasLimit: 42000,
+    maxFeePerGas: 4,
+    maxPriorityFeePerGas: 2,
+  });
+  const tx = Transaction.from(rawTransaction);
+  await records.append(
+    f.session(),
+    {
+      context: {
+        ...f.context,
+        operation: 'cancel',
+        originalHash: f.tx.hash!,
       },
-      undefined,
-      binding
-    );
-    const replay = f.replay();
-    const prepared = await replay.prepare(tx.hash!);
-    if (prepared.status !== 'review')
-      throw Error('Expected cancellation review');
-    await expect(replay.confirm(prepared.review.id)).resolves.toEqual({
-      status: 'submitted',
-      hash: tx.hash,
-    });
-    expect(
-      await (kind === 'deposit'
-        ? f.vault().getDepositAttempt(f.attempt.noteId, f.session())
-        : f.vault().getWithdrawalAttempt(f.attempt.noteId, f.session()))
-    ).toMatchObject({ phase: 'unknown' });
-    expect(f.privateAuthorizations).not.toHaveBeenCalled();
-  }
-);
+      rawTransaction,
+      hash: tx.hash!,
+      from: signer.address,
+      chainId: '1',
+      nonce: 0,
+      type: 2,
+    },
+    undefined,
+    binding
+  );
+  const replay = f.replay();
+  const prepared = await replay.prepare(tx.hash!);
+  if (prepared.status !== 'review') throw Error('Expected cancellation review');
+  await expect(replay.confirm(prepared.review.id)).resolves.toEqual({
+    status: 'submitted',
+    hash: tx.hash,
+  });
+  expect(
+    await f.vault().getDepositAttempt(f.attempt.noteId, f.session())
+  ).toMatchObject({ phase: 'unknown' });
+  expect(f.privateAuthorizations).not.toHaveBeenCalled();
+});
 
 it('reconciles a confirmed private ACK on explicit status inspection after restart', async () => {
   const f = await fixture();

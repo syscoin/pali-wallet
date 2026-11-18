@@ -390,13 +390,18 @@ test('allows refreshing header only while original observation remains fresh', a
 });
 
 test.each([202, 302, 503])(
-  'rejects unavailable directory response %s',
+  'rejects and closes unavailable directory response %s',
   async (code) => {
-    const run = setup();
-    run.fetcher.mockResolvedValueOnce(new Response('{}', { status: code }));
+    const run = setup(),
+      cancel = jest.fn();
+    run.fetcher.mockResolvedValueOnce(
+      new Response(new ReadableStream({ cancel }), { status: code })
+    );
     await expect(run.client.getDirectory()).rejects.toThrow(
       /^privacy_relayer_/
     );
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(run.fetcher.mock.calls[0][1]?.signal?.aborted).toBe(true);
   }
 );
 

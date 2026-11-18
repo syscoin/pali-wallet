@@ -6,23 +6,29 @@ import { BigNumber } from 'utils/ethersV6Compat';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 
 import { ISysBalanceController } from './types';
+import type { AssetReadOwner } from '../assets/types';
 
 const SyscoinBalanceController = (): ISysBalanceController => {
   const getSysBalanceForAccount = async (
     currentAccount: IKeyringAccountState,
-    networkUrl: string
+    networkUrl: string,
+    owner?: AssetReadOwner
   ) => {
     // Blockbook basic summaries intentionally skip mempool aggregation.
-    // Match the asset query so native balance includes its signed pending delta.
-    const requestDetails = 'details=tokenBalances&tokens=nonzero';
+    // Share the full used-token summary with SPT reads, including signed pending deltas.
+    const requestDetails = 'details=tokenBalances&tokens=used';
 
     const xpubOrAddress = currentAccount.xpub || currentAccount.address;
+    owner?.assertCurrent();
     const accountData = await fetchBackendAccountCached(
       networkUrl,
       xpubOrAddress,
       requestDetails,
-      true
+      true,
+      owner?.signal
     );
+
+    owner?.assertCurrent();
 
     // The backend library resolves failed reads as null. Do not turn that
     // absence (or an error envelope) into a successful, freshly cached zero.

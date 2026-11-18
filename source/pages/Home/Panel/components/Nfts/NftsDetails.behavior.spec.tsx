@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -64,6 +65,7 @@ const complete = async (id: string, owned: boolean) => {
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
+  mockEmitter.mockReset();
   pending.clear();
   mockState = {
     vault: {
@@ -154,6 +156,180 @@ it('does not enumerate the same collection again for a refreshed metadata object
       ([[, method]]) => method === 'fetchNftTokenIds'
     )
   ).toHaveLength(1);
+});
+
+const enumeration = (
+  ids: string[],
+  hasMore = false,
+  requiresManualEntry = true
+) => ({
+  tokens: ids.map((tokenId) => ({ tokenId, balance: 1 })),
+  hasMore,
+  requiresManualEntry,
+});
+const tokenIdCopy = () =>
+  screen.queryByRole('button', { name: 'buttons.copy send.tokenId' });
+const selectedId = () =>
+  tokenIdCopy()?.closest('li')?.querySelector('span')?.textContent;
+const enumeratedView = async () => {
+  mockEmitter.mockResolvedValueOnce(enumeration(['1', '2']));
+  const view = render(<NftsDetails nftData={nft} />);
+  await act(async () => undefined);
+  expect(selectedId()).toBe('1');
+  return view;
+};
+
+it.each([
+  'unchanged',
+  'different chip',
+  'chip round trip',
+  'manual edit',
+  'collection',
+  'unmount',
+])(
+  'associates delayed token-ID copy feedback with the captured selection: %s',
+  async (transition) => {
+    userEvent.setup();
+    let finish!: () => void;
+    const write = jest
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          })
+      );
+    try {
+      const view = await enumeratedView();
+      fireEvent.click(tokenIdCopy()!);
+      expect(write).toHaveBeenCalledWith('1');
+      if (transition === 'different chip' || transition === 'chip round trip') {
+        fireEvent.click(screen.getByRole('button', { name: '#2' }));
+        if (transition === 'chip round trip')
+          fireEvent.click(screen.getByRole('button', { name: '#1' }));
+      }
+      if (transition === 'manual edit') await changeManualCopyId();
+      if (transition === 'collection')
+        view.rerender(
+          <NftsDetails
+            nftData={{ ...nft, contractAddress: `0x${'cd'.repeat(20)}` }}
+          />
+        );
+      if (transition === 'unmount') view.unmount();
+      await act(async () => finish());
+      expect(mockAlert.info).toHaveBeenCalledTimes(
+        transition === 'unchanged' ? 1 : 0
+      );
+      expect(mockAlert.error).not.toHaveBeenCalled();
+    } finally {
+      write.mockRestore();
+    }
+  }
+);
+
+const changeManualCopyId = async () => {
+  fireEvent.change(screen.getByPlaceholderText('send.enterTokenId'), {
+    target: { value: '2' },
+  });
+  await act(async () => undefined);
+};
+
+it('reconciles an automatic ID removed by a complete ownership refresh and copies its replacement', async () => {
+  userEvent.setup();
+  const write = jest
+    .spyOn(navigator.clipboard, 'writeText')
+    .mockResolvedValue(undefined);
+  try {
+    const view = await enumeratedView();
+    mockEmitter.mockResolvedValueOnce(enumeration(['2']));
+    await act(async () =>
+      view.rerender(<NftsDetails nftData={{ ...nft, balance: 1 }} />)
+    );
+    expect(screen.queryByRole('button', { name: '#1' })).toBeNull();
+    expect(screen.getByRole('button', { name: '#2' })).toBeVisible();
+    expect(selectedId()).toBe('2');
+    await act(async () => fireEvent.click(tokenIdCopy()!));
+    expect(write).toHaveBeenCalledWith('2');
+    expect(screen.getByRole('button', { name: '#2' })).toHaveClass(
+      'bg-brand-royalblue'
+    );
+  } finally {
+    write.mockRestore();
+  }
+});
+
+it.each(['zero balance', 'complete empty list'])(
+  'clears an automatic ID after an authoritative %s',
+  async (kind) => {
+    const view = await enumeratedView();
+    mockEmitter.mockResolvedValueOnce(enumeration([], false, false));
+    await act(async () =>
+      view.rerender(
+        <NftsDetails
+          nftData={{ ...nft, balance: kind === 'zero balance' ? 0 : 1 }}
+        />
+      )
+    );
+    expect(tokenIdCopy()).toBeNull();
+    expect(screen.queryByRole('button', { name: '#1' })).toBeNull();
+  }
+);
+
+it.each(['partial', 'manual fallback', 'failed read'])(
+  'does not interpret %s enumeration as authoritative removal',
+  async (kind) => {
+    const view = await enumeratedView();
+    const log = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    try {
+      if (kind === 'failed read')
+        mockEmitter.mockRejectedValueOnce(new Error('Enumeration unavailable'));
+      else
+        mockEmitter.mockResolvedValueOnce(
+          kind === 'partial' ? enumeration(['2'], true) : enumeration([])
+        );
+      await act(async () =>
+        view.rerender(<NftsDetails nftData={{ ...nft, balance: 3 }} />)
+      );
+      expect(selectedId()).toBe('1');
+    } finally {
+      log.mockRestore();
+    }
+  }
+);
+
+it('preserves deliberate quick selection after a complete refresh removes that ID', async () => {
+  const view = await enumeratedView();
+  fireEvent.click(screen.getByRole('button', { name: '#2' }));
+  mockEmitter.mockResolvedValueOnce(enumeration(['1']));
+  await act(async () =>
+    view.rerender(<NftsDetails nftData={{ ...nft, balance: 1 }} />)
+  );
+  expect(selectedId()).toBe('2');
+  expect(screen.queryByRole('button', { name: '#2' })).toBeNull();
+  expect(screen.queryByTestId('check')).toBeNull();
+});
+
+it('preserves manual ID inspection when an enumeration started earlier completes', async () => {
+  const view = await enumeratedView();
+  let finish!: (value: any) => void;
+  mockEmitter.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  await act(async () =>
+    view.rerender(<NftsDetails nftData={{ ...nft, balance: 1 }} />)
+  );
+  fireEvent.change(screen.getByLabelText('send.tokenId:'), {
+    target: { value: '99' },
+  });
+  await act(async () => finish(enumeration(['2'])));
+  expect(screen.getByLabelText('send.tokenId:')).toHaveValue('99');
+  expect(selectedId()).toBe('99');
+  expect(within(tokenIdCopy()!.closest('li')!).getByText('99')).toBeVisible();
 });
 
 it('does not replace the next collection with an old enumeration reply', async () => {

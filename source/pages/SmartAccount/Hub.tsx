@@ -11,7 +11,9 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { SmartAccountAuthorizations } from '../../components/TransactionOptions/SmartAccountAuthorizations';
 import { isPaliValidatorAlgorithmSupported } from '../../utils/smartAccount/validatorSignability';
+import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import {
   AddressText,
   Button,
@@ -151,6 +153,8 @@ const SmartAccountHub = () => {
     isLoading,
     connectionUnavailable,
   ]);
+  const { forExecution, feeConfirmation } =
+    useSmartAccountFeeConfirmation(scopeKey);
   const lifetime = useRef({
     generation: 0,
     key: scopeKey,
@@ -368,7 +372,7 @@ const SmartAccountHub = () => {
   const submitExecutions = useCallback(
     async (
       executions: Array<{ data: string; target: string; value: string }>,
-      scope?: ApprovalScope
+      scope: ApprovalScope
     ) => {
       if (!account?.isSmartAccount || !metadata) return;
       if (scope) assertCurrentScope(scope);
@@ -378,10 +382,19 @@ const SmartAccountHub = () => {
         authenticatorContexts: getLocalOwnerContexts(),
         controllerEmitter,
         executions,
+        feeConsent: forExecution({
+          account: scope.expectedContext.account.address,
+          smartAccount: account.address,
+          chainId: activeNetwork.chainId,
+          symbol: activeNetwork.currency,
+          label: t('settings.smartAccountAccountPolicy'),
+          assertCurrent: () => assertCurrentScope(scope),
+        }),
         ...(scope
           ? {
               expectedContext: scope.expectedContext,
               onPrepared: () => assertCurrentScope(scope),
+              onBeforeAuthentication: () => assertCurrentScope(scope),
               onBeforeSubmit: async () => assertCurrentScope(scope),
               trackLocalSubmission: true,
             }
@@ -403,6 +416,10 @@ const SmartAccountHub = () => {
       account?.isSmartAccount,
       controllerEmitter,
       getLocalOwnerContexts,
+      forExecution,
+      activeNetwork.chainId,
+      activeNetwork.currency,
+      t,
       assertCurrentScope,
       isCurrentScope,
       metadata,
@@ -964,6 +981,7 @@ const SmartAccountHub = () => {
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-4 pb-8 text-brand-white">
+      {feeConfirmation}
       <SmartAccountEntry pickerOnly />
       {/* Identity */}
       <div className="rounded-card bg-bkg-2 p-4 flex flex-col gap-1 text-left">
@@ -1205,6 +1223,8 @@ const SmartAccountHub = () => {
           </li>
         </ul>
       </section>
+
+      <SmartAccountAuthorizations />
 
       {/* Shortcuts */}
       <section className="flex flex-col gap-2">

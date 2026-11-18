@@ -33,7 +33,7 @@ import {
   getEvmSettlementStatus,
   type EvmSettlementStatus,
 } from '../../../../source/utils/evmReplacement.ts';
-import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
+import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeTokenPortfolioScope } from '../portfolio/tokenRegistry.ts';
 import { nativeLocalReplacementStatuses, nativeLocalReplacementWinnersToObserve } from './localReplacementStatus.ts';
 
@@ -60,7 +60,8 @@ export interface NativeActivityRuntime {
   observeLocal?(
     record: LocalActivityRecord,
     guard: () => void,
-    signal: AbortSignal
+    signal: AbortSignal,
+    observe?: (request: EvmObservationRequest) => Promise<EvmTransactionObservation>
   ): Promise<EvmTransactionObservation>;
   saveCache(
     scope: EvmActivityReadScope,
@@ -121,7 +122,7 @@ export type ActivityLifecycle = {
   subscribe(listener: () => void): () => void;
 };
 export type ActivityExplorerPort = Pick<ActivityExplorerReader, 'page'>;
-export type ActivityReceiptPort = Pick<ActivityReceiptReader, 'read'>;
+export type ActivityReceiptPort = Pick<ActivityReceiptReader, 'read'> & Partial<Pick<ActivityReceiptReader, 'observe' | 'retainedWave'>>;
 export type EvmActivityReaders = Readonly<{
   explorer: ActivityExplorerPort;
   receipts: ActivityReceiptPort;
@@ -170,6 +171,9 @@ const initial = (): NativeActivitySnapshot =>
 /** Account-bound read model. Neither network results nor this controller can sign. */
 export class NativeActivity {
   private snapshot = initial();
+  private activityError: Exclude<NativeActivitySnapshot['error'], 'position-not-saved'> = null;
+  private viewSaveFailed = false;
+  private viewSaveAttempt = 0;
   private listeners = new Set<() => void>();
   private scope: EvmActivityReadScope | null = null;
   private scopeRevision: number | null = null;
@@ -227,7 +231,10 @@ export class NativeActivity {
     return () => this.listeners.delete(listener);
   };
   private publish(update: Partial<NativeActivitySnapshot>) {
-    this.snapshot = Object.freeze({ ...this.snapshot, ...update });
+    if (update.error !== undefined && update.error !== 'position-not-saved')
+      this.activityError = update.error;
+    this.snapshot = Object.freeze({ ...this.snapshot, ...update,
+      error: this.viewSaveFailed ? 'position-not-saved' : this.activityError });
     for (const listener of this.listeners) listener();
   }
   connect(): () => void {
@@ -251,6 +258,8 @@ export class NativeActivity {
   }
   private stop() {
     this.generation++;
+    this.activityError = null;
+    this.viewSaveFailed = false;
     this.request?.abort();
     this.request = null;
     this.scope = null;
@@ -357,21 +366,16 @@ export class NativeActivity {
         });
         return;
       }
-      const timeout = setTimeout(() => {
-        if (generation === this.generation) this.request?.abort();
-      }, 30000);
-      try {
-        await this.fill(guard, signal);
-        guard();
-        await runtime.saveCache(
-          scope,
-          this.orderedCandidates().slice(0, 24).map(activityCandidateSummary),
-          guard
-        );
-        guard();
-      } finally {
-        clearTimeout(timeout);
-      }
+      // Each admitted explorer response owns its 12-second HTTP/body deadline;
+      // fill caps six reads. Account-wide queue wait must not consume that time.
+      await this.fill(guard, signal);
+      guard();
+      await runtime.saveCache(
+        scope,
+        this.orderedCandidates().slice(0, 24).map(activityCandidateSummary),
+        guard
+      );
+      guard();
       this.cachedFallback = false;
       this.refreshingRows = null;
       this.renderRows();
@@ -437,8 +441,15 @@ export class NativeActivity {
         );
         guard();
         const fingerprint = JSON.stringify(
-          rows.map((r) => [r.hash, r.blockNumber])
+          rows.map((row) => JSON.stringify([
+            row.hash,
+            row.blockNumber,
+            row.tokenEvent?.logIndex,
+            row.indexed.tokenTransfer,
+          ])).sort()
         );
+        if (rows.length === ACTIVITY_PAGE_SIZE && fingerprint === feed.fingerprint)
+          throw new Error('Explorer page did not advance');
         // The same shared source-priority merge keeps real transaction bodies
         // ahead of token-event placeholders. All indexed facts remain transient.
         for (const row of rows) if (row.tokenEvent && !this.tokenEvents.has(row.hash)) this.tokenEvents.set(row.hash, row.tokenEvent);
@@ -710,6 +721,13 @@ export class NativeActivity {
         : 'discovery-unavailable',
     });
   }
+  private receiptScope(scope: EvmActivityReadScope, generation: number) {
+    return JSON.stringify([generation, scope.key, scope.sourceId, scope.address]);
+  }
+  private retainedObserver(scope: EvmActivityReadScope, generation: number, signal: AbortSignal, guard: () => void) {
+    return this.receipts.observe ? (request: EvmObservationRequest) => this.receipts.observe!(
+      request, signal, guard, scope.network, this.receiptScope(scope, generation)) : undefined;
+  }
   private hydrate(hash?: string, page?: SavedPendingPage) {
     if (hash && (!this.checking.has(hash) || this.checking.get(hash)?.page !== page) &&
         !this.hydration.some((request) => request.hash === hash && request.page === page))
@@ -744,13 +762,13 @@ export class NativeActivity {
           if (!runtime?.observeLocal) throw new ActivityError('UNAVAILABLE');
           // The signed record already supplies the envelope. Use one owned
           // observation for status, without fetching the same receipt again.
-          const observation = await runtime.observeLocal(local, guard, signal);
+          const observation = await runtime.observeLocal(local, guard, signal, this.retainedObserver(scope, generation, signal, guard));
           guard();
           this.retainedObservations.set(hash, observation);
           this.unavailable.delete(hash);
           return;
         }
-        const observation = await this.receipts.read(hash, scope.address, signal, guard, scope.network);
+        const observation = await this.receipts.read(hash, scope.address, signal, guard, scope.network, this.receiptScope(scope, generation));
         guard();
         if (observation) {
           this.observations.set(hash, {
@@ -812,47 +830,66 @@ export class NativeActivity {
     for (const local of candidates) if (!work.seen.has(local.hash)) {
       work.seen.add(local.hash); work.queue.push(local);
     }
-    const run = async () => {
-      work.workers++;
-      try { while (work.queue.length && !work.lifetime.signal.aborted) {
-        const local = work.queue.shift()!;
+    const pump = () => {
+      const count = Math.min(2 - work.workers, work.queue.length);
+      if (count <= 0 || work.lifetime.signal.aborted) return;
+      const lifetime = work.lifetime.signal;
+      const wave = count > 1
+        ? this.receipts.retainedWave?.(scope.network, this.receiptScope(scope, generation), lifetime, guard)
+        : undefined;
+      const observe = wave?.observe ?? this.retainedObserver(scope, generation, lifetime, guard);
+      let remaining = count;
+      const run = async (local: LocalActivityRecord) => {
         try {
           guard();
-          const observation = await runtime.observeLocal!(
-            local,
-            guard,
-            work.lifetime.signal
-          );
+          const observation = await runtime.observeLocal!(local, guard, lifetime, observe);
           guard();
           this.retainedObservations.set(local.hash, observation);
           this.unavailable.delete(local.hash);
         } catch {
           try { guard(); } catch { return; }
-          // Keep the record, but do not describe an unavailable read as unconfirmed.
           // A concurrent successful detail read still owns its current evidence.
           if (!this.observations.has(local.hash) && !this.retainedObservations.has(local.hash))
             this.unavailable.add(local.hash);
         }
         if (generation === this.generation) this.renderRows();
-      } } finally { work.workers--; }
+      };
+      work.workers += count;
+      for (const local of work.queue.splice(0, count)) {
+        void run(local).finally(() => {
+          work.workers--;
+          if (--remaining === 0) wave?.close();
+          pump();
+        });
+      }
     };
-    while (work.workers < 2 && work.queue.length && !work.lifetime.signal.aborted) void run();
+    pump();
   }
 
   async setView(update: Partial<ActivityViewState>): Promise<void> {
-    const next = Object.freeze({ ...this.snapshot.view, ...update });
-    this.publish({ view: next });
     const scope = this.scope,
       generation = this.generation,
-      revision = this.source.getSnapshot().revision;
-    if (scope)
-      await this.runtime()
-        ?.saveView(scope, next, () => this.guard(generation, revision))
-        .catch(() => {
-          if (generation === this.generation)
-            this.publish({
-              error: 'position-not-saved',
-            });
-        });
+      revision = this.source.getSnapshot().revision,
+      runtime = scope ? this.runtime() : undefined,
+      attempt = ++this.viewSaveAttempt;
+    const next = Object.freeze({ ...this.snapshot.view, ...update });
+    this.publish({ view: next });
+    if (!scope || !runtime) return;
+    const guard = () => this.guard(generation, revision);
+    try {
+      guard();
+      await runtime.saveView(scope, next, guard);
+      guard();
+      if (attempt !== this.viewSaveAttempt || !this.viewSaveFailed) return;
+      // A full current view supersedes prior save failures, independently of
+      // the feed/older-page warning that may have arrived while writing.
+      this.viewSaveFailed = false;
+      this.publish({});
+    } catch {
+      try { guard(); } catch { return; }
+      if (attempt !== this.viewSaveAttempt) return;
+      this.viewSaveFailed = true;
+      this.publish({});
+    }
   }
 }
