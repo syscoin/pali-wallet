@@ -79,7 +79,7 @@ for (const cancel of [false, true]) test(`key import submits only its reviewed k
   } finally { held.resolve(); f.close(); }
 });
 
-for (const outcome of ['active', 'inactive', 'back'] as const) test(`note reveal uses a captured child authentication scope and only publishes in foreground (${outcome})`, async () => {
+for (const outcome of ['active', 'inactive', 'back', 'new inventory', 'new note', 'new authentication'] as const) test(`note reveal uses a captured child authentication scope and only publishes in foreground (${outcome})`, async () => {
   const env = environment(), proof = Promise.withResolvers<void>(), visibility: boolean[] = [];
   const parent = privateAuthentication.createNativePrivateAuthenticationScope();
   const binding = privateAuthentication.bindNativePrivateAuthentication(parent, { assertCurrent() {}, isPromptActive: () => true });
@@ -111,9 +111,19 @@ for (const outcome of ['active', 'inactive', 'back'] as const) test(`note reveal
     if (outcome === 'inactive') { env.change('inactive'); assert.equal(parent.isAuthenticating(), true); }
     proof.resolve(); await new Promise(resolve => setImmediate(resolve));
     tree = render();
-    const visible = screenElements(tree).some(node => node.children.includes('private-note-fixture'));
-    assert.equal(visible, outcome === 'active');
-    assert.equal(visibility.includes(true), outcome === 'active');
+    const staysForeground = outcome !== 'inactive' && outcome !== 'back';
+    const hasSecret = () => screenElements(tree).some(node => node.children.includes('private-note-fixture'));
+    assert.equal(hasSecret(), staysForeground);
+    assert.equal(visibility.includes(true), staysForeground);
+    if (outcome.startsWith('new ')) {
+      if (outcome === 'new inventory') props.inventory = { ...inventory };
+      if (outcome === 'new note') props.note = Object.freeze({ ...note });
+      if (outcome === 'new authentication') props.authentication = privateAuthentication.createNativePrivateAuthenticationScope();
+      tree = render();
+      assert.equal(hasSecret(), false, 'The replacement authority must never render the stale secret');
+      assert.equal(visibility.at(-1), false);
+      assert.equal(find(tree, 'Button', 'Reveal private note').props.disabled, false);
+    }
     assert.equal(parent.isAuthenticating(), false);
     assert.equal(backed, outcome === 'back' ? 1 : 0);
     if (outcome === 'inactive') {
@@ -123,7 +133,7 @@ for (const outcome of ['active', 'inactive', 'back'] as const) test(`note reveal
       assert.equal(opened, 2, 'An inactive completion must retire its busy attempt before retry');
       assert.equal(screenElements(render()).some(node => node.children.includes('private-note-fixture')), true);
     }
-  } finally { proof.resolve(); f.close(); parent.retire(); }
+  } finally { proof.resolve(); f.close(); props.authentication.retire(); parent.retire(); }
 });
 
 test('note export requests shared authorization without an inline PIN and keeps independent file passwords', () => {

@@ -1953,6 +1953,7 @@
       "prepareInterrupted": "준비가 중단되었습니다. 풀 데이터를 확인한 후 다시 시도하세요.",
       "checkStatus": "상태 확인",
       "previousStatusUnavailable": "릴레이어 상태를 확인할 수 없습니다. 이전 출금이 완료될 수 있습니다.",
+      "previousMayComplete": "이전 출금이 완료될 수 있습니다.",
       "statusFailed": "릴레이어 상태를 확인하지 못했습니다. 다시 시도하세요.",
       "statusUnknown": "출금 전송 상태를 알 수 없습니다. 다시 시도하기 전에 확인하세요.",
       "statusPending": "출금이 전송되었습니다. 공개 풀 확인을 기다리고 있습니다.",

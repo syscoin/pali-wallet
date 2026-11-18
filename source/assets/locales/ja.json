@@ -1953,6 +1953,7 @@
       "prepareInterrupted": "準備が中断されました。プールデータを確認して、もう一度お試しください。",
       "checkStatus": "状況を確認",
       "previousStatusUnavailable": "リレイヤーのステータスを確認できません。以前の出金が完了する可能性があります。",
+      "previousMayComplete": "以前の出金が完了する可能性があります。",
       "statusFailed": "リレイヤーの状況を確認できませんでした。再試行してください。",
       "statusUnknown": "出金の送信状況が不明です。再試行前に確認してください。",
       "statusPending": "出金を送信しました。公開プールデータの確認を待っています。",

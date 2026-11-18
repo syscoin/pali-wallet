@@ -1953,6 +1953,7 @@
       "prepareInterrupted": "La préparation a été interrompue. Vérifiez les données du pool, puis réessayez.",
       "checkStatus": "Vérifier le statut",
       "previousStatusUnavailable": "Statut du relayer indisponible. Un retrait précédent peut encore aboutir.",
+      "previousMayComplete": "Un retrait précédent peut encore aboutir.",
       "statusFailed": "Impossible de vérifier le statut du relais. Réessayez.",
       "statusUnknown": "Statut d’envoi du retrait inconnu. Vérifiez avant de réessayer.",
       "statusPending": "Retrait envoyé. En attente de confirmation publique du pool.",

@@ -18,6 +18,7 @@ import type {
 interface IPrivateWithdrawalProps {
   note: IPrivateNoteView;
   onBack: () => void;
+  previousStatusUnavailable?: boolean;
 }
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -128,6 +129,7 @@ function readReview(
 }
 function WithdrawalFlow({
   note,
+  previousStatusUnavailable,
   onBack,
   emitter,
   canSign,
@@ -391,6 +393,37 @@ function WithdrawalFlow({
     }
   };
   const expired = Boolean(review && clock >= review.expiresAt);
+  const previous = note.withdrawal;
+  const previousWarningId = 'privacy-withdrawal-previous-warning';
+  const previousContext = previous && (
+    <div className="min-w-0 space-y-1">
+      <div id={previousWarningId}>
+        <InlineFeedback>
+          {t(
+            previousStatusUnavailable
+              ? 'privacy.withdrawal.previousStatusUnavailable'
+              : 'privacy.withdrawal.previousMayComplete'
+          )}
+        </InlineFeedback>
+      </div>
+      {previous.jobId && (
+        <p
+          className="truncate text-xs text-brand-gray200"
+          title={previous.jobId}
+        >
+          {t('privacy.withdrawal.jobId')}: {previous.jobId}
+        </p>
+      )}
+      {previous.transactionHash && (
+        <p
+          className="truncate text-xs text-brand-gray200"
+          title={previous.transactionHash}
+        >
+          {t('privacy.deposit.txHash')}: {previous.transactionHash}
+        </p>
+      )}
+    </div>
+  );
   const actionClass =
     'rounded p-1 text-xs text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50';
   const heading = result
@@ -413,6 +446,7 @@ function WithdrawalFlow({
       {!review && (
         <div className="space-y-3 text-sm">
           <p>{note.amount} ETH</p>
+          {previousContext}
           <label htmlFor="privacy-withdrawal-recipient" className="block">
             {t('privacy.withdrawal.recipient')}
           </label>
@@ -647,6 +681,7 @@ function WithdrawalFlow({
                 })}
               </p>
             ))}
+          {previousContext}
           {(expired || consumed) && busy !== 'submit' ? (
             <Button
               type="button"
@@ -665,6 +700,7 @@ function WithdrawalFlow({
               variant="primary"
               disabled={Boolean(busy)}
               loading={busy === 'submit'}
+              aria-describedby={previous ? previousWarningId : undefined}
               onClick={() => void submit()}
             >
               {t(

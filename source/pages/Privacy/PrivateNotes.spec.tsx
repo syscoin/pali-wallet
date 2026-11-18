@@ -545,6 +545,109 @@ it('keeps the saved withdrawal visible when its relayer status is unavailable', 
   expect(screen.getByText(en.privacy.withdrawal.statusFailed)).toBeVisible();
 });
 
+it('keeps the unavailable prior relay status and identifiers visible at fresh withdrawal confirmation', async () => {
+  const account = { id: 0, type: 'Imported', address: `0x${'11'.repeat(20)}` };
+  const recipient = `0x${'22'.repeat(20)}`;
+  const previousJobId = 'prior-relay-job';
+  const previousHash = `0x${'33'.repeat(32)}`;
+  const intentId = '00000000-0000-4000-8000-000000000003';
+  const transactionHash = `0x${'44'.repeat(32)}`;
+  const withdrawal = {
+    mode: 'relayed',
+    phase: 'submitted',
+    jobId: previousJobId,
+    transactionHash: previousHash,
+  };
+  mockState.vault.accounts.Imported[0] = {
+    ...mockState.vault.accounts.Imported[0],
+    address: account.address,
+    xprv: 'synthetic-withdrawal-signer',
+  };
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getNotes') return { notes: [{ ...note, withdrawal }] };
+    if (method === 'statusByNote')
+      return { ...withdrawal, noteId: note.id, observationUnavailable: true };
+    if (method === 'prepareWithdrawal')
+      return {
+        intentId,
+        noteId: note.id,
+        poolId: note.poolId,
+        amount: note.amount,
+        poolAddress: PRIVACY_POOLS[0].address,
+        chainId: 1,
+        account,
+        expiresAt: Date.now() + 60000,
+        mode: 'direct',
+        recipient,
+        gasLimit: '650000',
+        maxNetworkFeeWei: '65000000000000000',
+        feeWei: '0',
+        serviceFeeWei: '0',
+        receiveWei: '100000000000000000',
+      };
+    if (method === 'submitWithdrawal')
+      return { intentId, noteId: note.id, phase: 'submitted', transactionHash };
+    throw new Error('Unexpected call');
+  });
+
+  render(<PrivateNotes />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: en.privacy.withdrawal.checkStatus,
+    })
+  );
+  await screen.findByText(en.privacy.withdrawal.previousStatusUnavailable);
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.withdrawal.open })
+  );
+  expect(
+    screen.getByText(en.privacy.withdrawal.previousStatusUnavailable)
+  ).toBeVisible();
+  fireEvent.change(screen.getByLabelText(en.privacy.withdrawal.recipient), {
+    target: { value: recipient },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+  );
+
+  const confirm = await screen.findByRole('button', {
+    name: en.privacy.withdrawal.confirm,
+  });
+  const notices = screen.getAllByText(
+    en.privacy.withdrawal.previousStatusUnavailable
+  );
+  expect(notices).toHaveLength(1);
+  expect(notices[0]).toBeVisible();
+  expect(notices[0].closest('p')).toHaveClass('text-brand-yellowInfo');
+  expect(confirm).toHaveAccessibleDescription(
+    en.privacy.withdrawal.previousStatusUnavailable
+  );
+  expect(screen.getByText(new RegExp(previousJobId))).toBeVisible();
+  expect(screen.getByText(new RegExp(previousHash))).toBeVisible();
+  expect(
+    mockEmitter.mock.calls.filter(([path]) => path[1] === 'statusByNote')
+  ).toEqual([
+    [['privacyWithdrawals', 'statusByNote'], [note.id], 30000, false],
+  ]);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['privacyWithdrawals', 'prepareWithdrawal'],
+    [{ noteId: note.id, recipient, mode: 'direct' }],
+    120000,
+    false
+  );
+  expect(
+    mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
+  ).toHaveLength(0);
+
+  fireEvent.click(confirm);
+  expect(await screen.findByText(transactionHash)).toBeVisible();
+  expect(
+    mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
+  ).toEqual([
+    [['privacyWithdrawals', 'submitWithdrawal'], [intentId], 120000, false],
+  ]);
+});
+
 it.each([
   ['direct', 'submitted'],
   ['direct', 'unknown'],
@@ -645,6 +748,9 @@ it.each([
     expect(screen.getByLabelText(en.privacy.withdrawal.recipient)).toHaveValue(
       ''
     );
+    expect(
+      screen.getByText(en.privacy.withdrawal.previousMayComplete)
+    ).toBeVisible();
     expect(mockEmitter.mock.calls).toEqual([
       [['privateVault', 'getNotes'], [], 10000, false],
     ]);

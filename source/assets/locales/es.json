@@ -1953,6 +1953,7 @@
       "prepareInterrupted": "La preparación se interrumpió. Comprueba los datos del pool y vuelve a intentarlo.",
       "checkStatus": "Consultar estado",
       "previousStatusUnavailable": "Estado del relayer no disponible. Un retiro anterior aún puede completarse.",
+      "previousMayComplete": "Un retiro anterior aún puede completarse.",
       "statusFailed": "No se pudo consultar el estado del relayer. Inténtalo de nuevo.",
       "statusUnknown": "Estado de envío del retiro desconocido. Compruébalo antes de reintentar.",
       "statusPending": "Retiro enviado. Esperando la confirmación pública del fondo.",

@@ -1953,6 +1953,7 @@
       "prepareInterrupted": "A preparação foi interrompida. Verifique os dados do pool e tente novamente.",
       "checkStatus": "Verificar status",
       "previousStatusUnavailable": "Status do relayer indisponível. Um saque anterior ainda pode ser concluído.",
+      "previousMayComplete": "Um saque anterior ainda pode ser concluído.",
       "statusFailed": "Não foi possível verificar o status do relayer. Tente novamente.",
       "statusUnknown": "Status de envio do saque desconhecido. Verifique antes de tentar novamente.",
       "statusPending": "Saque enviado. Aguardando confirmação pública do pool.",

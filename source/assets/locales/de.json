@@ -1953,6 +1953,7 @@
       "prepareInterrupted": "Die Vorbereitung wurde unterbrochen. Prüfe die Pooldaten und versuche es erneut.",
       "checkStatus": "Status prüfen",
       "previousStatusUnavailable": "Relayer-Status nicht verfügbar. Eine frühere Auszahlung kann noch abgeschlossen werden.",
+      "previousMayComplete": "Eine frühere Auszahlung kann noch abgeschlossen werden.",
       "statusFailed": "Der Relayer-Status konnte nicht geprüft werden. Erneut versuchen.",
       "statusUnknown": "Der Übermittlungsstatus der Auszahlung ist unbekannt. Vor einem erneuten Versuch prüfen.",
       "statusPending": "Auszahlung übermittelt. Öffentliche Poolbestätigung wird erwartet.",

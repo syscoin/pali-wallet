@@ -1953,6 +1953,7 @@
       "prepareInterrupted": "准备已中断。请检查资金池数据，然后重试。",
       "checkStatus": "检查状态",
       "previousStatusUnavailable": "无法获取中继器状态。先前的提款仍可能完成。",
+      "previousMayComplete": "先前的提款仍可能完成。",
       "statusFailed": "无法检查中继器状态，请重试。",
       "statusUnknown": "提款提交状态未知，请在重试前检查。",
       "statusPending": "提款已提交，正在等待公开资金池确认。",

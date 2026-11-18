@@ -19,6 +19,8 @@ type Props = {
 };
 type State = { phase: 'protected'; feedback?: 'failed' | 'expired' } |
   { phase: 'working' } | { phase: 'shown'; secret: string };
+type RevealAuthority = Pick<Props, 'inventory' | 'note' | 'authentication' | 'onSecretVisibilityChange'>;
+const protectedState: State = { phase: 'protected' };
 type Attempt = { timer?: ReturnType<typeof setTimeout>; authentication: NativePrivateAuthenticationScope };
 type Owner = { live: boolean; attempt?: Attempt };
 const REVEAL_MS = 30_000;
@@ -32,7 +34,16 @@ function clearAttempt(owner: Owner) {
 export function NativeNoteReveal({ inventory, note, authentication, onSecretVisibilityChange, onBack, onLock }: Props) {
   const { t } = useNativeTranslation();
   const life = useRef<Owner>({ live: false });
-  const [state, setState] = useState<State>({ phase: 'protected' });
+  const [authority, setAuthority] = useState<RevealAuthority>({ inventory, note, authentication, onSecretVisibilityChange });
+  const [storedState, setState] = useState<State>(protectedState);
+  const authorityChanged = authority.inventory !== inventory || authority.note !== note ||
+    authority.authentication !== authentication || authority.onSecretVisibilityChange !== onSecretVisibilityChange;
+  const state = authorityChanged ? protectedState : storedState;
+  if (authorityChanged) {
+    // Discard the previous reveal before rendering the replacement authority.
+    setAuthority({ inventory, note, authentication, onSecretVisibilityChange });
+    setState(protectedState);
+  }
 
   const clear = useCallback(() => {
     const owner = life.current;
@@ -46,7 +57,6 @@ export function NativeNoteReveal({ inventory, note, authentication, onSecretVisi
   useLayoutEffect(() => {
     const owner: Owner = { live: true };
     life.current = owner;
-    setState({ phase: 'protected' });
     const hide = () => { if (life.current === owner) clear(); };
     const change = AppState.addEventListener('change', (next) => {
       if (next !== 'active' && !(owner.attempt && allowsPrivateAuthenticationInterruption(owner.attempt.authentication, next))) hide();

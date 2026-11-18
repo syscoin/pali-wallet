@@ -198,6 +198,9 @@ function NotesView() {
   const content = withdrawing ? (
     <PrivateWithdrawal
       note={withdrawing}
+      previousStatusUnavailable={
+        statusError?.id === withdrawing.id && statusError.observationUnavailable
+      }
       onBack={() => {
         setWithdrawing(null);
         void refresh();

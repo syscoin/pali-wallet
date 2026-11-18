@@ -1953,6 +1953,7 @@
       "prepareInterrupted": "Preparation was interrupted. Check the pool data, then try again.",
       "checkStatus": "Check status",
       "previousStatusUnavailable": "Relayer status unavailable. A prior withdrawal may still complete.",
+      "previousMayComplete": "A prior withdrawal may still complete.",
       "statusFailed": "Could not check the relayer status. Try again.",
       "statusUnknown": "Withdrawal submission status unknown. Check before trying again.",
       "statusPending": "Withdrawal submitted. Waiting for public pool confirmation.",
