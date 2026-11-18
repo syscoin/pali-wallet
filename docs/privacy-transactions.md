@@ -54,6 +54,11 @@ selected RPC’s responses. A note with an unresolved withdrawal or without a
 locally recorded submitted withdrawal and hash stays active, even if it
 appears spent. Refresh the list after an error before trying again.
 
+Note-file export and restore run locally. Pool refresh uses public snapshots
+and Ethereum checks of their roots and block anchors. Pali matches notes
+against those snapshots on-device. Automatic transaction-journal cleanup
+skips nonce groups containing a retained privacy deposit or withdrawal.
+
 For a locally recorded direct withdrawal that failed, **Recover failed withdrawal**
 checks the original transaction and its proof before changing the saved hold.
 Recovery requires a finalized reverted receipt, matching original calldata,

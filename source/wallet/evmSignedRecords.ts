@@ -498,9 +498,16 @@ function completedNonceGroups(entries: readonly Entry[]): readonly Entry[][] {
     group.push(entry);
     groups.set(key, group);
   }
+  // Automatic cleanup must not reveal a private deposit or withdrawal hash,
+  // including when a different transaction in that nonce group won.
   return [...groups.values()].filter(
     (group) =>
-      group.every((entry) => !isPendingPhase(entry.phase)) &&
+      group.every(
+        (entry) =>
+          !isPendingPhase(entry.phase) &&
+          !Object.hasOwn(entry.metadata ?? {}, 'privateDeposit') &&
+          !Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal')
+      ) &&
       group.some(
         (entry) => entry.phase === 'confirmed' || entry.phase === 'reverted'
       )
@@ -3236,6 +3243,26 @@ export class EvmSignedRecords {
         const tx = retainedEvmTransaction(
           await this.materializeRecord(session, winner)
         );
+        if (chainId === '1') {
+          // Older entries may lack privacy metadata. Identify pool calls from
+          // the local envelope, including a sibling replaced by a cancellation.
+          const callsPrivacyPool = (transaction: Transaction) =>
+            getPrivacyPoolActivity(chainId, transaction.to, transaction.data);
+          let privateGroup = callsPrivacyPool(tx) !== undefined;
+          for (const entry of group) {
+            if (privateGroup) break;
+            if (entry === winner) continue;
+            assertFresh();
+            const sibling = retainedEvmTransaction(
+              await this.materializeRecord(session, entry)
+            );
+            privateGroup = callsPrivacyPool(sibling) !== undefined;
+          }
+          if (privateGroup) {
+            advanceGroup();
+            continue;
+          }
+        }
         const observe = async () => {
           const observed = await observeEvmTransaction(
             {
