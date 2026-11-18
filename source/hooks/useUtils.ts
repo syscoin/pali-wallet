@@ -145,8 +145,13 @@ export const useUtils = () => {
           () => toast.success(message, options),
           isCurrent
         ),
-      error: (message: string, options?: any) =>
-        showAlert(message, 'error', () => toast.error(message, options)),
+      error: (message: string, options?: any, isCurrent?: () => boolean) =>
+        showAlert(
+          message,
+          'error',
+          () => toast.error(message, options),
+          isCurrent
+        ),
       info: (message: string, options?: any, isCurrent?: () => boolean) =>
         showAlert(
           message,

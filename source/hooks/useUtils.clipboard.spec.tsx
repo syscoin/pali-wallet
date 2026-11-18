@@ -104,6 +104,19 @@ it('preserves rejection for awaited callers and deduplicates their existing erro
   expect(mockError.mock.calls[0][0]).toBe(message);
 });
 
+it('only displays a queued error while its request still owns the feedback', async () => {
+  render(<Fixture />);
+  let ownsRequest = true;
+  act(() => {
+    current.alert.error('Old network failed', undefined, () => ownsRequest);
+    current.alert.error('Current network failed', undefined, () => true);
+    ownsRequest = false;
+  });
+  await settle();
+  expect(mockError).toHaveBeenCalledTimes(1);
+  expect(mockError).toHaveBeenCalledWith('Current network failed', undefined);
+});
+
 it('calls the browser synchronously inside the gesture and only marks a resolved write as copied', async () => {
   const pending = deferred();
   mockWrite.mockReturnValueOnce(pending.promise);
