@@ -573,7 +573,7 @@ test('remove and re-add while NFT broadcast preflight waits preserves the signed
     assert.equal(outcome.review, null);
     assert.equal(outcome.hash, saved?.hash);
     assert.equal(outcome.collectible?.tokenStandard, 'ERC-721');
-    assert.match(outcome.message ?? '', /saved and did not broadcast/);
+    assert.equal(outcome.message, 'This transaction was not submitted. Check Activity before trying again.');
     assert.deepEqual(await retained(), [saved]);
     assert.equal(posted.length, 0);
     assert.equal(calls.some((call) => call.method === 'eth_sendRawTransaction'), false);

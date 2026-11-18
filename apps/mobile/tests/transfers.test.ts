@@ -1122,7 +1122,7 @@ test('a definite no-POST from the dispatch callback retains only the already sav
     const outcome = f.transfers.getSnapshot();
     assert.equal(outcome.phase, 'unknown');
     assert.equal(outcome.hash, saved.hash);
-    assert.match(outcome.message ?? '', /saved/i);
+    assert.equal(outcome.message, 'Check this transaction in Activity before sending again.');
     assert.doesNotMatch(outcome.message ?? '', /submission may have completed/i);
   } finally { f.close(); }
 });
