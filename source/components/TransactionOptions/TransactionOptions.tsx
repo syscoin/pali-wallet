@@ -208,9 +208,8 @@ const TransactionOptionsBase: React.FC<TransactionOptionsProps> = ({
     (smartCancellation.available &&
       transaction.isCancel === true &&
       !cancellationRetry) ||
-    (cancellationRetry !== undefined && !mined) ||
-    (mined && !(canCancelSmart && smartCancellation.available)) ||
-    (local && !(canCancelSmart && smartCancellation.available));
+    ((mined || local || cancellationRetry !== undefined) &&
+      !(canCancelSmart && smartCancellation.available));
   const preview = useRef<{
     cancel: () => void;
     close: () => void;
@@ -479,7 +478,7 @@ const TransactionOptionsBase: React.FC<TransactionOptionsProps> = ({
                         cancellationRetry?.operationHash,
                       ])}
                       busy={smartCancellation.busy}
-                      checkLive={mined}
+                      checkLive={mined || cancellationRetry !== undefined}
                       hash={transaction.hash}
                       onClick={() => handleOnClick(UpdateTxAction.Cancel)}
                       retry={cancellationRetry !== undefined}

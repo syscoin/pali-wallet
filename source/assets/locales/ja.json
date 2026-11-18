@@ -1,5 +1,6 @@
 {
   "secretQr": {
+    "cameraPermission": "設定でカメラへのアクセスを許可してください。スキャナーが閉じた場合は、Paliで「QRをスキャン」を開き直してください。",
     "show": "QRを表示",
     "hide": "QRを非表示",
     "visible": "表示中の秘密情報のQRコード",

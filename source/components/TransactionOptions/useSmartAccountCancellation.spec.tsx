@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -298,11 +299,74 @@ it.each([true, false])(
   }
 );
 
-it('retries a failed revocation against the original operation through the existing fee review', async () => {
-  const failedHash = '0x' + '88'.repeat(32);
-  mockEmitter.mockResolvedValueOnce(true);
-  prepare(TRANSACTION, reviewedQuote);
-  const update = jest.fn();
+it.each([10, undefined])(
+  'retries a failed revocation against the original operation through the existing fee review (indexed block %s)',
+  async (blockNumber) => {
+    const failedHash = '0x' + '88'.repeat(32);
+    mockEmitter.mockResolvedValueOnce(true);
+    prepare(TRANSACTION, reviewedQuote);
+    const update = jest.fn();
+    render(
+      <TransactionOptions
+        alert={mockAlert}
+        canCancelSmart
+        cancellationRetry={{
+          originalHash: TRANSACTION,
+          operationHash: OPERATION,
+        }}
+        chainId={57057}
+        handleUpdateTransaction={update}
+        setIsOpenModal={jest.fn()}
+        setModalData={jest.fn()}
+        transaction={
+          {
+            hash: failedHash,
+            from: PAYER,
+            blockNumber,
+            historySource: 'local-signed',
+            type: 2,
+            isCancel: true,
+          } as any
+        }
+      />
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: en.transactions.transactionOptions })
+    );
+    const menu = within(screen.getByRole('menu'));
+    expect(
+      menu.queryByRole('menuitem', { name: en.header.speedUp })
+    ).toBeNull();
+    expect(
+      menu.queryByRole('menuitem', { name: en.buttons.cancel })
+    ).toBeNull();
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'canCancelSavedSmartAccountTransaction'],
+      [failedHash, { account: 'smart', network: 'sys' }, true]
+    );
+    fireEvent.click(
+      await menu.findByRole('menuitem', {
+        name: en.transactions.retrySmartAccountCancellation,
+      })
+    );
+    await screen.findByRole('dialog', { name: en.header.cancelTx });
+    expect(mockEmitter).toHaveBeenLastCalledWith(
+      ['wallet', 'prepareSmartAccountCancellation'],
+      [
+        { originalHash: TRANSACTION, operationHash: OPERATION },
+        2,
+        expect.any(Object),
+      ],
+      300000,
+      false
+    );
+    expect(update).not.toHaveBeenCalled();
+    expect(mockSubmit).not.toHaveBeenCalled();
+  }
+);
+
+it('keeps an unconfirmed revocation without a verified reverted receipt read-only', async () => {
+  mockEmitter.mockResolvedValueOnce(false);
   render(
     <TransactionOptions
       alert={mockAlert}
@@ -312,47 +376,37 @@ it('retries a failed revocation against the original operation through the exist
         operationHash: OPERATION,
       }}
       chainId={57057}
-      handleUpdateTransaction={update}
+      handleUpdateTransaction={jest.fn()}
       setIsOpenModal={jest.fn()}
       setModalData={jest.fn()}
       transaction={
         {
-          hash: failedHash,
+          hash: '0x' + '88'.repeat(32),
           from: PAYER,
-          blockNumber: 10,
+          historySource: 'local-signed',
           type: 2,
           isCancel: true,
         } as any
       }
     />
   );
-  fireEvent.click(
-    screen.getByRole('button', { name: en.transactions.transactionOptions })
-  );
+  expect(mockEmitter).not.toHaveBeenCalled();
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole('button', { name: en.transactions.transactionOptions })
+    );
+  });
   const menu = within(screen.getByRole('menu'));
-  expect(menu.queryByRole('menuitem', { name: en.header.speedUp })).toBeNull();
-  expect(menu.queryByRole('menuitem', { name: en.buttons.cancel })).toBeNull();
-  expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'canCancelSavedSmartAccountTransaction'],
-    [failedHash, { account: 'smart', network: 'sys' }, true]
-  );
-  fireEvent.click(
-    await menu.findByRole('menuitem', {
+  expect(
+    menu.getByRole('menuitem', { name: en.transactions.seeDetails })
+  ).toBeTruthy();
+  expect(
+    menu.queryByRole('menuitem', {
       name: en.transactions.retrySmartAccountCancellation,
     })
-  );
-  await screen.findByRole('dialog', { name: en.header.cancelTx });
-  expect(mockEmitter).toHaveBeenLastCalledWith(
-    ['wallet', 'prepareSmartAccountCancellation'],
-    [
-      { originalHash: TRANSACTION, operationHash: OPERATION },
-      2,
-      expect.any(Object),
-    ],
-    300000,
-    false
-  );
-  expect(update).not.toHaveBeenCalled();
+  ).toBeNull();
+  expect(menu.queryByRole('menuitem', { name: en.header.speedUp })).toBeNull();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockSubmit).not.toHaveBeenCalled();
 });
 

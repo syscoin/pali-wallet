@@ -1,5 +1,6 @@
 {
   "secretQr": {
+    "cameraPermission": "Allow camera access in Settings. Reopen Scan QR in Pali if it closes.",
     "show": "Show QR",
     "hide": "Hide QR",
     "visible": "QR code for the revealed secret",

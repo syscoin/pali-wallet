@@ -1,5 +1,6 @@
 {
   "secretQr": {
+    "cameraPermission": "在设置中允许访问相机。如果扫描器关闭，请在 Pali 中重新打开“扫描二维码”。",
     "show": "显示二维码",
     "hide": "隐藏二维码",
     "visible": "已显示的秘密信息二维码",

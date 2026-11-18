@@ -186,8 +186,9 @@ const EvmTransactionItem = React.memo(
       : getSmartAccountDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
     const currentAddress = currentAccount?.address?.toLowerCase();
+    const canCancelSmartOrRetry = canCancelSmart || Boolean(cancellationRetry);
     const ownsReplacement =
-      canCancelSmart ||
+      canCancelSmartOrRetry ||
       (Boolean(currentAddress) && tx.from?.toLowerCase?.() === currentAddress);
     const txFrom = displayTx?.from?.toLowerCase?.();
     const txTo = displayTx?.to?.toLowerCase?.();
@@ -695,7 +696,7 @@ const EvmTransactionItem = React.memo(
               (tx.historySource ===
                 EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
                 !tx.speedUpAvailable &&
-                !canCancelSmart) ||
+                !canCancelSmartOrRetry) ||
               settlement === 'replacementPending' ? (
                 <Tooltip content={t('notifications.clickToView')}>
                   <DetailArrowSvg
@@ -711,7 +712,8 @@ const EvmTransactionItem = React.memo(
                     !tx.cancellationUnavailable
                     ? { ...tx, cancellationUnavailable: true }
                     : tx,
-                  canCancelSmart
+                  canCancelSmartOrRetry,
+                  cancellationRetry
                 )
               )}
             </div>

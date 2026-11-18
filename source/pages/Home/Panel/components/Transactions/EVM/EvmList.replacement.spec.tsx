@@ -1020,3 +1020,26 @@ it('keeps a failed revocation retry inside its existing failed transaction row',
     0
   );
 });
+
+it('passes an unindexed retained revocation to the existing row menu', async () => {
+  const revocation = transaction('a', {
+    from: TARGET,
+    historySource: 'local-signed',
+    isCancel: true,
+  });
+  const reference = { originalHash: hash('b'), operationHash: hash('c') };
+  mockRows = [revocation];
+  render(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      smartCancellationRetries={new Map([[revocation.hash, reference]])}
+    />
+  );
+  expect(await screen.findByText('Unconfirmed')).toBeTruthy();
+  expect(
+    screen
+      .getByText(`Options:${revocation.hash}`)
+      .getAttribute('data-retry-cancellation')
+  ).toBe(reference.operationHash);
+  expect(screen.queryByRole('group', { name: /Operation hash/ })).toBeNull();
+});

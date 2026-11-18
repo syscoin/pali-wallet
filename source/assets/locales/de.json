@@ -1,5 +1,6 @@
 {
   "secretQr": {
+    "cameraPermission": "Erlaube den Kamerazugriff in den Einstellungen. Öffne „QR-Code scannen“ in Pali erneut, falls sich der Scanner schließt.",
     "show": "QR-Code anzeigen",
     "hide": "QR-Code ausblenden",
     "visible": "QR-Code für das angezeigte Geheimnis",

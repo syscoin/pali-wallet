@@ -36,7 +36,7 @@ export function SecretQrScanner({ kind, onScan, onClose }: {
   const { t } = useNativeTranslation();
   return <QrScanner showSigningNotice={false} parse={text => parseSecretQr(text, kind)} onScan={onScan} onClose={onClose} copy={{
     title: t('secretQr.scan'), instructions: t('secretQr.scanHelp'),
-    permission: t('mobile.scanner.accessNeeded'), unavailable: t('secretQr.cameraUnavailable'),
+    permission: t('secretQr.cameraPermission'), unavailable: t('secretQr.cameraUnavailable'),
     invalidTitle: t('secretQr.scanInvalid'),
     invalidBody: t('secretQr.scanHelp'),
     manualAction: t('buttons.back'), webUnavailable: t('secretQr.cameraUnavailable'),

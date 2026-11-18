@@ -3,7 +3,7 @@ import type { EvmDappFeeComparison } from '../../../../source/shared/evmDappFeeP
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { prepareEvmDappReview, type EvmDappSubmission } from '../../../../source/shared/evmDappReview.ts';
 import { type EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
-import { guardedRead } from '../custody/evmFeeContracts.ts';
+import { EvmTransferReadError, guardedRead } from '../custody/evmFeeContracts.ts';
 import type { EvmTransferReadRpc, NativeAutomaticNoncePlanner } from '../custody/evmTransferReadRpc.ts';
 import type { NativeTransferDispatchValidation } from '../custody/transfers.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
@@ -14,7 +14,7 @@ export type NativeConnectionSubmission = EvmDappSubmission;
 type NativeConnectionSubmissionFailure = 'retryable' | 'not-sent' | 'uncertain';
 const nativeSubmissionFailures = new WeakMap<object, NativeConnectionSubmissionFailure>();
 
-/** The custody host supplies SDK stage evidence and the result of exact journal cleanup. */
+/** Retry evidence comes from the pre-send refresh or the custody host's SDK stage and journal cleanup. */
 export function recordNativeConnectionSubmissionFailure(
   error: unknown,
   failure: NativeConnectionSubmissionFailure
@@ -81,6 +81,12 @@ export async function prepareNativeConnectionTransaction(input: unknown, ports: 
     nonceContext: planner,
     now: ports.now ?? (() => Math.floor(performance.now())),
     assertCurrent: check,
+    onPreSendRefreshFailure(error, submission) {
+      if (submission.kind === 'transaction' &&
+          (error instanceof EvmTransferReadError && error.code === 'REVIEW_REQUIRED' ||
+           error instanceof Error && error.message === 'EVM fee approval changed'))
+        recordNativeConnectionSubmissionFailure(error, 'retryable');
+    },
     prepare: (request, assertCurrent, nonceContext, approved) =>
       ports.rpc.prepareDapp(request, ports.signal, assertCurrent, nonceContext, approved, ports.funding,
         estimateAfterAuthorization && nonceContext !== planner ? { kind: 'estimate' } : gasPolicy, ports.feePolicy,

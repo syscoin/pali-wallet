@@ -1,5 +1,6 @@
 {
   "secretQr": {
+    "cameraPermission": "Permite el acceso a la cámara en Ajustes. Si el escáner se cierra, vuelve a abrir Escanear QR en Pali.",
     "show": "Mostrar QR",
     "hide": "Ocultar QR",
     "visible": "Código QR del dato secreto mostrado",
