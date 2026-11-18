@@ -1559,10 +1559,7 @@ test('terminal cleanup skips private Smart Account operations and their nonce si
     value: parseEther(pool.amount).toString(),
   };
   const transfer = { target: otherSigner.address, data: '0x', value: '1' };
-  const wrap = (
-    nonce: number,
-    groups: ReadonlyArray<ReadonlyArray<typeof transfer>>
-  ) => {
+  const wrap = (nonce: number, groups: (typeof transfer)[][]) => {
     const operations = groups.map((calls, index) => {
       const execution = encodeERC7579Executions([...calls]);
       return {
