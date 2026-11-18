@@ -2,8 +2,8 @@
   "status": "APPROVED",
   "schema": "pali-single-advisory-exception-v1",
   "scope": "Only the mobile npm moderate+ gate; no blanket package exemption or extension audit exemption",
-  "reviewedHead": "9c825c71ffeaf1199fbde17be24a8f0a6b4a46d0",
-  "reviewedTree": "86148d3ba6e43976ba35a1e0d7eb54a404b07102",
+  "reviewedHead": "66b504669f8562dd1af9da63dcd17901bd51f62f",
+  "reviewedTree": "cbd6b50c488e106beec0b49152ccba172ac20363",
   "notBefore": "2026-11-17T18:29:00Z",
   "expiresAt": "2026-11-24T00:00:00Z",
   "advisory": {
@@ -97,8 +97,8 @@
   "sourcePins": {
     "apps/mobile/src/connections/walletConnect.ts": "eed9228eefe52e09a7707c6bbe919eaeb6d272563797be46bf7045b3742b0b2c",
     "apps/mobile/src/connections/storage.ts": "836f922c4e8055b2c2eefd13d90f9f1553a3303f54482bc6c2ece07e01b2df7e",
-    "apps/mobile/src/connections/controller.ts": "aa019d2a5a61e974a3478135826db6b1068c48bd4eec7268af873050c47e453d",
-    "apps/mobile/src/custody/keyringRuntime.ts": "59ca5d4320f2b2aae1c0aff0020b5da40ff5c5d0f5726f18c793fb514efe413b",
+    "apps/mobile/src/connections/controller.ts": "0450206c26bd805e3199a6f3f92cf4c8f031a85da0582b8aaa85a3aecc2ca1d9",
+    "apps/mobile/src/custody/keyringRuntime.ts": "f505099531026d0b613ef0ecea9c29ebee0936cc63a1fec4100f7c912a892b88",
     "apps/mobile/metro.config.js": "6230386042857ff6324f45106963d8cf1a363876d1bd997ce306de1b4807b74f",
     "source/config/webpack.common.js": "67dbda4f285eacac2dc62ffab09759acf281337b2ff927b816730be30f4181d0",
     "source/config/webpack.prod.js": "862ae2dd5d73c1fd095571a89f60b3579837ae0e93b16143ddd756f11020a4c4"
@@ -115,15 +115,15 @@
   },
   "reviewEvidence": {
     "applicability": {
-      "path": "/private/tmp/pali-dependency-requalification-9c825c71/proposal/picomatch-runtime-receipt.json",
-      "sha256": "4a6631497b1b42f161bcf9444ecb25f363221c2aed6a5855a3d6031623428713"
+      "path": "/private/tmp/pali-dependency-requalification-66b50466/proposal/picomatch-runtime-receipt.json",
+      "sha256": "cd62a0dfeb57ba70c25dafd16c6e4f613f13108ac73dacf8d6ac16344b9a265d"
     },
     "verifier": {
-      "path": "/private/tmp/pali-dependency-requalification-9c825c71/refresh-reviewed-controller.py",
-      "sha256": "616a42a6b8c921a39425c8557cc3784ce20b946581073fb05dd5de69e938767f"
+      "path": "/private/tmp/pali-dependency-requalification-66b50466/refresh-reviewed-controller.py",
+      "sha256": "6ba229277983481dd2ebea0587c9cffc78c8390b0c257cf9b51a76bc000f5622"
     },
     "auditJson": {
-      "path": "/private/tmp/pali-dependency-requalification-9c825c71/npm-audit.json",
+      "path": "/private/tmp/pali-dependency-requalification-66b50466/npm-audit.json",
       "sha256": "5d05c8a4acf1e7bd5c0a40db4bda708d321289e11ecf2f4356581c785fb5f024",
       "auditReportVersion": 2,
       "moderate": 0,
@@ -131,14 +131,14 @@
       "allHighRootedInSingleAdvisory": true
     },
     "android": {
-      "sourceRevision": "9c825c71ffeaf1199fbde17be24a8f0a6b4a46d0",
-      "sourceTree": "86148d3ba6e43976ba35a1e0d7eb54a404b07102",
+      "sourceRevision": "66b504669f8562dd1af9da63dcd17901bd51f62f",
+      "sourceTree": "cbd6b50c488e106beec0b49152ccba172ac20363",
       "variant": "normal Android JavaScript/Hermes only; no APK/native/device claim",
-      "map": "/private/tmp/pali-dependency-requalification-9c825c71/android/index.android.bundle.map",
-      "mapSha256": "68034de576eaa874327976bfc079a0a3fe6b4dc1fbe3e87f6ba4f60a2265714d",
-      "bundle": "/private/tmp/pali-dependency-requalification-9c825c71/android/index.android.bundle",
-      "bundleSha256": "88995bb37c7cf4d4be71ff0f761cee651788b3ef96bd7bd05ffcf26b8b21380a",
-      "bundleBytes": 20368888,
+      "map": "/private/tmp/pali-dependency-requalification-66b50466/android/index.android.bundle.map",
+      "mapSha256": "89799e14293d1752f49b3c9d4aa1a21b122aa465054edc3e756b6114893de16d",
+      "bundle": "/private/tmp/pali-dependency-requalification-66b50466/android/index.android.bundle",
+      "bundleSha256": "e0618229f8faa1292cb1b074bb951b8c399c998768955a1a6167f3f4f4ad80c0",
+      "bundleBytes": 20371956,
       "hermesBytecodeVersion": 99,
       "verifiedSourceContents": 5644,
       "generatedSourceBodies": [
@@ -156,8 +156,8 @@
         "drivers/fs": []
       },
       "sourceReceipt": {
-        "path": "/private/tmp/pali-dependency-requalification-9c825c71/android-evidence.json",
-        "sha256": "b04c9c54855fb44da6ee9df7347ab6c73cf0cd49cdda0fdf9d3e01e0c93d218d"
+        "path": "/private/tmp/pali-dependency-requalification-66b50466/android-evidence.json",
+        "sha256": "f3b3d1ac36209f88da218c8719e4b7dfe1febcd7d7c2131f9d2e56226c0f871c"
       },
       "officialPackages": [
         {
@@ -293,11 +293,11 @@
       "limits": "Normal Android JS/Hermes now directly verified; no new APK, native compile or iOS artifact/device qualification."
     },
     "productionExtension": {
-      "sourceRevision": "9c825c71ffeaf1199fbde17be24a8f0a6b4a46d0",
-      "sourceTree": "86148d3ba6e43976ba35a1e0d7eb54a404b07102",
+      "sourceRevision": "66b504669f8562dd1af9da63dcd17901bd51f62f",
+      "sourceTree": "cbd6b50c488e106beec0b49152ccba172ac20363",
       "sourceDirty": false,
-      "zipSha256": "9eb71531f00757273e19d6b107a3c1a131e06d0dd885c1adb318df3d69f09669",
-      "analyzerSha256": "146ca498016c5f97f4bf1f18105aed1bd265c336272ca9a615c5c766cc011cb2",
+      "zipSha256": "c188ba01764b69b5629cb6da2c5774c72d0754fc108edc7189c6fb0771efa8e0",
+      "analyzerSha256": "aee0c94f00270040e40959c8327c97581efbb760b34c08a1c40efefa402c9306",
       "nodes": 8124,
       "packagedFiles": 183
     }
@@ -348,11 +348,11 @@
     ],
     "excludedPolicyHelper": "apps/mobile/scripts/check-dependency-advisories.cjs",
     "files": 2574,
-    "sha256": "826c7f1a5b099be1b4a36ac94ef21f85ecdc013b53e97b30e791755fc5b04f44"
+    "sha256": "b231eb989b6677267a27937488955fd62edd92a7425d36f152b6441419b3d63c"
   },
   "runtimeReceipt": {
     "path": "apps/mobile/security/picomatch-runtime-receipt.json",
-    "sha256": "4a6631497b1b42f161bcf9444ecb25f363221c2aed6a5855a3d6031623428713"
+    "sha256": "cd62a0dfeb57ba70c25dafd16c6e4f613f13108ac73dacf8d6ac16344b9a265d"
   },
   "nodeVersion": "v26.12.1",
   "approval": {
@@ -362,21 +362,21 @@
     "scope": "GHSA-fc5q-39xc-vjpf only; exact reviewed identities and runtime evidence; development/build exposure accepted until the stated expiry"
   },
   "requalification": {
-    "verifiedAt": "2026-11-18T14:49:16.972801Z",
-    "sourceRevision": "9c825c71ffeaf1199fbde17be24a8f0a6b4a46d0",
-    "previousReviewedHead": "73cad53d3ae4115332f66c6ebac7a88fa6c4712b",
+    "verifiedAt": "2026-11-18T14:51:53.763767Z",
+    "sourceRevision": "66b504669f8562dd1af9da63dcd17901bd51f62f",
+    "previousReviewedHead": "9c825c71ffeaf1199fbde17be24a8f0a6b4a46d0",
     "authority": "User explicitly authorized requalification under the existing single-advisory exception and unchanged expiry.",
     "scopeUnchanged": true,
     "advisory": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
     "expiresAt": "2026-11-24T00:00:00Z",
     "normalAndroid": {
-      "path": "/private/tmp/pali-dependency-requalification-9c825c71/android-evidence.json",
-      "sha256": "b04c9c54855fb44da6ee9df7347ab6c73cf0cd49cdda0fdf9d3e01e0c93d218d"
+      "path": "/private/tmp/pali-dependency-requalification-66b50466/android-evidence.json",
+      "sha256": "f3b3d1ac36209f88da218c8719e4b7dfe1febcd7d7c2131f9d2e56226c0f871c"
     },
     "extension": {
-      "path": "/private/tmp/pali-dependency-requalification-9c825c71/extension-evidence.json",
-      "sha256": "93f4c37be0b2400d79f662ce3b12513d4d8070990a817b8688000df410bcd9bb"
+      "path": "/private/tmp/pali-dependency-requalification-66b50466/extension-evidence.json",
+      "sha256": "0a3530480223255bdc44453b579af86c95e1a8405b3977505531889b67c066c7"
     },
-    "inputDigest": "826c7f1a5b099be1b4a36ac94ef21f85ecdc013b53e97b30e791755fc5b04f44"
+    "inputDigest": "b231eb989b6677267a27937488955fd62edd92a7425d36f152b6441419b3d63c"
   }
 }
