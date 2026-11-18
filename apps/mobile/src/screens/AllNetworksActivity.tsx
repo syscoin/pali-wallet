@@ -55,6 +55,11 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   const targetKey = JSON.stringify([snapshot.accountId, targetNetworkId, targetHash]);
   const targetOwner = useRef({ key: targetKey, opened: onInitialTargetOpened });
   useLayoutEffect(() => { targetOwner.current = { key: targetKey, opened: onInitialTargetOpened }; }, [targetKey, onInitialTargetOpened]);
+  const retireArrival = () => {
+    if (!targetHash || arrival.current === targetKey || targetOwner.current.key !== targetKey) return;
+    arrival.current = targetKey;
+    targetOwner.current.opened?.();
+  };
   useEffect(() => {
     let live = true;
     const update = () => {
@@ -134,11 +139,15 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   }
   const filterChoice = snapshot.choices.find(choice => choice.scope.network.id === snapshot.filter);
   const filterName = snapshot.filter === 'all' ? t('mobile.accountPortfolio.allNetworks') : filterChoice?.networkName ?? t('mobile.accountPortfolio.unavailableNetwork');
-  const unavailableNetworks = snapshot.choices.filter(choice => {
-    const child = controller.getNetwork(choice.scope.network.id)?.controller.getSnapshot();
-    return child?.status === 'unavailable' || child?.status === 'ready' && !child.loadingMore &&
-      (!!child.error || child.discoveryAvailable === false);
-  }).map(choice => choice.networkName);
+  const networkStates = snapshot.choices.map(choice => ({ choice,
+    child: controller.getNetwork(choice.scope.network.id)?.controller.getSnapshot(),
+  }));
+  const unavailableNetworks = networkStates.filter(({ child }) =>
+    child?.status === 'unavailable' || child?.status === 'ready' && !child.loadingMore &&
+      (!!child.error || child.discoveryAvailable === false)
+  ).map(({ choice }) => choice.networkName);
+  const retryOlder = networkStates.some(({ child }) => child?.hasMore &&
+    (child.error === 'feed-unavailable' || child.error === 'older-unavailable' || child.error === 'load-incomplete'));
   return <SafeAreaView edges={navigation ? ['top'] : ['top', 'bottom']} style={s.root}>
     <View style={s.header}><Header title={t('buttons.activity')} subtitle={accountLabel} right={<View style={s.toolbar}>
       <IconButton label={t('mobile.activityViews.nativeActivity.refreshActivity')} icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status === 'loading'} onPress={() => void run(async check => {
@@ -179,18 +188,15 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
           poolBadge={display.poolBadge} direction={display.direction} amount={display.amount} time={display.date.time}
           asset={activityAssetIcon(item.row, String(item.choice.scope.network.chainId), 'registrationHash' in item.choice.scope.network ? item.choice.scope.network.registrationHash : undefined)}
           registrationHash={'registrationHash' in item.choice.scope.network ? item.choice.scope.network.registrationHash : undefined} assetSymbol={item.row.display?.displaySymbol ?? item.row.local?.token?.symbol}
-          label={t('mobile.activityViews.allNetworksActivity.networkRowLabel', { description: display.label, network: item.choice.networkName })} disabled={busy} onPress={() => { rememberScroll(); setError(''); setSelection(item); }} />;
+          label={t('mobile.activityViews.allNetworksActivity.networkRowLabel', { description: display.label, network: item.choice.networkName })} disabled={busy} onPress={() => { retireArrival(); rememberScroll(); setError(''); setSelection(item); }} />;
       }}
       ListEmptyComponent={snapshot.status !== 'loading' && !snapshot.refreshing ? <View style={s.empty}>
         <Text style={s.emptyTitle}>{snapshot.status === 'unavailable' ? t('mobile.activity.unavailableTitle') : t('mobile.activityViews.nativeActivity.noActivityToShow')}</Text>
         <Text style={s.caption}>{t('mobile.activityViews.nativeActivity.refreshOrChooseAnotherFilter')}</Text>
       </View> : undefined}
-      ListFooterComponent={<View style={s.section}>{snapshot.hasMore && !snapshot.refreshing && <Button title={snapshot.loadingMore ? t('mobile.activityViews.nativeActivity.loadingOlderActivity') : snapshot.partial ? t('mobile.activityViews.allNetworksActivity.retryActivity') : t('mobile.activityViews.nativeActivity.loadOlderActivity')} variant="secondary" size="compact"
+      ListFooterComponent={<View style={s.section}>{snapshot.hasMore && !snapshot.refreshing && <Button title={snapshot.loadingMore ? t('mobile.activityViews.nativeActivity.loadingOlderActivity') : retryOlder ? t('mobile.activityViews.allNetworksActivity.retryActivity') : t('mobile.activityViews.nativeActivity.loadOlderActivity')} variant="secondary" size="compact"
         disabled={busy || snapshot.loadingMore} onPress={() => void run(async () => {
-          if (!snapshot.partial && targetHash && arrival.current !== targetKey) {
-            arrival.current = targetKey;
-            targetOwner.current.opened?.();
-          }
+          if (!retryOlder) retireArrival();
           await controller.loadMore();
         })} />}</View>} />
     <Modal visible={sheet !== null} transparent animationType="slide" onRequestClose={closeSheet}>
@@ -201,7 +207,7 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
         onSelect={id => { void run(async check => {
           check();
           // An explicit filter choice supersedes the notification arrival.
-          arrival.current = targetKey;
+          retireArrival();
           await controller.selectFilter(id); check(); setSheet(null);
         }); }} onClose={closeSheet} />
         : <View style={s.modal}><Card style={s.options}><Text style={s.emptyTitle}>{t('mobile.activityViews.nativeActivity.activityOptions')}</Text>

@@ -177,6 +177,37 @@ it('keeps archive separate, pages a local bounded list, and reuses reveal/export
   );
 });
 
+it('waits for an archive refresh before opening restore and then accepts the refreshed row', async () => {
+  const rows = notes.slice(0, 2);
+  const f = fixture(rows);
+  await f.open();
+  let finish!: (value: ReturnType<typeof inventory>) => void;
+  const pending = new Promise<ReturnType<typeof inventory>>((resolve) => {
+    finish = resolve;
+  });
+  f.emit.mockImplementationOnce(() => pending);
+  fireEvent.click(screen.getByRole('button', { name: 'privacy.refresh' }));
+  const restore = () =>
+    screen.getAllByRole('button', { name: 'privacy.archive.restore' });
+  expect(restore()[0]).toBeDisabled();
+  fireEvent.click(restore()[0]);
+  expect(screen.queryByRole('button', { name: 'Authorize' })).toBeNull();
+  await act(async () => {
+    finish(inventory(rows.slice(1)));
+    await pending;
+  });
+  expect(restore()).toHaveLength(1);
+  fireEvent.click(restore()[0]);
+  fireEvent.click(screen.getByRole('button', { name: 'Authorize' }));
+  await waitFor(() => expect(f.props.onRestored).toHaveBeenCalledTimes(1));
+  expect(f.emit).toHaveBeenCalledWith(
+    ['privateVault', 'restoreArchivedNote'],
+    ['note-1', 'existing-wallet-password'],
+    30000,
+    false
+  );
+});
+
 it('restores only the selected archived record after existing wallet authorization and refreshes both inventories', async () => {
   const f = fixture(notes.slice(0, 2));
   await f.open();

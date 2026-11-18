@@ -137,8 +137,8 @@ export default function PrivateArchivedNotes({
     form.resetFields();
   };
   const choose = (next: typeof action) => {
+    if (loading || owner.current.busy) return;
     close();
-    if (owner.current.busy) return;
     setAction(next);
     setResult(undefined);
   };
@@ -256,6 +256,7 @@ export default function PrivateArchivedNotes({
                       <button
                         type="button"
                         className={actionClass}
+                        disabled={loading}
                         onClick={() => choose({ kind: 'restore', id: note.id })}
                       >
                         <span aria-hidden="true">

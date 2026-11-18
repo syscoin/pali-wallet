@@ -1,6 +1,6 @@
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
-import { WalletModal as Modal } from '../ui/WalletModal';
+import { SubmissionLeavePrompt } from './SubmissionLeavePrompt';
 import { AUTOMATIC_FEE, snapshotEvmFeeChoice, type EvmFeeChoice } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
@@ -30,7 +30,6 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   View,
   type TextInputProps,
@@ -1147,24 +1146,8 @@ export function NativeSend({
         onClose={() => setLedgerPicker(null)}
         onFinished={() => setLedgerPicker(null)}
       />}
-      <Modal
-        visible={promptMatches(snapshot)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setLeavePrompt(null)}
-      >
-        <SafeAreaView style={s.leaveOverlay} accessibilityViewIsModal>
-          <ScrollView contentContainerStyle={s.leaveContent}>
-            <Card style={s.leaveCard}>
-              <Text accessibilityRole="header" style={s.leaveTitle}>{t('mobile.sendAssetViews.evm.submissionInProgress')}</Text>
-              <Text accessibilityLiveRegion="polite" style={styles.muted}>
-                {t('mobile.sendAssetViews.evm.thisTransactionMayAlreadyHaveBeenSentCheckActivityBefore')}</Text>
-              <Button title={t('mobile.sendAssetViews.evm.stay')} onPress={() => setLeavePrompt(null)} />
-              <Button title={t('mobile.sendAssetViews.evm.leave')} variant="secondary" onPress={leaveDuringSubmission} />
-            </Card>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+      <SubmissionLeavePrompt visible={promptMatches(snapshot)}
+        onStay={() => setLeavePrompt(null)} onLeave={leaveDuringSubmission} />
     </SafeAreaView>
   );
 }
@@ -1176,10 +1159,6 @@ const s = StyleSheet.create({
   inputWithActionField: { flex: 1, minWidth: 0, borderWidth: 0, backgroundColor: 'transparent' },
   recipientChoice: { minHeight: 48, justifyContent: 'center', gap: 2, paddingVertical: 6 },
   safeArea: { flex: 1, backgroundColor: colors.bg },
-  leaveOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)' },
-  leaveContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
-  leaveCard: { padding: 24, gap: 20 },
-  leaveTitle: { fontSize: 24, fontWeight: '600' },
   flex: { flex: 1 },
   field: { gap: 10 },
   label: {

@@ -653,13 +653,18 @@ function NativeActivityContent({
               amount={display.amount}
               time={date.time}
               label={display.label}
-              onPress={() =>
-                afterPositionSaved(() => {
+              onPress={() => {
+                if (initialHash && targetOwner.current.hash === initialHash &&
+                    (arrival.current?.hash !== initialHash || !arrival.current.opened)) {
+                  arrival.current = { hash: initialHash, opened: true, waitingForPage: false };
+                  targetOwner.current.opened?.();
+                }
+                return afterPositionSaved(() => {
                   setFeedback('');
                   setSelected(item.hash);
                   controller.inspect(item.hash);
-                })
-              }
+                });
+              }}
             />;
           }}
           ListEmptyComponent={

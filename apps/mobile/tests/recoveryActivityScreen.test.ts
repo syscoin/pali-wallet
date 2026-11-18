@@ -328,6 +328,23 @@ test('an already loaded indexed transaction opens without waiting for saved inve
   } finally { f.dispose(); }
 });
 
+test('a pending Activity arrival cannot replace manually opened details', async () => {
+  const recent = { hash: '0x' + 'bb'.repeat(32), checking: false, unavailable: false };
+  let acknowledged = 0;
+  const f = fixture(hash, true, { onInitialTargetOpened: () => { acknowledged++; } });
+  try {
+    f.rows([recent]);
+    const list = all(f.render()).find(node => node.type === 'FlatList')!;
+    assert.equal(f.loaded(), 1);
+    list.props.renderItem({ item: recent, index: 0 }).props.onPress();
+    await settle();
+    assert.equal(acknowledged, 1);
+    f.release();
+    await settle();
+    assert.deepEqual(f.inspected(), [recent.hash]);
+  } finally { f.dispose(); }
+});
+
 test('a watch notification opens when its transaction arrives on the first explorer page', async () => {
   const owner = '0x' + '22'.repeat(20);
   const scope = createActivityScope('a'.repeat(64), 'hd:60:0', owner, 'ethereum');

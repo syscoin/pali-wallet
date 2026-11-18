@@ -73,6 +73,23 @@ test('an explicit target opens even when the direction filter excludes its row',
   await expect(page.getByTestId(`account-activity-row-ethereum-${hash}`)).toBeVisible();
 });
 
+test('manual transaction and network selections retire an unresolved notification', async ({ page }) => {
+  const delayed = '/?all-networks=1&target=base&older-target=1&delay-target=1';
+  await page.goto(delayed);
+  await page.getByTestId(`account-activity-row-ethereum-${hash}`).click();
+  await expect(page.getByRole('heading', { name: 'Transaction details' })).toBeVisible();
+  expect(await page.evaluate(() => window.__allActivityFixture.acknowledged())).toBe(1);
+  await page.evaluate(() => window.__allActivityFixture.releaseTarget());
+  await expect.poll(() => page.evaluate(() => window.__allActivityFixture.savedLoads())).toEqual(['base:0']);
+  expect(await page.evaluate(() => window.__allActivityFixture.inspections())).toEqual(['ethereum']);
+
+  await page.goto(delayed);
+  await page.getByRole('button', { name: 'Activity network: All networks' }).click();
+  await page.getByRole('radio', { name: /^Ethereum/ }).click();
+  await expect(page.getByTestId('activity-filter-icon-ethereum')).toBeVisible();
+  expect(await page.evaluate(() => window.__allActivityFixture.acknowledged())).toBe(1);
+});
+
 for (const width of [390, 320]) test(`Activity pages older retained hashes for its visible networks at ${width}px`, async ({ page }) => {
   const olderHash = '0x' + 'cc'.repeat(32), nextHash = '0x' + 'dd'.repeat(32);
   await page.setViewportSize({ width, height: width === 390 ? 844 : 740 });
@@ -94,6 +111,14 @@ test('a concrete Activity filter pages only its selected network', async ({ page
   await page.getByRole('button', { name: 'Load older activity', exact: true }).click();
   await expect(page.getByTestId(`account-activity-row-ethereum-0x${'cc'.repeat(32)}`)).toBeVisible();
   expect(await page.evaluate(() => window.__allActivityFixture.savedLoads())).toEqual(['ethereum:0']);
+});
+
+test('a network without indexing still offers to load available older local Activity', async ({ page }) => {
+  await page.goto('/?all-networks=1&no-discovery=1');
+  await expect(page.getByText('Some activity is unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry activity', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Load older activity', exact: true }).click();
+  await expect(page.getByTestId(`account-activity-row-base-0x${'cc'.repeat(32)}`)).toBeVisible();
 });
 
 test('scoped pending actions navigate through the selected network host', async ({ page }) => {

@@ -1,4 +1,5 @@
 import { walletUiFixture } from './walletUiFixture.ts';
+import { screenFixture } from './screenFixture.ts';
 import { AUTOMATIC_FEE, snapshotUtxoFeeChoice } from '../../../source/shared/transactionFeeChoice.ts';
 import { trezorResumeDraft } from '../src/screens/trezorResumeDraft.ts';
 import { languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
@@ -35,7 +36,8 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
     Fragment: 'Fragment',
-    createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]) => ({ type, props: props ?? {}, children }),
+    createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]) =>
+      type === prompt.render ? prompt.render(props) : ({ type, props: props ?? {}, children }),
     useState(initial: unknown) {
       const value = cell(); if (!Object.hasOwn(value, 'value')) value.value = typeof initial === 'function' ? (initial as () => unknown)() : initial;
       value.setter ??= (next: any) => { value.value = typeof next === 'function' ? next(value.value) : next; };
@@ -51,7 +53,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     useSyncExternalStore(_subscribe: unknown, read: () => unknown) { cell(); return read(); },
   };
   let hardware: (() => boolean) | undefined, backs = 0;
-  const native = { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'View'].map((name) => [name, name])),
+  const native = { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'ScrollView', 'View'].map((name) => [name, name])),
     Platform: { OS: 'android' }, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: unknown) => value },
     BackHandler: { addEventListener(_name: string, callback: () => boolean) { hardware = callback; return { remove() { hardware = undefined; } }; } } };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'IconButton', 'Notice', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
@@ -69,6 +71,8 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     '../../../../source/utils/syscoinAssetAmount': { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount },
     '../../../../source/shared/utxoTransactionOptions': { snapshotUtxoRbf },
   };
+  const prompt = screenFixture(new URL('../src/screens/SubmissionLeavePrompt.tsx', import.meta.url), 'SubmissionLeavePrompt', imports);
+  imports['./SubmissionLeavePrompt'] = { SubmissionLeavePrompt: prompt.render };
   const module = { exports: {} as any };
   runInNewContext(code, { module, exports: module.exports, Error, require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const requests: any[] = []; let cancels = 0, confirmations = 0, networkChanges = 0, gate: Promise<void> | undefined, release: (() => void) | undefined;
@@ -91,8 +95,8 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     },
     async confirm(review: NativeUtxoReview, credential: NativeOperationCredential) {
       const cancelAtStart = cancels; confirmations++; authorized.push({ review, credential });
-      if (confirmationFailure) { const failure = confirmationFailure; confirmationFailure = undefined; throw failure; }
       if (confirmationGate) await confirmationGate;
+      if (confirmationFailure) { const failure = confirmationFailure; confirmationFailure = undefined; throw failure; }
       if (cancels !== cancelAtStart) throw Error('CANCELLED');
       signatures++; return { txid: 'ab'.repeat(32) };
     },
@@ -178,6 +182,33 @@ test('UTXO unmount during device authorization discards the late result', async 
   f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
   f.holdConfirmation(held.promise); f.press('Confirm and send'); assert.equal(f.counts().confirmations, 1);
   f.close(); held.resolve(); await tick(); assert.equal(f.signatures(), 0);
+});
+
+for (const outcome of ['submitted', 'unknown', 'leave'] as const) test(`Back during UTXO submission preserves the user's decision and ${outcome} outcome`, async () => {
+  const f = fixture(), pending = Promise.withResolvers<void>();
+  try {
+    f.render(); await tick();
+    f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
+    f.holdConfirmation(pending.promise); f.press('Confirm and send');
+    const before = f.counts();
+    f.hardware(); f.press('Stay');
+    assert(!all(f.render()).some(node => node.type === 'Modal'));
+    all(f.render()).find(node => node.type === 'Header')!.props.onBack();
+    const leave = all(f.render()).find(node => node.props.title === 'Leave')!;
+    assert(leave); assert.deepEqual(f.counts(), before); assert.equal(f.backs(), 0);
+    if (outcome === 'leave') {
+      leave.props.onPress();
+      assert.equal(f.backs(), 1); assert.equal(f.counts().cancels, before.cancels + 1);
+    } else {
+      if (outcome === 'unknown') f.failSubmissionUnknown();
+      pending.resolve(); await tick();
+      leave.props.onPress();
+      assert.equal(f.backs(), 0); assert(!all(f.render()).some(node => node.type === 'Modal'));
+      if (outcome === 'unknown') assert(all(f.render()).some(node => node.props.title === 'Submission unverified'));
+      f.press('View transaction'); assert.deepEqual(f.openedTransactions, ['ab'.repeat(32)]);
+    }
+    assert.equal(f.counts().confirmations, 1);
+  } finally { pending.resolve(); await tick(); f.close(); }
 });
 
 test('SPT Z-DAG uses the inverse RBF option and MAX fills the selected exact total once', async () => {

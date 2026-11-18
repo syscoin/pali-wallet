@@ -1,5 +1,6 @@
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
+import { SubmissionLeavePrompt } from './SubmissionLeavePrompt';
 import { AUTOMATIC_FEE, snapshotUtxoFeeChoice, type UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
@@ -163,6 +164,8 @@ export function NativeUtxoSendScreen({
   const owner = useRef({ revision: 0 });
   const draftRevision = useRef(0);
   const inFlight = useRef(false);
+  const confirmation = useRef<symbol | null>(null);
+  const [leavePrompt, setLeavePrompt] = useState<symbol | null>(null);
   const closing = useRef(false);
   type ScanOwner = { network: UtxoNetwork; open: typeof open; revision: number; draft: number };
   const [scanner, setScanner] = useState<ScanOwner | null>(null);
@@ -199,6 +202,7 @@ export function NativeUtxoSendScreen({
       });
     return () => {
       scannerOwner.current = null;
+      confirmation.current = null;
       lifetime.revision++;
       local?.cancel();
     };
@@ -225,6 +229,7 @@ export function NativeUtxoSendScreen({
   };
   const close = () => {
     if (scannerOwner.current) { closeScanner(); return; }
+    if (confirmation.current) { setLeavePrompt(confirmation.current); return; }
     if (review && !busy) {
       closeScanner(); send?.cancel(); setReview(null); setError(''); return;
     }
@@ -333,6 +338,8 @@ export function NativeUtxoSendScreen({
     const approved = review;
     const summary = summarizeReview(approved);
     run(async (current) => {
+      const attempt = Symbol();
+      confirmation.current = attempt;
       try {
         const { txid } = await send.confirm(approved, credential);
         if (current()) { setReview(null); setOutcome({ txid, phase: 'submitted', summary }); }
@@ -345,6 +352,11 @@ export function NativeUtxoSendScreen({
           return;
         }
         throw cause;
+      } finally {
+        if (confirmation.current === attempt) {
+          confirmation.current = null;
+          setLeavePrompt(null);
+        }
       }
     }, summary);
   };
@@ -628,6 +640,14 @@ export function NativeUtxoSendScreen({
           setLedgerPicker(null);
         }}
       />}
+      {leavePrompt && leavePrompt === confirmation.current && <SubmissionLeavePrompt visible
+        onStay={() => setLeavePrompt(null)}
+        onLeave={() => {
+          if (screenActive.current && confirmation.current === leavePrompt) {
+            setLeavePrompt(null);
+            leave(onBack);
+          }
+        }} />}
     </SafeAreaView>
   );
 }
