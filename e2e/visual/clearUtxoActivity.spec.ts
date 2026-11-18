@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { getNetworkConfig } from '@sidhujag/sysweb3-network';
 import path from 'path';
 import { utils as sys } from 'syscoinjs-lib';
@@ -13,37 +13,6 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
-
-const tabTo = async (page: Page, target: Locator) => {
-  for (let count = 0; count < 40; count++) {
-    if (await target.evaluate((element) => element === document.activeElement))
-      return;
-    await page.keyboard.press('Tab');
-  }
-  await expect(target).toBeFocused();
-};
-
-const exposed = (control: Locator) =>
-  control.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    if (
-      box.width <= 0 ||
-      box.height <= 0 ||
-      box.left < 0 ||
-      box.top < 0 ||
-      box.right > innerWidth ||
-      box.bottom > innerHeight
-    )
-      return false;
-    return [
-      [box.left + box.width / 2, box.top + box.height / 2],
-      [box.left + 2, box.top + 2],
-      [box.right - 2, box.bottom - 2],
-    ].every(([x, y]) => {
-      const hit = document.elementFromPoint(x, y);
-      return !!hit && (hit === element || element.contains(hit));
-    });
-  });
 
 // Exact startup reads observed before selecting the synthetic test network.
 // Everything else still passes through the shared deny-by-default fixture.
@@ -110,7 +79,7 @@ function startupReads() {
   return reads;
 }
 
-test('saved UTXO rows remain reachable below the ordinary Send form', async ({}, info) => {
+test('clearing UTXO Activity removes a stale local pending row and reloads Blockbook', async ({}, info) => {
   expect(info.config.workers).toBe(1);
   expect(info.retry).toBe(0);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
@@ -134,9 +103,10 @@ test('saved UTXO rows remain reachable below the ordinary Send form', async ({},
   let routes: Awaited<ReturnType<typeof installUtxoFixtureRoutes>> | undefined;
   let status: 'passed' | 'failed' = 'failed';
   const auxiliaryReads: string[] = [];
-  const observations: unknown[] = [];
+  let hideAccountHistory = false;
+  let emptyHistoryReads = 0;
   try {
-    wallet = await PaliWallet.launch('saved-utxo-reachability', {
+    wallet = await PaliWallet.launch('utxo-clear-activity', {
       offlineHttpProxy: server.url,
       recordVideo: false,
       viewport: { width: 400, height: 620 },
@@ -154,13 +124,37 @@ test('saved UTXO rows remain reachable below the ordinary Send form', async ({},
       chain.fixture,
       server.url,
       {
-        readState: chain.readState,
+        readState: () => {
+          const state = chain.readState();
+          return {
+            ...state,
+            unconfirmedTxs: hideAccountHistory ? 0 : state.unconfirmedTxs,
+            transactions: hideAccountHistory
+              ? []
+              : (state.transactions ?? []).map((row: any) => ({
+                  ...row,
+                  vin: [],
+                  vout: [],
+                  direction: 'sent',
+                  addressValueIn: row.valueIn,
+                  addressValueOut: row.value,
+                })),
+          };
+        },
         onSyntheticBroadcast: chain.acceptBroadcast,
       }
     );
     const auxiliary = startupReads();
     await wallet.context.route('**/*', async (route) => {
       const request = route.request();
+      const url = new URL(request.url());
+      if (
+        hideAccountHistory &&
+        request.method() === 'GET' &&
+        url.pathname === `/api/v2/xpub/${chain.fixture.userXpub}` &&
+        ['txsummary', 'txs'].includes(url.searchParams.get('details') ?? '')
+      )
+        emptyHistoryReads++;
       if (request.method() !== 'GET' || !auxiliary.has(request.url()))
         return route.fallback();
       auxiliaryReads.push(request.url());
@@ -171,7 +165,7 @@ test('saved UTXO rows remain reachable below the ordinary Send form', async ({},
     });
     const page = wallet.page;
     await wallet.step(
-      'create one retained transaction through normal synthetic signing',
+      'send once through normal synthetic signing',
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
@@ -191,56 +185,52 @@ test('saved UTXO rows remain reachable below the ordinary Send form', async ({},
           .click();
         await expect.poll(() => chain.accepted.length).toBe(1);
         await wallet!.ensureOnHome();
-        await page.locator('#send-btn').click();
-        await expect(page).toHaveURL(/#\/send\/sys$/);
       }
     );
 
-    const summary = page
-      .locator('summary')
-      .filter({ hasText: en.send.savedUtxo.title });
-    const details = summary.locator('..');
-    const row = details.getByRole('button', {
-      name: new RegExp(chain.accepted[0].txid.slice(0, 8)),
-    });
-    const scroll = page.locator('[data-navigation-scroll="wallet-layout"]');
-    for (const height of [620, 850]) {
-      await wallet.step(
-        `reach and inspect the real saved row at 400 by ${height}`,
-        async () => {
-          await page.setViewportSize({ width: 400, height });
-          await tabTo(page, summary);
-          if ((await details.getAttribute('open')) !== null) {
-            await page.keyboard.press('Enter');
-            await expect(details).not.toHaveAttribute('open');
-          }
-          await page.keyboard.press('Enter');
-          await expect(details).toHaveAttribute('open', '');
-          await expect(row).toBeVisible();
-          // Scroll after expansion so the newly loaded saved row participates.
-          await page.mouse.move(392, 300);
-          await page.mouse.wheel(0, 1200);
-          await expect
-            .poll(() =>
-              scroll.evaluate(
-                (element) =>
-                  element.scrollTop + element.clientHeight >=
-                  element.scrollHeight - 1
-              )
-            )
-            .toBe(true);
-          await tabTo(page, row);
-          await expect(row).toBeFocused();
-          await expect.poll(() => exposed(row)).toBe(true);
-          observations.push({ height, row: await row.boundingBox() });
-          await row.click();
-          await expect(details.getByRole('status')).toHaveText(
-            en.send.savedUtxo.seen
-          );
-          expect(chain.accepted).toHaveLength(1);
-        }
-      );
-    }
+    const { txid } = chain.accepted[0];
+    const row = page
+      .locator('#activity-panel-list')
+      .getByText(`${txid.slice(0, 4)}...${txid.slice(-14)}`, { exact: true });
+    await wallet.step(
+      'clear the pending Activity row after the indexer loses it',
+      async () => {
+        await page.locator('#activity-btn').click();
+        await expect(row).toBeVisible();
+        hideAccountHistory = true;
+        await expect(row).toBeVisible();
+        await wallet!.gotoRoute('#/settings/advanced');
+        await page
+          .getByRole('button', {
+            name: en.settings.clearUtxoActivity,
+            exact: true,
+          })
+          .click();
+        const dialog = page.getByRole('dialog', {
+          name: en.settings.clearUtxoActivity,
+        });
+        await expect(dialog).toBeVisible();
+        const beforeClear = emptyHistoryReads;
+        await dialog
+          .getByRole('button', {
+            name: en.settings.clearActivityAndNonceConfirm,
+            exact: true,
+          })
+          .click();
+        await expect(
+          page.getByText(en.settings.clearUtxoActivitySuccess, { exact: true })
+        ).toBeVisible();
+        await expect.poll(() => emptyHistoryReads).toBeGreaterThan(beforeClear);
+
+        await wallet!.ensureOnHome();
+        await page.locator('#activity-btn').click();
+        await expect(
+          page.getByText(en.home.youHaveNoTxs, { exact: true })
+        ).toBeVisible();
+        await expect(row).toHaveCount(0);
+        expect(chain.accepted).toHaveLength(1);
+      }
+    );
     expect(routes.syntheticBroadcasts).toEqual([chain.accepted[0].txid]);
     expect(routes.deniedWrites).toEqual([]);
     expect(routes.deniedUnknown).toEqual([]);
@@ -254,12 +244,12 @@ test('saved UTXO rows remain reachable below the ordinary Send form', async ({},
     status = 'passed';
   } finally {
     try {
-      await info.attach('saved-utxo-reachability', {
+      await info.attach('utxo-clear-activity', {
         contentType: 'application/json',
         body: JSON.stringify({
           status,
           runtime,
-          observations,
+          emptyHistoryReads,
           auxiliaryReads,
           syntheticTransactions: chain.accepted,
           fixtureReads: routes?.reads ?? [],
