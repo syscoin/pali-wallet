@@ -592,6 +592,16 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       await page.locator('#general-settings-button').click();
       await page.locator('[id^="account-SmartAccount"]').first().click();
       await expect(page.locator('#home-balance')).toHaveText('1');
+      if (prefund) {
+        // Registration and the account switch both refresh Home before Send opens.
+        const registration = page.locator(
+          `[data-transaction-hash="${output.prefund.operation.hash}"]`
+        );
+        await expect(
+          registration.getByText('Confirmed', { exact: true })
+        ).toBeVisible({ timeout: 15000 });
+        await waitForReadSettlement(true);
+      }
     });
     const account: string = output.account;
     const send = async (
