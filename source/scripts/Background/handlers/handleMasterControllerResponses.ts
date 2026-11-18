@@ -26,6 +26,10 @@ import {
 import { isOwnedUtxoReplacementCall } from '../controllers/utxoReplacementReview';
 import { IMasterController } from 'scripts/Background/controllers';
 import {
+  TRANSACTION_APPROVAL_EXPIRED,
+  TRANSACTION_APPROVAL_LOADING,
+} from 'utils/approvalClient';
+import {
   EVM_ASSET_REVIEW_REQUIRED,
   EVM_SIGNED_STORAGE_FULL,
   EVM_LEGACY_PENDING,
@@ -170,6 +174,12 @@ export const controllerErrorResponse = (
     error?.code === 'UTXO_NETWORK_HAS_SAVED_TRANSFER' ||
     error?.code === 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS' ||
     error?.code === 'UTXO_NETWORK_HAS_SENTRY_KEYS'
+  )
+    submission.code = error.code;
+  if (
+    (error?.code === TRANSACTION_APPROVAL_EXPIRED ||
+      error?.code === TRANSACTION_APPROVAL_LOADING) &&
+    submission.transactionNotBroadcast === true
   )
     submission.code = error.code;
   if (
@@ -348,7 +358,7 @@ export const handleMasterControllerResponses = (
         targetMethod = () => runBoundEncryptionApproval(sender, params[0]);
       } else if (manualNonceRoute) {
         targetMethod = async (nonce: unknown) => {
-          const approval = captureDappEvmSubmission(sender);
+          const approval = captureDappEvmSubmission(sender, true);
           if (!approval) throw transactionApprovalExpired();
           await approval.checkDocument();
           approval.approveManualNonce(nonce);
@@ -406,7 +416,7 @@ export const handleMasterControllerResponses = (
             );
             const dappApproval =
               sendsEvm || reviewsEvm || stopsEoaCalls
-                ? captureDappEvmSubmission(sender)
+                ? captureDappEvmSubmission(sender, reviewsEvm)
                 : undefined;
             let submission: EvmDappSubmission = { kind: 'transaction' };
             if (sendsEvm && dappApproval?.batch) {

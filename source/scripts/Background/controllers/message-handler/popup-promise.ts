@@ -422,6 +422,10 @@ const openApprovalPopup = async (
         ) {
           const document: TransactionApprovalDocument = {
             getSignal: () => transactionDocumentLifetime.signal,
+            isNavigationPending: () =>
+              navigationPending &&
+              !transactionDocumentRetired &&
+              !signal?.aborted,
             assertCurrent: () => {
               if (
                 signal?.aborted ||

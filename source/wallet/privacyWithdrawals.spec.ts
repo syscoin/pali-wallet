@@ -1119,6 +1119,48 @@ it('manual job status matches durable hashes and stores only a bound acknowledge
   expect(run.fetcher).toHaveBeenCalledTimes(2); // one explicit submit, one explicit status read
 });
 
+it('preserves a validated local relay status during a typed transport outage', async () => {
+  jest.useFakeTimers();
+  const run = setup();
+  const { record } = await recordedRelay(run);
+  jest.mocked(run.host.getWithdrawalAttempt).mockResolvedValue({
+    ...record,
+    transactionHash: HASH,
+  });
+  run.fetcher
+    .mockRejectedValueOnce(new TypeError('network unavailable'))
+    .mockResolvedValueOnce(new Response(null, { status: 503 }));
+  const expected = {
+    noteId: NOTE_ID,
+    mode: 'relayed',
+    phase: 'submitted',
+    jobId: JOB_ID,
+    transactionHash: HASH,
+    observationUnavailable: true,
+  };
+  await expect(run.controller.statusByNote(NOTE_ID)).resolves.toEqual(expected);
+  await expect(run.controller.statusByNote(NOTE_ID)).resolves.toEqual(expected);
+  expect(run.host.recordJobStatus).not.toHaveBeenCalled();
+
+  run.fetcher.mockResolvedValueOnce(
+    new Response('invalid JSON', {
+      headers: { 'content-type': 'application/json' },
+    })
+  );
+  await expect(run.controller.statusByNote(NOTE_ID)).rejects.toThrow(
+    'privacy_relayer_job_unavailable'
+  );
+
+  run.fetcher.mockImplementationOnce(async () => {
+    run.change();
+    return new Response(null, { status: 503 });
+  });
+  await expect(run.controller.statusByNote(NOTE_ID)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(run.host.recordJobStatus).not.toHaveBeenCalled();
+});
+
 it('rejects changed proof inputs, but retains a bound same-job replacement hash as a candidate', async () => {
   jest.useFakeTimers();
   const run = setup();

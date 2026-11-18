@@ -90,7 +90,10 @@ function NotesView() {
   );
   const [withdrawing, setWithdrawing] = useState<IPrivateNoteView | null>(null);
   const [statusNote, setStatusNote] = useState<string | null>(null);
-  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<{
+    id: string;
+    observationUnavailable?: true;
+  } | null>(null);
   const [reportedStatus, setReportedStatus] = useState<{
     id: string;
     status: string;
@@ -373,7 +376,7 @@ function NotesView() {
               previous && ids.includes(previous) ? null : previous
             );
             setStatusError((previous) =>
-              previous && ids.includes(previous) ? null : previous
+              previous && ids.includes(previous.id) ? null : previous
             );
             setReportedStatus((previous) =>
               previous && ids.includes(previous.id) ? null : previous
@@ -488,10 +491,22 @@ function NotesView() {
                               false
                             );
                             if (statusCurrent()) {
-                              const status = (
-                                result as { claimedStatus?: unknown } | null
-                              )?.claimedStatus;
+                              const observation = result as {
+                                claimedStatus?: unknown;
+                                observationUnavailable?: unknown;
+                              } | null;
+                              const status = observation?.claimedStatus;
                               if (
+                                observation?.observationUnavailable === true
+                              ) {
+                                setReportedStatus((previous) =>
+                                  previous?.id === note.id ? null : previous
+                                );
+                                setStatusError({
+                                  id: note.id,
+                                  observationUnavailable: true,
+                                });
+                              } else if (
                                 [
                                   'QUEUED',
                                   'ACCEPTED',
@@ -511,7 +526,8 @@ function NotesView() {
                               await refresh(true);
                             }
                           } catch {
-                            if (statusCurrent()) setStatusError(note.id);
+                            if (statusCurrent())
+                              setStatusError({ id: note.id });
                           } finally {
                             if (statusCurrent()) setStatusNote(null);
                           }
@@ -520,8 +536,14 @@ function NotesView() {
                         {t('privacy.withdrawal.checkStatus')}
                       </button>
                     )}
-                  {statusError === note.id && (
-                    <p role="alert">{t('privacy.withdrawal.statusFailed')}</p>
+                  {statusError?.id === note.id && (
+                    <p role="alert">
+                      {t(
+                        statusError.observationUnavailable
+                          ? 'privacy.withdrawal.previousStatusUnavailable'
+                          : 'privacy.withdrawal.statusFailed'
+                      )}
+                    </p>
                   )}
                   {reportedStatus?.id === note.id && (
                     <p>

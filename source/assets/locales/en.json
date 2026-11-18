@@ -119,6 +119,7 @@
     "approvalConnectionFailed": "Could not connect this approval. Retry or close this window.",
     "approvalConnecting": "Connecting your approval…",
     "approvalConnectionSlow": "Your approval is taking longer to connect. You can retry or close this window.",
+    "transactionApprovalLoading": "The transaction approval is still loading. Try again.",
     "externalActiveDescription": "Pali Wallet is currently being used for a DApp connection. Please complete or close the DApp interaction before opening the main wallet interface.",
     "externalActiveTitle": "Pali is Currently Active",
     "failedToLoad": "Failed to load wallet. Please refresh."
@@ -1942,6 +1943,7 @@
       "prepareFailed": "Could not prepare this withdrawal. Check the pool data and your network, then retry.",
       "prepareInterrupted": "Preparation was interrupted. Check the pool data, then try again.",
       "checkStatus": "Check status",
+      "previousStatusUnavailable": "A previous withdrawal may still complete. Its current status is unavailable.",
       "statusFailed": "Could not check the relayer status. Try again.",
       "statusUnknown": "Withdrawal submission status unknown. Check before trying again.",
       "statusPending": "Withdrawal submitted. Waiting for public pool confirmation.",

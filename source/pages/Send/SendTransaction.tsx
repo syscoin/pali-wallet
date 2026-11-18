@@ -42,6 +42,10 @@ import {
   IApprovedTokenInfos,
   ICustomApprovedAllowanceAmount,
 } from 'types/transactions';
+import {
+  TRANSACTION_APPROVAL_EXPIRED,
+  TRANSACTION_APPROVAL_LOADING,
+} from 'utils/approvalClient';
 import { convertBigNumberToString, isMaxUint256 } from 'utils/bigNumberUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatMethodName } from 'utils/commonMethodSignatures';
@@ -283,8 +287,7 @@ export const SendTransaction = () => {
   );
   const [isPqSigning, setIsPqSigning] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
-  const [initialNonceReviewError, setInitialNonceReviewError] =
-    useState<string>();
+  const [initialReviewError, setInitialReviewError] = useState<string>();
   const [tx, setTx] = useState<ITxState>();
   // An untyped request follows its actual quote, including legacy networks.
   const isLegacyTransaction =
@@ -1270,9 +1273,17 @@ export const SendTransaction = () => {
     const abortController = new AbortController();
     let isMounted = true;
     const generation = closeGenerationRef.current;
+    let preparationRetry: ReturnType<typeof setTimeout> | undefined;
+    let didRetryPreparation = false;
     let feeErrorCloseTimeout: ReturnType<typeof setTimeout> | null = null;
+    const preparationIsCurrent = () =>
+      isMounted &&
+      mountedRef.current &&
+      approvalActionRef.current !== 'dismissed' &&
+      approvalActionRef.current !== 'completed';
 
     const getGasAndFunction = async () => {
+      if (!preparationIsCurrent()) return;
       try {
         if (hasInvalidCustomAllowance) {
           if (isMounted) setInitialLoading(false);
@@ -1300,6 +1311,7 @@ export const SendTransaction = () => {
         )
           throw new Error('Invalid smart account fee override');
         if (!isSmartAccountApproval) {
+          if (!preparationIsCurrent()) return;
           setGenericFeeView(undefined);
           const nonce = customNonce ?? dataTx.nonce;
           if (customNonce !== undefined || dataTx.nonce !== undefined)
@@ -1307,6 +1319,7 @@ export const SendTransaction = () => {
               ['wallet', 'authorizeDappManualNonce'],
               [nonce]
             );
+          if (!preparationIsCurrent()) return;
           const custom = customFee.isCustom
             ? {
                 gasLimit:
@@ -1353,7 +1366,10 @@ export const SendTransaction = () => {
             ...quote,
             transaction: snapshotPreparedEvmTransaction(quote.transaction),
           });
-          if (!isMounted || genericFeeKeyRef.current !== genericFeeKey) {
+          if (
+            !preparationIsCurrent() ||
+            genericFeeKeyRef.current !== genericFeeKey
+          ) {
             void controllerEmitter(
               ['wallet', 'discardNativeEvmFeeReview'],
               [prepared.id]
@@ -1444,7 +1460,7 @@ export const SendTransaction = () => {
           setHasGasError(false);
           setHasTxDataError(false);
           setFeeQuoteNeedsRefresh(false);
-          setInitialNonceReviewError(undefined);
+          setInitialReviewError(undefined);
           setInitialLoading(false);
           setNonceRefreshRequired(false);
           setNonceRefreshing(false);
@@ -1493,7 +1509,7 @@ export const SendTransaction = () => {
           setAcceptedDappFeeRequest(false);
           setFeeRecommendationOnly(Boolean(recommendationOnly));
           setTx(formTx);
-          setInitialNonceReviewError(undefined);
+          setInitialReviewError(undefined);
           setInitialLoading(false);
         }
       } catch (e) {
@@ -1503,10 +1519,32 @@ export const SendTransaction = () => {
         }
 
         if (
-          isMounted &&
-          mountedRef.current &&
+          preparationIsCurrent() &&
           generation === closeGenerationRef.current
         ) {
+          if (!isSmartAccountApproval && e?.transactionNotBroadcast === true) {
+            if (e.code === TRANSACTION_APPROVAL_LOADING) {
+              // Start a fresh preparation. The worker independently checks
+              // both document identities and the current operation again.
+              if (!didRetryPreparation) {
+                didRetryPreparation = true;
+                setInitialLoading(true);
+                preparationRetry = setTimeout(
+                  () => void getGasAndFunction(),
+                  250
+                );
+                return;
+              }
+              setInitialReviewError('app.transactionApprovalLoading');
+              setInitialLoading(false);
+              return;
+            }
+            if (e.code === TRANSACTION_APPROVAL_EXPIRED) {
+              setInitialReviewError('app.approvalExpired');
+              setInitialLoading(false);
+              return;
+            }
+          }
           setInitialLoading(false);
           if (nonceRefreshRequired) {
             setNonceRefreshing(false);
@@ -1515,12 +1553,12 @@ export const SendTransaction = () => {
           }
           const legacyKey = legacyEvmNonceErrorKey(e);
           if (legacyKey) {
-            setInitialNonceReviewError(legacyKey);
+            setInitialReviewError(legacyKey);
             alert.error(t(legacyKey));
             return;
           }
           if (!isSmartAccountApproval) {
-            setInitialNonceReviewError('send.unableToCalculateFees');
+            setInitialReviewError('send.unableToCalculateFees');
             return;
           }
           logError('error getting fees', 'Transaction', e);
@@ -1546,6 +1584,7 @@ export const SendTransaction = () => {
     return () => {
       isMounted = false;
       abortController.abort();
+      if (preparationRetry !== undefined) clearTimeout(preparationRetry);
       if (
         feeErrorCloseTimeout !== null &&
         closeTimeoutRef.current === feeErrorCloseTimeout
@@ -1858,23 +1897,29 @@ export const SendTransaction = () => {
         <div className="flex items-center justify-center min-h-[400px]">
           <LoadingComponent />
         </div>
-      ) : initialNonceReviewError ? (
+      ) : initialReviewError ? (
         <div className="text-center">
-          <p>{t(initialNonceReviewError)}</p>
+          <p role="alert">{t(initialReviewError)}</p>
           <Button type="button" disabled={closing} onClick={handleCancel}>
-            {t('buttons.cancel')}
+            {t(
+              initialReviewError === 'app.approvalExpired'
+                ? 'buttons.close'
+                : 'buttons.cancel'
+            )}
           </Button>
-          <Button
-            type="button"
-            disabled={closing}
-            onClick={() => {
-              setInitialNonceReviewError(undefined);
-              setInitialLoading(true);
-              setFeeQuoteRevision((revision) => revision + 1);
-            }}
-          >
-            {t('receive.retry')}
-          </Button>
+          {initialReviewError !== 'app.approvalExpired' && (
+            <Button
+              type="button"
+              disabled={closing}
+              onClick={() => {
+                setInitialReviewError(undefined);
+                setInitialLoading(true);
+                setFeeQuoteRevision((revision) => revision + 1);
+              }}
+            >
+              {t('receive.retry')}
+            </Button>
+          )}
         </div>
       ) : tx?.from ? (
         <div className="flex flex-col w-full h-screen">

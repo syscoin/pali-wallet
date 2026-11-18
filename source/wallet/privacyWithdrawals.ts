@@ -7,7 +7,10 @@ import {
   quotePrivacyRelayerFee,
   validatePrivacyRelayerEndpoint,
 } from '../utils/privacy/relayers.ts';
-import { readPrivacyRelayerJob } from '../utils/privacy/relayJobs.ts';
+import {
+  PrivacyRelayerObservationUnavailable,
+  readPrivacyRelayerJob,
+} from '../utils/privacy/relayJobs.ts';
 
 import type {
   IPrivacyRelayerDirectory,
@@ -426,16 +429,24 @@ export function createPrivacyWithdrawalsController(
         if (record.mode === 'direct' || !record.jobId) return result;
         if (!record.endpoint || !record.ensHash || !WORD.test(record.ensHash))
           throw fail('privacy_relayer_job_invalid');
-        const observation = await readPrivacyRelayerJob(
-          {
-            endpoint: record.endpoint,
-            jobId: record.jobId,
-            poolId: record.poolId,
-            inputHash: record.inputHash,
-            proofHash: record.proofHash,
-          },
-          { assertCurrent, fetcher: options.fetcher }
-        );
+        let observation: Awaited<ReturnType<typeof readPrivacyRelayerJob>>;
+        try {
+          observation = await readPrivacyRelayerJob(
+            {
+              endpoint: record.endpoint,
+              jobId: record.jobId,
+              poolId: record.poolId,
+              inputHash: record.inputHash,
+              proofHash: record.proofHash,
+            },
+            { assertCurrent, fetcher: options.fetcher }
+          );
+        } catch (error) {
+          if (!(error instanceof PrivacyRelayerObservationUnavailable))
+            throw error;
+          assertCurrent();
+          return { ...result, observationUnavailable: true };
+        }
         assertCurrent();
         if (
           observation.transactionHash &&

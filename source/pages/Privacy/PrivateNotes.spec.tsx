@@ -491,6 +491,35 @@ it('keeps a reserved withdrawal out of balance and checks a saved relay job only
   ]);
 });
 
+it('keeps the saved withdrawal visible when its relayer status is unavailable', async () => {
+  const transactionHash = `0x${'ab'.repeat(32)}`;
+  const withdrawal = {
+    mode: 'relayed',
+    phase: 'submitted',
+    jobId: depositIntentId,
+    transactionHash,
+  };
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getNotes')
+      return { notes: [{ ...note, phase: 'waiting', withdrawal }] };
+    if (method === 'statusByNote')
+      return { ...withdrawal, noteId: note.id, observationUnavailable: true };
+    throw new Error('Unexpected call');
+  });
+
+  render(<PrivateNotes />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: en.privacy.withdrawal.checkStatus,
+    })
+  );
+  expect(
+    await screen.findByText(en.privacy.withdrawal.previousStatusUnavailable)
+  ).toBeVisible();
+  expect(screen.getByText(new RegExp(depositIntentId))).toBeVisible();
+  expect(screen.getByText(new RegExp(transactionHash))).toBeVisible();
+});
+
 it.each([
   ['direct', 'submitted'],
   ['direct', 'unknown'],

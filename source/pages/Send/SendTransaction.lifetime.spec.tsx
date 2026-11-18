@@ -10,6 +10,10 @@ import React from 'react';
 
 import { normalizeDappTransaction } from '../../shared/dappTransaction';
 import {
+  TRANSACTION_APPROVAL_EXPIRED,
+  TRANSACTION_APPROVAL_LOADING,
+} from 'utils/approvalClient';
+import {
   BigNumber,
   formatUnits,
   Interface,
@@ -354,6 +358,66 @@ beforeEach(() => {
   mockHandleTransactionError.mockReset().mockReturnValue(false);
 });
 afterEach(() => jest.restoreAllMocks());
+
+it.each([1, 2])(
+  'recovers an explicit nonce after %i temporary approval preparation refusals',
+  async (blockedAttempts) => {
+    mockQuery.tx.nonce = 4;
+    const invoke = mockEmitter.getMockImplementation()!;
+    const authorize = jest.fn(async () => true);
+    for (let attempt = 0; attempt < blockedAttempts; attempt++) {
+      authorize.mockRejectedValueOnce({
+        code: TRANSACTION_APPROVAL_LOADING,
+        transactionNotBroadcast: true,
+      });
+    }
+    mockEmitter.mockImplementation((path, args) =>
+      path[1] === 'authorizeDappManualNonce' ? authorize() : invoke(path, args)
+    );
+
+    render(<SendTransaction />);
+    if (blockedAttempts === 2) {
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        'app.transactionApprovalLoading'
+      );
+      expect(mockFee).not.toHaveBeenCalled();
+      expect(authorize).toHaveBeenCalledTimes(2);
+      fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+    }
+    const confirm = await screen.findByRole<HTMLButtonElement>('button', {
+      name: 'buttons.confirm',
+    });
+    expect(confirm.disabled).toBe(false);
+    expect(authorize).toHaveBeenCalledTimes(blockedAttempts + 1);
+    expect(mockFee).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByLabelText<HTMLInputElement>('reviewed-nonce').value
+    ).toBe('4');
+  }
+);
+
+it('offers Close for a retired approval without making a fee request', async () => {
+  mockQuery.tx.nonce = 4;
+  const invoke = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path, args) =>
+    path[1] === 'authorizeDappManualNonce'
+      ? Promise.reject({
+          code: TRANSACTION_APPROVAL_EXPIRED,
+          transactionNotBroadcast: true,
+        })
+      : invoke(path, args)
+  );
+
+  render(<SendTransaction />);
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'app.approvalExpired'
+  );
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+  expect(mockFee).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.close' }));
+  await waitFor(() => expect(mockClose).toHaveBeenCalledTimes(1));
+});
 
 it.each(['held', 'failed'])(
   'ordinary EOA quote and Confirm ignore a %s display refresh',

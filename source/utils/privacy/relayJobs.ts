@@ -45,6 +45,14 @@ const STATES = new Set<PrivacyRelayerJobState>([
 ]);
 const invalid = () => new Error('privacy_relayer_job_invalid');
 
+export class PrivacyRelayerObservationUnavailable extends Error {
+  constructor(
+    code: 'privacy_relayer_job_unavailable' | 'privacy_relayer_timeout'
+  ) {
+    super(code);
+  }
+}
+
 /**
  * Pinned wire schema: tornadocash/tornado-relayer@2247730603f2c249f90da0b07058325619435387
  * src/router.js, queue.js and constants.js. The endpoint reports these facts;
@@ -94,28 +102,45 @@ export async function readPrivacyRelayerJob(
     remove = () => options.signal?.removeEventListener('abort', cancel);
     timer = setTimeout(() => {
       abort.abort();
-      reject(new Error('privacy_relayer_timeout'));
+      reject(
+        new PrivacyRelayerObservationUnavailable('privacy_relayer_timeout')
+      );
     }, 5000);
   });
   const run = async () => {
-    const response = await (options.fetcher || fetch)(url, {
-      method: 'GET',
-      mode: 'cors',
-      credentials: 'omit',
-      redirect: 'error',
-      cache: 'no-store',
-      referrerPolicy: 'no-referrer',
-      signal: abort.signal,
-    });
+    let response: Response;
+    try {
+      response = await (options.fetcher || fetch)(url, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        redirect: 'error',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        signal: abort.signal,
+      });
+    } catch {
+      guard();
+      throw new PrivacyRelayerObservationUnavailable(
+        'privacy_relayer_job_unavailable'
+      );
+    }
     guard();
     const length = response.headers.get('content-length');
     if (
       abort.signal.aborted ||
-      response.status !== 200 ||
       response.redirected ||
       response.type === 'opaque' ||
       response.type === 'opaqueredirect' ||
-      (response.url && response.url !== url) ||
+      (response.url && response.url !== url)
+    )
+      throw invalid();
+    if (response.status === 429 || response.status >= 500)
+      throw new PrivacyRelayerObservationUnavailable(
+        'privacy_relayer_job_unavailable'
+      );
+    if (
+      response.status !== 200 ||
       !response.body ||
       !/^application\/json(?:\s*;|$)/i.test(
         response.headers.get('content-type') || ''
@@ -129,7 +154,12 @@ export async function readPrivacyRelayerJob(
       text = '';
     try {
       for (;;) {
-        const next = await reader.read();
+        const next = await reader.read().catch(() => {
+          guard();
+          throw new PrivacyRelayerObservationUnavailable(
+            'privacy_relayer_job_unavailable'
+          );
+        });
         if (next.done) break;
         guard();
         if (abort.signal.aborted) throw invalid();
@@ -198,13 +228,13 @@ export async function readPrivacyRelayerJob(
     return await Promise.race([run(), interrupted]);
   } catch (error) {
     if (
-      error instanceof Error &&
-      [
-        'privacy_relayer_job_invalid',
-        'privacy_relayer_timeout',
-        'privacy_relayer_cancelled',
-        'privacy_vault_session_changed',
-      ].includes(error.message)
+      error instanceof PrivacyRelayerObservationUnavailable ||
+      (error instanceof Error &&
+        [
+          'privacy_relayer_job_invalid',
+          'privacy_relayer_cancelled',
+          'privacy_vault_session_changed',
+        ].includes(error.message))
     )
       throw error;
     throw new Error('privacy_relayer_job_unavailable');

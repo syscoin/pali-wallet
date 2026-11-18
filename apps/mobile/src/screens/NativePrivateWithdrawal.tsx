@@ -283,7 +283,8 @@ function WithdrawalContent({
     observed?.transactionHash ??
     state.result?.signedTransactionHash;
   const jobId = observed?.jobId;
-  const claimedStatus = state.error !== 'status-unavailable' && state.status?.claimedStatus;
+  const claimedStatus = state.status?.claimedStatus;
+  const previousStatusUnavailable = !spent && !!state.status?.observationUnavailable;
   const title = submitted
     ? spent
       ? t('mobile.privacyFlows.deposit.noteAlreadySpent')
@@ -365,6 +366,11 @@ function WithdrawalContent({
           {error && (
             <Text accessibilityRole="alert" style={s.error}>
               {error}
+            </Text>
+          )}
+          {previousStatusUnavailable && (
+            <Text accessibilityLiveRegion="polite" style={styles.muted}>
+              {t('privacy.withdrawal.previousStatusUnavailable')}
             </Text>
           )}
           {!showReview && !submitted ? (
@@ -563,17 +569,19 @@ function WithdrawalContent({
           )}
           {(submitted || hasPreviousSubmission) && (
             <>
-              <Text accessibilityLiveRegion="polite" style={styles.muted}>
-                {spent
-                  ? t('mobile.privacyFlows.withdrawal.poolDataConfirmsTheNoteIsSpent')
-                  : claimedStatus
-                  ? t('privacy.withdrawal.reportedStatus', { status: claimedStatus })
-                  : unknown
-                  ? t('privacy.withdrawal.unknownHelp')
-                  : jobId && !hash
-                  ? t('privacy.withdrawal.acceptedHelp')
-                  : t('privacy.withdrawal.submittedHelp')}
-              </Text>
+              {!previousStatusUnavailable && (
+                <Text accessibilityLiveRegion="polite" style={styles.muted}>
+                  {spent
+                    ? t('mobile.privacyFlows.withdrawal.poolDataConfirmsTheNoteIsSpent')
+                    : claimedStatus
+                    ? t('privacy.withdrawal.reportedStatus', { status: claimedStatus })
+                    : unknown
+                    ? t('privacy.withdrawal.unknownHelp')
+                    : jobId && !hash
+                    ? t('privacy.withdrawal.acceptedHelp')
+                    : t('privacy.withdrawal.submittedHelp')}
+                </Text>
+              )}
               {hash && (
                 <Card style={s.card}>
                   <Text style={s.label}>{t('privacy.deposit.txHash')}</Text>

@@ -63,6 +63,7 @@ export interface IPrivacyWithdrawalStatus {
   jobId?: string;
   mode?: 'direct' | 'relayed';
   noteId: string;
+  observationUnavailable?: true;
   phase: 'none' | 'unknown' | 'submitted';
   transactionHash?: string;
 }

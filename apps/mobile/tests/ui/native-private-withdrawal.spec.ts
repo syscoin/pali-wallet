@@ -560,6 +560,34 @@ test('saved withdrawal status remains visible and a fresh pool check enables the
   expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(1);
 });
 
+test('a relayer outage keeps the earlier submission and inline notice during review', async ({
+  page,
+}) => {
+  await page.goto('/?private-withdrawal&history&relayer-outage');
+  await page.getByRole('button', { name: /1 ETH pool/ }).click();
+  await page
+    .getByRole('button', { name: 'View withdrawal status', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Check status', exact: true }).click();
+
+  const notice = page.getByText(en.privacy.withdrawal.previousStatusUnavailable, {
+    exact: true,
+  });
+  await expect(notice).toBeVisible();
+  await prepare(page);
+
+  await expect(
+    page.getByRole('button', { name: 'Confirm withdrawal', exact: true })
+  ).toBeEnabled();
+  await expect(notice).toBeInViewport();
+  await expect(page.getByText('saved-relayer-job', { exact: true })).toBeVisible();
+  await expect(page.getByText(`0x${'ab'.repeat(32)}`, { exact: true })).toBeVisible();
+  expect(
+    (await page.evaluate(() => window.__privateWithdrawalFixture.events()))
+      .filter((event) => event.startsWith('confirm:'))
+  ).toHaveLength(0);
+});
+
 test('a spent saved note retains status and does not offer a withdrawal', async ({
   page,
 }) => {

@@ -119,6 +119,7 @@
     "approvalConnectionFailed": "Não foi possível conectar esta solicitação de aprovação. Tente novamente ou feche esta janela.",
     "approvalConnecting": "Conectando sua solicitação de aprovação…",
     "approvalConnectionSlow": "A conexão da sua solicitação de aprovação está demorando mais que o esperado. Você pode tentar novamente ou fechar esta janela.",
+    "transactionApprovalLoading": "A aprovação da transação ainda está a carregar. Tente novamente.",
     "externalActiveDescription": "O Pali Wallet está sendo usado para uma conexão com uma dapp. Conclua ou feche essa interação antes de abrir a interface principal da carteira.",
     "externalActiveTitle": "O Pali está ativo",
     "failedToLoad": "Não foi possível carregar a carteira. Atualize a página."
@@ -1942,6 +1943,7 @@
       "prepareFailed": "Não foi possível preparar o saque. Verifique os dados do pool e sua rede e tente novamente.",
       "prepareInterrupted": "A preparação foi interrompida. Verifique os dados do pool e tente novamente.",
       "checkStatus": "Verificar status",
+      "previousStatusUnavailable": "Um saque anterior ainda pode ser concluído. Seu status atual está indisponível.",
       "statusFailed": "Não foi possível verificar o status do relayer. Tente novamente.",
       "statusUnknown": "Status de envio do saque desconhecido. Verifique antes de tentar novamente.",
       "statusPending": "Saque enviado. Aguardando confirmação pública do pool.",

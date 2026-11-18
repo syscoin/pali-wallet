@@ -6,6 +6,10 @@ import {
   reviewedExtensionNonce,
   type ExtensionReviewedNonce,
 } from '../controllers/evmAutoNonce';
+import {
+  TRANSACTION_APPROVAL_EXPIRED,
+  TRANSACTION_APPROVAL_LOADING,
+} from 'utils/approvalClient';
 import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
 import type {
   IUtxoSigningContext,
@@ -20,6 +24,7 @@ export type TransactionApprovalDocument = Readonly<{
   assertCurrent: () => void;
   checkDocument: () => Promise<void>;
   getSignal: () => AbortSignal;
+  isNavigationPending?: () => boolean;
 }>;
 
 type DappEvmReview = TransactionApprovalDocument &
@@ -140,20 +145,29 @@ export const watchApprovalSubmission = (
   };
 };
 
-export const transactionApprovalExpired = () =>
+export const transactionApprovalExpired = (loading = false) =>
   Object.assign(new Error('This transaction approval is no longer current.'), {
+    code: loading ? TRANSACTION_APPROVAL_LOADING : TRANSACTION_APPROVAL_EXPIRED,
     transactionNotBroadcast: true,
   });
 
 const captureApprovalDocument = (
   documentId: string,
   watch: Watch,
-  review: TransactionApprovalDocument
+  review: TransactionApprovalDocument,
+  preparing = false
 ) => {
   const signal = review.getSignal();
   const assertCurrent = () => {
-    if (signal.aborted || !watches.get(documentId)?.has(watch))
+    if (!watches.get(documentId)?.has(watch))
       throw transactionApprovalExpired();
+    if (signal.aborted) {
+      const loading = preparing && review.isNavigationPending?.() === true;
+      // A completed same-document navigation still invalidates this attempt.
+      // Report that a fresh preparation can be tried against the new signal.
+      const replaced = preparing && !review.getSignal().aborted;
+      throw transactionApprovalExpired(loading || replaced);
+    }
     review.assertCurrent();
   };
   assertCurrent();
@@ -206,7 +220,8 @@ export const captureDappUtxoSubmission = (
 
 /** Only the browser's enrolled transaction approval document can enter this lane. */
 export const captureDappEvmSubmission = (
-  sender: chrome.runtime.MessageSender
+  sender: chrome.runtime.MessageSender,
+  preparing = false
 ) => {
   if (!isTrustedExtensionPageSender(sender) || !sender.documentId) return;
   const { documentId } = sender;
@@ -219,7 +234,8 @@ export const captureDappEvmSubmission = (
   const { assertCurrent, checkDocument } = captureApprovalDocument(
     documentId,
     watch,
-    watch.evmSend
+    watch.evmSend,
+    preparing
   );
   const reviewNonce = (value: unknown): ExtensionReviewedNonce => {
     assertCurrent();

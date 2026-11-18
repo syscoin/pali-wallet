@@ -77,8 +77,15 @@ export const useSendDraftWriter = (options: ISendDraftWriter) => {
   const save = useCallback(
     async function saveDraft(
       formValues?: Record<string, any>,
-      mirror = true,
-      automatic = false
+      {
+        automatic = false,
+        mirror = true,
+        stateOverrides,
+      }: {
+        automatic?: boolean;
+        mirror?: boolean;
+        stateOverrides?: Record<string, any>;
+      } = {}
     ) {
       if (automatic && pendingClaim.current && !claimOnSave.current) {
         queuedMirror.current = mirror;
@@ -112,6 +119,7 @@ export const useSendDraftWriter = (options: ISendDraftWriter) => {
       const values = formValues || current.form.getFieldsValue();
       const state = sanitizeBrowsingState(path, {
         ...current.state,
+        ...stateOverrides,
         sendDraftId: draftId,
         formValues: values,
         ...(current.state.selectedAsset?.isNft &&
@@ -172,7 +180,7 @@ export const useSendDraftWriter = (options: ISendDraftWriter) => {
           const nextMirror = queuedMirror.current;
           queuedMirror.current = undefined;
           if (nextMirror !== undefined)
-            await saveDraft(undefined, nextMirror, true);
+            await saveDraft(undefined, { mirror: nextMirror, automatic: true });
         }
       }
     },
@@ -182,7 +190,7 @@ export const useSendDraftWriter = (options: ISendDraftWriter) => {
   useEffect(() => {
     mounted.current = true;
     const flush = () => {
-      void save(undefined, false, true);
+      void save(undefined, { mirror: false, automatic: true });
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') flush();
@@ -198,10 +206,10 @@ export const useSendDraftWriter = (options: ISendDraftWriter) => {
 
   // Save the current page even for a blank draft. Values are never read from stale route state.
   useEffect(() => {
-    void save(undefined, true, true);
+    void save(undefined, { automatic: true });
   }, [save, options.enabled, options.state, options.location]);
   const saveAutomatically = useCallback(
-    (values?: Record<string, any>) => save(values, true, true),
+    (values?: Record<string, any>) => save(values, { automatic: true }),
     [save]
   );
   const claimDraft = useCallback(() => {

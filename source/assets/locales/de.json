@@ -119,6 +119,7 @@
     "approvalConnectionFailed": "Diese Genehmigungsanfrage konnte nicht verbunden werden. Versuchen Sie es erneut oder schließen Sie dieses Fenster.",
     "approvalConnecting": "Genehmigungsanfrage wird verbunden…",
     "approvalConnectionSlow": "Die Verbindung Ihrer Genehmigungsanfrage dauert länger als erwartet. Sie können es erneut versuchen oder dieses Fenster schließen.",
+    "transactionApprovalLoading": "Die Transaktionsfreigabe wird noch geladen. Versuche es erneut.",
     "externalActiveDescription": "Pali Wallet wird derzeit für eine dApp-Verbindung verwendet. Schließen oder beenden Sie diese Interaktion, bevor Sie die Hauptansicht der Wallet öffnen.",
     "externalActiveTitle": "Pali ist derzeit aktiv",
     "failedToLoad": "Die Wallet konnte nicht geladen werden. Bitte laden Sie die Seite neu."
@@ -1942,6 +1943,7 @@
       "prepareFailed": "Die Auszahlung konnte nicht vorbereitet werden. Prüfe Pooldaten und Netzwerk und versuche es erneut.",
       "prepareInterrupted": "Die Vorbereitung wurde unterbrochen. Prüfe die Pooldaten und versuche es erneut.",
       "checkStatus": "Status prüfen",
+      "previousStatusUnavailable": "Eine frühere Abhebung kann noch abgeschlossen werden. Ihr aktueller Status ist nicht verfügbar.",
       "statusFailed": "Der Relayer-Status konnte nicht geprüft werden. Erneut versuchen.",
       "statusUnknown": "Der Übermittlungsstatus der Auszahlung ist unbekannt. Vor einem erneuten Versuch prüfen.",
       "statusPending": "Auszahlung übermittelt. Öffentliche Poolbestätigung wird erwartet.",

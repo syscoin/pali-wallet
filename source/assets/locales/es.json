@@ -119,6 +119,7 @@
     "approvalConnectionFailed": "No se pudo conectar esta solicitud de aprobación. Reinténtalo o cierra esta ventana.",
     "approvalConnecting": "Conectando tu solicitud de aprobación…",
     "approvalConnectionSlow": "La conexión de tu solicitud de aprobación está tardando más de lo esperado. Puedes reintentarlo o cerrar esta ventana.",
+    "transactionApprovalLoading": "La aprobación de la transacción aún se está cargando. Inténtalo de nuevo.",
     "externalActiveDescription": "Pali Wallet se está usando para una conexión con una dapp. Completa o cierra esa interacción antes de abrir la interfaz principal de la cartera.",
     "externalActiveTitle": "Pali está activo",
     "failedToLoad": "No se pudo cargar la cartera. Actualiza la página."
@@ -1942,6 +1943,7 @@
       "prepareFailed": "No se pudo preparar el retiro. Comprueba los datos del fondo y la red, y reintenta.",
       "prepareInterrupted": "La preparación se interrumpió. Comprueba los datos del pool y vuelve a intentarlo.",
       "checkStatus": "Consultar estado",
+      "previousStatusUnavailable": "Es posible que un retiro anterior aún se complete. Su estado actual no está disponible.",
       "statusFailed": "No se pudo consultar el estado del relayer. Inténtalo de nuevo.",
       "statusUnknown": "Estado de envío del retiro desconocido. Compruébalo antes de reintentar.",
       "statusPending": "Retiro enviado. Esperando la confirmación pública del fondo.",

@@ -250,7 +250,7 @@ export class NativePrivateWithdrawal {
       }
       this.check();
       if (status) this.publish({ status: Object.freeze({ ...status }) });
-      else this.publish({ error: 'status-unavailable' });
+      else this.publish({ status: null, error: 'status-unavailable' });
       const noteStatus = await this.host.readNoteStatus();
       this.check();
       this.publish({ noteStatus: Object.freeze({ ...noteStatus }) });

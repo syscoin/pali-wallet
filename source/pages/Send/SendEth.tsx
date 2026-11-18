@@ -1133,11 +1133,14 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     // Force validation to run after setting the value
     void form.validateFields(['amount']).catch(() => undefined);
 
-    // Save state immediately after MAX is set
-    setTimeout(() => {
-      if (restoring) void saveAutomatically();
-      else void saveCurrentState();
-    }, 0);
+    if (restoring) {
+      setTimeout(() => void saveAutomatically(), 0);
+    } else {
+      // Claim the draft at the click. React has not committed the MAX flag yet.
+      void saveCurrentState(undefined, {
+        stateOverrides: { isMaxSend: true },
+      });
+    }
   };
 
   // Verify manually entered NFT token ID

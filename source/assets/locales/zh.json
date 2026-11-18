@@ -119,6 +119,7 @@
     "approvalConnectionFailed": "无法连接此授权请求。请重试或关闭此窗口。",
     "approvalConnecting": "正在连接授权请求…",
     "approvalConnectionSlow": "授权请求的连接耗时较长。您可以重试或关闭此窗口。",
+    "transactionApprovalLoading": "交易审批仍在加载中。请重试。",
     "externalActiveDescription": "Pali Wallet 当前正在连接去中心化应用。请先完成或关闭该交互，再打开钱包主界面。",
     "externalActiveTitle": "Pali 当前处于使用中",
     "failedToLoad": "无法加载钱包。请刷新。"
@@ -1942,6 +1943,7 @@
       "prepareFailed": "无法准备提款。请检查资金池数据和网络后重试。",
       "prepareInterrupted": "准备已中断。请检查资金池数据，然后重试。",
       "checkStatus": "检查状态",
+      "previousStatusUnavailable": "先前的提款仍可能完成。目前无法获取其状态。",
       "statusFailed": "无法检查中继器状态，请重试。",
       "statusUnknown": "提款提交状态未知，请在重试前检查。",
       "statusPending": "提款已提交，正在等待公开资金池确认。",
