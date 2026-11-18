@@ -86,6 +86,7 @@ export const nativeTransferFailure = (
   cancellation: boolean
 ) => {
   const code = error instanceof Error ? error.message : '';
+  if (code === 'FEE_UNAVAILABLE') return t('transactions.speedUpFeeUnavailable');
   if (code === 'ENS_UNAVAILABLE') return t('mobile.sendAssetViews.evm.thisENSNameCouldNotBeResolvedCheckTheName');
   if (code === 'RECIPIENT_EXPIRED') return t('mobile.smartSendViews.theRecipientLookupExpiredOrChangedReviewTheTransferAgain');
   if (code === 'INVALID_CREDENTIAL') return t('mobile.accounts.invalidCredential');

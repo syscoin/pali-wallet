@@ -119,13 +119,15 @@ export const CreatePhrase = () => {
             {t('buttons.generate')}
           </Button>
         </div>
-        <SeedPhraseDisplay
-          seedPhrase={seed}
-          isEnabled={true}
-          showEyeToggle={true}
-          displayMode="words"
-          className="w-[17.5rem] max-w-[17.5rem]"
-        />
+        {hasCurrentSeed && (
+          <SeedPhraseDisplay
+            seedPhrase={seed}
+            isEnabled={true}
+            showEyeToggle={true}
+            displayMode="words"
+            className="w-[17.5rem] max-w-[17.5rem]"
+          />
+        )}
         {isGenerating && (
           <p role="status" className="text-brand-gray200">
             {t('buttons.loading')}

@@ -138,6 +138,7 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
           <SegmentedControl label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={String(count)} options={[{ value: '12', label: t('mobile.recoveryDevices.common.wordCount', { count: 12 }) }, { value: '24', label: t('mobile.recoveryDevices.common.wordCount', { count: 24 }) }]}
             onChange={value => {
               if (!current() || sequence.current !== entrySequence || flow.getSnapshot().phase !== 'entry') return;
+              if (value === String(wordCount.current)) return;
               wordCount.current = value === '24' ? 24 : 12; setCount(wordCount.current); clear();
             }} />
           <View style={s.grid}>{words.map((word, index) => <View key={index} style={s.word}>

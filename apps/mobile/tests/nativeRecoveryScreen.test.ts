@@ -197,6 +197,23 @@ test('recovery keeps numbered input bounded with native autofill disabled', () =
   assert.equal(f.calls.starts, 1); f.dispose();
 });
 
+test('reselecting the current phrase length preserves recovery words and switching clears them', () => {
+  const f = setup();
+  (field(f.render(), 'Recovery word 1').props.onChangeText as (text: string) => void)('abandon');
+  const select = (count: string) => {
+    const selector = all(f.render()).find(node => node.type === 'SegmentedControl');
+    assert.ok(selector);
+    (selector.props.onChange as (value: string) => void)(count);
+  };
+  select('12');
+  assert.equal(field(f.render(), 'Recovery word 1').props.value, 'abandon');
+  select('24');
+  const tree = f.render();
+  assert.equal(field(tree, 'Recovery word 1').props.value, '');
+  assert.equal(all(tree).filter(node => node.type === 'TextInput').length, 24);
+  f.dispose();
+});
+
 test('recovery verifies the phrase before device-protected restoration', () => {
   const f = setup(); let tree = f.render();
   (field(tree, 'Recovery word 1').props.onChangeText as (text: string) => void)('abandon '.repeat(11) + 'about');

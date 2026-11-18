@@ -6266,6 +6266,10 @@ export function createKeyringRuntimeFactory(
                     check();
                     const rates = await new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch }).feeRecommendations(request.signal, check);
                     check(); capturedFees = snapshotEvmFeeChoice({ kind: 'custom', ...chooseEvmFees(rates, feeChoice) });
+                  } catch (error) {
+                    check();
+                    if (error instanceof KeyringRuntimeError) throw error;
+                    throw new KeyringRuntimeError('FEE_UNAVAILABLE');
                   } finally { request.abort(); }
                 }
                 intent = Object.freeze({ ...intent, feeChoice: capturedFees });

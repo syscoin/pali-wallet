@@ -57,6 +57,8 @@ test('24-word selection and complete first-field paste are supported without rea
   const f = fixture(); let tree = f.render();
   field(tree).props.onChangeText('abandon'); tree = f.render();
   const selector = elements(tree).find(row => row.type === 'SegmentedControl'); assert(selector);
+  selector.props.onChange('12');
+  assert.equal(field(f.render()).props.value, 'abandon');
   selector.props.onChange('24'); tree = f.render();
   assert.equal(elements(tree).filter(row => row.type === 'Input').length, 24);
   assert.equal(field(tree).props.value, '');

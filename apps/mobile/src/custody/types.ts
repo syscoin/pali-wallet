@@ -37,7 +37,7 @@ export type CustodyErrorCode =
 
 /** Explicit host errors; untyped SDK errors must never supply UI classifications. */
 export class CustodyRuntimeError extends Error {
-  readonly code: 'NOT_READY' | 'INVALID_INPUT' | 'INVALID_CREDENTIAL' | 'OPERATION_FAILED' | 'CANCELLED' | 'AUTH_THROTTLED' | 'CLEANUP_FAILED' | 'BUSY' | 'ACCOUNT_LIMIT' | 'ACCOUNT_NOT_REMOVABLE' | 'PENDING_TRANSFER' | 'DUPLICATE_ACCOUNT' | 'DEVICE_UNLOCK_UNAVAILABLE';
+  readonly code: 'NOT_READY' | 'FEE_UNAVAILABLE' | 'INVALID_INPUT' | 'INVALID_CREDENTIAL' | 'OPERATION_FAILED' | 'CANCELLED' | 'AUTH_THROTTLED' | 'CLEANUP_FAILED' | 'BUSY' | 'ACCOUNT_LIMIT' | 'ACCOUNT_NOT_REMOVABLE' | 'PENDING_TRANSFER' | 'DUPLICATE_ACCOUNT' | 'DEVICE_UNLOCK_UNAVAILABLE';
   constructor(code: CustodyRuntimeError['code']) {
     super(code);
     this.name = 'CustodyRuntimeError';

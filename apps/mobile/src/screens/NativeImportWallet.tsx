@@ -124,6 +124,7 @@ export function NativeImportWallet({ preview, onConfirmed, onBack }: NativeImpor
             options={[{ value: '12', label: t('mobile.recoveryDevices.common.wordCount', { count: 12 }) }, { value: '24', label: t('mobile.recoveryDevices.common.wordCount', { count: 24 }) }]}
             onChange={value => {
               if (owner.current.working || !owner.current.mounted) return;
+              if (value === String(length.current)) return;
               length.current = value === '24' ? 24 : 12; setCount(length.current); clear();
             }} />
           <View style={s.grid}>{words.map((word, index) => <View key={index} style={s.word}>

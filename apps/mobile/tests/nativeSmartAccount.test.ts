@@ -640,7 +640,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     replaceSoftwareOwner(type: 'HDAccount' | 'Imported', id: number) { assert(replaceSoftwareOwner); replaceSoftwareOwner(type, id); },
     gasSponsored() { payerBalance = '0x0'; gasCredit = 10n ** 20n; },
     loseGasCredit() { gasCredit = 0n; },
-    wrongChain() { wrongChain = true; },
+    wrongChain(value = true) { wrongChain = value; },
     advanceSmartNonce() { externalSmartNonce++; },
     onInnerNonceRead(hook: (tag: string) => void) {onInnerNonceRead=hook;},
     fundedSmart() { smartBalance = '0x1000000000000000'; },
@@ -1956,6 +1956,21 @@ for (const boundary of ['before-authentication', 'during-signing', 'payer-quote'
     assert.equal(f.signatures.length, boundary === 'before-authentication' ? 0 : 1);
     assert.equal(f.submitted.length, 0);
   } finally { operation?.dispose(); await f.close(); }
+});
+
+test('smart native send can retry a preset fee when the fee endpoint recovers', async () => {
+  const f = await fixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Smart sender' });
+    const open = () => f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222',
+      { kind: 'exact', amount: '1', feeChoice: { kind: 'high' } }, () => undefined, null);
+    f.wrongChain();
+    await assert.rejects(open(), { code: 'FEE_UNAVAILABLE' });
+    f.wrongChain(false);
+    operation = await open();
+    assert.equal(f.submitted.length, 0);
+  } finally { await operation?.dispose(); await f.close(); }
 });
 
 test('smart native sends reject invalid input and blocked recipients before authorizing', async () => {
