@@ -14,6 +14,8 @@ type Owner = {
   openNoteBackup(assertOwner: Guard, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteBackupRuntime>;
   captureNoteFileOwner(assertOwner: Guard): Promise<() => Promise<void>>;
 };
+type ExportOutcome = Extract<NativeNoteExportStep, { phase: 'saved' | 'verified' | 'unconfirmed' }>;
+type ExportAccount = NonNullable<CustodySnapshot['account']>;
 type Route = {
   readonly owner: Owner;
   readonly mode: 'restore' | 'export';
@@ -22,7 +24,8 @@ type Route = {
   checkPair?: () => Promise<void>;
   destination: boolean;
   pickerFeedbackKey?: string;
-  savedCount?: number;
+  exportAccount?: ExportAccount;
+  exportOutcome?: ExportOutcome;
   saving: boolean;
   handoff: boolean;
   busy: boolean;
@@ -43,6 +46,7 @@ const failureKey = (cause: unknown) => {
 export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: Route['mode']) => void) {
   const { t } = useNativeTranslation();
   const route = useRef<Route | null>(null);
+  const interruptedExport = useRef<{ owner: Owner; account: ExportAccount; outcome: ExportOutcome } | null>(null);
   const [step, setStep] = useState<NativeNoteRestoreStep>({ phase: 'select' });
   const [exportStep, setExportStep] = useState<NativeNoteExportStep>({ phase: 'select' });
   const [busy, setBusy] = useState(false);
@@ -50,6 +54,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   const cancel = useCallback(() => {
     const previous = route.current;
     route.current = null;
+    interruptedExport.current = null;
     previous?.authentication.retire();
     previous?.flow?.cancel();
     previous?.exporter?.cancel();
@@ -67,10 +72,20 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     cancel();
     return true;
   };
-  const lock = useCallback(() => {
-    // Only the picker ticket or its bounded ciphertext can outlive this lock.
-    route.current?.authentication.retire();
-    if (!route.current?.handoff) cancel();
+  const lock = useCallback((background = false) => {
+    const owned = route.current;
+    owned?.authentication.retire();
+    if (owned?.handoff) return;
+    // A dispatched provider write may have created a file. Keep only its
+    // outcome across a background lock and revoke all file capabilities.
+    const outcome: ExportOutcome | undefined = owned?.saving ? { phase: 'unconfirmed' } : owned?.exportOutcome;
+    const interrupted = owned?.exportAccount && outcome ? {
+      owner: owned.owner,
+      account: owned.exportAccount,
+      outcome: outcome.phase === 'saved' ? { ...outcome, canVerify: false } : outcome,
+    } : interruptedExport.current;
+    cancel();
+    if (background) interruptedExport.current = interrupted;
   }, [cancel]);
   useLayoutEffect(() => () => { route.current?.authentication.retire(); route.current?.flow?.cancel(); route.current?.exporter?.cancel(); route.current = null; }, []);
   const current = (owned: Route) => route.current === owned && getOwner() === owned.owner;
@@ -88,6 +103,24 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   const resume = (expected?: Route) => {
     const owned = route.current;
     if (expected && owned !== expected) return false;
+    const interrupted = interruptedExport.current;
+    if (interrupted) {
+      if (AppState.currentState !== 'active') return false;
+      const owner = getOwner();
+      if (owner !== interrupted.owner) {
+        interruptedExport.current = null;
+        return false;
+      }
+      const snapshot = owner.authority.getSnapshot();
+      if (snapshot.phase !== 'ready') return false;
+      if (snapshot.account?.address !== interrupted.account.address || snapshot.account.network !== interrupted.account.network) {
+        interruptedExport.current = null;
+        return false;
+      }
+      setExportStep(interrupted.outcome);
+      enter('export');
+      return true;
+    }
     if (!owned?.handoff || !foreground(owned)) return false;
     // Unlock can finish while the native provider is still reading. Keep
     // the pending operation on its own screen so Back can retire it.
@@ -156,8 +189,8 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
               } else if (owned.saving) {
                 // The write reports its outcome after the destination is revoked.
                 return;
-              } else if (owned.savedCount !== undefined)
-                setExportStep({ phase: 'saved', noteCount: owned.savedCount, canVerify: false });
+              } else if (owned.exportOutcome?.phase === 'saved')
+                setExportStep({ ...owned.exportOutcome, canVerify: false });
               else { setExportStep({ phase: 'select' }); setErrorKey(key); }
             });
             owned.destination = true;
@@ -228,18 +261,21 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   const persistExport = async (owned: Route, noteCount: number) => {
     try {
       if (!foreground(owned)) throw invalidated();
+      owned.exportAccount = owned.owner.authority.getSnapshot().account ?? undefined;
       owned.saving = true;
       setExportStep({ phase: 'writing' });
       await owned.exporter!.save();
       if (foreground(owned)) {
-        owned.savedCount = noteCount;
-        setExportStep({ phase: 'saved', noteCount });
+        owned.exportOutcome = { phase: 'saved', noteCount };
+        setExportStep(owned.exportOutcome);
       }
     } catch (cause) {
       if (foreground(owned)) {
         owned.destination = false;
-        if (cause instanceof Error && cause.message === 'FILE_WRITE_UNCONFIRMED') setExportStep({ phase: 'unconfirmed' });
-        else { setExportStep({ phase: 'select' }); setErrorKey('privacy.bundle.failed'); }
+        if (cause instanceof Error && cause.message === 'FILE_WRITE_UNCONFIRMED') {
+          owned.exportOutcome = { phase: 'unconfirmed' };
+          setExportStep(owned.exportOutcome);
+        } else { setExportStep({ phase: 'select' }); setErrorKey('privacy.bundle.failed'); }
       }
     } finally { owned.saving = false; finish(owned); }
   };
@@ -273,20 +309,24 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   };
   const showVerify = () => {
     const owned = route.current;
-    if (!owned || !foreground(owned) || owned.savedCount === undefined || !owned.destination || owned.busy) return;
-    setErrorKey(''); setExportStep({ phase: 'verify', noteCount: owned.savedCount });
+    if (!owned || !foreground(owned) || owned.exportOutcome?.phase !== 'saved' || !owned.destination || owned.busy) return;
+    setErrorKey(''); setExportStep({ phase: 'verify', noteCount: owned.exportOutcome.noteCount });
   };
   const verifyExport = async (password: string) => {
     const owned = route.current;
-    if (!owned?.exporter || !foreground(owned) || owned.savedCount === undefined || owned.busy) return;
+    const saved = owned?.exportOutcome;
+    if (!owned?.exporter || !foreground(owned) || saved?.phase !== 'saved' || owned.busy) return;
     owned.busy = true; setBusy(true); setErrorKey('');
     try {
       const receipt = await owned.exporter.verify(password);
-      if (foreground(owned)) setExportStep({ phase: 'verified', noteCount: receipt.noteCount });
+      if (foreground(owned)) {
+        owned.exportOutcome = { phase: 'verified', noteCount: receipt.noteCount };
+        setExportStep(owned.exportOutcome);
+      }
     } catch (cause) {
       if (foreground(owned)) {
         if (cause instanceof Error && cause.message === 'BACKUP_OPEN_FAILED') setErrorKey('privacy.bundle.fileInvalid');
-        else { setExportStep({ phase: 'saved', noteCount: owned.savedCount, canVerify: false }); setErrorKey('mobile.noteFlows.export.savedFileVerificationUnavailable'); }
+        else { setExportStep({ ...saved, canVerify: false }); setErrorKey('mobile.noteFlows.export.savedFileVerificationUnavailable'); }
       }
     } finally { finish(owned); }
   };

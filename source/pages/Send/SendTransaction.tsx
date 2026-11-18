@@ -1112,7 +1112,16 @@ export const SendTransaction = () => {
           setGenericFeeView(undefined);
           setFeeQuoteNeedsRefresh(true);
           setLoading(false);
-          alert.error(t('send.unableToCalculateFees'));
+          if (
+            !handleTransactionError(
+              error,
+              alert,
+              t,
+              activeAccount,
+              activeNetwork
+            )
+          )
+            alert.error(t('send.unableToCalculateFees'));
           if (
             isExternal &&
             dataTx.nonce === undefined &&

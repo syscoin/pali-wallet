@@ -10,7 +10,9 @@ export type NativeNoteExportStep =
   | { phase: 'select' }
   | { phase: 'passwords' }
   | { phase: 'writing' }
-  | { phase: 'saved' | 'verify' | 'verified'; noteCount: number; canVerify?: boolean }
+  | { phase: 'saved'; noteCount: number; canVerify?: boolean }
+  | { phase: 'verify'; noteCount: number }
+  | { phase: 'verified'; noteCount: number }
   | { phase: 'unconfirmed' };
 
 type Props = {
@@ -70,7 +72,7 @@ export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVe
         <Notice title={verified ? t('mobile.noteFlows.export.backupVerified') : t('mobile.noteFlows.export.encryptedBackupSaved')} body={verified
           ? t('mobile.noteFlows.export.verifiedContents', { notes: count })
           : t('mobile.noteFlows.export.savedContents', { notes: count })} />
-        {!verified && step.canVerify !== false && <Button title={t('mobile.noteFlows.export.verifySavedBackup')} variant="secondary" onPress={onShowVerify} />}
+        {step.phase === 'saved' && step.canVerify !== false && <Button title={t('mobile.noteFlows.export.verifySavedBackup')} variant="secondary" onPress={onShowVerify} />}
         {feedback}
       </Screen>;
       break;

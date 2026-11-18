@@ -373,7 +373,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     removal?.local.removal.cancel();
     const retainRemoval = removal && removal.phase !== 'reviewing';
     if (removal && !retainRemoval) { removalRef.current = null; setRemovalScope(null); }
-    lockNoteRestore();
+    lockNoteRestore(background);
     rootOrigin.current = null;
     accountNavigation.current = null; setPortfolioSend(null); setPortfolioDetail(null);
     networkReturnOwner.current = null; setNetworkReturn(null); setReceiveContinuation(undefined);
