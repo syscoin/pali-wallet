@@ -229,7 +229,7 @@ export class NativePrivateWithdrawal {
     }
   }
 
-  async refresh(): Promise<void> {
+  async refresh(options?: Readonly<{ observeRelayer: false }>): Promise<void> {
     if (this.busy || this.disposed) return;
     this.check();
     this.busy = true;
@@ -244,7 +244,7 @@ export class NativePrivateWithdrawal {
       }
       let status: IPrivacyWithdrawalStatus | undefined;
       try {
-        status = await this.withdrawals.statusByNote(this.host.noteId);
+        status = await this.withdrawals.statusByNote(this.host.noteId, options);
       } catch {
         // A missing relayer response says nothing about the public pool.
       }

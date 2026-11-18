@@ -111,12 +111,17 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let noteStatus: IPrivateNoteStatus = { phase: 'waiting' };
   const posted: string[] = [];
   const relayedPosts: unknown[] = [];
+  const relayerJobReads: string[] = [];
   const poolReads: string[] = [];
   let opened = 0,
     disposed = 0,
     refreshes = 0;
   const connectionFetch: typeof fetch = async function fixtureFetch(_url, init): Promise<Response> {
     if (String(_url).startsWith('https://relay.example/')) {
+      if (init?.method === 'GET') {
+        relayerJobReads.push(String(_url));
+        return new Response(null, { status: 503 });
+      }
       relayedPosts.push(JSON.parse(String(init?.body)));
       if (lost) throw Error('synthetic relayer response lost');
       return new Response(
@@ -352,6 +357,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     rpcMethods,
     beforeRpc(callback: (method: string) => Promise<void>) { beforeRpc = callback; },
     relayedPosts,
+    relayerJobReads,
     poolReads,
     get proofs() {
       return proofs;
@@ -916,14 +922,37 @@ test('relayed withdrawal uses the shared proof POST and durable job acknowledgem
     assert(BigInt(model.getSnapshot().review!.feeWei) > 0n);
     await model.confirm(model.getSnapshot().review!.intentId);
     assert.equal(model.getSnapshot().phase, 'submitted');
-    assert.equal(
-      model.getSnapshot().result!.jobId,
-      '00000000-0000-4000-8000-000000000088'
-    );
+    const { noteId, jobId } = model.getSnapshot().result!;
+    assert.equal(jobId, '00000000-0000-4000-8000-000000000088');
     assert.equal(f.relayedPosts.length, 1);
     assert.equal(f.posted.length, 1);
     assert.equal((await f.privateNotes())[0]!.withdrawal?.mode, 'relayed');
     await model.dispose();
+
+    const existing = await readTestNoteInventory(f.runtime, noop);
+    const reopened = await existing.openWithdrawal!(
+      existing.notes[0]!,
+      new AbortController().signal,
+      noop,
+      testInventoryAuthentication(existing)
+    );
+    try {
+      const local = { phase: 'submitted', mode: 'relayed', noteId, jobId };
+      assert.deepEqual(reopened.getSnapshot().status, local);
+      assert.deepEqual(f.relayerJobReads, []);
+      assert.equal(reopened.getSnapshot().noteStatus?.phase, 'verified');
+      await reopened.refresh();
+      assert.deepEqual(f.relayerJobReads, [
+        `https://relay.example/v1/jobs/${jobId}`,
+      ]);
+      assert.deepEqual(reopened.getSnapshot().status, {
+        ...local,
+        observationUnavailable: true,
+      });
+      assert.equal(f.relayedPosts.length, 1);
+    } finally {
+      await reopened.dispose();
+    }
   } finally {
     await f.close();
   }

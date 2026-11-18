@@ -493,7 +493,9 @@ function WithdrawalContent({
                     variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => {
-                      void controller.refresh().catch(() => undefined);
+                      void controller
+                        .refresh({ observeRelayer: false })
+                        .catch(() => undefined);
                     }}
                   />
                 )}

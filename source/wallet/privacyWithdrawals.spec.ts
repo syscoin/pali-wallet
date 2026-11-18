@@ -1086,10 +1086,27 @@ async function recordedRelay(run: ReturnType<typeof setup>) {
   return { record, job };
 }
 
-it('manual job status matches durable hashes and stores only a bound acknowledgement', async () => {
+it('keeps relay history local until an explicit status check stores a bound acknowledgement', async () => {
   jest.useFakeTimers();
   const run = setup();
   const { record, job } = await recordedRelay(run);
+  const localHash = `0x${'bc'.repeat(32)}`;
+  jest.mocked(run.host.getWithdrawalAttempt).mockResolvedValue({
+    ...record,
+    transactionHash: localHash,
+  });
+  await expect(
+    run.controller.statusByNote(NOTE_ID, { observeRelayer: false })
+  ).resolves.toEqual({
+    noteId: NOTE_ID,
+    phase: 'submitted',
+    mode: 'relayed',
+    jobId: JOB_ID,
+    transactionHash: localHash,
+  });
+  expect(run.fetcher).toHaveBeenCalledTimes(1); // only the previous submission
+  expect(run.host.recordJobStatus).not.toHaveBeenCalled();
+
   run.fetcher.mockResolvedValueOnce(
     new Response(JSON.stringify(job), {
       headers: { 'content-type': 'application/json' },

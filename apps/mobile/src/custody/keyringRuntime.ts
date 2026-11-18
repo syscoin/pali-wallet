@@ -2904,7 +2904,7 @@ export function createKeyringRuntimeFactory(
             }
           }, authentication);
           try {
-            await model.refresh();
+            await model.refresh({ observeRelayer: false });
             checkGuard(assertOwner);
             if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
             return model;

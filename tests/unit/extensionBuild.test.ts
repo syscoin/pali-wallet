@@ -317,7 +317,7 @@ test.each([
     });
     const action = manifest.action || manifest.browser_action;
     expect(action.default_icon).toEqual(manifest.icons);
-    expect(action.default_title).toBe('Pali Wallet Canary');
+    expect(action.default_title).toBe('Pali Canary');
     expect(existsSync(resolve('source', manifest.icons[128]))).toBe(true);
     if (store || manifestType === 'MV2') {
       expect(manifest).not.toHaveProperty('key');

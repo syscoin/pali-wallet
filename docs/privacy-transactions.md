@@ -18,9 +18,9 @@ or a note-specific RPC request. Verified deposit membership and an unspent
 observation permit review for an ordinary note, including one with deposit-only
 history. Missing, spent and unverified notes stay distinct. A withdrawal requires
 its own new review and the normal proof and submission checks. Restoring a bearer
-note does not cancel earlier withdrawals or invalidate other copies. Backups with
-recorded unknown/submitted withdrawals require separate reconciliation and cannot
-be released by this review action. Local review consent is never exported.
+note does not cancel earlier withdrawals or invalidate other copies. Local
+review leaves recorded withdrawal history intact. Local review consent is never
+exported.
 
 ## Custody and transaction admission
 
@@ -59,18 +59,12 @@ and Ethereum checks of their roots and block anchors. Pali matches notes
 against those snapshots on-device. Automatic transaction-journal cleanup
 skips nonce groups containing a retained privacy deposit or withdrawal.
 
-For a locally recorded direct withdrawal that failed, **Recover failed withdrawal**
-checks the original transaction and its proof before changing the saved hold.
-Recovery requires a finalized reverted receipt, matching original calldata,
-an unspent nullifier and an original proof root that the pinned pool no longer
-accepts at that finalized block. A revert or an elapsed timeout alone never
-releases a note. The RPC receives the transaction hash, proof root and public
-nullifier; confirm this disclosure and your wallet password before checking.
-The original journal and recovery evidence remain encrypted in the vault. A
-new withdrawal requires a fresh review. Relayed and unknown attempts, and imported
-withdrawal hints, remain blocked by this action. An exact local failed withdrawal
-can be recovered while preserving its restored-note review guard; ordinary note
-review can then proceed if no imported withdrawal uncertainty remains.
+To try a withdrawal again, start a fresh review. Pali rechecks the note against
+the verified public pool data and binds the new approval to the recorded
+withdrawal history. If Activity still shows a pending direct withdrawal for the
+note, resolve it there first. An earlier proof can still complete to its
+original recipient. The pool accepts at most one withdrawal for a note, so a
+competing direct transaction may fail and cost gas.
 
 The initial sender integration supports HD and imported software accounts.
 Hardware and smart accounts are rejected before note creation or RPC preflight:
@@ -142,20 +136,23 @@ must match the reviewed selection. The fee calculation uses exact integer
 arithmetic; an advertised fee is not a promise that a relayer will accept a job.
 Pali submits the reviewed proof once and never falls back to direct sending.
 
-A returned job ID is an acknowledgement, not confirmation. Manual job checks
-use the saved endpoint and verify the job's echoed pool, proof and six public
-inputs against the encrypted journal before accepting a transaction hash.
+A returned job ID acknowledges submission. Opening a saved withdrawal shows
+its recorded job details. To query the relayer, use **Check status**. Pali uses
+the saved endpoint and verifies the echoed pool, proof and six public inputs
+against the encrypted journal before accepting a transaction hash.
 Relayer status remains a claim; the locally verified public withdrawal feed
 controls when the note is labelled spent.
 
 ## Public data and operational limits
 
 Viewing note balances performs local calculations. Pool-wide sync and anchoring
-are separate operations and do not include wallet addresses, notes or nullifiers
-from the user's vault. The index service's withdrawal-feed completeness is a
-trust assumption; Pali is not an Ethereum light client. Network endpoints can
-still observe IP addresses, pool selection and request timing. This feature
-does not claim post-quantum privacy or anonymity against all correlation.
+use public data without sending wallet addresses, notes or owned nullifiers.
+Pali verifies the index service's snapshot against Ethereum. The index service
+selects the snapshot and can recognize the selected root in a later withdrawal.
+The completeness of its withdrawal feed remains a trust assumption. Network
+endpoints can observe IP addresses, pool selection and request timing. During
+deposit preparation, the Ethereum RPC receives the payer and planned commitment
+for gas estimation, even if the user later cancels the review.
 
 Sysnode's index and relayer directory are disabled until their separate operator
 flags are enabled with a suitable archive-capable Ethereum RPC. A deployed route

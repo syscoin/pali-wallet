@@ -393,7 +393,8 @@ export function createPrivacyWithdrawalsController(
         })
       );
     },
-    statusByNote: async (noteId) => {
+    statusByNote: async (noteId, statusOptions) => {
+      const observeRelayer = statusOptions?.observeRelayer !== false;
       try {
         if (typeof noteId !== 'string' || !UUID.test(noteId))
           throw fail('privacy_withdrawal_request_invalid');
@@ -426,7 +427,8 @@ export function createPrivacyWithdrawalsController(
             ? { transactionHash: record.transactionHash }
             : {}),
         };
-        if (record.mode === 'direct' || !record.jobId) return result;
+        if (!observeRelayer || record.mode === 'direct' || !record.jobId)
+          return result;
         if (!record.endpoint || !record.ensHash || !WORD.test(record.ensHash))
           throw fail('privacy_relayer_job_invalid');
         let observation: Awaited<ReturnType<typeof readPrivacyRelayerJob>>;

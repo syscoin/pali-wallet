@@ -43,9 +43,10 @@ const extensionFlat = Object.fromEntries(
   })
 );
 
-// Algorithm/standard/unit names, not English placeholder guidance. A loanword
+// Algorithm, standard, unit, and brand names. A loanword
 // shared with English in one language is valid; this catches all-eight copies.
-const identicalTechnicalNames = {
+const identicalNames = {
+  'settings.ecdsaAuthenticator': 'Pali',
   'transactionDisplay.nonce': 'Nonce',
   'send.batchId': 'ID',
   'tokens.assetGuid': 'GUID',
@@ -67,7 +68,7 @@ it('extension base and lazy Privacy have no unexplained whole-English placeholde
         languages.slice(1).every((lng) => extensionFlat[lng][key] === value)
     )
   );
-  expect(identical).toEqual(identicalTechnicalNames);
+  expect(identical).toEqual(identicalNames);
 });
 
 it.each(languages.slice(1))(

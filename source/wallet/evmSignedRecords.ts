@@ -17,6 +17,7 @@ import { observeEvmTransaction } from '../shared/evmTransactionObservation.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
 import { getPrivacyPoolActivity } from '../shared/privacyPoolActivity.ts';
+import { decodeSmartAccountExecutions } from '../shared/smartAccountExecutions.ts';
 import {
   EVM_ASSET_REVIEW_MESSAGE,
   EVM_ASSET_REVIEW_REQUIRED,
@@ -3244,11 +3245,26 @@ export class EvmSignedRecords {
           await this.materializeRecord(session, winner)
         );
         if (chainId === '1') {
-          // Generic dapp sends can call a pool without note metadata. Check
-          // every local transaction in the group, including a replaced call.
-          const callsPrivacyPool = (transaction: Transaction) =>
-            getPrivacyPoolActivity(chainId, transaction.to, transaction.data);
-          let privateGroup = callsPrivacyPool(tx) !== undefined;
+          // Generic dapp and Smart Account sends may lack note metadata.
+          // Inspect every local envelope, including a replaced private call.
+          const callsPrivacyPool = (entry: Entry, transaction: Transaction) =>
+            Boolean(
+              getPrivacyPoolActivity(chainId, transaction.to, transaction.data)
+            ) ||
+            decodeSmartAccountOperations({
+              chainId,
+              data: transaction.data,
+              hash: entry.hash,
+              nonce: entry.nonce,
+              payer: entry.from,
+              to: transaction.to,
+              value: transaction.value.toString(),
+            }).some(({ callData }) =>
+              decodeSmartAccountExecutions(callData)?.some(({ target, data }) =>
+                getPrivacyPoolActivity(chainId, target, data)
+              )
+            );
+          let privateGroup = callsPrivacyPool(winner, tx);
           for (const entry of group) {
             if (privateGroup) break;
             if (entry === winner) continue;
@@ -3256,7 +3272,7 @@ export class EvmSignedRecords {
             const sibling = retainedEvmTransaction(
               await this.materializeRecord(session, entry)
             );
-            privateGroup = callsPrivacyPool(sibling) !== undefined;
+            privateGroup = callsPrivacyPool(entry, sibling);
           }
           if (privateGroup) {
             advanceGroup();

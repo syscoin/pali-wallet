@@ -149,6 +149,9 @@ export interface IPrivacyWithdrawalsController {
   prepareWithdrawal: (
     request: IPrivacyWithdrawalPrepareRequest
   ) => Promise<IPrivacyWithdrawalReview>;
-  statusByNote: (noteId: string) => Promise<IPrivacyWithdrawalStatus>;
+  statusByNote: (
+    noteId: string,
+    options?: Readonly<{ observeRelayer: false }>
+  ) => Promise<IPrivacyWithdrawalStatus>;
   submitWithdrawal: (intentId: string) => Promise<IPrivacyWithdrawalSubmission>;
 }
