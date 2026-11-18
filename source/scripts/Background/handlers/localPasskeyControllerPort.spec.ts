@@ -98,24 +98,29 @@ describe('local passkey document Port', () => {
   });
   const popupSender = {
     id: extensionId,
-    url: `chrome-extension://${extensionId}/app.html#/settings/local-passkey`,
+    url: `chrome-extension://${extensionId}/app.html`,
   };
 
   const topLevelPopup = {
     contextType: 'POPUP',
     documentId: 'popup-document',
+    documentUrl: `${popupSender.url}#/settings/local-passkey`,
     frameId: 0,
   };
 
-  it('admits the top-level Chrome toolbar popup even without sender IDs', async () => {
-    const getContexts = jest.fn().mockResolvedValue([topLevelPopup]);
+  it('admits the toolbar popup after a same-document navigation', async () => {
+    const getContexts = jest.fn().mockResolvedValue([
+      topLevelPopup,
+      {
+        contextType: 'OFFSCREEN_DOCUMENT',
+        documentUrl: `chrome-extension://${extensionId}/offscreen.html`,
+        frameId: 0,
+      },
+    ]);
     const f = fixture(popupSender, getContexts);
     f.port.onMessage.emit({ id: 1, method: 'status', params: [] });
     await settle();
-    expect(getContexts).toHaveBeenCalledWith({
-      tabIds: [-1],
-      documentUrls: [popupSender.url],
-    });
+    expect(getContexts).toHaveBeenCalledWith({ tabIds: [-1] });
     expect(f.controller.status).toHaveBeenCalledTimes(1);
     expect(f.port.postMessage).toHaveBeenCalledWith({
       id: 1,
@@ -128,6 +133,11 @@ describe('local passkey document Port', () => {
     { contexts: [] },
     { contexts: [{ ...topLevelPopup, contextType: 'OFFSCREEN_DOCUMENT' }] },
     { contexts: [{ ...topLevelPopup, frameId: 1 }] },
+    {
+      contexts: [
+        { ...topLevelPopup, documentUrl: 'https://other.invalid/app.html' },
+      ],
+    },
     { contexts: [topLevelPopup, { ...topLevelPopup, frameId: 1 }] },
   ])(
     'refuses an unverified or ambiguous popup sender (%p)',

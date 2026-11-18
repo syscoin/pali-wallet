@@ -94,14 +94,18 @@ export function installLocalPasskeyControllerPorts(
         busy = true;
         lastId = id;
         if (!verified) {
-          // Chrome omits the sender frame and document IDs in the action
-          // popup. Require its browser-reported URL to identify exactly one
-          // non-tab context, then verify that it is the top-level popup.
-          const contexts = await runtime.getContexts({
-            tabIds: [-1],
-            documentUrls: [senderUrl],
-            ...(documentId ? { documentIds: [documentId] } : {}),
-          });
+          // A toolbar popup's sender URL can precede a same-document route
+          // change. Match the document URL without its routing fragment.
+          const [documentUrl] = senderUrl.split('#', 1);
+          const contexts = (
+            await runtime.getContexts({
+              tabIds: [-1],
+              ...(documentId ? { documentIds: [documentId] } : {}),
+            })
+          ).filter(
+            (candidate) =>
+              candidate.documentUrl?.split('#', 1)[0] === documentUrl
+          );
           authority.assertCurrent();
           const [context] = contexts;
           if (
