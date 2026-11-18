@@ -208,6 +208,69 @@ it('waits for an archive refresh before opening restore and then accepts the ref
   );
 });
 
+it('keeps a revision-triggered archive read live when the confirmation is cancelled', async () => {
+  const rows = notes.slice(0, 2);
+  const f = fixture(rows);
+  await f.open();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'privacy.archive.clear' })
+  );
+  let finish!: (value: ReturnType<typeof inventory>) => void;
+  f.emit.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  f.view.rerender(<PrivateArchivedNotes {...f.props} revision={1} />);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  await act(async () => {
+    finish(inventory(rows.slice(1)));
+  });
+  expect(f.props.onCount).toHaveBeenLastCalledWith(1);
+  expect(screen.getByRole('button', { name: 'privacy.refresh' })).toBeEnabled();
+  expect(
+    screen.getByRole('button', { name: 'privacy.archive.restore' })
+  ).toBeEnabled();
+});
+
+it('keeps an authorized restore live when the parent requests another inventory read', async () => {
+  const rows = notes.slice(0, 1);
+  const f = fixture(rows);
+  await f.open();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'privacy.archive.restore' })
+  );
+  let finishRestore!: () => void;
+  f.emit.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishRestore = () => resolve(undefined);
+      })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Authorize' }));
+  let finishRead!: (value: ReturnType<typeof inventory>) => void;
+  f.emit.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishRead = resolve;
+      })
+  );
+  f.view.rerender(<PrivateArchivedNotes {...f.props} revision={1} />);
+  f.emit.mockResolvedValueOnce(inventory([]));
+  await act(async () => {
+    finishRestore();
+  });
+  expect(f.props.onRestored).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    finishRead(inventory(rows));
+  });
+  expect(f.props.onCount).toHaveBeenLastCalledWith(0);
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'privacy.archive.restored'
+  );
+});
+
 it('restores only the selected archived record after existing wallet authorization and refreshes both inventories', async () => {
   const f = fixture(notes.slice(0, 2));
   await f.open();

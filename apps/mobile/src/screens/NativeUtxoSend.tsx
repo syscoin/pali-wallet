@@ -165,7 +165,9 @@ export function NativeUtxoSendScreen({
   const draftRevision = useRef(0);
   const inFlight = useRef(false);
   const confirmation = useRef<symbol | null>(null);
-  const [leavePrompt, setLeavePrompt] = useState<symbol | null>(null);
+  const [leavePrompt, setLeavePrompt] = useState<{
+    attempt: symbol; open: typeof open; replacement: typeof replacement;
+  } | null>(null);
   const closing = useRef(false);
   type ScanOwner = { network: UtxoNetwork; open: typeof open; revision: number; draft: number };
   const [scanner, setScanner] = useState<ScanOwner | null>(null);
@@ -229,7 +231,7 @@ export function NativeUtxoSendScreen({
   };
   const close = () => {
     if (scannerOwner.current) { closeScanner(); return; }
-    if (confirmation.current) { setLeavePrompt(confirmation.current); return; }
+    if (confirmation.current) { setLeavePrompt({ attempt: confirmation.current, open, replacement }); return; }
     if (review && !busy) {
       closeScanner(); send?.cancel(); setReview(null); setError(''); return;
     }
@@ -640,10 +642,10 @@ export function NativeUtxoSendScreen({
           setLedgerPicker(null);
         }}
       />}
-      {leavePrompt && leavePrompt === confirmation.current && <SubmissionLeavePrompt visible
+      {leavePrompt?.open === open && leavePrompt.replacement === replacement && <SubmissionLeavePrompt visible
         onStay={() => setLeavePrompt(null)}
         onLeave={() => {
-          if (screenActive.current && confirmation.current === leavePrompt) {
+          if (screenActive.current && confirmation.current === leavePrompt.attempt) {
             setLeavePrompt(null);
             leave(onBack);
           }
