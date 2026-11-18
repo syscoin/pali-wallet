@@ -982,6 +982,24 @@ export class NativeActivity {
           guard();
           this.retainedObservations.set(hash, observation);
           this.unavailable.delete(hash);
+          const operations = local.smartAccount?.operations;
+          if (!local.operation && !local.cancellationRetry && operations?.length === 1 &&
+              observation.status === 'mined' && observation.outcome === 'reverted' && runtime.loadTarget) {
+            // An older archive retains the receipt identity but omits live review hints.
+            try {
+              const retained = (await runtime.loadTarget(scope, hash, guard))?.local;
+              guard();
+              const retainedOperations = retained?.smartAccount?.operations;
+              if (retained?.hash === hash && retained.cancellationRetry && retainedOperations?.length === 1 &&
+                  retainedOperations[0]!.operationHash === operations[0]!.operationHash &&
+                  retainedOperations[0]!.operationNonce === operations[0]!.operationNonce && this.locals.get(hash) === local) {
+                this.locals.set(hash, { ...local, cancellationRetry: retained.cancellationRetry });
+              }
+            } catch {
+              // The receipt stays visible if the optional review hint cannot be loaded.
+              guard();
+            }
+          }
           if (local.smartAccount || observation.status !== 'missing' ||
               BigInt(observation.latestNonce) > BigInt(local.nonce) ||
               local.transactionType !== 0 && local.transactionType !== 2) return;

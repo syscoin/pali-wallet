@@ -3,7 +3,7 @@ import test from 'node:test';
 import { activityRowKey, findActivityRow, NativeActivity, type NativeActivityRuntime } from '../src/activity/nativeActivity.ts';
 import { ActivityExplorerReader, type ActivityFeed, type DiscoveredActivityCandidate } from '../src/activity/explorerReader.ts';
 import { ActivityReceiptReader, type ActivityTransactionObservation } from '../src/activity/receiptReader.ts';
-import { createActivityScope, DEFAULT_ACTIVITY_VIEW, type ActivityCandidate, type EvmActivityReadScope as ActivityScope, type ActivityViewState, type LocalActivityRecord, type TerminalActivityRecord } from '../src/activity/types.ts';
+import { createActivityScope, DEFAULT_ACTIVITY_VIEW, type ActivityCandidate, type ArchivedActivityRecord, type EvmActivityReadScope as ActivityScope, type ActivityViewState, type LocalActivityRecord, type TerminalActivityRecord } from '../src/activity/types.ts';
 import { EVM_ACTIVITY_CURSOR_STALE, mapEvmExplorerTransaction, mapEvmExplorerTokenTransfer, getEvmHistoryDirection } from '../../../source/shared/evmHistory.ts';
 import { observeEvmTransaction, type EvmTransactionObservation } from '../../../source/shared/evmTransactionObservation.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
@@ -81,7 +81,7 @@ function deferred<T>() {
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
 }
-function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; archived?: TerminalActivityRecord[];
+function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; archived?: ArchivedActivityRecord[];
   network?: NonNullable<CustodySnapshot['account']>['network'];
   locals?: readonly LocalActivityRecord[]; local?: LocalActivityRecord | null; cached?: ActivityCandidate[]; view?: ActivityViewState; observeLocal?: (local: LocalActivityRecord) => Promise<EvmTransactionObservation>;
   loadSavedPending?: NativeActivityRuntime['loadSavedPending'];
@@ -1258,6 +1258,46 @@ test('Smart Activity inspects through the inner-operation observer and ignores o
   assert.equal(f.receipts.calls.length, 0);
   assert.equal(f.localReads.length, 1);
 });
+
+for (const result of ['matching', 'submitted-archive', 'different-operation', 'read-failed', 'confirmed'] as const) {
+  test(`an older reverted Smart cancellation hydrates only its exact retry reference (${result})`, async () => {
+    const archived: ArchivedActivityRecord = {
+      ...fixture().local(1),
+      recipient: OTHER,
+      phase: result === 'submitted-archive' ? 'submitted' : 'reverted',
+      smartAccount: { payer: OTHER, operations: [{ operationHash: hash(9), operationNonce: '0' }] },
+    };
+    const cancellationRetry = { originalHash: hash(2), operationHash: hash(8) };
+    const lookups: string[] = [];
+    const f = fixture({
+      archived: [archived],
+      async observeLocal() {
+        return { status: 'mined', outcome: result === 'confirmed' ? 'confirmed' : 'reverted', block: { hash: hash(999), number: '1000' } };
+      },
+      async loadTarget(_scope, target, guard) {
+        guard();
+        lookups.push(target);
+        if (result === 'read-failed') throw Error('Retained transaction unavailable');
+        return { local: {
+          ...archived, phase: 'submitted', cancellationRetry,
+          ...(result === 'different-operation'
+            ? { smartAccount: { payer: OTHER, operations: [{ operationHash: hash(10), operationNonce: '0' }] } }
+            : {}),
+        } };
+      },
+    });
+    await f.controller.refresh();
+    assert.deepEqual(lookups, []);
+    assert.equal(f.localReads.length, result === 'submitted-archive' ? 1 : 0);
+    f.controller.inspect(archived.hash);
+    const readRow = () => findActivityRow(f.controller.getSnapshot().rows, archived.hash);
+    await until(() => !readRow()?.checking && readRow()?.retainedObservation?.status === 'mined');
+    assert.deepEqual(lookups, result === 'confirmed' ? [] : [archived.hash]);
+    assert.equal(readRow()?.unavailable, false);
+    assert.deepEqual(readRow()?.local, result === 'matching' || result === 'submitted-archive' ? { ...archived, cancellationRetry } : archived);
+    assert.equal(f.receipts.calls.length, 0);
+  });
+}
 
 test('overlapping automatic and explicit local Activity reads share one receipt graph', async () => {
   const base = fixture(), local = base.local(1, 'submitted');
