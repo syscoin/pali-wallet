@@ -13,6 +13,9 @@ import { TransferJournalError, type TransferJournalEntry, type TransferJournalPh
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { LOCAL_ACTIVITY_LIMIT, type LocalActivityRecord } from '../activity/types.ts';
 
+export const supportsRetainedSpeedUpIntent = (transactions: object) =>
+  'supportsRetainedSpeedUpIntent' in transactions && transactions.supportsRetainedSpeedUpIntent === true;
+
 const maySpeedUp = (entry: EvmRetainedRecord, type: number | null | undefined) =>
   entry.payloadKind !== 'unsigned-eoa' && entry.operation !== 'cancel' && (type === 0 || type === 2) &&
   !Object.hasOwn(entry.metadata ?? {}, 'privateDeposit') && !Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal');
@@ -43,7 +46,7 @@ export function createNativeAutomaticNoncePlanner(
 /** Presentation adapter only. Canonical storage, ownership and retention are shared. */
 export function createNativeSignedRecordView(
   records: EvmSignedRecords, session: EvmSignedRecordSession, walletBindingId: string,
-  account: Readonly<{ index: number; type: NativeAccountType; address: string }>, network: NativeNetworkRegistration
+  account: Readonly<{ index: number; type: NativeAccountType; address: string }>, network: NativeNetworkRegistration, unsignedSpeedUpSupported = false
 ) {
   const scope = Object.freeze({ walletFingerprint: walletBindingId, address: account.address, chainId: network.chainId });
   const checked = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -70,7 +73,10 @@ export function createNativeSignedRecordView(
     const saved=projectSavedEvmTransaction(entry), token=saved.tokenTransfer?.token;
     const inspectionOnly = entry.payloadKind === 'unsigned-eoa' || (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
       (!saved.collectibleTransfer || !isRetainedNftReplayEnvelope(retainedEvmTransaction(entry)));
-    const speedUpEligible = maySpeedUp(entry, saved.type);
+    const unsignedSpeedUp = unsignedSpeedUpSupported && account.type !== 'SmartAccount' &&
+      entry.payloadKind === 'unsigned-eoa' && saved.speedUpAvailable && entry.signer.id === account.index && entry.signer.type === account.type &&
+      (entry.operation === 'send' || entry.operation === 'speed-up') && (saved.type === 0 || saved.type === 2);
+    const speedUpEligible = unsignedSpeedUp || maySpeedUp(entry, saved.type);
     const privacyActivity = getPrivacyPoolActivity(saved.chainId, saved.to, saved.selector);
     return Object.freeze({walletFingerprint:walletBindingId,accountId:nativeAccountId(account.type,account.index),address:account.address,networkId:network.id,registrationHash:network.registrationHash,chainId:network.chainId,hash:entry.hash,phase:entry.phase,nonce:entry.nonce,createdAt:entry.createdAt,
       recipient:saved.collectibleTransfer?.recipient??saved.tokenTransfer?.recipient??saved.to,amountUnits:token?saved.tokenTransfer!.amountUnits:saved.value,maximumFeeUnits:saved.maximumFee,...(token?{token}:{}),
@@ -79,6 +85,7 @@ export function createNativeSignedRecordView(
       ...(saved.cancellationUnavailable ? { cancellationUnavailable: true as const } : {}),
       ...(saved.value === '0' && saved.dataBytes > 0 && !saved.tokenTransfer && !saved.collectibleTransfer ? { contractInteraction: true as const } : {}),
       ...(inspectionOnly ? { inspectionOnly: true as const } : {}),
+      ...(unsignedSpeedUp ? { unsignedSpeedUp: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
       ...(speedUpEligible ? { speedUpEligible: true as const } : {}),
       ...(saved.collectibleTransfer ? { collectibleTransfer: saved.collectibleTransfer } : {})});
   };

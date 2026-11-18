@@ -389,13 +389,17 @@ function NativeActivityContent({
     ['signed', 'attempted', 'submitted'].includes(chosen.local.phase) &&
     chosen.retainedObservation?.status === 'missing' &&
     chosen.retainedObservation.latestNonce === String(chosen.local.nonce);
+  const canSpeedUpUnsigned = chosen?.local?.unsignedSpeedUp && chosen.replacementStatus !== 'replaced' &&
+    !chosen.checking && !chosenObservation && !replacementBlocksReview &&
+    chosen.retainedObservation?.status === 'missing' &&
+    BigInt(chosen.retainedObservation.latestNonce) <= BigInt(chosen.local.nonce);
   const reviewAction = (action: NativeActivityReviewAction, direct: ((hash: string) => void) | undefined) => {
-    if (!chosen?.local) return undefined;
+    if (!chosen?.local || (chosen.local.unsignedSpeedUp && action !== 'speed-up')) return undefined;
     if (chosen.local.smartAccount && ['speed-up', 'cancel', 'cancel-saved'].includes(action))
       return direct ?? (onNavigateToReview ? (hash: string) => onNavigateToReview(action, hash) : undefined);
     if (!chosen.local.inspectionOnly) return direct;
-    if (!chosen.local.reviewNavigation || !onNavigateToReview) return undefined;
-    return (hash: string) => onNavigateToReview(action, hash);
+    if (chosen.local.reviewNavigation && onNavigateToReview) return (hash: string) => onNavigateToReview(action, hash);
+    return chosen.local.unsignedSpeedUp ? direct : undefined;
   };
   const speedUp = (chosen?.local?.inspectionOnly ? chosen.local.reviewNavigation?.speedUp : chosen?.local?.speedUpEligible)
     ? reviewAction('speed-up', onSpeedUpPending) : undefined;
@@ -843,7 +847,7 @@ function NativeActivityContent({
           />
           {original && <Button icon="arrow-left" title={t('mobile.activityViews.nativeActivity.viewOriginalTransaction')} variant="secondary" onPress={() => { setSelected(original.hash); controller.inspect(original.hash); }} />}
           {replacement && <Button title={replacement.local?.operation === 'cancel' ? t('mobile.activityViews.nativeActivity.viewCancellationAttempt') : t('mobile.activityViews.nativeActivity.viewSpeedUpAttempt')} variant="secondary" onPress={() => { setSelected(replacement.hash); controller.inspect(replacement.hash); }} />}
-          {canReplace && speedUp && (
+          {(canReplace || canSpeedUpUnsigned) && speedUp && (
             <Button title={t('header.speedUp')} variant="secondary" onPress={() => void afterPositionSaved(() => speedUp(chosen.hash))} />
           )}
           {canCancelSmartInstruction && cancelPending && (

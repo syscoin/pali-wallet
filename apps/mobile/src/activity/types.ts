@@ -63,6 +63,7 @@ export type LocalActivityRecord = Omit<
     inspectionOnly?: true;
     cancellationUnavailable?: true;
     speedUpEligible?: true;
+    unsignedSpeedUp?: true;
     /** Public navigation hint only; the selected-network host rebuilds every review. */
     reviewNavigation?: Readonly<{ speedUp: boolean }>;
     operation?: import('../../../../source/wallet/evmSignedRecords.ts').EvmSignedRecordSummary['operation'];

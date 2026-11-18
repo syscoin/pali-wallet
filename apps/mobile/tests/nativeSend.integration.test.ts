@@ -19,6 +19,8 @@ import {
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import { supportsRetainedSpeedUpIntent } from '../src/custody/sharedSignedRecords.ts';
+import { NATIVE_PUBLIC_SESSION_KEY, captureNativePublicSessionRecord } from '../src/custody/publicSession.ts';
 import type { TransferJournalEntry } from '../src/custody/transferJournal.ts';
 import { EvmSignedRecords, inspectEvmSignedBundle } from '../../../source/wallet/evmSignedRecords.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -225,7 +227,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
   }
 });
 
-async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
+async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true, startWithLegacyCheckpoint = false) {
   const sdk = await loadNativeKeyringSdk();
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-send-cancel-'));
   const file = path.join(directory, 'wallet.sqlite');
@@ -259,12 +261,16 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
       await current.release;
     }
   };
+  let featureAvailable = false, legacyCheckpoint = startWithLegacyCheckpoint;
   // Keep the real SDK signer and observe PIN admission separately from the
   // short-lived signing lease; public RPC work must not retain that lease.
   class ControlledKeyring extends sdk.HostKeyring {
     constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...options);
       sdkInstances.push(this);
+      featureAvailable = supportsRetainedSpeedUpIntent(this.ethereumTransaction);
+      if (legacyCheckpoint && featureAvailable)
+        Object.defineProperty(this.ethereumTransaction, 'supportsRetainedSpeedUpIntent', { value: false, configurable: true });
       const hydrate = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {
         hydrations++;
@@ -575,6 +581,12 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
     get hydrations() {
       return hydrations;
     },
+    enableInstalledSpeedUp() { legacyCheckpoint = false; return featureAvailable; },
+    async checkpointVersion() { return captureNativePublicSessionRecord(await storage.keyringStorage.get(NATIVE_PUBLIC_SESSION_KEY)).version; },
+    get unsignedSpeedUpSupported() {
+      const keyring = sdkInstances.find(instance => instance.hasPublicSession());
+      return !!keyring && supportsRetainedSpeedUpIntent(keyring.ethereumTransaction);
+    },
     get sdkUnlocked() {
       return sdkInstances.some((instance) => instance.isUnlocked());
     },
@@ -774,6 +786,98 @@ test('an acknowledged ordinary send can be followed by the next nonce while pend
   } finally {
     await f.close();
   }
+});
+
+for (const type of [0, 2] as const) test(`native type ${type} unsigned Speed Up follows the installed SDK capability`, async () => {
+  const f = await cancellationFixture(type);
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    const original = Transaction.from(f.broadcasts[0]!);
+    const initial = JSON.parse((await f.readDurableJournal())!);
+    const local = (await f.runtime.activity!.load(() => undefined)).locals.find(row => row.hash === original.hash);
+    assert(local);
+    if (!f.unsignedSpeedUpSupported) {
+      assert.equal(initial.entries[0].payloadKind, undefined);
+      assert.equal(local.unsignedSpeedUp, undefined);
+      await assert.rejects(f.transfers.prepareSpeedUp(original.hash!), { code: 'EXPIRED' });
+      assert.equal(f.broadcasts.length, 1);
+      return;
+    }
+    assert.equal(initial.entries[0].payloadKind, 'unsigned-eoa');
+    assert.equal(local.unsignedSpeedUp, true);
+    assert.equal(local.cancellationUnavailable, true);
+    assert.equal((await f.readJournal())?.rawTransaction, undefined);
+    await assert.rejects(f.transfers.prepareCancellation(original.hash!));
+    await f.transfers.prepareSpeedUp(original.hash!);
+    let review = f.transfers.getSnapshot().review!;
+    assert.equal(review.replacement?.originalHash, original.hash);
+    assert.equal(review.nonce, String(original.nonce));
+    assert.equal(BigInt(review.gasLimit), original.gasLimit);
+    assert.equal(f.signatures, 1);
+    f.execution.gas = `0x${(original.gasLimit + 1n).toString(16)}`;
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }));
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 1);
+    f.execution.gas = '0x5208';
+    await f.transfers.prepareSpeedUp(original.hash!);
+    review = f.transfers.getSnapshot().review!;
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.broadcasts.length, 2);
+    const replacement = Transaction.from(f.broadcasts[1]!);
+    for (const field of ['from', 'to', 'value', 'nonce', 'type', 'gasLimit', 'data'] as const)
+      assert.equal(replacement[field], original[field]);
+    assert((replacement.maxFeePerGas ?? replacement.gasPrice!) > (original.maxFeePerGas ?? original.gasPrice!));
+    const journal = JSON.parse((await f.readDurableJournal())!);
+    assert.equal(journal.entries[1].payloadKind, 'unsigned-eoa');
+    assert.equal(journal.entries[1].originalHash, original.hash);
+    f.setRecovery({ receipt: null, nonce: '0x1', canonicalHash: `0x${'f'.repeat(64)}` });
+    await assert.rejects(f.transfers.prepareSpeedUp(replacement.hash!));
+    assert.equal(f.broadcasts.length, 2);
+  } finally { await f.close(); }
+});
+
+test('unlock migrates signed native history only when the installed SDK supports unsigned Speed Up', async () => {
+  const f = await cancellationFixture();
+  try {
+    const original = await f.seedOriginal({ to: RECIPIENT, data: '0x' });
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries[0].payloadKind, undefined);
+    await f.reopen();
+    const expected = f.unsignedSpeedUpSupported ? 'unsigned-eoa' : undefined;
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries[0].payloadKind, expected);
+    assert.equal((await f.readJournal())?.rawTransaction, expected ? undefined : original.serialized);
+  } finally { await f.close(); }
+});
+
+test('legacy mobile checkpoints keep signing and upgrade inside the first authorized software send', async () => {
+  const f = await cancellationFixture(2, true, true);
+  try {
+    assert.equal(await f.checkpointVersion(), 1);
+    const original = await f.seedOriginal({ to: RECIPIENT, data: '0x' });
+    const available = f.enableInstalledSpeedUp();
+    await f.reopen();
+    assert.equal(await f.checkpointVersion(), 1);
+    await f.transfers.prepareSpeedUp(original.hash!);
+    const signedReview = f.transfers.getSnapshot().review!;
+    await f.transfers.confirm(signedReview.id, { method: 'device' });
+    assert.equal(await f.checkpointVersion(), 1);
+    assert.equal((await f.readJournal())?.rawTransaction, f.broadcasts[1]);
+    f.replacement.pending = false;
+    f.setRecovery({ receipt: null, nonce: '0x1', canonicalHash: `0x${'f'.repeat(64)}` });
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    const beforeAuthentication = f.authentications;
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    assert.equal(f.authentications, beforeAuthentication + 1);
+    assert.equal(f.broadcasts.length, 3);
+    assert.equal(await f.checkpointVersion(), available ? 2 : 1);
+    await f.reopen();
+    const retained = await f.readJournal();
+    assert.equal(retained?.rawTransaction, available ? undefined : f.broadcasts[2]);
+    if (available) {
+      await f.transfers.prepareSpeedUp(Transaction.from(f.broadcasts[2]!).hash!);
+      assert(f.transfers.getSnapshot().review?.replacement);
+    }
+  } finally { await f.close(); }
 });
 
 test('private-note records do not offer an unsupported ordinary fee replacement', async () => {

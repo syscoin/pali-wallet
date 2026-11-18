@@ -111,7 +111,7 @@ export interface NativeTransferRuntime {
     signal: AbortSignal;
   }>>;
   replacementOriginal?(hash: string, mode: NativeReplacementMode, assertCurrent: () => void, signal: AbortSignal):
-    Promise<Readonly<{ rawTransaction: string; binding: EvmVerifiedReplacementBinding; rates: EvmReplacementRates; intent?: Erc20TransferIntent; collectible?: NftTransferIntent; smartAccount?: string }> | null>;
+    Promise<NativeReplacementSource | null>;
   releaseReplacement(): void;
   journal(assertCurrent: () => void): Promise<NativeTransferJournalHandle>;
   submit(
@@ -132,6 +132,13 @@ export interface NativeTransferRuntime {
   ): Promise<Readonly<{ rawTransaction: string; hash: string }>>;
   assertUnlocked(assertCurrent: () => void): void;
 }
+type NativeReplacementSource = Readonly<{
+  binding: EvmVerifiedReplacementBinding;
+  rates: EvmReplacementRates;
+  intent?: Erc20TransferIntent;
+  collectible?: NftTransferIntent;
+  smartAccount?: string;
+} & ({ rawTransaction: string; unsignedTransaction?: never } | { unsignedTransaction: string; from: string; rawTransaction?: never })>;
 export type NativeReplacementApproval = Readonly<{ original: NativeReplacementOriginal; binding: EvmVerifiedReplacementBinding } & (
   | { mode: 'cancel'; source: 'pending' | 'saved'; feePlan: EvmCancellationQuote['feePlan'] }
   | { mode: 'speed-up' }
@@ -741,6 +748,7 @@ export class NativeTransfers {
       const original = await runtime.replacementOriginal(hash, mode, assertCurrent, signal);
       if (!original) throw new NativeTransferError('EXPIRED');
       if (mode === 'cancel') {
+        if (!original.rawTransaction) throw new NativeTransferError('EXPIRED');
         const source = action === 'cancel-saved' ? 'saved' : 'pending';
         const prepare = source === 'saved' ? 'prepareSavedCancellation' : 'prepareCancellation';
         const quote = await rpc[prepare](hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, assertCurrent, original.rates);
@@ -748,12 +756,18 @@ export class NativeTransfers {
         this.showReview(quote.transaction, undefined, context,
           { replacement: Object.freeze({ mode, source, original: quote.original, feePlan: quote.feePlan, binding: original.binding }) });
       } else {
-        const quote = await rpc.prepareSpeedUp(hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, assertCurrent, original.rates, original.intent, original.collectible);
+        const quote = await this.quoteSpeedUp(rpc, hash, original, signal, assertCurrent);
         assertCurrent();
         this.showReview(quote.transaction, original.intent, context, { replacement: Object.freeze({ mode, original: quote.original, binding: original.binding }),
           replacementCollectible: original.collectible, smartAccount: original.smartAccount });
       }
     });
+  }
+  private quoteSpeedUp(rpc: NativeTransferRpc, hash: string, original: NativeReplacementSource, signal: AbortSignal, check: () => void) {
+    return original.unsignedTransaction !== undefined
+      ? rpc.prepareUnsignedSpeedUp(hash, original.unsignedTransaction, original.from, signal, check, original.rates)
+      : rpc.prepareSpeedUp(hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, check,
+        original.rates, original.intent, original.collectible);
   }
   private async checkDraftNonce(journal: NativeTransferJournalHandle, nonce: string, manual: boolean) {
     try {
@@ -1083,10 +1097,15 @@ export class NativeTransfers {
           const retained = await runtime.replacementOriginal?.(original.hash, mode, guard, signal);
           if (!retained || retained.binding.expectedTipHash !== replacement.binding.expectedTipHash)
             throw new NativeTransferError('EXPIRED');
-          latest = mode === 'cancel'
-            ? await rpc[replacement.source === 'saved' ? 'prepareSavedCancellation' : 'prepareCancellation'](
-              original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, approved.transaction!)
-            : await rpc.prepareSpeedUp(original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, retained.intent, retained.collectible);
+          if (mode === 'cancel') {
+            if (!retained.rawTransaction) throw new NativeTransferError('EXPIRED');
+            latest = await rpc[replacement.source === 'saved' ? 'prepareSavedCancellation' : 'prepareCancellation'](
+              original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, approved.transaction!);
+          } else {
+            if ((retained.unsignedTransaction !== undefined) !== (original.unsignedSpeedUp === true))
+              throw new NativeTransferError('EXPIRED');
+            latest = await this.quoteSpeedUp(rpc, original.hash, retained, signal, guard);
+          }
         } else if (collectible) {
           freshCollectible = await withNftInventorySignal(signal, collectible.inventorySignal, (owned) =>
             rpc.requoteNft(collectible.selection, collectible.quote, owned, guard, planner))
@@ -1155,7 +1174,7 @@ export class NativeTransfers {
         const check = () => { guard(); assertAdmission(); };
         if (approved.replacement) {
           if (!snapshot) throw new NativeTransferError('EXPIRED');
-          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible, approved.replacement.mode, rawTransaction);
+          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible, approved.replacement.mode, rawTransaction, approved.replacement.original.unsignedSpeedUp === true);
           check();
           dispatchVerified = true;
           return;

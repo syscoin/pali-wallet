@@ -46,6 +46,7 @@ export type NativeReplacementOriginal = Readonly<{
   nonce: number;
   type: 0 | 2;
   registrationHash: string;
+  unsignedSpeedUp?: true;
   accessList: EvmAccessList;
 }>;
 type NativeReplacementQuote = NativeTransferQuote & Readonly<{ original: NativeReplacementOriginal }>;
@@ -326,6 +327,7 @@ export class NativeTransferRpc {
         throw new NativeTransferRpcError(error.code === 'CANCELLED' ? 'CANCELLED' : 'REVIEW_REQUIRED');
       throw error;
     });
+    if (pending === null && original.unsignedSpeedUp) return;
     if (pending?.status !== 'pending' || pending.hash !== original.hash ||
         pending.from.toLowerCase() !== original.from.toLowerCase() ||
         pending.to?.toLowerCase() !== original.to?.toLowerCase() ||
@@ -384,6 +386,28 @@ export class NativeTransferRpc {
       .catch((error) => this.mapReadError(error, nft ? 'nft' : 'token'));
     assertSpeedUpEnvelope(original, quote.transaction);
     return Object.freeze({ ...this.checkedQuote(quote), original, ...(capturedIntent ? { intent: capturedIntent, tokenBalanceUnits: quote.assetBalanceUnits! } : {}) });
+  }
+  async prepareUnsignedSpeedUp(hash: string, unsignedTransaction: string, payer: string, signal: AbortSignal, guard: () => void,
+    rates: EvmReplacementRates): Promise<NativeReplacementQuote> {
+    if (typeof unsignedTransaction !== 'string' || unsignedTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2)
+      throw new NativeTransferRpcError('REVIEW_REQUIRED');
+    const transaction = Transaction.from(unsignedTransaction);
+    const { to, nonce, type, value, data, chainId } = transaction;
+    if (transaction.isSigned() || transaction.unsignedSerialized !== unsignedTransaction || !to || data !== '0x' ||
+        chainId.toString() !== this.context.chainId || (type !== 0 && type !== 2))
+      throw new NativeTransferRpcError('REVIEW_REQUIRED');
+    const from = normalizePublicAddress(payer, this.context.networkId);
+    const original = Object.freeze({
+      hash: checkedHash(hash), from, to, valueUnits: value.toString(), data, nonce, type,
+      maximumFeeUnits: (transaction.gasLimit * (transaction.maxFeePerGas ?? transaction.gasPrice ?? 0n)).toString(),
+      registrationHash: this.context.registrationHash, accessList: snapshotEvmAccessList(transaction.accessList ?? []),
+      unsignedSpeedUp: true as const,
+    });
+    await this.assertPendingOriginal(original, signal, guard);
+    const quote = await this.receiptRpc.prepareSpeedUp(transaction, rates, signal, guard, undefined, undefined, from)
+      .catch(error => this.mapReadError(error));
+    assertSpeedUpEnvelope(original, quote.transaction);
+    return Object.freeze({ ...this.checkedQuote(quote), original });
   }
   private mapReadError(error: unknown, asset: 'token' | 'nft' = 'token'): never {
     if (error instanceof EvmAssetStateError) {
@@ -478,14 +502,14 @@ export class NativeTransferRpc {
     }
   }
   async verifyReplacementForDispatch(envelope: EvmUnsignedTransfer, signal: AbortSignal, guard: () => void,
-    snapshot: EvmAutoNonceSnapshot, intent?: Erc20TransferIntent, nft?: NftTransferIntent, mode: NativeReplacementMode = 'speed-up', signedRaw?: string): Promise<void> {
+    snapshot: EvmAutoNonceSnapshot, intent?: Erc20TransferIntent, nft?: NftTransferIntent, mode: NativeReplacementMode = 'speed-up', signedRaw?: string, unsignedSpeedUp = false): Promise<void> {
     try {
       if (intent) assertTransferIntentEnvelope(envelope, intent);
       const asset: EvmTransferAsset | undefined = nft ? {
         standard: nft.tokenStandard === 'ERC-721' ? 'ERC721' : 'ERC1155', contractAddress: nft.contractAddress,
         tokenId: nft.tokenId, amountUnits: nft.amountUnits,
       } : intent ? { standard: 'ERC20', contractAddress: intent.token.contractAddress, amountUnits: intent.amountUnits } : undefined;
-      await this.receiptRpc.verifyReplacementForDispatch(envelope, signal, guard, snapshot, asset, intent?.token.decimals, mode, signedRaw);
+      await this.receiptRpc.verifyReplacementForDispatch(envelope, signal, guard, snapshot, asset, intent?.token.decimals, mode, signedRaw, unsignedSpeedUp);
       guard();
     } catch (error) { guard(); this.mapReadError(error, nft ? 'nft' : 'token'); }
   }
@@ -577,7 +601,8 @@ export class NativeTransferRpc {
         if (!tx.from ||
             original.from.toLowerCase() !== tx.from.toLowerCase() || original.nonce !== tx.nonce ||
             original.type !== tx.type || original.registrationHash !== this.context.registrationHash ||
-            checkedHash(original.hash) !== original.hash || original.hash === hash)
+            checkedHash(original.hash) !== original.hash || original.hash === hash ||
+            (original.unsignedSpeedUp && (mode !== 'speed-up' || !original.to || original.data !== '0x' || intent)))
           return invalid();
         if (mode === 'cancel' || mode === 'cancel-saved') {
           if (tx.gasLimit !== EVM_CANCELLATION_GAS_LIMIT) return invalid();
