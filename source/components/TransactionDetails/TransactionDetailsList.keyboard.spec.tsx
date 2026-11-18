@@ -235,7 +235,9 @@ async function details(amount: string, method = 'transfer') {
     : await screen.findByText(visible, { exact: true });
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'getSavedEvmTransaction'],
-    [tx.hash]
+    [tx.hash, { account: ACCOUNT, network: 'keyboard-tooltip-native' }],
+    10000,
+    false
   );
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'decodeEvmTransactionData'],

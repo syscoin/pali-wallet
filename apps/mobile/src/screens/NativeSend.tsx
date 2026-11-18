@@ -608,7 +608,14 @@ export function NativeSend({
     }
     held.submitted = true;
     setAuthenticationBusy(true);
-    await run(() => controller.confirm(held.review.id, credential), () => authenticationOwner.current === held);
+    await run(async () => {
+      try {
+        await controller.confirm(held.review.id, credential);
+      } catch (cause) {
+        if (!(cause instanceof Error && cause.message === 'CANCELLED' && authenticationCurrent(held))) throw cause;
+        setError(t('mobile.recoveryCopy.requestCancelled'));
+      }
+    }, () => authenticationOwner.current === held);
     if (!lifetime.current.alive || authenticationOwner.current !== held || lifetime.current.epoch !== held.epoch) return;
     const result = controller.getSnapshot();
     if (result.hash && result.context?.registrationHash === held.review.context.registrationHash)

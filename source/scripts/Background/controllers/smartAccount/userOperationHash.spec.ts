@@ -14,6 +14,7 @@ jest.mock('utils/smartAccount/gas', () => ({
 }));
 
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum';
+import { keccak256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { recoverAddress } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
@@ -283,7 +284,8 @@ describe('smart-account owner signing intent', () => {
         ACCOUNT,
         prepared.actionHash
       );
-      expect(retained?.userOperation.signature).toBe(signature.signature);
+      expect(retained?.userOperation.signature).toBe('0x');
+      expect(retained?.signatureDigest).toBe(keccak256(signature.signature));
       expect(journal.stored()).not.toContain(signature.signature);
     }
   );

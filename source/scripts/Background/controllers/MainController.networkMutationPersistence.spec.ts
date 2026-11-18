@@ -611,7 +611,6 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
           admission = journal.admit(
             { keyring, assertCurrent: guard },
             signedRecord,
-            'initial',
             async (prepare: () => Promise<void>, release: () => void) => {
               entered.resolve();
               await held.promise;
@@ -619,7 +618,7 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
               release();
             }
           );
-          await entered.promise;
+          await Promise.race([entered.promise, admission]);
           const edited = {
             ...target,
             url: 'https://edited-network.synthetic.invalid',
@@ -647,13 +646,20 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
           await admission;
           await rejection;
           expect(await savedTarget()).toMatchObject(target);
-          expect(
-            await journal.readExact(
-              { keyring, assertCurrent: guard },
-              owner,
-              signedRecord.txid
-            )
-          ).toEqual(signedRecord);
+          const retained = await journal.readExact(
+            { keyring, assertCurrent: guard },
+            owner,
+            signedRecord.txid
+          );
+          expect(retained).toMatchObject({
+            owner,
+            txid: signedRecord.txid,
+            url: signedRecord.url,
+            outpoints: signedRecord.outpoints,
+            feeSatoshis: signedRecord.feeSatoshis,
+            virtualSize: signedRecord.virtualSize,
+          });
+          expect(retained).not.toHaveProperty('rawTransaction');
           await expect(
             wallet.editCustomRpc(
               { ...target, label: 'Updated label' },

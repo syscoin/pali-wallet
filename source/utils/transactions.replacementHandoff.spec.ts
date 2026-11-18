@@ -133,7 +133,7 @@ describe.each(cases)('$action submission metadata handoff', (testCase) => {
   });
 
   it.each([null, '', 'invalid-hash'])(
-    'does not acknowledge missing or invalid returned hash %j',
+    'reports unknown submission for missing or invalid returned hash %j',
     async (hash) => {
       jest
         .mocked(controllerEmitter)
@@ -145,7 +145,7 @@ describe.each(cases)('$action submission metadata handoff', (testCase) => {
           })
         );
       expect(await run()).toBeUndefined();
-      expect(alert.error).toHaveBeenCalledWith(testCase.failure);
+      expect(alert.error).toHaveBeenCalledWith('transactions.replay.unknown');
       expect(alert.warning).not.toHaveBeenCalled();
       expect(alert.success).not.toHaveBeenCalled();
       expect(controllerEmitter).toHaveBeenCalledTimes(2);

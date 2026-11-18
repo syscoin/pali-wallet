@@ -53,6 +53,7 @@ describe('wallet authentication session boundaries', () => {
     wallet.checkRateLimit = jest.fn().mockResolvedValue(0);
     wallet.resetRateLimit = jest.fn().mockResolvedValue(undefined);
     wallet.recordFailedAttempt = jest.fn().mockResolvedValue(undefined);
+    wallet.migrateRetainedTransfers = jest.fn().mockResolvedValue(undefined);
   });
 
   afterEach(() => errorSpy.mockRestore());
@@ -67,10 +68,12 @@ describe('wallet authentication session boundaries', () => {
       canLogin: true,
     });
     expect(clearNavigationState).toHaveBeenCalledTimes(1);
+    expect(wallet.migrateRetainedTransfers).toHaveBeenCalledTimes(1);
     (clearNavigationState as jest.Mock).mockClear();
     keyring.isUnlocked.mockReturnValue(true);
     await wallet.unlock('correct password');
     expect(clearNavigationState).not.toHaveBeenCalled();
+    expect(wallet.migrateRetainedTransfers).toHaveBeenCalledTimes(1);
   });
   it('reasserts the authenticated session after awaited navigation cleanup', async () => {
     keyring.isUnlocked.mockReturnValue(false);

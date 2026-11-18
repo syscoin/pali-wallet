@@ -1055,10 +1055,15 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           mark('account-switch');
           await app.close();
           await wallet.gotoRoute('#/home');
-          await page
-            .getByRole('button', { name: 'GENERAL OPTIONS', exact: true })
-            .click();
+          const options = page.getByRole('button', {
+            name: 'GENERAL OPTIONS',
+            exact: true,
+          });
+          await options.click();
           await page.locator('[id^="account-HDAccount"]').first().click();
+          if ((await options.getAttribute('aria-expanded')) === 'true')
+            await page.keyboard.press('Escape');
+          await expect(options).toHaveAttribute('aria-expanded', 'false');
           expect((await wallet.getActiveAccountAddress()).toLowerCase()).toBe(
             payer.toLowerCase()
           );

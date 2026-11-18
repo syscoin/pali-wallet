@@ -167,12 +167,34 @@ for (const failure of ['DEVICE_UNLOCK_UNAVAILABLE', 'CANCELLED']) test(`${failur
   button(f.render(), 'Confirm and send').props.onPress(); await settle();
   assert.strictEqual(f.snapshot.review, review);
   assert.equal(f.signatures(), 0); assert.equal(f.confirmed.length, 1);
-  assert(all(f.render()).some(node => node.props.accessibilityRole === 'alert'));
+  const alert = one(f.render(), 'Text', node => node.props.accessibilityRole === 'alert');
+  if (failure === 'CANCELLED') assert.equal(alert.children[0], 'Request cancelled. You can try again.');
   assert.equal(one(f.render(), 'Screen').props.scrollResetKey, reviewKey);
   button(f.render(), 'Confirm and send').props.onPress(); await settle();
   assert.deepEqual(f.credentials.map(value => value.method), ['device', 'device']);
   assert.equal(one(f.render(), 'Screen').props.scrollResetKey, reviewKey);
   assert.equal(f.signatures(), 1); f.dispose();
+});
+
+test('losing the reviewed transaction during confirmation keeps the wallet lock guidance', async () => {
+  const f = setup();
+  f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  editSend(f, 'Amount in ETH', '1');
+  reviewSend(f);
+  await settle();
+
+  let finish!: () => void;
+  f.holdConfirmation(new Promise<void>(resolve => { finish = resolve; }));
+  button(f.render(), 'Confirm and send').props.onPress();
+  f.setSnapshot({ ...f.snapshot, phase: 'idle', review: null });
+  finish();
+  await settle();
+
+  const alert = one(f.render(), 'Text', node => node.props.accessibilityRole === 'alert');
+  assert.equal(alert.children[0], 'Your wallet was locked. Unlock to continue.');
+  assert.equal(f.signatures(), 0);
+  f.dispose();
 });
 
 test('submitted transfer shows a checkmark and exact Activity action without manual refresh', () => {
