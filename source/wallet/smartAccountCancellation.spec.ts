@@ -90,6 +90,28 @@ it('captures an authorization without inventing an outer transaction and preserv
   ).toThrow();
 });
 
+it('can retry from a retired original outer only with the exact retained original authorization', () => {
+  const retiredHash = '0x' + '55'.repeat(32);
+  const retry = captureSmartAccountCancellation({
+    ...input,
+    referenceHash: retiredHash,
+    operationHash: authorization.operationHash,
+  });
+  expect(retry.originalKind).toBe('authorization');
+  expect(retry.originalHash).toBe(authorization.operationHash);
+  expect(retry.referenceHash).toBe(retiredHash);
+  expect(() =>
+    captureSmartAccountCancellation({ ...input, referenceHash: retiredHash })
+  ).toThrow();
+  expect(() =>
+    captureSmartAccountCancellation({
+      ...input,
+      referenceHash: retiredHash,
+      operationHash: retiredHash,
+    })
+  ).toThrow();
+});
+
 it('isolates only the exact account, chain and full nonce in all pending views', async () => {
   const cap = captureSmartAccountCancellation(input);
   const own = {

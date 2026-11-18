@@ -2178,7 +2178,8 @@ class MainController {
 
   public async canCancelSavedSmartAccountTransaction(
     hash: string,
-    expectedScope: IWalletNavigationScope
+    expectedScope: IWalletNavigationScope,
+    retryCancellation = false
   ): Promise<boolean> {
     if (typeof hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(hash))
       return false;
@@ -2204,25 +2205,43 @@ class MainController {
     if (
       record?.operations.length !== 1 ||
       (clearedAt !== undefined && record.entry.createdAt <= clearedAt) ||
-      record.cancellation ||
-      decodeSmartAccountCancellation(record.entry)
+      record.cancellation
     )
       return false;
+    const revocation = decodeSmartAccountCancellation(record.entry);
+    if (Boolean(revocation) !== retryCancellation) return false;
     const nonce = BigInt(record.operations[0].operationNonce);
     const read = this.captureFreshEvmRead(expectedScope);
-    const currentNonce = await read.run((provider) =>
-      withEvmReadPhase(provider, assertCurrent, (phase) =>
-        readSmartAccountNonce(
+    const eligible = await read.run((provider) =>
+      withEvmReadPhase(provider, assertCurrent, async (phase) => {
+        const currentNonce = await readSmartAccountNonce(
           phase,
           Number(chainId),
           address,
           nonce >> BigInt(64),
           'latest'
-        )
-      )
+        );
+        if (BigInt(currentNonce) !== nonce) return false;
+        if (!revocation) return true;
+        const observation = await observeSmartAccountOperations(
+          {
+            account: address,
+            chainId,
+            hash: record.entry.hash,
+            payer: record.entry.from,
+            nonce: record.entry.nonce,
+            operations: record.operations,
+          },
+          (method, params) => phase.send(method, [...params]),
+          assertCurrent
+        );
+        return (
+          observation.status === 'mined' && observation.outcome === 'reverted'
+        );
+      })
     );
     assertCurrent();
-    return BigInt(currentNonce) === nonce;
+    return eligible;
   }
 
   public async getSavedEvmTransactions(

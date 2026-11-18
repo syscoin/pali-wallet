@@ -1,6 +1,7 @@
 import type { PrivacyPoolActivity } from '../../../../source/shared/privacyPoolActivity.ts';
 import type { EvmDisplayTransaction } from '../../../../source/shared/evmTransactionDisplay.ts';
 import type { SmartAccountActivityGroupIdentity } from '../../../../source/wallet/smartAccountActivity.ts';
+import type { SmartAccountCancellationRequest } from '../../../../source/wallet/smartAccountCancellation.ts';
 import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
@@ -62,6 +63,7 @@ export type LocalActivityRecord = Omit<
     privacyActivity?: PrivacyPoolActivity;
     inspectionOnly?: true;
     cancellationUnavailable?: true;
+    cancellationRetry?: Required<SmartAccountCancellationRequest>;
     speedUpEligible?: true;
     unsignedSpeedUp?: true;
     retainedSmartSpeedUp?: true;

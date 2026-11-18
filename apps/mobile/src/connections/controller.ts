@@ -3608,7 +3608,8 @@ export class NativeConnectionsController {
         ? nativeConnectionSubmissionFailure(error) : undefined;
       const atomicCalls = message.request.method === 'wallet_sendCalls' && !!operation;
       const operationSubmissionStarted = operation?.userOperationSubmissionStarted === true;
-      const canReportUnsent = ((singleTransaction || atomicCalls) && feeReviewFailed || submissionFailure === 'not-sent') &&
+      const canReportUnsent = (submissionFailure === 'not-sent' ||
+        submissionFailure === undefined && !retryPreparation && (singleTransaction || atomicCalls) && feeReviewFailed) &&
         !operationSubmissionStarted && approval.isCurrent();
       // Execution fee review follows a successful funding receipt. A funding
       // hash cannot stand in for dispatch of the requested operation.

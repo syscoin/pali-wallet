@@ -24,6 +24,7 @@ import { Button, Card, colors, Header, IconButton, Notice, SegmentedControl, sty
 import { formatBaseUnits } from '../core/amounts';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
 import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../../../source/shared/evmHistory';
+import type { SmartAccountCancellationRequest } from '../../../../source/wallet/smartAccountCancellation';
 import { activityRowDirection as direction, matchesActivityView, zeroOnlyActivity as zeroOnly } from '../activity/activityFiltering';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import { ActivityListRow, activityDate } from './ActivityListRow';
@@ -37,6 +38,20 @@ import type {
   NativeActivitySnapshot,
 } from '../activity/nativeActivity';
 const t = nativeI18n.t.bind(nativeI18n);
+function retryCancellation(row: ActivityRow | undefined) {
+  if (!row) return undefined;
+  const reference = row.local?.cancellationRetry;
+  const operations = row.local?.smartAccount?.operations;
+  const outer = row.retainedObservation;
+  if (!reference || operations?.length !== 1 || row.checking || row.unavailable ||
+      outer?.status !== 'mined' || outer.outcome !== 'reverted') return undefined;
+  const operation = operations[0]!;
+  const authorization = row.smartAuthorizations?.find(({ instruction }) =>
+    instruction.operationHash === operation.operationHash && instruction.replacesOperationHash === reference.operationHash);
+  const observation = authorization?.observation;
+  return authorization && !authorization.checking && !authorization.unavailable &&
+    observation?.kind === 'pending' && observation.currentNonce === operation.operationNonce ? reference : undefined;
+}
 const activityErrorKeys: Record<NonNullable<NativeActivitySnapshot['error']>, string> = {
   'load-incomplete': 'mobile.activityViews.nativeActivity.loadIncomplete',
   'feed-unavailable': 'mobile.activityViews.nativeActivity.feedUnavailable',
@@ -236,11 +251,11 @@ export function NativeActivityScreen({
   accountLabel: string;
   onBack(): void;
   navigation?: ShellLeafNavigation;
-  onCancelPending?(hash: string, operationHash?: string): void;
+  onCancelPending?(hash: string, reference?: SmartAccountCancellationRequest): void;
   onCancelSaved?(hash: string): void;
   onSpeedUpPending?(hash: string): void;
   /** Navigation to a canonical selected-network review, never direct authorization. */
-  onNavigateToReview?(action: NativeActivityReviewAction, hash: string, operationHash?: string): void;
+  onNavigateToReview?(action: NativeActivityReviewAction, hash: string, reference?: SmartAccountCancellationRequest): void;
 
   initialHash?: string;
   onInitialTargetOpened?(): void;
@@ -293,10 +308,10 @@ function NativeActivityContent({
   accountLabel: string;
   onBack(): void;
   navigation?: ShellLeafNavigation;
-  onCancelPending?(hash: string, operationHash?: string): void;
+  onCancelPending?(hash: string, reference?: SmartAccountCancellationRequest): void;
   onCancelSaved?(hash: string): void;
   onSpeedUpPending?(hash: string): void;
-  onNavigateToReview?(action: NativeActivityReviewAction, hash: string, operationHash?: string): void;
+  onNavigateToReview?(action: NativeActivityReviewAction, hash: string, reference?: SmartAccountCancellationRequest): void;
 
   initialHash?: string;
   onInitialTargetOpened?(): void;
@@ -443,8 +458,9 @@ function NativeActivityContent({
   const cancelPending = reviewAction('cancel', onCancelPending);
   const cancelSaved = reviewAction('cancel-saved', onCancelSaved);
   const cancelAuthorization = onCancelPending ?? (onNavigateToReview
-    ? (key: string, hash: string) => onNavigateToReview('cancel', key, hash)
+    ? (key: string, reference: SmartAccountCancellationRequest) => onNavigateToReview('cancel', key, reference)
     : undefined);
+  const retryReference = snapshot.status === 'ready' && retryCancellation(chosen);
   // An outer receipt/nonce does not revoke its independently usable inner proof.
   const canCancelSmartInstruction = snapshot.status === 'ready' && chosen?.local?.smartAccount && !chosen.checking &&
     !chosen.local.cancellationUnavailable && !chosen.local.smartAccount.cancellation &&
@@ -746,7 +762,7 @@ function NativeActivityContent({
                 if (!chosenKey || view.key !== chosenKey || view.abort.signal.aborted || AppState.currentState !== 'active' ||
                     current.status !== 'ready' || live !== smartAuthorization) return;
                 view.abort.abort();
-                cancelAuthorization(chosenKey, operationHash);
+                cancelAuthorization(chosenKey, { originalHash: operationHash });
               }} />
             )}
         </ScrollView>
@@ -919,6 +935,19 @@ function NativeActivityContent({
                   cancelPending(chosen.hash);
                 });
               }} />
+          )}
+          {retryReference && cancelAuthorization && (
+            <Button title={t('transactions.retrySmartAccountCancellation')} variant="secondary" onPress={() => {
+              const view = authorizationView.current;
+              void afterPositionSaved(() => {
+                const current = controller.getSnapshot();
+                if (current.status !== 'ready' || view.key !== chosen.hash || authorizationView.current !== view ||
+                    view.abort.signal.aborted || AppState.currentState !== 'active' ||
+                    retryCancellation(findActivityRow(current.rows, chosen.hash)) !== retryReference) return;
+                view.abort.abort();
+                cancelAuthorization(chosen.hash, retryReference);
+              });
+            }} />
           )}
           {canReplace && !chosen.local?.smartAccount && (!chosen.local?.cancellationUnavailable || chosen.local.unsignedSpeedUp) && cancelPending && (
             <Button title={t('mobile.activityViews.nativeActivity.cancelPendingTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />

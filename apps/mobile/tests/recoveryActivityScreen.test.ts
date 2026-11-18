@@ -1161,6 +1161,51 @@ test('Smart transaction details observe the matching operation and open one canc
   } finally { f.dispose(); }
 });
 
+test('a mined failed cancellation can retry its original instruction only while its exact inner nonce is current', async () => {
+  const actions: unknown[][] = [];
+  const f = fixture(undefined, false, { onNavigateToReview: (...input: unknown[]) => actions.push(input) });
+  try {
+    const base = pendingScopedRow();
+    const reference = { originalHash: '0x' + 'ae'.repeat(32), operationHash: '0x' + 'af'.repeat(32) };
+    const operationHash = '0x' + 'ef'.repeat(32), nonce = 2n ** 190n;
+    const instruction = { operationHash, operationNonce: nonce.toString(), account: base.local.address,
+      chainId: '1', createdAt: 1700000000000, payer: base.local.address, observedAt: { number: '1', hash },
+      replacesOperationHash: reference.operationHash };
+    const row = { hash, checking: false, unavailable: false,
+      local: { ...base.local, phase: 'reverted', operation: 'cancel', cancellationRetry: reference,
+        smartAccount: { payer: base.local.address, operations: [instruction] } },
+      retainedObservation: { status: 'mined', outcome: 'reverted', block: instruction.observedAt },
+      smartAuthorizations: [{ instruction, checking: false, unavailable: false,
+        observation: { kind: 'pending', currentNonce: nonce.toString(), operationHash, anchor: instruction.observedAt } }],
+    };
+    const button = (tree: unknown, title: string) => all(tree).find(node => node.type === 'Button' && node.props.title === title);
+    const tree = await openFixtureRow(f, row);
+    const retry = button(tree, 'Retry cancellation');
+    assert(retry);
+    assert(!button(tree, 'Speed Up'));
+    assert(!button(tree, 'Cancel instruction'));
+    assert.deepEqual(f.inspectedOperations(), [operationHash]);
+
+    for (const [kind, currentNonce] of [['pending', nonce - 1n], ['nonce-consumed', nonce + 1n]] as const) {
+      f.rows([{ ...row, smartAuthorizations: [{ ...row.smartAuthorizations[0],
+        observation: { ...row.smartAuthorizations[0]!.observation, kind, currentNonce: currentNonce.toString() },
+      }] }]);
+      assert(!button(f.render(), 'Retry cancellation'));
+      retry.props.onPress();
+      await settle();
+      assert.deepEqual(actions, []);
+    }
+    f.rows([{ ...row, retainedObservation: undefined }]);
+    assert(!button(f.render(), 'Retry cancellation'));
+    f.rows([row]);
+    const current = button(f.render(), 'Retry cancellation');
+    assert(current);
+    current.props.onPress();
+    await settle();
+    assert.deepEqual(actions, [['cancel', hash, reference]]);
+  } finally { f.dispose(); }
+});
+
 test('Activity offers unsigned cancellation only after it observes the original pending', async () => {
   const actions: unknown[][] = [];
   const f = fixture(undefined, false, { onCancelPending: (hash: string) => actions.push(['pending', hash]),

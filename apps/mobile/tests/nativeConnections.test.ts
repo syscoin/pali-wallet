@@ -27,6 +27,7 @@ import test from 'node:test';
 import axios from 'axios';
 import { NativeConnectionsController } from '../src/connections/controller.ts';
 import type { NativeConnectionHost } from '../src/connections/host.ts';
+import { recordNativeConnectionSubmissionFailure } from '../src/connections/transactionRuntime.ts';
 import type {
   WalletConnectTransportEvent,
   WalletConnectRequest,
@@ -916,6 +917,10 @@ function fixture(
     failTransactionSubmission(error: Error, progress?: typeof smartBatchProgressBeforeFailure) {
       submissionError = error;
       smartBatchProgressBeforeFailure = progress;
+    },
+    clearTransactionSubmissionFailure() {
+      submissionError = undefined;
+      smartBatchProgressBeforeFailure = undefined;
     },
     blockSite() {
       siteBlocked = true;
@@ -3304,6 +3309,45 @@ test('a WalletConnect transaction fee change after confirmation keeps the unsent
     assert.equal(f.transactions.length, 0);
   } finally { await f.controller.dispose(); }
 });
+
+for (const reason of ['EVM fee approval changed', 'REVIEW_REQUIRED']) {
+  test(`a WalletConnect ${reason} refusal with exact journal cleanup returns to fee review`, async () => {
+    const f = await connectedFixture();
+    try {
+      const review = await messageRequest(f, 'eth_sendTransaction', [{ data: '0x6000' }]);
+      assert.ok(review?.kind === 'transaction');
+      const error = new Error(reason);
+      recordNativeConnectionSubmissionFailure(error, 'retryable');
+      f.failTransactionSubmission(error);
+      await f.view.approveRequest(review.id, review.revision, false);
+
+      const retry = f.view.getSnapshot().signingReview;
+      assert.ok(retry?.kind === 'transaction');
+      assert.equal(retry.retryPreparation, true);
+      assert.equal(retry.error, null);
+      assert.equal(retry.broadcastHash, null);
+      assert.equal(retry.busy, false);
+      assert.equal(f.responses.length, 0);
+      assert.equal(f.preparedTransactions.length, 1);
+
+      f.clearTransactionSubmissionFailure();
+      await f.view.approveRequest(retry.id, retry.revision, false);
+      const fresh = f.view.getSnapshot().signingReview;
+      assert.ok(fresh?.kind === 'transaction');
+      assert.equal(fresh.id, review.id);
+      assert.equal(fresh.retryPreparation, false);
+      assert.notStrictEqual(fresh.transaction, review.transaction);
+      assert.equal(f.preparedTransactions.length, 2);
+      assert.equal(f.transactions.length, 0);
+      assert.equal(f.responses.length, 0);
+
+      await assert.rejects(f.view.approveRequest(retry.id, retry.revision, false));
+      await f.view.approveRequest(fresh.id, f.view.getSnapshot().revision, false);
+      assert.equal(f.transactions.length, 1);
+      assert.deepEqual(f.responses, [{ id: 10, result: { result: '0x' + '34'.repeat(32) } }]);
+    } finally { await f.controller.dispose(); }
+  });
+}
 
 test('WalletConnect transaction device authentication cancellation keeps the rejection outcome', async () => {
   const f = await connectedFixture();

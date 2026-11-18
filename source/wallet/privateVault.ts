@@ -1019,6 +1019,23 @@ export function createPrivateVaultController(
     if (!note) throw new Error('privacy_note_missing');
     return note;
   };
+  const loadWithdrawalAcknowledgementTarget = async (
+    context: IContext,
+    id: string
+  ) => {
+    if (typeof id !== 'string' || !UUID.test(id))
+      throw new Error('privacy_note_missing');
+    let loaded = await load(context);
+    let note = loaded.manifest.notes.find((entry) => entry.id === id);
+    // A finalized earlier attempt can archive the note while a later
+    // submission or relayer status reply is in flight.
+    if (!note && context.archive?.count) {
+      loaded = await load(context, undefined, true);
+      note = loaded.manifest.notes.find((entry) => entry.id === id);
+    }
+    if (!note) throw new Error('privacy_note_missing');
+    return { ...loaded, note };
+  };
   const assertEligible = async (context: IContext, note: IStoredNote) => {
     if (note.restoreGuard) throw new Error('privacy_note_restore_required');
     if (note.origin !== 'generated')
@@ -1200,8 +1217,10 @@ export function createPrivateVaultController(
       )
     )
       throw new Error('privacy_withdrawal_attempt_invalid');
-    const { manifest, basis } = await load(context);
-    const note = findNote(manifest, attempt?.noteId);
+    const { manifest, basis, note } = await loadWithdrawalAcknowledgementTarget(
+      context,
+      attempt?.noteId
+    );
     const { previous, index } = retainedWithdrawal(note, attempt);
     const { transactionHash, jobId } = acknowledgement;
     if (
@@ -1552,8 +1571,8 @@ export function createPrivateVaultController(
       session
     ) =>
       internal(session, async (context) => {
-        const { manifest, basis } = await load(context);
-        const note = findNote(manifest, noteId);
+        const { manifest, basis, note } =
+          await loadWithdrawalAcknowledgementTarget(context, noteId);
         const index =
           note.withdrawal?.attemptHash === attemptHash
             ? -1

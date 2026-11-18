@@ -5679,10 +5679,12 @@ export function createKeyringRuntimeFactory(
             let cancellation: SmartAccountCancellation | undefined;
             if (intent.kind === 'cancel-operation') {
               const session={keyring:transactionRecordKeyring(ring,check),assertCurrent:check};
-              const authorization=await signedRecords.readSmartAccountAuthorizationExact(session,network.chainId,account.address,intent.reference.originalHash);
-              const outer=authorization
-                ? (await signedRecords.findSmartAccountAuthorizationOuter(session,network.chainId,account.address,authorization.operationHash))?.entry
-                : (await signedRecords.readSmartAccountReplayExact(session,network.chainId,account.address,intent.reference.originalHash))?.entry;
+              const { originalHash, operationHash } = intent.reference;
+              const authorization = await signedRecords.readSmartAccountAuthorizationExact(session, network.chainId, account.address, operationHash ?? originalHash);
+              const exact = await signedRecords.readSmartAccountReplayExact(session, network.chainId, account.address, originalHash);
+              const outer = exact?.entry ?? (authorization
+                ? (await signedRecords.findSmartAccountAuthorizationOuter(session, network.chainId, account.address, authorization.operationHash))?.entry
+                : undefined);
               check();
               if (!authorization&&!outer) throw new KeyringRuntimeError('NOT_READY');
               let observedAt=authorization?.observedAt;

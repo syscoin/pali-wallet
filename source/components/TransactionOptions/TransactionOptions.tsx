@@ -21,6 +21,7 @@ import {
 import { ITransactionOptions } from 'utils/types';
 
 import { useSmartAccountCancellation } from './useSmartAccountCancellation';
+import type { SmartAccountCancellationRequest } from '../../wallet/smartAccountCancellation';
 
 // Memoize frequently used transaction option icons
 const EditTxIcon = React.memo(() => (
@@ -54,12 +55,14 @@ const CancelTransactionMenuItem = ({
   checkLive,
   hash,
   onClick,
+  retry,
   scope,
 }: {
   busy: boolean;
   checkLive: boolean;
   hash: string;
   onClick: () => void;
+  retry: boolean;
   scope: ReturnType<typeof getWalletNavigationScope>;
 }) => {
   const { t } = useTranslation();
@@ -70,7 +73,7 @@ const CancelTransactionMenuItem = ({
     let current = true;
     void controllerEmitter(
       ['wallet', 'canCancelSavedSmartAccountTransaction'],
-      [hash, { account, network }]
+      [hash, { account, network }, ...(retry ? [true] : [])]
     ).then(
       (eligible) => {
         if (current) setCanCancel(eligible === true);
@@ -82,7 +85,7 @@ const CancelTransactionMenuItem = ({
     return () => {
       current = false;
     };
-  }, [checkLive, hash, account, network]);
+  }, [checkLive, hash, account, network, retry]);
   if (checkLive && !canCancel) return null;
   return (
     <Menu.Item disabled={busy}>
@@ -99,7 +102,13 @@ const CancelTransactionMenuItem = ({
           <div className="w-5 mr-3">
             <CancelIcon />
           </div>
-          <span className={ITEM_TEXT_CLASS_NAME}>{t('buttons.cancel')}</span>
+          <span className={ITEM_TEXT_CLASS_NAME}>
+            {t(
+              retry
+                ? 'transactions.retrySmartAccountCancellation'
+                : 'buttons.cancel'
+            )}
+          </span>
         </li>
       )}
     </Menu.Item>
@@ -152,7 +161,11 @@ export const SmartAccountSignedOperationOptions = ({
   );
 };
 
-const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
+type TransactionOptionsProps = ITransactionOptions & {
+  cancellationRetry?: Required<SmartAccountCancellationRequest>;
+};
+
+const TransactionOptionsBase: React.FC<TransactionOptionsProps> = ({
   handleUpdateTransaction,
   transaction,
   alert,
@@ -160,6 +173,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   setIsOpenModal,
   setModalData,
   canCancelSmart = false,
+  cancellationRetry,
 }) => {
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
@@ -172,7 +186,10 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     (state: RootState) => state.vault.activeNetwork.currency
   );
   const scope = useSelector(() => getWalletNavigationScope());
-  const smartCancellation = useSmartAccountCancellation(transaction.hash);
+  const smartCancellation = useSmartAccountCancellation(
+    cancellationRetry?.originalHash ?? transaction.hash,
+    cancellationRetry?.operationHash
+  );
   const signerAddress = smartCancellation.available
     ? transaction.feePayer ?? transaction.from
     : transaction.from;
@@ -188,7 +205,10 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   const cancellationUnavailable =
     (transaction as { cancellationUnavailable?: unknown })
       .cancellationUnavailable === true ||
-    (smartCancellation.available && transaction.isCancel === true) ||
+    (smartCancellation.available &&
+      transaction.isCancel === true &&
+      !cancellationRetry) ||
+    (cancellationRetry !== undefined && !mined) ||
     (mined && !(canCancelSmart && smartCancellation.available)) ||
     (local && !(canCancelSmart && smartCancellation.available));
   const preview = useRef<{
@@ -456,11 +476,13 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                         scope.account,
                         scope.network,
                         mined,
+                        cancellationRetry?.operationHash,
                       ])}
                       busy={smartCancellation.busy}
                       checkLive={mined}
                       hash={transaction.hash}
                       onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+                      retry={cancellationRetry !== undefined}
                       scope={scope}
                     />
                   )}
@@ -483,6 +505,7 @@ export const TransactionOptions = React.memo(
     return (
       prev.chainId === next.chainId &&
       prev.canCancelSmart === next.canCancelSmart &&
+      prev.cancellationRetry === next.cancellationRetry &&
       isTransactionInBlock(prevTx) === isTransactionInBlock(nextTx) &&
       prevTx?.isCancel === nextTx?.isCancel &&
       prev.alert === next.alert &&

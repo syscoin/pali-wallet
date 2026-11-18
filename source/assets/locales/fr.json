@@ -1126,6 +1126,7 @@
       "cancelInstruction": "Annuler l’instruction",
       "operationHash": "Hash de l’opération"
     },
+    "retrySmartAccountCancellation": "Réessayer l’annulation",
     "smartAccountCancelUnavailable": "Cette opération ne peut pas être annulée. Son instruction signée peut encore être exécutée.",
     "smartAccountCancelDescription": "Annulez cette instruction Smart Account en envoyant une opération vide avec le même nonce. L’originale peut être confirmée en premier. L’annulation est terminée uniquement lorsque le réseau confirme le remplacement.",
     "smartAccountCancelReviewDescription": "L’opération d’origine peut être confirmée en premier. L’annulation est effective lorsque le réseau confirme l’opération de remplacement.",

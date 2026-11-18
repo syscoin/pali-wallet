@@ -38,8 +38,8 @@ export function useLocalPasskeyFlow(
     active.current = null;
     mounted.sequence++;
     current?.abort.abort();
-    if (current) void current.source.cancel(current.id).catch(() => undefined);
     if (mounted.mounted) setBusy(false);
+    return current?.source.cancel(current.id).catch(() => undefined);
   }, [createController]);
   useEffect(() => {
     const current: Owner = {

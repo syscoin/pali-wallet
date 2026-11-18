@@ -1126,6 +1126,7 @@
       "cancelInstruction": "Cancelar instrução",
       "operationHash": "Hash da operação"
     },
+    "retrySmartAccountCancellation": "Tentar cancelar novamente",
     "smartAccountCancelUnavailable": "Não é possível cancelar esta operação. Sua instrução assinada ainda pode ser executada.",
     "smartAccountCancelDescription": "Cancele esta instrução da Smart Account enviando uma operação vazia com o mesmo nonce. A original pode ser confirmada primeiro. O cancelamento só é concluído quando a rede confirma a substituição.",
     "smartAccountCancelReviewDescription": "A operação original pode ser confirmada primeiro. O cancelamento é concluído quando a rede confirma a substituição.",

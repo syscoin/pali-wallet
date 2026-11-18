@@ -441,6 +441,27 @@ it('refuses a mismatched genesis before generating an approval', async () => {
   expect(runSentryCrypto).not.toHaveBeenCalled();
 });
 
+it.each(['updateService', 'register'])(
+  'rejects %s requests for another network before any lookup',
+  async (operation) => {
+    await expect(
+      controller.prepare(
+        {
+          ...request,
+          operation,
+          chain: {
+            ...request.chain,
+            genesisHash: SENTRY_NETWORKS.testnet.genesisHash,
+          },
+        },
+        'https://dapp.test',
+        { assertCurrent: () => undefined, signal: new AbortController().signal }
+      )
+    ).rejects.toThrow('Switch to the requested Syscoin network');
+    expect(global.fetch).not.toHaveBeenCalled();
+  }
+);
+
 it('cancels an oversized chunked response before buffering it, even without Content-Length', async () => {
   const cancelled = jest.fn();
   (global.fetch as jest.Mock).mockResolvedValueOnce(

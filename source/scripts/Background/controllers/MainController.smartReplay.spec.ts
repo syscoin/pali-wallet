@@ -353,22 +353,109 @@ it('only offers cancellation while the authenticated inner nonce is current and 
   await expect(canCancel()).resolves.toBe(false);
   liveNonce = 7;
   const revocation = encodeERC7579Executions([{ target: smart, value: '0' }]);
-  await f.records.retainSmartAccountAuthorization(f.session, {
-    chainId: 1,
-    payer: payer.address,
-    observedAt: { number: '16', hash: blockHash },
-    replacesOperationHash: getSmartAccountUserOpHash(f.operation as any, 1),
-    userOperation: {
-      ...f.operation,
-      callData: paliSmartAccountInterface.encodeFunctionData('execute', [
-        revocation.mode,
-        revocation.executionCalldata,
-      ]),
-      nonce: '7',
-      preVerificationGas: String(f.operation.preVerificationGas),
-    },
-  });
+  const originalOperationHash = getSmartAccountUserOpHash(
+    f.operation as any,
+    1
+  );
+  const userOperation = {
+    ...f.operation,
+    callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+      revocation.mode,
+      revocation.executionCalldata,
+    ]),
+    nonce: '7',
+    preVerificationGas: String(f.operation.preVerificationGas),
+  };
+  const { operationHash } = await f.records.retainSmartAccountAuthorization(
+    f.session,
+    {
+      chainId: 1,
+      payer: payer.address,
+      observedAt: { number: '16', hash: blockHash },
+      replacesOperationHash: originalOperationHash,
+      userOperation,
+    }
+  );
   await expect(canCancel()).resolves.toBe(false);
+
+  const entryPoint = getPaliEntryPointAddress(1);
+  const rawTransaction = await payer.signTransaction({
+    chainId: 1,
+    nonce: 1,
+    type: 0,
+    gasPrice: 2,
+    gasLimit: 300000,
+    to: entryPoint,
+    data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+      [userOperation],
+      payer.address,
+    ]),
+  });
+  const hash = Transaction.from(rawTransaction).hash!;
+  await f.records.append(
+    f.session,
+    {
+      rawTransaction,
+      hash,
+      from: payer.address,
+      chainId: '1',
+      nonce: 1,
+      type: 0,
+      context: {
+        account: { id: 0, type: 'HDAccount', address: payer.address },
+        network: mockState.vault.activeNetwork,
+        operation: 'send',
+      },
+    },
+    {
+      smartAccountExecution: true,
+      smartAccountExecutionFrom: smart,
+      smartAccountOperationCancellation: {
+        account: smart,
+        chainId: '1',
+        originalHash: f.hash,
+        originalKind: 'transaction',
+        originalOperationHash,
+        operationHash,
+        operationNonce: '7',
+      },
+    }
+  );
+  const canRetry = () =>
+    f.wallet.canCancelSavedSmartAccountTransaction(hash, scope, true);
+  expect((await f.wallet.getSavedEvmTransactions()).transactions).toMatchObject(
+    [
+      {
+        hash,
+        smartAccount: {
+          cancellationRetry: {
+            originalHash: f.hash,
+            operationHash: originalOperationHash,
+          },
+        },
+      },
+    ]
+  );
+  await expect(canRetry()).resolves.toBe(false);
+  const withNonce = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation((method, params) =>
+    method === 'eth_getTransactionReceipt'
+      ? (Promise.resolve({
+          transactionHash: hash,
+          from: payer.address,
+          to: entryPoint,
+          blockNumber: '0x10',
+          blockHash,
+          status: '0x0',
+        }) as any)
+      : withNonce(method, params)
+  );
+  await expect(canRetry()).resolves.toBe(true);
+  await expect(canCancel()).resolves.toBe(false);
+  liveNonce = 8;
+  await expect(canRetry()).resolves.toBe(false);
+  liveNonce = 6;
+  await expect(canRetry()).resolves.toBe(false);
   expect(f.broadcasts).toEqual([]);
 });
 

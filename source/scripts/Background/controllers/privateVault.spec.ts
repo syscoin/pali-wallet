@@ -2624,11 +2624,18 @@ it.each(['direct', 'relayed'] as const)(
   async (mode) => {
     const { f, note, session, attempt } = await failedWithdrawalFixture(mode);
     const { approval } = await competingApproval(f, note.id, session);
+    const successor = competingAttempt(attempt);
     await f.controller.reserveWithdrawalAttempt(
-      competingAttempt(attempt),
+      successor,
       session,
       competingLifetime,
       undefined,
+      approval
+    );
+    await f.controller.consumeUnsignedWithdrawal(
+      successor,
+      session,
+      competingLifetime,
       approval
     );
     expect((await f.controller.getNotes()).notes[0]).toMatchObject({
@@ -2649,7 +2656,46 @@ it.each(['direct', 'relayed'] as const)(
       expect.any(Object)
     );
     expect(f.revalidateCompletion).toHaveBeenCalledTimes(1);
-    expect((await f.controller.getArchivedNotes()).notes[0].id).toBe(note.id);
+    const archived = (await f.controller.getArchivedNotes()).notes;
+    expect(archived[0].id).toBe(note.id);
+    const transactionHash = '0x' + 'ed'.repeat(32);
+    const acknowledgement =
+      mode === 'relayed' ? { jobId: UUID } : { transactionHash };
+    await f.controller.recordWithdrawalSubmission(
+      successor,
+      acknowledgement,
+      session
+    );
+    const before = structuredClone(f.records);
+    await expect(
+      f.controller.recordWithdrawalSubmission(
+        competingAttempt(attempt, 3),
+        acknowledgement,
+        session
+      )
+    ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
+    expect(f.records).toEqual(before);
+
+    if (mode === 'relayed') {
+      const saved = (await decryptedVault(f)).notes[0].withdrawal;
+      await f.controller.recordWithdrawalJobStatus(
+        note.id,
+        saved.attemptHash,
+        { jobId: UUID, transactionHash },
+        session
+      );
+    }
+    expect((await decryptedVault(f)).notes[0].withdrawal).toMatchObject({
+      intentId: successor.intentId,
+      phase: 'submitted',
+      transactionHash,
+      ...(mode === 'relayed' ? { jobId: UUID } : {}),
+      retired: [expect.objectContaining({ transactionHash: TX_HASH })],
+    });
+    expect((await f.controller.getNotes()).notes).toEqual([]);
+    expect((await f.controller.getArchivedNotes()).notes).toEqual(archived);
+    expect(f.prepareCompletionProof).toHaveBeenCalledTimes(1);
+    expect(f.revalidateCompletion).toHaveBeenCalledTimes(1);
   }
 );
 

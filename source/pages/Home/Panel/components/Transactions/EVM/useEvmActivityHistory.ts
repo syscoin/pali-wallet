@@ -15,6 +15,7 @@ import type {
   EvmActivitySummary,
   SmartAccountSignedActivity,
 } from '../../../../../../wallet/evmActivityRow';
+import type { SmartAccountCancellationRequest } from '../../../../../../wallet/smartAccountCancellation';
 import type { SmartAccountReplayIntent } from '../../../../../../wallet/smartAccountSignedReplay';
 
 type ActivityRow = ITransactionInfoEvm & {
@@ -244,30 +245,38 @@ export const useEvmActivityHistory = ({
         : indexedTransactions,
     [includeLocal, indexedTransactions, chainId, state.page.transactions]
   );
-  const { smartCancellationHashes, pendingSmartCancellationTargets } =
-    useMemo(() => {
-      const hashes = new Set<string>();
-      const targets = new Map<string, string>();
-      if (includeLocal && accountAddress) {
-        for (const row of state.page.transactions) {
-          const smart = row.smartAccount;
-          if (
-            row.chainId !== chainId ||
-            smart?.account.toLowerCase() !== accountAddress.toLowerCase()
-          )
-            continue;
-          const hash = row.hash.toLowerCase();
-          if (smart.pendingCancellationOf)
-            targets.set(hash, smart.pendingCancellationOf);
-          if (smart.operationCount === 1 && !smart.cancellation)
-            hashes.add(hash);
-        }
+  const {
+    smartCancellationHashes,
+    smartCancellationRetries,
+    pendingSmartCancellationTargets,
+  } = useMemo(() => {
+    const hashes = new Set<string>();
+    const retries = new Map<
+      string,
+      Required<SmartAccountCancellationRequest>
+    >();
+    const targets = new Map<string, string>();
+    if (includeLocal && accountAddress) {
+      for (const row of state.page.transactions) {
+        const smart = row.smartAccount;
+        if (
+          row.chainId !== chainId ||
+          smart?.account.toLowerCase() !== accountAddress.toLowerCase()
+        )
+          continue;
+        const hash = row.hash.toLowerCase();
+        if (smart.pendingCancellationOf)
+          targets.set(hash, smart.pendingCancellationOf);
+        if (smart.cancellationRetry) retries.set(hash, smart.cancellationRetry);
+        if (smart.operationCount === 1 && !smart.cancellation) hashes.add(hash);
       }
-      return {
-        smartCancellationHashes: hashes,
-        pendingSmartCancellationTargets: targets,
-      };
-    }, [includeLocal, accountAddress, chainId, state.page.transactions]);
+    }
+    return {
+      smartCancellationHashes: hashes,
+      smartCancellationRetries: retries,
+      pendingSmartCancellationTargets: targets,
+    };
+  }, [includeLocal, accountAddress, chainId, state.page.transactions]);
   const olderRows: EvmActivityOlderRows = {
     hasMore: includeLocal && state.page.nextCursor !== null,
     loading: includeLocal && state.loading,
@@ -283,6 +292,7 @@ export const useEvmActivityHistory = ({
       : EMPTY.signedOperations,
     olderRows,
     smartCancellationHashes,
+    smartCancellationRetries,
     pendingSmartCancellationTargets,
     unavailable: includeLocal && state.unavailable,
     retry: () => fetchPage(state.failedCursor),

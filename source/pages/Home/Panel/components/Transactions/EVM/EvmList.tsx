@@ -76,6 +76,7 @@ import { getReplacementWinner } from './replacementWinner';
 import { getTransactionDisplayCacheKey } from './transactionDisplayCache';
 import type { EvmActivityOlderRows } from './useEvmActivityHistory';
 import type { SmartAccountSignedActivity } from '../../../../../../wallet/evmActivityRow';
+import type { SmartAccountCancellationRequest } from '../../../../../../wallet/smartAccountCancellation';
 import type { SmartAccountReplayIntent } from '../../../../../../wallet/smartAccountSignedReplay';
 
 type EvmPageResponse = {
@@ -110,6 +111,7 @@ const EvmTransactionItem = React.memo(
     getFiatAmount,
     isFiatAvailable,
     canCancelSmart,
+    cancellationRetry,
     txId,
     getTxOptions,
     t,
@@ -119,6 +121,7 @@ const EvmTransactionItem = React.memo(
   }: {
     canCancelSmart: boolean;
     cancellationIntent: boolean;
+    cancellationRetry?: Required<SmartAccountCancellationRequest>;
     chainId: number;
     currency: string;
     currentAccount: any;
@@ -140,7 +143,7 @@ const EvmTransactionItem = React.memo(
     };
     txId: string;
   }) => {
-    const isCancel = cancellationIntent;
+    const isCancel = cancellationIntent || Boolean(cancellationRetry);
     const isReplaced = settlement === 'replaced';
     const isSpeedUp = tx?.isSpeedUp === true;
     const incomingPayment = useMemo(() => {
@@ -576,8 +579,9 @@ const EvmTransactionItem = React.memo(
               {renderValueDisplay()}
             </div>
             <div className="m-auto">
-              {canCancelSmart && !isCancel && !tx.cancellationUnavailable ? (
-                getTxOptions(tx, true)
+              {cancellationRetry ||
+              (canCancelSmart && !isCancel && !tx.cancellationUnavailable) ? (
+                getTxOptions(tx, true, cancellationRetry)
               ) : (
                 <Tooltip content={t('notifications.clickToView')}>
                   <DetailArrowSvg
@@ -743,6 +747,7 @@ const EvmTransactionItem = React.memo(
     prevProps.isFiatAvailable === nextProps.isFiatAvailable &&
     prevProps.getTxOptions === nextProps.getTxOptions &&
     prevProps.canCancelSmart === nextProps.canCancelSmart &&
+    prevProps.cancellationRetry === nextProps.cancellationRetry &&
     prevProps.tokenMeta?.decimals === nextProps.tokenMeta?.decimals &&
     prevProps.tokenMeta?.isNft === nextProps.tokenMeta?.isNft &&
     prevProps.currentAccount?.address === nextProps.currentAccount?.address &&
@@ -821,6 +826,7 @@ export const EvmTransactionsList = ({
   userTransactions,
   olderRows,
   smartCancellationHashes,
+  smartCancellationRetries,
   pendingSmartCancellationTargets,
   smartSignedOperations,
   explorerHasMore,
@@ -829,6 +835,10 @@ export const EvmTransactionsList = ({
   olderRows?: EvmActivityOlderRows;
   pendingSmartCancellationTargets?: ReadonlyMap<string, string>;
   smartCancellationHashes?: ReadonlySet<string>;
+  smartCancellationRetries?: ReadonlyMap<
+    string,
+    Required<SmartAccountCancellationRequest>
+  >;
   smartSignedOperations?: readonly SmartAccountSignedActivity[];
   userTransactions: ITransactionInfoEvm[];
 }) => {
@@ -957,13 +967,18 @@ export const EvmTransactionsList = ({
   );
 
   const getTxOptions = useCallback(
-    (tx: ITransactionInfoEvm, canCancelSmart: boolean) => (
+    (
+      tx: ITransactionInfoEvm,
+      canCancelSmart: boolean,
+      cancellationRetry?: Required<SmartAccountCancellationRequest>
+    ) => (
       <TransactionOptions
         handleUpdateTransaction={handleUpdateTransaction}
         alert={alert}
         chainId={chainId}
         transaction={tx as any}
         canCancelSmart={canCancelSmart}
+        cancellationRetry={cancellationRetry}
         setIsOpenModal={setIsOpenModal}
         setModalData={setModalData}
       />
@@ -1198,6 +1213,9 @@ export const EvmTransactionsList = ({
                 canCancelSmart={
                   smartCancellationHashes?.has(txKey.toLowerCase()) ?? false
                 }
+                cancellationRetry={smartCancellationRetries?.get(
+                  txKey.toLowerCase()
+                )}
                 tx={tx}
                 chainId={chainId}
                 currentAccount={currentAccount}

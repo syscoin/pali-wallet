@@ -569,6 +569,7 @@ test('retains scoped Smart cancellation metadata while indexed rows supply the b
       cancellation: true,
       operationCount: 1,
       pendingCancellationOf: hash('c'),
+      cancellationRetry: { originalHash: local.hash, operationHash: hash('c') },
     },
   };
   const indexedCancellation = { ...indexed, hash: cancellation.hash };
@@ -588,6 +589,9 @@ test('retains scoped Smart cancellation metadata while indexed rows supply the b
   await flush();
   expect(result.current.transactions).toEqual([indexed, indexedCancellation]);
   expect(result.current.smartCancellationHashes).toEqual(new Set([local.hash]));
+  expect(result.current.smartCancellationRetries).toEqual(
+    new Map([[cancellation.hash, cancellation.smartAccount.cancellationRetry]])
+  );
   expect(result.current.pendingSmartCancellationTargets).toEqual(
     new Map([
       [cancellation.hash, cancellation.smartAccount.pendingCancellationOf],

@@ -116,12 +116,15 @@ export function captureSmartAccountCancellation(
   const decoded =
     input.outer &&
     decodeCancellationOuter(input.outer.rawTransaction, input.chainId);
+  const exactAuthorization =
+    input.authorization !== undefined &&
+    (input.operationHash ?? input.referenceHash).toLowerCase() ===
+      input.authorization.operationHash;
   if (
     decoded &&
     (decoded.tx.hash !== input.outer!.hash ||
       (input.outer!.hash !== input.referenceHash.toLowerCase() &&
-        input.authorization?.operationHash !==
-          input.referenceHash.toLowerCase()) ||
+        !exactAuthorization) ||
       decoded.tx.from!.toLowerCase() !== input.outer!.from.toLowerCase() ||
       decoded.tx.nonce !== input.outer!.nonce)
   )
@@ -149,7 +152,7 @@ export function captureSmartAccountCancellation(
           decoded.operation,
           input.chainId
         ).toLowerCase() !== original.operationHash
-      : input.referenceHash.toLowerCase() !== original.operationHash)
+      : !exactAuthorization)
   )
     return unavailable();
   const nonce = BigInt(original.operationNonce);
@@ -158,7 +161,7 @@ export function captureSmartAccountCancellation(
     authorization: original,
     chainId: input.chainId,
     nonceKey: (nonce >> BigInt(64)).toString(),
-    originalHash: input.outer?.hash ?? input.referenceHash.toLowerCase(),
+    originalHash: input.outer?.hash ?? original.operationHash,
     referenceHash: input.referenceHash.toLowerCase(),
     originalKind: decoded ? 'transaction' : 'authorization',
     ...(input.outer ? { outer: Object.freeze({ ...input.outer }) } : {}),

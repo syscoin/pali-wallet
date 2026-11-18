@@ -154,10 +154,15 @@ jest.mock('components/TransactionOptions', () => ({
   SmartAccountSignedOperationOptions: ({ operationHash }: any) => (
     <button type="button">Cancel instruction {operationHash}</button>
   ),
-  TransactionOptions: ({ transaction: tx, canCancelSmart }: any) => (
+  TransactionOptions: ({
+    transaction: tx,
+    canCancelSmart,
+    cancellationRetry,
+  }: any) => (
     <div
       data-smart-cancel={String(canCancelSmart)}
       data-cancellation-unavailable={String(!!tx.cancellationUnavailable)}
+      data-retry-cancellation={cancellationRetry?.operationHash}
     >
       Options:{tx.hash}
     </div>
@@ -980,6 +985,34 @@ it('keeps a failed Smart Account transaction in its ordinary row with the existi
   expect(
     screen.getByText(`Options:${outer.hash}`).getAttribute('data-smart-cancel')
   ).toBe('true');
+  expect(
+    view.container.querySelectorAll('[data-transaction-hash]')
+  ).toHaveLength(1);
+  expect(view.container.querySelectorAll('[data-operation-hash]')).toHaveLength(
+    0
+  );
+});
+
+it('keeps a failed revocation retry inside its existing failed transaction row', async () => {
+  const failed = transaction('a', {
+    blockNumber: 7,
+    confirmations: 1,
+    isError: '1',
+  });
+  const reference = { originalHash: hash('b'), operationHash: hash('c') };
+  mockRows = [failed];
+  const view = render(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      smartCancellationRetries={new Map([[failed.hash, reference]])}
+    />
+  );
+  expect(await screen.findByText('Failed')).toBeTruthy();
+  expect(
+    screen
+      .getByText(`Options:${failed.hash}`)
+      .getAttribute('data-retry-cancellation')
+  ).toBe(reference.operationHash);
   expect(
     view.container.querySelectorAll('[data-transaction-hash]')
   ).toHaveLength(1);

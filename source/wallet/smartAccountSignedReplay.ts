@@ -19,13 +19,17 @@ import {
   decodeRetainedSmartAccountTransfer,
   type RetainedSmartAccountTransfer,
 } from './smartAccountActivity.ts';
-import { decodeSmartAccountCancellation } from './smartAccountCancellation.ts';
+import {
+  decodeSmartAccountCancellation,
+  type SmartAccountCancellationRequest,
+} from './smartAccountCancellation.ts';
 import type { SmartAccountExecution } from '../utils/smartAccount/account.ts';
 
 export type SmartAccountReplayIntent = Readonly<{
   account: string;
   callData: string;
   cancellation?: true;
+  cancellationRetry?: Required<SmartAccountCancellationRequest>;
   executions?: readonly Readonly<
     SmartAccountExecution & { assetTransfer?: AssetTransferCall }
   >[];
@@ -96,6 +100,14 @@ export function projectSmartAccountSavedTransaction(
   const smartAccount: SmartAccountReplayIntent = Object.freeze({
     account,
     ...(cancellation ? { cancellation: true as const } : {}),
+    ...(isRevocation
+      ? {
+          cancellationRetry: Object.freeze({
+            originalHash: revocation.originalHash.toLowerCase(),
+            operationHash: revocation.originalOperationHash.toLowerCase(),
+          }),
+        }
+      : {}),
     ...(isRevocation &&
     ['signed', 'attempted', 'submitted'].includes(record.entry.phase)
       ? {

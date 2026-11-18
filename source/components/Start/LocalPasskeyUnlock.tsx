@@ -54,7 +54,7 @@ export function LocalPasskeyUnlock({
   };
   const cancel = () => {
     attempt.current++;
-    flow.cancel();
+    void flow.cancel();
     onSettled?.();
   };
   if (!enabled) return null;

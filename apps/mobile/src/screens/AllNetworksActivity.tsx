@@ -13,13 +13,14 @@ import { NativeActivityScreen, nativeActivityRowPresentation } from './NativeAct
 import { NetworkSourceSheet } from './NetworkSourceSheet';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { activityAssetIcon } from '../activity/assetIcon';
+import type { SmartAccountCancellationRequest } from '../../../../source/wallet/smartAccountCancellation';
 
 export type AccountActivityAction = 'cancel' | 'cancel-saved' | 'speed-up';
 export function AllNetworksActivity({ controller, accountLabel, navigation, onAction, initialTarget, onInitialTargetOpened }: {
   controller: AccountActivityController;
   accountLabel: string;
   navigation?: ShellLeafNavigation;
-  onAction?(entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertCurrent: () => void, operationHash?: string): Promise<void>;
+  onAction?(entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertCurrent: () => void, reference?: SmartAccountCancellationRequest): Promise<void>;
   initialTarget?: Readonly<{ networkId: string; hash: string }>;
   onInitialTargetOpened?(): void;
 }) {
@@ -124,13 +125,13 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   });
   const detailSource = selected;
   if (detailSource) {
-    const action = onAction ? (kind: AccountActivityAction, hash: string, operationHash?: string) => { void run(async check => {
+    const action = onAction ? (kind: AccountActivityAction, hash: string, reference?: SmartAccountCancellationRequest) => { void run(async check => {
       const current = controller.getNetwork(detailSource.choice.scope.network.id);
       const child = detailSource.controller.getSnapshot();
       const row = child.rows.find(value => activityRowKey(value) === hash);
       if (current?.controller !== detailSource.controller || !row || JSON.stringify(current.choice.scope) !== JSON.stringify(detailSource.choice.scope) ||
-          row.authorizationOnly && (kind !== 'cancel' || operationHash !== row.hash)) throw Error('Activity scope changed');
-      await onAction({ ...detailSource, key: `${JSON.stringify(detailSource.choice.scope)}:${hash}`, row }, kind, row.hash, check, operationHash);
+          row.authorizationOnly && (kind !== 'cancel' || reference?.originalHash !== row.hash)) throw Error('Activity scope changed');
+      await onAction({ ...detailSource, key: `${JSON.stringify(detailSource.choice.scope)}:${hash}`, row }, kind, row.hash, check, reference);
     }); } : undefined;
     return <View style={s.root}><NativeActivityScreen key={selected?.key ?? JSON.stringify(detailSource.choice.scope)} controller={detailSource.controller} accountLabel={accountLabel}
       externallyConnected detailOnly initialHash={activityRowKey(detailSource.row)} navigation={navigation}

@@ -101,16 +101,16 @@ export function SmartAuthorizationsFixture() {
   const [allNetworks] = useState(allNetworksController);
   if (query.has('account-activity')) return <SafeAreaProvider>{result ? <Notice title={result} /> : (
     <AllNetworksActivity controller={allNetworks} accountLabel="Smart Account 1"
-      onAction={async (entry, action, hash, guard, operationHash) => {
+      onAction={async (entry, action, hash, guard, reference) => {
         guard();
-        setResult(entry.choice.scope.network.id === 'ethereum' && action === 'cancel' && hash === orphanHash && operationHash === orphanHash
+        setResult(entry.choice.scope.network.id === 'ethereum' && action === 'cancel' && hash === orphanHash && reference?.originalHash === orphanHash
           ? 'Exact cancellation review requested' : 'Wrong operation');
       }} />
   )}</SafeAreaProvider>;
   return <SafeAreaProvider>{result ? <Notice title={result} /> : (
     <NativeActivityScreen controller={controller} accountLabel="Smart Account 1"
-      onBack={() => setResult('Activity')} onCancelPending={(key, operationHash) => setResult(operationHash === undefined
+      onBack={() => setResult('Activity')} onCancelPending={(key, reference) => setResult(reference === undefined
         ? 'Cancellation review requested'
-        : key === `operation:${orphanHash}` && operationHash === orphanHash ? 'Exact cancellation review requested' : 'Wrong operation')} />
+        : key === `operation:${orphanHash}` && reference.originalHash === orphanHash ? 'Exact cancellation review requested' : 'Wrong operation')} />
   )}</SafeAreaProvider>;
 }

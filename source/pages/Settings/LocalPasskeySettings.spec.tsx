@@ -179,6 +179,44 @@ it('cancels before the first enrollment reply and does not launch a late browser
   expect(runLocalPasskeyCeremony).not.toHaveBeenCalled();
 });
 
+it('rereads a committed passkey change after its cancelled reply and attempt drain', async () => {
+  const source = controller(true);
+  let loseReply!: (error: Error) => void;
+  let finishCancellation!: () => void;
+  source.disable.mockReturnValue(
+    new Promise((_resolve, reject) => {
+      loseReply = reject;
+    })
+  );
+  source.cancel.mockReturnValue(
+    new Promise((resolve) => {
+      finishCancellation = resolve;
+    })
+  );
+  render(<LocalPasskeySettings createController={() => source} />);
+  fireEvent.change(await screen.findByLabelText('localPasskey.password'), {
+    target: { value: 'password' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'localPasskey.turnOff' }));
+
+  // Storage committed before cancellation reached the mutation owner.
+  source.status.mockResolvedValue({ enabled: false });
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'buttons.cancel' })
+  );
+  expect(screen.queryByText('localPasskey.enabled')).toBeNull();
+  expect(source.status).toHaveBeenCalledTimes(1);
+  await act(async () => loseReply(new Error('Reply retired')));
+  expect(source.status).toHaveBeenCalledTimes(1);
+
+  await act(async () => finishCancellation());
+  expect(await screen.findByText('localPasskey.disabled')).toBeTruthy();
+  expect(source.status).toHaveBeenCalledTimes(2);
+  expect(
+    screen.getByRole('button', { name: 'localPasskey.setUp' })
+  ).toBeTruthy();
+});
+
 it.each([false, true])(
   'explains a password cooldown for passkey settings (enabled=%p)',
   async (enabled) => {
