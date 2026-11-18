@@ -319,7 +319,7 @@ export function useSmartAccountCancellation(
         compact
         title={t('header.cancelTx')}
         description={t('transactions.smartAccountCancelReviewDescription')}
-        buttonText={t('transactions.smartAccountCancelSign')}
+        buttonText={t('buttons.confirm')}
         describeDialog
         onClose={() => {
           try {

@@ -1118,7 +1118,6 @@
     "smartAccountCancelUnavailable": "Diese Operation kann nicht abgebrochen werden. Ihre signierte Anweisung kann weiterhin ausgeführt werden.",
     "smartAccountCancelDescription": "Brechen Sie diese Smart-Account-Anweisung mit einer leeren Operation mit derselben Nonce ab. Die ursprüngliche Operation kann zuerst bestätigt werden. Der Abbruch ist erst abgeschlossen, wenn das Netzwerk die Ersatzoperation bestätigt.",
     "smartAccountCancelReviewDescription": "Die ursprüngliche Operation kann zuerst bestätigt werden. Der Abbruch ist abgeschlossen, sobald das Netzwerk die Ersatzoperation bestätigt.",
-    "smartAccountCancelSign": "Abbruch signieren",
     "smartAccountCancelSigned": "Die Übermittlung konnte nicht bestätigt werden. Der Abbruch wurde signiert und kann weiterhin ausgeführt werden.",
     "smartAccountCancelMaximumReplacementFee": "Maximale Netzwerkgebühr für die Ersatzoperation",
     "smartAccountCancelMaximumDeposit": "Maximale Einzahlung auf das Smart Account",

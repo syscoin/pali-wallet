@@ -1118,7 +1118,6 @@
     "smartAccountCancelUnavailable": "この操作は取り消せません。署名済みの指示が引き続き実行される可能性があります。",
     "smartAccountCancelDescription": "同じnonceで空の操作を送信し、このスマートアカウントの指示を取り消します。元の操作が先に承認される場合があります。ネットワークが置換操作を承認した時点で取り消しが完了します。",
     "smartAccountCancelReviewDescription": "元の操作が先に承認される場合があります。ネットワークが置換操作を承認すると、取り消しが完了します。",
-    "smartAccountCancelSign": "取り消しに署名",
     "smartAccountCancelSigned": "送信を確認できませんでした。取り消しは署名済みで、実行される可能性があります。",
     "smartAccountCancelMaximumReplacementFee": "置換操作の最大ネットワーク手数料",
     "smartAccountCancelMaximumDeposit": "スマートアカウントへの最大入金額",

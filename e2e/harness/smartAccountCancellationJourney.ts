@@ -201,7 +201,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
     page.getByRole('heading', { name: 'Review network fee', exact: true });
   const signCancellation = (modal: ReturnType<typeof cancellationDialog>) =>
     modal.getByRole('button', {
-      name: en.transactions.smartAccountCancelSign,
+      name: en.buttons.confirm,
       exact: true,
     });
   const reviewCancellation = async () => {

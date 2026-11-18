@@ -164,9 +164,7 @@ it('reviews the fee ceilings in one confirmation before signing', async () => {
   }
   expect(mockSubmit).not.toHaveBeenCalled();
 
-  fireEvent.click(
-    review.getByRole('button', { name: en.transactions.smartAccountCancelSign })
-  );
+  fireEvent.click(review.getByRole('button', { name: en.buttons.confirm }));
   await waitFor(() =>
     expect(mockAlert.success).toHaveBeenCalledWith(
       en.transactions.transactionCancelSubmitted
@@ -260,9 +258,7 @@ it('reports a signed cancellation if submission fails after owner authorization'
   render(<Harness originalHash={TRANSACTION} />);
   fireEvent.click(screen.getByRole('button', { name: 'Request cancellation' }));
   const dialog = within(await screen.findByRole('dialog'));
-  fireEvent.click(
-    dialog.getByRole('button', { name: en.transactions.smartAccountCancelSign })
-  );
+  fireEvent.click(dialog.getByRole('button', { name: en.buttons.confirm }));
   await waitFor(() =>
     expect(mockAlert.warning).toHaveBeenCalledWith(
       en.transactions.smartAccountCancelSigned

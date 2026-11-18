@@ -1118,7 +1118,6 @@
     "smartAccountCancelUnavailable": "이 작업은 취소할 수 없습니다. 서명된 지시는 여전히 실행될 수 있습니다.",
     "smartAccountCancelDescription": "동일한 nonce로 빈 작업을 전송하여 이 스마트 계정 지시를 취소합니다. 원래 작업이 먼저 확정될 수 있습니다. 네트워크가 대체 작업을 확정해야 취소가 완료됩니다.",
     "smartAccountCancelReviewDescription": "원래 작업이 먼저 확정될 수 있습니다. 네트워크가 대체 작업을 확정하면 취소가 완료됩니다.",
-    "smartAccountCancelSign": "취소에 서명",
     "smartAccountCancelSigned": "제출 여부를 확인할 수 없습니다. 취소가 서명되었으며 여전히 실행될 수 있습니다.",
     "smartAccountCancelMaximumReplacementFee": "대체 작업의 최대 네트워크 수수료",
     "smartAccountCancelMaximumDeposit": "스마트 계정에 입금할 최대 금액",

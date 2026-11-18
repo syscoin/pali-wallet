@@ -1118,7 +1118,6 @@
     "smartAccountCancelUnavailable": "Esta operación no se puede cancelar. Su instrucción firmada aún podría ejecutarse.",
     "smartAccountCancelDescription": "Cancela esta instrucción de Smart Account enviando una operación vacía con el mismo nonce. La original podría confirmarse primero. La cancelación solo se completa cuando la red confirma la operación de reemplazo.",
     "smartAccountCancelReviewDescription": "La operación original podría confirmarse primero. La cancelación se completa cuando la red confirma la operación de reemplazo.",
-    "smartAccountCancelSign": "Firmar cancelación",
     "smartAccountCancelSigned": "No se pudo confirmar el envío. La cancelación está firmada y aún podría ejecutarse.",
     "smartAccountCancelMaximumReplacementFee": "Comisión de red máxima del reemplazo",
     "smartAccountCancelMaximumDeposit": "Depósito máximo en la Smart Account",
