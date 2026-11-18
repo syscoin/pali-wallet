@@ -246,11 +246,11 @@ export const TransactionsPanel = () => {
     };
 
     return (
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex min-w-0 items-center justify-center gap-2">
         <ExternalLinkSvg />
         <button
           type="button"
-          className="w-max underline text-sm font-normal bg-transparent border-none cursor-pointer"
+          className="min-w-0 break-words text-center text-sm font-normal underline bg-transparent border-none cursor-pointer"
           onClick={openExplorer}
         >
           {t('home.seeAllTxs')}
@@ -324,7 +324,9 @@ export const TransactionsPanel = () => {
   const showHistoryRetry =
     hasHistoryStatus &&
     historyState !== 'ready' &&
-    (historyState !== 'pending' || isRetrying);
+    (isRetrying ||
+      historyUnavailable ||
+      (!hasTransactions && historyState !== 'pending'));
   const historyRetry = showHistoryRetry && (
     <div
       className={
@@ -410,8 +412,9 @@ export const TransactionsPanel = () => {
             />
           )}
           {(hasHistoryStatus || OpenTransactionExplorer) && (
-            <div className="mt-5 flex h-11 items-center justify-center">
-              {historyRetry || OpenTransactionExplorer}
+            <div className="mt-5 flex h-11 items-center justify-center gap-4">
+              {OpenTransactionExplorer}
+              {historyRetry}
             </div>
           )}
         </div>
