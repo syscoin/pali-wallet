@@ -1194,12 +1194,13 @@ export class NativeTransfers {
           return;
         }
         if (!startedSubmission) {
-          // A signature alone does not prove the signed record was committed.
+          // A signature alone does not prove the transaction record was committed.
           // Check under the wallet owner, since the review may have expired.
           const recovery = await runtime.journal(assertCurrent);
           const saved = await recovery.load(transactionHash);
           assertCurrent();
-          if (saved?.hash === transactionHash && saved.rawTransaction === rawTransaction &&
+          if (saved?.hash === transactionHash &&
+              (saved.rawTransaction === rawTransaction || (saved.inspectionOnly && saved.rawTransaction === undefined)) &&
               (!collectible || saved.collectible)) {
             this.publish({ hash: transactionHash });
             if (validatesAsset && error instanceof NativeTransferRpcError) {

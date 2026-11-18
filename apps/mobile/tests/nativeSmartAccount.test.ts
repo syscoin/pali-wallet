@@ -7170,7 +7170,10 @@ test('combined possession optional lost passkey permits later transfer and polic
     assert.notEqual(f.signatures[0]!.digest, f.signatures[1]!.digest);
     await operation.dispose(); operation = undefined;
     operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, binding);
-    await confirmPolicyOperation(operation);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().payerReview, null);
     assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 2); assert.equal(hashes.length, 0);
     const [sent] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[1]!).data);
     const [sentSlots] = coder.decode(['bytes[]'], sent[0].signature);
@@ -7372,7 +7375,10 @@ test('combined possession missing SLH alternative permits later passkey transfer
     operation.confirmPayer(operation.getSnapshot().payerReview!.id); await authorizing; assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(f.submitted.length, 1);
     await operation.dispose(); operation = undefined;
     operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, binding);
-    await confirmPolicyOperation(operation); assert.equal(operation.getSnapshot().phase, 'complete');
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().payerReview, null); assert.equal(operation.getSnapshot().phase, 'complete');
     assert.equal(assertions, 2); assert.equal(f.submitted.length, 2); assert.equal(backend.opened, 0);
     const [sent] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[1]!).data);
     const [sentSlots] = coder.decode(['bytes[]'], sent[0].signature);

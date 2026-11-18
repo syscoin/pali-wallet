@@ -291,7 +291,7 @@ function retained(
   };
 }
 
-test('real SDK recovery preserves imported ciphertext, account IDs and three-chain signed bytes through repeated protected credential replacement', async () => {
+test('real SDK recovery preserves imported ciphertext, account IDs and three-chain transactions through repeated protected credential replacement', async () => {
   const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
   const collection = { contractAddress: `0x${'33'.repeat(20)}`, tokenStandard: 'ERC-721' as const };
   const item = { contractAddress: `0x${'44'.repeat(20)}`, tokenStandard: 'ERC-1155' as const, tokenId: ((1n << 256n) - 1n).toString() };
@@ -319,10 +319,12 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     f.write(ACTIVITY_STORAGE_KEY, { version: 1, revision: 0, walletFingerprint: fingerprint, truncated: false, archived: [],
       cached: [{ sourceId: activityScope.sourceId, scopeKey: activityScope.key, candidates: [{ hash: `0x${'a'.repeat(64)}`, blockNumber: '1', timestamp: 1, tokenHint: false }] }],
       views: [{ sourceId: activityScope.sourceId, view: { filter: 'sent', showZero: false, anchor: null, offset: 7 } }] });
+    const signedTransactions: Transaction[] = [];
     for (const id of ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet']) {
       const network = getNativeNetwork(id);
       const raw = await sourceWallet.signTransaction({ type: 2, chainId: Number(network.chainId), nonce: 0, to: importedWallet.address, value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
       const transaction = Transaction.from(raw);
+      signedTransactions.push(transaction);
       await new EvmSignedRecords(f.store.signedRecords, () => 1000).append({ keyring: f.keyring, assertCurrent() {} }, {
         rawTransaction: raw, hash: transaction.hash!, from: sourceWallet.address, chainId: network.chainId, nonce: 0, type: 2,
         context: { account: { id: 0, type: 'HDAccount', address: sourceWallet.address }, operation: 'send',
@@ -356,9 +358,16 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     assert.equal(await f.runtime.keyExport!.readSelected({ authorityRevision: f.owner.getSnapshot().revision, catalogueRevision: f.owner.getCatalogue()!.revision,
       accountId: 'imported:60:1', index: 1, address: importedWallet2.address, networkId: 'ethereum', registrationHash: ethereum.registrationHash }, new AbortController().signal, () => undefined, createTestPrivateAuthentication(() => undefined)), KEY2);
     const rootBinding = await f.store.recovery.readIdentity(); assert.equal(rootBinding?.root?.address, sourceWallet.address);
+    const records = new EvmSignedRecords(f.store.signedRecords);
+    for (const tx of signedTransactions) {
+      const restored = await records.readExact({ keyring: f.keyring, assertCurrent() {} }, tx.chainId.toString(), sourceWallet.address, tx.hash!);
+      assert.equal(restored?.payloadKind, 'unsigned-eoa');
+      assert.equal(restored?.unsignedTransaction, tx.unsignedSerialized);
+    }
+    const afterMigration = retained(f.read());
     f.owner.lock(); await recovery.dispose(); recovery = f.coordinator();
     const again = await prepareRecoveryCredential(recovery, PHRASE, () => undefined); await recovery.commit(again);
-    assert.deepEqual(retained(f.read()), retained(before));
+    assert.deepEqual(retained(f.read()), afterMigration);
     await f.reopen(); await f.owner.unlock();
     assert.equal((await f.store.recovery.readIdentity())?.walletBindingId, fingerprint);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
@@ -641,7 +650,7 @@ test('unknown saved data refuses preserving recovery without overwriting records
   } finally { await recovery.dispose(); await f.close(); }
 });
 
-test('mobile dispatch rejects missing or changed approval before retaining or broadcasting signed bytes', async () => {
+test('mobile dispatch rejects missing or changed approval before retaining or broadcasting a transaction', async () => {
   const f = await fixture();
   try {
     const approval = {
@@ -665,7 +674,9 @@ test('mobile dispatch rejects missing or changed approval before retaining or br
       const record = await new EvmSignedRecords(f.store.signedRecords).readExact(
         { keyring: f.keyring, assertCurrent: guard }, approval.chainId, approval.from, hash
       );
-      assert.equal(record?.rawTransaction, raw);
+      assert.equal(record?.payloadKind, 'unsigned-eoa');
+      assert.equal(record?.unsignedTransaction, Transaction.from(raw).unsignedSerialized);
+      assert.equal(record?.rawTransaction, undefined);
       return hash;
     });
     const guard = () => undefined;
@@ -689,7 +700,7 @@ test('mobile dispatch rejects missing or changed approval before retaining or br
   }
 });
 
-test('retired imported signed bytes survive recovery without resurrecting an account or granting replay', async () => {
+test('retired imported transaction survives recovery without resurrecting an account or granting replay', async () => {
   const f = await fixture();
   let recovery: NativeRecoveryCoordinator | undefined;
   try {
@@ -714,7 +725,9 @@ test('retired imported signed bytes survive recovery without resurrecting an acc
     await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.accounts.some((account) => account.type === 'Imported'), false);
     const restored = await new EvmSignedRecords(f.store.signedRecords).readExact({ keyring: f.keyring, assertCurrent() {} }, '1', importedWallet.address, transaction.hash!);
-    assert.equal(restored?.rawTransaction, raw);
+    assert.equal(restored?.payloadKind, 'unsigned-eoa');
+    assert.equal(restored?.unsignedTransaction, transaction.unsignedSerialized);
+    assert.equal(restored?.rawTransaction, undefined);
     let broadcasts = 0;
     await assert.rejects(f.runtime.transfers!.submit(raw, transaction.hash!, () => undefined,
       { broadcast: ({ admit }) => admit(async () => { broadcasts++; return transaction.hash!; }), verifyChain: async () => undefined }, undefined, {

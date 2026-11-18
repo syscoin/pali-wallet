@@ -709,8 +709,8 @@ test('a different Ledger cannot reconnect to the saved account', async () => {
 for (const changedChain of [false, true])
   test(
     changedChain
-      ? 'Ledger final chain mismatch retains signed bytes without a broadcast'
-      : 'the normal Ledger send retains signed bytes before its broadcast',
+      ? 'Ledger final chain mismatch retains the transaction without a broadcast'
+      : 'the normal Ledger send retains the transaction before its broadcast',
     async () => {
       const f = await fixture();
       let transfers: NativeTransfers | undefined;
@@ -766,7 +766,9 @@ for (const changedChain of [false, true])
                 const stored = await (
                   await f.runtime.transfers!.journal(() => undefined)
                 ).load(keccak256(raw));
-                assert(stored && stored.rawTransaction === raw);
+                assert(stored);
+                assert.equal(stored.inspectionOnly, true);
+                assert.equal(stored.rawTransaction, undefined);
                 assert.equal(Transaction.from(raw).from, deviceWallet.address);
                 result = keccak256(raw);
                 break;
@@ -803,13 +805,16 @@ for (const changedChain of [false, true])
         }
         assert.equal(f.signedCount, 1);
         assert.equal(broadcasts, changedChain ? 0 : 1);
-        const savedHash = transfers.getSnapshot().hash!;
+        const savedHash = transfers.getSnapshot().hash;
+        assert(savedHash);
         if (f.owner.getSnapshot().phase === 'locked')
           await f.owner.unlock();
         const saved = await (
           await f.runtime.transfers!.journal(() => undefined)
         ).load(savedHash);
-        assert(saved?.rawTransaction);
+        assert(saved);
+        assert.equal(saved.inspectionOnly, true);
+        assert.equal(saved.rawTransaction, undefined);
       } finally {
         transfers?.dispose();
         await f.close();
