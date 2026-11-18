@@ -527,7 +527,9 @@ it('rejects an edit delivered to the background after the UI check and refreshes
     )
   );
   await act(async () => deliver());
-  await screen.findByRole('alert');
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'settings.networkChangedRetry'
+  );
   expect(liveTarget()).toEqual(replacement);
   expect((await loadState()).vaultGlobal.networks.ethereum[31337]).toEqual(
     replacement

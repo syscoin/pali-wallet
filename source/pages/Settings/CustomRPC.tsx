@@ -34,6 +34,7 @@ import {
 } from 'types/transactions';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 import {
+  NETWORK_REGISTRATION_CHANGED,
   NETWORK_REGISTRATION_SWITCHING,
   networkRegistrationFingerprint,
 } from 'utils/networkRegistration';
@@ -851,7 +852,9 @@ const CustomRPCView = () => {
       setShowModal(true);
       setLoading(false);
       setErrorModalMessage(
-        error.message === NETWORK_REGISTRATION_SWITCHING
+        error.message === NETWORK_REGISTRATION_CHANGED
+          ? t('settings.networkChangedRetry')
+          : error.message === NETWORK_REGISTRATION_SWITCHING
           ? t('settings.networkSwitchInProgress')
           : error.message
       );

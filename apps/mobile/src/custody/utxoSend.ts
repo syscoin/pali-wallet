@@ -476,6 +476,10 @@ export function createNativeUtxoSend(
               const retained = await candidate(predecessor.txid, check);
               if (!retained || retained.signedDigest !== predecessor.signedDigest)
                 throw new CustodyRuntimeError('NOT_READY');
+            } else {
+              await read.assertReviewedInputsAvailable(
+                selected.binding.review.outpoints
+              );
             }
             const signed = await authorization.sign(receipt,
               { psbt: selected.binding.psbt },

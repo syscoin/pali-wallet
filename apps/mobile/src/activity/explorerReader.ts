@@ -2,9 +2,11 @@ import { getPrivacyPoolActivity } from '../../../../source/shared/privacyPoolAct
 import {
   buildAccountHistoryUrl,
   createRoutescanFetch,
+  isRoutescanApiUrl,
 } from '../../../../source/shared/evmExplorer.ts';
 import {
   belongsToEvmHistoryAccount,
+  EVM_TRANSACTION_HISTORY_SOURCE,
   isEmptyEvmHistoryResponse,
   mapEvmExplorerTokenTransfer,
   mapEvmExplorerTransaction,
@@ -14,6 +16,7 @@ import {
   ActivityError,
   type DiscoveredActivityCandidate,
   type EvmActivityReadScope,
+  type IndexedActivityTransaction,
 } from './types.ts';
 
 export type ActivityFeed = 'txlist' | 'tokentx';
@@ -23,6 +26,31 @@ const integer = (value: unknown): string => {
     throw new ActivityError('INVALID');
   return value;
 };
+const readActivityTimestamp = (value: unknown): number | null => {
+  if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,11})$/.test(value))
+    return null;
+  const seconds = Number(value);
+  return seconds > 0 && seconds * 1000 <= Date.now() + 300000
+    ? seconds * 1000
+    : null;
+};
+function readActivityItem(value: unknown, allowCreation: boolean) {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new ActivityError('INVALID');
+  const item = value as Record<string, unknown>;
+  if (
+    typeof item.hash !== 'string' ||
+    !/^0x[0-9a-fA-F]{64}$/.test(item.hash) ||
+    typeof item.from !== 'string' ||
+    !/^0x[0-9a-fA-F]{40}$/.test(item.from) ||
+    !(
+      (typeof item.to === 'string' && /^0x[0-9a-fA-F]{40}$/.test(item.to)) ||
+      (allowCreation && (item.to === '' || item.to === null))
+    )
+  )
+    throw new ActivityError('INVALID');
+  return item;
+}
 export function decodeActivityPage(
   value: unknown,
   feed: ActivityFeed,
@@ -42,21 +70,7 @@ export function decodeActivityPage(
     throw new ActivityError('INVALID');
   return Object.freeze(
     body.result.map((raw) => {
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw))
-        throw new ActivityError('INVALID');
-      const item = raw as Record<string, unknown>;
-      if (
-        typeof item.hash !== 'string' ||
-        !/^0x[0-9a-fA-F]{64}$/.test(item.hash) ||
-        typeof item.from !== 'string' ||
-        !/^0x[0-9a-fA-F]{40}$/.test(item.from) ||
-        !(
-          (typeof item.to === 'string' &&
-            /^0x[0-9a-fA-F]{40}$/.test(item.to)) ||
-          (feed === 'txlist' && (item.to === '' || item.to === null))
-        )
-      )
-        throw new ActivityError('INVALID');
+      const item = readActivityItem(raw, feed === 'txlist');
       const transaction =
         feed === 'tokentx'
           ? mapEvmExplorerTokenTransfer(item, chainId)
@@ -64,19 +78,7 @@ export function decodeActivityPage(
       if (!belongsToEvmHistoryAccount(transaction, owner))
         throw new ActivityError('INVALID');
       const blockNumber = integer(item.blockNumber);
-      let timestamp: number | null = null;
-      if (
-        typeof item.timeStamp === 'string' &&
-        /^(0|[1-9][0-9]{0,11})$/.test(item.timeStamp)
-      ) {
-        const seconds = Number(item.timeStamp);
-        if (
-          Number.isSafeInteger(seconds) &&
-          seconds > 0 &&
-          seconds * 1000 <= Date.now() + 300000
-        )
-          timestamp = seconds * 1000;
-      }
+      const timestamp = readActivityTimestamp(item.timeStamp);
       const privacyActivity = feed === 'txlist'
         ? getPrivacyPoolActivity(chainId, transaction.to, transaction.input)
         : undefined;
@@ -151,6 +153,74 @@ export class ActivityExplorerReader {
       local.abort();
       clearTimeout(timer);
       signal.removeEventListener('abort', abort);
+    }
+  }
+  async pending(
+    scope: EvmActivityReadScope,
+    signal: AbortSignal,
+    guard: () => void
+  ): Promise<readonly IndexedActivityTransaction[]> {
+    guard();
+    const chainId = Number(scope.network.chainId);
+    if (!scope.apiUrl || isRoutescanApiUrl(scope.apiUrl, chainId)) return [];
+    try {
+      const url = buildAccountHistoryUrl(
+        scope.apiUrl,
+        scope.address,
+        'pendingtxlist',
+        1,
+        ACTIVITY_PAGE_SIZE
+      );
+      const body = await this.request(
+        url.toString(),
+        { headers: { Accept: 'application/json' } },
+        signal,
+        guard
+      );
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        !('status' in body) ||
+        body.status !== '1' ||
+        ('message' in body && body.message === 'NOTOK') ||
+        !('result' in body) ||
+        !Array.isArray(body.result) ||
+        body.result.length > ACTIVITY_PAGE_SIZE
+      )
+        return [];
+      return body.result.map((raw) => {
+        const item = readActivityItem(raw, true);
+        const indexed: IndexedActivityTransaction = mapEvmExplorerTransaction(
+          {
+            ...item,
+            value: integer(item.value),
+            blockNumber: undefined,
+            blockHash: undefined,
+            confirmations: 0,
+            txreceipt_status: null,
+            isError: null,
+          },
+          chainId,
+          undefined,
+          EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending
+        );
+        if (!belongsToEvmHistoryAccount(indexed, scope.address))
+          throw new ActivityError('INVALID');
+        const privacyActivity = getPrivacyPoolActivity(
+          chainId, indexed.to, indexed.input
+        );
+        return Object.freeze({
+          ...indexed,
+          hash: indexed.hash.toLowerCase(),
+          timestamp: (readActivityTimestamp(item.timeStamp) ?? 0) / 1000,
+          ...(privacyActivity ? { privacyActivity } : {}),
+        });
+      });
+    } catch {
+      guard();
+      if (signal.aborted) throw new ActivityError('CANCELLED');
+      // Some explorers have no pending index. Confirmed history remains usable.
+      return [];
     }
   }
   page(

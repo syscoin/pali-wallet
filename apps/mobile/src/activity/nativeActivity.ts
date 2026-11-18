@@ -19,6 +19,7 @@ import {
 } from './types.ts';
 import type { ActivityHistorySnapshot } from './historyStore.ts';
 import {
+  EVM_TRANSACTION_HISTORY_SOURCE,
   parseEvmInteger,
   selectEvmHistoryRepresentatives,
   mergeEvmExplorerTransactions,
@@ -53,6 +54,7 @@ type ActivityAuthorization = Readonly<{
 }>;
 export const activityRowTimestamp = (row: ActivityRow) =>
   row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt ??
+  (row.indexed?.historySource === EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending ? row.indexed.timestamp * 1000 : undefined) ??
   (row.authorizationOnly ? row.smartAuthorizations?.[0]?.instruction.createdAt : undefined) ?? 0;
 
 const operationRowKey = (hash: string) => `operation:${hash}`;
@@ -156,7 +158,8 @@ export type ActivityLifecycle = {
   getSnapshot(): ActivityLifecycleSnapshot;
   subscribe(listener: () => void): () => void;
 };
-export type ActivityExplorerPort = Pick<ActivityExplorerReader, 'page'>;
+export type ActivityExplorerPort = Pick<ActivityExplorerReader, 'page'> &
+  Partial<Pick<ActivityExplorerReader, 'pending'>>;
 export type ActivityReceiptPort = Pick<ActivityReceiptReader, 'read'> & Partial<Pick<ActivityReceiptReader, 'observe' | 'retainedWave'>>;
 export type EvmActivityReaders = Readonly<{
   explorer: ActivityExplorerPort;
@@ -209,6 +212,7 @@ export class NativeActivity {
   private generation = 0;
   private visible = 20;
   private indexed = new Map<string, IndexedActivityTransaction>();
+  private pendingRows: readonly ActivityRow[] = [];
   private displays = new Map<string, EvmTransactionDisplayInfo>();
   private tokenEvents = new Map<string, Readonly<Record<string, unknown>>>();
   private assets: readonly EvmDisplayTokenMetadata[] = [];
@@ -299,6 +303,7 @@ export class NativeActivity {
     this.scope = null;
     this.scopeRevision = null;
     this.refreshingRows = null;
+    this.pendingRows = [];
     this.pendingCursor = undefined;
     this.pagedLocals.clear();
     this.retainedWork?.lifetime.abort();
@@ -348,7 +353,9 @@ export class NativeActivity {
     const previous = state.phase === 'ready' && state.revision === this.scopeRevision
       ? this.snapshot : null;
     this.reset();
-    const previousTransactions = previous?.rows.filter(row => !row.authorizationOnly) ?? [];
+    const previousTransactions = previous?.rows.filter(row =>
+      !row.authorizationOnly && row.indexed?.historySource !== EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending
+    ) ?? [];
     this.refreshingRows = previous && new Map(previousTransactions.map(row => [row.hash, row]));
     const generation = this.generation;
     const revision = state.revision;
@@ -423,6 +430,7 @@ export class NativeActivity {
       this.refreshingRows = null;
       this.renderRows();
       this.publish({ status: 'ready' });
+      void this.discoverPending(scope, signal, guard);
     } catch {
       if (generation !== this.generation) return;
       this.refreshingRows = null;
@@ -433,6 +441,33 @@ export class NativeActivity {
         loadingMore: false,
       });
       this.renderRows(true);
+    }
+  }
+  private async discoverPending(
+    scope: EvmActivityReadScope, signal: AbortSignal, guard: () => void
+  ) {
+    if (!this.explorer.pending) return;
+    try {
+      guard();
+      const pending = await this.explorer.pending(scope, signal, guard);
+      guard();
+      if (!pending.length) return;
+      const assets = this.assets;
+      const rows = await Promise.all(pending.map(async (indexed): Promise<ActivityRow> => ({
+        hash: indexed.hash,
+        indexed,
+        display: await getEvmTransactionDisplayInfo(indexed, scope.network.symbol, {
+          chainId: Number(scope.network.chainId), assets,
+        }).catch(() => undefined),
+        indexedStatus: 'pending',
+        checking: false,
+        unavailable: false,
+      })));
+      guard();
+      this.pendingRows = rows;
+      this.renderRows();
+    } catch {
+      // Optional reads never affect confirmed history or publish after retirement.
     }
   }
   private orderedCandidates(includeCached = false): ActivityCandidate[] {
@@ -829,6 +864,17 @@ export class NativeActivity {
         mayHaveOlderAuthorization: mayHaveOlder ? true : undefined });
     });
     const byHash = new Map(rows.map(row => [row.hash, row]));
+    // Pending explorer rows are presentation only. Keep them out of the
+    // block frontier, persisted candidates and nonce/replacement projections.
+    for (const row of this.pendingRows) {
+      if (records.has(row.hash) || this.indexed.has(row.hash) || byHash.has(row.hash)) continue;
+      byHash.set(row.hash, {
+        ...row,
+        observation: this.observations.get(row.hash),
+        checking: this.checking.has(row.hash),
+        unavailable: this.unavailable.has(row.hash),
+      });
+    }
     const authorizationRows: ActivityRow[] = [];
     for (const [hash, authorization] of this.smartAuthorizations) {
       if (carried.has(hash)) continue;

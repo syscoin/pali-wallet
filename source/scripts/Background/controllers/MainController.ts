@@ -363,6 +363,7 @@ import {
 } from 'utils/nativeBalanceCache';
 import { getNetworkChain } from 'utils/network';
 import {
+  NETWORK_REGISTRATION_CHANGED,
   NETWORK_REGISTRATION_SWITCHING,
   NETWORK_SWITCH_REVIEW_CHANGED,
   networkRegistrationFingerprint,
@@ -7949,9 +7950,7 @@ class MainController {
         store.getState().vaultGlobal.networks[family]?.[network.chainId];
       if (isEdit ? !previous || current !== previous : Boolean(current))
         throw new Error(
-          isEdit
-            ? 'Network changed. Please save it again.'
-            : NETWORK_ALREADY_EXISTS_ERROR
+          isEdit ? NETWORK_REGISTRATION_CHANGED : NETWORK_ALREADY_EXISTS_ERROR
         );
       this.assertUniqueUtxoNetworkVault(network);
     };
@@ -8148,7 +8147,7 @@ class MainController {
       typeof expectedRegistration !== 'string' ||
       networkRegistrationFingerprint(current) !== expectedRegistration
     ) {
-      throw new Error('Network changed. Please save it again.');
+      throw new Error(NETWORK_REGISTRATION_CHANGED);
     }
     const release = this.holdNetworkRegistration(network, 'edit');
     try {
@@ -10594,6 +10593,7 @@ class MainController {
             isTrezor: params.isTrezor,
             isLedger: params.isLedger,
             ...(review && { utxoFeeReview: review }),
+            verifyAvailableInputs: ordinary,
           },
           signing
         );
@@ -16310,7 +16310,7 @@ class MainController {
     params: Omit<
       Parameters<MainController['signSyscoinPsbt']>[0],
       'expectedContext'
-    >,
+    > & { verifyAvailableInputs?: boolean },
     signing: ReturnType<MainController['captureUtxoSigningContext']>,
     sdk: PsbtSigningPorts['sdk'] = signing.transactions
   ) {
@@ -16366,7 +16366,20 @@ class MainController {
     return signing.withRead(async (read) => {
       const verified = await this.verifySyscoinPsbt(params.psbt, read);
       assertCurrent();
-      return signVerifiedPsbt(host, {
+      const confirmedHost = params.verifyAvailableInputs
+        ? {
+            ...host,
+            sdk: {
+              async signPSBT(input, signingRead) {
+                await read.assertReviewedInputsAvailable(
+                  utxoInputOutpoints(verified.psbt.txInputs)
+                );
+                return sdk.signPSBT(input, signingRead);
+              },
+            } satisfies PsbtSigningPorts['sdk'],
+          }
+        : host;
+      return signVerifiedPsbt(confirmedHost, {
         psbt: PsbtUtils.toPali(verified.psbt),
         verified,
         review: params.utxoFeeReview ?? null,

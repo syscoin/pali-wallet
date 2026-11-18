@@ -189,6 +189,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     let quoteFreeFunding = false;
     let identityFunding = false;
     let quoteReplacementFunding = false;
+    let fundingSpentElsewhere = false;
     let reportedConfirmations = 1;
     let reportBlockHash = true;
     const recipient = bitcoin.payments.p2wpkh({
@@ -226,6 +227,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`)
         return reply(url, { tokens: [] });
       if (path === `/api/v2/utxo/${account.xpub}`) {
+        if (fundingSpentElsewhere) return reply(url, []);
         const funding = quoteReplacementFunding ? [replacementFunding] : identityFunding ? [freeFunding] : fragmented ? fragments : quoteFreeFunding ? [previous, freeFunding]
           : useCollateral === 'fee' ? [assetCarrier, feeCollateral]
           : [useCollateral === 'asset' ? collateral : previous];
@@ -647,6 +649,29 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
         sign.mock.restore();
         send.cancel();
       }
+    }
+    if (network.id === 'bitcoin' && type === 'HDAccount') {
+      await t.test('an input spent after review retires the quote before signing', async () => {
+        const reviewed = await send.prepare({ amount: '0.0004', recipient });
+        const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
+        const priorRecords = await retainedTransfers();
+        const callStart = calls.length;
+        fundingSpentElsewhere = true;
+        try {
+          await assert.rejects(send.confirm(reviewed, { method: 'device' }), {
+            code: 'UTXO_REVIEW_FUNDING_CHANGED',
+            transactionNotBroadcast: true,
+          });
+          assert.equal(send.isReviewCurrent(reviewed), false);
+          assert.equal(sign.mock.callCount(), 0);
+          assert.equal(calls.slice(callStart).filter(call => call.startsWith('GET /api/v2/utxo/')).length, 1);
+          assert.equal(calls.slice(callStart).some(call => call.startsWith('POST')), false);
+          assert.deepEqual(await retainedTransfers(), priorRecords);
+        } finally {
+          fundingSpentElsewhere = false;
+          sign.mock.restore();
+        }
+      });
     }
     let review = await send.prepare({ amount: '0.0004', recipient });
     assert.deepEqual(review.transactionOptions, { rbf: true });

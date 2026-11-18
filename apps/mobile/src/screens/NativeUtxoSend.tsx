@@ -82,7 +82,11 @@ function describe(error: unknown): string {
   if (code === 'AUTH_THROTTLED') return t('mobile.sendAssetViews.utxo.tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesThen');
   if (code === 'INVALID_INPUT')
     return t('mobile.sendAssetViews.utxo.enterAValidAddressAndAmountForThisNetwork');
-  if (code === 'CANCELLED' || code === 'NOT_READY')
+  if (
+    code === 'CANCELLED' ||
+    code === 'NOT_READY' ||
+    code === 'UTXO_REVIEW_FUNDING_CHANGED'
+  )
     return t('mobile.sendAssetViews.utxo.thisReviewIsNoLongerAvailableOpenANewReview');
   if (code === 'UTXO_OPTIONS_CHANGED') return t('mobile.sendAssetViews.utxo.transactionOptionsChangedReviewANewQuote');
   if (error && typeof error === 'object' && 'code' in error) {

@@ -14,13 +14,13 @@ const hash = (value: number) => '0x' + value.toString(16).padStart(64, '0');
 
 function fixture(retained: boolean, filter = 'all') {
   let active = 0, maximum = 0;
-  const calls: { kind: 'retained' | 'explorer'; network: string; at: number; signal: AbortSignal }[] = [];
+  const calls: { kind: 'retained' | 'explorer' | 'pending'; network: string; at: number; signal: AbortSignal }[] = [];
   const choices: NotificationChoice[] = ids.map(id => {
     const network = getNativeNetwork(id);
     return { label: 'Account 1', networkName: network.name, symbol: network.symbol,
       scope: { id: `account:${id}`, accountId, accountType: 'HDAccount', accountAddress: owner, network } };
   });
-  const delay = async (kind: 'retained' | 'explorer', network: string, signal: AbortSignal) => {
+  const delay = async (kind: typeof calls[number]['kind'], network: string, signal: AbortSignal) => {
     calls.push({ kind, network, at: Date.now(), signal });
     active++; maximum = Math.max(maximum, active);
     try {
@@ -40,8 +40,9 @@ function fixture(retained: boolean, filter = 'all') {
       return api && request.origin + request.pathname === new URL(api).origin + new URL(api).pathname;
     })!;
     const network = choice.scope.network.id;
-    await delay('explorer', network, init.signal as AbortSignal);
-    return Response.json({ status: '1', message: 'OK', result: request.searchParams.get('action') === 'tokentx' ? [] : [{
+    const action = request.searchParams.get('action');
+    await delay(action === 'pendingtxlist' ? 'pending' : 'explorer', network, init.signal as AbortSignal);
+    return Response.json({ status: '1', message: 'OK', result: action !== 'txlist' ? [] : [{
       hash: hash(ids.indexOf(network) + 1), from: external, to: owner, value: '1', nonce: '0',
       blockNumber: '100', timeStamp: '1700000000', confirmations: '1', txreceipt_status: '1',
     }] });
@@ -81,6 +82,8 @@ for (const scenario of [{ retained: true, filter: 'all' }, { retained: false, fi
       }
       assert(f.maximum() <= 4); assert.equal(f.active(), 0);
       assert.equal(f.calls.filter(call => call.kind === 'explorer').length, expected.length * 2);
+      assert.deepEqual(f.calls.filter(call => call.kind === 'pending').map(call => call.network).sort(),
+        expected.filter(id => id !== 'ethereum').sort());
       if (scenario.retained && scenario.filter === 'all')
         assert(f.calls.find(call => call.kind === 'explorer' && call.network === 'zksys')!.at >= 1700000124000);
     } finally { stop(); t.mock.timers.reset(); }

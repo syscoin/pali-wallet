@@ -28,6 +28,8 @@ function fixture(accountCount = 2) {
     if (fail) throw Error('offline fixture');
     if (!body) {
       const owner = target.searchParams.get('address')!, hash = owner.toLowerCase() === OWNER.toLowerCase() ? HASH : OTHER_HASH;
+      if (method === 'pendingtxlist')
+        return json({ status: '1', message: 'OK', result: historyRows || empty ? [] : [{ hash, from: owner, to: owner === OWNER ? OTHER : OWNER, value: amount }] });
       assert.ok(method === 'txlist' || method === 'tokentx');
       return json({ status: '1', message: 'OK', result: historyRows ? historyRows(method, target.searchParams.get('page')) : empty ? [] : [{ hash, from: owner, to: owner === OWNER ? OTHER : OWNER, blockNumber: '10', timeStamp: '1700000000', value: amount,
         ...(method === 'tokentx' ? { contractAddress: '0x3333333333333333333333333333333333333333', tokenDecimal: '18', tokenSymbol: 'FIX' } : {}) }] });
@@ -63,18 +65,21 @@ test('real public authority uses the same Activity model/readers for exact direc
     assert.equal(row.indexed?.value, amount); assert.equal(row.display?.displayValue, '0.009007199254740993'); assert.equal(row.local, undefined);
     assert.deepEqual(f.writes, []); assert.equal('walletFingerprint' in await authority.loadEvmActivity(guard), false);
     assert.ok(f.calls.some(call => call.method === 'txlist')); assert.ok(f.calls.some(call => call.method === 'tokentx'));
-    assert.deepEqual(f.calls.map(call => call.method).sort(), ['tokentx', 'txlist']);
+    assert.deepEqual(f.calls.map(call => call.method).sort(), ['pendingtxlist', 'tokentx', 'txlist']);
     assert.equal(row.observation, undefined);
   } finally { stop(); authority.lock(); }
 });
-for (const stage of ['load', 'page', 'token-page', 'receipt'] as const) test(`record identity is rechecked around each ${stage} operation`, async () => {
+for (const stage of ['load', 'page', 'token-page', 'pending', 'receipt'] as const) test(`record identity is rechecked around each ${stage} operation`, async () => {
   const f = fixture(), authority = await f.open(), scope = await authority.loadEvmActivity(guard);
   const mutate = () => { const value = JSON.parse(f.raw); value.records[0].name = 'Changed'; f.raw = JSON.stringify(value); };
   if (stage === 'load') { mutate(); await assert.rejects(authority.loadEvmActivity(guard)); assert.equal(f.calls.length, 0); authority.lock(); return; }
   const entered = deferred<void>(), release = deferred<void>();
-  const method = stage === 'page' ? 'txlist' : stage === 'token-page' ? 'tokentx' : 'eth_getTransactionReceipt';
+  const method = stage === 'page' ? 'txlist' : stage === 'token-page' ? 'tokentx'
+    : stage === 'pending' ? 'pendingtxlist' : 'eth_getTransactionReceipt';
   f.afterFetch = async call => { if (call.method === method) { entered.resolve(); await release.promise; } };
-  const operation = stage === 'page' || stage === 'token-page' ? authority.readEvmActivityPage(scope, stage === 'page' ? 'txlist' : 'tokentx', 1, signal(), guard) : authority.readEvmActivityTransaction(scope, HASH, signal(), guard);
+  const operation = stage === 'page' || stage === 'token-page' ? authority.readEvmActivityPage(scope, stage === 'page' ? 'txlist' : 'tokentx', 1, signal(), guard)
+    : stage === 'pending' ? authority.readEvmActivityPending(scope, signal(), guard)
+    : authority.readEvmActivityTransaction(scope, HASH, signal(), guard);
   await entered.promise; mutate(); release.resolve(); await assert.rejects(operation); assert.deepEqual(f.writes, []); authority.lock();
 });
 for (const action of ['lock', 'account-aba', 'network-aba', 'external'] as const) test(`${action} cancels a held EVM read without publishing stale data`, async () => {
@@ -166,13 +171,13 @@ for (const mixed of [false, true]) test(`public authority actual indexed ${mixed
     assert.equal(snapshot.error, null);
     assert.deepEqual(snapshot.rows.map(row => row.hash).sort(), [first, second]);
     assert(snapshot.rows.every(row => row.indexed && row.display));
-    assert.deepEqual(f.calls.map(call => call.method).sort(), mixed ? ['tokentx', 'tokentx', 'txlist'] : ['tokentx', 'txlist']);
+    assert.deepEqual(f.calls.map(call => call.method).sort(), mixed ? ['pendingtxlist', 'tokentx', 'tokentx', 'txlist'] : ['pendingtxlist', 'tokentx', 'txlist']);
     assert.deepEqual(f.writes, [], 'public history must not mutate saved account records');
     stop(); f.fail = true; stop = activity.connect();
     await until(() => activity.getSnapshot().status === 'ready' && !activity.getSnapshot().loadingMore);
     assert.deepEqual(activity.getSnapshot().rows.map(row => row.hash).sort(), [first, second]);
     assert.equal(activity.getSnapshot().error, 'feed-unavailable');
-    assert(f.calls.every(call => call.method === 'txlist' || call.method === 'tokentx'));
+    assert(f.calls.every(call => ['txlist', 'tokentx', 'pendingtxlist'].includes(call.method)));
     assert.deepEqual(f.writes, []);
   } finally { stop(); authority.lock(); }
 });

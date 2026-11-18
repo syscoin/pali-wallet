@@ -40,7 +40,8 @@ export async function fetchUtxoRead(
   url: string,
   init: RequestInit,
   assertCurrent: () => void,
-  deadline = Date.now() + 12_000
+  deadline = Date.now() + 12_000,
+  retry = true
 ): Promise<Response> {
   const signal = init.signal;
   if (
@@ -100,7 +101,7 @@ export async function fetchUtxoRead(
             cancelResponseBody(response);
             throw error;
           }
-          if (response.status === 429 || response.status === 503) {
+          if (retry && (response.status === 429 || response.status === 503)) {
             notBefore = retryNotBefore(response.headers.get('retry-after'));
             cancelResponseBody(response);
             if (notBefore >= deadline)

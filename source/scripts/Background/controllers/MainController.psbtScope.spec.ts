@@ -358,6 +358,8 @@ describe('PSBT approval context', () => {
           });
         if (String(url).endsWith('/api/v2/block-index/0'))
           return jsonFrom(url, { blockHash: coin.hashGenesisBlock });
+        if (String(url).includes('/api/v2/utxo/'))
+          return jsonFrom(url, [{ txid: '01'.repeat(32), vout: 0 }]);
       }
       if (init?.method !== 'POST')
         throw new Error('Unexpected fixture network call');
@@ -675,6 +677,42 @@ describe('PSBT approval context', () => {
     ).resolves.toEqual(signedEnvelope());
     expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(2);
   });
+
+  it.each(['missing', 'unavailable'])(
+    'retires a reviewed wallet send if its funding is %s before signing',
+    async (condition) => {
+      const quote = await wallet.getEstimateSysTransactionFee({ amount: '1' });
+      wallet.getRetainedUtxoRecords.mockClear();
+      const fetch = jest.mocked(globalThis.fetch);
+      const backend = fetch.getMockImplementation()!;
+      fetch.mockImplementation((url, init) => {
+        if (!String(url).includes('/api/v2/utxo/')) return backend(url, init);
+        if (condition === 'missing') return Promise.resolve(jsonFrom(url, []));
+        const response = new Response('Unavailable', { status: 503 });
+        Object.defineProperty(response, 'url', { value: String(url) });
+        return Promise.resolve(response);
+      });
+
+      await expect(
+        wallet.signSendAndSaveTransaction({
+          psbt: quote.psbt,
+          ordinaryWalletSend: true,
+          utxoFeeReview: quote.utxoFeeReview,
+        })
+      ).rejects.toMatchObject({
+        code: 'UTXO_REVIEW_FUNDING_CHANGED',
+        transactionNotBroadcast: true,
+      });
+      expect(
+        fetch.mock.calls.filter(([url]) =>
+          String(url).includes('/api/v2/utxo/')
+        )
+      ).toHaveLength(1);
+      expect(wallet.getRetainedUtxoRecords).not.toHaveBeenCalled();
+      expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+      expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+    }
+  );
 
   it('checks a reorg on the original route using the registered pin', async () => {
     state.vault.accounts.HDAccount[0].xpub = 'retired-route-sentry-owner';
@@ -1865,7 +1903,11 @@ describe('PSBT approval context', () => {
     });
     expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
     expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://rpc-a.invalid/api/v2/utxo/xpub-0',
+      expect.objectContaining({ method: 'GET' })
+    );
   });
 
   it('does not apply the ordinary Send fence to externally approved RBF PSBTs', async () => {

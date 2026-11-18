@@ -28,6 +28,7 @@ import {
   ITxState,
   TransactionType,
 } from '../../types/transactions';
+import { UTXO_REVIEW_FUNDING_CHANGED } from '../../wallet/utxoBlockbookReads';
 import {
   Button,
   Icon,
@@ -769,6 +770,8 @@ export const SendConfirm = () => {
   })();
   const nativeReviewKey = nativeReviewRequest?.key;
   const [nativeReviewRetryKey, setNativeReviewRetryKey] = useState<string>();
+  const nativeFeeNeedsRefresh =
+    !!nativeReviewKey && nativeReviewRetryKey === nativeReviewKey;
   const [nativeFeeApproval, setNativeFeeApproval] = useState<{
     id: string;
     key: string;
@@ -1114,7 +1117,8 @@ export const SendConfirm = () => {
     if (feeCalculationError) {
       return t('buttons.error');
     }
-    if (smartAccountFeeUnavailable) return t('send.feeUnavailable');
+    if (smartAccountFeeUnavailable || nativeFeeNeedsRefresh)
+      return t('send.feeUnavailable');
     if (
       currentFee === undefined ||
       currentFee === null ||
@@ -1511,6 +1515,14 @@ export const SendConfirm = () => {
             setLoading(false);
           } catch (error: any) {
             if (deferUnconfirmedSubmissionToActivity(error)) return;
+            if (error?.code === UTXO_REVIEW_FUNDING_CHANGED) {
+              setLoading(false);
+              if (submission.isActive()) {
+                alert.error(t('send.maxBalanceReviewRequired'));
+                cancelConfirmation();
+              }
+              return;
+            }
             // Handle all errors with centralized handler
             const wasHandledSpecifically = handleTransactionError(
               error,
@@ -2689,20 +2701,18 @@ export const SendConfirm = () => {
                     })()}
                   </span>
                 </div>
-                {nativeReviewKey &&
-                  nativeReviewRetryKey === nativeReviewKey &&
-                  !feeCalculationError && (
-                    <button
-                      type="button"
-                      className="ml-2 text-xs underline"
-                      onClick={() => {
-                        setNativeReviewRetryKey(undefined);
-                        retryFeeCalculation();
-                      }}
-                    >
-                      {t('receive.retry')}
-                    </button>
-                  )}
+                {nativeFeeNeedsRefresh && !feeCalculationError && (
+                  <button
+                    type="button"
+                    className="ml-2 text-xs underline"
+                    onClick={() => {
+                      setNativeReviewRetryKey(undefined);
+                      retryFeeCalculation();
+                    }}
+                  >
+                    {t('send.refreshFeeQuote')}
+                  </button>
+                )}
                 {!isBitcoinBased &&
                   (!feeCalculationError ||
                     (isNativeSoftwareSend && customFee.isCustom)) &&
@@ -2800,6 +2810,8 @@ export const SendConfirm = () => {
                       )})`}
                   <span className="text-white text-xs">
                     {(() => {
+                      if (nativeFeeNeedsRefresh)
+                        return <span>{t('send.feeUnavailable')}</span>;
                       if (isSmartAccountSend && !smartAccountQuoteReady)
                         return (
                           <span>

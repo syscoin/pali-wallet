@@ -1842,6 +1842,39 @@ it.each([
   }
 );
 
+it('offers a fresh fee quote after a rejected reviewed nonce without showing an idle calculation', async () => {
+  prepareEvmRecipientConfirmation('0x2222222222222222222222222222222222222222');
+  const normal = mockControllerEmitter.getMockImplementation()!;
+  mockControllerEmitter.mockImplementation(async (path, ...args) => {
+    if (path.at(-1) === 'sendAndSaveEthTransaction') {
+      throw Object.assign(
+        new Error('EVM nonce changed. Review this transaction again.'),
+        {
+          transactionNotBroadcast: true,
+        }
+      );
+    }
+    return normal(path, ...args);
+  });
+  render(<SendConfirm />);
+  const confirm = screen.getByRole('button', { name: 'buttons.confirm' });
+  await waitFor(() => expect(confirm).toBeEnabled());
+  fireEvent.click(confirm);
+  const refresh = await screen.findByRole('button', {
+    name: 'send.refreshFeeQuote',
+  });
+  expect(confirm).toBeDisabled();
+  expect(screen.getAllByText('send.feeUnavailable')).toHaveLength(2);
+  expect(screen.queryByText('send.calculating')).toBeNull();
+  fireEvent.click(refresh);
+  await waitFor(() => expect(confirm).toBeEnabled());
+  expect(
+    mockControllerEmitter.mock.calls.filter(
+      ([path]) => path.at(-1) === 'sendAndSaveEthTransaction'
+    )
+  ).toHaveLength(1);
+});
+
 it.each(['undeployed smart account', 'EOA'])(
   'allows confirmation to send to a compatible %s using the normal transaction path',
   async (kind) => {

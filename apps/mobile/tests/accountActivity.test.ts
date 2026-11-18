@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AccountActivityController } from '../src/activity/accountActivity.ts';
+import type { ActivityExplorerPort } from '../src/activity/nativeActivity.ts';
+import { EVM_TRANSACTION_HISTORY_SOURCE, mapEvmExplorerTransaction } from '../../../source/shared/evmHistory.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
 import { decodeActivityPage } from '../src/activity/explorerReader.ts';
 import { createNativeNetwork, getNativeNetwork, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
@@ -12,7 +14,7 @@ const hash = '0x' + 'a'.repeat(64);
 const networks = [getNativeNetwork('ethereum'), getNativeNetwork('rollux')];
 const tick = async () => { for (let i = 0; i < 8; i++) await new Promise<void>(resolve => setImmediate(resolve)); };
 
-function fixture(initialFilter: string | Promise<string> | (() => Promise<string>) = 'all', direction: 'received' | 'self' = 'received', olderRetained = false) {
+function fixture(initialFilter: string | Promise<string> | (() => Promise<string>) = 'all', direction: 'received' | 'self' = 'received', olderRetained = false, pending?: ActivityExplorerPort['pending']) {
   let currentId = 'hd:60:0', revision = 1;
   const listeners = new Set<(snapshot: any) => void>();
   const calls: { id: string; account: string; signal: AbortSignal }[] = [], loads: string[] = [], savedLoads: string[] = [];
@@ -49,7 +51,7 @@ function fixture(initialFilter: string | Promise<string> | (() => Promise<string
           recipient: outsider, amountUnits: '1', maximumFeeUnits: '21000' }], nextCursor: null };
       },
     }),
-    explorer: { async page(scope, feed, _page, signal, guard) {
+    explorer: { pending, async page(scope, feed, _page, signal, guard) {
       calls.push({ id: scope.network.id, account: scope.address, signal });
       if (held) await held;
       guard();
@@ -103,6 +105,35 @@ test('healthy all-network loading and refresh never publish an unavailable-histo
     assert.equal(unavailable.includes(true), false);
     assert.equal(f.model.getSnapshot().hasMore, false);
   } finally { stop(); unsubscribe(); }
+});
+
+test('account Activity publishes one optional pending page for the selected scope without holding the ordinary list', async () => {
+  const pendingHash = '0x' + 'b'.repeat(64);
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let pendingReads = 0;
+  const f = fixture('rollux', 'received', false, async (scope, _signal, guard) => {
+    pendingReads++;
+    assert.equal(scope.network.id, 'rollux');
+    assert.equal(scope.address, owner);
+    await held;
+    guard();
+    return [mapEvmExplorerTransaction({ hash: pendingHash, from: owner, to: outsider, value: '1' },
+      Number(scope.network.chainId), undefined, EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending)];
+  });
+  const stop = f.model.connect();
+  try {
+    await tick();
+    assert.equal(pendingReads, 1);
+    assert.equal(f.model.getSnapshot().refreshing, false);
+    assert.deepEqual(f.model.getSnapshot().rows.map(({ row }) => row.hash), [hash]);
+    release();
+    await tick();
+    assert.deepEqual(f.model.getSnapshot().rows.map(({ row }) => row.hash).sort(), [hash, pendingHash]);
+    assert.equal(f.model.findRow('rollux', pendingHash)?.row.indexedStatus, 'pending');
+    assert.equal(f.model.findRow('ethereum', pendingHash), undefined);
+    assert.equal(f.model.getSnapshot().partial, false);
+  } finally { stop(); release(); }
 });
 
 test('an actual failed network remains partial only when that network is visible', async () => {

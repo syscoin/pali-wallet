@@ -23,6 +23,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Button, Card, colors, Header, IconButton, Notice, SegmentedControl, styles, Text } from '../ui';
 import { formatBaseUnits } from '../core/amounts';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
+import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../../../source/shared/evmHistory';
 import { activityRowDirection as direction, matchesActivityView, zeroOnlyActivity as zeroOnly } from '../activity/activityFiltering';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import { ActivityListRow, activityDate } from './ActivityListRow';
@@ -461,7 +462,8 @@ function NativeActivityContent({
     if (detailOnly) return;
     const first =
       rows.find((row) => activityRowKey(row) === firstVisible.current) ?? rows[0];
-    if (!first || first.authorizationOnly) {
+    if (!first || first.authorizationOnly ||
+        first.indexed?.historySource === EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending) {
       await controller.setView({ anchor: null, offset: 0 });
       return;
     }

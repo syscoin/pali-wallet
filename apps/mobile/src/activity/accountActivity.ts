@@ -172,12 +172,17 @@ export class AccountActivityController {
         };
       }
       const { explorer, receipts } = this.ports;
+      const pending = explorer.pending?.bind(explorer);
       const source = { getSnapshot: () => this.ports.source.getSnapshot(), subscribe: () => () => undefined };
       const controller = new NativeActivity(source, () => runtime, {
         page: (scope, feed, page, signal, guard) => {
           const current = guarded(guard);
           return this.reads.run(signal, current, () => explorer.page(scope, feed, page, signal, current));
         },
+        ...(pending ? { pending: (scope, signal, guard) => {
+          const current = guarded(guard);
+          return this.reads.run(signal, current, () => pending(scope, signal, current));
+        } } : {}),
       }, {
         read: (hash, owner, signal, guard, network, sharingScope) => {
           const current = guarded(guard);

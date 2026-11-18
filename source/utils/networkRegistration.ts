@@ -2,6 +2,8 @@ import { INetwork, INetworkType } from 'types/network';
 
 export const NETWORK_SWITCH_REVIEW_CHANGED =
   'PALI_NETWORK_SWITCH_REVIEW_CHANGED';
+export const NETWORK_REGISTRATION_CHANGED =
+  'Network changed. Please save it again.';
 export const NETWORK_REGISTRATION_SWITCHING =
   'PALI_NETWORK_REGISTRATION_SWITCHING';
 

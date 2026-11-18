@@ -82,6 +82,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; archived?: TerminalActivityRecord[];
+  network?: NonNullable<CustodySnapshot['account']>['network'];
   locals?: readonly LocalActivityRecord[]; local?: LocalActivityRecord | null; cached?: ActivityCandidate[]; view?: ActivityViewState; observeLocal?: (local: LocalActivityRecord) => Promise<EvmTransactionObservation>;
   loadSavedPending?: NativeActivityRuntime['loadSavedPending'];
   loadTarget?: NativeActivityRuntime['loadTarget'];
@@ -90,6 +91,8 @@ function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; ar
   observeSmartAuthorization?: NativeActivityRuntime['observeSmartAuthorization'];
 } = {}) {
   const state = source();
+  const network = options.network ?? 'ethereum';
+  if (options.network) state.change({ account: { network, address: OWNER } });
   let cached = (options.cached ?? []).map(cachedCandidate);
   const localReads: LocalActivityRecord[] = [];
   let cachedOwner = OWNER;
@@ -102,7 +105,7 @@ function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; ar
     observeSmartAuthorization: options.observeSmartAuthorization,
     async load(check) {
       check(); const address = state.getSnapshot().account?.address ?? OWNER;
-      const scope = createActivityScope(FP, address === OWNER ? 'hd:60:0' : 'hd:60:1', address, 'ethereum');
+      const scope = createActivityScope(FP, address === OWNER ? 'hd:60:0' : 'hd:60:1', address, network);
       return { scope, olderRetained: !!options.loadSavedPending, smartAuthorizations: options.smartAuthorizations, saved: { archived: options.archived ?? [], candidates: address === cachedOwner ? cached : [], view: options.view ?? DEFAULT_ACTIVITY_VIEW, truncated: false }, locals: options.locals ?? (options.local ? [options.local] : []) };
     },
     async observeLocal(local, check) { check(); localReads.push(local); return options.observeLocal ? options.observeLocal(local) : { status: 'missing', latestNonce: String(local.nonce) }; },
@@ -111,9 +114,9 @@ function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; ar
   };
   const explorer = options.explorer ?? new FakeExplorer(); const receipts = options.receipts ?? new FakeReceipts();
   const controller = new NativeActivity(state, () => runtime, explorer, receipts);
-  const scope = createActivityScope(FP, 'hd:60:0', OWNER, 'ethereum');
+  const scope = createActivityScope(FP, 'hd:60:0', OWNER, network);
   const local = (index: number, phase: LocalActivityRecord['phase'] = 'confirmed'): LocalActivityRecord => ({ walletFingerprint: FP,
-    accountId: scope.accountId, address: OWNER, networkId: 'ethereum', registrationHash: scope.network.registrationHash, chainId: '1',
+    accountId: scope.accountId, address: OWNER, networkId: network, registrationHash: scope.network.registrationHash, chainId: scope.network.chainId,
     hash: hash(index), phase, nonce: index, createdAt: 1600000000000 + index, recipient: OTHER, amountUnits: '1', maximumFeeUnits: '21000' });
   return { controller, source: state, runtime, explorer, receipts, cacheWrites, viewWrites, localReads, local };
 }
@@ -635,6 +638,80 @@ test('refresh and fresh missing winner reads retire prior replacement proof in o
   await until(() => f.localReads.length >= 6);
   assert.equal(f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus, undefined);
   assert.equal(f.receipts.calls.length, 1);
+});
+
+test('optional pending reads leave history usable, deduplicate mined and local rows and never persist pending rows', async () => {
+  const network = 'syscoin-nevm';
+  const seed = fixture({ network });
+  const f = fixture({ network, local: seed.local(3) });
+  const readyToSave = deferred<void>(), releaseCache = deferred<void>();
+  const saveCache = f.runtime.saveCache.bind(f.runtime);
+  f.runtime.saveCache = async (...args) => {
+    readyToSave.resolve();
+    await releaseCache.promise;
+    return saveCache(...args);
+  };
+  const held = deferred<Response>();
+  const calls: string[] = [];
+  const raw = (index: number) => ({ hash: hash(index), from: OWNER, to: OTHER, nonce: '1', value: '1', input: '0x' });
+  let pendingReply = held.promise;
+  const reader = new ActivityExplorerReader(async (url, init) => {
+    assert.equal(init.body, undefined);
+    const target = new URL(url), action = target.searchParams.get('action')!;
+    calls.push(action);
+    assert.equal(target.origin, 'https://explorer.syscoin.org');
+    assert.equal(target.searchParams.get('address'), OWNER);
+    if (action === 'pendingtxlist') {
+      assert.equal(target.searchParams.get('page'), '1');
+      assert.equal(target.searchParams.get('offset'), '20');
+      return pendingReply;
+    }
+    return Response.json({ status: '1', result: action === 'txlist'
+      ? [{ ...raw(1), blockNumber: '100', confirmations: '1', txreceipt_status: '1' }] : [] });
+  });
+  const activity = new NativeActivity(f.source, () => f.runtime, reader, f.receipts);
+  const refresh = activity.refresh();
+  await readyToSave.promise;
+  assert.deepEqual(calls.sort(), ['tokentx', 'txlist']);
+  releaseCache.resolve();
+  await refresh;
+  assert.equal(activity.getSnapshot().status, 'ready');
+  assert.deepEqual(activity.getSnapshot().rows.map(row => row.hash).sort(), [hash(1), hash(3)]);
+  held.resolve(Response.json({ status: '1', result: [raw(1), raw(2), raw(3)] }));
+  await until(() => activity.getSnapshot().rows.some(row => row.hash === hash(2)));
+  const snapshot = activity.getSnapshot();
+  assert.deepEqual(snapshot.rows.map(row => row.hash).sort(), [hash(1), hash(2), hash(3)]);
+  assert.equal(snapshot.rows.find(row => row.hash === hash(1))?.indexedStatus, 'confirmed');
+  assert.equal(snapshot.rows.find(row => row.hash === hash(3))?.local?.phase, 'confirmed');
+  const pending = snapshot.rows.find(row => row.hash === hash(2))!;
+  assert.equal(pending.indexedStatus, 'pending', 'an explorer nonce is not replacement evidence');
+  assert.equal(pending.indexed?.historySource, 'explorer-pendingtxlist');
+  assert.equal(pending.indexed?.blockNumber, undefined);
+  assert.equal(pending.indexed?.timestamp, 0);
+  assert.equal(pending.local, undefined);
+  assert.equal(pending.candidate, undefined);
+  assert.equal(pending.display?.actualRecipient, OTHER);
+  assert.equal(snapshot.error, null);
+  assert.equal(snapshot.hasMore, false);
+  assert.equal(f.receipts.calls.length, 0);
+  assert.deepEqual(calls.sort(), ['pendingtxlist', 'tokentx', 'txlist']);
+  assert.deepEqual(f.cacheWrites.at(-1)?.rows.map(row => row.hash), [hash(1)]);
+
+  pendingReply = Promise.resolve(Response.json({ status: '0', message: 'NOTOK', result: 'Unsupported action' }));
+  const reopened = new NativeActivity(f.source, () => f.runtime, reader, f.receipts);
+  await reopened.refresh();
+  assert.deepEqual(reopened.getSnapshot().rows.map(row => row.hash).sort(), [hash(1), hash(3)]);
+  assert.equal(reopened.getSnapshot().error, null);
+  assert.equal(calls.filter(action => action === 'pendingtxlist').length, 2);
+
+  const retired = deferred<Response>();
+  pendingReply = retired.promise;
+  await reopened.refresh();
+  reopened.invalidate();
+  const invalidated = reopened.getSnapshot();
+  retired.resolve(Response.json({ status: '1', result: [raw(2)] }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reopened.getSnapshot(), invalidated);
 });
 
 test('a healthy feed remains visible when the other feed fails, with explicit partial coverage', async () => {
