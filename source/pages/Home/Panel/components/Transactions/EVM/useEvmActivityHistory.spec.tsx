@@ -497,24 +497,42 @@ test.each(['ERC-721', 'ERC-1155'] as const)(
   }
 );
 
-test('retains scoped Smart cancellation eligibility while the indexed row supplies the body', async () => {
+test('retains scoped Smart cancellation metadata while indexed rows supply the bodies', async () => {
   const accountAddress = '0x' + '44'.repeat(20);
   const local = {
     ...row('1'),
     smartAccount: { account: accountAddress, operationCount: 1 },
   };
   const indexed = { hash: local.hash, confirmations: 4, value: '12' } as any;
-  mockEmitter.mockResolvedValue({ transactions: [local], nextCursor: null });
+  const cancellation = {
+    ...row('2'),
+    smartAccount: {
+      account: accountAddress,
+      cancellation: true,
+      operationCount: 1,
+      pendingCancellationOf: hash('c'),
+    },
+  };
+  const indexedCancellation = { ...indexed, hash: cancellation.hash };
+  mockEmitter.mockResolvedValue({
+    transactions: [local, cancellation],
+    nextCursor: null,
+  });
   const { result } = renderHook(() =>
     useEvmActivityHistory({
       includeLocal: true,
       scope: navigation('a'),
-      indexedTransactions: [indexed],
+      indexedTransactions: [indexed, indexedCancellation],
       accountAddress,
       chainId: 57057,
     })
   );
   await flush();
-  expect(result.current.transactions).toEqual([indexed]);
-  expect(result.current.smartCancellationHashes.has(local.hash)).toBe(true);
+  expect(result.current.transactions).toEqual([indexed, indexedCancellation]);
+  expect(result.current.smartCancellationHashes).toEqual(new Set([local.hash]));
+  expect(result.current.pendingSmartCancellationTargets).toEqual(
+    new Map([
+      [cancellation.hash, cancellation.smartAccount.pendingCancellationOf],
+    ])
+  );
 });

@@ -63,6 +63,7 @@ import {
   smartAccountCancellationMetadata,
   type SmartAccountCancellation,
 } from '../../../wallet/smartAccountCancellation';
+import { projectSmartAccountSavedTransaction } from '../../../wallet/smartAccountSignedReplay';
 import { KeyringAccountType } from 'types/network';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 import {
@@ -575,6 +576,20 @@ it.each([false, true])(
         getSmartAccountUserOpHash(f.descriptor.userOperation, 57)
       )
     );
+    const record = await f.records.readSmartAccountReplayExact(
+      f.session,
+      '57',
+      smart,
+      response.hash
+    );
+    expect(record).not.toBeNull();
+    expect(
+      projectSmartAccountSavedTransaction(record!, smart).smartAccount
+    ).toMatchObject({
+      cancellation: true,
+      pendingCancellationOf:
+        f.descriptor.cancellation.authorization.operationHash,
+    });
   }
 );
 

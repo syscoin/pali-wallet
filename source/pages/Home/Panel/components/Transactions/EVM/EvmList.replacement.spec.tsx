@@ -779,6 +779,42 @@ it('shows a signed operation without a transaction identity and replaces its row
   ).toHaveLength(1);
 });
 
+it('uses the pending cancellation row for retries of the same Smart Account operation', () => {
+  const operation = {
+    account: ACCOUNT,
+    chainId: '1',
+    createdAt: Date.now(),
+    operationHash: hash('e'),
+    replacesOperationHash: hash('c'),
+    status: 'unresolved' as const,
+  };
+  const outer = transaction('a', {
+    historySource: 'explorer-pending',
+    value: '0',
+  });
+  const targets = new Map([[outer.hash, operation.replacesOperationHash]]);
+  const show = (rows: any[]) => (
+    <EvmTransactionsList
+      userTransactions={rows}
+      pendingSmartCancellationTargets={targets}
+      smartSignedOperations={[operation]}
+    />
+  );
+  const fallback = 'transactions.smartAuthorizations.noTransactionRecorded';
+  const view = render(show([outer]));
+  expect(screen.getAllByText('Cancellation')).toHaveLength(1);
+  expect(screen.queryByText(fallback)).toBeNull();
+
+  view.rerender(show([transaction('b')]));
+  expect(screen.getByText(fallback)).toBeTruthy();
+
+  view.rerender(
+    show([{ ...outer, confirmations: 1, blockNumber: 7, isError: '1' }])
+  );
+  expect(screen.getByText('Failed')).toBeTruthy();
+  expect(screen.getByText(fallback)).toBeTruthy();
+});
+
 it.each([
   {
     fields: { input: '0xb214faa5' + '00'.repeat(32) },

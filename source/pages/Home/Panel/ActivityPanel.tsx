@@ -392,6 +392,9 @@ export const TransactionsPanel = () => {
                   userTransactions={activity.transactions}
                   olderRows={activity.olderRows}
                   smartCancellationHashes={activity.smartCancellationHashes}
+                  pendingSmartCancellationTargets={
+                    activity.pendingSmartCancellationTargets
+                  }
                   smartSignedOperations={activity.signedOperations}
                 />
               )}

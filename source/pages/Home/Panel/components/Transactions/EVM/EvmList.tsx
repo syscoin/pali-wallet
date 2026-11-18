@@ -783,11 +783,13 @@ export const EvmTransactionsList = ({
   userTransactions,
   olderRows,
   smartCancellationHashes,
+  pendingSmartCancellationTargets,
   smartSignedOperations,
   explorerHasMore,
 }: {
   explorerHasMore?: boolean;
   olderRows?: EvmActivityOlderRows;
+  pendingSmartCancellationTargets?: ReadonlyMap<string, string>;
   smartCancellationHashes?: ReadonlySet<string>;
   smartSignedOperations?: readonly SmartAccountSignedActivity[];
   userTransactions: ITransactionInfoEvm[];
@@ -1003,8 +1005,29 @@ export const EvmTransactionsList = ({
               carriedOperations.add(operation.operationHash);
         }
       }
+      // A retry can change the UserOperation hash while revoking the same
+      // original. Keep the fallback visible when the outer has failed or is absent.
+      const pendingCancellations = new Set<string>();
+      for (const tx of visible) {
+        const target = pendingSmartCancellationTargets?.get(
+          tx.hash.toLowerCase()
+        );
+        if (
+          target &&
+          getEvmSettlementStatus(tx, chainId, minedNonceIndex) === 'pending'
+        )
+          pendingCancellations.add(target);
+      }
       for (const operation of smartSignedOperations)
-        if (!carriedOperations.has(operation.operationHash.toLowerCase()))
+        if (
+          !carriedOperations.has(operation.operationHash.toLowerCase()) &&
+          !(
+            operation.replacesOperationHash &&
+            pendingCancellations.has(
+              operation.replacesOperationHash.toLowerCase()
+            )
+          )
+        )
           rows.push({
             operation,
             timestamp: Math.floor(operation.createdAt / 1000),
@@ -1019,8 +1042,10 @@ export const EvmTransactionsList = ({
     formatTimeStamp,
     visibleCount,
     smartSignedOperations,
+    pendingSmartCancellationTargets,
     currentAccount?.address,
     chainId,
+    minedNonceIndex,
   ]);
 
   // Build a quick lookup map for imported ERC-20 token metadata
@@ -1145,12 +1170,15 @@ export const EvmTransactionsList = ({
                   chainId,
                   minedNonceIndex
                 )}
-                cancellationIntent={hasEvmCancellationIntent(
-                  tx,
-                  filteredTransactions,
-                  chainId,
-                  replacementLookup
-                )}
+                cancellationIntent={
+                  pendingSmartCancellationTargets?.has(txKey.toLowerCase()) ||
+                  hasEvmCancellationIntent(
+                    tx,
+                    filteredTransactions,
+                    chainId,
+                    replacementLookup
+                  )
+                }
                 currency={currency}
                 getFiatAmount={getFiatAmount}
                 isFiatAvailable={isFiatAvailable}

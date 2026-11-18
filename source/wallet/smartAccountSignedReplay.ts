@@ -36,6 +36,7 @@ export type SmartAccountReplayIntent = Readonly<{
     SmartAccountReplayIntent,
     'operationHash' | 'operationNonce'
   >[];
+  pendingCancellationOf?: string;
   replayable: boolean;
   transfer?: Pick<
     RetainedSmartAccountTransfer,
@@ -59,11 +60,10 @@ export function projectSmartAccountSavedTransaction(
       (operation) => operation.account === account
     );
   if (!selected) throw new EvmReplayError('NOT_FOUND');
-  const cancellation =
-    Boolean(record.cancellation) ||
-    decodeSmartAccountCancellation(
-      record.entry
-    )?.operationHash.toLowerCase() === selected.operationHash;
+  const revocation = decodeSmartAccountCancellation(record.entry);
+  const isRevocation =
+    revocation?.operationHash.toLowerCase() === selected.operationHash;
+  const cancellation = Boolean(record.cancellation) || isRevocation;
   const decoded = record.cancellation
     ? undefined
     : paliEntryPointInterface.decodeFunctionData(
@@ -97,6 +97,12 @@ export function projectSmartAccountSavedTransaction(
   const smartAccount: SmartAccountReplayIntent = Object.freeze({
     account,
     ...(cancellation ? { cancellation: true as const } : {}),
+    ...(isRevocation &&
+    ['signed', 'attempted', 'submitted'].includes(record.entry.phase)
+      ? {
+          pendingCancellationOf: revocation.originalOperationHash.toLowerCase(),
+        }
+      : {}),
     operationHash: selected.operationHash,
     operationNonce: selected.operationNonce,
     operationCount: record.operations.length,

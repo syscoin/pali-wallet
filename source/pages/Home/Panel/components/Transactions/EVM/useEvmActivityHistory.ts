@@ -213,21 +213,30 @@ export const useEvmActivityHistory = ({
         : indexedTransactions,
     [includeLocal, indexedTransactions, chainId, state.page.transactions]
   );
-  const smartCancellationHashes = useMemo(() => {
-    const hashes = new Set<string>();
-    if (!includeLocal || !accountAddress) return hashes;
-    for (const row of state.page.transactions) {
-      const smart = row.smartAccount;
-      if (
-        row.chainId === chainId &&
-        smart?.account.toLowerCase() === accountAddress.toLowerCase() &&
-        smart?.operationCount === 1 &&
-        !smart.cancellation
-      )
-        hashes.add(row.hash.toLowerCase());
-    }
-    return hashes;
-  }, [includeLocal, accountAddress, chainId, state.page.transactions]);
+  const { smartCancellationHashes, pendingSmartCancellationTargets } =
+    useMemo(() => {
+      const hashes = new Set<string>();
+      const targets = new Map<string, string>();
+      if (includeLocal && accountAddress) {
+        for (const row of state.page.transactions) {
+          const smart = row.smartAccount;
+          if (
+            row.chainId !== chainId ||
+            smart?.account.toLowerCase() !== accountAddress.toLowerCase()
+          )
+            continue;
+          const hash = row.hash.toLowerCase();
+          if (smart.pendingCancellationOf)
+            targets.set(hash, smart.pendingCancellationOf);
+          if (smart.operationCount === 1 && !smart.cancellation)
+            hashes.add(hash);
+        }
+      }
+      return {
+        smartCancellationHashes: hashes,
+        pendingSmartCancellationTargets: targets,
+      };
+    }, [includeLocal, accountAddress, chainId, state.page.transactions]);
   const olderRows: EvmActivityOlderRows = {
     hasMore: includeLocal && state.page.nextCursor !== null,
     loading: includeLocal && state.loading,
@@ -243,6 +252,7 @@ export const useEvmActivityHistory = ({
       : EMPTY.signedOperations,
     olderRows,
     smartCancellationHashes,
+    pendingSmartCancellationTargets,
     unavailable: includeLocal && state.unavailable,
     retry: () => fetchPage(state.failedCursor),
   };
