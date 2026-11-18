@@ -373,9 +373,6 @@
     "generationFailed": "无法生成新的恢复短语。请选择“生成”重试。"
   },
   "send": {
-    "savedUtxo": {
-      "check": "查询转账"
-    },
     "openWalletTab": "在钱包标签页中打开",
     "transactionFailureDetails": "交易失败：{{message}}",
     "transactionCreationFailureDetails": "交易创建失败（{{code}}）：{{message}}",

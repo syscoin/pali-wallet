@@ -55,7 +55,7 @@ import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 import { SubmissionLeavePrompt } from './SubmissionLeavePrompt';
 import { useSmartAccountSubmissionLeave } from './useSmartAccountSubmissionLeave';
-import { Button, Card, Coin, colors, Header, IconButton, Notice, Screen, styles, Text } from '../ui';
+import { Button, Card, Coin, colors, Header, IconButton, Screen, styles, Text } from '../ui';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 const t = nativeI18n.t.bind(nativeI18n);
@@ -584,7 +584,9 @@ export function NativeSmartAccountSend({
           <Button title={`${t('send.networkFee')} · ${t(feeChoice.kind === 'custom' ? 'mobile.feeChoice.custom' : feeChoice.kind === 'automatic' ? 'mobile.sendAssetViews.evm.automatic' : `send.${feeChoice.kind}`)}`}
             variant="secondary" size="compact" icon="settings" disabled={busy} onPress={() => { closeScanner(); setFeeDialog({ open, scope: feeScope }); }} />
           {error ? (
-            <Notice title={t("send.savedUtxo.check")} body={error} tone="amber" />
+            <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ color: colors.red }}>
+              {error}
+            </Text>
           ) : null}
           {busy ? <ActivityIndicator color={colors.pink} /> : null}
 

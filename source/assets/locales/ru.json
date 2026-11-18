@@ -373,9 +373,6 @@
     "generationFailed": "Не удалось создать новую фразу восстановления. Нажмите «Сгенерировать», чтобы повторить попытку."
   },
   "send": {
-    "savedUtxo": {
-      "check": "Проверить перевод"
-    },
     "openWalletTab": "Открыть во вкладке кошелька",
     "transactionFailureDetails": "Транзакция не выполнена: {{message}}",
     "transactionCreationFailureDetails": "Не удалось создать транзакцию ({{code}}): {{message}}",

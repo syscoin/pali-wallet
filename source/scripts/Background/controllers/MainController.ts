@@ -579,6 +579,7 @@ import {
   ITransactionsManager,
   type UtxoActivityDetailsReply,
 } from './transactions/types';
+import { didExpireAllExplorerPending } from './transactions/utils';
 import { getHistoryTransaction } from './transactions/utils';
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
@@ -10069,19 +10070,21 @@ class MainController {
             if (isBitcoinBased && !Array.isArray(txs))
               throw new Error('Invalid transaction history');
 
-            // UTXO history distinguishes a valid empty result from read errors.
-            // Preserve the existing EVM empty/partial-result behavior.
-            if (Array.isArray(txs) && (isBitcoinBased || txs.length > 0)) {
-              // Get the current account for notifications
+            const previousTxs =
+              latestVault.accountTransactions[activeAccount.type]?.[
+                activeAccount.id
+              ]?.[isBitcoinBased ? 'syscoin' : 'ethereum']?.[
+                activeNetwork.chainId
+              ] || [];
+            // Only an explicitly verified pending snapshot can retire an empty
+            // EVM bucket. Generic empty results keep the previous history.
+            if (
+              Array.isArray(txs) &&
+              (isBitcoinBased ||
+                txs.length > 0 ||
+                didExpireAllExplorerPending(txs, previousTxs))
+            ) {
               const account = accounts[activeAccount.type]?.[activeAccount.id];
-
-              // Get previous transactions for comparison
-              const previousTxs =
-                latestVault.accountTransactions[activeAccount.type]?.[
-                  activeAccount.id
-                ]?.[isBitcoinBased ? 'syscoin' : 'ethereum']?.[
-                  activeNetwork.chainId
-                ] || [];
 
               // Create a map of previous transactions by hash/txid for easy lookup
               const previousTxMap = new Map();

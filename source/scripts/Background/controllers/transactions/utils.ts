@@ -7,10 +7,12 @@ import isEmpty from 'lodash/isEmpty';
 
 import {
   belongsToEvmHistoryAccount,
+  EVM_TRANSACTION_HISTORY_SOURCE,
   getEvmHistoryDirection,
   markEvmHistoryOrphaned,
   selectEvmHistoryRepresentatives,
 } from '../../../../shared/evmHistory';
+import { isTransactionInBlock } from '../../../../shared/transactionBlockStatus';
 import store from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 
@@ -344,11 +346,48 @@ export const treatAndSortTransactions = (
   limit = 30
 ): UnifiedTransaction[] => selectEvmHistoryRepresentatives(transactions, limit);
 
+const expiredExplorerPending = new WeakMap<
+  readonly unknown[],
+  ReadonlySet<string>
+>();
+
+// Old merges could attach explorer provenance to a locally submitted row.
+const isExplorerOnlyPending = (tx: any): boolean =>
+  tx.historySource === EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending &&
+  !isTransactionInBlock(tx) &&
+  !tx.blockHash &&
+  !(Number(tx.confirmations) > 0) &&
+  tx.data === undefined &&
+  tx.gasLimit === undefined &&
+  !tx.smartAccountExecutionFrom &&
+  !tx.balanceRefreshTokenAddresses &&
+  !tx.balanceRefreshNativeAddresses &&
+  !tx.isSpeedUp &&
+  !tx.isCancel &&
+  !tx.isReplaced &&
+  !tx.replacesHash;
+
+const evmHash = (tx: any): string => String(tx.hash || '').toLowerCase();
+
+export const didExpireAllExplorerPending = (
+  transactions: readonly unknown[],
+  previous: readonly unknown[]
+): boolean => {
+  const expired = expiredExplorerPending.get(transactions);
+  return (
+    !!expired &&
+    previous.length > 0 &&
+    previous.every(
+      (tx) => isExplorerOnlyPending(tx) && expired.has(evmHash(tx))
+    )
+  );
+};
+
 export const validateAndManageUserTransactions = (
-  providerTxs: IEvmTransactionResponse[]
+  providerTxs: IEvmTransactionResponse[],
+  pendingHashes?: ReadonlySet<string>
 ): UnifiedTransaction[] => {
-  // If providerTxs is empty, return an empty array
-  if (isEmpty(providerTxs)) return [];
+  if (isEmpty(providerTxs) && pendingHashes === undefined) return [];
 
   const {
     accounts,
@@ -404,10 +443,36 @@ export const validateAndManageUserTransactions = (
   const updatedTxs = accountTransactions
     ? (compact(clone(accountTransactions)) as UnifiedTransaction[])
     : [];
+  const expired = new Set<string>();
+  const kept =
+    pendingHashes === undefined
+      ? updatedTxs
+      : updatedTxs.filter((tx) => {
+          const hash = evmHash(tx);
+          if (isExplorerOnlyPending(tx) && hash && !pendingHashes.has(hash)) {
+            expired.add(hash);
+            return false;
+          }
+          return true;
+        });
 
-  // When merging transactions, use the union type
-  const mergedTxs: UnifiedTransaction[] = [...updatedTxs, ...filteredTxs];
-
-  // Deduplicate, sort, and limit to 30 transactions in one optimized pass
-  return treatAndSortTransactions(mergedTxs, 30);
+  if (!expired.size && isEmpty(providerTxs)) return [];
+  const retainedSources = new Map(
+    kept
+      .filter((tx) => !isExplorerOnlyPending(tx))
+      .map((tx) => [evmHash(tx), (tx as IEvmTransactionResponse).historySource])
+  );
+  const result = treatAndSortTransactions([...kept, ...filteredTxs], 30).map(
+    (tx) => {
+      const evm = tx as IEvmTransactionResponse;
+      if (
+        evm.historySource === EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending &&
+        retainedSources.has(evmHash(evm))
+      )
+        return { ...tx, historySource: retainedSources.get(evmHash(evm)) };
+      return tx;
+    }
+  );
+  if (expired.size) expiredExplorerPending.set(result, expired);
+  return result;
 };

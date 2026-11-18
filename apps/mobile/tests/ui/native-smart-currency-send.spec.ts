@@ -123,7 +123,7 @@ test('invalid amount stays in the form with actionable feedback', async ({
   await page
     .getByRole('button', { name: 'Review transfer', exact: true })
     .click();
-  await expect(page.getByText('Check transfer', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByLabel('Amount in ETH', { exact: true })).toHaveValue(
     '1e9'
   );
