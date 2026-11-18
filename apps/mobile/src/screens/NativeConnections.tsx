@@ -263,7 +263,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
     if (!current.active || !controller.getSnapshot().sessions.includes(session)) return;
     const revision = ++current.revision;
     setListDisconnectFailure(null);
-    try { await controller.disconnect(session.id); }
+    try { await controller.disconnect(session.id, { reportError: false }); }
     catch {
       if (current.active && current.revision === revision)
         setListDisconnectFailure({ controller, sessionKey: sessionIdentity(session) });
@@ -281,7 +281,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
         await controller.returnToDapp(selectedSession.id, snapshot.revision, () => {
           if (!current()) throw Error('CONTEXT_CHANGED');
         });
-      } else await controller.disconnect(selectedSession.id);
+      } else await controller.disconnect(selectedSession.id, { reportError: false });
     } catch (cause) {
       if (current()) {
         const code = cause && typeof cause === 'object' && 'code' in cause ? cause.code : null;

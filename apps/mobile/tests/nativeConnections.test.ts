@@ -21,7 +21,7 @@ import { DAPP_WALLET_READ_METHODS } from '../../../source/shared/dappWalletReads
 import { EthereumRpcErrorHandler } from '../../../source/helpers/errors/errorClassesHandlers.ts';
 import type { EvmDappFeeComparison } from '../../../source/shared/evmDappFeePolicy.ts';
 import { createSmartAccountCallsExecutions } from '../../../source/shared/dappCalls.ts';
-import { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
+import { NativeSmartAccountOperation, SmartAccountPayerQuoteUnavailable } from '../src/smartAccount/operation.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import axios from 'axios';
@@ -46,6 +46,8 @@ import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/tr
 import { Interface } from 'ethers/abi';
 import { summarizeApproval, type ApprovalContractMetadata } from '../../../source/shared/approval.ts';
 import { decodeAssetTransfer } from '../../../source/shared/assetTransfer.ts';
+import { extractPairingUri } from '../src/connections/pairingLinks.ts';
+import { screenElements, screenFixture } from './screenFixture.ts';
 const ROTATED_SYSCOIN_ADDRESS = parseUtxoPublicIdentifier(XPUB, 'syscoin').address;
 const externalPsbt = new syscoinUtils.bitcoinjs.Psbt();
 externalPsbt.addInput({ hash: 'ab'.repeat(32), index: 0 });
@@ -152,6 +154,7 @@ function fixture(
   let storageFailure: 'before' | 'after' | undefined;
   let permissionPublished: ((hasGrant: boolean) => void) | undefined;
   let permissionSettlement: (() => Promise<void>) | undefined;
+  let failPermissionWrite = false;
   let preparationError: Error | undefined;
   let submissionError: Error | undefined;
   let smartBatchProgressBeforeFailure: { purpose: 'fund-account' | 'submit-operation'; hash: string } | undefined;
@@ -715,6 +718,13 @@ function fixture(
             await settle?.();
             return result;
           },
+          async write(frame: Parameters<typeof port.write>[0]) {
+            if (failPermissionWrite) {
+              failPermissionWrite = false;
+              throw Error('Permission write failed');
+            }
+            await port.write(frame);
+          },
           publish(frame: Parameters<typeof port.publish>[0]) {
           const grant = frame.dapps[ORIGIN];
           if (options.smartCreation && grant?.accountType === 'SmartAccount')
@@ -901,6 +911,7 @@ function fixture(
     setStorageWait(value: Promise<void>) { storageWait = value; },
     onPermissionPublication(callback: typeof permissionPublished) { permissionPublished = callback; },
     setPermissionSettlement(callback: typeof permissionSettlement) { permissionSettlement = callback; },
+    failNextPermissionWrite() { failPermissionWrite = true; },
     failTransactionPreparation() { preparationError = new Error('Estimate unavailable'); },
     failTransactionSubmission(error: Error, progress?: typeof smartBatchProgressBeforeFailure) {
       submissionError = error;
@@ -1993,6 +2004,50 @@ async function connectedFixture(
   );
   return f;
 }
+
+for (const review of ['list', 'details'] as const) test(`a failed disconnect from the ${review} has one notice and a successful retry clears it`, async () => {
+  const f = await connectedFixture();
+  const host = screenFixture(new URL('../src/screens/NativeConnections.tsx', import.meta.url), 'NativeConnections', {
+    '../connections/pairingLinks': { extractPairingUri },
+    'react-native': { ActivityIndicator: 'ActivityIndicator', View: 'View', Switch: 'Switch', StyleSheet: { create: (value: unknown) => value },
+      BackHandler: { addEventListener: () => ({ remove() {} }) } },
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    'expo-clipboard': {},
+    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
+    './IdleActivityBoundary': { IdlePressable: 'Pressable' },
+    './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' },
+    './ConnectionQrScanner': { ConnectionQrScanner: 'Scanner' },
+  });
+  const render = () => screenElements(host.render({ controller: f.view, onBack() {} }));
+  const notices = () => render().filter(element => element.type === 'Notice' && element.props.title === 'Connection unavailable');
+  const disconnect = () => {
+    const action = render().find(element => review === 'details'
+      ? element.type === 'Button' && element.props.title === 'Disconnect'
+      : element.type === 'IconButton' && element.props.label.startsWith('Disconnect '));
+    assert(action);
+    action.props.onPress();
+  };
+  const openDetails = () => {
+    const session = render().find(element => element.type === 'Pressable' && element.props.accessibilityLabel?.includes(ORIGIN));
+    assert(session);
+    session.props.onPress();
+  };
+  try {
+    if (review === 'details') openDetails();
+    f.failNextPermissionWrite();
+    disconnect(); await settle();
+    assert.equal(notices().length, 1);
+    if (review === 'details') {
+      render().find(element => element.type === 'Header')!.props.onBack();
+      assert.equal(notices().length, 0);
+      openDetails();
+    }
+    disconnect(); await settle();
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal(notices().length, 0);
+    assert.equal(f.remoteDisconnects.length, 1);
+  } finally { host.close(); await f.controller.dispose(); }
+});
 
 async function messageRequest(
   f: ReturnType<typeof fixture>,
@@ -4434,6 +4489,39 @@ for (const hash of ['0x' + '34'.repeat(32), '']) test(`Smart atomic calls keep e
     await f.view.rejectRequest(failed.id);
     assert.equal(f.responses.length, 0);
     assert.equal(f.transactions.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const progress of ['before funding', 'after funding', 'after execution dispatch'] as const) test(`Smart dapp reports the execution outcome for a payer quote outage ${progress}`, async () => {
+  const f = await connectedFixture({ smart: true, batch: true, smartPayerBudget: true, accountId: 'smart:60:0' });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', from: ADDRESS,
+      atomicRequired: true, calls: [{ to: '0x' + '22'.repeat(20) }, { to: '0x' + '33'.repeat(20) }] }]);
+    assert.ok(review?.kind === 'smart-transaction');
+    const quoteUnavailable = new SmartAccountPayerQuoteUnavailable();
+    const hash = '0x' + '45'.repeat(32);
+    const funded = progress === 'after funding';
+    const dispatched = progress === 'after execution dispatch';
+    f.failTransactionSubmission(
+      funded ? new Error('Smart Account payer quote unavailable', { cause: quoteUnavailable }) : quoteUnavailable,
+      funded || dispatched ? { purpose: funded ? 'fund-account' : 'submit-operation', hash } : undefined
+    );
+    const approving = f.view.approveRequest(review.id, review.revision, false);
+    if (dispatched) await assert.rejects(approving, { code: 'DELIVERY_UNCERTAIN' });
+    else await approving;
+
+    const failed = f.view.getSnapshot().signingReview;
+    assert.ok(failed?.kind === 'smart-transaction');
+    assert.equal(failed.operation.userOperationSubmissionStarted, dispatched);
+    assert.equal(failed.operation.payerQuoteUnavailable, dispatched ? undefined : true);
+    assert.equal(failed.error, dispatched ? 'DELIVERY_UNCERTAIN' : 'TRANSACTION_NOT_SENT');
+    const message = funded
+      ? 'Account funding confirmed. The requested operation was not submitted.'
+      : 'The transaction was not submitted';
+    const responses = dispatched ? [] : [{ id: 10, result: { error: { code: -32603, message } } }];
+    assert.deepEqual(f.responses, responses);
+    await f.view.rejectRequest(failed.id);
+    assert.deepEqual(f.responses, responses);
   } finally { await f.controller.dispose(); }
 });
 

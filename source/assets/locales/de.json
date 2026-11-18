@@ -3903,6 +3903,7 @@
         "checkGuardianPolicyStatus": "Wächterrichtlinien-Status prüfen",
         "checkCallsStatus": "Aufrufstatus prüfen",
         "checkTransferStatus": "Übertragungsstatus prüfen",
+        "fundedOperationQuoteUnavailable": "Die Kontofinanzierung wurde bestätigt. Der angeforderte Vorgang wurde nicht gesendet. Prüfe vor einem weiteren Versuch die Aktivitäten.",
         "checkDeploymentStatus": "Bereitstellungsstatus prüfen",
         "confirmedTransaction": "Bestätigte Transaktion",
         "latestTransaction": "Neueste Transaktion"

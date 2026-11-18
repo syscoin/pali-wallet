@@ -511,7 +511,8 @@ export class NativeConnectionsController {
       approve: (id, accountId, networkId, revision) =>
         this.perform(() => this.approve(id, accountId, networkId, revision)),
       reject: (id) => this.perform(() => this.reject(id)),
-      disconnect: (id) => this.perform(() => this.disconnect(id)),
+      disconnect: (id, options) =>
+        this.perform(() => this.disconnect(id), undefined, options?.reportError),
       setConnectionsEnabled: enabled => this.changeConnectionSettings(enabled),
       disconnectAll: () => this.changeConnectionSettings(undefined),
       previewEncryption: (id, revision) => this.previewEncryption(id, revision),
@@ -1161,7 +1162,8 @@ export class NativeConnectionsController {
   }
   private async perform(
     operation: () => Promise<void>,
-    messageScope?: Readonly<{ owner: PendingSigning | undefined }>
+    messageScope?: Readonly<{ owner: PendingSigning | undefined }>,
+    reportError = true
   ): Promise<void> {
     let epoch = this.actionEpoch;
     try {
@@ -1177,10 +1179,12 @@ export class NativeConnectionsController {
           (messageScope.owner !== undefined &&
             this.requests.get(messageScope.owner.id) === messageScope.owner))
       ) {
-        this.error =
-          error instanceof ConnectionActionError
-            ? error.code
-            : 'CONNECTION_UNAVAILABLE';
+        if (reportError) {
+          this.error =
+            error instanceof ConnectionActionError
+              ? error.code
+              : 'CONNECTION_UNAVAILABLE';
+        }
         this.publish();
       }
       throw error;
@@ -3583,7 +3587,7 @@ export class NativeConnectionsController {
     } catch (error) {
       const operation = message.smart?.getSnapshot();
       const feeReviewFailed = operation
-        ? operation.error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+        ? operation.error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED || operation.payerQuoteUnavailable === true
         : error instanceof Error && ['REVIEW_REQUIRED', 'EVM fee approval changed'].includes(error.message);
       const singleTransaction = message.request.method === 'eth_sendTransaction';
       const atomicCalls = message.request.method === 'wallet_sendCalls' && !!operation;

@@ -935,6 +935,8 @@ export function NativeSmartAccountOperationContent({
             title={
               insufficientAsset
                 ? t('send.insufficientFunds')
+                : state.payerQuoteUnavailable
+                ? t('send.feeUnavailable')
                 : modules
                 ? t('mobile.smartAccountModules.checkStatus')
                 : authenticator
@@ -950,6 +952,10 @@ export function NativeSmartAccountOperationContent({
                 : t('mobile.recoveryStatusViews.operation.checkDeploymentStatus')
             }
             body={insufficientAsset ? t('mobile.sendAssetViews.evm.notEnoughTokensForThisTransfer')
+              : state.payerQuoteUnavailable
+              ? state.transactionHash
+                ? t('mobile.recoveryStatusViews.operation.fundedOperationQuoteUnavailable')
+                : t('mobile.sendAssetViews.evm.asset_state_saved_message')
               : state.error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED ? t('send.smartAccountPayerFeeExceeded') : state.error}
             tone="amber"
           />

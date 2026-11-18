@@ -92,6 +92,24 @@ test('unsigned Smart collectible shortfall shows localized amount feedback inste
   } finally { f.close(); }
 });
 
+test('Smart payer quote failure keeps Activity advice and distinguishes confirmed funding', () => {
+  const f = fixture();
+  try {
+    const failed = {
+      ...f.state({ kind: 'native-transfer', recipient, amountUnits: '5' }),
+      phase: 'failed' as const,
+      payerQuoteUnavailable: true as const,
+      error: 'Authorization ended. Check the account and Activity before starting again.',
+    };
+    for (const transactionHash of [null, '0x' + '45'.repeat(32)]) {
+      const notices = f.render({ ...failed, transactionHash }).filter(node => node.type === 'Notice');
+      assert(notices.some(node => node.props.title === 'Fee unavailable' && node.props.body === (transactionHash
+        ? 'Account funding confirmed. The requested operation was not submitted. Check Activity before trying again.'
+        : 'Your transaction was signed but not submitted. Check Activity before trying again.')));
+    }
+  } finally { f.close(); }
+});
+
 for (const submission of [false, true]) test(`Smart asset feedback does not relabel ${submission ? 'a submission' : 'an untyped error'} as an unsigned amount failure`, () => {
   const f = fixture();
   try {

@@ -3903,6 +3903,7 @@
         "checkGuardianPolicyStatus": "가디언 정책 상태 확인",
         "checkCallsStatus": "호출 상태 확인",
         "checkTransferStatus": "전송 상태 확인",
+        "fundedOperationQuoteUnavailable": "계정 자금 입금이 확인되었습니다. 요청한 작업은 제출되지 않았습니다. 다시 시도하기 전에 활동을 확인하세요.",
         "checkDeploymentStatus": "배포 상태 확인",
         "confirmedTransaction": "확인된 트랜잭션",
         "latestTransaction": "최근 트랜잭션"

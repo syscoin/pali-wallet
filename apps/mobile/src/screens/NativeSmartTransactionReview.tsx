@@ -172,7 +172,7 @@ export function NativeSmartTransactionReviewScreen({
               }}
             />
           )}
-          {review.error && (
+          {review.error && !(review.error === 'TRANSACTION_NOT_SENT' && review.operation.payerQuoteUnavailable) && (
             <Notice
               title={t('mobile.dappConsent.transactionReview.transactionUnavailable')}
               body={

@@ -3903,6 +3903,7 @@
         "checkGuardianPolicyStatus": "查询守护人策略状态",
         "checkCallsStatus": "查询调用状态",
         "checkTransferStatus": "查询转账状态",
+        "fundedOperationQuoteUnavailable": "账户入金已确认。请求的操作未提交。请先查看活动记录，再重试。",
         "checkDeploymentStatus": "查询部署状态",
         "confirmedTransaction": "已确认的交易",
         "latestTransaction": "最新交易"

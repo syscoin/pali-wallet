@@ -207,7 +207,8 @@ export type NativeConnectionsView = Readonly<{
     revision: number
   ): Promise<void>;
   reject(proposalId: number): Promise<void>;
-  disconnect(connectionId: string): Promise<void>;
+  /** A caller with its own scoped feedback can opt out of the shared error banner. */
+  disconnect(connectionId: string, options?: Readonly<{ reportError?: boolean }>): Promise<void>;
   setConnectionsEnabled(enabled: boolean): Promise<void>;
   disconnectAll(): Promise<void>;
   previewEncryption(id: string, revision: number): Promise<string>;

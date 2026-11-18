@@ -74,9 +74,11 @@ import type {
 import type { NativePreparedConnectionTransaction } from '../connections/transactionRuntime.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import { EvmTransferReadRpc } from '../custody/evmTransferReadRpc.ts';
+import { EvmTransferReadError } from '../custody/evmFeeContracts.ts';
 import { snapshotEvmFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import {
   NativeSmartAccountOperation,
+  SmartAccountPayerQuoteUnavailable,
   type NativeSmartAccountIntent,
   type PreparedSmartAccountOperation,
 } from './operation.ts';
@@ -715,7 +717,14 @@ export function createNativeSmartOperation(
             : undefined,
           options.assertPendingStateIncludesAssets,
           options.smartAccountCancellation
-        );
+        ).catch((error: unknown) => {
+          if (!(error instanceof EvmTransferReadError) || error.code !== 'UNAVAILABLE')
+            throw error;
+          guard();
+          // Any preceding funding receipt has settled before the execution
+          // quote. This payer transaction has not reached signing or dispatch.
+          throw new SmartAccountPayerQuoteUnavailable();
+        });
         guard();
         const funding = transactionMetadata?.smartAccountDeploymentPrefund === true;
         if (payerBudget) {

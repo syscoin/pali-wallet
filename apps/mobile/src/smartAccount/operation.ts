@@ -31,6 +31,12 @@ import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/s
 import { ExecutionSimulationUnsupportedError, SmartAccountPayerPendingError } from '../../../../source/utils/smartAccount/executionSimulationError.ts';
 import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED, type SmartAccountPayerBudget } from '../../../../source/shared/smartAccountFeeQuote.ts';
 
+export class SmartAccountPayerQuoteUnavailable extends Error {
+  constructor() {
+    super('Smart Account payer quote unavailable');
+  }
+}
+
 export type NativeSmartAccountResolvedIntent = (
   | Readonly<{ kind: 'deploy' }>
   | Readonly<{ kind: 'cancel-operation'; reference: SmartAccountCancellationRequest }>
@@ -137,6 +143,7 @@ export type NativeSmartAccountOperationSnapshot = Readonly<{
   payerReview: SmartAccountPayerReview | null;
   transactionHash: string | null;
   userOperationSubmissionStarted: boolean;
+  payerQuoteUnavailable?: true;
   metadataRefresh?: 'refreshing' | 'failed' | 'complete';
   error: string | null;
   preparationFailure?: 'INSUFFICIENT_ASSET';
@@ -643,6 +650,10 @@ export class NativeSmartAccountOperation {
     if (cause instanceof ExecutionSimulationUnsupportedError || cause instanceof SmartAccountPayerPendingError) {
       try { this.check(); simulationMessage = cause.message; } catch { /* Preserve lifecycle failure. */ }
     }
+    // The shared submit path can wrap the quote error after confirmed prefund.
+    const payerQuoteUnavailable = !this.snapshot.userOperationSubmissionStarted &&
+      (cause instanceof SmartAccountPayerQuoteUnavailable ||
+        (cause instanceof Error && cause.cause instanceof SmartAccountPayerQuoteUnavailable));
     this.prepared = null;
     this.pendingPayer?.reject(new Error('SMART_OPERATION_EXPIRED'));
     this.pendingPayer = null;
@@ -651,6 +662,7 @@ export class NativeSmartAccountOperation {
     this.publish({
       phase: 'failed',
       payerReview: null,
+      ...(payerQuoteUnavailable ? { payerQuoteUnavailable: true } : {}),
       preparationFailure: this.signingStarted ? undefined : preparationFailure,
       error: cause instanceof Error && cause.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
         ? SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED

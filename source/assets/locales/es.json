@@ -3903,6 +3903,7 @@
         "checkGuardianPolicyStatus": "Consultar estado de la política de guardianes",
         "checkCallsStatus": "Consultar estado de llamadas",
         "checkTransferStatus": "Consultar estado de transferencia",
+        "fundedOperationQuoteUnavailable": "Se confirmó la financiación de la cuenta. La operación solicitada no se envió. Consulta Actividad antes de volver a intentarlo.",
         "checkDeploymentStatus": "Consultar estado del despliegue",
         "confirmedTransaction": "Transacción confirmada",
         "latestTransaction": "Última transacción"

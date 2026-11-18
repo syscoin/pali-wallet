@@ -3903,6 +3903,7 @@
         "checkGuardianPolicyStatus": "Проверить статус политики хранителей",
         "checkCallsStatus": "Проверить статус вызовов",
         "checkTransferStatus": "Проверить статус перевода",
+        "fundedOperationQuoteUnavailable": "Пополнение аккаунта подтверждено. Запрошенная операция не была отправлена. Перед повторной попыткой проверьте активность.",
         "checkDeploymentStatus": "Проверить статус развёртывания",
         "confirmedTransaction": "Подтверждённая транзакция",
         "latestTransaction": "Последняя транзакция"
