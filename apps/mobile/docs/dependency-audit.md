@@ -1,10 +1,8 @@
 # Mobile dependency advisory gate
 
-The mobile package has its own npm lockfile. Run `npm ci --ignore-scripts` and
-`node scripts/check-dependency-advisories.cjs`. The helper runs the full
-`npm audit --json --audit-level=moderate`; CI rejects moderate and higher
-advisories except the explicitly approved, expiring exception below.
-The unfiltered audit still reports that advisory as high severity.
+The mobile package has its own npm lockfile. Run `npm ci --ignore-scripts`
+and `npm audit --audit-level=moderate` from `apps/mobile`. CI rejects
+moderate and higher advisories.
 
 Parent/version-scoped overrides reuse the extension's reviewed choices:
 - isomorphic-fetch 2.2.1 uses node-fetch 2.7.0.
@@ -30,30 +28,8 @@ The SDK versions and archive integrities remain unchanged by these host
 dependency resolutions. Native binary and device qualification remain separate
 release requirements.
 
-## Temporary picomatch exception
+## Retired picomatch exception
 
-The user explicitly approved this scoped exception on 2026-11-17. It is risk
-acceptance, not a dependency fix. The hard expiry is 2026-11-24T00:00:00Z, for
-only GHSA-fc5q-39xc-vjpf/source1247710 on the exact reviewed mobile picomatch
-2.3.2/4.0.7 identities. Root-lock version 4.0.5 is recorded for provenance;
-there is no extension-audit exception. These versions remain unpatched.
-Other moderate or higher advisories still fail.
-
-Requalified on 2026-11-17 for source `6aa16610`, which uses published Sysweb3
-packages without the temporary overlay. The normal Chrome production ZIP and
-Android JavaScript/Hermes export exclude the affected modules. Verification
-covered 5,643 Android source bodies, 458 installed SDK files in each host, and
-all packaged extension JavaScript. The Android export used the normal Metro
-configuration. APK signing and device qualification remain separate. The iOS
-assessment for this advisory covers the shared resolver and storage in source.
-Earlier Canary and Android APK receipts are historical.
-The exception binds their complete production input inventory, exact
-locks, parser and consumer bytes, UTC deadline, and reviewed runtime receipt.
-Any source/config/dependency/consumer drift closes it until requalification.
-This is not build-time safety clearance: Expo/Metro/Jest continue to use the
-affected parser. The approval accepts that remaining development/build exposure.
-The gate uses that unchanged-input attestation, not a new post-export
-absence check. Reuse the existing complete source-map/inventory verifier before
-any pin refresh. Device qualification remains separate. Missing evidence or
-runtime inclusion is a refusal. No Expo downgrade or severity threshold change
-is made.
+GitHub withdrew [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
+on November 18, 2026. The mobile audit uses the standard moderate threshold
+for every advisory.
