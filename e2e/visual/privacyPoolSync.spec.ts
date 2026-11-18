@@ -473,7 +473,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           expect(depositNote).not.toBe('');
           expect(signed.nonce).toBe(7);
           expect(signed.value).toBe(parseEther('1'));
-          expect(signed.gasLimit).toBe(BigInt(120000));
+          expect(signed.gasLimit).toBe(BigInt(1400000));
           expect(decoded.args[0]).toBe(depositCommitment);
           expect(
             await auditEncryptedNotes(wallet!.page, [depositNote])
@@ -1150,11 +1150,9 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         await expect(detail(en.privacy.deposit.pool)).toHaveText(POOL_ADDRESS);
         await expect(detail(en.privacy.deposit.amount)).toHaveText('1 ETH');
         await expect(detail(en.privacy.deposit.networkFee)).toHaveText(
-          '0.00588 ETH'
+          '0.0049 ETH'
         );
-        await expect(detail(en.privacy.deposit.total)).toHaveText(
-          '1.00588 ETH'
-        );
+        await expect(detail(en.privacy.deposit.total)).toHaveText('1.0049 ETH');
         const confirm = deposit.getByRole('button', {
           name: en.privacy.deposit.confirm,
           exact: true,
@@ -1189,7 +1187,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           )
         ).toBe(false);
         expect(JSON.stringify(preConfirmationReads)).not.toContain(
-          depositCommitment
+          depositCommitment.slice(2)
         );
         expect(await auditEncryptedNotes(wallet!.page, [depositNote])).toEqual({
           count: 1,
@@ -1240,6 +1238,15 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           })
         ).toHaveCount(0);
         expect(depositBroadcastAttempts).toBe(1);
+        const confirmedEstimates = rpcReads
+          .slice(readsBefore + preConfirmationReads.length)
+          .filter(({ method }) => method === 'eth_estimateGas');
+        expect(confirmedEstimates.length).toBeGreaterThan(0);
+        expect(
+          confirmedEstimates.every(({ params }) =>
+            JSON.stringify(params).includes(depositCommitment.slice(2))
+          )
+        ).toBe(true);
         expect(snapshots.length).toBe(snapshotsBefore);
         expect(await auditEncryptedNotes(wallet!.page, [depositNote])).toEqual({
           count: 1,
