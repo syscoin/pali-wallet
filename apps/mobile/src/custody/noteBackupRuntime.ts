@@ -35,8 +35,6 @@ export type NativeNoteMaintenanceRuntime = Readonly<{
   clearCompletedNotes(ids: readonly string[], assertCurrent: () => void,
     onProgress: (progress: Readonly<{ checked: number; total: number }>) => void,
     onReload: (inventory: Awaited<ReturnType<IPrivateVaultController['getNotes']>>) => void): ReturnType<IPrivateVaultController['clearCompletedNotes']>;
-  recoverFailedWithdrawal(id: string, assertCurrent: () => void,
-    onReload: (inventory: Awaited<ReturnType<IPrivateVaultController['getNotes']>>) => void): Promise<void>;
 }>;
 export type NativeNoteCapacityRuntime = Readonly<Pick<IPrivateVaultController, 'getCapacity' | 'setCapacity'>>;
 export type NativeSavedNote = Readonly<{
@@ -351,11 +349,10 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
     },
     bindMaintenance(session: IPrivateVaultSession, proofs: NativeNoteMaintenanceProofs): NativeNoteMaintenanceRuntime {
       session.assertCurrent();
-      if (typeof proofs?.prepareCompletionProof !== 'function' || typeof proofs?.prepareWithdrawalRecovery !== 'function')
+      if (typeof proofs?.prepareCompletionProof !== 'function')
         throw new Error('privacy_vault_unavailable');
       const operational = createVault(async () => ({ phase: 'waiting' }), Object.freeze({
         prepareCompletionProof: proofs.prepareCompletionProof.bind(proofs),
-        prepareWithdrawalRecovery: proofs.prepareWithdrawalRecovery.bind(proofs),
       }));
       let closed = false;
       const drain = new NativeOperationDrain();
@@ -412,8 +409,6 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
             return value;
           });
         },
-        recoverFailedWithdrawal: (id, guard, onReload) => runWithReload(guard, onReload,
-          owner => withSession(owner, () => operational.recoverFailedWithdrawal(id, HOST_WALLET_AUTHENTICATION))),
       });
     },
     bindCapacity(session: IPrivateVaultSession): NativeNoteCapacityRuntime {

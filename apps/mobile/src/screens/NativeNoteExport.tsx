@@ -35,7 +35,7 @@ export function NativeNoteFilesMenu({ onBack, onExport, onRestore, onCapacity, o
       <Row title={t('mobile.noteFlows.export.backUpPrivateNotes')} subtitle={t('mobile.noteFlows.export.saveAnEncryptedCopy')} icon="lock" onPress={onExport} />
       <Row title={t('mobile.noteFlows.export.restoreNoteBackup')} subtitle={t('mobile.noteFlows.export.addNotesFromAnEncryptedFile')} icon="wallet" onPress={onRestore} last={!onCapacity && !onMaintenance && !onPrivacySettings} />
       {onCapacity && <Row title={t('privacy.capacity.settings')} icon="settings" subtitle={t('mobile.noteFlows.export.changeTheSavedNoteLimit')} onPress={onCapacity} last={!onMaintenance && !onPrivacySettings} />}
-      {onMaintenance && <Row title={t('mobile.noteFlows.export.manageCompletedNotes')} icon="refresh" subtitle={t('mobile.noteFlows.export.clearCompletedNotesOrRecoverAFailedWithdrawal')} onPress={onMaintenance} last={!onPrivacySettings} />}
+      {onMaintenance && <Row title={t('mobile.noteFlows.export.manageCompletedNotes')} icon="refresh" onPress={onMaintenance} last={!onPrivacySettings} />}
       {onPrivacySettings && <Row title={t('privacy.serviceSettings')} icon="globe" subtitle={t('mobile.noteFlows.export.serviceOriginAndPublicPoolData')} onPress={onPrivacySettings} last />}
     </Card>
   </Screen></SafeAreaView>;

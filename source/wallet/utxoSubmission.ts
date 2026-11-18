@@ -9,10 +9,7 @@ import {
 
 import { fetchUtxoRead } from './utxoReadRetry.ts';
 import { RAW_BYTES } from './utxoSignedBundle.ts';
-import {
-  matchesUtxoSignedDigest,
-  snapshotUtxoSubmission,
-} from './utxoSignedRecords.ts';
+import { snapshotUtxoSubmission } from './utxoSignedRecords.ts';
 import type {
   UtxoDurableSubmission,
   UtxoRecordOwner,
@@ -24,24 +21,17 @@ import type { ISyscoinTransactions } from '@sidhujag/sysweb3-keyring';
 const ACK_TIMEOUT_MS = 12_000;
 const ACK_RECORD_WINDOW_MS = 5_000;
 const ACK_BYTES = 16 * 1024;
-const IDENTITY_TIMEOUT_MS = 10_000;
 const IDENTITY_BYTES = 32 * 1024;
 const STATUS_TIMEOUT_MS = 12_000;
 const STATUS_BYTES = 2 * RAW_BYTES + 64 * 1024;
 
 type UtxoSubmissionRequest = Readonly<{
   fetch: typeof globalThis.fetch;
-  intent: 'initial' | 'replay';
   record: UtxoDurableSubmission;
   records: UtxoSignedRecords;
   session: UtxoRecordSession;
   signal?: AbortSignal;
 }>;
-
-type SubmissionAuthority = Parameters<
-  ISyscoinTransactions['sendTransaction']
->[1];
-type SubmissionResult = ReturnType<ISyscoinTransactions['sendTransaction']>;
 
 export type UtxoSubmissionDisposition =
   | Readonly<{ transactionNotBroadcast: true }>
@@ -115,20 +105,6 @@ async function post(
   const bounded = new Response(text, { status: response.status });
   Object.defineProperty(bounded, 'url', { value: response.url });
   return bounded;
-}
-
-function sameOwner(
-  a: UtxoDurableSubmission['owner'],
-  b: UtxoDurableSubmission['owner']
-): boolean {
-  return (
-    a.chainId === b.chainId &&
-    a.slip44 === b.slip44 &&
-    a.genesisHash === b.genesisHash &&
-    a.account.id === b.account.id &&
-    a.account.type === b.account.type &&
-    a.account.xpub === b.account.xpub
-  );
 }
 
 async function readRetainedJson(
@@ -282,154 +258,16 @@ export function reconcileRetainedUtxo(
   );
 }
 
-/** A new send persists its exact signed bytes. */
-export function submitReviewedUtxo({
+/** Submit an approved transfer after durable admission. */
+export async function submitReviewedUtxo({
+  record: candidate,
+  records,
+  session,
+  fetch,
+  signal,
   sender,
-  ...request
-}: Omit<UtxoSubmissionRequest, 'intent'> &
+}: UtxoSubmissionRequest &
   Readonly<{ sender: Pick<ISyscoinTransactions, 'sendTransaction'> }>) {
-  return submitUtxo({ ...request, intent: 'initial' }, (record, authority) =>
-    sender.sendTransaction(record.rawTransaction, authority)
-  );
-}
-
-/** Replay through the SDK's mandatory original-route verifier. */
-export function submitRetainedUtxo({
-  sender,
-  ...request
-}: Omit<UtxoSubmissionRequest, 'intent'> &
-  Readonly<{
-    sender: Pick<ISyscoinTransactions, 'replayRetainedTransaction'>;
-  }>) {
-  return submitUtxo(
-    { ...request, intent: 'replay' },
-    async (record, authority) => {
-      const controller = new AbortController();
-      const { signal } = controller;
-      const abort = () => controller.abort();
-      authority.signal.addEventListener('abort', abort, { once: true });
-      if (authority.signal.aborted) abort();
-      const assertCurrent = () => {
-        checkAborted(signal);
-        authority.assertCurrent();
-        checkAborted(signal);
-      };
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      let deadline = 0;
-      let statusUrl: string;
-      let descriptorPrepared = false;
-      let stage:
-        | 'journal'
-        | 'checking'
-        | 'status'
-        | 'genesis'
-        | 'ready'
-        | 'admission' = 'journal';
-      try {
-        assertCurrent();
-        return await sender.replayRetainedTransaction(record.txid, {
-          ...authority,
-          async readRetained(owner, txid) {
-            assertCurrent();
-            if (
-              stage !== 'journal' ||
-              txid !== record.txid ||
-              !sameOwner(owner, record.owner)
-            )
-              return undefined;
-            stage = 'checking';
-            const retained = await request.records.readExact(
-              request.session,
-              record.owner,
-              record.txid
-            );
-            assertCurrent();
-            if (
-              !retained ||
-              retained.url !== record.url ||
-              !matchesUtxoSignedDigest(retained, record.rawTransaction)
-            )
-              return undefined;
-            // The journal validates the canonical /api/v2/sendtx/ suffix. Only its
-            // two adjacent identity paths can use the read port for this replay.
-            statusUrl = retained.url.slice(0, -'sendtx/'.length);
-            // Finish durable admission here so both SDK call orders verify only afterward.
-            await authority.prepare({
-              url: retained.url,
-              txid: retained.txid,
-              rawTransaction: record.rawTransaction,
-            });
-            assertCurrent();
-            stage = 'status';
-            timer = setTimeout(abort, IDENTITY_TIMEOUT_MS);
-            deadline = Date.now() + IDENTITY_TIMEOUT_MS;
-            return record;
-          },
-          async readJson(url, ownerSignal) {
-            assertCurrent();
-            const isStatus = stage === 'status';
-            if (
-              ownerSignal !== authority.signal ||
-              (!isStatus && stage !== 'genesis') ||
-              url !== (isStatus ? statusUrl : statusUrl + 'block-index/0')
-            )
-              throw new Error('Invalid retained UTXO identity read');
-            stage = 'checking';
-            const body = await readRetainedJson(
-              request.fetch,
-              url,
-              signal,
-              assertCurrent,
-              IDENTITY_BYTES,
-              deadline
-            );
-            stage = isStatus ? 'genesis' : 'ready';
-            return body;
-          },
-          async prepare(descriptor) {
-            assertCurrent();
-            if (
-              descriptorPrepared ||
-              (stage !== 'ready' && stage !== 'status') ||
-              descriptor.url !== record.url ||
-              descriptor.txid !== record.txid ||
-              descriptor.rawTransaction !== record.rawTransaction
-            )
-              throw new Error('Retained UTXO route or descriptor changed');
-            descriptorPrepared = true;
-          },
-          fetch(input, init) {
-            assertCurrent();
-            if (!descriptorPrepared || stage !== 'ready')
-              throw new Error('Retained UTXO route was not verified');
-            stage = 'admission';
-            clearTimeout(timer);
-            return authority.fetch(input, init);
-          },
-        });
-      } finally {
-        clearTimeout(timer);
-        authority.signal.removeEventListener('abort', abort);
-        abort();
-      }
-    }
-  );
-}
-
-async function submitUtxo(
-  {
-    record: candidate,
-    records,
-    session,
-    fetch,
-    intent,
-    signal,
-  }: UtxoSubmissionRequest,
-  dispatch: (
-    record: UtxoDurableSubmission,
-    authority: SubmissionAuthority
-  ) => SubmissionResult
-) {
   const record = snapshotUtxoSubmission(candidate);
   const { rawTransaction, txid, url, owner } = record;
   const controller = new AbortController();
@@ -451,10 +289,9 @@ async function submitUtxo(
     const ack = await records.admit(
       session,
       record,
-      intent,
       async (prepare, release) => {
         try {
-          return await dispatch(record, {
+          return await sender.sendTransaction(rawTransaction, {
             signal: controller.signal,
             assertCurrent,
             async prepare(received) {

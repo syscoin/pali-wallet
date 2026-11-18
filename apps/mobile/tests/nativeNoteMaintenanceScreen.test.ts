@@ -8,15 +8,15 @@ import { isOperationAuthenticationCancellation, operationAuthenticationCancellat
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const notes: IPrivateNoteView[] = Array.from({ length: 41 }, (_, index) => ({ id: String(index + 1), amount: '1', createdAt: Date.UTC(2026, 0, index + 1), poolId: 'eth-1', phase: 'verified' }));
 
-function fixture(fail = false, recover = false, count = 7, unresolved = false) {
-  let reads = 0, clears = 0, recoveries = 0, backs = 0;
+function fixture(fail = false, withHistory = false, count = 7, unresolved = false) {
+  let reads = 0, clears = 0, backs = 0;
   const idsChecked: string[][] = [];
   let pending: Promise<void> | undefined;
   let runtimeSource = 0;
   const listeners = new Map<string, (next: string) => void>();
   let refusal: Error | undefined;
   const appState = { currentState: 'active', addEventListener: (event: string, listener: (next: string) => void) => { listeners.set(event, listener); return { remove() { listeners.delete(event); } }; } };
-  let shown: IPrivateNoteView[] = recover ? [{ ...notes[0]!, withdrawal: { canCheckRecovery: true, mode: 'direct', phase: 'submitted' } }] : notes.slice(0, count);
+  let shown: IPrivateNoteView[] = withHistory ? [{ ...notes[0]!, withdrawal: { mode: 'direct', phase: 'submitted' } }] : notes.slice(0, count);
   const runtime = {
     async dispose() {},
     async getNotes() { reads++; return { notes: shown }; },
@@ -30,7 +30,6 @@ function fixture(fail = false, recover = false, count = 7, unresolved = false) {
       if (fail) throw Error('Synthetic late failure');
       return { removed: unresolved ? [] : [...ids], unresolved: unresolved ? [...ids] : [] };
     },
-    async recoverFailedWithdrawal(_id, check, reload) { recoveries++; check(); reload({ notes: [] }); },
   } satisfies NativeNoteMaintenanceRuntime;
   const f = screenFixture(new URL('../src/screens/NativeNoteMaintenance.tsx', import.meta.url), 'NativeNoteMaintenance', {
     'react-native': { AppState: appState, View: 'View',
@@ -48,7 +47,7 @@ function fixture(fail = false, recover = false, count = 7, unresolved = false) {
     const button = render().find(element => element.props.title === title); assert(button); button.props.onPress();
   };
   const select = (number = 7) => { const row = render().find(element => element.props.icon === 'trash' && element.props.subtitle?.startsWith(`Note ${number} ·`)); assert(row); row.props.onPress(); };
-  return { render, press, select, idsChecked, backs: () => backs, pause(value: Promise<void>) { pending = value; }, replaceSource() { runtimeSource++; }, reads: () => reads, clears: () => clears, recoveries: () => recoveries,
+  return { render, press, select, idsChecked, backs: () => backs, pause(value: Promise<void>) { pending = value; }, replaceSource() { runtimeSource++; }, reads: () => reads, clears: () => clears,
     refuse(error: Error) { refusal = error; }, background(notify = false) { appState.currentState = 'background'; if (notify) listeners.get('change')?.('background'); }, close: f.close };
 }
 
@@ -71,7 +70,7 @@ test('maintenance keeps a cleanup choice for notes with prior history', async ()
   const f = fixture(false, true);
   try {
     f.render(); await settle(); f.select(1);
-    assert.equal(f.recoveries(), 0); assert.equal(f.reads(), 1);
+    assert.equal(f.reads(), 1);
     assert(f.render().some(element => element.props.title === 'privacy.capacity.confirmClear'));
   } finally { f.close(); }
 });

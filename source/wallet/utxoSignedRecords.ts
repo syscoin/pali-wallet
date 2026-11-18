@@ -323,11 +323,9 @@ export class UtxoSignedRecords {
   admit<T>(
     session: UtxoRecordSession,
     record: UtxoDurableSubmission,
-    intent: 'initial' | 'replay',
     dispatch: (prepare: () => Promise<void>, release: () => void) => Promise<T>
   ): Promise<T> {
     return this.exclusive(async (release) => {
-      let replayKey: string | undefined;
       let initialEntry: Entry | undefined;
       let preparing: Promise<void> | undefined;
       let dispatched = false;
@@ -338,50 +336,13 @@ export class UtxoSignedRecords {
             if (closed || preparing)
               throw new Error('UTXO submission admission is closed');
             preparing = (async () => {
-              if (intent === 'initial') {
-                initialEntry = await this.persistRetained(session, record);
-                return;
-              }
-              const before = await this.load(session);
-              const retained = await this.readMatching(
-                session,
-                record.owner,
-                record.txid,
-                before.entries
-              );
-              if (
-                !retained ||
-                !matchesUtxoSignedDigest(
-                  retained.record,
-                  record.rawTransaction
-                ) ||
-                retained.record.url !== record.url
-              )
-                throw new Error('Retained UTXO submission changed');
-              // Replay can outlive a reorg or lose its ACK. Remove the old
-              // eviction authority before the exact bytes leave this lease.
-              if (
-                retained.entry.phase === 'confirmed' &&
-                !(await this.write(
-                  session,
-                  before,
-                  before.entries.map((entry) =>
-                    entry === retained.entry
-                      ? { ...entry, phase: 'pending' }
-                      : entry
-                  )
-                ))
-              )
-                throw new Error('UTXO_SIGNED_RECORD_CONFLICT');
-              replayKey = retained.entry.key;
+              initialEntry = await this.persistRetained(session, record);
             })();
             void preparing.catch(() => undefined);
             return preparing;
           },
           () => {
             dispatched = true;
-            // A status read begun before POST cannot restore stale eviction authority.
-            if (replayKey) this.observations.delete(replayKey);
             release();
           }
         );
@@ -676,7 +637,7 @@ export class UtxoSignedRecords {
       )
         throw new Error('UTXO_SIGNED_OUTPOINT_PENDING');
       // Retain only locally issued paths whose scripts occur in these exact
-      // signed bytes. They survive restart/replay, independently of backend hints.
+      // signed bytes. They survive restart, independently of backend hints.
       const transaction = syscoinUtils.bitcoinjs.Transaction.fromHex(
         record.rawTransaction
       );

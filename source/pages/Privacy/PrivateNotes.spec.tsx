@@ -1205,7 +1205,6 @@ it('disables Withdraw for the note with pending payer activity and refreshes aft
       mode: 'direct',
       phase: 'submitted',
       transactionHash: depositHash,
-      canCheckRecovery: true,
     },
   };
   const other = { ...note, id: 'other-note' };

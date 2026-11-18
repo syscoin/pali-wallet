@@ -190,8 +190,6 @@ const mockMasterController: jest.Mocked<IMasterController> = {
     clearArchive: jest.fn(),
     getArchivedNotes: jest.fn(),
     restoreArchivedNote: jest.fn(),
-    reviewRestoredNote: jest.fn(),
-    recoverFailedWithdrawal: jest.fn(),
     clearCompletedNotes: jest.fn(),
     createDepositNote: jest.fn(),
     getNotes: jest.fn(),

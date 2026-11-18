@@ -375,7 +375,6 @@ import {
   privacyFeeQuantity,
   privacyWithdrawalFees,
 } from 'utils/privacy/withdrawalFees';
-import type { IPrivacyWithdrawalRecoveryReceipt } from 'utils/privacy/withdrawalTransactionTypes';
 import type { IPrivacyWithdrawalJournal } from 'utils/privacy/withdrawalTransactionTypes';
 import type {
   IPrivacyWithdrawalSession,
@@ -4054,28 +4053,6 @@ class MainController {
                 deposit,
                 session
               ),
-            prepareWithdrawalRecovery: async (
-              identity,
-              withdrawal,
-              session
-            ) => {
-              const proof = await this.preparePrivateVaultCompletionProof(
-                identity,
-                withdrawal,
-                undefined,
-                session,
-                true
-              );
-              if (!proof.receipt)
-                throw new Error('privacy_withdrawal_recovery_unavailable');
-              return {
-                receipt: proof.receipt,
-                revalidate: proof.revalidate,
-                ...(proof.publicInputs
-                  ? { publicInputs: proof.publicInputs }
-                  : {}),
-              };
-            },
             readNote: (identity) =>
               this.privateVaultNoteReader
                 ? this.privateVaultNoteReader(identity)
@@ -4162,13 +4139,8 @@ class MainController {
     identity: IClassicNoteIdentity,
     withdrawal: IPrivacyWithdrawalJournal,
     deposit: IPrivateVaultDepositJournal | undefined,
-    session: IPrivateVaultSession,
-    recovery = false
-  ): Promise<{
-    publicInputs?: IPrivacyWithdrawalJournal['publicInputs'];
-    receipt?: IPrivacyWithdrawalRecoveryReceipt;
-    revalidate: () => Promise<void>;
-  }> {
+    session: IPrivateVaultSession
+  ): Promise<{ revalidate: () => Promise<void> }> {
     session.assertCurrent();
     const state = store.getState();
     const ref = state.vault.activeAccount;
@@ -4227,65 +4199,6 @@ class MainController {
       import(/* webpackChunkName: "private-vault" */ 'utils/privacy/registry'),
     ]);
     assertCurrent();
-    if (recovery) {
-      const [{ prepareWithdrawalRecovery }, { readWithdrawalRecoveryRpc }] =
-        await Promise.all([
-          import(
-            /* webpackChunkName: "private-vault" */ 'utils/privacy/withdrawalRecovery'
-          ),
-          import(
-            /* webpackChunkName: "private-vault" */ 'utils/privacy/client'
-          ),
-        ]);
-      assertCurrent();
-      return prepareWithdrawalRecovery({
-        poolAddress: getPrivacyPool(identity.poolId).address,
-        nullifierHash: identity.nullifierHash,
-        withdrawal,
-        assertCurrent,
-        ...(withdrawal.mode === 'relayed' &&
-        withdrawal.jobId &&
-        withdrawal.endpoint
-          ? {
-              readRelayedPublicInputs: async (signal: AbortSignal) => {
-                const { readPrivacyRelayerJobPublicInputs } = await import(
-                  /* webpackChunkName: "private-vault" */ 'utils/privacy/relayJobs'
-                );
-                assertCurrent();
-                return readPrivacyRelayerJobPublicInputs(
-                  {
-                    endpoint: withdrawal.endpoint!,
-                    jobId: withdrawal.jobId!,
-                    poolId: identity.poolId,
-                    inputHash: withdrawal.inputHash,
-                    proofHash: withdrawal.proofHash,
-                  },
-                  { assertCurrent, signal }
-                );
-              },
-            }
-          : {}),
-        readOriginalRawTransaction: async () => {
-          assertCurrent();
-          const keyring = this.getActiveKeyring();
-          const guard = () => {
-            assertCurrent();
-            if (this.getActiveKeyring() !== keyring)
-              throw new Error('privacy_withdrawal_recovery_unavailable');
-          };
-          const row = await this.getRetainedEvmRecords().readForObservation(
-            { keyring, assertCurrent: guard },
-            '1',
-            withdrawal.from!,
-            withdrawal.transactionHash!
-          );
-          guard();
-          return row?.entry.rawTransaction ?? null;
-        },
-        rpc: (method, params, signal) =>
-          readWithdrawalRecoveryRpc(rpcUrl, method, params, signal),
-      });
-    }
     if (
       withdrawal.phase !== 'submitted' ||
       typeof withdrawal.transactionHash !== 'string' ||
@@ -5131,18 +5044,6 @@ class MainController {
   public async getPrivacyRelayers() {
     this.capturePrivateVaultSession().assertCurrent();
     return (await this.getPrivacyWithdrawalsController()).getRelayers();
-  }
-
-  public async recoverFailedPrivateWithdrawal(id: string, password: string) {
-    return this.usePrivateVault((vault) =>
-      vault.recoverFailedWithdrawal(id, password)
-    );
-  }
-
-  public async reviewRestoredPrivateNote(id: string, password: string) {
-    return this.usePrivateVault((vault) =>
-      vault.reviewRestoredNote(id, password)
-    );
   }
 
   public async preparePrivacyWithdrawal(

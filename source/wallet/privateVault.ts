@@ -19,7 +19,6 @@ import {
 import { getPrivacyPool } from '../utils/privacy/registry.ts';
 import {
   capturePrivateWithdrawalAttempt,
-  captureWithdrawalPublicInputs,
   captureWithdrawalRootAnchor,
   createPrivateWithdrawalJournal,
 } from '../utils/privacy/withdrawalMetadata.ts';
@@ -34,7 +33,6 @@ import {
   hasImportedWithdrawalHistory,
   privateNoteRestoreDigest,
   privateNoteExportHistory,
-  readPrivateNoteRestoreGuard,
   readPrivateNoteRestoreMetadata,
   restoredNoteBlocksWithdrawal,
   snapshotPrivateNoteRestoreEntries,
@@ -63,14 +61,12 @@ import {
   UUID,
   assertPrivateVaultSession,
   envelopeHash,
-  recoveryReceipt,
   withdrawalJournal,
   unsignedWithdrawal,
   checkEnvelope,
   readPrivateVaultBundle,
   JOB_ID,
   publicError,
-  withdrawalRecovery,
   privateVaultNoteKey,
   privateVaultArchiveIndexBytes,
 } from './privateVaultInspection.ts';
@@ -104,13 +100,10 @@ import type {
   IPrivacyWithdrawalAcknowledgement,
   IPrivacyWithdrawalAttempt,
   IPrivacyWithdrawalJournal,
-  IPrivacyWithdrawalRecovery,
-  IPrivacyWithdrawalRecoveryReceipt,
   IPrivacyRetiredWithdrawal,
   IPrivacyWithdrawalStatusRecord,
   IPrivacyUnsignedWithdrawal,
 } from '../utils/privacy/withdrawalTransactionTypes';
-import type { IPrivacyWithdrawalPublicInputs } from '../utils/privacy/withdrawalTransactionTypes.ts';
 import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
 const restoreEpochs = new WeakMap<IPrivateVaultMutex, Map<string, object>>();
@@ -279,16 +272,6 @@ export interface IPrivateVaultHost {
     deposit: IPrivateVaultDepositJournal | undefined,
     session: IPrivateVaultSession
   ) => Promise<{ revalidate: () => Promise<void> }>;
-  /** Explicit authenticated recovery only; never disclose bearer-note material. */
-  prepareWithdrawalRecovery?: (
-    identity: IClassicNoteIdentity,
-    withdrawal: IPrivacyWithdrawalJournal,
-    session: IPrivateVaultSession
-  ) => Promise<{
-    publicInputs?: Readonly<IPrivacyWithdrawalPublicInputs>;
-    receipt: IPrivacyWithdrawalRecoveryReceipt;
-    revalidate: () => Promise<void>;
-  }>;
   readNote: IPrivacyNoteReader;
 }
 
@@ -730,17 +713,6 @@ export function createPrivateVaultController(
           withdrawal: {
             mode: note.withdrawal.mode,
             phase: note.withdrawal.phase,
-            ...(!(
-              hasImportedWithdrawalHistory(note.restoreGuard) &&
-              restoredNoteBlocksWithdrawal(note.restoreGuard)
-            ) &&
-            !note.withdrawal.unsigned &&
-            (note.withdrawal.mode === 'direct'
-              ? note.withdrawal.phase === 'submitted' &&
-                note.withdrawal.transactionHash
-              : note.withdrawal.publicInputs || note.withdrawal.jobId)
-              ? { canCheckRecovery: true as const }
-              : {}),
             ...(note.withdrawal.jobId ? { jobId: note.withdrawal.jobId } : {}),
             ...(note.withdrawal.transactionHash
               ? { transactionHash: note.withdrawal.transactionHash }
@@ -2040,181 +2012,6 @@ export function createPrivateVaultController(
           basis
         );
       }),
-    reviewRestoredNote: async (id, password) => {
-      try {
-        if (typeof id !== 'string' || !UUID.test(id))
-          throw new Error('privacy_note_missing');
-        const context = await capture();
-        await host.authenticate(password, context.session, () =>
-          mutex.runExclusive(async () => {
-            context.session.assertCurrent();
-            const { manifest, basis } = await load(context);
-            const note = findNote(manifest, id);
-            if (
-              !note.restoreGuard ||
-              hasImportedWithdrawalHistory(note.restoreGuard) ||
-              (note.withdrawal && !note.withdrawal.recovery)
-            )
-              throw new Error('privacy_note_restore_required');
-            // This is the verifier-owned, age-bounded local pool snapshot. It
-            // is not a new RPC observation or evidence of exclusive ownership.
-            const requireVerified = async () => {
-              const status = await readStatus(context, identify(note.note));
-              if (status.phase === 'spent')
-                throw new Error('privacy_note_spent');
-              if (status.phase === 'not-found')
-                throw new Error('privacy_note_not_found');
-              if (status.phase !== 'verified')
-                throw new Error('privacy_verification_pending');
-              await assertProfile(context);
-            };
-            await requireVerified();
-            if (note.restoreGuard.reviewedAt !== undefined) return '';
-            const restoreGuard = readPrivateNoteRestoreGuard({
-              ...note.restoreGuard,
-              reviewedAt: now(),
-            });
-            epochs.set(context.profileId, {});
-            await persist(
-              context,
-              manifest.notes.map((entry) =>
-                entry.id === id ? { ...entry, restoreGuard } : entry
-              ),
-              basis,
-              requireVerified
-            );
-            return '';
-          })
-        );
-        await assertProfile(context);
-      } catch (error) {
-        throw publicError(error);
-      }
-    },
-    recoverFailedWithdrawal: async (id, password) => {
-      try {
-        if (typeof id !== 'string' || !UUID.test(id))
-          throw new Error('privacy_note_missing');
-        const context = await capture();
-        const deadline = deadlineNow() + 60_000;
-        await host.authenticate(password, context.session, async () => {
-          const fingerprint = (note: IStoredNote) =>
-            JSON.stringify({
-              id: note.id,
-              createdAt: note.createdAt,
-              origin: note.origin,
-              deposit: note.deposit,
-              withdrawal: note.withdrawal,
-              restoreGuard: note.restoreGuard,
-            });
-          const candidate = await mutex.runExclusive(async () => {
-            const { manifest } = await load(context);
-            const note = findNote(manifest, id);
-            if (
-              hasImportedWithdrawalHistory(note.restoreGuard) &&
-              restoredNoteBlocksWithdrawal(note.restoreGuard)
-            )
-              throw new Error('privacy_note_restore_required');
-            if (
-              !note.withdrawal ||
-              note.withdrawal.unsigned ||
-              (note.withdrawal.mode === 'direct'
-                ? note.withdrawal.phase !== 'submitted' ||
-                  !note.withdrawal.transactionHash
-                : !note.withdrawal.publicInputs && !note.withdrawal.jobId) ||
-              note.withdrawal.recovery
-            )
-              throw new Error('privacy_withdrawal_recovery_unavailable');
-            await assertProfile(context);
-            return {
-              identity: { ...identify(note.note) },
-              metadata: fingerprint(note),
-              withdrawal: withdrawalJournal(note.withdrawal),
-            };
-          });
-          if (!host.prepareWithdrawalRecovery || deadlineNow() >= deadline)
-            throw new Error('privacy_withdrawal_recovery_unavailable');
-          const proof = await host.prepareWithdrawalRecovery(
-            { ...candidate.identity },
-            withdrawalJournal(candidate.withdrawal),
-            context.session
-          );
-          context.session.assertCurrent();
-          if (!proof || typeof proof.revalidate !== 'function')
-            throw new Error('privacy_withdrawal_recovery_unavailable');
-          let recovery: IPrivacyWithdrawalRecovery;
-          let publicInputs:
-            | Readonly<IPrivacyWithdrawalPublicInputs>
-            | undefined;
-          try {
-            recovery = withdrawalRecovery({
-              ...recoveryReceipt(proof.receipt),
-              recoveredAt: now(),
-            });
-            const value =
-              proof.publicInputs ?? candidate.withdrawal.publicInputs;
-            if (value) {
-              publicInputs = captureWithdrawalPublicInputs(
-                value,
-                candidate.withdrawal.inputHash
-              );
-              if (
-                publicInputs.nullifierHash !==
-                  candidate.identity.nullifierHash ||
-                publicInputs.root !== recovery.root
-              )
-                throw new Error();
-            }
-            if (
-              candidate.withdrawal.mode === 'relayed'
-                ? recovery.kind !== 'relayed-proof-expired' || !publicInputs
-                : recovery.kind !== undefined
-            )
-              throw new Error();
-          } catch {
-            throw new Error('privacy_withdrawal_recovery_unavailable');
-          }
-          await mutex.runExclusive(async () => {
-            const { manifest, basis } = await load(context);
-            const note = findNote(manifest, id);
-            if (fingerprint(note) !== candidate.metadata)
-              throw new Error('privacy_withdrawal_recovery_unavailable');
-            const identity = identify(note.note);
-            if (
-              identity.poolId !== candidate.identity.poolId ||
-              identity.commitment !== candidate.identity.commitment ||
-              identity.nullifierHash !== candidate.identity.nullifierHash
-            )
-              throw new Error('privacy_withdrawal_recovery_unavailable');
-            const withdrawal = withdrawalJournal({
-              ...note.withdrawal!,
-              ...(publicInputs ? { publicInputs } : {}),
-              recovery,
-            });
-            await assertProfile(context);
-            await persist(
-              context,
-              manifest.notes.map((entry) =>
-                entry.id === id ? { ...entry, withdrawal } : entry
-              ),
-              basis,
-              async () => {
-                if (deadlineNow() >= deadline)
-                  throw new Error('privacy_withdrawal_recovery_unavailable');
-                await proof.revalidate();
-                await assertProfile(context);
-                if (deadlineNow() >= deadline)
-                  throw new Error('privacy_withdrawal_recovery_unavailable');
-              }
-            );
-          });
-          return '';
-        });
-        await assertProfile(context);
-      } catch (error) {
-        throw publicError(error);
-      }
-    },
     // One explicitly user-triggered record per call. A storage acknowledgement
     // can be ambiguous; callers must refresh the list after every error.
     clearCompletedNotes: async (ids) => {

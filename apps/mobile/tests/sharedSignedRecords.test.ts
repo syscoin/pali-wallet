@@ -895,7 +895,7 @@ test('unreadable storage and exhausted revision are not local append capacity re
   await assertUnbranded(exhausted);
 });
 
-test('Smart activity is a bounded authenticated projection and preserves the outer payer owner', async () => {
+test('Exact Smart activity preserves the outer payer owner', async () => {
   const { paliEntryPointInterface, paliSmartAccountInterface, getPaliEntryPointAddress } = await import('../../../source/utils/smartAccount/contracts.ts');
   const { ERC7579_MODE_SINGLE_DEFAULT } = await import('../../../source/utils/smartAccount/account.ts');
   const f = fixture();
@@ -913,19 +913,10 @@ test('Smart activity is a bounded authenticated projection and preserves the out
     await f.store.append(session, input, { smartAccountExecution: true, smartAccountExecutionFrom: address });
     inputs.push(input);
   }
-  const options = { maximum: 1 };
-  const reading = f.store.readSmartAccountActivity(session, '7654321', address, options);
-  options.maximum = 48;
-  const newest = await reading;
-  assert.equal(newest.total, 3);
-  assert.deepEqual(newest.transfers.map(transfer => transfer.entry.hash), [inputs[2]!.hash]);
-  const transfer = newest.transfers[0]!;
-  assert(!('cancellation' in transfer));
+  const transfer = await f.store.readSmartAccountActivityExact(session, '7654321', address, inputs[2]!.hash);
+  assert(transfer && !('cancellation' in transfer));
   assert.equal(transfer.recipient, recipient);
   assert.equal(transfer.amountUnits, '9');
-  await f.store.updatePhase(session, '7654321', signer.address, inputs[1]!.hash, 'confirmed');
-  const older = await f.store.readSmartAccountActivity(session, '7654321', address, { maximum: 1, beforeHash: newest.nextCursor! });
-  assert.deepEqual(older.transfers.map(transfer => transfer.entry.hash), [inputs[1]!.hash]);
   assert.equal((await f.store.readRecent(session, '7654321', address, 10)).entries.length, 0);
   assert.equal((await f.store.readRecent(session, '7654321', signer.address, 10)).entries.length, 3);
   assert.equal(await f.store.readSmartAccountActivityExact(session, '7654321', recipient, inputs[0]!.hash), null);

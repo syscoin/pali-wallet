@@ -41,7 +41,6 @@ import {
   encryptPrivateRecordBytes,
   privateRecordProfileId,
 } from '@sidhujag/sysweb3-keyring/cjs/private-records.js';
-import { SyscoinTransactionsCore } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core.js';
 import { excludedOutpointIds } from '@sidhujag/sysweb3-keyring/cjs/utils/excluded-utxos.js';
 import {
   findUtxoCoinByRegistration,
@@ -61,7 +60,6 @@ import {
 } from '../handlers/approvalSubmission';
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
-import { withPinnedUtxoBackendChain } from 'utils/networkRegistration';
 import {
   captureSentryCollateralAdmission,
   reserveSentryCollateral,
@@ -301,29 +299,6 @@ describe('PSBT approval context', () => {
       },
     };
     jest.spyOn(store, 'getState').mockImplementation(() => state);
-    const unavailable = () => {
-      throw new Error('Saved transfer cannot sign');
-    };
-    const replay = new SyscoinTransactionsCore(
-      unavailable,
-      unavailable,
-      () => {
-        const { activeAccount, activeNetwork, accounts } = state.vault;
-        return {
-          accounts,
-          activeAccountId: activeAccount.id,
-          activeAccountType: activeAccount.type,
-          activeNetwork: withPinnedUtxoBackendChain(
-            activeNetwork,
-            state.vaultGlobal.networks.syscoin[activeNetwork.chainId]
-          ),
-        };
-      },
-      {},
-      () => () => undefined,
-      'session',
-      () => undefined
-    );
     keyring = {
       isUnlocked: jest.fn().mockReturnValue(true),
       syscoinTransaction: {
@@ -333,7 +308,6 @@ describe('PSBT approval context', () => {
         signPSBT: jest.fn(async () => signedEnvelope()),
         decodeRawTransaction: jest.fn(),
         sendTransaction: jest.fn(dispatch),
-        replayRetainedTransaction: jest.fn(replay.replayRetainedTransaction),
       },
     };
     wallet = Object.create(MainController.prototype);
@@ -354,7 +328,6 @@ describe('PSBT approval context', () => {
       admit: async (
         _session: unknown,
         _record: unknown,
-        _intent: string,
         submit: (
           prepare: () => Promise<void>,
           release: () => void
@@ -744,15 +717,10 @@ describe('PSBT approval context', () => {
     };
     const journal = new UtxoSignedRecords(storage, storage);
     wallet.getRetainedUtxoRecords.mockReturnValue(journal);
-    await journal.admit(
-      session,
-      record,
-      'initial',
-      async (prepare, release) => {
-        await prepare();
-        release();
-      }
-    );
+    await journal.admit(session, record, async (prepare, release) => {
+      await prepare();
+      release();
+    });
     await expect(
       journal.observeRetained(session, record.owner, record.txid, async () => ({
         txid: record.txid,

@@ -2492,12 +2492,6 @@ export function createKeyringRuntimeFactory(
             };
             check();
             const proofs = createNativeNoteMaintenanceProofs({ network, signal, assertCurrent: check,
-              relayerFetch: dependencies.connectionFetch ?? walletFetch,
-              async readOriginalRawTransaction(from, hash, guard) {
-                check(); guard();
-                const row = await signedRecords.readForObservation({ keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, network.chainId, from, hash);
-                check(); guard(); return row?.entry.rawTransaction ?? null;
-              },
               rpc: new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch }) });
             return notes.bindMaintenance(session, proofs);
           }, authentication);

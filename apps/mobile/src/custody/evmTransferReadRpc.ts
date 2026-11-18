@@ -407,11 +407,7 @@ export class EvmTransferReadRpc {
         return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
       return this.operation(signal, guard, read => read('eth_chainId', []), 'endpoint');
     }
-    if (method === 'eth_getTransactionCount' && (!Array.isArray(params) || params.length !== 2 ||
-        typeof params[0] !== 'string' || !/^0x[\da-f]{40}$/i.test(params[0]) ||
-        typeof params[1] !== 'string' || params[1].length > 66 || !/^0x(?:0|[1-9a-f][\da-f]*)$/.test(params[1])))
-      return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
-    if (!['eth_getBlockByNumber', 'eth_getTransactionReceipt', 'eth_getTransactionByHash', 'eth_getTransactionCount', 'eth_call'].includes(method))
+    if (!['eth_getBlockByNumber', 'eth_getTransactionReceipt', 'eth_getTransactionByHash'].includes(method))
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     const normalized = normalizeDappRpcRequest(method, params);
     return this.operation(signal, guard, read => read(normalized.method, normalized.params), 'endpoint');

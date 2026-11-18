@@ -829,7 +829,6 @@ export function createNativeWalletControllers() {
       dispose: value.dispose,
       getNotes: guard => observeFailure(() => value.getNotes(guard)),
       clearCompletedNotes: (ids, guard, progress, reload) => observeFailure(() => value.clearCompletedNotes(ids, guard, progress, reload)),
-      recoverFailedWithdrawal: (id, guard, reload) => observeFailure(() => value.recoverFailedWithdrawal(id, guard, reload)),
     });
   };
   const openPrivacyControls = async (signal: AbortSignal, assertOwner: () => void): Promise<NativePrivacyControls> => {

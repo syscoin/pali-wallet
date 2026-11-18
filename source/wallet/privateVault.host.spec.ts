@@ -1122,7 +1122,7 @@ async function withdrawalReplayFixture() {
   return { ...f, vault, note, session, attempt };
 }
 
-test('a new withdrawal from an explicitly reviewed restored note remains retryable', async () => {
+test('a new withdrawal from a previously reviewed restored note remains retryable', async () => {
   const f = fixture();
   const vault = core.createPrivateVaultController(f.host, f.dependencies);
   const session = f.host.captureSession();
@@ -1132,7 +1132,18 @@ test('a new withdrawal from an explicitly reviewed restored note remains retryab
   const plan = await vault.prepareRestore(entries, session);
   await vault.commitRestore(plan, entries, 'synthetic-password', session);
   const note = (await vault.getNotes()).notes[0];
-  await vault.reviewRestoredNote(note.id, 'synthetic-password');
+  const stored = {
+    id: note.id,
+    note: NOTE,
+    createdAt: 1,
+    restoreGuard: {
+      importedAt: 1,
+      reviewedAt: 1,
+      sourceHash: HASH,
+      version: 1 as const,
+    },
+  };
+  await seedArchiveVault(f, [stored]);
   const attempt = withdrawalReplayAttempt(note.id, session.generation);
   await vault.reserveWithdrawalAttempt(
     attempt,
@@ -1242,11 +1253,27 @@ test('withdrawal replay cannot reactivate recovered or retired attempts', async 
     f.session
   );
   const lease = await f.vault.authorizeWithdrawalReplay(f.attempt, f.session);
-  f.host.prepareWithdrawalRecovery = async () => ({
-    receipt: { root: f.attempt.root, blockHash: HASH, blockNumber: '123' },
-    revalidate: async () => undefined,
-  });
-  await f.vault.recoverFailedWithdrawal(f.note.id, 'synthetic-password');
+  const { noteId, poolId, ...previous } = (await f.vault.getWithdrawalAttempt(
+    f.note.id,
+    f.session
+  ))!;
+  expect(poolId).toBe(f.note.poolId);
+  await seedArchiveVault(f, [
+    {
+      id: noteId,
+      note: NOTE,
+      createdAt: f.note.createdAt,
+      withdrawal: {
+        ...previous,
+        recovery: {
+          root: f.attempt.root,
+          blockHash: HASH,
+          blockNumber: '123',
+          recoveredAt: 1,
+        },
+      },
+    },
+  ]);
   const admit = jest.fn(async () => ({ result: 'never' }));
   await expect(lease.withAdmission(admit)).rejects.toThrow(
     'privacy_withdrawal_attempt_invalid'

@@ -39,13 +39,14 @@ export function NativeNoteAuthFixture() {
     const binding = bindNativePrivateAuthentication(scope, { assertCurrent: current, isPromptActive: owner => fixtureDeviceAuthorization.isActive(owner) });
     return {
       async getNotes(check) { current(); guard(); check(); return { notes: [{ id: 'public-note', poolId: 'eth-1', amount: '1', createdAt: 1762000000000,
-        phase: 'verified', withdrawal: { canCheckRecovery: true, mode: 'direct', phase: 'submitted', transactionHash: '0x' + 'ab'.repeat(32) } }] }; },
-      async recoverFailedWithdrawal(id, check, reload) {
-        current(); guard(); check(); if (id !== 'public-note') throw Error('Wrong presentation note');
+        phase: 'verified', withdrawal: { mode: 'direct', phase: 'submitted', transactionHash: '0x' + 'ab'.repeat(32) } }] }; },
+      async clearCompletedNotes(ids, check, progress, reload) {
+        current(); guard(); check(); if (ids.length !== 1 || ids[0] !== 'public-note') throw Error('Wrong presentation note');
         await withNativePrivateAuthentication(binding, signal, current, proof => authorize(proof, check));
+        progress({ checked: 1, total: 1 });
         reload({ notes: [] });
+        return { removed: [...ids], unresolved: [] };
       },
-      async clearCompletedNotes() { throw Error('No note mutation in this presentation fixture'); },
       async dispose() { disposed = true; },
     };
   }, [authorize]);

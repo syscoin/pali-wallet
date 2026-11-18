@@ -4,7 +4,6 @@ import { getPrivacyPool } from './registry.ts';
 import { validatePrivacyRelayerEndpoint } from './relayers.ts';
 import type { PrivacyPoolId } from './types.ts';
 import { captureWithdrawalPublicInputs } from './withdrawalMetadata.ts';
-import type { IPrivacyWithdrawalPublicInputs } from './withdrawalTransactionTypes';
 
 export type PrivacyRelayerJobState =
   | 'QUEUED'
@@ -51,19 +50,14 @@ const invalid = () => new Error('privacy_relayer_job_invalid');
  * src/router.js, queue.js and constants.js. The endpoint reports these facts;
  * matching the saved proof/input hashes is not proof of on-chain inclusion.
  */
-async function readBoundJob(
+export async function readPrivacyRelayerJob(
   reference: IPrivacyRelayerJobReference,
   options: {
     assertCurrent: () => void;
     fetcher?: PrivacyRelayerJobFetch;
     signal?: AbortSignal;
   }
-): Promise<
-  Readonly<{
-    observation: Readonly<IPrivacyRelayerJobObservation>;
-    publicInputs: Readonly<IPrivacyWithdrawalPublicInputs>;
-  }>
-> {
+): Promise<Readonly<IPrivacyRelayerJobObservation>> {
   const guard = () => {
     if (options.signal?.aborted) throw new Error('privacy_relayer_cancelled');
     try {
@@ -180,14 +174,14 @@ async function readBoundJob(
       (typeof value.txHash !== 'string' || !WORD.test(value.txHash))
     )
       throw invalid();
-    const observation = Object.freeze({
+    const observation = {
       jobId: fixed.jobId,
       claimedStatus: value.status as PrivacyRelayerJobState,
       ...(value.txHash === undefined
         ? {}
         : { transactionHash: value.txHash.toLowerCase() }),
-    });
-    const publicInputs = captureWithdrawalPublicInputs(
+    };
+    captureWithdrawalPublicInputs(
       {
         root: value.args[0].toLowerCase(),
         nullifierHash: value.args[1].toLowerCase(),
@@ -198,7 +192,7 @@ async function readBoundJob(
       },
       fixed.inputHash
     );
-    return Object.freeze({ observation, publicInputs });
+    return Object.freeze(observation);
   };
   try {
     return await Promise.race([run(), interrupted]);
@@ -218,18 +212,4 @@ async function readBoundJob(
     clearTimeout(timer!);
     remove();
   }
-}
-
-/** UI-safe projection: never add proof inputs to this public status DTO. */
-export async function readPrivacyRelayerJob(
-  ...args: Parameters<typeof readBoundJob>
-): Promise<Readonly<IPrivacyRelayerJobObservation>> {
-  return (await readBoundJob(...args)).observation;
-}
-
-/** Background-only recovery evidence. Status and candidate hashes grant no authority. */
-export async function readPrivacyRelayerJobPublicInputs(
-  ...args: Parameters<typeof readBoundJob>
-): Promise<Readonly<IPrivacyWithdrawalPublicInputs>> {
-  return (await readBoundJob(...args)).publicInputs;
 }

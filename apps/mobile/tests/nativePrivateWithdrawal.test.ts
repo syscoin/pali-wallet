@@ -1,4 +1,3 @@
-import { operationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
 import { prepareRecoveryCredential } from './fixtures/recoveryCredential.ts';
 import { createTestPrivateAuthentication, readTestNoteInventory, testInventoryAuthentication } from './fixtures/privateAuthentication.ts';
 import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
@@ -48,8 +47,6 @@ const depositAbi = new Interface([
   'function deposit(bytes32) payable',
   'function withdraw(bytes,bytes32,bytes32,address,address,uint256,uint256)',
   'event Withdrawal(address to, bytes32 nullifierHash, address indexed relayer, uint256 fee)',
-  'function isKnownRoot(bytes32) view returns(bool)',
-  'function isSpent(bytes32) view returns(bool)',
 ]);
 const RECIPIENT = '0x' + '12'.repeat(20);
 
@@ -109,7 +106,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let beforeResponse: () => Promise<void> = async () => undefined;
   let lost = false;
   let failPoolDispose = false;
-  let completionReads = false, completionReverted = false, completionKnown = false, completionSpent = false;
+  let completionReads = false;
   let missingCompletionReceipt: ((hash: string) => boolean) | undefined;
   let noteStatus: IPrivateNoteStatus = { phase: 'waiting' };
   const posted: string[] = [];
@@ -149,11 +146,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       const shared = { to: transaction.to, value: '0x' + transaction.value.toString(16), chainId: '0x1', input: transaction.data, hash: transaction.hash, blockNumber: '0x10', blockHash: '0x' + 'aa'.repeat(32), from: transaction.from, nonce: '0x' + transaction.nonce.toString(16) };
       const action = depositAbi.parseTransaction({ data: transaction.data })!;
       const event = action.name === 'withdraw' ? depositAbi.encodeEventLog(depositAbi.getEvent('Withdrawal')!, [action.args[3], action.args[2], action.args[4], action.args[5]]) : null;
-      result = method === 'eth_getTransactionByHash' ? shared : { transactionHash: transaction.hash, blockHash: shared.blockHash, blockNumber: shared.blockNumber, status: completionReverted && action.name === 'withdraw' ? '0x0' : '0x1', logs: event ? [{ address: transaction.to, transactionHash: transaction.hash, blockHash: shared.blockHash, blockNumber: shared.blockNumber, removed: false, ...event }] : [] };
-    }
-    else if (completionReads && method === 'eth_call') {
-      const known = params[0].data.startsWith(depositAbi.getFunction('isKnownRoot')!.selector);
-      result = depositAbi.encodeFunctionResult(known ? 'isKnownRoot' : 'isSpent', [known ? params[1] === '0x8' || completionKnown : completionSpent]);
+      result = method === 'eth_getTransactionByHash' ? shared : { transactionHash: transaction.hash, blockHash: shared.blockHash, blockNumber: shared.blockNumber, status: '0x1', logs: event ? [{ address: transaction.to, transactionHash: transaction.hash, blockHash: shared.blockHash, blockNumber: shared.blockNumber, removed: false, ...event }] : [] };
     }
     else if (method === 'eth_getTransactionCount')
       result = '0x' + nonce.toString(16);
@@ -340,10 +333,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     get storage() {
       return storage;
     },
-    enableCompletionReads(reverted = false) { completionReads = true; completionReverted = reverted; },
+    enableCompletionReads() { completionReads = true; },
     missingCompletionReceipts(read: (hash: string) => boolean) { missingCompletionReceipt = read; },
-    completionPoolState(known: boolean, spent = false) { completionKnown = known; completionSpent = spent; },
-    finalizedPayerNonce(value: number) { nonce = value; },
     markUnsupported(
       flag: 'isLedgerWallet' | 'isTrezorWallet' | 'isSmartAccount'
     ) {
@@ -357,7 +348,6 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     failCredentialRead() { credentialFault = true; },
     get signatures() { return signatures; },
     get secretReads() { return credentialPort.secretReads; },
-    refuseNextAuthorization() { credentialPort.refuseNext(operationAuthenticationCancellation()); },
     rpcMethods,
     beforeRpc(callback: (method: string) => Promise<void>) { beforeRpc = callback; },
     relayedPosts,
@@ -1310,36 +1300,6 @@ test('native service-origin changes are guarded in the real protected SQL transa
 });
 
 
-test('native failed-withdrawal recovery authenticates, preserves the original journal and never resubmits', async () => {
-  const f = await fixture(); const route = new AbortController();
-  try {
-    const inventory = await f.seed(), withdrawalRoute = new AbortController();
-    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop, testInventoryAuthentication(inventory));
-    await model.prepare({ recipient: RECIPIENT, mode: 'direct' }); await model.confirm(model.getSnapshot().review!.intentId);
-    withdrawalRoute.abort(); await model.dispose(); f.enableCompletionReads(true);
-    const [before] = await f.privateNotes(); assert(before?.withdrawal);
-    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
-    assert((await maintenance.getNotes(noop)).notes[0]!.withdrawal?.canCheckRecovery);
-    f.refuseNextAuthorization();
-    const refusedAt = f.secretReads;
-    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop, noop));
-    assert.equal(f.secretReads, refusedAt + 1, 'A refused action must not prompt again for a reload');
-    assert.equal((await f.privateNotes())[0]!.withdrawal?.recovery, undefined);
-    const authorizedAt = f.secretReads;
-    let reloaded = false;
-    await maintenance.recoverFailedWithdrawal(before.id, noop, inventory => {
-      reloaded = true; assert.equal(inventory.notes[0]!.withdrawal?.canCheckRecovery, undefined);
-    });
-    assert(reloaded); assert.equal(f.secretReads, authorizedAt + 1, 'Recovery and reload share one authorization');
-    const [after] = await f.privateNotes(); assert(after?.withdrawal?.recovery);
-    assert.equal(after.note, before.note); assert.equal(after.withdrawal.transactionHash, before.withdrawal.transactionHash);
-    assert.equal(after.withdrawal.proofHash, before.withdrawal.proofHash); assert.equal(f.posted.length, 2);
-    assert.equal((await maintenance.getNotes(noop)).notes[0]!.withdrawal?.canCheckRecovery, undefined);
-    route.abort(); await maintenance.dispose(); await f.reopen();
-    assert.deepEqual((await f.privateNotes())[0]!.withdrawal?.recovery, after.withdrawal.recovery);
-  } finally { route.abort(); await f.close(); }
-});
-
 test('a service-origin change preserves unknown recovery after an unacknowledged financial handoff', async () => {
   const f = await fixture(), route = new AbortController(), settingsRoute = new AbortController();
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
@@ -1429,96 +1389,4 @@ for (const fault of ['release', 'quarantine-and-release'] as const) for (const r
     assert.equal(f.disposed, previousDisposals + 1, 'failed exact cleanup is not repeated or hidden');
     assert.equal(f.posted.length, fault === 'release' ? 0 : 2);
   } finally { failRead = false; route.abort(); await recovery.dispose(); await f.close(); }
-});
-
-test('a displaced privacy withdrawal recovers only after finalized nonce consumption and proof expiry, preserving the journal across restart', async () => {
-  const f = await fixture(), route = new AbortController();
-  let maintenance: Awaited<ReturnType<NonNullable<KeyringRuntime['openNoteMaintenance']>>> | undefined;
-  try {
-    const inventory = await f.seed(), withdrawalRoute = new AbortController();
-    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop, testInventoryAuthentication(inventory));
-    await model.prepare({ recipient: RECIPIENT, mode: 'direct' }); await model.confirm(model.getSnapshot().review!.intentId);
-    withdrawalRoute.abort(); await model.dispose();
-    const [before] = await f.privateNotes(); assert(before?.withdrawal?.transactionHash);
-    const originalHash = before.withdrawal.transactionHash, originalNonce = Number(before.withdrawal.nonce);
-    f.enableCompletionReads(); f.missingCompletionReceipts(hash => hash === originalHash);
-    f.completionPoolState(true); f.finalizedPayerNonce(originalNonce + 1);
-    maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
-    const oldBytes = await f.storage.notes!.read();
-    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop, noop), /privacy_withdrawal_recovery_unavailable/);
-    assert.deepEqual(await f.storage.notes!.read(), oldBytes, 'a live disclosed proof cannot be cleared by payer cancellation');
-    f.completionPoolState(false); f.finalizedPayerNonce(originalNonce);
-    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop, noop), /privacy_withdrawal_recovery_unavailable/);
-    assert.deepEqual(await f.storage.notes!.read(), oldBytes);
-    f.finalizedPayerNonce(originalNonce + 1); f.completionPoolState(false, true);
-    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop, noop), /privacy_withdrawal_recovery_unavailable/);
-    assert.deepEqual(await f.storage.notes!.read(), oldBytes);
-    f.completionPoolState(false);
-    let nonceReads = 0;
-    f.beforeRpc(async method => { if (method === 'eth_getTransactionCount' && ++nonceReads === 2) f.completionPoolState(true); });
-    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop, noop), /privacy_withdrawal_recovery_unavailable/);
-    assert.equal(nonceReads, 2, 'the same finalized evidence is checked again immediately before storage mutation');
-    assert.deepEqual(await f.storage.notes!.read(), oldBytes);
-    f.beforeRpc(async () => undefined); f.completionPoolState(false);
-    const posted = f.posted.length, signatures = f.signatures, authorizations = f.secretReads;
-    await maintenance.recoverFailedWithdrawal(before.id, noop, noop);
-    assert.equal(f.secretReads, authorizations + 1, 'original record lookup and recovery reuse the same authentication');
-    assert.equal(f.posted.length, posted); assert.equal(f.signatures, signatures);
-    const [after] = await f.privateNotes(); assert(after?.withdrawal?.recovery);
-    assert.equal(after.note, before.note); assert.equal(after.withdrawal.transactionHash, originalHash);
-    assert.equal(after.withdrawal.proofHash, before.withdrawal.proofHash); assert.equal(after.withdrawal.inputHash, before.withdrawal.inputHash);
-    route.abort(); await maintenance.dispose(); maintenance = undefined; await f.reopen();
-    assert.deepEqual((await f.privateNotes())[0]!.withdrawal, after.withdrawal);
-    await f.runtime.resetActivity(noop, noop);
-    const freshInventory = await readTestNoteInventory(f.runtime, noop);
-    const retry = await freshInventory.openWithdrawal!(freshInventory.notes[0]!, new AbortController().signal, noop, testInventoryAuthentication(freshInventory));
-    await retry.prepare({ recipient: RECIPIENT, mode: 'direct' });
-    assert.equal(retry.getSnapshot().phase, 'review', 'fresh proof and fee consent are required after recovery');
-    assert.equal(f.posted.length, posted); await retry.dispose();
-  } finally { route.abort(); await maintenance?.dispose(); await f.close(); }
-});
-
-for (const lostReply of [false,true]) test(`native relayed proof expiry recovery survives restart (lost reply: ${lostReply}) without trusting relayer failure or using its nonce`, async () => {
-  const f = await fixture(), route = new AbortController();
-  let maintenance: Awaited<ReturnType<NonNullable<KeyringRuntime['openNoteMaintenance']>>> | undefined;
-  try {
-    const inventory = await f.seed(), withdrawalRoute = new AbortController();
-    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop, testInventoryAuthentication(inventory));
-    await model.loadRelayers();
-    await model.prepare({recipient:RECIPIENT,mode:'relayed',relayerId:model.getSnapshot().relayers[0]!.id});
-    f.loseResponse(lostReply);
-    await model.confirm(model.getSnapshot().review!.intentId);
-    assert.equal(model.getSnapshot().phase,lostReply?'unknown':'submitted');
-    withdrawalRoute.abort(); await model.dispose();
-    const [before] = await f.privateNotes(); assert(before?.withdrawal?.publicInputs);
-    assert.equal(before.withdrawal.phase,lostReply?'unknown':'submitted');
-    f.loseResponse(false); f.enableCompletionReads(); f.completionPoolState(true);
-    maintenance = await f.runtime.openNoteMaintenance!(route.signal,noop,createTestPrivateAuthentication(noop));
-    const disk = await f.storage.notes!.read();
-    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id,noop,noop),/privacy_withdrawal_recovery_unavailable/);
-    assert.deepEqual(await f.storage.notes!.read(),disk);
-    f.completionPoolState(false,true);
-    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id,noop,noop),/privacy_withdrawal_recovery_unavailable/);
-    assert.deepEqual(await f.storage.notes!.read(),disk);
-    f.completionPoolState(false);
-    let rootReads = 0;
-    f.beforeRpc(async method => { if (method==='eth_call' && ++rootReads===3) f.completionPoolState(true); });
-    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id,noop,noop),/privacy_withdrawal_recovery_unavailable/);
-    assert.deepEqual(await f.storage.notes!.read(),disk,'prewrite evidence is repeated, not trusted from preparation');
-    f.beforeRpc(async()=>undefined); f.completionPoolState(false);
-    const rpcStart=f.rpcMethods.length, secretReads=f.secretReads, posts=f.relayedPosts.length, signed=f.signatures;
-    await maintenance.recoverFailedWithdrawal(before.id,noop,noop);
-    assert.equal(f.secretReads,secretReads+1,'recovery uses one existing authenticated lease');
-    assert.equal(f.relayedPosts.length,posts); assert.equal(f.signatures,signed);
-    assert(f.rpcMethods.slice(rpcStart).every(method=>['eth_chainId','eth_getBlockByNumber','eth_call'].includes(method)));
-    const [after]=await f.privateNotes(); assert(after?.withdrawal?.recovery);
-    assert.equal(after.withdrawal.recovery.kind,'relayed-proof-expired');
-    assert.deepEqual({...after.withdrawal,recovery:undefined},{...before.withdrawal,recovery:undefined});
-    route.abort(); await maintenance.dispose(); maintenance=undefined; await f.reopen();
-    assert.deepEqual((await f.privateNotes())[0]!.withdrawal,after.withdrawal);
-    const fresh=await readTestNoteInventory(f.runtime,noop);
-    const retry=await fresh.openWithdrawal!(fresh.notes[0]!,new AbortController().signal,noop,testInventoryAuthentication(fresh));
-    await retry.prepare({recipient:RECIPIENT,mode:'direct'});
-    assert.equal(retry.getSnapshot().phase,'review'); assert.equal(f.relayedPosts.length,posts); await retry.dispose();
-  } finally { route.abort(); await maintenance?.dispose(); await f.close(); }
 });

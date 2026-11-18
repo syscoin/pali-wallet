@@ -3,12 +3,10 @@ import { DEFAULT_PRIVACY_SERVICE_ORIGIN } from '../../shared/privacyServiceOrigi
 import {
   createPrivacyRpc,
   createPrivacySnapshotAnchorVerifier,
-  PRIVACY_POOL_ABI,
   readPrivacyPoolSnapshot,
   verifyPrivacySnapshotAnchor,
 } from './publicSyncProtocol';
 import type { PrivacyJsonTransport } from './publicSyncProtocol';
-import { PRIVACY_POOLS } from './registry';
 import { validatePrivacyRpcUrl } from './snapshotValidation';
 import type { PrivacyPoolId, PrivacySnapshot } from './types';
 
@@ -81,49 +79,5 @@ export async function readCompletionRpc(
         params.length === 1 &&
         hash(params[0])));
   if (!allowed) throw new Error('privacy_rpc_unavailable');
-  return rpc(validatePrivacyRpcUrl(rpcUrl), method, params, signal);
-}
-
-/** Explicit failed-withdrawal recovery only; no arbitrary contract calls. */
-export async function readWithdrawalRecoveryRpc(
-  rpcUrl: string,
-  method: string,
-  params: unknown[],
-  signal: AbortSignal
-): Promise<unknown> {
-  if (method === 'eth_getTransactionCount') {
-    if (
-      !Array.isArray(params) ||
-      params.length !== 2 ||
-      typeof params[0] !== 'string' ||
-      !/^0x[0-9a-f]{40}$/.test(params[0]) ||
-      typeof params[1] !== 'string' ||
-      params[1].length > 66 ||
-      !/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(params[1])
-    )
-      throw new Error('privacy_rpc_unavailable');
-    return rpc(validatePrivacyRpcUrl(rpcUrl), method, params, signal);
-  }
-  if (method !== 'eth_call')
-    return readCompletionRpc(rpcUrl, method, params, signal);
-  const call: any =
-    Array.isArray(params) && params.length === 2 ? params[0] : undefined;
-  if (
-    !call ||
-    typeof call !== 'object' ||
-    Array.isArray(call) ||
-    Object.keys(call).sort().join(',') !== 'data,to' ||
-    !PRIVACY_POOLS.some((pool) => pool.address === call.to) ||
-    typeof params[1] !== 'string' ||
-    params[1].length > 66 ||
-    !/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(params[1]) ||
-    typeof call.data !== 'string' ||
-    !/^0x[0-9a-f]{72}$/.test(call.data) ||
-    !['isKnownRoot', 'isSpent'].some(
-      (name) =>
-        call.data.slice(0, 10) === PRIVACY_POOL_ABI.getFunction(name)!.selector
-    )
-  )
-    throw new Error('privacy_rpc_unavailable');
   return rpc(validatePrivacyRpcUrl(rpcUrl), method, params, signal);
 }

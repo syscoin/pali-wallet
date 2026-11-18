@@ -3658,7 +3658,7 @@ test('Trezor runtime reads saved UTXO status without Suite, signing or broadcast
     const records = new UtxoSignedRecords(disk.utxoPort, disk.utxoPort);
     const recordAccess = ring.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1', 'org.syscoin.pali.evm.signed.chunk.v1',
       'org.syscoin.pali.utxo.signed.root.v1', 'org.syscoin.pali.utxo.signed.chunk.v1']);
-    await records.admit({ keyring: recordAccess, assertCurrent() {} }, record, 'initial', async (prepare, release) => {
+    await records.admit({ keyring: recordAccess, assertCurrent() {} }, record, async (prepare, release) => {
       await prepare();
       release(); // Simulate a previously dispatched transfer without an ACK.
     });
