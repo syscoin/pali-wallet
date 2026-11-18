@@ -257,6 +257,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const [watchConnection, setWatchConnection] = useState<'opening' | 'ready' | 'unavailable'>('opening');
   const { pendingEventId, tapRevision } = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
   const routedNotification = useRef<string | null>(null);
+  const [notificationRouteWake, wakeNotificationRoute] = useState(0);
   const route: Route =
     !preview && viewLock.phase !== 'unlocked' ? 'locked' : !preview &&
     !['welcome', 'add', 'locked', 'design', 'native', 'accounts'].includes(requestedRoute) &&
@@ -417,7 +418,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       }
     }).catch(() => undefined);
     return () => { current = false; };
-  }, [pendingEventId, tapRevision, loading, watchState.status, watchAuthority, route, preview, catalogue, openWallet, openWatch, watchAccounts]);
+  }, [pendingEventId, tapRevision, notificationRouteWake, loading, watchState.status, watchAuthority, route, preview, catalogue, openWallet, openWatch, watchAccounts]);
   const announce = (message: string) => {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -524,18 +525,28 @@ function AppContent({ availableWatchNetworks }: AppProps) {
         if (opened) notificationReturn.resume(watchNotificationContext()); else notificationReturn.discard();
       });
     };
+    const activate = () => {
+      if (!foreground.current) {
+        foreground.current = true;
+        // Native can deliver the tap before the app becomes active.
+        const pending = nativeActivityNotifications.getSnapshot();
+        if (pending.pendingEventId && routedNotification.current !== `${pending.pendingEventId}:${pending.tapRevision}`)
+          wakeNotificationRoute(value => value + 1);
+      }
+      resume();
+    };
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
       if (isNotificationPermissionPromptActive() || isNativeCredentialPromptActive() || isCameraPermissionPromptActive()) return;
       foreground.current = false; hide();
     }) : null;
     const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', () => {
       if (AppState.currentState !== 'active') return;
-      foreground.current = true; resume();
+      activate();
     }) : null;
     const sub = AppState.addEventListener('change', (state) => {
-      foreground.current = state === 'active';
-      if (state === 'inactive' && (isNotificationPermissionPromptActive() || isCameraPermissionPromptActive()) || state !== 'active' && isNativeCredentialPromptActive()) return;
-      if (state === 'active') { resume(); return; }
+      if (state === 'active') { activate(); return; }
+      foreground.current = false;
+      if (state === 'inactive' && (isNotificationPermissionPromptActive() || isCameraPermissionPromptActive()) || isNativeCredentialPromptActive()) return;
       hide();
       if (requestedRoute !== 'native' && !preview && authority.current?.getSnapshot().accounts.length)
         go('locked', true);

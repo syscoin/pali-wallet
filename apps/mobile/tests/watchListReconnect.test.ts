@@ -23,7 +23,7 @@ class FixtureWatchAccounts extends WatchAccounts {
   }
 }
 
-function fixture() {
+function fixture(platform: 'ios' | 'android' = 'ios') {
   const first = createEvmWatchAccount('first', 'First', FIRST);
   const decoded = createWatchAccountCodec(UTXO_NETWORKS).validate([{ kind: 'address', ...first }]);
   let saved: WatchRecordSnapshot = { version: 1, records: decoded.records, accounts: decoded.accounts, utxoNetworks: decoded.utxoNetworks };
@@ -31,7 +31,7 @@ function fixture() {
   let openStarted = deferred();
   let writeStarted = deferred();
   const opened: WatchOnlyAuthority[] = [];
-  const record = { writes: 0, opens: 0, reads: 0, credentials: 0, balances: 0 };
+  const record = { writes: 0, opens: 0, reads: 0, credentials: 0, balances: 0, notificationReads: 0 };
   let notification = { pendingEventId: null as string | null, tapRevision: 0 };
   const repository = {
     assertNetworkCurrent() {},
@@ -57,7 +57,7 @@ function fixture() {
     const values = listeners.get(name) ?? new Set(); values.add(listener); listeners.set(name, values); return { remove() { values.delete(listener); } };
   } };
   const native = { View: 'View', ScrollView: 'ScrollView', KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator',
-    Platform: { OS: 'ios' }, AppState: appState, BackHandler: { addEventListener: () => ({ remove() {} }) }, StyleSheet: { create: (value: unknown) => value },
+    Platform: { OS: platform }, AppState: appState, BackHandler: { addEventListener: () => ({ remove() {} }) }, StyleSheet: { create: (value: unknown) => value },
     AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, Linking: {}, Share: {} };
   const idle = { allowNewInput() {}, invalidate() {}, begin() {}, stop() {}, check: () => true, pause: () => () => true };
   let privacy: { phase: 'unlocked' | 'locked' } = { phase: 'unlocked' };
@@ -80,7 +80,10 @@ function fixture() {
     './src/connections/pairingLinks': { NativePairingInbox: class { getSnapshot = () => null; subscribe = () => () => {}; consume() {} }, observePairingLinks: () => () => {} },
     './src/notifications/service': { nativeActivityNotifications: {
       subscribe: () => () => {}, getSnapshot: () => notification, disableOwner: async () => {},
-      getPendingOwner: async () => notification.pendingEventId ? { accountId: first.id, accountType: 'watch' } : null,
+      getPendingOwner: async () => {
+        record.notificationReads++;
+        return notification.pendingEventId ? { accountId: first.id, accountType: 'watch' } : null;
+      },
     }, isNotificationPermissionPromptActive: () => false },
     './src/notifications/choices': { watchNotificationChoices: () => [] },
     './src/notifications/permissionReturn': { NotificationPermissionReturn: class { discard() {} take() { return null; } pause() {} resume() {} } },
@@ -113,6 +116,8 @@ function fixture() {
     lockPublic() { privacy = { phase: 'locked' }; },
     background() { appState.currentState = 'background'; for (const listener of listeners.get('change') ?? []) listener('background'); },
     foreground() { appState.currentState = 'active'; for (const listener of listeners.get('change') ?? []) listener('active'); },
+    blur() { for (const listener of listeners.get('blur') ?? []) listener(); },
+    focus() { for (const listener of listeners.get('focus') ?? []) listener(); },
     saved: () => saved, close() { accounts.close(); app.close(); },
   };
 }
@@ -134,6 +139,34 @@ test('leaving an alert destination only opens it again after a deliberate new ta
     assert(f.render().some(element => element.type === 'WalletAccounts'));
     f.tapSameAlert(); f.render(); await f.start();
     assert(f.render().some(element => element.type === 'WatchSession'));
+  } finally { f.close(); }
+});
+
+for (const platform of ['ios', 'android'] as const) test(`a held alert tap routes once the ${platform} app can foreground it`, async () => {
+  const f = fixture(platform);
+  const hide = platform === 'ios' ? f.background : f.blur;
+  const show = platform === 'ios' ? f.foreground : f.focus;
+  try {
+    await f.start();
+    hide();
+    f.tapSameAlert();
+    await f.start();
+    assert.equal(f.record.notificationReads, 0);
+    assert(!f.render().some(element => element.type === 'WatchSession'));
+
+    show();
+    await f.start();
+    assert.equal(f.record.notificationReads, 1);
+    assert(f.render().some(element => element.type === 'WatchSession'));
+
+    f.showAccounts();
+    await f.start();
+    hide();
+    await f.start();
+    show();
+    await f.start();
+    assert.equal(f.record.notificationReads, 1, 'foregrounding cannot re-open a handled tap');
+    assert(!f.render().some(element => element.type === 'WatchSession'));
   } finally { f.close(); }
 });
 
