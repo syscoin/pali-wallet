@@ -44,16 +44,15 @@ wallet versions may not read its newer safety metadata. Changing the limit
 does not remove notes. A lower limit is rejected if the existing notes do not
 fit; the user must first reduce the saved count through an available safe action.
 
-**Archive completed notes** checks locally recorded withdrawal transaction
-hashes against the selected Ethereum RPC. A note moves to the encrypted archive
-only after Pali verifies a matching finalized withdrawal. The provider receives
-the queried withdrawal hashes and can observe request timing. Deposit hashes,
-the note secret and the expected nullifier hash stay local during verification.
-Pali relies on the selected RPC’s responses. A note with an unresolved withdrawal
-or without a locally recorded submitted withdrawal and hash stays active, even
-if it appears spent. Pali checks notes individually. If archiving is
-interrupted, earlier notes may already be in the archive. Refresh the list
-after an error before trying again.
+After the user selects a note and confirms **Archive note**, Pali checks that
+note’s locally recorded withdrawal transaction hashes against the selected
+Ethereum RPC. The note moves to the encrypted archive only after Pali verifies
+a matching finalized withdrawal. The provider receives the queried withdrawal
+hashes and can observe request timing. Deposit hashes, the note secret and the
+expected nullifier hash stay local during verification. Pali relies on the
+selected RPC’s responses. A note with an unresolved withdrawal or without a
+locally recorded submitted withdrawal and hash stays active, even if it
+appears spent. Refresh the list after an error before trying again.
 
 For a locally recorded direct withdrawal that failed, **Recover failed withdrawal**
 checks the original transaction and its proof before changing the saved hold.

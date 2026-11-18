@@ -96,6 +96,7 @@ function NotesView() {
   const [capacitySettings, setCapacitySettings] = useState(false);
   const [showSpent, setShowSpent] = useState(false);
   const [archiveRevision, setArchiveRevision] = useState(0);
+  const [archiveNote, setArchiveNote] = useState<string | null>(null);
   const [backupNoteId, setBackupNoteId] = useState<string | null>(null);
   const [bundleMode, setBundleMode] = useState<'export' | 'import' | null>(
     null
@@ -116,6 +117,7 @@ function NotesView() {
   const statusRevisions = useRef(new Map<string, number>());
   const clear = () => {
     setCapacitySettings(false);
+    setArchiveNote(null);
     owner.current.revision += 1;
     setStatusNote(null);
     setImporting(false);
@@ -400,7 +402,10 @@ function NotesView() {
               type="button"
               className={actionClass}
               aria-expanded={showSpent}
-              onClick={() => setShowSpent((value) => !value)}
+              onClick={() => {
+                setArchiveNote(null);
+                setShowSpent((value) => !value);
+              }}
             >
               {t('privacy.capacity.reportedSpent', {
                 count: notes.filter((note) => note.phase === 'spent').length,
@@ -408,44 +413,6 @@ function NotesView() {
             </button>
           </div>
         )}
-      {!capacitySettings && !importing && !selected && (
-        <PrivateVaultClearCompleted
-          controllerEmitter={controllerEmitter}
-          noteIds={notes
-            .filter(
-              (note) =>
-                note.phase === 'spent' ||
-                (note.withdrawal?.phase === 'submitted' &&
-                  note.withdrawal.transactionHash)
-            )
-            .map((note) => note.id)}
-          onRemoved={(ids) => {
-            if (!owner.current.active || document.visibilityState === 'hidden')
-              return;
-            for (const id of ids)
-              statusRevisions.current.set(
-                id,
-                (statusRevisions.current.get(id) || 0) + 1
-              );
-            forget(ids);
-            setArchiveCount((value) => value + ids.length);
-            setArchiveRevision((value) => value + 1);
-            setStatusNote((previous) =>
-              previous && ids.includes(previous) ? null : previous
-            );
-            setStatusError((previous) =>
-              previous && ids.includes(previous.id) ? null : previous
-            );
-            setReportedStatus((previous) =>
-              previous && ids.includes(previous.id) ? null : previous
-            );
-          }}
-          onComplete={() => {
-            if (owner.current.active && document.visibilityState !== 'hidden')
-              void refresh();
-          }}
-        />
-      )}
       <div
         role="status"
         aria-live="polite"
@@ -618,6 +585,48 @@ function NotesView() {
                   )}
                 </div>
               )}
+              {!capacitySettings &&
+                !importing &&
+                !selected &&
+                note.withdrawal?.phase === 'submitted' &&
+                note.withdrawal.transactionHash && (
+                  <PrivateVaultClearCompleted
+                    confirming={archiveNote === note.id}
+                    controllerEmitter={controllerEmitter}
+                    noteId={note.id}
+                    onCancel={() => setArchiveNote(null)}
+                    onSelect={() => setArchiveNote(note.id)}
+                    onRemoved={(id) => {
+                      if (!owner.current.active) return;
+                      statusRevisions.current.set(
+                        id,
+                        (statusRevisions.current.get(id) || 0) + 1
+                      );
+                      forget([id]);
+                      setArchiveCount((value) => value + 1);
+                      setArchiveRevision((value) => value + 1);
+                      setArchiveNote((previous) =>
+                        previous === id ? null : previous
+                      );
+                      setStatusNote((previous) =>
+                        previous === id ? null : previous
+                      );
+                      setStatusError((previous) =>
+                        previous?.id === id ? null : previous
+                      );
+                      setReportedStatus((previous) =>
+                        previous?.id === id ? null : previous
+                      );
+                    }}
+                    onComplete={() => {
+                      if (
+                        owner.current.active &&
+                        document.visibilityState !== 'hidden'
+                      )
+                        void refresh();
+                    }}
+                  />
+                )}
               {note.phase === 'verified' && (
                 <button
                   type="button"

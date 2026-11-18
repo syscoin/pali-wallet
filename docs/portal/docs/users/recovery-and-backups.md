@@ -20,7 +20,7 @@ The optional **Suggest a memorable password** action creates an unlock password,
 
 Separately back up every private note before forgetting, erasing or replacing a wallet. In Privacy, choose **Reveal for backup** for each saved note while the wallet is unlocked and keep the backup secret: anyone who has it can withdraw. Matching-phrase password recovery on the same device keeps supported saved private notes. The phrase alone cannot recreate missing notes or restore them on a new device. If you forget the password, keep the existing wallet data while recovering access.
 
-**Archive completed notes** checks the recorded withdrawal and moves completed notes into an encrypted archive. Archived notes retain their secrets and can be restored, revealed for backup or included in an encrypted backup. They do not use the active-note allowance. The archive has its own limit of 512 notes and 4 MiB; the wallet's existing total storage limit still applies. Nothing is automatically erased to make space.
+Select an active note, choose **Archive note**, and confirm. Pali checks the recorded withdrawal and moves the note into an encrypted archive once it verifies a matching finalized withdrawal. Archived notes retain their secrets and can be restored, revealed for backup or included in an encrypted backup. They do not use the active-note allowance. The archive has its own limit of 512 notes and 4 MiB; the wallet's existing total storage limit still applies. Nothing is automatically erased to make space.
 
 **Clear archive** permanently deletes only archived notes after authorization and a separate confirmation. Confirm that the notes are spent or keep a usable backup first. Your seed phrase cannot recreate deleted note secrets.
 

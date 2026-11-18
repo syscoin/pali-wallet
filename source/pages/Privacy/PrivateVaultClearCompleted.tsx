@@ -4,86 +4,60 @@ import { useTranslation } from 'react-i18next';
 import { InlineFeedback } from 'components/InlineFeedback';
 import { useUtils } from 'hooks/useUtils';
 
+const isVisible = () => document.visibilityState !== 'hidden';
+
 export default function PrivateVaultClearCompleted({
+  confirming,
   controllerEmitter,
-  noteIds,
+  noteId,
+  onCancel,
   onComplete,
   onRemoved,
+  onSelect,
 }: {
+  confirming: boolean;
   controllerEmitter: (...args: any[]) => Promise<unknown>;
-  noteIds: string[];
+  noteId: string;
+  onCancel: () => void;
   onComplete: () => void;
-  onRemoved: (ids: string[]) => void;
+  onRemoved: (id: string) => void;
+  onSelect: () => void;
 }) {
   const { t } = useTranslation();
   const { alert } = useUtils();
-  const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
-  const [result, setResult] = useState<{
-    removed: number;
-    unresolved: number;
-  }>();
-  const [progress, setProgress] = useState({ checked: 0, total: 0 });
-  const owner = useRef({ active: true, busy: false, revision: 0 });
-  const current = (revision: number) =>
-    owner.current.active &&
-    owner.current.revision === revision &&
-    document.visibilityState !== 'hidden';
+  const [unresolved, setUnresolved] = useState(false);
+  const owner = useRef({ active: true, busy: false });
   useEffect(() => {
     owner.current.active = true;
     return () => {
       owner.current.active = false;
-      owner.current.revision++;
     };
   }, []);
   const clear = async () => {
-    if (owner.current.busy || !confirming) return;
+    if (owner.current.busy || !confirming || !isVisible()) return;
     owner.current.busy = true;
-    const revision = ++owner.current.revision;
-    const ids = [...new Set(noteIds)];
     setPending(true);
-    setResult(undefined);
-    setProgress({ checked: 0, total: ids.length });
-    let removed = 0;
-    let unresolved = 0;
+    setUnresolved(false);
     try {
-      for (let i = 0; i < ids.length; i += 1) {
-        if (!current(revision)) return;
-        const batch = ids.slice(i, i + 1);
-        const value = (await controllerEmitter(
-          ['privateVault', 'clearCompletedNotes'],
-          [batch],
-          120000,
-          false
-        )) as { removed?: unknown; unresolved?: unknown } | null;
-        if (
-          !value ||
-          !Array.isArray(value.removed) ||
-          !Array.isArray(value.unresolved)
-        )
-          throw new Error('privacy_vault_unavailable');
-        const all = [...value.removed, ...value.unresolved];
-        if (
-          all.length !== batch.length ||
-          new Set(all).size !== batch.length ||
-          all.some((id) => typeof id !== 'string' || !batch.includes(id))
-        )
-          throw new Error('privacy_vault_unavailable');
-        // A committed removal still belongs to the parent notes view when
-        // opening another panel has unmounted this confirmation control.
-        if (value.removed.length) onRemoved(value.removed);
-        removed += value.removed.length;
-        unresolved += value.unresolved.length;
-        if (current(revision))
-          setProgress({ checked: removed + unresolved, total: ids.length });
-      }
-      if (current(revision)) {
-        setResult({ removed, unresolved });
-        setConfirming(false);
-        onComplete();
-      }
+      const value = (await controllerEmitter(
+        ['privateVault', 'clearCompletedNotes'],
+        [[noteId]],
+        120000,
+        false
+      )) as { removed?: unknown; unresolved?: unknown } | null;
+      if (
+        !Array.isArray(value?.removed) ||
+        !Array.isArray(value?.unresolved) ||
+        value.removed.length + value.unresolved.length !== 1 ||
+        (value.removed[0] ?? value.unresolved[0]) !== noteId
+      )
+        throw new Error('privacy_vault_unavailable');
+      // A committed removal still belongs to the parent if the row unmounted.
+      if (value.removed.length) onRemoved(noteId);
+      else if (owner.current.active) setUnresolved(true);
     } catch (failure) {
-      if (current(revision))
+      if (owner.current.active && isVisible())
         alert.error(
           t(
             failure instanceof Error &&
@@ -92,55 +66,55 @@ export default function PrivateVaultClearCompleted({
               : 'privacy.capacity.clearError'
           )
         );
-      onComplete();
     } finally {
-      if (current(revision)) {
-        owner.current.busy = false;
-        setPending(false);
-      }
+      owner.current.busy = false;
+      if (owner.current.active) setPending(false);
+      onComplete();
     }
   };
   return (
     <div className="space-y-2 text-xs" aria-busy={pending}>
-      {noteIds.length > 0 &&
-        (!confirming ? (
+      {!confirming ? (
+        <button
+          type="button"
+          className="rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
+          disabled={pending}
+          onClick={() => {
+            setUnresolved(false);
+            onSelect();
+          }}
+        >
+          {t('privacy.capacity.clear')}
+        </button>
+      ) : (
+        <div
+          className="space-y-2"
+          role="group"
+          aria-label={t('privacy.capacity.clear')}
+        >
+          <InlineFeedback>{t('privacy.capacity.clearHelp')}</InlineFeedback>
           <button
             type="button"
             className="rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
-            onClick={() => setConfirming(true)}
+            disabled={pending}
+            onClick={() => void clear()}
           >
-            {t('privacy.capacity.clear')}
+            {t(pending ? 'privacy.checking' : 'privacy.capacity.confirmClear')}
+          </button>{' '}
+          <button
+            type="button"
+            className="rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
+            disabled={pending}
+            onClick={onCancel}
+          >
+            {t('buttons.cancel')}
           </button>
-        ) : (
-          <div
-            className="space-y-2"
-            role="group"
-            aria-label={t('privacy.capacity.clear')}
-          >
-            <InlineFeedback>{t('privacy.capacity.clearHelp')}</InlineFeedback>
-            <button
-              type="button"
-              className="rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
-              disabled={pending}
-              onClick={() => void clear()}
-            >
-              {t('privacy.capacity.confirmClear')}
-            </button>{' '}
-            <button
-              type="button"
-              className="rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
-              disabled={pending}
-              onClick={() => setConfirming(false)}
-            >
-              {t('buttons.cancel')}
-            </button>
-          </div>
-        ))}
-      {pending && (
-        <p role="status">{t('privacy.capacity.clearProgress', progress)}</p>
+        </div>
       )}
-      {result && (
-        <p role="status">{t('privacy.capacity.clearResult', result)}</p>
+      {confirming && unresolved && (
+        <p role="status">
+          {t('privacy.capacity.clearResult', { removed: 0, unresolved: 1 })}
+        </p>
       )}
     </div>
   );

@@ -376,14 +376,14 @@ it('normal completed-note cleanup reports separate archive capacity instead of s
   });
   render(
     <PrivateVaultClearCompleted
+      confirming
       controllerEmitter={emit}
-      noteIds={['id']}
+      noteId="id"
+      onCancel={jest.fn()}
       onComplete={jest.fn()}
       onRemoved={removed}
+      onSelect={jest.fn()}
     />
-  );
-  fireEvent.click(
-    screen.getByRole('button', { name: 'privacy.capacity.clear' })
   );
   fireEvent.click(
     screen.getByRole('button', { name: 'privacy.capacity.confirmClear' })

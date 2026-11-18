@@ -1626,37 +1626,95 @@ it.each(['deposit', 'import', 'reveal', 'escape'] as const)(
   }
 );
 
-it('keeps pending withdrawals visible and retains an unverified reported-spent note after a failed completion check', async () => {
-  const pendingId = '00000000-0000-4000-8000-000000000001';
-  const spentId = '00000000-0000-4000-8000-000000000002';
-  const tx = '0x' + '11'.repeat(32);
-  const notes = [
-    {
+it.each([0, 1])(
+  'archives only the selected note in row %i',
+  async (selected) => {
+    const notes = ['11', '22'].map((byte, index) => ({
       ...note,
-      id: pendingId,
-      phase: 'waiting',
-      withdrawal: { mode: 'direct', phase: 'submitted', transactionHash: tx },
+      id: `00000000-0000-4000-8000-00000000000${index + 1}`,
+      withdrawal: {
+        mode: 'direct',
+        phase: 'submitted',
+        transactionHash: '0x' + byte.repeat(32),
+      },
+    }));
+    let records = notes;
+    mockEmitter.mockImplementation(async ([, method], [ids] = []) => {
+      if (method === 'getNotes') return { notes: records };
+      if (method === 'clearCompletedNotes') {
+        records = records.filter((entry) => !ids.includes(entry.id));
+        return { removed: ids, unresolved: [] };
+      }
+      throw new Error('Unexpected call');
+    });
+    const archiveCalls = () =>
+      mockEmitter.mock.calls.filter(
+        ([path]) => path[1] === 'clearCompletedNotes'
+      );
+    render(<PrivateNotes />);
+    await screen.findAllByRole('button', { name: en.privacy.capacity.clear });
+    const rows = screen.getAllByRole('listitem');
+    const row = within(rows[selected]);
+    const otherRow = within(rows[1 - selected]);
+    expect(mockEmitter.mock.calls.map(([path]) => path)).toEqual([
+      ['privateVault', 'getNotes'],
+    ]);
+
+    fireEvent.click(
+      row.getByRole('button', { name: en.privacy.capacity.clear })
+    );
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+    expect(
+      otherRow.queryByRole('button', { name: en.privacy.capacity.confirmClear })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      row.getByRole('button', { name: en.privacy.capacity.confirmClear })
+    );
+    await waitFor(() => expect(rows[selected]).not.toBeInTheDocument());
+    expect(rows[1 - selected]).toBeVisible();
+    expect(archiveCalls()).toEqual([
+      [
+        ['privateVault', 'clearCompletedNotes'],
+        [[notes[selected].id]],
+        120000,
+        false,
+      ],
+    ]);
+  }
+);
+
+it('shows archive only for a displayed note with a submitted withdrawal hash and keeps unresolved notes', async () => {
+  const eligible = {
+    ...note,
+    id: '00000000-0000-4000-8000-000000000001',
+    phase: 'spent',
+    withdrawal: {
+      mode: 'direct',
+      phase: 'submitted',
+      transactionHash: '0x' + '11'.repeat(32),
     },
-    {
-      ...note,
-      id: spentId,
-      phase: 'spent',
-      withdrawal: { mode: 'direct', phase: 'submitted', transactionHash: tx },
-    },
-  ];
-  mockEmitter.mockImplementation(async ([, method], [batch] = []) => {
-    if (method === 'getNotes') return { notes };
+  };
+  const noHash = {
+    ...note,
+    id: '00000000-0000-4000-8000-000000000002',
+    phase: 'spent',
+    withdrawal: { mode: 'relayed', phase: 'submitted', jobId: 'other-job' },
+  };
+  mockEmitter.mockImplementation(async ([, method], [ids] = []) => {
+    if (method === 'getNotes') return { notes: [eligible, noHash] };
     if (method === 'clearCompletedNotes')
-      return { removed: [], unresolved: batch };
+      return { removed: [], unresolved: ids };
     throw new Error('Unexpected call');
   });
   render(<PrivateNotes />);
+  const showSpent = await screen.findByRole('button', {
+    name: 'Reported spent notes (2)',
+  });
   expect(
-    await screen.findByText(en.privacy.withdrawal.statusPending)
-  ).toBeVisible();
-  expect(
-    screen.queryByText(en.privacy.notePhase.spent)
+    screen.queryByRole('button', { name: en.privacy.capacity.clear })
   ).not.toBeInTheDocument();
+  fireEvent.click(showSpent);
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.clear })
   );
@@ -1664,13 +1722,15 @@ it('keeps pending withdrawals visible and retains an unverified reported-spent n
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
   expect(
-    await screen.findByText('Archived: 0. Still active: 2.')
+    await screen.findByText('Archived: 0. Still active: 1.')
   ).toBeVisible();
-  expect(screen.getByText(en.privacy.withdrawal.statusPending)).toBeVisible();
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Reported spent notes (1)' })
+  expect(screen.getAllByText(en.privacy.notePhase.spent)).toHaveLength(2);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['privateVault', 'clearCompletedNotes'],
+    [[eligible.id]],
+    120000,
+    false
   );
-  expect(screen.getByText(en.privacy.notePhase.spent)).toBeVisible();
 });
 
 it('does not restore a cleared note from a list request started before the clear', async () => {
@@ -1696,9 +1756,9 @@ it('does not restore a cleared note from a list request started before the clear
     throw new Error('Unexpected call');
   });
   render(<PrivateNotes />);
-  expect(
+  fireEvent.click(
     await screen.findByRole('button', { name: 'Reported spent notes (1)' })
-  ).toBeVisible();
+  );
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.refreshNotes })
   );
@@ -1709,9 +1769,11 @@ it('does not restore a cleared note from a list request started before the clear
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
-  expect(
-    await screen.findByText('Archived: 1. Still active: 0.')
-  ).toBeVisible();
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('button', { name: 'Reported spent notes (1)' })
+    ).not.toBeInTheDocument()
+  );
   await waitFor(() => expect(reads).toBe(3));
   await act(async () => oldRead.resolve({ notes: [saved] }));
   expect(
@@ -1784,9 +1846,7 @@ it.each(['resolve', 'reject'] as const)(
     fireEvent.click(
       screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
     );
-    expect(
-      await screen.findByText('Archived: 1. Still active: 0.')
-    ).toBeVisible();
+    await waitFor(() => expect(removedRow).not.toBeInTheDocument());
     await act(async () => {
       if (outcome === 'resolve') resolveStatus({ claimedStatus: 'CONFIRMED' });
       else rejectStatus(new Error('offline'));
