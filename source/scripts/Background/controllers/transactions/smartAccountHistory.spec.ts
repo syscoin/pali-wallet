@@ -831,39 +831,45 @@ describe('smart account EntryPoint log history', () => {
     expect((matching[0] as any).blockNumber).toBe(5);
   });
 
-  it('backfills range-capped RPCs in chunks and advances the cursor over the covered range', async () => {
-    const provider = buildProvider({
-      getBlockNumber: jest.fn().mockResolvedValue(25_000),
-      getLogs: jest
-        .fn()
-        .mockRejectedValueOnce(new Error('range too large'))
-        .mockResolvedValueOnce([buildUserOpEventLog(true)])
-        .mockResolvedValue([]),
-    });
+  it.each(['range too large', 'query exceeds max block range 10000'])(
+    'backfills range-capped RPCs in chunks after %s',
+    async (message) => {
+      const provider = buildProvider({
+        getBlockNumber: jest.fn().mockResolvedValue(25_000),
+        getLogs: jest
+          .fn()
+          .mockRejectedValueOnce(
+            Object.assign(new Error(message), { code: -32602 })
+          )
+          .mockResolvedValueOnce([buildUserOpEventLog(true)])
+          .mockResolvedValue([]),
+      });
 
-    const transactions = await fetchSmartAccountUserOpTransactions(
-      provider as any,
-      vaultState.accounts.SmartAccount[0],
-      ACCOUNT_TYPE,
-      CHAIN_ID
-    );
+      const transactions = await fetchSmartAccountUserOpTransactions(
+        provider as any,
+        vaultState.accounts.SmartAccount[0],
+        ACCOUNT_TYPE,
+        CHAIN_ID
+      );
 
-    // Full range rejected, then contiguous 10k chunks up to the tip.
-    expect(provider.getLogs).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ fromBlock: 0, toBlock: 9_999 })
-    );
-    expect(provider.getLogs).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({ fromBlock: 10_000, toBlock: 19_999 })
-    );
-    expect(provider.getLogs).toHaveBeenNthCalledWith(
-      4,
-      expect.objectContaining({ fromBlock: 20_000, toBlock: 25_000 })
-    );
-    expect(transactions).toHaveLength(1);
-    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(25_000));
-  });
+      // Full range rejected, then contiguous 10k chunks up to the tip.
+      expect(provider.getLogs).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ fromBlock: 0, toBlock: 9_999 })
+      );
+      expect(provider.getLogs).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({ fromBlock: 10_000, toBlock: 19_999 })
+      );
+      expect(provider.getLogs).toHaveBeenNthCalledWith(
+        4,
+        expect.objectContaining({ fromBlock: 20_000, toBlock: 25_000 })
+      );
+      expect(transactions).toHaveLength(1);
+      expect(isEvmHistoryIncomplete(transactions)).toBe(false);
+      expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(25_000));
+    }
+  );
 
   it('persists partial backfill progress and peeks at the tip window when capped', async () => {
     // 200k blocks: 10 chunks per poll cover 0..99,999; the tip window is
