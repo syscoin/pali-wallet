@@ -1352,13 +1352,34 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           expect(posts).toHaveLength(0);
           return;
         }
-        expect(
-          await journal.readExact(journalSession, String(CHAIN), PAYER, hash)
-        ).toMatchObject({
+        const savedOriginal = await journal.readExact(
+          journalSession,
+          String(CHAIN),
+          PAYER,
+          hash
+        );
+        expect(savedOriginal).toMatchObject({
           payloadKind: 'unsigned-eoa',
           unsignedTransaction: original.unsignedSerialized,
         });
+        expect(savedOriginal).not.toHaveProperty('rawTransaction');
         provider.getTransaction.mockResolvedValue(null);
+        const activity = await wallet.getSavedEvmTransaction(hash);
+        expect(activity).toMatchObject({
+          hash,
+          from: PAYER,
+          to: TARGET,
+          value: '7',
+          nonce: original.nonce,
+          gasLimit: original.gasLimit.toString(),
+          speedUpAvailable: true,
+          cancellationUnavailable: true,
+        });
+        expect(activity).not.toHaveProperty('rawTransaction');
+        expect(activity).not.toHaveProperty('unsignedTransaction');
+        await expect(wallet.getSavedEvmTransactions()).resolves.toMatchObject({
+          transactions: [activity],
+        });
         const walletScope = getWalletNavigationScope();
         const maximumFee = await previewSpeedUpTransaction(
           hash,
@@ -1381,6 +1402,18 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         expect(posts).toHaveLength(0);
 
         setConfirmedNonce(8);
+        await expect(
+          wallet.speedUpEvmTransaction(hash, legacy, CHAIN, PAYER, {
+            approvedMaximumFee: (BigInt(maximumFee) - BigInt(1)).toString(),
+            walletScope,
+          })
+        ).rejects.toMatchObject({
+          message: 'Replacement fee exceeds approval',
+          transactionNotBroadcast: true,
+        });
+        expect(aes.decrypt).not.toHaveBeenCalled();
+        expect(posts).toHaveLength(0);
+
         await handleUpdateTransaction({
           t: (key) => key,
           updateData: {
@@ -1397,26 +1430,28 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         expect(console.error).not.toHaveBeenCalled();
         expect(posts).toHaveLength(1);
         expect(posts[0]).toMatchObject({
+          accessList: original.accessList,
           chainId: original.chainId,
           data: original.data,
           from: original.from,
           gasLimit: original.gasLimit,
           nonce: original.nonce,
           to: original.to,
+          type: original.type,
           value: original.value,
         });
         expect(posts[0].hash).not.toBe(hash);
-        expect(
-          await journal.readExact(
-            journalSession,
-            String(CHAIN),
-            PAYER,
-            posts[0].hash!
-          )
-        ).toMatchObject({
+        const savedReplacement = await journal.readExact(
+          journalSession,
+          String(CHAIN),
+          PAYER,
+          posts[0].hash!
+        );
+        expect(savedReplacement).toMatchObject({
           payloadKind: 'unsigned-eoa',
           unsignedTransaction: posts[0].unsignedSerialized,
         });
+        expect(savedReplacement).not.toHaveProperty('rawTransaction');
         expect(posts[0].maxFeePerGas ?? posts[0].gasPrice).toBeGreaterThan(
           original.maxFeePerGas ?? original.gasPrice!
         );
