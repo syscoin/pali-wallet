@@ -74,6 +74,10 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
   const [autoLockScope, setAutoLockScope] = useState<string | null>(null);
   const liveScope = currentScope();
   const [notificationActivity, setNotificationActivity] = useState<{ scope: string; hash: string } | null>(null);
+  const activityTarget = notificationActivity?.scope === liveScope ? notificationActivity : null;
+  const consumeActivityTarget = useCallback(() => {
+    setNotificationActivity(current => current === activityTarget ? null : current);
+  }, [activityTarget]);
   const [notificationGuardian, setNotificationGuardian] = useState<string | null>(null);
   const notificationTransition = useRef<object | null>(null);
   const [notificationWake, setNotificationWake] = useState(0);
@@ -193,8 +197,8 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
   let content: React.ReactNode;
   if (shell.tab === 'wallet') content = <WatchAccountPortfolio authority={authority} onAccounts={openAccounts} onExit={onExit} onLock={lockView} navigation={shell.navigation} />;
   else if (shell.tab === 'activity') content = network.kind === 'utxo'
-    ? <UtxoActivityScreen authority={authority} selectedNetwork={network} accountLabel={label} initialHash={notificationActivity?.scope === liveScope ? notificationActivity.hash : undefined} navigation={shell.navigation} onBack={() => shell.select('wallet')} />
-    : <NativeActivityScreen controller={evmActivity} accountLabel={label} initialHash={notificationActivity?.scope === liveScope ? notificationActivity.hash : undefined} onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
+    ? <UtxoActivityScreen authority={authority} selectedNetwork={network} accountLabel={label} initialHash={activityTarget?.hash} onInitialTargetOpened={consumeActivityTarget} navigation={shell.navigation} onBack={() => shell.select('wallet')} />
+    : <NativeActivityScreen controller={evmActivity} accountLabel={label} initialHash={activityTarget?.hash} onInitialTargetOpened={consumeActivityTarget} onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
   else if (shell.tab === 'tools') {
     const address = network.kind === 'evm' && account?.addresses[network.id];
     content = <RealTools accountLabel={label} networkLabel={network.name} watchOnly onAccounts={openAccounts}

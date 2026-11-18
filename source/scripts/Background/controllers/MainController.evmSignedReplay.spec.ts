@@ -1331,13 +1331,13 @@ describe('worker-owned token state at review and initial held POST', () => {
   });
   it.each([
     { scenario: 'healthy', staleBalance: false, fault: 'none' },
-    { scenario: 'stale holdings', staleBalance: true, fault: 'saved' },
+    { scenario: 'stale holdings', staleBalance: true, fault: 'unsent' },
     { scenario: 'queued sufficient', staleBalance: false, fault: 'none' },
-    { scenario: 'queued overcommit', staleBalance: false, fault: 'saved' },
+    { scenario: 'queued overcommit', staleBalance: false, fault: 'unsent' },
     {
       scenario: 'plain nonce RPC failure',
       staleBalance: false,
-      fault: 'saved',
+      fault: 'unsent',
     },
     {
       scenario: 'wallet session revoked',
@@ -1470,16 +1470,12 @@ describe('worker-owned token state at review and initial held POST', () => {
           ) => error
         );
         expect(failure).toMatchObject({ transactionNotBroadcast: true });
-        if (fault === 'saved') {
-          expect(retainedEvmAssetPreflightConflict(failure)).toMatchObject({
-            code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
-            message: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
-          });
+        expect(retainedEvmAssetPreflightConflict(failure)).toBeNull();
+        if (fault === 'unsent') {
+          expect(failure).toMatchObject({ code: 'EVM_ASSET_REVIEW_REQUIRED' });
           expect(failure.message).not.toContain(
             'synthetic private provider error'
           );
-        } else {
-          expect(retainedEvmAssetPreflightConflict(failure)).toBeNull();
         }
         expect(broadcast).not.toHaveBeenCalled();
         const retained = await journal.readExact(
@@ -1488,9 +1484,19 @@ describe('worker-owned token state at review and initial held POST', () => {
           signer.address,
           Transaction.from(signed).hash!
         );
-        expect(retained?.hash).toBe(Transaction.from(signed).hash);
-        expect(retained?.phase).toBe('signed');
-        expect(retained?.nonce).toBe(candidateNonce);
+        if (fault === 'revoked') {
+          expect(retained?.phase).toBe('signed');
+        } else {
+          expect(retained).toBeNull();
+          await expect(
+            journal.assertSpendingNonce(
+              { keyring: sdkKeyring, assertCurrent: () => undefined },
+              '123',
+              signer.address,
+              candidateNonce
+            )
+          ).resolves.toBeUndefined();
+        }
       } else {
         await expect(submit).resolves.toBe(Transaction.from(signed).hash);
         expect(broadcast).toHaveBeenCalledTimes(1);
@@ -1540,7 +1546,11 @@ describe('worker-owned token state at review and initial held POST', () => {
         },
         async compareAndSet(_id, expected, next, assertCurrent) {
           assertCurrent();
-          if (saved !== expected) return false;
+          if (
+            saved !== expected ||
+            (scenario === 'sdk preflight failure' && expected !== undefined)
+          )
+            return false;
           saved = next;
           return true;
         },
@@ -1621,7 +1631,9 @@ describe('worker-owned token state at review and initial held POST', () => {
           );
           expect(broadcast).toHaveBeenCalledTimes(1);
         } else {
-          expect(conflict?.code).toBe('EVM_SIGNED_RECORD_NONCE_CONFLICT');
+          if (scenario === 'sdk preflight failure')
+            expect(conflict?.code).toBe('EVM_SIGNED_RECORD_NONCE_CONFLICT');
+          else expect(conflict).toBeNull();
           expect(evmSubmissionFailure(failure)?.transactionNotBroadcast).toBe(
             true
           );
@@ -1694,7 +1706,8 @@ describe('worker-owned token state at review and initial held POST', () => {
           signer.address,
           Transaction.from(signed).hash!
         );
-        expect(retained?.phase).toBe('signed');
+        if (scenario === 'timeout') expect(retained).toBeNull();
+        else expect(retained?.phase).toBe('signed');
       } finally {
         held.resolve();
         await Promise.resolve();

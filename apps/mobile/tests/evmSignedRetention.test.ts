@@ -94,6 +94,43 @@ async function signed(nonce: number, wallet = signer, network = chainId) {
     },
   };
 }
+test('an earlier handoff protects the same fresh entry if the initial preflight subsequently refuses', async () => {
+  const f = fixture();
+  const session = f.session();
+  const record = await signed(0);
+  const lifecycle = createEvmSignedRecordLifecycle(f.records, session, {
+    walletSendCleanupSession: session,
+    retirementReadForChain: null,
+  });
+  await lifecycle.persistSigned(record);
+  const handoff = await f.records.withReplayAdmission(session,
+    { ...record, operation: 'send', metadata: undefined },
+    async () => ({ result: true }));
+  assert.equal(handoff?.result, true);
+  await assert.rejects(lifecycle.dispatchSigned(record,
+    async () => assert.fail('the refused attempt cannot dispatch'),
+    async () => { throw new Error('review expired'); }), /review expired/);
+  assert.equal((await f.records.readExact(session, chainId, signer.address, record.hash))?.hash, record.hash);
+});
+
+test('an uncertain cleanup write quarantines storage and never enters the broadcast callback', async () => {
+  const f = fixture(), session = f.session(), record = await signed(0);
+  const lifecycle = createEvmSignedRecordLifecycle(f.records, session, {
+    walletSendCleanupSession: session,
+    retirementReadForChain: null,
+  });
+  await lifecycle.persistSigned(record);
+  const commit = f.port.compareAndSet.bind(f.port);
+  f.port.compareAndSet = async (...args) => {
+    await commit(...args);
+    throw Object.assign(new Error('cleanup acknowledgement lost'), { code: 'STORAGE_REOPEN_REQUIRED' });
+  };
+  await assert.rejects(lifecycle.dispatchSigned(record,
+    async () => assert.fail('the refused attempt cannot dispatch'),
+    async () => { throw new Error('review expired'); }), { code: 'STORAGE_REOPEN_REQUIRED' });
+  assert.equal(f.records.requiresReopen, true);
+});
+
 async function rootPayload(f: ReturnType<typeof fixture>) {
   const bundle = JSON.parse(f.value()!);
   const bytes = await f.session().keyring.decryptPrivateRecord({

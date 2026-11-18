@@ -709,7 +709,7 @@ test('a different Ledger cannot reconnect to the saved account', async () => {
 for (const changedChain of [false, true])
   test(
     changedChain
-      ? 'Ledger final chain mismatch retains the transaction without a broadcast'
+      ? 'Ledger final chain mismatch releases the unused transaction and nonce'
       : 'the normal Ledger send retains the transaction before its broadcast',
     async () => {
       const f = await fixture();
@@ -806,15 +806,20 @@ for (const changedChain of [false, true])
         assert.equal(f.signedCount, 1);
         assert.equal(broadcasts, changedChain ? 0 : 1);
         const savedHash = transfers.getSnapshot().hash;
-        assert(savedHash);
         if (f.owner.getSnapshot().phase === 'locked')
           await f.owner.unlock();
-        const saved = await (
-          await f.runtime.transfers!.journal(() => undefined)
-        ).load(savedHash);
-        assert(saved);
-        assert.equal(saved.inspectionOnly, true);
-        assert.equal(saved.rawTransaction, undefined);
+        const journal = await f.runtime.transfers!.journal(() => undefined);
+        if (changedChain) {
+          assert.equal(savedHash, null);
+          assert.equal(await journal.load(), null);
+          await journal.assertSpendingNonce(0);
+        } else {
+          assert(savedHash);
+          const saved = await journal.load(savedHash);
+          assert(saved);
+          assert.equal(saved.inspectionOnly, true);
+          assert.equal(saved.rawTransaction, undefined);
+        }
       } finally {
         transfers?.dispose();
         await f.close();

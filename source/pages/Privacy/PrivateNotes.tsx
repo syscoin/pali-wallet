@@ -62,6 +62,8 @@ function NotesView() {
     controllerEmitter,
     loading,
     notes,
+    archiveCount,
+    setArchiveCount,
     refresh,
     remember,
     forget,
@@ -82,7 +84,6 @@ function NotesView() {
   const [capacitySettings, setCapacitySettings] = useState(false);
   const [showSpent, setShowSpent] = useState(false);
   const [archiveRevision, setArchiveRevision] = useState(0);
-  const [archiveCount, setArchiveCount] = useState(0);
   const [backupNoteId, setBackupNoteId] = useState<string | null>(null);
   const [bundleMode, setBundleMode] = useState<'export' | 'import' | null>(
     null
@@ -397,7 +398,7 @@ function NotesView() {
                 ? 'privacy.notesUnsupported'
                 : 'privacy.notesUnavailable'
             )
-          : !notes.length
+          : !notes.length && !archiveCount
           ? t('privacy.noNotes')
           : null}
         {(notes.length > 0 || (!loading && !unavailable)) && (
@@ -688,6 +689,8 @@ function NotesView() {
               // A dismissed, unconfirmed restore may already be durable.
               // Refresh the public inventory without replaying its commit.
               void refresh();
+              if (bundleMode === 'import')
+                setArchiveRevision((value) => value + 1);
             }}
             onRestored={() => void refresh()}
           />

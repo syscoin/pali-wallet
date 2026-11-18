@@ -645,7 +645,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         } else {
           expect(result).toMatchObject({ isSpeedUp: false });
           expect(posts).toHaveLength(0);
-          expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+          expect(entries).toHaveLength(0);
         }
         if (boundary !== 'before-confirm') {
           expect(
@@ -726,7 +726,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           PAYER
         );
         expect(posts).toHaveLength(boundary === 'healthy' ? 1 : 0);
-        expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+        expect(entries).toHaveLength(boundary === 'healthy' ? 1 : 0);
         expect(result.isSpeedUp).toBe(boundary === 'healthy');
       } finally {
         dispose();
@@ -773,7 +773,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           String(CHAIN),
           PAYER
         );
-        expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+        expect(entries).toHaveLength(boundary === 'healthy' ? 1 : 0);
         expect(posts).toHaveLength(boundary === 'healthy' ? 1 : 0);
       } finally {
         dispose();

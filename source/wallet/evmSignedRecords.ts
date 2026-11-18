@@ -18,6 +18,10 @@ import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
 import { getPrivacyPoolActivity } from '../shared/privacyPoolActivity.ts';
 import {
+  EVM_ASSET_REVIEW_MESSAGE,
+  EVM_ASSET_REVIEW_REQUIRED,
+} from '../utils/evmTransactionContext.ts';
+import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
 } from '../utils/smartAccount/contracts.ts';
@@ -240,6 +244,10 @@ function sameUnsignedSmartAccountOperation(
   );
 }
 const mutationSerials = new WeakMap<EvmSignedRecordStorage, number>();
+// A handoff need not change the journal revision. Track it separately so a
+// failed initial submission cannot remove a record another admission may use.
+const dispatchSerials = new WeakMap<EvmSignedRecordStorage, number>();
+const discardUndispatched = Symbol('discardUndispatched');
 
 export type EvmSignedRecordSession = {
   assertCurrent(): void;
@@ -985,6 +993,10 @@ async function entriesHash(entries: readonly unknown[]): Promise<string> {
 export class EvmSignedRecords {
   readonly autoNonceAcceptance = new EvmAutoNonceAcceptance();
   private readonly storage: EvmSignedRecordStorage;
+  private readonly freshAppends = new WeakMap<
+    EvmRetainedSignedRecord,
+    { dispatchSerial: number; profileId: string; revision: number }
+  >();
   private readonly now: () => number;
   private readonly onUnavailable: () => void;
   private unavailable = false;
@@ -2514,12 +2526,62 @@ export class EvmSignedRecords {
                 }
               : undefined
           )
-        )
-          return Object.freeze({ ...summary(entry), rawTransaction: raw });
+        ) {
+          const result = Object.freeze({
+            ...summary(entry),
+            rawTransaction: raw,
+          });
+          if (
+            reconstructable ||
+            (context.operation === 'cancel' && !retainedMetadata)
+          ) {
+            this.freshAppends.set(result, {
+              profileId: id,
+              revision: (previous.bundle?.revision ?? -1) + 1,
+              dispatchSerial: dispatchSerials.get(this.storage) ?? 0,
+            });
+          }
+          return result;
+        }
       }
       throw new Error('EVM_SIGNED_RECORD_CONFLICT');
     });
   }
+  /** A failed first submission can retire only its own untouched new entry. */
+  [discardUndispatched](
+    session: EvmSignedRecordSession,
+    fresh: EvmRetainedSignedRecord
+  ): Promise<boolean> {
+    const append = this.freshAppends.get(fresh);
+    if (!append) return Promise.resolve(false);
+    this.freshAppends.delete(fresh);
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      if (
+        id !== append.profileId ||
+        (dispatchSerials.get(this.storage) ?? 0) !== append.dispatchSerial
+      )
+        return false;
+      const { raw, bundle } = await this.load(session, id);
+      if (!bundle || bundle.revision !== append.revision) return false;
+      const entry = bundle.entries.find(
+        (candidate) => candidate.hash === fresh.hash
+      );
+      if (!entry || entry.phase !== 'signed') return false;
+      return this.write(
+        session,
+        id,
+        raw,
+        bundle.revision + 1,
+        bundle.entries.filter((candidate) => candidate !== entry),
+        bundle.authorizations ?? [],
+        bundle.nonceFloors ?? [],
+        false,
+        bundle.resetGeneration ?? 0
+      );
+    });
+  }
+
   readReplacement(
     session: EvmSignedRecordSession,
     chainId: string,
@@ -4196,6 +4258,10 @@ export class EvmSignedRecords {
         );
         guard(session);
       }
+      dispatchSerials.set(
+        this.storage,
+        (dispatchSerials.get(this.storage) ?? 0) + 1
+      );
       return await admit(predecessors);
     });
   }
@@ -4432,6 +4498,7 @@ export function createEvmSignedRecordLifecycle(
     retainAssetPreflightFailure?: boolean;
     retainUnsignedNative?: boolean;
     retirementReadForChain: EvmSignedRetirementReadForChain | null;
+    walletSendCleanupSession?: EvmSignedRecordSession;
   }>
 ) {
   session = records.captureSession(session);
@@ -4442,11 +4509,15 @@ export function createEvmSignedRecordLifecycle(
   )
     throw new Error('EVM_SIGNED_RECORD_RETIREMENT_CONTEXT_REQUIRED');
   const retirementReadForChain = options.retirementReadForChain;
+  const cleanupSession =
+    options.walletSendCleanupSession &&
+    records.captureSession(options.walletSendCleanupSession);
   let metadata =
     options.metadata === undefined
       ? undefined
       : snapshotMetadata(options.metadata);
   let smartReplacementOriginalHash: string | undefined;
+  let freshWalletSend: EvmRetainedSignedRecord | undefined;
   // Starting another lifecycle invalidates any unconsumed earlier refusal.
   // Concurrent sends may fall back to generic guidance, never stale guidance.
   currentPersistToken = undefined;
@@ -4485,6 +4556,13 @@ export function createEvmSignedRecordLifecycle(
           replacement,
           options.retainUnsignedNative
         );
+        if (
+          cleanupSession &&
+          !signed.context.origin &&
+          !isEvmVerifiedSmartAccountReplacement(replacement)
+        ) {
+          freshWalletSend = retained;
+        }
         if (isEvmVerifiedSmartAccountReplacement(replacement)) {
           smartReplacementOriginalHash = retained.originalHash;
           metadata = retained.metadata;
@@ -4639,8 +4717,21 @@ export function createEvmSignedRecordLifecycle(
             },
           }
         );
+        if (!admitted) throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
       } catch (error) {
         const operation = record.context.operation;
+        if (
+          !wireStarted &&
+          cleanupSession &&
+          freshWalletSend?.hash === record.hash &&
+          (await records[discardUndispatched](cleanupSession, freshWalletSend))
+        ) {
+          if (options.retainAssetPreflightFailure)
+            throw Object.assign(new Error(EVM_ASSET_REVIEW_MESSAGE), {
+              code: EVM_ASSET_REVIEW_REQUIRED,
+            });
+          throw error;
+        }
         if (
           options?.retainAssetPreflightFailure &&
           retainedAuthenticated &&
@@ -4660,7 +4751,6 @@ export function createEvmSignedRecordLifecycle(
         }
         throw error;
       }
-      if (!admitted) throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
       return admitted.result;
     },
   });

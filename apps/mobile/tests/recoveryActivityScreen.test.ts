@@ -329,7 +329,8 @@ test('an already loaded indexed transaction opens without waiting for saved inve
 });
 
 test('actual Activity opens the saved record once and never replays it', async () => {
-  const f = fixture(hash);
+  let opened = 0;
+  const f = fixture(hash, false, { onInitialTargetOpened: () => { opened++; } });
   try {
     f.render();
     await settle();
@@ -346,9 +347,24 @@ test('actual Activity opens the saved record once and never replays it', async (
     await settle();
     assert.equal(f.loaded(), 1);
     assert.equal(f.replays(), 0);
+    assert.equal(opened, 1);
   } finally {
     f.dispose();
   }
+});
+test('two visits to the same unresolved hash share its read and acknowledge the current visit', async () => {
+  const opened: string[] = [];
+  const props = { onInitialTargetOpened: () => { opened.push('first'); } };
+  const f = fixture(hash, true, props);
+  try {
+    f.render();
+    props.onInitialTargetOpened = () => { opened.push('second'); };
+    f.render();
+    assert.equal(f.loaded(), 1);
+    f.release(); await settle();
+    assert.deepEqual(opened, ['second']);
+    assert.deepEqual(f.inspected(), [hash]);
+  } finally { f.dispose(); }
 });
 test('ordinary Activity does not open saved pending or select a transaction', async () => {
   const f = fixture();

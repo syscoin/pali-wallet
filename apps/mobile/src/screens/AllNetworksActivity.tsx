@@ -14,12 +14,13 @@ import type { ShellLeafNavigation } from './RealAppShell';
 import { activityAssetIcon } from '../activity/assetIcon';
 
 export type AccountActivityAction = 'cancel' | 'cancel-saved' | 'speed-up';
-export function AllNetworksActivity({ controller, accountLabel, navigation, onAction, initialTarget }: {
+export function AllNetworksActivity({ controller, accountLabel, navigation, onAction, initialTarget, onInitialTargetOpened }: {
   controller: AccountActivityController;
   accountLabel: string;
   navigation?: ShellLeafNavigation;
   onAction?(entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertCurrent: () => void, operationHash?: string): Promise<void>;
   initialTarget?: Readonly<{ networkId: string; hash: string }>;
+  onInitialTargetOpened?(): void;
 }) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const { hidden } = useBalancePrivacy(), { t } = useNativeTranslation();
@@ -52,10 +53,12 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
     selectedNetwork?.controller === selection?.controller ? selection ?? undefined : undefined;
   const targetNetworkId = initialTarget?.networkId, targetHash = initialTarget?.hash;
   const targetKey = JSON.stringify([snapshot.accountId, targetNetworkId, targetHash]);
+  const targetOwner = useRef({ key: targetKey, opened: onInitialTargetOpened });
+  useLayoutEffect(() => { targetOwner.current = { key: targetKey, opened: onInitialTargetOpened }; }, [targetKey, onInitialTargetOpened]);
   useEffect(() => {
     let live = true;
     const update = () => {
-      if (!live) return;
+      if (!live || targetOwner.current.key !== targetKey) return;
       if (!targetNetworkId || !targetHash) { arrival.current = ''; return; }
       const key = targetKey, current = controller.getSnapshot();
       if (current.accountId !== snapshot.accountId) return;
@@ -75,6 +78,7 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
       const row = controller.findRow(targetNetworkId, targetHash);
       if (row) {
         arrival.current = key; scrollPosition.current.restore = true; scrollPosition.current.height = 0; setSelection(row);
+        targetOwner.current.opened?.();
         return;
       }
       const child = controller.getNetwork(targetNetworkId)?.controller;

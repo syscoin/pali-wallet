@@ -320,7 +320,11 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true, star
         after: async (kind, sql) => {
           if (kind === 'all' && sql.includes('FROM evm_signed_records'))
             await pause('storage-read');
-          if (kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records')) afterSignedInsert?.();
+          if (kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && afterSignedInsert) {
+            const observeInsert = afterSignedInsert;
+            afterSignedInsert = undefined;
+            observeInsert();
+          }
           const current = journalGate;
           if (!current) return;
           if (
@@ -1102,14 +1106,13 @@ test('Speed Up refuses POST when the saved original disappears after the new sig
       await refused;
     }
     const entries = JSON.parse((await f.readDurableJournal())!).entries;
-    assert.equal(entries[1].operation, 'speed-up');
-    assert.equal(entries[1].originalHash, originalHash);
+    assert.deepEqual(entries.map((entry: { hash: string }) => entry.hash), [originalHash]);
     assert.equal(f.broadcasts.length, 1);
-    assert.equal(f.transfers.getSnapshot().hash, entries[1].hash);
+    assert.equal(f.transfers.getSnapshot().hash, null);
   } finally { await f.close(); }
 });
 
-test('a saved Speed Up blocked by a higher base fee can be reviewed again after restart', async () => {
+test('a refused Speed Up leaves the original available for a fresh review after restart', async () => {
   const f = await cancellationFixture(2);
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
@@ -1123,16 +1126,14 @@ test('a saved Speed Up blocked by a higher base fee can be reviewed again after 
       await Promise.race([gate.started, refused.then(() => assert.fail('POST preflight was not held'))]);
       f.replacement.baseFee = '0x3e8';
     } finally { gate.finish(); await refused; }
-    const savedHash = f.transfers.getSnapshot().hash!;
+    assert.equal(f.transfers.getSnapshot().hash, null);
     assert.equal(f.broadcasts.length, 1);
 
     await f.reopen();
     const journal = await f.runtime.transfers!.journal(() => undefined);
     const original = await journal.load(originalHash);
-    const saved = await journal.load(savedHash);
-    assert(saved && original);
-    assert.equal(saved.phase, 'signed');
-    assert.equal((await journal.load())?.hash, savedHash);
+    assert(original);
+    assert.equal((await journal.load())?.hash, originalHash);
     assert.equal(f.broadcasts.length, 1);
     assert.equal(f.signatures, 2);
 
@@ -1144,7 +1145,7 @@ test('a saved Speed Up blocked by a higher base fee can be reviewed again after 
     assert.equal(review.replacement?.originalHash, originalHash);
     assert.equal(review.amountUnits, Transaction.from(original.rawTransaction).value.toString());
     assert(BigInt(review.maximumFeePerGas) >= BigInt(f.replacement.baseFee) + BigInt(review.priorityFeePerGas!));
-    assert(BigInt(review.priorityFeePerGas!) > Transaction.from(saved.rawTransaction).maxPriorityFeePerGas!);
+    assert(BigInt(review.priorityFeePerGas!) > Transaction.from(original.rawTransaction).maxPriorityFeePerGas!);
     assert.equal(f.broadcasts.length, 1);
     assert.equal(f.signatures, 2);
 
@@ -1161,7 +1162,6 @@ test('a saved Speed Up blocked by a higher base fee can be reviewed again after 
     assert.equal(f.signatures, 3);
     const repriced = Transaction.from(f.broadcasts[1]!);
     assert.equal(repriced.maxFeePerGas?.toString(), renewed.maximumFeePerGas);
-    assert.equal((await journal.load(savedHash))?.rawTransaction, saved.rawTransaction);
     assert.equal((await journal.load(originalHash))?.rawTransaction, original.rawTransaction);
     await assert.rejects(f.transfers.prepareSpeedUp(originalHash), { code: 'EXPIRED' });
   } finally { await f.close(); }
@@ -1227,7 +1227,7 @@ test('new cancellation refuses a missing original or increased fee without creat
   }
 });
 
-test('new cancellation keeps signed evidence and sends nothing when payer delegation appears after persistence', async () => {
+test('new cancellation keeps the original when payer delegation appears after persistence', async () => {
   const f = await cancellationFixture();
   try {
     const { originalHash, review } = await prepareSavedCancellation(f);
@@ -1243,9 +1243,8 @@ test('new cancellation keeps signed evidence and sends nothing when payer delega
     }
     assert.equal(f.broadcasts.length, 1);
     const saved = JSON.parse((await f.readDurableJournal())!).entries;
-    assert.equal(saved[1].operation, 'cancel');
-    assert.equal(saved[1].originalHash, originalHash);
-    assert.equal(f.transfers.getSnapshot().hash, saved[1].hash);
+    assert.deepEqual(saved.map((entry: { hash: string }) => entry.hash), [originalHash]);
+    assert.equal(f.transfers.getSnapshot().hash, null);
     assert.equal(f.authority.getSnapshot().phase, 'ready');
   } finally {
     await f.close();
@@ -1269,10 +1268,8 @@ for (const change of ['dropped', 'replaced'] as const) {
       await assert.rejects(submit, { code: 'EXPIRED' });
       assert.equal(f.broadcasts.length, 1);
       const saved = JSON.parse((await f.readDurableJournal())!).entries;
-      assert.equal(saved.length, 2);
-      assert.equal(saved[0].hash, originalHash);
-      assert.equal(saved[1].originalHash, originalHash);
-      assert.equal(f.transfers.getSnapshot().hash, saved[1].hash);
+      assert.deepEqual(saved.map((entry: { hash: string }) => entry.hash), [originalHash]);
+      assert.equal(f.transfers.getSnapshot().hash, null);
     } finally {
       await f.close();
     }
@@ -1294,10 +1291,8 @@ test('new cancellation rechecks payer delegation after the final original observ
     await assert.rejects(submit, { code: 'EXPIRED' });
     assert.equal(f.broadcasts.length, 1);
     const saved = JSON.parse((await f.readDurableJournal())!).entries;
-    assert.equal(saved.length, 2);
-    assert.equal(saved[0].hash, originalHash);
-    assert.equal(saved[1].originalHash, originalHash);
-    assert.equal(f.transfers.getSnapshot().hash, saved[1].hash);
+    assert.deepEqual(saved.map((entry: { hash: string }) => entry.hash), [originalHash]);
+    assert.equal(f.transfers.getSnapshot().hash, null);
   } finally {
     await f.close();
   }
@@ -2004,7 +1999,7 @@ for (const failure of ['revert', 'gas-growth'] as const) test(`native final admi
     assert(finalEstimate, 'the retained native envelope is checked after the change');
     assert.equal((finalEstimate.params[0] as { to: string }).to.toLowerCase(), RECIPIENT.toLowerCase());
     assert.equal((finalEstimate.params[0] as { data: string }).data, '0x');
-    if (boundary === 'after-storage') assert(await f.readDurableJournal(), 'signed bytes remain durable after refusal');
+    assert.deepEqual(JSON.parse((await f.readDurableJournal()) ?? '{}').entries ?? [], []);
   } finally { await f.close(); }
 });
 
@@ -2074,7 +2069,7 @@ for (const asset of ['native', 'token'] as const) test(`replacement final admiss
     assert.equal(f.broadcasts.length, 1, 'only the original was broadcast');
     assert.equal(f.signatures, boundary === 'before-confirm' ? 1 : 2);
     const entries = JSON.parse((await f.readDurableJournal())!).entries;
-    assert.equal(entries.length, boundary === 'before-confirm' ? 1 : 2);
+    assert.deepEqual(entries.map((entry: { hash: string }) => entry.hash), [keccak256(f.broadcasts[0]!)]);
   } finally { await f.close(); }
 });
 
@@ -2127,7 +2122,7 @@ test(`cancellation final admission rejects native balance loss ${boundary}`, asy
     await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'INSUFFICIENT_BALANCE' });
     assert.equal(f.signatures, 2);
     assert.equal(f.broadcasts.length, 1);
-    assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, 2);
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, 1);
   } finally { await f.close(); }
 });
 
@@ -2157,7 +2152,7 @@ test(`replacement final admission rejects paused token execution ${boundary}`, a
     const call = simulation.params[0] as { gas: string; nonce: string };
     assert.equal(BigInt(call.gas).toString(), review.gasLimit);
     assert.equal(BigInt(call.nonce).toString(), review.nonce);
-    assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, boundary === 'before-confirm' ? 1 : 2);
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries.length, 1);
   } finally { await f.close(); }
 });
 

@@ -567,6 +567,7 @@ import SmartAccountController from './smartAccount';
 import { StorageManager } from './storageManager';
 import TransactionsManager from './transactions';
 import EvmTransactionsController from './transactions/evm';
+import { getBlockbookHistoryHasMore } from './transactions/syscoin';
 import {
   IEvmTransactionResponse,
   ISysTransaction,
@@ -2387,6 +2388,12 @@ class MainController {
         ...(replacement ? { replacement } : {}),
         automaticNonceEndpoint: context.network.url,
         retainAssetPreflightFailure: assetOperation,
+        walletSendCleanupSession:
+          selected.type !== KeyringAccountType.SmartAccount &&
+          (!feePreflight || feePreflight.walletSend) &&
+          !context.origin
+            ? session
+            : undefined,
         metadata: feePreflight?.metadata,
         preflight: async (record, assertDispatchCurrent, snapshot) => {
           if (feePreflight?.beforePersist) {
@@ -2604,6 +2611,8 @@ class MainController {
     return createEvmSignedRecordLifecycle(records, session, {
       retirementReadForChain,
       replacement,
+      walletSendCleanupSession:
+        selected.type !== KeyringAccountType.SmartAccount ? session : undefined,
       preflight: async (record, assertDispatchCurrent, snapshot) => {
         if (context.operation === 'speed-up') {
           const transaction = Transaction.from(record.rawTransaction);
@@ -4404,7 +4413,8 @@ class MainController {
       const result = await vault.reconcileUnsignedWithdrawals(
         current.context,
         this.withdrawalLifetime(),
-        session
+        session,
+        true
       );
       current.assertCurrent();
       session.assertCurrent();
@@ -4422,7 +4432,7 @@ class MainController {
         ),
       };
     }
-    return this.usePrivateVault((vault) => vault.getNotes(), session);
+    return this.usePrivateVault((vault) => vault.getNotes(true), session);
   }
 
   public getPrivateVaultCapacity() {
@@ -9687,7 +9697,10 @@ class MainController {
     );
   }
 
-  public refreshTransactionHistory(expectedScope: IWalletNavigationScope) {
+  public refreshTransactionHistory(
+    expectedScope: IWalletNavigationScope,
+    onlyIfMissing = false
+  ) {
     this.assertWalletReadyForSigning();
     const scope = getWalletNavigationScope();
     const { vault, vaultGlobal } = store.getState();
@@ -9708,6 +9721,13 @@ class MainController {
       this.historyRetry.scope.network === scope.network
     )
       return this.historyRetry.promise;
+    const status = vaultGlobal.transactionHistoryStatus;
+    if (
+      onlyIfMissing &&
+      status?.scope.account === scope.account &&
+      status.scope.network === scope.network
+    )
+      return Promise.resolve();
     const promise = this.updateUserTransactionsState({
       isBitcoinBased: vault.isBitcoinBased,
       activeNetwork: vault.activeNetwork,
@@ -10088,7 +10108,9 @@ class MainController {
               this.transactionUpdateCommitId = requestId;
               setHistoryStatus(
                 isEvmHistoryIncomplete(txs) ? 'error' : 'ready',
-                getEvmExplorerHasMore(txs)
+                isBitcoinBased
+                  ? getBlockbookHistoryHasMore(txs)
+                  : getEvmExplorerHasMore(txs)
               );
 
               const historySave = this.postSwitchHistorySave;
@@ -16894,14 +16916,22 @@ class MainController {
     xpub: string,
     url: string,
     page: number,
-    pageSize: number = 30
+    pageSize: number = 30,
+    includePageStatus = false
   ) {
-    return this.transactionsManager.sys.fetchTransactionsPageFromBlockbook(
-      xpub,
-      url,
-      page,
-      pageSize
-    );
+    const rows =
+      await this.transactionsManager.sys.fetchTransactionsPageFromBlockbook(
+        xpub,
+        url,
+        page,
+        pageSize
+      );
+    return includePageStatus
+      ? {
+          rows,
+          hasMore: getBlockbookHistoryHasMore(rows) ?? rows.length >= pageSize,
+        }
+      : rows;
   }
 
   /**

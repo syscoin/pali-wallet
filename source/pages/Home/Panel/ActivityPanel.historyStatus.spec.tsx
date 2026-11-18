@@ -296,6 +296,24 @@ it('healthy empty initial history settles to the ordinary empty message', async 
   }
 });
 
+it('publishes exact Blockbook continuation through polling and the page boundary', async () => {
+  const rows = Array.from({ length: 30 }, (_, index) => ({
+    ...first,
+    txid: index.toString(16).padStart(64, '0'),
+  }));
+  mockTransport.mockResolvedValue({ ...body(rows), page: 1, totalPages: 1 });
+  await fetchInitial();
+  expect(status().explorerHasMore).toBe(false);
+  clearFetchBackendAccountCache();
+  mockTransport.mockResolvedValue({ ...body(rows), page: 2, totalPages: 2 });
+  await expect(
+    mockController.getSysTransactionsPage('zpub-page', network.url, 2, 30, true)
+  ).resolves.toMatchObject({ rows: expect.any(Array), hasMore: false });
+  await expect(
+    mockController.getSysTransactionsPage('zpub-page', network.url, 3, 30, true)
+  ).resolves.toMatchObject({ rows: expect.any(Array), hasMore: false });
+});
+
 it('keeps rejected initial UTXO history visibly retryable instead of empty', async () => {
   emptyInitialHistory();
   mockTransport.mockRejectedValue(
@@ -354,18 +372,29 @@ const heldRead = () => {
   return { promise, resolve };
 };
 
-it('does not classify unknown history or a completed balance poll as empty', () => {
+it('starts unknown history once and shows loading until its scoped read settles', async () => {
   emptyInitialHistory();
+  const held = heldRead();
+  mockTransport.mockReturnValue(held.promise);
   renderPanel();
   act(() => mockStore.dispatch(setIsPollingUpdate(true)));
   act(() => mockStore.dispatch(setIsPollingUpdate(false)));
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(mockTransport).toHaveBeenCalledTimes(1);
   expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
   expect(screen.queryByText('send.unableToLoad')).toBeNull();
   expect(
     screen.getByText('networkConnection.loadingTransactions')
   ).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeTruthy();
-  expect(mockTransport).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+  const read = mockController.historyRetry.promise;
+  await act(async () => {
+    held.resolve(body([]));
+    await read;
+  });
+  expect(screen.getByText('home.youHaveNoTxs')).toBeTruthy();
 });
 
 it('keeps a held initial read pending past the old empty-state timer', async () => {
@@ -373,6 +402,13 @@ it('keeps a held initial read pending past the old empty-state timer', async () 
   const held = heldRead();
   mockTransport.mockReturnValue(held.promise);
   const read = fetchInitial();
+  const pendingId = status().requestId;
+  await mockController.refreshTransactionHistory(
+    getWalletNavigationScope(),
+    true
+  );
+  expect(status().requestId).toBe(pendingId);
+  expect(mockTransport).toHaveBeenCalledTimes(1);
   jest.useFakeTimers();
   try {
     renderPanel();
@@ -624,15 +660,26 @@ it.each(['account', 'network'])(
     else mockStore.dispatch(setActiveNetwork(network as any));
     expect(getWalletNavigationScope()).toEqual(originalScope);
     expect(status()).toBeUndefined();
+    const replacement = heldRead();
+    mockTransport.mockReturnValue(replacement.promise);
     renderPanel();
-    expect(screen.getByRole('button', { name: 'receive.retry' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
     expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
     expect(
       screen.getByText('networkConnection.loadingTransactions')
     ).toBeTruthy();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const read = mockController.historyRetry.promise;
     held.resolve(body([]));
     await Promise.resolve();
-    expect(status()).toBeUndefined();
+    expect(status().state).toBe('pending');
+    await act(async () => {
+      replacement.resolve(body([]));
+      await read;
+    });
+    expect(status().state).toBe('ready');
   }
 );
 
@@ -688,10 +735,14 @@ it('invalidates the empty view immediately on a full navigation-scope-only chang
   expect(screen.getByText('home.youHaveNoTxs')).toBeTruthy();
   act(() => mockStore.dispatch(setActiveSlip44(1)));
   expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
-  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(status().scope).toEqual(getWalletNavigationScope());
 });
 
-it('allows a new account retry and ignores the old account completion while it is pending', async () => {
+it('starts a new account read and ignores the old account completion while it is pending', async () => {
   emptyInitialHistory();
   const firstHeld = heldRead();
   const secondHeld = heldRead();
@@ -699,9 +750,9 @@ it('allows a new account retry and ignores the old account completion while it i
     .mockReturnValueOnce(firstHeld.promise)
     .mockReturnValueOnce(secondHeld.promise);
   renderPanel();
-  await act(async () =>
-    fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }))
-  );
+  await act(async () => {
+    await Promise.resolve();
+  });
   const firstRetry = mockController.historyRetry.promise;
   const originalAccount = mockStore.getState().vault.accounts.HDAccount[0];
   await act(async () => {
@@ -719,19 +770,17 @@ it('allows a new account retry and ignores the old account completion while it i
     );
     mockStore.dispatch(setActiveAccount({ id: 1, type: 'HDAccount' as any }));
   });
-  const secondButton = screen.getByRole('button', { name: 'receive.retry' });
-  expect(secondButton).not.toBeDisabled();
-  await act(async () => fireEvent.click(secondButton));
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
   const secondRetry = mockController.historyRetry.promise;
   expect(secondRetry).not.toBe(firstRetry);
   expect(mockTransport).toHaveBeenCalledTimes(2);
-  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
   await act(async () => {
     firstHeld.resolve(body([]));
     await firstRetry;
   });
   expect(status().state).toBe('pending');
-  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
   expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
   await act(async () => {
     secondHeld.resolve(body([]));
@@ -742,10 +791,16 @@ it('allows a new account retry and ignores the old account completion while it i
 });
 
 it('alerts when an explicit Retry fails before background status is published', async () => {
-  renderPanel();
   mockController.refreshTransactionHistory = jest
     .fn()
     .mockRejectedValue(new Error('Controller disconnected'));
+  renderPanel();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(screen.getByText('send.unableToLoad')).toBeTruthy();
+  expect(mockHistoryAlert).not.toHaveBeenCalled();
   await act(async () =>
     fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }))
   );

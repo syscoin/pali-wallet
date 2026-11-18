@@ -232,7 +232,7 @@ export function NativePrivateWithdrawalFixture() {
                         transactionHash: `0x${'cd'.repeat(32)}`,
                       },
                     }
-                  : {}),
+                  : query.has('history') ? { status: { ...snapshot.status!, claimedStatus: 'FAILED' as const } } : {}),
                 noteStatus: {
                   phase:
                     query.has('history') || (query.has('unknown') && !query.has('reconciled-spent'))

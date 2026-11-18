@@ -69,12 +69,43 @@ export const TransactionsPanel = () => {
       activeNetwork.chainId
     ] as unknown as ITransactionInfoEvm[] | undefined,
   });
+  const networkTransition = useSelector(
+    (state: RootState) =>
+      state.vaultGlobal.networkStatus === 'connecting' ||
+      state.vaultGlobal.networkStatus === 'switching'
+  );
+  const [failedStartScope, setFailedStartScope] = useState<string>();
+  const needsInitialRead =
+    hasHistoryStatus &&
+    !historyState &&
+    !networkTransition &&
+    !isSwitchingAccount;
+  useEffect(() => {
+    setFailedStartScope(undefined);
+    if (!needsInitialRead) return;
+    let current = true;
+    void Promise.resolve().then(async () => {
+      if (!current) return;
+      try {
+        await controllerEmitter(
+          ['wallet', 'refreshTransactionHistory'],
+          [{ account: scope.account, network: scope.network }, true]
+        );
+      } catch {
+        if (current) setFailedStartScope(scopeKey);
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, [needsInitialRead, scopeKey, scope.account, scope.network]);
+  const startFailed = needsInitialRead && failedStartScope === scopeKey;
   const beginRetry = useRequestScope(scopeKey);
   const retryPending = useRef<() => boolean>();
   const [retryScope, setRetryScope] = useState<string>();
   const isRetrying = retryScope === scopeKey && retryPending.current?.();
   const mayRetryHistory =
-    hasHistoryStatus && historyState !== 'ready' && historyState !== 'pending';
+    hasHistoryStatus && (historyState === 'error' || startFailed);
   const mayRetryLocalActivity =
     activity.unavailable && !activity.olderRows.loading;
   const retryHistory = async () => {
@@ -323,10 +354,9 @@ export const TransactionsPanel = () => {
     (!hasTransactions &&
       (activity.olderRows.loading ||
         (hasHistoryStatus
-          ? historyState !== 'ready' && historyState !== 'error'
+          ? historyState !== 'ready' && historyState !== 'error' && !startFailed
           : !hasSettled)));
-  const historyUnavailable =
-    (hasHistoryStatus && historyState === 'error') || activity.unavailable;
+  const historyUnavailable = mayRetryHistory || activity.unavailable;
   const showHistoryRetry =
     mayRetryHistory || activity.unavailable || isRetrying;
   const historyRetry = showHistoryRetry && (
@@ -385,7 +415,10 @@ export const TransactionsPanel = () => {
                 </p>
               )}
               {isBitcoinBased ? (
-                <UtxoTransactionsList userTransactions={utxoTransactions} />
+                <UtxoTransactionsList
+                  userTransactions={utxoTransactions}
+                  firstPageHasMore={currentHistory?.explorerHasMore}
+                />
               ) : (
                 <EvmTransactionsList
                   explorerHasMore={currentHistory?.explorerHasMore === true}

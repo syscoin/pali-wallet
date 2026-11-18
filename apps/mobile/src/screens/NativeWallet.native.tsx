@@ -192,7 +192,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const [inspectGuardianRemoval, setInspectGuardianRemoval] = useState<Controllers['inspectGuardianRemoval'] | null>(null);
   const [guardianRecoveryController, setGuardianRecoveryController] = useState<Controllers['guardianRecovery'] | null>(null);
   const [recoveryActivity, setRecoveryActivity] = useState<{
-    local: Controllers; epoch: number; context: string; targetId: string; payerId: string; chainId: number; hash: string;
+    local: Controllers; epoch: number; context: string; targetId: string; payerId: string; chainId: number;
   } | null>(null);
   const [resumeGuardianScope, setResumeGuardianScope] = useState<string | null>(null);
   const [trezorView, setTrezorView] = useState<NativeTrezorView | null>(null);
@@ -463,6 +463,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const visiblePortfolioDetail = portfolioDetail?.owner === controllerOwner && portfolioDetail.context === publicPortfolioContext ? portfolioDetail.detail : undefined;
   const selectedAccountType = selectedCatalogueAccount?.type;
   const guardianContext = custodyContext(snapshot, catalogue)?.context;
+  const activityTarget = transactionActivity?.context === guardianContext ? transactionActivity : null;
+  const consumeActivityTarget = useCallback(() => {
+    setTransactionActivity(current => current === activityTarget ? null : current);
+  }, [activityTarget]);
   const guardianRecovery = selectedAccountType === 'SmartAccount' && snapshot.account && readGuardianRecovery && guardianContext ? {
     scope: `${guardianEpoch}:${guardianContext}`,
     address: snapshot.account.address,
@@ -603,7 +607,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active' ||
         !after || !context || after.active.accountId !== payerId || Number(getNativeNetwork(after.active.networkId, after.networks).chainId) !== chainId)
       throw Error('CANCELLED');
-    setRecoveryActivity({ local, epoch: capturedEpoch, context: context.context, targetId, payerId, chainId, hash });
+    setRecoveryActivity({ local, epoch: capturedEpoch, context: context.context, targetId, payerId, chainId });
+    setTransactionActivity({ context: context.context, hash });
     shell.restoreRoot('activity', context.identity);
   };
   const returnToRecovery = async () => {
@@ -2099,16 +2104,16 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
             setTransactionActivity({ context: context.context, hash: replacement.txid });
             openStage('send', { kind: 'utxo-replacement', replacement });
           } : undefined}
-          initialHash={transactionActivity && transactionActivity.context === guardianContext ? transactionActivity.hash : undefined}
+          initialHash={activityTarget?.hash} onInitialTargetOpened={consumeActivityTarget}
           onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : accountActivity && !utxo
       ? <AllNetworksActivity controller={accountActivity} accountLabel={accountLabel} navigation={shell.navigation}
-          initialTarget={transactionActivity && transactionActivity.context === guardianContext ? { networkId: snapshot.account!.network, hash: transactionActivity.hash }
-            : recoveryActivity && recoveryActivity.context === guardianContext ? { networkId: snapshot.account!.network, hash: recoveryActivity.hash } : undefined}
+          initialTarget={activityTarget ? { networkId: snapshot.account!.network, hash: activityTarget.hash } : undefined}
+          onInitialTargetOpened={consumeActivityTarget}
           onAction={canSign || canReplaceSelectedSmart ? openAccountActivityAction : undefined} />
       : activityView && !utxo
       ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel}
-          initialHash={transactionActivity && transactionActivity.context === guardianContext ? transactionActivity.hash : recoveryActivity && recoveryActivity.context === guardianContext ? recoveryActivity.hash : undefined}
+          initialHash={activityTarget?.hash} onInitialTargetOpened={consumeActivityTarget}
           onCancelPending={canSign || canReplaceSelectedSmart ? (hash, operationHash) => openStage('send', { kind: 'cancel', hash: operationHash ?? hash }) : undefined}
           onCancelSaved={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'cancel-saved', hash }) : undefined}
           onSpeedUpPending={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'speed-up', hash }) : undefined}

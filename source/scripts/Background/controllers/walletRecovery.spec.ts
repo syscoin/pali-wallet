@@ -429,6 +429,19 @@ describe('explicit seed recovery transaction', () => {
     assertOriginal();
   });
 
+  it('keeps a derivation failure distinct from a verified wrong phrase and preserves the wallet', async () => {
+    const ticket = await beginWalletRecovery(wallet);
+    const bip39 = jest.requireActual('bip39') as typeof import('bip39');
+    jest.spyOn(bip39, 'mnemonicToSeedSync').mockImplementationOnce(() => {
+      throw new Error('private derivation diagnostic');
+    });
+    await expect(submit(ticket)).rejects.toThrow(
+      'Saved wallet identity could not be verified'
+    );
+    expect(wallet.activateRecoveredWallet).not.toHaveBeenCalled();
+    assertOriginal();
+  });
+
   it.each([
     'forged',
     'expired',

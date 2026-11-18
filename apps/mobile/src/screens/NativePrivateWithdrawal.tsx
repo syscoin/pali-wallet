@@ -283,11 +283,14 @@ function WithdrawalContent({
     observed?.transactionHash ??
     state.result?.signedTransactionHash;
   const jobId = observed?.jobId;
+  const claimedStatus = state.error !== 'status-unavailable' && state.status?.claimedStatus;
   const title = submitted
     ? spent
       ? t('mobile.privacyFlows.deposit.noteAlreadySpent')
       : unknown
       ? t('privacy.deposit.unknown')
+      : claimedStatus
+      ? t('privacy.withdrawal.title')
       : jobId && !hash
       ? t('privacy.withdrawal.accepted')
       : t('mobile.privacyFlows.withdrawal.withdrawalSubmitted')
@@ -297,6 +300,8 @@ function WithdrawalContent({
   const error =
     state.error === 'expired'
       ? t('mobile.privacyFlows.withdrawal.thisReviewExpiredPrepareAFreshReviewBeforeConfirming')
+      : state.error === 'status-unavailable'
+      ? t('privacy.withdrawal.statusFailed')
       : state.error === 'pending-activity'
       ? t('privacy.withdrawal.pendingActivity')
       : state.error === 'pending'
@@ -472,7 +477,8 @@ function WithdrawalContent({
                   />
                 </>
               )}
-              {state.noteStatus?.phase !== 'verified' &&
+              {!hasPreviousSubmission &&
+                (state.noteStatus?.phase !== 'verified' || state.error === 'status-unavailable') &&
                 state.phase !== 'preparing' && (
                   <Button
                     title={
@@ -560,6 +566,8 @@ function WithdrawalContent({
               <Text accessibilityLiveRegion="polite" style={styles.muted}>
                 {spent
                   ? t('mobile.privacyFlows.withdrawal.poolDataConfirmsTheNoteIsSpent')
+                  : claimedStatus
+                  ? t('privacy.withdrawal.reportedStatus', { status: claimedStatus })
                   : unknown
                   ? t('privacy.withdrawal.unknownHelp')
                   : jobId && !hash

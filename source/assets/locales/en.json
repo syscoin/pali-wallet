@@ -768,6 +768,7 @@
     "recoveryIntro": "Use this wallet’s Secret Recovery Phrase to choose a new password. Your saved accounts and settings stay on this device.",
     "recoverySeedHelp": "Enter the phrase for this wallet. A different phrase cannot restore its accounts.",
     "recoveryLimitations": "Recovery keeps saved private notes, imported-key recovery copies and signing records. Keep separate backups of imported keys and notes for a new or lost device. Hardware wallets may need to reconnect. Recovery does not move funds.",
+    "walletRecoveryWrongPhrase": "This recovery phrase does not match this wallet.",
     "walletRecoveryFailed": "Wallet recovery could not be completed. Check your phrase and try again. If it keeps failing, restart your browser. Do not clear wallet storage.",
     "walletRecoveryUnconfirmed": "Wallet recovery could not be confirmed. Check wallet to see its current state. Do not clear wallet storage.",
     "walletRecoveryRestartRequired": "Recovery needs to finish before you can use the wallet. Restart your browser, then check your wallet and try recovery again if needed. Do not clear wallet storage.",
@@ -4056,7 +4057,6 @@
       "autoWatchHint": "Choose when watch accounts hide"
     },
     "recoveryCopy": {
-      "wrongPhrase": "This recovery phrase does not match this wallet.",
       "wordCount": "Enter your 12 or 24 recovery words in order.",
       "restored": "Device authorization restored. Reopening your wallet.",
       "uncertain": "We could not confirm device authorization recovery. Close and reopen Pali before trying again.",

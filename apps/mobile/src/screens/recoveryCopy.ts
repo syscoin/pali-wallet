@@ -5,7 +5,7 @@ type Translate = (key: string) => string;
 export function recoveryErrorText(code: RecoveryErrorCode | 'INVALID_WORD_COUNT', t: Translate): string {
   switch (code) {
     case 'SAVED_WALLET_UNVERIFIED': return t('mobile.recoveryDevices.recovery.yourSavedWalletCouldNotBeVerified');
-    case 'WRONG_PHRASE': return t('mobile.recoveryCopy.wrongPhrase');
+    case 'WRONG_PHRASE': return t('settings.walletRecoveryWrongPhrase');
     case 'AUTH_THROTTLED': return t('mobile.sendAssetViews.evm.tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesBefore');
     case 'INVALID_INPUT': return t('mobile.walletViews.checkYourRecoveryPhrase');
     case 'INVALID_WORD_COUNT': return t('mobile.recoveryCopy.wordCount');

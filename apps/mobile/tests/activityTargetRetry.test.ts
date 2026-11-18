@@ -75,13 +75,15 @@ function fixture(failures: number) {
   }).outputText;
   runInNewContext(compiled, { module, exports: module.exports, queueMicrotask, Error,
     require(name: string) { const ui = walletUiFixture(name, imports); if (ui) return ui; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
-  const render = (): Element => { cursor = 0; const tree = module.exports.AllNetworksActivity({ controller, accountLabel: 'Account 1', initialTarget: target }); effects.splice(0).forEach(run => run()); return tree; };
+  let opened = 0;
+  const onInitialTargetOpened = () => { opened++; };
+  const render = (): Element => { cursor = 0; const tree = module.exports.AllNetworksActivity({ controller, accountLabel: 'Account 1', initialTarget: target, onInitialTargetOpened }); effects.splice(0).forEach(run => run()); return tree; };
   const nodes = (value: any): Element[] => {
     if (Array.isArray(value)) return value.flatMap(nodes);
     if (!value || typeof value !== 'object' || !('children' in value)) return [];
     return [value, ...value.children.flatMap(nodes), ...nodes(value.props.right), ...nodes(value.props.ListHeaderComponent)];
   };
-  return { controller, writes, reads, render, nodes,
+  return { controller, writes, reads, render, nodes, opened: () => opened,
     holdSave(promise: Promise<void>) { heldSave = promise; },
     setTarget(value: typeof target) { target = value; render(); },
     choose(filter: string) {
@@ -100,10 +102,14 @@ test('a deliberate refresh retries the failed exact target after reloading its s
     f.render(); await tick(); f.render(); await tick();
     assert.deepEqual(f.writes, ['rollux']); assert.equal(f.controller.getSnapshot().filter, null); assert(!f.detail());
     await tick(); assert.deepEqual(f.writes, ['rollux'], 'no automatic retry loop');
+    assert.equal(f.opened(), 0);
     f.refresh(); await tick();
     assert.deepEqual(f.writes, ['rollux', 'rollux']);
     assert.equal(f.controller.getSnapshot().filter, 'rollux');
     assert(f.detail());
+    assert.equal(f.opened(), 1);
+    f.setTarget(undefined);
+    assert(f.detail(), 'clearing the route intent keeps the selected detail open');
     assert(f.reads.every(network => network === 'ethereum' || network === 'rollux'));
   } finally { f.close(); }
 });

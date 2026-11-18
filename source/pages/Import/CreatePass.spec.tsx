@@ -264,7 +264,17 @@ describe('new wallet authentication navigation', () => {
     }
   );
 
-  it('keeps recovery failure visible until Check wallet is chosen without replaying the request', async () => {
+  it.each([
+    ['Network request timed out', 'settings.walletRecoveryUnconfirmed'],
+    [
+      'Saved wallet identity could not be verified',
+      'settings.walletRecoveryUnconfirmed',
+    ],
+    [
+      'Recovery phrase does not match this wallet',
+      'settings.walletRecoveryWrongPhrase',
+    ],
+  ])('handles %s without replay', async (message, expectedCopy) => {
     mockSecrets = {
       kind: 'import',
       phrase: 'test seed',
@@ -273,9 +283,7 @@ describe('new wallet authentication navigation', () => {
     mockClear.mockImplementationOnce(() => {
       mockSecrets = { kind: 'idle' };
     });
-    jest
-      .mocked(controllerEmitter)
-      .mockRejectedValueOnce(new Error('Network request timed out'));
+    jest.mocked(controllerEmitter).mockRejectedValueOnce(new Error(message));
     render(<CreatePasswordImport />);
     const submitBeforeFailure = mockSubmit;
 
@@ -283,9 +291,7 @@ describe('new wallet authentication navigation', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Submit password' }));
     });
 
-    expect(screen.getByRole('alert').textContent).toBe(
-      'settings.walletRecoveryUnconfirmed'
-    );
+    expect(screen.getByRole('alert').textContent).toBe(expectedCopy);
     expect(screen.getByRole('heading').textContent).toBe(
       'settings.recoveryTitle'
     );
@@ -301,9 +307,7 @@ describe('new wallet authentication navigation', () => {
       jest.advanceTimersByTime(10000);
       await submitBeforeFailure({ password: 'new recovery password' });
     });
-    expect(screen.getByRole('alert').textContent).toBe(
-      'settings.walletRecoveryUnconfirmed'
-    );
+    expect(screen.getByRole('alert').textContent).toBe(expectedCopy);
     expect(mockReload).not.toHaveBeenCalled();
     expect(controllerEmitter).toHaveBeenCalledTimes(1);
 

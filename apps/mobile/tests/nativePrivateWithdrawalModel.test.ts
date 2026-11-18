@@ -27,6 +27,7 @@ function fixture(canSign = true) {
     discarded = 0,
     reads = 0;
   let failure: unknown;
+  let statusFailure: Error | undefined;
   let retired = false;
   let afterSubmit: (() => void) | undefined;
   let delay: Promise<void> | undefined;
@@ -76,6 +77,7 @@ function fixture(canSign = true) {
             };
           },
           async statusByNote() {
+            if (statusFailure) throw statusFailure;
             return status;
           },
           async getRelayers() {
@@ -125,6 +127,9 @@ function fixture(canSign = true) {
     poolStatus(next:IPrivateNoteStatus){noteStatus=next;},
     status(next: IPrivacyWithdrawalStatus) {
       status = next;
+    },
+    failJobCheck() {
+      statusFailure = new Error('offline relayer');
     },
   };
 }
@@ -188,6 +193,37 @@ test('an unclassified submit failure stays unknown and exposes no provider messa
   assert.equal(f.model.getSnapshot().phase, 'unknown');
   assert.equal(f.model.getSnapshot().result?.noteId, 'owned-note');
   assert.equal(JSON.stringify(f.model.getSnapshot()).includes('secret'), false);
+});
+
+test('an offline relayer permits an independent pool check without changing the saved attempt', async () => {
+  const f = fixture();
+  f.status({ noteId: 'owned-note', mode: 'relayed', phase: 'submitted', jobId: 'saved-job' });
+  await f.model.refresh();
+  f.failJobCheck();
+  for (const phase of ['verified', 'spent'] as const) {
+    f.poolStatus({ phase, blockNumber: 50 });
+    await f.model.refresh();
+    const state = f.model.getSnapshot();
+    assert.deepEqual(state.noteStatus, { phase, blockNumber: 50 });
+    assert.equal(state.error, 'status-unavailable');
+    assert.equal(state.status?.jobId, 'saved-job');
+    assert.equal(state.status?.phase, 'submitted');
+    assert.equal(state.result, null);
+  }
+  await f.model.prepare({ recipient: 'recipient', mode: 'direct' });
+  assert.equal(f.counts().prepares, 0);
+  assert.equal(f.counts().submits, 0);
+});
+
+test('a reopened withdrawal can review a verified note when its old relayer is offline', async () => {
+  const f = fixture();
+  f.failJobCheck();
+  await f.model.refresh();
+  assert.equal(f.model.getSnapshot().noteStatus?.phase, 'verified');
+  assert.equal(f.model.getSnapshot().status, null);
+  await f.model.prepare({ recipient: 'recipient', mode: 'direct' });
+  assert.equal(f.model.getSnapshot().phase, 'review');
+  assert.equal(f.counts().submits, 0);
 });
 
 test('proven unsigned expiry is a failed review requiring a new preparation', async () => {

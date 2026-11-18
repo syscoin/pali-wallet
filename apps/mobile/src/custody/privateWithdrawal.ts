@@ -34,6 +34,7 @@ export type NativePrivateWithdrawalSnapshot = Readonly<{
     | 'pending'
     | 'pending-activity'
     | 'verification'
+    | 'status-unavailable'
     | 'unavailable'
     | 'failed'
     | null;
@@ -241,13 +242,20 @@ export class NativePrivateWithdrawal {
         this.check();
         this.publish({ phase: 'idle', review: null, progress: null });
       }
-      const status = await this.withdrawals.statusByNote(this.host.noteId);
+      let status: IPrivacyWithdrawalStatus | undefined;
+      try {
+        status = await this.withdrawals.statusByNote(this.host.noteId);
+      } catch {
+        // A missing relayer response says nothing about the public pool.
+      }
       this.check();
-      this.publish({ status: Object.freeze({ ...status }) });
+      if (status) this.publish({ status: Object.freeze({ ...status }) });
+      else this.publish({ error: 'status-unavailable' });
       const noteStatus = await this.host.readNoteStatus();
       this.check();
       this.publish({ noteStatus: Object.freeze({ ...noteStatus }) });
     } catch (error) {
+      if (this.snapshot.noteStatus?.phase !== 'spent') this.publish({ noteStatus: null });
       this.reportFailure(error);
     } finally {
       this.busy = false;

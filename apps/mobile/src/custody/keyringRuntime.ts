@@ -1297,26 +1297,29 @@ export function createKeyringRuntimeFactory(
           if (selected.index !== context.account.id || selected.type !== context.account.type ||
               selected.address.toLowerCase() !== context.account.address.toLowerCase())
             throw new KeyringRuntimeError('CANCELLED');
-          return capturePayerSubmission(context, selected, externalGuard, metadata, replacement, verifyDispatch, undefined,
-            ['send', 'erc20', 'erc721', 'erc1155'].includes(context.operation) &&
-            (context.operation !== 'erc20' || metadata?.intent !== undefined) && selected.type !== 'SmartAccount' && currentPublicSessionRecord?.version === 2 && supportsRetainedSpeedUpIntent(keyring.ethereumTransaction));
+          return capturePayerSubmission(context, selected, externalGuard, metadata, replacement, verifyDispatch, undefined, {
+            walletSend: true,
+            retainUnsignedNative: ['send', 'erc20', 'erc721', 'erc1155'].includes(context.operation) &&
+            (context.operation !== 'erc20' || metadata?.intent !== undefined) && selected.type !== 'SmartAccount' && currentPublicSessionRecord?.version === 2 && supportsRetainedSpeedUpIntent(keyring.ethereumTransaction),
+          });
         }
         function capturePayerSubmission(context: EvmSubmissionContext, selected: NativeCatalogueAccount, externalGuard: () => void,
           metadata?: Readonly<Record<string, unknown>>, replacement?: EvmVerifiedReplacementBinding | EvmVerifiedSmartAccountReplacement,
-          verifyDispatch?: NativeTransferDispatchValidation, assertSmartAdmission?: NativeSmartPayerAdmission, retainUnsignedNative = false) {
+          verifyDispatch?: NativeTransferDispatchValidation, assertSmartAdmission?: NativeSmartPayerAdmission, retention?: Readonly<{ walletSend: boolean; retainUnsignedNative?: boolean }>) {
           const captured = generation;
           const payerType = context.account.type as keyof typeof state.accounts;
           const payer = state.accounts[payerType]?.[context.account.id];
           if (!payer || payer.address.toLowerCase() !== context.account.address.toLowerCase())
             throw new KeyringRuntimeError('CANCELLED');
-          const check = () => {
-            current(captured); checkGuard(externalGuard);
+          const checkWalletOwner = () => {
+            current(captured);
             const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
             if (selectedAccount() !== selected || state.accounts[payerType]?.[context.account.id] !== payer ||
                 payer.address.toLowerCase() !== context.account.address.toLowerCase() ||
                 context.network.chainId !== Number(network.chainId) || context.network.url !== network.rpcUrl)
               throw new KeyringRuntimeError('CANCELLED');
           };
+          const check = () => { checkWalletOwner(); checkGuard(externalGuard); };
           check();
           const requiresReplacement = context.operation === 'cancel' || context.operation === 'speed-up';
           if ((isEvmVerifiedSmartAccountReplacement(replacement) ? context.operation !== 'send' : requiresReplacement !== (replacement !== undefined)) || !verifyDispatch)
@@ -1332,7 +1335,10 @@ export function createKeyringRuntimeFactory(
                 if (catalogueSnapshot !== capturedCatalogue) throw new KeyringRuntimeError('CANCELLED');
               }
             ),
-            metadata, replacement, retainUnsignedNative,
+            metadata, replacement, retainUnsignedNative: retention?.retainUnsignedNative,
+            walletSendCleanupSession: retention?.walletSend && selected.type !== 'SmartAccount'
+              ? { keyring: transactionRecordKeyring(keyring, checkWalletOwner), assertCurrent: checkWalletOwner }
+              : undefined,
             automaticNonceEndpoint: requiresReplacement ? undefined : context.network.url,
             preflight: verifyDispatch ? (record, assertCurrent, snapshot) => {
               const planner = smartReplacementNoncePlanner(session, String(context.network.chainId), context.account.address, context.network.url, snapshot,
@@ -8120,7 +8126,7 @@ export function createKeyringRuntimeFactory(
                   context,
                   check,
                   () => replacement
-                    ? capturePayerSubmission(context, replacementOwner(replacement).selected, check, replacementOwner(replacement).metadata, replacement.binding, verifyDispatch)
+                    ? capturePayerSubmission(context, replacementOwner(replacement).selected, check, replacementOwner(replacement).metadata, replacement.binding, verifyDispatch, undefined, { walletSend: true })
                     : captureSignedSubmission(context, check, intent?.kind === 'erc20-transfer' ? { intent } : undefined, undefined, verifyDispatch)
                 );
                 const tx = Transaction.from(rawTransaction);

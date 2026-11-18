@@ -816,11 +816,14 @@ test('viewing a completed deployment refreshes Wallet metadata and capabilities 
     const activity = find(f.render(), node => node.type === 'AllNetworksActivity')!;
     assert.equal(activity.props.initialTarget.hash, hash);
     assert.equal(activity.props.initialTarget.networkId, 'ethereum');
+    activity.props.onInitialTargetOpened();
     f.showWallet();
     const refreshed = find(f.render(), node => node.type === 'NativePortfolio')!;
     assert.equal(refreshed.props.smartAccount.isDeployed, true);
     assert.equal(refreshed.props.onDeploySmartAccount, undefined);
     assert.equal(typeof refreshed.props.onManageSmartAccountModules, 'function');
+    f.showActivity();
+    assert.equal(find(f.render(), node => node.type === 'AllNetworksActivity')!.props.initialTarget, undefined);
     assert.equal(typeof refreshed.props.onUseWalletAuthenticator, 'function');
     assert.equal(f.exits(), 0);
   } finally { f.dispose(); }

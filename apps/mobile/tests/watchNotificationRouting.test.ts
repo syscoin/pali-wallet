@@ -59,6 +59,7 @@ async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locke
   });
   const render = () => screenElements(screen.render({ authority, onAccounts() {}, onExit() {} }));
   return { render, close: screen.close, selections, tab: () => tab, resolutions: () => resolutions, ownerLookups: () => ownerLookups,
+    selectTab(next: string) { tab = next; },
     tap(id = `pali-alert-${'ab'.repeat(16)}`) { notification.pendingEventId = id; notification.tapRevision++; },
     newGeneration() { state = { ...state, generation: state.generation + 1 }; },
     holdOwner(value: Promise<void>) { ownerPending = value; },
@@ -104,7 +105,15 @@ test('watch transaction tap selects its saved account/network before showing Act
   try {
     f.render(); await settle();
     assert.deepEqual(f.selections, ['account:watch-2']); assert.equal(f.tab(), 'activity');
-    assert.equal(f.render().find(node => node.type === 'NativeActivityScreen')?.props.initialHash, '0x' + 'ab'.repeat(32));
+    const activity = () => f.render().find(node => node.type === 'NativeActivityScreen')!;
+    const first = activity();
+    assert.equal(first.props.initialHash, '0x' + 'ab'.repeat(32));
+    f.tap(); f.render(); await settle();
+    first.props.onInitialTargetOpened();
+    assert.equal(activity().props.initialHash, first.props.initialHash, 'a stale acknowledgment cannot consume a newer tap on the same hash');
+    activity().props.onInitialTargetOpened();
+    f.selectTab('wallet'); f.render(); f.selectTab('activity');
+    assert.equal(activity().props.initialHash, undefined);
   } finally { f.close(); }
 });
 

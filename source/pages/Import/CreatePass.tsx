@@ -15,7 +15,9 @@ export const CreatePasswordImport = () => {
   const { controllerEmitter } = useController();
   const { secrets, clear, consumeContinuation } = useOnboardingSecrets();
   const [created, setCreated] = useState(false);
-  const [recoveryFailed, setRecoveryFailed] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<
+    'settings.walletRecoveryWrongPhrase' | 'settings.walletRecoveryUnconfirmed'
+  >();
   const creationRequested = useRef(false);
   const mounted = useRef(true);
   const { t } = useTranslation();
@@ -43,12 +45,17 @@ export const CreatePasswordImport = () => {
         10000,
         false
       );
-    } catch {
+    } catch (error) {
       if (!mounted.current) return;
       // The worker may have finished despite a lost acknowledgement. Never
       // replay creation: recover through the authoritative wallet startup.
       if (recoveryTicket) {
-        setRecoveryFailed(true);
+        setRecoveryError(
+          error instanceof Error &&
+            error.message === 'Recovery phrase does not match this wallet'
+            ? 'settings.walletRecoveryWrongPhrase'
+            : 'settings.walletRecoveryUnconfirmed'
+        );
         return;
       }
       alert.error(t('settings.walletSetupFailed'));
@@ -70,10 +77,10 @@ export const CreatePasswordImport = () => {
     }
   };
 
-  return recoveryFailed ? (
+  return recoveryError ? (
     <OnboardingLayout scrollable title={t('settings.recoveryTitle')}>
       <p role="alert" className="mb-6 text-brand-gray200 text-center text-sm">
-        {t('settings.walletRecoveryUnconfirmed')}
+        {t(recoveryError)}
       </p>
       <Button
         id="recovery-check-wallet"

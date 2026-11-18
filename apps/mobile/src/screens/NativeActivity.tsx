@@ -211,6 +211,7 @@ export function NativeActivityScreen({
   onNavigateToReview,
 
   initialHash,
+  onInitialTargetOpened,
   externallyConnected = false,
   detailOnly = false,
 }: {
@@ -225,6 +226,7 @@ export function NativeActivityScreen({
   onNavigateToReview?(action: NativeActivityReviewAction, hash: string, operationHash?: string): void;
 
   initialHash?: string;
+  onInitialTargetOpened?(): void;
   externallyConnected?: boolean;
   detailOnly?: boolean;
 }) {
@@ -249,6 +251,7 @@ export function NativeActivityScreen({
       onNavigateToReview={onNavigateToReview}
 
       initialHash={initialHash}
+      onInitialTargetOpened={onInitialTargetOpened}
       detailOnly={detailOnly}
     />
   );
@@ -265,6 +268,7 @@ function NativeActivityContent({
   onNavigateToReview,
 
   initialHash,
+  onInitialTargetOpened,
   detailOnly,
 }: {
   controller: NativeActivity;
@@ -278,6 +282,7 @@ function NativeActivityContent({
   onNavigateToReview?(action: NativeActivityReviewAction, hash: string, operationHash?: string): void;
 
   initialHash?: string;
+  onInitialTargetOpened?(): void;
   detailOnly?: boolean;
 }) {
   useNativeTranslation();
@@ -285,6 +290,8 @@ function NativeActivityContent({
   const [selected, setSelected] = useState<string | null>(null);
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
   const arrival = useRef<string | null>(null);
+  const targetOwner = useRef({ hash: initialHash, opened: onInitialTargetOpened });
+  useLayoutEffect(() => { targetOwner.current = { hash: initialHash, opened: onInitialTargetOpened }; }, [initialHash, onInitialTargetOpened]);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -293,17 +300,18 @@ function NativeActivityContent({
   const lifetime = useRef({ epoch: 0 });
   useEffect(() => {
     const target = initialHash;
-    if (snapshot.status === 'loading') { arrival.current = null; return; }
-    if (!target || snapshot.status !== 'ready' || !snapshot.scopeKey || arrival.current === target) return;
+    if (!target || snapshot.status === 'loading') { arrival.current = null; return; }
+    if (snapshot.status !== 'ready' || !snapshot.scopeKey || arrival.current === target) return;
     arrival.current = target;
     const epoch = lifetime.current.epoch;
     const selectLoaded = () => {
-      if (!initialHash || lifetime.current.epoch !== epoch || arrival.current !== target) return false;
+      if (targetOwner.current.hash !== target || lifetime.current.epoch !== epoch || arrival.current !== target) return false;
       const current = controller.getSnapshot();
       if (current.status !== 'ready' || current.scopeKey !== snapshot.scopeKey) return false;
       if (current.rows.some(row => row.hash === initialHash || row.smartAuthorizations?.some(value => value.instruction.operationHash === initialHash))) {
         setSelected(initialHash);
         controller.inspect(initialHash);
+        targetOwner.current.opened?.();
         return true;
       }
       return false;

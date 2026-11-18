@@ -1,5 +1,11 @@
 /** @jest-environment jsdom */
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import React from 'react';
 
 import { projectEvmActivityRow } from '../../../../../../wallet/evmActivityRow';
@@ -166,10 +172,12 @@ const SAVED = {
 
 const deferred = () => {
   let resolve!: (value: any) => void;
-  const promise = new Promise<any>((done) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<any>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 const saved = () => ({ ...SAVED, smartAccount: { ...SAVED.smartAccount } });
 const savedReads = () =>
@@ -197,6 +205,61 @@ beforeEach(() => {
     throw new Error('Unexpected mutation/read: ' + method);
   });
 });
+it('retries a failed saved-only lookup after hash-only reopen without repeating healthy network reads', async () => {
+  const held = deferred();
+  let localAttempts = 0;
+  mockEmitter.mockImplementation(([, method]: string[]) => {
+    if (method === 'getSavedEvmTransaction')
+      return ++localAttempts === 1 ? held.promise : Promise.resolve(saved());
+    return Promise.resolve(null);
+  });
+  render(<DetailsView />);
+  await waitFor(() =>
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'getEvmTransactionFromProvider'
+      )
+    ).toBe(true)
+  );
+  expect(
+    screen.queryByText('transactions.transactionNotFoundOrPending')
+  ).toBeNull();
+  await act(async () =>
+    held.reject(new Error('Saved history temporarily unavailable'))
+  );
+  const retry = await screen.findByRole('button', { name: 'receive.retry' });
+  expect(screen.getByRole('alert').textContent).toBe(
+    'transactions.detailsUnavailable'
+  );
+  fireEvent.click(retry);
+  await waitFor(() =>
+    expect(screen.getByTestId('transaction-amount').textContent).toBe(
+      '10000000000000000'
+    )
+  );
+  expect(savedReads()).toHaveLength(2);
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([path]) => path[1] === 'getEvmTransactionFromProvider'
+    )
+  ).toHaveLength(1);
+});
+
+it('settles an absent watch-only transaction from the network without attempting a local record', async () => {
+  const previous = mockState.vault.activeAccount.type;
+  mockState.vault.activeAccount.type = 'Imported';
+  try {
+    render(<DetailsView />);
+    expect(
+      await screen.findByText('transactions.transactionNotFoundOrPending')
+    ).toBeTruthy();
+    expect(savedReads()).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+  } finally {
+    mockState.vault.activeAccount.type = previous;
+  }
+});
+
 it('restores the saved-only Smart amount after hash-only reopen without duplicate reads or replay dispatch', async () => {
   mockLocation.state.tx = projectEvmActivityRow(saved() as any);
   const activityOpen = render(<DetailsView />);

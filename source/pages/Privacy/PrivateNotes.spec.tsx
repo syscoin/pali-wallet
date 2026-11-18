@@ -152,7 +152,19 @@ it('refreshes an initially empty inventory when an unconfirmed restore is dismis
   let committed = false;
   mockEmitter.mockImplementation(async ([, method]) => {
     if (method === 'getNotes')
-      return { notes: committed ? [{ ...note, phase: 'waiting' }] : [] };
+      return {
+        notes: committed ? [{ ...note, phase: 'waiting' }] : [],
+        archiveSummary: { noteCount: Number(committed) },
+      };
+    if (method === 'getArchivedNotes')
+      return {
+        limit: 512,
+        storedBytes: 32,
+        bundleLimitBytes: 4194304,
+        notes: committed
+          ? [{ ...note, id: 'archived-note', archivedAt: 5678 }]
+          : [],
+      };
     if (method === 'begin') return id;
     if (method === 'prepareImport')
       return { id, added: 1, duplicates: 0, guarded: 1, expiresAt: 300000 };
@@ -165,6 +177,10 @@ it('refreshes an initially empty inventory when an unconfirmed restore is dismis
   });
   render(<PrivateNotes />);
   await screen.findByText(en.privacy.noNotes);
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.archive.title })
+  );
+  await screen.findByText(en.privacy.archive.empty);
   await act(async () => {
     fireEvent.click(
       screen.getByRole('button', { name: en.privacy.bundle.importTitle })
@@ -211,6 +227,9 @@ it('refreshes an initially empty inventory when an unconfirmed restore is dismis
     within(dialog).getAllByRole('button', { name: en.buttons.close }).at(-1)!
   );
   await screen.findByRole('button', { name: 'Reveal 0.1 ETH note for backup' });
+  expect(
+    await screen.findByRole('button', { name: en.privacy.archive.restore })
+  ).toBeEnabled();
   expect(
     mockEmitter.mock.calls.filter(([method]) => method[1] === 'getNotes')
   ).toHaveLength(2);
@@ -1690,9 +1709,10 @@ it('explains unsupported development data without showing an empty vault or over
   ).not.toBeInTheDocument();
 });
 
-it('keeps archived-only notes outside the active balance and enables their encrypted bundle export after opening the separate archive', async () => {
+it('enables archived-only backup without opening the archive and keeps those notes outside the active balance', async () => {
   mockEmitter.mockImplementation(async ([, method]) => {
-    if (method === 'getNotes') return { notes: [] };
+    if (method === 'getNotes')
+      return { notes: [], archiveSummary: { noteCount: 1 } };
     if (method === 'getArchivedNotes')
       return {
         limit: 512,
@@ -1711,7 +1731,12 @@ it('keeps archived-only notes outside the active balance and enables their encry
     throw Error('Unexpected archive operation');
   });
   render(<PrivateNotes />);
-  expect(await screen.findByText(en.privacy.noNotes)).toBeVisible();
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: en.privacy.bundle.exportTitle })
+    ).toBeEnabled()
+  );
+  expect(screen.queryByText(en.privacy.noNotes)).not.toBeInTheDocument();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   fireEvent.click(
     screen.getByRole('button', { name: mockTranslate('privacy.archive.title') })

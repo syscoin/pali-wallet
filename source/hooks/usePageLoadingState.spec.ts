@@ -1,7 +1,61 @@
+/** @jest-environment jsdom */
+
+import { renderHook } from '@testing-library/react';
+
 import {
   isContextSensitiveWalletRoute,
   isPageLoadingOverlayExcluded,
+  usePageLoadingState,
 } from './usePageLoadingState';
+
+let mockPathname = '/home';
+let mockNetworkStatus = 'idle';
+jest.mock('react-router-dom', () => ({
+  useLocation: () => ({ pathname: mockPathname }),
+}));
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+jest.mock('react-redux', () => ({
+  useSelector: (select: (state: unknown) => unknown) =>
+    select({
+      vaultGlobal: {
+        networkStatus: mockNetworkStatus,
+        isSwitchingAccount: false,
+        loadingStates: { isLoadingBalances: true },
+        isPollingUpdate: false,
+      },
+    }),
+}));
+
+describe('wallet loading feedback', () => {
+  it.each(['/send/eth', '/send/sys', '/send/confirm', '/EXTERNAL/SEND/ETH/'])(
+    'keeps balance-only updates from covering %s',
+    (pathname) => {
+      mockPathname = pathname;
+      mockNetworkStatus = 'idle';
+      const { result, rerender } = renderHook(() => usePageLoadingState());
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.isContextChanging).toBe(false);
+
+      mockNetworkStatus = 'switching';
+      rerender();
+      expect(result.current.isLoading).toBe(true);
+      expect(result.current.isContextChanging).toBe(true);
+    }
+  );
+
+  it('still provides explicit balance refresh feedback on Home', () => {
+    mockPathname = '/home';
+    mockNetworkStatus = 'idle';
+    const { result } = renderHook(() => usePageLoadingState());
+    expect(result.current).toEqual({
+      isLoading: true,
+      isContextChanging: false,
+      message: 'networkConnection.updatingBalances',
+    });
+  });
+});
 
 describe('isPageLoadingOverlayExcluded', () => {
   it.each([

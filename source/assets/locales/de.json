@@ -768,6 +768,7 @@
     "recoveryIntro": "Verwende die geheime Wiederherstellungsphrase dieser Wallet, um ein neues Passwort festzulegen. Deine gespeicherten Konten und Einstellungen bleiben auf diesem Gerät.",
     "recoverySeedHelp": "Gib die Phrase für diese Wallet ein. Eine andere Phrase kann ihre Konten nicht wiederherstellen.",
     "recoveryLimitations": "Gespeicherte private Notizen, Wiederherstellungskopien importierter Schlüssel und Signaturdaten bleiben erhalten. Sichere importierte Schlüssel und Notizen separat für ein neues oder verlorenes Gerät. Hardware-Wallets müssen möglicherweise erneut verbunden werden. Es werden keine Guthaben übertragen.",
+    "walletRecoveryWrongPhrase": "Diese Wiederherstellungsphrase gehört nicht zu dieser Wallet.",
     "walletRecoveryFailed": "Die Wallet-Wiederherstellung konnte nicht abgeschlossen werden. Prüfe deine Phrase und versuche es erneut. Wenn es weiterhin fehlschlägt, starte deinen Browser neu. Lösche die gespeicherten Wallet-Daten nicht.",
     "walletRecoveryUnconfirmed": "Die Wallet-Wiederherstellung konnte nicht bestätigt werden. Prüfe die Wallet, um ihren aktuellen Status zu sehen. Lösche die gespeicherten Wallet-Daten nicht.",
     "walletRecoveryRestartRequired": "Die Wiederherstellung muss abgeschlossen sein, bevor du die Wallet verwenden kannst. Starte deinen Browser neu, prüfe dann deine Wallet und versuche bei Bedarf erneut, sie wiederherzustellen. Lösche die gespeicherten Wallet-Daten nicht.",
@@ -4056,7 +4057,6 @@
       "autoWatchHint": "Festlegen, wann Beobachtungskonten ausgeblendet werden"
     },
     "recoveryCopy": {
-      "wrongPhrase": "Diese Wiederherstellungsphrase gehört nicht zu dieser Wallet.",
       "wordCount": "Gib deine 12 oder 24 Wiederherstellungswörter in der richtigen Reihenfolge ein.",
       "restored": "Geräteautorisierung wiederhergestellt. Deine Wallet wird erneut geöffnet.",
       "uncertain": "Die Wiederherstellung der Geräteautorisierung konnte nicht bestätigt werden. Schließe Pali und öffne es erneut, bevor du es noch einmal versuchst.",

@@ -32,13 +32,14 @@ function assetQuantity(row: UtxoActivityRow, exact = false): string | null {
   return `${direction}${formatted} ${value.symbol ?? 'SPT'}`;
 }
 /** The active screen follows the account-owned history capability. */
-export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, navigation, onBack, initialHash, availableReplacements, onReplace }: {
+export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, navigation, onBack, initialHash, onInitialTargetOpened, availableReplacements, onReplace }: {
   authority: UtxoActivityOwner;
   selectedNetwork: Pick<UtxoNetwork, 'id' | 'name' | 'symbol' | 'decimals' | 'chainId'>;
   accountLabel: string;
   navigation: ShellLeafNavigation;
   onBack(): void;
   initialHash?: string;
+  onInitialTargetOpened?(): void;
   availableReplacements?(txid: string, assertCurrent: () => void): Promise<readonly NativeUtxoReplacement['mode'][]>;
   onReplace?(replacement: NativeUtxoReplacement): void;
 }) {
@@ -92,11 +93,13 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   };
   const openedInitial = useRef<string | null>(null);
   useLayoutEffect(() => {
-    if (initialHash && initialHash !== openedInitial.current && network && state.rows.some(row => row.txid === initialHash)) {
+    if (!initialHash) { openedInitial.current = null; return; }
+    if (initialHash !== openedInitial.current && network && state.rows.some(row => row.txid === initialHash)) {
       openedInitial.current = initialHash;
       selectTransaction(initialHash);
+      onInitialTargetOpened?.();
     }
-  }, [initialHash, network, state.rows, selectTransaction]);
+  }, [initialHash, network, state.rows, selectTransaction, onInitialTargetOpened]);
   useLayoutEffect(() => {
     const life = lifetime.current; life.alive = true;
     let observedContext = '';

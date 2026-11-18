@@ -35,6 +35,7 @@ import {
   selectActiveAccountTransactions,
   selectValidEnsCache,
 } from 'state/vault/selectors';
+import { KeyringAccountType } from 'types/network';
 import { IDecodedTx } from 'types/transactions';
 import {
   getEvmHistoryAddressCopyRisk,
@@ -196,7 +197,9 @@ export const EvmTransactionDetailsEnhanced = ({
   const { controllerEmitter } = useController();
   // Use valid (non-expired) ENS cache for security
   const ensCache = useSelector(selectValidEnsCache);
-  const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const { activeNetwork, activeAccount } = useSelector(
+    (state: RootState) => state.vault
+  );
   const { chainId, currency, apiUrl } = activeNetwork;
   const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
 
@@ -208,9 +211,18 @@ export const EvmTransactionDetailsEnhanced = ({
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
   // Local intent enriches the ordinary details view. Status comes from the network.
-  const [localTransaction, setLocalTransaction] =
-    useContextualState<EvmActivitySummary | null>(scope, null);
+  const canReadLocal =
+    Boolean(currentAccount?.address) &&
+    (activeAccount?.type !== KeyringAccountType.Imported ||
+      Boolean(currentAccount?.xprv));
+  const [localRead, setLocalRead] = useContextualState<
+    EvmActivitySummary | 'loading' | 'failed' | null
+  >(scope, 'loading');
+  const [localRetry, setLocalRetry] = useContextualState(scope, 0);
+  const localTransaction =
+    canReadLocal && typeof localRead === 'object' ? localRead : null;
   useEffect(() => {
+    if (!canReadLocal) return;
     let active = true;
     void readWallet(
       ['wallet', 'getSavedEvmTransaction'],
@@ -221,7 +233,7 @@ export const EvmTransactionDetailsEnhanced = ({
       .then((result) => {
         if (!active || scopeRef.current !== scope) return;
         const summary = result as EvmActivitySummary | null;
-        setLocalTransaction(
+        setLocalRead(
           summary?.hash?.toLowerCase() === normalizedHash &&
             parseEvmInteger(summary.chainId) === chainId
             ? summary
@@ -229,12 +241,12 @@ export const EvmTransactionDetailsEnhanced = ({
         );
       })
       .catch(() => {
-        if (active && scopeRef.current === scope) setLocalTransaction(null);
+        if (active && scopeRef.current === scope) setLocalRead('failed');
       });
     return () => {
       active = false;
     };
-  }, [scope, normalizedHash, chainId]);
+  }, [scope, normalizedHash, chainId, canReadLocal, localRetry]);
   const savedSummary = useMemo(
     () =>
       localTransaction ? projectEvmActivityRow(localTransaction) : undefined,
@@ -1096,11 +1108,15 @@ export const EvmTransactionDetailsEnhanced = ({
     }
   };
 
-  if (!transactionTx && !isLoadingDetails) {
+  const awaitingDetails =
+    isLoadingDetails ||
+    (!transactionTx && canReadLocal && localRead === 'loading');
+  const localFailed = canReadLocal && localRead === 'failed';
+  if (!transactionTx && !awaitingDetails) {
     return (
       <>
         <div className="p-8 text-center">
-          {lookupFailed ? (
+          {lookupFailed || localFailed ? (
             <>
               <p role="alert" className="text-brand-gray200 text-sm mb-4">
                 {t('transactions.detailsUnavailable')}
@@ -1108,8 +1124,12 @@ export const EvmTransactionDetailsEnhanced = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (scopeRef.current === scope)
-                    setLookupRetry((value) => value + 1);
+                  if (scopeRef.current !== scope) return;
+                  if (localFailed) {
+                    setLocalRead('loading');
+                    setLocalRetry((value) => value + 1);
+                  }
+                  if (lookupFailed) setLookupRetry((value) => value + 1);
                 }}
                 className="w-full rounded-full border border-brand-royalbluemedium px-4 py-3 text-sm text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
               >
@@ -1224,7 +1244,7 @@ export const EvmTransactionDetailsEnhanced = ({
             )}
           </>
         }
-        isLoading={isLoadingDetails}
+        isLoading={awaitingDetails}
       />
 
       <TransactionDetailsList

@@ -551,6 +551,7 @@ test('saved withdrawal status remains visible and a fresh pool check enables the
     await page.evaluate(() => window.__privateWithdrawalFixture.events())
   ).not.toContain('note:status');
   await page.getByRole('button',{name:'Check status',exact:true}).click();
+  await expect(page.getByText('Relayer reports FAILED. This does not confirm that the note is spent.')).toBeVisible();
   await prepare(page);
   await expect(page.getByText('Previous withdrawals', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Submit competing withdrawal', exact: true })).toHaveCount(0);

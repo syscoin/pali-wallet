@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { MAX_ARCHIVED_NOTES } from '../../wallet/privateVaultEnvelope';
 import { useController } from 'hooks/useController';
 import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
 import { PRIVACY_POOLS } from 'utils/privacy/registry';
@@ -71,6 +72,7 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
 export function usePrivateNotes() {
   const { controllerEmitter } = useController();
   const [notes, setNotes] = useState<IPrivateNoteView[]>([]);
+  const [archiveCount, setArchiveCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
   const [unsupportedFormat, setUnsupportedFormat] = useState(false);
@@ -93,13 +95,27 @@ export function usePrivateNotes() {
           false
         );
         if (!isActive() || owner.current.request !== request) return;
-        const envelope = response as { notes?: unknown } | null;
+        const envelope = response as {
+          archiveSummary?: { noteCount?: number };
+          notes?: unknown;
+        } | null;
         if (!envelope || !Array.isArray(envelope.notes)) {
           throw new Error('privacy_note_response_invalid');
         }
         const next = envelope.notes.map(readPrivateNote);
         if (new Set(next.map(({ id }) => id)).size !== next.length) {
           throw new Error('privacy_note_response_invalid');
+        }
+        if (envelope.archiveSummary !== undefined) {
+          const count = envelope.archiveSummary?.noteCount;
+          if (
+            typeof count !== 'number' ||
+            !Number.isSafeInteger(count) ||
+            count < 0 ||
+            count > MAX_ARCHIVED_NOTES
+          )
+            throw new Error('privacy_note_response_invalid');
+          setArchiveCount(count);
         }
         setNotes(next);
         setUnavailable(false);
@@ -176,6 +192,8 @@ export function usePrivateNotes() {
     controllerEmitter,
     loading,
     notes,
+    archiveCount,
+    setArchiveCount,
     refresh,
     remember,
     forget,

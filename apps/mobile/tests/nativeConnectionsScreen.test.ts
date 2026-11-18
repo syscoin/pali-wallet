@@ -280,6 +280,27 @@ test('session action failures use a localized generic fallback for unknown error
   } finally { f.close(); }
 });
 
+test('the list disconnect shortcut shows a visible failure and permits retry', async () => {
+  const f = fixture(), session = f.session();
+  const disconnect = () => f.render().find(element =>
+    element.type === 'IconButton' && element.props.label === 'Disconnect Example app')!;
+  try {
+    f.update({ sessions: [session] });
+    f.setSessionAction(async () => {
+      f.update({ revision: 8, sessions: [{ ...session }] });
+      throw Error('Private failure details');
+    });
+    click(disconnect()); await settled();
+    const footer = f.render().find(element => element.type === 'Screen')!.props.footer;
+    assert.equal(footer.props.accessibilityRole, 'alert');
+    assert.equal(footer.children[0].props.body, 'The connection service is unavailable. Try again.');
+    f.setSessionAction(async () => f.update({ sessions: [] }));
+    click(disconnect()); await settled();
+    assert.equal(f.calls.filter(call => call.method === 'disconnect').length, 2);
+    assert.equal(f.render().find(element => element.type === 'Screen')!.props.footer, undefined);
+  } finally { f.close(); }
+});
+
 test('session actions exclude synchronous duplicates and retry after a current failure', async () => {
   const f = fixture(), pending = Promise.withResolvers<void>();
   try {

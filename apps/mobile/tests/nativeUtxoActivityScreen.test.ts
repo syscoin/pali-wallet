@@ -43,14 +43,39 @@ function fixture(row: UtxoActivityRow, replacement?: {
     '../activity/activityAmountLabel': { compactActivityAmountLabel },
     '../activity/assetIcon': { utxoActivityAssetIcon: () => undefined },
   });
-  const props = { authority: {}, selectedNetwork: { id: 'syscoin', name: 'Syscoin', symbol: 'SYS', decimals: 8, chainId: 57 },
+  const props = { initialHash: undefined as string | undefined, onInitialTargetOpened: undefined as (() => void) | undefined,
+    authority: {}, selectedNetwork: { id: 'syscoin', name: 'Syscoin', symbol: 'SYS', decimals: 8, chainId: 57 },
     ...replacement, accountLabel: 'Daily', navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, beginNavigation() {}, setImmersive() {} }, onBack() {} };
   const render = () => screenElements(host.render(props));
-  return { render, close: host.close, row() {
+  return { render, close: host.close, target(hash?: string, opened?: () => void) { props.initialHash = hash; props.onInitialTargetOpened = opened; }, row() {
     const list = render().find(item => item.type === 'FlatList')!;
     return screenElements(list.props.renderItem({ item: row, index: 0 })).find(item => item.type === 'ActivityListRow')!;
   } };
 }
+
+test('UTXO Activity acknowledges only a resolved target and keeps its details after acknowledgment', () => {
+  const txid = 'e'.repeat(64);
+  const row: UtxoActivityRow = { txid, block: null, observedConfirmations: 0, receivedUnits: '0', spentUnits: '10000',
+    netUnits: '-10000', transactionFeeUnits: '100', hasAssetData: false, zdag: false, assetAmount: null, nativeTransfer: null };
+  const f = fixture(row);
+  let opened = 0;
+  const acknowledge = () => { opened++; };
+  try {
+    f.target('f'.repeat(64), acknowledge);
+    f.render();
+    assert.equal(opened, 0);
+    f.target(txid, acknowledge);
+    f.render();
+    assert.equal(opened, 1);
+    f.target();
+    assert(f.render().some(item => item.type === 'TransactionDetailLayout'));
+    f.render().find(item => item.type === 'Header')!.props.onBack();
+    assert(!f.render().some(item => item.type === 'TransactionDetailLayout'));
+    f.target(txid, acknowledge);
+    f.render();
+    assert.equal(opened, 2, 'a new deliberate visit can open the same transaction');
+  } finally { f.close(); }
+});
 
 test('UTXO Activity exposes only the admitted replacement actions for its current pending detail', async () => {
   const txid = 'e'.repeat(64);

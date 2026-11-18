@@ -73,6 +73,7 @@ async function withController(
     releasePreflight(): void;
     signedCommit: Promise<void>;
     acknowledgeCommit(): void;
+    lock(): void;
     adapterEntered: Promise<AbortSignal>;
     adapterObservedAbort: Promise<boolean>;
     releaseAdapter(): void;
@@ -408,6 +409,7 @@ async function withController(
       releasePreflight: () => release.resolve(),
       signedCommit: committed.promise,
       acknowledgeCommit: () => acknowledge.resolve(),
+      lock: () => authority.lock(),
       adapterEntered: adapterEntered.promise,
       adapterObservedAbort: adapterObservedAbort.promise,
       releaseAdapter: () => adapterRelease.resolve(),
@@ -550,7 +552,7 @@ test('remove and re-add retires an existing NFT review before signing or POST', 
   });
 });
 
-test('remove and re-add while NFT broadcast preflight waits preserves the signed record without POST', async () => {
+test('remove and re-add during NFT final preflight releases the unsent transfer', async () => {
   const asset = collectibleFixture('ERC-721');
   await withController(asset, 'hold-preflight', async ({
     transfers, calls, posted, retained, replaceSaved, preflight, releasePreflight,
@@ -569,12 +571,11 @@ test('remove and re-add while NFT broadcast preflight waits preserves the signed
     releasePreflight();
     await assert.rejects(pending, { code: 'COLLECTIBLE_CHANGED' });
     const outcome = transfers.getSnapshot();
-    assert.equal(outcome.phase, 'unknown');
+    assert.equal(outcome.phase, 'idle');
     assert.equal(outcome.review, null);
-    assert.equal(outcome.hash, saved?.hash);
-    assert.equal(outcome.collectible?.tokenStandard, 'ERC-721');
-    assert.equal(outcome.message, 'This transaction was not submitted. Check Activity before trying again.');
-    assert.deepEqual(await retained(), [saved]);
+    assert.equal(outcome.hash, null);
+    assert.equal(outcome.message, 'Your saved collectibles changed. Open the collectible and try again.');
+    assert.deepEqual(await retained(), []);
     assert.equal(posted.length, 0);
     assert.equal(calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
   });
@@ -638,22 +639,23 @@ test('a legacy saved NFT that loses ownership can be explicitly cancelled after 
   const asset = collectibleFixture('ERC-721');
   await withController(asset, 'legacy-cancellation', async ({
     transfers, calls, posted, retained, retainedBytes, reopen, confirmOnChain,
-    invalidateCancellationObservation, holdOriginalObservation, reorg, removeHolding, signedCommit, acknowledgeCommit, observeSaved,
+    invalidateCancellationObservation, holdOriginalObservation, reorg, removeHolding, signedCommit, acknowledgeCommit, lock, observeSaved,
   }) => {
     const pending = transfers.confirm(await reviewCollectible(transfers, asset), { method: 'device' });
     await Promise.race([signedCommit, pending.then(() => assert.fail('Send did not commit a signed record'))]);
+    // A locked wallet cannot retire an entry from its previous session.
+    // Reopen this interrupted legacy journal to exercise explicit cancellation.
+    lock();
     removeHolding();
     acknowledgeCommit();
-    await assert.rejects(pending, { code: 'INSUFFICIENT_NFT_BALANCE' });
+    await assert.rejects(pending, { code: 'CANCELLED' });
+    const reopened = await reopen();
     const [saved] = await retained();
     assert.equal(saved?.phase, 'signed');
-    assert.equal(transfers.getSnapshot().hash, saved?.hash);
     const hash = saved!.hash;
     const original = await retainedBytes(hash);
     assert.ok(original);
     assert.equal(Transaction.from(original).hash, hash);
-    const reopened = await reopen();
-    assert.equal(await retainedBytes(hash), original);
     await assert.rejects(reopened.prepare(recipient, '0.000000000000000001'), { code: 'PENDING_TRANSFER' });
     assert.deepEqual(posted, []);
     assert.equal(calls.some((call) => call.method === 'eth_sendRawTransaction'), false);

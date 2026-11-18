@@ -768,6 +768,7 @@
     "recoveryIntro": "Use a frase secreta de recuperação desta carteira para escolher uma nova senha. Suas contas e configurações salvas permanecem neste dispositivo.",
     "recoverySeedHelp": "Digite a frase desta carteira. Uma frase diferente não pode restaurar suas contas.",
     "recoveryLimitations": "As notas privadas, cópias de recuperação das chaves importadas e registros de assinatura são preservados. Mantenha backups separados das chaves importadas e notas para um dispositivo novo ou perdido. Pode ser necessário reconectar carteiras de hardware. A recuperação não movimenta fundos.",
+    "walletRecoveryWrongPhrase": "Esta frase de recuperação não corresponde a esta carteira.",
     "walletRecoveryFailed": "Não foi possível concluir a recuperação da carteira. Confira sua frase e tente novamente. Se continuar falhando, reinicie seu navegador. Não apague os dados de armazenamento da carteira.",
     "walletRecoveryUnconfirmed": "Não foi possível confirmar a recuperação da carteira. Verifique a carteira para ver seu estado atual. Não apague os dados de armazenamento da carteira.",
     "walletRecoveryRestartRequired": "É preciso concluir a recuperação antes de usar a carteira. Reinicie seu navegador, depois verifique sua carteira e tente recuperá-la novamente se necessário. Não apague os dados de armazenamento da carteira.",
@@ -4056,7 +4057,6 @@
       "autoWatchHint": "Escolha quando as contas de observação são ocultadas"
     },
     "recoveryCopy": {
-      "wrongPhrase": "Esta frase de recuperação não corresponde a esta carteira.",
       "wordCount": "Introduz as tuas 12 ou 24 palavras de recuperação por ordem.",
       "restored": "Autorização do dispositivo restaurada. A reabrir a tua carteira.",
       "uncertain": "Não foi possível confirmar a recuperação da autorização do dispositivo. Fecha e volta a abrir o Pali antes de tentares novamente.",

@@ -156,6 +156,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
   const [scanning, setScanning] = useState(initialScan);
   const [entryExpired, setEntryExpired] = useState(false);
   const [sessionSelection, setSessionSelection] = useState<{ controller: NativeConnectionsView; id: string } | null>(null);
+  const [listDisconnectFailure, setListDisconnectFailure] = useState<{ controller: NativeConnectionsView; sessionKey: string } | null>(null);
   const [scopeDetails, setScopeDetails] = useState<object | null>(null);
   const [clockRevision, setClockRevision] = useState(0);
   const handledEntry = useRef<string | null>(null);
@@ -172,6 +173,8 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
   const [sessionFeedback, setSessionFeedback] = useState<{ owner: typeof sessionOwner; busy: boolean; error: NativeConnectionError | null } | null>(null);
   const sessionBusy = sessionFeedback?.owner === sessionOwner && sessionFeedback.busy;
   const sessionError = sessionFeedback?.owner === sessionOwner ? sessionFeedback.error : null;
+  const showingDisconnectFailure = snapshot.status !== 'locked' && listDisconnectFailure?.controller === controller &&
+    snapshot.sessions.some(session => sessionIdentity(session) === listDisconnectFailure.sessionKey);
   const closeSession = useCallback(() => { if (sessionLife.current) sessionLife.current.active = false; setSessionSelection(null); }, []);
   useLayoutEffect(() => {
     const current = { owner: sessionOwner, active: sessionOwner.key !== null, pending: false };
@@ -253,6 +256,17 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
     if (!lifetime.current.active || latest.connectionSettingsBusy || latest.status === 'locked' || latest.status === 'unavailable') return;
     invoke(() => enabled === undefined ? controller.disconnectAll() : controller.setConnectionsEnabled(enabled));
   };
+  const disconnectFromList = async (session: Session) => {
+    const current = lifetime.current;
+    if (!current.active || !controller.getSnapshot().sessions.includes(session)) return;
+    const revision = ++current.revision;
+    setListDisconnectFailure(null);
+    try { await controller.disconnect(session.id); }
+    catch {
+      if (current.active && current.revision === revision)
+        setListDisconnectFailure({ controller, sessionKey: sessionIdentity(session) });
+    }
+  };
   const runSessionAction = async (action: 'open' | 'disconnect') => {
     const owner = sessionLife.current;
     const current = () => owner?.active && sessionLife.current === owner && owner.owner === sessionOwner && lifetime.current.active && controller.getSnapshot().status !== 'locked' &&
@@ -330,6 +344,8 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
       onPress={() => {
         if (selectedAccountId && selectedPermissions?.canApprove && snapshot.network && !expired) invoke(() => controller.approve(proposal.id, selectedAccountId, snapshot.network!.id, snapshot.revision));
       }} />
+  </View> : showingDisconnectFailure ? <View accessibilityRole="alert" accessibilityLiveRegion="polite">
+    <Notice title={t('mobile.connections.unavailableTitle')} body={t(ERRORS.CONNECTION_UNAVAILABLE)} tone="red" />
   </View> : undefined}>
     <Header title={proposal ? t('connections.connectRequest') : t('mobile.connections.title')} onBack={close} />
     {snapshot.status === 'locked' ? <Notice title={t('mobile.connections.unlockTitle')} body={t('mobile.connections.unlockBody')} /> : <>
@@ -388,7 +404,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
           <Icon name="chevron-right" color={colors.muted} size={18} />
         </IdlePressable>
         <IconButton label={t('mobile.connections.disconnect', { name: session.name })} icon="close"
-          onPress={() => { if (lifetime.current.active && controller.getSnapshot().sessions.includes(session)) invoke(() => controller.disconnect(session.id)); }} />
+          onPress={() => void disconnectFromList(session)} />
       </View>)}</Card>}
     </View>}
     {!proposal && snapshot.status !== 'locked' && <Card style={s.settingsCard}>
