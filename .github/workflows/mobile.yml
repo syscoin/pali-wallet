@@ -9,8 +9,6 @@ on:
       - 'scripts/walletconnect-terminal.json'
       - 'scripts/apply-quickcrypto-sentry.cjs'
       - 'scripts/quickcrypto-sentry.json'
-      - 'scripts/apply-keyring-retained-speed-up.cjs'
-      - 'scripts/keyring-retained-speed-up.json'
       - 'apps/mobile/**'
       - 'package.json'
       - 'yarn.lock'

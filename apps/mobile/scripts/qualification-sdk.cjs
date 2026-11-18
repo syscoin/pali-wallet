@@ -12,14 +12,10 @@ function readQualificationSdkPin(root) {
   const pkg = readJson(path.join(root, 'package.json'));
   const version = pkg.dependencies[name];
   const quickCryptoIdentity = readQuickCryptoSentryIdentity(root);
-  const keyringPatch = pkg.scripts?.postinstall?.includes('apply-keyring-retained-speed-up')
-    ? require(path.resolve(root, '../../scripts/apply-keyring-retained-speed-up.cjs')).verifyKeyringSpeedUpPatch(root)
-    : undefined;
   return {
     version,
-    identity: composeQualificationSdkIdentity(version, quickCryptoIdentity, keyringPatch),
+    identity: composeQualificationSdkIdentity(version, quickCryptoIdentity),
     ...(quickCryptoIdentity ? { quickCryptoIdentity } : {}),
-    ...(keyringPatch ? { keyringPatch } : {}),
   };
 }
 

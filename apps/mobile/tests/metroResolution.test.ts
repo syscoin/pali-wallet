@@ -17,9 +17,6 @@ function resolver(relative: string) {
     require(name: string) {
       if (name === 'path' || name === 'node:path') return path;
       if (name === 'node:fs') return { realpathSync };
-      if (name === '../../scripts/apply-keyring-retained-speed-up.cjs') {
-        return { verifyKeyringSpeedUpPatch: (directory: string) => assert.equal(directory, path.resolve(mobileRoot)) };
-      }
       assert.equal(name, 'expo/metro-config');
       return { getDefaultConfig: () => ({ resolver: {} }) };
     },

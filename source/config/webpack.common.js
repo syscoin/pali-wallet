@@ -8,12 +8,6 @@ const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const { join, resolve } = require('path');
 const { DefinePlugin, IgnorePlugin, ProvidePlugin } = require('webpack');
 
-const {
-  verifyKeyringSpeedUpPatch,
-} = require('../../scripts/apply-keyring-retained-speed-up.cjs');
-
-verifyKeyringSpeedUpPatch(resolve(__dirname, '../..'));
-
 const ethersPublicAliases = require('./ethersPublicAliases');
 const {
   createIdenticalDependencyDedupPlugins,
