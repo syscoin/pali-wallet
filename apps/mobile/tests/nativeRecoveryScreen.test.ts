@@ -354,7 +354,7 @@ test('recovery renders controller errors in the chosen language without English 
 });
 
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
-  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }, idleClock?: { minutes: number; time: number }) {
+  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number; wait: Promise<void> }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }, idleClock?: { minutes: number; time: number }) {
   const root = setup();
   if (idleClock) {
     await root.idle.ready;
@@ -579,7 +579,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         check();
         return { begin: () => 'restore-preview', cancel() {}, async prepareImport() {
           check(); return { id: 'restore-preview', added: 1, duplicates: 0, guarded: 0, expiresAt: performance.now() + 10000 };
-        }, async commitImport() { check(); restoreFailure.commits++; throw Error('BACKUP_COMMIT_UNCONFIRMED'); } };
+        }, async commitImport() { check(); restoreFailure.commits++; await restoreFailure.wait; throw Error('BACKUP_COMMIT_UNCONFIRMED'); } };
       },
     });
     dependencies['./NativeNoteRestore'] = { NativeNoteRestore: 'NativeNoteRestore', NoteRestoreUnconfirmedNotice: 'NoteRestoreUnconfirmedNotice' };
@@ -1436,7 +1436,8 @@ test('Sentry settings handles a synchronous stale-at-open failure without a read
 
 
 test('ambiguous note restore retains its recovery instructions on the public reopen screen', async () => {
-  const failure = { commits: 0 };
+  const acknowledgement = Promise.withResolvers<void>();
+  const failure = { commits: 0, wait: acknowledgement.promise };
   const f = await walletFeedbackFixture(false, false, undefined, undefined, true, undefined, undefined,
     quietActivityNotifications, undefined, undefined, failure);
   try {
@@ -1452,7 +1453,13 @@ test('ambiguous note restore retains its recovery instructions on the public reo
     restore = f.render();
     const step = restore.props.step as { phase: string; preview: { id: string } };
     assert.equal(step.phase, 'review');
-    await (restore.props.onRestore as (id: string) => Promise<void>)(step.preview.id);
+    const commit = (restore.props.onRestore as (id: string) => Promise<void>)(step.preview.id);
+    (restore.props.onBack as () => void)();
+    const committing = f.render();
+    assert.equal(committing.type, 'NativeNoteRestore', 'a Back callback captured before the busy render cannot leave the commit');
+    assert.equal(committing.props.busy, true);
+    acknowledgement.resolve();
+    await commit;
     const locked = f.render();
     assert.equal(button(locked, 'Open wallet').props.disabled, false);
     assert(!all(locked).some(node => node.type === 'PinEntryScreen'));
@@ -1466,7 +1473,7 @@ test('ambiguous note restore retains its recovery instructions on the public reo
     assert.equal(button(retry, 'Open wallet').props.disabled, false);
     assert(all(retry).some(node => node.props.title === 'Restore could not be confirmed'), 'a failed unlock must retain the restore warning');
     assert.equal(failure.commits, 1, 'unlock retry must not repeat the restore');
-  } finally { f.dispose(); }
+  } finally { acknowledgement.resolve(); f.dispose(); }
 });
 
 test('private deposit backup returns its public task and discards stale export callbacks', async () => {

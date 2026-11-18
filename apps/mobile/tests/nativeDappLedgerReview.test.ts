@@ -222,6 +222,17 @@ test('transaction review keeps the canonical asset recipient before account deta
   } finally { f.close(); }
 });
 
+test('a delivered unsent transaction response still shows the failure and only permits closing', () => {
+  const f = fixture('transaction');
+  try {
+    Object.assign(f.review, { error: 'TRANSACTION_NOT_SENT', dispatched: true });
+    const nodes = f.render();
+    assert(nodes.some(node => node.type === 'Notice' && node.props.body === 'This transaction was not sent. Request it again from the app.'));
+    assert(!nodes.some(node => node.type === 'Notice' && node.props.title === 'Check transaction status'));
+    assert.deepEqual(nodes.filter(node => node.type === 'Button').map(node => node.props.title).sort(), ['Close', 'View transaction details']);
+  } finally { f.close(); }
+});
+
 
 test('localized consent preserves request binding and unknown-delivery restrictions', async () => {
   const message = fixture('message'), transaction = fixture('transaction');

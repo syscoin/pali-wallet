@@ -176,6 +176,8 @@ export function NativeSmartTransactionReviewScreen({
               body={
                 review.error === 'DELIVERY_UNCERTAIN'
                   ? t('mobile.dappConsent.transactionReview.theResultCouldNotBeConfirmedCheck')
+                  : review.error === 'TRANSACTION_NOT_SENT'
+                  ? t('mobile.dappConsent.transactionReview.transactionNotSent')
                   : t('mobile.dappConsent.smartTransactionReview.thisRequestIsNoLongerAvailableRequest')
               }
             />

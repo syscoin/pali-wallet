@@ -3167,6 +3167,7 @@
         "theAppSentInvalidRequestData": "앱이 잘못된 요청 데이터를 보냈습니다.",
         "theAppSentAnInvalidTransaction": "앱이 잘못된 거래를 보냈습니다.",
         "thisTransactionCouldNotBePreparedRequest": "이 거래를 준비하지 못했습니다. 앱에서 다시 요청하세요.",
+        "transactionNotSent": "이 거래는 전송되지 않았습니다. 앱에서 다시 요청하세요.",
         "theResultCouldNotBeConfirmedCheck": "결과를 확인하지 못했습니다. 다시 시도하기 전에 활동을 확인하세요.",
         "previousPage": "이전 페이지",
         "nextPage": "다음 페이지",

@@ -3167,6 +3167,7 @@
         "theAppSentInvalidRequestData": "Приложение отправило недопустимые данные запроса.",
         "theAppSentAnInvalidTransaction": "Приложение отправило недопустимую транзакцию.",
         "thisTransactionCouldNotBePreparedRequest": "Не удалось подготовить транзакцию. Запросите её снова в приложении.",
+        "transactionNotSent": "Транзакция не была отправлена. Запросите её снова в приложении.",
         "theResultCouldNotBeConfirmedCheck": "Не удалось подтвердить результат. Проверьте активность перед повторной попыткой.",
         "previousPage": "Предыдущая страница",
         "nextPage": "Следующая страница",

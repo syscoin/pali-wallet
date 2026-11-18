@@ -4,6 +4,7 @@ import { NativeAccountChangeRequests } from './accountChangeRequests.ts';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope, type NativePrivateAuthentication } from '../custody/privateAuthentication.ts';
 import { NativeSmartPreparationRequests } from './smartPreparationRequests.ts';
 import { getRequestedSmartAccountAuthenticator, type SmartAccountPreparationRequest } from '../../../../source/shared/smartAccountPreparation.ts';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../../../source/shared/smartAccountFeeQuote.ts';
 import type { NativeSmartCreationAllocation } from '../smartAccount/preparation.ts';
 import { SmartAccountModulesProjectionError } from '../../../../source/shared/smartAccountModules.ts';
 import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, isSmartAccountModuleRequestMethod, normalizeSmartAccountModuleRequest, SmartAccountModuleRequestError, type SmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
@@ -2473,6 +2474,7 @@ export class NativeConnectionsController {
     const respondToRequest = !(
       !respond ||
       message.dispatched ||
+      message.review.error === 'TRANSACTION_NOT_SENT' ||
       (message.broadcastHash && !message.eoa) ||
       this.disposed ||
       !this.transport
@@ -3414,6 +3416,23 @@ export class NativeConnectionsController {
     });
     await this.retireRequest(message, false);
   }
+  private async reportUnsentTransaction(message: PendingSigning, approval: MessageApproval): Promise<void> {
+    message.review = Object.freeze({ ...message.review, error: 'TRANSACTION_NOT_SENT' });
+    this.publish();
+    try {
+      await this.transport!.respond(
+        message.session.binding,
+        message.wire.id,
+        { error: { code: -32603, message: 'The transaction was not submitted' } },
+        approval.assertCurrent,
+        () => { message.dispatched = true; }
+      );
+    } catch { /* A failed reply cannot turn the transaction failure into a rejection. */ }
+    if (this.requests.get(message.id) === message) {
+      message.busy = false;
+      this.publish();
+    }
+  }
   private retrySmartMetadata(id: string, revision: number): Promise<void> {
     const message = this.requests.get(id);
     const work = this.performRetrySmartMetadata(id, revision);
@@ -3563,6 +3582,15 @@ export class NativeConnectionsController {
         }
         return failure('DELIVERY_UNCERTAIN');
       }
+      // Only classify fee review failures here. Signers and expired requests
+      // retain their existing cancellation and rejection behavior.
+      const feeReviewFailed = message.smart
+        ? message.smart.getSnapshot().error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+        : error instanceof Error && ['REVIEW_REQUIRED', 'EVM fee approval changed'].includes(error.message);
+      if (message.request.method === 'eth_sendTransaction' && feeReviewFailed && approval.isCurrent()) {
+        await this.reportUnsentTransaction(message, approval);
+        return;
+      }
       if (isEncryptionRequest(message.request) && this.requestConnectionCurrent(message) && approval.isCurrent()) {
         message.busy = false;
         this.publish();
@@ -3573,6 +3601,7 @@ export class NativeConnectionsController {
   private rejectRequest(id: string): Promise<void> {
     const message = this.requests.get(id);
     if (!message) return Promise.resolve();
+    if (message.review.error === 'TRANSACTION_NOT_SENT' && message.busy) return Promise.resolve();
     if (message.dispatched && this.error === 'DELIVERY_UNCERTAIN')
       this.error = null;
     return this.retireRequest(message);

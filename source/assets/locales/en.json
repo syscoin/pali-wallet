@@ -3167,6 +3167,7 @@
         "theAppSentInvalidRequestData": "The app sent invalid request data.",
         "theAppSentAnInvalidTransaction": "The app sent an invalid transaction.",
         "thisTransactionCouldNotBePreparedRequest": "This transaction could not be prepared. Request it again from the app.",
+        "transactionNotSent": "This transaction was not sent. Request it again from the app.",
         "theResultCouldNotBeConfirmedCheck": "The result could not be confirmed. Check Activity before trying again.",
         "previousPage": "Previous page",
         "nextPage": "Next page",

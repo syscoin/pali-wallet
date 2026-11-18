@@ -266,6 +266,10 @@ export class KeyringRuntimeError extends CustodyRuntimeError {
     this.name = 'KeyringRuntimeError';
   }
 }
+class SmartAccountFeeUnavailable extends Error {
+  readonly code = 'FEE_UNAVAILABLE';
+  constructor() { super('FEE_UNAVAILABLE'); }
+}
 class TrezorReviewChangedError extends Error {
   constructor() { super('Network conditions changed. Review this transfer again and approve the new request on Trezor.'); }
 }
@@ -6269,12 +6273,15 @@ export function createKeyringRuntimeFactory(
                   } catch (error) {
                     check();
                     if (error instanceof KeyringRuntimeError) throw error;
-                    throw new KeyringRuntimeError('FEE_UNAVAILABLE');
+                    throw new SmartAccountFeeUnavailable();
                   } finally { request.abort(); }
                 }
                 intent = Object.freeze({ ...intent, feeChoice: capturedFees });
               }
-            } catch (error) { if (error instanceof KeyringRuntimeError) throw error; throw new KeyringRuntimeError('INVALID_INPUT'); }
+            } catch (error) {
+              if (error instanceof KeyringRuntimeError || error instanceof SmartAccountFeeUnavailable) throw error;
+              throw new KeyringRuntimeError('INVALID_INPUT');
+            }
             return openSmartAccountOperation(intent, assertOwner, {kind:'local-new',action:{kind:'operation',intent}}, authentication);
           },
           async openConnectionHost(): Promise<NativeConnectionSigningHost> {

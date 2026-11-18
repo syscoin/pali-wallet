@@ -35,6 +35,7 @@ export type NativeMessageReviewError =
   | 'SITE_MISMATCH'
   | 'DELIVERY_UNCERTAIN'
   | 'INVALID_TRANSACTION'
+  | 'TRANSACTION_NOT_SENT'
   | 'TRANSACTION_UNAVAILABLE';
 
 type NativeSigningReviewBase = Readonly<{

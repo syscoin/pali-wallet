@@ -50,6 +50,7 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
     BLOCKED_SITE: t('mobile.dappConsent.messageReview.thisWebsiteIsOnAKnownPhishing'),
     SITE_MISMATCH: t('mobile.dappConsent.messageReview.theRequestingWebsiteDoesNotMatchThe'),
     INVALID_TRANSACTION: t('mobile.dappConsent.transactionReview.theAppSentAnInvalidTransaction'),
+    TRANSACTION_NOT_SENT: t('mobile.dappConsent.transactionReview.transactionNotSent'),
     TRANSACTION_UNAVAILABLE: t('mobile.dappConsent.transactionReview.thisTransactionCouldNotBePreparedRequest'),
     DELIVERY_UNCERTAIN: t('mobile.dappConsent.transactionReview.theResultCouldNotBeConfirmedCheck'),
   } as const;
@@ -86,7 +87,8 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
   const callsKey = `${review.id}:${batch?.index}`;
   const callsVisible = expandedCalls === callsKey;
   const retry = batch?.phase === 'failed';
-  const submitted = review.dispatched || (batch ? batch.phase === 'unknown' || batch.phase === 'complete' : review.broadcastHash !== null);
+  const notSent = review.error === 'TRANSACTION_NOT_SENT';
+  const submitted = !notSent && (review.dispatched || (batch ? batch.phase === 'unknown' || batch.phase === 'complete' : review.broadcastHash !== null));
   const close = () => { void controller.rejectRequest(review.id).catch(() => undefined); };
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -143,7 +145,7 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
   };
   const showError = review.error && review.error !== 'SITE_MISMATCH' &&
     !(review.error === 'BLOCKED_SITE' && review.verification.isScam);
-  const progress = !review.busy || batch?.phase === 'unknown' ? null
+  const progress = !review.busy || notSent || batch?.phase === 'unknown' ? null
     : review.dispatched || batch?.phase === 'complete' ? t('mobile.dappConsent.transactionReview.returningResult')
     : review.broadcastHash || batch?.phase === 'submitting' ? t('mobile.dappConsent.transactionReview.sendingTransaction')
     : !transaction || batch?.phase === 'preparing' ? t('mobile.dappConsent.transactionReview.preparingTransaction')
@@ -155,10 +157,10 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
       <ActivityIndicator color={colors.blue} accessible={false} />
       <Text accessibilityLiveRegion="polite">{progress}</Text>
     </View>}
-    {ledger.showConnect && !submitted && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}
+    {ledger.showConnect && !submitted && !notSent && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}
     <View style={s.actions}>
-    <Button title={submitted || review.broadcastHash ? t('buttons.close') : t('buttons.reject')} variant="secondary" onPress={close} style={s.action} />
-    {!submitted && <Button title={review.needsAccountSwitch ? t('mobile.dappConsent.messageReview.switchAccount') : retry ? t('mobile.dappConsent.transactionReview.retryCall', { index: batch!.index + 1, count: batch!.calls.length }) : batch ? t('mobile.dappConsent.transactionReview.confirmCall', { index: batch.index + 1, count: batch.calls.length }) : t('buttons.confirm')}
+    <Button title={submitted || notSent || review.broadcastHash ? t('buttons.close') : t('buttons.reject')} variant="secondary" disabled={notSent && review.busy} onPress={close} style={s.action} />
+    {!submitted && !notSent && <Button title={review.needsAccountSwitch ? t('mobile.dappConsent.messageReview.switchAccount') : retry ? t('mobile.dappConsent.transactionReview.retryCall', { index: batch!.index + 1, count: batch!.calls.length }) : batch ? t('mobile.dappConsent.transactionReview.confirmCall', { index: batch.index + 1, count: batch.calls.length }) : t('buttons.confirm')}
       disabled={expired || editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
         (ledger.blocked || !retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} style={s.action} />}
     </View>

@@ -1964,7 +1964,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   if (stage === 'restore-notes' && snapshot.phase === 'ready') return <NativeNoteRestore
     step={noteRestore.step} busy={noteRestore.busy} error={noteRestore.error}
     onChoose={noteRestore.choose} onOpen={noteRestore.open} onRestore={noteRestore.restore}
-    onBack={() => { cancelNoteRestore(); setStage('private-notes'); }} />;
+    onBack={() => { if (noteRestore.leaveRestore()) setStage('private-notes'); }} />;
   if (stage === 'backup-notes' && snapshot.phase === 'ready') {
     const returning = depositBackupRoute;
     const canContinue = !!returning && returning.identity === custodyContext(snapshot, catalogue)?.identity;

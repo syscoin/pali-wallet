@@ -3167,6 +3167,7 @@
         "theAppSentInvalidRequestData": "アプリが無効なリクエストデータを送信しました。",
         "theAppSentAnInvalidTransaction": "アプリが無効な取引を送信しました。",
         "thisTransactionCouldNotBePreparedRequest": "この取引を準備できませんでした。アプリから再度リクエストしてください。",
+        "transactionNotSent": "この取引は送信されませんでした。アプリから再度リクエストしてください。",
         "theResultCouldNotBeConfirmedCheck": "結果を確認できませんでした。再試行前に履歴を確認してください。",
         "previousPage": "前のページ",
         "nextPage": "次のページ",

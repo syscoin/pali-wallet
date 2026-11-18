@@ -3167,6 +3167,7 @@
         "theAppSentInvalidRequestData": "应用发送了无效的请求数据。",
         "theAppSentAnInvalidTransaction": "应用发送了无效的交易。",
         "thisTransactionCouldNotBePreparedRequest": "无法准备此交易。请从应用重新请求。",
+        "transactionNotSent": "此交易未发送。请从应用重新请求。",
         "theResultCouldNotBeConfirmedCheck": "无法确认结果，重试前请检查活动。",
         "previousPage": "上一页",
         "nextPage": "下一页",

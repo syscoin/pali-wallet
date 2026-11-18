@@ -34,12 +34,16 @@ export function NoteRestoreUnconfirmedNotice({ reopen = false }: { reopen?: bool
 
 export function NativeNoteRestore({ step, busy, error, onChoose, onOpen, onRestore, onBack }: Props) {
   const { t } = useNativeTranslation();
+  const committing = step.phase === 'review' && busy;
   useLayoutEffect(() => {
-    const back = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
+    const back = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!committing) onBack();
+      return true;
+    });
     return () => back.remove();
-  }, [onBack]);
+  }, [committing, onBack]);
 
-  const header = <Header title={step.phase === 'review' ? t('mobile.noteFlows.restore.reviewRestore') : t('mobile.noteFlows.restore.restorePrivateNotes')} onBack={onBack} />;
+  const header = <Header title={step.phase === 'review' ? t('mobile.noteFlows.restore.reviewRestore') : t('mobile.noteFlows.restore.restorePrivateNotes')} onBack={committing ? undefined : onBack} />;
   const feedback = error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text> : null;
   let content;
   if (step.phase === 'password') {

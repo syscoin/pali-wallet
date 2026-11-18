@@ -55,6 +55,12 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     previous?.exporter?.cancel();
     setStep({ phase: 'select' }); setExportStep({ phase: 'select' }); setBusy(false); setErrorKey('');
   }, []);
+  const leaveRestore = () => {
+    // The submit handler marks the route busy before the review can render it.
+    if (step.phase === 'review' && route.current?.busy) return false;
+    cancel();
+    return true;
+  };
   const lock = useCallback(() => {
     // Only the picker ticket or its bounded ciphertext can outlive this lock.
     route.current?.authentication.retire();
@@ -275,5 +281,5 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
       }
     } finally { finish(owned); }
   };
-  return { begin, cancel, lock, resume, step, exportStep, busy, error: errorKey ? t(errorKey) : '', choose, open, restore, saveExport, showVerify, verifyExport };
+  return { begin, cancel, leaveRestore, lock, resume, step, exportStep, busy, error: errorKey ? t(errorKey) : '', choose, open, restore, saveExport, showVerify, verifyExport };
 }
