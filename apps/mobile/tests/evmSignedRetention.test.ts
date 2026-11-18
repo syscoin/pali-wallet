@@ -776,7 +776,7 @@ for (const phase of ['read', 'commit'] as const) {
   });
 }
 
-test('automatic terminal cleanup leaves marked and legacy privacy transactions untouched', async () => {
+test('automatic terminal cleanup leaves marked and unmarked privacy transactions untouched', async () => {
   const f = fixture();
   const session = f.session();
   const mainnet = '1';
@@ -789,12 +789,12 @@ test('automatic terminal cleanup leaves marked and legacy privacy transactions u
   const digest = '0x' + 'ab'.repeat(32);
   const markedDeposit = await signed(0, signer, mainnet);
   const markedWithdrawal = await signed(1, signer, mainnet);
-  const legacyDeposit = await signed(2, signer, mainnet, {
+  const unmarkedDeposit = await signed(2, signer, mainnet, {
     to: pool.address,
     data: abi.encodeFunctionData('deposit', [digest]),
     value: parseEther(pool.amount),
   });
-  const legacyWithdrawal = await signed(3, signer, mainnet, {
+  const unmarkedWithdrawal = await signed(3, signer, mainnet, {
     to: pool.address,
     data: abi.encodeFunctionData('withdraw', [
       '0x' + '12'.repeat(256),
@@ -811,43 +811,43 @@ test('automatic terminal cleanup leaves marked and legacy privacy transactions u
   const privateRecords = [
     markedDeposit,
     markedWithdrawal,
-    legacyDeposit,
-    legacyWithdrawal,
+    unmarkedDeposit,
+    unmarkedWithdrawal,
   ];
   await f.records.append(session, markedDeposit, { privateDeposit: true });
   await f.records.append(session, markedWithdrawal, { privateWithdrawal: true });
-  for (const entry of [legacyDeposit, legacyWithdrawal, ordinary])
+  for (const entry of [unmarkedDeposit, unmarkedWithdrawal, ordinary])
     await f.records.append(session, entry);
   const binding = await f.records.captureVerifiedReplacement(session, {
     ...payerScope,
-    nonce: legacyDeposit.nonce,
+    nonce: unmarkedDeposit.nonce,
     operation: 'cancel',
-    originalHash: legacyDeposit.hash,
+    originalHash: unmarkedDeposit.hash,
   });
   const cancelRaw = await signer.signTransaction({
     type: 2,
     chainId: mainnet,
-    nonce: legacyDeposit.nonce,
+    nonce: unmarkedDeposit.nonce,
     to: signer.address,
     value: 0,
-    gasLimit: Transaction.from(legacyDeposit.rawTransaction).gasLimit,
+    gasLimit: Transaction.from(unmarkedDeposit.rawTransaction).gasLimit,
     maxFeePerGas: 4,
     maxPriorityFeePerGas: 2,
   });
   const cancellation = {
-    ...legacyDeposit,
+    ...unmarkedDeposit,
     rawTransaction: cancelRaw,
     hash: Transaction.from(cancelRaw).hash!,
     context: {
-      ...legacyDeposit.context,
+      ...unmarkedDeposit.context,
       operation: 'cancel' as const,
-      originalHash: legacyDeposit.hash,
+      originalHash: unmarkedDeposit.hash,
     },
   };
   await f.records.append(session, cancellation, undefined, binding);
   const protectedRecords = [...privateRecords, cancellation];
   const expectedPhase = (hash: string) =>
-    hash === legacyDeposit.hash ? 'nonce-consumed' : 'confirmed';
+    hash === unmarkedDeposit.hash ? 'nonce-consumed' : 'confirmed';
   for (const entry of [...protectedRecords, ordinary])
     await f.records.updatePhase(
       session,

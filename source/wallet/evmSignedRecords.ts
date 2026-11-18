@@ -3244,8 +3244,8 @@ export class EvmSignedRecords {
           await this.materializeRecord(session, winner)
         );
         if (chainId === '1') {
-          // Older entries may lack privacy metadata. Identify pool calls from
-          // the local envelope, including a sibling replaced by a cancellation.
+          // Generic dapp sends can call a pool without note metadata. Check
+          // every local transaction in the group, including a replaced call.
           const callsPrivacyPool = (transaction: Transaction) =>
             getPrivacyPoolActivity(chainId, transaction.to, transaction.data);
           let privateGroup = callsPrivacyPool(tx) !== undefined;
