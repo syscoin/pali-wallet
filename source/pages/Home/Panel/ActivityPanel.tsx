@@ -4,7 +4,6 @@ import { useSelector } from 'react-redux';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
-import { useSmartAccountAuthorizations } from 'components/TransactionOptions/SmartAccountAuthorizations';
 import { useRequestScope } from 'hooks/useRequestScope';
 import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -57,7 +56,6 @@ export const TransactionsPanel = () => {
     !isBitcoinBased,
     clearedAt === undefined ? scopeKey : `${scopeKey}:${clearedAt}`
   );
-  const authorizations = useSmartAccountAuthorizations(true);
   const beginRetry = useRequestScope(scopeKey);
   const retryPending = useRef<() => boolean>();
   const [retryScope, setRetryScope] = useState<string>();
@@ -119,10 +117,9 @@ export const TransactionsPanel = () => {
   ]);
   const transactions = isBitcoinBased ? utxoTransactions : evmTransactions;
 
-  const hasTransactions =
-    transactions.length > 0 || authorizations.groups.length > 0;
-  const savedActivityLoading = saved.loading || authorizations.loading;
-  const savedActivityUnavailable = saved.unavailable || authorizations.failed;
+  const hasTransactions = transactions.length > 0;
+  const savedActivityLoading = saved.loading;
+  const savedActivityUnavailable = saved.unavailable;
 
   // ✅ MEMOIZED: Component definitions to prevent recreation
   const NoTransactionsComponent = useMemo(
@@ -354,10 +351,7 @@ export const TransactionsPanel = () => {
             type="button"
             className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
             disabled={savedActivityLoading}
-            onClick={() => {
-              if (saved.unavailable) void saved.retry();
-              if (authorizations.failed) void authorizations.retry();
-            }}
+            onClick={() => void saved.retry()}
           >
             {t('home.retrySavedActivity')}
           </button>
@@ -390,17 +384,11 @@ export const TransactionsPanel = () => {
             <UtxoTransactionsList userTransactions={utxoTransactions} />
           ) : (
             <EvmTransactionsList
-              authorizations={authorizations}
               userTransactions={evmTransactions}
               savedTransactions={saved.transactions}
-              savedHasMore={saved.hasMore || Boolean(authorizations.cursor)}
+              savedHasMore={saved.hasMore}
               savedLoading={savedActivityLoading}
-              loadMoreSaved={async () => {
-                await Promise.all([
-                  saved.hasMore && saved.loadMore(),
-                  authorizations.cursor && authorizations.load('more'),
-                ]);
-              }}
+              loadMoreSaved={saved.loadMore}
             />
           )}
           {OpenTransactionExplorer}

@@ -1368,7 +1368,7 @@ const smartInstruction = (index: number) => ({
   payer: OTHER, observedAt: { hash: hash(90), number: '90' },
 });
 
-test('Activity attaches an authenticated instruction to its outer row and pages missing outers without duplicate hashes', async () => {
+test('Activity attaches an authenticated instruction to its outer row and hides instructions without transactions', async () => {
   const first = smartInstruction(41), second = smartInstruction(42);
   const outer = { ...fixture().local(50), smartAccount: {
     payer: OTHER, operations: [{ operationHash: first.operationHash, operationNonce: first.operationNonce }],
@@ -1380,26 +1380,32 @@ test('Activity attaches an authenticated instruction to its outer row and pages 
       cursors.push(cursor);
       return { entries: [first, second], nextCursor: null };
     },
+    async loadTarget(_scope, target) {
+      return target === second.operationHash ? { authorization: second } : null;
+    },
   });
   await f.controller.refresh();
   assert.deepEqual(f.controller.getSnapshot().rows.map(row => row.hash), [outer.hash]);
   assert.equal(f.controller.getSnapshot().rows[0]!.smartAuthorizations?.[0]?.instruction.operationNonce, first.operationNonce);
   await f.controller.loadMore();
   assert.deepEqual(cursors, [first.operationHash]);
-  assert.deepEqual(f.controller.getSnapshot().rows.map(row => row.hash), [second.operationHash, outer.hash]);
-  assert.equal(f.controller.getSnapshot().rows[1]!.smartAuthorizations?.length, 1);
+  assert.deepEqual(f.controller.getSnapshot().rows.map(row => row.hash), [outer.hash]);
+  assert.equal(f.controller.getSnapshot().rows[0]!.smartAuthorizations?.length, 1);
+  await f.controller.loadTarget(second.operationHash);
+  assert.deepEqual(f.controller.getSnapshot().rows.map(row => row.hash), [outer.hash]);
   f.controller.inspect(second.operationHash);
   assert.equal(f.receipts.calls.length, 0, 'An operation hash is never queried as a transaction hash');
 });
 
 test('Activity discards a Smart authorization status when the details are retired, then accepts fresh operation proof', async () => {
   const instruction = smartInstruction(43);
+  const outer = { ...fixture().local(50), smartAccount: { payer: OTHER, operations: [instruction] } };
   const delayed = deferred<Awaited<ReturnType<NonNullable<NativeActivityRuntime['observeSmartAuthorization']>>>>();
   let signal: AbortSignal | undefined, reads = 0;
   const observed = { kind: 'nonce-consumed' as const, operationHash: instruction.operationHash,
     currentNonce: (BigInt(instruction.operationNonce) + 1n).toString(), anchor: instruction.observedAt };
   const f = fixture({
-    smartAuthorizations: { entries: [instruction], nextCursor: null },
+    locals: [outer], smartAuthorizations: { entries: [instruction], nextCursor: null },
     async observeSmartAuthorization(_scope, hash, guard, nextSignal) {
       guard();
       assert.equal(hash, instruction.operationHash);

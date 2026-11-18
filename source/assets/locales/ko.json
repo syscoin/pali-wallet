@@ -1109,16 +1109,7 @@
   "transactions": {
     "smartAuthorizations": {
       "reference": "원래 참조",
-      "mayExecute": "아직 실행될 수 있는 지시입니다",
-      "nonceConsumedUnknown": "nonce 사용됨; 결과 알 수 없음",
-      "cancellationSigned": "취소 서명 완료",
-      "cancellationConfirmed": "취소 확정",
-      "cancellationFailed": "취소 실행 실패",
-      "outcomeUnknown": "결과 알 수 없음",
-      "observedSuccess": "성공한 지시 확인됨",
-      "observedFailure": "실패한 지시 확인됨",
       "cancelInstruction": "지시 취소",
-      "unavailable": "서명된 지시를 불러올 수 없습니다. 다시 시도하세요.",
       "operationHash": "작업 해시"
     },
     "smartAccountCancelUnavailable": "이 작업은 취소할 수 없습니다. 서명된 지시는 여전히 실행될 수 있습니다.",

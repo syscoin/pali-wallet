@@ -23,11 +23,6 @@ import { ConfirmationModal } from 'components/Modal';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { TransactionOptions } from 'components/TransactionOptions';
-import {
-  Instruction,
-  type InstructionGroup,
-  type useSmartAccountAuthorizations,
-} from 'components/TransactionOptions/SmartAccountAuthorizations';
 import { useContextualState } from 'hooks/useContextualState';
 import { usePrice } from 'hooks/usePrice';
 import { useRequestScope } from 'hooks/useRequestScope';
@@ -102,7 +97,7 @@ const EvmTransactionItem = React.memo(
     currency,
     getFiatAmount,
     isFiatAvailable,
-    hasInstruction,
+    canCancelSmart,
     txId,
     getTxOptions,
     t,
@@ -110,6 +105,7 @@ const EvmTransactionItem = React.memo(
     ensCache,
     onDetailsClick,
   }: {
+    canCancelSmart: boolean;
     cancellationIntent: boolean;
     chainId: number;
     currency: string;
@@ -119,7 +115,6 @@ const EvmTransactionItem = React.memo(
     getTxOptions: any;
     getTxStatusIcons: any;
     getTxType: any;
-    hasInstruction: boolean;
     isFiatAvailable: boolean;
     onDetailsClick: (transaction: ITransactionInfoEvm, idField: string) => void;
     settlement: EvmSettlementStatus;
@@ -675,7 +670,8 @@ const EvmTransactionItem = React.memo(
               isReplaced ||
               (tx.historySource ===
                 EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
-                !tx.speedUpAvailable) ||
+                !tx.speedUpAvailable &&
+                !canCancelSmart) ||
               settlement === 'replacementPending' ? (
                 <Tooltip content={t('notifications.clickToView')}>
                   <DetailArrowSvg
@@ -685,7 +681,7 @@ const EvmTransactionItem = React.memo(
                   />
                 </Tooltip>
               ) : (
-                getTxOptions(false, isConfirmed, tx, hasInstruction)
+                getTxOptions(tx, canCancelSmart)
               )}
             </div>
           </div>
@@ -719,7 +715,7 @@ const EvmTransactionItem = React.memo(
     prevProps.getFiatAmount === nextProps.getFiatAmount &&
     prevProps.isFiatAvailable === nextProps.isFiatAvailable &&
     prevProps.getTxOptions === nextProps.getTxOptions &&
-    prevProps.hasInstruction === nextProps.hasInstruction &&
+    prevProps.canCancelSmart === nextProps.canCancelSmart &&
     prevProps.tokenMeta?.decimals === nextProps.tokenMeta?.decimals &&
     prevProps.tokenMeta?.isNft === nextProps.tokenMeta?.isNft &&
     prevProps.currentAccount?.address === nextProps.currentAccount?.address &&
@@ -741,13 +737,11 @@ EvmTransactionItem.displayName = 'EvmTransactionItem';
 
 export const EvmTransactionsList = ({
   userTransactions,
-  authorizations,
   savedTransactions,
   savedHasMore = false,
   savedLoading = false,
   loadMoreSaved,
 }: {
-  authorizations?: ReturnType<typeof useSmartAccountAuthorizations>;
   loadMoreSaved?: () => Promise<void>;
   savedHasMore?: boolean;
   savedLoading?: boolean;
@@ -881,27 +875,17 @@ export const EvmTransactionsList = ({
   );
 
   const getTxOptions = useCallback(
-    (
-      isCanceled: boolean,
-      isConfirmed: boolean,
-      tx: ITransactionInfoEvm,
-      hasInstruction: boolean
-    ) => {
-      if (!isConfirmed) {
-        return (
-          <TransactionOptions
-            handleUpdateTransaction={handleUpdateTransaction}
-            alert={alert}
-            chainId={chainId}
-            transaction={tx as any}
-            suppressCancellation={hasInstruction}
-            setIsOpenModal={setIsOpenModal}
-            setModalData={setModalData}
-          />
-        );
-      }
-      return null;
-    },
+    (tx: ITransactionInfoEvm, canCancelSmart: boolean) => (
+      <TransactionOptions
+        handleUpdateTransaction={handleUpdateTransaction}
+        alert={alert}
+        chainId={chainId}
+        transaction={tx as any}
+        canCancelSmart={canCancelSmart}
+        setIsOpenModal={setIsOpenModal}
+        setModalData={setModalData}
+      />
+    ),
     [alert, chainId]
   );
 
@@ -933,78 +917,32 @@ export const EvmTransactionsList = ({
     [navigate, location.state, filteredTransactions, chainId, minedNonceIndex]
   );
 
+  const smartCancellationHashes = useMemo(() => {
+    const hashes = new Set<string>();
+    for (const tx of savedTransactions ?? []) {
+      const smart = tx.smartAccount;
+      if (
+        tx.chainId === chainId &&
+        smart?.account.toLowerCase() ===
+          currentAccount?.address?.toLowerCase() &&
+        smart?.operationCount === 1 &&
+        !smart.cancellation
+      )
+        hashes.add(tx.hash.toLowerCase());
+    }
+    return hashes;
+  }, [savedTransactions, chainId, currentAccount?.address]);
+
   const groupedTransactions = useMemo(() => {
-    type TransactionRow = {
-      groups: InstructionGroup[];
-      timestamp: number;
-      tx: ITransactionInfoEvm;
-    };
-    type ActivityRow =
-      | TransactionRow
-      | { group: InstructionGroup; timestamp: number };
+    const grouped: Record<string, ITransactionInfoEvm[]> = {};
     const visible = filteredTransactions.slice(
       0,
       visibleCount
     ) as ITransactionInfoEvm[];
-    const transactionRows: TransactionRow[] = visible.map((tx) => ({
-      groups: [],
-      tx,
-      timestamp: tx.timestamp,
-    }));
-    const sourceList: ActivityRow[] = [...transactionRows];
-    if (authorizations?.groups.length) {
-      // Link only from authenticated saved envelopes in this account and chain.
-      const authenticated = new Map(
-        (savedTransactions ?? [])
-          .filter(
-            (tx) =>
-              tx.chainId === chainId &&
-              tx.smartAccount?.account.toLowerCase() ===
-                currentAccount?.address?.toLowerCase()
-          )
-          .map((tx) => [tx.hash.toLowerCase(), tx.smartAccount])
-      );
-      const rowsByOperation = new Map<string, TransactionRow>();
-      for (const row of transactionRows) {
-        const intent = authenticated.get(row.tx.hash?.toLowerCase());
-        for (const operation of intent?.operations ?? []) {
-          if (!rowsByOperation.has(operation.operationHash))
-            rowsByOperation.set(operation.operationHash, row);
-        }
-      }
-      for (const group of authorizations.groups) {
-        const owner =
-          rowsByOperation.get(group.hash) ??
-          group.cancellations
-            .map((entry) => rowsByOperation.get(entry.operationHash))
-            .find(Boolean);
-        if (owner) {
-          owner.groups.push(group);
-        } else {
-          const newest = Math.max(
-            group.original?.createdAt ?? 0,
-            ...group.cancellations.map((attempt) => attempt.createdAt)
-          );
-          sourceList.push({ group, timestamp: Math.floor(newest / 1000) });
-        }
-      }
-      sourceList.sort((a, b) => b.timestamp - a.timestamp);
-    }
-    const grouped: Record<string, ActivityRow[]> = {};
-    sourceList.forEach((row) => {
-      const date = formatTimeStamp(row.timestamp);
-      (grouped[date] ??= []).push(row);
-    });
+    for (const tx of visible)
+      (grouped[formatTimeStamp(tx.timestamp)] ??= []).push(tx);
     return grouped;
-  }, [
-    filteredTransactions,
-    formatTimeStamp,
-    visibleCount,
-    authorizations?.groups,
-    savedTransactions,
-    currentAccount?.address,
-    chainId,
-  ]);
+  }, [filteredTransactions, formatTimeStamp, visibleCount]);
 
   // Build a quick lookup map for imported ERC-20 token metadata
   const tokenMetaByAddress = useMemo(() => {
@@ -1046,86 +984,55 @@ export const EvmTransactionsList = ({
   return (
     <>
       <ConfirmationModal show={isOpenModal} {...modalData} />
-      {Object?.entries(groupedTransactions)?.map(
-        ([date, transactions]: any) => (
-          <div key={date} className="relative mb-[20px]">
-            <div className="text-xs text-white font-normal">{date}</div>
-            {transactions.map((row, index) => {
-              if ('group' in row && authorizations)
-                return (
-                  <ul key={row.group.hash}>
-                    <Instruction
-                      group={row.group}
-                      scope={authorizations.scope}
-                    />
-                  </ul>
-                );
-              const tx = row.tx;
-              // Create a unique key that handles replacements properly
-              // Use nonce if available (EVM), otherwise use hash/txid
-              const txKey =
-                tx.nonce !== undefined
-                  ? `nonce-${tx.nonce}-${tx?.hash || `unknown-${index}`}`
-                  : `${tx?.hash || tx?.txid || `unknown-${index}`}-${index}`;
-              const metaTarget =
-                (tx?.hash &&
-                  innerTargetByHash.get(String(tx.hash).toLowerCase())) ||
-                tx?.to;
-              const tokenMetaForTx = metaTarget
-                ? tokenMetaByAddress.get(String(metaTarget).toLowerCase())
-                : undefined;
+      {Object?.entries(groupedTransactions)?.map(([date, transactions]) => (
+        <div key={date} className="relative mb-[20px]">
+          <div className="text-xs text-white font-normal">{date}</div>
+          {transactions.map((tx, index) => {
+            const txKey = tx.hash || `unknown-${index}`;
+            const metaTarget =
+              (tx?.hash &&
+                innerTargetByHash.get(String(tx.hash).toLowerCase())) ||
+              tx?.to;
+            const tokenMetaForTx = metaTarget
+              ? tokenMetaByAddress.get(String(metaTarget).toLowerCase())
+              : undefined;
 
-              const item = (
-                <EvmTransactionItem
-                  key={txKey}
-                  hasInstruction={row.groups.length > 0}
-                  tx={tx}
-                  chainId={chainId}
-                  currentAccount={currentAccount}
-                  getTxStatusIcons={getTxStatusIcons}
-                  getTxType={getTxType}
-                  settlement={getEvmSettlementStatus(
-                    tx,
-                    chainId,
-                    minedNonceIndex
-                  )}
-                  cancellationIntent={hasEvmCancellationIntent(
-                    tx,
-                    filteredTransactions,
-                    chainId,
-                    replacementLookup
-                  )}
-                  currency={currency}
-                  getFiatAmount={getFiatAmount}
-                  isFiatAvailable={isFiatAvailable}
-                  onDetailsClick={onDetailsClick}
-                  txId={txId}
-                  getTxOptions={getTxOptions}
-                  t={t}
-                  tokenMeta={tokenMetaForTx}
-                  ensCache={ensCache}
-                />
-              );
-              if (!authorizations || !row.groups.length) return item;
-              return (
-                <div key={txKey} data-activity-outer={tx.hash}>
-                  {item}
-                  <ul className="pl-3">
-                    {row.groups.map((group) => (
-                      <Instruction
-                        key={group.hash}
-                        group={group}
-                        scope={authorizations.scope}
-                        attached
-                      />
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
-        )
-      )}
+            return (
+              <EvmTransactionItem
+                key={txKey}
+                canCancelSmart={smartCancellationHashes.has(
+                  tx.hash?.toLowerCase()
+                )}
+                tx={tx}
+                chainId={chainId}
+                currentAccount={currentAccount}
+                getTxStatusIcons={getTxStatusIcons}
+                getTxType={getTxType}
+                settlement={getEvmSettlementStatus(
+                  tx,
+                  chainId,
+                  minedNonceIndex
+                )}
+                cancellationIntent={hasEvmCancellationIntent(
+                  tx,
+                  filteredTransactions,
+                  chainId,
+                  replacementLookup
+                )}
+                currency={currency}
+                getFiatAmount={getFiatAmount}
+                isFiatAvailable={isFiatAvailable}
+                onDetailsClick={onDetailsClick}
+                txId={txId}
+                getTxOptions={getTxOptions}
+                t={t}
+                tokenMeta={tokenMetaForTx}
+                ensCache={ensCache}
+              />
+            );
+          })}
+        </div>
+      ))}
       {/* Load more: API-backed if apiUrl exists; else local slicing fallback */}
       {apiUrl
         ? (savedHasMore ||

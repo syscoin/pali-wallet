@@ -1,11 +1,5 @@
 /** @jest-environment jsdom */
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -154,8 +148,8 @@ jest.mock('components/Tooltip', () => ({
 }));
 jest.mock('components/TokenIcon', () => ({ TokenIcon: () => null }));
 jest.mock('components/TransactionOptions', () => ({
-  TransactionOptions: ({ transaction: tx }: any) => (
-    <div>Options:{tx.hash}</div>
+  TransactionOptions: ({ transaction: tx, canCancelSmart }: any) => (
+    <div data-smart-cancel={String(canCancelSmart)}>Options:{tx.hash}</div>
   ),
 }));
 jest.mock('utils/index', () => ({
@@ -685,111 +679,43 @@ it('offers the existing menu for a locally tracked payment eligible for Speed Up
   expect(screen.getByText(`Options:${local.hash}`)).toBeTruthy();
 });
 
-it('attaches signed controls to one authenticated outer and preserves missing-outer rows', async () => {
-  const instruction = {
-    account: ACCOUNT,
-    payer: TARGET,
-    chainId: '1',
-    operationNonce: '8',
-    operationHash: hash('1'),
-    createdAt: 1791655200000,
-    observedAt: { number: '1', hash: hash('0') },
-  };
-  const cancellation = {
-    ...instruction,
-    operationHash: hash('2'),
-    replacesOperationHash: instruction.operationHash,
-  };
-  const group = {
-    hash: instruction.operationHash,
-    original: instruction,
-    cancellations: [cancellation],
-  };
-  const auths = { groups: [group], scope: 'scope', load: jest.fn() } as any;
-  const savedOuter = (outer: string, inner: string) =>
-    transaction(outer, {
-      historySource: 'local-signed',
-      smartAccount: {
-        account: ACCOUNT,
-        operationCount: 1,
-        operationHash: inner,
-        operations: [{ operationHash: inner, operationNonce: '8' }],
-      },
-    });
-  const originalOuter = savedOuter('a', instruction.operationHash);
-  const cancelledOuter = savedOuter('b', cancellation.operationHash);
-  const unrelated = transaction('c', {
-    smartAccount: originalOuter.smartAccount,
+it('uses one ordinary row and the existing menu for authenticated Smart Account transactions', () => {
+  const saved = transaction('a', {
+    historySource: 'local-signed',
+    smartAccount: { account: ACCOUNT, operationCount: 1 },
   });
-  mockRows = [originalOuter, cancelledOuter, unrelated];
-  const ui = (saved: any[]) => (
+  const unrelated = transaction('b', { historySource: 'local-signed' });
+  mockRows = [saved, unrelated];
+  const view = render(
     <EvmTransactionsList
       userTransactions={mockRows}
-      savedTransactions={saved}
-      authorizations={auths}
+      savedTransactions={[saved]}
     />
   );
-  const view = render(ui([originalOuter, cancelledOuter]));
   expect(
-    screen.queryByText('transactions.smartAuthorizations.title')
-  ).toBeNull();
-  const instructionRows = () =>
-    view.container.querySelectorAll('[data-operation-hash]');
-  const ordinaryRows = () =>
-    Array.from(
-      view.container.querySelectorAll('[data-transaction-hash]'),
-      (row) => row.getAttribute('data-transaction-hash')
-    );
-  expect(instructionRows()).toHaveLength(1);
+    screen.getByText(`Options:${saved.hash}`).getAttribute('data-smart-cancel')
+  ).toBe('true');
+  expect(screen.queryByText(`Options:${unrelated.hash}`)).toBeNull();
   expect(
-    instructionRows()[0]
-      .closest('[data-activity-outer]')
-      ?.getAttribute('data-activity-outer')
-  ).toBe(originalOuter.hash);
-  expect(ordinaryRows()).toEqual(mockRows.map((tx) => tx.hash));
-  expect(screen.getByText('transactions.technicalDetails')).toBeTruthy();
-  const details = await screen.findAllByRole('button', { name: 'Details' });
-  fireEvent.click(details[0]);
-  expect(mockNavigate.mock.lastCall[1].state.hash).toBe(originalOuter.hash);
-  fireEvent.click(details[1]);
-  expect(mockNavigate.mock.lastCall[1].state.hash).toBe(cancelledOuter.hash);
+    view.container.querySelectorAll('[data-transaction-hash]')
+  ).toHaveLength(2);
+  expect(view.container.querySelectorAll('[data-operation-hash]')).toHaveLength(
+    0
+  );
 
-  // Network status wins for the same outer. Only the retained bytes identify its inner instruction.
-  mockRows = [transaction('a'), unrelated];
-  view.rerender(ui([originalOuter]));
-  expect(instructionRows()).toHaveLength(1);
-  expect(
-    instructionRows()[0]
-      .closest('[data-activity-outer]')
-      ?.getAttribute('data-activity-outer')
-  ).toBe(originalOuter.hash);
-  expect(screen.getByText(`Options:${originalOuter.hash}`)).toBeTruthy();
-  mockRows = [cancelledOuter, unrelated];
-  view.rerender(ui([cancelledOuter]));
-  expect(instructionRows()).toHaveLength(1);
-  expect(
-    instructionRows()[0]
-      .closest('[data-activity-outer]')
-      ?.getAttribute('data-activity-outer')
-  ).toBe(cancelledOuter.hash);
-
-  // Equal nonce and an unauthenticated lookalike from the network do not hide local activity.
   mockRows = [unrelated];
-  view.rerender(ui([originalOuter]));
-  expect(instructionRows()).toHaveLength(1);
-  expect(ordinaryRows()).toEqual([unrelated.hash]);
-  expect(instructionRows()[0].closest('[data-activity-outer]')).toBeNull();
-  const row = within(instructionRows()[0] as HTMLElement);
+  view.rerender(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      savedTransactions={[saved]}
+    />
+  );
   expect(
-    row.queryByRole('button', {
-      name: 'transactions.smartAuthorizations.checkStatus',
-    })
-  ).toBeNull();
-  expect(
-    row.getByRole('button', {
-      name: 'buttons.cancel',
-    })
-  ).toBeTruthy();
+    view.container.querySelectorAll('[data-transaction-hash]')
+  ).toHaveLength(1);
+  expect(view.container.querySelectorAll('[data-operation-hash]')).toHaveLength(
+    0
+  );
 });
 
 it.each([

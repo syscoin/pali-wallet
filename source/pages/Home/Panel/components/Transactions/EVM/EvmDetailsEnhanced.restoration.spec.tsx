@@ -788,6 +788,91 @@ it('falls back from a partial hash-only explorer lookup to the full provider rec
   ]);
 });
 
+it.each(['activity', 'hash-only', 'missing RPC proof'])(
+  'uses a scoped RPC receipt for EntryPoint details from %s',
+  async (source) => {
+    const hash = id(`entrypoint-explorer-log-identity-${source}`);
+    const input = encodeBundle([{ sender: ACCOUNT }]);
+    const log = {
+      ...operationLog(hash, ACCOUNT, true),
+      blockNumber: '0x2812',
+    };
+    const outer = fullTx(hash, {
+      from: OTHER,
+      to: getPaliEntryPointAddress(1),
+      value: '0',
+      input,
+      blockNumber: 10258,
+      confirmations: 744,
+      success: true,
+    });
+    const summary = { ...outer, smartAccountExecutionFrom: ACCOUNT };
+    const apiUrl = 'https://explorer.example/api';
+    mockState.vault.activeNetwork.apiUrl = apiUrl;
+    if (source === 'activity') mockHistory = [summary];
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'getEvmTransactionFromAPI') {
+        return {
+          hash,
+          from: outer.from,
+          to: outer.to,
+          value: outer.value,
+          input,
+          blockNumber: '10258',
+          confirmations: '744',
+          success: true,
+          logs: [
+            {
+              address: log.address,
+              data: log.data,
+              index: '1',
+              topics: log.topics,
+            },
+          ],
+        };
+      }
+      if (method === 'getEvmTransactionFromProvider')
+        return { ...outer, logs: source === 'missing RPC proof' ? [] : [log] };
+      return null;
+    });
+
+    await act(async () => {
+      render(
+        <EvmTransactionDetailsEnhanced
+          hash={hash}
+          tx={source === 'activity' ? (summary as any) : undefined}
+        />
+      );
+    });
+
+    expect(screen.getByText(/Block Number:10258/)).toBeTruthy();
+    expect(screen.getByText(/Confirmations:744/)).toBeTruthy();
+    expect(screen.getByTestId('header').textContent).toBe(
+      source === 'missing RPC proof'
+        ? 'Transaction|-|Pending'
+        : 'Sent|7|Confirmed'
+    );
+    expect(
+      mockEmitter.mock.calls.filter(([[, method]]) =>
+        method.startsWith('getEvmTransaction')
+      )
+    ).toEqual([
+      ...(source === 'activity'
+        ? []
+        : [
+            [
+              ['wallet', 'getEvmTransactionFromAPI'],
+              [hash, apiUrl],
+            ],
+          ]),
+      [
+        ['wallet', 'getEvmTransactionFromProvider'],
+        [hash, true],
+      ],
+    ]);
+  }
+);
+
 it('selects a supported current operation after another sender with unsupported call data', async () => {
   const hash = id('aa-second-supported');
   const input = encodeBundle([

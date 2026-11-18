@@ -4,6 +4,7 @@ import { getAddress } from 'ethers/address';
 import { EvmSignedRecords, retainedEvmTransaction, type EvmSignedRecordSession, type EvmRetainedRecord, type EvmRetainedSmartAccountRecord } from '../../../../source/wallet/evmSignedRecords.ts';
 import { projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { projectSmartAccountSavedTransaction } from '../../../../source/wallet/smartAccountSignedReplay.ts';
+import { decodeSmartAccountCancellation } from '../../../../source/wallet/smartAccountCancellation.ts';
 import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope } from '../../../../source/shared/nftTransfer.ts';
 import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import type { NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
@@ -94,6 +95,8 @@ export function createNativeSignedRecordView(
     const single = smart.executions?.length === 1 ? smart.executions[0] : undefined;
     if (record.cancellation) return Object.freeze({ ...activity(record.entry), inspectionOnly: true,
       smartAccount: Object.freeze({ payer: record.cancellation.original.payer, operations: [Object.freeze({ operationHash: record.cancellation.original.operationHash, operationNonce: record.cancellation.original.operationNonce })], cancellation: true }) });
+    const cancellation = smart.cancellation ? decodeSmartAccountCancellation(record.entry) : null;
+    const originalHash = cancellation?.originalKind === 'transaction' ? cancellation.originalHash : saved.originalHash;
     return Object.freeze({
     walletFingerprint: walletBindingId, accountId: nativeAccountId(account.type, account.index),
     address: account.address, networkId: network.id, registrationHash: network.registrationHash,
@@ -105,8 +108,8 @@ export function createNativeSignedRecordView(
     ...(!transfer || transfer.contractInteraction ? { contractInteraction: true as const } : {}),
     // The outer transaction's terminal status does not establish the UserOperation outcome.
     phase: 'submitted', ...(!smart.replayable ? { inspectionOnly: true as const } : {}),
-    operation: saved.operation, transactionType: saved.type ?? undefined,
-    ...(saved.originalHash ? { originalHash: saved.originalHash } : {}),
+    operation: cancellation ? 'cancel' : saved.operation, transactionType: saved.type ?? undefined,
+    ...(originalHash ? { originalHash } : {}),
     ...(maySpeedUp(record.entry, saved.type) && !!transfer ? { speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
     smartAccount: Object.freeze({ payer: getAddress(saved.from), operations: smart.operations }),
   }); };

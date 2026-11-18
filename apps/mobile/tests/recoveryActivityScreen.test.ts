@@ -1053,7 +1053,7 @@ for(const blocked of ['none','private-withdrawal','cancellation','multiple'] as 
  }finally{f.dispose();}
 });
 
-for (const hasOuter of [false, true]) test(`Smart Activity observes and cancels the operation identity (${hasOuter ? 'outer' : 'standalone'})`, async () => {
+test('Smart transaction details observe the matching operation and open one cancellation review for its transaction', async () => {
   const action: unknown[][] = [];
   const f = fixture(undefined, false, { onNavigateToReview: (...input: unknown[]) => action.push(input) });
   try {
@@ -1061,8 +1061,8 @@ for (const hasOuter of [false, true]) test(`Smart Activity observes and cancels 
     const operationHash = '0x' + 'ef'.repeat(32);
     const instruction = { operationHash, operationNonce: (2n ** 190n).toString(), account: base.local.address,
       chainId: '1', createdAt: 1700000000000, payer: base.local.address, observedAt: { number: '1', hash } };
-    const row = { hash: hasOuter ? hash : operationHash, checking: false, unavailable: false,
-      ...(hasOuter ? { local: { ...base.local, smartAccount: { payer: base.local.address, operations: [instruction] } } } : {}),
+    const row = { hash, checking: false, unavailable: false,
+      local: { ...base.local, smartAccount: { payer: base.local.address, operations: [instruction] } },
       smartAuthorizations: [{ instruction, checking: false, unavailable: false }],
     };
     const view = all(await openFixtureRow(f, row));
@@ -1072,9 +1072,10 @@ for (const hasOuter of [false, true]) test(`Smart Activity observes and cancels 
     assert(!button(view, 'Review resend'));
     const cancel = button(view, 'Cancel instruction');
     assert(cancel);
+    assert.equal(view.filter(node => node.type === 'Button' && node.props.title === 'Cancel instruction').length, 1);
     cancel.props.onPress();
     await settle();
-    assert.deepEqual(action, [['cancel', row.hash, operationHash]]);
+    assert.deepEqual(action, [['cancel', row.hash]]);
     f.rows([{ ...row, smartAuthorizations: [{ ...row.smartAuthorizations[0],
       observation: { kind: 'nonce-consumed', currentNonce: '1', operationHash, anchor: instruction.observedAt },
     }] }]);

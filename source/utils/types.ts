@@ -17,6 +17,7 @@ export enum PaliLanguages {
 
 export interface ITransactionOptions {
   alert: any;
+  canCancelSmart?: boolean;
   chainId: number;
   handleUpdateTransaction: typeof handleUpdateTransaction;
   isOpen?: boolean;
@@ -32,6 +33,5 @@ export interface ITransactionOptions {
       title: string;
     }>
   >;
-  suppressCancellation?: boolean;
   transaction: IEvmTransaction;
 }

@@ -1109,16 +1109,7 @@
   "transactions": {
     "smartAuthorizations": {
       "reference": "Исходная ссылка",
-      "mayExecute": "Инструкция ещё может быть выполнена",
-      "nonceConsumedUnknown": "Nonce использован; результат неизвестен",
-      "cancellationSigned": "Отмена подписана",
-      "cancellationConfirmed": "Отмена подтверждена",
-      "cancellationFailed": "Ошибка выполнения отмены",
-      "outcomeUnknown": "Результат неизвестен",
-      "observedSuccess": "Наблюдается успешная инструкция",
-      "observedFailure": "Наблюдается неудачная инструкция",
       "cancelInstruction": "Отменить инструкцию",
-      "unavailable": "Подписанные инструкции недоступны. Повторите попытку.",
       "operationHash": "Хеш операции"
     },
     "smartAccountCancelUnavailable": "Эту операцию нельзя отменить. Её подписанная инструкция всё ещё может быть выполнена.",

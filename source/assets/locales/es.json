@@ -1109,16 +1109,7 @@
   "transactions": {
     "smartAuthorizations": {
       "reference": "Referencia original",
-      "mayExecute": "La instrucción aún puede ejecutarse",
-      "nonceConsumedUnknown": "Nonce consumido; resultado desconocido",
-      "cancellationSigned": "Cancelación firmada",
-      "cancellationConfirmed": "Cancelación confirmada",
-      "cancellationFailed": "Falló la ejecución de la cancelación",
-      "outcomeUnknown": "Resultado desconocido",
-      "observedSuccess": "Instrucción completada observada",
-      "observedFailure": "Instrucción fallida observada",
       "cancelInstruction": "Cancelar instrucción",
-      "unavailable": "Instrucciones firmadas no disponibles. Inténtalo de nuevo.",
       "operationHash": "Hash de la operación"
     },
     "smartAccountCancelUnavailable": "Esta operación no se puede cancelar. Su instrucción firmada aún podría ejecutarse.",

@@ -1109,16 +1109,7 @@
   "transactions": {
     "smartAuthorizations": {
       "reference": "原始引用",
-      "mayExecute": "此指令仍可能执行",
-      "nonceConsumedUnknown": "Nonce 已使用；结果未知",
-      "cancellationSigned": "取消操作已签署",
-      "cancellationConfirmed": "取消操作已确认",
-      "cancellationFailed": "取消操作执行失败",
-      "outcomeUnknown": "结果未知",
-      "observedSuccess": "已观察到成功的指令",
-      "observedFailure": "已观察到失败的指令",
       "cancelInstruction": "取消指令",
-      "unavailable": "已签署的指令暂不可用。请重试。",
       "operationHash": "操作哈希"
     },
     "smartAccountCancelUnavailable": "此操作无法取消。其已签署的指令仍可能执行。",

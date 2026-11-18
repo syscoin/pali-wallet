@@ -50,8 +50,7 @@ type ActivityAuthorization = Readonly<{
   unavailable: boolean;
 }>;
 export const activityRowTimestamp = (row: ActivityRow) =>
-  row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt ??
-  row.smartAuthorizations?.[0]?.instruction.createdAt ?? 0;
+  row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt ?? 0;
 
 export interface NativeActivityRuntime {
   /** Selected-account public reads on an explicit saved network. */
@@ -337,7 +336,7 @@ export class NativeActivity {
     const signal = this.request.signal;
     const guard = () => this.guard(generation, revision);
     this.publish({ ...(previous ?? initial()),
-      rows: previous?.rows.filter(row => row.local || !row.smartAuthorizations).map(row => {
+      rows: previous?.rows.map(row => {
         if (!row.smartAuthorizations && !row.replacementStatus) return row;
         return { ...row, smartAuthorizations: undefined, replacementStatus: undefined };
       }) ?? [],
@@ -565,7 +564,6 @@ export class NativeActivity {
         journalGuard();
         this.applySmartAuthorizationPage(page);
         this.renderRows();
-        return;
       }
       if (this.pendingCursor !== null && runtime?.loadSavedPending) {
         this.publish({ loadingMore: true });
@@ -673,7 +671,6 @@ export class NativeActivity {
   }
   private renderRows(includeCached = this.cachedFallback) {
     const records = new Map<string, ActivityRow>([...(this.refreshingRows ?? [])]
-      .filter(([, row]) => row.local || !row.smartAuthorizations)
       .map(([hash, row]) => [hash, { ...row, smartAuthorizations: undefined }]));
     const candidates = this.orderedCandidates(includeCached);
     for (const local of this.locals.values())
@@ -767,6 +764,8 @@ export class NativeActivity {
     for (const row of observedRows) if (row.local) retained.set(row.hash, row);
     const outerRows = new Map<string, ActivityRow>();
     for (const row of retained.values()) {
+      // A legacy payer cancellation references the original operation but never carries it.
+      if (row.local?.smartAccount?.cancellation) continue;
       for (const operation of row.local?.smartAccount?.operations ?? []) {
         const previous = outerRows.get(operation.operationHash);
         if (!previous || activityRowTimestamp(row) > activityRowTimestamp(previous))
@@ -777,10 +776,9 @@ export class NativeActivity {
       const outer = outerRows.get(hash);
       const observed = authorization.observation?.kind === 'observed' ? retained.get(authorization.observation.transactionHash) : undefined;
       const row = outer ?? observed;
-      const key = row?.hash ?? hash;
-      const current = retained.get(key);
-      retained.set(key, { ...current, hash: key, checking: current?.checking ?? false,
-        unavailable: current?.unavailable ?? false, smartAuthorizations: [...(current?.smartAuthorizations ?? []), authorization] });
+      if (!row) continue;
+      const current = retained.get(row.hash) ?? row;
+      retained.set(row.hash, { ...current, smartAuthorizations: [...(current.smartAuthorizations ?? []), authorization] });
     }
     const rows = [...retained.values()].map(withReplacement)
       .sort((a, b) => activityRowTimestamp(b) - activityRowTimestamp(a));
@@ -789,7 +787,7 @@ export class NativeActivity {
     this.publish({
       rows,
       hasMore:
-        !!this.authorizationCursor || this.pendingCursor !== null && !!this.runtime()?.loadSavedPending || !atDisplayLimit && (candidates.length > this.visible || moreToLoad),
+        this.pendingCursor !== null && !!this.runtime()?.loadSavedPending || !atDisplayLimit && (candidates.length > this.visible || moreToLoad),
       truncated:
         this.snapshot.truncated ||
         (atDisplayLimit && (candidates.length > this.visible || moreToLoad)),
@@ -873,7 +871,7 @@ export class NativeActivity {
     }
   }
   inspect(hash: string) {
-    if (this.snapshot.rows.some((row) => row.hash === hash && (row.local || !row.smartAuthorizations))) {
+    if (this.snapshot.rows.some((row) => row.hash === hash)) {
       this.observations.delete(hash);
       this.unavailable.delete(hash);
       if (this.pagedLocals.has(hash) || this.locals.get(hash)?.smartAccount) this.retainedObservations.delete(hash);

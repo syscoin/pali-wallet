@@ -54,7 +54,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   chainId,
   setIsOpenModal,
   setModalData,
-  suppressCancellation = false,
+  canCancelSmart = false,
 }) => {
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
@@ -68,12 +68,18 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   );
   const scope = useSelector(() => getWalletNavigationScope());
   const smartCancellation = useSmartAccountCancellation(transaction.hash);
+  const local =
+    'historySource' in transaction &&
+    transaction.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned;
+  const speedUpAvailable =
+    !local ||
+    ('speedUpAvailable' in transaction &&
+      transaction.speedUpAvailable === true);
   const cancellationUnavailable =
-    suppressCancellation ||
     (transaction as { cancellationUnavailable?: unknown })
       .cancellationUnavailable === true ||
-    ('historySource' in transaction &&
-      transaction.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned);
+    (smartCancellation.available && transaction.isCancel === true) ||
+    (local && !(canCancelSmart && smartCancellation.available));
   const preview = useRef<{
     cancel: () => void;
     close: () => void;
@@ -301,24 +307,26 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                       )}
                     </Menu.Item>
                   )}
-                  <Menu.Item>
-                    {({ active }) => (
-                      <li
-                        className={`
+                  {speedUpAvailable && (
+                    <Menu.Item>
+                      {({ active }) => (
+                        <li
+                          className={`
                     ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                     ${MENU_ITEM_CLASS_NAME}
                     `}
-                        onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
-                      >
-                        <div className="w-5 mr-3">
-                          <SpeedUpIcon />
-                        </div>
-                        <span className={ITEM_TEXT_CLASS_NAME}>
-                          {t('header.speedUp')}
-                        </span>
-                      </li>
-                    )}
-                  </Menu.Item>
+                          onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
+                        >
+                          <div className="w-5 mr-3">
+                            <SpeedUpIcon />
+                          </div>
+                          <span className={ITEM_TEXT_CLASS_NAME}>
+                            {t('header.speedUp')}
+                          </span>
+                        </li>
+                      )}
+                    </Menu.Item>
+                  )}
                   {!cancellationUnavailable && (
                     <Menu.Item>
                       {({ active }) => (
@@ -361,7 +369,7 @@ export const TransactionOptions = React.memo(
     const nextTx: any = next.transaction as any;
     return (
       prev.chainId === next.chainId &&
-      prev.suppressCancellation === next.suppressCancellation &&
+      prev.canCancelSmart === next.canCancelSmart &&
       prev.alert === next.alert &&
       prevTx?.hash === nextTx?.hash &&
       prevTx?.from === nextTx?.from &&
@@ -371,6 +379,8 @@ export const TransactionOptions = React.memo(
       prevTx?.isReplaced === nextTx?.isReplaced &&
       prevTx?.status === nextTx?.status &&
       prevTx?.historySource === nextTx?.historySource &&
+      prevTx?.speedUpAvailable === nextTx?.speedUpAvailable &&
+      prevTx?.cancellationUnavailable === nextTx?.cancellationUnavailable &&
       prevTx?.isCanceled === nextTx?.isCanceled
     );
   }

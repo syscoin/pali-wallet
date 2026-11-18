@@ -151,20 +151,14 @@ function privacyPresentation(row: ActivityRow, hideBalances: boolean) {
   } : undefined;
 }
 const rowDate = (row: ActivityRow) => activityDate(activityRowTimestamp(row) || undefined);
-const authorizationStatus = ({ observation, checking, unavailable }: NonNullable<ActivityRow['smartAuthorizations']>[number]) =>
-  checking ? t('mobile.connections.psbt.checking') : unavailable ? t('mobile.activityViews.nativeActivity.currentStatusUnavailable') :
-  observation?.kind === 'nonce-consumed' ? t('transactions.smartAuthorizations.nonceConsumedUnknown') :
-  observation?.kind === 'observed' ? t(observation.success ? 'transactions.smartAuthorizations.observedSuccess' : 'transactions.smartAuthorizations.observedFailure') :
-  t('transactions.smartAuthorizations.mayExecute');
 /** Shared list presentation for concrete-network and account-wide Activity. */
 export function nativeActivityRowPresentation(row: ActivityRow, context: {
   accountAddress: string; nativeSymbol: string; networkName: string; hideBalances: boolean;
 }) {
   const flow = direction(row, context.accountAddress);
-  const standalone = !row.local && !row.indexed && !row.candidate && row.smartAuthorizations?.[0];
-  const fullAmount = standalone ? t('transactionDisplay.contractInteraction') : amount(row, context.nativeSymbol);
+  const fullAmount = amount(row, context.nativeSymbol);
   const tag = statusTag(row);
-  const numeric = !!rowMonetaryAmount(row), state = standalone ? authorizationStatus(standalone) : statusLabels[tag]();
+  const numeric = !!rowMonetaryAmount(row), state = statusLabels[tag]();
   const date = rowDate(row);
   const movement = flow === 'sent' ? t('send.sent') : flow === 'received' ? t('send.received') : flow === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity');
   const privacy = privacyPresentation(row, context.hideBalances);
@@ -347,31 +341,31 @@ function NativeActivityContent({
   const chosen = findRow((row) => row.hash === selected ||
     row.smartAuthorizations?.some(value => value.instruction.operationHash === selected) === true);
   const authorizationView = useRef({ hash: chosen?.hash, abort: new AbortController() });
-  const operationHashes = chosen?.smartAuthorizations?.map(value => value.instruction.operationHash).join(' ') ?? '';
-  useLayoutEffect(() => {
-    if (!operationHashes) return;
-    const inspect = async () => {
-      const view = { hash: chosen?.hash, abort: new AbortController() };
-      authorizationView.current = view;
-      const guard = () => {
-        if (authorizationView.current !== view || view.abort.signal.aborted || AppState.currentState !== 'active')
-          throw Error('CANCELLED');
-      };
-      if (AppState.currentState !== 'active') return;
-      for (const operationHash of operationHashes.split(' ')) {
-        if (view.abort.signal.aborted) return;
-        await controller.inspectSmartAuthorization(operationHash, guard, view.abort.signal);
-      }
+  const operation = chosen?.local?.smartAccount?.operations.length === 1
+    ? chosen.local.smartAccount.operations[0] : undefined;
+  const smartAuthorization = chosen?.smartAuthorizations?.find(value => value.instruction.operationHash === operation?.operationHash);
+  const operationHash = smartAuthorization?.instruction.operationHash;
+  const inspectAuthorization = useCallback(() => {
+    if (!operationHash || AppState.currentState !== 'active') return;
+    authorizationView.current.abort.abort();
+    const view = { hash: chosen?.hash, abort: new AbortController() };
+    authorizationView.current = view;
+    const guard = () => {
+      if (authorizationView.current !== view || view.abort.signal.aborted || AppState.currentState !== 'active')
+        throw Error('CANCELLED');
     };
-    void inspect();
+    void controller.inspectSmartAuthorization(operationHash, guard, view.abort.signal);
+  }, [chosen?.hash, controller, operationHash]);
+  useLayoutEffect(() => {
+    if (!operationHash) return;
+    inspectAuthorization();
     const listener = AppState.addEventListener?.('change', next => {
       authorizationView.current.abort.abort();
-      if (next === 'active') void inspect();
+      if (next === 'active') inspectAuthorization();
     });
     return () => { authorizationView.current.abort.abort(); listener?.remove(); };
-  }, [chosen?.hash, controller, operationHashes]);
+  }, [inspectAuthorization, operationHash]);
   const refreshingDetail = !!selected && snapshot.status === 'loading';
-  const standaloneAuthorization = chosen && !chosen.local && !chosen.indexed && !chosen.candidate && chosen.smartAuthorizations?.[0];
   const collectible = chosen?.local?.collectibleTransfer;
   const indexedCollectible = !collectible && chosen?.display?.isNft ? chosen.display : undefined;
   const chosenObservation = chosen ? currentObservation(chosen) : undefined;
@@ -419,9 +413,8 @@ function NativeActivityContent({
   // An outer receipt/nonce does not revoke its independently usable inner proof.
   const canCancelSmartInstruction = chosen?.local?.smartAccount && !chosen.checking &&
     !chosen.local.cancellationUnavailable && !chosen.local.smartAccount.cancellation &&
-    !chosen.smartAuthorizations?.length && chosen.local.operation !== 'cancel' && chosen.local.smartAccount.operations.length === 1;
-  const cancelAuthorization = onCancelPending ?? (onNavigateToReview
-    ? (hash: string, operationHash: string) => onNavigateToReview('cancel', hash, operationHash) : undefined);
+    chosen.local.operation !== 'cancel' && !!operation && !smartAuthorization?.instruction.replacesOperationHash &&
+    (!smartAuthorization?.observation || smartAuthorization.observation.kind === 'pending');
   const retained = chosen?.retainedObservation;
   const chosenBlock = chosenObservation
     ? chosenObservation.block?.number
@@ -576,15 +569,15 @@ function NativeActivityContent({
             snapshot.networkName ? ` · ${snapshot.networkName}` : ''
           }`}
           onBack={detailOnly || !navigation || chosen || copyAddress ? close : undefined}
-          right={(!chosen && !detailOnly || !!chosen?.smartAuthorizations?.length) ? <View style={s.toolbar}>
+          right={!chosen && !detailOnly ? <View style={s.toolbar}>
             <IconButton label={t('mobile.activityViews.nativeActivity.refreshActivity')} icon="refresh"
               disabled={snapshot.status === 'loading' || snapshot.loadingMore}
               onPress={() => {
                 restored.current = false;
                 void controller.refresh();
               }} />
-            {!chosen && <IconButton label={t('mobile.activityViews.nativeActivity.activityOptions')} icon="settings"
-              selected={optionsOpen} onPress={() => setOptionsOpen(true)} />}
+            <IconButton label={t('mobile.activityViews.nativeActivity.activityOptions')} icon="settings"
+              selected={optionsOpen} onPress={() => setOptionsOpen(true)} />
           </View> : undefined}
         />
       </View>
@@ -689,7 +682,6 @@ function NativeActivityContent({
       </View>}
       {chosen && (
         <ScrollView key={chosen.hash} contentContainerStyle={[s.content, s.detailContent]}>
-          {!standaloneAuthorization && <>
           <TransactionDetailLayout
             asset={activityAssetIcon(chosen, snapshot.chainId, snapshot.registrationHash)} registrationHash={snapshot.registrationHash ?? undefined} assetSymbol={chosen.display?.displaySymbol ?? chosen.local?.token?.symbol}
             amount={`${rowMonetaryAmount(chosen) ? direction(chosen, owner) === 'sent' ? '-' : direction(chosen, owner) === 'received' ? '+' : '' : ''}${amount(chosen, snapshot.nativeSymbol ?? 'ETH')}`}
@@ -832,7 +824,7 @@ function NativeActivityContent({
           <Button
             title={t('mobile.activityViews.nativeActivity.checkTransactionAgain')}
             variant="secondary"
-            onPress={() => controller.inspect(chosen.hash)}
+            onPress={() => { controller.inspect(chosen.hash); inspectAuthorization(); }}
           />
           {original && <Button icon="arrow-left" title={t('mobile.activityViews.nativeActivity.viewOriginalTransaction')} variant="secondary" onPress={() => { setSelected(original.hash); controller.inspect(original.hash); }} />}
           {replacement && <Button title={replacement.local?.operation === 'cancel' ? t('mobile.activityViews.nativeActivity.viewCancellationAttempt') : t('mobile.activityViews.nativeActivity.viewSpeedUpAttempt')} variant="secondary" onPress={() => { setSelected(replacement.hash); controller.inspect(replacement.hash); }} />}
@@ -840,7 +832,20 @@ function NativeActivityContent({
             <Button title={t('header.speedUp')} variant="secondary" onPress={() => void afterPositionSaved(() => speedUp(chosen.hash))} />
           )}
           {canCancelSmartInstruction && cancelPending && (
-            <Button title={t('transactions.smartAuthorizations.cancelInstruction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />
+            <Button title={t('transactions.smartAuthorizations.cancelInstruction')} variant="secondary" disabled={smartAuthorization?.checking}
+              onPress={() => {
+                const view = authorizationView.current;
+                void afterPositionSaved(() => {
+                  if (operationHash) {
+                    if (view.hash !== chosen.hash || authorizationView.current !== view || view.abort.signal.aborted || AppState.currentState !== 'active') return;
+                    const live = controller.getSnapshot().rows.find(row => row.hash === chosen.hash)?.smartAuthorizations
+                      ?.find(value => value.instruction.operationHash === operationHash);
+                    if (!live || live.checking || live.observation && live.observation.kind !== 'pending') return;
+                    view.abort.abort();
+                  }
+                  cancelPending(chosen.hash);
+                });
+              }} />
           )}
           {canReplace && !chosen.local?.smartAccount && (!chosen.local?.cancellationUnavailable || chosen.local.unsignedSpeedUp) && cancelPending && (
             <Button title={t('mobile.activityViews.nativeActivity.cancelPendingTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />
@@ -848,56 +853,6 @@ function NativeActivityContent({
           {canCancelSaved && !chosen.local?.smartAccount && cancelSaved && (
             <Button title={t('mobile.activityViews.nativeActivity.cancelSavedTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelSaved(chosen.hash))} />
           )}
-          </>}
-          {chosen.smartAuthorizations?.map(({ instruction, ...state }) => {
-            const viewRevision = lifetime.current.epoch;
-            const captureView = () => {
-              const view = authorizationView.current;
-              const guard = () => {
-                if (view.hash !== chosen.hash || authorizationView.current !== view ||
-                    lifetime.current.epoch !== viewRevision || view.abort.signal.aborted || AppState.currentState !== 'active')
-                  throw Error('CANCELLED');
-              };
-              return { guard, signal: view.abort.signal };
-            };
-            const observation = state.observation;
-            const transactionHash = observation?.kind === 'observed' ? observation.transactionHash : undefined;
-            return <Card key={instruction.operationHash} style={s.detail}>
-              {standaloneAuthorization && <Text style={s.label}>{snapshot.networkName}</Text>}
-              <Text style={s.label}>{t('transactions.smartAuthorizations.operationHash')}</Text>
-              <Text selectable style={s.full}>{instruction.operationHash}</Text>
-              <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.userOperationNonce')}</Text>
-              <Text selectable style={s.full}>{instruction.operationNonce}</Text>
-              <Text style={s.label}>{t('transactions.feePayer')}</Text>
-              <Text selectable style={s.full}>{instruction.payer}</Text>
-              <Text accessibilityLiveRegion="polite">{authorizationStatus({ instruction, ...state })}</Text>
-              {cancelAuthorization && !chosen.local?.cancellationUnavailable && !instruction.replacesOperationHash && (!observation || observation.kind === 'pending') && (
-                <Button title={t('transactions.smartAuthorizations.cancelInstruction')} variant="secondary"
-                  disabled={state.checking} onPress={() => {
-                    const { guard } = captureView();
-                    void afterPositionSaved(() => {
-                    try { guard(); } catch { return; }
-                    const live = controller.getSnapshot().rows.find(row => row.hash === chosen.hash)?.smartAuthorizations
-                      ?.find(value => value.instruction.operationHash === instruction.operationHash);
-                    if (!live || live.checking || live.observation && live.observation.kind !== 'pending') return;
-                    authorizationView.current.abort.abort();
-                    cancelAuthorization(chosen.hash, instruction.operationHash);
-                    });
-                  }} />
-              )}
-              {transactionHash && transactionHash !== chosen.hash && (
-                <Button title={t('mobile.sendAssetViews.evm.viewTransaction')} variant="secondary" onPress={() => {
-                  if (findRow(row => row.hash === transactionHash)) {
-                    setSelected(transactionHash);
-                    controller.inspect(transactionHash);
-                  } else if (snapshot.explorerUrl) {
-                    void Linking.openURL(`${snapshot.explorerUrl.replace(/\/$/, '')}/tx/${transactionHash}`)
-                      .catch(() => setFeedback(t('mobile.activityViews.nativeActivity.couldNotOpenTheExplorer')));
-                  }
-                }} />
-              )}
-            </Card>;
-          })}
           {!!feedback && (
             <Text accessibilityLiveRegion="polite" style={styles.muted}>
               {feedback}

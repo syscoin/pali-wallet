@@ -93,6 +93,16 @@ const decodedTxCache = new Map<
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const BLOCK_FIELDS = ['blockNumber', 'blockHash', 'confirmations', 'timestamp'];
 const STATUS_FIELDS = ['status', 'success', 'isError', 'txreceipt_status'];
+const HANDLE_OPS_SELECTOR =
+  paliEntryPointInterface.getFunction('handleOps')!.selector;
+const hasHandleOpsInput = (transaction: any) =>
+  String(transaction?.input || transaction?.data || '')
+    .toLowerCase()
+    .startsWith(HANDLE_OPS_SELECTOR);
+const isEntryPointBundle = (transaction: any, entryPoint: string) =>
+  typeof transaction?.to === 'string' &&
+  transaction.to.toLowerCase() === entryPoint &&
+  hasHandleOpsInput(transaction);
 const settlementSnapshot = (
   summary: any,
   fields = [...BLOCK_FIELDS, ...STATUS_FIELDS]
@@ -188,6 +198,7 @@ export const EvmTransactionDetailsEnhanced = ({
   const ensCache = useSelector(selectValidEnsCache);
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
   const { chainId, currency, apiUrl } = activeNetwork;
+  const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
 
   // Use proper selectors
   const currentAccount = useSelector(selectActiveAccount);
@@ -387,14 +398,9 @@ export const EvmTransactionDetailsEnhanced = ({
     const input = String(
       mergedTransaction.input || mergedTransaction.data || ''
     );
-    if (
-      !input
-        .toLowerCase()
-        .startsWith(paliEntryPointInterface.getFunction('handleOps')!.selector)
-    ) {
+    if (!hasHandleOpsInput(mergedTransaction)) {
       return { transaction: mergedTransaction, isOperation: false };
     }
-    const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
     const origin =
       (matchingTx as any)?.smartAccountExecutionFrom || currentAccount?.address;
     const accountAddress = origin?.toLowerCase();
@@ -495,6 +501,7 @@ export const EvmTransactionDetailsEnhanced = ({
     enhancedDetails,
     currentAccount?.address,
     chainId,
+    entryPoint,
     normalizedHash,
   ]);
   const displayTransaction = displayContext.transaction;
@@ -640,8 +647,14 @@ export const EvmTransactionDetailsEnhanced = ({
       setLookupFailed(false);
       try {
         let enhancedData = null;
+        // EntryPoint operation outcomes require the scoped RPC receipt.
+        // Blockscout gettxinfo logs omit the transaction and block identity.
         // Routescan's Etherscan API has no Blockscout gettxinfo action.
-        if (apiUrl && !isRoutescanApiUrl(apiUrl, chainId)) {
+        if (
+          apiUrl &&
+          !isRoutescanApiUrl(apiUrl, chainId) &&
+          !isEntryPointBundle(matchingTx, entryPoint)
+        ) {
           try {
             enhancedData = await controllerEmitter(
               ['wallet', 'getEvmTransactionFromAPI'],
@@ -653,7 +666,10 @@ export const EvmTransactionDetailsEnhanced = ({
           }
         }
         if (!isCurrent()) return;
-        if (!usableLookup(enhancedData)) {
+        if (
+          !usableLookup(enhancedData) ||
+          isEntryPointBundle(enhancedData, entryPoint)
+        ) {
           enhancedData = await controllerEmitter(
             ['wallet', 'getEvmTransactionFromProvider'],
             [hash, true]

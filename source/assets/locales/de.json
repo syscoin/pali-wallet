@@ -1109,16 +1109,7 @@
   "transactions": {
     "smartAuthorizations": {
       "reference": "Ursprüngliche Referenz",
-      "mayExecute": "Die Anweisung kann noch ausgeführt werden",
-      "nonceConsumedUnknown": "Nonce verbraucht; Ergebnis unbekannt",
-      "cancellationSigned": "Abbruch signiert",
-      "cancellationConfirmed": "Abbruch bestätigt",
-      "cancellationFailed": "Ausführung des Abbruchs fehlgeschlagen",
-      "outcomeUnknown": "Ergebnis unbekannt",
-      "observedSuccess": "Erfolgreiche Anweisung beobachtet",
-      "observedFailure": "Fehlgeschlagene Anweisung beobachtet",
       "cancelInstruction": "Anweisung abbrechen",
-      "unavailable": "Signierte Anweisungen nicht verfügbar. Erneut versuchen.",
       "operationHash": "Operationshash"
     },
     "smartAccountCancelUnavailable": "Diese Operation kann nicht abgebrochen werden. Ihre signierte Anweisung kann weiterhin ausgeführt werden.",

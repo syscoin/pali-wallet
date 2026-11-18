@@ -2062,8 +2062,7 @@ for(const path of ['standalone','pending-outer','consumed-outer','pending-counte
   assert.equal(page.entries[0]!.operationNonce, first.authorization!.nonce);
   assert.equal((await activity.observeSmartAuthorization!(scope, first.userOperationHash!, () => undefined, signal.signal)).kind,'pending');
   assert(!JSON.stringify(page).includes('signature'));assert(!JSON.stringify(page).includes(first.authorization!.callData));
-  // An Activity row uses the authenticated operation hash, even when an outer exists.
-  const reference={originalHash:first.userOperationHash!,operationHash:first.userOperationHash!};
+  const reference={originalHash:outer?.hash ?? first.userOperationHash!};
   cancel=await f.runtime.openSmartAccountCancellation(reference,()=>undefined,null);await cancel.prepare();
   assert.equal(cancel.getSnapshot().phase,'authorize',JSON.stringify(cancel.getSnapshot()));
   assert.equal(cancel.getSnapshot().authorization!.nonce,first.authorization!.nonce);assert.equal(f.credentialReads,prompts,'authenticated record preparation does not prompt for an OS secret');
@@ -2072,6 +2071,10 @@ for(const path of ['standalone','pending-outer','consumed-outer','pending-counte
   assert.equal(f.credentialReads-prompts,2,'new current-policy proof and payer keep their separate existing OS authorizations');assert.equal(f.secretLeases-lease,2);f.assertNoSigningKeys();
   assert.equal(f.submitted.length,transactionStart+1);
   const revoke=Transaction.from(f.submitted.at(-1)!);const [ops,beneficiary]=paliEntryPointInterface.decodeFunctionData('handleOps',revoke.data);
+  const cancellationRow = (await activity.load(() => undefined)).locals.find(row => row.hash === revoke.hash);
+  assert.equal(cancellationRow?.operation, 'cancel');
+  assert.equal(cancellationRow?.originalHash, outer?.hash);
+  assert.equal(cancellationRow?.smartAccount?.operations[0]?.operationHash, cancel.getSnapshot().userOperationHash);
   assert.equal(ops[0].nonce.toString(),first.authorization!.nonce);assert.equal(ops[0].sender.toLowerCase(),smart.address.toLowerCase());assert.equal(beneficiary,revoke.from);
   const [,execution]=paliSmartAccountInterface.decodeFunctionData('execute',ops[0].callData);
   assert.equal(execution.toLowerCase(),'0x'+smart.address.slice(2).toLowerCase()+'0'.repeat(64));assert.equal(revoke.value,0n);

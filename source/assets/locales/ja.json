@@ -1109,16 +1109,7 @@
   "transactions": {
     "smartAuthorizations": {
       "reference": "元の参照",
-      "mayExecute": "この指示はまだ実行される可能性があります",
-      "nonceConsumedUnknown": "nonceは使用済みですが結果は不明です",
-      "cancellationSigned": "取り消しは署名済み",
-      "cancellationConfirmed": "取り消し完了",
-      "cancellationFailed": "取り消しの実行に失敗",
-      "outcomeUnknown": "結果不明",
-      "observedSuccess": "指示の成功を確認",
-      "observedFailure": "指示の失敗を確認",
       "cancelInstruction": "指示を取り消す",
-      "unavailable": "署名済み指示を取得できません。再試行してください。",
       "operationHash": "オペレーションハッシュ"
     },
     "smartAccountCancelUnavailable": "この操作は取り消せません。署名済みの指示が引き続き実行される可能性があります。",

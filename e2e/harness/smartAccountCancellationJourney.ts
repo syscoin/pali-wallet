@@ -284,11 +284,18 @@ export async function runSmartAccountCancellationJourney(options: Options) {
     await expect(activity).toBeVisible();
     return activity;
   };
-  const cancelFromActivity = (operationHash: string) =>
-    page
-      .locator(`#activity-panel-list [data-operation-hash="${operationHash}"]`)
-      .getByRole('button', { name: en.buttons.cancel, exact: true })
+  const cancelFromActivity = async (transactionHash: string) => {
+    await page
+      .locator(
+        `#activity-panel-list [data-transaction-hash="${transactionHash}"] #transaction-options`
+      )
+      .getByRole('button')
       .click();
+    await page
+      .getByRole('menuitem')
+      .filter({ hasText: /^Cancel$/ })
+      .click();
+  };
   const originalReplayFails = async (
     value: SmartAccountPackedUserOperation
   ) => {
@@ -339,26 +346,14 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         ]);
         const original = await beginSend('pending-original');
         const saved = await openActivity();
-        const originalOperationHash = getSmartAccountUserOpHash(
-          original.operation,
-          chain.chainId
-        ).toLowerCase();
         const originalRow = saved.locator(
           `[data-transaction-hash="${original.hash}"]`
         );
-        const instruction = saved.locator(
-          `[data-operation-hash="${originalOperationHash}"]`
-        );
         await expect(originalRow).toHaveCount(1);
-        await expect(instruction).toHaveCount(1);
-        await expect(
-          saved
-            .locator(`[data-activity-outer="${original.hash}"]`)
-            .locator(`[data-operation-hash="${originalOperationHash}"]`)
-        ).toHaveCount(1);
+        await expect(saved.locator('[data-operation-hash]')).toHaveCount(0);
         const before = deliveries.length;
         const beforeEstimates = signedEstimates;
-        await cancelFromActivity(originalOperationHash);
+        await cancelFromActivity(original.hash);
         const { modal } = await reviewCancellation(original.operation);
         await modal
           .getByRole('button', { name: en.buttons.cancel, exact: true })
@@ -369,7 +364,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         expect(await canonicalNonce(original.operation)).toBe(
           BigInt(original.operation.nonce)
         );
-        await cancelFromActivity(originalOperationHash);
+        await cancelFromActivity(original.hash);
         const cancelled = await approveCancellation(original.operation);
         expect(cancelled.operation.nonce).toBe(original.operation.nonce);
         const cancellationOperationHash = getSmartAccountUserOpHash(
@@ -403,20 +398,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         await expect(
           activity.locator(`[data-transaction-hash="${cancelled.hash}"]`)
         ).toHaveCount(1);
-        const cancelledInstruction = activity.locator(
-          `[data-operation-hash="${originalOperationHash}"]`
-        );
-        await expect(cancelledInstruction).toHaveCount(1);
-        await cancelledInstruction.locator('details > summary').click();
-        await expect(cancelledInstruction.getByRole('status')).toHaveText(
-          en.transactions.smartAuthorizations.cancellationConfirmed
-        );
-        await expect(
-          cancelledInstruction.getByRole('button', {
-            name: en.buttons.cancel,
-            exact: true,
-          })
-        ).toHaveCount(0);
+        await expect(activity.locator('[data-operation-hash]')).toHaveCount(0);
         const replayHash = await originalReplayFails(original.operation);
         expect(await rpc('eth_getBalance', [recipient, 'latest'])).toBe(
           beforeBalance
@@ -441,7 +423,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
           chain.chainId
         ).toLowerCase();
         await openActivity();
-        await cancelFromActivity(hash);
+        await cancelFromActivity(original.hash);
         const { modal } = await reviewCancellation(original.operation);
         await rpc('evm_mine');
         await mined(original.hash);
@@ -479,7 +461,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
     );
     let abandoned!: SmartAccountPackedUserOperation;
     await wallet.step(
-      'Declining payer consent retains an instruction without an outer transaction',
+      'Declining payer consent adds no Activity transaction',
       async () => {
         const result = await beginSend('declined-payer', true);
         abandoned = result.operation;
@@ -490,7 +472,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         ).toLowerCase();
         await expect(
           shown.locator(`[data-operation-hash="${hash}"]`)
-        ).toBeVisible();
+        ).toHaveCount(0);
         expect(await page.locator('body').innerText()).not.toContain(
           abandoned.signature
         );
@@ -523,37 +505,15 @@ export async function runSmartAccountCancellationJourney(options: Options) {
       account.toLowerCase()
     );
     await wallet.step(
-      'A retained instruction survives cold restart and can be cancelled',
+      'Only transaction rows appear after cold restart',
       async () => {
         const shown = await openActivity();
-        const hash = getSmartAccountUserOpHash(
-          abandoned,
-          chain.chainId
-        ).toLowerCase();
-        const row = shown.locator(`[data-operation-hash="${hash}"]`);
-        await expect(row).toBeVisible();
+        await expect(shown.locator('[data-operation-hash]')).toHaveCount(0);
         expect(await page.locator('body').innerText()).not.toContain(
           abandoned.signature
         );
-        await expect(
-          row.getByText(en.transactions.smartAuthorizations.mayExecute, {
-            exact: true,
-          })
-        ).toBeVisible();
-        await cancelFromActivity(hash);
-        const cancelled = await approveCancellation(abandoned);
-        expect(cancelled.operation.nonce).toBe(abandoned.nonce);
-        await rpc('evm_mine');
-        await mined(cancelled.hash);
-        expect(await canonicalNonce(abandoned)).toBe(
-          BigInt(abandoned.nonce) + BigInt(1)
-        );
-        evidence.restarted = {
-          operationHash: hash,
-          cancellationHash: cancelled.hash,
-          replayHash: await originalReplayFails(abandoned),
-          operationNonce: abandoned.nonce,
-        };
+        expect(deliveries.length).toBeGreaterThan(0);
+        expect(await canonicalNonce(abandoned)).toBe(BigInt(abandoned.nonce));
       }
     );
     return { wallet, evidence };

@@ -6974,61 +6974,6 @@ class MainController {
     };
   }
 
-  public async getSmartAccountAuthorizations(
-    options: { beforeHash?: string; maximum: number } = { maximum: 20 }
-  ) {
-    const owned = this.captureSmartAccountAuthorizationSession();
-    return owned.records.listSmartAccountAuthorizations(
-      owned.session,
-      String(owned.read.network.chainId),
-      owned.account.address,
-      options
-    );
-  }
-
-  public async getSmartAccountAuthorizationStatus(
-    operationHash: string,
-    options?: Readonly<{ preserveRecords: true }>
-  ) {
-    const owned = this.captureSmartAccountAuthorizationSession();
-    const record = await owned.records.readSmartAccountAuthorizationExact(
-      owned.session,
-      String(owned.read.network.chainId),
-      owned.account.address,
-      operationHash
-    );
-    if (!record) throw new Error('SMART_ACCOUNT_AUTHORIZATION_NOT_FOUND');
-    const { observeSmartAccountAuthorization } = await import(
-      /* webpackChunkName: "smart-account" */ '../../../utils/smartAccount/authorizationStatus'
-    );
-    owned.assertCurrent();
-    const observation = await owned.read.run((provider) =>
-      observeSmartAccountAuthorization(
-        record,
-        provider,
-        owned.assertCurrent,
-        owned.read.network.chainId
-      )
-    );
-    if (options?.preserveRecords !== true && observation.kind !== 'pending') {
-      try {
-        await owned.records.retireConsumedSmartAccountAuthorizations(
-          owned.session,
-          owned.read.network.chainId,
-          owned.account.address,
-          (method, params, signal) =>
-            owned.read.run(
-              (provider) => provider.send(method, [...params]),
-              signal
-            )
-        );
-      } catch {
-        owned.assertCurrent(); /* Evidence unavailable: preserve the signed history. */
-      }
-    }
-    return observation;
-  }
-
   public async prepareSmartAccountCancellation(
     request: import('../../../wallet/smartAccountCancellation').SmartAccountCancellationRequest,
     accountId: number,
