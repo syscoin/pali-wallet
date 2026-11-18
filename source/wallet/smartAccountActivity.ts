@@ -33,7 +33,23 @@ import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHa
 import type {
   EvmRetainedRecord,
   EvmRetainedSignedRecord,
+  EvmRetainedSmartAccountRecord,
 } from './evmSignedRecords.ts';
+
+/** A fee replacement can carry forward an authenticated single operation. */
+export function canSpeedUpSmartAccountOuter(
+  record: EvmRetainedSmartAccountRecord,
+  account: string
+): boolean {
+  const { entry, operations } = record;
+  return (
+    !record.cancellation &&
+    !entry.metadata?.smartAccountOperationCancellation &&
+    operations.length === 1 &&
+    operations[0]?.account.toLowerCase() === account.toLowerCase() &&
+    ['signed', 'attempted', 'submitted'].includes(entry.phase)
+  );
+}
 
 const tokenPolicy = createErc20Policy(getAddress);
 const executeSelector =

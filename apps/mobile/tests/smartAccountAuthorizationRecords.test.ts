@@ -18,7 +18,11 @@ import {
   encodeSmartAccountValidatorNonceKey,
 } from '../../../source/utils/smartAccount/account.ts';
 import { captureSignedSmartAccountOperation } from '../../../source/wallet/smartAccountAuthorization.ts';
-import { paliSmartAccountInterface } from '../../../source/utils/smartAccount/contracts.ts';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from '../../../source/utils/smartAccount/contracts.ts';
 import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
 
 Object.defineProperty(globalThis, 'crypto', {
@@ -79,9 +83,9 @@ function fixture() {
   };
 }
 
-function authorization(sequence = 0, chainId = 1) {
+function authorization(sequence = 0, chainId = 1, sender = account) {
   const userOperation = buildSmartAccountUserOperation({
-    sender: account,
+    sender,
     nonce: (
       (BigInt(encodeSmartAccountValidatorNonceKey(validator)) << 64n) +
       BigInt(sequence)
@@ -157,21 +161,31 @@ test('randomized same-nonce no-op retry resolves only the first retained signatu
   , /revoked/);
 });
 
-async function outer(nonce = 0) {
+async function outer(
+  nonce = 0,
+  transaction: {
+    data?: string;
+    gasLimit?: number;
+    to?: string;
+    value?: number;
+  } = {},
+  chainId = 1
+) {
   const rawTransaction = await owner.signTransaction({
     type: 2,
-    chainId: 1,
+    chainId,
     nonce,
     to: owner.address,
     value: 1,
     gasLimit: 21000,
     maxFeePerGas: 3,
     maxPriorityFeePerGas: 1,
+    ...transaction,
   });
   return {
     rawTransaction,
     hash: Transaction.from(rawTransaction).hash!,
-    chainId: '1',
+    chainId: String(chainId),
     from: owner.address,
     nonce,
     type: 2,
@@ -179,7 +193,7 @@ async function outer(nonce = 0) {
       account: { type: 'HDAccount', id: 0, address: owner.address },
       network: {
         kind: 'ethereum',
-        chainId: 1,
+        chainId,
         slip44: 60,
         url: 'https://offline.invalid',
       },
@@ -505,6 +519,138 @@ test('explicit account reset removes only its own authorization and retires old 
     )?.userOperation,
     { ...other.userOperation, signature: '0x' }
   );
+});
+
+test('Smart reset releases scoped payer nonces and preserves unrelated signed records and floors', async () => {
+  const f = fixture();
+  const otherAccount = `0x${'55'.repeat(20)}`;
+  const selected = authorization();
+  const other = authorization(0, 1, otherAccount);
+  const otherChain = authorization(0, 2);
+  const handleOps = (
+    nonce: number,
+    ...inputs: ReturnType<typeof authorization>[]
+  ) => {
+    const chainId = inputs[0]!.chainId;
+    return outer(
+      nonce,
+      {
+        data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+          inputs.map((input) => input.userOperation),
+          owner.address,
+        ]),
+        gasLimit: 100_000,
+        to: getPaliEntryPointAddress(chainId),
+        value: 0,
+      },
+      chainId
+    );
+  };
+  const ownOuter = await handleOps(7, selected);
+  const ownPrefund = await outer(8, { to: account });
+  const otherOuter = await handleOps(9, other);
+  const mixedOuter = await handleOps(10, authorization(1), other);
+  const ordinaryPayment = await outer(11, { to: account });
+  const mismatchedPrefund = await outer(12);
+  const sameAccountOtherChain = await handleOps(7, otherChain);
+  const marker = {
+    smartAccountAddress: account,
+    smartAccountDeploymentPrefund: true,
+  };
+  for (const tx of [
+    ownOuter,
+    otherOuter,
+    mixedOuter,
+    ordinaryPayment,
+    sameAccountOtherChain,
+  ])
+    await f.store.append(f.session(), tx);
+  for (const tx of [ownPrefund, mismatchedPrefund])
+    await f.store.append(f.session(), tx, marker);
+  const ownReceipt = await f.store.retainSmartAccountAuthorization(
+    f.session(),
+    selected
+  );
+  const otherReceipt = await f.store.retainSmartAccountAuthorization(
+    f.session(),
+    other
+  );
+  await f.store.updatePhase(
+    f.session(),
+    '1',
+    owner.address,
+    ownOuter.hash,
+    'confirmed'
+  );
+  await rewriteRoot(f, (root) => {
+    root.nonceFloors = [
+      { chainId: '1', from: owner.address.toLowerCase(), nonce: 7 },
+    ];
+  });
+  for (const tx of [ownOuter, ownPrefund])
+    await assert.rejects(
+      f.store.assertSpendingNonce(f.session(), tx.chainId, tx.from, tx.nonce),
+      /EVM_SIGNED_RECORD_NONCE_CONFLICT/
+    );
+  assert.equal(
+    await f.store.clearScope(f.session(), {
+      chainId: '1',
+      from: account,
+      profileId: await f.keyring.getPrivateRecordProfileId(),
+      smartAccount: true,
+    }),
+    3
+  );
+  const reopened = new EvmSignedRecords(f.port);
+  for (const tx of [ownOuter, ownPrefund]) {
+    assert.equal(
+      await reopened.readExact(f.session(), tx.chainId, tx.from, tx.hash),
+      null
+    );
+    await reopened.assertSpendingNonce(
+      f.session(),
+      tx.chainId,
+      tx.from,
+      tx.nonce
+    );
+  }
+  assert.equal(
+    await reopened.readSmartAccountAuthorizationExact(
+      f.session(),
+      '1',
+      account,
+      ownReceipt.operationHash
+    ),
+    null
+  );
+  for (const tx of [
+    otherOuter,
+    mixedOuter,
+    ordinaryPayment,
+    mismatchedPrefund,
+    sameAccountOtherChain,
+  ]) {
+    const retained = await reopened.readExact(
+      f.session(),
+      tx.chainId,
+      tx.from,
+      tx.hash
+    );
+    assert.equal(retained?.rawTransaction, tx.rawTransaction);
+  }
+  const otherAuthorization = await reopened.readSmartAccountAuthorizationExact(
+    f.session(),
+    '1',
+    otherAccount,
+    otherReceipt.operationHash
+  );
+  assert.equal(otherAuthorization?.account, otherAccount);
+  const payerNonces = await reopened.captureAutoNonceSnapshot(
+    f.session(),
+    '1',
+    owner.address
+  );
+  assert.equal(payerNonces.minimumNonce, 7);
 });
 
 test('a CAS retry preserves a concurrent outer append and acknowledges only committed authorization', async () => {

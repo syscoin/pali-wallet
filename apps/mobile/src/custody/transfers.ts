@@ -120,6 +120,7 @@ type NativeReplacementSource = Readonly<{
   intent?: Erc20TransferIntent;
   collectible?: NftTransferIntent;
   smartAccount?: string;
+  retainedSmartSpeedUp?: true;
 } & ({ rawTransaction: string; unsignedTransaction?: never } | { unsignedTransaction: string; from: string; rawTransaction?: never })>;
 export type NativeReplacementApproval = Readonly<{ original: NativeReplacementOriginal; binding: EvmVerifiedReplacementBinding } & (
   | { mode: 'cancel'; source: 'pending' | 'saved'; feePlan: EvmCancellationQuote['feePlan'] }
@@ -732,7 +733,7 @@ export class NativeTransfers {
     return original.unsignedTransaction !== undefined
       ? rpc.prepareUnsignedSpeedUp(hash, original.unsignedTransaction, original.from, signal, check, original.rates, original.intent, original.collectible)
       : rpc.prepareSpeedUp(hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, check,
-        original.rates, original.intent, original.collectible);
+        original.rates, original.intent, original.collectible, original.retainedSmartSpeedUp);
   }
   private async checkDraftNonce(journal: NativeTransferJournalHandle, nonce: string, manual: boolean) {
     try {
@@ -1039,7 +1040,8 @@ export class NativeTransfers {
           const { original, mode } = replacement;
           const retained = await runtime.replacementOriginal?.(original.hash, mode, guard, signal);
           if (!retained || retained.binding.expectedTipHash !== replacement.binding.expectedTipHash ||
-              (retained.unsignedTransaction !== undefined) !== (original.retainedUnsigned === true))
+              (retained.unsignedTransaction !== undefined) !== (original.retainedUnsigned === true) ||
+              retained.retainedSmartSpeedUp !== original.retainedSmartSpeedUp)
             throw new NativeTransferError('EXPIRED');
           latest = mode === 'cancel'
             ? await this.quoteCancellation(rpc, original.hash, retained, replacement.source, signal, guard, approved.transaction)
@@ -1112,7 +1114,9 @@ export class NativeTransfers {
         const check = () => { guard(); assertAdmission(); };
         if (approved.replacement) {
           if (!snapshot) throw new NativeTransferError('EXPIRED');
-          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible, approved.replacement.mode, rawTransaction, approved.replacement.mode === 'speed-up' && approved.replacement.original.retainedUnsigned === true);
+          const { mode, original } = approved.replacement;
+          const verifyGas = mode === 'speed-up' && (original.retainedUnsigned === true || original.retainedSmartSpeedUp === true);
+          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible, mode, rawTransaction, verifyGas);
           check();
           dispatchVerified = true;
           return;

@@ -610,6 +610,23 @@ test('unsigned native Activity offers only a fresh Speed Up review for a missing
   }
 });
 
+test('scoped Smart Activity offers Speed Up only while its missing payer nonce remains available', async () => {
+  const navigation: [string, string][] = [];
+  const f = fixture(undefined, false, { onNavigateToReview: (action: string, id: string) => navigation.push([action, id]) });
+  const base = pendingScopedRow({ speedUp: true });
+  const row = { ...base, observation: undefined, local: { ...base.local, retainedSmartSpeedUp: true,
+    smartAccount: { payer: '0x' + '55'.repeat(20), operations: [{ operationHash: hash, operationNonce: '0' }] } } };
+  const findSpeedUp = (tree: unknown) => all(tree).find(node => node.type === 'Button' && node.props.title === 'Speed Up');
+  try {
+    const tree = await openFixtureRow(f, { ...row, retainedObservation: { status: 'missing', latestNonce: '0' } });
+    const speed = findSpeedUp(tree); assert(speed);
+    speed.props.onPress(); await settle();
+    assert.deepEqual(navigation, [['speed-up', hash]]);
+    f.rows([{ ...row, retainedObservation: { status: 'missing', latestNonce: '1' } }]);
+    assert.equal(findSpeedUp(f.render()), undefined);
+  } finally { f.dispose(); }
+});
+
 test('scoped retained actions navigate to a host review without invoking direct action callbacks', async () => {
   const navigation: [string, string][] = [];
   const direct = () => { throw Error('A read-only projection cannot invoke a direct action'); };

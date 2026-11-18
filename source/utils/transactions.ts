@@ -6,9 +6,11 @@ import {
   isTokenTransfer,
   type EvmTransactionDisplayInfo,
 } from '../shared/evmTransactionDisplay';
+import { SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT } from '../shared/smartAccountControllerAuthority';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import store from 'state/store';
+import { KeyringAccountType } from 'types/network';
 import { ITokenDetails } from 'types/tokens';
 import { ITransactionParams, ITxState } from 'types/transactions';
 import { id } from 'utils/ethersV6Compat';
@@ -505,13 +507,13 @@ const speedUpTransaction = async (
   approvedMaximumFee: string | undefined,
   walletScope: IWalletNavigationScope
 ) => {
-  // Safety check: this function is only for EVM networks
-  const { isBitcoinBased } = store.getState().vault;
+  const { isBitcoinBased, activeAccount } = store.getState().vault;
   if (isBitcoinBased) {
     alert.error(t('transactions.speedUpNotAvailableUtxo'));
     return;
   }
 
+  let requested = false;
   try {
     const current = getWalletNavigationScope();
     if (
@@ -526,6 +528,7 @@ const speedUpTransaction = async (
       !/^(0|[1-9][0-9]{0,77})$/.test(approvedMaximumFee)
     )
       throw new Error('Replacement fee approval required');
+    requested = true;
     const response = await requestSpeedUp(
       txHash,
       isLegacy,
@@ -602,6 +605,21 @@ const speedUpTransaction = async (
     console.error('Error speeding up transaction:', error);
 
     alert.error(t('transactions.transactionSpeedUpFailed'));
+  } finally {
+    if (
+      requested &&
+      activeAccount?.type === KeyringAccountType.SmartAccount &&
+      typeof window !== 'undefined'
+    ) {
+      const current = getWalletNavigationScope();
+      if (
+        current.account === walletScope.account &&
+        current.network === walletScope.network
+      )
+        window.dispatchEvent(
+          new Event(SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT)
+        );
+    }
   }
 };
 

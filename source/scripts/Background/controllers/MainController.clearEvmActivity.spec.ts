@@ -191,6 +191,30 @@ describe('explicit EVM activity and nonce reset', () => {
     expect(wallet.lock).not.toHaveBeenCalled();
   });
 
+  it('asks the journal to release payer records for the selected Smart account', async () => {
+    const payerActivity = history();
+    state.vault.activeAccount = { type: 'SmartAccount', id: 0 };
+    state.vault.accounts.SmartAccount = {
+      0: { ...state.vault.accounts.HDAccount[0], address: other },
+    };
+    state.vault.accounts.HDAccount[1] = {
+      ...state.vault.accounts.HDAccount[1],
+      address: '0x3333333333333333333333333333333333333333',
+    };
+    state.vault.accountTransactions.SmartAccount = {
+      0: { ethereum: { 1: [{ hash: 'smart' }] }, syscoin: {} },
+    };
+
+    await clear();
+
+    expect(records.clearScope).toHaveBeenCalledWith(
+      expect.objectContaining({ keyring }),
+      { profileId, chainId: '1', from: other, smartAccount: true }
+    );
+    expect(history('SmartAccount')).toBeUndefined();
+    expect(history()).toEqual(payerActivity);
+  });
+
   it('revokes old sessions and blocks new signing before the first asynchronous read', async () => {
     const pending = deferred();
     keyring.getPrivateRecordProfileId.mockReturnValue(pending.promise);

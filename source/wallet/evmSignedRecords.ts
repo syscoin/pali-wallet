@@ -24,10 +24,12 @@ import {
 import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHash.ts';
 
 import {
+  canSpeedUpSmartAccountOuter,
   decodeRetainedSmartAccountTransfer,
   decodeRetainedSmartAccountCancellation,
   isSmartAccountActivityCandidate,
   decodeRetainedSmartAccountOperations,
+  decodeSmartAccountOperations,
   type RetainedSmartAccountOperation,
   type RetainedSmartAccountActivity,
   type RetainedSmartAccountCancellation,
@@ -2686,6 +2688,35 @@ export class EvmSignedRecords {
       binding: retained.binding,
     });
   }
+  async readSmartAccountSpeedUpIntent(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    account: string,
+    hash: string
+  ) {
+    const record = await this.readSmartAccountReplayExact(
+      session,
+      chainId,
+      account,
+      hash
+    );
+    if (!record || !canSpeedUpSmartAccountOuter(record, account)) return null;
+    const retained = await this.readReplacement(
+      session,
+      chainId,
+      record.entry.from,
+      hash,
+      'speed-up'
+    );
+    if (retained?.binding?.expectedTipHash !== hash) return null;
+    const { rawTransaction, ...original } = retained.original;
+    void rawTransaction;
+    return Object.freeze({
+      original: Object.freeze(original),
+      binding: retained.binding,
+    });
+  }
+
   /** Compact eligible EOA sends, fee-only descendants and standalone ordinary Smart Account proofs atomically. */
   migrateUnsignedNative(
     session: EvmSignedRecordSession,
@@ -2800,16 +2831,81 @@ export class EvmSignedRecords {
       );
     });
   }
+
+  private async smartAccountPayerEntries(
+    session: EvmSignedRecordSession,
+    entries: readonly Entry[],
+    chainId: string,
+    account: string
+  ): Promise<ReadonlyMap<string, Entry>> {
+    const matched = new Map<string, Entry>();
+    const from = account.toLowerCase();
+    for (const entry of entries) {
+      if (
+        entry.chainId !== chainId ||
+        entry.from === from ||
+        entry.payloadKind === 'unsigned-eoa'
+      )
+        continue;
+      const parent = entry.originalHash && matched.get(entry.originalHash);
+      if (entry.operation === 'cancel' && !parent) continue;
+      const tx = retainedEvmTransaction(await this.materialize(session, entry));
+      const operations = decodeSmartAccountOperations({
+        chainId,
+        data: tx.data,
+        hash: entry.hash,
+        nonce: entry.nonce,
+        payer: entry.from,
+        to: tx.to,
+        value: tx.value.toString(),
+      });
+      if (operations.length) {
+        // A shared outer envelope cannot be removed without losing the other
+        // account's retained instructions and payer-side nonce evidence.
+        if (operations.every((operation) => operation.account === account))
+          matched.set(entry.hash, entry);
+        continue;
+      }
+      const matchesPrefund =
+        entry.metadata?.smartAccountDeploymentPrefund === true &&
+        typeof entry.metadata.smartAccountAddress === 'string' &&
+        entry.metadata.smartAccountAddress.toLowerCase() === from &&
+        tx.to === account &&
+        tx.data === '0x' &&
+        tx.value > BigInt(0);
+      if (
+        matchesPrefund ||
+        (parent &&
+          matchesNonce(entry, parent) &&
+          (entry.operation === 'cancel'
+            ? isCancellationEnvelope(tx)
+            : entry.operation === 'speed-up' &&
+              sameEoaExecution(
+                tx,
+                retainedEvmTransaction(await this.materialize(session, parent))
+              )))
+      )
+        matched.set(entry.hash, entry);
+    }
+    return matched;
+  }
+
   /** Explicitly forget local tracking for one account and chain. Network-held
    * transactions can still execute. The host must revoke its signing/review and
    * history-publication authorities before calling this method. */
   clearScope(
     session: EvmSignedRecordSession,
-    input: Readonly<{ chainId: string; from: string; profileId: string }>
+    input: Readonly<{
+      chainId: string;
+      from: string;
+      profileId: string;
+      smartAccount?: true;
+    }>
   ): Promise<number> {
     guard(session);
-    const from = getAddress(input.from).toLowerCase();
-    const { chainId, profileId } = input;
+    const account = getAddress(input.from);
+    const from = account.toLowerCase();
+    const { chainId, profileId, smartAccount } = input;
     if (
       !PROFILE.test(profileId) ||
       !/^[1-9][0-9]{0,77}$/.test(chainId) ||
@@ -2829,9 +2925,26 @@ export class EvmSignedRecords {
         throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
       for (let attempt = 0; attempt < 3; attempt++) {
         const previous = await this.load(resetSession, profileId);
-        const entries = (previous.bundle?.entries ?? []).filter(
-          (entry) => entry.chainId !== chainId || entry.from !== from
-        );
+        const recorded = previous.bundle?.entries ?? [];
+        const payerEntries =
+          smartAccount === true
+            ? await this.smartAccountPayerEntries(
+                resetSession,
+                recorded,
+                chainId,
+                account
+              )
+            : undefined;
+        const entries: Entry[] = [],
+          removed: Entry[] = [];
+        for (const entry of recorded) {
+          if (
+            (entry.chainId === chainId && entry.from === from) ||
+            payerEntries?.has(entry.hash)
+          )
+            removed.push(entry);
+          else entries.push(entry);
+        }
         const floors = (previous.bundle?.nonceFloors ?? []).filter(
           (entry) => entry.chainId !== chainId || entry.from !== from
         );
@@ -2855,12 +2968,14 @@ export class EvmSignedRecords {
           )
         ) {
           this.retirementGroupCursors.delete(`${profileId}:${chainId}:${from}`);
-          for (const entry of previous.bundle?.entries ?? [])
-            if (entry.chainId === chainId && entry.from === from)
-              this.autoNonceAcceptance.retireNonce(profileId, entry);
+          for (const entry of removed)
+            this.autoNonceAcceptance.retireNonce(
+              profileId,
+              entry,
+              entry.from === from ? 'nonce' : 'hash'
+            );
           return (
-            (previous.bundle?.entries.length ?? 0) -
-            entries.length +
+            removed.length +
             (previous.bundle?.authorizations.length ?? 0) -
             authorizations.length
           );

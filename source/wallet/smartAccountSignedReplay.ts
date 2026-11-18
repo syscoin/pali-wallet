@@ -15,6 +15,7 @@ import {
   type EvmSavedTransaction,
 } from './evmSignedReplay.ts';
 import {
+  canSpeedUpSmartAccountOuter,
   decodeRetainedSmartAccountTransfer,
   type RetainedSmartAccountTransfer,
 } from './smartAccountActivity.ts';
@@ -130,6 +131,9 @@ export function projectSmartAccountSavedTransaction(
   });
   return Object.freeze({
     ...projectSavedEvmTransaction(record.entry),
+    ...(!cancellation && canSpeedUpSmartAccountOuter(record, address)
+      ? { speedUpAvailable: true as const }
+      : {}),
     smartAccount,
   });
 }

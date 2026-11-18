@@ -5,6 +5,7 @@ import { EvmSignedRecords, retainedEvmTransaction, type EvmSignedRecordSession, 
 import { projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { projectSmartAccountSavedTransaction } from '../../../../source/wallet/smartAccountSignedReplay.ts';
 import { decodeSmartAccountCancellation } from '../../../../source/wallet/smartAccountCancellation.ts';
+import { canSpeedUpSmartAccountOuter } from '../../../../source/wallet/smartAccountActivity.ts';
 import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope } from '../../../../source/shared/nftTransfer.ts';
 import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import type { NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
@@ -98,6 +99,7 @@ export function createNativeSignedRecordView(
       smartAccount: Object.freeze({ payer: record.cancellation.original.payer, operations: [Object.freeze({ operationHash: record.cancellation.original.operationHash, operationNonce: record.cancellation.original.operationNonce })], cancellation: true }) });
     const cancellation = smart.cancellation ? decodeSmartAccountCancellation(record.entry) : null;
     const originalHash = cancellation?.originalKind === 'transaction' ? cancellation.originalHash : saved.originalHash;
+    const retainedSmartSpeedUp = maySpeedUp(record.entry, saved.type) && canSpeedUpSmartAccountOuter(record, account.address);
     return Object.freeze({
     walletFingerprint: walletBindingId, accountId: nativeAccountId(account.type, account.index),
     address: account.address, networkId: network.id, registrationHash: network.registrationHash,
@@ -111,7 +113,7 @@ export function createNativeSignedRecordView(
     phase: 'submitted', ...(!smart.replayable ? { inspectionOnly: true as const } : {}),
     operation: cancellation ? 'cancel' : saved.operation, transactionType: saved.type ?? undefined,
     ...(originalHash ? { originalHash } : {}),
-    ...(maySpeedUp(record.entry, saved.type) && !!transfer ? { speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
+    ...(retainedSmartSpeedUp ? { retainedSmartSpeedUp: true as const, speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
     smartAccount: Object.freeze({ payer: getAddress(saved.from), operations: smart.operations }),
   }); };
   const smartActivityByHash = async (hash: string) => {

@@ -2015,6 +2015,9 @@ class MainController {
         profileId,
         chainId: String(chainId),
         from,
+        ...(reference.type === KeyringAccountType.SmartAccount
+          ? { smartAccount: true }
+          : {}),
       });
       assertCurrent();
       await persistEvmActivityClear(from, chainId, assertCurrent, isSameWallet);
@@ -2556,6 +2559,7 @@ class MainController {
     );
     if (!originalHash) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     const replacementChain = String(context.network.chainId);
+    const replacementOperation = context.operation;
     const retainedIntent =
       context.operation === 'speed-up' &&
       selected.type !== KeyringAccountType.SmartAccount &&
@@ -2574,20 +2578,44 @@ class MainController {
                 : null
             )
         : Promise.resolve(null);
-    void retainedIntent.catch(() => undefined);
-    const replacement =
-      nonce === undefined
-        ? retainedIntent.then((retained) => {
-            if (!retained) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-            return retained.binding;
-          })
-        : records.captureVerifiedReplacement(session, {
+    const smartAddress =
+      selected.type === KeyringAccountType.SmartAccount
+        ? store.getState().vault.accounts[selected.type]?.[selected.id]?.address
+        : undefined;
+    const retainedSmart =
+      context.operation === 'speed-up' &&
+      smartAddress &&
+      supportsRetainedSpeedUpIntent(keyring.ethereumTransaction)
+        ? records
+            .readSmartAccountSpeedUpIntent(
+              session,
+              replacementChain,
+              smartAddress,
+              originalHash
+            )
+            .then((retained) =>
+              retained?.original.from.toLowerCase() === payer.toLowerCase() &&
+              retained.original.signer.id === context.account.id &&
+              retained.original.signer.type === context.account.type
+                ? retained
+                : null
+            )
+        : Promise.resolve(null);
+    const replacement = Promise.all([retainedIntent, retainedSmart]).then(
+      ([eoa, smart]) => {
+        if (smart) return smart.binding;
+        if (nonce !== undefined)
+          return records.captureVerifiedReplacement(session, {
             chainId: replacementChain,
             from: payer,
             nonce,
             originalHash,
-            operation: context.operation,
+            operation: replacementOperation,
           });
+        if (eoa) return eoa.binding;
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      }
+    );
     // The capture starts before SDK RPC/signing; persistence observes any rejection.
     void replacement.catch(() => undefined);
     return createEvmSignedRecordLifecycle(records, session, {
@@ -2596,6 +2624,19 @@ class MainController {
       preflight: async (record, assertDispatchCurrent, snapshot) => {
         if (context.operation === 'speed-up') {
           const transaction = Transaction.from(record.rawTransaction);
+          const originalSmart = await retainedSmart;
+          if (originalSmart) {
+            const expected = Transaction.from(
+              originalSmart.original.unsignedTransaction
+            );
+            if (expected.type === 0) expected.gasPrice = transaction.gasPrice;
+            else {
+              expected.maxFeePerGas = transaction.maxFeePerGas;
+              expected.maxPriorityFeePerGas = transaction.maxPriorityFeePerGas;
+            }
+            if (expected.unsignedSerialized !== transaction.unsignedSerialized)
+              throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+          }
           if (!isEvmEmptySelfCall(transaction)) {
             await withEvmReadPhase(
               replacementProvider,
@@ -8853,23 +8894,34 @@ class MainController {
       )
         throw contextError();
     };
-    const saved =
-      !isSmartAccount &&
-      supportsRetainedSpeedUpIntent(transactionController) &&
-      (!findOriginal() || this.retainedEvmRecords)
-        ? await this.getRetainedEvmRecords().readEoaSpeedUpIntent(
-            { keyring, assertCurrent: assertOwner },
+    const retainedIntent = await (async () => {
+      if (
+        !supportsRetainedSpeedUpIntent(transactionController) ||
+        (findOriginal() && !this.retainedEvmRecords)
+      )
+        return undefined;
+      const session = { keyring, assertCurrent: assertOwner };
+      if (isSmartAccount)
+        return (
+          await this.getRetainedEvmRecords().readSmartAccountSpeedUpIntent(
+            session,
             String(chainId),
             account.address,
             txHash.toLowerCase()
           )
-        : null;
-    assertOwner();
-    const retainedIntent =
-      saved?.original.signer.id === accountInfo.id &&
-      saved.original.signer.type === accountInfo.type
+        )?.original;
+      const saved = await this.getRetainedEvmRecords().readEoaSpeedUpIntent(
+        session,
+        String(chainId),
+        account.address,
+        txHash.toLowerCase()
+      );
+      return saved?.original.signer.id === accountInfo.id &&
+        saved.original.signer.type === accountInfo.type
         ? saved.original
         : undefined;
+    })();
+    assertOwner();
     const retainedTx =
       retainedIntent && Transaction.from(retainedIntent.unsignedTransaction);
     const localOriginal = retainedTx && {
@@ -8877,6 +8929,7 @@ class MainController {
       to: retainedTx.to,
       value: retainedTx.value.toString(),
       input: retainedTx.data,
+      ...(isSmartAccount && { smartAccountExecutionFrom: account.address }),
     };
     const original = findOriginal(store.getState().vault) ?? localOriginal;
     const sender = original?.from?.toLowerCase();
@@ -8927,7 +8980,12 @@ class MainController {
           break;
         }
       }
-      if (!targetAccount)
+      if (
+        !targetAccount ||
+        (retainedIntent &&
+          (retainedIntent.signer.id !== targetAccount.id ||
+            retainedIntent.signer.type !== targetAccount.type))
+      )
         throw contextError('Original gas payer unavailable locally');
     }
     const payerRef = targetAccount ?? accountInfo;
@@ -9360,12 +9418,13 @@ class MainController {
     );
     let original = byHash.get(oldTxHash.toLowerCase());
     const sender = transaction.from?.toLowerCase();
+    const isSmartAccount = accountInfo.type === KeyringAccountType.SmartAccount;
     if (
       !original &&
       !cancellation &&
-      accountInfo.type !== KeyringAccountType.SmartAccount &&
       sender &&
-      sender === account.address?.toLowerCase() &&
+      account.address &&
+      (isSmartAccount || sender === account.address.toLowerCase()) &&
       !vault.isBitcoinBased &&
       network.chainId === chainId &&
       /^0x[0-9a-f]{64}$/i.test(transaction.hash)
@@ -9395,14 +9454,23 @@ class MainController {
         entry.operation === 'speed-up' &&
         entry.originalHash === oldTxHash.toLowerCase()
       ) {
-        const previous = await records.readExact(
-          session,
-          String(chainId),
-          sender,
-          entry.originalHash
-        );
+        const previous = isSmartAccount
+          ? (
+              await records.readSmartAccountReplayExact(
+                session,
+                String(chainId),
+                account.address,
+                entry.originalHash
+              )
+            )?.entry
+          : await records.readExact(
+              session,
+              String(chainId),
+              sender,
+              entry.originalHash
+            );
         assertCurrent();
-        if (previous) {
+        if (previous?.from.toLowerCase() === sender) {
           const previousTx = retainedEvmTransaction(previous);
           original = {
             hash: previous.hash,
@@ -9414,6 +9482,9 @@ class MainController {
             input: previousTx.data,
             value: previousTx.value.toString(),
             timestamp: Math.floor(previous.createdAt / 1000),
+            ...(isSmartAccount && {
+              smartAccountExecutionFrom: account.address,
+            }),
             ...(previous.originalHash && {
               replacesHash: previous.originalHash,
             }),
@@ -12606,8 +12677,9 @@ class MainController {
         : undefined;
     if (cancellation !== payerDispatch?.saveOptions.smartAccountCancellation)
       throw new Error('Invalid Smart account cancellation fee authority');
+    const cancellationOuter = cancellation?.cancellation.outer;
     const replacementOuter = cancellation?.replaceOuter
-      ? cancellation.cancellation.outer
+      ? cancellationOuter
       : undefined;
     if (cancellation?.replaceOuter && !replacementOuter)
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
@@ -12738,6 +12810,26 @@ class MainController {
                 () => new Error(EVM_TRANSACTION_CONTEXT_CHANGED)
               ),
             nonce: async (sampled: EvmDappBlock) => {
+              if (replacementOuter) {
+                const receipt = await readFreshEvmState(
+                  provider,
+                  'eth_getTransactionReceipt',
+                  [replacementOuter.hash]
+                );
+                assertCurrent();
+                if (receipt !== null)
+                  throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+              } else if (cancellationOuter) {
+                const latest = readEvmRpcQuantity(
+                  await provider.send('eth_getTransactionCount', [
+                    getAddress(cancellationOuter.from),
+                    `0x${BigInt(sampled.number).toString(16)}`,
+                  ])
+                );
+                assertCurrent();
+                if (latest <= BigInt(cancellationOuter.nonce))
+                  throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+              }
               if (displayOnly) {
                 const observed = readEvmRpcQuantity(
                   await provider.send('eth_getTransactionCount', [

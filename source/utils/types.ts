@@ -33,5 +33,5 @@ export interface ITransactionOptions {
       title: string;
     }>
   >;
-  transaction: IEvmTransaction;
+  transaction: IEvmTransaction & { feePayer?: string };
 }

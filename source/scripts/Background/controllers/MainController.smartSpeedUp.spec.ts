@@ -20,6 +20,13 @@ import { controllerEmitter } from 'scripts/Background/controllers/controllerEmit
 import vaultReducer from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { encodeERC7579Executions } from 'utils/smartAccount/account';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from 'utils/smartAccount/contracts';
+import { getSmartAccountUserOpHash } from 'utils/smartAccount/userOperationHash';
 import {
   handleUpdateTransaction,
   previewSpeedUpTransaction,
@@ -436,6 +443,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     let blockGasLimit = 30_000_000;
     let confirmedNonce = 8;
     let assetState: 'erc20' | 'erc721' | undefined;
+    let smartOperation: any;
     const reads: string[] = [];
     const fixtureFetch = async (url, init): Promise<Response> => {
       expect(url).toBe('https://offline.example');
@@ -473,7 +481,42 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         };
       else if (method === 'eth_getCode') result = assetState ? '0x01' : '0x';
       else if (method === 'eth_estimateGas') result = '0x61a8';
-      else if (method === 'eth_call' && assetState) {
+      else if (method === 'eth_getTransactionReceipt' && smartOperation)
+        result = null;
+      else if (method === 'eth_simulateV1' && smartOperation) {
+        const calls = params[0].blockStateCalls[0].calls;
+        expect(calls).toHaveLength(1);
+        result = [
+          {
+            number: '0x65',
+            parentHash: `0x${'71'.repeat(32)}`,
+            transactions: calls.map((call) => ({ ...call, input: call.data })),
+            calls: [
+              {
+                status: '0x1',
+                gasUsed: '0x186a0',
+                logs: [
+                  {
+                    address: getPaliEntryPointAddress(CHAIN),
+                    ...paliEntryPointInterface.encodeEventLog(
+                      paliEntryPointInterface.getEvent('UserOperationEvent')!,
+                      [
+                        getSmartAccountUserOpHash(smartOperation, CHAIN),
+                        smartOperation.sender,
+                        '0x' + '00'.repeat(20),
+                        smartOperation.nonce,
+                        true,
+                        1,
+                        1,
+                      ]
+                    ),
+                  },
+                ],
+              },
+            ],
+          },
+        ];
+      } else if (method === 'eth_call' && assetState) {
         const data = params[0].data;
         const selector = data.slice(0, 10);
         if (selector === '0x70a08231') result = '0x' + '11'.padStart(64, '0');
@@ -536,6 +579,9 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       },
       setBlockGasLimit(value: number) {
         blockGasLimit = value;
+      },
+      setSmartOperation(operation: typeof smartOperation) {
+        smartOperation = operation;
       },
       setAssetState(value: typeof assetState) {
         assetState = value;
@@ -1054,6 +1100,109 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       },
     };
   }
+
+  it.each([false, true])(
+    'speeds up an authenticated local Smart Account transaction with no RPC body (nonce already consumed: %s)',
+    async (consumed) => {
+      const {
+        journal,
+        journalSession,
+        posts,
+        reads,
+        setBaseFee,
+        setSmartOperation,
+        setConfirmedNonce,
+      } = await setupDurableReplacement();
+      mockState.vault.activeAccount = owner;
+      transactions().length = 0;
+      const call = encodeERC7579Executions([{ target: PAYER, value: '7' }]);
+      const operation = {
+        sender: SMART,
+        nonce: '4',
+        initCode: '0x',
+        callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+          call.mode,
+          call.executionCalldata,
+        ]),
+        accountGasLimits: '0x' + '000000000000000000000000000186a0'.repeat(2),
+        preVerificationGas: '21000',
+        gasFees: '0x' + '000000000000000000000000000000c8'.repeat(2),
+        paymasterAndData: '0x',
+        signature: '0x1234',
+      };
+      setSmartOperation(operation);
+      const data = paliEntryPointInterface.encodeFunctionData('handleOps', [
+        [operation],
+        PAYER,
+      ]);
+      const nonce = original.nonce;
+      const raw = await testWallet.signTransaction({
+        type: 0,
+        chainId: CHAIN,
+        nonce,
+        gasPrice: 200,
+        gasLimit: 300_000,
+        to: getPaliEntryPointAddress(CHAIN),
+        data,
+      });
+      ORIGINAL = Transaction.from(raw).hash!;
+      await journal.append(journalSession, {
+        rawTransaction: raw,
+        hash: ORIGINAL,
+        from: PAYER,
+        chainId: String(CHAIN),
+        nonce,
+        type: 0,
+        context: {
+          account: {
+            ...mockState.vault.accounts.HDAccount[3],
+            type: KeyringAccountType.HDAccount,
+          },
+          network: mockState.vault.activeNetwork,
+          operation: 'send',
+        },
+      });
+      provider.getTransaction.mockResolvedValue(null);
+      setBaseFee(100);
+      const maximumFee = await previewSpeedUpTransaction(
+        ORIGINAL,
+        true,
+        CHAIN,
+        PAYER,
+        getWalletNavigationScope()
+      );
+      if (consumed) setConfirmedNonce(nonce + 1);
+      await run(true, PAYER, maximumFee);
+      expect(posts).toHaveLength(consumed ? 0 : 1);
+      if (consumed) {
+        expect(alert.error).toHaveBeenCalled();
+        return;
+      }
+      expect(alert.error).not.toHaveBeenCalled();
+      expect(posts[0].data).toBe(data);
+      expect(posts[0].nonce).toBe(nonce);
+      expect(posts[0].gasLimit).toBe(BigInt(300_000));
+      expect(posts[0].gasPrice).toBeGreaterThan(BigInt(200));
+      expect(reads).toContain('eth_simulateV1');
+      expect(transactions()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            hash: posts[0].hash,
+            replacesHash: ORIGINAL,
+            smartAccountExecutionFrom: SMART,
+          }),
+        ])
+      );
+      expect(
+        await journal.readSmartAccountSpeedUpIntent(
+          journalSession,
+          String(CHAIN),
+          SMART,
+          ORIGINAL
+        )
+      ).toBeNull();
+    }
+  );
 
   it('quotes then sends an ordinary pending replacement through the same guarded controller', async () => {
     selectOrdinaryPayer();

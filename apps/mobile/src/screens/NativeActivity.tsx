@@ -394,7 +394,7 @@ function NativeActivityContent({
     ['signed', 'attempted', 'submitted'].includes(chosen.local.phase) &&
     chosen.retainedObservation?.status === 'missing' &&
     chosen.retainedObservation.latestNonce === String(chosen.local.nonce);
-  const canSpeedUpUnsigned = chosen?.local?.unsignedSpeedUp && chosen.replacementStatus !== 'replaced' &&
+  const canSpeedUpRetained = (chosen?.local?.unsignedSpeedUp || chosen?.local?.retainedSmartSpeedUp) && chosen.replacementStatus !== 'replaced' &&
     !chosen.checking && !chosenObservation && !replacementBlocksReview &&
     chosen.retainedObservation?.status === 'missing' &&
     BigInt(chosen.retainedObservation.latestNonce) <= BigInt(chosen.local.nonce);
@@ -828,7 +828,7 @@ function NativeActivityContent({
           />
           {original && <Button icon="arrow-left" title={t('mobile.activityViews.nativeActivity.viewOriginalTransaction')} variant="secondary" onPress={() => { setSelected(original.hash); controller.inspect(original.hash); }} />}
           {replacement && <Button title={replacement.local?.operation === 'cancel' ? t('mobile.activityViews.nativeActivity.viewCancellationAttempt') : t('mobile.activityViews.nativeActivity.viewSpeedUpAttempt')} variant="secondary" onPress={() => { setSelected(replacement.hash); controller.inspect(replacement.hash); }} />}
-          {(canReplace || canSpeedUpUnsigned) && speedUp && (
+          {(canReplace || canSpeedUpRetained) && speedUp && (
             <Button title={t('header.speedUp')} variant="secondary" onPress={() => void afterPositionSaved(() => speedUp(chosen.hash))} />
           )}
           {canCancelSmartInstruction && cancelPending && (

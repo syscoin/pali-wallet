@@ -57,7 +57,7 @@ export const projectEvmActivityRow = (
     gasPrice: tx.feePerGas,
     dataBytes: tx.dataBytes,
     ...(tx.selector ? { methodSelector: tx.selector } : {}),
-    ...(tx.speedUpAvailable && !smart ? { speedUpAvailable: true } : {}),
+    ...(tx.speedUpAvailable ? { speedUpAvailable: true } : {}),
     isCancel: tx.operation === 'cancel' || smart?.cancellation === true,
     isSpeedUp: tx.operation === 'speed-up',
     ...(tx.originalHash ? { replacesHash: tx.originalHash } : {}),

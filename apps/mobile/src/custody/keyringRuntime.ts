@@ -7204,7 +7204,10 @@ export function createKeyringRuntimeFactory(
               }
               const profileId = await recordKeyring.getPrivateRecordProfileId(); guard();
               const session = signedRecords.captureSession({ keyring: recordKeyring, assertCurrent: guard });
-              await signedRecords.clearScope(session, { profileId, chainId: network.chainId, from: selected.address });
+              await signedRecords.clearScope(session, {
+                profileId, chainId: network.chainId, from: selected.address,
+                ...(selected.type === 'SmartAccount' ? { smartAccount: true } : {}),
+              });
               guard();
               await activityHistory.clearScope(createActivityScope(fingerprint, selected.id, selected.address, network), guard,
                 selected.type === 'SmartAccount' ? Date.now() : undefined);
@@ -7929,10 +7932,17 @@ export function createKeyringRuntimeFactory(
               const check = () => { current(captured); checkGuard(assertCurrent); if (signal.aborted || catalogueSnapshot !== snapshot || selectedAccount() !== selected || replacementEpoch !== epoch) throw new KeyringRuntimeError('CANCELLED'); };
               const session = { keyring: transactionRecordKeyring(keyring, check), assertCurrent: check };
               let payer = selected;
+              const smartSpeedUp = selected.type === 'SmartAccount' && mode === 'speed-up';
+              const smartIntent = smartSpeedUp
+                ? await signedRecords.readSmartAccountSpeedUpIntent(session, network.chainId, selected.address, hash)
+                : null;
+              check();
               if (selected.type === 'SmartAccount') {
-                const saved = await signedRecords.readSmartAccountActivityExact(session, network.chainId, selected.address, hash); check();
+                const saved = smartSpeedUp ? smartIntent?.original
+                  : (await signedRecords.readSmartAccountActivityExact(session, network.chainId, selected.address, hash))?.entry;
+                check();
                 if (!saved) return null;
-                const found = findRetainedSignerAccount(snapshot.accounts, saved.entry);
+                const found = findRetainedSignerAccount(snapshot.accounts, saved);
                 if (!found) return null;
                 payer = found;
               } else if (!canSign()) return null;
@@ -7976,6 +7986,8 @@ export function createKeyringRuntimeFactory(
               const { original, binding, rates } = retained;
               if (!binding) return null;
               const raw = original.rawTransaction;
+              if (smartIntent && (!raw || binding.expectedTipHash !== smartIntent.binding.expectedTipHash ||
+                  original.unsignedTransaction !== smartIntent.original.unsignedTransaction)) return null;
               const transaction = Transaction.from(unsigned ? original.unsignedTransaction : raw!);
               const intent = mode === 'speed-up' && original.metadata?.intent !== undefined
                 ? snapshotErc20TransferIntent(original.metadata.intent) : undefined;
@@ -8001,7 +8013,8 @@ export function createKeyringRuntimeFactory(
                 ? { unsignedTransaction: original.unsignedTransaction, from: payer.address }
                 : { rawTransaction: raw! };
               return Object.freeze({ ...execution, binding, rates, ...(intent ? { intent } : {}),
-                ...(collectible ? { collectible } : {}), ...(selected.type === 'SmartAccount' ? { smartAccount: selected.address } : {}) });
+                ...(collectible ? { collectible } : {}), ...(selected.type === 'SmartAccount' ? { smartAccount: selected.address } : {}),
+                ...(smartIntent ? { retainedSmartSpeedUp: true as const } : {}) });
             },
             async token(contractAddress, assertCurrent) {
               const contract = normalizeErc20Address(contractAddress);
@@ -8136,6 +8149,8 @@ export function createKeyringRuntimeFactory(
                         if (JSON.stringify(savedIntent ?? nft) !== JSON.stringify(intent) || tx.gasLimit !== original.gasLimit)
                           throw new NativeTransferError('EXPIRED');
                       } else if (intent?.kind === 'nft-transfer' || !equalTransferIntent(savedIntent, intent))
+                        throw new NativeTransferError('EXPIRED');
+                      if (replacement.original.retainedSmartSpeedUp && tx.gasLimit !== original.gasLimit)
                         throw new NativeTransferError('EXPIRED');
                       if (!tx.from) throw new NativeTransferError('EXPIRED');
                       assertSpeedUpEnvelope({ ...replacement.original, from: original.from ?? getAddress(retained.from), to: original.to,

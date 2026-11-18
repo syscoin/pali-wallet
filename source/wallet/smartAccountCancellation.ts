@@ -1,6 +1,10 @@
 import { Transaction } from 'ethers/transaction';
 
 import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
+import {
+  observeEvmTransaction,
+  readEvmRpcQuantity,
+} from '../shared/evmTransactionObservation.ts';
 import { getAddress, toBeHex } from '../utils/ethersV6Compat.ts';
 import {
   getPaliEntryPointAddress,
@@ -324,20 +328,33 @@ export async function inspectSmartAccountCancellationPayer(
   assertSynchronousEvmFeeGuard(assertCurrent);
   if (!value.outer) return Object.freeze({ replaceOuter: false as const });
   const original = Transaction.from(value.outer.rawTransaction);
-  const quantity = await provider.send('eth_getTransactionCount', [
-    original.from,
-    'latest',
-  ]);
+  // The journal proves the original envelope, even before this RPC sees it.
+  const observed = await observeEvmTransaction(
+    {
+      chainId: String(value.chainId),
+      from: original.from!,
+      hash: value.outer.hash,
+      nonce: String(original.nonce),
+      to: original.to,
+    },
+    (method, params) => provider.send(method, [...params]),
+    () => assertSynchronousEvmFeeGuard(assertCurrent)
+  );
+  const nonce =
+    observed.status === 'missing'
+      ? BigInt(observed.latestNonce)
+      : readEvmRpcQuantity(
+          await provider.send('eth_getTransactionCount', [
+            original.from,
+            'latest',
+          ])
+        );
   assertSynchronousEvmFeeGuard(assertCurrent);
-  if (
-    typeof quantity !== 'string' ||
-    !/^0x(?:0|[1-9a-f][\da-f]*)$/i.test(quantity)
-  )
-    return unavailable();
-  const nonce = BigInt(quantity);
-  if (nonce < BigInt(original.nonce)) return unavailable();
-  if (nonce > BigInt(original.nonce))
+  const originalNonce = BigInt(original.nonce);
+  if (nonce > originalNonce)
     return Object.freeze({ replaceOuter: false as const });
+  if (nonce < originalNonce || observed.status === 'mined')
+    return unavailable();
   const current = await provider.getFeeData();
   assertSynchronousEvmFeeGuard(assertCurrent);
   const { planEvmCancellationFees } = await import(

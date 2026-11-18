@@ -120,6 +120,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let readReceipts = true;
   let userOperationSuccess = true;
   let nonceReset = false;
+  const hiddenTransactionBodies = new Set<string>();
   let deployedByBroadcast = false;
   let externalSmartNonce = 0n;
   let onInnerNonceRead: ((tag: string) => void) | undefined;
@@ -272,7 +273,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             })}];
         }
         else if (request.method === 'eth_getTransactionByHash') {
-          const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
+          const raw = hiddenTransactionBodies.has(request.params[0]) ? undefined
+            : submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
           const transaction = raw ? Transaction.from(raw) : undefined;
           result = transaction ? { hash: transaction.hash, from: transaction.from, to: transaction.to, value: `0x${transaction.value.toString(16)}`,
             nonce: `0x${transaction.nonce.toString(16)}`, input: transaction.data, chainId: `0x${transaction.chainId.toString(16)}`,
@@ -632,6 +634,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       nfts.set(contract.toLowerCase(), { standard, balance, owner });
     },
     holdReceipts() { readReceipts = false; },
+    hideTransactionBody(hash: string) { hiddenTransactionBodies.add(hash); },
     showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
     reorg() { readReceipts = false; nonceReset = true; },
     blockRecipient() { blockedRecipient = true; },
@@ -4871,6 +4874,31 @@ test('Smart speed-up refuses a frozen inner gas shortfall before broadcasting', 
   } finally { await operation?.dispose(); transfers?.dispose(); await owned.close(); }
 });
 
+test('Smart speed-up with no RPC body refuses a payer nonce consumed after review', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined, transfers: NativeTransfers | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Retained speed-up' });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, null);
+    await operation.prepare();
+    const stop = operation.subscribe(() => { const review = operation!.getSnapshot().payerReview; if (review) operation!.confirmPayer(review.id); });
+    try { await operation.authorize(operation.getSnapshot().revision); } finally { stop(); }
+    assert.equal(operation.getSnapshot().phase, 'complete');
+    const original = Transaction.from(f.submitted[0]!);
+    await operation.dispose(); operation = undefined;
+    f.hideTransactionBody(original.hash!);
+    transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    await transfers.prepareSpeedUp(original.hash!);
+    const review = transfers.getSnapshot().review; assert(review);
+    const signatures = f.payerSignatures.length;
+    f.consumePayerNonce(original.nonce + 1);
+    await assert.rejects(transfers.confirm(review.id, { method: 'device' }));
+    assert.equal(f.payerSignatures.length, signatures);
+    assert.equal(f.submitted.length, 1);
+  } finally { await operation?.dispose(); transfers?.dispose(); await f.close(); }
+});
+
 test('Smart fee replacement uses only the retained software payer despite a disconnected Ledger owner', async () => {
   const owned = await readyLedgerSmartOwner(), { f, device } = owned;
   let operation: NativeSmartAccountOperation | undefined, transfers: NativeTransfers | undefined;
@@ -4885,14 +4913,21 @@ test('Smart fee replacement uses only the retained software payer despite a disc
     const original = Transaction.from(f.submitted[0]!);
     await operation.dispose(); operation = undefined;
     await f.reopen(); await f.owner.unlock();
+    f.hideTransactionBody(original.hash!);
     connection = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'connect');
     assert.equal(connection.isConnected(), false, 'normal Smart owner signing still needs the disconnected Ledger');
     assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);
     const signatures = device.signatures.length;
+    const pendingActivity = await f.runtime.activity!.load(() => undefined);
+    const pendingRow = pendingActivity.locals.find(row => row.hash === original.hash);
+    assert(pendingRow?.retainedSmartSpeedUp, 'retained Smart activity offers review when the RPC body is missing');
+    assert.equal((await f.runtime.activity!.observeLocal!(pendingRow, () => undefined, new AbortController().signal)).status, 'missing');
     transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
     await transfers.prepareSpeedUp(original.hash!);
     const review = transfers.getSnapshot().review; assert(review, JSON.stringify(transfers.getSnapshot()));
     assert.equal(review.execution?.smartAccount, f.owner.getSnapshot().account!.address);
+    assert.equal(review.replacement?.originalMaximumFeeUnits, (original.gasLimit * original.maxFeePerGas!).toString());
+    assert(BigInt(review.maximumFeeUnits) > BigInt(review.replacement.originalMaximumFeeUnits));
     assert.deepEqual(f.runtime.ledger.getConnectionTargets(), []);
     assert.equal(connection.isConnected(), true, 'the UI connection gate needs no Ledger for this software payer');
     await transfers.confirm(review.id, { method: 'device' });
@@ -4900,6 +4935,12 @@ test('Smart fee replacement uses only the retained software payer despite a disc
     assert.equal(device.signatures.length, signatures, 'the retained payer signs, not the Smart owner');
     assert.equal(f.submitted.length, 2);
     const speedUp = Transaction.from(f.submitted[1]!);
+    assert.equal(speedUp.from, original.from);
+    assert.equal(speedUp.to, original.to);
+    assert.equal(speedUp.nonce, original.nonce);
+    assert.equal(speedUp.gasLimit, original.gasLimit);
+    assert.equal(speedUp.value, original.value);
+    assert.equal(speedUp.data, original.data, 'the existing inner authorization stays byte-for-byte');
     const spedUp = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(spedUp.locals.find(row => row.hash === speedUp.hash)?.originalHash, original.hash);
     transfers.cancel();
@@ -4949,8 +4990,9 @@ test('Smart fee replacement uses only the retained software payer despite a disc
     assert(payer);
     await f.change({ kind: 'select', id: payer.id });
     const payerActivity = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
-    assert(payerActivity.locals.some(row => row.hash === original.hash));
-    assert(payerActivity.locals.some(row => row.hash === cancelHash));
+    assert(!payerActivity.locals.some(row => row.hash === original.hash));
+    assert(!payerActivity.locals.some(row => row.hash === speedUp.hash));
+    assert(!payerActivity.locals.some(row => row.hash === cancelHash));
   } finally { await operation?.dispose(); transfers?.dispose(); await connection?.dispose(); await owned.close(); }
 });
 

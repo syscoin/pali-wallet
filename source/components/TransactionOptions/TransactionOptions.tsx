@@ -114,6 +114,9 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   );
   const scope = useSelector(() => getWalletNavigationScope());
   const smartCancellation = useSmartAccountCancellation(transaction.hash);
+  const signerAddress = smartCancellation.available
+    ? transaction.feePayer ?? transaction.from
+    : transaction.from;
   const local =
     'historySource' in transaction &&
     transaction.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned;
@@ -138,7 +141,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     scope.account,
     scope.network,
     transaction.hash,
-    transaction.from,
+    signerAddress,
     transaction.nonce,
     transaction.type,
     transaction.chainId,
@@ -184,7 +187,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
           txHash: transaction.hash,
           updateType: actionType,
           nonce: transaction.nonce,
-          signerAddress: transaction.from,
+          signerAddress,
           approvedMaximumFee: maximumFee,
           walletScope: startingScope,
         },
@@ -227,14 +230,14 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
             isLegacyTransaction,
             chainId,
             transaction.nonce,
-            transaction.from,
+            signerAddress,
             startingScope
           )
         : await previewSpeedUpTransaction(
             transaction.hash,
             isLegacyTransaction,
             chainId,
-            transaction.from,
+            signerAddress,
             startingScope
           );
       if (!current()) return;
@@ -425,6 +428,7 @@ export const TransactionOptions = React.memo(
       prevTx?.isReplaced === nextTx?.isReplaced &&
       prevTx?.status === nextTx?.status &&
       prevTx?.historySource === nextTx?.historySource &&
+      prevTx?.feePayer === nextTx?.feePayer &&
       prevTx?.speedUpAvailable === nextTx?.speedUpAvailable &&
       prevTx?.cancellationUnavailable === nextTx?.cancellationUnavailable &&
       prevTx?.isCanceled === nextTx?.isCanceled
