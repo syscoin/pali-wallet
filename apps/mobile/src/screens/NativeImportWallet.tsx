@@ -8,6 +8,7 @@ import { IdleTextInput } from './IdleActivityBoundary';
 
 export type NativeImportWalletProps = {
   preview(phrase: string, assertCurrent: () => void): Promise<readonly { label: string; address: string }[]>;
+  setupError?: string;
   onConfirmed(phrase: string): void;
   onBack(): void;
 };
@@ -15,7 +16,7 @@ type PreviewAddress = Readonly<{ label: string; address: string }>;
 const blank = (count: number) => Array<string>(count).fill('');
 
 /** Phrase entry and public address review; derivation belongs to the private host. */
-export function NativeImportWallet({ preview, onConfirmed, onBack }: NativeImportWalletProps) {
+export function NativeImportWallet({ preview, setupError, onConfirmed, onBack }: NativeImportWalletProps) {
   const { t } = useNativeTranslation();
   const [count, setCount] = useState<12 | 24>(12);
   const [words, setWords] = useState(() => blank(12));
@@ -119,6 +120,7 @@ export function NativeImportWallet({ preview, onConfirmed, onBack }: NativeImpor
           </View>)}</Card>
         </> : <>
           <Text accessibilityRole="header" style={s.title}>{t('mobile.recoveryDevices.recovery.enterYourRecoveryPhrase')}</Text>
+          {setupError && !error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{setupError}</Text>}
           <Text style={s.description}>{t('mobile.recoveryDevices.importWallet.enterEachWordInOrderToRestore')}</Text>
           <SegmentedControl label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={count === 12 ? '12' : '24'}
             options={[{ value: '12', label: t('mobile.recoveryDevices.common.wordCount', { count: 12 }) }, { value: '24', label: t('mobile.recoveryDevices.common.wordCount', { count: 24 }) }]}

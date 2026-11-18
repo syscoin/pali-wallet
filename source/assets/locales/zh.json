@@ -3195,6 +3195,7 @@
         "nftQuantityOne": "{{quantity}} 个 NFT"
       },
       "smartTransactionReview": {
+        "fundedOperationNotSent": "账户注资已确认。执行费用超过您批准的上限，因此操作未提交。",
         "callApproval": "批准调用 {{index}}",
         "thisRequestIsNoLongerAvailableRequest": "此请求已不可用，请从应用重新请求。"
       },

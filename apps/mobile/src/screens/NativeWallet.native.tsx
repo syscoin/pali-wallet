@@ -135,7 +135,7 @@ function custodyContext(state?: CustodySnapshot, catalogue?: NativeWalletCatalog
   return { context: `${state.revision}:${identity}`, identity };
 }
 
-function message(error: unknown): string {
+function message(error: unknown, initialImport = false): string {
   const code = error instanceof Error ? error.message : '';
   if (code === 'INVALID_CREDENTIAL') return t("mobile.accounts.invalidCredential");
   if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return t("mobile.walletViews.confirmWithYourDeviceToContinue");
@@ -144,6 +144,7 @@ function message(error: unknown): string {
   if (code === 'INVALID_INPUT') return t("mobile.walletViews.checkYourRecoveryPhrase");
   if (code === 'CANCELLED') return t('mobile.recoveryCopy.requestCancelled');
   if (code === 'BACKUP_EXPIRED') return t('mobile.recoveryCopy.backupExpired');
+  if (initialImport) return t('mobile.walletViews.walletSetupWasNotCompleted');
   return t("mobile.walletViews.thisOperationCouldNotBeCompletedYourSavedWalletHasBeenPreserved");
 }
 
@@ -1278,7 +1279,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     updateSession.current = null; setUpdatePhase(null);
     if (AppState.currentState === 'active') void install().catch(() => undefined);
   }
-  const backFromSetupSecurity = () => setStage(stage === 'import-security' ? 'import' : 'choose');
+  const backFromSetupSecurity = () => {
+    setPhrase(''); setError('');
+    setStage(stage === 'import-security' ? 'import' : 'choose');
+  };
   const latestBack = useRef<() => boolean>(() => true);
   useLayoutEffect(() => {
     latestBack.current = () => {
@@ -1500,7 +1504,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     feedbackRequest.current++;
     submitting.current = true; setBusy(true); setError('');
     try { await action(local); }
-    catch (cause) { if (mounted.current && epoch.current === captured) setError(message(cause)); }
+    catch (cause) {
+      if (mounted.current && epoch.current === captured)
+        setError(message(cause, stage === 'import-security' && local.authority.getSnapshot().presence === 'empty'));
+    }
     finally {
       submitting.current = false;
       if (mounted.current) { setBusy(false); setPhrase(''); }
@@ -1716,9 +1723,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     </Screen>
   </SafeAreaView>;
   if (snapshot.phase === 'empty' && (stage === 'import' || stage === 'import-security' && !phrase))
-    return <NativeImportWallet preview={previewImport} onBack={exit} onConfirmed={words => {
+    return <NativeImportWallet preview={previewImport} onBack={exit} setupError={stage === 'import-security' ? error : undefined} onConfirmed={words => {
       if (AppState.currentState === 'active' && controllersRef.current?.authority.getSnapshot().phase === 'empty') {
-        setPhrase(words); setStage('import-security');
+        setError(''); setPhrase(words); setStage('import-security');
       }
     }} />;
   if (stage === 'backup-verify' && presentation && snapshot.phase === 'ready')

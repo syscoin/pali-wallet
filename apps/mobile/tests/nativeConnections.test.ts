@@ -154,6 +154,7 @@ function fixture(
   let permissionSettlement: (() => Promise<void>) | undefined;
   let preparationError: Error | undefined;
   let submissionError: Error | undefined;
+  let smartBatchProgressBeforeFailure: { purpose: 'fund-account' | 'submit-operation'; hash: string } | undefined;
   let beforePreparedReturn: (() => void) | undefined;
   let smartDisposals = 0;
   let preparationWait: Promise<void> = Promise.resolve();
@@ -398,15 +399,27 @@ function fixture(
       const intent = { kind: 'dapp-batch' as const, calls: input.calls.calls };
       const transaction = snapshotPreparedEvmTransaction({ from: '0x' + '33'.repeat(20), to: '0x' + '44'.repeat(20),
         chainId: '1', value: '0', data: '0x1234', nonce: '0', gasLimit: '50000', type: 2, accessList: [], maxFeePerGas: '10', maxPriorityFeePerGas: '1' });
+      const payerBudget = options.smartPayerBudget ? {
+        address: transaction.from, gasTank: false, maximumFeeWei: '500000', maximumPrefundFeeWei: '0', maximumPrefundWei: '0',
+      } : undefined;
       const operation = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: Math.min(input.handoff.expiresAt,freshSmartOperationDeadline()),
         account: ADDRESS, intent, network: { id: 'ethereum', chainId: '1', rpcUrl: 'https://rpc.example', registrationHash: '0x' + '55'.repeat(32) } as never,
         assertCurrent: () => { check(); input.approval.assertCurrent(); },
-        async prepare() { return { kind: 'authorization', intent, operation: { executions: createSmartAccountCallsExecutions(intent.calls), actionHash: '0x' + '66'.repeat(32),
+        async prepare() { return { kind: 'authorization', intent, payerBudget, operation: { executions: createSmartAccountCallsExecutions(intent.calls), actionHash: '0x' + '66'.repeat(32),
           userOperation: { nonce: '0', initCode: '0x', callData: '0x', accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1', gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03' } } as never }; },
         async sign(_prepared, guard) { await signWait; guard(); signatures.push(intent); return '0x1234'; },
         async submit(_prepared, _signature, _signal, guard, reviewPayer, onBroadcast) {
-          await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
-          guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
+          if (!payerBudget) await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
+          guard();
+          if (submissionError) {
+            if (smartBatchProgressBeforeFailure) {
+              const { hash, purpose } = smartBatchProgressBeforeFailure;
+              if (purpose === 'submit-operation') transactions.push(intent);
+              onBroadcast(hash, purpose);
+            }
+            throw submissionError;
+          }
+          transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
         },
       });
       return { operation, approval: null, batchApprovals: intent.calls.map(call => summarizeApproval(call.data, call.to!, approvalMetadata)),
@@ -889,7 +902,10 @@ function fixture(
     onPermissionPublication(callback: typeof permissionPublished) { permissionPublished = callback; },
     setPermissionSettlement(callback: typeof permissionSettlement) { permissionSettlement = callback; },
     failTransactionPreparation() { preparationError = new Error('Estimate unavailable'); },
-    failTransactionSubmission(error: Error) { submissionError = error; },
+    failTransactionSubmission(error: Error, progress?: typeof smartBatchProgressBeforeFailure) {
+      submissionError = error;
+      smartBatchProgressBeforeFailure = progress;
+    },
     blockSite() {
       siteBlocked = true;
     },
@@ -1951,6 +1967,7 @@ async function connectedFixture(
     minimumGasLimit?: string;
     batch?: boolean;
     smart?: boolean;
+    smartPayerBudget?: boolean;
     imported?: boolean;
     smartMessages?: boolean;
     smartTrezor?: boolean;
@@ -4369,6 +4386,54 @@ test('ordered Smart batch review uses two consents and returns a reserved bundle
     await approving;
     assert.equal(f.transactions.length, 1);
     assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { id: '0x1234', capabilities: {} } } });
+  } finally { await f.controller.dispose(); }
+});
+
+for (const afterFunding of [false, true]) test(`Smart atomic calls keep the unsent outcome ${afterFunding ? 'after funding confirms' : 'when payer fees exceed the reviewed budget'}`, async () => {
+  const f = await connectedFixture({ smart: true, batch: true, smartPayerBudget: true, accountId: 'smart:60:0' });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', from: ADDRESS,
+      atomicRequired: true, calls: [{ to: '0x' + '22'.repeat(20) }, { to: '0x' + '33'.repeat(20) }] }]);
+    assert(review?.kind === 'smart-transaction' && review.operation.payerBudget);
+    f.failTransactionSubmission(
+      Object.assign(new Error(SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED), { transactionNotBroadcast: !afterFunding }),
+      afterFunding ? { purpose: 'fund-account', hash: '0x' + '45'.repeat(32) } : undefined
+    );
+    await f.view.approveRequest(review.id, review.revision, false);
+    const failed = f.view.getSnapshot().signingReview;
+    assert(failed?.kind === 'smart-transaction');
+    assert.equal(failed.error, 'TRANSACTION_NOT_SENT');
+    assert.equal(failed.operation.error, SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED);
+    assert.equal(failed.operation.userOperationSubmissionStarted, false);
+    assert.equal(failed.operation.transactionHash, afterFunding ? '0x' + '45'.repeat(32) : null);
+    const message = afterFunding
+      ? 'Account funding confirmed. The requested operation was not submitted.'
+      : 'The transaction was not submitted';
+    assert.deepEqual(f.responses, [{ id: 10, result: { error: { code: -32603, message } } }]);
+    await assert.rejects(f.view.approveRequest(failed.id, failed.revision, false));
+    await f.view.rejectRequest(failed.id);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.responses.length, 1);
+    assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const hash of ['0x' + '34'.repeat(32), '']) test(`Smart atomic calls keep execution dispatch uncertainty ${hash ? 'with' : 'without'} a hash`, async () => {
+  const f = await connectedFixture({ smart: true, batch: true, smartPayerBudget: true, accountId: 'smart:60:0' });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', from: ADDRESS,
+      atomicRequired: true, calls: [{ to: '0x' + '22'.repeat(20) }, { to: '0x' + '33'.repeat(20) }] }]);
+    assert(review?.kind === 'smart-transaction' && review.operation.payerBudget);
+    f.failTransactionSubmission(new Error(SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED), { purpose: 'submit-operation', hash });
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false), { code: 'DELIVERY_UNCERTAIN' });
+    const failed = f.view.getSnapshot().signingReview;
+    assert(failed?.kind === 'smart-transaction');
+    assert.equal(failed.error, 'DELIVERY_UNCERTAIN');
+    assert.equal(failed.operation.userOperationSubmissionStarted, true);
+    assert.equal(failed.operation.transactionHash, hash);
+    await f.view.rejectRequest(failed.id);
+    assert.equal(f.responses.length, 0);
+    assert.equal(f.transactions.length, 1);
   } finally { await f.controller.dispose(); }
 });
 

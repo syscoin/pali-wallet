@@ -109,6 +109,18 @@ test('Smart dapp operation receives a stable request-only authentication status 
   assert.notEqual(next, first); assert.equal(first.isAuthenticating(), false); assert.equal(next.isAuthenticating(), true);
 });
 
+test('Smart dapp review distinguishes confirmed funding from the unsent operation', () => {
+  const f = fixture();
+  const transactionHash = '0x' + '45'.repeat(32);
+  f.current().error = 'TRANSACTION_NOT_SENT';
+  Object.assign(f.current().operation, { phase: 'failed', transactionHash, userOperationSubmissionStarted: false });
+  const tree = f.render();
+  const notice = nodes(tree.props.before).find(node => node.type === 'Notice');
+  assert.equal(notice?.props.body, 'Account funding confirmed. The operation was not submitted because the execution fee exceeded your approved limit.');
+  assert.equal(tree.props.state.transactionHash, transactionHash);
+  assert.equal(tree.props.disabled, true);
+});
+
 test('Smart warning acknowledgement has a visible checkbox and gates approval to the current intent', () => {
   const f = fixture();
   f.current().requiresWarningAcknowledgement = true;

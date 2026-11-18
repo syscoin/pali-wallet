@@ -3195,6 +3195,7 @@
         "nftQuantityOne": "NFT {{quantity}}件"
       },
       "smartTransactionReview": {
+        "fundedOperationNotSent": "アカウントへの資金供給が確認されました。実行手数料が承認した上限を超えたため、操作は送信されませんでした。",
         "callApproval": "呼び出し {{index}}の承認",
         "thisRequestIsNoLongerAvailableRequest": "このリクエストは利用できなくなりました。アプリから再度リクエストしてください。"
       },

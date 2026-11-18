@@ -634,6 +634,44 @@ for (const route of ['create', 'import'] as const) for (const action of ['header
     } finally { f.dispose(); }
   });
 
+for (const [code, feedback] of [
+  ['CANCELLED', 'Request cancelled. You can try again.'],
+  ['OPERATION_FAILED', 'Wallet setup was not completed'],
+]) test(`first-time import shows ${code} on the cleared phrase entry`, async () => {
+  const f = await walletFeedbackFixture(false, true);
+  const entry = screenFixture(new URL('../src/screens/NativeImportWallet.tsx', import.meta.url), 'NativeImportWallet', {
+    'react-native': f.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    '../ui': { colors: {}, ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'SegmentedControl', 'Text'].map(name => [name, name])) },
+    './IdleActivityBoundary': { IdleTextInput: 'TextInput' },
+  });
+  const phrase = 'abandon '.repeat(11) + 'about';
+  try {
+    f.holdSetup(async () => {
+      f.publish({ phase: 'authenticating', error: null });
+      f.publish({ phase: 'empty', error: code });
+      throw Error(code);
+    });
+    press(row(f.render(), 'Import existing wallet'));
+    (f.render().props.onConfirmed as (value: string) => void)(phrase);
+    press(button(f.render(), 'Import wallet'));
+    await lifecycleTick();
+    const fallback = f.render();
+    assert.equal(fallback.type, 'NativeImportWallet');
+    assert.equal(f.exits(), 0);
+    entry.render(fallback.props);
+    const form = entry.render(fallback.props);
+    const inputs = all(form).filter(node => node.type === 'TextInput');
+    assert.equal(inputs.length, 12);
+    assert(inputs.every(input => input.props.value === ''));
+    assert.equal(button(form, 'Check phrase').props.disabled, true);
+    assert.deepEqual(all(form).find(node => node.props.accessibilityRole === 'alert')?.children, [feedback]);
+    assert.match(text(form), /Enter each word in order to restore your Pali wallet/);
+    assert.doesNotMatch(text(form), /abandon/);
+    (fallback.props.onConfirmed as (value: string) => void)(phrase);
+    assert.equal(all(f.render()).some(node => node.props.title === 'Wallet setup was not completed'), false);
+  } finally { entry.close(); f.dispose(); }
+});
+
 for (const route of ['create', 'import'] as const) test(`abandoned empty ${route} setup returns through Welcome once after background`, async () => {
   const f = await walletFeedbackFixture(false, true);
   try {

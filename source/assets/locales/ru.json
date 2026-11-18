@@ -3195,6 +3195,7 @@
         "nftQuantityOne": "{{quantity}} NFT"
       },
       "smartTransactionReview": {
+        "fundedOperationNotSent": "Пополнение счёта подтверждено. Операция не отправлена, поскольку комиссия за её выполнение превысила одобренный вами лимит.",
         "callApproval": "Разрешение вызова {{index}}",
         "thisRequestIsNoLongerAvailableRequest": "Этот запрос больше недоступен. Запросите его снова в приложении."
       },

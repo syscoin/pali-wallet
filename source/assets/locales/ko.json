@@ -3195,6 +3195,7 @@
         "nftQuantityOne": "NFT {{quantity}}개"
       },
       "smartTransactionReview": {
+        "fundedOperationNotSent": "계정 자금 입금이 확인되었습니다. 실행 수수료가 승인한 한도를 초과하여 작업이 제출되지 않았습니다.",
         "callApproval": "호출 {{index}} 승인",
         "thisRequestIsNoLongerAvailableRequest": "이 요청은 더 이상 사용할 수 없습니다. 앱에서 다시 요청하세요."
       },

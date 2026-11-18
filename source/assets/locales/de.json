@@ -3195,6 +3195,7 @@
         "nftQuantityOne": "{{quantity}} NFT"
       },
       "smartTransactionReview": {
+        "fundedOperationNotSent": "Die Finanzierung des Kontos wurde bestätigt. Der Vorgang wurde nicht gesendet, weil die Ausführungsgebühr das von Ihnen genehmigte Limit überschritten hat.",
         "callApproval": "Genehmigung für Aufruf {{index}}",
         "thisRequestIsNoLongerAvailableRequest": "Diese Anfrage ist nicht mehr verfügbar. Fordere sie erneut in der App an."
       },

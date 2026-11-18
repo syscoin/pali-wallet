@@ -2476,6 +2476,7 @@ export class NativeConnectionsController {
       !respond ||
       message.dispatched ||
       message.review.error === 'TRANSACTION_NOT_SENT' ||
+      message.smart?.getSnapshot().userOperationSubmissionStarted ||
       (message.broadcastHash && !message.eoa) ||
       this.disposed ||
       !this.transport
@@ -3417,14 +3418,23 @@ export class NativeConnectionsController {
     });
     await this.retireRequest(message, false);
   }
-  private async reportUnsentTransaction(message: PendingSigning, approval: MessageApproval): Promise<void> {
+  private async reportUnsentTransaction(
+    message: PendingSigning,
+    approval: MessageApproval,
+    stoppedAfterFunding: boolean
+  ): Promise<void> {
     message.review = Object.freeze({ ...message.review, error: 'TRANSACTION_NOT_SENT' });
     this.publish();
     try {
       await this.transport!.respond(
         message.session.binding,
         message.wire.id,
-        { error: { code: -32603, message: 'The transaction was not submitted' } },
+        { error: {
+          code: -32603,
+          message: stoppedAfterFunding
+            ? 'Account funding confirmed. The requested operation was not submitted.'
+            : 'The transaction was not submitted',
+        } },
         approval.assertCurrent,
         () => { message.dispatched = true; }
       );
@@ -3571,7 +3581,19 @@ export class NativeConnectionsController {
       }
       await this.deliverSigningResult(message, result);
     } catch (error) {
-      if (message.dispatched || message.broadcastHash) {
+      const operation = message.smart?.getSnapshot();
+      const feeReviewFailed = operation
+        ? operation.error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+        : error instanceof Error && ['REVIEW_REQUIRED', 'EVM fee approval changed'].includes(error.message);
+      const singleTransaction = message.request.method === 'eth_sendTransaction';
+      const atomicCalls = message.request.method === 'wallet_sendCalls' && !!operation;
+      const operationSubmissionStarted = operation?.userOperationSubmissionStarted === true;
+      const canReportUnsent = (singleTransaction || atomicCalls) && feeReviewFailed &&
+        !operationSubmissionStarted && approval.isCurrent();
+      // Execution fee review follows a successful funding receipt. A funding
+      // hash cannot stand in for dispatch of the requested operation.
+      const stoppedAfterFunding = canReportUnsent && !!operation?.transactionHash;
+      if (message.dispatched || operationSubmissionStarted || (message.broadcastHash && !stoppedAfterFunding)) {
         approval.dispose();
         if (this.requests.get(message.id) === message) {
           message.busy = false;
@@ -3583,13 +3605,8 @@ export class NativeConnectionsController {
         }
         return failure('DELIVERY_UNCERTAIN');
       }
-      // Only classify fee review failures here. Signers and expired requests
-      // retain their existing cancellation and rejection behavior.
-      const feeReviewFailed = message.smart
-        ? message.smart.getSnapshot().error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
-        : error instanceof Error && ['REVIEW_REQUIRED', 'EVM fee approval changed'].includes(error.message);
-      if (message.request.method === 'eth_sendTransaction' && feeReviewFailed && approval.isCurrent()) {
-        await this.reportUnsentTransaction(message, approval);
+      if (canReportUnsent) {
+        await this.reportUnsentTransaction(message, approval, stoppedAfterFunding);
         return;
       }
       if (isEncryptionRequest(message.request) && this.requestConnectionCurrent(message) && approval.isCurrent()) {
