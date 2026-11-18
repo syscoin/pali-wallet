@@ -264,8 +264,7 @@
     "thereWasAnError": "ネットワークの切り替え中にエラーが発生しました。後でもう一度お試しください。",
     "errorSwitching": "ネットワーク切り替えエラー",
     "speedUp": "スピードアップ",
-    "cancelTx": "取引をキャンセル",
-    "speedTx": "取引をスピードアップ"
+    "cancelTx": "取引をキャンセル"
   },
   "connections": {
     "connectRequest": "接続リクエスト",
@@ -490,7 +489,6 @@
     "gasPrice": "ガス価格",
     "internalError": "内部エラーが発生しました。",
     "transactionCreationFailed": "取引の作成に失敗しました：{{error}}。もう一度お試しください。",
-    "submissionStatusUnknown": "送信状況が不明です。二重送信を防ぐため、ここではこの呼び出しを再試行できません。このウィンドウは閉じてもかまいません。",
     "backToEdit": "編集に戻る",
     "transactionValue": "取引額",
     "selfTransferOutputTotal": "自己送金の出力合計",
@@ -1309,8 +1307,6 @@
     "cancelFeePreview": "キャンセルのネットワーク手数料を確認中…",
     "cancelFeeConsent": "最大ガス手数料 {{fee}} {{currency}} でこの取引をキャンセルしますか？",
     "cancelFeeUnavailable": "キャンセル手数料を確認できません。もう一度お試しください。",
-    "speedUpFeePreview": "ネットワーク手数料を確認中…",
-    "speedUpFeeConsent": "最大ネットワーク手数料 {{fee}} {{currency}} でこの取引を高速化しますか？",
     "speedUpAmountWouldChange": "この取引を高速化する前に、このアカウントに資金を追加してください。元の金額は変更されません。",
     "speedUpFeeUnavailable": "手数料を確認できませんでした。もう一度お試しください。",
     "utxoReplacement": {

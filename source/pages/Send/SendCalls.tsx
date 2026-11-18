@@ -639,13 +639,12 @@ export const SendCalls = () => {
         statuses[index] = {
           status: 'unknown',
           txHash,
-          error: t('send.submissionStatusUnknown'),
         };
       return statuses;
     });
     setLoading(false);
     setProcessingIndex(-1);
-    alert.error(t('send.submissionStatusUnknown'));
+    alert.error(t('transactions.replay.unknown'));
   };
   useEffect(() => {
     if (!transactionStatuses || !callsData.bundleId) return;
@@ -1009,7 +1008,7 @@ export const SendCalls = () => {
           }
           const legacyKey = legacyEvmNonceErrorKey(error);
           const errorMessage = unknown
-            ? t('send.submissionStatusUnknown')
+            ? t('transactions.replay.unknown')
             : error?.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
             ? t('send.smartAccountPayerFeeExceeded')
             : legacyKey
@@ -1024,7 +1023,11 @@ export const SendCalls = () => {
               const newStatuses = [...prev];
               newStatuses[index] = {
                 status: txHash ? 'success' : unknown ? 'unknown' : 'error',
-                ...(txHash ? { txHash } : { error: errorMessage }),
+                ...(txHash
+                  ? { txHash }
+                  : unknown
+                  ? {}
+                  : { error: errorMessage }),
               };
               return newStatuses;
             });
@@ -1403,10 +1406,12 @@ export const SendCalls = () => {
         </p>
       </div>
 
-      {/* Warning for atomic requirement */}
       {hasUnknownSubmission && (
-        <p role="status" className="p-4 text-sm text-brand-yellow">
-          {t('send.submissionStatusUnknown')}
+        <p
+          role="status"
+          className="mx-4 mt-4 rounded-lg border border-brand-yellowInfo p-3 text-center text-sm text-white"
+        >
+          {t('transactions.replay.unknown')}
         </p>
       )}
       {callsData.atomicRequired &&
@@ -1493,8 +1498,8 @@ export const SendCalls = () => {
                           </span>
                         )}
                         {transactionStatuses[index].status === 'unknown' && (
-                          <span className="text-xs text-brand-yellow ml-2">
-                            {t('send.pending')}
+                          <span className="ml-2 text-xs text-brand-yellowInfo">
+                            {t('components.unknown')}
                           </span>
                         )}
                       </>

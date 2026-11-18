@@ -433,7 +433,7 @@ it('a dapp send timeout consumes its approval and cannot be retried by a retaine
   const confirm = mockButtonHandlers['buttons.confirm'];
   await act(async () => confirm());
   expect(screen.getByRole('status').textContent).toBe(
-    'send.submissionStatusUnknown'
+    'transactions.replay.unknown'
   );
   expect(
     (

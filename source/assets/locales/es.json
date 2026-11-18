@@ -264,8 +264,7 @@
     "thereWasAnError": "Hubo un error al intentar cambiar de red. Inténtalo de nuevo más tarde.",
     "errorSwitching": "Error al cambiar de redes",
     "speedUp": "Acelerar",
-    "cancelTx": "Cancelar Transacción",
-    "speedTx": "Acelerar Transacción"
+    "cancelTx": "Cancelar Transacción"
   },
   "connections": {
     "connectRequest": "Solicitud de conexión",
@@ -490,7 +489,6 @@
     "gasPrice": "Precio del Gas",
     "internalError": "Ha ocurrido un error interno.",
     "transactionCreationFailed": "Error al crear la transacción: {{error}}. Por favor, inténtalo de nuevo.",
-    "submissionStatusUnknown": "Se desconoce el estado del envío. Para evitar enviarlo dos veces, no se puede reintentar esta llamada aquí. Puedes cerrar esta ventana.",
     "backToEdit": "Volver a editar",
     "transactionValue": "Valor de la transacción",
     "selfTransferOutputTotal": "Total de salidas de la autotransferencia",
@@ -1309,8 +1307,6 @@
     "cancelFeePreview": "Comprobando la comisión de red de cancelación…",
     "cancelFeeConsent": "¿Cancelar esta transacción con una comisión máxima de gas de {{fee}} {{currency}}?",
     "cancelFeeUnavailable": "No se pudo comprobar la comisión de cancelación. Inténtalo de nuevo.",
-    "speedUpFeePreview": "Comprobando la comisión de red…",
-    "speedUpFeeConsent": "¿Acelerar esta transacción con una comisión de red máxima de {{fee}} {{currency}}?",
     "speedUpAmountWouldChange": "Añade fondos a esta cuenta antes de acelerar la transacción. El importe original no cambiará.",
     "speedUpFeeUnavailable": "No se pudo comprobar la comisión. Inténtalo de nuevo.",
     "utxoReplacement": {

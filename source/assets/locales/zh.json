@@ -264,8 +264,7 @@
     "thereWasAnError": "尝试切换网络时出错。请稍后再试。",
     "errorSwitching": "切换网络时出错",
     "speedUp": "加速",
-    "cancelTx": "取消交易",
-    "speedTx": "加速交易"
+    "cancelTx": "取消交易"
   },
   "connections": {
     "connectRequest": "连接请求",
@@ -490,7 +489,6 @@
     "gasPrice": "Gas价格",
     "internalError": "发生内部错误。",
     "transactionCreationFailed": "创建交易失败：{{error}}。请重试。",
-    "submissionStatusUnknown": "提交状态未知。为防止重复发送，无法在此重试此调用。您可以关闭此窗口。",
     "backToEdit": "返回编辑",
     "transactionValue": "交易金额",
     "selfTransferOutputTotal": "自转账输出总额",
@@ -1309,8 +1307,6 @@
     "cancelFeePreview": "正在检查取消交易的网络费用…",
     "cancelFeeConsent": "以最高 {{fee}} {{currency}} 的 gas 费用取消此交易？",
     "cancelFeeUnavailable": "无法检查取消费用。请重试。",
-    "speedUpFeePreview": "正在检查网络费用…",
-    "speedUpFeeConsent": "是否以最高 {{fee}} {{currency}} 的网络费用加速此交易？",
     "speedUpAmountWouldChange": "加速此交易前，请先向此账户充值。原始金额不会改变。",
     "speedUpFeeUnavailable": "无法检查费用。请重试。",
     "utxoReplacement": {

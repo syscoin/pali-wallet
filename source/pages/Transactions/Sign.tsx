@@ -317,9 +317,9 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
             {submissionUnknown && (
               <p
                 role="status"
-                className="text-sm text-brand-gray200 text-center mb-3"
+                className="mb-3 rounded-lg border border-brand-yellowInfo p-3 text-center text-sm text-white"
               >
-                {t('send.submissionStatusUnknown')}
+                {t('transactions.replay.unknown')}
               </p>
             )}
             <div className="flex gap-3 justify-center">

@@ -1140,9 +1140,14 @@ export const SendTransaction = () => {
         // A local controller timeout does not cancel the background send.
         // Keep the attempt consumed unless the background explicitly proved
         // that it failed before any broadcast attempt.
-        if (submissionRequested && error?.transactionNotBroadcast !== true) {
+        const outcomeUnknown =
+          submissionRequested && error?.transactionNotBroadcast !== true;
+        if (outcomeUnknown) {
+          if (!mountedRef.current || generation !== closeGenerationRef.current)
+            return error;
           approvalActionRef.current = 'outcome-unknown';
           setSubmissionUnknown(true);
+          setLoading(false);
         }
         // Handle specific errors (blacklist, cancellation, device issues, etc.)
         const wasHandledSpecifically = handleTransactionError(
@@ -1163,7 +1168,9 @@ export const SendTransaction = () => {
         logError('error', 'Transaction', error);
         alert.error(
           t(
-            error?.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+            outcomeUnknown
+              ? 'transactions.replay.unknown'
+              : error?.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
               ? 'send.smartAccountPayerFeeExceeded'
               : error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
               ? 'transactions.psbtSigningContextChanged'
@@ -2240,6 +2247,14 @@ export const SendTransaction = () => {
               title={t('settings.slhDsaSigningInProgress')}
               warningSeconds={180}
             />
+            {submissionUnknown && (
+              <p
+                role="status"
+                className="mb-3 rounded-lg border border-brand-yellowInfo p-3 text-center text-sm text-white"
+              >
+                {t('transactions.replay.unknown')}
+              </p>
+            )}
             {hasTxDataError && (
               <p className="text-center text-warning-error text-xs mb-2">
                 {t('send.contractEstimateError')}

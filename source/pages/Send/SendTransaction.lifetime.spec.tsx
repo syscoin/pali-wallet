@@ -2295,6 +2295,10 @@ describe('SendTransaction error close lifetimes', () => {
     await prepare();
     mockEmitter.mockRejectedValueOnce(Error('Network request timed out'));
     await act(async () => mockButtonHandlers['buttons.confirm']());
+    expect(screen.getByRole('status').textContent).toBe(
+      'transactions.replay.unknown'
+    );
+    expect(mockAlert.error).toHaveBeenCalledWith('transactions.replay.unknown');
     const timer = closeTimer(4000);
     mockEmitter.mockClear();
     await act(async () => mockButtonHandlers['buttons.confirm']());
@@ -2315,6 +2319,9 @@ describe('SendTransaction error close lifetimes', () => {
         .mockResolvedValueOnce({ nativeBalance: '1' })
         .mockRejectedValueOnce(Error(message));
       await act(async () => mockButtonHandlers['buttons.confirm']());
+      expect(screen.getByRole('status').textContent).toBe(
+        'transactions.replay.unknown'
+      );
       expect(
         (
           screen.getByRole('button', {

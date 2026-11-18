@@ -264,8 +264,9 @@ describe('sendCalls submission lifecycle', () => {
       expect(sends()).toHaveLength(1);
       expect(signButton().props.disabled).toBe(true);
       expect(screen.getByRole('status').textContent).toBe(
-        'send.submissionStatusUnknown'
+        'transactions.replay.unknown'
       );
+      expect(screen.getByText('buttons.unknown')).toBeTruthy();
       await signButton().props.onClick();
       expect(sends()).toHaveLength(1);
       expect(records().some((record) => record.submissionStarted)).toBe(true);
@@ -425,9 +426,7 @@ describe('sendCalls submission lifecycle', () => {
     await (await initialize()).props.onClick();
     expect(sends()).toHaveLength(1);
     expect(signButton().props.disabled).toBe(true);
-    expect(mockAlert.error).toHaveBeenCalledWith(
-      'send.submissionStatusUnknown'
-    );
+    expect(mockAlert.error).toHaveBeenCalledWith('transactions.replay.unknown');
     expect(records().some((record) => record.txHashes.includes(HASH))).toBe(
       true
     );

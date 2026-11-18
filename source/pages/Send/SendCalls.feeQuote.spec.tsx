@@ -371,7 +371,7 @@ it.each([undefined, false, true])(
     fireEvent.click(sign());
     await waitFor(() => expect(screen.getByRole('status')).toBeTruthy());
     expect(screen.getByRole('status').textContent).toBe(
-      'send.submissionStatusUnknown'
+      'transactions.replay.unknown'
     );
     expect(sign().disabled).toBe(true);
     expect(

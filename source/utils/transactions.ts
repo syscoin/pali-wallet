@@ -309,6 +309,26 @@ export enum UpdateTxAction {
   SpeedUp = 'speedUp',
 }
 
+const reportUnconfirmedReplacement = (
+  result: { transactionNotBroadcast?: boolean } | undefined,
+  chainId: number,
+  scope: IWalletNavigationScope,
+  alert: { error(message: string): void },
+  t: (key: string) => string
+) => {
+  if (result?.transactionNotBroadcast !== false) return false;
+  const current = getWalletNavigationScope();
+  const { activeNetwork, isBitcoinBased } = store.getState().vault;
+  if (
+    !isBitcoinBased &&
+    Number(activeNetwork?.chainId) === chainId &&
+    current.account === scope.account &&
+    current.network === scope.network
+  )
+    alert.error(t('transactions.replay.unknown'));
+  return true;
+};
+
 const cancelTransaction = async (
   txHash: string,
   isLegacy: boolean,
@@ -360,6 +380,10 @@ const cancelTransaction = async (
     };
 
     if (!isCanceled && error) {
+      if (
+        reportUnconfirmedReplacement(response, chainId, walletScope, alert, t)
+      )
+        return;
       alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
       return;
     }
@@ -398,7 +422,8 @@ const cancelTransaction = async (
     }
   } catch (error) {
     console.error('Error cancelling transaction:', error);
-
+    if (reportUnconfirmedReplacement(error, chainId, walletScope, alert, t))
+      return;
     alert.error(t('transactions.transactionCancelFailed'));
   }
 };
@@ -565,6 +590,10 @@ const speedUpTransaction = async (
       return;
     }
     if (!isSpeedUp && error) {
+      if (
+        reportUnconfirmedReplacement(response, chainId, walletScope, alert, t)
+      )
+        return;
       alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
       return;
     }
@@ -603,7 +632,8 @@ const speedUpTransaction = async (
     }
   } catch (error) {
     console.error('Error speeding up transaction:', error);
-
+    if (reportUnconfirmedReplacement(error, chainId, walletScope, alert, t))
+      return;
     alert.error(t('transactions.transactionSpeedUpFailed'));
   } finally {
     if (

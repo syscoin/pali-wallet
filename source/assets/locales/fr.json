@@ -264,8 +264,7 @@
     "thereWasAnError": "Il y a eu une erreur lors de la tentative de changement de réseau. Réessayez plus tard.",
     "errorSwitching": "Erreur lors du changement de réseaux",
     "speedUp": "Accélérer",
-    "cancelTx": "Annuler la transaction",
-    "speedTx": "Accélérer la transaction"
+    "cancelTx": "Annuler la transaction"
   },
   "connections": {
     "connectRequest": "Demande de connexion",
@@ -490,7 +489,6 @@
     "gasPrice": "Prix du gaz",
     "internalError": "Une erreur interne s'est produite.",
     "transactionCreationFailed": "Échec de la création de la transaction: {{error}}. Veuillez réessayer.",
-    "submissionStatusUnknown": "Le statut de l’envoi est inconnu. Pour éviter un double envoi, cet appel ne peut pas être relancé ici. Vous pouvez fermer cette fenêtre.",
     "backToEdit": "Retour à la modification",
     "transactionValue": "Valeur de la transaction",
     "selfTransferOutputTotal": "Total des sorties du transfert à soi-même",
@@ -1309,8 +1307,6 @@
     "cancelFeePreview": "Vérification des frais réseau d’annulation…",
     "cancelFeeConsent": "Annuler cette transaction avec des frais de gaz maximum de {{fee}} {{currency}} ?",
     "cancelFeeUnavailable": "Impossible de vérifier les frais d’annulation. Réessayez.",
-    "speedUpFeePreview": "Vérification des frais de réseau…",
-    "speedUpFeeConsent": "Accélérer cette transaction avec des frais de réseau maximum de {{fee}} {{currency}} ?",
     "speedUpAmountWouldChange": "Ajoutez des fonds à ce compte avant d’accélérer la transaction. Le montant initial ne sera pas modifié.",
     "speedUpFeeUnavailable": "Impossible de vérifier les frais. Veuillez réessayer.",
     "utxoReplacement": {

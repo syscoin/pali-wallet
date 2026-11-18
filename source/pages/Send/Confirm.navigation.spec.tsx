@@ -438,7 +438,9 @@ it.each(
       symbol: 'TEST',
       isNft: type !== TransactionType.ERC20,
     };
-    const error = new Error('Synthetic token rejection');
+    const error = Object.assign(new Error('Synthetic token rejection'), {
+      transactionNotBroadcast: true,
+    });
     const prior = mockControllerEmitter.getMockImplementation()!;
     mockControllerEmitter.mockImplementation((path: string[], args: any[]) => {
       if (path.at(-1) === 'sendAndSaveTokenTransaction')
@@ -1065,8 +1067,13 @@ it.each([undefined, false, true])(
     await waitFor(() => expect(screen.getByText('0.00065 TSYS')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
     await waitFor(() =>
-      expect(screen.getByText('send.submissionStatusUnknown')).toBeTruthy()
+      expect(mockAlert.error).toHaveBeenCalledWith(
+        'transactions.replay.unknown'
+      )
     );
+    expect(mockNavigate).toHaveBeenLastCalledWith('/home?tab=activity', {
+      replace: true,
+    });
     expect(
       screen.queryByRole('button', { name: 'send.refreshFeeQuote' })
     ).toBeNull();
@@ -2046,7 +2053,7 @@ it.each(['isLoading', 'connectionUnavailable'] as const)(
   }
 );
 
-it('an ambiguous attempt returns only to its public caller after trust recovers', async () => {
+it('an ambiguous attempt opens Activity without restoring its draft after trust recovers', async () => {
   mockLocation.state.returnContext.returnContext = {
     returnRoute: '/home?tab=activity',
     walletScope: mockNavigationScope,
@@ -2067,19 +2074,16 @@ it('an ambiguous attempt returns only to its public caller after trust recovers'
   view.rerender(<SendConfirm />);
   mockAuth.connectionUnavailable = false;
   view.rerender(<SendConfirm />);
-  expect(screen.getByRole('status').textContent).toBe(
-    'send.submissionStatusUnknown'
-  );
   expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
-  const close = screen.getByRole('button', { name: 'buttons.close' });
-  expect(close.getAttribute('data-variant')).toBe('secondary');
-  fireEvent.click(close);
-  expect(mockNavigate).toHaveBeenCalledWith('/home?tab=activity');
-  const context = mockNavigateBack.mock.calls[0][1].state.returnContext;
-  expect(JSON.stringify(context)).not.toContain('/send/sys');
-  expect(JSON.stringify(context)).not.toContain('private-history-payload');
+  expect(screen.queryByRole('button', { name: 'buttons.close' })).toBeNull();
+  expect(mockAlert.error).toHaveBeenCalledWith('transactions.replay.unknown');
+  expect(mockNavigate).toHaveBeenLastCalledWith('/home?tab=activity', {
+    replace: true,
+  });
+  expect(mockNavigateBack).not.toHaveBeenCalled();
   await act(async () => finishSend({ txid: 'synthetic-txid' }));
   expect(mockAlert.success).not.toHaveBeenCalled();
+  expect(mockAlert.error).toHaveBeenCalledTimes(1);
 });
 
 it.each([
@@ -2160,7 +2164,7 @@ it('storage discard failure stays on the active confirmation with a recoverable 
   await waitFor(() => expect(mockControllerEmitter).toHaveBeenCalled());
 });
 
-it('does not save a confirmation again when submission outcome is unknown', async () => {
+it('opens Activity and does not save the confirmation again when the send outcome is unknown', async () => {
   mockControllerEmitter.mockImplementation(async ([, method]: string[]) => {
     if (method === 'refreshActiveAccountBalances')
       return { nativeBalance: '100' };
@@ -2168,7 +2172,9 @@ it('does not save a confirmation again when submission outcome is unknown', asyn
   });
   render(<SendConfirm />);
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+  await waitFor(() =>
+    expect(mockAlert.error).toHaveBeenCalledWith('transactions.replay.unknown')
+  );
   expect(mockClearNavigationState).toHaveBeenCalledTimes(1);
   expect(mockSaveNavigationState).not.toHaveBeenCalled();
   expect(
@@ -2176,9 +2182,7 @@ it('does not save a confirmation again when submission outcome is unknown', asyn
       .getByRole('button', { name: 'buttons.confirm' })
       .hasAttribute('disabled')
   ).toBe(true);
-  expect(screen.getByRole('status').textContent).toBe(
-    'send.submissionStatusUnknown'
-  );
+  expect(screen.queryByRole('status')).toBeNull();
   expect(mockNavigate).toHaveBeenCalledWith('/send/confirm', {
     replace: true,
     state: {
@@ -2186,6 +2190,9 @@ it('does not save a confirmation again when submission outcome is unknown', asyn
       walletScope: mockNavigationScope,
       returnContext: undefined,
     },
+  });
+  expect(mockNavigate).toHaveBeenLastCalledWith('/home?tab=activity', {
+    replace: true,
   });
 });
 
@@ -2258,21 +2265,46 @@ it('a marker recreated by native Forward or a new document cannot confirm again'
   expect(mockNavigate).toHaveBeenCalledWith('/home');
 });
 
-it('even an older consumed history entry cannot recreate an ambiguous confirmation', async () => {
-  mockControllerEmitter.mockImplementation(async ([, method]: string[]) => {
-    if (method === 'refreshActiveAccountBalances')
-      return { nativeBalance: '100' };
-    throw new Error('Synthetic response lost after submission');
-  });
+it('a Smart Account send with an ambiguous 502 opens Activity and consumes the old confirmation', async () => {
+  prepareSmartAccountConfirmation();
+  (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementation(
+    async (options) => {
+      await options.onBeforeSubmit();
+      throw Object.assign(new Error('Unexpected HTTP status code: 502'), {
+        transactionNotBroadcast: false,
+      });
+    }
+  );
   const first = render(<SendConfirm />);
+  await screen.findByText('0.00065 TSYS');
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  await waitFor(() => expect(screen.getByRole('status')).toBeTruthy());
+  await waitFor(() =>
+    expect(mockNavigate).toHaveBeenLastCalledWith('/home?tab=activity', {
+      replace: true,
+    })
+  );
+  first.rerender(<SendConfirm />);
+  expect(mockAlert.error.mock.calls).toEqual([['transactions.replay.unknown']]);
   first.unmount();
   mockControllerEmitter.mockClear();
+  mockNavigate.mockClear();
+  const reopened = render(<SendConfirm />);
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+  expect(mockControllerEmitter).not.toHaveBeenCalled();
+  expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
+  expect(mockSaveNavigationState).not.toHaveBeenCalled();
+  expect(mockNavigate.mock.calls).toEqual([
+    ['/home?tab=activity', { replace: true }],
+  ]);
+  reopened.unmount();
+  mockNavigate.mockClear();
+  mockAlert.error.mockClear();
+  mockNavigationScope = { ...mockNavigationScope, account: 'other-account' };
   render(<SendConfirm />);
   expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
   expect(mockControllerEmitter).not.toHaveBeenCalled();
-  expect(mockNavigate).toHaveBeenCalledWith('/home');
+  expect(mockNavigate.mock.calls).toEqual([['/home']]);
+  expect(mockAlert.error).not.toHaveBeenCalled();
 });
 
 it('allows retry only after an explicitly safe pre-broadcast rejection', async () => {
@@ -2306,29 +2338,35 @@ it('allows retry only after an explicitly safe pre-broadcast rejection', async (
   );
 });
 
-it('an early failure settling after departure cannot navigate back to confirmation', async () => {
-  let rejectSend!: (error: Error) => void;
-  mockControllerEmitter.mockImplementation(async ([, method]: string[]) => {
-    if (method === 'refreshActiveAccountBalances')
-      return { nativeBalance: '100' };
-    return new Promise((_, reject) => {
-      rejectSend = reject;
+it.each([true, false])(
+  'a failure settling after departure leaves navigation alone (transactionNotBroadcast=%s)',
+  async (transactionNotBroadcast) => {
+    let rejectSend!: (error: Error) => void;
+    mockControllerEmitter.mockImplementation(async ([, method]: string[]) => {
+      if (method === 'refreshActiveAccountBalances')
+        return { nativeBalance: '100' };
+      return new Promise((_, reject) => {
+        rejectSend = reject;
+      });
     });
-  });
-  const view = render(<SendConfirm />);
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  await waitFor(() => expect(rejectSend).toBeDefined());
-  view.unmount();
-  mockNavigate.mockClear();
-  await act(async () =>
-    rejectSend(
-      Object.assign(new Error('Synthetic pre-broadcast failure'), {
-        transactionNotBroadcast: true,
-      })
-    )
-  );
-  expect(mockNavigate).not.toHaveBeenCalled();
-});
+    const view = render(<SendConfirm />);
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() => expect(rejectSend).toBeDefined());
+    view.unmount();
+    mockNavigate.mockClear();
+    await act(async () =>
+      rejectSend(
+        Object.assign(new Error('Synthetic submission failure'), {
+          transactionNotBroadcast,
+        })
+      )
+    );
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockAlert.error).not.toHaveBeenCalledWith(
+      'transactions.replay.unknown'
+    );
+  }
+);
 
 it.each(['account', 'network'])(
   'an idle confirmation exits when its %s scope changes',

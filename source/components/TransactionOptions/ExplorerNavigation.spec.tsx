@@ -4,7 +4,14 @@
  */
 import '@testing-library/jest-dom';
 import { clearRpcCaches, getEthRpc } from '@sidhujag/sysweb3-network';
-import { cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -36,6 +43,9 @@ const mockForbiddenController = jest.fn<never, any[]>(() => {
 const mockForbiddenUpdate = jest.fn<never, any[]>(() => {
   throw new Error('No transaction mutations permitted');
 });
+const mockQuoteSpeedUp = jest.fn<Promise<string>, unknown[]>((...args) =>
+  mockForbiddenUpdate(...args)
+);
 const mockFiat = () => '0 USD';
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
@@ -128,7 +138,7 @@ jest.mock('utils/transactions', () => ({
   isERC1155Transfer: () => false,
   getERC1155TransferValue: () => null,
   handleUpdateTransaction: (...args: any[]) => mockForbiddenUpdate(...args),
-  previewSpeedUpTransaction: (...args: any[]) => mockForbiddenUpdate(...args),
+  previewSpeedUpTransaction: (...args: unknown[]) => mockQuoteSpeedUp(...args),
   UpdateTxAction: { SpeedUp: 'SpeedUp', Cancel: 'Cancel' },
 }));
 jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
@@ -285,19 +295,19 @@ it.each(cases)(
   async (name, explorer, path) => {
     mockState.vault.activeNetwork.explorer = await acceptExplorer(explorer);
     const opened = jest.spyOn(window, 'open').mockImplementation(() => null);
-    const view = render(
+    render(
       <MemoryRouter>
         <EvmTransactionsList userTransactions={mockRows} />
       </MemoryRouter>
     );
     expect(screen.getByText('send.pending')).toBeVisible();
-    const trigger = view.container.querySelector<HTMLButtonElement>(
-      '#transaction-options button'
-    );
-    expect(trigger).not.toBeNull();
-    await userEvent.click(trigger!);
     await userEvent.click(
-      await screen.findByRole('menuitem', {
+      screen.getByRole('button', {
+        name: 'transactions.transactionOptions',
+      })
+    );
+    await userEvent.click(
+      await screen.findByRole('button', {
         name: 'transactions.seeOnBlockExplorer',
       })
     );
@@ -310,12 +320,14 @@ it.each(cases)(
 
 it('does not show pending transaction actions for a mined Activity row', () => {
   mockRows[0].blockNumber = 1;
-  const view = render(
+  render(
     <MemoryRouter>
       <EvmTransactionsList userTransactions={mockRows} />
     </MemoryRouter>
   );
-  expect(view.container.querySelector('#transaction-options')).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'transactions.transactionOptions' })
+  ).toBeNull();
 });
 
 it.each(cases)(
@@ -344,56 +356,54 @@ it.each(cases)(
 
 // Mounted class/interaction contract only. Genuine fenced browser images and
 // text Range/hit measurements own viewport visibility and pixel approval.
-it('bounds the actual pending menu while preserving Escape and safe Details navigation', async () => {
-  const { waitFor } = await import('@testing-library/react');
+it('bounds the actual pending popover while preserving Escape and keyboard Details navigation', async () => {
   mockState.vault.activeNetwork.explorer = await acceptExplorer(cases[0][1]);
   const network = { ...mockState.vault.activeNetwork };
   const rows = mockRows.map((row) => ({ ...row }));
   const opened = jest.spyOn(window, 'open').mockImplementation(() => null);
-  const view = render(
+  render(
     <MemoryRouter>
       <EvmTransactionsList userTransactions={mockRows} />
     </MemoryRouter>
   );
-  const trigger = view.container.querySelector<HTMLButtonElement>(
-    '#transaction-options button'
-  );
-  expect(trigger).not.toBeNull();
-  expect(screen.queryByRole('menu')).toBeNull();
+  const trigger = screen.getByRole('button', {
+    name: 'transactions.transactionOptions',
+  });
+  const detailsName = 'transactions.seeDetails';
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
 
-  await userEvent.click(trigger!);
-  let menu = await screen.findByRole('menu');
-  expect(menu).toHaveClass('w-[23rem]', 'max-w-[calc(100vw-2rem)]');
+  await userEvent.click(trigger);
+  const details = await screen.findByRole('button', { name: detailsName });
+  const panelId = trigger.getAttribute('aria-controls');
+  expect(panelId).toBeTruthy();
+  const panel = document.getElementById(panelId!)!;
+  expect(panel).toHaveClass('w-56', 'max-w-[calc(100vw-2rem)]');
   expect(
-    screen.getAllByRole('menuitem').map((item) => item.textContent)
+    within(panel)
+      .getAllByRole('button')
+      .map((item) => item.textContent)
   ).toEqual([
-    'transactions.seeDetails',
+    detailsName,
     'transactions.seeOnBlockExplorer',
     'header.speedUp',
     'buttons.cancel',
   ]);
-  await waitFor(() => expect(menu).toHaveFocus());
+  await waitFor(() => expect(details).toHaveFocus());
   await userEvent.keyboard('{Escape}');
-  expect(screen.queryByRole('menu')).toBeNull();
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('button', { name: detailsName })).toBeNull();
   await waitFor(() => expect(trigger).toHaveFocus());
   expect(mockNavigate).not.toHaveBeenCalled();
   expect(opened).not.toHaveBeenCalled();
 
-  // Reopen and activate only the existing read-only first action. Never
-  // activate Speed Up, Cancel or the external explorer action.
   await userEvent.keyboard('{Enter}');
-  menu = await screen.findByRole('menu');
-  expect(menu).toHaveClass('w-[23rem]', 'max-w-[calc(100vw-2rem)]');
-  await waitFor(() => expect(menu).toHaveFocus());
-  await userEvent.keyboard('{Home}');
-  const details = screen.getByRole('menuitem', {
-    name: 'transactions.seeDetails',
+  const reopenedDetails = await screen.findByRole('button', {
+    name: detailsName,
   });
-  await waitFor(() =>
-    expect(menu.getAttribute('aria-activedescendant')).toBe(details.id)
-  );
+  await waitFor(() => expect(reopenedDetails).toHaveFocus());
   await userEvent.keyboard('{Enter}');
-  expect(screen.queryByRole('menu')).toBeNull();
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('button', { name: detailsName })).toBeNull();
   expect(mockNavigate).toHaveBeenCalledTimes(1);
   expect(mockNavigate).toHaveBeenCalledWith('/home/details', {
     state: { id: null, hash: HASH, tx: mockRows[0] },
@@ -406,25 +416,73 @@ it('bounds the actual pending menu while preserving Escape and safe Details navi
   expect(mockRows).toEqual(rows);
 });
 
-it('keeps pending transaction actions while omitting the unavailable explorer', async () => {
-  mockState.vault.activeNetwork.explorer = RPC;
-  mockState.vault.activeNetwork.explorerExplicitlyAbsent = true;
-  const opened = jest.spyOn(window, 'open').mockImplementation(() => null);
-  const view = render(
+it('opens Speed Up by keyboard and discards its quote when Escape closes the popover', async () => {
+  mockState.vault.activeNetwork.explorer = await acceptExplorer(cases[0][1]);
+  let resolveQuote!: (fee: string) => void;
+  mockQuoteSpeedUp.mockReturnValueOnce(
+    new Promise<string>((resolve) => {
+      resolveQuote = resolve;
+    })
+  );
+  render(
     <MemoryRouter>
       <EvmTransactionsList userTransactions={mockRows} />
     </MemoryRouter>
   );
-  const trigger = view.container.querySelector<HTMLButtonElement>(
-    '#transaction-options button'
-  );
-  expect(trigger).not.toBeNull();
-  await userEvent.click(trigger!);
+  const trigger = screen.getByRole('button', {
+    name: 'transactions.transactionOptions',
+  });
+  trigger.focus();
+  await userEvent.keyboard('{Enter}');
+  const details = await screen.findByRole('button', {
+    name: 'transactions.seeDetails',
+  });
+  await waitFor(() => expect(details).toHaveFocus());
+  await userEvent.tab();
+  await userEvent.tab();
+  expect(screen.getByRole('button', { name: 'header.speedUp' })).toHaveFocus();
+  await userEvent.keyboard('{Enter}');
+
+  expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('heading', { name: 'header.speedUp' })).toBeVisible();
+  expect(screen.getByRole('status')).toHaveTextContent('send.calculating');
   expect(
-    screen.queryByRole('menuitem', { name: 'transactions.seeOnBlockExplorer' })
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'buttons.back' })).toHaveFocus();
+  expect(mockQuoteSpeedUp).toHaveBeenCalledTimes(1);
+
+  await userEvent.keyboard('{Escape}');
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await waitFor(() => expect(trigger).toHaveFocus());
+  await act(async () => resolveQuote('1234567890123456'));
+  await userEvent.keyboard('{Enter}');
+  expect(
+    await screen.findByRole('button', { name: 'header.speedUp' })
+  ).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+  expect(screen.queryByText('0.001234567890123456 SYS')).toBeNull();
+});
+
+it('keeps pending transaction actions while omitting the unavailable explorer', async () => {
+  mockState.vault.activeNetwork.explorer = RPC;
+  mockState.vault.activeNetwork.explorerExplicitlyAbsent = true;
+  const opened = jest.spyOn(window, 'open').mockImplementation(() => null);
+  render(
+    <MemoryRouter>
+      <EvmTransactionsList userTransactions={mockRows} />
+    </MemoryRouter>
+  );
+  await userEvent.click(
+    screen.getByRole('button', {
+      name: 'transactions.transactionOptions',
+    })
+  );
+  expect(
+    screen.queryByRole('button', { name: 'transactions.seeOnBlockExplorer' })
   ).toBeNull();
   expect(
-    screen.getByRole('menuitem', { name: 'transactions.seeDetails' })
+    screen.getByRole('button', { name: 'transactions.seeDetails' })
   ).toBeVisible();
   expect(opened).not.toHaveBeenCalled();
 });

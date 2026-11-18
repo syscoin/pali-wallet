@@ -1202,7 +1202,15 @@ export const SendConfirm = () => {
     stableGetLegacyGasPrice.current = getLegacyGasPrice;
   }, [navigate, alert, t, getLegacyGasPrice]);
 
+  const deferUnconfirmedSubmissionToActivity = (error: unknown) => {
+    if (!submission.hasUnconfirmedSubmission()) return false;
+    logError('error', 'Transaction', error);
+    setLoading(false);
+    return true;
+  };
+
   const handleTokenSendError = (error: any, label: string) => {
+    if (deferUnconfirmedSubmissionToActivity(error)) return true;
     if (
       isOrdinaryTokenSend &&
       !activeAccount?.isLedgerWallet &&
@@ -1502,6 +1510,7 @@ export const SendConfirm = () => {
             setConfirmed(true);
             setLoading(false);
           } catch (error: any) {
+            if (deferUnconfirmedSubmissionToActivity(error)) return;
             // Handle all errors with centralized handler
             const wasHandledSpecifically = handleTransactionError(
               error,
@@ -1544,6 +1553,7 @@ export const SendConfirm = () => {
               setConfirmed(true);
               setLoading(false);
             } catch (error: any) {
+              if (deferUnconfirmedSubmissionToActivity(error)) return;
               const wasHandledSpecifically = handleTransactionError(
                 error,
                 alert,
@@ -1665,6 +1675,7 @@ export const SendConfirm = () => {
               'A current native transaction fee review is required'
             );
           } catch (error: any) {
+            if (deferUnconfirmedSubmissionToActivity(error)) return;
             if (isOrdinaryNativeSend) {
               retireNativeFeeApproval();
               if (
@@ -1729,6 +1740,7 @@ export const SendConfirm = () => {
               setConfirmed(true);
               setLoading(false);
             } catch (error: any) {
+              if (deferUnconfirmedSubmissionToActivity(error)) return;
               const wasHandledSpecifically = handleTransactionError(
                 error,
                 alert,
@@ -1886,7 +1898,11 @@ export const SendConfirm = () => {
     return submission
       .run(() => performConfirm(renderedFeeSelection))
       .catch((error) => {
-        if (!submission.isActive()) return;
+        if (
+          !submission.isActive() ||
+          deferUnconfirmedSubmissionToActivity(error)
+        )
+          return;
         logError('error', 'Transaction', error);
         alert.error(t('send.cantCompleteTxs'));
       });
@@ -2267,20 +2283,32 @@ export const SendConfirm = () => {
     }
   }, [confirmed, alert, t, navigate, submission.isActive]);
 
-  // A Confirm page without transaction data is unusable (e.g. stale
-  // restored route): redirect home instead of rendering a blank screen
+  const reportedSubmission = useRef<string>();
   useEffect(() => {
-    if (!submission.hasUsableEntry && !confirmed && submission.ownsRoute()) {
+    if (confirmed || !submission.ownsRoute()) return;
+    if (submission.unknown && submission.canOpenActivity) {
+      if (reportedSubmission.current === submission.reviewScope) return;
+      reportedSubmission.current = submission.reviewScope;
+      navigate('/home?tab=activity', { replace: true });
+      alert.error(t('transactions.replay.unknown'));
+      return;
+    }
+    if (!submission.hasUsableEntry) {
       navigateBack(navigate, {
         state: { returnContext: submission.returnContext },
       });
     }
   }, [
+    alert,
+    confirmed,
+    navigate,
+    submission.canOpenActivity,
     submission.hasUsableEntry,
     submission.ownsRoute,
     submission.returnContext,
-    confirmed,
-    navigate,
+    submission.reviewScope,
+    submission.unknown,
+    t,
   ]);
 
   const cancelConfirmation = () => {
@@ -3090,38 +3118,34 @@ export const SendConfirm = () => {
               {t('send.tokenVerificationFailed')}
             </p>
           )}
-          {submission.unknown && (
-            <p role="status" className="text-sm text-brand-gray200 text-center">
-              {t('send.submissionStatusUnknown')}
+          {submission.unknown && !submission.canOpenActivity && (
+            <p role="alert" className="text-sm text-warning-info text-center">
+              {t('transactions.replay.unknown')}
             </p>
           )}
         </div>
       ) : null}
-      {!basicTxValues && submission.interrupted && (
-        <div className="text-center">
-          <p role="status" className="text-sm text-brand-gray200">
-            {t(
-              submission.unknown
-                ? 'send.submissionStatusUnknown'
-                : submission.interruptedFeeReview
-                ? 'transactions.smartAccountAuthorizationRetained'
-                : 'send.cantCompleteTxs'
-            )}
-          </p>
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={cancelConfirmation}
-            className="mx-auto mt-4"
-          >
-            {t(
-              submission.unknown || submission.interruptedFeeReview
-                ? 'buttons.close'
-                : 'send.backToEdit'
-            )}
-          </Button>
-        </div>
-      )}
+      {!basicTxValues &&
+        submission.interrupted &&
+        !(submission.unknown && submission.canOpenActivity) && (
+          <div className="text-center">
+            <p role="alert" className="text-sm text-warning-info">
+              {t(
+                submission.unknown
+                  ? 'transactions.replay.unknown'
+                  : 'send.cantCompleteTxs'
+              )}
+            </p>
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={cancelConfirmation}
+              className="mx-auto mt-4"
+            >
+              {t(submission.unknown ? 'buttons.close' : 'send.backToEdit')}
+            </Button>
+          </div>
+        )}
     </>
   );
 };

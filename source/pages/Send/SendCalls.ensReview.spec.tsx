@@ -165,7 +165,7 @@ it('keeps the reviewed ENS target through cache changes, confirmation and unknow
   expect(reviewedTarget).toBe(TARGET_A);
   expect(destination).toHaveTextContent(TARGET_A);
   await act(async () => submitted.reject(new Error('Lost broadcast reply')));
-  await screen.findAllByText('send.submissionStatusUnknown');
+  await screen.findAllByText('transactions.replay.unknown');
   expect(destination).toHaveTextContent(TARGET_A);
   expect(sends()).toHaveLength(1);
   expect(screen.getByTestId('primary')).toBeDisabled();

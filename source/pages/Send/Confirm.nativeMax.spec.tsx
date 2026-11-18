@@ -693,7 +693,9 @@ it.each(['Ledger', 'Trezor'] as const)(
     );
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
     await waitFor(() => expect(submissionCalls()).toHaveLength(1));
-    await screen.findByText('send.submissionStatusUnknown');
+    await waitFor(() =>
+      expect(mockAlertError).toHaveBeenCalledWith('transactions.replay.unknown')
+    );
     await waitFor(() =>
       expect(
         screen.getByRole('button', { name: 'buttons.confirm' })

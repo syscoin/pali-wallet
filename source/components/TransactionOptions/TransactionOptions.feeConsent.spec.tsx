@@ -23,22 +23,22 @@ let mockModal: any;
 let mockRevision = 0;
 const mockSubscribers = new Set<() => void>();
 const mockEmitter = jest.fn();
+const mockClosePopover = jest.fn();
 const mockUpdate = jest.fn(handleUpdateTransaction);
 const mockAlert = { error: jest.fn(), warning: jest.fn(), success: jest.fn() };
 const mockT = (key: string, values?: any) => {
   const text: Record<string, string> = {
     'buttons.confirm': 'Confirm',
+    'buttons.back': 'Back',
     'buttons.cancel': 'Cancel',
     'header.speedUp': 'Speed Up',
-    'header.speedTx': 'Speed Up Transaction',
     'header.cancelTx': 'Cancel Transaction',
     'transactions.cancelFeePreview': 'Checking cancellation fee…',
     'transactions.cancelFeeConsent':
       'Cancel with a maximum gas fee of {{fee}} {{currency}}?',
     'transactions.cancelFeeUnavailable': 'Cancellation fee unavailable.',
-    'transactions.speedUpFeePreview': 'Checking the network fee…',
-    'transactions.speedUpFeeConsent':
-      'Speed up this transaction with a maximum network fee of {{fee}} {{currency}}?',
+    'send.calculating': 'Calculating…',
+    'transactions.replay.maximumFee': 'Maximum fee',
     'transactions.speedUpFeeUnavailable':
       'Unable to check the fee. Please try again.',
     'transactions.speedUpAmountWouldChange':
@@ -114,7 +114,15 @@ jest.mock('@headlessui/react', () => {
     return <ul>{children}</ul>;
   };
   Menu.Item = ({ children }: any) => children({ active: false });
-  return { Menu };
+  const Popover = ({ children }: any) =>
+    children({ open: true, close: mockClosePopover });
+  Popover.Button = function PopoverButton({ children }: any) {
+    return <div>{children}</div>;
+  };
+  Popover.Panel = function PopoverPanel({ children }: any) {
+    return <div>{children}</div>;
+  };
+  return { Menu, Popover };
 });
 
 const transaction = {
@@ -159,7 +167,10 @@ const deferred = () => {
   });
   return { promise, resolve, reject };
 };
-const openSpeedUp = () => fireEvent.click(screen.getByText('Speed Up'));
+const openSpeedUp = () =>
+  fireEvent.click(screen.getByRole('button', { name: 'Speed Up' }));
+const speedUpConfirm = () =>
+  screen.getByRole<HTMLButtonElement>('button', { name: 'Confirm' });
 const quote = (maximumFee = MAXIMUM_FEE) => ({
   isSpeedUp: false,
   maximumFee,
@@ -226,10 +237,10 @@ it('quotes a local Smart Account replacement from its gas payer in the existing 
     />
   );
   openSpeedUp();
-  await screen.findByText(
-    'Speed up this transaction with a maximum network fee of 0.001234567890123456 ETH?'
-  );
-  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  await screen.findByText('0.001234567890123456 ETH');
+  expect(screen.getByText('Maximum fee')).toBeTruthy();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockModal).toBeUndefined();
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'speedUpEvmTransaction'],
     [
@@ -258,13 +269,10 @@ it('quotes without submitting, shows the exact authenticated fee, and forwards t
     .mockResolvedValueOnce({ hash: REPLACEMENT });
   render(<Harness />);
   openSpeedUp();
-  expect(screen.getByText('Checking the network fee…')).toBeTruthy();
-  expect(
-    (screen.getByRole('button', { name: 'Loading' }) as HTMLButtonElement)
-      .disabled
-  ).toBe(true);
-  const waitingConfirm = mockModal.onClick;
-  waitingConfirm();
+  expect(screen.getByRole('status').textContent).toBe('Calculating…');
+  expect(speedUpConfirm().disabled).toBe(true);
+  fireEvent.click(speedUpConfirm());
+  expect(mockModal).toBeUndefined();
   expect(mockUpdate).not.toHaveBeenCalled();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
@@ -279,20 +287,15 @@ it('quotes without submitting, shows the exact authenticated fee, and forwards t
   );
 
   await settleQuote(pending, quote());
-  expect(
-    screen.getByText(
-      'Speed up this transaction with a maximum network fee of 0.001234567890123456 ETH?'
-    )
-  ).toBeTruthy();
-  expect(
-    (screen.getByRole('button', { name: 'Confirm' }) as HTMLButtonElement)
-      .disabled
-  ).toBe(false);
-  const confirm = mockModal.onClick;
+  expect(screen.getByText('Maximum fee')).toBeTruthy();
+  expect(screen.getByText('0.001234567890123456 ETH')).toBeTruthy();
+  const confirm = speedUpConfirm();
+  expect(confirm.disabled).toBe(false);
   await act(async () => {
-    confirm();
-    confirm();
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
   });
+  expect(mockClosePopover).toHaveBeenCalled();
   expect(mockUpdate).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenNthCalledWith(
     2,
@@ -359,27 +362,19 @@ it('keeps zero network fees visible and usable without converting them to a nonz
   mockEmitter.mockResolvedValueOnce(quote('0'));
   render(<Harness />);
   await act(async () => openSpeedUp());
-  expect(
-    screen.getByText(
-      'Speed up this transaction with a maximum network fee of 0.0 ETH?'
-    )
-  ).toBeTruthy();
-  expect(
-    (screen.getByRole('button', { name: 'Confirm' }) as HTMLButtonElement)
-      .disabled
-  ).toBe(false);
+  expect(screen.getByText('0.0 ETH')).toBeTruthy();
+  expect(speedUpConfirm().disabled).toBe(false);
 });
 
-it('ignores a delayed quote after Cancel and latches any retained confirmation callback', async () => {
+it('dismisses with Back and ignores the pending quote', async () => {
   const pending = deferred();
   mockEmitter.mockReturnValueOnce(pending.promise);
   render(<Harness />);
   openSpeedUp();
-  const confirm = mockModal.onClick;
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+  expect(mockClosePopover).toHaveBeenCalledTimes(1);
   await settleQuote(pending, quote());
-  confirm();
-  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
   expect(mockUpdate).not.toHaveBeenCalled();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockAlert.error).not.toHaveBeenCalled();
@@ -392,7 +387,6 @@ it.each(['account', 'network'])(
     mockEmitter.mockReturnValueOnce(pending.promise);
     render(<Harness />);
     openSpeedUp();
-    const confirm = mockModal.onClick;
     if (change === 'account')
       mockVault.accounts.HDAccount[0].address = NEXT_ACCOUNT;
     else mockVault.activeNetwork.url = 'https://other-rpc.example';
@@ -401,55 +395,37 @@ it.each(['account', 'network'])(
       mockSubscribers.forEach((subscriber) => subscriber());
     });
     await settleQuote(pending, quote());
-    confirm();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockAlert.error).not.toHaveBeenCalled();
   }
 );
 
-it('checks the current scope synchronously before a retained confirmation callback', async () => {
+it('checks the current scope synchronously before submitting the visible quote', async () => {
   mockEmitter.mockResolvedValueOnce(quote());
   render(<Harness />);
   await act(async () => openSpeedUp());
-  const confirm = mockModal.onClick;
   mockVault.accounts.HDAccount[0].address = NEXT_ACCOUNT;
-  confirm();
+  fireEvent.click(speedUpConfirm());
   expect(mockUpdate).not.toHaveBeenCalled();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
-});
-
-it('ignores a late quote after the option component unmounts', async () => {
-  const pending = deferred();
-  mockEmitter.mockReturnValueOnce(pending.promise);
-  const view = render(<Harness />);
-  openSpeedUp();
-  const confirm = mockModal.onClick;
-  view.unmount();
-  await settleQuote(pending, quote());
-  confirm();
-  expect(mockUpdate).not.toHaveBeenCalled();
-  expect(mockEmitter).toHaveBeenCalledTimes(1);
-  expect(mockAlert.error).not.toHaveBeenCalled();
 });
 
 it.each([false, true])(
-  'closes a parent-owned modal when a mined row removes the options (quoted=%s)',
+  'disposes the inline confirmation when a mined row removes the options (quoted=%s)',
   async (quoted) => {
     const pending = deferred();
     mockEmitter.mockReturnValueOnce(pending.promise);
     const view = render(<Harness />);
     openSpeedUp();
     if (quoted) await settleQuote(pending, quote());
-    const confirm = mockModal.onClick;
     view.rerender(<Harness showOptions={false} />);
-    expect(screen.queryByRole('dialog')).toBeNull();
     if (!quoted) await settleQuote(pending, quote());
-    confirm();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockEmitter).toHaveBeenCalledTimes(1);
     expect(mockAlert.error).not.toHaveBeenCalled();
+    expect(mockModal).toBeUndefined();
   }
 );
 
@@ -460,17 +436,17 @@ it('closes and reports a quote timeout, then ignores the late response', async (
   render(<Harness />);
   openSpeedUp();
   act(() => jest.advanceTimersByTime(15_000));
-  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
   expect(mockAlert.error).toHaveBeenCalledWith(
     'Unable to check the fee. Please try again.'
   );
   await settleQuote(pending, quote());
-  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
   expect(mockAlert.error).toHaveBeenCalledTimes(1);
   expect(mockUpdate).not.toHaveBeenCalled();
 });
 
-it('keeps a fresh preview independent of an earlier cancelled request', async () => {
+it('keeps a fresh preview independent of an earlier dismissed request', async () => {
   const first = deferred();
   const second = deferred();
   mockEmitter
@@ -478,16 +454,14 @@ it('keeps a fresh preview independent of an earlier cancelled request', async ()
     .mockReturnValueOnce(second.promise);
   render(<Harness />);
   openSpeedUp();
-  const oldClose = mockModal.onClose;
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }));
   openSpeedUp();
-  act(() => oldClose());
   await settleQuote(first, quote('999'));
-  expect(screen.getByText('Checking the network fee…')).toBeTruthy();
+  expect(screen.getByRole('status').textContent).toBe('Calculating…');
+  expect(speedUpConfirm().disabled).toBe(true);
   await settleQuote(second, quote());
-  expect(
-    screen.getByText(/maximum network fee of 0.001234567890123456 ETH/)
-  ).toBeTruthy();
+  expect(screen.getByText('0.001234567890123456 ETH')).toBeTruthy();
+  expect(speedUpConfirm().disabled).toBe(false);
 });
 
 it.each([
@@ -505,7 +479,7 @@ it.each([
     mockEmitter.mockResolvedValueOnce(response);
     render(<Harness />);
     await act(async () => openSpeedUp());
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockEmitter).toHaveBeenCalledTimes(1);
     expect(mockAlert.error).toHaveBeenCalledWith(

@@ -245,7 +245,7 @@ it('retries a failed registration quote before the financial submission boundary
   fireEvent.click(confirm());
   await screen.findByText('Quote unavailable');
   expect(confirm().hasAttribute('disabled')).toBe(false);
-  expect(screen.queryByText('send.submissionStatusUnknown')).toBeNull();
+  expect(screen.queryByText('transactions.replay.unknown')).toBeNull();
   fireEvent.click(confirm());
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
   expect(calls('createSmartAccount')).toHaveLength(1);
@@ -267,7 +267,7 @@ it.each([undefined, false, 'hash'])(
     render(<PrepareSmartAccount />);
     const retained = mockConfirm;
     fireEvent.click(confirm());
-    await screen.findByText('send.submissionStatusUnknown');
+    await screen.findByText('transactions.replay.unknown');
     expect(confirm().hasAttribute('disabled')).toBe(true);
     await act(async () => retained());
     expect(calls('createSmartAccount')).toHaveLength(1);
@@ -393,7 +393,7 @@ it('does not replay an installation whose submission outcome is unknown', async 
   render(<PrepareSmartAccount />);
   const retained = mockConfirm;
   fireEvent.click(confirm());
-  await screen.findByText('send.submissionStatusUnknown');
+  await screen.findByText('transactions.replay.unknown');
   expect(confirm().hasAttribute('disabled')).toBe(true);
   await act(async () => retained());
   expect(calls('createSmartAccount')).toHaveLength(1);

@@ -1,5 +1,5 @@
-import { Menu } from '@headlessui/react';
-import React, { useCallback, useEffect, useRef } from 'react';
+import { Menu, Popover } from '@headlessui/react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -93,6 +93,62 @@ export const SmartAccountSignedOperationOptions = ({
   );
 };
 
+const DismissSpeedUpOnClose = ({ dismiss }: { dismiss: () => void }) => {
+  useEffect(() => dismiss, [dismiss]);
+  return null;
+};
+
+const SpeedUpReview = ({
+  fee,
+  confirm,
+  back,
+}: {
+  back: () => void;
+  confirm: () => void;
+  fee?: string;
+}) => {
+  const { t } = useTranslation();
+  const backButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => backButton.current?.focus(), []);
+  const actionClass =
+    'rounded-md px-2 py-1.5 text-xs text-white hover:bg-brand-blue400 disabled:opacity-50';
+
+  return (
+    <>
+      {fee === undefined ? (
+        <p role="status" className="text-xs text-brand-gray200 pb-2">
+          {t('send.calculating')}
+        </p>
+      ) : (
+        <dl className="pb-2 text-xs">
+          <dt className="text-brand-gray200">
+            {t('transactions.replay.maximumFee')}
+          </dt>
+          <dd className="break-words text-white">{fee}</dd>
+        </dl>
+      )}
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          ref={backButton}
+          onClick={back}
+          className={actionClass}
+        >
+          {t('buttons.back')}
+        </button>
+        <button
+          type="button"
+          disabled={fee === undefined}
+          onClick={confirm}
+          className={`bg-brand-blue400 ${actionClass}`}
+        >
+          {t('buttons.confirm')}
+        </button>
+      </div>
+    </>
+  );
+};
+
 const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   handleUpdateTransaction,
   transaction,
@@ -130,9 +186,18 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     (smartCancellation.available && transaction.isCancel === true) ||
     (local && !(canCancelSmart && smartCancellation.available));
   const preview = useRef<{
+    action: UpdateTxAction;
     cancel: () => void;
     close: () => void;
   }>();
+  const [speedUpReview, setSpeedUpReview] = useState<{
+    confirm: () => void;
+    fee?: string;
+  }>();
+  const dismissSpeedUp = useCallback(() => {
+    if (preview.current?.action === UpdateTxAction.SpeedUp)
+      preview.current.close();
+  }, []);
 
   useEffect(() => {
     preview.current?.close();
@@ -165,7 +230,8 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
       cancel();
       if (preview.current?.close !== close) return;
       preview.current = undefined;
-      setIsOpenModal(false);
+      if (isCancel) setIsOpenModal(false);
+      else setSpeedUpReview(undefined);
     };
     const current = () => {
       const latest = getWalletNavigationScope();
@@ -194,23 +260,30 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
         t,
       });
     };
-    preview.current = { cancel, close };
-    const modal = {
-      buttonText: t('buttons.confirm'),
-      title: t(isCancel ? 'header.cancelTx' : 'header.speedTx'),
-      description: t(
-        isCancel
-          ? 'transactions.cancelFeePreview'
-          : 'transactions.speedUpFeePreview'
-      ),
-      isButtonLoading: true,
-      // This stage only reads a quote; cancelling it cannot cancel a send.
-      allowCloseWhileLoading: true,
-      onClose: close,
-      onClick: confirm,
+    preview.current = { action: actionType, cancel, close };
+    const showFee = (fee?: string) => {
+      if (!isCancel) {
+        setSpeedUpReview({ fee, confirm });
+        return;
+      }
+      setModalData({
+        buttonText: t('buttons.confirm'),
+        title: t('header.cancelTx'),
+        description:
+          fee === undefined
+            ? t('transactions.cancelFeePreview')
+            : t('transactions.cancelFeeConsent', {
+                fee,
+                currency: currency?.toUpperCase(),
+              }),
+        isButtonLoading: fee === undefined,
+        allowCloseWhileLoading: true,
+        onClose: close,
+        onClick: confirm,
+      });
     };
-    setModalData(modal);
-    setIsOpenModal(true);
+    showFee();
+    if (isCancel) setIsOpenModal(true);
     const fail = () => {
       if (!current()) return;
       close();
@@ -243,19 +316,12 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
       if (!current()) return;
       clearTimeout(timer);
       maximumFee = fee;
-      setModalData({
-        ...modal,
-        description: t(
-          isCancel
-            ? 'transactions.cancelFeeConsent'
-            : 'transactions.speedUpFeeConsent',
-          {
-            fee: formatUnits(fee, 18),
-            currency: currency?.toUpperCase(),
-          }
-        ),
-        isButtonLoading: false,
-      });
+      const formatted = formatUnits(fee, 18);
+      showFee(
+        isCancel || !currency
+          ? formatted
+          : `${formatted} ${currency.toUpperCase()}`
+      );
     } catch (error: any) {
       if (error?.code === 'REPLACEMENT_VALUE_WOULD_CHANGE') {
         if (!current()) return;
@@ -293,119 +359,117 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
 
   return (
     <>
-      <Menu
+      <Popover
         id="transaction-options"
         as="div"
         className="relative inline-block text-left"
       >
-        {({ open }) => (
+        {({ open, close }) => (
           <>
-            <Menu.Button
-              className="inline-flex justify-center w-full 
-          hover:text-button-primaryhover text-white text-sm font-medium 
-          hover:bg-opacity-30 rounded-full w-5"
+            <Popover.Button
+              className="inline-flex w-5 justify-center rounded-full text-white hover:text-button-primaryhover"
+              aria-label={t('transactions.transactionOptions')}
             >
               <EditTxIcon />
-            </Menu.Button>
-
-            <div className="absolute right-0 z-10 h-[15rem]">
-              {open && (
-                <Menu.Items
-                  as="div"
-                  className={`p-4 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
-                  max-w-[calc(100vw-2rem)] font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out transform opacity-100 scale-100 pointer-events-auto`}
-                >
-                  <h1 className="text-sm font-semibold text-brand-gray200 pb-2 px-2">
-                    {t('transactions.pendingTransaction')}
-                  </h1>
-                  <Menu.Item>
-                    {({ active }) => (
-                      <li
-                        className={`
-                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
-                    ${MENU_ITEM_CLASS_NAME}
-                    `}
-                        onClick={handleGoTxDetails}
+            </Popover.Button>
+            {open && (
+              <Popover.Panel
+                focus
+                className="absolute right-0 z-10 w-56 max-w-[calc(100vw-2rem)] rounded-lg bg-brand-blue500 p-3 font-poppins shadow-2xl ring-1 ring-black ring-opacity-5"
+              >
+                <DismissSpeedUpOnClose dismiss={dismissSpeedUp} />
+                <h2 className="pb-2 text-sm font-semibold text-brand-gray200">
+                  {t(
+                    speedUpReview
+                      ? 'header.speedUp'
+                      : 'transactions.pendingTransaction'
+                  )}
+                </h2>
+                {speedUpReview ? (
+                  <SpeedUpReview
+                    {...speedUpReview}
+                    back={() => {
+                      dismissSpeedUp();
+                      close();
+                    }}
+                    confirm={() => {
+                      speedUpReview.confirm();
+                      close();
+                    }}
+                  />
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className={MENU_ITEM_CLASS_NAME}
+                      onClick={() => {
+                        close();
+                        handleGoTxDetails();
+                      }}
+                    >
+                      <span className="w-5 mr-3">
+                        <ExternalLinkIcon />
+                      </span>
+                      <span className={ITEM_TEXT_CLASS_NAME}>
+                        {t('transactions.seeDetails')}
+                      </span>
+                    </button>
+                    {explorer && (
+                      <button
+                        type="button"
+                        className={MENU_ITEM_CLASS_NAME}
+                        onClick={() => {
+                          close();
+                          openTransactionOnExplorer();
+                        }}
                       >
-                        <div className="w-5 mr-3">
+                        <span className="w-5 mr-3">
                           <ExternalLinkIcon />
-                        </div>
-                        <span className={ITEM_TEXT_CLASS_NAME}>
-                          {t('transactions.seeDetails')}
                         </span>
-                      </li>
+                        <span className={ITEM_TEXT_CLASS_NAME}>
+                          {t('transactions.seeOnBlockExplorer')}
+                        </span>
+                      </button>
                     )}
-                  </Menu.Item>
-                  {explorer && (
-                    <Menu.Item>
-                      {({ active }) => (
-                        <li
-                          className={`
-                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
-                    ${MENU_ITEM_CLASS_NAME}
-                    `}
-                          onClick={openTransactionOnExplorer}
-                        >
-                          <div className="w-5 mr-3">
-                            <ExternalLinkIcon />
-                          </div>
-                          <span className={ITEM_TEXT_CLASS_NAME}>
-                            {t('transactions.seeOnBlockExplorer')}
-                          </span>
-                        </li>
-                      )}
-                    </Menu.Item>
-                  )}
-                  {speedUpAvailable && (
-                    <Menu.Item>
-                      {({ active }) => (
-                        <li
-                          className={`
-                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
-                    ${MENU_ITEM_CLASS_NAME}
-                    `}
-                          onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
-                        >
-                          <div className="w-5 mr-3">
-                            <SpeedUpIcon />
-                          </div>
-                          <span className={ITEM_TEXT_CLASS_NAME}>
-                            {t('header.speedUp')}
-                          </span>
-                        </li>
-                      )}
-                    </Menu.Item>
-                  )}
-                  {!cancellationUnavailable && (
-                    <Menu.Item>
-                      {({ active }) => (
-                        <li
-                          className={`
-                  ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
-                  ${CANCEL_ITEM_CLASS_NAME}
-                  `}
-                          aria-disabled={smartCancellation.busy}
-                          onClick={() => {
-                            if (!smartCancellation.busy)
-                              handleOnClick(UpdateTxAction.Cancel);
-                          }}
-                        >
-                          <div className="w-5 mr-3">
-                            <CancelIcon />
-                          </div>
-                          <span className={ITEM_TEXT_CLASS_NAME}>
-                            {t('buttons.cancel')}
-                          </span>
-                        </li>
-                      )}
-                    </Menu.Item>
-                  )}
-                </Menu.Items>
-              )}
-            </div>
+                    {speedUpAvailable && (
+                      <button
+                        type="button"
+                        className={MENU_ITEM_CLASS_NAME}
+                        onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
+                      >
+                        <span className="w-5 mr-3">
+                          <SpeedUpIcon />
+                        </span>
+                        <span className={ITEM_TEXT_CLASS_NAME}>
+                          {t('header.speedUp')}
+                        </span>
+                      </button>
+                    )}
+                    {!cancellationUnavailable && (
+                      <button
+                        type="button"
+                        className={CANCEL_ITEM_CLASS_NAME}
+                        disabled={smartCancellation.busy}
+                        onClick={() => {
+                          close();
+                          handleOnClick(UpdateTxAction.Cancel);
+                        }}
+                      >
+                        <span className="w-5 mr-3">
+                          <CancelIcon />
+                        </span>
+                        <span className={ITEM_TEXT_CLASS_NAME}>
+                          {t('buttons.cancel')}
+                        </span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </Popover.Panel>
+            )}
           </>
         )}
-      </Menu>
+      </Popover>
       {smartCancellation.content}
     </>
   );

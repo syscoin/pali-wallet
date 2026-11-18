@@ -469,9 +469,9 @@ it('shows the real native pre-send blacklist refusal without unknown status', as
       expect.stringContaining('Transaction blocked: synthetic list entry')
     )
   );
-  expect(
-    screen.queryByText('send.submissionStatusUnknown')
-  ).not.toBeInTheDocument();
+  expect(mockAlertError).not.toHaveBeenCalledWith(
+    'transactions.replay.unknown'
+  );
   const message = mockMessages.find(
     (m) => m.data.methods.at(-1) === 'sendAndSaveEthTransaction'
   );
@@ -535,9 +535,9 @@ it('accepts an unlisted native recipient through the same controller path', asyn
   await waitFor(() =>
     expect(mockWallet.sendAndSaveTransaction).toHaveBeenCalledTimes(1)
   );
-  expect(
-    screen.queryByText('send.submissionStatusUnknown')
-  ).not.toBeInTheDocument();
+  expect(mockAlertError).not.toHaveBeenCalledWith(
+    'transactions.replay.unknown'
+  );
 });
 it('shows Activity guidance when a retained transaction blocks the initial review', async () => {
   mockRetainedNonce = true;
@@ -618,14 +618,14 @@ it.each([
     }
   }
 );
-it('keeps a native ambiguous SDK rejection in unknown status', async () => {
+it('reports an unknown outcome for an ambiguous native SDK response', async () => {
   mockSdkSend.mockRejectedValueOnce(new Error('synthetic SDK failure'));
   await readyNative(false);
   await act(async () =>
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
   );
   await waitFor(() =>
-    expect(screen.getByText('send.submissionStatusUnknown')).toBeInTheDocument()
+    expect(mockAlertError).toHaveBeenCalledWith('transactions.replay.unknown')
   );
   expect(mockSdkSend).toHaveBeenCalledTimes(1);
   expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();

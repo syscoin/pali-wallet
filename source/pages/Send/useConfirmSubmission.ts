@@ -66,8 +66,6 @@ export const useConfirmSubmission = ({
   const blockedRef = useRef(consumed);
   const attemptRef = useRef<{
     definitelyNotBroadcast: boolean;
-    feeReview?: AbortSignal;
-    feeReviewDeclined?: boolean;
     mayBroadcast: boolean;
     ownsPendingTransport?: () => boolean;
     successful: boolean;
@@ -190,11 +188,18 @@ export const useConfirmSubmission = ({
       });
   };
 
+  const hasUnconfirmedSubmission = () => {
+    const attempt = attemptRef.current;
+    return Boolean(
+      attempt?.mayBroadcast &&
+        !attempt.successful &&
+        !attempt.definitelyNotBroadcast
+    );
+  };
+
   const recordError = (error: any) => {
     if (attemptRef.current && error?.transactionNotBroadcast === true) {
       attemptRef.current.definitelyNotBroadcast = true;
-      if (attemptRef.current.feeReview && error.code === 4001)
-        attemptRef.current.feeReviewDeclined = true;
     }
   };
   const dispatch = async <T>(
@@ -294,10 +299,10 @@ export const useConfirmSubmission = ({
     blocked: blocked || scopeChanged || !trustedAuth,
     pending,
     unknown,
+    hasUnconfirmedSubmission,
+    canOpenActivity:
+      internalRef.current && validInitialScope && !scopeChanged && trustedAuth,
     interrupted: Boolean(departedRef.current && attemptRef.current),
-    interruptedFeeReview: Boolean(
-      departedRef.current && attemptRef.current?.feeReviewDeclined
-    ),
     hasUsableEntry: Boolean(stateRef.current?.tx) && !scopeChanged,
     isActive: isCurrent,
     ownsRoute,
@@ -318,13 +323,6 @@ export const useConfirmSubmission = ({
       ownsPendingTransport?: () => boolean
     ) => dispatch(operation, true, ownsPendingTransport),
     recordError,
-    ownFeeReview: (signal: AbortSignal) => {
-      assertCurrent();
-      if (attemptRef.current) {
-        attemptRef.current.feeReview = signal;
-        attemptRef.current.ownsPendingTransport = () => !signal.aborted;
-      }
-    },
     beforeBroadcast: async () => {
       assertCurrent();
       if (attemptRef.current) {

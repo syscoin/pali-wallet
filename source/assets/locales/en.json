@@ -264,8 +264,7 @@
     "thereWasAnError": "There was an error while trying to switch network. Try again later.",
     "errorSwitching": "Error switching networks",
     "speedUp": "Speed Up",
-    "cancelTx": "Cancel Transaction",
-    "speedTx": "Speed Up Transaction"
+    "cancelTx": "Cancel Transaction"
   },
   "connections": {
     "connectRequest": "Connect Request",
@@ -490,7 +489,6 @@
     "gasPrice": "Gas Price",
     "internalError": "An internal error has occurred.",
     "transactionCreationFailed": "Failed to create transaction: {{error}}. Please try again.",
-    "submissionStatusUnknown": "Submission status is unknown. To prevent sending twice, this call cannot be retried here. You can close this window.",
     "backToEdit": "Back to edit",
     "transactionValue": "Transaction value",
     "selfTransferOutputTotal": "Self-transfer output total",
@@ -1309,8 +1307,6 @@
     "cancelFeePreview": "Checking the cancellation network fee…",
     "cancelFeeConsent": "Cancel this transaction with a maximum gas fee of {{fee}} {{currency}}?",
     "cancelFeeUnavailable": "Unable to check the cancellation fee. Please try again.",
-    "speedUpFeePreview": "Checking the network fee…",
-    "speedUpFeeConsent": "Speed up this transaction with a maximum network fee of {{fee}} {{currency}}?",
     "speedUpAmountWouldChange": "Add funds to this account before speeding up this transaction. The original amount will not be changed.",
     "speedUpFeeUnavailable": "Unable to check the fee. Please try again.",
     "utxoReplacement": {
