@@ -126,6 +126,7 @@ import {
   hasUsableSmartAccountAuthMetadata,
   readSmartAccountValidatorMetadata,
 } from 'utils/smartAccount/executionMetadata';
+import { readSmartAccountBalances } from 'utils/smartAccount/financialReads';
 import { projectGuardianPolicyModule } from 'utils/smartAccount/guardianPolicy';
 import {
   captureGuardianRecoveryClaim,
@@ -181,7 +182,6 @@ import {
   readSmartAccountNativeBalances,
   canUseSmartAccountGasTank,
   ensureSmartAccountDeploymentPrefund,
-  readSmartAccountDeploymentShortfall,
 } from 'utils/smartAccount/payerPolicy';
 import {
   createSmartAccountPendingState,
@@ -2277,17 +2277,21 @@ class SmartAccountController {
           );
         if (
           (cancellation || includePayerBudget) &&
-          result.userOperation.initCode !== '0x' &&
-          !getSmartAccountUserOpRequiredPrefund(result.userOperation).isZero()
+          result.userOperation.initCode !== '0x'
         ) {
-          const shortfall = await readSmartAccountDeploymentShortfall(
-            provider,
-            active.account.address,
-            getPaliEntryPointAddress(snapshot.chainId),
-            result.userOperation,
-            assertContext
+          const requiredPrefund = getSmartAccountUserOpRequiredPrefund(
+            result.userOperation
           );
-          if (shortfall.gt(0)) payerPrefund = BigInt(shortfall.toString());
+          if (!requiredPrefund.isZero()) {
+            const { balance, deposit } = await readSmartAccountBalances(
+              provider,
+              snapshot.chainId,
+              active.account.address
+            );
+            assertContext();
+            const shortfall = requiredPrefund.sub(balance).sub(deposit);
+            if (shortfall.gt(0)) payerPrefund = BigInt(shortfall.toString());
+          }
         }
         const anchor = await provider.send('eth_getBlockByNumber', [
           'latest',
