@@ -36,7 +36,7 @@ function fixture(canSign = true) {
   };
   let noteStatus:IPrivateNoteStatus={phase:'verified'};
   const requests: unknown[] = [];
-  const approvals: unknown[] = [];
+  const submittedArguments: string[][] = [];
   const model = new NativePrivateWithdrawal(
     {
       canSign,
@@ -62,8 +62,9 @@ function fixture(canSign = true) {
             if (failure) throw failure;
             return { ...review, intentId: `review-${prepares}` };
           },
-          async submitWithdrawal(intentId, approval) {
-            approvals.push({ intentId, approval });
+          async submitWithdrawal(...args) {
+            submittedArguments.push(args);
+            const [intentId] = args;
             submits++;
             afterSubmit?.();
             if (failure) throw failure;
@@ -108,7 +109,7 @@ function fixture(canSign = true) {
     model,
     owner,
     requests,
-    approvals,
+    submittedArguments,
     counts: () => ({ prepares, submits, disposals, discarded, reads }),
     retireAfterSubmit() {
       afterSubmit = () => {
@@ -138,7 +139,7 @@ test('withdrawal model binds its note and requires one matching explicit confirm
   assert.equal(f.counts().submits, 0);
   await Promise.all([f.model.confirm('review-1'), f.model.confirm('review-1')]);
   assert.equal(f.counts().submits, 1);
-  assert.deepEqual(f.approvals, [{intentId:'review-1', approval:{acceptPreviousWithdrawalRisk:true}}]);
+  assert.deepEqual(f.submittedArguments, [['review-1']]);
   assert.equal(f.model.getSnapshot().phase, 'submitted');
 });
 
@@ -252,7 +253,7 @@ test('a saved prior attempt remains visible while a new owned intent prepares an
   assert.equal(f.model.getSnapshot().result,null);
   assert.equal(f.counts().submits,0);
   await f.model.confirm('review-1');
-  assert.deepEqual(f.approvals,[{intentId:'review-1',approval:{acceptPreviousWithdrawalRisk:true}}]);
+  assert.deepEqual(f.submittedArguments, [['review-1']]);
   assert.equal(f.model.getSnapshot().result?.transactionHash,'0x'+'ab'.repeat(32));
   assert.equal(f.model.getSnapshot().status,null,'Confirm retires the old observed attempt');
   const refreshed={noteId:'owned-note',phase:'submitted' as const,transactionHash:'0x'+'de'.repeat(32)};

@@ -2355,9 +2355,7 @@ it.each([
       await release.promise;
     });
   }
-  const result = controller.submitWithdrawal(review.intentId, {
-    acceptPreviousWithdrawalRisk: true,
-  });
+  const result = controller.submitWithdrawal(review.intentId);
   const rejected = expect(result).rejects.toMatchObject({
     transactionNotBroadcast: true,
   });
@@ -5556,7 +5554,6 @@ async function competingApproval(
   return {
     history,
     approval: {
-      acceptPreviousWithdrawalRisk: true as const,
       historyBinding: history.binding,
     },
   };
@@ -5590,12 +5587,9 @@ it.each(['direct', 'relayed'] as const)(
     const old = (await decryptedVault(f)).notes[0].withdrawal;
     const { history, approval } = await competingApproval(f, note.id, session);
     expect(Object.isFrozen(history)).toBe(true);
-    expect(history.previousWithdrawals).toMatchObject([
-      { mode, outcome: 'submitted', transactionHash: TX_HASH },
-    ]);
-    expect(JSON.stringify(history.previousWithdrawals)).not.toMatch(
-      /proof|endpoint|restoreGuard|tornado-/
-    );
+    expect(history).toEqual({
+      binding: expect.stringMatching(/^0x[0-9a-f]{64}$/),
+    });
     expect((await f.controller.getNotes()).notes[0].phase).toBe('verified');
     const unchanged = structuredClone(f.records);
     await expect(
@@ -5808,9 +5802,9 @@ it('imported uncertain history needs only final per-attempt approval, never a pe
   const note = (await f.controller.getNotes()).notes[0];
   expect(note.phase).toBe('verified');
   const { history, approval } = await competingApproval(f, note.id, session);
-  expect(history.previousWithdrawals).toEqual([
-    { mode: 'relayed', outcome: 'unknown', jobId: 'portable_job-1' },
-  ]);
+  expect(history).toEqual({
+    binding: expect.stringMatching(/^0x[0-9a-f]{64}$/),
+  });
   const attempt = withdrawalAttempt(note.id, 'relayed');
   await expect(
     f.controller.reserveWithdrawalAttempt(attempt, session, competingLifetime)
@@ -5838,9 +5832,7 @@ it('imported uncertain history needs only final per-attempt approval, never a pe
   expect(exported.notes[0].history?.withdrawals).toContainEqual(
     entries[0].history.withdrawals[0]
   );
-  expect(JSON.stringify(exported)).not.toMatch(
-    /reviewedAt|historyBinding|acceptPreviousWithdrawalRisk/
-  );
+  expect(JSON.stringify(exported)).not.toMatch(/reviewedAt|historyBinding/);
 });
 
 it('competing reservations reserve ACK growth for every retained unresolved attempt under the unchanged cap', async () => {

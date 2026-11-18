@@ -316,7 +316,7 @@ function WithdrawalContent({
           ? t('privacy.deposit.submitting')
           : needsRefresh
           ? t('privacy.deposit.refresh')
-          : t(review?.previousWithdrawals?.length ? 'privacy.withdrawal.competingConfirm' : 'privacy.withdrawal.confirm')
+          : t('privacy.withdrawal.confirm')
       }
       disabled={busy || spent}
       onPress={needsRefresh ? prepare : confirm}
@@ -540,17 +540,6 @@ function WithdrawalContent({
                   ? t('privacy.withdrawal.directWarning')
                   : t('privacy.withdrawal.relayedWarning')}
               </Text>
-              <Text style={styles.muted}>{t('privacy.withdrawal.pendingProofWarning')}</Text>
-              {!!review.previousWithdrawals?.length && <Card style={s.card}>
-                <Text style={s.label}>{t('privacy.withdrawal.previousAttempts')}</Text>
-                {review.previousWithdrawals.map((prior,index) => <View key={index}>
-                  <Text>{t(`privacy.withdrawal.${prior.mode}`)} · {t(`privacy.withdrawal.${prior.outcome === 'unknown' ? 'unknown' : 'submitted'}`)}</Text>
-                  {prior.recipient && <><Text style={s.label}>{t('privacy.withdrawal.recipient')}</Text><Text selectable style={s.address}>{prior.recipient}</Text></>}
-                  {[...new Set([...(prior.transactionHashes ?? []), ...(prior.transactionHash ? [prior.transactionHash] : [])])].map(hash =>
-                    <View key={hash}><Text style={s.label}>{t('privacy.deposit.txHash')}</Text><Text selectable style={s.address}>{hash}</Text></View>)}
-                  {prior.jobId && <><Text style={s.label}>{t('privacy.withdrawal.jobId')}</Text><Text selectable style={s.address}>{prior.jobId}</Text></>}
-                </View>)}
-              </Card>}
 
               {reviewExpired && (
                 <Text accessibilityLiveRegion="polite" style={styles.muted}>

@@ -161,7 +161,6 @@ export function NativePrivateWithdrawalFixture() {
                     (pool) => pool.id === 'eth-1'
                   )!.address,
                   mode: request.mode,
-                  ...(query.has('history') ? {previousWithdrawals:[{mode:'direct' as const,outcome:'unknown' as const,transactionHash:hash}]} : {}),
                   recipient: request.recipient,
                   account: {
                     id: 0,

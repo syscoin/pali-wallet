@@ -403,8 +403,7 @@ const MasterController = (
     privacyWithdrawals: {
       getRelayers: () => wallet.getPrivacyRelayers(),
       prepareWithdrawal: (request) => wallet.preparePrivacyWithdrawal(request),
-      submitWithdrawal: (intentId, approval) =>
-        wallet.submitPrivacyWithdrawal(intentId, approval),
+      submitWithdrawal: (intentId) => wallet.submitPrivacyWithdrawal(intentId),
       discardWithdrawal: (intentId) =>
         wallet.discardPrivacyWithdrawal(intentId),
       cancelPreparation: () => wallet.cancelPrivacyWithdrawalPreparation(),

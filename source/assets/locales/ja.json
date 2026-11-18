@@ -1940,9 +1940,6 @@
       "backupFailed": "ノートのバックアップを開けませんでした。再試行してください。"
     },
     "withdrawal": {
-      "pendingProofWarning": "以前の出金が完了する可能性があります。続行しても以前の出金は取り消されず、競合するトランザクションが失敗して手数料が発生することがあります。",
-      "competingConfirm": "競合する出金を送信",
-      "previousAttempts": "以前の出金",
       "watchOnlyDirectUnavailable": "直接出金には秘密鍵が必要です。このアカウントは閲覧専用です。",
       "title": "ノートを出金",
       "open": "出金",

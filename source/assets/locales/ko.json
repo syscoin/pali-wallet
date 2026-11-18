@@ -1940,9 +1940,6 @@
       "backupFailed": "노트 백업을 열지 못했습니다. 다시 시도하세요."
     },
     "withdrawal": {
-      "pendingProofWarning": "이전 출금이 완료될 수 있습니다. 계속 진행해도 이전 출금은 취소되지 않으며, 경쟁하는 거래가 실패하고 수수료가 발생할 수 있습니다.",
-      "competingConfirm": "경쟁 출금 제출",
-      "previousAttempts": "이전 출금",
       "watchOnlyDirectUnavailable": "직접 출금하려면 개인 키가 필요합니다. 이 계정은 보기 전용입니다.",
       "title": "노트 출금",
       "open": "출금",

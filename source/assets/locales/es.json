@@ -1940,9 +1940,6 @@
       "backupFailed": "No se pudo abrir la copia de la nota. Reintenta."
     },
     "withdrawal": {
-      "pendingProofWarning": "Un retiro anterior aún puede completarse. Continuar no lo cancela, y una transacción competidora puede fallar y generar comisiones.",
-      "competingConfirm": "Enviar retiro competidor",
-      "previousAttempts": "Retiros anteriores",
       "watchOnlyDirectUnavailable": "El retiro directo requiere una clave privada. Esta cuenta es de solo observación.",
       "title": "Retirar nota",
       "open": "Retirar",

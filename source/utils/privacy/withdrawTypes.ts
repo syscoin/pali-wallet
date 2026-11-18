@@ -25,72 +25,11 @@ export interface IPrivacyWithdrawalPrepareRequest {
   recipient: string;
   relayerId?: string;
 }
-/** Transient approval of one immutable prepared withdrawal; never persisted. */
-export interface IPrivacyWithdrawalSubmitApproval {
-  acceptPreviousWithdrawalRisk: true;
-}
-export interface IPrivacyWithdrawalPreviousAttempt {
-  jobId?: string;
-  mode: 'direct' | 'relayed';
-  outcome: 'unknown' | 'submitted';
-  recipient?: string;
-  transactionHash?: string;
-  transactionHashes?: readonly string[];
-}
 export interface IPrivacyWithdrawalHistory {
   binding: string;
-  previousWithdrawals: readonly Readonly<IPrivacyWithdrawalPreviousAttempt>[];
 }
-export interface IPrivacyWithdrawalSubmissionApproval
-  extends IPrivacyWithdrawalSubmitApproval {
+export interface IPrivacyWithdrawalSubmissionApproval {
   historyBinding: string;
-}
-/** Explicit public projection shared by the prepared review and its renderer. */
-export function capturePreviousWithdrawalAttempts(
-  value: unknown
-): readonly Readonly<IPrivacyWithdrawalPreviousAttempt>[] {
-  if (!Array.isArray(value) || value.length > 64)
-    throw new Error('privacy_withdrawal_invalid');
-  const hash = /^0x[0-9a-fA-F]{64}$/;
-  const jobId = /^[A-Za-z0-9_-]{1,128}$/;
-  return Object.freeze(
-    value.map((row) => {
-      if (
-        !row ||
-        typeof row !== 'object' ||
-        Array.isArray(row) ||
-        !['direct', 'relayed'].includes(row.mode) ||
-        !['unknown', 'submitted'].includes(row.outcome) ||
-        (row.recipient !== undefined &&
-          (typeof row.recipient !== 'string' ||
-            !/^0x[0-9a-fA-F]{40}$/.test(row.recipient))) ||
-        (row.transactionHash !== undefined &&
-          (typeof row.transactionHash !== 'string' ||
-            !hash.test(row.transactionHash))) ||
-        (row.jobId !== undefined &&
-          (typeof row.jobId !== 'string' || !jobId.test(row.jobId))) ||
-        (row.transactionHashes !== undefined &&
-          (!Array.isArray(row.transactionHashes) ||
-            row.transactionHashes.length > 16 ||
-            row.transactionHashes.some(
-              (item: unknown) => typeof item !== 'string' || !hash.test(item)
-            )))
-      )
-        throw new Error('privacy_withdrawal_invalid');
-      return Object.freeze({
-        mode: row.mode,
-        outcome: row.outcome,
-        ...(row.recipient !== undefined ? { recipient: row.recipient } : {}),
-        ...(row.transactionHash !== undefined
-          ? { transactionHash: row.transactionHash }
-          : {}),
-        ...(row.transactionHashes !== undefined
-          ? { transactionHashes: Object.freeze([...row.transactionHashes]) }
-          : {}),
-        ...(row.jobId !== undefined ? { jobId: row.jobId } : {}),
-      });
-    })
-  );
 }
 export interface IPrivacyWithdrawalReview {
   account: IPrivacyWithdrawalSession['context']['account'];
@@ -105,7 +44,6 @@ export interface IPrivacyWithdrawalReview {
   noteId: string;
   poolAddress: string;
   poolId: PrivacyPoolId;
-  previousWithdrawals?: readonly Readonly<IPrivacyWithdrawalPreviousAttempt>[];
   receiveWei: string;
   recipient: string;
   relayerEndpoint?: string;
@@ -207,8 +145,5 @@ export interface IPrivacyWithdrawalsController {
     request: IPrivacyWithdrawalPrepareRequest
   ) => Promise<IPrivacyWithdrawalReview>;
   statusByNote: (noteId: string) => Promise<IPrivacyWithdrawalStatus>;
-  submitWithdrawal: (
-    intentId: string,
-    approval: Readonly<IPrivacyWithdrawalSubmitApproval>
-  ) => Promise<IPrivacyWithdrawalSubmission>;
+  submitWithdrawal: (intentId: string) => Promise<IPrivacyWithdrawalSubmission>;
 }

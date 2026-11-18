@@ -25,7 +25,6 @@ import {
 } from '../utils/privacy/withdrawalMetadata.ts';
 import { MAX_PRIVACY_RELAY_TRANSACTIONS } from '../utils/privacy/withdrawalTransactionTypes.ts';
 import {
-  capturePreviousWithdrawalAttempts,
   type IPrivacyWithdrawalHistory,
   type IPrivacyWithdrawalSubmissionApproval,
 } from '../utils/privacy/withdrawTypes.ts';
@@ -525,42 +524,17 @@ function withdrawalHistoryBinding(note: IStoredNote): string {
   );
 }
 
-function captureWithdrawalHistory(
-  note: IStoredNote
-): Readonly<IPrivacyWithdrawalHistory> {
-  const imported = note.restoreGuard?.history?.withdrawals ?? [];
-  const local = note.withdrawal
-    ? [...(note.withdrawal.retired ?? []), note.withdrawal]
-    : [];
-  const previousWithdrawals = capturePreviousWithdrawalAttempts([
-    ...imported.map((entry) => ({
-      ...entry,
-      recipient: entry.publicInputs?.recipient,
-    })),
-    ...local.map((entry) => ({
-      ...entry,
-      outcome: entry.phase,
-      recipient: entry.publicInputs?.recipient,
-    })),
-  ]);
-  return Object.freeze({
-    binding: withdrawalHistoryBinding(note),
-    previousWithdrawals,
-  });
-}
-
 function captureWithdrawalApproval(
   approval: Readonly<IPrivacyWithdrawalSubmissionApproval> | undefined
 ): Readonly<IPrivacyWithdrawalSubmissionApproval> | undefined {
   if (approval === undefined) return undefined;
-  const { acceptPreviousWithdrawalRisk, historyBinding } = approval;
+  const { historyBinding } = approval;
   if (
-    acceptPreviousWithdrawalRisk !== true ||
     typeof historyBinding !== 'string' ||
     !/^0x[0-9a-f]{64}$/.test(historyBinding)
   )
     throw new Error('privacy_withdrawal_attempt_invalid');
-  return Object.freeze({ acceptPreviousWithdrawalRisk, historyBinding });
+  return Object.freeze({ historyBinding });
 }
 
 function assertWithdrawalHistoryApproval(
@@ -1520,7 +1494,7 @@ export function createPrivateVaultController(
           context = captured;
           const { manifest } = await load(captured);
           const note = findNote(manifest, noteId);
-          history = captureWithdrawalHistory(note);
+          history = Object.freeze({ binding: withdrawalHistoryBinding(note) });
           const identity = await assertWithdrawalNoteAvailable(captured, note);
           await assertProfile(captured);
           assertRestoreCurrent = restoreFence(captured);

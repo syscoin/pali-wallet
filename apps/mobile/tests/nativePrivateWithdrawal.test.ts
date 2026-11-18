@@ -582,8 +582,9 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
       noop
     , testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    const previousIntent = model.getSnapshot().review!.intentId;
     f.loseResponse(true);
-    await model.confirm(model.getSnapshot().review!.intentId);
+    await model.confirm(previousIntent);
     assert.equal(model.getSnapshot().phase, 'unknown');
     assert.match(
       model.getSnapshot().result!.signedTransactionHash!,
@@ -604,7 +605,11 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
     assert.equal(resumed.getSnapshot().status?.phase, 'unknown');
     await resumed.prepare({ recipient: RECIPIENT, mode: 'direct' });
     assert.equal(resumed.getSnapshot().phase, 'review');
-    assert.deepEqual(resumed.getSnapshot().review!.previousWithdrawals,[{mode:'direct',outcome:'unknown',recipient:RECIPIENT}]);
+    const freshReview = resumed.getSnapshot().review!;
+    assert.notEqual(freshReview.intentId, previousIntent);
+    assert.equal(freshReview.recipient, RECIPIENT);
+    assert.equal(freshReview.mode, 'direct');
+    assert.equal(resumed.getSnapshot().status?.phase, 'unknown');
     assert.equal(f.posted.length, 2, 'a fresh review never resubmits before explicit Confirm');
     assert.deepEqual((await f.privateNotes())[0]!.withdrawal,oldJournal,'preparation preserves the prior journal');
     const signed=await f.storage.signedRecords.read((await f.storage.recovery.readIdentity())!.root!.profileId);

@@ -8,7 +8,6 @@ import {
   validatePrivacyRelayerEndpoint,
 } from '../utils/privacy/relayers.ts';
 import { readPrivacyRelayerJob } from '../utils/privacy/relayJobs.ts';
-import { capturePreviousWithdrawalAttempts } from '../utils/privacy/withdrawTypes.ts';
 
 import type {
   IPrivacyRelayerDirectory,
@@ -78,7 +77,6 @@ const PUBLIC_ERRORS = new Set([
   'privacy_withdrawal_nonce_conflict',
   'privacy_withdrawal_attempt_invalid',
   'privacy_withdrawal_quote_changed',
-  'privacy_withdrawal_risk_not_accepted',
   'privacy_withdrawal_insufficient_funds',
 ]);
 const ABI = new Interface([
@@ -566,9 +564,6 @@ export function createPrivacyWithdrawalsController(
                 )
                   throw fail('privacy_withdrawal_note_invalid');
                 intent.historyBinding = history.binding;
-                const previousWithdrawals = capturePreviousWithdrawalAttempts(
-                  history.previousWithdrawals
-                );
                 const access = await host.getSnapshot(poolId);
                 if (typeof access?.getPath !== 'function')
                   throw fail('privacy_verification_pending');
@@ -713,9 +708,6 @@ export function createPrivacyWithdrawalsController(
                   intentId: id,
                   noteId: request.noteId,
                   poolId,
-                  ...(previousWithdrawals.length
-                    ? { previousWithdrawals }
-                    : {}),
                   amount: pool.amount,
                   poolAddress: pool.address,
                   mode: request.mode,
@@ -808,16 +800,7 @@ export function createPrivacyWithdrawalsController(
         }
       }
     },
-    submitWithdrawal: async (id, approval) => {
-      if (
-        !approval ||
-        typeof approval !== 'object' ||
-        Array.isArray(approval) ||
-        Object.keys(approval).length !== 1 ||
-        approval.acceptPreviousWithdrawalRisk !== true
-      )
-        throw fail('privacy_withdrawal_risk_not_accepted');
-
+    submitWithdrawal: async (id) => {
       const intent = intents.get(id);
       if (!intent?.attempt || now() >= intent.expiresAt!) {
         remove(id);
@@ -833,10 +816,7 @@ export function createPrivacyWithdrawalsController(
       }
       const attempt = intent.attempt;
       if (!intent.historyBinding) throw fail('privacy_withdrawal_note_invalid');
-      const accepted = Object.freeze({
-        acceptPreviousWithdrawalRisk: true as const,
-        historyBinding: intent.historyBinding,
-      });
+      const accepted = Object.freeze({ historyBinding: intent.historyBinding });
       if (submitting.has(attempt.noteId))
         throw fail('privacy_withdrawal_note_busy');
       submitting.add(attempt.noteId);

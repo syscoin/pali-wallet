@@ -1940,9 +1940,6 @@
       "backupFailed": "无法打开票据备份。请重试。"
     },
     "withdrawal": {
-      "pendingProofWarning": "任何先前的提款仍可能完成。继续操作不会取消该提款，竞争交易可能失败并产生手续费。",
-      "competingConfirm": "提交竞争提款",
-      "previousAttempts": "先前的提款",
       "watchOnlyDirectUnavailable": "直接提款需要私钥。此账户为只读账户。",
       "title": "凭证提款",
       "open": "提款",

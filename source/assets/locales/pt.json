@@ -1940,9 +1940,6 @@
       "backupFailed": "Não foi possível abrir o backup da nota. Tente novamente."
     },
     "withdrawal": {
-      "pendingProofWarning": "Um saque anterior ainda pode ser concluído. Continuar não o cancela, e uma transação concorrente pode falhar e gerar taxas.",
-      "competingConfirm": "Enviar saque concorrente",
-      "previousAttempts": "Saques anteriores",
       "watchOnlyDirectUnavailable": "O saque direto requer uma chave privada. Esta conta é somente para observação.",
       "title": "Sacar nota",
       "open": "Sacar",

@@ -1940,9 +1940,6 @@
       "backupFailed": "Die Notizsicherung konnte nicht geöffnet werden. Versuche es erneut."
     },
     "withdrawal": {
-      "pendingProofWarning": "Eine frühere Auszahlung kann weiterhin abgeschlossen werden. Wenn du fortfährst, wird sie nicht storniert. Eine konkurrierende Transaktion kann fehlschlagen und Gebühren verursachen.",
-      "competingConfirm": "Konkurrierende Auszahlung senden",
-      "previousAttempts": "Frühere Auszahlungen",
       "watchOnlyDirectUnavailable": "Für eine direkte Auszahlung ist ein privater Schlüssel erforderlich. Dieses Konto dient nur zur Beobachtung.",
       "title": "Notiz auszahlen",
       "open": "Auszahlen",

@@ -160,7 +160,7 @@ function setup() {
     }),
     withWithdrawalNote: jest.fn(async (_id, session, use) => {
       session.assertCurrent();
-      return use(NOTE, 'eth-1', { binding: HASH, previousWithdrawals: [] });
+      return use(NOTE, 'eth-1', { binding: HASH });
     }),
     reserveWithdrawalAttempt: jest.fn(
       async (_attempt, session, _lifetime, onIdentity) => {
@@ -441,9 +441,7 @@ it.each([
       await release.promise;
     });
   }
-  const submission = controller.submitWithdrawal(review.intentId, {
-    acceptPreviousWithdrawalRisk: true,
-  });
+  const submission = controller.submitWithdrawal(review.intentId);
   if (scenario === 'reservation interrupted') {
     const rejected = expect(submission).rejects.toMatchObject({
       transactionNotBroadcast: true,

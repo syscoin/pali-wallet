@@ -5116,13 +5116,9 @@ class MainController {
     return controller.prepareWithdrawal(request);
   }
 
-  public async submitPrivacyWithdrawal(
-    intentId: string,
-    approval: Parameters<IPrivacyWithdrawalsController['submitWithdrawal']>[1]
-  ) {
+  public async submitPrivacyWithdrawal(intentId: string) {
     return (await this.getPrivacyWithdrawalsController()).submitWithdrawal(
-      intentId,
-      approval
+      intentId
     );
   }
 

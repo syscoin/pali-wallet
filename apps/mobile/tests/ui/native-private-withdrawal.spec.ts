@@ -422,7 +422,6 @@ test('restored provenance uses only the ordinary withdrawal review and confirmat
   await expect(page.getByRole('button',{name:'Review restored note',exact:true})).toHaveCount(0);
   await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   await prepare(page);
-  await expect(page.getByText('Any earlier withdrawal may still complete. Continuing does not cancel it, and a competing transaction may fail and cost fees.')).toBeVisible();
   expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(0);
   await page.getByRole('button',{name:'Confirm withdrawal',exact:true}).click();
   expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(1);
@@ -528,7 +527,7 @@ test('proven-unsent failure needs a fresh review before another confirmation', a
   ).toHaveLength(1);
 });
 
-test('saved withdrawal history remains visible and fresh verified pool status allows a competing review', async ({
+test('saved withdrawal status remains visible and a fresh pool check enables the normal confirmation', async ({
   page,
 }) => {
   await page.goto('/?private-withdrawal&history');
@@ -552,9 +551,10 @@ test('saved withdrawal history remains visible and fresh verified pool status al
   ).not.toContain('note:status');
   await page.getByRole('button',{name:'Check status',exact:true}).click();
   await prepare(page);
-  await expect(page.getByText('Previous withdrawals',{exact:true})).toBeVisible();
+  await expect(page.getByText('Previous withdrawals', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Submit competing withdrawal', exact: true })).toHaveCount(0);
   expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(0);
-  await page.getByRole('button',{name:'Submit competing withdrawal',exact:true}).click();
+  await page.getByRole('button',{name:'Confirm withdrawal',exact:true}).click();
   expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(1);
 });
 

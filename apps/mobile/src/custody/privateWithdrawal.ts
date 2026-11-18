@@ -198,9 +198,7 @@ export class NativePrivateWithdrawal {
     let result: IPrivacyWithdrawalSubmission | undefined;
     try {
       this.check();
-      result = await this.withdrawals.submitWithdrawal(intentId, {
-        acceptPreviousWithdrawalRisk: true,
-      });
+      result = await this.withdrawals.submitWithdrawal(intentId);
       this.check();
       this.publish({ phase: result.phase, result });
     } catch (error) {

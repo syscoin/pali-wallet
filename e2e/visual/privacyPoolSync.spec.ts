@@ -1296,11 +1296,6 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         );
         await expect(detail(en.privacy.withdrawal.receive)).toHaveText('1 ETH');
         await expect(
-          withdrawal.getByText(en.privacy.withdrawal.pendingProofWarning, {
-            exact: true,
-          })
-        ).toBeVisible();
-        await expect(
           withdrawal.getByRole('button', {
             name: en.privacy.withdrawal.confirm,
             exact: true,
@@ -1469,27 +1464,14 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         await expect(detail(en.privacy.withdrawal.gasPayer)).toHaveText(
           fixture.evmAddresses[1]
         );
-        await expect(
-          withdrawal.getByText(en.privacy.withdrawal.pendingProofWarning, {
-            exact: true,
-          })
-        ).toBeVisible();
-        const prior = withdrawal.getByRole('region', {
-          name: en.privacy.withdrawal.previousAttempts,
-        });
-        await expect(prior).toContainText(WITHDRAWAL_RECIPIENT);
-        await expect(
-          detail(en.privacy.withdrawal.recipient).first()
-        ).toHaveText(COMPETING_RECIPIENT);
-        await expect(prior).toContainText(en.privacy.withdrawal.unknown);
-        await expect(
-          prior.getByText(en.privacy.deposit.txHash, { exact: true })
-        ).toHaveCount(0);
         const confirmCompeting = withdrawal.getByRole('button', {
-          name: en.privacy.withdrawal.competingConfirm,
+          name: en.privacy.withdrawal.confirm,
           exact: true,
         });
         await expect(confirmCompeting).toBeEnabled();
+        await expect(
+          detail(en.privacy.withdrawal.recipient).first()
+        ).toHaveText(COMPETING_RECIPIENT);
         await captureReview('withdrawal');
         await withdrawal
           .getByRole('button', { name: en.buttons.cancel, exact: true })
@@ -1498,7 +1480,6 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         expect(await encryptedNotesFingerprint(page)).toBe(beforeReview);
         await openReview(COMPETING_RECIPIENT);
         await expect(confirmCompeting).toBeEnabled({ timeout: 120000 });
-        await expect(prior).toContainText(WITHDRAWAL_RECIPIENT);
         await expect(
           detail(en.privacy.withdrawal.recipient).first()
         ).toHaveText(COMPETING_RECIPIENT);

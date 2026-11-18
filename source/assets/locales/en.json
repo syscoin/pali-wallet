@@ -1940,9 +1940,6 @@
       "backupFailed": "Could not open the note backup. Try again."
     },
     "withdrawal": {
-      "pendingProofWarning": "Any earlier withdrawal may still complete. Continuing does not cancel it, and a competing transaction may fail and cost fees.",
-      "competingConfirm": "Submit competing withdrawal",
-      "previousAttempts": "Previous withdrawals",
       "watchOnlyDirectUnavailable": "Direct withdrawal requires a private key. This account is watch-only.",
       "title": "Withdraw note",
       "open": "Withdraw",

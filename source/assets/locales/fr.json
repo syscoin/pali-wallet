@@ -1940,9 +1940,6 @@
       "backupFailed": "Impossible d’ouvrir la sauvegarde de la note. Réessayez."
     },
     "withdrawal": {
-      "pendingProofWarning": "Un retrait précédent peut encore aboutir. Continuer ne l’annule pas, et une transaction concurrente peut échouer et entraîner des frais.",
-      "competingConfirm": "Soumettre un retrait concurrent",
-      "previousAttempts": "Retraits précédents",
       "watchOnlyDirectUnavailable": "Un retrait direct nécessite une clé privée. Ce compte est en lecture seule.",
       "title": "Retirer une note",
       "open": "Retirer",
