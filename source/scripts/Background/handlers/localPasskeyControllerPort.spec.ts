@@ -17,17 +17,19 @@ function event() {
 }
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(
-  sender = {
+  sender: chrome.runtime.MessageSender = {
     id: extensionId,
     url: `chrome-extension://${extensionId}/app.html`,
     documentId: 'document-1',
     frameId: 0,
-  }
+  },
+  getContexts?: (filter: chrome.runtime.ContextFilter) => Promise<unknown[]>
 ) {
   const runtime = {
     id: extensionId,
     getURL: (path: string) => `chrome-extension://${extensionId}/${path}`,
     onConnect: event(),
+    getContexts,
   };
   const port = {
     name: LOCAL_PASSKEY_PORT,
@@ -94,6 +96,69 @@ describe('local passkey document Port', () => {
     expect(f.create).not.toHaveBeenCalled();
     f.dispose();
   });
+  const popupSender = {
+    id: extensionId,
+    url: `chrome-extension://${extensionId}/app.html#/settings/local-passkey`,
+  };
+
+  const topLevelPopup = {
+    contextType: 'POPUP',
+    documentId: 'popup-document',
+    frameId: 0,
+  };
+
+  it('admits the top-level Chrome toolbar popup even without sender IDs', async () => {
+    const getContexts = jest.fn().mockResolvedValue([topLevelPopup]);
+    const f = fixture(popupSender, getContexts);
+    f.port.onMessage.emit({ id: 1, method: 'status', params: [] });
+    await settle();
+    expect(getContexts).toHaveBeenCalledWith({
+      tabIds: [-1],
+      documentUrls: [popupSender.url],
+    });
+    expect(f.controller.status).toHaveBeenCalledTimes(1);
+    expect(f.port.postMessage).toHaveBeenCalledWith({
+      id: 1,
+      result: { enabled: true },
+    });
+    f.dispose();
+  });
+
+  it.each([
+    { contexts: [] },
+    { contexts: [{ ...topLevelPopup, contextType: 'OFFSCREEN_DOCUMENT' }] },
+    { contexts: [{ ...topLevelPopup, frameId: 1 }] },
+    { contexts: [topLevelPopup, { ...topLevelPopup, frameId: 1 }] },
+  ])(
+    'refuses an unverified or ambiguous popup sender (%p)',
+    async ({ contexts }) => {
+      const f = fixture(popupSender, jest.fn().mockResolvedValue(contexts));
+      f.port.onMessage.emit({ id: 1, method: 'status', params: [] });
+      await settle();
+      expect(f.create).not.toHaveBeenCalled();
+      expect(f.port.disconnect).toHaveBeenCalledTimes(1);
+      f.dispose();
+    }
+  );
+
+  it('retires a popup that disconnects while its context is being checked', async () => {
+    let confirmPopup!: (contexts: unknown[]) => void;
+    const f = fixture(
+      popupSender,
+      () =>
+        new Promise((resolve) => {
+          confirmPopup = resolve;
+        })
+    );
+    f.port.onMessage.emit({ id: 1, method: 'status', params: [] });
+    f.port.onDisconnect.emit();
+    confirmPopup([topLevelPopup]);
+    await settle();
+    expect(f.create).not.toHaveBeenCalled();
+    expect(f.port.postMessage).not.toHaveBeenCalled();
+    f.dispose();
+  });
+
   it('keeps the same owner through prompts and retires after the final response', async () => {
     const f = fixture();
     const prompt = {

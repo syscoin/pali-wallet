@@ -16,7 +16,7 @@ export function installLocalPasskeyControllerPorts(
   create: (authority: Authority) => LocalPasskeyController,
   runtime: Pick<
     typeof chrome.runtime,
-    'onConnect' | 'getURL' | 'id'
+    'onConnect' | 'getContexts' | 'getURL' | 'id'
   > = chrome.runtime
 ): () => void {
   const owners = new Set<() => void>();
@@ -24,26 +24,33 @@ export function installLocalPasskeyControllerPorts(
   const connect = (port: chrome.runtime.Port) => {
     if (port.name !== LOCAL_PASSKEY_PORT) return;
     const sender = port.sender;
-    let walletDocument = false;
+    const senderUrl = sender?.url ?? '';
+    const documentId = sender?.documentId;
+    let walletAppDocument = false;
     try {
-      walletDocument =
-        new URL(sender?.url ?? '').pathname === '/app.html' ||
-        isExternalWalletUrl(sender?.url ?? '');
+      walletAppDocument = new URL(senderUrl).pathname === '/app.html';
     } catch {
       /* Refuse malformed sender URLs. */
     }
+    const toolbarPopup =
+      walletAppDocument &&
+      sender?.tab === undefined &&
+      sender?.frameId === undefined &&
+      typeof runtime.getContexts === 'function';
     if (
       closed ||
       owners.size >= 4 ||
-      !walletDocument ||
+      (!walletAppDocument && !isExternalWalletUrl(senderUrl)) ||
       !isTrustedExtensionPageSender(sender!, runtime) ||
-      typeof sender?.documentId !== 'string' ||
-      !sender.documentId ||
-      sender.frameId !== 0
+      (!toolbarPopup &&
+        (sender?.frameId !== 0 ||
+          typeof documentId !== 'string' ||
+          !documentId))
     ) {
       port.disconnect();
       return;
     }
+    let verified = !toolbarPopup;
     const lifetime = new AbortController();
     let controller: LocalPasskeyController | undefined;
     let busy = false,
@@ -86,6 +93,25 @@ export function installLocalPasskeyControllerPorts(
           throw new Error('LOCAL_PASSKEY_UNAVAILABLE');
         busy = true;
         lastId = id;
+        if (!verified) {
+          // Chrome omits the sender frame and document IDs in the action
+          // popup. Require its browser-reported URL to identify exactly one
+          // non-tab context, then verify that it is the top-level popup.
+          const contexts = await runtime.getContexts({
+            tabIds: [-1],
+            documentUrls: [senderUrl],
+            ...(documentId ? { documentIds: [documentId] } : {}),
+          });
+          authority.assertCurrent();
+          const [context] = contexts;
+          if (
+            contexts.length !== 1 ||
+            context?.contextType !== 'POPUP' ||
+            context.frameId !== 0
+          )
+            throw new Error('LOCAL_PASSKEY_UNAVAILABLE');
+          verified = true;
+        }
         controller ??= create(authority);
         let result: unknown;
         switch (command.method) {
