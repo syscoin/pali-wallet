@@ -92,7 +92,7 @@ test('unsigned Smart collectible shortfall shows localized amount feedback inste
   } finally { f.close(); }
 });
 
-test('Smart payer quote failure keeps Activity advice and distinguishes confirmed funding', () => {
+test('Smart payer quote failure distinguishes a signed instruction from confirmed funding', () => {
   const f = fixture();
   try {
     const failed = {
@@ -105,7 +105,7 @@ test('Smart payer quote failure keeps Activity advice and distinguishes confirme
       const notices = f.render({ ...failed, transactionHash }).filter(node => node.type === 'Notice');
       assert(notices.some(node => node.props.title === 'Fee unavailable' && node.props.body === (transactionHash
         ? 'Account funding confirmed. The requested operation was not submitted. Check Activity before trying again.'
-        : 'Your transaction was signed but not submitted. Check Activity before trying again.')));
+        : 'Pali did not submit the transaction. The signed Smart Account instruction may still execute.')));
     }
   } finally { f.close(); }
 });

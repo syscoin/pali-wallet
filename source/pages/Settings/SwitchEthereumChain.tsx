@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -10,6 +10,10 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 import { waitForNetworkSwitch } from 'utils/stateWaitUtils';
 
 import { NetworkTypeBadge } from './NetworkTypeBadge';
@@ -27,14 +31,38 @@ const SwitchChain: React.FC = () => {
     activeNetwork.kind,
     activeNetwork.label,
   ] as const).current;
-  const networks = useSelector(
-    (state: RootState) => state.vaultGlobal.networks
+  const registeredNetwork = useSelector(
+    (state: RootState) => state.vaultGlobal.networks.ethereum[chainId]
   );
-  const network = networks.ethereum[chainId];
+  const registration = networkRegistrationFingerprint(registeredNetwork);
+  const review = useRef({ registration, retired: false, live: false });
+  const reviewedRegistration = review.current.registration;
+  const network =
+    !review.current.retired && registration === reviewedRegistration
+      ? registeredNetwork
+      : undefined;
+  const available = !!network;
+  const submitting = useRef(false);
+  useLayoutEffect(() => {
+    const owner = review.current;
+    owner.retired ||= !available;
+    owner.live = available;
+    return () => {
+      owner.live = false;
+    };
+  }, [available]);
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
 
   const onSubmit = async () => {
+    if (
+      !network ||
+      !reviewedRegistration ||
+      !review.current.live ||
+      submitting.current
+    )
+      return;
+    submitting.current = true;
     setLoading(true);
     setSwitchError('');
     try {
@@ -42,23 +70,31 @@ const SwitchChain: React.FC = () => {
       await controllerEmitter(
         ['wallet', 'setActiveNetwork'],
         // Balance refreshes must not hold a dapp switch approval open.
-        [network, false]
+        [network, false, reviewedRegistration]
       );
+      if (!review.current.live) return;
       try {
         await waitForNetworkSwitch(network.chainId, 5000);
       } catch (_e) {
         // Best-effort; continue without blocking close
       }
+      if (!review.current.live) return;
       setConfirmed(true);
-      setLoading(false);
       // Dispatch MUST be right before window.close for subsequent popups timing
       dispatchBackgroundEvent(`${eventName}.${host}`, null);
       window.close();
     } catch (networkError) {
+      if (networkError?.message === NETWORK_SWITCH_REVIEW_CHANGED) {
+        review.current.retired = true;
+        review.current.live = false;
+        setSwitchError(t('settings.unknownNetwork'));
+        return;
+      }
       console.error('Network switch failed:', networkError);
       setSwitchError(networkError?.message || t('send.failed'));
+    } finally {
+      submitting.current = false;
       setLoading(false);
-      // Don't throw here - just reset the loading state so user can try again
     }
   };
 
@@ -94,16 +130,16 @@ const SwitchChain: React.FC = () => {
           {t('settings.newChain')}
         </p>
         <ChainIcon
-          chainId={network.chainId}
+          chainId={network?.chainId ?? chainId}
           size={80}
           networkKind={INetworkType.Ethereum}
           fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
         />
         <p className="w-full text-sm [overflow-wrap:anywhere]">
-          {network.label || t('settings.unavailable')}
+          {network?.label || t('settings.unavailable')}
         </p>
         <p className="w-full text-xs text-content-secondary [overflow-wrap:anywhere]">
-          {t('send.chainId')}: {network.chainId}
+          {t('send.chainId')}: {network?.chainId ?? chainId}
         </p>
         <NetworkTypeBadge kind={INetworkType.Ethereum} />
       </section>
@@ -126,12 +162,12 @@ const SwitchChain: React.FC = () => {
         </div>
 
         <div className="w-full px-4 flex flex-wrap items-center justify-between gap-y-3">
-          {switchError && (
+          {(!network || switchError) && (
             <p
               role="alert"
               className="mb-3 w-full break-words text-sm text-warning-error"
             >
-              {switchError}
+              {network ? switchError : t('settings.unknownNetwork')}
             </p>
           )}
           <Button
@@ -153,7 +189,7 @@ const SwitchChain: React.FC = () => {
           <Button
             variant="primary"
             type="submit"
-            disabled={confirmed || loading}
+            disabled={!network || confirmed || loading}
             loading={loading}
             onClick={onSubmit}
             icon={

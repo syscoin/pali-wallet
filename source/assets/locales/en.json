@@ -3903,6 +3903,7 @@
         "checkGuardianPolicyStatus": "Check guardian policy status",
         "checkCallsStatus": "Check calls status",
         "checkTransferStatus": "Check transfer status",
+        "unsubmittedOperationQuoteUnavailable": "Pali did not submit the transaction. The signed Smart Account instruction may still execute.",
         "fundedOperationQuoteUnavailable": "Account funding confirmed. The requested operation was not submitted. Check Activity before trying again.",
         "checkDeploymentStatus": "Check deployment status",
         "confirmedTransaction": "Confirmed transaction",

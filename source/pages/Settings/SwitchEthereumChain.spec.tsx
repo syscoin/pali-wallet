@@ -10,23 +10,33 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
-import { INetworkType } from 'types/network';
+import { INetwork, INetworkType } from 'types/network';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 
 import SwitchChain from './SwitchEthereumChain';
 
 const mockEmitter = jest.fn();
 const mockDispatch = jest.fn();
 const mockWaitForSwitch = jest.fn();
-const mockNetwork = {
+const mockNetwork: INetwork = {
   chainId: 1,
+  currency: 'ETH',
   kind: INetworkType.Ethereum,
   label: 'Ethereum',
+  slip44: 60,
+  url: 'https://ethereum.example',
 };
-const mockSepoliaNetwork = {
+const mockSepoliaNetwork: INetwork = {
+  ...mockNetwork,
   chainId: 11155111,
-  kind: INetworkType.Ethereum,
   label: 'Ethereum Sepolia',
+  url: 'https://sepolia.example',
 };
+const mockNetworks = { 1: mockNetwork, 11155111: mockSepoliaNetwork };
+let mockRegisteredNetworks: Record<number, INetwork>;
 let mockQueryChainId = 1;
 let mockActiveNetwork = {
   chainId: 57057,
@@ -50,7 +60,7 @@ jest.mock('react-redux', () => ({
       vault: { activeNetwork: mockActiveNetwork },
       vaultGlobal: {
         networks: {
-          ethereum: { 1: mockNetwork, 11155111: mockSepoliaNetwork },
+          ethereum: mockRegisteredNetworks,
         },
       },
     }),
@@ -75,6 +85,7 @@ jest.mock('utils/stateWaitUtils', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockQueryChainId = 1;
+  mockRegisteredNetworks = { ...mockNetworks };
   mockActiveNetwork = {
     chainId: 57057,
     kind: INetworkType.Ethereum,
@@ -124,7 +135,11 @@ it('identifies mainnet and Sepolia despite shared icons and preserves the source
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'setActiveNetwork'],
-    [mockSepoliaNetwork, false]
+    [
+      mockSepoliaNetwork,
+      false,
+      networkRegistrationFingerprint(mockSepoliaNetwork),
+    ]
   );
 });
 
@@ -143,7 +158,7 @@ it('Confirm preserves the ordinary switch and completion sequence', async () => 
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'setActiveNetwork'],
-    [mockNetwork, false]
+    [mockNetwork, false, networkRegistrationFingerprint(mockNetwork)]
   );
   expect(mockWaitForSwitch).toHaveBeenCalledWith(1, 5000);
   expect(mockDispatch).toHaveBeenCalledWith(
@@ -183,4 +198,73 @@ it('a failed switch restores Reject without confirming the approval', async () =
   expect(mockDispatch).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'buttons.reject' }));
   expect(window.close).toHaveBeenCalledTimes(1);
+});
+
+it('shows an unavailable target and permits Reject when it was removed before opening', () => {
+  mockRegisteredNetworks = {};
+  render(<SwitchChain />);
+
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.unknownNetwork'
+  );
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.reject' }));
+  expect(window.close).toHaveBeenCalledTimes(1);
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockDispatch).not.toHaveBeenCalled();
+});
+
+it('does not adopt a new registration at the same chain ID after review', () => {
+  const { rerender } = render(<SwitchChain />);
+  mockRegisteredNetworks = { 1: { ...mockNetwork, label: 'Replacement RPC' } };
+  rerender(<SwitchChain />);
+
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.unknownNetwork'
+  );
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  expect(screen.queryByText('Replacement RPC')).not.toBeInTheDocument();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('localizes a worker registration refusal before the view has refreshed', async () => {
+  mockEmitter.mockRejectedValueOnce(new Error(NETWORK_SWITCH_REVIEW_CHANGED));
+  render(<SwitchChain />);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'settings.unknownNetwork'
+  );
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'buttons.reject' })).toBeEnabled();
+  expect(mockDispatch).not.toHaveBeenCalled();
+});
+
+it('does not report a late switch result after the target registration disappears', async () => {
+  let finish!: () => void;
+  mockEmitter.mockReturnValueOnce(
+    new Promise<void>((resolve) => {
+      finish = resolve;
+    })
+  );
+  const { rerender } = render(<SwitchChain />);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  mockRegisteredNetworks = {};
+  rerender(<SwitchChain />);
+  mockRegisteredNetworks = { ...mockNetworks };
+  rerender(<SwitchChain />);
+  await act(async () => finish());
+
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.unknownNetwork'
+  );
+  expect(screen.getByRole('button', { name: 'buttons.reject' })).toBeEnabled();
+  expect(mockDispatch).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
 });

@@ -27,7 +27,10 @@ import vaultCache from 'state/vaultCache';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { networkSwitchMutex, walletPersistenceMutex } from 'utils/asyncMutex';
-import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -243,6 +246,28 @@ describe('network removal cannot delete a switching or active vault', () => {
       expect(JSON.stringify(state)).toBe(before);
       expect(chromeStorage.removeItem).not.toHaveBeenCalled();
       expect(wallet.keyrings.get(57)).toBe(sourceKeyring);
+    }
+  );
+
+  it.each([undefined, 'https://replacement.example'])(
+    'rejects a reviewed registration when the worker now sees endpoint %s',
+    async (url) => {
+      const reviewed = { ...target, kind: INetworkType.Ethereum, slip44: 60 };
+      if (url) {
+        state.vaultGlobal.networks.ethereum[reviewed.chainId] = {
+          ...reviewed,
+          url,
+        };
+      }
+      await expect(
+        wallet.setActiveNetwork(
+          reviewed,
+          false,
+          networkRegistrationFingerprint(reviewed)
+        )
+      ).rejects.toThrow(NETWORK_SWITCH_REVIEW_CHANGED);
+      expect(wallet.networkRequestGeneration).toBe(0);
+      expect(wallet.stopAllRapidPolling).not.toHaveBeenCalled();
     }
   );
 

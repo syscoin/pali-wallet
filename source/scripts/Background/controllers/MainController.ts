@@ -363,6 +363,7 @@ import {
 } from 'utils/nativeBalanceCache';
 import { getNetworkChain } from 'utils/network';
 import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
   networkRegistrationFingerprint,
   resolvePinnedUtxoBackendChain,
   withPinnedUtxoBackendChain,
@@ -7415,7 +7416,8 @@ class MainController {
 
   public async setActiveNetwork(
     network: INetwork,
-    syncUpdates = false
+    syncUpdates = false,
+    expectedRegistration?: string
   ): Promise<{ chainId: string; networkVersion: number }> {
     if (this.isRemovingNetwork) {
       throw new Error(NETWORK_SWITCH_REMOVAL_ERROR);
@@ -7424,6 +7426,15 @@ class MainController {
       throw new Error(NETWORK_SWITCH_RESET_ERROR);
     }
     this.assertWalletReadyForSigning();
+    if (
+      expectedRegistration !== undefined &&
+      (networkRegistrationFingerprint(network) !== expectedRegistration ||
+        networkRegistrationFingerprint(
+          store.getState().vaultGlobal.networks[network.kind]?.[network.chainId]
+        ) !== expectedRegistration)
+    ) {
+      throw new Error(NETWORK_SWITCH_REVIEW_CHANGED);
+    }
     const requestGeneration = ++this.networkRequestGeneration;
     this.activeFiatReads?.forEach((owner) => owner.abort());
     this.postSwitchHistorySave = undefined;

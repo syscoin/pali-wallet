@@ -955,7 +955,7 @@ export function NativeSmartAccountOperationContent({
               : state.payerQuoteUnavailable
               ? state.transactionHash
                 ? t('mobile.recoveryStatusViews.operation.fundedOperationQuoteUnavailable')
-                : t('mobile.sendAssetViews.evm.asset_state_saved_message')
+                : t('mobile.recoveryStatusViews.operation.unsubmittedOperationQuoteUnavailable')
               : state.error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED ? t('send.smartAccountPayerFeeExceeded') : state.error}
             tone="amber"
           />

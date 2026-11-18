@@ -9,7 +9,8 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
-import { INetworkType } from 'types/network';
+import { INetwork, INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import SwitchChain from './SwitchEthereumChain';
 import SwitchUtxoEvm from './SwitchNetworkUtxoEvm';
@@ -18,10 +19,12 @@ const mockEmitter = jest.fn();
 const mockDispatch = jest.fn();
 const mockWaitForSwitch = jest.fn();
 let mockActiveNetwork: any;
-const target = {
+const target: INetwork = {
   chainId: 5700,
+  currency: 'ETH',
   kind: INetworkType.Ethereum,
   label: 'Target network',
+  slip44: 60,
   url: 'https://target.invalid',
 };
 const mockQuery = {
@@ -244,7 +247,9 @@ describe.each([
       await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
       expect(mockEmitter).toHaveBeenCalledWith(
         ['wallet', 'setActiveNetwork'],
-        [target, false]
+        label === 'Ethereum'
+          ? [target, false, networkRegistrationFingerprint(target)]
+          : [target, false]
       );
       expect(mockWaitForSwitch).toHaveBeenCalledWith(target.chainId, 5000);
       expect(mockDispatch).toHaveBeenCalledWith(

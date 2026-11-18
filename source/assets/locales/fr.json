@@ -3903,6 +3903,7 @@
         "checkGuardianPolicyStatus": "Vérifier l’état de la politique des gardiens",
         "checkCallsStatus": "Vérifier l’état des appels",
         "checkTransferStatus": "Vérifier l’état du transfert",
+        "unsubmittedOperationQuoteUnavailable": "Pali n’a pas envoyé la transaction. L’instruction signée du compte intelligent peut encore être exécutée.",
         "fundedOperationQuoteUnavailable": "L’approvisionnement du compte a été confirmé. L’opération demandée n’a pas été envoyée. Consultez l’activité avant de réessayer.",
         "checkDeploymentStatus": "Vérifier l’état du déploiement",
         "confirmedTransaction": "Transaction confirmée",
