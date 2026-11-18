@@ -1,13 +1,17 @@
 import {
   captureLocalPasskeyCommand,
   LOCAL_PASSKEY_DEADLINE_MS,
+  LOCAL_PASSKEY_PASSWORD_COOLDOWN,
   LOCAL_PASSKEY_PORT,
 } from '../../../shared/localPasskeyTransport';
 import { isExternalWalletUrl } from '../../../utils/extensionContexts';
 import { assertJsonWorkBudget } from '../../../utils/requestPayloadBudget';
+import {
+  PasswordCooldownError,
+  type LocalPasskeyController,
+} from '../../../wallet/localPasskeyTypes';
 
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
-import type { LocalPasskeyController } from '../../../wallet/localPasskeyTypes';
 
 type Authority = Readonly<{ assertCurrent(): void; signal: AbortSignal }>;
 
@@ -79,6 +83,7 @@ export function installLocalPasskeyControllerPorts(
     });
     const receive = (raw: unknown) => {
       let id = 0;
+      let passwordAction = false;
       void (async () => {
         authority.assertCurrent();
         assertJsonWorkBudget(raw);
@@ -117,6 +122,8 @@ export function installLocalPasskeyControllerPorts(
           verified = true;
         }
         controller ??= create(authority);
+        passwordAction =
+          command.method === 'beginEnrollment' || command.method === 'disable';
         let result: unknown;
         switch (command.method) {
           case 'status':
@@ -150,10 +157,18 @@ export function installLocalPasskeyControllerPorts(
             result.kind === 'complete')
         )
           retire();
-      })().catch(() => {
+      })().catch((error) => {
         if (!lifetime.signal.aborted) {
           try {
-            port.postMessage({ id, error: 'LOCAL_PASSKEY_UNAVAILABLE' });
+            port.postMessage(
+              passwordAction && error instanceof PasswordCooldownError
+                ? {
+                    id,
+                    error: LOCAL_PASSKEY_PASSWORD_COOLDOWN,
+                    retryAfterSeconds: error.retryAfterSeconds,
+                  }
+                : { id, error: 'LOCAL_PASSKEY_UNAVAILABLE' }
+            );
           } catch {
             /* Retire regardless. */
           }

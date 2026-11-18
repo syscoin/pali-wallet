@@ -8,6 +8,8 @@ import {
 
 export const LOCAL_PASSKEY_PORT = 'pali-local-passkey-unlock';
 export const LOCAL_PASSKEY_DEADLINE_MS = 90_000;
+export const LOCAL_PASSKEY_PASSWORD_COOLDOWN =
+  'LOCAL_PASSKEY_PASSWORD_COOLDOWN';
 export type LocalPasskeyCommand =
   | { id: number; method: 'status' | 'beginUnlock'; params: [] }
   | { id: number; method: 'beginEnrollment' | 'disable'; params: [string] }

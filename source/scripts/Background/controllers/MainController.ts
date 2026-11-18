@@ -182,6 +182,7 @@ import {
 } from '../../../wallet/localPasskeyController';
 import {
   localPasskeyError,
+  PasswordCooldownError,
   type LocalPasskeyController,
 } from '../../../wallet/localPasskeyTypes';
 import { createPrivateVaultSession } from '../../../wallet/privateVaultInspection';
@@ -3765,9 +3766,8 @@ class MainController {
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
     if (remainingLockout > 0) {
-      throw new Error(
-        `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
-      );
+      this.assertCurrentWalletSession(generation, keyring);
+      throw new PasswordCooldownError(remainingLockout);
     }
 
     try {
@@ -5886,10 +5886,7 @@ class MainController {
         run(async () => {
           const remaining = await this.checkRateLimit();
           check();
-          if (remaining > 0)
-            throw new Error(
-              `Too many failed attempts. Please wait ${remaining} seconds before trying again.`
-            );
+          if (remaining > 0) throw new PasswordCooldownError(remaining);
           assertSynchronousEvmFeeGuard(assertCurrent);
           if (!keyring.isUnlocked()) throw localPasskeyError();
           const accepted = await withSdk(enrollment, (controls) =>

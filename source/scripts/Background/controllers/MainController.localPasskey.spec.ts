@@ -275,7 +275,7 @@ test('an enrolled passkey unlocks during the persisted password cooldown', async
     f.wallet.advanceWalletSession();
 
     const cooldown = { failedAttempts: 10, lastFailedTime: Date.now() };
-    f.records.pali_rate_limit_state = cooldown;
+    f.records['pali_rate_limit_state'] = cooldown;
     f.wallet.rateLimitInitialized = false;
     const passwordUnlock = jest.spyOn(f.keyring, 'unlock');
     await expect(f.wallet.unlockFromController(PASSWORD)).rejects.toThrow(
@@ -290,16 +290,19 @@ test('an enrolled passkey unlocks during the persisted password cooldown', async
     expect(f.keyring.isUnlocked()).toBe(true);
     expect(passwordUnlock).not.toHaveBeenCalled();
     await resumed.dispose();
-    expect(f.records.pali_rate_limit_state).toEqual(cooldown);
+    expect(f.records['pali_rate_limit_state']).toEqual(cooldown);
     await expect(f.wallet.getRemainingLockoutTime()).resolves.toBe(300);
 
     const settings = f.open().controller;
-    await expect(settings.beginEnrollment(PASSWORD)).rejects.toThrow(
-      'Too many failed attempts'
-    );
-    await expect(settings.disable(PASSWORD)).rejects.toThrow(
-      'Too many failed attempts'
-    );
+    const readSeed = jest.spyOn(f.keyring, 'getSeed');
+    await expect(settings.beginEnrollment(PASSWORD)).rejects.toMatchObject({
+      retryAfterSeconds: 300,
+    });
+    await expect(settings.disable(PASSWORD)).rejects.toMatchObject({
+      retryAfterSeconds: 300,
+    });
+    expect(readSeed).not.toHaveBeenCalled();
+    expect(f.records['pali_rate_limit_state']).toEqual(cooldown);
     expect(await settings.status()).toEqual({ enabled: true });
   } finally {
     await f.close();
@@ -386,7 +389,7 @@ test('a definitive bad password is accounted once but cancelled ceremonies never
     release.resolve();
     await cancelled;
     await rejected;
-    expect(f.records.pali_rate_limit_state).toMatchObject({
+    expect(f.records['pali_rate_limit_state']).toMatchObject({
       failedAttempts: 1,
     });
     expect(f.authenticator.requests).toBe(0);

@@ -13,15 +13,20 @@ import {
   localPasskeySupport,
   runLocalPasskeyCeremony,
 } from '../../utils/passkey/localUnlockCeremony';
-
-import { LocalPasskeySettings } from './LocalPasskeySettings';
-import type {
-  LocalPasskeyController,
-  LocalPasskeyStep,
+import {
+  PasswordCooldownError,
+  type LocalPasskeyController,
+  type LocalPasskeyStep,
 } from '../../wallet/localPasskeyTypes';
 
+import { LocalPasskeySettings } from './LocalPasskeySettings';
+
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    i18n: { language: 'en' },
+    t: (key: string, options?: { retryTime: string }) =>
+      options ? `${key}: ${options.retryTime}` : key,
+  }),
 }));
 jest.mock('../../utils/localPasskeyController', () => ({
   createLocalPasskeyController: jest.fn(),
@@ -173,3 +178,33 @@ it('cancels before the first enrollment reply and does not launch a late browser
   await waitFor(() => expect(source.cancel).toHaveBeenCalledWith(id));
   expect(runLocalPasskeyCeremony).not.toHaveBeenCalled();
 });
+
+it.each([false, true])(
+  'explains a password cooldown for passkey settings (enabled=%p)',
+  async (enabled) => {
+    const source = controller(enabled);
+    const changePasskey = enabled ? source.disable : source.beginEnrollment;
+    changePasskey.mockRejectedValueOnce(new PasswordCooldownError(73));
+    render(<LocalPasskeySettings createController={() => source} />);
+
+    fireEvent.change(await screen.findByLabelText('localPasskey.password'), {
+      target: { value: 'wallet-password' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: enabled ? 'localPasskey.turnOff' : 'localPasskey.setUp',
+      })
+    );
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'start.unlockRateLimited: in 73 seconds'
+    );
+    expect(
+      screen.getByText(
+        enabled ? 'localPasskey.enabled' : 'localPasskey.disabled'
+      )
+    ).toBeTruthy();
+    expect(changePasskey).toHaveBeenCalledTimes(1);
+    expect(runLocalPasskeyCeremony).not.toHaveBeenCalled();
+  }
+);

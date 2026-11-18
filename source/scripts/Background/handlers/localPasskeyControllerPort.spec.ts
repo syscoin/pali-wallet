@@ -1,4 +1,5 @@
 import { LOCAL_PASSKEY_PORT } from '../../../shared/localPasskeyTransport';
+import { PasswordCooldownError } from '../../../wallet/localPasskeyTypes';
 
 import { installLocalPasskeyControllerPorts } from './localPasskeyControllerPort';
 import type { LocalPasskeyController } from '../../../wallet/localPasskeyTypes';
@@ -226,6 +227,54 @@ describe('local passkey document Port', () => {
     expect(f.port.postMessage).not.toHaveBeenCalled();
     f.dispose();
   });
+  it.each(['beginEnrollment', 'disable'] as const)(
+    'returns the cooldown duration to the admitted %s request',
+    async (method) => {
+      const f = fixture();
+      f.controller[method].mockRejectedValue(new PasswordCooldownError(42));
+      f.port.onMessage.emit({ id: 1, method, params: ['wallet-password'] });
+      await settle();
+      expect(f.port.postMessage).toHaveBeenCalledTimes(1);
+      expect(f.port.postMessage).toHaveBeenCalledWith({
+        id: 1,
+        error: 'LOCAL_PASSKEY_PASSWORD_COOLDOWN',
+        retryAfterSeconds: 42,
+      });
+      expect(f.authority().signal.aborted).toBe(true);
+      f.dispose();
+    }
+  );
+
+  it('keeps cooldown details out of unlock replies and unrelated failures', async () => {
+    const unlock = fixture();
+    unlock.controller.beginUnlock.mockRejectedValue(
+      new PasswordCooldownError(42)
+    );
+    unlock.port.onMessage.emit({ id: 1, method: 'beginUnlock', params: [] });
+    await settle();
+    expect(unlock.port.postMessage).toHaveBeenCalledWith({
+      id: 1,
+      error: 'LOCAL_PASSKEY_UNAVAILABLE',
+    });
+    unlock.dispose();
+
+    const settings = fixture();
+    settings.controller.disable.mockRejectedValue(
+      new Error('unclassified password-settings failure')
+    );
+    settings.port.onMessage.emit({
+      id: 1,
+      method: 'disable',
+      params: ['wallet-password'],
+    });
+    await settle();
+    expect(settings.port.postMessage).toHaveBeenCalledWith({
+      id: 1,
+      error: 'LOCAL_PASSKEY_UNAVAILABLE',
+    });
+    settings.dispose();
+  });
+
   it('refuses a concurrent command and retires both pending results', async () => {
     const f = fixture();
     let finish!: (value: unknown) => void;

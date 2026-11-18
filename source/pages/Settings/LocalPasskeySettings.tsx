@@ -9,8 +9,10 @@ import {
   localPasskeySupport,
   type LocalPasskeySupport,
 } from '../../utils/passkey/localUnlockCeremony';
-
-import type { LocalPasskeyController } from '../../wallet/localPasskeyTypes';
+import {
+  PasswordCooldownError,
+  type LocalPasskeyController,
+} from '../../wallet/localPasskeyTypes';
 
 /** Local installation preference; independent of Smart-account passkeys. */
 export function LocalPasskeySettings({
@@ -18,7 +20,7 @@ export function LocalPasskeySettings({
 }: {
   createController?: () => LocalPasskeyController;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [support, setSupport] = useState<LocalPasskeySupport | null>(null);
   const [password, setPassword] = useState('');
@@ -68,6 +70,19 @@ export function LocalPasskeySettings({
       if (version.current === captured) submitting.current = false;
     }
   };
+  let error: string | undefined;
+  if (flow.error instanceof PasswordCooldownError) {
+    const retryTime = new Intl.RelativeTimeFormat(i18n.language).format(
+      flow.error.retryAfterSeconds,
+      'second'
+    );
+    error = t('start.unlockRateLimited', { retryTime });
+  } else if (flow.error) {
+    error = t(
+      enabled ? 'localPasskey.disableFailed' : 'localPasskey.enrollFailed'
+    );
+  }
+
   return (
     <form
       onSubmit={(event) => void submit(event)}
@@ -118,18 +133,7 @@ export function LocalPasskeySettings({
         {t('localPasskey.localOnly')}
       </p>
       {canEdit && (
-        <PageActionFooter
-          includeInFlow
-          error={
-            flow.error
-              ? t(
-                  enabled
-                    ? 'localPasskey.disableFailed'
-                    : 'localPasskey.enrollFailed'
-                )
-              : undefined
-          }
-        >
+        <PageActionFooter includeInFlow error={error}>
           <div className="space-y-3">
             <Button
               type="submit"
