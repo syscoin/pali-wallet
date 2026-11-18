@@ -217,7 +217,7 @@ test('a post-sign asset-state change shows one saved no-broadcast message', asyn
   await page.evaluate(() => window.__erc20SendFixture.raceAfterSigning());
   await page.getByTestId('native-send-confirm').click();
   await authenticateNativeOperation(page);
-  const message = 'Your signed transaction is saved and was not submitted. Review it in Activity before retrying.';
+  const message = 'Your transaction was signed but not submitted. Check Activity before trying again.';
   await expect(page.getByText(message, { exact: true })).toHaveCount(1);
   await expect(page.getByRole('alert')).toHaveCount(1);
   await expect(page.getByRole('alert')).toContainText(message);

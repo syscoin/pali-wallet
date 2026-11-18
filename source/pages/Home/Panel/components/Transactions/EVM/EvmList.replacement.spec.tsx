@@ -43,7 +43,7 @@ const mockT = (key: string, values?: { amount?: string }) =>
       'privacy.poolAmount': `${values?.amount} ETH pool`,
       'send.confirmed': 'Confirmed',
       'send.pending': 'Pending',
-      'transactions.savedUnconfirmed': 'Saved · unconfirmed',
+      'transactions.unconfirmed': 'Unconfirmed',
       'send.failed': 'Failed',
       'transactions.replaced': 'Replaced',
       'transactions.replacementPending': 'Replacement pending',
@@ -181,11 +181,11 @@ it('changes the saved-only label when the same hash arrives in pending network h
   const local = transaction('a', { historySource: 'local-signed' });
   mockRows = [local];
   const view = render(<EvmTransactionsList userTransactions={mockRows} />);
-  expect(await screen.findByText('Saved · unconfirmed')).toBeTruthy();
+  expect(await screen.findByText('Unconfirmed')).toBeTruthy();
   mockRows = [transaction('a', { historySource: 'explorer-txlist' })];
   view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
   expect(await screen.findByText('Pending')).toBeTruthy();
-  expect(screen.queryByText('Saved · unconfirmed')).toBeNull();
+  expect(screen.queryByText('Unconfirmed')).toBeNull();
 });
 
 it.each([
@@ -560,7 +560,7 @@ it.each([
       hasMore: false,
     }));
     render(<EvmTransactionsList userTransactions={mockRows} />);
-    expect(await screen.findByText('Saved · unconfirmed')).toBeTruthy();
+    expect(await screen.findByText('Unconfirmed')).toBeTruthy();
     expect(screen.queryByText(`Options:${local.hash}`)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect(mockNavigate).toHaveBeenLastCalledWith('/home/details', {
@@ -568,7 +568,7 @@ it.each([
     });
     fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
     await waitFor(() => {
-      expect(screen.queryByText('Saved · unconfirmed')).toBeNull();
+      expect(screen.queryByText('Unconfirmed')).toBeNull();
       expect(screen.getByText(label)).toBeTruthy();
     });
     expect(screen.queryByText(`Options:${local.hash}`)).toBeNull();
@@ -675,7 +675,7 @@ it('offers the existing menu for a locally tracked payment eligible for Speed Up
   });
   mockRows = [local];
   render(<EvmTransactionsList userTransactions={mockRows} />);
-  expect(screen.getByText('Saved · unconfirmed')).toBeTruthy();
+  expect(screen.getByText('Unconfirmed')).toBeTruthy();
   expect(screen.getByText(`Options:${local.hash}`)).toBeTruthy();
 });
 
@@ -736,7 +736,7 @@ it.each([
       methodSelector: '0xb214faa5',
     },
     label: 'Privacy deposit',
-    status: 'Saved · unconfirmed',
+    status: 'Unconfirmed',
   },
 ])(
   'identifies the pool action while preserving its settlement status',

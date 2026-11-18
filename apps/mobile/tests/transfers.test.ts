@@ -747,7 +747,7 @@ test('asset state changes after signing retain recovery guidance without broadca
     const snapshot = f.transfers.getSnapshot();
     assert.equal(saved?.hash, snapshot.hash);
     assert.equal(snapshot.phase, 'unknown');
-    assert.match(snapshot.message ?? '', /signed transaction is saved/);
+    assert.match(snapshot.message ?? '', /signed but not submitted/);
   } finally { f.close(); }
 });
 
@@ -1169,7 +1169,7 @@ test('a final chain probe that outlives the review retains the exact signed reco
     const outcome = f.transfers.getSnapshot();
     assert.equal(outcome.phase, 'unknown');
     assert.equal(outcome.hash, saved.hash);
-    assert.equal(outcome.message, 'Your signed transaction is saved. Check it before sending again.');
+    assert.equal(outcome.message, 'Check this transaction in Activity before sending again.');
   } finally {
     release();
     f.close();

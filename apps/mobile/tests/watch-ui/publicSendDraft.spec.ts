@@ -86,7 +86,7 @@ for (const network of ['bitcoin', 'syscoin'] as const) test(`unconfirmed ${netwo
   } else {
     // This routing fixture deliberately refuses preparation; real Bitcoin SDK
     // signing is exercised by utxoSend.integration.test.ts.
-    await expect(page.getByRole('alert')).toHaveText('Pali could not complete this request. Try again or check your saved transfers.');
+    await expect(page.getByRole('alert')).toHaveText('Pali could not complete this request. Try again or check Activity.');
     expect((await page.evaluate(() => window.__watchFixture.audit())).utxoOpens).toBe(1);
     expect((await page.evaluate(() => window.__watchFixture.audit())).utxoSavedReads).toBe(0);
     await expect(heading(page, 'Wallet Backup')).toHaveCount(0);

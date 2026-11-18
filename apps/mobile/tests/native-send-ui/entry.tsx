@@ -173,7 +173,7 @@ const controller: NativeTransferView = {
         phase: 'unknown',
         review: null,
         hash: '0x' + '1'.repeat(64),
-        message: 'Your signed transaction is saved. Check it before sending again.',
+        message: 'Check this transaction in Activity before sending again.',
       });
       throw Error('EXPIRED');
     }

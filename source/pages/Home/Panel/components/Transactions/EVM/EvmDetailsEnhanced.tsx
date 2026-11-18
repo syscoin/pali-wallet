@@ -1183,7 +1183,7 @@ export const EvmTransactionDetailsEnhanced = ({
                   !enhancedDetails &&
                   (transactionTx as any)?.historySource ===
                     EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned
-                  ? 'transactions.savedUnconfirmed'
+                  ? 'transactions.unconfirmed'
                   : evmSettlementLabel(settlement)
               )}
             </p>

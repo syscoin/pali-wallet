@@ -656,7 +656,7 @@ const EvmTransactionItem = React.memo(
                     settlement === 'pending' &&
                       tx.historySource ===
                         EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned
-                      ? 'transactions.savedUnconfirmed'
+                      ? 'transactions.unconfirmed'
                       : evmSettlementLabel(settlement)
                   )}
                 </p>

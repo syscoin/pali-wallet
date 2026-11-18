@@ -492,7 +492,7 @@ test('saved expired review keeps its accessible error alert', async ({ page }) =
   await prepare(page);
   await page.getByTestId('native-send-confirm').click();
   await authenticateNativeOperation(page);
-  const message = 'Your signed transaction is saved. Check it before sending again.';
+  const message = 'Check this transaction in Activity before sending again.';
   const alert = page.getByRole('alert');
   await expect(alert).toHaveCount(1);
   await expect(alert).toHaveText(message);

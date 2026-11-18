@@ -327,7 +327,7 @@ test('custom UTXO settings save a verified URL only on explicit action', async (
   await expect(page.getByRole('alert')).toContainText('use a Blockbook URL for this network');
   await url.fill('https://unresolved.example/blockbook');
   await save.click();
-  await expect(page.getByRole('alert')).toContainText('Check your saved transfers');
+  await expect(page.getByRole('alert')).toContainText('Check Activity');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'Edit Custom Litecoin', exact: true }).click();
   await expect(url).toHaveValue('https://litecoin.example/blockbook');

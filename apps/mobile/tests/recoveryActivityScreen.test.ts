@@ -673,7 +673,7 @@ for (const outcome of ['confirmed', 'reverted'] as const)
         assert.equal(detail.props.status, englishI18n.t('transactions.replaced'));
         assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.networkFee')).value,
           englishI18n.t('mobile.activityViews.nativeActivity.actualFeeNotVerified'));
-        for (const title of ['Review resend', 'Speed Up', 'Cancel pending transaction', 'Cancel saved transaction'])
+        for (const title of ['Review resend', 'Speed Up', 'Cancel pending transaction', 'Cancel transaction'])
           assert(!tree.some(node => node.type === 'Button' && node.props.title === title), title);
         const winnerAction = operation === 'cancel' ? 'View cancellation attempt' : 'View Speed Up attempt';
         const navigate = tree.find(node => node.type === 'Button' && node.props.title === winnerAction); assert(navigate);
@@ -1033,7 +1033,7 @@ test(`Activity ${status} generic Cancel respects retained private-withdrawal aut
       ...(privateWithdrawal ? { cancellationUnavailable: true } : {}) },
       ...(status === 'missing' ? { observation: undefined, retainedObservation: { status: 'missing', latestNonce: '0' } } : {}) };
     const tree = all(await openFixtureRow(f, row));
-    const title = status === 'pending' ? 'Cancel pending transaction' : 'Cancel saved transaction';
+    const title = status === 'pending' ? 'Cancel pending transaction' : 'Cancel transaction';
     assert.equal(tree.some(node => node.type === 'Button' && node.props.title === title), !privateWithdrawal);
     assert(!tree.some(node => node.type === 'Button' && node.props.title === 'Review resend'));
   } finally { f.dispose(); }
@@ -1048,7 +1048,7 @@ for(const blocked of ['none','private-withdrawal','cancellation','multiple'] as 
       operations:Array.from({length:blocked==='multiple'?2:1},(_,i)=>({operationHash:'0x'+(i?'cd':'ab').repeat(32),operationNonce:'0'})),
       ...(blocked==='cancellation'?{cancellation:true}:{})}}};
   const tree=all(await openFixtureRow(f,row));const action=tree.find(node=>node.type==='Button'&&node.props.title==='Cancel instruction');
-  assert.equal(!!action,blocked==='none');assert(!tree.some(node=>node.type==='Button'&&['Cancel pending transaction','Cancel saved transaction'].includes(node.props.title)));
+  assert.equal(!!action,blocked==='none');assert(!tree.some(node=>node.type==='Button'&&['Cancel pending transaction','Cancel transaction'].includes(node.props.title)));
   if(action){action.props.onPress();await settle();assert.deepEqual(navigation,[['cancel',hash]]);}
  }finally{f.dispose();}
 });
@@ -1093,11 +1093,11 @@ test('Activity offers unsigned cancellation only after it observes the original 
     const has = (tree: unknown, title: string) => all(tree).find(node => node.type === 'Button' && node.props.title === title);
     const unknown = { ...row, observation: undefined, retainedObservation: { status: 'missing', latestNonce: '0' } };
     const missing = await openFixtureRow(f, unknown);
-    assert(!has(missing, 'Cancel saved transaction'));
+    assert(!has(missing, 'Cancel transaction'));
     assert(!has(missing, 'Cancel pending transaction'));
     f.rows([row]);
     const known = f.render();
-    assert(!has(known, 'Cancel saved transaction'));
+    assert(!has(known, 'Cancel transaction'));
     const button = has(known, 'Cancel pending transaction');
     assert(button);
     button.props.onPress();

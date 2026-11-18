@@ -136,7 +136,7 @@ const nativeSavedAssetFailures = new WeakMap<object, NativeTransferError>();
 export const SIGNED_STORAGE_FULL_MESSAGE = 'This transaction was not submitted because Pali could not save it within its local transaction storage limit. Check Activity.';
 export const SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE = 'This new transaction was not submitted because Pali could not save it within its local transaction storage limit. Check the earlier transaction in Activity.';
 export const ASSET_STATE_WAIT_MESSAGE = 'The account state changed while checking this transfer. Review the transfer and try again.';
-export const ASSET_STATE_SAVED_MESSAGE = 'Your signed transaction is saved and was not submitted. Review it in Activity before retrying.';
+export const ASSET_STATE_SAVED_MESSAGE = 'Your transaction was signed but not submitted. Check Activity before trying again.';
 
 export class NativeTransferError extends Error {
   readonly code:
@@ -479,7 +479,7 @@ export class NativeTransfers {
           this.publish({
             phase: 'unknown', hash: error.recoveryHash, review: null,
             intent: null, collectible: undefined,
-            message: 'Check the saved transaction before sending this payment.',
+            message: 'Check the earlier transaction in Activity before sending this payment.',
           });
           throw new NativeTransferError('PENDING_TRANSFER');
         }
@@ -547,7 +547,7 @@ export class NativeTransfers {
             (error instanceof NativeTransferRpcError && (error.code === 'INSUFFICIENT_NFT_BALANCE' || error.code === 'NFT_TRANSFER_REJECTED'))) {
           this.publish({ phase: this.snapshot.hash ? 'unknown' : 'idle', review: null,
             message: error.code === 'COLLECTIBLE_CHANGED'
-              ? this.snapshot.hash ? 'This transfer is saved and did not broadcast. Check it before trying again.'
+              ? this.snapshot.hash ? 'This transaction was not submitted. Check Activity before trying again.'
                 : 'Your saved collectibles changed. Open the collectible and try again.'
               : error.code === 'INSUFFICIENT_NFT_BALANCE' ? 'This account does not own enough of this collectible.'
                 : 'The collectible contract did not accept this transfer.' });
@@ -557,7 +557,7 @@ export class NativeTransfers {
           this.publish({
             phase: this.snapshot.hash ? 'unknown' : 'idle', review: null,
             message: this.snapshot.hash
-              ? 'Your signed transaction is saved. It must wait for earlier transactions. Check Activity before retrying.'
+              ? 'This transaction must wait for earlier transactions. Check Activity before trying again.'
               : 'This cancellation must wait for earlier transactions. Check Activity before trying again.',
           });
           throw new NativeTransferError('CANCELLATION_QUEUED');
@@ -567,7 +567,7 @@ export class NativeTransfers {
             phase: this.snapshot.hash ? 'unknown' : 'idle',
             review: null,
             message: this.snapshot.hash
-              ? 'Your signed transaction is saved. This nonce is no longer available.'
+              ? 'This nonce is no longer available. Check the transaction in Activity.'
               : null,
           });
           throw new NativeTransferError(error.code);
@@ -578,7 +578,7 @@ export class NativeTransfers {
               phase: this.snapshot.hash ? 'unknown' : 'idle',
               review: null,
               message: this.snapshot.hash
-                ? 'Your signed transaction is saved. Check it before sending again.'
+                ? 'Check this transaction in Activity before sending again.'
                 : 'The review expired or network conditions changed. Review the transfer again.',
             });
           throw new NativeTransferError('EXPIRED');

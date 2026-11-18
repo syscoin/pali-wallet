@@ -233,7 +233,7 @@ it('restores the saved-only Smart amount after hash-only reopen without duplicat
     screen.queryByText('transactions.transactionNotFoundOrPending')
   ).toBeNull();
   expect(screen.getByTestId('transaction-status').textContent).toBe(
-    'transactions.savedUnconfirmed'
+    'transactions.unconfirmed'
   );
   expect(savedReads()).toHaveLength(2);
   expect(
