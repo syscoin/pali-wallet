@@ -1,12 +1,6 @@
 import { Input, Form } from 'antd';
 import { useForm } from 'antd/es/form/Form';
-import React, {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -14,6 +8,7 @@ import { useLocation } from 'react-router-dom';
 import { hasBip84UtxoPrivateKeyPrefix } from '../../shared/utxoPrivateKey';
 import { Button, PageActionFooter } from 'components/index';
 import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
+import { SecretQrImport } from 'components/SecretQrImport';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -27,6 +22,16 @@ const ImportAccountView = () => {
   const { navigate, alert } = useUtils();
   const { t } = useTranslation();
   const [form] = useForm();
+  const looksLikeWif = Form.useWatch(({ privKey }: { privKey?: string }) => {
+    if (!privKey) return false;
+    const prefix = privKey.substring(0, 4);
+    return (
+      !hasBip84UtxoPrivateKeyPrefix(privKey) &&
+      !['xprv', 'tprv'].includes(prefix) &&
+      !privKey.startsWith('0x') &&
+      !/^[0-9a-fA-F]{64}$/.test(privKey)
+    );
+  }, form);
   const [validPrivateKey, setValidPrivateKey] = useState(false);
   const location = useLocation();
 
@@ -64,6 +69,17 @@ const ImportAccountView = () => {
     chainId: activeNetwork.chainId,
     url: activeNetwork.url,
   });
+  const scanScope = JSON.stringify([
+    location.key,
+    location.pathname,
+    inputScope,
+    activeNetwork.apiUrl,
+    activeAccountMeta.type,
+    activeAccountMeta.id,
+    activeAccount?.address,
+  ]);
+  const scanScopeRef = useRef(scanScope);
+  scanScopeRef.current = scanScope;
   const inputScopeRef = useRef(inputScope);
   inputScopeRef.current = inputScope;
   const visibleImportError =
@@ -115,6 +131,31 @@ const ImportAccountView = () => {
   ]);
 
   if (!activeAccount) throw new Error('No account');
+
+  const resetIdentifierValidation = (value: string | undefined) => {
+    // A draft entered as a secret remains masked on switching modes
+    // until it is cleared, or the user explicitly reveals it.
+    if (!watchOnly || !value) setPublicDraft(watchOnly);
+    validationRevision.current += 1;
+    setValidPrivateKey(false);
+    setValidIdentifier(false);
+  };
+
+  const fillScannedKey = (text: string) => {
+    if (
+      !mounted.current ||
+      importInFlight.current ||
+      scanScopeRef.current !== scanScope ||
+      document.visibilityState === 'hidden'
+    )
+      return;
+    const value = text.trim();
+    setImportError(null);
+    setShowPrivateKey(false);
+    resetIdentifierValidation(value);
+    form.setFieldValue('privKey', value);
+    void form.validateFields(['privKey']).catch(() => undefined);
+  };
 
   const handleImportAccount = async () => {
     if (importInFlight.current) return;
@@ -170,20 +211,8 @@ const ImportAccountView = () => {
     }
   };
 
-  // Simple WIF heuristic for showing the address-type selector: only on UTXO networks, not watch-only, not extended keys
-  const showAddressTypeSelector = useMemo(() => {
-    if (watchOnly || !isBitcoinBased) return false;
-    const value: string = form.getFieldValue('privKey') || '';
-    if (!value) return false;
-    const prefix = value.substring(0, 4);
-    const looksLikeExtended =
-      hasBip84UtxoPrivateKeyPrefix(value) || ['xprv', 'tprv'].includes(prefix);
-    const looksLikeHex =
-      value.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(value);
-    if (looksLikeExtended || looksLikeHex) return false;
-    // If basic validation passed, treat as WIF and show selector
-    return validPrivateKey;
-  }, [watchOnly, isBitcoinBased, form, validPrivateKey]);
+  const showAddressTypeSelector =
+    !watchOnly && isBitcoinBased && validPrivateKey && looksLikeWif;
 
   return (
     <>
@@ -208,14 +237,8 @@ const ImportAccountView = () => {
           onFinish={handleImportAccount}
           onValuesChange={(changed) => {
             setImportError(null);
-            if (Object.prototype.hasOwnProperty.call(changed, 'privKey')) {
-              // A draft entered as a secret remains masked on switching modes
-              // until it is cleared, or the user explicitly reveals it.
-              if (!watchOnly || !changed.privKey) setPublicDraft(watchOnly);
-              validationRevision.current += 1;
-              setValidPrivateKey(false);
-              setValidIdentifier(false);
-            }
+            if (Object.prototype.hasOwnProperty.call(changed, 'privKey'))
+              resetIdentifierValidation(changed.privKey);
           }}
         >
           <Form.Item
@@ -396,28 +419,38 @@ const ImportAccountView = () => {
               autoComplete="off"
               suffix={
                 !(watchOnly && publicDraft) && (
-                  <button
-                    type="button"
-                    className="flex h-11 w-11 items-center justify-center rounded focus-visible:outline focus-visible:outline-2"
-                    aria-label={t(
-                      showPrivateKey
-                        ? 'sentry.hidePrivateKeys'
-                        : 'sentry.showPrivateKeys'
+                  <div className="flex items-center">
+                    {!watchOnly && (
+                      <SecretQrImport
+                        key={scanScope}
+                        kind="privateKey"
+                        disabled={isImporting}
+                        onScan={fillScannedKey}
+                      />
                     )}
-                    aria-pressed={showPrivateKey}
-                    disabled={isImporting}
-                    onClick={() => setShowPrivateKey((current) => !current)}
-                  >
-                    <img
-                      className="h-5 w-5"
-                      alt=""
-                      src={
+                    <button
+                      type="button"
+                      className="flex h-11 w-11 items-center justify-center rounded focus-visible:outline focus-visible:outline-2"
+                      aria-label={t(
                         showPrivateKey
-                          ? '/assets/all_assets/notVisibleEye.svg'
-                          : '/assets/all_assets/visibleEye.svg'
-                      }
-                    />
-                  </button>
+                          ? 'sentry.hidePrivateKeys'
+                          : 'sentry.showPrivateKeys'
+                      )}
+                      aria-pressed={showPrivateKey}
+                      disabled={isImporting}
+                      onClick={() => setShowPrivateKey((current) => !current)}
+                    >
+                      <img
+                        className="h-5 w-5"
+                        alt=""
+                        src={
+                          showPrivateKey
+                            ? '/assets/all_assets/notVisibleEye.svg'
+                            : '/assets/all_assets/visibleEye.svg'
+                        }
+                      />
+                    </button>
+                  </div>
                 )
               }
               placeholder={

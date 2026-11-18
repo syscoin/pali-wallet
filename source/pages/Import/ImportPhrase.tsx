@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from 'components/index';
 import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { StatusModal } from 'components/Modal/StatusModal';
+import { SecretQrImport } from 'components/SecretQrImport';
 import { useController } from 'hooks/useController';
 import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
 import { formatSeedPhrase } from 'utils/format';
@@ -28,6 +29,7 @@ const ImportPhrase: React.FC = () => {
   const active = useRef(true);
   const requestGeneration = useRef(0);
   const validationRequest = useRef(0);
+  const scanControl = useRef<HTMLDivElement>(null);
   const submissionPending = useRef(false);
   const routeKey = useRef(location.key);
   routeKey.current = location.key;
@@ -61,6 +63,7 @@ const ImportPhrase: React.FC = () => {
   const { t } = useTranslation();
   const [seedIsValid, setSeedIsValid] = useState<boolean>();
   const [visible, setVisible] = useState<boolean>(false);
+  const [phraseDraft, setPhraseDraft] = useState('');
   const [seedValidation, setSeedValidation] = useState<SeedValidationType>({
     seedLength: null,
     seedLengthError: false,
@@ -102,6 +105,27 @@ const ImportPhrase: React.FC = () => {
     }
   };
 
+  const invalidatePhraseSubmission = () => {
+    // A draft edit supersedes any pending submission.
+    requestGeneration.current += 1;
+    submissionPending.current = false;
+    setSeedIsValid(false);
+  };
+
+  const fillScannedPhrase = (text: string) => {
+    if (
+      !isCurrent(requestGeneration.current, window.location.href) ||
+      document.visibilityState === 'hidden'
+    )
+      return;
+    invalidatePhraseSubmission();
+    setShowModal(false);
+    setVisible(true);
+    setPhraseDraft(text);
+    form.setFieldValue('phrase', text);
+    void form.validateFields(['phrase']).catch(() => undefined);
+  };
+
   const handleKeypress = (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
@@ -128,19 +152,14 @@ const ImportPhrase: React.FC = () => {
         form={form}
         name="import"
         onFinish={onSubmit}
-        onValuesChange={() => {
-          // User edits supersede any pending submission. Programmatic phrase
-          // normalization via setFieldsValue does not trigger this callback.
-          requestGeneration.current += 1;
-          submissionPending.current = false;
-          setSeedIsValid(false);
-        }}
+        onValuesChange={invalidatePhraseSubmission}
         autoComplete="off"
         className="flex flex-col gap-4 items-center w-full max-w-xs"
       >
         <Form.Item
           className="w-[17.5rem]"
           name="phrase"
+          getValueProps={() => ({})}
           rules={[
             {
               required: true,
@@ -204,12 +223,13 @@ const ImportPhrase: React.FC = () => {
               id="import-wallet-input"
               aria-label={t('import.pasteYourWalletSeed')}
               rows={3}
-              onBlur={() =>
-                seedValidation.seedLengthError
-                  ? setShowModal(true)
-                  : setShowModal(false)
-              }
-              style={{ padding: '15px 48px 15px 15px' }}
+              value={phraseDraft}
+              onChange={(event) => setPhraseDraft(event.target.value)}
+              onBlur={(event) => {
+                if (scanControl.current?.contains(event.relatedTarget)) return;
+                setShowModal(seedValidation.seedLengthError);
+              }}
+              style={{ padding: '15px 84px 15px 15px' }}
               className={`${formBorderStatusStyle} ${textAreaNotVisibleStyle} bg-fields-input-primary overflow-x-hidden overflow-y-auto w-full h-[5.625rem] text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none `}
               placeholder={t('import.pasteYourWalletSeed')}
               onKeyPress={handleKeypress}
@@ -220,7 +240,7 @@ const ImportPhrase: React.FC = () => {
                 visible ? 'import.showSeedPhrase' : 'import.hideSeedPhrase'
               )}
               onClick={() => setVisible((hidden) => !hidden)}
-              className="absolute right-1 top-1 flex h-11 w-11 items-center justify-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-content-primary"
+              className="absolute right-10 top-1 flex h-11 w-11 items-center justify-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-content-primary"
             >
               <img
                 className={eyeStyle}
@@ -232,6 +252,21 @@ const ImportPhrase: React.FC = () => {
                 }
               />
             </button>
+            <div
+              ref={scanControl}
+              className="absolute right-1 top-1 flex h-11 items-center"
+            >
+              <SecretQrImport
+                key={JSON.stringify([
+                  location.key,
+                  location.pathname,
+                  isRecovery,
+                ])}
+                kind="recoveryPhrase"
+                restartRecovery={isRecovery}
+                onScan={fillScannedPhrase}
+              />
+            </div>
           </div>
         </Form.Item>
 

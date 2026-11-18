@@ -1,4 +1,13 @@
 {
+  "secretQr": {
+    "show": "Mostrar QR",
+    "hide": "Ocultar QR",
+    "visible": "Código QR del dato secreto mostrado",
+    "scan": "Escanear QR",
+    "scanHelp": "Apunta la cámara al código QR de tu otro dispositivo.",
+    "scanInvalid": "Este código QR no corresponde a esta importación.",
+    "cameraUnavailable": "Cámara no disponible. Introduce el valor manualmente o revisa los permisos de la cámara."
+  },
   "secretClipboard": {
     "copyKey": "Copiar clave privada",
     "warning": "Otras aplicaciones pueden leer el portapapeles. Pega este secreto solo en una aplicación de confianza.",

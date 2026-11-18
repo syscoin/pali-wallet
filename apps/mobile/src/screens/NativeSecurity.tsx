@@ -1,3 +1,4 @@
+import { SecretQrReveal } from './SecretQr';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { BalancePrivacySetting } from './BalancePrivacySetting';
@@ -150,10 +151,12 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
             : <Notice title={t('mobile.security.evmTitle')} body={t('mobile.security.evmBody')} tone="amber" />}
           {shown ? <>
             <Text style={styles.muted}>{t('secretClipboard.warning')}</Text>
-            <View style={s.secret}><Text selectable={false} style={s.key}>{shown.privateKey}</Text>
-              <IconButton icon={copied ? 'check' : 'copy'} label={t(copied ? 'components.copied' : 'secretClipboard.copyKey')}
-                disabled={copying} onPress={() => copyKey(shown)} />
-            </View>
+            <SecretQrReveal key={shown.id} value={shown.privateKey} isCurrent={() => keyExport.isCurrent(shown.id)}>
+              <View style={s.secret}><Text selectable={false} style={s.key}>{shown.privateKey}</Text>
+                <IconButton icon={copied ? 'check' : 'copy'} label={t(copied ? 'components.copied' : 'secretClipboard.copyKey')}
+                  disabled={copying} onPress={() => copyKey(shown)} />
+              </View>
+            </SecretQrReveal>
             {copied && <Text accessibilityLiveRegion="polite" style={s.copied}>{t('components.copied')}</Text>}
             <Text style={styles.muted}>{t('mobile.security.sessionOnly')}</Text>
           </> : <>

@@ -14,6 +14,14 @@ import en from 'assets/locales/en.json';
 
 import PrivateNoteBackupDialog from './PrivateNoteBackupDialog';
 
+const mockQrRender = jest.fn();
+jest.mock('qrcode.react', () => ({
+  QRCodeCanvas: ({ value, includeMargin, size, ...props }: any) => {
+    mockQrRender(value, size, includeMargin);
+    return <canvas {...props} />;
+  },
+}));
+
 const mockEmitter = jest.fn();
 const mockClose = jest.fn();
 const mockCopy = jest.fn();
@@ -162,6 +170,31 @@ it('reveals only after explicit password confirmation and never copies or downlo
   expect(mockCopy).not.toHaveBeenCalled();
   expect(document.querySelector('[download]')).toBeNull();
   expect(mockClose).not.toHaveBeenCalled();
+});
+
+it('renders a QR only on request and closes the raw backup after window blur', async () => {
+  render(dialog());
+  expect(
+    screen.queryByRole('button', { name: mockTranslate('secretQr.show') })
+  ).toBeNull();
+  confirm();
+  await screen.findByDisplayValue(SECRET);
+  expect(
+    screen.queryByRole('img', { name: mockTranslate('secretQr.visible') })
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: mockTranslate('secretQr.show') })
+  );
+  const qr = screen.getByRole('img', {
+    name: mockTranslate('secretQr.visible'),
+  });
+  expect(qr.outerHTML).not.toContain(SECRET);
+  expect(mockQrRender).toHaveBeenLastCalledWith(SECRET, 224, true);
+  expect(screen.queryByDisplayValue(SECRET)).toBeNull();
+  expect(mockCopy).not.toHaveBeenCalled();
+  fireEvent(window, new Event('blur'));
+  expect(qr).not.toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 
 it('clears a revealed note on Hide and opens a fresh password form next time', async () => {

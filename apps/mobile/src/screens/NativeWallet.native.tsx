@@ -1,3 +1,4 @@
+import { SecretQrReveal } from './SecretQr';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { NativeAccountChangeReview } from './NativeAccountChangeReview';
 import type { NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
@@ -2035,7 +2036,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     footer = <Button title={t("buttons.continue")} disabled={busy} onPress={() => { backupCopyOwner.current = null; setStage('backup-verify'); }} />;
     body = <>
       <Notice title={t("mobile.walletViews.writeTheseWordsDownInOrder")} body={t("mobile.walletViews.anyoneWithTheseWordsCanControlYourWalletKeepThemOfflinePaliSupportWillNeverAskForThem")} tone="amber" />
-      <View style={s.wordGrid}>{presentation.words.map((word, index) => <View key={index} style={s.word}><Text style={s.wordNumber}>{index + 1}</Text><Text style={s.wordText}>{word}</Text></View>)}</View>
+      <SecretQrReveal key={`qr-${presentation.id}`} value={presentation.words.join(' ')} isCurrent={() => isBackupCopyCurrent(presentation)}>
+        <View style={s.wordGrid}>{presentation.words.map((word, index) => <View key={index} style={s.word}><Text style={s.wordNumber}>{index + 1}</Text><Text style={s.wordText}>{word}</Text></View>)}</View>
+      </SecretQrReveal>
       <NativeSeedPhraseCopy key={presentation.id} presentation={presentation} isCurrent={isBackupCopyCurrent} />
     </>;
   }

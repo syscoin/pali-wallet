@@ -97,3 +97,20 @@ test('empty preview results cannot reach confirmation and errors do not echo the
   const error = elements(tree).find(row => row.props.accessibilityRole === 'alert'); assert(error);
   assert(!JSON.stringify(error.children).includes(phrase)); f.close();
 });
+
+test('scanning fills the numbered recovery fields without starting preview or confirming', () => {
+  const f = fixture();
+  const scan = elements(f.render()).find(row => row.type === 'SecretScanButton');
+  assert(scan);
+  scan.props.onPress();
+  const scanner = f.render();
+  assert.equal(scanner.type, 'SecretQrScanner');
+  assert.equal(scanner.props.kind, 'recoveryPhrase');
+  scanner.props.onScan(phrase);
+  const tree = f.render();
+  assert.equal(field(tree, 12).props.value, 'about');
+  assert.equal(button(tree, 'Check phrase').props.disabled, false);
+  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.confirmed, []);
+  f.close();
+});

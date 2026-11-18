@@ -1,5 +1,6 @@
 import { edwards } from '@noble/curves/abstract/edwards';
 
+import { matchClassicNote } from './classicNoteFormat.ts';
 import { getPrivacyPool } from './registry.ts';
 import type { PrivacyPoolId } from './types.ts';
 
@@ -105,11 +106,7 @@ export function generateClassicNote(
 // requires a locally verified deposit snapshot and the bulk withdrawal feed.
 // Errors are deliberately static so neither the note nor its bytes are logged.
 export function identifyClassicNote(note: string): IClassicNoteIdentity {
-  if (typeof note !== 'string' || note.length > 256)
-    throw new Error('privacy_note_invalid');
-  const match = /^tornado-eth-(0\.1|1|10|100)-1-0x([0-9a-fA-F]{124})$/.exec(
-    note.trim()
-  );
+  const match = typeof note === 'string' && matchClassicNote(note);
   if (!match) throw new Error('privacy_note_invalid');
   const poolId = `eth-${match[1]}` as PrivacyPoolId;
   getPrivacyPool(poolId);

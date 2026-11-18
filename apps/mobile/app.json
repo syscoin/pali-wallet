@@ -53,7 +53,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Pali to scan WalletConnect QR codes.",
+          "cameraPermission": "Allow Pali to scan QR codes for connections, addresses, and wallet imports.",
           "microphonePermission": false,
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true

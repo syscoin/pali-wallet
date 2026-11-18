@@ -18,6 +18,14 @@ import Privacy from './Privacy';
 import PrivateNotes from './PrivateNotes';
 import { readPrivateNote } from './usePrivateNotes';
 
+const mockQrRender = jest.fn();
+jest.mock('qrcode.react', () => ({
+  QRCodeCanvas: ({ value, includeMargin, size, ...props }: any) => {
+    mockQrRender(value, size, includeMargin);
+    return <canvas {...props} />;
+  },
+}));
+
 const mockEmitter = jest.fn();
 const mockCopy = jest.fn();
 let mockState: any;
@@ -984,12 +992,53 @@ it('reveals only after explicit password confirmation and hides the backup', asy
   expect(
     screen.queryByDisplayValue('correct-password')
   ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('img', { name: mockTranslate('secretQr.visible') })
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: mockTranslate('secretQr.show') })
+  );
+  expect(mockQrRender).toHaveBeenLastCalledWith(
+    'synthetic-private-note',
+    224,
+    true
+  );
+  expect(screen.queryByDisplayValue('synthetic-private-note')).toBeNull();
+  expect(
+    screen.getByRole('img', { name: mockTranslate('secretQr.visible') })
+  ).toBeVisible();
   expect(mockCopy).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: en.privacy.hideNote }));
   expect(
     screen.queryByDisplayValue('synthetic-private-note')
   ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('img', { name: mockTranslate('secretQr.visible') })
+  ).toBeNull();
   expect(await beginReveal()).toHaveValue('');
+});
+
+it('retires the inline QR after switching networks without replacing the note inventory', async () => {
+  const view = render(<PrivateNotes />);
+  fireEvent.change(await beginReveal(), {
+    target: { value: 'correct-password' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: en.buttons.confirm }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: mockTranslate('secretQr.show') })
+  );
+  const qr = screen.getByRole('img', {
+    name: mockTranslate('secretQr.visible'),
+  });
+
+  mockState.vault.activeNetwork.chainId = 57;
+  view.rerender(<PrivateNotes />);
+  expect(qr).not.toBeInTheDocument();
+  expect(screen.queryByDisplayValue('synthetic-private-note')).toBeNull();
+  expect(await beginReveal()).toHaveValue('');
+  expect(
+    mockEmitter.mock.calls.filter(([[, method]]) => method === 'getNotes')
+  ).toHaveLength(1);
 });
 
 it('keeps delayed reveal results hidden after Hide and a new reveal form', async () => {

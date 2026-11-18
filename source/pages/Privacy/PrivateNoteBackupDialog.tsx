@@ -19,6 +19,7 @@ import {
   DialogPrimitive,
 } from 'components/Dialog/Dialog';
 import { ValidatedPasswordInput } from 'components/Input/ValidatedPasswordInput';
+import { SecretQrDisplay } from 'components/SecretQrDisplay';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
@@ -67,18 +68,20 @@ function BackupBody({
             <p>{t('privacy.deposit.backupWarning')}</p>
             {note ? (
               <>
-                <label htmlFor="privacy-backup-note" className="block">
-                  {t('privacy.privateNote')}
-                </label>
-                <textarea
-                  id="privacy-backup-note"
-                  readOnly
-                  value={note}
-                  rows={4}
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="w-full resize-y rounded-lg border border-alpha-whiteAlpha300 bg-bkg-4 p-3 text-xs text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue"
-                />
+                <SecretQrDisplay secret={note}>
+                  <label htmlFor="privacy-backup-note" className="block">
+                    {t('privacy.privateNote')}
+                  </label>
+                  <textarea
+                    id="privacy-backup-note"
+                    readOnly
+                    value={note}
+                    rows={4}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="w-full resize-y rounded-lg border border-alpha-whiteAlpha300 bg-bkg-4 p-3 text-xs text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue"
+                  />
+                </SecretQrDisplay>
                 <p>{t('privacy.noteSecret')}</p>
               </>
             ) : (
@@ -155,10 +158,13 @@ export default function PrivateNoteBackupDialog({
       ref.id,
       account?.address,
       account?.xpub,
+      vault.activeNetwork.kind,
       vault.activeNetwork.url,
+      vault.activeNetwork.apiUrl,
       vault.activeNetwork.chainId,
       vaultGlobal.activeSlip44,
       vaultGlobal.lastLogin,
+      vaultGlobal.isSwitchingAccount,
       vault.passkeyCredentialProfile?.credentialIdHash,
     ]);
   });
@@ -173,19 +179,28 @@ export default function PrivateNoteBackupDialog({
     live.current.onClose();
   }, []);
   useEffect(() => {
+    const retire = () => {
+      if (live.current.noteId) close();
+    };
     const visibility = () => {
       const showing = document.visibilityState !== 'hidden';
       setVisible(showing);
-      if (!showing && live.current.noteId) close();
+      if (!showing) retire();
     };
     const hide = () => {
       setVisible(false);
-      if (live.current.noteId) close();
+      retire();
     };
+    window.addEventListener('blur', retire);
+    window.addEventListener('hashchange', retire);
+    window.addEventListener('popstate', retire);
     document.addEventListener('visibilitychange', visibility);
     window.addEventListener('pagehide', hide);
     window.addEventListener('pageshow', visibility);
     return () => {
+      window.removeEventListener('blur', retire);
+      window.removeEventListener('hashchange', retire);
+      window.removeEventListener('popstate', retire);
       document.removeEventListener('visibilitychange', visibility);
       window.removeEventListener('pagehide', hide);
       window.removeEventListener('pageshow', visibility);

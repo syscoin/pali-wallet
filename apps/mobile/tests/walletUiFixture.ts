@@ -7,6 +7,10 @@ let smartSubmissionLeaveCode: string | undefined;
 
 /** Leaf tests retain their native event ports; the real host has its own tests. */
 export function walletUiFixture(name: string, ports: Record<string, any>): Record<string, unknown> | undefined {
+  if (name === './SecretQr' && !Object.hasOwn(ports, name))
+    return { SecretQrReveal: 'SecretQrReveal', SecretScanButton: 'SecretScanButton', SecretQrScanner: 'SecretQrScanner' };
+  if (name === '../platform/cameraPermission' && !Object.hasOwn(ports, name))
+    return { isCameraPermissionPromptActive: () => false };
   if (name === '../../../../source/shared/smartAccountFeeQuote.ts')
     return { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED };
   if (name === '../ui/WalletBackHandler' || name === './src/ui/WalletBackHandler')

@@ -1,4 +1,13 @@
 {
+  "secretQr": {
+    "show": "Show QR",
+    "hide": "Hide QR",
+    "visible": "QR code for the revealed secret",
+    "scan": "Scan QR",
+    "scanHelp": "Point your camera at the QR code on your other device.",
+    "scanInvalid": "This QR code does not match this import.",
+    "cameraUnavailable": "Camera unavailable. Enter the value manually or check your camera permissions."
+  },
   "secretClipboard": {
     "copyKey": "Copy private key",
     "warning": "Other apps may read your clipboard. Paste this secret only into an app you trust.",

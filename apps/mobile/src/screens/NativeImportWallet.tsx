@@ -1,3 +1,4 @@
+import { SecretQrScanner, SecretScanButton } from './SecretQr';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
@@ -18,6 +19,7 @@ const blank = (count: number) => Array<string>(count).fill('');
 /** Phrase entry and public address review; derivation belongs to the private host. */
 export function NativeImportWallet({ preview, setupError, onConfirmed, onBack }: NativeImportWalletProps) {
   const { t } = useNativeTranslation();
+  const [scanning, setScanning] = useState(false);
   const [count, setCount] = useState<12 | 24>(12);
   const [words, setWords] = useState(() => blank(12));
   const [addresses, setAddresses] = useState<readonly PreviewAddress[] | null>(null);
@@ -102,6 +104,10 @@ export function NativeImportWallet({ preview, setupError, onConfirmed, onBack }:
     clear(); latest.current.onConfirmed(phrase);
   };
 
+  if (scanning) return <SecretQrScanner kind="recoveryPhrase" onClose={() => setScanning(false)} onScan={value => {
+    edit(0, value);
+    setScanning(false);
+  }} />;
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}>
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen scrollResetKey={addresses ? 'confirm-wallet' : 'phrase'} footer={addresses
@@ -129,6 +135,7 @@ export function NativeImportWallet({ preview, setupError, onConfirmed, onBack }:
               if (value === String(length.current)) return;
               length.current = value === '24' ? 24 : 12; setCount(length.current); clear();
             }} />
+          <SecretScanButton disabled={busy} onPress={() => { clear(); setScanning(true); }} />
           <View style={s.grid}>{words.map((word, index) => <View key={index} style={s.word}>
             <Text style={s.number}>{index + 1}</Text>
             <IdleTextInput accessibilityLabel={t('mobile.recoveryDevices.common.recoveryWord', { index: index + 1 })} placeholder={t('mobile.recoveryDevices.common.word', { index: index + 1 })} placeholderTextColor={colors.muted}

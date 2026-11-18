@@ -1,3 +1,4 @@
+import { SecretQrScanner, SecretScanButton } from './SecretQr';
 import { isOperationAuthenticationCancellation } from '../core/operationAuthentication';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import type { TFunction } from 'i18next';
@@ -41,6 +42,7 @@ function failure(cause: unknown, t: TFunction, invalidInput = t('mobile.importAc
 /** Secrets remain inside this protected form and its private submit call. */
 export function NativeImport({ imports, contextRevision, catalogueRevision, networkLabel, utxo, utxoAddressTypes = UTXO_IMPORT_TYPES, onImported, onBack, onSubmitStart, onSubmitEnd }: Props) {
   const { t } = useNativeTranslation();
+  const [scanning, setScanning] = useState(false);
   const [privateKey, setPrivateKey] = useState('');
   const [utxoAddressType, setUtxoAddressType] = useState<UtxoImportAddressType>('p2wpkh');
   const [name, setName] = useState('');
@@ -150,6 +152,10 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
     }
   };
 
+  if (scanning) return <SecretQrScanner kind="privateKey" onClose={() => setScanning(false)} onScan={value => {
+    if (lifetime.current.mounted && !lifetime.current.working && AppState.currentState === 'active') setPrivateKey(value);
+    setScanning(false);
+  }} />;
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen gap={16} footer={address ? <Button title={t('mobile.importAccount.import')} disabled={busy || !acknowledged} onPress={submit} /> :
@@ -174,6 +180,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
           <View style={s.field}><Text style={s.label}>{utxo ? t('mobile.importAccount.utxoKey') : t('mobile.importAccount.evmKey')}</Text><IdleTextInput accessibilityLabel={utxo ? t('mobile.importAccount.utxoKey') : t('mobile.importAccount.evmKey')} value={privateKey} onChangeText={setPrivateKey}
             editable={!busy} secureTextEntry maxLength={utxo ? 128 : 1024} autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off"
             textContentType="none" importantForAutofill="noExcludeDescendants" style={s.input} /></View>
+          <SecretScanButton disabled={busy} onPress={() => { setPrivateKey(''); setScanning(true); }} />
           {utxo && !extended && <View style={s.field}>
             <Text style={s.label}>{t('mobile.importAccount.addressType')}</Text>
             <View style={s.addressTypes}>{utxoAddressTypes.map((type) => (

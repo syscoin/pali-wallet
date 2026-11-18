@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import { FiExternalLink as ExternalLinkIcon } from 'components/Icon/Icon';
 import { Card, CopyCard, ValidatedPasswordInput } from 'components/index';
 import { SecretCopyButton } from 'components/SecretCopyButton';
+import { SecretQrDisplay } from 'components/SecretQrDisplay';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useSecretDisclosure } from 'hooks/useSecretDisclosure';
@@ -200,31 +201,28 @@ const PrivateKeyView = () => {
                 </button>
               )}
             </div>
-            <div
-              className={`${
-                isCurrentKeyValid && currentXprv && !isPrivateKeyVisible
-                  ? 'select-none filter blur-sm'
-                  : ''
-              }`}
-            >
+            {currentXprv && isPrivateKeyVisible ? (
+              <>
+                <SecretQrDisplay
+                  secret={currentXprv}
+                  isCurrent={disclosure.isCurrent}
+                >
+                  <p className="font-mono break-all">{currentXprv}</p>
+                </SecretQrDisplay>
+                <SecretCopyButton
+                  secret={currentXprv}
+                  isCurrent={disclosure.isCurrent}
+                  label={t('secretClipboard.copyKey')}
+                />
+              </>
+            ) : (
               <p
-                className={`${
-                  isCurrentKeyValid && currentXprv && isPrivateKeyVisible
-                    ? 'font-mono break-all'
-                    : ''
-                }`}
+                className={
+                  isCurrentKeyValid ? 'select-none filter blur-sm' : ''
+                }
               >
-                {isCurrentKeyValid && currentXprv && isPrivateKeyVisible
-                  ? currentXprv
-                  : '********...************'}
+                ********...************
               </p>
-            </div>
-            {isCurrentKeyValid && currentXprv && isPrivateKeyVisible && (
-              <SecretCopyButton
-                secret={currentXprv}
-                isCurrent={disclosure.isCurrent}
-                label={t('secretClipboard.copyKey')}
-              />
             )}
           </div>
         </>

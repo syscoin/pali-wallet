@@ -14,6 +14,14 @@ import { KeyringAccountType } from 'types/network';
 import PrivateKey from './PrivateKey';
 
 let mockVault: any;
+const mockQrRender = jest.fn();
+jest.mock('qrcode.react', () => ({
+  QRCodeCanvas: ({ value, includeMargin, size, ...props }: any) => {
+    mockQrRender(value, size, includeMargin);
+    return <canvas {...props} />;
+  },
+}));
+
 const mockEmitter = jest.fn();
 const mockCopy = jest.fn();
 const mockTranslate = (key: string) => key;
@@ -48,6 +56,7 @@ jest.mock('hooks/index', () => ({
 jest.mock('components/Icon/Icon', () => ({
   FiExternalLink: () => <svg aria-hidden="true" />,
   FiCopy: () => <svg aria-hidden="true" />,
+  QrcodeOutlined: () => <svg aria-hidden="true" />,
 }));
 jest.mock('components/index', () => ({
   Card: ({ children }: any) => <div>{children}</div>,
@@ -191,26 +200,42 @@ it('resets private-key reveal on password change and requires a fresh reveal aft
   expect(mockEmitter).toHaveBeenCalledTimes(2);
 });
 
-it.each([
-  `0x${'1234567890abcdef'.repeat(4)}`,
-  `K${'syntheticprivatekey'.repeat(3)}`,
-])('conceals private-key fragments until Show and after Hide', async (key) => {
-  mockEmitter.mockResolvedValueOnce(key);
-  const view = render(<PrivateKey />);
-  const password = screen.getByPlaceholderText('settings.enterYourPassword');
-  const tail = key.slice(-16);
-  expect(view.container.textContent).not.toContain(tail);
-  fireEvent.change(password, { target: { value: 'correct' } });
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  const show = await screen.findByRole('button', { name: 'buttons.show' });
-  expect(view.container.textContent).not.toContain(tail);
-  expect(view.container.textContent).not.toContain(key);
-  fireEvent.click(show);
-  expect(screen.getByText(key)).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.hide' }));
-  expect(view.container.textContent).not.toContain(tail);
-  expect(view.container.textContent).not.toContain(key);
-});
+it.each<[boolean, string]>([
+  [false, `0x${'1234567890abcdef'.repeat(4)}`],
+  [true, `K${'syntheticprivatekey'.repeat(3)}`],
+])(
+  'keeps private keys concealed outside explicit text or QR display (UTXO=%s)',
+  async (isUtxo, key) => {
+    mockVault.isBitcoinBased = isUtxo;
+    mockEmitter.mockResolvedValueOnce(key);
+    const view = render(<PrivateKey />);
+    const password = screen.getByPlaceholderText('settings.enterYourPassword');
+    const tail = key.slice(-16);
+    expect(view.container.textContent).not.toContain(tail);
+    fireEvent.change(password, { target: { value: 'correct' } });
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    const show = await screen.findByRole('button', { name: 'buttons.show' });
+    expect(view.container.textContent).not.toContain(tail);
+    expect(view.container.textContent).not.toContain(key);
+    expect(screen.queryByRole('button', { name: 'secretQr.show' })).toBeNull();
+    fireEvent.click(show);
+    expect(screen.getByText(key)).toBeVisible();
+    expect(screen.queryByRole('img', { name: 'secretQr.visible' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'secretQr.show' }));
+    expect(screen.queryByText(key)).toBeNull();
+    const qr = screen.getByRole('img', { name: 'secretQr.visible' });
+    expect(qr.outerHTML).not.toContain(key);
+    expect(mockQrRender).toHaveBeenLastCalledWith(key, 224, true);
+    fireEvent.click(screen.getByRole('button', { name: 'secretQr.hide' }));
+    expect(qr).not.toBeInTheDocument();
+    expect(screen.getByText(key)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'secretQr.show' }));
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.hide' }));
+    expect(screen.queryByRole('img', { name: 'secretQr.visible' })).toBeNull();
+    expect(view.container.textContent).not.toContain(tail);
+    expect(view.container.textContent).not.toContain(key);
+  }
+);
 
 it('keeps a signing import with an address-shaped public identifier exportable', () => {
   render(<PrivateKey />);

@@ -11,6 +11,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { ValidatedPasswordInput } from 'components/Input/ValidatedPasswordInput';
+import { SecretQrDisplay } from 'components/SecretQrDisplay';
+import { SecretQrImport } from 'components/SecretQrImport';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { verifiedNoteBalance } from 'utils/privacy/balance';
@@ -73,6 +75,15 @@ function NotesView() {
   const verificationPending = notes.some(
     ({ phase }) => phase === 'waiting' || phase === 'not-found'
   );
+  const revealNetworkScope = useSelector(({ vault }: RootState) => {
+    const network = vault.activeNetwork;
+    return JSON.stringify([
+      network?.kind,
+      network?.chainId,
+      network?.url,
+      network?.apiUrl,
+    ]);
+  });
   const [form] = Form.useForm();
   const [importing, setImporting] = useState(false);
   const [noteText, setNoteText] = useState('');
@@ -100,6 +111,7 @@ function NotesView() {
   } | null>(null);
   const owner = useRef({ active: true, revision: 0 });
   const importField = useRef<HTMLTextAreaElement>(null);
+  const importRevision = owner.current.revision;
   const statusRevisions = useRef(new Map<string, number>());
   const clear = () => {
     setCapacitySettings(false);
@@ -125,9 +137,39 @@ function NotesView() {
       owner.current.revision += 1;
     };
   }, []);
+  const revealNetworkScopeRef = useRef(revealNetworkScope);
+  useLayoutEffect(() => {
+    const scopeChanged = revealNetworkScopeRef.current !== revealNetworkScope;
+    revealNetworkScopeRef.current = revealNetworkScope;
+    if (!selected) return;
+    const hideReveal = () => {
+      owner.current.revision += 1;
+      if (!revealed) form.resetFields();
+      setSelected(null);
+      setRevealed('');
+      setError('');
+    };
+    if (scopeChanged) {
+      hideReveal();
+      return;
+    }
+    window.addEventListener('blur', hideReveal);
+    window.addEventListener('hashchange', hideReveal);
+    window.addEventListener('popstate', hideReveal);
+    return () => {
+      window.removeEventListener('blur', hideReveal);
+      window.removeEventListener('hashchange', hideReveal);
+      window.removeEventListener('popstate', hideReveal);
+    };
+  }, [form, revealed, revealNetworkScope, selected]);
   useEffect(() => {
     if (importing) importField.current?.focus();
   }, [importing]);
+
+  const updateNoteDraft = (text: string) => {
+    setNoteText(text);
+    setError('');
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -272,21 +314,33 @@ function NotesView() {
           className="space-y-2"
           autoComplete="off"
         >
-          <label
-            htmlFor="privacy-import-note"
-            className="block text-xs text-white"
-          >
-            {t('privacy.noteLabel')}
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label
+              htmlFor="privacy-import-note"
+              className="block text-xs text-white"
+            >
+              {t('privacy.noteLabel')}
+            </label>
+            <SecretQrImport
+              key={revealNetworkScope}
+              kind="privateNote"
+              disabled={pending}
+              onScan={(text) => {
+                if (
+                  current(importRevision) &&
+                  revealNetworkScopeRef.current === revealNetworkScope &&
+                  !pending
+                )
+                  updateNoteDraft(text);
+              }}
+            />
+          </div>
           <textarea
             ref={importField}
             id="privacy-import-note"
             className={fieldClass}
             value={noteText}
-            onChange={(event) => {
-              setNoteText(event.target.value);
-              setError('');
-            }}
+            onChange={(event) => updateNoteDraft(event.target.value)}
             rows={3}
             maxLength={512}
             autoComplete="off"
@@ -598,21 +652,23 @@ function NotesView() {
                 <div className="space-y-2">
                   {revealed ? (
                     <>
-                      <label
-                        htmlFor="privacy-revealed-note"
-                        className="block text-xs text-white"
-                      >
-                        {t('privacy.privateNote')}
-                      </label>
-                      <textarea
-                        id="privacy-revealed-note"
-                        className={fieldClass}
-                        readOnly
-                        rows={3}
-                        value={revealed}
-                        autoComplete="off"
-                        spellCheck={false}
-                      />
+                      <SecretQrDisplay secret={revealed}>
+                        <label
+                          htmlFor="privacy-revealed-note"
+                          className="block text-xs text-white"
+                        >
+                          {t('privacy.privateNote')}
+                        </label>
+                        <textarea
+                          id="privacy-revealed-note"
+                          className={fieldClass}
+                          readOnly
+                          rows={3}
+                          value={revealed}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </SecretQrDisplay>
                       <p className="text-xs text-brand-gray200">
                         {t('privacy.noteSecret')}
                       </p>

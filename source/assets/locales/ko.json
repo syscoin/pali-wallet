@@ -1,4 +1,13 @@
 {
+  "secretQr": {
+    "show": "QR 표시",
+    "hide": "QR 숨기기",
+    "visible": "공개된 비밀 정보의 QR 코드",
+    "scan": "QR 스캔",
+    "scanHelp": "다른 기기에 표시된 QR 코드에 카메라를 비추세요.",
+    "scanInvalid": "이 QR 코드는 현재 가져오기 유형과 일치하지 않습니다.",
+    "cameraUnavailable": "카메라를 사용할 수 없습니다. 직접 입력하거나 카메라 권한을 확인하세요."
+  },
   "secretClipboard": {
     "copyKey": "개인 키 복사",
     "warning": "다른 앱이 클립보드를 읽을 수 있습니다. 이 비밀 정보는 신뢰하는 앱에만 붙여넣으세요.",

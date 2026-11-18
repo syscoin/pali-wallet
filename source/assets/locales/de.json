@@ -1,4 +1,13 @@
 {
+  "secretQr": {
+    "show": "QR-Code anzeigen",
+    "hide": "QR-Code ausblenden",
+    "visible": "QR-Code für das angezeigte Geheimnis",
+    "scan": "QR-Code scannen",
+    "scanHelp": "Richte die Kamera auf den QR-Code auf deinem anderen Gerät.",
+    "scanInvalid": "Dieser QR-Code passt nicht zu diesem Import.",
+    "cameraUnavailable": "Kamera nicht verfügbar. Gib den Wert manuell ein oder überprüfe die Kameraberechtigungen."
+  },
   "secretClipboard": {
     "copyKey": "Privaten Schlüssel kopieren",
     "warning": "Andere Apps können Ihre Zwischenablage lesen. Fügen Sie dieses Geheimnis nur in eine App ein, der Sie vertrauen.",

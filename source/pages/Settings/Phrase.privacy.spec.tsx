@@ -7,6 +7,14 @@ import PhraseView from './Phrase';
 
 const seed = 'synthetic alpha beta gamma delta epsilon';
 const mockTranslate = (key: string) => key;
+const mockQrRender = jest.fn();
+jest.mock('qrcode.react', () => ({
+  QRCodeCanvas: ({ value, includeMargin, size, ...props }: any) => {
+    mockQrRender(value, size, includeMargin);
+    return <canvas {...props} />;
+  },
+}));
+
 const mockEmitter = jest.fn();
 const mockClipboard = jest.fn();
 jest.mock('react-i18next', () => ({
@@ -43,6 +51,7 @@ jest.mock('utils/navigationState', () => ({
 jest.mock('components/Icon/Icon', () => ({
   LoadingSvg: () => <svg />,
   FiCopy: () => <svg aria-hidden="true" />,
+  QrcodeOutlined: () => <svg aria-hidden="true" />,
 }));
 jest.mock('components/index', () => ({
   Card: ({ children }: any) => <div>{children}</div>,
@@ -108,7 +117,15 @@ it('copies only the explicitly revealed phrase and clears its presentation on bl
   );
   await screen.findByText('components.copied');
   expect(mockClipboard).toHaveBeenCalledWith(seed);
+  expect(screen.queryByRole('img', { name: 'secretQr.visible' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'secretQr.show' }));
+  expect(screen.queryByDisplayValue(seed)).toBeNull();
+  const qr = screen.getByRole('img', { name: 'secretQr.visible' });
+  expect(qr.outerHTML).not.toContain(seed);
+  expect(mockQrRender).toHaveBeenLastCalledWith(seed, 224, true);
   act(() => window.dispatchEvent(new Event('blur')));
+  expect(qr).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'secretQr.show' })).toBeNull();
   expect(
     screen.queryByRole('button', { name: 'secretClipboard.copyPhrase' })
   ).toBeNull();

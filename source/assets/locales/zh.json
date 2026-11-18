@@ -1,4 +1,13 @@
 {
+  "secretQr": {
+    "show": "显示二维码",
+    "hide": "隐藏二维码",
+    "visible": "已显示的秘密信息二维码",
+    "scan": "扫描二维码",
+    "scanHelp": "将相机对准另一台设备上的二维码。",
+    "scanInvalid": "此二维码与当前导入类型不匹配。",
+    "cameraUnavailable": "相机不可用。请手动输入或检查相机权限。"
+  },
   "secretClipboard": {
     "copyKey": "复制私钥",
     "warning": "其他应用可能读取剪贴板。请仅将此机密信息粘贴到您信任的应用中。",

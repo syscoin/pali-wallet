@@ -1,3 +1,4 @@
+import { SecretQrReveal } from './SecretQr';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
@@ -45,6 +46,7 @@ export function NativeNoteReveal({ inventory, note, authentication, onSecretVisi
   useLayoutEffect(() => {
     const owner: Owner = { live: true };
     life.current = owner;
+    setState({ phase: 'protected' });
     const hide = () => { if (life.current === owner) clear(); };
     const change = AppState.addEventListener('change', (next) => {
       if (next !== 'active' && !(owner.attempt && allowsPrivateAuthenticationInterruption(owner.attempt.authentication, next))) hide();
@@ -116,7 +118,9 @@ export function NativeNoteReveal({ inventory, note, authentication, onSecretVisi
         <Header title={t('mobile.noteFlows.reveal.backUpThisNote')} onBack={back} />
         <Notice title={t('mobile.noteFlows.reveal.anyoneWithThisNoteCanWithdraw')} body={t('mobile.noteFlows.reveal.keepYourBackupPrivateYourRecoveryPhraseCant')} tone="amber" />
         {state.phase === 'shown' ? <>
-          <Card style={s.secret}><Text style={s.note}>{state.secret}</Text></Card>
+          <SecretQrReveal value={state.secret} isCurrent={() => life.current.live && !!life.current.attempt}>
+            <Card style={s.secret}><Text style={s.note}>{state.secret}</Text></Card>
+          </SecretQrReveal>
           <Text style={styles.muted}>{t('mobile.noteFlows.reveal.thisNoteIsHiddenAfter30Seconds')}</Text>
         </> : <>
           {state.phase === 'protected' && state.feedback === 'failed' && <Text accessibilityRole="alert" style={s.error}>

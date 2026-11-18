@@ -48,6 +48,13 @@ jest.mock('components/Layout/OnboardingLayout', () => ({
   OnboardingLayout: ({ children }: any) => <section>{children}</section>,
 }));
 jest.mock('components/Modal/StatusModal', () => ({ StatusModal: () => null }));
+jest.mock('components/SecretQrImport', () => ({
+  SecretQrImport: ({ onScan }: { onScan: (text: string) => void }) => (
+    <button type="button" onClick={() => onScan(PHRASE_B)}>
+      Scan a synthetic QR
+    </button>
+  ),
+}));
 
 const Probe = () => {
   const { secrets, beginRecovery } = useOnboardingSecrets();
@@ -263,6 +270,25 @@ it.each(['old first', 'old fails first', 'new first'])(
     expectDraft('/create-password-import', 'B');
   }
 );
+
+it('validates a scanned replacement without submitting or accepting a stale reply', async () => {
+  const user = userEvent.setup();
+  mount();
+  await enterPhrase(user, PHRASE_A);
+  const gate = holdFinalCheck(PHRASE_A);
+  await user.click(importButton());
+  await waitFor(() => expect(gate.held).toBe(true));
+
+  await user.click(screen.getByRole('button', { name: 'Scan a synthetic QR' }));
+  expect(screen.getByRole('textbox')).toHaveValue(PHRASE_B);
+  await waitFor(() => expect(importButton()).toBeEnabled());
+  await act(async () => gate.resolve(true));
+  expectDraft('/import', 'none');
+
+  await user.click(importButton());
+  await screen.findByText('Password step');
+  expectDraft('/create-password-import', 'B');
+});
 
 it('does not admit a delayed final reply after the document is discarded', async () => {
   const user = userEvent.setup();

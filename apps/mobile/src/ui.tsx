@@ -138,6 +138,7 @@ const iconPaths: Record<string, string[]> = {
     'M12 3a17 17 0 0 1 0 18 17 17 0 0 1 0-18',
   ],
   info: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', 'M12 11v6', 'M12 7h.01'],
+  qr: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h3v3h4v4h-4', 'M14 20v1'],
   scan: ['M8 3H3v5', 'M16 3h5v5', 'M21 16v5h-5', 'M3 16v5h5', 'M7 8h10v8H7z'],
   help: [
     'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
