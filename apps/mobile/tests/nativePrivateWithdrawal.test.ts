@@ -344,6 +344,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       ] = true;
     },
     posted,
+    setNonce(value: number) { nonce = value; },
     failSigning() { signingFault = true; },
     failCredentialRead() { credentialFault = true; },
     get signatures() { return signatures; },
@@ -562,7 +563,7 @@ test('changed proof public signals cannot create a review or retained withdrawal
   }
 });
 
-test('pending withdrawal Activity pauses the note until a generic reset permits a fresh review', async () => {
+test('pending withdrawal Activity pauses the note until Clear allows a fresh withdrawal', async () => {
   const f = await fixture();
   try {
     const inventory = await f.seed();
@@ -581,6 +582,7 @@ test('pending withdrawal Activity pauses the note until a generic reset permits 
       /^0x[0-9a-f]{64}$/
     );
     const oldJournal=(await f.privateNotes())[0]!.withdrawal;
+    assert(oldJournal);
     const oldHash=model.getSnapshot().result!.signedTransactionHash!;
     assert.equal(oldJournal?.phase, 'unknown');
     assert.equal((await f.privateNotes())[0]!.withdrawal?.unsigned, undefined);
@@ -604,6 +606,10 @@ test('pending withdrawal Activity pauses the note until a generic reset permits 
     await blocked.dispose();
 
     await f.runtime.resetActivity(noop, noop);
+    await f.reopen();
+    const oldNonce = Transaction.from(f.posted[1]!).nonce;
+    f.setNonce(oldNonce); // The RPC no longer sees the unknown withdrawal.
+    f.loseResponse(false);
     const cleared = await reopenInventory();
     assert.equal(cleared.notes[0]?.withdrawalPending, undefined);
     assert.equal((await cleared.checkNote!(cleared.notes[0]!, noop)).phase, 'verified');
@@ -620,6 +626,13 @@ test('pending withdrawal Activity pauses the note until a generic reset permits 
     const signed = await f.storage.signedRecords.read((await f.storage.recovery.readIdentity())!.root!.profileId);
     assert(signed);
     assert(!JSON.parse(signed).entries.some((entry: { hash: string }) => entry.hash === oldHash), 'reset drops the old local Activity row');
+    await resumed.confirm(freshReview.intentId);
+    assert.equal(resumed.getSnapshot().phase, 'submitted', resumed.getSnapshot().error ?? undefined);
+    assert.equal(f.posted.length, 3);
+    assert.equal(Transaction.from(f.posted[2]!).nonce, oldNonce);
+    const retained = (await f.privateNotes())[0]!.withdrawal;
+    assert.equal(retained?.phase, 'submitted');
+    assert(retained?.retired?.some(attempt => attempt.attemptHash === oldJournal.attemptHash));
     await resumed.dispose();
   } finally {
     await f.close();

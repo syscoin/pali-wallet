@@ -73,6 +73,7 @@ type NativeNoteBackupPorts = Readonly<{
   assertAvailable(): void;
   authenticate: IPrivateVaultHost['authenticate'];
   binding(): Promise<Readonly<{ profileId: string; walletBindingId: string }>>;
+  readPrivateNonceResetGeneration?(payer: string, session: IPrivateVaultSession): Promise<number>;
   withdrawalScope(): Readonly<{ context: IPrivacyWithdrawalSession['context']; lifetime: string }> | null;
   notes: NonNullable<OpenWalletStorage['notes']>;
   requireReopen(): void;
@@ -134,6 +135,7 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
   }, {
     identify: identifyClassicNote,
     generate: generateClassicNote,
+    readPrivateNonceResetGeneration: ports.readPrivateNonceResetGeneration,
     mutex,
     now: Date.now,
     deadlineNow: monotonicNow,

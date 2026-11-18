@@ -4153,25 +4153,39 @@ class MainController {
         /* webpackChunkName: "private-vault" */ './privateVault'
       )
         .then(({ createPrivateVaultController }) =>
-          createPrivateVaultController({
-            captureSession: () => this.capturePrivateVaultSession(),
-            prepareCompletionProof: (identity, withdrawal, deposit, session) =>
-              this.preparePrivateVaultCompletionProof(
+          createPrivateVaultController(
+            {
+              captureSession: () => this.capturePrivateVaultSession(),
+              prepareCompletionProof: (
                 identity,
                 withdrawal,
                 deposit,
                 session
-              ),
-            readNote: (identity) =>
-              this.privateVaultNoteReader
-                ? this.privateVaultNoteReader(identity)
-                : Promise.resolve({ phase: 'waiting' }),
-            authenticate: (password, session, reveal) => {
-              if (typeof password !== 'string')
-                return Promise.reject(new Error('privacy_vault_unavailable'));
-              return this.authenticatePrivateVault(password, session, reveal);
+              ) =>
+                this.preparePrivateVaultCompletionProof(
+                  identity,
+                  withdrawal,
+                  deposit,
+                  session
+                ),
+              readNote: (identity) =>
+                this.privateVaultNoteReader
+                  ? this.privateVaultNoteReader(identity)
+                  : Promise.resolve({ phase: 'waiting' }),
+              authenticate: (password, session, reveal) => {
+                if (typeof password !== 'string')
+                  return Promise.reject(new Error('privacy_vault_unavailable'));
+                return this.authenticatePrivateVault(password, session, reveal);
+              },
             },
-          })
+            {
+              readPrivateNonceResetGeneration: (payer, session) =>
+                this.getRetainedEvmRecords().readPrivateNonceResetGeneration(
+                  session,
+                  payer
+                ),
+            }
+          )
         )
         .catch(() => {
           this.privateVaultController = undefined;
@@ -10731,6 +10745,7 @@ class MainController {
         try {
           assertCurrent();
           await this.sendAndSaveTransaction(txResult, signing.context.account, {
+            clearNavigation: false,
             localAcknowledgedInputs: createUtxoAcknowledgedInputs(
               verifiedSignedPsbt.txInputs,
               {

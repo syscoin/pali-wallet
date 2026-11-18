@@ -334,6 +334,38 @@ test('a lost native deposit response remains unknown with its protected signed r
   }
 });
 
+test('Clear Activity releases an unknown deposit nonce for a fresh deposit', async () => {
+  const f = await fixture();
+  const open = () => f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
+  const first = await open();
+  let fresh: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    f.loseResponse(true);
+    await first.prepare({ poolId: 'eth-1' });
+    await first.confirm(first.getSnapshot().review!.intentId);
+    assert.equal(first.getSnapshot().phase, 'unknown');
+    const oldNote = (await f.privateNotes())[0]!;
+    assert.equal(oldNote.deposit?.phase, 'unknown');
+    await first.dispose();
+
+    await f.runtime.resetActivity(noop, noop);
+    assert.deepEqual((await f.privateNotes()).find(note => note.id === oldNote.id), oldNote);
+    f.loseResponse(false);
+    fresh = await open();
+    await fresh.prepare({ poolId: 'eth-1' });
+    await fresh.confirm(fresh.getSnapshot().review!.intentId);
+    assert.equal(fresh.getSnapshot().phase, 'submitted', fresh.getSnapshot().error ?? undefined);
+    assert.equal(f.posted.length, 2);
+    assert.equal(Transaction.from(f.posted[0]!).nonce, Transaction.from(f.posted[1]!).nonce);
+    assert.notEqual(Transaction.from(f.posted[0]!).hash, Transaction.from(f.posted[1]!).hash);
+    assert.deepEqual((await f.privateNotes()).find(note => note.id === oldNote.id), oldNote);
+  } finally {
+    await fresh?.dispose();
+    await first.dispose();
+    await f.close();
+  }
+});
+
 function deferred() {
   let release!: () => void;
   const promise = new Promise<void>((resolve) => {

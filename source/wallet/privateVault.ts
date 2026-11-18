@@ -13,7 +13,7 @@ import { keccak256 } from 'ethers/crypto';
 import { toUtf8Bytes } from 'ethers/utils';
 
 import { normalizePrivateDepositAttempt } from '../utils/privacy/depositMetadata.ts';
-import { getPrivacyPool } from '../utils/privacy/registry.ts';
+import { getPrivacyPool, PRIVACY_CHAIN_ID } from '../utils/privacy/registry.ts';
 import {
   captureWithdrawalRootAnchor,
   createPrivateWithdrawalJournal,
@@ -436,6 +436,11 @@ export interface IPrivateVaultDependencies {
   // Millisecond clock used for persisted record timestamps.
   now: () => number;
   randomId: () => string;
+  /** Authenticated Clear Activity generation for an Ethereum mainnet payer. */
+  readPrivateNonceResetGeneration?: (
+    payer: string,
+    session: IPrivateVaultSession
+  ) => Promise<number>;
   storage: IPrivateVaultStorage;
   // Optional host task yield during inventory reads, outside signing or writes.
   yieldInventory?: () => Promise<void>;
@@ -544,8 +549,16 @@ export function createPrivateVaultController(
   ) {
     throw new Error('privacy_vault_unavailable');
   }
-  const { storage, mutex, identify, generate, now, deadlineNow, randomId } =
-    dependencies;
+  const {
+    storage,
+    mutex,
+    identify,
+    generate,
+    now,
+    deadlineNow,
+    randomId,
+    readPrivateNonceResetGeneration,
+  } = dependencies;
   const compareAndSet = storage.compareAndSet?.bind(storage);
   const assertSession = (session: IPrivateVaultSession) =>
     assertPrivateVaultSession(session, compareAndSet !== undefined);
@@ -1217,20 +1230,56 @@ export function createPrivateVaultController(
       basis
     );
   };
-  const nonceReserved = (notes: IStoredNote[], from: string, nonce: string) =>
-    notes.some(
+  // Read the signed-record journal before taking the vault mutex. Signed
+  // record admission can acquire the vault for exact attempt bookkeeping.
+  const captureNonceReset = async (
+    context: IEvmTransactionContext,
+    session: IPrivateVaultSession
+  ) => {
+    try {
+      assertSession(session);
+      const address = context?.account?.address;
+      if (
+        context?.chainId !== PRIVACY_CHAIN_ID ||
+        context.sessionGeneration !== session.generation ||
+        typeof address !== 'string' ||
+        !/^0x[0-9a-f]{40}$/i.test(address)
+      )
+        throw new Error('privacy_vault_session_changed');
+      const payer = address.toLowerCase();
+      const generation = await readPrivateNonceResetGeneration!(payer, session);
+      assertSession(session);
+      if (!Number.isSafeInteger(generation) || generation < 0)
+        throw new Error('privacy_vault_unavailable');
+      return { generation, payer };
+    } catch (error) {
+      throw publicError(error);
+    }
+  };
+  const nonceReserved = (
+    notes: IStoredNote[],
+    from: string,
+    nonce: string,
+    generation: number
+  ) => {
+    const holdsNonce = (entry?: {
+      from?: string;
+      nonce?: string;
+      nonceResetGeneration?: number;
+    }) =>
+      entry?.from === from &&
+      entry.nonce === nonce &&
+      // A missing or older reset marker cannot release a newer reservation.
+      (entry.nonceResetGeneration ?? 0) >= generation;
+    return notes.some(
       (entry) =>
-        (entry.deposit?.from === from && entry.deposit.nonce === nonce) ||
+        holdsNonce(entry.deposit) ||
         (entry.withdrawal
           ? [entry.withdrawal, ...(entry.withdrawal.retired ?? [])]
           : []
-        ).some(
-          (withdrawal) =>
-            !withdrawal.recovery &&
-            withdrawal.from === from &&
-            withdrawal.nonce === nonce
-        )
+        ).some((withdrawal) => !withdrawal.recovery && holdsNonce(withdrawal))
     );
+  };
 
   // No bearer notes survive a preview operation in this map. A commit must
   // present the same detached source again, verified against its digest.
@@ -1551,7 +1600,7 @@ export function createPrivateVaultController(
           basis
         );
       }),
-    reserveWithdrawalAttempt: (
+    reserveWithdrawalAttempt: async (
       attempt,
       session,
       lifetime,
@@ -1559,6 +1608,10 @@ export function createPrivateVaultController(
       approval
     ) => {
       const approved = captureWithdrawalApproval(approval);
+      const reset =
+        readPrivateNonceResetGeneration && attempt?.mode === 'direct'
+          ? await captureNonceReset(attempt.context, session)
+          : undefined;
       return internal(session, async (context) => {
         if (
           attempt?.context?.sessionGeneration !== session.generation ||
@@ -1577,9 +1630,13 @@ export function createPrivateVaultController(
           note.id,
           identity
         );
+        if (reset && created.from !== reset.payer)
+          throw new Error('privacy_withdrawal_attempt_invalid');
+        const nonceResetGeneration = reset?.generation ?? 0;
         const previous = note.withdrawal;
         const withdrawal = withdrawalJournal({
           ...created,
+          ...(nonceResetGeneration ? { nonceResetGeneration } : {}),
           unsigned: unsignedScope(attempt.context, lifetime),
           ...(previous
             ? {
@@ -1601,7 +1658,12 @@ export function createPrivateVaultController(
         if (
           withdrawal.from &&
           withdrawal.nonce !== undefined &&
-          nonceReserved(manifest.notes, withdrawal.from, withdrawal.nonce)
+          nonceReserved(
+            manifest.notes,
+            withdrawal.from,
+            withdrawal.nonce,
+            nonceResetGeneration
+          )
         )
           throw new Error('privacy_withdrawal_attempt_exists');
         await persist(
@@ -1828,8 +1890,11 @@ export function createPrivateVaultController(
         await assertProfile(context);
         return note.deposit ? { ...note.deposit } : null;
       }),
-    reserveDepositAttempt: (attempt, session, onRestoreFence) =>
-      internal(session, async (context) => {
+    reserveDepositAttempt: async (attempt, session, onRestoreFence) => {
+      const reset = readPrivateNonceResetGeneration
+        ? await captureNonceReset(attempt?.context, session)
+        : undefined;
+      return internal(session, async (context) => {
         if (
           attempt?.context?.sessionGeneration !== session.generation ||
           attempt.expiresAt <= now()
@@ -1838,9 +1903,23 @@ export function createPrivateVaultController(
         const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt?.noteId);
         const identity = await assertEligible(context, note);
-        const deposit = depositJournal(attempt, note, identity);
+        const created = depositJournal(attempt, note, identity);
+        if (reset && created.from !== reset.payer)
+          throw new Error('privacy_deposit_attempt_invalid');
+        const nonceResetGeneration = reset?.generation ?? 0;
+        const deposit = {
+          ...created,
+          ...(nonceResetGeneration ? { nonceResetGeneration } : {}),
+        };
         onRestoreFence?.(restoreFence(context));
-        if (nonceReserved(manifest.notes, deposit.from, deposit.nonce))
+        if (
+          nonceReserved(
+            manifest.notes,
+            deposit.from,
+            deposit.nonce,
+            nonceResetGeneration
+          )
+        )
           throw new Error('privacy_deposit_attempt_exists');
         await persist(
           context,
@@ -1852,7 +1931,8 @@ export function createPrivateVaultController(
             await assertEligible(context, note);
           }
         );
-      }),
+      });
+    },
     recordDepositBroadcast: (attempt, transactionHash, session) =>
       internal(session, (context) =>
         recordDepositBroadcast(context, attempt, transactionHash)

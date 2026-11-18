@@ -131,6 +131,7 @@ export interface IPrivateVaultDepositJournal {
   from: string;
   intentId: string;
   nonce: string;
+  nonceResetGeneration?: number;
   phase: 'unknown' | 'submitted';
   transactionHash?: string;
 }
@@ -232,6 +233,7 @@ export function journal(
     'createdAt',
     'from',
     'nonce',
+    'nonceResetGeneration',
     'phase',
     'transactionHash',
   ]);
@@ -248,6 +250,9 @@ export function journal(
     typeof value.nonce !== 'string' ||
     !/^(?:0|[1-9][0-9]{0,19})$/.test(value.nonce) ||
     BigInt(value.nonce) >= BigInt(1) << BigInt(64) ||
+    (value.nonceResetGeneration !== undefined &&
+      (!Number.isSafeInteger(value.nonceResetGeneration) ||
+        value.nonceResetGeneration <= 0)) ||
     !['unknown', 'submitted'].includes(value.phase) ||
     (value.phase === 'submitted'
       ? typeof value.transactionHash !== 'string' ||
@@ -261,6 +266,9 @@ export function journal(
     createdAt: value.createdAt,
     from: value.from.toLowerCase(),
     nonce: value.nonce,
+    ...(value.nonceResetGeneration
+      ? { nonceResetGeneration: value.nonceResetGeneration }
+      : {}),
     phase: value.phase,
     ...(value.transactionHash
       ? { transactionHash: value.transactionHash }
@@ -279,6 +287,7 @@ const WITHDRAWAL_JOURNAL_KEYS = [
   'jobId',
   'mode',
   'nonce',
+  'nonceResetGeneration',
   'phase',
   'proofHash',
   'publicInputs',
@@ -448,6 +457,10 @@ export function withdrawalJournal(
     !Number.isSafeInteger(value.createdAt) ||
     value.createdAt < 0 ||
     !['direct', 'relayed'].includes(value.mode) ||
+    (value.nonceResetGeneration !== undefined &&
+      (value.mode !== 'direct' ||
+        !Number.isSafeInteger(value.nonceResetGeneration) ||
+        value.nonceResetGeneration <= 0)) ||
     !['unknown', 'submitted'].includes(value.phase) ||
     (value.mode === 'direct'
       ? typeof value.from !== 'string' ||
@@ -567,6 +580,9 @@ export function withdrawalJournal(
     ...(value.mode === 'direct'
       ? { from: value.from!.toLowerCase(), nonce: value.nonce }
       : { endpoint: value.endpoint, ensHash: value.ensHash }),
+    ...(value.nonceResetGeneration
+      ? { nonceResetGeneration: value.nonceResetGeneration }
+      : {}),
     ...(value.transactionHash
       ? { transactionHash: value.transactionHash }
       : {}),

@@ -560,6 +560,11 @@ export type EvmSignedRetirementReadForChain = (
   assertCurrent: () => void
 ) => EvmSignedRetirementRead | null;
 type NonceFloor = Readonly<{ chainId: string; from: string; nonce: number }>;
+type PrivateNonceReset = readonly [payer: string, generation: number];
+type NonceResetState = Readonly<{
+  privateNonceResets: readonly PrivateNonceReset[];
+  resetGeneration: number;
+}>;
 const ROOT_PLAINTEXT_LIMIT = 64 * 1024;
 const FINALITY_TIMEOUT_MS = 12_000;
 const floorKey = ({ chainId, from }: Pick<NonceFloor, 'chainId' | 'from'>) =>
@@ -591,6 +596,33 @@ function nonceFloors(value: unknown): readonly NonceFloor[] {
     })
   );
 }
+function parsePrivateNonceResets(
+  value: unknown,
+  resetGeneration: number
+): readonly PrivateNonceReset[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > EVM_SIGNED_RECORD_LIMITS.transactions
+  )
+    return invalid();
+  let previous = '';
+  const resets = value.map((item): PrivateNonceReset => {
+    if (!Array.isArray(item) || item.length !== 2) return invalid();
+    const [payer, generation] = item;
+    if (
+      typeof payer !== 'string' ||
+      !/^0x[0-9a-f]{40}$/.test(payer) ||
+      payer <= previous ||
+      !Number.isSafeInteger(generation) ||
+      generation < 1 ||
+      generation > resetGeneration
+    )
+      return invalid();
+    previous = payer;
+    return Object.freeze([payer, generation] as const);
+  });
+  return Object.freeze(resets);
+}
 function minimumNonce(
   bundle: Bundle | null,
   scope: Pick<NonceFloor, 'chainId' | 'from'>
@@ -616,10 +648,8 @@ type ParsedBundle = Readonly<{
   version: 1;
 }>;
 type Bundle = ParsedBundle &
-  Readonly<{
-    nonceFloors: readonly NonceFloor[];
-    resetGeneration: number;
-  }>;
+  NonceResetState &
+  Readonly<{ nonceFloors: readonly NonceFloor[] }>;
 const queues = new WeakMap<EvmSignedRecordStorage, Promise<unknown>>();
 // Reset invalidates work immediately, including work waiting on the storage queue.
 const resetSerials = new WeakMap<EvmSignedRecordStorage, number>();
@@ -1106,6 +1136,7 @@ export class EvmSignedRecords {
     });
     let floors: readonly NonceFloor[];
     let resetGeneration: number;
+    let privateNonceResets: readonly PrivateNonceReset[];
     try {
       guard(session);
       if (plaintext.length > ROOT_PLAINTEXT_LIMIT) return invalid();
@@ -1120,6 +1151,10 @@ export class EvmSignedRecords {
         !!value &&
         typeof value === 'object' &&
         Object.hasOwn(value, 'resetGeneration');
+      const hasPrivateNonceResets =
+        !!value &&
+        typeof value === 'object' &&
+        Object.hasOwn(value, 'privateNonceResets');
       const hasAuthorizationCount =
         !!value &&
         typeof value === 'object' &&
@@ -1141,6 +1176,7 @@ export class EvmSignedRecords {
         'entriesHash',
         ...(hasFloors ? ['nonceFloors'] : []),
         ...(hasResetGeneration ? ['resetGeneration'] : []),
+        ...(hasPrivateNonceResets ? ['privateNonceResets'] : []),
         ...(hasAuthorizationCount
           ? ['authorizations', 'authorizationsHash']
           : []),
@@ -1160,6 +1196,10 @@ export class EvmSignedRecords {
       resetGeneration = hasResetGeneration ? root.resetGeneration : 0;
       if (!Number.isSafeInteger(resetGeneration) || resetGeneration < 0)
         return invalid();
+      privateNonceResets = parsePrivateNonceResets(
+        hasPrivateNonceResets ? root.privateNonceResets : [],
+        resetGeneration
+      );
       this.bindGeneration(session, resetGeneration);
     } finally {
       plaintext.fill(0);
@@ -1168,6 +1208,7 @@ export class EvmSignedRecords {
       ...parsed,
       nonceFloors: floors,
       resetGeneration,
+      privateNonceResets,
     });
     const byScope = new Map(
       floors.map((floor) => [floorKey(floor), floor.nonce])
@@ -1186,7 +1227,7 @@ export class EvmSignedRecords {
     authorizations: readonly AuthorizationEntry[],
     floors: readonly NonceFloor[],
     reserveStatusGrowth: boolean,
-    resetGeneration: number,
+    reset: NonceResetState | null,
     verifyBeforeCommit?: () => Promise<() => void>
   ): Promise<boolean> {
     if (!Number.isSafeInteger(revision)) return limit();
@@ -1195,6 +1236,7 @@ export class EvmSignedRecords {
       EVM_SIGNED_RECORD_LIMITS.transactions
     )
       return reserveStatusGrowth ? appendLimit() : limit();
+    const { resetGeneration = 0, privateNonceResets = [] } = reset ?? {};
     const digest = await entriesHash(entries);
     guard(session);
     const bytes = encoder.encode(
@@ -1211,6 +1253,7 @@ export class EvmSignedRecords {
           : {}),
         nonceFloors: nonceFloors(floors),
         ...(resetGeneration ? { resetGeneration } : {}),
+        ...(privateNonceResets.length ? { privateNonceResets } : {}),
       })
     );
     let root: IEncryptedPrivateRecord;
@@ -1572,7 +1615,7 @@ export class EvmSignedRecords {
             [...(previous.bundle?.authorizations ?? []), added],
             previous.bundle?.nonceFloors ?? [],
             true,
-            previous.bundle?.resetGeneration ?? 0
+            previous.bundle
           )
         )
           return this.authorizationReceipt(session, id, record);
@@ -1631,7 +1674,7 @@ export class EvmSignedRecords {
             remaining,
             bundle.nonceFloors,
             false,
-            bundle.resetGeneration,
+            bundle,
             async () => {
               await proof.revalidate();
               guard(session);
@@ -2537,7 +2580,7 @@ export class EvmSignedRecords {
             previous.bundle?.authorizations ?? [],
             previous.bundle?.nonceFloors ?? [],
             true,
-            previous.bundle?.resetGeneration ?? 0,
+            previous.bundle,
             smartReplacement
               ? async () => {
                   const permit =
@@ -2598,7 +2641,7 @@ export class EvmSignedRecords {
         bundle.authorizations ?? [],
         bundle.nonceFloors ?? [],
         false,
-        bundle.resetGeneration ?? 0
+        bundle
       );
     });
   }
@@ -2893,7 +2936,7 @@ export class EvmSignedRecords {
             authorizations,
             bundle.nonceFloors,
             false,
-            bundle.resetGeneration
+            bundle
           )
         )
           return changed;
@@ -2974,6 +3017,24 @@ export class EvmSignedRecords {
     return matched;
   }
 
+  /** The privacy pools use Ethereum mainnet payer nonces. Legacy scopes start at zero. */
+  readPrivateNonceResetGeneration(
+    session: EvmSignedRecordSession,
+    payer: string
+  ): Promise<number> {
+    const from = getAddress(payer).toLowerCase();
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      guard(session);
+      return (
+        bundle?.privateNonceResets.find(([address]) => address === from)?.[1] ??
+        0
+      );
+    });
+  }
+
   /** Explicitly forget local tracking for one account and chain. Network-held
    * transactions can still execute. The host must revoke its signing/review and
    * history-publication authorities before calling this method. */
@@ -3038,6 +3099,17 @@ export class EvmSignedRecords {
         );
         const resetGeneration = (previous.bundle?.resetGeneration ?? 0) + 1;
         if (!Number.isSafeInteger(resetGeneration)) return limit();
+        let privateNonceResets = previous.bundle?.privateNonceResets ?? [];
+        if (chainId === '1') {
+          const byPayer = new Map(privateNonceResets);
+          byPayer.set(from, resetGeneration);
+          if (byPayer.size > EVM_SIGNED_RECORD_LIMITS.transactions)
+            return limit();
+          privateNonceResets = [...byPayer].sort(([left], [right]) =>
+            left < right ? -1 : left > right ? 1 : 0
+          );
+        }
+        const reset = { resetGeneration, privateNonceResets };
         if (
           await this.write(
             resetSession,
@@ -3048,7 +3120,7 @@ export class EvmSignedRecords {
             authorizations,
             floors,
             false,
-            resetGeneration
+            reset
           )
         ) {
           this.retirementGroupCursors.delete(`${profileId}:${chainId}:${from}`);
@@ -3249,7 +3321,7 @@ export class EvmSignedRecords {
                 previous.bundle!.authorizations,
                 previous.bundle!.nonceFloors,
                 false,
-                previous.bundle!.resetGeneration,
+                previous.bundle!,
                 async () => {
                   const fresh = await observe();
                   if (
@@ -4486,7 +4558,7 @@ export class EvmSignedRecords {
             previous.bundle.authorizations,
             previous.bundle.nonceFloors,
             false,
-            previous.bundle.resetGeneration,
+            previous.bundle,
             reconcile?.verify
           )
         )

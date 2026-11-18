@@ -18,6 +18,7 @@ import type {
 
 import {
   createPrivateVaultController,
+  IPrivateVaultDependencies,
   IPrivateVaultSession,
   PRIVATE_VAULT_DOMAIN,
   PRIVATE_VAULT_FORMAT,
@@ -200,7 +201,8 @@ function fakeUnlockedKeyring(root = ROOT) {
 
 function fixture(
   generate?: () => string,
-  identify?: typeof identifyClassicNote
+  identify?: typeof identifyClassicNote,
+  readPrivateNonceResetGeneration?: IPrivateVaultDependencies['readPrivateNonceResetGeneration']
 ) {
   const records: Record<string, any> = {};
   const mutex = new AsyncMutex();
@@ -261,7 +263,14 @@ function fixture(
         readNote,
         prepareCompletionProof,
       },
-      { storage, mutex, now: () => 456, generate, identify }
+      {
+        storage,
+        mutex,
+        now: () => 456,
+        generate,
+        identify,
+        readPrivateNonceResetGeneration,
+      }
     );
   const controller = create();
   return {
@@ -1723,6 +1732,126 @@ it('rejects competing deposit and withdrawal reservations sharing an account non
       ).rejects.toThrow('privacy_deposit_attempt_exists');
     }
   }
+});
+
+it.each(['deposit', 'withdrawal'] as const)(
+  'releases an older %s nonce for the cleared payer while keeping both journals',
+  async (first) => {
+    const thirdNote = `tornado-eth-1-1-0x${'03'.repeat(62)}`;
+    const generate = jest
+      .fn()
+      .mockReturnValueOnce(SECOND_NOTE)
+      .mockReturnValueOnce(thirdNote);
+    const generations = new Map<string, number>();
+    const f = fixture(generate, undefined, async (payer, owner) => {
+      owner.assertCurrent();
+      return generations.get(payer) ?? 0;
+    });
+    const imported = await f.controller.importNote(NOTE);
+    const generated = await f.controller.createDepositNote('eth-1');
+    const nextNote = await f.controller.createDepositNote('eth-1');
+    const session = f.captureSession();
+    const deposit = depositAttempt(generated.id, 0, SECOND_NOTE);
+    const withdrawal = withdrawalAttempt(imported.id);
+    const lifetime = '00000000-0000-4000-8000-000000000099:0';
+    const reserve = (
+      kind: typeof first,
+      vault: ReturnType<typeof f.create>
+    ) => {
+      if (kind === 'withdrawal') {
+        f.setStatus({ phase: 'verified' });
+        return vault.reserveWithdrawalAttempt(withdrawal, session, lifetime);
+      }
+      f.setStatus({ phase: 'not-found' });
+      return vault.reserveDepositAttempt(deposit, session);
+    };
+    await reserve(first, f.controller);
+    const next = first === 'deposit' ? 'withdrawal' : 'deposit';
+
+    const reopened = f.create();
+    generations.set(`0x${'22'.repeat(20)}`, 1);
+    await expect(reserve(next, reopened)).rejects.toThrow(
+      `privacy_${next}_attempt_exists`
+    );
+    generations.set(deposit.transaction.from, 2);
+    await reserve(next, reopened);
+
+    const withdrawalHash = `0x${'cd'.repeat(32)}`;
+    await reopened.recordDepositBroadcast(deposit, TX_HASH, session);
+    await reopened.recordWithdrawalSubmission(
+      withdrawal,
+      { transactionHash: withdrawalHash },
+      session
+    );
+    const depositJournal = await f
+      .create()
+      .getDepositAttempt(generated.id, session);
+    const withdrawalJournal = await f
+      .create()
+      .getWithdrawalAttempt(imported.id, session);
+    expect(depositJournal).toMatchObject({
+      phase: 'submitted',
+      transactionHash: TX_HASH,
+    });
+    expect(withdrawalJournal).toMatchObject({
+      phase: 'submitted',
+      transactionHash: withdrawalHash,
+    });
+    expect(depositJournal?.nonceResetGeneration).toBe(
+      first === 'deposit' ? undefined : 2
+    );
+    expect(withdrawalJournal?.nonceResetGeneration).toBe(
+      first === 'withdrawal' ? undefined : 2
+    );
+
+    f.setStatus({ phase: 'not-found' });
+    const third = depositAttempt(nextNote.id, 0, thirdNote);
+    await expect(
+      reopened.reserveDepositAttempt(third, session)
+    ).rejects.toThrow('privacy_deposit_attempt_exists');
+    generations.set(deposit.transaction.from, 3);
+    await reopened.reserveDepositAttempt(third, session);
+    expect(
+      await reopened.getDepositAttempt(nextNote.id, session)
+    ).toMatchObject({ nonceResetGeneration: 3, phase: 'unknown' });
+
+    const portable = await reopened.exportBackupSnapshot(
+      'correct-password',
+      session
+    );
+    expect(JSON.stringify(portable)).not.toContain('nonceResetGeneration');
+  }
+);
+
+it('retires a private reservation while its payer reset read is pending', async () => {
+  const reading = deferred(),
+    release = deferred();
+  const f = fixture(
+    () => NOTE,
+    undefined,
+    async () => {
+      reading.resolve();
+      await release.promise;
+      return 1;
+    }
+  );
+  f.setStatus({ phase: 'not-found' });
+  const note = await f.controller.createDepositNote('eth-1');
+  const reserve = f.controller.reserveDepositAttempt(
+    depositAttempt(note.id),
+    f.captureSession()
+  );
+  const rejected = expect(reserve).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  await reading.promise;
+  f.lock();
+  release.resolve();
+  await rejected;
+  f.unlock();
+  expect(
+    await f.controller.getDepositAttempt(note.id, f.captureSession())
+  ).toBeNull();
 });
 
 it('leaves withdrawal unknown when the original crypto session locks before acknowledgement', async () => {
@@ -4944,57 +5073,71 @@ it('competing approval refuses changed history before reservation without writin
   expect(f.records).toEqual(unchanged);
 });
 
-it('a late retained acknowledgement preserves the original and retires the competing dispatch approval', async () => {
-  const f = fixture(),
-    note = await f.controller.importNote(NOTE),
-    session = f.captureSession();
-  const original = withdrawalAttempt(note.id, 'relayed');
-  await f.controller.reserveWithdrawalAttempt(
-    original,
-    session,
-    competingLifetime
-  );
-  const { approval } = await competingApproval(f, note.id, session);
-  const next = competingAttempt(original);
-  let fence!: () => void;
-  await f.controller.reserveWithdrawalAttempt(
-    next,
-    session,
-    competingLifetime,
-    (identity) => {
-      fence = identity.assertRestoreCurrent;
-    },
-    approval
-  );
-  expect(() => fence()).not.toThrow();
-  await f.controller.recordWithdrawalSubmission(
-    original,
-    { jobId: UUID, transactionHash: TX_HASH },
-    session
-  );
-  const saved = (await decryptedVault(f)).notes[0].withdrawal;
-  expect(saved.intentId).toBe(next.intentId);
-  expect(saved.retired[0]).toMatchObject({
-    intentId: original.intentId,
-    phase: 'submitted',
-    jobId: UUID,
-    transactionHash: TX_HASH,
-  });
-  expect(saved.retired[0].recovery).toBeUndefined();
-  expect(saved.retired[0].unsigned).toBeUndefined();
-  expect(() => fence()).toThrow('privacy_note_restore_required');
-  const unchanged = structuredClone(f.records);
-  await expect(
-    f.controller.consumeUnsignedWithdrawal(
+it.each(['direct', 'relayed'] as const)(
+  'a late retained %s acknowledgement preserves the original and retires the competing dispatch approval',
+  async (mode) => {
+    let generation = 4;
+    const f = fixture(undefined, undefined, async () => generation),
+      note = await f.controller.importNote(NOTE),
+      session = f.captureSession();
+    const original = withdrawalAttempt(note.id, mode);
+    await f.controller.reserveWithdrawalAttempt(
+      original,
+      session,
+      competingLifetime
+    );
+    generation = 5;
+    const { approval } = await competingApproval(f, note.id, session);
+    const next = competingAttempt(original);
+    let fence!: () => void;
+    await f.controller.reserveWithdrawalAttempt(
       next,
       session,
       competingLifetime,
+      (identity) => {
+        fence = identity.assertRestoreCurrent;
+      },
       approval
-    )
-  ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
-  expect(f.records).toEqual(unchanged);
-  expect((await decryptedVault(f)).notes[0].withdrawal.unsigned).toBeDefined();
-});
+    );
+    expect(() => fence()).not.toThrow();
+    await f.controller.recordWithdrawalSubmission(
+      original,
+      {
+        ...(mode === 'relayed' ? { jobId: UUID } : {}),
+        transactionHash: TX_HASH,
+      },
+      session
+    );
+    const saved = (await decryptedVault(f)).notes[0].withdrawal;
+    expect(saved.intentId).toBe(next.intentId);
+    expect(saved.nonceResetGeneration).toBe(mode === 'direct' ? 5 : undefined);
+    expect(saved.retired[0]).toMatchObject({
+      intentId: original.intentId,
+      phase: 'submitted',
+      transactionHash: TX_HASH,
+    });
+    expect(saved.retired[0].jobId).toBe(mode === 'relayed' ? UUID : undefined);
+    expect(saved.retired[0].nonceResetGeneration).toBe(
+      mode === 'direct' ? 4 : undefined
+    );
+    expect(saved.retired[0].recovery).toBeUndefined();
+    expect(saved.retired[0].unsigned).toBeUndefined();
+    expect(() => fence()).toThrow('privacy_note_restore_required');
+    const unchanged = structuredClone(f.records);
+    await expect(
+      f.controller.consumeUnsignedWithdrawal(
+        next,
+        session,
+        competingLifetime,
+        approval
+      )
+    ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
+    expect(f.records).toEqual(unchanged);
+    expect(
+      (await decryptedVault(f)).notes[0].withdrawal.unsigned
+    ).toBeDefined();
+  }
+);
 
 it('late relay candidate hashes update only the retained matching attempt and preserve the successor', async () => {
   const { f, note, session, attempt } = await failedWithdrawalFixture(

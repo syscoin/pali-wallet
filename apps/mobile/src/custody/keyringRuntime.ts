@@ -2463,6 +2463,14 @@ export function createKeyringRuntimeFactory(
               assertAvailable: assertPrivateDomainAvailable,
               run: runPrivateDomain,
               requireReopen: requirePrivateDomainReopen,
+              readPrivateNonceResetGeneration(payer, request) {
+                request.assertCurrent();
+                const guard = () => request.assertCurrent();
+                return signedRecords.readPrivateNonceResetGeneration({
+                  keyring: transactionRecordKeyring(keyring, guard),
+                  assertCurrent: guard,
+                }, payer);
+              },
               async binding() {
                 const walletBindingId = await dataBinding(generation);
                 const profileId = verifiedIdentity?.root?.profileId;

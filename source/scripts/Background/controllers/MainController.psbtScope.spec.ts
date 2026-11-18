@@ -674,6 +674,11 @@ describe('PSBT approval context', () => {
     ).resolves.toEqual({ txid: defaultTxid });
     expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
     expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
+    expect(wallet.sendAndSaveTransaction).toHaveBeenCalledWith(
+      { txid: defaultTxid },
+      expect.any(Object),
+      expect.objectContaining({ clearNavigation: false })
+    );
     await expect(
       approveExternalPsbt('signSyscoinPsbt', syntheticPsbt(BigInt(1000)))
     ).resolves.toEqual(signedEnvelope());
@@ -1712,6 +1717,7 @@ describe('PSBT approval context', () => {
         xpub: 'xpub-0',
       },
       {
+        clearNavigation: false,
         localAcknowledgedInputs: {
           accountXpub: 'xpub-0',
           acknowledgedAt: expect.any(Number),

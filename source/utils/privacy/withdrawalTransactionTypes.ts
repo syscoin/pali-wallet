@@ -97,6 +97,7 @@ interface IPrivacyWithdrawalJournalFields {
   jobId?: string;
   mode: 'direct' | 'relayed';
   nonce?: string;
+  nonceResetGeneration?: number;
   phase: 'unknown' | 'submitted';
   proofHash: string;
   publicInputs?: IPrivacyWithdrawalPublicInputs;

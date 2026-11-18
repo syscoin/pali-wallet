@@ -19,6 +19,48 @@ function fixture(now: () => number = () => 1000) {
   return { store:new EvmSignedRecords(port,now),session,value:()=>stored,replace(value:string|undefined){stored=value;},writes:()=>writes,revoke(){revision++;},port };
 }
 
+test('privacy nonce resets are durable and scoped to Ethereum mainnet payers', async () => {
+  const f = fixture();
+  const input = await signed(0, 2, '0x', 'HDAccount', 1);
+  const payer = signer.address;
+  const other = new Wallet(`0x${'22'.repeat(32)}`).address;
+  const untouched = new Wallet(`0x${'33'.repeat(32)}`).address;
+  const profileId = await f.session().keyring.getPrivateRecordProfileId();
+  const clear = (chainId: string, from: string) =>
+    f.store.clearScope(f.session(), { chainId, from, profileId });
+  const read = (from: string, store = f.store) =>
+    store.readPrivateNonceResetGeneration(f.session(), from);
+
+  assert.equal(await read(payer), 0, 'empty legacy journal');
+  await f.store.append(f.session(), input);
+  assert.equal(await read(payer), 0, 'legacy root without markers');
+  await clear('8453', payer);
+  assert.equal(await read(payer), 0);
+
+  await clear('1', payer);
+  assert.equal(await read(payer.toLowerCase()), 2, 'normalized payer');
+  await clear('1', other);
+  assert.equal(await read(other), 3, 'clear records a marker for an empty scope');
+  assert.equal(await read(untouched), 0);
+
+  const reopened = new EvmSignedRecords(f.port);
+  assert.equal(await read(payer, reopened), 2);
+  assert.equal(await read(other, reopened), 3);
+  await reopened.append(f.session(), input);
+  await reopened.updatePhase(f.session(), input.chainId, input.from, input.hash, 'submitted');
+  await clear('8453', payer);
+  assert.equal(await read(payer, reopened), 2);
+  assert.equal(await read(other, reopened), 3);
+  assert.equal((await reopened.readExact(f.session(), input.chainId, payer, input.hash))?.phase, 'submitted');
+
+  await clear('1', payer);
+  const final = new EvmSignedRecords(f.port);
+  assert.equal(await read(payer, final), 5);
+  assert.equal(await read(other, final), 3);
+  assert.equal(await read(untouched, final), 0);
+  assert.equal(await final.readExact(f.session(), input.chainId, payer, input.hash), null);
+});
+
 async function callsAdmissionFixture() {
   const f = fixture(), input = await signed();
   let data: CallsBundleStore = {}, refuseBundle = false;
@@ -163,12 +205,12 @@ test('calls association rejects a changed reservation, submission, account, or c
   }) }, c.origin, c.id);
   assert.equal(pending.status, 100, 'associated signed bytes alone never prove delivery');
 });
-async function signed(nonce=0,type=2,data='0x',alias='HDAccount') {
-  const rawTransaction=await signer.signTransaction({ type,chainId:7654321,nonce,to:signer.address,value:123,gasLimit:42000,
+async function signed(nonce=0,type=2,data='0x',alias='HDAccount',chainId=7654321) {
+  const rawTransaction=await signer.signTransaction({ type,chainId,nonce,to:signer.address,value:123,gasLimit:42000,
     ...(type===2?{maxFeePerGas:3,maxPriorityFeePerGas:1}:{gasPrice:2}),data,
     ...(type===1?{accessList:[{address:signer.address,storageKeys:[`0x${'22'.repeat(32)}`]}]}:{}) });
-  return { rawTransaction,hash:Transaction.from(rawTransaction).hash!,from:signer.address,chainId:'7654321',nonce,type,
-    context:{account:{type:alias,id:alias==='Imported'?9:0,address:signer.address},network:{kind:'ethereum',chainId:7654321,slip44:60,url:'https://offline.invalid'},operation:'send' as const} };
+  return { rawTransaction,hash:Transaction.from(rawTransaction).hash!,from:signer.address,chainId:String(chainId),nonce,type,
+    context:{account:{type:alias,id:alias==='Imported'?9:0,address:signer.address},network:{kind:'ethereum',chainId,slip44:60,url:'https://offline.invalid'},operation:'send' as const} };
 }
 test('actual SDK encryption retains aliases and type0/1/2 predecessor bytes after restart',async()=>{
  const f=fixture(),inputs=[]; for(const type of [0,1,2]){const input=await signed(type,type,'0x',type===1?'Imported':'HDAccount');inputs.push(input);await f.store.append(f.session(),input);}

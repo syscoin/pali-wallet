@@ -33,9 +33,10 @@ Withdrawal uses the ordinary recipient and fee review. The backend copies the
 captured history binding into the reservation and rechecks it before dispatch.
 Changed history requires a new review. A pending direct withdrawal tracked in
 Activity pauses another withdrawal of that note with the same fee payer.
-Clear Activity for that payer releases the pause. A relayer job remains
-available for status checks independently of Activity. Every new withdrawal
-requires a verified unspent note.
+Clear Activity for that payer releases the pause and older private-operation
+nonce reservations. The encrypted attempts remain available for status checks,
+including relayer job history. Every new withdrawal requires a verified unspent
+note.
 
 Available history and public inputs remain portable. Export stays available
 while a transaction is pending. Imported hints remain historical records.
