@@ -66,6 +66,8 @@ export const useConfirmSubmission = ({
   const blockedRef = useRef(consumed);
   const attemptRef = useRef<{
     definitelyNotBroadcast: boolean;
+    feeReview?: AbortSignal;
+    feeReviewDeclined?: boolean;
     mayBroadcast: boolean;
     ownsPendingTransport?: () => boolean;
     successful: boolean;
@@ -122,9 +124,9 @@ export const useConfirmSubmission = ({
     const live = liveRef.current;
     const fresh = getControllerStatus();
     const attempt = attemptRef.current;
-    // Returning from a hardware window refreshes renderer status. A live
-    // review Port already owns its one pending attempt in the background.
-    const ownedHardwareAttempt =
+    // A focus refresh can make the renderer temporarily unavailable while the
+    // same live review Port still owns the attempt in the background.
+    const ownedPortAttempt =
       attempt?.ownsPendingTransport &&
       (attempt.successful ||
         attempt.definitelyNotBroadcast ||
@@ -135,7 +137,7 @@ export const useConfirmSubmission = ({
       fresh.isUnlocked &&
       !fresh.isLoading &&
       ((!live.connectionUnavailable && !fresh.connectionUnavailable) ||
-        ownedHardwareAttempt);
+        ownedPortAttempt);
     if (!trusted && attempt) departedRef.current = true;
     return Boolean(trusted);
   };
@@ -174,7 +176,9 @@ export const useConfirmSubmission = ({
       if (attemptRef.current) {
         setPending(false);
         setUnknown(
-          attemptRef.current.mayBroadcast && !attemptRef.current.successful
+          attemptRef.current.mayBroadcast &&
+            !attemptRef.current.successful &&
+            !attemptRef.current.definitelyNotBroadcast
         );
       }
     }
@@ -189,6 +193,8 @@ export const useConfirmSubmission = ({
   const recordError = (error: any) => {
     if (attemptRef.current && error?.transactionNotBroadcast === true) {
       attemptRef.current.definitelyNotBroadcast = true;
+      if (attemptRef.current.feeReview && error.code === 4001)
+        attemptRef.current.feeReviewDeclined = true;
     }
   };
   const dispatch = async <T>(
@@ -257,7 +263,11 @@ export const useConfirmSubmission = ({
       if (!isCurrent()) {
         if (ownsRoute()) {
           setPending(false);
-          setUnknown(attempt.mayBroadcast && !attempt.successful);
+          setUnknown(
+            attempt.mayBroadcast &&
+              !attempt.successful &&
+              !attempt.definitelyNotBroadcast
+          );
         }
         return;
       }
@@ -285,6 +295,9 @@ export const useConfirmSubmission = ({
     pending,
     unknown,
     interrupted: Boolean(departedRef.current && attemptRef.current),
+    interruptedFeeReview: Boolean(
+      departedRef.current && attemptRef.current?.feeReviewDeclined
+    ),
     hasUsableEntry: Boolean(stateRef.current?.tx) && !scopeChanged,
     isActive: isCurrent,
     ownsRoute,
@@ -305,6 +318,13 @@ export const useConfirmSubmission = ({
       ownsPendingTransport?: () => boolean
     ) => dispatch(operation, true, ownsPendingTransport),
     recordError,
+    ownFeeReview: (signal: AbortSignal) => {
+      assertCurrent();
+      if (attemptRef.current) {
+        attemptRef.current.feeReview = signal;
+        attemptRef.current.ownsPendingTransport = () => !signal.aborted;
+      }
+    },
     beforeBroadcast: async () => {
       assertCurrent();
       if (attemptRef.current) {

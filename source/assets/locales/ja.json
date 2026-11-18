@@ -1031,6 +1031,8 @@
     "closeHardwareSetup": "設定を閉じる",
     "smartAccountFeeReviewTitle": "ネットワーク手数料を確認",
     "smartAccountFeeReviewSelectedAccount": "選択したアカウント",
+    "smartAccountFeeReviewGasTank": "最大ネットワーク手数料 · ガスタンク",
+    "smartAccountFeeReviewExpired": "確認の有効期限が切れました。最新の手数料を再確認してください。",
     "smartAccountFeeReviewMaximumTotal": "最大合計費用"
   },
   "start": {
@@ -1115,6 +1117,7 @@
       "observedSuccess": "指示の成功を確認",
       "observedFailure": "指示の失敗を確認",
       "checkStatus": "状態を確認",
+      "refresh": "更新",
       "cancelInstruction": "指示を取り消す",
       "unavailable": "署名済み指示を取得できません。再試行してください。",
       "operationHash": "オペレーションハッシュ"
@@ -1998,6 +2001,8 @@
     "archive": {
       "title": "アーカイブ済みノート",
       "help": "完了したノートは、復元するかアーカイブを消去するまで暗号化して保管されます。アクティブなノートの上限には含まれません。",
+      "poolAmount": "{{amount}} ETHプール",
+      "previous": "前へ",
       "empty": "アーカイブ済みノートはありません",
       "restore": "ノートを復元",
       "restored": "アクティブなノートに復元しました",

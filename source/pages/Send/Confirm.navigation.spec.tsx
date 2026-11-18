@@ -985,77 +985,106 @@ it('retires the consumed Smart Account quote after a definite payer-fee decline 
   ).toBe('fresh-context');
 });
 
-it('keeps the actual payer review in its original submission owner after the router installs the inert marker', async () => {
-  prepareSmartAccountConfirmation();
-  mockNavigate.mockImplementation((path, options) => {
-    if (!options?.state?.submissionStarted) return;
-    mockLocation = {
-      ...mockLocation,
-      pathname: path,
-      key: 'owned-submission-marker',
-      state: options.state,
+it.each(['focus', 'lock', 'disconnect'] as const)(
+  'keeps payer fee authority bound to the same live submission after %s',
+  async (transition) => {
+    prepareSmartAccountConfirmation();
+    mockNavigate.mockImplementation((path, options) => {
+      if (!options?.state?.submissionStarted) return;
+      mockLocation = {
+        ...mockLocation,
+        pathname: path,
+        key: 'owned-submission-marker',
+        state: options.state,
+      };
+      window.history.replaceState({ key: mockLocation.key }, '', path);
+    });
+    const payerReview = {
+      id: 'payer-envelope',
+      validForMs: 90000,
+      transaction: {
+        from: feePayer.address,
+        to: mockLocation.state.tx.receivingAddress,
+        chainId: '5700',
+        nonce: '1',
+        value: '0',
+        gasLimit: '21000',
+        type: 0,
+        gasPrice: '1000000000',
+        data: '0x',
+      },
+      maximumFeeUnits: '21000000000000',
+      maximumTotalUnits: '21000000000000',
     };
-    window.history.replaceState({ key: mockLocation.key }, '', path);
-  });
-  const payerReview = {
-    id: 'payer-envelope',
-    validForMs: 90000,
-    transaction: {
-      from: feePayer.address,
-      to: mockLocation.state.tx.receivingAddress,
-      chainId: '5700',
-      nonce: '1',
-      value: '0',
-      gasLimit: '21000',
-      type: 0,
-      gasPrice: '1000000000',
-      data: '0x',
-    },
-    maximumFeeUnits: '21000000000000',
-    maximumTotalUnits: '21000000000000',
-  };
-  let accepted = false;
-  (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
-    async (params) => {
-      await params.onBeforeSubmit({ executionContextId: 'owned-operation' });
-      expect(
-        await params.feeConsent.confirmFee(
+    const reviewLifetime = new AbortController();
+    let feeReply: string | null | undefined;
+    (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
+      async (params) => {
+        await params.onBeforeSubmit({ executionContextId: 'owned-operation' });
+        feeReply = await params.feeConsent.confirmFee(
           payerReview,
-          new AbortController().signal
-        )
-      ).toBe(payerReview.id);
-      accepted = true;
-      return { hash: 'owned-operation-hash' };
-    }
-  );
-  try {
-    render(<SendConfirm />);
-    await waitFor(() => expect(screen.getByText('0.00065 TSYS')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-    await waitFor(() =>
+          reviewLifetime.signal
+        );
+        if (feeReply === null)
+          throw Object.assign(
+            new Error('Transaction fee approval was cancelled'),
+            {
+              code: 4001,
+              transactionNotBroadcast: true,
+            }
+          );
+        return { hash: 'owned-operation-hash' };
+      }
+    );
+    try {
+      const view = render(<SendConfirm />);
+      await waitFor(() =>
+        expect(screen.getByText('0.00065 TSYS')).toBeTruthy()
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+      await waitFor(() =>
+        expect(
+          screen.getByRole('dialog', {
+            name: 'settings.smartAccountFeeReviewTitle',
+          })
+        ).toBeTruthy()
+      );
+      expect(mockLocation.state.submissionStarted).toBe(true);
+      expect(mockLocation.state.tx).toBeUndefined();
       expect(
-        screen.getByRole('dialog', {
-          name: 'settings.smartAccountFeeReviewTitle',
+        within(screen.getByRole('dialog')).getByText(feePayer.address)
+      ).toBeTruthy();
+      if (transition !== 'focus') {
+        if (transition === 'lock') {
+          mockAuth.isUnlocked = false;
+          view.rerender(<SendConfirm />);
+        } else {
+          await act(async () => reviewLifetime.abort());
+        }
+        await waitFor(() => expect(feeReply).toBeNull());
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
+        return;
+      }
+      mockAuth.connectionUnavailable = true;
+      view.rerender(<SendConfirm />);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(feeReply).toBeUndefined();
+      mockAuth.connectionUnavailable = false;
+      view.rerender(<SendConfirm />);
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', {
+          name: 'buttons.confirm',
         })
-      ).toBeTruthy()
-    );
-    expect(mockLocation.state.submissionStarted).toBe(true);
-    expect(mockLocation.state.tx).toBeUndefined();
-    expect(
-      within(screen.getByRole('dialog')).getByText(feePayer.address)
-    ).toBeTruthy();
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'buttons.confirm',
-      })
-    );
-    await waitFor(() => expect(accepted).toBe(true));
-    expect(mockAlert.error).not.toHaveBeenCalled();
-    expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
-  } finally {
-    mockNavigate.mockReset();
+      );
+      await waitFor(() => expect(feeReply).toBe(payerReview.id));
+      expect(mockAlert.error).not.toHaveBeenCalled();
+      expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
+    } finally {
+      mockNavigate.mockReset();
+    }
   }
-});
+);
 
 it.each(['route', 'account', 'unmount'])(
   'does not present a late payer fee after genuine %s departure from the marker-owned attempt',

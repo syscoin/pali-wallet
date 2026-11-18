@@ -1031,6 +1031,8 @@
     "closeHardwareSetup": "Einrichtung schließen",
     "smartAccountFeeReviewTitle": "Netzwerkgebühr prüfen",
     "smartAccountFeeReviewSelectedAccount": "Ausgewähltes Konto",
+    "smartAccountFeeReviewGasTank": "Maximale Netzwerkgebühr · Gastank",
+    "smartAccountFeeReviewExpired": "Die Prüfung ist abgelaufen. Prüfen Sie die aktuellen Gebühren erneut.",
     "smartAccountFeeReviewMaximumTotal": "Maximale Gesamtkosten"
   },
   "start": {
@@ -1115,6 +1117,7 @@
       "observedSuccess": "Erfolgreiche Anweisung beobachtet",
       "observedFailure": "Fehlgeschlagene Anweisung beobachtet",
       "checkStatus": "Status prüfen",
+      "refresh": "Aktualisieren",
       "cancelInstruction": "Anweisung abbrechen",
       "unavailable": "Signierte Anweisungen nicht verfügbar. Erneut versuchen.",
       "operationHash": "Operationshash"
@@ -1998,6 +2001,8 @@
     "archive": {
       "title": "Archivierte Notizen",
       "help": "Abgeschlossene Notizen bleiben hier verschlüsselt, bis du sie wiederherstellst oder das Archiv leerst. Sie zählen nicht zum Limit aktiver Notizen.",
+      "poolAmount": "{{amount}}-ETH-Pool",
+      "previous": "Zurück",
       "empty": "Keine archivierten Notizen",
       "restore": "Notiz wiederherstellen",
       "restored": "Notiz zu den aktiven Notizen wiederhergestellt",

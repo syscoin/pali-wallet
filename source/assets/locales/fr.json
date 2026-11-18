@@ -1031,6 +1031,8 @@
     "closeHardwareSetup": "Fermer la configuration",
     "smartAccountFeeReviewTitle": "Vérifier les frais réseau",
     "smartAccountFeeReviewSelectedAccount": "Compte sélectionné",
+    "smartAccountFeeReviewGasTank": "Frais réseau maximaux · réserve de gaz",
+    "smartAccountFeeReviewExpired": "La vérification a expiré. Vérifiez à nouveau les frais actuels.",
     "smartAccountFeeReviewMaximumTotal": "Coût total maximal"
   },
   "start": {
@@ -1115,6 +1117,7 @@
       "observedSuccess": "Instruction réussie observée",
       "observedFailure": "Instruction échouée observée",
       "checkStatus": "Vérifier le statut",
+      "refresh": "Actualiser",
       "cancelInstruction": "Annuler l’instruction",
       "unavailable": "Instructions signées indisponibles. Réessayez.",
       "operationHash": "Hash de l’opération"
@@ -1998,6 +2001,8 @@
     "archive": {
       "title": "Notes archivées",
       "help": "Les notes terminées restent chiffrées ici jusqu’à leur restauration ou la suppression de l’archive. Elles ne comptent pas dans la limite des notes actives.",
+      "poolAmount": "Pool de {{amount}} ETH",
+      "previous": "Précédent",
       "empty": "Aucune note archivée",
       "restore": "Restaurer la note",
       "restored": "Note restaurée parmi vos notes actives",

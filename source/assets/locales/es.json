@@ -1031,6 +1031,8 @@
     "closeHardwareSetup": "Cerrar configuración",
     "smartAccountFeeReviewTitle": "Revisar comisión de red",
     "smartAccountFeeReviewSelectedAccount": "Cuenta seleccionada",
+    "smartAccountFeeReviewGasTank": "Comisión de red máxima · depósito de gas",
+    "smartAccountFeeReviewExpired": "La revisión ha caducado. Revisa de nuevo la comisión actual.",
     "smartAccountFeeReviewMaximumTotal": "Coste total máximo"
   },
   "start": {
@@ -1115,6 +1117,7 @@
       "observedSuccess": "Instrucción completada observada",
       "observedFailure": "Instrucción fallida observada",
       "checkStatus": "Comprobar estado",
+      "refresh": "Actualizar",
       "cancelInstruction": "Cancelar instrucción",
       "unavailable": "Instrucciones firmadas no disponibles. Inténtalo de nuevo.",
       "operationHash": "Hash de la operación"
@@ -1998,6 +2001,8 @@
     "archive": {
       "title": "Notas archivadas",
       "help": "Las notas completadas permanecen cifradas aquí hasta que las restaures o vacíes el archivo. No cuentan para el límite de notas activas.",
+      "poolAmount": "Pool de {{amount}} ETH",
+      "previous": "Anterior",
       "empty": "No hay notas archivadas",
       "restore": "Restaurar nota",
       "restored": "Nota restaurada a tus notas activas",

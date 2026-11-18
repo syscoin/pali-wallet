@@ -237,7 +237,7 @@ export default function PrivateArchivedNotes({
                     className="rounded-lg border border-alpha-whiteAlpha300 p-3 space-y-2"
                   >
                     <p>
-                      {t('mobile.noteFlows.inventory.poolAmount', {
+                      {t('privacy.archive.poolAmount', {
                         amount: note.amount,
                       })}{' '}
                       · {new Date(note.archivedAt).toLocaleDateString()}
@@ -278,7 +278,7 @@ export default function PrivateArchivedNotes({
                     <span aria-hidden="true">
                       <Icon name="arrow-left" size={18} />
                     </span>
-                    {t('mobile.noteFlows.inventory.previous')}
+                    {t('privacy.archive.previous')}
                   </button>
                   <span>
                     {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + rows.length} /{' '}

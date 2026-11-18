@@ -20,11 +20,11 @@ const geometry = (target: Locator) =>
     const r = node.getBoundingClientRect(),
       s = getComputedStyle(node);
     const glyphs: {
+      height: number;
       text: string;
+      width: number;
       x: number;
       y: number;
-      width: number;
-      height: number;
     }[] = [];
     const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
     let part: Node | null;
@@ -111,9 +111,11 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
         { width: 400, height: 619 },
         { width: 400, height: 600 },
         { width: 400, height: 580 },
+        { width: 400, height: 559 },
         { width: 400, height: 500 },
         { width: 400, height: 499 },
         { width: 400, height: 360 },
+        { width: 360, height: 600 },
         { width: 320, height: 620 },
         { width: 320, height: 500 },
         { width: 320, height: 360 },
@@ -152,10 +154,11 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
             }));
             expect(renderedViewport.width).toBe(viewport.width);
             expect(renderedViewport.height).toBe(viewport.height);
+            const compact = viewport.height < 620 || viewport.width < 400;
             const hasRoomForArtwork =
               state === 'welcome'
                 ? viewport.height >= 600
-                : viewport.height >= 620 && viewport.width >= 400;
+                : viewport.height >= 560 && viewport.width >= 360;
             if (!hasRoomForArtwork) {
               expect(art).toBe('none');
               const heading = await captureForegroundContrast(
@@ -177,6 +180,10 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
               });
             } else {
               expect(art).toContain('GET_STARTED2.webp');
+              if (state === 'unlock' && compact) {
+                expect(art).toContain('linear-gradient(');
+                await expect(backdrop.locator('.particle-1')).toBeVisible();
+              }
               observations.push({ state, viewport, renderedViewport });
             }
             // Assert the actual rendered labels and all live actions, including

@@ -1031,6 +1031,8 @@
     "closeHardwareSetup": "Закрыть настройку",
     "smartAccountFeeReviewTitle": "Проверить комиссию сети",
     "smartAccountFeeReviewSelectedAccount": "Выбранный аккаунт",
+    "smartAccountFeeReviewGasTank": "Максимальная сетевая комиссия · газовый резерв",
+    "smartAccountFeeReviewExpired": "Срок проверки истёк. Проверьте текущую комиссию ещё раз.",
     "smartAccountFeeReviewMaximumTotal": "Максимальная общая стоимость"
   },
   "start": {
@@ -1115,6 +1117,7 @@
       "observedSuccess": "Наблюдается успешная инструкция",
       "observedFailure": "Наблюдается неудачная инструкция",
       "checkStatus": "Проверить статус",
+      "refresh": "Обновить",
       "cancelInstruction": "Отменить инструкцию",
       "unavailable": "Подписанные инструкции недоступны. Повторите попытку.",
       "operationHash": "Хеш операции"
@@ -1998,6 +2001,8 @@
     "archive": {
       "title": "Архивные заметки",
       "help": "Завершённые заметки хранятся здесь в зашифрованном виде до восстановления или очистки архива. Они не входят в лимит активных заметок.",
+      "poolAmount": "Пул {{amount}} ETH",
+      "previous": "Назад",
       "empty": "Архивных заметок нет",
       "restore": "Восстановить заметку",
       "restored": "Заметка восстановлена в активные",

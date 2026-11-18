@@ -1031,6 +1031,8 @@
     "closeHardwareSetup": "설정 닫기",
     "smartAccountFeeReviewTitle": "네트워크 수수료 검토",
     "smartAccountFeeReviewSelectedAccount": "선택한 계정",
+    "smartAccountFeeReviewGasTank": "최대 네트워크 수수료 · 가스 탱크",
+    "smartAccountFeeReviewExpired": "검토가 만료되었습니다. 현재 수수료를 다시 확인하세요.",
     "smartAccountFeeReviewMaximumTotal": "최대 총비용"
   },
   "start": {
@@ -1115,6 +1117,7 @@
       "observedSuccess": "성공한 지시 확인됨",
       "observedFailure": "실패한 지시 확인됨",
       "checkStatus": "상태 확인",
+      "refresh": "새로 고침",
       "cancelInstruction": "지시 취소",
       "unavailable": "서명된 지시를 불러올 수 없습니다. 다시 시도하세요.",
       "operationHash": "작업 해시"
@@ -1998,6 +2001,8 @@
     "archive": {
       "title": "보관된 노트",
       "help": "완료된 노트는 복원하거나 보관함을 비울 때까지 암호화되어 보관됩니다. 활성 노트 한도에는 포함되지 않습니다.",
+      "poolAmount": "{{amount}} ETH 풀",
+      "previous": "이전",
       "empty": "보관된 노트가 없습니다",
       "restore": "노트 복원",
       "restored": "활성 노트로 복원했습니다",

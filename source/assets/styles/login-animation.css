@@ -14,8 +14,11 @@
 }
 
 .login-animated-bg {
+  --login-artwork: url('../all_assets/GET_STARTED2.webp');
   position: relative;
   overflow: hidden;
+  background-image: var(--login-artwork);
+  background-repeat: no-repeat;
 }
 
 /* Subtle ambient glow effects */
@@ -394,11 +397,10 @@
   transform-style: preserve-3d;
 }
 
-/* Locked and external screens keep their compact fallback. The first-install
-   Import control is a link; existing-wallet recovery uses a button. */
+/* First-install import is a link; existing-wallet recovery uses a button. */
 @media (max-width: 399px), (max-height: 619px) {
   .login-animated-bg:not(:has(a#import-wallet-link)) {
-    background-image: none !important;
+    background-image: none;
     background-color: #07152a;
   }
   .login-animated-bg:not(:has(a#import-wallet-link)) > [class^='particle-'] {
@@ -406,6 +408,18 @@
   }
   .login-animated-bg:not(:has(a#import-wallet-link)) .login-welcome-spacing {
     padding-top: 2rem;
+  }
+
+  /* Fade the illustration above the form in a standard extension popup. */
+  @media (min-width: 360px) and (min-height: 560px) {
+    .login-start:not(:has(a#import-wallet-link)) {
+      background-image: linear-gradient(transparent, #07152a 9rem),
+        var(--login-artwork);
+      background-size: 100% 100%, 100% auto;
+    }
+    .login-start:not(:has(a#import-wallet-link)) > [class^='particle-'] {
+      display: block;
+    }
   }
 }
 

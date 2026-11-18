@@ -1031,6 +1031,8 @@
     "closeHardwareSetup": "Close setup",
     "smartAccountFeeReviewTitle": "Review network fee",
     "smartAccountFeeReviewSelectedAccount": "Selected account",
+    "smartAccountFeeReviewGasTank": "Maximum network fee · gas tank",
+    "smartAccountFeeReviewExpired": "Review expired. Review the current fee again.",
     "smartAccountFeeReviewMaximumTotal": "Maximum total cost"
   },
   "start": {
@@ -1115,6 +1117,7 @@
       "observedSuccess": "Observed successful instruction",
       "observedFailure": "Observed failed instruction",
       "checkStatus": "Check status",
+      "refresh": "Refresh",
       "cancelInstruction": "Cancel instruction",
       "unavailable": "Signed instructions unavailable. Try again.",
       "operationHash": "Operation hash"
@@ -1998,6 +2001,8 @@
     "archive": {
       "title": "Archived notes",
       "help": "Completed notes stay encrypted here until you restore them or clear the archive. They do not count toward your active note limit.",
+      "poolAmount": "{{amount}} ETH pool",
+      "previous": "Previous",
       "empty": "No archived notes",
       "restore": "Restore note",
       "restored": "Note restored to your active notes",

@@ -7,14 +7,21 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { createInstance } from 'i18next';
 import React from 'react';
+
+import { projectLocale } from '../../config/loaders/localeProjection';
 
 import PrivateArchivedNotes from './PrivateArchivedNotes';
 import PrivateVaultClearCompleted from './PrivateVaultClearCompleted';
 
+let mockTranslate: (key: string, options?: any) => string = (key) => key;
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: mockTranslate }),
 }));
+beforeEach(() => {
+  mockTranslate = (key: string) => key;
+});
 jest.mock('antd', () => {
   const Form = ({ children }: any) => <div>{children}</div>;
   Form.useForm = () => [{ resetFields: jest.fn() }];
@@ -85,6 +92,58 @@ function fixture(initial = notes) {
   };
   return { emit, props, view, open };
 }
+
+it.each(['en', 'es', 'pt', 'fr', 'de', 'zh', 'ja', 'ko', 'ru'])(
+  '%s translates archive amount and pagination from base plus lazy Privacy resources',
+  async (language) => {
+    const resource = jest.requireActual(
+      `../../assets/locales/${language}.json`
+    );
+    const base = projectLocale(resource, 'base');
+    const privacy = projectLocale(resource, 'privacy');
+    const instance = createInstance();
+    await instance.init({
+      lng: language,
+      fallbackLng: false,
+      initImmediate: false,
+      resources: {
+        [language]: {
+          translation: {
+            ...base,
+            privacy: { ...base.privacy, ...privacy.privacy },
+          },
+        },
+      },
+    });
+    mockTranslate = (key, options) => String(instance.t(key, options));
+    const f = fixture();
+    fireEvent.click(
+      screen.getByRole('button', { name: resource.privacy.archive.title })
+    );
+    await waitFor(() => expect(f.props.onCount).toHaveBeenCalledWith(41));
+    const expectedAmount =
+      resource.mobile.noteFlows.inventory.poolAmount.replace('{{amount}}', '1');
+    expect(
+      screen.getAllByText(
+        (_, element) =>
+          element?.tagName === 'P' &&
+          element.textContent?.startsWith(expectedAmount) === true
+      )
+    ).toHaveLength(20);
+    const previous = screen.getByRole('button', {
+      name: resource.mobile.noteFlows.inventory.previous,
+    });
+    expect(previous).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole('button', { name: resource.buttons.next })
+    );
+    expect(previous).not.toBeDisabled();
+    expect(f.view.container.textContent).not.toMatch(
+      /(?:mobile|privacy|buttons)\./
+    );
+    expect(f.emit).toHaveBeenCalledTimes(1);
+  }
+);
 
 it('keeps archive separate, pages a local bounded list, and reuses reveal/export without spending or status reads', async () => {
   const f = fixture();

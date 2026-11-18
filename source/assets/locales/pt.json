@@ -1031,6 +1031,8 @@
     "closeHardwareSetup": "Fechar configuração",
     "smartAccountFeeReviewTitle": "Rever taxa de rede",
     "smartAccountFeeReviewSelectedAccount": "Conta selecionada",
+    "smartAccountFeeReviewGasTank": "Taxa máxima de rede · reserva de gás",
+    "smartAccountFeeReviewExpired": "A revisão expirou. Reveja a taxa atual.",
     "smartAccountFeeReviewMaximumTotal": "Custo total máximo"
   },
   "start": {
@@ -1115,6 +1117,7 @@
       "observedSuccess": "Instrução bem-sucedida observada",
       "observedFailure": "Instrução com falha observada",
       "checkStatus": "Verificar status",
+      "refresh": "Atualizar",
       "cancelInstruction": "Cancelar instrução",
       "unavailable": "Instruções assinadas indisponíveis. Tente novamente.",
       "operationHash": "Hash da operação"
@@ -1998,6 +2001,8 @@
     "archive": {
       "title": "Notas arquivadas",
       "help": "As notas concluídas ficam encriptadas aqui até as restaurar ou limpar o arquivo. Não contam para o limite de notas ativas.",
+      "poolAmount": "Pool de {{amount}} ETH",
+      "previous": "Anterior",
       "empty": "Não há notas arquivadas",
       "restore": "Restaurar nota",
       "restored": "Nota restaurada às notas ativas",

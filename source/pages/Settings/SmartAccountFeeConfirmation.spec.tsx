@@ -7,7 +7,10 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { createInstance } from 'i18next';
 import React from 'react';
+
+import { projectLocale } from '../../config/loaders/localeProjection';
 
 import { useSmartAccountFeeConfirmation } from './SmartAccountFeeConfirmation';
 import { SmartAccountInfrastructure } from './SmartAccountInfrastructure';
@@ -62,8 +65,9 @@ jest.mock('react-redux', () => ({
       vaultGlobal: { networkStatus: 'idle', isSwitchingAccount: false },
     }),
 }));
+let mockTranslate: (key: string, options?: any) => string = (key) => key;
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: mockTranslate }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({
@@ -148,6 +152,7 @@ function Harness({
   );
 }
 beforeEach(() => {
+  mockTranslate = (key: string) => key;
   mockAccount = ACCOUNT;
   mockCurrent = true;
   submitted.mockReset();
@@ -158,6 +163,51 @@ beforeEach(() => {
       : { feeReview: quote(), contractName: 'Factory' }
   );
 });
+
+it.each(['en', 'es', 'pt', 'fr', 'de', 'zh', 'ja', 'ko', 'ru'])(
+  '%s translates covered fee and expiry from actual extension base resources',
+  async (language) => {
+    jest.useFakeTimers();
+    const resource = jest.requireActual(
+      `../../assets/locales/${language}.json`
+    );
+    const instance = createInstance();
+    await instance.init({
+      lng: language,
+      fallbackLng: false,
+      initImmediate: false,
+      resources: {
+        [language]: { translation: projectLocale(resource, 'base') },
+      },
+    });
+    mockTranslate = (key, options) => String(instance.t(key, options));
+    render(
+      <Harness
+        value={quote('covered', {
+          coveredFeeUnits: '10000000000000',
+          maximumTotalUnits: '100011000000000000',
+        })}
+      />
+    );
+    fireEvent.click(screen.getByText('Prepare'));
+    const dialog = screen.getByRole('dialog');
+    expect(
+      screen.getByText(
+        resource.mobile.recoveryStatusViews.operation.maximumNetworkFeeGasTank
+      )
+    ).toBeTruthy();
+    expect(dialog.textContent).toContain('0.00001 ETH');
+    expect(dialog.textContent).not.toMatch(/(?:mobile|transactions|buttons)\./);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(90000);
+    });
+    expect(screen.getByRole('status').textContent).toBe(
+      resource.mobile.infrastructure.reviewExpired
+    );
+    fireEvent.click(screen.getByText(resource.buttons.close));
+    expect(submitted).not.toHaveBeenCalled();
+  }
+);
 afterEach(() => {
   cleanup();
   jest.useRealTimers();
@@ -273,7 +323,7 @@ test.each([
     fireEvent.click(screen.getByText('Prepare'));
     const dialog = await screen.findByRole('dialog');
     expect(dialog.textContent).toContain(
-      'mobile.recoveryStatusViews.operation.maximumNetworkFeeGasTank'
+      'settings.smartAccountFeeReviewGasTank'
     );
     expect(screen.getByText(totalText)).toBeTruthy();
     expect(submitted).not.toHaveBeenCalled();
@@ -357,7 +407,7 @@ test.each(['cancel', 'scope', 'unmount', 'guard', 'expiry'])(
         await jest.advanceTimersByTimeAsync(90000);
       });
       expect(screen.getByRole('status').textContent).toBe(
-        'mobile.infrastructure.reviewExpired'
+        'settings.smartAccountFeeReviewExpired'
       );
       fireEvent.click(screen.getByText('buttons.close'));
     }

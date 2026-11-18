@@ -1365,6 +1365,14 @@ export const SendConfirm = () => {
             throw Object.assign(new Error('Smart account fee quote changed.'), {
               transactionNotBroadcast: true,
             });
+          const feeConsent = forExecution({
+            account: activeAccount.address,
+            smartAccount: activeAccount.address,
+            chainId: activeNetwork.chainId,
+            symbol: activeNetwork.currency,
+            label: t('buttons.send'),
+            assertCurrent: assertSmartAccountConfirmationCurrent,
+          });
           await signAndSubmitSmartAccountExecutions({
             accountAddress: activeAccount.address,
             accountId: activeAccount.id,
@@ -1388,14 +1396,13 @@ export const SendConfirm = () => {
               : {}),
             feeOverrides,
             approvedFeeQuote: smartAccountQuote,
-            feeConsent: forExecution({
-              account: activeAccount.address,
-              smartAccount: activeAccount.address,
-              chainId: activeNetwork.chainId,
-              symbol: activeNetwork.currency,
-              label: t('buttons.send'),
-              assertCurrent: assertSmartAccountConfirmationCurrent,
-            }),
+            feeConsent: {
+              ...feeConsent,
+              confirmFee: (review, signal) => {
+                submission.ownFeeReview(signal);
+                return feeConsent.confirmFee(review, signal);
+              },
+            },
             onBeforeAuthentication: assertSmartAccountConfirmationCurrent,
             onPrepared: assertSmartAccountConfirmationCurrent,
             onBeforeSubmit: async () => {
@@ -3082,6 +3089,8 @@ export const SendConfirm = () => {
             {t(
               submission.unknown
                 ? 'send.submissionStatusUnknown'
+                : submission.interruptedFeeReview
+                ? 'transactions.smartAccountAuthorizationRetained'
                 : 'send.cantCompleteTxs'
             )}
           </p>
@@ -3091,7 +3100,11 @@ export const SendConfirm = () => {
             onClick={cancelConfirmation}
             className="mx-auto mt-4"
           >
-            {t(submission.unknown ? 'buttons.close' : 'send.backToEdit')}
+            {t(
+              submission.unknown || submission.interruptedFeeReview
+                ? 'buttons.close'
+                : 'send.backToEdit'
+            )}
           </Button>
         </div>
       )}

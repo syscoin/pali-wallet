@@ -1031,6 +1031,8 @@
     "closeHardwareSetup": "关闭设置",
     "smartAccountFeeReviewTitle": "查看网络费用",
     "smartAccountFeeReviewSelectedAccount": "所选账户",
+    "smartAccountFeeReviewGasTank": "最大网络费用 · Gas tank",
+    "smartAccountFeeReviewExpired": "审核已过期。请重新审核当前手续费。",
     "smartAccountFeeReviewMaximumTotal": "最高总费用"
   },
   "start": {
@@ -1115,6 +1117,7 @@
       "observedSuccess": "已观察到成功的指令",
       "observedFailure": "已观察到失败的指令",
       "checkStatus": "检查状态",
+      "refresh": "刷新",
       "cancelInstruction": "取消指令",
       "unavailable": "已签署的指令暂不可用。请重试。",
       "operationHash": "操作哈希"
@@ -1998,6 +2001,8 @@
     "archive": {
       "title": "已归档票据",
       "help": "已完成的票据会在此加密保存，直到您恢复票据或清空归档。它们不占用活跃票据额度。",
+      "poolAmount": "{{amount}} ETH 池",
+      "previous": "上一页",
       "empty": "没有已归档票据",
       "restore": "恢复票据",
       "restored": "票据已恢复至活跃列表",

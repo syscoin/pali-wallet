@@ -93,12 +93,26 @@ function Instruction({
           <dd className="break-all">{entry.operationHash}</dd>
         </div>
         <div>
+          <dt className="text-brand-gray200">{t('transactions.sequence')}</dt>
+          <dd className="break-all">
+            {(
+              BigInt(entry.operationNonce) &
+              ((BigInt(1) << BigInt(64)) - BigInt(1))
+            ).toString()}
+          </dd>
+        </div>
+      </dl>
+      <details className="mb-3 text-xs">
+        <summary className="cursor-pointer text-brand-gray200">
+          {t('transactions.technicalDetails')}
+        </summary>
+        <dl className="mt-2">
           <dt className="text-brand-gray200">
             {t('transactions.replay.nonce')}
           </dt>
           <dd className="break-all">{entry.operationNonce}</dd>
-        </div>
-      </dl>
+        </dl>
+      </details>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -265,7 +279,7 @@ export function SmartAccountAuthorizations() {
           disabled={Boolean(shown?.loading)}
           onClick={() => void load()}
         >
-          {t('mobile.infrastructure.refresh')}
+          {t('transactions.smartAuthorizations.refresh')}
         </button>
         {shown?.cursor && (
           <button
