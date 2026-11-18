@@ -14,6 +14,7 @@ const REPORT_FIELDS = Object.freeze([
   'erc20AccountIndex',
   'erc20Address',
   'erc20TransferHash',
+  'erc20ReplacementHash',
   'erc20IntentHash',
   'erc20Signatures',
   'erc20Authorizations',
@@ -26,6 +27,7 @@ export type Erc20QualificationEvidence = Readonly<{
   erc20AccountIndex: 2;
   erc20Address: string;
   erc20TransferHash: string;
+  erc20ReplacementHash: string | null;
   erc20IntentHash: string;
   erc20Signatures: number;
   erc20Authorizations: number;
@@ -59,10 +61,15 @@ export function isErc20QualificationReport(
     /^0x[0-9a-f]{64}$/.test(report.erc20TransferHash) &&
     report.erc20TransferHash !== report.transferHash &&
     report.erc20TransferHash !== report.firstTransferHash &&
+    (report.phase === 'create'
+      ? report.erc20ReplacementHash === null
+      : typeof report.erc20ReplacementHash === 'string' &&
+        /^0x[0-9a-f]{64}$/.test(report.erc20ReplacementHash) &&
+        ![report.erc20TransferHash, report.transferHash, report.firstTransferHash].includes(report.erc20ReplacementHash)) &&
     typeof report.erc20IntentHash === 'string' &&
     /^0x[0-9a-f]{64}$/.test(report.erc20IntentHash) &&
-    report.erc20Signatures === (report.phase === 'create' ? 1 : 0) &&
-    report.erc20Authorizations === (report.phase === 'create' ? 0 : 1) &&
+    report.erc20Signatures === 1 &&
+    report.erc20Authorizations === 1 &&
     report.erc20InjectedBroadcasts === 1 &&
     report.erc20RestoredFromJournal === (report.phase === 'restart')
   );
@@ -131,7 +138,7 @@ export async function qualifyNativeErc20Transfer(
   ]);
   const transfer = runtime.transfers;
   const tokens = runtime.tokens;
-  expect(transfer?.token && tokens && authority.supportsAccountManagement());
+  expect(transfer?.token && transfer.replacementOriginal && tokens && authority.supportsAccountManagement());
   const catalogue = () => {
     const current = authority.getCatalogue();
     expect(current);
@@ -215,8 +222,17 @@ export async function qualifyNativeErc20Transfer(
     broadcasts = 0,
     requests = 0,
     tokenLookups = 0;
-  let expectedHash: string | undefined;
-  let expectedRaw: string | undefined;
+  let originalHash: string | undefined;
+  let replacementHash: string | null = null;
+  let signed: Awaited<ReturnType<NativeTransferRuntime['sign']>> | undefined;
+  const replacing = phase === 'restart';
+  const feeCap = replacing ? 4n : 3n;
+  const feeTip = replacing ? 2n : 1n;
+  const maximumFee = (60000n * feeCap).toString();
+  const feeFields = {
+    maxFeePerGas: `0x${feeCap.toString(16)}`,
+    maxPriorityFeePerGas: `0x${feeTip.toString(16)}`,
+  };
   const word = (value: bigint | number) =>
     `0x${BigInt(value).toString(16).padStart(64, '0')}`;
   const unsigned = Object.freeze({
@@ -225,15 +241,34 @@ export async function qualifyNativeErc20Transfer(
     value: '0x0',
     data: calldata,
   });
-  const readSaved = async (expectedPhase: 'signed' | 'submitted') => {
+  const readSaved = async (
+    expectedPhase: 'signed' | 'submitted',
+    hash?: string,
+    predecessor?: string
+  ) => {
     const journal = await transfer.journal(guard);
-    const saved = await journal.load();
+    const saved = await journal.load(hash);
     guard();
     expect(
       saved?.phase === expectedPhase &&
-        equalTransferIntent(saved.intent, expectedIntent)
+        equalTransferIntent(saved.intent, expectedIntent) &&
+        saved.rawTransaction === undefined && saved.nonce === 0
     );
-    const tx = Transaction.from(saved.rawTransaction);
+    const raw = await readSignedRecordEvidence(storage);
+    const retained = raw.entries.filter(entry => entry.from === address.toLowerCase());
+    const entry = retained.find(entry => entry.hash === saved.hash);
+    expect(raw.version === 1 && retained.length === (predecessor ? 2 : 1) &&
+      entry?.phase === expectedPhase && entry.signer.id === 2 && entry.signer.type === 'HDAccount' &&
+      entry.payloadKind === 'unsigned-eoa' && entry.originalHash === predecessor &&
+      entry.operation === (predecessor ? 'speed-up' : 'erc20') &&
+      equalTransferIntent(entry.metadata?.intent, expectedIntent) &&
+      (!signed || !raw.raw?.includes(signed.rawTransaction)));
+    expect((await storage.getWalletFingerprint()) === fingerprint);
+    guard();
+    return saved;
+  };
+  const verifyEnvelope = (rawTransaction: string, hash: string) => {
+    const tx = Transaction.from(rawTransaction);
     expect(
       tx.isSigned() &&
         tx.from === address &&
@@ -243,25 +278,20 @@ export async function qualifyNativeErc20Transfer(
         tx.nonce === 0 &&
         tx.data === calldata &&
         tx.gasLimit === 60000n &&
-        tx.maxFeePerGas === 3n &&
-        tx.maxPriorityFeePerGas === 1n &&
-        tx.hash === saved.hash
+        tx.type === 2 && tx.accessList?.length === 0 &&
+        tx.maxFeePerGas === feeCap &&
+        tx.maxPriorityFeePerGas === feeTip &&
+        tx.hash === hash
     );
-    const raw = await readSignedRecordEvidence(storage);
-    const retained = raw.entries.filter(entry => entry.from === address.toLowerCase());
-    expect(raw.version === 1 && retained.length === 1 && retained[0]?.hash === saved.hash &&
-      retained[0].phase === expectedPhase && retained[0].signer.id === 2 && retained[0].signer.type === 'HDAccount' &&
-      equalTransferIntent(retained[0].metadata?.intent, expectedIntent) && typeof saved.rawTransaction === 'string' &&
-      !raw.raw?.includes(saved.rawTransaction));
-    expect((await storage.getWalletFingerprint()) === fingerprint);
-    guard();
-    return saved;
   };
   const wrapped: NativeTransferRuntime = {
     isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
     releaseReplacement: () => transfer.releaseReplacement(),
-    authenticateOperation: (...args) => transfer.authenticateOperation(...args),
-    authorizeOperation: (...args) => transfer.authorizeOperation(...args),
+    authenticateOperation() { throw Error('QUALIFICATION_ERC20_REPLAY_FORBIDDEN'); },
+    authorizeOperation(...args) {
+      expect(++authorizations === 1 && args[0].method === 'device');
+      return transfer.authorizeOperation(...args);
+    },
     releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
     replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
@@ -271,22 +301,32 @@ export async function qualifyNativeErc20Transfer(
       return transfer.token!(contract, assertCurrent);
     },
     journal: (assertCurrent) => transfer.journal(assertCurrent),
-    async sign(transaction, assertCurrent, intent) {
+    async replacementOriginal(...args) {
+      expect(replacing && args[0] === originalHash && args[1] === 'speed-up');
+      const retained = await transfer.replacementOriginal!(...args);
+      expect(retained?.rawTransaction === undefined && retained?.unsignedTransaction !== undefined);
+      const tx = Transaction.from(retained.unsignedTransaction);
+      expect(!tx.isSigned() && tx.to === token.contractAddress && tx.data === calldata &&
+        tx.nonce === 0 && tx.gasLimit === 60000n && tx.maxFeePerGas === 3n && tx.maxPriorityFeePerGas === 1n &&
+        equalTransferIntent(retained.intent, expectedIntent));
+      return retained;
+    },
+    async sign(transaction, assertCurrent, intent, replacement) {
       signatures++;
       expect(intent?.kind !== 'nft-transfer');
       expect(
-        signatures <= 1 &&
-          phase === 'create' &&
-          equalTransferIntent(intent, expectedIntent)
+        signatures === 1 && authorizations === 1 &&
+          equalTransferIntent(intent, expectedIntent) &&
+          (replacing
+            ? replacement?.mode === 'speed-up' && replacement.original.hash === originalHash &&
+              replacement.original.unsignedSpeedUp === true
+            : replacement === undefined)
       );
-      return transfer.sign(transaction, assertCurrent, intent);
+      signed = await transfer.sign(transaction, assertCurrent, intent, replacement);
+      verifyEnvelope(signed.rawTransaction, signed.hash);
+      return signed;
     },
-    // Retain the report field: this counts unlocked-session admission, not a password check.
-    assertUnlocked(assertCurrent) {
-      authorizations++;
-      expect(authorizations === 1 && phase === 'restart');
-      return transfer.assertUnlocked(assertCurrent);
-    },
+    assertUnlocked() { throw Error('QUALIFICATION_ERC20_REPLAY_FORBIDDEN'); },
   };
   const rpc = new NativeTransferRpc({ networkId: 'ethereum',
     fetch: async (url, init) => {
@@ -344,7 +384,7 @@ export async function qualifyNativeErc20Transfer(
         result = '0x0';
       } else if (body.method === 'eth_getBalance') {
         expect(params.length === 2 && params[0] === address &&
-          ['pending', '0x123'].includes(params[1] as string));
+          ['pending', 'latest', '0x123'].includes(params[1] as string));
         result = '0xde0b6b3a7640000';
       } else if (body.method === 'eth_gasPrice') { same([]); result = '0x2';
       } else if (body.method === 'eth_feeHistory') {
@@ -354,7 +394,7 @@ export async function qualifyNativeErc20Transfer(
         same([]);
         result = '0x1';
       } else if (body.method === 'eth_estimateGas') {
-        same([{ ...unsigned, type: '0x2', chainId: '0x1', nonce: '0x0', accessList: [], maxFeePerGas: '0x3', maxPriorityFeePerGas: '0x1' }, 'pending']);
+        same([{ ...unsigned, type: '0x2', chainId: '0x1', nonce: '0x0', accessList: [], ...feeFields }, replacing ? '0x123' : 'pending']);
         result = '0xc350';
       } else if (body.method === 'eth_call') {
         if (
@@ -385,28 +425,27 @@ export async function qualifyNativeErc20Transfer(
             gas: '0xea60',
             nonce: '0x0',
             type: '0x2',
-            maxFeePerGas: '0x3',
-            maxPriorityFeePerGas: '0x1',
+            ...feeFields,
           }, '0x123']);
           result = word(1);
         }
-      } else if (body.method === 'eth_getTransactionReceipt') {
-        same([expectedHash]);
+      } else if (body.method === 'eth_getTransactionReceipt' || body.method === 'eth_getTransactionByHash') {
+        expect(replacing);
+        same([originalHash]);
         result = null;
       } else if (body.method === 'eth_sendRawTransaction') {
-        const saved = await readSaved('signed');
+        expect(signed);
+        const saved = await readSaved('signed', signed.hash, replacing ? originalHash : undefined);
         guard();
-        same([saved.rawTransaction]);
+        same([signed.rawTransaction]);
         broadcasts++;
         expect(broadcasts === 1);
-        if (expectedHash)
-          expect(
-            saved.hash === expectedHash && saved.rawTransaction === expectedRaw
-          );
-        expectedHash = saved.hash;
-        expectedRaw = saved.rawTransaction;
-        if (phase === 'create')
+        if (!replacing) {
+          originalHash = saved.hash;
           throw Error('QUALIFICATION_ERC20_LOST_RESPONSE');
+        }
+        expect(originalHash && saved.hash !== originalHash);
+        replacementHash = saved.hash;
         result = saved.hash;
       } else throw Error('QUALIFICATION_ERC20_RPC_FORBIDDEN');
       const text = JSON.stringify({ jsonrpc: '2.0', id: body.id, result });
@@ -465,18 +504,18 @@ export async function qualifyNativeErc20Transfer(
               !review.retry &&
               review.recipient === recipient &&
               review.amountUnits === amountUnits &&
-              review.totalUnits === '180000' &&
+              review.totalUnits === maximumFee &&
               equalTransferIntent(review.intent, expectedIntent)
           );
           await controller.confirm(review.id, { method: 'device' });
           guard();
           expect(
             controller.getSnapshot().phase === 'unknown' &&
-              controller.getSnapshot().hash === expectedHash
+              controller.getSnapshot().hash === originalHash
           );
           expect(
             signatures === 1 &&
-              authorizations === 0 &&
+              authorizations === 1 &&
               broadcasts === 1 &&
               tokenLookups === 1
           );
@@ -485,36 +524,40 @@ export async function qualifyNativeErc20Transfer(
       );
     else
       await check(
-        'native ERC20 cold restart intent and exact-byte authorized retry',
+        'native ERC20 cold restart unsigned intent and authorized Speed Up',
         async () => {
           const saved = await readSaved('signed');
-          expectedHash = saved.hash;
-          expectedRaw = saved.rawTransaction;
-          await controller.recover(true);
+          originalHash = saved.hash;
+          await controller.prepareSpeedUp(originalHash);
           guard();
           const review = controller.getSnapshot().review;
           expect(
-            review?.retry &&
+            review && !review.retry &&
+              review.replacement?.mode === 'speed-up' &&
+              review.replacement.originalHash === originalHash &&
+              review.replacement.originalMaximumFeeUnits === '180000' &&
               review.recipient === recipient &&
               review.amountUnits === amountUnits &&
+              review.nonce === '0' && review.totalUnits === maximumFee &&
               equalTransferIntent(review.intent, expectedIntent)
           );
+          expect([broadcasts, signatures, authorizations].every((count) => count === 0));
           await controller.confirm(review.id, { method: 'device' });
           guard();
           expect(
             controller.getSnapshot().phase === 'pending' &&
-              controller.getSnapshot().hash === expectedHash
+              replacementHash && controller.getSnapshot().hash === replacementHash
           );
           expect(
-            signatures === 0 &&
+            signatures === 1 &&
               authorizations === 1 &&
               broadcasts === 1 &&
               tokenLookups === 0
           );
-          await readSaved('submitted');
+          await readSaved('submitted', replacementHash, originalHash);
         }
       );
-    expect(expectedHash && expectedRaw);
+    expect(originalHash && signed);
     const intentHash = keccak256(
       toUtf8Bytes(JSON.stringify([fingerprint, address, '1', expectedIntent]))
     );
@@ -536,7 +579,8 @@ export async function qualifyNativeErc20Transfer(
       erc20AccountId: 'hd:60:2',
       erc20AccountIndex: 2,
       erc20Address: address,
-      erc20TransferHash: expectedHash,
+      erc20TransferHash: originalHash,
+      erc20ReplacementHash: replacementHash,
       erc20IntentHash: intentHash,
       erc20Signatures: signatures,
       erc20Authorizations: authorizations,

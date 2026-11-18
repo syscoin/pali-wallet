@@ -46,11 +46,15 @@ const deferred = () => {
   return { finish, promise };
 };
 
-function record(sequence = 0xfffffffd, fee = 1000): UtxoDurableSubmission {
+function record(
+  sequence = 0xfffffffd,
+  fee = 1000,
+  inputSeed = 4
+): UtxoDurableSubmission {
   const key = bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 3));
   const address = bitcoin.payments.p2wpkh({ pubkey: key.publicKey });
   const previous = new bitcoin.Transaction();
-  previous.addInput(Buffer.alloc(32, 4), 0);
+  previous.addInput(Buffer.alloc(32, inputSeed), 0);
   previous.addOutput(address.output, BigInt(10000));
   const psbt = new bitcoin.Psbt();
   psbt.addInput({
@@ -1616,6 +1620,114 @@ const discoverySelection = (
     },
   };
 };
+
+it('clears scoped reservations and retained conflicts while preserving discovery and other owners', async () => {
+  const f = context();
+  const discovery = f.records.addressDiscovery(f.session, owner);
+  const issued = await discovery.allocateUtxoAddress(discoverySelection);
+  const confirmed = record();
+  await f.records.persist(f.session, confirmed);
+  await f.records.observeRetained(
+    f.session,
+    owner,
+    confirmed.txid,
+    async () => ({
+      txid: confirmed.txid,
+      hex: confirmed.rawTransaction,
+      confirmations: 1,
+      blockHash: 'a'.repeat(64),
+    })
+  );
+  const pending = record(undefined, undefined, 5);
+  const other = { ...owner, account: { ...owner.account, id: 1 } };
+  const otherChain = {
+    ...owner,
+    chainId: 57,
+    slip44: 57,
+    genesisHash: 'b'.repeat(64),
+  };
+  const otherPending = { ...record(undefined, undefined, 6), owner: other };
+  const chainPending = { ...pending, owner: otherChain };
+  for (const saved of [pending, otherPending, chainPending])
+    await f.records.persist(f.session, saved);
+  await f.records.acknowledge(f.session, owner, pending.txid);
+
+  const replacement = record(0xffffffff);
+  await expect(f.records.persist(f.session, replacement)).rejects.toThrow(
+    'UTXO_SIGNED_OUTPOINT_PENDING'
+  );
+  const before = await f.records.fundingExclusions(f.session, owner);
+  expect(before.submitted).toEqual(new Set(pending.outpoints));
+  expect(before.outpoints).toHaveLength(2);
+
+  await f.records.clearScope(f.session, owner);
+  const reopened = new UtxoSignedRecords(f.storage, f.storage);
+  expect(await reopened.list(f.session, owner)).toEqual([]);
+  expect(
+    await reopened.readExact(f.session, owner, confirmed.txid)
+  ).toBeUndefined();
+  expect(await reopened.fundingExclusions(f.session, owner)).toMatchObject({
+    outpoints: [{ txid: otherPending.outpoints[0].slice(0, 64), vout: 0 }],
+    submitted: new Set(),
+  });
+  expect(await reopened.list(f.session, other)).toEqual([
+    { txid: otherPending.txid, accepted: false },
+  ]);
+  expect(await reopened.list(f.session, otherChain)).toEqual([
+    { txid: chainPending.txid, accepted: false },
+  ]);
+  expect(
+    await reopened
+      .addressDiscovery(f.session, owner)
+      .allocateUtxoAddress(discoverySelection)
+  ).toMatchObject({ index: issued.index + 1 });
+  await expect(
+    reopened.persist(f.session, replacement)
+  ).resolves.toBeUndefined();
+  await expect(reopened.persist(f.session, pending)).resolves.toBeUndefined();
+});
+
+it('rejects revoked journal writes that settle after a new owner clears activity', async () => {
+  const f = context();
+  const retained = record();
+  await f.records.persist(f.session, retained);
+  const entered = deferred(),
+    release = deferred();
+  let revoked = false;
+  const previousSession = {
+    ...f.session,
+    assertCurrent() {
+      if (revoked) throw new Error('CANCELLED');
+    },
+  };
+  const observation = f.records.observeRetained(
+    previousSession,
+    owner,
+    retained.txid,
+    async () => {
+      entered.finish();
+      await release.promise;
+      return {
+        txid: retained.txid,
+        hex: retained.rawTransaction,
+        confirmations: 0,
+      };
+    }
+  );
+  const rejection = expect(observation).rejects.toThrow('CANCELLED');
+  await entered.promise;
+  revoked = true;
+  await f.records.clearScope(f.session, owner);
+  await f.records.persist(f.session, retained);
+  release.finish();
+  await rejection;
+  await expect(
+    f.records.acknowledge(previousSession, owner, retained.txid)
+  ).rejects.toThrow('CANCELLED');
+  expect(await f.records.list(f.session, owner)).toEqual([
+    { txid: retained.txid, accepted: false },
+  ]);
+});
 
 it('durably repeats an issued change address across quotes, restart and independent account/chain owners', async () => {
   const f = context();

@@ -125,7 +125,8 @@ type RetainedNftContext = Readonly<{
   metadata?: Readonly<Record<string, unknown>>;
   nonce: number;
   operation: string;
-  rawTransaction: string;
+  rawTransaction?: string;
+  unsignedTransaction?: string;
 }>;
 
 export function isRetainedNftReplayEnvelope(
@@ -208,15 +209,20 @@ export function decodeRetainedNftTransfer(
     if (
       !tx.to ||
       tx.value !== BigInt(0) ||
-      !tx.isSigned() ||
-      tx.serialized !== entry.rawTransaction ||
-      tx.hash !== entry.hash ||
       tx.nonce !== entry.nonce ||
       tx.chainId.toString() !== entry.chainId
     )
       return undefined;
-    const from = tx.from;
-    if (!from || from.toLowerCase() !== entry.from) return undefined;
+    const from = tx.isSigned() ? tx.from : getAddress(entry.from);
+    if (
+      !from ||
+      from.toLowerCase() !== entry.from ||
+      (tx.isSigned()
+        ? tx.serialized !== entry.rawTransaction || tx.hash !== entry.hash
+        : entry.rawTransaction !== undefined ||
+          tx.unsignedSerialized !== entry.unsignedTransaction)
+    )
+      return undefined;
     const context = {
       chainId: entry.chainId,
       from,

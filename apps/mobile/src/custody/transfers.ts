@@ -765,7 +765,7 @@ export class NativeTransfers {
   }
   private quoteSpeedUp(rpc: NativeTransferRpc, hash: string, original: NativeReplacementSource, signal: AbortSignal, check: () => void) {
     return original.unsignedTransaction !== undefined
-      ? rpc.prepareUnsignedSpeedUp(hash, original.unsignedTransaction, original.from, signal, check, original.rates)
+      ? rpc.prepareUnsignedSpeedUp(hash, original.unsignedTransaction, original.from, signal, check, original.rates, original.intent, original.collectible)
       : rpc.prepareSpeedUp(hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, check,
         original.rates, original.intent, original.collectible);
   }
@@ -1067,7 +1067,8 @@ export class NativeTransfers {
       assertCurrent();
       let startedSubmission = false;
       const collectible = approved.collectible;
-      const intent = collectible?.quote.intent ?? approved.public.intent;
+      const intent = collectible?.quote.intent ?? approved.public.intent ??
+        (approved.replacement?.original.unsignedSpeedUp ? approved.public.collectible : undefined);
       let freshCollectible: EvmNftPreparedQuote | undefined;
       const guard = () => {
         assertCurrent();

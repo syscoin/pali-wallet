@@ -5,6 +5,7 @@ import type { Erc20TransferIntent } from '../src/custody/transferIntent.ts';
 
 type EvidenceEntry = Readonly<{
   hash: string; chainId: string; from: string; nonce: number; phase: EvmSignedPhase;
+  operation: string; originalHash?: string; payloadKind?: 'signed' | 'unsigned-eoa';
   signer: Readonly<{ id: number; type: string }>;
   metadata?: Readonly<{ intent?: Erc20TransferIntent }>;
 }>;

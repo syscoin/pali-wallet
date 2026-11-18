@@ -56,7 +56,7 @@ export function createNativeSignedRecordView(
   const planAutomaticNonce = createNativeAutomaticNoncePlanner(records, session, network.chainId, account.address, network.rpcUrl);
   const map = (entry: EvmRetainedRecord): TransferJournalEntry => {
     const tx = retainedEvmTransaction(entry);
-    const collectible = entry.payloadKind === 'unsigned-eoa' ? undefined : decodeRetainedNftTransfer(entry, tx);
+    const collectible = decodeRetainedNftTransfer(entry, tx);
     const inspectionOnly = entry.payloadKind === 'unsigned-eoa' || (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
       (!collectible || !isRetainedNftReplayEnvelope(tx));
     const intent = entry.metadata?.intent === undefined ? undefined : snapshotErc20TransferIntent(entry.metadata.intent);
@@ -75,7 +75,7 @@ export function createNativeSignedRecordView(
       (!saved.collectibleTransfer || !isRetainedNftReplayEnvelope(retainedEvmTransaction(entry)));
     const unsignedSpeedUp = unsignedSpeedUpSupported && account.type !== 'SmartAccount' &&
       entry.payloadKind === 'unsigned-eoa' && saved.speedUpAvailable && entry.signer.id === account.index && entry.signer.type === account.type &&
-      (entry.operation === 'send' || entry.operation === 'speed-up') && (saved.type === 0 || saved.type === 2);
+      (saved.type === 0 || saved.type === 2);
     const speedUpEligible = unsignedSpeedUp || maySpeedUp(entry, saved.type);
     const privacyActivity = getPrivacyPoolActivity(saved.chainId, saved.to, saved.selector);
     return Object.freeze({walletFingerprint:walletBindingId,accountId:nativeAccountId(account.type,account.index),address:account.address,networkId:network.id,registrationHash:network.registrationHash,chainId:network.chainId,hash:entry.hash,phase:entry.phase,nonce:entry.nonce,createdAt:entry.createdAt,

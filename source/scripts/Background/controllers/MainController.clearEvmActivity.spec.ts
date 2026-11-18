@@ -22,10 +22,7 @@ import vaultGlobalReducer, {
 } from 'state/vaultGlobal';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import { chromeStorage } from 'utils/storageAPI';
-import {
-  createUtxoAcknowledgedInputs,
-  UTXO_ACKNOWLEDGED_INPUTS_WINDOW_MS,
-} from 'utils/utxoAcknowledgedInputs';
+import { createUtxoAcknowledgedInputs } from 'utils/utxoAcknowledgedInputs';
 
 import MainController from './MainController';
 
@@ -46,6 +43,7 @@ describe('explicit EVM activity and nonce reset', () => {
   let state: any;
   let keyring: any;
   let records: any;
+  let utxoRecords: any;
   let writes: jest.SpyInstance;
   const clear = () =>
     wallet.clearEvmActivityAndNonce(
@@ -126,6 +124,7 @@ describe('explicit EVM activity and nonce reset', () => {
       captureSession: jest.fn((session) => session),
       clearScope: jest.fn().mockResolvedValue(2),
     };
+    utxoRecords = { clearScope: jest.fn().mockResolvedValue(undefined) };
     wallet = Object.create(MainController.prototype);
     Object.assign(wallet, {
       walletSessionGeneration: 0,
@@ -134,6 +133,7 @@ describe('explicit EVM activity and nonce reset', () => {
       getActiveKeyring: () => keyring,
       isUnlocked: () => true,
       retainedEvmRecords: records,
+      getRetainedUtxoRecords: () => utxoRecords,
       activeRapidPolls: new Map(),
       pendingEvmReceiptChecks: new Map(),
       cancellablePromises: { transactionPromise: { cancel: jest.fn() } },
@@ -295,7 +295,7 @@ describe('explicit EVM activity and nonce reset', () => {
     return activeNetwork;
   };
 
-  it('clears only the selected UTXO history and preserves the recent input guard', async () => {
+  it('clears only the selected UTXO history, reservations and input acknowledgements', async () => {
     const activeNetwork = selectUtxo();
     const input = { hash: Buffer.alloc(32, 1), index: 0 };
     const now = Date.now();
@@ -310,15 +310,12 @@ describe('explicit EVM activity and nonce reset', () => {
     const targetHistory = state.vault.accountTransactions.HDAccount[0];
     targetHistory.syscoin[0] = [
       { txid: 'unconfirmed', localAcknowledgedInputs: ack },
-      {
-        txid: 'old-acknowledgement',
-        localAcknowledgedInputs: {
-          ...ack,
-          acknowledgedAt: now - UTXO_ACKNOWLEDGED_INPUTS_WINDOW_MS,
-        },
-      },
       { txid: 'confirmed', confirmations: 5 },
     ];
+    targetHistory.utxoActivityReset = {
+      0: { revision: now - 1, acknowledgements: [ack] },
+      57: { revision: now - 1, acknowledgements: [ack] },
+    };
     state.vault.accountTransactions.HDAccount[1].syscoin[0] = [
       { txid: 'other-account' },
     ];
@@ -337,8 +334,22 @@ describe('explicit EVM activity and nonce reset', () => {
     expect(HDAccount[0].syscoin[57]).toEqual([{ txid: 'utxo' }]);
     expect(HDAccount[0].ethereum[1]).toEqual([{ hash: 'pending', nonce: 0 }]);
     expect(HDAccount[1].syscoin[0]).toEqual([{ txid: 'other-account' }]);
-    expect(HDAccount[0].utxoActivityReset[0].acknowledgements).toEqual([ack]);
+    expect(HDAccount[0].utxoActivityReset[0]).toEqual({
+      revision: expect.any(Number),
+    });
+    expect(HDAccount[0].utxoActivityReset[57].acknowledgements).toEqual([ack]);
     expect(records.clearScope).not.toHaveBeenCalled();
+    expect(utxoRecords.clearScope).toHaveBeenCalledWith(
+      { keyring, assertCurrent: expect.any(Function) },
+      {
+        account: { id: 0, type: 'HDAccount', xpub: 'zpub-selected' },
+        chainId: 0,
+        slip44: 0,
+        genesisHash:
+          '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+      }
+    );
+    expect(wallet.walletSessionGeneration).toBe(1);
     expect(wallet.updateUserTransactionsState).toHaveBeenCalledWith({
       activeNetwork,
       isBitcoinBased: true,
@@ -356,7 +367,7 @@ describe('explicit EVM activity and nonce reset', () => {
           slip44: 0,
         }
       )
-    ).toThrow('The network is still updating');
+    ).not.toThrow();
     refresh.resolve(0);
   });
 
@@ -378,6 +389,7 @@ describe('explicit EVM activity and nonce reset', () => {
       )
     ).rejects.toThrow();
     expect(writes).not.toHaveBeenCalled();
+    expect(utxoRecords.clearScope).not.toHaveBeenCalled();
   });
 
   it('locks and rejects when public history cannot be committed after the private reset', async () => {

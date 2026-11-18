@@ -37,7 +37,6 @@ import {
   updateNativeBalanceCache,
 } from 'utils/nativeBalanceCache';
 import { isTransactionInBlock } from 'utils/transactionUtils';
-import { UTXO_ACKNOWLEDGED_INPUTS_WINDOW_MS } from 'utils/utxoAcknowledgedInputs';
 
 import {
   IVaultState,
@@ -871,22 +870,9 @@ const VaultState = createSlice({
       const histories = (state.accountTransactions[accountType] ??= {});
       const history = (histories[accountId] ??= { ethereum: {}, syscoin: {} });
       const previous = history.utxoActivityReset?.[chainId];
-      const acknowledgements = [
-        ...(previous?.acknowledgements ?? []),
-        ...(history.syscoin[chainId] ?? []).map(
-          (row) => row.localAcknowledgedInputs
-        ),
-      ].filter((ack): ack is NonNullable<typeof ack> =>
-        Boolean(
-          ack &&
-            ack.acknowledgedAt <= clearedAt &&
-            clearedAt - ack.acknowledgedAt < UTXO_ACKNOWLEDGED_INPUTS_WINDOW_MS
-        )
-      );
       history.utxoActivityReset ??= {};
       history.utxoActivityReset[chainId] = {
         revision: Math.max(clearedAt, (previous?.revision ?? 0) + 1),
-        acknowledgements,
       };
       delete history.syscoin[chainId];
     },

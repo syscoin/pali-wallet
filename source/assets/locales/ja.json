@@ -667,7 +667,7 @@
   },
   "settings": {
     "clearUtxoActivity": "アクティビティを消去",
-    "clearUtxoActivityWarning": "{{network}} 上の {{account}} の保存済みアクティビティを消去しますか？ 更新すると、Blockbook のアクティビティが再表示されます。保留中のトランザクションは引き続き承認される可能性があります。",
+    "clearUtxoActivityWarning": "{{network}} 上の {{account}} の保存済みアクティビティを消去し、入力のローカル予約を解除しますか？ アクティビティは Blockbook から再取得されます。保留中のトランザクションは引き続き承認される可能性があります。",
     "clearUtxoActivitySuccess": "保存済みアクティビティを消去しました。",
     "clearActivityAndNonce": "アクティビティと nonce データを消去",
     "clearActivityAndNonceWarning": "{{network}} の {{account}} の保存済みアクティビティと nonce データを消去しますか？保留中の取引は引き続き実行される可能性があります。保存済み取引は再送できなくなります。",
@@ -2101,8 +2101,8 @@
       "maintenanceTitle": "トラブルシューティング"
     },
     "resetActivity": {
-      "utxoQuestion": "キャッシュされたアクティビティを消去しますか？",
-      "utxoDescription": "このネットワーク上のこのアカウントのアクティビティキャッシュを消去し、ネットワークから再取得します。",
+      "utxoQuestion": "ローカルのアクティビティを消去しますか？",
+      "utxoDescription": "Pali は、このネットワーク上のこのアカウントの保存済みアクティビティを消去し、入力のローカル予約を解除してから、ネットワークからアクティビティを再取得します。",
       "title": "アクティビティをリセット",
       "question": "ローカルのアクティビティとノンスデータを消去しますか？",
       "description": "Paliは、このネットワーク上のこのアカウントについて、ローカルに保存されたトランザクションとノンスの追跡を削除し、アクティビティを更新します。",

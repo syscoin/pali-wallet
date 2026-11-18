@@ -1,5 +1,5 @@
 import { testHdKeyExportRuntime } from './fixtures/hdKeyExport.ts';
-import { NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
+import { captureNativePublicSessionRecord, nativePublicRecordDomains, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
 import { createTestPrivateAuthentication, bindTestRequestAuthentication } from './fixtures/privateAuthentication.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { createTestCredentialPort } from './fixtures/credential.ts';
@@ -82,6 +82,17 @@ const ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
+
+async function loadLegacyReplaySdk() {
+  const sdk = await loadNativeKeyringSdk();
+  class LegacyReplayKeyring extends sdk.HostKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
+      super(...args);
+      Object.defineProperty(this.ethereumTransaction, 'supportsRetainedSpeedUpIntent', { value: false });
+    }
+  }
+  return { ...sdk, HostKeyring: LegacyReplayKeyring };
+}
 
 function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void, connectionFetch?: KeyringRuntimeDependencies['connectionFetch'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], utxoFetch?: typeof fetch, prepareSmartAccount?: KeyringRuntimeDependencies['prepareSmartAccount'], beforeCredential?: (owner: NativeCredentialOwner) => Promise<void>) {
   let credential: NativeCredentialReference | null = null;
@@ -674,7 +685,10 @@ test('native transfers require fresh one-use device authorization and preserve s
     transfers.assertUnlocked(() => undefined);
     await signTestTransfer(transfers, transaction, { assertCurrent: () => undefined, signal: new AbortController().signal });
     assert.equal(disk.credentialPort.secretReads, afterUnlock + 1);
-    assert.equal((await (await transfers.journal(() => undefined)).load())?.rawTransaction, signed.rawTransaction);
+    const retained = await (await transfers.journal(() => undefined)).load();
+    assert.equal(retained?.hash, signed.hash);
+    assert.equal(retained?.inspectionOnly, true);
+    assert.equal(retained?.rawTransaction, undefined);
   } finally { await runtime.storage.close(); disk.restoreNetwork(); }
 });
 
@@ -872,8 +886,8 @@ test('native Smart saved replay uses its recorded payer and displays the inner t
     const raw = await HDNodeWallet.fromPhrase(PHRASE).signTransaction({ chainId: 1, nonce: 0, type: 0, gasPrice: 2, gasLimit: 300000,
       to: getPaliEntryPointAddress(1), value: 0, data: paliEntryPointInterface.encodeFunctionData('handleOps', [[operation], ADDRESS]) });
     signedRaw = raw;
-    const access = f.keyring.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1', 'org.syscoin.pali.evm.signed.chunk.v1',
-      'org.syscoin.pali.utxo.signed.root.v1', 'org.syscoin.pali.utxo.signed.chunk.v1']);
+    const checkpoint = captureNativePublicSessionRecord(f.disk.records.get(NATIVE_PUBLIC_SESSION_KEY));
+    const access = f.keyring.getPrivateRecordAccess(nativePublicRecordDomains(checkpoint.version));
     const profile = await access.getPrivateRecordProfileId();
     f.disk.signedBundles.set(profile, await historicalSignedBundle({ keyring: access, assertCurrent: () => undefined }, raw, 'signed'));
     const reads = f.disk.credentialPort.secretReads;
@@ -1354,7 +1368,10 @@ test('sender-owned records preserve first and additional accounts across selecti
     assert.equal(f.authority.getCatalogue()!.accounts.length, 2);
     await f.execute({ kind: 'select', id: 'hd:60:1' });
     journal = await f.runtime.transfers!.journal(() => undefined);
-    assert.equal((await journal.load())!.rawTransaction, second.rawTransaction);
+    const retained = (await journal.load())!;
+    assert.equal(retained.hash, second.hash);
+    assert.equal(retained.scope.address, secondAddress);
+    assert.equal(retained.rawTransaction, undefined);
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
@@ -1379,8 +1396,8 @@ const deferredAccount = () => {
   const promise = new Promise<void>((done) => { resolve = done; });
   return { promise, resolve };
 };
-async function raceSdk() {
-  const sdk = await loadNativeKeyringSdk();
+async function raceSdk(legacyReplay = false) {
+  const sdk = await (legacyReplay ? loadLegacyReplaySdk() : loadNativeKeyringSdk());
   let gate: { phase: string; entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
   let signingHook: (() => void) | undefined;
   let exportResult: string | undefined;
@@ -1590,8 +1607,8 @@ test('activity reset drains an interrupted broadcast before clearing local track
 });
 
 for (const networkId of ['ethereum', 'zksys-testnet'] as const) {
-test(`${networkId} normal confirmation and exact-byte retry each authenticate without rehydrating accounts`, async () => {
-  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
+test(`${networkId} normal confirmation and legacy exact-byte retry each authenticate without rehydrating accounts`, async () => {
+  const sdk = await raceSdk(true), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
     await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
@@ -1658,7 +1675,11 @@ for (const phase of ['journal-read', 'journal-write', 'broadcast'] as const) {
       assert.equal(f.authority.getSnapshot().phase, 'ready');
       const old = await (await f.runtime.transfers!.journal(() => undefined)).load();
       assert.equal(old?.phase, phase === 'journal-read' ? undefined : 'signed');
-      if (old) assert.equal(Transaction.from(old.rawTransaction).from, ADDRESS);
+      if (old) {
+        assert.equal(old.scope.address, ADDRESS);
+        assert.equal(old.rawTransaction, undefined);
+        if (phase === 'broadcast') assert.equal(old.hash, keccak256(network.broadcasts[0]!));
+      }
       assert.equal(network.broadcasts.length, phase === 'broadcast' ? 1 : 0);
       assert.equal(transfers.getSnapshot().review, null);
     } finally { release.resolve(); broadcastHold?.release(); f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
@@ -1834,18 +1855,23 @@ test('installed SDK retains same-address same-nonce Ethereum, NEVM and zkSYS jou
     assert.equal(reopened.getSnapshot().account?.network, 'zksys-testnet');
     for (const networkId of ['zksys-testnet', 'syscoin-nevm-testnet', 'ethereum'] as const) {
       await reopened.selectNetwork(networkId, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision, () => {});
-      assert.equal((await (await runtime.transfers!.journal(() => undefined)).load())!.rawTransaction, signedByNetwork.get(networkId)!.rawTransaction);
+      const retained = (await (await runtime.transfers!.journal(() => undefined)).load())!;
+      assert.equal(retained.hash, signedByNetwork.get(networkId)!.hash);
+      assert.equal(retained.inspectionOnly, true);
+      assert.equal(retained.rawTransaction, undefined);
     }
     await reopened.manageAccounts({ kind: 'select', id: 'hd:60:0' }, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision);
     await assert.rejects(reopened.manageAccounts({ kind: 'remove', id: 'hd:60:1',}, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision), /PENDING_TRANSFER/);
-    assert.deepEqual(JSON.parse(f.disk.signedValue()!), stored);
+    const compacted = JSON.parse(f.disk.signedValue()!);
+    assert.deepEqual(compacted.entries.map((entry: { hash: string; payloadKind: string }) => [entry.hash, entry.payloadKind]),
+      stored.entries.map((entry: { hash: string }) => [entry.hash, 'unsigned-eoa']));
     await reopened.dispose();
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
 for (const networkId of ['syscoin-nevm-testnet', 'zksys-testnet'] as const) {
-test(`${networkId} native controller retries exact installed-SDK bytes before its ordinary receipt confirmation`, async () => {
-  const f = await readyAccounts(), network = localTransferRpc(networkId);
+test(`${networkId} native controller retries legacy exact bytes before its ordinary receipt confirmation`, async () => {
+  const f = await readyAccounts(loadLegacyReplaySdk), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
     await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
@@ -1905,8 +1931,8 @@ test(`${networkId} synchronous network reentrancy cannot retarget the current sh
 });
 
 for (const phase of ['journal-write', 'broadcast'] as const) {
-  test(`${networkId} A-B-A during ${phase} preserves the original exact-byte recovery record`, async () => {
-    const f = await readyAccounts(), network = localTransferRpc(networkId);
+  test(`${networkId} A-B-A during ${phase} preserves the original legacy exact-byte recovery record`, async () => {
+    const f = await readyAccounts(loadLegacyReplaySdk), network = localTransferRpc(networkId);
     const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
     const entered = deferredAccount(), release = deferredAccount();
     let broadcastHold: ReturnType<typeof network.holdBroadcast> | undefined;
@@ -2040,13 +2066,14 @@ test('network A-B-A cancels held Ethereum journal work without touching its pend
     release.resolve(); await assert.rejects(pending, /CANCELLED/);
     const entry = await (await f.runtime.transfers!.journal(() => undefined)).load();
     assert.equal(entry!.phase, 'signed');
-    assert.equal(Transaction.from(entry!.rawTransaction).from, ADDRESS);
+    assert.equal(entry!.scope.address, ADDRESS);
+    assert.equal(entry!.rawTransaction, undefined);
     assert.equal(network.broadcasts.length, 0);
   } finally { release.resolve(); f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
 
-test('account removal checks every chain and keeps all sender-owned signed bytes', async () => {
+test('account removal checks every chain and keeps all sender-owned transaction identities', async () => {
   const f = await readyAccounts();
   try {
     await f.execute({ kind: 'create', label: 'Savings',});
@@ -2066,9 +2093,9 @@ test('account removal checks every chain and keeps all sender-owned signed bytes
     assert.equal(f.disk.signedValue(),retained); assert.equal(JSON.parse(retained!).entries.length,2);
     await f.execute({kind:'create',label:'Recreated',});
     assert.equal(f.authority.getSnapshot().account!.address,address);
-    assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.rawTransaction,other.rawTransaction);
+    assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.hash,other.hash);
     await f.authority.selectNetwork('ethereum',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision, () => {});
-    assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.rawTransaction,first.rawTransaction);
+    assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.hash,first.hash);
   } finally { await f.authority.dispose().catch(()=>undefined); f.disk.restoreNetwork(); }
 });
 
@@ -2662,7 +2689,10 @@ test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export 
     await reopened.initialize(); await reopened.unlock();
     assert.equal(reopened.getSnapshot().account!.address, importedAddress());
     const recovery = await (await reopenedRuntime.transfers!.journal(() => undefined)).load();
-    assert.equal(recovery!.phase, 'signed'); assert.equal(Transaction.from(recovery!.rawTransaction).chainId, 57057n);
+    assert.equal(recovery!.phase, 'signed');
+    assert.equal(recovery!.scope.chainId, '57057');
+    assert.equal(recovery!.scope.address, importedAddress());
+    assert.equal(recovery!.rawTransaction, undefined);
     assert.equal(reopened.getSnapshot().backup, 'confirmed');
     await reopened.dispose();
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
@@ -2830,8 +2860,8 @@ test('imported removal checks every chain, archives terminal rows, and never con
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
-test('explicit same-chain RPC edits preserve tokens, exact-byte retries and cold unlock', async () => {
-  const f = await readyAccounts(), originalRpc = localTransferRpc();
+test('explicit same-chain RPC edits preserve tokens, legacy exact-byte retries and cold unlock', async () => {
+  const f = await readyAccounts(loadLegacyReplaySdk), originalRpc = localTransferRpc();
   const first = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: originalRpc.rpc });
   let retry: NativeTransfers | undefined;
   try {
@@ -2983,8 +3013,8 @@ for (const id of [0, 1.5, Number.MAX_SAFE_INTEGER + 1]) test(`invalid SDK-alloca
 });
 
 
-test('review expiry during shared signed-record persistence retains exact bytes and prevents dispatch', async () => {
-  const f = await readyAccounts(), network = localTransferRpc();
+test('review expiry during legacy signed-record persistence retains exact bytes and prevents dispatch', async () => {
+  const f = await readyAccounts(loadLegacyReplaySdk), network = localTransferRpc();
   let now = 100;
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc, now: () => now });
   try {
@@ -3421,7 +3451,9 @@ test('Trezor runtime uses shared allocation, preserves records on unlock and sig
             broadcasts++;
             const raw = request.params[0];
             const saved = await (await runtime.transfers!.journal(() => undefined)).load(keccak256(raw));
-            assert(saved?.rawTransaction === raw);
+            assert.equal(saved?.hash, keccak256(raw));
+            assert.equal(saved?.inspectionOnly, true);
+            assert.equal(saved?.rawTransaction, undefined);
             return keccak256(raw);
           }
           default: throw new Error('Unexpected test RPC ' + request.method);
@@ -3656,8 +3688,8 @@ test('Trezor runtime reads saved UTXO status without Suite, signing or broadcast
         account: { id: 0, type: 'Trezor', xpub: (disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups.find(group => group.activeNetwork.slip44 === 0)!.accounts.Trezor[0]!.xpub } },
     };
     const records = new UtxoSignedRecords(disk.utxoPort, disk.utxoPort);
-    const recordAccess = ring.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1', 'org.syscoin.pali.evm.signed.chunk.v1',
-      'org.syscoin.pali.utxo.signed.root.v1', 'org.syscoin.pali.utxo.signed.chunk.v1']);
+    const checkpoint = captureNativePublicSessionRecord(disk.records.get(NATIVE_PUBLIC_SESSION_KEY));
+    const recordAccess = ring.getPrivateRecordAccess(nativePublicRecordDomains(checkpoint.version));
     await records.admit({ keyring: recordAccess, assertCurrent() {} }, record, async (prepare, release) => {
       await prepare();
       release(); // Simulate a previously dispatched transfer without an ACK.

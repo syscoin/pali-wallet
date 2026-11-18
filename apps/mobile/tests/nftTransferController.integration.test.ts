@@ -11,6 +11,7 @@ import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
@@ -62,7 +63,7 @@ type Case = ReturnType<typeof collectibleFixture>;
 
 async function withController(
   asset: Case,
-  mode: 'success' | 'hold-preflight' | 'hold-adapter' | 'lost-ack' | 'hold-replay',
+  mode: 'success' | 'hold-preflight' | 'hold-adapter' | 'lost-ack' | 'hold-replay' | 'legacy-cancellation',
   exercise: (fixture: {
     transfers: NativeTransfers;
     calls: Call[];
@@ -106,8 +107,20 @@ async function withController(
   let runtime!: KeyringRuntime;
   const committed = Promise.withResolvers<void>();
   const acknowledge = Promise.withResolvers<void>();
+  const legacyReplay = ['hold-preflight', 'lost-ack', 'hold-replay', 'legacy-cancellation'].includes(mode);
   const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() { assert.ok(globalThis.crypto.subtle); },
+    async loadSdk() {
+      const sdk = await loadNativeKeyringSdk();
+      if (!legacyReplay) return sdk;
+      class LegacyReplayKeyring extends sdk.HostKeyring {
+        constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
+          super(...args);
+          Object.defineProperty(this.ethereumTransaction, 'supportsRetainedSpeedUpIntent', { value: false });
+        }
+      }
+      return { ...sdk, HostKeyring: LegacyReplayKeyring };
+    },
     async openStorage() {
       let wroteSignedRecord = false;
       const sql = nodeConnection(file, {
@@ -116,7 +129,7 @@ async function withController(
             wroteSignedRecord = true;
           if (kind !== 'exec' || statement !== 'COMMIT' || !wroteSignedRecord) return;
           wroteSignedRecord = false;
-          if (mode === 'success') {
+          if (mode === 'success' || mode === 'legacy-cancellation') {
             committed.resolve();
             await acknowledge.promise;
           }
@@ -645,9 +658,9 @@ test('an explicitly approved NFT retry cannot dispatch after a held preflight ex
   });
 });
 
-test('a saved NFT that loses ownership can be explicitly cancelled after restart and release its nonce', async () => {
+test('a legacy saved NFT that loses ownership can be explicitly cancelled after restart and release its nonce', async () => {
   const asset = collectibleFixture('ERC-721');
-  await withController(asset, 'success', async ({
+  await withController(asset, 'legacy-cancellation', async ({
     transfers, calls, posted, retained, retainedBytes, reopen, confirmOnChain,
     invalidateCancellationObservation, holdOriginalObservation, reorg, removeHolding, signedCommit, acknowledgeCommit,
   }) => {

@@ -1,4 +1,5 @@
 import { Wallet } from 'ethers/wallet';
+import { captureNativePublicSessionRecord, nativePublicRecordDomains, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
 import { TypedDataEncoder } from 'ethers/hash';
 import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
@@ -1985,11 +1986,12 @@ test('native standalone authorization is encrypted before signed RPC disclosure 
   assert.equal(JSON.parse(encrypted).entries.length,0,'standalone authorization has no synthetic payer transaction');
   assert.equal(JSON.parse(encrypted).authorizations.length,1);
   assert(f.signedDisclosures.length>0);
-  const row=await new EvmSignedRecords(f.storage.signedRecords).readSmartAccountAuthorizationExact({keyring:f.sdkHost.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1','org.syscoin.pali.evm.signed.chunk.v1','org.syscoin.pali.utxo.signed.root.v1','org.syscoin.pali.utxo.signed.chunk.v1']),assertCurrent:()=>assert(f.sdkHost.hasPublicSession())},'1',smart.address,reviewed.userOperationHash!); assert(row);
+  const row=await new EvmSignedRecords(f.storage.signedRecords).readSmartAccountAuthorizationExact({keyring:f.sdkHost.getPrivateRecordAccess(nativePublicRecordDomains(captureNativePublicSessionRecord(await f.storage.keyringStorage.get(NATIVE_PUBLIC_SESSION_KEY)).version)),assertCurrent:()=>assert(f.sdkHost.hasPublicSession())},'1',smart.address,reviewed.userOperationHash!); assert(row);
   assert.equal(row.operationNonce,reviewed.authorization!.nonce); assert.equal(row.userOperation.callData,reviewed.authorization!.callData);
   assert.deepEqual(row.observedAt,{number:'16',hash:'0x'+'aa'.repeat(32)});
-  assert(f.signedDisclosures.every(value=>value.operationHash===row.operationHash&&value.signature===row.userOperation.signature));
-  assert(!encrypted.includes(row.userOperation.signature)); assert(!encrypted.includes(row.userOperation.callData));
+  assert.equal(row.userOperation.signature, '0x');
+  assert(f.signedDisclosures.every(value=>value.operationHash===row.operationHash&&keccak256(value.signature)===row.signatureDigest));
+  assert(f.signedDisclosures.every(value=>!encrypted.includes(value.signature))); assert(!encrypted.includes(row.userOperation.callData));
   operation.cancel(); await sending; await operation.dispose(); operation=undefined;
   assert.equal(f.submitted.length,0); assert.equal(f.payerSignatures.length,0);
   await f.reopen(); await f.owner.unlock();
@@ -7095,7 +7097,7 @@ for(const policy of ['p256','composite'] as const)test(`native repeated ${policy
   operation=await f.runtime.openSmartAccountCancellation(reference,()=>undefined,binding);await operation.prepare();
   const first=operation.getSnapshot();assert.equal(first.phase,'authorize',JSON.stringify(first));await decline();
   const identity=(await f.storage.recovery.readIdentity())!.root!,encrypted=await f.storage.signedRecords.read(identity.profileId);assert(encrypted);
-  const records=new EvmSignedRecords(f.storage.signedRecords),session={keyring:f.sdkHost.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1','org.syscoin.pali.evm.signed.chunk.v1','org.syscoin.pali.utxo.signed.root.v1','org.syscoin.pali.utxo.signed.chunk.v1']),assertCurrent:()=>assert(f.sdkHost.hasPublicSession())};
+  const records=new EvmSignedRecords(f.storage.signedRecords),session={keyring:f.sdkHost.getPrivateRecordAccess(nativePublicRecordDomains(captureNativePublicSessionRecord(await f.storage.keyringStorage.get(NATIVE_PUBLIC_SESSION_KEY)).version)),assertCurrent:()=>assert(f.sdkHost.hasPublicSession())};
   const retained=await records.readSmartAccountAuthorizationExact(session,'1',smart.address,first.userOperationHash!);assert(retained);
   assert.equal(retained.replacesOperationHash,original.userOperationHash);assert(retained.userOperation.signature.includes(proofs[1]!.slice(2)));
   const start=f.signedDisclosures.length,reads=f.credentialReads;

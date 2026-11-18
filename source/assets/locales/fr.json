@@ -667,7 +667,7 @@
   },
   "settings": {
     "clearUtxoActivity": "Effacer l’activité",
-    "clearUtxoActivityWarning": "Effacer l’activité enregistrée de {{account}} sur {{network}} ? L’activité de Blockbook réapparaîtra après actualisation. Les transactions en attente peuvent encore être confirmées.",
+    "clearUtxoActivityWarning": "Effacer l’activité enregistrée et libérer les entrées réservées localement pour {{account}} sur {{network}} ? L’activité sera rechargée depuis Blockbook. Les transactions en attente peuvent encore être confirmées.",
     "clearUtxoActivitySuccess": "Activité enregistrée effacée.",
     "clearActivityAndNonce": "Effacer l’activité et les données de nonce",
     "clearActivityAndNonceWarning": "Effacer l’activité et les données de nonce de {{account}} sur {{network}} ? Les transactions en attente peuvent encore être exécutées. Les transactions enregistrées ne pourront plus être renvoyées.",
@@ -2101,8 +2101,8 @@
       "maintenanceTitle": "Dépannage"
     },
     "resetActivity": {
-      "utxoQuestion": "Effacer l’activité en cache ?",
-      "utxoDescription": "Pali effacera l’activité en cache de ce compte sur ce réseau, puis la rechargera depuis le réseau.",
+      "utxoQuestion": "Effacer l’activité locale ?",
+      "utxoDescription": "Pali effacera l’activité enregistrée et libérera les entrées réservées localement pour ce compte sur ce réseau. L’activité sera ensuite rechargée depuis le réseau.",
       "title": "Réinitialiser l’activité",
       "question": "Effacer l’activité locale et les données de nonce ?",
       "description": "Pali supprimera les transactions et le suivi des nonces enregistrés localement pour ce compte sur ce réseau, puis actualisera son activité.",

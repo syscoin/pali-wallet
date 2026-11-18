@@ -667,7 +667,7 @@
   },
   "settings": {
     "clearUtxoActivity": "清除活动记录",
-    "clearUtxoActivityWarning": "清除 {{account}} 在 {{network}} 上保存的活动记录？刷新后，Blockbook 中的活动记录会重新显示。待处理交易仍可能获得确认。",
+    "clearUtxoActivityWarning": "清除 {{account}} 在 {{network}} 上保存的活动记录并解除本地输入锁定？活动记录将从 Blockbook 重新加载。待处理交易仍可能获得确认。",
     "clearUtxoActivitySuccess": "已清除保存的活动记录。",
     "clearActivityAndNonce": "清除活动和 nonce 数据",
     "clearActivityAndNonceWarning": "清除 {{account}} 在 {{network}} 上保存的活动和 nonce 数据？待处理的交易仍可能执行。已保存的交易将无法重试。",
@@ -2101,8 +2101,8 @@
       "maintenanceTitle": "故障排除"
     },
     "resetActivity": {
-      "utxoQuestion": "清除缓存的活动？",
-      "utxoDescription": "Pali 将清除此账户在当前网络上的活动缓存，然后从网络重新加载活动。",
+      "utxoQuestion": "清除本地活动记录？",
+      "utxoDescription": "Pali 将清除该账户在此网络上保存的活动记录并解除本地输入锁定，然后从网络重新加载活动记录。",
       "title": "重置活动",
       "question": "清除本地活动和 nonce 数据？",
       "description": "Pali 将移除本地保存的此账户在此网络上的交易及 nonce 跟踪，然后刷新活动。",

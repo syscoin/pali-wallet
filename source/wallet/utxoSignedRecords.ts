@@ -530,6 +530,29 @@ export class UtxoSignedRecords {
     await this.load(session);
   }
 
+  /** The host revokes the current send and read owners before clearing activity. */
+  clearScope(
+    session: UtxoRecordSession,
+    owner: UtxoRecordOwner
+  ): Promise<void> {
+    const identity = ownerId(owner);
+    return this.exclusive(async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const before = await this.load(session);
+        const entries = before.entries.filter(
+          (entry) => entry.owner !== identity
+        );
+        if (entries.length === before.entries.length) return;
+        // Address discovery has its own authenticated state in the same bundle.
+        if (await this.write(session, before, entries)) {
+          this.reconciliationCursors.delete(`${before.profile}:${identity}`);
+          return;
+        }
+      }
+      throw new Error('UTXO_SIGNED_RECORD_CONFLICT');
+    });
+  }
+
   private async load(session: UtxoRecordSession) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const before = await this.readBundle(session);

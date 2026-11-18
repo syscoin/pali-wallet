@@ -667,7 +667,7 @@
   },
   "settings": {
     "clearUtxoActivity": "Borrar actividad",
-    "clearUtxoActivityWarning": "¿Borrar la actividad guardada de {{account}} en {{network}}? La actividad de Blockbook volverá a aparecer al actualizar. Las transacciones pendientes aún pueden confirmarse.",
+    "clearUtxoActivityWarning": "¿Borrar la actividad guardada y liberar las reservas locales de entradas de {{account}} en {{network}}? La actividad se volverá a cargar desde Blockbook. Las transacciones pendientes aún pueden confirmarse.",
     "clearUtxoActivitySuccess": "Actividad guardada borrada.",
     "clearActivityAndNonce": "Borrar actividad y datos de nonce",
     "clearActivityAndNonceWarning": "¿Borrar la actividad y los datos de nonce de {{account}} en {{network}}? Las transacciones pendientes aún pueden ejecutarse. Las transacciones guardadas ya no estarán disponibles para reintentar.",
@@ -2101,8 +2101,8 @@
       "maintenanceTitle": "Solución de problemas"
     },
     "resetActivity": {
-      "utxoQuestion": "¿Borrar la actividad en caché?",
-      "utxoDescription": "Pali borrará la actividad en caché de esta cuenta en esta red y volverá a cargarla desde la red.",
+      "utxoQuestion": "¿Borrar la actividad local?",
+      "utxoDescription": "Pali borrará la actividad guardada y liberará las reservas locales de entradas de esta cuenta en esta red. Luego volverá a cargar la actividad desde la red.",
       "title": "Restablecer actividad",
       "question": "¿Borrar la actividad local y los datos de nonce?",
       "description": "Pali eliminará las transacciones y el seguimiento de nonces guardados localmente para esta cuenta en esta red y después actualizará su actividad.",

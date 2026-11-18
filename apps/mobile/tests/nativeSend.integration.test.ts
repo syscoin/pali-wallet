@@ -53,6 +53,10 @@ const PHRASE =
 const RECIPIENT = '0x1111111111111111111111111111111111111111';
 const TOKEN_CONTRACT = '0x5555555555555555555555555555555555555555';
 
+function enableLegacyReplaySdk(transactions: object) {
+  Object.defineProperty(transactions, 'supportsRetainedSpeedUpIntent', { value: false, configurable: true });
+}
+
 test('shared SDK and SQLite admit a different pending nonce and retain reorg predecessors across restart', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-native-send-'));
   const file = path.join(directory, 'wallet.sqlite');
@@ -71,7 +75,15 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
   let authority: NativeCustodyAuthority | undefined;
   let transfers: NativeTransfers | undefined;
   const submitted: string[] = [];
+  const sdk = await loadNativeKeyringSdk();
+  class LegacyReplayKeyring extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
+      super(...options);
+      enableLegacyReplaySdk(this.ethereumTransaction);
+    }
+  }
   const factory = createKeyringRuntimeFactory({ credentialPort, isAuthenticationActive: () => false, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+    loadSdk: async () => ({ ...sdk, HostKeyring: LegacyReplayKeyring }),
     async ensureCryptoReady() {
       assert.ok(globalThis.crypto.subtle);
     },
@@ -227,7 +239,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
   }
 });
 
-async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true, startWithLegacyCheckpoint = false) {
+async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true, startWithLegacyCheckpoint = true) {
   const sdk = await loadNativeKeyringSdk();
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-send-cancel-'));
   const file = path.join(directory, 'wallet.sqlite');
@@ -270,7 +282,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true, star
       sdkInstances.push(this);
       featureAvailable = supportsRetainedSpeedUpIntent(this.ethereumTransaction);
       if (legacyCheckpoint && featureAvailable)
-        Object.defineProperty(this.ethereumTransaction, 'supportsRetainedSpeedUpIntent', { value: false, configurable: true });
+        enableLegacyReplaySdk(this.ethereumTransaction);
       const hydrate = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {
         hydrations++;
@@ -540,7 +552,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true, star
       return runtime;
     },
     broadcasts,
-    async seedOriginal(input: { to: string | null; data: string; operation?: 'send' | 'erc721' | 'erc1155'; accessList?: { address: string; storageKeys: string[] }[]; metadata?: Readonly<Record<string, unknown>> }) {
+    async seedOriginal(input: { to: string | null; data: string; operation?: 'send' | 'erc20' | 'erc721' | 'erc1155'; accessList?: { address: string; storageKeys: string[] }[]; metadata?: Readonly<Record<string, unknown>> }) {
       const wallet = Wallet.fromPhrase(PHRASE);
       const selected = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === runtime.catalogue.getSnapshot()!.active.accountId)!;
       assert.equal(wallet.address, selected.address);
@@ -789,7 +801,7 @@ test('an acknowledged ordinary send can be followed by the next nonce while pend
 });
 
 for (const type of [0, 2] as const) test(`native type ${type} unsigned Speed Up follows the installed SDK capability`, async () => {
-  const f = await cancellationFixture(type);
+  const f = await cancellationFixture(type, true, false);
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
     await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
@@ -837,8 +849,59 @@ for (const type of [0, 2] as const) test(`native type ${type} unsigned Speed Up 
   } finally { await f.close(); }
 });
 
+for (const kind of ['contract', 'erc20', 'erc721', 'erc1155'] as const) test(`signature-free ${kind} Speed Up retains the exact execution without node history`, async () => {
+  const f = await cancellationFixture(2, true, false);
+  try {
+    assert.equal(f.unsignedSpeedUpSupported, true);
+    const from = Wallet.fromPhrase(PHRASE).address;
+    const to = kind === 'contract' ? RECIPIENT : TOKEN_CONTRACT;
+    const call = kind === 'erc20' ? ['transfer(address,uint256)', [RECIPIENT, 1]] as const
+      : kind === 'erc721' ? ['transferFrom(address,address,uint256)', [from, RECIPIENT, 7]] as const
+      : kind === 'erc1155' ? ['safeTransferFrom(address,address,uint256,uint256,bytes)', [from, RECIPIENT, 7, 1, '0x']] as const
+      : undefined;
+    const data = call ? new Interface([`function ${call[0]}`]).encodeFunctionData(call[0], [...call[1]]) : '0x12345678';
+    const intent = { kind: 'erc20-transfer' as const, chainId: '1', recipient: RECIPIENT, amountUnits: '1',
+      token: { contractAddress: TOKEN_CONTRACT, symbol: 'FIX', name: 'Fixture', decimals: 0 } };
+    const original = await f.seedOriginal({ to, data, operation: kind === 'contract' ? 'send' : kind,
+      ...(kind === 'erc20' ? { metadata: { intent } } : {}) });
+    f.replacement.pending = false;
+    await f.reopen();
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries[0].payloadKind, 'unsigned-eoa');
+    assert.equal((await f.readJournal())?.rawTransaction, undefined);
+    await f.transfers.prepareSpeedUp(original.hash!);
+    const review = f.transfers.getSnapshot().review!;
+    assert.equal(review.replacement?.originalHash, original.hash);
+    assert.equal(review.recipient, RECIPIENT);
+    if (kind === 'erc20') assert.deepEqual(review.intent, intent);
+    if (kind === 'erc721' || kind === 'erc1155') assert.equal(review.collectible?.tokenId, '7');
+    assert.equal(review.execution?.kind, 'contract-call');
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.broadcasts.length, 2);
+    const replaced = Transaction.from(f.broadcasts[1]!);
+    for (const field of ['from', 'to', 'value', 'data', 'nonce', 'type', 'gasLimit'] as const)
+      assert.equal(replaced[field], original[field]);
+    assert.deepEqual(replaced.accessList, original.accessList);
+    assert(replaced.maxFeePerGas! > original.maxFeePerGas!);
+    assert.equal(JSON.parse((await f.readDurableJournal())!).entries[1].payloadKind, 'unsigned-eoa');
+    await f.transfers.prepareSpeedUp(replaced.hash!);
+    const next = f.transfers.getSnapshot().review!;
+    if (kind === 'erc20') {
+      f.token.balance = 0n;
+      await assert.rejects(f.transfers.confirm(next.id, { method: 'device' }), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
+    } else if (kind === 'erc721') {
+      f.loseNft();
+      await assert.rejects(f.transfers.confirm(next.id, { method: 'device' }), { code: 'INSUFFICIENT_NFT_BALANCE' });
+    } else if (kind === 'contract') {
+      f.execution.reverts = true;
+      await assert.rejects(f.transfers.confirm(next.id, { method: 'device' }), { code: 'EXPIRED' });
+    }
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 2);
+  } finally { await f.close(); }
+});
+
 test('unlock migrates signed native history only when the installed SDK supports unsigned Speed Up', async () => {
-  const f = await cancellationFixture();
+  const f = await cancellationFixture(2, true, false);
   try {
     const original = await f.seedOriginal({ to: RECIPIENT, data: '0x' });
     assert.equal(JSON.parse((await f.readDurableJournal())!).entries[0].payloadKind, undefined);

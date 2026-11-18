@@ -17,7 +17,8 @@ const erc20Evidence = (phase = 'create') => ({
   nativeErc20Verified: true, erc20AccountId: 'hd:60:2', erc20AccountIndex: 2,
   erc20Address: '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A',
   erc20TransferHash: '0x' + 'd'.repeat(64), erc20IntentHash: '0x' + 'e'.repeat(64),
-  erc20Signatures: phase === 'create' ? 1 : 0, erc20Authorizations: phase === 'restart' ? 1 : 0,
+  erc20ReplacementHash: phase === 'create' ? null : '0x' + '5'.repeat(64),
+  erc20Signatures: 1, erc20Authorizations: 1,
   erc20InjectedBroadcasts: 1, erc20RestoredFromJournal: phase === 'restart',
 });
 const nevmEvidence = (phase = 'create') => ({
@@ -344,7 +345,8 @@ test('the actual report parser requires complete ERC20 evidence before accepting
     { erc20Address: passed.address }, { erc20Address: 'invalid' },
     { erc20TransferHash: passed.transferHash }, { erc20TransferHash: passed.firstTransferHash },
     { erc20TransferHash: '0x123' }, { erc20IntentHash: 'invalid' },
-    { erc20Signatures: 0 }, { erc20Authorizations: 1 },
+    { erc20Signatures: 0 }, { erc20Authorizations: 0 },
+    { erc20ReplacementHash: '0x' + '5'.repeat(64) },
     { erc20InjectedBroadcasts: 0 }, { erc20InjectedBroadcasts: 2 },
     { erc20RestoredFromJournal: true }, { networkCalls: 1 },
   ]) {
@@ -357,7 +359,7 @@ test('the actual report parser requires complete ERC20 evidence before accepting
   assert.throws(() => fixture.validate(JSON.stringify(oldReport), 'create', 'import'), /Unexpected qualification report schema/);
 });
 
-test('ERC20 cold restart requires the same account, fingerprint, intent and transaction with no new signature', () => {
+test('ERC20 cold restart requires the same account, fingerprint, original transaction and one replacement signature', () => {
   const created = JSON.parse(reportWaitFixture().report);
   const restored = { ...created, phase: 'restart', ...erc20Evidence('restart') };
   assert.equal(matchesErc20RestartEvidence(created, restored), true);
@@ -365,7 +367,8 @@ test('ERC20 cold restart requires the same account, fingerprint, intent and tran
     { erc20Address: '0x1111111111111111111111111111111111111111' },
     { fingerprint: 'f'.repeat(64) }, { erc20TransferHash: '0x' + 'f'.repeat(64) },
     { erc20IntentHash: '0x' + 'f'.repeat(64) }, { phase: 'create' },
-    { scenario: 'generate' }, { erc20Signatures: 1 }, { erc20Authorizations: 0 },
+    { scenario: 'generate' }, { erc20Signatures: 0 }, { erc20Authorizations: 0 },
+    { erc20ReplacementHash: null }, { erc20ReplacementHash: created.erc20TransferHash },
     { erc20RestoredFromJournal: false }, { status: 'failed' },
   ]) assert.equal(matchesErc20RestartEvidence(created, { ...restored, ...mutation }), false);
   assert.equal(matchesErc20RestartEvidence({}, {}), false);

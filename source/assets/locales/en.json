@@ -667,7 +667,7 @@
   },
   "settings": {
     "clearUtxoActivity": "Clear activity",
-    "clearUtxoActivityWarning": "Clear saved activity for {{account}} on {{network}}? Activity from Blockbook will reappear after refresh. Pending transactions can still confirm.",
+    "clearUtxoActivityWarning": "Clear saved activity and release local input reservations for {{account}} on {{network}}? Activity will reload from Blockbook. Pending transactions can still confirm.",
     "clearUtxoActivitySuccess": "Saved activity cleared.",
     "clearActivityAndNonce": "Clear activity and nonce data",
     "clearActivityAndNonceWarning": "Clear saved activity and nonce data for {{account}} on {{network}}? Pending transactions can still execute. Saved transactions will no longer be available to retry.",
@@ -2101,8 +2101,8 @@
       "maintenanceTitle": "Troubleshooting"
     },
     "resetActivity": {
-      "utxoQuestion": "Clear cached activity?",
-      "utxoDescription": "Pali will clear cached activity for this account on this network, then reload it from the network.",
+      "utxoQuestion": "Clear local activity?",
+      "utxoDescription": "Pali will clear saved activity and release local input reservations for this account on this network, then reload activity from the network.",
       "title": "Reset activity",
       "question": "Clear local activity and nonce data?",
       "description": "Pali will remove locally saved transactions and nonce tracking for this account on this network, then refresh its activity.",

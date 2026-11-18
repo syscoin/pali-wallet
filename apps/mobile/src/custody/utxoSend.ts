@@ -19,7 +19,6 @@ import {
   utxoSubmissionUrl,
 } from '../../../../source/wallet/utxoSignedBinding.ts';
 import { availableUtxoReplacementKinds, prepareUtxoReplacement, utxoReplacementReads, type UtxoReplacementKind } from '../../../../source/wallet/utxoReplacement.ts';
-import type { SavedUtxoReviewOutput } from '../../../../source/wallet/utxoSavedReview.ts';
 import {
   observeRetainedUtxo,
   reconcileRetainedUtxo,
@@ -38,6 +37,7 @@ import type {
   ISyscoinTransactions,
 } from '@sidhujag/sysweb3-keyring';
 import type {
+  ReviewedUtxoOutput,
   UtxoSignedScope,
   UtxoWalletPayment,
 } from '../../../../source/wallet/utxoSignedBinding.ts';
@@ -74,7 +74,7 @@ export type NativeUtxoReview = Readonly<{
   assetDisplay?: NativeUtxoAsset;
   feeSatoshis: string;
   replacement?: NativeUtxoReplacement & Readonly<{ previousFeeSatoshis: string }>;
-  outputs: readonly SavedUtxoReviewOutput[];
+  outputs: readonly ReviewedUtxoOutput[];
 }>;
 
 /** Native consent owner. The UI never receives a PSBT, raw bytes or keyring. */

@@ -1,5 +1,9 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
+const { verifyKeyringSpeedUpPatch } = require('../../scripts/apply-keyring-retained-speed-up.cjs');
+
+verifyKeyringSpeedUpPatch(__dirname);
+
 const config = getDefaultConfig(__dirname);
 const mobileRoot = __dirname;
 const sharedSourceRoot = path.resolve(__dirname, '../../source') + path.sep;

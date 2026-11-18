@@ -7,7 +7,7 @@ import { keccak256, sha256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { concat, getBytes } from 'ethers/utils';
 
-import { decodeErc20Transfer } from '../shared/erc20.ts';
+import { createErc20Policy, decodeErc20Transfer } from '../shared/erc20.ts';
 import { snapshotEvmTransferAsset } from '../shared/evmAssetState.ts';
 import { EvmAutoNonceAcceptance } from '../shared/evmAutoNonce.ts';
 import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
@@ -16,6 +16,7 @@ import { EVM_SIGNED_RECORD_LIMITS } from '../shared/evmSignedRecordLimits.ts';
 import { observeEvmTransaction } from '../shared/evmTransactionObservation.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
+import { getPrivacyPoolActivity } from '../shared/privacyPoolActivity.ts';
 import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
@@ -288,10 +289,69 @@ export function retainedEvmTransaction(entry: EvmRetainedRecord): Transaction {
       : entry.rawTransaction
   );
 }
-function isOrdinaryNativeBody(tx: Transaction): boolean {
-  return !!tx.to && tx.data === '0x' && (tx.type === 0 || tx.type === 2);
+function isReconstructableEoa(
+  tx: Transaction,
+  entry: Pick<
+    EvmSignedRecordSummary,
+    'operation' | 'metadata' | 'signer' | 'from' | 'hash' | 'nonce' | 'chainId'
+  >
+): boolean {
+  if (
+    !tx.to ||
+    (tx.type !== 0 && tx.type !== 2) ||
+    !['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(entry.signer.type)
+  )
+    return false;
+  const { operation, metadata } = entry;
+  if (
+    Object.keys(metadata ?? {}).some(
+      (key) => key !== 'intent' && key !== 'nftTransfer'
+    )
+  )
+    return false;
+  if (
+    tx.to.toLowerCase() ===
+      getPaliEntryPointAddress(Number(tx.chainId)).toLowerCase() ||
+    getPrivacyPoolActivity(tx.chainId.toString(), tx.to, tx.data.slice(0, 10))
+  )
+    return false;
+  if (operation === 'send') return metadata === undefined;
+  if (operation === 'speed-up' && !metadata?.intent && !metadata?.nftTransfer)
+    return true;
+  if (tx.value !== BigInt(0) || tx.accessList?.length) return false;
+  try {
+    if (
+      operation === 'erc20' ||
+      (operation === 'speed-up' && metadata?.intent)
+    ) {
+      const decoded = decodeErc20Transfer(tx.data);
+      if (metadata?.nftTransfer) return false;
+      if (!metadata?.intent) return true;
+      const intent = metadata.intent as Record<string, unknown>;
+      const token = createErc20Policy(getAddress).parseMetadata(intent.token);
+      return (
+        intent.kind === 'erc20-transfer' &&
+        intent.chainId === entry.chainId &&
+        getAddress(token.contractAddress) === tx.to &&
+        getAddress(String(intent.recipient)).toLowerCase() ===
+          decoded.recipient &&
+        intent.amountUnits === decoded.amountUnits
+      );
+    }
+    return !!decodeRetainedNftTransfer(
+      {
+        ...entry,
+        ...(tx.isSigned()
+          ? { rawTransaction: tx.serialized }
+          : { unsignedTransaction: tx.unsignedSerialized }),
+      },
+      tx
+    );
+  } catch {
+    return false;
+  }
 }
-function sameNativeExecution(a: Transaction, b: Transaction): boolean {
+function sameEoaExecution(a: Transaction, b: Transaction): boolean {
   return (
     a.to === b.to &&
     a.data === b.data &&
@@ -468,12 +528,10 @@ function replacementMetadata(
   const nftTransfer =
     operation === 'speed-up' &&
     original &&
-    original.payloadKind !== 'unsigned-eoa' &&
-    decodeRetainedNftTransfer(
-      original,
-      Transaction.from(original.rawTransaction)
-    );
+    decodeRetainedNftTransfer(original, retainedEvmTransaction(original));
   if (nftTransfer) fields.nftTransfer = nftTransfer;
+  if (operation === 'speed-up' && original?.metadata?.intent !== undefined)
+    fields.intent = original.metadata.intent;
   return Object.keys(fields).length ? snapshotMetadata(fields) : undefined;
 }
 
@@ -766,8 +824,9 @@ function parse(raw: string, expectedProfile?: string): ParsedBundle {
     if (
       (keys.includes('payloadKind') &&
         (data.payloadKind !== 'unsigned-eoa' ||
-          !['send', 'speed-up'].includes(data.operation) ||
-          data.metadata !== undefined)) ||
+          !['send', 'speed-up', 'erc20', 'erc721', 'erc1155'].includes(
+            data.operation
+          ))) ||
       !HASH.test(data.hash) ||
       hashes.has(data.hash) ||
       typeof data.chainId !== 'string' ||
@@ -1245,7 +1304,7 @@ export class EvmSignedRecords {
         if (
           tx.isSigned() ||
           tx.unsignedSerialized !== rawTransaction ||
-          !isOrdinaryNativeBody(tx) ||
+          !isReconstructableEoa(tx, entry) ||
           tx.chainId.toString() !== entry.chainId ||
           tx.nonce !== entry.nonce
         )
@@ -2343,24 +2402,31 @@ export class EvmSignedRecords {
               )
             : undefined;
         const inheritedUnsigned = parent?.payloadKind === 'unsigned-eoa';
+        const reconstructable = isReconstructableEoa(tx, {
+          ...signedNonce,
+          hash,
+          operation: context.operation,
+          signer: context.account,
+          metadata: retainedMetadata,
+        });
         if (
           inheritedUnsigned &&
-          (!isOrdinaryNativeBody(tx) ||
-            retainedMetadata ||
-            !sameNativeExecution(
+          (!reconstructable ||
+            !sameEoaExecution(
               tx,
               retainedEvmTransaction(
                 await this.materializeRecord(session, parent)
               )
-            ))
-        ) {
+            ) ||
+            parent.signer.id !== context.account.id ||
+            parent.signer.type !== context.account.type)
+        )
           throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
-        }
         const unsigned =
-          (!retainedMetadata &&
-            context.operation === 'send' &&
-            retainUnsignedNative &&
-            isOrdinaryNativeBody(tx)) ||
+          (retainUnsignedNative &&
+            !isReplacement &&
+            !smartReplacement &&
+            reconstructable) ||
           inheritedUnsigned;
         const chunks = await this.encryptTransactionBody(
           session,
@@ -2426,6 +2492,7 @@ export class EvmSignedRecords {
     eoaSpeedUpOnly = false
   ): Promise<Readonly<{
     binding: EvmVerifiedReplacementBinding | null;
+    executionOperation?: EvmSignedRecordSummary['operation'];
     original: EvmSignedRecordSummary &
       Readonly<{ rawTransaction?: string }> &
       Readonly<{ unsignedTransaction: string }>;
@@ -2465,16 +2532,13 @@ export class EvmSignedRecords {
         return null;
       const base = retainedEvmTransaction(original);
       if (base.type !== 0 && base.type !== 2) return null;
+      let executionOperation: EvmSignedRecordSummary['operation'] | undefined;
       if (eoaSpeedUpOnly) {
         if (
           operation !== 'speed-up' ||
           !isPendingPhase(selected.phase) ||
-          tip.hash !== hash
-        )
-          return null;
-        // A fee variant can omit the ancestor's origin metadata. Inspect the
-        // authenticated nonce group before granting ordinary EOA recovery.
-        if (
+          tip.hash !== hash ||
+          !isReconstructableEoa(base, selected) ||
           sameNonce.some((entry) =>
             Object.keys(entry.metadata ?? {}).some(
               (key) => key !== 'intent' && key !== 'nftTransfer'
@@ -2488,40 +2552,23 @@ export class EvmSignedRecords {
           const parent = sameNonce
             .slice(0, index)
             .find((entry) => entry.hash === ancestor.originalHash);
-          if (!parent) return null;
+          if (
+            !parent ||
+            parent.signer.id !== selected.signer.id ||
+            parent.signer.type !== selected.signer.type
+          )
+            return null;
+          const transaction = retainedEvmTransaction(
+            await this.materializeRecord(session, parent)
+          );
+          if (
+            !isReconstructableEoa(transaction, parent) ||
+            !sameEoaExecution(base, transaction)
+          )
+            return null;
           ancestor = parent;
         }
-        const origin =
-          ancestor === selected
-            ? original
-            : await this.materializeRecord(session, ancestor);
-        const tx =
-          ancestor === selected ? base : retainedEvmTransaction(origin);
-        if (!tx.to) return null;
-        if (ancestor.operation === 'send') {
-          if (tx.data !== '0x') return null;
-        } else if (ancestor.operation === 'erc20') {
-          if (tx.value !== BigInt(0)) return null;
-          try {
-            decodeErc20Transfer(tx.data);
-          } catch {
-            return null;
-          }
-        } else if (
-          origin.payloadKind === 'unsigned-eoa' ||
-          !decodeRetainedNftTransfer(origin, tx)
-        )
-          return null;
-        if (
-          tx.to !== base.to ||
-          tx.value !== base.value ||
-          tx.data !== base.data ||
-          tx.gasLimit !== base.gasLimit ||
-          tx.type !== base.type ||
-          JSON.stringify(tx.accessList ?? []) !==
-            JSON.stringify(base.accessList ?? [])
-        )
-          return null;
+        executionOperation = ancestor.operation;
       }
       let cap = base.maxFeePerGas ?? base.gasPrice ?? BigInt(0);
       let tipRate = base.maxPriorityFeePerGas ?? BigInt(0);
@@ -2559,6 +2606,7 @@ export class EvmSignedRecords {
           unsignedTransaction: base.unsignedSerialized,
         }),
         rates,
+        executionOperation,
         binding: isPendingPhase(selected.phase)
           ? bindVerifiedReplacement(
               {
@@ -2590,19 +2638,27 @@ export class EvmSignedRecords {
       'speed-up',
       true
     );
-    if (retained?.binding?.expectedTipHash !== hash) return null;
+    if (
+      !retained?.executionOperation ||
+      retained.binding?.expectedTipHash !== hash
+    )
+      return null;
     const { rawTransaction, ...original } = retained.original;
     void rawTransaction;
     return Object.freeze({
       original: Object.freeze(original),
       rates: retained.rates,
+      executionOperation: retained.executionOperation,
       binding: retained.binding,
     });
   }
-  /** Compact ordinary native sends, fee-only descendants and standalone ordinary Smart Account proofs atomically. */
+  /** Compact eligible EOA sends, fee-only descendants and standalone ordinary Smart Account proofs atomically. */
   migrateUnsignedNative(
     session: EvmSignedRecordSession,
-    { nativeEoa = true }: { nativeEoa?: boolean } = {}
+    {
+      nativeEoa = true,
+      allowUnboundErc20 = true,
+    }: { allowUnboundErc20?: boolean; nativeEoa?: boolean } = {}
   ): Promise<number> {
     session = this.captureSession(session);
     return this.exclusive(async () => {
@@ -2617,8 +2673,10 @@ export class EvmSignedRecords {
         for (const entry of bundle.entries) {
           if (
             !nativeEoa ||
-            entry.metadata ||
-            (entry.operation !== 'send' && entry.operation !== 'speed-up') ||
+            (!allowUnboundErc20 &&
+              entry.operation === 'erc20' &&
+              !entry.metadata?.intent) ||
+            entry.operation === 'cancel' ||
             (entry.operation === 'speed-up' &&
               !converted.has(entry.originalHash ?? ''))
           ) {
@@ -2630,11 +2688,13 @@ export class EvmSignedRecords {
           );
           const parent = converted.get(entry.originalHash ?? '');
           if (
-            !isOrdinaryNativeBody(tx) ||
+            !isReconstructableEoa(tx, entry) ||
             (entry.operation === 'speed-up' &&
               (!parent ||
                 !matchesNonce(entry, parent.entry) ||
-                !sameNativeExecution(tx, parent.tx)))
+                entry.signer.type !== parent.entry.signer.type ||
+                entry.signer.id !== parent.entry.signer.id ||
+                !sameEoaExecution(tx, parent.tx)))
           ) {
             entries.push(entry);
             continue;
@@ -3285,12 +3345,13 @@ export class EvmSignedRecords {
             return BigInt(0);
           }
         }
-        if (!tx.isSigned()) return BigInt(0);
         const transfer = decodeRetainedNftTransfer(
           {
             ...summary(entry),
             operation: asset.standard === 'ERC721' ? 'erc721' : 'erc1155',
-            rawTransaction: tx.serialized,
+            ...(tx.isSigned()
+              ? { rawTransaction: tx.serialized }
+              : { unsignedTransaction: tx.unsignedSerialized }),
           },
           tx
         );

@@ -65,6 +65,14 @@ const evidence = (phase: 'create' | 'restart') => ({
 test('zkSYS report rejects missing, forged or cross-phase evidence', () => {
   assert(isZksysQualificationReport(evidence('create')));
   assert(matchesZksysRestartEvidence(evidence('create'), evidence('restart')));
+  const replacement = { ...evidence('restart'), zksysReplacementHash: '0x' + 'a'.repeat(64),
+    zksysSignatures: 1, zksysFeeEstimates: 3, zksysAuthorizations: 0 };
+  assert(matchesZksysRestartEvidence(evidence('create'), replacement));
+  for (const hash of [replacement.zksysTransferHash, replacement.nevmTransferHash, '0x1']) {
+    assert(!matchesZksysRestartEvidence(evidence('create'), { ...replacement, zksysReplacementHash: hash }));
+  }
+  assert(!isZksysQualificationReport({ ...evidence('create'), zksysReplacementHash: replacement.zksysReplacementHash }));
+  assert(!isZksysQualificationReport({ status: 'failed', zksysReplacementHash: replacement.zksysReplacementHash }));
   const fields = Object.keys(evidence('create')).filter(
     (k) => k.startsWith('zksys') || k === 'nativeZksysVerified'
   );
@@ -145,6 +153,38 @@ async function sqliteDisk() {
     async close() { await rm(directory, { recursive: true, force: true }); },
   };
 }
+
+test('zkSYS cold reopen reviews an authenticated unsigned intent and broadcasts only its approved fee bump', async () => {
+  const disk = await sqliteDisk();
+  let authority = new NativeCustodyAuthority(disk.owner);
+  const check = async <T>(_name: string, work: () => Promise<T>) => work();
+  const options = () => ({ authority, runtime: disk.runtime, storage: disk.storage, check });
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw Error('NETWORK_FORBIDDEN'); };
+  try {
+    await authority.initialize();
+    await authority.importPhrase(PHRASE);
+    await disk.runtime.backup.confirm(await disk.runtime.backup.fingerprint());
+    await authority.refreshAuthenticatedMetadata();
+    for (let index = 1; index <= 3; index++)
+      await authority.manageAccounts({ kind: 'create', label: `Qualification HD${index}` },
+        authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+    await authority.manageAccounts({ kind: 'select', id: 'hd:60:1' },
+      authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+    const create = await qualifyNativeZksysTransfer({ ...options(), phase: 'create' });
+    await authority.dispose();
+    authority = new NativeCustodyAuthority(disk.owner);
+    await authority.initialize();
+    await authority.unlock();
+    const restart = await qualifyNativeZksysTransfer({ ...options(), phase: 'restart' });
+    assert.equal(restart.zksysTransferHash, create.zksysTransferHash);
+    assert(restart.zksysReplacementHash && restart.zksysReplacementHash !== create.zksysTransferHash);
+  } finally {
+    await authority.dispose().catch(() => undefined);
+    globalThis.fetch = previousFetch;
+    await disk.close();
+  }
+});
 
 for (const scenario of ['import', 'generate'] as const) {
   test(
@@ -231,12 +271,18 @@ for (const scenario of ['import', 'generate'] as const) {
         await authority.manageAccounts({ kind: 'select', id: 'hd:60:4' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         await authority.selectNetwork('zksys-testnet', authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
         const saved = await (await disk.runtime.transfers!.journal(() => undefined)).load();
-        assert(saved?.rawTransaction);
+        assert(saved?.inspectionOnly);
+        assert.equal(saved.rawTransaction, undefined);
         assert.equal(saved.hash, stored[0]!.hash);
-        const signed = Transaction.from(saved.rawTransaction);
-        assert.equal(signed.chainId, 57057n); assert.equal(signed.nonce, 0); assert.equal(signed.maxPriorityFeePerGas, 0n);
-        assert.equal(signed.maxFeePerGas, 25n); assert.equal(signed.gasLimit, 36000n); assert.equal(signed.value, 789n);
-        assert.equal(stored[0]!.phase, 'signed'); assert(!savedBundle.raw!.includes(saved.rawTransaction));
+        assert.equal(stored[0]!.phase, 'signed');
+        const replacement = await disk.runtime.transfers!.replacementOriginal!(
+          saved.hash, 'speed-up', () => undefined, new AbortController().signal);
+        assert(replacement?.unsignedTransaction);
+        const intent = Transaction.from(replacement.unsignedTransaction);
+        assert(!intent.isSigned());
+        assert.equal(intent.chainId, 57057n); assert.equal(intent.nonce, 0); assert.equal(intent.maxPriorityFeePerGas, 0n);
+        assert.equal(intent.maxFeePerGas, 25n); assert.equal(intent.gasLimit, 36000n); assert.equal(intent.value, 789n);
+        disk.runtime.transfers!.releaseReplacement();
         await authority.selectNetwork('ethereum', authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
         await authority.manageAccounts({ kind: 'select', id: 'hd:60:1' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         const fingerprint = await disk.storage.getWalletFingerprint();
@@ -262,11 +308,7 @@ for (const scenario of ['import', 'generate'] as const) {
         assert(isImportedQualificationReport(firstReport));
         assert(!JSON.stringify(firstReport).includes(words.join(' ')));
         assert(!JSON.stringify(firstReport).includes(PASSWORD));
-        assert(
-          !JSON.stringify(firstReport).includes(
-            saved.rawTransaction
-          )
-        );
+        assert(!JSON.stringify(firstReport).includes(intent.unsignedSerialized));
         await authority.dispose();
         authority = new NativeCustodyAuthority(disk.owner);
         await authority.initialize();
@@ -326,18 +368,17 @@ for (const scenario of ['import', 'generate'] as const) {
         }
         const restored = await qualifyNativeZksysTransfer({
           ...options(),
-          runtime: noSignRuntime,
           phase: 'restart',
           expectedFifthAddress: scenario === 'import' ? derived[3] : undefined,
         });
-        assert.equal(restored.zksysSignatures, 0);
-        assert.equal(restored.zksysAuthorizations, 1);
-        assert.equal(restored.zksysFeeEstimates, 0);
+        assert.equal(restored.zksysSignatures, 1);
+        assert.equal(restored.zksysAuthorizations, 0);
+        assert.equal(restored.zksysFeeEstimates, 3);
         assert.equal(restored.zksysTransferHash, created.zksysTransferHash);
         const after = await readSignedRecordEvidence(disk.storage);
-        const retained = after.entries.find(entry => entry.hash === stored[0]!.hash);
-        assert.equal(retained?.phase, 'submitted');
-        assert.equal(restored.zksysTransferHash, signed.hash);
+        assert(restored.zksysReplacementHash && restored.zksysReplacementHash !== saved.hash);
+        assert.equal(after.entries.find(entry => entry.hash === restored.zksysReplacementHash)?.phase, 'submitted');
+        assert.equal(restored.zksysTransferHash, saved.hash);
         assert.deepEqual(await rows(), oldAfterEarlierRetries);
         assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
         assert.equal(authority.getSnapshot().account?.network, 'ethereum');
@@ -359,7 +400,7 @@ for (const scenario of ['import', 'generate'] as const) {
             ...restored,
           })
         );
-        const importedAgain = await qualifyNativeImportedEvm({ ...options(), phase: 'restart', runtime: noSignRuntime });
+        const importedAgain = await qualifyNativeImportedEvm({ ...options(), phase: 'restart' });
         assert(matchesImportedRestartEvidence(firstReport, { status: 'passed', phase: 'restart', scenario, networkCalls, fingerprint, ...importedAgain }));
         assert.equal(networkCalls, 0);
       } finally {

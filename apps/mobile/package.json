@@ -18,7 +18,7 @@
     "test:faucet-ui": "playwright test --config playwright.faucet.config.ts",
     "test:recovery-ui": "node scripts/build-native-recovery-ui.cjs && playwright test --config playwright.recovery.config.ts",
     "lint": "eslint . --max-warnings 0",
-    "postinstall": "node ../../scripts/apply-walletconnect-terminal.cjs && node ../../scripts/apply-quickcrypto-sentry.cjs"
+    "postinstall": "node ../../scripts/apply-walletconnect-terminal.cjs && node ../../scripts/apply-quickcrypto-sentry.cjs && node ../../scripts/apply-keyring-retained-speed-up.cjs"
   },
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",

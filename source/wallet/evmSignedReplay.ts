@@ -209,7 +209,7 @@ const request = (entry: EvmRetainedRecord): EvmObservationRequest => {
   });
 };
 function tokenTransfer(
-  entry: EvmRetainedSignedRecord,
+  entry: EvmRetainedRecord,
   tx: Transaction
 ): EvmSavedTransaction['tokenTransfer'] {
   if (
@@ -244,12 +244,8 @@ export function projectSavedEvmTransaction(
   const tx = retainedEvmTransaction(entry),
     fee = tx.maxFeePerGas ?? tx.gasPrice;
   if (fee === null) throw new EvmReplayError('INVALID_RESPONSE');
-  const token =
-    entry.payloadKind !== 'unsigned-eoa' ? tokenTransfer(entry, tx) : undefined;
-  const collectible =
-    entry.payloadKind !== 'unsigned-eoa'
-      ? decodeRetainedNftTransfer(entry, tx)
-      : undefined;
+  const token = tokenTransfer(entry, tx);
+  const collectible = decodeRetainedNftTransfer(entry, tx);
   const canSpeedUp =
     entry.payloadKind === 'unsigned-eoa' &&
     ['signed', 'attempted', 'submitted'].includes(entry.phase);

@@ -501,6 +501,7 @@ import {
   reviewedExtensionNonce,
   type ExtensionReviewedNonce,
 } from './evmAutoNonce';
+import { assertEvmReplacementExecution } from './evmReplacementExecution';
 import {
   assertEvmSignedRecordSdk,
   createChromeEvmSignedRecords,
@@ -2362,9 +2363,11 @@ class MainController {
     )
       throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     const chainId = activeNetwork.chainId;
+    const coin = findUtxoCoinByRegistration(activeNetwork);
+    const registration = networkRegistrationFingerprint(activeNetwork);
     const keyring = this.getActiveKeyring();
-    const generation = this.walletSessionGeneration;
-    const networkGeneration = ++this.networkRequestGeneration;
+    const generation = this.walletSessionGeneration + 1;
+    const networkGeneration = this.networkRequestGeneration + 1;
     const cacheScope = { identifier, networkUrl: activeNetwork.url };
     const isSameWallet = () =>
       generation === this.walletSessionGeneration &&
@@ -2372,13 +2375,33 @@ class MainController {
     const assertCurrent = () => {
       this.assertCurrentWalletSession(generation, keyring);
       this.assertAssetMutationContext(expectedScope);
-      if (this.networkRequestGeneration !== networkGeneration)
+      if (
+        this.networkRequestGeneration !== networkGeneration ||
+        networkRegistrationFingerprint(store.getState().vault.activeNetwork) !==
+          registration
+      )
         throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     };
     this.clearingActivity = true;
     let finishResetStatus: (() => void) | undefined;
     try {
+      this.advanceWalletSession();
+      this.networkRequestGeneration += 1;
       finishResetStatus = this.beginActivityReset(expectedScope, true);
+      this.clearWalletSaveTimeout();
+      // Legacy watch-only descriptors can exceed the signed journal's key limit.
+      if (coin?.hashGenesisBlock && identifier.length <= 256) {
+        await this.getRetainedUtxoRecords().clearScope(
+          { keyring, assertCurrent },
+          {
+            account: { ...activeAccount, xpub: identifier },
+            chainId,
+            genesisHash: coin.hashGenesisBlock,
+            slip44: activeNetwork.slip44,
+          }
+        );
+        assertCurrent();
+      }
       await persistUtxoActivityClear(
         activeAccount,
         chainId,
@@ -2389,6 +2412,7 @@ class MainController {
       clearFetchBackendAccountCache(false, cacheScope);
     } catch (error) {
       finishResetStatus?.();
+      if (isSameWallet()) this.lock();
       throw error;
     } finally {
       this.clearingActivity = false;
@@ -2586,7 +2610,7 @@ class MainController {
     const records = this.getRetainedEvmRecords();
     const feePreflight = captureGenericEvmFeeDispatch(this, context);
     const retainUnsignedNative =
-      context.operation === 'send' &&
+      ['send', 'erc20', 'erc721', 'erc1155'].includes(context.operation) &&
       supportsRetainedSpeedUpIntent(keyring.ethereumTransaction);
     const session = records.captureSession({ keyring, assertCurrent });
     const retirementReadForChain: EvmSignedRetirementReadForChain = (
@@ -2876,25 +2900,31 @@ class MainController {
     );
     if (!originalHash) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     const replacementChain = String(context.network.chainId);
+    const retainedIntent =
+      context.operation === 'speed-up' &&
+      selected.type !== KeyringAccountType.SmartAccount &&
+      supportsRetainedSpeedUpIntent(keyring.ethereumTransaction)
+        ? records
+            .readEoaSpeedUpIntent(
+              session,
+              replacementChain,
+              payer,
+              originalHash
+            )
+            .then((retained) =>
+              retained?.original.signer.id === selected.id &&
+              retained.original.signer.type === selected.type
+                ? retained
+                : null
+            )
+        : Promise.resolve(null);
+    void retainedIntent.catch(() => undefined);
     const replacement =
       nonce === undefined
-        ? (async () => {
-            const retained =
-              context.operation === 'speed-up' &&
-              (await records.readEoaSpeedUpIntent(
-                session,
-                replacementChain,
-                payer,
-                originalHash
-              ));
-            if (
-              !retained ||
-              retained.original.signer.id !== selected.id ||
-              retained.original.signer.type !== selected.type
-            )
-              throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        ? retainedIntent.then((retained) => {
+            if (!retained) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
             return retained.binding;
-          })()
+          })
         : records.captureVerifiedReplacement(session, {
             chainId: replacementChain,
             from: payer,
@@ -2955,6 +2985,26 @@ class MainController {
                   assertDispatchCurrent
                 );
                 if (total > available) throw new EvmFeeBalanceError();
+                const retained = await retainedIntent;
+                if (retained && transaction.data !== '0x') {
+                  await assertEvmReplacementExecution(
+                    (method, params) => phase.send(method, params),
+                    transaction,
+                    retained,
+                    snapshot,
+                    { number: tag, hash: block.hash },
+                    assertDispatchCurrent
+                  );
+                  const finalNonce = await readFreshEvmState(
+                    phase,
+                    'eth_getTransactionCount',
+                    [payer, 'latest']
+                  );
+                  if (
+                    readEvmRpcQuantity(finalNonce) > BigInt(transaction.nonce)
+                  )
+                    throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+                }
                 await assertRetainedSmartAccountExecution(
                   phase,
                   record.rawTransaction,

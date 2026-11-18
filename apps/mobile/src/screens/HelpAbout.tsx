@@ -59,7 +59,7 @@ export function HelpAbout({ onBack, onUpdates, onResetActivity, resetUtxoActivit
       <Button icon="external" title={t('mobile.generalViews.documentation')} variant="secondary" disabled={busy} onPress={() => void act('documentation')} />{feedbackFor('documentation')}</View>
     {onResetActivity && <View style={{ gap: 12 }}>
       <Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600' }}>{t('mobile.settings.maintenanceTitle')}</Text>
-      <Card><Row icon="activity" title={t('mobile.settings.activityTitle')} subtitle={t(resetUtxoActivity ? 'mobile.activityViews.nativeActivity.refreshActivity' : 'mobile.settings.activitySubtitle')} onPress={onResetActivity} dense last /></Card>
+      <Card><Row icon="activity" title={t(resetUtxoActivity ? 'settings.clearUtxoActivity' : 'mobile.settings.activityTitle')} subtitle={resetUtxoActivity ? undefined : t('mobile.settings.activitySubtitle')} onPress={onResetActivity} dense last /></Card>
     </View>}
     <View style={{ gap: 12 }}><Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600' }}>{t('mobile.generalViews.dataProvider')}</Text>
       <Button title={PALI_INFORMATION.dataProvider.name} variant="quiet" disabled={busy} onPress={() => void act('provider')} />{feedbackFor('provider')}</View>

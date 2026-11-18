@@ -646,7 +646,11 @@ export function createNativeWalletControllers() {
   const resetActivity = async (assertOwner: () => void): Promise<void> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     if (utxoActivity.getUtxoActivityContext()) {
-      await observeFailure(() => utxoActivity.reset(assertCurrent));
+      await observeFailure(() => selected.resetActivity(assertCurrent, utxoActivity.releaseUtxoActivity));
+      assertCurrent();
+      // A failed backend refresh does not roll back the committed local reset.
+      try { await observeFailure(() => utxoActivity.reset(assertCurrent)); }
+      catch { assertCurrent(); }
       return;
     }
     await observeFailure(() => selected.resetActivity(assertCurrent, () => {

@@ -272,7 +272,7 @@ export class NativeRecoveryCoordinator {
                   await new EvmSignedRecords(snapshot).validate({ keyring, assertCurrent: check }); check();
                   // The authenticated bundle, rather than the public checkpoint being replaced,
                   // determines which retained encryption domains must survive recovery.
-                  const bundle = JSON.parse(captured) as { entries: ReadonlyArray<{ payloadKind?: string }> };
+                  const bundle = JSON.parse(captured) as { entries: readonly { payloadKind?: string }[] };
                   hasUnsignedRecords = bundle.entries.some(entry => entry.payloadKind === 'unsigned-eoa');
                 } catch { check(); return fail('INVALID_SAVED_DATA'); }
               }

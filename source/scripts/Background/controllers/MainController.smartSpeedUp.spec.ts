@@ -14,6 +14,8 @@ import {
   createTestKeyringManager,
 } from '../../../../tests/fixtures/extensionKeyring';
 import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
+import { encodeErc20Transfer } from '../../../shared/erc20';
+import { encodeNftTransferData } from '../../../shared/nftTransfer';
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import vaultReducer from 'state/vault';
@@ -434,6 +436,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     let baseFee = 150;
     let blockGasLimit = 30_000_000;
     let confirmedNonce = 8;
+    let assetState: 'erc20' | 'erc721' | undefined;
     const reads: string[] = [];
     const fixtureFetch = async (url, init): Promise<Response> => {
       expect(url).toBe('https://offline.example');
@@ -469,8 +472,31 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           gasLimit: `0x${blockGasLimit.toString(16)}`,
           baseFeePerGas: `0x${baseFee.toString(16)}`,
         };
-      else if (method === 'eth_getCode') result = '0x';
-      else if (method === 'eth_sendRawTransaction') {
+      else if (method === 'eth_getCode') result = assetState ? '0x01' : '0x';
+      else if (method === 'eth_estimateGas') result = '0x61a8';
+      else if (method === 'eth_call' && assetState) {
+        const data = params[0].data;
+        const selector = data.slice(0, 10);
+        if (selector === '0x70a08231') result = '0x' + '11'.padStart(64, '0');
+        else if (selector === '0x6352211e') {
+          if (BigInt('0x' + data.slice(10)) !== BigInt(1)) {
+            return new Response(
+              JSON.stringify({
+                jsonrpc,
+                id,
+                error: { code: 3, message: 'execution reverted', data: '0x' },
+              }),
+              {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+              }
+            );
+          }
+          result = '0x' + PAYER.slice(2).toLowerCase().padStart(64, '0');
+        } else
+          result =
+            assetState === 'erc721' ? '0x' : '0x' + '1'.padStart(64, '0');
+      } else if (method === 'eth_sendRawTransaction') {
         const signed = Transaction.from(params[0]);
         posts.push(signed);
         if (posts.length === 1 && firstPost) await firstPost(signed);
@@ -511,6 +537,9 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       },
       setBlockGasLimit(value: number) {
         blockGasLimit = value;
+      },
+      setAssetState(value: typeof assetState) {
+        assetState = value;
       },
       setConfirmedNonce(value: number) {
         confirmedNonce = value;
@@ -1295,17 +1324,49 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     expect(replaceGetter).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])(
-    'uses authenticated replacement for a missing transaction when the SDK supports it (legacy=%s)',
-    async (legacy) => {
-      const { journal, journalSession, posts, setConfirmedNonce, dispose } =
-        await setupDurableReplacement(undefined, legacy);
+  it.each([
+    { legacy: false, kind: 'native' },
+    { legacy: true, kind: 'native' },
+    { legacy: false, kind: 'contract' },
+    { legacy: false, kind: 'erc20' },
+    { legacy: false, kind: 'erc721' },
+  ] as const)(
+    'uses authenticated replacement for a missing $kind transaction (legacy=$legacy)',
+    async ({ legacy, kind }) => {
+      const {
+        journal,
+        journalSession,
+        posts,
+        reads,
+        setConfirmedNonce,
+        setAssetState,
+        dispose,
+      } = await setupDurableReplacement(undefined, legacy);
+      const asset = kind === 'erc20' || kind === 'erc721';
+      if (asset) setAssetState(kind);
       try {
         const original = Transaction.from({
           type: legacy ? 0 : 2,
           chainId: CHAIN,
           to: TARGET,
-          value: BigInt(7),
+          value: BigInt(asset ? 0 : 7),
+          data:
+            kind === 'contract'
+              ? '0x1234'
+              : kind === 'erc20'
+              ? encodeErc20Transfer(PAYER, '7')
+              : kind === 'erc721'
+              ? encodeNftTransferData({
+                  chainId: String(CHAIN),
+                  kind: 'nft-transfer',
+                  from: PAYER,
+                  contractAddress: TARGET,
+                  recipient: PAYER,
+                  tokenStandard: 'ERC-721',
+                  tokenId: '1',
+                  amountUnits: '1',
+                })
+              : '0x',
           nonce: 8,
           gasLimit: BigInt(25_000),
           ...(legacy
@@ -1319,7 +1380,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           context: {
             account: { ...mockState.vault.activeAccount, address: PAYER },
             network: mockState.vault.activeNetwork,
-            operation: 'send',
+            operation: asset ? kind : 'send',
           },
           chainId: String(CHAIN),
           from: PAYER,
@@ -1369,7 +1430,9 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           hash,
           from: PAYER,
           to: TARGET,
-          value: '7',
+          value: original.value.toString(),
+          ...(kind === 'erc20' && { tokenTransfer: { amountUnits: '7' } }),
+          ...(kind === 'erc721' && { collectibleTransfer: { tokenId: '1' } }),
           nonce: original.nonce,
           gasLimit: original.gasLimit.toString(),
           speedUpAvailable: true,
@@ -1429,6 +1492,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         });
         expect(console.error).not.toHaveBeenCalled();
         expect(posts).toHaveLength(1);
+        if (kind === 'contract') expect(reads).toContain('eth_estimateGas');
+        if (asset) expect(reads).toContain('eth_call');
         expect(posts[0]).toMatchObject({
           accessList: original.accessList,
           chainId: original.chainId,

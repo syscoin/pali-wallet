@@ -667,7 +667,7 @@
   },
   "settings": {
     "clearUtxoActivity": "활동 지우기",
-    "clearUtxoActivityWarning": "{{network}}의 {{account}}에 저장된 활동을 지우시겠습니까? 새로고침하면 Blockbook의 활동이 다시 표시됩니다. 대기 중인 거래는 여전히 확정될 수 있습니다.",
+    "clearUtxoActivityWarning": "{{network}}의 {{account}}에 저장된 활동을 지우고 입력의 로컬 예약을 해제하시겠습니까? Blockbook에서 활동을 다시 불러옵니다. 대기 중인 거래는 여전히 확정될 수 있습니다.",
     "clearUtxoActivitySuccess": "저장된 활동을 지웠습니다.",
     "clearActivityAndNonce": "활동 및 nonce 데이터 지우기",
     "clearActivityAndNonceWarning": "{{network}}의 {{account}}에 저장된 활동 및 nonce 데이터를 지우시겠습니까? 대기 중인 거래는 계속 실행될 수 있습니다. 저장된 거래는 다시 전송할 수 없게 됩니다.",
@@ -2101,8 +2101,8 @@
       "maintenanceTitle": "문제 해결"
     },
     "resetActivity": {
-      "utxoQuestion": "캐시된 활동을 지우시겠습니까?",
-      "utxoDescription": "Pali가 이 네트워크에서 이 계정의 캐시된 활동을 지운 뒤 네트워크에서 다시 불러옵니다.",
+      "utxoQuestion": "로컬 활동을 지우시겠습니까?",
+      "utxoDescription": "Pali가 이 네트워크에서 이 계정의 저장된 활동을 지우고 입력의 로컬 예약을 해제한 뒤 네트워크에서 활동을 다시 불러옵니다.",
       "title": "활동 초기화",
       "question": "로컬 활동과 논스 데이터를 지울까요?",
       "description": "Pali가 이 네트워크의 이 계정에 대해 로컬에 저장된 트랜잭션과 논스 추적을 제거한 후 활동을 새로고침합니다.",

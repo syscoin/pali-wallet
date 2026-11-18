@@ -1,4 +1,4 @@
-import { signQualificationTransfer } from './authorized-transfer.ts';
+import { inspectQualificationEoaEnvelope, signQualificationTransfer } from './authorized-transfer.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeAccountRequest } from '../src/custody/accounts.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -118,13 +118,7 @@ export async function qualifyNativeNevmTransfer(
       typeof options.expectedFourthAddress === 'string' &&
         /^0x[0-9a-fA-F]{40}$/.test(options.expectedFourthAddress)
     );
-  const [
-    { Transaction },
-    { getNativeNetwork },
-  ] = await Promise.all([
-    import('ethers/transaction'),
-    import('../src/custody/networkContext.ts'),
-  ]);
+  const { getNativeNetwork } = await import('../src/custody/networkContext.ts');
   const transfer = runtime.transfers;
   expect(transfer && authority.supportsAccountManagement());
   const current = () => authority.getSnapshot();
@@ -193,7 +187,7 @@ export async function qualifyNativeNevmTransfer(
     expect(account.address === options.expectedFourthAddress);
   const address = account.address;
   const recipient = '0x1111111111111111111111111111111111111111';
-  const readSigned = async (
+  const readSaved = async (
     network: 'ethereum' | 'syscoin-nevm-testnet',
     value: string
   ) => {
@@ -212,22 +206,19 @@ export async function qualifyNativeNevmTransfer(
         stored.scope.chainId === registration.chainId &&
         stored.intent === undefined
     );
-    const signed = Transaction.from(stored.rawTransaction);
+    const transaction = await inspectQualificationEoaEnvelope(transfer, stored, address, guard);
     expect(
-      signed.isSigned() &&
-        signed.type === 2 &&
-        signed.from === address &&
-        signed.hash === stored.hash &&
-        signed.serialized === stored.rawTransaction &&
-        signed.chainId === BigInt(registration.chainId) &&
-        signed.nonce === 0 &&
-        signed.value === BigInt(value) &&
-        signed.gasLimit === 21000n &&
-        signed.to === recipient &&
-        signed.data === '0x' &&
-        signed.maxFeePerGas === 3n &&
-        signed.maxPriorityFeePerGas === 1n &&
-        signed.accessList?.length === 0
+      transaction.isSigned() === (phase === 'create') &&
+        transaction.type === 2 &&
+        transaction.chainId === BigInt(registration.chainId) &&
+        transaction.nonce === 0 &&
+        transaction.value === BigInt(value) &&
+        transaction.gasLimit === 21000n &&
+        transaction.to === recipient &&
+        transaction.data === '0x' &&
+        transaction.maxFeePerGas === 3n &&
+        transaction.maxPriorityFeePerGas === 1n &&
+        transaction.accessList?.length === 0
     );
     const row = await readSignedRecordEvidence(storage);
     guard();
@@ -242,9 +233,10 @@ export async function qualifyNativeNevmTransfer(
         entry.signer.id === 3 &&
         entry.signer.type === 'HDAccount' &&
         entry.metadata?.intent === undefined &&
-        !row.raw?.includes(stored.rawTransaction)
+        (entry.payloadKind === 'unsigned-eoa') === (phase === 'restart') &&
+        !row.raw?.includes(stored.rawTransaction ?? transaction.unsignedSerialized)
     );
-    return stored;
+    return { hash: stored.hash, envelopeDigest: transaction.unsignedHash };
   };
   const sign = async (
     network: 'ethereum' | 'syscoin-nevm-testnet',
@@ -274,7 +266,7 @@ export async function qualifyNativeNevmTransfer(
     expect(stored.hash === signed.hash);
     await journal.transition(stored.hash, 'attempted');
     guard();
-    return readSigned(network, value);
+    return readSaved(network, value);
   };
   const ethereum = await check(
     phase === 'create'
@@ -283,7 +275,7 @@ export async function qualifyNativeNevmTransfer(
     () =>
       phase === 'create'
         ? sign('ethereum', '456')
-        : readSigned('ethereum', '456')
+        : readSaved('ethereum', '456')
   );
   await selectNetwork('syscoin-nevm-testnet');
   const nevm = await check(
@@ -293,11 +285,11 @@ export async function qualifyNativeNevmTransfer(
     () =>
       phase === 'create'
         ? sign('syscoin-nevm-testnet', '789')
-        : readSigned('syscoin-nevm-testnet', '789')
+        : readSaved('syscoin-nevm-testnet', '789')
   );
   expect(
     ethereum.hash !== nevm.hash &&
-      ethereum.rawTransaction !== nevm.rawTransaction
+      ethereum.envelopeDigest !== nevm.envelopeDigest
   );
   const nevmGuard = guardFor(account.id, address, 'syscoin-nevm-testnet');
   const row = await readSignedRecordEvidence(storage);
@@ -306,8 +298,8 @@ export async function qualifyNativeNevmTransfer(
   expect(entries.length === 2 && entries[0]?.hash === ethereum.hash && entries[1]?.hash === nevm.hash);
   await selectNetwork('ethereum');
   expect(
-    (await readSigned('ethereum', '456')).rawTransaction ===
-      ethereum.rawTransaction
+    (await readSaved('ethereum', '456')).envelopeDigest ===
+      ethereum.envelopeDigest
   );
   await check(
     'native NEVM preserves prior journals and restores HD1 Ethereum',

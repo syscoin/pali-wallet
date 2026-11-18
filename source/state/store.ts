@@ -761,7 +761,7 @@ export function persistEvmActivityClear(
   );
 }
 
-/** Drop the selected UTXO history while carrying forward recent input acknowledgements. */
+/** Drop the selected UTXO history and its local input acknowledgements. */
 export function persistUtxoActivityClear(
   account: { id: number; type: KeyringAccountType },
   chainId: number,

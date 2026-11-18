@@ -30,7 +30,7 @@ export interface IAccountTransactions {
   syscoin: { [chainId: number]: ISysTransaction[] };
   utxoActivityReset?: Record<
     number,
-    { acknowledgements: UtxoAcknowledgedInputs[]; revision: number }
+    { acknowledgements?: UtxoAcknowledgedInputs[]; revision: number }
   >;
 }
 

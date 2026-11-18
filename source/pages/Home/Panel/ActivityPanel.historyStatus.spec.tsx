@@ -147,6 +147,7 @@ const RealMainController = jest.requireActual(
 const { Provider } = jest.requireActual('react-redux');
 const network = {
   chainId: 57,
+  slip44: 57,
   kind: 'syscoin',
   currency: 'sys',
   url: 'https://blockbook.invalid',
@@ -757,6 +758,8 @@ it('rebuilds UTXO Activity from Blockbook and ignores the history in flight befo
   mockIndependentHistoryReads = true;
   const keyring = { isUnlocked: () => true };
   mockController.getActiveKeyring = () => keyring;
+  const clearScope = jest.fn().mockResolvedValue(undefined);
+  mockController.getRetainedUtxoRecords = () => ({ clearScope });
   const stale = heldRead();
   const fresh = heldRead();
   mockTransport
@@ -772,6 +775,7 @@ it('rebuilds UTXO Activity from Blockbook and ignores the history in flight befo
     );
   });
   expect(mockTransport).toHaveBeenCalledTimes(2);
+  expect(clearScope).toHaveBeenCalledTimes(1);
   expect(status().state).toBe('pending');
   expect(screen.queryByText(first.txid)).toBeNull();
   expect(
