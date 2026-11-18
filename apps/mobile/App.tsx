@@ -405,9 +405,11 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (!current || !owner || !foreground.current || navigationGeneration.current !== navigation || lifecycleGeneration.current !== lifecycle ||
           pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision) return;
       if (owner.accountType === 'watch') {
-        if (watchAccounts.getSnapshot().status !== 'ready' || !authority.current?.getSnapshot().accounts.some(account => account.id === owner.accountId)) return;
+        const saved = watchAccounts.getSnapshot(), local = authority.current?.getSnapshot();
+        if (openingView.current || saved.status !== 'ready' || saved.busy || !local?.accounts.some(account => account.id === owner.accountId) ||
+            JSON.stringify(local.accounts) !== JSON.stringify(saved.accounts)) return;
         routedNotification.current = tap;
-        if (route !== 'home' || preview || authority.current.getSnapshot().status !== 'ready' || authority.current.getSnapshot().selectedAccountId !== owner.accountId)
+        if (route !== 'home' || preview || local.status !== 'ready' || local.selectedAccountId !== owner.accountId)
           openWatch({ kind: 'watch', id: owner.accountId });
       } else {
         // Cold-start native membership is checked after unlock against its complete catalogue.
@@ -418,7 +420,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       }
     }).catch(() => undefined);
     return () => { current = false; };
-  }, [pendingEventId, tapRevision, notificationRouteWake, loading, watchState.status, watchAuthority, route, preview, catalogue, openWallet, openWatch, watchAccounts]);
+  }, [pendingEventId, tapRevision, notificationRouteWake, loading, viewBusy, watchState.status, watchState.busy, watchAuthority, route, preview, catalogue, openWallet, openWatch, watchAccounts]);
   const announce = (message: string) => {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);

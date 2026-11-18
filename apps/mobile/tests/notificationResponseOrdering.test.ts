@@ -80,7 +80,8 @@ test('a handled live response is never replayed from the native cache, and a rea
   const alert = response(2);
   f.tap(alert);
   const liveRevision = coordinator.getSnapshot().tapRevision!;
-  assert.ok(await coordinator.resolveTapAfterUnlock(id(2), () => true));
+  assert.ok(await coordinator.readTapAfterUnlock(id(2), coordinator.getSnapshot().tapRevision!, () => true));
+  coordinator.consumeTap(id(2), liveRevision!);
   await coordinator.load();
   assert.equal(f.last(), alert);
   assert.equal(coordinator.getSnapshot().pendingEventId, null);
@@ -88,7 +89,7 @@ test('a handled live response is never replayed from the native cache, and a rea
   f.tap(response(2));
   assert.equal(coordinator.getSnapshot().pendingEventId, id(2));
   assert.equal(coordinator.getSnapshot().tapRevision, liveRevision + 1);
-  assert.ok(await coordinator.resolveTapAfterUnlock(id(2), () => true));
+  assert.ok(await coordinator.readTapAfterUnlock(id(2), coordinator.getSnapshot().tapRevision!, () => true));
 });
 
 test('a live response received before hydration supersedes the cold cache', async () => {

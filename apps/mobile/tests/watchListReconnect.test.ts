@@ -170,6 +170,20 @@ for (const platform of ['ios', 'android'] as const) test(`a held alert tap route
   } finally { f.close(); }
 });
 
+test('a tap for another watch account selects its session after foreground resume', async () => {
+  const f = await started();
+  const selected = () => f.render().find(element => element.type === 'WatchSession')?.props.authority.getSnapshot().selectedAccountId;
+  try {
+    await f.add(); await f.start();
+    assert.equal(selected(), f.saved().accounts[1]!.id);
+    f.background(); f.tapSameAlert(); await f.start();
+    assert.equal(selected(), undefined);
+    f.foreground(); await f.start();
+    assert.equal(selected(), f.saved().accounts[0]!.id);
+    assert.equal(f.record.credentials, 0);
+  } finally { f.close(); }
+});
+
 test('committed Add plus failed reopen exposes recovery, retires the old view and never requires a duplicate Add', async () => {
   const f = await started();
   try {

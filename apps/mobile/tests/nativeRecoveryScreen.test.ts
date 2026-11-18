@@ -356,7 +356,7 @@ test('recovery renders controller errors in the chosen language without English 
 });
 
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
-  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number; wait: Promise<void> }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }, idleClock?: { minutes: number; time: number }) {
+  networkLifecycle?: { wait?: Promise<void>; onSelectingNetwork?(): Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number; wait: Promise<void> }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }, idleClock?: { minutes: number; time: number }) {
   const root = setup();
   if (idleClock) {
     await root.idle.ready;
@@ -506,7 +506,9 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       accounts: { getSnapshot: () => catalogue },
       networks: { getSelectedId: () => catalogue.active.networkId,
         reserve(id: string, revision: number) { return { cancel() {}, async execute(check: () => void) {
-          await networkLifecycle.wait; check();
+          await networkLifecycle.wait;
+          if (networkLifecycle.onSelectingNetwork) await networkLifecycle.onSelectingNetwork();
+          check();
           const target = networkContext.getNativeNetwork(id);
           catalogue = { ...catalogue, revision: revision + 1, active: { ...catalogue.active, networkId: id } };
           return { sourceCatalogueRevision: revision, target, selection: { ...catalogue.active, address },
@@ -1757,11 +1759,13 @@ function notificationTapPort(kind: 'transaction-confirmed' | 'recovery-started',
   const port: NotificationTestPort = {
     ...quietActivityNotifications, getSnapshot: () => state,
     async getPendingOwner() { return { accountId: scope.accountId, accountType }; },
-    async resolveTapAfterUnlock(_id, validate) {
+    async readTapAfterUnlock(_id, _revision, validate) {
       resolutions++; await wait;
       if (!validate(scope)) return null;
-      state = { ...state, pendingEventId: null };
       return { scopeId: scope.id, accountId: scope.accountId, accountType, networkId: network.id, kind, transactionHash: '0x' + 'ab'.repeat(32) };
+    },
+    consumeTap(id, revision) {
+      if (state.pendingEventId === id && state.tapRevision === revision) state = { ...state, pendingEventId: null };
     },
   };
   return { port, resolutions: () => resolutions, tapAgain() { state = { ...state, pendingEventId: eventId, tapRevision: state.tapRevision + 1 }; } };
@@ -1802,6 +1806,27 @@ for (const repeatDuringLookup of [false, true]) test(`a repeat native tap retrie
     assert.equal(tap.resolutions(), 1);
     assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
   } finally { held.resolve(); f.dispose(); }
+});
+
+test('a failed post-lookup network selection keeps its alert pending without looping', async () => {
+  const tap = notificationTapPort('transaction-confirmed');
+  let attempts = 0;
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port, {
+    async onSelectingNetwork() { if (++attempts === 1) throw Error('Temporary network selection failure'); },
+  });
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.render(); await settle(); f.render(); await settle();
+    assert.equal(attempts, 1);
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+    assert.deepEqual(f.notificationRoutes, []);
+    assert.equal(f.state().phase, 'locked');
+    f.emit('change', 'background'); f.render();
+    f.emit('change', 'active'); await settle(); f.render(); await settle();
+    assert.equal(attempts, 2);
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+  } finally { f.dispose(); }
 });
 
 test('native tap resolution cannot select a network after background revocation', async () => {

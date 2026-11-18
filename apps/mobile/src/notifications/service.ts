@@ -15,7 +15,8 @@ export const nativeActivityNotifications = {
   disableAll: async () => undefined,
   runForeground: async () => undefined,
   getPendingOwner: async (): Promise<Readonly<{ accountId: string; accountType: string }> | null> => null,
-  resolveTapAfterUnlock: async (_id: string, _validate: (scope: NativeNotificationScope) => boolean): Promise<NotificationRoute | null> => null,
+  readTapAfterUnlock: async (_id: string, _revision: number, _validate: (scope: NativeNotificationScope) => boolean): Promise<NotificationRoute | null> => null,
+  consumeTap: (_id: string, _revision: number) => undefined,
 };
 export const startNativeNotificationLifecycle = () => () => undefined;
 export const isNotificationPermissionPromptActive = () => false;

@@ -177,21 +177,24 @@ export class NativeNotificationCoordinator {
       return !!event && doc.scopes.some((entry) => entry.scope.id === event.scopeId && entry.generation === event.generation);
     });
   }
-  async resolveTapAfterUnlock(id: string, validateCurrent: (scope: NativeNotificationScope) => boolean): Promise<NotificationRoute | null> {
-    const tapRevision = this.snapshot.tapRevision;
+  /** Resolve only the current tap. Its owning screen consumes it after navigation. */
+  async readTapAfterUnlock(id: string, revision: number, validateCurrent: (scope: NativeNotificationScope) => boolean): Promise<NotificationRoute | null> {
+    if (!this.isCurrentTap(id, revision)) return null;
     const route = await this.transact((doc) => {
       const event = doc.events.find((entry) => entry.id === id);
       const enrolled = event && doc.scopes.find((entry) => entry.scope.id === event.scopeId && entry.generation === event.generation);
-      if (!event || !enrolled || validateCurrent(enrolled.scope) !== true) return null;
+      if (!event || !enrolled || !this.isCurrentTap(id, revision) || validateCurrent(enrolled.scope) !== true) return null;
       const scope = enrolled.scope;
       return Object.freeze({ scopeId: scope.id, accountId: scope.accountId, accountType: scope.accountType, networkId: scope.network.id,
         kind: event.fact.kind, ...(event.fact.transactionHash ? { transactionHash: event.fact.transactionHash } : {}) });
     });
-    // A different mode can decline this route while App selects its owner, and
-    // another tap can arrive while the encrypted row is being resolved.
-    if (route && this.snapshot.pendingEventId === id && this.snapshot.tapRevision === tapRevision)
-      this.publish({ pendingEventId: null });
-    return route;
+    return this.isCurrentTap(id, revision) ? route : null;
+  }
+  private isCurrentTap(id: string, revision: number) {
+    return this.snapshot.pendingEventId === id && this.snapshot.tapRevision === revision;
+  }
+  consumeTap(id: string, revision: number) {
+    if (this.isCurrentTap(id, revision)) this.publish({ pendingEventId: null });
   }
   runForeground = () => this.run();
   run(signal?: AbortSignal): Promise<void> {

@@ -878,24 +878,25 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   useEffect(() => {
     const eventId = notificationSnapshot.pendingEventId, local = controllersRef.current;
     const tapRevision = notificationSnapshot.tapRevision;
-    const attemptKey = `${eventId}:${tapRevision}:${snapshot.revision}`;
-    if (!eventId || !local || !protectedScreen || snapshot.phase !== 'ready' || stage !== 'choose' || busy || shell.immersive ||
+    const capturedEpoch = epoch.current;
+    const attemptKey = `${eventId}:${tapRevision}:${capturedEpoch}:${snapshot.revision}`;
+    if (!eventId || tapRevision === undefined || !local || !protectedScreen || snapshot.phase !== 'ready' || stage !== 'choose' || busy || shell.immersive ||
         rootOrigin.current || notificationTransition.current || lastNotificationAttempt.current === attemptKey || AppState.currentState !== 'active') return;
     const connections = local.connections.getSnapshot();
     if (connections.status !== 'ready' || connections.proposals.length || connections.accountChangeReview || connections.preparationReview || connections.controlReview ||
         connections.sentryReview || connections.psbtReview || connections.signingReview) return;
-    const token = {}, capturedEpoch = epoch.current;
+    const token = {};
     notificationTransition.current = token; lastNotificationAttempt.current = attemptKey;
     const check = () => {
-      const view = notificationView.current;
+      const view = notificationView.current, pending = nativeActivityNotifications.getSnapshot();
       if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || notificationTransition.current !== token ||
-          nativeActivityNotifications.getSnapshot().tapRevision !== tapRevision || AppState.currentState !== 'active' ||
+          pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision || AppState.currentState !== 'active' ||
           view.stage !== 'choose' || view.busy || view.immersive || rootOrigin.current) throw Error('CANCELLED');
     };
     void (async () => {
       const owner = await nativeActivityNotifications.getPendingOwner();
       check();
-      if (!owner || owner.accountType === 'watch' || nativeActivityNotifications.getSnapshot().pendingEventId !== eventId) return;
+      if (!owner || owner.accountType === 'watch') return;
       const choices = local.getNotificationChoices();
       const catalogueKey = JSON.stringify(choices);
       const currentChoice = (id: string) => {
@@ -904,7 +905,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         if (JSON.stringify(current) !== catalogueKey) throw Error('CANCELLED');
         return current.find(choice => choice.scope.id === id);
       };
-      const route = await nativeActivityNotifications.resolveTapAfterUnlock(eventId, scope => {
+      const route = await nativeActivityNotifications.readTapAfterUnlock(eventId, tapRevision, scope => {
         try { return JSON.stringify(currentChoice(scope.id)?.scope) === JSON.stringify(scope); } catch { return false; }
       });
       if (!route) return;
@@ -931,11 +932,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         setResumeGuardianScope(`${capturedEpoch}:${current.context}`);
         restoreRoot('tools', current.identity);
       }
+      nativeActivityNotifications.consumeTap(eventId, tapRevision);
     })().catch(() => undefined).finally(() => {
       if (notificationTransition.current !== token) return;
       notificationTransition.current = null;
       const pending = nativeActivityNotifications.getSnapshot();
-      if (mounted.current && pending.pendingEventId && (pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision)) setNotificationWake(value => value + 1);
+      if (mounted.current && pending.pendingEventId && (pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision || epoch.current !== capturedEpoch)) setNotificationWake(value => value + 1);
     });
   }, [notificationSnapshot.pendingEventId, notificationSnapshot.tapRevision, notificationWake, snapshot.phase, snapshot.revision, protectedScreen, stage, busy, shell.immersive, connectionSnapshot, controllersRef, readyContext, restoreRoot]);
   useEffect(() => {

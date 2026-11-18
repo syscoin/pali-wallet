@@ -122,20 +122,21 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
   }, [authority, snapshot.status, snapshot.generation, snapshot.accounts, viewLock.phase]);
   useEffect(() => {
     const eventId = notifications.pendingEventId, tapRevision = notifications.tapRevision, attemptKey = `${eventId}:${tapRevision}:${liveScope}`;
-    if (!eventId || !liveScope || autoLockScope || shell.immersive || notificationTransition.current ||
+    if (!eventId || tapRevision === undefined || !liveScope || autoLockScope || shell.immersive || notificationTransition.current ||
         lastNotificationAttempt.current === attemptKey || AppState.currentState !== 'active') return;
     const token = {};
     notificationTransition.current = token; lastNotificationAttempt.current = attemptKey;
     const check = () => {
-      const owner = lifetime.current;
+      const owner = lifetime.current, pending = nativeActivityNotifications.getSnapshot();
       if (!owner.alive || owner.authority !== authority || owner.immersive || owner.autoLockScope ||
-          notificationTransition.current !== token || nativeActivityNotifications.getSnapshot().tapRevision !== tapRevision ||
+          notificationTransition.current !== token || pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision ||
           AppState.currentState !== 'active' || !currentScope()) throw Error('CANCELLED');
     };
     void (async () => {
       const owner = await nativeActivityNotifications.getPendingOwner();
       check();
-      if (owner?.accountType !== 'watch' || nativeActivityNotifications.getSnapshot().pendingEventId !== eventId) return;
+      // App selects other watch accounts before mounting their keyed session.
+      if (owner?.accountType !== 'watch' || authority.getSnapshot().selectedAccountId !== owner.accountId) return;
       const catalogueKey = JSON.stringify(watchNotificationChoices(authority));
       const currentChoice = (id: string) => {
         check();
@@ -143,14 +144,13 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
         if (JSON.stringify(choices) !== catalogueKey) throw Error('CANCELLED');
         return choices.find(choice => choice.scope.id === id);
       };
-      const route = await nativeActivityNotifications.resolveTapAfterUnlock(eventId, scope => {
+      const route = await nativeActivityNotifications.readTapAfterUnlock(eventId, tapRevision, scope => {
         try { return currentScope() === liveScope && JSON.stringify(currentChoice(scope.id)?.scope) === JSON.stringify(scope); } catch { return false; }
       });
       if (!route) return;
       const choice = currentChoice(route.scopeId);
       if (!choice || currentScope() !== liveScope || route.accountId !== choice.scope.accountId || route.networkId !== choice.scope.network.id) return;
-      const before = authority.getSnapshot();
-      if (before.selectedAccountId !== route.accountId) authority.selectAccount(route.accountId);
+      if (authority.getSnapshot().selectedAccountId !== route.accountId) return;
       if (authority.getSnapshot().selectedNetworkId !== route.networkId) authority.selectNetwork(choice.scope.network.id);
       check();
       const after = authority.getSnapshot(), scope = currentScope();
@@ -163,6 +163,7 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
         setNotificationGuardian(scope);
         restoreRoot('tools', `${route.accountId}:${route.networkId}`);
       }
+      nativeActivityNotifications.consumeTap(eventId, tapRevision);
       void authority.refresh().catch(() => undefined);
     })().catch(() => undefined).finally(() => {
       if (notificationTransition.current !== token) return;
