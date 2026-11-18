@@ -46,6 +46,11 @@ export const useConfirmSubmission = ({
   const stateRef = useRef(
     consumed || !validInitialScope ? undefined : location.state
   );
+  const draftId = useRef<string | undefined>(
+    internal && typeof location.state?.sendDraftId === 'string'
+      ? location.state.sendDraftId
+      : undefined
+  ).current;
   const entryRef = useRef(location.key);
   const scopeRef = useRef(currentScope);
   const walletScopeRef = useRef(getWalletNavigationScope());
@@ -246,6 +251,7 @@ export const useConfirmSubmission = ({
     // Back/Forward or a recreated document sees an inert marker, never a send.
     markerRef.current = {
       submissionStarted: true,
+      ...(draftId && { sendDraftId: draftId }),
       walletScope: walletScopeRef.current,
       returnContext: getTransactionReturnContext(
         stateRef.current?.returnContext,
@@ -260,6 +266,7 @@ export const useConfirmSubmission = ({
     try {
       await clearTransactionNavigationState({
         requireDiscard: true,
+        ...(draftId && { draftId }),
         assertCurrent: isCurrent,
       });
       if (!isCurrent()) return;
@@ -300,6 +307,7 @@ export const useConfirmSubmission = ({
     pending,
     unknown,
     hasUnconfirmedSubmission,
+    draftId,
     canOpenActivity:
       internalRef.current && validInitialScope && !scopeChanged && trustedAuth,
     interrupted: Boolean(departedRef.current && attemptRef.current),

@@ -327,15 +327,15 @@ it('healthy same-account confirmation clears the actual pending badge', async ()
   await refresh();
   expect(mockBadge).toBe('');
 });
-it('healthy empty same-account response preserves its locally known pending transaction and badge', async () => {
+it('healthy empty same-account response clears its explorer-only pending transaction and badge', async () => {
   await refresh();
   expect(mockBadge).toBe('1');
   mockHistoryModes.set(A, 'empty');
   await refresh();
   expect(
     mockStore.getState().vault.accountTransactions.HDAccount[0].ethereum[CHAIN]
-  ).toHaveLength(1);
-  expect(mockBadge).toBe('1');
+  ).toHaveLength(0);
+  expect(mockBadge).toBe('');
 });
 it('actual registered transaction click opens wallet once and clears the matching notice', async () => {
   const id = await notifications.showTransactionNotification({

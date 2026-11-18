@@ -499,7 +499,7 @@ it('shows the real native pre-send blacklist refusal without unknown status', as
   expect(mockSdkSend).not.toHaveBeenCalled();
   expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(1);
   expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+  fireEvent.click(screen.getByRole('button', { name: 'send.refreshFeeQuote' }));
   await waitFor(() =>
     expect(
       screen.getByRole('button', { name: 'buttons.confirm' })

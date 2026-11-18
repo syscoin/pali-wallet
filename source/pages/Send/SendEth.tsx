@@ -202,7 +202,7 @@ const HardwareSendDraft = ({
     const unavailable = () => {
       if (!current || !isCurrentForm()) return;
       alert.error(t('send.internalError'));
-      navigate('/home', { replace: true });
+      navigate('/home', { replace: true, state: { preserveSendDraft: true } });
     };
     void pending.current.then((saved) => {
       if (!current || !isCurrentForm()) return;
@@ -515,7 +515,12 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     () => ({ selectedAsset, selectedNftTokenId, isMaxSend }),
     [selectedAsset, selectedNftTokenId, isMaxSend]
   );
-  const saveCurrentState = useSendDraftWriter({
+  const {
+    claimDraft,
+    draftId,
+    save: saveCurrentState,
+    saveAutomatically,
+  } = useSendDraftWriter({
     form,
     location,
     navigate,
@@ -671,7 +676,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       isMaxSend !== false ||
       verifiedTokenBalance !== null
     ) {
-      saveCurrentState();
+      void saveAutomatically();
     }
   };
 
@@ -704,7 +709,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
         // If this was a max send, recalculate the max amount
         if (restoredIsMaxSend) {
-          handleMaxButton();
+          handleMaxButton(true);
         }
       }
 
@@ -715,6 +720,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // ✅ MEMOIZED: Handlers
   const handleSelectedAsset = async (value: string) => {
+    claimDraft();
     // Asset selection lives outside Form values. Retire an in-flight submit
     // synchronously, even if the user changes away and then back during ENS.
     assetSelectionRevision.current += 1;
@@ -919,6 +925,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         // Capture ALL form values at submission time
         const allFormValues = form.getFieldsValue();
         const state = {
+          sendDraftId: draftId,
           formValues: allFormValues,
           selectedAsset,
           selectedNftTokenId,
@@ -966,6 +973,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           '/send/confirm',
           {
             submissionStarted: false,
+            sendDraftId: draftId,
             tx: {
               sender: activeAccount.address,
               receivingAddress: values.receiver,
@@ -1084,7 +1092,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     window.open(buildExplorerUrl(explorer, 'address', publicAddress), '_blank');
   }, [publicAddress, explorer, isCurrentForm]);
 
-  const handleMaxButton = () => {
+  const handleMaxButton = (restoring = false) => {
     // Only work with verified balances - no fallbacks
     let fullBalance: string;
 
@@ -1127,7 +1135,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
     // Save state immediately after MAX is set
     setTimeout(() => {
-      saveCurrentState();
+      if (restoring) void saveAutomatically();
+      else void saveCurrentState();
     }, 0);
   };
 
@@ -1637,7 +1646,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       };
                       // Preserve ENS intent in the input and draft so a later
                       // Next revalidates the name instead of trusting derived hex.
-                      void saveCurrentState();
+                      void saveAutomatically();
                       return Promise.resolve();
                     }
                     return Promise.reject(
@@ -1850,7 +1859,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   disabled={isMaxDisabled}
                   onClick={
                     // Disable MAX button until verification complete
-                    isMaxDisabled ? undefined : handleMaxButton
+                    isMaxDisabled ? undefined : () => handleMaxButton()
                   }
                   className={`absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill z-10 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-1 ${
                     isMaxDisabled

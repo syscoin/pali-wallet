@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   clearNavigationState,
   getNavigationPersistencePolicy,
+  getSendDraftId,
   getWalletNavigationScope,
   isRestorableWalletRoute,
   loadNavigationState,
@@ -294,7 +295,17 @@ export const useNavigationState = () => {
     // Send forms own their live values. Their location.state is an old snapshot.
     if (policy === 'form-owned-draft') return;
     const tab = new URLSearchParams(search).get('tab') || state?.tab;
-    void saveNavigationState(path, tab, state, state?.returnContext);
+    if (state?.preserveSendDraft === true) {
+      const owner = getSendDraftId(state?.sendDraftOwner);
+      void saveNavigationState(
+        path,
+        tab,
+        state,
+        state?.returnContext,
+        undefined,
+        { draftIds: owner ? [owner] : [], requireOwnedDraft: true }
+      );
+    } else void saveNavigationState(path, tab, state, state?.returnContext);
   }, []);
 
   useEffect(() => {

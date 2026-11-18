@@ -2287,13 +2287,29 @@ export const SendConfirm = () => {
     alert.info(t('home.addressCopied'));
   }, [copied, alert, t]);
 
+  const navigateAfterConfirmation = useMemo(() => {
+    const owner = submission.draftId;
+    if (!owner) return navigate;
+    return (path: string | number, options?: any) => {
+      if (typeof path === 'number') return navigate(path);
+      navigate(path, {
+        ...options,
+        state: {
+          ...options?.state,
+          preserveSendDraft: true,
+          sendDraftOwner: owner,
+        },
+      });
+    };
+  }, [navigate, submission.draftId]);
+
   // Navigate home with success feedback when the transaction is submitted
   useEffect(() => {
     if (confirmed && submission.isActive()) {
       alert.success(t('send.txSuccessfullMessage'));
-      navigate('/home');
+      navigateAfterConfirmation('/home');
     }
-  }, [confirmed, alert, t, navigate, submission.isActive]);
+  }, [confirmed, alert, t, navigateAfterConfirmation, submission.isActive]);
 
   const reportedSubmission = useRef<string>();
   useEffect(() => {
@@ -2301,19 +2317,19 @@ export const SendConfirm = () => {
     if (submission.unknown && submission.canOpenActivity) {
       if (reportedSubmission.current === submission.reviewScope) return;
       reportedSubmission.current = submission.reviewScope;
-      navigate('/home?tab=activity', { replace: true });
+      navigateAfterConfirmation('/home?tab=activity', { replace: true });
       alert.error(t('transactions.replay.unknown'));
       return;
     }
     if (!submission.hasUsableEntry) {
-      navigateBack(navigate, {
+      navigateBack(navigateAfterConfirmation, {
         state: { returnContext: submission.returnContext },
       });
     }
   }, [
     alert,
     confirmed,
-    navigate,
+    navigateAfterConfirmation,
     submission.canOpenActivity,
     submission.hasUsableEntry,
     submission.ownsRoute,
@@ -2325,7 +2341,7 @@ export const SendConfirm = () => {
 
   const cancelConfirmation = () => {
     if (!submission.ownsRoute()) return;
-    navigateBack(navigate, {
+    navigateBack(navigateAfterConfirmation, {
       state: { returnContext: submission.returnContext },
     });
   };
@@ -2773,7 +2789,9 @@ export const SendConfirm = () => {
                         disabled={loading || submission.pending}
                         onClick={() => {
                           if (submission.isActive())
-                            navigate('/home?tab=activity', { replace: true });
+                            navigateAfterConfirmation('/home?tab=activity', {
+                              replace: true,
+                            });
                         }}
                       >
                         {t('buttons.activity')}

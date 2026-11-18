@@ -634,7 +634,9 @@ it.each(
       return previous(path, args);
     });
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-    const retry = await screen.findByRole('button', { name: 'receive.retry' });
+    const retry = await screen.findByRole('button', {
+      name: 'send.refreshFeeQuote',
+    });
     expect(submissionCalls()).toHaveLength(1);
     expect(
       screen.getByRole('button', { name: 'buttons.confirm' })

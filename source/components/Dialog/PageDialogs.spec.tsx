@@ -226,7 +226,22 @@ it('names connection actions and retains the exact disconnect operation', async 
   );
   expect(mockEmitter).toHaveBeenCalledWith(
     ['dapp', 'revoke'],
-    ['https://untrusted.example', { allowAlreadyDisconnected: true }]
+    [
+      'https://untrusted.example',
+      {
+        allowAlreadyDisconnected: true,
+        expectedGrant: JSON.stringify([
+          'https://untrusted.example',
+          null,
+          0,
+          'HDAccount',
+          null,
+          null,
+          null,
+          null,
+        ]),
+      },
+    ]
   );
 });
 

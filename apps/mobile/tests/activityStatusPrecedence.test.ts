@@ -3,6 +3,7 @@ import test from 'node:test';
 import { screenFixture } from './screenFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
+import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../../source/shared/evmHistory.ts';
 import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { activityRowDirection } from '../src/activity/activityFiltering.ts';
@@ -24,6 +25,7 @@ function presentationFixture() {
       },
       'react-native-safe-area-context': { SafeAreaView: 'View' },
       '../core/amounts': { formatBaseUnits },
+      '../../../../source/shared/evmHistory': { EVM_TRANSACTION_HISTORY_SOURCE },
       '../../../../source/shared/erc20': { formatTokenUnits },
       '../activity/activityAmountLabel': { compactActivityAmountLabel },
       './ActivityListRow': {

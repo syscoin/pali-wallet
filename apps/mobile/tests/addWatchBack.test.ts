@@ -4,6 +4,7 @@ import { watchNotificationChoices } from '../src/notifications/choices.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import * as activityFiltering from '../src/activity/activityFiltering.ts';
 import * as syscoinAssetIds from '../../../source/shared/syscoinAssetIds.ts';
+import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../../source/shared/evmHistory.ts';
 import * as sptInventory from '../../../source/shared/sptInventory.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
@@ -153,6 +154,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         '../activity/assetIcon': { activityAssetIcon },
         '../../../../source/shared/erc20': {},
         '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
+        '../../../../source/shared/evmHistory': { EVM_TRANSACTION_HISTORY_SOURCE },
         '../../../../source/shared/sptInventory': sptInventory,
         './NativeSptAssets': { NativeSptAssets: 'NativeSptAssets' },
       };

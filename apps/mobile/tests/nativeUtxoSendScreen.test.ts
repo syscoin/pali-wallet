@@ -14,6 +14,7 @@ import ts from 'typescript';
 import { formatBaseUnits, parseDecimalAmount } from '../src/core/amounts.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount } from '../../../source/utils/syscoinAssetAmount.ts';
+import * as utxoSendErrors from '../../../source/shared/utxoSendErrors.ts';
 import { snapshotUtxoRbf } from '../../../source/shared/utxoTransactionOptions.ts';
 import { SYSX_ASSET_GUID, SYSX_ASSET_DECIMALS } from '../../../source/shared/syscoinAssetIds.ts';
 import type { NativeUtxoAsset, NativeUtxoReview } from '../src/custody/utxoSend.ts';
@@ -69,6 +70,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     './UtxoRecipientQrScanner': { UtxoRecipientQrScanner: 'UtxoRecipientQrScanner' },
     '../../../../source/shared/syscoinAssetIds': { SYSX_ASSET_GUID, SYSX_ASSET_DECIMALS },
     '../../../../source/utils/syscoinAssetAmount': { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount },
+    '../../../../source/shared/utxoSendErrors': utxoSendErrors,
     '../../../../source/shared/utxoTransactionOptions': { snapshotUtxoRbf },
   };
   const prompt = screenFixture(new URL('../src/screens/SubmissionLeavePrompt.tsx', import.meta.url), 'SubmissionLeavePrompt', imports);

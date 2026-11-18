@@ -195,7 +195,12 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     nativeBalance,
   });
   preparationOptions.current = { selectedAsset, RBF, feeRate, nativeBalance };
-  const saveCurrentState = useSendDraftWriter({
+  const {
+    claimDraft,
+    draftId,
+    save: saveCurrentState,
+    saveAutomatically,
+  } = useSendDraftWriter({
     form,
     location,
     navigate,
@@ -233,9 +238,9 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       RBF !== true ||
       isMaxSend !== false
     ) {
-      saveCurrentState();
+      saveAutomatically();
     }
-  }, [selectedAsset, RBF, isMaxSend, saveCurrentState]);
+  }, [selectedAsset, RBF, isMaxSend, saveAutomatically]);
 
   // Track if we've already restored form values to prevent duplicate restoration
   const hasRestoredRef = useRef(false);
@@ -413,7 +418,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       if (String(form.getFieldValue('amount')) !== String(balanceStr)) {
         form.setFieldValue('amount', balanceStr);
         formValuesRef.current = form.getFieldsValue();
-        void saveCurrentState(formValuesRef.current);
+        void saveAutomatically(formValuesRef.current);
         void form.validateFields(['amount']).catch(() => undefined);
       }
       setIsMaxSend(true);
@@ -453,7 +458,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     selectedAsset,
     assetDecimals,
     form,
-    saveCurrentState,
+    saveAutomatically,
     isCurrentForm,
     isUnlocked,
     controllerLoading,
@@ -468,15 +473,11 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           (asset) => String(asset.assetGuid) === String(item)
         );
 
-        if (getAsset) {
-          setSelectedAsset(getAsset);
-          return;
-        }
-
-        setSelectedAsset(null);
+        claimDraft();
+        setSelectedAsset(getAsset || null);
       }
     },
-    [assets]
+    [assets, claimDraft]
   );
 
   const openAccountInExplorer = useCallback(() => {
@@ -524,11 +525,12 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       // For SPTs, the switch shows ZDAG, so we need to invert the value
       // When ZDAG is enabled (value=true), RBF should be disabled (false)
       const rbfValue = selectedAsset ? !value : value;
+      claimDraft();
       setRBF(rbfValue);
 
       form.setFieldsValue({ RBF: rbfValue });
     },
-    [selectedAsset, form]
+    [selectedAsset, form, claimDraft]
   );
 
   const nextStep = async ({ receiver, amount }: any) => {
@@ -710,6 +712,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
         // Prepare component state to preserve
         const state = {
+          sendDraftId: draftId,
           formValues: allFormValues,
           selectedAsset,
           RBF,
@@ -746,6 +749,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           '/send/confirm',
           {
             submissionStarted: false,
+            sendDraftId: draftId,
             tx: txData,
             transactionType: TransactionType.UTXO,
           },
@@ -830,6 +834,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
         // Prepare component state to preserve
         const state = {
+          sendDraftId: draftId,
           formValues: allFormValues,
           selectedAsset,
           RBF,
@@ -850,6 +855,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           '/send/confirm',
           {
             submissionStarted: false,
+            sendDraftId: draftId,
             tx: {
               sender: activeAccount?.address,
               receivingAddress: receiver,
@@ -1114,7 +1120,10 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
             <div className="value-custom-input w-full relative">
               <button
                 type="button"
-                onClick={handleMaxButton}
+                onClick={() => {
+                  claimDraft();
+                  handleMaxButton();
+                }}
                 disabled={!isBalanceAvailable}
                 className="absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill cursor-pointer hover:bg-alpha-whiteAlpha200 z-10 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-1"
               >
