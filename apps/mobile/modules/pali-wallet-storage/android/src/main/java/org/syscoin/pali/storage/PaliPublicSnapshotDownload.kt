@@ -46,7 +46,7 @@ internal interface PaliPublicSnapshotOperation {
 
 /**
  * The trusted host captures the saved endpoint and canonical shared-registry pool address.
- * Block and root come from its validated public snapshot. Reply verification stays shared.
+ * Shared code supplies the public block and root and verifies replies.
  */
 internal class PaliPublicSnapshotAnchor private constructor(
   val endpoint: HttpUrl,
@@ -57,6 +57,7 @@ internal class PaliPublicSnapshotAnchor private constructor(
   enum class Read(val wire: String) {
     CHAIN_ID("eth_chainId"),
     BLOCK("eth_getBlockByNumber"),
+    FINALIZED("eth_getBlockByNumber"),
     // Fixed read-only calldata matching the shared verifySnapshotAnchor ABI.
     NEXT_INDEX("0xfc7e9c6f"),
     LAST_ROOT("0xba70f757"),
@@ -84,9 +85,10 @@ internal class PaliPublicSnapshotAnchor private constructor(
         method = read.wire
         params = "[]"
       }
-      Read.BLOCK -> {
+      Read.BLOCK, Read.FINALIZED -> {
         method = read.wire
-        params = """["$blockTag",false]"""
+        val tag = if (read == Read.FINALIZED) "finalized" else blockTag
+        params = """["$tag",false]"""
       }
       else -> {
         method = "eth_call"
@@ -213,7 +215,8 @@ internal object PaliPublicSnapshotDownloader {
     completion: (Result<Unit>) -> Unit
   ): PaliPublicSnapshotOperation = reserve(
     anchor.endpoint, TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS),
-    if (read == PaliPublicSnapshotAnchor.Read.BLOCK) ANCHOR_BLOCK_BYTES else ANCHOR_SCALAR_BYTES,
+    if (read == PaliPublicSnapshotAnchor.Read.BLOCK || read == PaliPublicSnapshotAnchor.Read.FINALIZED)
+      ANCHOR_BLOCK_BYTES else ANCHOR_SCALAR_BYTES,
     completion, postBody = anchor.body(read, id)
   )
 

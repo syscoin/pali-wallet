@@ -29,6 +29,13 @@ Block-number calls are fenced by matching hashes before and after the reads.
 The current pool must still accept the root. The chosen RPC remains a chain
 trust assumption; agreement with an indexer-provided root alone is insufficient.
 
+For withdrawal proofs, Pali selects a shared finalized checkpoint through the
+configured Ethereum RPC before reading the service snapshot. The verified
+snapshot supplies the leaves for that checkpoint. Pali checks the exact prefix
+against the checkpoint root and confirms that the pool still accepts it. Note
+status uses the verified full snapshot. A fresh deposit may need a later
+checkpoint before its withdrawal can be prepared.
+
 The implementation uses no new runtime dependency. Hash and tree vectors were
 cross-checked against unmodified circomlibjs 0.1.2 and fixed-merkle-tree 0.7.3.
 The historical contract's empty-pool root is handled explicitly.

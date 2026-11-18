@@ -33,6 +33,8 @@ const POOL_ID = 'eth-1';
 const POOL_ADDRESS = '0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936';
 const DEPLOYMENT_BLOCK = 9117609;
 const BLOCK_NUMBER = 20000000;
+// Finalized height minus four, rounded down to the shared eight-block bucket.
+const PROOF_BLOCK_NUMBER = BLOCK_NUMBER - 8;
 const BLOCK_HASH = '0x' + '42'.repeat(32);
 const BLOCK_TIMESTAMP = toQuantity(Math.floor(Date.now() / 1000) - 900);
 const FUNDED_NOTE = `tornado-eth-1-1-0x${'00'.repeat(62)}`;
@@ -664,13 +666,15 @@ test('privacy pool preparation verifies local note imports and preserves a good 
                 typeof call.params[1] !== 'boolean' ||
                 (call.params[0] !== 'latest' &&
                   call.params[0] !== 'pending' &&
+                  call.params[0] !== 'finalized' &&
                   !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(call.params[0]))
               )
                 return undefined;
-              const height =
-                call.params[0] === 'latest' || call.params[0] === 'pending'
-                  ? BLOCK_NUMBER
-                  : Number(BigInt(call.params[0]));
+              const height = ['latest', 'pending', 'finalized'].includes(
+                call.params[0]
+              )
+                ? BLOCK_NUMBER
+                : Number(BigInt(call.params[0]));
               if (
                 !Number.isSafeInteger(height) ||
                 height < 0 ||
@@ -726,7 +730,12 @@ test('privacy pool preparation verifies local note imports and preserves a good 
                 }
                 result = ABI.encodeFunctionResult('isKnownRoot', [true]);
               } else {
-                if (call.params[1] !== toQuantity(BLOCK_NUMBER))
+                const tag = call.params[1];
+                if (
+                  tag !== toQuantity(BLOCK_NUMBER) &&
+                  (tag !== toQuantity(PROOF_BLOCK_NUMBER) ||
+                    !['nextIndex', 'getLastRoot'].includes(parsed.name))
+                )
                   return undefined;
                 const values: Record<string, unknown> = {
                   nextIndex: 2,
@@ -930,7 +939,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           },
           candidate: null,
         });
-        expect(knownRootCalls).toBe(2);
+        expect(knownRootCalls).toBe(3);
         await capture('ready');
       }
     );
@@ -972,7 +981,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
               };
             })
             .toEqual({
-              anchors: beforeAnchors + 2,
+              anchors: beforeAnchors + 3,
               phase: 'ready',
               candidate: null,
             });
@@ -992,7 +1001,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           .getByRole('button', { name: en.privacy.resume, exact: true })
           .click();
         await expect(poolStatus(wallet!.page)).toContainText(en.privacy.ready);
-        expect(knownRootCalls).toBe(beforeResumeAnchors + 2);
+        expect(knownRootCalls).toBe(beforeResumeAnchors + 3);
         expect(snapshots).toHaveLength(beforeResumeSnapshots + 1);
         observations.resumeVerification = {
           beforeAnchors: beforeResumeAnchors,
@@ -1113,6 +1122,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           'section[aria-labelledby="privacy-notes-title"]'
         );
         const snapshotsBefore = snapshots.length;
+        const readsBefore = rpcReads.length;
         await notes
           .getByRole('button', { name: en.privacy.deposit.title, exact: true })
           .click();
@@ -1140,10 +1150,10 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         await expect(detail(en.privacy.deposit.pool)).toHaveText(POOL_ADDRESS);
         await expect(detail(en.privacy.deposit.amount)).toHaveText('1 ETH');
         await expect(detail(en.privacy.deposit.networkFee)).toHaveText(
-          '0.00042 ETH'
+          '0.00588 ETH'
         );
         await expect(detail(en.privacy.deposit.total)).toHaveText(
-          '1.00042 ETH'
+          '1.00588 ETH'
         );
         const confirm = deposit.getByRole('button', {
           name: en.privacy.deposit.confirm,
@@ -1170,6 +1180,15 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         depositNote = await dialog.locator('#privacy-backup-note').inputValue();
         depositCommitment = identifyClassicNote(depositNote).commitment;
         expect([FUNDED_COMMITMENT, SPENT_COMMITMENT]).not.toContain(
+          depositCommitment
+        );
+        const preConfirmationReads = rpcReads.slice(readsBefore);
+        expect(
+          preConfirmationReads.some(
+            ({ method }) => method === 'eth_estimateGas'
+          )
+        ).toBe(false);
+        expect(JSON.stringify(preConfirmationReads)).not.toContain(
           depositCommitment
         );
         expect(await auditEncryptedNotes(wallet!.page, [depositNote])).toEqual({

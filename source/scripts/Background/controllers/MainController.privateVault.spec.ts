@@ -32,6 +32,7 @@ import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex, walletPersistenceMutex } from 'utils/asyncMutex';
 import * as privacyClient from 'utils/privacy/client';
+import { PRIVACY_DEPOSIT_GAS_LIMIT } from 'utils/privacy/depositFees';
 import * as completion from 'utils/privacy/spentCompletion';
 import type { IPrivacyTransactionsHost } from 'utils/privacy/transactionTypes';
 import { chromeStorage } from 'utils/storageAPI';
@@ -675,22 +676,22 @@ it('preserves the captured deposit guard identity while cloning the public conte
   });
 });
 
-it('prepares exact deposit gas and maximum fee through the captured provider without signing', async () => {
+it('keeps deposit calldata off RPC during review and estimates the approved envelope on confirm', async () => {
   const { wallet, provider, vault } = depositFixture();
   const review = await wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+  const gasCap = BigInt(PRIVACY_DEPOSIT_GAS_LIMIT);
+  const commitment = '01'.repeat(32);
   expect(review).toMatchObject({
     chainId: 1,
-    gasLimit: '120002',
+    gasLimit: String(gasCap),
     nonce: '7',
-    maxNetworkFeeWei: '720012',
-    maxTotalWei: '1000000000000720012',
+    maxNetworkFeeWei: String(gasCap * BigInt(6)),
+    maxTotalWei: String(BigInt('1000000000000000000') + gasCap * BigInt(6)),
   });
-  expect(provider.estimateGas).toHaveBeenCalledWith(
-    expect.objectContaining({
-      from: review.account.address,
-      value: '0xde0b6b3a7640000',
-    })
-  );
+  expect(provider.estimateGas).not.toHaveBeenCalled();
+  const reviewReads = JSON.stringify(provider.send.mock.calls);
+  expect(reviewReads).not.toContain(commitment);
+  expect(reviewReads).not.toContain('0xb214faa5');
   expect(vault.reserveDepositAttempt).not.toHaveBeenCalled();
   expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   const result = await wallet.submitPrivacyDeposit(review.intentId);
@@ -698,10 +699,21 @@ it('prepares exact deposit gas and maximum fee through the captured provider wit
     phase: 'submitted',
     transactionHash: DEPOSIT_HASH,
   });
+  expect(provider.estimateGas).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: '0xb214faa5' + commitment,
+      from: review.account.address,
+      value: '0xde0b6b3a7640000',
+    })
+  );
   expect(vault.reserveDepositAttempt).toHaveBeenCalledTimes(1);
   expect(vault.recordDepositBroadcast).toHaveBeenCalledTimes(1);
   expect(wallet.sendAndSaveEthTransaction).toHaveBeenCalledWith(
-    expect.objectContaining({ gasLimit: '120002', nonce: '7', type: 2 }),
+    expect.objectContaining({
+      gasLimit: PRIVACY_DEPOSIT_GAS_LIMIT,
+      nonce: '7',
+      type: 2,
+    }),
     false,
     undefined,
     undefined,
@@ -717,11 +729,24 @@ it('prepares exact deposit gas and maximum fee through the captured provider wit
   );
 });
 
+it('discarding a reviewed deposit never emits its calldata or creates a reservation', async () => {
+  const { wallet, provider, vault } = depositFixture();
+  const review = await wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+  await wallet.discardPrivacyDeposit(review.intentId);
+  await expect(wallet.submitPrivacyDeposit(review.intentId)).rejects.toThrow();
+  expect(JSON.stringify(provider.send.mock.calls)).not.toContain('0xb214faa5');
+  expect(provider.estimateGas).not.toHaveBeenCalled();
+  expect(vault.reserveDepositAttempt).not.toHaveBeenCalled();
+  expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+});
+
 it('stops deposit preflight reads after account change and rejects unsupported active accounts', async () => {
   const f = depositFixture();
-  f.provider.estimateGas.mockImplementationOnce(async () => {
+  const send = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementationOnce(async (method, params) => {
+    const result = await send(method, params);
     f.state.vault.activeAccount.id = 1;
-    return BigInt(100000);
+    return result;
   });
   await expect(
     f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' })
@@ -1292,12 +1317,20 @@ it('keeps the durable note restore fence live through the final generic signing 
   expect(f.vault.clearUnbroadcastDepositAttempt).toHaveBeenCalledTimes(1);
 });
 
-it('applies the shared per-transaction gas ceiling to a private deposit quote', async () => {
+it('rejects a deposit that exceeds the approved gas cap before signing', async () => {
   const f = depositFixture();
-  f.provider.estimateGas.mockResolvedValue(BigInt(14000000));
+  f.provider.estimateGas.mockResolvedValue(
+    BigInt(PRIVACY_DEPOSIT_GAS_LIMIT) + BigInt(1)
+  );
   const review = await f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
-  expect(review.gasLimit).toBe('16777216');
+  expect(review.gasLimit).toBe(PRIVACY_DEPOSIT_GAS_LIMIT);
+  expect(f.provider.estimateGas).not.toHaveBeenCalled();
+  await expect(
+    f.wallet.submitPrivacyDeposit(review.intentId)
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  expect(f.provider.estimateGas).toHaveBeenCalledTimes(1);
   expect(f.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  expect(f.vault.clearUnbroadcastDepositAttempt).toHaveBeenCalledTimes(1);
 });
 
 it('requires the captured private session identity before shared fee reads', async () => {

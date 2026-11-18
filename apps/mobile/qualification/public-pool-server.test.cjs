@@ -14,7 +14,7 @@ const { readPublicPoolCiBuild, runHostedPublicPool, waitPublicPoolReport } = req
 const { readAndroidHttpSidecar, readHttpSidecar } = require('./post-sidecar.cjs');
 const { parseQualificationLaunch } = require('./launch-parameters.ts');
 const { qualifyNativePublicPool } = require('./public-pool-native.ts');
-const { PUBLIC_POOL_ID, PUBLIC_POOL_PATH, PUBLIC_POOL_ROOT, PUBLIC_POOL_FAILURE_FILE,
+const { PUBLIC_POOL_ID, PUBLIC_POOL_PATH, PUBLIC_POOL_ROOT, PUBLIC_POOL_PROOF_ROOT, PUBLIC_POOL_FAILURE_FILE,
   makePublicPoolFailure, parsePublicPoolFailure, publicPoolAnchorPath } = require('./public-pool-contract.ts');
 const { createPublicSnapshotTransport } = require('../src/privacy/publicSnapshotTransport.ts');
 const { PRIVACY_POOL_ABI } = require('../../../source/utils/privacy/publicSyncProtocol.ts');
@@ -73,7 +73,7 @@ function snapshotBridge({ mutateGet, mutateAnchor } = {}) {
       const block = '0x' + blockNumber.toString(16);
       let method, params;
       if (kind === 'chainId') { method = 'eth_chainId'; params = []; }
-      else if (kind === 'block') { method = 'eth_getBlockByNumber'; params = [block, false]; }
+      else if (kind === 'block' || kind === 'finalized') { method = 'eth_getBlockByNumber'; params = [kind === 'finalized' ? 'finalized' : block, false]; }
       else {
         method = 'eth_call';
         params = [{ to: address, data: PRIVACY_POOL_ABI.encodeFunctionData(kind, kind === 'isKnownRoot' ? [root] : []) },
@@ -126,7 +126,7 @@ function hostedConfig() {
   return { config, build, caSha256 };
 }
 
-test('hosted runner accepts a matching report after shared verification and both strict HTTPS passes', { timeout: 15_000 }, async () => {
+test('hosted runner accepts a matching report with distinct public snapshot and finalized proof roots', { timeout: 15_000 }, async () => {
   const { config, build, caSha256 } = hostedConfig();
   let result;
   const verified = await runHostedPublicPool({
@@ -138,6 +138,10 @@ test('hosted runner accepts a matching report after shared verification and both
       result = await qualifyNativePublicPool({ launch, transport: snapshotBridge(),
         executeMerkleBatch: evaluateMerkleBatch, lifetime: new AbortController().signal });
       assert.equal(result.root, PUBLIC_POOL_ROOT);
+      assert.equal(result.proofRoot, PUBLIC_POOL_PROOF_ROOT);
+      assert.notEqual(result.root, result.proofRoot);
+      assert.equal(result.leaves, result.proofLeaves + 1);
+      assert.equal(result.requestIds.length, 21);
       return JSON.stringify({ ...build, caSha256, platform: 'android', kind: 'native-public-pool',
         status: 'passed', token: launch.token, networkCalls: 0, sessionId: '00000000-0000-4000-8000-000000000000', result });
     },
@@ -176,17 +180,19 @@ test('fixture refuses a forged anchor call and records it even if it later recei
   const fixture = await createPublicPoolFixture(tls);
   try {
     const { snapshotPort, anchorPort, token } = fixture.launch;
-    assert.equal((await request(`http://127.0.0.1:${snapshotPort}${PUBLIC_POOL_PATH}`)).status, 200);
+    assert.equal((await request(`http://127.0.0.1:${snapshotPort}${PUBLIC_POOL_PATH}`)).status, 400);
     const endpoint = `https://127.0.0.1:${anchorPort}${publicPoolAnchorPath(token)}`;
     assert.equal((await request(endpoint, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: ['0x'] }))).status, 400);
     assert.equal((await request(endpoint, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }))).status, 200);
-    assert.equal((await request(endpoint, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }))).status, 400);
+    assert.equal((await request(endpoint, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBlockByNumber', params: ['finalized', false] }))).status, 400);
+    assert.equal((await request(endpoint, JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'eth_getBlockByNumber', params: ['finalized', true] }))).status, 400);
+    assert.equal((await request(endpoint, JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'eth_getBlockByNumber', params: ['finalized', false] }))).status, 200);
     assert.throws(() => fixture.assertComplete(null), /AUDIT_FAILED/);
   } finally { await fixture.close(); }
 });
 
 test('changed leaf, expired root and wrong final RPC ID all prevent a verified report', async () => {
-  for (const mode of ['leaf', 'root-ring', 'rpc-id']) {
+  for (const mode of ['leaf', 'snapshot-root-ring', 'proof-root-ring', 'rpc-id']) {
     const fixture = await createPublicPoolFixture(tls);
     let knownRoots = 0;
     try {
@@ -198,16 +204,17 @@ test('changed leaf, expired root and wrong final RPC ID all prevent a verified r
           return { ...result, bytes: Buffer.from(JSON.stringify(body)) };
         },
         mutateAnchor(kind, result) {
-          if (kind !== 'isKnownRoot' || ++knownRoots !== 2 || mode === 'leaf') return result;
+          if (kind !== 'isKnownRoot' || ++knownRoots !== (mode === 'snapshot-root-ring' ? 2 : 3) || mode === 'leaf') return result;
           const body = JSON.parse(result.bytes);
-          if (mode === 'root-ring') body.result = '0x' + '0'.repeat(64);
+          if (mode.endsWith('root-ring')) body.result = '0x' + '0'.repeat(64);
           else body.id += 1;
           return { ...result, bytes: Buffer.from(JSON.stringify(body)) };
         },
       });
       await assert.rejects(qualifyNativePublicPool({ launch: fixture.launch, transport,
-        executeMerkleBatch: evaluateMerkleBatch, lifetime: new AbortController().signal }), /QUALIFICATION_FAILED/);
-      assert.equal(knownRoots, mode === 'leaf' ? 1 : 2);
+        executeMerkleBatch: evaluateMerkleBatch, lifetime: new AbortController().signal }),
+      mode === 'proof-root-ring' || mode === 'rpc-id' ? /privacy_verification_pending/ : /QUALIFICATION_FAILED/);
+      assert.equal(knownRoots, mode === 'leaf' ? 1 : mode === 'snapshot-root-ring' ? 2 : 3);
     } finally { await fixture.close(); }
   }
 });

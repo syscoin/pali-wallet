@@ -102,6 +102,7 @@ class PaliWalletStorageModule : Module() {
       val read = when (kind) {
         "chainId" -> PaliPublicSnapshotAnchor.Read.CHAIN_ID
         "block" -> PaliPublicSnapshotAnchor.Read.BLOCK
+        "finalized" -> PaliPublicSnapshotAnchor.Read.FINALIZED
         "nextIndex" -> PaliPublicSnapshotAnchor.Read.NEXT_INDEX
         "getLastRoot" -> PaliPublicSnapshotAnchor.Read.LAST_ROOT
         "levels" -> PaliPublicSnapshotAnchor.Read.LEVELS

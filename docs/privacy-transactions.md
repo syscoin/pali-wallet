@@ -87,12 +87,17 @@ while the response is in flight.
 
 ## Local proof generation
 
-Withdrawal preparation derives the note's commitment/nullifier locally and uses
-a snapshot leased from the verifying background controller. Disk flags or UI
-claims cannot create this lease. Clear, pause, refresh, replacement or expiration
-revokes it. The Merkle path is checked against its root, and the current bulk
-withdrawal set must not contain the note's nullifier. Preparation and submission
-both check their original session and snapshot.
+Withdrawal preparation derives the note's commitment and nullifier locally.
+Pali chooses a shared finalized checkpoint from the configured Ethereum RPC
+before reading the index response. It reconstructs the checkpoint's deposit
+prefix from the verified pool data and checks the root against Ethereum and the
+pool's accepted roots. The newer verified public snapshot supplies the spent
+observations. A deposit after the chosen checkpoint waits for a later checkpoint.
+
+A lease binds proof preparation to that verified root and the current wallet
+session. Clear, pause, refresh, replacement or expiration revokes the lease.
+Preparation checks the Merkle path and looks for the nullifier in the current
+public withdrawal set. Submission rechecks the original session and lease.
 
 Public-pool verification also retains a small in-memory index of completed
 upper subtrees. Even at the million-leaf limit it stores at most 8,191 roots.
@@ -147,12 +152,17 @@ controls when the note is labelled spent.
 
 Viewing note balances performs local calculations. Pool-wide sync and anchoring
 use public data without sending wallet addresses, notes or owned nullifiers.
-Pali verifies the index service's snapshot against Ethereum. The index service
-selects the snapshot and can recognize the selected root in a later withdrawal.
-The completeness of its withdrawal feed remains a trust assumption. Network
-endpoints can observe IP addresses, pool selection and request timing. During
-deposit preparation, the Ethereum RPC receives the payer and planned commitment
-for gas estimation, even if the user later cancels the review.
+Pali verifies the index service's snapshot against Ethereum. The completeness
+of its withdrawal feed remains a trust assumption. Network endpoints can
+observe IP addresses, pool selection and request timing.
+
+Deposit review uses a 1,400,000 gas ceiling for the four pinned pools. Tests
+using both deployed pool runtimes and the linked MiMC runtime measured a maximum
+of 1,340,743 gas across 100 local deposit cases. After Confirm and any required
+device authorization, Pali estimates the exact reviewed transaction while the
+signing keys remain locked on mobile. It refuses an estimate above the approved
+ceiling. The RPC can see the commitment during that estimate, including when
+signing or broadcast later fails.
 
 Sysnode's index and relayer directory are disabled until their separate operator
 flags are enabled with a suitable archive-capable Ethereum RPC. A deployed route

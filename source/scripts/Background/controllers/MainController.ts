@@ -372,6 +372,7 @@ import {
   withPinnedUtxoBackendChain,
 } from 'utils/networkRegistration';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
+import { PRIVACY_DEPOSIT_GAS_LIMIT } from 'utils/privacy/depositFees';
 import type { IClassicNoteIdentity } from 'utils/privacy/note';
 import type { INoteBackupController } from 'utils/privacy/noteBackupTypes';
 import type {
@@ -4610,7 +4611,7 @@ class MainController {
         const check = () => session.assertCurrent();
         check();
         const prepared = await this.prepareGenericEvmFeeReview(
-          transaction,
+          { ...transaction, gasLimit: PRIVACY_DEPOSIT_GAS_LIMIT },
           session.context,
           undefined,
           check,
@@ -12927,6 +12928,8 @@ class MainController {
             gasPolicy:
               feeAuthority.kind === 'private-withdrawal'
                 ? { kind: 'fixed', gasLimit: '650000' }
+                : feeAuthority.kind === 'private-deposit' && !approved
+                ? { kind: 'fixed', gasLimit: PRIVACY_DEPOSIT_GAS_LIMIT }
                 : approvedGasBound !== undefined
                 ? { kind: 'fixed', gasLimit: approvedGasBound }
                 : { kind: 'estimate' },

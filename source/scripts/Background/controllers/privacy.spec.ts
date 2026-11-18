@@ -7,6 +7,10 @@ import {
 } from 'utils/privacy/merkle';
 import type { IPrivacyNoteReader } from 'utils/privacy/privateVaultTypes';
 import { getPrivacyPool } from 'utils/privacy/registry';
+import {
+  validateProofSnapshot,
+  validateSnapshot,
+} from 'utils/privacy/snapshotValidation';
 import type { IPrivacySnapshotReader } from 'utils/privacy/trustedSnapshot';
 import { PrivacyPoolId, PrivacySnapshot } from 'utils/privacy/types';
 
@@ -148,6 +152,14 @@ function setup(overrides: any = {}) {
       cache: storage.cache,
       fetchSnapshot,
       verifyAnchor,
+      selectProofCheckpoint: async () => ({
+        ...snapshot(),
+        blockTimestamp: Math.max(
+          1,
+          (overrides.now || Date.now)() - 12 * 60 * 1000
+        ),
+      }),
+      verifyProofCheckpoint: async () => true,
       schedule,
       stop,
       ...overrides,
@@ -706,6 +718,10 @@ test.each(['downloaded', 'restored'] as const)(
     const run = setup({
       now: () => clock,
       fetchSnapshot: jest.fn(async () => transport),
+      selectProofCheckpoint: async () => ({
+        ...original,
+        blockTimestamp: clock - 1000,
+      }),
     });
     const save = run.storage.cache.save;
     run.storage.cache.save = async (next, expected) => {
@@ -751,6 +767,10 @@ test('the production reader retains verified subtree paths across calculation sl
   const run = setup({
     now: () => clock,
     fetchSnapshot: jest.fn(async () => data),
+    selectProofCheckpoint: async () => ({
+      ...data,
+      blockTimestamp: clock - 1000,
+    }),
   });
   const save = run.storage.cache.save;
   run.storage.cache.save = async (next, expected) => {
@@ -779,9 +799,14 @@ test('the production reader retains verified subtree paths across calculation sl
 
 test('an appended verified prefix retains its subtree index and yields paths for old and new leaves', async () => {
   const initial = snapshot(Array.from({ length: 300 }, (_, i) => leaf(i + 1)));
+  let anchor = initial;
   const run = setup({
     now: () => 2000000000000,
     fetchSnapshot: jest.fn(async () => initial),
+    selectProofCheckpoint: async () => ({
+      ...anchor,
+      blockTimestamp: 2000000000000,
+    }),
   });
   await run.controller.start(id);
   await run.controller.resumePending(id);
@@ -792,6 +817,7 @@ test('an appended verified prefix retains its subtree index and yields paths for
     asOfBlockNumber: initial.asOfBlockNumber + 1,
     asOfBlockHash: leaf(100),
   };
+  anchor = appended;
   run.fetchSnapshot.mockResolvedValueOnce(appended);
   await run.controller.start(id);
   await run.controller.resumePending(id);
@@ -852,6 +878,11 @@ test('cold resume rebuilds the private index instead of trusting stored complete
       cache: run.storage.cache,
       fetchSnapshot: run.fetchSnapshot,
       verifyAnchor: run.verifyAnchor,
+      selectProofCheckpoint: async () => ({
+        ...data,
+        blockTimestamp: 2000000000000,
+      }),
+      verifyProofCheckpoint: async () => true,
       now: () => 2000000000000,
       schedule: run.schedule,
       stop: run.stop,
@@ -967,7 +998,7 @@ test('requested refresh revokes the old snapshot while preserving as-of note rea
   });
   await syncing;
   const current = await run.readSnapshot(id);
-  expect(current.snapshot.leafCount).toBe(3);
+  expect(current.snapshot.leafCount).toBe(2);
   expect(() => current.assertSnapshotCurrent(current.snapshot)).not.toThrow();
   expect(() => previous.assertSnapshotCurrent(previous.snapshot)).toThrow(
     'privacy_verification_pending'
@@ -975,11 +1006,18 @@ test('requested refresh revokes the old snapshot while preserving as-of note rea
 });
 
 test('periodic refresh immediately revokes an old snapshot and replaces same-height fork data', async () => {
-  const run = setup();
+  let anchor = snapshot();
+  const run = setup({
+    selectProofCheckpoint: async () => ({
+      ...anchor,
+      blockTimestamp: Date.now(),
+    }),
+  });
   await run.controller.start(id);
   await run.controller.resumePending(id);
   const previous = await run.readSnapshot(id);
   const replacement = { ...snapshot([leaf(3)]), asOfBlockHash: leaf(101) };
+  anchor = replacement;
   run.fetchSnapshot.mockResolvedValueOnce(replacement);
   const refreshing = run.controller.resumePending(id);
   expect(() => previous.assertSnapshotCurrent(previous.snapshot)).toThrow(
@@ -1026,6 +1064,7 @@ test.each([
     const run = setup({
       now: () => current,
       verifyAnchor: jest.fn(async () => ({ blockTimestamp })),
+      selectProofCheckpoint: async () => ({ ...snapshot(), blockTimestamp }),
     });
     await run.controller.start(id);
     await run.controller.resumePending(id);
@@ -1100,7 +1139,7 @@ test('a revoked lease can wait only for its one successful automatic refresh', a
   expect(() => lease.assertSnapshotCurrent(lease.snapshot)).toThrow(
     'privacy_verification_pending'
   );
-  expect((await run.readSnapshot(id)).snapshot.leafCount).toBe(3);
+  expect((await run.readSnapshot(id)).snapshot.leafCount).toBe(2);
 });
 
 test('a pause during a refresh cannot authorize retry of an old lease', async () => {
@@ -1136,4 +1175,84 @@ test('failed or repeated refreshes never authorize reuse of an old lease', async
   await repeated.controller.resumePending(id);
   await repeated.controller.resumePending(id);
   expect(await oldLease.waitForScheduledRefresh!()).toBe(false);
+});
+
+test('independently selects a finalized proof prefix before requesting the service snapshot', async () => {
+  const leaves = Array.from({ length: 270 }, (_, index) => leaf(index + 1));
+  const checkpoint = snapshot(leaves.slice(0, 260));
+  const newer = {
+    ...snapshot(leaves),
+    asOfBlockNumber: checkpoint.asOfBlockNumber + 7,
+    asOfBlockHash: leaf(101),
+    withdrawnNullifiers: Array.from({ length: 261 }, (_, index) =>
+      leaf(index + 300)
+    ),
+  };
+  const steps: string[] = [];
+  let served = newer;
+  const run = setup({
+    selectProofCheckpoint: async () => {
+      steps.push('checkpoint');
+      return { ...checkpoint, blockTimestamp: Date.now() - 15 * 60 * 1000 };
+    },
+    fetchSnapshot: async () => {
+      steps.push('service');
+      return served;
+    },
+  });
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  expect(steps).toEqual(['checkpoint', 'service']);
+  expect(await run.readNote(noteIdentity(leaves[269]))).toMatchObject({
+    phase: 'verified',
+    blockNumber: newer.asOfBlockNumber,
+  });
+  const proof = await run.readSnapshot(id);
+  expect(proof.snapshot).toEqual({
+    ...checkpoint,
+    withdrawnNullifiers: newer.withdrawnNullifiers,
+  });
+  expect(validateProofSnapshot(id, proof.snapshot)).toEqual(proof.snapshot);
+  expect(() => validateSnapshot(id, proof.snapshot)).toThrow(
+    'privacy_data_invalid'
+  );
+  expectValidPath(checkpoint, 259, await proof.getPath(259));
+  expect(() => proof.assertNoteInCheckpoint!(leaves[259])).not.toThrow();
+  expect(() => proof.assertNoteInCheckpoint!(leaves[260])).toThrow(
+    'privacy_verification_pending'
+  );
+  await expect(proof.getPath(260)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  // Two legitimate, different service roots cannot change the public proof
+  // root. The index only determines whether the independently chosen data is
+  // available, even after a later user's explicit refresh.
+  served = {
+    ...snapshot(leaves.slice(0, 266)),
+    asOfBlockNumber: checkpoint.asOfBlockNumber + 6,
+    asOfBlockHash: leaf(109),
+    withdrawnNullifiers: newer.withdrawnNullifiers,
+  };
+  expect(served.root).not.toBe(newer.root);
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const refreshed = await run.readSnapshot(id);
+  expect(refreshed.snapshot.root).toBe(proof.snapshot.root);
+  expect(refreshed.snapshot.asOfBlockHash).toBe(proof.snapshot.asOfBlockHash);
+  expect(steps).toEqual(['checkpoint', 'service', 'checkpoint', 'service']);
+});
+
+test('does not use a valid service root when the independently selected checkpoint is unavailable', async () => {
+  const run = setup({
+    selectProofCheckpoint: async () => {
+      throw new Error('privacy_rpc_unavailable');
+    },
+  });
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  expect((await run.controller.getStatus(id)).phase).toBe('ready');
+  expect((await run.readNote(noteIdentity())).phase).toBe('verified');
+  await expect(run.readSnapshot(id)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
 });

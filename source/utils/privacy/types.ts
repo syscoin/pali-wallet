@@ -17,8 +17,9 @@ export interface PrivacySnapshot {
   poolAddress: string;
   root: string;
   version: 1;
-  // Public withdrawal events at the same block anchor. The deposit root does
-  // not authenticate this list's completeness; the index service supplies it.
+  // Downloads contain public withdrawals at their block anchor. A local
+  // proof prefix retains the full verified download's observation window.
+  // The deposit root does not authenticate this list's completeness.
   withdrawnNullifiers: string[];
 }
 

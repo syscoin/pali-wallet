@@ -19,12 +19,13 @@ typealias PaliPublicSnapshotCompletion =
   @Sendable (Result<Void, PaliPublicSnapshotDownloadError>) -> Void
 
 /// The trusted host captures the saved RPC endpoint and the selected address from
-/// the shared pool registry. Block and root come from its validated public snapshot.
+/// the shared pool registry. Shared code supplies the public block and root.
 /// This port does not select registrations, validate RPC replies or verify anchors.
 struct PaliPublicSnapshotAnchor: Sendable {
   enum Read: String, Sendable {
     case chainId = "eth_chainId"
     case block = "eth_getBlockByNumber"
+    case finalized
     // Fixed calldata for the anchor's read-only ABI. Keep parity with verifySnapshotAnchor.
     case nextIndex = "0xfc7e9c6f"
     case lastRoot = "0xba70f757"
@@ -69,9 +70,10 @@ struct PaliPublicSnapshotAnchor: Sendable {
     case .chainId:
       method = read.rawValue
       params = "[]"
-    case .block:
-      method = read.rawValue
-      params = #"["\#(blockTag)",false]"#
+    case .block, .finalized:
+      method = "eth_getBlockByNumber"
+      let tag = read == .finalized ? "finalized" : blockTag
+      params = #"["\#(tag)",false]"#
     default:
       method = "eth_call"
       let data = read == .knownRoot ? read.rawValue + root.dropFirst(2) : read.rawValue
@@ -131,7 +133,7 @@ final class PaliPublicSnapshotDownloader: @unchecked Sendable {
     completion: @escaping PaliPublicSnapshotCompletion
   ) throws -> PaliPublicSnapshotOperation {
     let body = try anchor.body(for: read, id: id)
-    let limit = read == .block ? 4 * 1024 * 1024 : 64 * 1024
+    let limit = read == .block || read == .finalized ? 4 * 1024 * 1024 : 64 * 1024
     return try reserve(anchor.endpoint, timeout: 25, snapshotLimit: limit, postBody: body, completion: completion)
   }
 

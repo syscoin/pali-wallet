@@ -170,6 +170,7 @@ public final class PaliWalletStorageModule: Module {
       switch kind {
       case "chainId": read = .chainId
       case "block": read = .block
+      case "finalized": read = .finalized
       case "nextIndex": read = .nextIndex
       case "getLastRoot": read = .lastRoot
       case "levels": read = .levels

@@ -591,6 +591,7 @@ export function createPrivacyWithdrawalsController(
                   waitForScheduledRefresh: access.waitForScheduledRefresh,
                 });
                 current(intent);
+                access.assertNoteInCheckpoint?.(identity.commitment);
                 let fee = '0',
                   relayer = `0x${'0'.repeat(40)}`,
                   maximum = BigInt(0),

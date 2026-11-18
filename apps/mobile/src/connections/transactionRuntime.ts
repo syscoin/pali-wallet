@@ -30,12 +30,15 @@ type Ports = Readonly<{
   funding: EvmFeeFunding;
   gasPolicy: EvmGasPolicy;
   feePolicy?: 'fixed';
+  /** Initial review and pre-authorization refresh use only the approved ceiling. */
+  estimateAfterAuthorization?: true;
   rpc: EvmTransferReadRpc;
   signal: AbortSignal;
   planner: NativeAutomaticNoncePlanner;
   assertCurrent(): void;
   assertRefreshedState?(provider: unknown): Promise<void>;
-  sign(transaction: PreparedEvmTransaction, assertCurrent: () => void): Promise<SignedTransaction>;
+  sign(transaction: PreparedEvmTransaction, assertCurrent: () => void,
+    recheckAfterAuthorization?: (guard: () => void) => Promise<void>): Promise<SignedTransaction>;
   submit(transaction: PreparedEvmTransaction, signed: SignedTransaction, assertCurrent: () => void,
     verifyDispatch: NativeTransferDispatchValidation, onBroadcast: (hash: string) => void,
     submission: NativeConnectionSubmission): Promise<string>;
@@ -45,6 +48,13 @@ type Ports = Readonly<{
 
 export async function prepareNativeConnectionTransaction(input: unknown, ports: Ports): Promise<NativePreparedConnectionTransaction> {
   const gasPolicy = captureEvmGasPolicy(ports.gasPolicy);
+  const estimateAfterAuthorization = ports.estimateAfterAuthorization === true;
+  if (estimateAfterAuthorization && gasPolicy.kind !== 'fixed') throw new Error('REVIEW_REQUIRED');
+  const planner = ports.planner;
+  // Submission's first refresh is still before device authorization. A
+  // separate nonce context lets the authenticated refresh estimate the exact
+  // envelope, just as signed-journal dispatch does with its owned context.
+  const authorizationPlanner: NativeAutomaticNoncePlanner = input => planner(input);
   const check = () => {
     guardedRead(ports.assertCurrent);
     if (ports.signal.aborted) throw new Error('CANCELLED');
@@ -53,14 +63,19 @@ export async function prepareNativeConnectionTransaction(input: unknown, ports: 
     chainId: ports.network.chainId,
     scope: ports.network.registrationHash,
     signal: ports.signal,
-    nonceContext: ports.planner,
+    nonceContext: planner,
     now: ports.now ?? (() => Math.floor(performance.now())),
     assertCurrent: check,
-    prepare: (request, assertCurrent, planner, approved) =>
-      ports.rpc.prepareDapp(request, ports.signal, assertCurrent, planner, approved, ports.funding, gasPolicy, ports.feePolicy,
-        planner === ports.planner ? ports.assertRefreshedState : undefined),
+    prepare: (request, assertCurrent, nonceContext, approved) =>
+      ports.rpc.prepareDapp(request, ports.signal, assertCurrent, nonceContext, approved, ports.funding,
+        estimateAfterAuthorization && nonceContext !== planner ? { kind: 'estimate' } : gasPolicy, ports.feePolicy,
+        nonceContext === planner ? ports.assertRefreshedState : undefined),
     async send(transaction, assertCurrent, verifyDispatch, onBroadcast, submission) {
-      const signed = await ports.sign(transaction, assertCurrent);
+      const signed = await ports.sign(
+        transaction,
+        assertCurrent,
+        estimateAfterAuthorization ? guard => verifyDispatch(authorizationPlanner, guard) : undefined
+      );
       assertCurrent();
       return ports.submit(transaction, signed, assertCurrent, verifyDispatch, onBroadcast, submission);
     },

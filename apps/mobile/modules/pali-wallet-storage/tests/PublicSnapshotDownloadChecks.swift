@@ -61,7 +61,7 @@ private enum PublicSnapshotDownloadChecks {
     cancelled.start()
     guard case .failure(.cancelled) = wakeup.wait() else { preconditionFailure("late POST after retirement") }
 
-    let reads: [Anchor.Read] = [.chainId, .block, .nextIndex, .lastRoot, .levels, .denomination, .block, .knownRoot]
+    let reads: [Anchor.Read] = [.chainId, .block, .nextIndex, .lastRoot, .levels, .denomination, .finalized, .knownRoot]
     for (index, read) in (reads + reads).enumerated() {
       let id = index + 1
       let (handle, result) = try prepare("anchor/captured?route=eth", read, id)
@@ -69,7 +69,7 @@ private enum PublicSnapshotDownloadChecks {
       handle.start()
       try result.wait().get()
       let prefix = Data(#"{"jsonrpc":"2.0","id":\#(id),"result":"0x1"}"#.utf8)
-      let count = read == .block ? 4 * 1024 * 1024 : 64 * 1024
+      let count = read == .block || read == .finalized ? 4 * 1024 * 1024 : 64 * 1024
       let info = try handle.info()
       precondition(info.status == 200 && info.byteCount == count)
       do {

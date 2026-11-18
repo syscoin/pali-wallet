@@ -28,6 +28,7 @@ import {
 } from './storageHelpers.ts';
 import type { createNativePrivacyPoolSync } from '../src/privacy/nativePrivacyPoolSync.ts';
 import type { IPrivateNoteStatus } from '../../../source/utils/privacy/privateVaultTypes.ts';
+import { PRIVACY_DEPOSIT_GAS_LIMIT } from '../../../source/utils/privacy/depositFees.ts';
 import { PRIVACY_RELAYER_SOURCE } from '../../../source/utils/privacy/relayers.ts';
 import { getPrivacyPool } from '../../../source/utils/privacy/registry.ts';
 import { identifyClassicNote } from '../../../source/utils/privacy/note.ts';
@@ -102,6 +103,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let proofGate: (() => Promise<void>) | undefined;
   let badProof = false;
   const rpcMethods: string[] = [];
+  const rpcRequests: { method: string; params: unknown[] }[] = [];
+  let gasEstimate = 100_000n;
   let beforeRpc: (method: string) => Promise<void> = async () => undefined;
   let beforeResponse: () => Promise<void> = async () => undefined;
   let lost = false;
@@ -134,6 +137,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       (await fixtureFetch(_url, { ...init, body: JSON.stringify(row) })).json())));
     const { id, method, params } = request;
     rpcMethods.push(method);
+    rpcRequests.push({ method, params });
     await beforeRpc(method);
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';
@@ -158,7 +162,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     else if (method === 'eth_getBalance') result = '0x56bc75e2d63100000';
     else if (method === 'eth_gasPrice') result = '0x5';
     else if (method === 'eth_maxPriorityFeePerGas') result = '0x1';
-    else if (method === 'eth_estimateGas') result = '0x186a0';
+    else if (method === 'eth_estimateGas') result = '0x' + gasEstimate.toString(16);
     else if (method === 'eth_sendRawTransaction') {
       const raw = params[0] as string;
       const transaction = Transaction.from(raw);
@@ -355,6 +359,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     get signatures() { return signatures; },
     get secretReads() { return credentialPort.secretReads; },
     rpcMethods,
+    rpcRequests,
+    estimateGas(value: bigint) { gasEstimate = value; },
     beforeRpc(callback: (method: string) => Promise<void>) { beforeRpc = callback; },
     relayedPosts,
     relayerJobReads,
@@ -494,6 +500,56 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     },
   };
 }
+
+for (const outcome of ['submitted', 'credential refused', 'over cap'] as const)
+  test(`native deposit commitment stays local through review (${outcome})`, async () => {
+    const f = await fixture();
+    try {
+      const model = await f.runtime.openPrivateDeposit!(
+        new AbortController().signal,
+        noop,
+        createTestPrivateAuthentication(noop)
+      );
+      const first = f.rpcRequests.length;
+      await model.prepare({ poolId: 'eth-1' });
+      const review = model.getSnapshot().review!;
+      const identity = identifyClassicNote((await f.privateNotes())[0]!.note);
+      const commitment = identity.commitment.slice(2);
+      assert.equal(review.gasLimit, PRIVACY_DEPOSIT_GAS_LIMIT);
+      const reviewReads = JSON.stringify(f.rpcRequests.slice(first));
+      assert(!reviewReads.includes(commitment));
+      assert(!reviewReads.includes('0xb214faa5'));
+      assert(!f.rpcMethods.slice(first).includes('eth_estimateGas'));
+      assert.equal(f.signatures, 0);
+
+      if (outcome === 'credential refused') f.failCredentialRead();
+      if (outcome === 'over cap')
+        f.estimateGas(BigInt(PRIVACY_DEPOSIT_GAS_LIMIT) + 1n);
+      const secretsBefore = f.secretReads;
+      f.beforeRpc(async method => {
+        if (method === 'eth_estimateGas') assert(f.secretReads > secretsBefore);
+      });
+      await model.confirm(review.intentId);
+      const estimates = f.rpcRequests.slice(first)
+        .filter(({ method }) => method === 'eth_estimateGas');
+      if (outcome === 'credential refused') {
+        assert.equal(estimates.length, 0);
+        assert(!JSON.stringify(f.rpcRequests.slice(first)).includes(commitment));
+      } else {
+        assert(estimates.length > 0);
+        for (const { params } of estimates)
+          assert.equal((params[0] as { data: string }).data, '0xb214faa5' + commitment);
+      }
+      assert.equal(model.getSnapshot().phase, outcome === 'submitted' ? 'submitted' : 'failed');
+      assert.equal(f.signatures, outcome === 'submitted' ? 1 : 0);
+      assert.equal(f.posted.length, outcome === 'submitted' ? 1 : 0);
+      if (outcome === 'submitted')
+        assert.equal(Transaction.from(f.posted[0]!).gasLimit, BigInt(PRIVACY_DEPOSIT_GAS_LIMIT));
+      await model.dispose();
+    } finally {
+      await f.close();
+    }
+  });
 
 test('native saved-note withdrawal binds exact fixed-gas SDK bytes and never estimates private calldata', async () => {
   const f = await fixture();

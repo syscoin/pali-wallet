@@ -55,6 +55,7 @@ import type { EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.
 import { openOwnedPrivatePool } from './ownedPrivatePool.ts';
 import { NativePrivateDeposit, type NativePrivateDepositView } from './privateDeposit.ts';
 import { createPrivacyTransactionsController } from '../../../../source/wallet/privacyTransactions.ts';
+import { PRIVACY_DEPOSIT_GAS_LIMIT } from '../../../../source/utils/privacy/depositFees.ts';
 import { capturePrivateDepositAttempt, privateDepositUnsignedBytes } from '../../../../source/utils/privacy/depositMetadata.ts';
 import type { IPrivacyDepositSession } from '../../../../source/utils/privacy/transactionTypes.ts';
 import { Contract } from '../../../../source/utils/ethersV6Compat.ts';
@@ -868,7 +869,8 @@ export function createKeyringRuntimeFactory(
           work: (secret: string) => T | Promise<T>, supplied: NativeOperationCredential | null,
           authorization: Readonly<{ receipt: NativeOperationAuthorization; target: string }> | null,
           interruption: Readonly<{ authentication: NativePrivateAuthentication; assertCurrent(): void }> | null = null,
-          preserveCancellation = false
+          preserveCancellation = false,
+          beforeUnlock?: (assertCurrent: () => void) => Promise<void>
         ): Promise<T> => {
           const captured = generation, ring = keyring, identity = verifiedIdentity, owned = new AbortController();
           const abort = () => owned.abort();
@@ -881,6 +883,11 @@ export function createKeyringRuntimeFactory(
             current(captured); checkGuard(assertOwner);
             if (owned.signal.aborted || ring !== keyring || identity !== verifiedIdentity) throw new KeyringRuntimeError('CANCELLED');
           };
+          const checkIdentity = async () => {
+            check();
+            if (identity && JSON.stringify(await readIdentity()) !== JSON.stringify(identity)) throw new KeyringRuntimeError('CANCELLED');
+            check();
+          };
           try {
             check(); if (!credentialVault) throw new KeyringRuntimeError('NOT_READY');
             if (supplied !== null) assertDeviceConsent(supplied, check);
@@ -890,7 +897,16 @@ export function createKeyringRuntimeFactory(
             }
             const execute = (owner: AbortSignal) => ring.withSecretOperation({ async withSecret(sdkCheck, consume) {
               const guard = () => { check(); checkGuard(sdkCheck); check(); };
-              const use = async (secret: string) => { secretDelivered = true; return consume(secret); };
+              const use = async (secret: string) => {
+                secretDelivered = true;
+                if (beforeUnlock) {
+                  await checkIdentity();
+                  guard();
+                  await beforeUnlock(guard);
+                  guard();
+                }
+                return consume(secret);
+              };
               const read = async (consume: (secret: string) => Promise<void>) => {
                 try { await credentialVault.withSecret({ purpose, signal: owner, assertCurrent: guard }, consume); }
                 catch (error) { if (!secretDelivered) credentialRejection = error; throw error; }
@@ -898,9 +914,8 @@ export function createKeyringRuntimeFactory(
               if (activeCredentialAction) await activeCredentialAction.withSecret({ purpose, signal, assertCurrent: guard }, read, use);
               else await read(use);
             } }, { signal: owner, assertCurrent: check }, async secret => {
-              check();
-              if (identity && JSON.stringify(await readIdentity()) !== JSON.stringify(identity)) throw new KeyringRuntimeError('CANCELLED');
-              check(); return work(secret);
+              await checkIdentity();
+              return work(secret);
             });
             return interruption
               ? await withNativePrivateAuthentication(interruption.authentication, owned.signal, interruption.assertCurrent, execute)
@@ -1382,7 +1397,8 @@ export function createKeyringRuntimeFactory(
         // request retires. Rethrow outside run() without retiring the result screen.
         const infrastructureSigningFailures = new WeakSet<Error>();
         async function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
-          selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
+          selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding,
+          gasPolicy: EvmGasPolicy | Readonly<{ kind: 'private-deposit' }>,
           hardwareSigner: (Pick<NativeHardwareDappSigning, 'signTransaction'> & {keyring(): IndexedKeyring}) | null,
           validateSigningAndBroadcast: (() => Promise<void>) | null,
           authentication: NativePrivateAuthentication | null = null,
@@ -1399,6 +1415,8 @@ export function createKeyringRuntimeFactory(
           const hardware = selected.type === 'Ledger' || selected.type === 'Trezor';
           if (hardware ? !hardwareSigner || typeof hardwareSigner.signTransaction !== 'function' || typeof hardwareSigner.keyring !== 'function'
             : (hardwareSigner !== null || (selected.type !== 'HDAccount' && selected.type !== 'Imported')))
+            throw new KeyringRuntimeError('INVALID_INPUT');
+          if (gasPolicy.kind === 'private-deposit' && (hardware || authentication === null || !metadata))
             throw new KeyringRuntimeError('INVALID_INPUT');
           const signerType = selected.type, ring = keyring;
           const normalized = normalizeDappTransaction(input);
@@ -1430,7 +1448,10 @@ export function createKeyringRuntimeFactory(
             : {keyring: transactionRecordKeyring(ring, check), assertCurrent: check},
             network.chainId, selected.address, network.rpcUrl,undefined,smartReplacement);
           return prepareNativeConnectionTransaction({ ...normalized, from: selected.address }, {
-            network, rpc, signal, planner, funding, gasPolicy, assertCurrent: check,
+            network, rpc, signal, planner, funding, assertCurrent: check,
+            ...(gasPolicy.kind === 'private-deposit'
+              ? { gasPolicy: { kind: 'fixed', gasLimit: PRIVACY_DEPOSIT_GAS_LIMIT }, estimateAfterAuthorization: true }
+              : { gasPolicy }),
             feePolicy: metadata?.smartAccountExecution === true && (normalized.gasPrice !== undefined ||
               (normalized.maxFeePerGas !== undefined && normalized.maxPriorityFeePerGas !== undefined)) ? 'fixed' : undefined,
             assertRefreshedState: finalAdmissionIncludesAssets === true &&
@@ -1439,7 +1460,7 @@ export function createKeyringRuntimeFactory(
             readApprovalMetadata: (contract, assertCurrent) => readNativeApprovalMetadata({
               network, owner: selected.address, contract, signal, assertCurrent, fetch,
             }),
-            async sign(transaction, assertSigningCurrent) {
+            async sign(transaction, assertSigningCurrent, recheckAfterAuthorization) {
               const result = await run(async (ownerGeneration) => {
                 const guard = () => { current(ownerGeneration); check(); checkGuard(assertSigningCurrent); };
                 guard();
@@ -1484,7 +1505,7 @@ export function createKeyringRuntimeFactory(
                     current(ownerGeneration);
                     if (keyring !== ring || !ring.hasPublicSession()) throw new KeyringRuntimeError('CANCELLED');
                   },
-                } : null);
+                } : null, false, recheckAfterAuthorization);
                 guard();
                 return {kind: 'signed' as const, signed: Object.freeze({ rawTransaction: signed.rawTransaction, hash: signed.hash })};
               // The enclosing private confirmation owns its drain. Revoke keys
@@ -3014,14 +3035,14 @@ export function createKeyringRuntimeFactory(
                 const metadata: Record<string, unknown> = {};
                 let saved!: PreparedDeposit;
                 const quote = await prepareOwnedEvmTransaction(
-                  transaction,
+                  { ...transaction, gasLimit: PRIVACY_DEPOSIT_GAS_LIMIT },
                   selected,
                   selected,
                   lifetime.signal,
                   check,
                   metadata,
                   NATIVE_EVM_FEE_FUNDING,
-                  { kind: 'estimate' }, null, null, authentication,
+                  { kind: 'private-deposit' }, null, null, authentication,
                   async () => {
                     if (!saved.clearUnsigned) throw new Error('privacy_deposit_context_changed');
                     await saved.clearUnsigned();

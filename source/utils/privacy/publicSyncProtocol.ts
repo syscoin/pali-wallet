@@ -6,7 +6,11 @@ import {
   normalizePrivacyServiceOrigin,
 } from '../../shared/privacyServiceOrigin.ts';
 
-import { getPrivacyPool, PRIVACY_TREE_LEVELS } from './registry.ts';
+import {
+  getPrivacyPool,
+  PRIVACY_MAX_LEAVES,
+  PRIVACY_TREE_LEVELS,
+} from './registry.ts';
 import {
   validatePrivacyRpcUrl,
   validateSnapshot,
@@ -229,6 +233,166 @@ export type PrivacyAnchorRead =
   | 'block'
   | 'isKnownRoot'
   | (typeof anchorScalars)[number];
+
+export type PrivacyProofCheckpointRead =
+  | 'finalized'
+  | 'chainId'
+  | 'block'
+  | 'nextIndex'
+  | 'getLastRoot'
+  | 'isKnownRoot';
+
+export type PrivacyProofCheckpoint = Readonly<
+  PrivacyAnchorFacts & { blockTimestamp: number }
+>;
+
+const PRIVACY_PROOF_CHECKPOINT_BLOCKS = 8;
+// Give the indexer one public interval to catch up to recently finalized data.
+const PRIVACY_PROOF_INDEX_LAG_BLOCKS = 4;
+const blockNumber = (value: unknown): number => {
+  if (
+    typeof value !== 'string' ||
+    !/^0x(?:0|[1-9a-f][0-9a-f]{0,13})$/.test(value)
+  )
+    throw new Error('privacy_rpc_unavailable');
+  const result = Number(BigInt(value));
+  if (!Number.isSafeInteger(result)) throw new Error('privacy_rpc_unavailable');
+  return result;
+};
+
+export async function readPrivacyProofCheckpoint(
+  poolId: PrivacyPoolId,
+  read: (
+    kind: PrivacyProofCheckpointRead,
+    height: number,
+    root: string
+  ) => Promise<unknown>
+): Promise<PrivacyProofCheckpoint> {
+  const pool = getPrivacyPool(poolId);
+  const zero = '0x' + '00'.repeat(32);
+  if ((await read('chainId', pool.deploymentBlock, zero)) !== '0x1')
+    throw new Error('privacy_wrong_chain');
+  const finalized = (await read('finalized', pool.deploymentBlock, zero)) as {
+    number?: unknown;
+  } | null;
+  const height =
+    Math.floor(
+      (blockNumber(finalized?.number) - PRIVACY_PROOF_INDEX_LAG_BLOCKS) /
+        PRIVACY_PROOF_CHECKPOINT_BLOCKS
+    ) * PRIVACY_PROOF_CHECKPOINT_BLOCKS;
+  if (height < pool.deploymentBlock)
+    throw new Error('privacy_verification_pending');
+  const block = () =>
+    read('block', height, zero) as Promise<{
+      hash?: unknown;
+      number?: unknown;
+      timestamp?: unknown;
+    } | null>;
+  const before = await block();
+  if (
+    blockNumber(before?.number) !== height ||
+    typeof before?.hash !== 'string' ||
+    !/^0x[0-9a-f]{64}$/.test(before.hash)
+  )
+    throw new Error('privacy_anchor_changed');
+  const blockTimestamp = blockNumber(before.timestamp) * 1000;
+  if (!Number.isSafeInteger(blockTimestamp) || blockTimestamp <= 0)
+    throw new Error('privacy_rpc_unavailable');
+  const leafCount = Number(
+    PRIVACY_POOL_ABI.decodeFunctionResult(
+      'nextIndex',
+      (await read('nextIndex', height, zero)) as string
+    )[0]
+  );
+  const root = PRIVACY_POOL_ABI.decodeFunctionResult(
+    'getLastRoot',
+    (await read('getLastRoot', height, zero)) as string
+  )[0] as string;
+  if (
+    !Number.isSafeInteger(leafCount) ||
+    leafCount < 0 ||
+    leafCount > PRIVACY_MAX_LEAVES
+  )
+    throw new Error('privacy_verification_failed');
+  const after = await block();
+  if (
+    after?.hash !== before.hash ||
+    after?.number !== before.number ||
+    after?.timestamp !== before.timestamp
+  )
+    throw new Error('privacy_anchor_changed');
+  return Object.freeze({
+    asOfBlockNumber: height,
+    asOfBlockHash: before.hash,
+    blockTimestamp,
+    leafCount,
+    root,
+  });
+}
+
+export async function verifyPrivacyProofCheckpoint(
+  checkpoint: PrivacyProofCheckpoint,
+  read: (
+    kind: PrivacyProofCheckpointRead,
+    height: number,
+    root: string
+  ) => Promise<unknown>
+): Promise<boolean> {
+  const { asOfBlockNumber: height, asOfBlockHash: hash, root } = checkpoint;
+  if ((await read('chainId', height, root)) !== '0x1') return false;
+  const block = (await read('block', height, root)) as {
+    hash?: unknown;
+    number?: unknown;
+    timestamp?: unknown;
+  } | null;
+  if (
+    block?.hash !== hash ||
+    blockNumber(block.number) !== height ||
+    blockNumber(block.timestamp) * 1000 !== checkpoint.blockTimestamp
+  )
+    return false;
+  return (
+    PRIVACY_POOL_ABI.decodeFunctionResult(
+      'isKnownRoot',
+      (await read('isKnownRoot', height, root)) as string
+    )[0] === true
+  );
+}
+
+export function createPrivacyProofCheckpointReader(
+  poolId: PrivacyPoolId,
+  rpcUrl: string,
+  signal: AbortSignal,
+  rpc: ReturnType<typeof createPrivacyRpc>
+) {
+  const { address } = getPrivacyPool(poolId);
+  const url = validatePrivacyRpcUrl(rpcUrl);
+  return (kind: PrivacyProofCheckpointRead, height: number, root: string) => {
+    if (kind === 'chainId') return rpc(url, 'eth_chainId', [], signal);
+    if (kind === 'block' || kind === 'finalized')
+      return rpc(
+        url,
+        'eth_getBlockByNumber',
+        [kind === 'finalized' ? 'finalized' : toQuantity(height), false],
+        signal
+      );
+    return rpc(
+      url,
+      'eth_call',
+      [
+        {
+          to: address,
+          data: PRIVACY_POOL_ABI.encodeFunctionData(
+            kind,
+            kind === 'isKnownRoot' ? [root] : []
+          ),
+        },
+        kind === 'isKnownRoot' ? 'latest' : toQuantity(height),
+      ],
+      signal
+    );
+  };
+}
 
 type PrivacyAnchorFacts = Pick<
   PrivacySnapshot,

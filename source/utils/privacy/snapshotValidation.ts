@@ -14,9 +14,10 @@ const isFieldWord = (value: unknown): value is string =>
   // Canonical, equal-width lowercase hex has the same string and integer order.
   isWord(value) && value < FIELD;
 
-export function validateSnapshot(
+function validateSnapshotFields(
   poolId: PrivacyPoolId,
-  value: unknown
+  value: unknown,
+  localProof: boolean
 ): PrivacySnapshot {
   const pool = getPrivacyPool(poolId);
   const data = value as PrivacySnapshot;
@@ -36,7 +37,8 @@ export function validateSnapshot(
     data.leaves.length !== data.leafCount ||
     data.leaves.some((leaf) => !isFieldWord(leaf)) ||
     !Array.isArray(data.withdrawnNullifiers) ||
-    data.withdrawnNullifiers.length > data.leafCount ||
+    data.withdrawnNullifiers.length >
+      (localProof ? PRIVACY_MAX_LEAVES : data.leafCount) ||
     data.withdrawnNullifiers.some((hash) => !isFieldWord(hash)) ||
     new Set(data.withdrawnNullifiers).size !== data.withdrawnNullifiers.length
   )
@@ -54,6 +56,21 @@ export function validateSnapshot(
     leaves: data.leaves,
     withdrawnNullifiers: data.withdrawnNullifiers,
   };
+}
+
+export function validateSnapshot(
+  poolId: PrivacyPoolId,
+  value: unknown
+): PrivacySnapshot {
+  return validateSnapshotFields(poolId, value, false);
+}
+
+/** A locally leased proof prefix can have a newer, already validated spent feed. */
+export function validateProofSnapshot(
+  poolId: PrivacyPoolId,
+  value: unknown
+): PrivacySnapshot {
+  return validateSnapshotFields(poolId, value, true);
 }
 
 export function validatePrivacyRpcUrl(url: string): string {

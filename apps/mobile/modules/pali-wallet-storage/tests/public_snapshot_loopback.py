@@ -34,7 +34,7 @@ ANCHOR_READS = [
     ('eth_getBlockByNumber', [TAG, False]),
     *[('eth_call', [{'to': POOL, 'data': selector}, TAG])
       for selector in ('0xfc7e9c6f', '0xba70f757', '0x4ecf518b', '0x8bca6d16')],
-    ('eth_getBlockByNumber', [TAG, False]),
+    ('eth_getBlockByNumber', ['finalized', False]),
     ('eth_call', [{'to': POOL, 'data': '0x6d9833e3' + 'ab' * 32}, 'latest']),
 ] * 2
 violations = []

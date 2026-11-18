@@ -53,6 +53,15 @@ export async function openOwnedPrivatePool(
     return Object.freeze({
       snapshot: access.snapshot,
       assertSnapshotCurrent,
+      ...(access.assertNoteInCheckpoint
+        ? {
+            assertNoteInCheckpoint(commitment: string) {
+              assertSnapshotCurrent(access.snapshot);
+              access.assertNoteInCheckpoint!(commitment);
+              assertSnapshotCurrent(access.snapshot);
+            },
+          }
+        : {}),
       async getPath(index: number) {
         assertSnapshotCurrent(access.snapshot);
         const path = await access.getPath(index);

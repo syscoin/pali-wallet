@@ -2,11 +2,17 @@ import { DEFAULT_PRIVACY_SERVICE_ORIGIN } from '../../shared/privacyServiceOrigi
 
 import {
   createPrivacyRpc,
+  createPrivacyProofCheckpointReader,
   createPrivacySnapshotAnchorVerifier,
   readPrivacyPoolSnapshot,
+  readPrivacyProofCheckpoint,
+  verifyPrivacyProofCheckpoint,
   verifyPrivacySnapshotAnchor,
 } from './publicSyncProtocol';
-import type { PrivacyJsonTransport } from './publicSyncProtocol';
+import type {
+  PrivacyJsonTransport,
+  PrivacyProofCheckpoint,
+} from './publicSyncProtocol';
 import { validatePrivacyRpcUrl } from './snapshotValidation';
 import type { PrivacyPoolId, PrivacySnapshot } from './types';
 
@@ -34,6 +40,29 @@ const requestJson: PrivacyJsonTransport = async (
 const rpc = createPrivacyRpc(requestJson);
 export const createSnapshotAnchorVerifier = () =>
   createPrivacySnapshotAnchorVerifier(rpc);
+
+export function selectSnapshotProofCheckpoint(
+  poolId: PrivacyPoolId,
+  rpcUrl: string,
+  signal: AbortSignal
+) {
+  return readPrivacyProofCheckpoint(
+    poolId,
+    createPrivacyProofCheckpointReader(poolId, rpcUrl, signal, rpc)
+  );
+}
+
+export function verifySnapshotProofCheckpoint(
+  poolId: PrivacyPoolId,
+  checkpoint: PrivacyProofCheckpoint,
+  rpcUrl: string,
+  signal: AbortSignal
+) {
+  return verifyPrivacyProofCheckpoint(
+    checkpoint,
+    createPrivacyProofCheckpointReader(poolId, rpcUrl, signal, rpc)
+  );
+}
 
 export function fetchPrivacySnapshot(
   poolId: PrivacyPoolId,

@@ -10,7 +10,7 @@ const { Script } = require('node:vm');
 const { ETH1_SCALE, readEth1ScaleSnapshot, readEth1ScaleTranscript, referencePaths } = require('../eth1-scale-input.cjs');
 const { APP, BASE, buildOverlay } = require('../prepare-eth1-release-scale.cjs');
 const { PUBLIC_POOL_ANCHOR_READS, PUBLIC_POOL_LEAVES, PUBLIC_POOL_ROOT,
-  PUBLIC_POOL_PATH_DIGESTS } = require('../public-pool-contract.ts');
+  PUBLIC_POOL_PATH_DIGESTS, PUBLIC_POOL_PROOF_LEAVES, PUBLIC_POOL_PROOF_ROOT, PUBLIC_POOL_PROOF_PATH_DIGESTS } = require('../public-pool-contract.ts');
 
 const word = (value) => '0x' + BigInt(value).toString(16).padStart(64, '0');
 const exampleTime = Date.parse('2026-11-06T03:10:00Z');
@@ -65,6 +65,9 @@ test('the independent bottom-up reference agrees with the existing small smoke r
   const proof = referencePaths(leaves);
   assert.equal(proof.root, PUBLIC_POOL_ROOT);
   assert.deepEqual(proof.pathDigests, PUBLIC_POOL_PATH_DIGESTS);
+  const checkpoint = referencePaths(leaves.slice(0, PUBLIC_POOL_PROOF_LEAVES));
+  assert.equal(checkpoint.root, PUBLIC_POOL_PROOF_ROOT);
+  assert.deepEqual(checkpoint.pathDigests, PUBLIC_POOL_PROOF_PATH_DIGESTS);
 });
 
 test('the source-pinned projection retains production budgets and isolates the historical clock', (t) => {

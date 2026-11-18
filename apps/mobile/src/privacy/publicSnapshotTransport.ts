@@ -1,4 +1,4 @@
-import type { PrivacyAnchorRead } from '../../../../source/utils/privacy/publicSyncProtocol.ts';
+import type { PrivacyAnchorRead, PrivacyProofCheckpointRead } from '../../../../source/utils/privacy/publicSyncProtocol.ts';
 import type { PrivacyPoolId } from '../../../../source/utils/privacy/types.ts';
 import type { OwnedPrivacyPullTransport } from './nativePrivacyPoolSync.ts';
 
@@ -10,7 +10,7 @@ export type PublicSnapshotModule = Readonly<{
     address: string,
     blockNumber: number,
     root: string,
-    read: PrivacyAnchorRead,
+    read: PrivacyAnchorRead | PrivacyProofCheckpointRead,
     id: number
   ): string;
   startPublicSnapshot(token: string): Promise<SnapshotInfo>;
@@ -92,6 +92,9 @@ export function createPublicSnapshotTransport(module: PublicSnapshotModule): Own
       return prepare(() => reserveSnapshot(pool, origin), signal);
     },
     prepareAnchor({ rpcUrl, poolAddress, blockNumber, root }, read, id, signal) {
+      return prepare(() => reserveAnchor(rpcUrl, poolAddress, blockNumber, root, read, id), signal);
+    },
+    prepareProofCheckpoint({ rpcUrl, poolAddress, blockNumber, root }, read, id, signal) {
       return prepare(() => reserveAnchor(rpcUrl, poolAddress, blockNumber, root, read, id), signal);
     },
   };
