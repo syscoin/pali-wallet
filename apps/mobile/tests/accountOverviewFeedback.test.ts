@@ -8,6 +8,7 @@ import ts from 'typescript';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
+import type { NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
 import { formatIndicativeFiat } from '../src/portfolio/fiatDisplay.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 
@@ -30,6 +31,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     view: { filter: 'all', showZero: false }, hasMore: false };
   let rejectSelection = true, hidden = false, writes = 0, cursor = 0;
   let selectionGate: Promise<void> | undefined;
+  let networkActivity: Pick<NativeActivitySnapshot, 'status' | 'hasMore' | 'error'> | undefined;
   const cells: Cell[] = [], effects: (() => void)[] = [];
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const effect = (run: () => void | (() => void), deps?: readonly unknown[]) => {
@@ -51,7 +53,8 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     AppState: { currentState: 'active' }, StyleSheet: { create: (value: unknown) => value } };
   const controller = { subscribe: () => () => undefined, getSnapshot: () => snapshot, connect: () => () => undefined,
     setCurrency() {}, cachedBalances: () => [], findRow: () => undefined,
-    getNetwork: () => undefined,
+    getNetwork: (id: string) => id === choice.scope.network.id && networkActivity
+      ? { choice, controller: { getSnapshot: () => networkActivity } } : undefined,
     async selectFilter(value: string) { writes++; await selectionGate; if (rejectSelection) throw Error('Storage unavailable'); snapshot.filter = value; },
     async refresh() { throw Error('Activity unavailable'); },
   };
@@ -102,6 +105,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
   const modal = () => nodes(render()).find(node => node.type === 'Modal' && node.props.visible);
   return { render, nodes, modal, row,
     setActivity(value: Partial<typeof snapshot>) { Object.assign(snapshot, value); },
+    setNetworkActivity(value: typeof networkActivity) { networkActivity = value; },
     duplicateNetworks() {
       snapshot.choices = ['31337', '31338'].map(chainId => ({ ...choice, networkName: 'Shared network', symbol: 'ABC',
         scope: { ...choice.scope, id: `account-1:custom:${chainId}`, network: { ...choice.scope.network, id: `custom:${chainId}`, chainId } } }));
@@ -154,6 +158,7 @@ test('activity pagination waits for refresh and distinguishes an incomplete feed
     f.setActivity({ refreshing: false });
     assert(titles().includes('Load older activity'));
     f.setActivity({ partial: true });
+    f.setNetworkActivity({ status: 'ready', hasMore: true, error: 'feed-unavailable' });
     assert(titles().includes('Retry activity'));
     assert(!titles().includes('Load older activity'));
     f.setActivity({ hasMore: false });
