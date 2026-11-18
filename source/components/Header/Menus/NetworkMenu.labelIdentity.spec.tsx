@@ -67,6 +67,7 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockState,
+    subscribe: () => () => undefined,
     dispatch: (...args: any[]) => mockDispatch(...args),
   },
 }));

@@ -13,6 +13,7 @@ import {
 } from '../utils/privacy/withdrawalMetadata';
 
 import { EvmSignedRecords } from './evmSignedRecords';
+import { projectSavedEvmTransaction } from './evmSignedReplay';
 import { createPrivateVaultSession } from './privateVault';
 import { createPrivateVaultController } from './privateVault';
 import type { IPrivacyDepositAttempt } from '../utils/privacy/transactionTypes';
@@ -325,4 +326,28 @@ it('refuses generic private withdrawal cancellation and preserves the encrypted 
     (await f.records().readExact(f.session(), '1', signer.address, f.tx.hash!))
       ?.rawTransaction
   ).toBe(f.raw);
+});
+
+it('derives the withdrawal cancellation restriction from the signed envelope without Activity metadata', async () => {
+  const f = await fixture(false, true, 'withdrawal');
+  const records = f.records();
+  const session = f.session();
+  const hash = f.tx.hash!;
+  const entry = await records.readExact(session, '1', signer.address, hash);
+  expect(entry?.metadata).toBeUndefined();
+  expect(projectSavedEvmTransaction(entry!)).toMatchObject({
+    cancellationUnavailable: true,
+  });
+  await expect(
+    records.readReplacement(session, '1', signer.address, hash, 'cancel')
+  ).resolves.toBeNull();
+  await expect(
+    records.captureVerifiedReplacement(session, {
+      chainId: '1',
+      from: signer.address,
+      nonce: 0,
+      originalHash: hash,
+      operation: 'cancel',
+    })
+  ).rejects.toThrow('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
 });

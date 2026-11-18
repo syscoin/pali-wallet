@@ -115,6 +115,7 @@ import {
   readBlockbookNativeQuote,
 } from '../../../shared/nativeCoinQuotes';
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
+import { getPrivacyPoolActivity } from '../../../shared/privacyPoolActivity';
 import { readPublicJson } from '../../../shared/publicMarketRead';
 import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import {
@@ -9372,7 +9373,7 @@ class MainController {
 
     // An explorer nonce alone cannot authorize the SDK's missing-RPC fallback.
     // Require a cached signed envelope whose hash commits to this exact nonce.
-    const hasSignedSubmission = (tx: any) => {
+    const readSignedSubmission = (tx: any): Transaction | null => {
       try {
         const quantity = (value: any) =>
           value && typeof value === 'object'
@@ -9405,17 +9406,27 @@ class MainController {
                 signature: tx.signature ?? { r: tx.r, s: tx.s, v: tx.v },
               }
         );
-        return (
-          (signed.type === 0 || signed.type === 1 || signed.type === 2) &&
+        return (signed.type === 0 || signed.type === 1 || signed.type === 2) &&
           signed.signature !== null &&
           signed.hash === normalizedHash &&
           signed.from?.toLowerCase() === normalizedSignerAddress &&
           signed.chainId === BigInt(chainId) &&
           signed.nonce === fallbackNonce
-        );
+          ? signed
+          : null;
       } catch {
-        return false;
+        return null;
       }
+    };
+    const assertNotPrivateWithdrawal = (transaction: {
+      data: string;
+      to: string | null;
+    }) => {
+      if (
+        getPrivacyPoolActivity(chainId, transaction.to, transaction.data)
+          ?.kind === 'withdrawal'
+      )
+        throw new Error('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
     };
 
     const keyring = this.getActiveKeyring();
@@ -9444,15 +9455,16 @@ class MainController {
         payer?.address?.toLowerCase() !== normalizedSignerAddress ||
         !isAccountCompatibleWithNetwork(payer, payerRef.type, activeNetwork) ||
         !isPendingOriginal(currentOriginal, currentVault) ||
-        (usingFallback && !hasSignedSubmission(currentOriginal))
+        (usingFallback && !readSignedSubmission(currentOriginal))
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     const validateOriginal = (transaction: any | null) => {
       assertCurrentContext();
       if (transaction === null) {
-        if (!hasSignedSubmission(findOriginal()))
-          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const signed = readSignedSubmission(findOriginal());
+        if (!signed) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        assertNotPrivateWithdrawal(signed);
         usingFallback = true;
         return;
       }
@@ -9465,6 +9477,7 @@ class MainController {
         isTransactionInBlock(transaction)
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      assertNotPrivateWithdrawal(transaction);
     };
     assertCurrentContext();
     if (

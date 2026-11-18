@@ -16,6 +16,7 @@ export interface ITransactionInfoEvm {
   accessList: any[];
   blockHash: string;
   blockNumber: string;
+  cancellationUnavailable?: true;
   chainId: number;
   confirmations: number;
   from: string;

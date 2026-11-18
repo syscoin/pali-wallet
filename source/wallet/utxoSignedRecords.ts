@@ -1230,7 +1230,7 @@ export class UtxoSignedRecords {
         if (retained.url === retiringSubmissionUrl)
           throw Object.assign(
             new Error(
-              'Check your saved transfers before changing this endpoint.'
+              'Check Activity for the affected accounts on this network before changing the endpoint.'
             ),
             { code: 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER' }
           );
@@ -1263,7 +1263,7 @@ export class UtxoSignedRecords {
         if (owner.chainId === chainId && owner.slip44 === slip44)
           throw Object.assign(
             new Error(
-              'Check your saved transfers before removing this network.'
+              'Check Activity for the affected accounts before removing this network.'
             ),
             { code: 'UTXO_NETWORK_HAS_SAVED_TRANSFER' }
           );

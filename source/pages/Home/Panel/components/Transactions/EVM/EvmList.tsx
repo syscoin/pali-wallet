@@ -183,6 +183,9 @@ const EvmTransactionItem = React.memo(
       : getSmartAccountDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
     const currentAddress = currentAccount?.address?.toLowerCase();
+    const ownsReplacement =
+      canCancelSmart ||
+      (Boolean(currentAddress) && tx.from?.toLowerCase?.() === currentAddress);
     const txFrom = displayTx?.from?.toLowerCase?.();
     const txTo = displayTx?.to?.toLowerCase?.();
     const txDirection = (displayTx as any)?.direction;
@@ -678,7 +681,8 @@ const EvmTransactionItem = React.memo(
           <div className="flex max-w-[50%] shrink-0 items-center gap-4 min-w-0">
             {renderValueDisplay()}
             <div className="m-auto">
-              {isConfirmed ||
+              {!ownsReplacement ||
+              isConfirmed ||
               isReplaced ||
               (tx.historySource ===
                 EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
@@ -693,7 +697,14 @@ const EvmTransactionItem = React.memo(
                   />
                 </Tooltip>
               ) : (
-                getTxOptions(tx, canCancelSmart)
+                getTxOptions(
+                  privacyActivity?.kind === 'withdrawal' &&
+                    !(tx as any).smartAccountExecutionFrom &&
+                    !tx.cancellationUnavailable
+                    ? { ...tx, cancellationUnavailable: true }
+                    : tx,
+                  canCancelSmart
+                )
               )}
             </div>
           </div>

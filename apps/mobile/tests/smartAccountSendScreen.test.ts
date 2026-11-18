@@ -154,7 +154,6 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
       Button: 'Button',
       Card: 'Card', Coin: 'Coin', IconButton: 'IconButton',
       Header: 'Header',
-      Notice: 'Notice',
       Screen: 'Screen',
       Text: 'Text',
       colors: {},
@@ -378,10 +377,13 @@ for (const message of ['INVALID_INPUT', 'NOT_READY'])
       f.edit('Amount in ETH', '1');
       f.press();
       await tick();
-      const notice = all(f.render()).find((node) => node.type === 'Notice');
-      assert(notice);
+      const alert = all(f.render()).find(
+        (node) => node.type === 'Text' && node.props.accessibilityRole === 'alert',
+      );
+      assert(alert);
+      assert.equal(alert.props.accessibilityLiveRegion, 'polite');
       assert.equal(
-        notice.props.body,
+        alert.children.join(''),
         message === 'INVALID_INPUT'
           ? 'Check recipient and amount'
           : 'This request could not be completed'
@@ -456,7 +458,12 @@ test('invalid NFT identifiers stay in the form with a specific field message', a
     f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
     f.edit('Token ID', '-1'); f.press(); await tick();
     assert.equal(calls, 0);
-    assert.equal(all(f.render()).find(node => node.type === 'Notice')!.props.body, 'Enter a valid token ID.');
+    const alert = all(f.render()).find(
+      (node) => node.type === 'Text' && node.props.accessibilityRole === 'alert',
+    );
+    assert(alert);
+    assert.equal(alert.props.accessibilityLiveRegion, 'polite');
+    assert.equal(alert.children.join(''), 'Enter a valid token ID.');
   } finally { f.close(); }
 });
 

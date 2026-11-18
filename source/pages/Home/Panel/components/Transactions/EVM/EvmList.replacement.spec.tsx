@@ -155,7 +155,12 @@ jest.mock('components/TransactionOptions', () => ({
     <button type="button">Cancel instruction {operationHash}</button>
   ),
   TransactionOptions: ({ transaction: tx, canCancelSmart }: any) => (
-    <div data-smart-cancel={String(canCancelSmart)}>Options:{tx.hash}</div>
+    <div
+      data-smart-cancel={String(canCancelSmart)}
+      data-cancellation-unavailable={String(!!tx.cancellationUnavailable)}
+    >
+      Options:{tx.hash}
+    </div>
   ),
 }));
 jest.mock('utils/index', () => ({
@@ -690,6 +695,20 @@ it('keeps unseen local pages available beyond the cached public window', async (
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
+it('keeps incoming pending transactions details-only and preserves outgoing controls', async () => {
+  const incoming = transaction('a', { from: TARGET, to: ACCOUNT });
+  const outgoing = transaction('b', { from: ACCOUNT.toUpperCase() });
+  mockRows = [incoming, outgoing];
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+
+  expect(await screen.findByText(`Options:${outgoing.hash}`)).toBeTruthy();
+  expect(screen.queryByText(`Options:${incoming.hash}`)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+  expect(mockNavigate).toHaveBeenCalledWith('/home/details', {
+    state: expect.objectContaining({ hash: incoming.hash }),
+  });
+});
+
 it('offers the existing menu for a locally tracked payment eligible for Speed Up', () => {
   const local = transaction('a', {
     historySource: 'local-signed',
@@ -906,6 +925,12 @@ it.each([
     expect(await screen.findByText(label)).toBeTruthy();
     expect(screen.getByText('0.1 ETH pool')).toBeTruthy();
     expect(screen.getByText(status)).toBeTruthy();
+    if (status === 'Pending')
+      expect(
+        screen
+          .getByText(`Options:${mockRows[0].hash}`)
+          .getAttribute('data-cancellation-unavailable')
+      ).toBe(String(label === 'Privacy withdrawal'));
   }
 );
 

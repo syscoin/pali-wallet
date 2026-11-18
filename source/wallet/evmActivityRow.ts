@@ -58,6 +58,7 @@ export const projectEvmActivityRow = (
     dataBytes: tx.dataBytes,
     ...(tx.selector ? { methodSelector: tx.selector } : {}),
     ...(tx.speedUpAvailable ? { speedUpAvailable: true } : {}),
+    ...(tx.cancellationUnavailable ? { cancellationUnavailable: true } : {}),
     isCancel: tx.operation === 'cancel' || smart?.cancellation === true,
     isSpeedUp: tx.operation === 'speed-up',
     ...(tx.originalHash ? { replacesHash: tx.originalHash } : {}),

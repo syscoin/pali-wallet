@@ -10,7 +10,6 @@ import {
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
-import { switchNetworkError } from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
 import {
   NETWORK_SWITCH_REVIEW_CHANGED,
@@ -21,6 +20,9 @@ import { NetworkMenu } from './NetworkMenu';
 
 const mockEmitter = jest.fn();
 const mockDispatch = jest.fn();
+const mockStoreListeners = new Set<() => void>();
+const notifyStoreListeners = () =>
+  mockStoreListeners.forEach((listener) => listener());
 const mockAlertError = jest.fn();
 const mockNetworks = {
   syscoin: {
@@ -100,6 +102,10 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockState,
+    subscribe: (listener: () => void) => {
+      mockStoreListeners.add(listener);
+      return () => mockStoreListeners.delete(listener);
+    },
     dispatch: (...args: any[]) => mockDispatch(...args),
   },
 }));
@@ -445,7 +451,7 @@ it('closes the menu while a network change is still pending', async () => {
   expect(mockDispatch).not.toHaveBeenCalled();
 });
 
-it('dispatches a switch error when the closed menu network request rejects', async () => {
+it('shows a local error when the closed menu switch request rejects', async () => {
   const failure = new Error('Network change rejected');
   let reject!: (error: Error) => void;
   mockEmitter.mockImplementationOnce(
@@ -462,8 +468,14 @@ it('dispatches a switch error when the closed menu network request rejects', asy
     expect(screen.queryByRole('menu')).toBeNull();
     expect(mockDispatch).not.toHaveBeenCalled();
     await act(async () => reject(failure));
-    await waitFor(() => expect(mockDispatch).toHaveBeenCalledTimes(1));
-    expect(mockDispatch).toHaveBeenCalledWith(switchNetworkError());
+    await waitFor(() =>
+      expect(mockAlertError).toHaveBeenCalledWith(
+        'switchNetworkPage.changeFailed',
+        undefined,
+        expect.any(Function)
+      )
+    );
+    expect(mockDispatch).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith(
       '[NetworkMenu] Network switch failed:',
       failure
@@ -475,18 +487,66 @@ it('dispatches a switch error when the closed menu network request rejects', asy
   }
 });
 
+it.each([
+  'cancelled',
+  'changed selection',
+  'returned to original',
+  'same target pending',
+  'unmounted',
+])(
+  'ignores rejected network requests after they are %s',
+  async (retirement) => {
+    let reject!: (error: unknown) => void;
+    mockEmitter.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, rejectRequest) => {
+          reject = rejectRequest;
+        })
+    );
+    const { user, unmount } = await openMenu();
+    await user.click(screen.getByRole('menuitem', { name: 'UTXO networks' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Syscoin Testnet' }));
+    if (retirement === 'changed selection')
+      mockState.vault.activeNetwork = mockNetworks.ethereum.mainnet;
+    if (retirement === 'returned to original') {
+      mockState.vault.activeNetwork = mockNetworks.ethereum.mainnet;
+      notifyStoreListeners();
+      mockState.vault.activeNetwork = mockNetworks.syscoin.mainnet;
+      notifyStoreListeners();
+    }
+    if (retirement === 'same target pending') {
+      mockState.vaultGlobal.networkStatus = 'switching';
+      notifyStoreListeners();
+    }
+    if (retirement === 'unmounted') unmount();
+    await act(async () =>
+      reject(
+        retirement === 'cancelled'
+          ? 'Network change cancelled'
+          : new Error('Network request timed out')
+      )
+    );
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockAlertError).not.toHaveBeenCalled();
+  }
+);
+
 it('reports a changed registration without putting the still-active network in an error state', async () => {
   mockEmitter.mockRejectedValueOnce(new Error(NETWORK_SWITCH_REVIEW_CHANGED));
   const { user } = await openMenu();
   await user.click(screen.getByRole('menuitem', { name: 'UTXO networks' }));
   await user.click(screen.getByRole('menuitem', { name: 'Syscoin Testnet' }));
   await waitFor(() =>
-    expect(mockAlertError).toHaveBeenCalledWith('settings.unknownNetwork')
+    expect(mockAlertError).toHaveBeenCalledWith(
+      'settings.unknownNetwork',
+      undefined,
+      expect.any(Function)
+    )
   );
   expect(mockDispatch).not.toHaveBeenCalled();
 });
 
-it('dispatches a switch error when starting a network request throws', async () => {
+it('shows a local error when starting a network request throws', async () => {
   const failure = new Error('Network request could not start');
   mockEmitter.mockImplementationOnce(() => {
     throw failure;
@@ -497,8 +557,12 @@ it('dispatches a switch error when starting a network request throws', async () 
     await user.click(screen.getByRole('menuitem', { name: 'UTXO networks' }));
     await user.click(screen.getByRole('menuitem', { name: 'Syscoin Testnet' }));
     expect(mockEmitter).toHaveBeenCalledTimes(1);
-    expect(mockDispatch).toHaveBeenCalledTimes(1);
-    expect(mockDispatch).toHaveBeenCalledWith(switchNetworkError());
+    expect(mockAlertError).toHaveBeenCalledWith(
+      'switchNetworkPage.changeFailed',
+      undefined,
+      expect.any(Function)
+    );
+    expect(mockDispatch).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith(
       '[NetworkMenu] Error initiating network switch:',
       failure

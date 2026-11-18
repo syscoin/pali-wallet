@@ -45,7 +45,6 @@ const PrivateKeyView = () => {
 
   const { useCopyClipboard, alert } = useUtils();
 
-  const [copied, copyText] = useCopyClipboard();
   const [isPrivateKeyVisible, setIsPrivateKeyVisible] =
     useState<boolean>(false);
   const [form] = Form.useForm();
@@ -57,6 +56,7 @@ const PrivateKeyView = () => {
     activeAccount?.address,
     activeAccount?.xpub,
   ]);
+  const [copied, copyText, isCurrentCopy] = useCopyClipboard(1000, keyContext);
   const disclosure = useSecretDisclosure(keyContext, () => {
     setIsPrivateKeyVisible(false);
     form.resetFields();
@@ -76,8 +76,8 @@ const PrivateKeyView = () => {
   useEffect(() => {
     if (!copied) return;
 
-    alert.info(t('settings.successfullyCopied'));
-  }, [copied, alert, t]);
+    alert.info(t('settings.successfullyCopied'), undefined, isCurrentCopy);
+  }, [copied, alert, t, isCurrentCopy]);
 
   // Password validation function for ValidatedPasswordInput
   const validatePassword = async (password: string) =>
@@ -102,13 +102,8 @@ const PrivateKeyView = () => {
   const property = isBitcoinBased && !isPublicAddress ? 'xpub' : 'address';
   const value =
     property === 'xpub' ? activeAccount?.xpub : activeAccount?.address;
-  const copyPublicIdentifier = async () => {
-    if (!value) return;
-    try {
-      await copyText(String(value));
-    } catch {
-      alert.error(t('transactions.copyFailed'));
-    }
+  const copyPublicIdentifier = () => {
+    if (value) void copyText(String(value));
   };
 
   const explorerLink = isBitcoinBased

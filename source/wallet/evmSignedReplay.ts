@@ -14,6 +14,7 @@ import {
   decodeRetainedNftTransfer,
   type NftTransferIntent,
 } from '../shared/nftTransfer.ts';
+import { getPrivacyPoolActivity } from '../shared/privacyPoolActivity.ts';
 
 import {
   retainedEvmTransaction,
@@ -115,7 +116,9 @@ export function projectSavedEvmTransaction(
     nonce: entry.nonce,
     operation: entry.operation,
     ...(entry.payloadKind === 'unsigned-eoa' ||
-    Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal')
+    Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal') ||
+    getPrivacyPoolActivity(tx.chainId.toString(), tx.to, tx.data)?.kind ===
+      'withdrawal'
       ? { cancellationUnavailable: true as const }
       : {}),
     ...(entry.originalHash ? { originalHash: entry.originalHash } : {}),

@@ -2225,14 +2225,23 @@ export class EvmSignedRecords {
     );
     if (
       tracked &&
-      tracked.metadata &&
-      (Object.hasOwn(tracked.metadata, 'privateWithdrawal') ||
+      (Object.hasOwn(tracked.metadata ?? {}, 'privateWithdrawal') ||
         (original.operation === 'speed-up' &&
-          Object.hasOwn(tracked.metadata, 'privateDeposit')))
+          Object.hasOwn(tracked.metadata ?? {}, 'privateDeposit')))
     )
       throw new Error('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
     if (tracked && !matchesNonce(tracked, original))
       throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    if (tracked) {
+      const tx = retainedEvmTransaction(
+        await this.materializeRecord(session, tracked)
+      );
+      if (
+        getPrivacyPoolActivity(tx.chainId.toString(), tx.to, tx.data)?.kind ===
+        'withdrawal'
+      )
+        throw new Error('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
+    }
     if (await this.cancellationFence(session, entries, original)) {
       const tip = (await this.replayableVariants(session, sameNonce)).at(-1);
       if (
@@ -2686,14 +2695,15 @@ export class EvmSignedRecords {
       if (!lineage || !tip) return null;
 
       const original = await this.materializeRecord(session, selected);
+      const base = retainedEvmTransaction(original);
       if (
-        original.metadata &&
-        (Object.hasOwn(original.metadata, 'privateWithdrawal') ||
-          (operation === 'speed-up' &&
-            Object.hasOwn(original.metadata, 'privateDeposit')))
+        Object.hasOwn(original.metadata ?? {}, 'privateWithdrawal') ||
+        (operation === 'speed-up' &&
+          Object.hasOwn(original.metadata ?? {}, 'privateDeposit')) ||
+        getPrivacyPoolActivity(base.chainId.toString(), base.to, base.data)
+          ?.kind === 'withdrawal'
       )
         return null;
-      const base = retainedEvmTransaction(original);
       if (base.type !== 0 && base.type !== 2) return null;
       let executionOperation: EvmSignedRecordSummary['operation'] | undefined;
       if (eoaSpeedUpOnly) {

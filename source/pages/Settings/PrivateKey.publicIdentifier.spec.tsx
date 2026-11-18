@@ -1,6 +1,12 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -15,6 +21,15 @@ const DESCRIPTOR = `wpkh(${XPUB})`;
 let mockVault: any;
 const mockEmitter = jest.fn();
 const mockClipboard = jest.fn();
+const mockToastInfo = jest.fn();
+const mockToastError = jest.fn();
+
+jest.mock('react-toastify', () => ({
+  toast: {
+    info: (...args: unknown[]) => mockToastInfo(...args),
+    error: (...args: unknown[]) => mockToastError(...args),
+  },
+}));
 
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select({ vault: mockVault }),
@@ -92,6 +107,8 @@ afterAll(() => {
   else delete (navigator as any).clipboard;
 });
 beforeEach(() => {
+  mockToastInfo.mockClear();
+  mockToastError.mockClear();
   mockClipboard.mockReset().mockResolvedValue(undefined);
   mockEmitter
     .mockReset()
@@ -161,6 +178,44 @@ it('retains the signing WIF password form without exposing or requesting a key',
   expect(screen.queryByText('settings.watchOnlyNoPrivateKey')).toBeNull();
   expect(screen.queryByRole('button', { name: 'buttons.show' })).toBeNull();
   expect(screen.queryByText('non-decryptable-test-presence-marker')).toBeNull();
+});
+
+it('retires an old public copy and confirms a copy for the displayed account', async () => {
+  let finishCopy!: () => void;
+  mockClipboard.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishCopy = resolve;
+      })
+  );
+  const { rerender } = render(<PrivateKey />);
+  fireEvent.click(screen.getByRole('button', { name: /^buttons.copy / }));
+  expect(mockClipboard).toHaveBeenCalledWith(ADDRESS);
+
+  mockVault.accounts.Imported[1] = {
+    ...mockVault.accounts.Imported[0],
+    id: 1,
+    address: XPUB,
+    xpub: XPUB,
+  };
+  mockVault.activeAccount = { type: KeyringAccountType.Imported, id: 1 };
+  rerender(<PrivateKey />);
+  expect(screen.getByTitle(XPUB)).toBeVisible();
+  await act(async () => {
+    finishCopy();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+  expect(mockToastInfo).not.toHaveBeenCalled();
+  expect(mockToastError).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole('button', { name: /^buttons.copy / }));
+  expect(mockClipboard).toHaveBeenLastCalledWith(XPUB);
+  await waitFor(() =>
+    expect(mockToastInfo).toHaveBeenCalledWith(
+      'settings.successfullyCopied',
+      undefined
+    )
+  );
 });
 
 it.each(['{Enter}', ' '])(

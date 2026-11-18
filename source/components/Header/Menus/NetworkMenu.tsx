@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -26,7 +27,6 @@ import Spinner from 'components/Spinner/Spinner';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
-import { switchNetworkError } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
 import {
   createBrowsingNavigationContext,
@@ -85,6 +85,8 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
     [INetworkType.Syscoin]: false,
     [INetworkType.Ethereum]: false,
   });
+  const retireSwitchRequest = useRef<() => void>();
+  useLayoutEffect(() => () => retireSwitchRequest.current?.(), []);
   const typeaheadInProgress = useRef(false);
   const typeaheadTimeout = useRef<ReturnType<typeof setTimeout>>();
   const resetSearchOnOpen = useRef(false);
@@ -150,35 +152,61 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         return;
       }
 
-      try {
-        // Close menu immediately after starting the switch
-        if (closeMenu) {
-          closeMenu();
+      retireSwitchRequest.current?.();
+      const initial = store.getState();
+      const startingNetwork = networkRegistrationFingerprint(
+        initial.vault.activeNetwork
+      );
+      const initialStatus = initial.vaultGlobal.networkStatus;
+      const target = networkRegistrationFingerprint(network);
+      let retired = false;
+      const isCurrent = () => {
+        const { vault, vaultGlobal } = store.getState();
+        return (
+          !retired &&
+          networkRegistrationFingerprint(vault.activeNetwork) ===
+            startingNetwork &&
+          vaultGlobal.networkStatus !== 'connecting' &&
+          vaultGlobal.networkStatus !== 'switching' &&
+          (vaultGlobal.networkStatus !== 'error' || initialStatus === 'error')
+        );
+      };
+      // Once the worker exposes a switch, it owns the connection status even
+      // when another document requested the same target. Latch retirement so
+      // a return to the original network cannot revive a queued callback.
+      const unsubscribe = store.subscribe(() => {
+        if (!isCurrent()) retire();
+      });
+      const retire = () => {
+        retired = true;
+        unsubscribe();
+      };
+      retireSwitchRequest.current = retire;
+      const reportFailure = (error: unknown, message: string) => {
+        const reason =
+          (error as { message?: unknown } | undefined)?.message ?? error;
+        if (reason === 'Network change cancelled' || !isCurrent()) {
+          retire();
+          return;
         }
+        if (reason === NETWORK_SWITCH_REVIEW_CHANGED) {
+          alert.error(t('settings.unknownNetwork'), undefined, isCurrent);
+          return;
+        }
+        console.error(message, error);
+        alert.error(t('switchNetworkPage.changeFailed'), undefined, isCurrent);
+      };
 
-        // Then perform the actual network switch in the background
+      closeMenu?.();
+      try {
         controllerEmitter(
           ['wallet', 'setActiveNetwork'],
-          [network, false, networkRegistrationFingerprint(network)]
-        )
-          .then(() => {
-            // Success is already handled by the controller via setNetworkChange
-          })
-          .catch((error) => {
-            if (error?.message === NETWORK_SWITCH_REVIEW_CHANGED) {
-              alert.error(t('settings.unknownNetwork'));
-              return;
-            }
-            console.error('[NetworkMenu] Network switch failed:', error);
-            store.dispatch(switchNetworkError());
-          });
-      } catch (networkError) {
-        // Log any synchronous errors from controllerEmitter
-        console.error(
-          '[NetworkMenu] Error initiating network switch:',
-          networkError
+          [network, false, target]
+        ).then(retire, (error) =>
+          reportFailure(error, '[NetworkMenu] Network switch failed:')
         );
-        store.dispatch(switchNetworkError());
+      } catch (error) {
+        reportFailure(error, '[NetworkMenu] Error initiating network switch:');
       }
     },
     [
