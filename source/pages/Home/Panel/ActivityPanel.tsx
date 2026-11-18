@@ -246,7 +246,7 @@ export const TransactionsPanel = () => {
     };
 
     return (
-      <div className="flex mt-5 items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-2">
         <ExternalLinkSvg />
         <button
           type="button"
@@ -326,7 +326,13 @@ export const TransactionsPanel = () => {
     historyState !== 'ready' &&
     (historyState !== 'pending' || isRetrying);
   const historyRetry = showHistoryRetry && (
-    <div className="mt-4 text-center text-sm text-brand-gray200">
+    <div
+      className={
+        hasTransactions
+          ? 'flex min-w-0 items-center justify-center gap-3 text-sm text-brand-gray200'
+          : 'mt-4 text-center text-sm text-brand-gray200'
+      }
+    >
       <p role="status" className="min-h-[1.25rem]">
         {isRetrying
           ? t('networkConnection.loadingTransactions')
@@ -336,7 +342,9 @@ export const TransactionsPanel = () => {
       </p>
       <button
         type="button"
-        className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
+        className={`inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium ${
+          hasTransactions ? '' : 'mt-2'
+        }`}
         disabled={historyState === 'pending' || isRetrying}
         onClick={retryHistory}
       >
@@ -373,7 +381,9 @@ export const TransactionsPanel = () => {
           {!historyUnavailable &&
             !savedActivityUnavailable &&
             NoTransactionsComponent}
-          {OpenTransactionExplorer}
+          {OpenTransactionExplorer && (
+            <div className="mt-5">{OpenTransactionExplorer}</div>
+          )}
           {/* <Fullscreen /> */}
         </div>
       )}
@@ -399,8 +409,11 @@ export const TransactionsPanel = () => {
               loadMoreSaved={saved.loadMore}
             />
           )}
-          {historyRetry}
-          {OpenTransactionExplorer}
+          {(hasHistoryStatus || OpenTransactionExplorer) && (
+            <div className="mt-5 flex h-11 items-center justify-center">
+              {historyRetry || OpenTransactionExplorer}
+            </div>
+          )}
         </div>
       )}
     </>
