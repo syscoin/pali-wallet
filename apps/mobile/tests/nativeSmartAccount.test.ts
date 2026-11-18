@@ -4932,6 +4932,25 @@ test('Smart fee replacement uses only the retained software payer despite a disc
     transfers.cancel();
     assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);
     assert.equal(connection.isConnected(), false, 'leaving replacement restores normal Smart owner requirements');
+
+    await f.runtime.resetActivity(() => undefined, () => undefined);
+    const activities = f.runtime.activity!;
+    const cleared = await activities.load(() => undefined, new AbortController().signal);
+    assert.deepEqual(cleared.locals, []);
+    assert.deepEqual(cleared.saved.archived, []);
+    assert.deepEqual((await activities.loadSavedPending!(cleared.scope, undefined, () => undefined)).records, []);
+    assert.equal(await activities.loadTarget!(cleared.scope, cancelHash, () => undefined), null);
+
+    await f.reopen(); await f.owner.unlock();
+    const reopened = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(reopened.scope.address, cleared.scope.address);
+    assert.deepEqual(reopened.locals, []);
+    const payer = f.owner.getCatalogue()!.accounts.find(account => account.address === original.from);
+    assert(payer);
+    await f.change({ kind: 'select', id: payer.id });
+    const payerActivity = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert(payerActivity.locals.some(row => row.hash === original.hash));
+    assert(payerActivity.locals.some(row => row.hash === cancelHash));
   } finally { await operation?.dispose(); transfers?.dispose(); await connection?.dispose(); await owned.close(); }
 });
 

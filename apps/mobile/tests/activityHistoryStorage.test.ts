@@ -6,7 +6,7 @@ import path from 'node:path';
 import { Wallet } from 'ethers/wallet';
 import { NativeActivityHistory, ACTIVITY_STORAGE_KEY, inspectRecoveryHistory } from '../src/activity/historyStore.ts';
 import { createActivityScope, type TerminalActivityRecord } from '../src/activity/types.ts';
-import { getNativeNetwork } from '../src/custody/networkContext.ts';
+import { createNativeNetwork, getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { encodeStorageValue } from '../src/storage/json.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
@@ -66,6 +66,40 @@ test('activity reset removes every selected-address alias while preserving other
   } finally { await f.cleanup(); }
 });
 
+test('Smart reset cutoff survives reopening and follows the same address and chain across registrations', async () => {
+  const f = await fixture();
+  try {
+    const history = f.history();
+    const scope = f.scope();
+    const changedEndpoint = createNativeNetwork({
+      ...scope.network,
+      id: 'custom:1',
+      rpcUrl: 'https://replacement.example',
+    });
+    const alias = createActivityScope(f.fingerprint, 'imported:60:0', wallet.address, changedEndpoint);
+    const sibling = createActivityScope(f.fingerprint, 'hd:60:1', RECIPIENT, scope.network);
+    const otherChain = createActivityScope(f.fingerprint, scope.accountId, wallet.address, 'base');
+
+    await history.recordObservation(f.record(1), guard);
+    assert.equal((await history.load(scope, guard)).clearedAt, undefined);
+    await history.clearScope(scope, guard, 1234);
+    await history.clearScope(alias, guard, 1000);
+    await f.reopen();
+
+    const reopened = f.history();
+    assert.equal((await reopened.load(scope, guard)).clearedAt, 1234);
+    assert.equal((await reopened.load(alias, guard)).clearedAt, 1234);
+    assert.equal((await reopened.load(sibling, guard)).clearedAt, undefined);
+    assert.equal((await reopened.load(otherChain, guard)).clearedAt, undefined);
+
+    const rediscovered = { hash: entryHash(1), blockNumber: '10', timestamp: 1, tokenHint: false };
+    await reopened.saveCache(scope, [rediscovered], guard);
+    const reload = await reopened.load(scope, guard);
+    assert.deepEqual(reload.candidates, [rediscovered]);
+    assert.equal(reload.clearedAt, 1234);
+  } finally { await f.cleanup(); }
+});
+
 for (const kind of ['create', 'clear'] as const) test(`activity ${kind} rolls back when its owner expires before SQL commit`, async () => {
   let held = false, entered!: () => void, release!: () => void;
   const started = new Promise<void>((resolve) => { entered = resolve; });
@@ -84,7 +118,7 @@ for (const kind of ['create', 'clear'] as const) test(`activity ${kind} rolls ba
     held = true;
     const operation = kind === 'create'
       ? history.recordObservation(f.record(1), check)
-      : history.clearScope(f.scope(), check);
+      : history.clearScope(f.scope(), check, 1234);
     const rejected = assert.rejects(operation, /CANCELLED/);
     await started;
     current = false;

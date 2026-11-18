@@ -47,7 +47,8 @@ export function createNativeAutomaticNoncePlanner(
 /** Presentation adapter only. Canonical storage, ownership and retention are shared. */
 export function createNativeSignedRecordView(
   records: EvmSignedRecords, session: EvmSignedRecordSession, walletBindingId: string,
-  account: Readonly<{ index: number; type: NativeAccountType; address: string }>, network: NativeNetworkRegistration, unsignedSpeedUpSupported = false
+  account: Readonly<{ index: number; type: NativeAccountType; address: string }>, network: NativeNetworkRegistration, unsignedSpeedUpSupported = false,
+  smartActivityAfter?: number,
 ) {
   const scope = Object.freeze({ walletFingerprint: walletBindingId, address: account.address, chainId: network.chainId });
   const checked = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -113,12 +114,14 @@ export function createNativeSignedRecordView(
     ...(maySpeedUp(record.entry, saved.type) && !!transfer ? { speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
     smartAccount: Object.freeze({ payer: getAddress(saved.from), operations: smart.operations }),
   }); };
+  const smartActivityByHash = async (hash: string) => {
+    const record = await records.readSmartAccountReplayExact(session, network.chainId, account.address, hash);
+    return record && (smartActivityAfter === undefined || record.entry.createdAt > smartActivityAfter)
+      ? smartActivity(record) : null;
+  };
   return Object.freeze({
     smartActivity(hash: string) {
-      return checked(async () => {
-        const record = await records.readSmartAccountReplayExact(session, network.chainId, account.address, hash);
-        return record ? smartActivity(record) : null;
-      });
+      return checked(() => smartActivityByHash(hash));
     },
     planAutomaticNonce: (...args: Parameters<NativeAutomaticNoncePlanner>) => checked(() => planAutomaticNonce(...args)),
     assertSpendingNonce(nonce: number) {
@@ -148,7 +151,7 @@ export function createNativeSignedRecordView(
     async activities():Promise<Readonly<{records: readonly LocalActivityRecord[]; truncated: boolean}>> {
       return checked(async () => {
         if (account.type === 'SmartAccount') {
-          const page = await records.readSmartAccountReplayPage(session, network.chainId, account.address, { maximum: LOCAL_ACTIVITY_LIMIT });
+          const page = await records.readSmartAccountReplayPage(session, network.chainId, account.address, { after: smartActivityAfter, maximum: LOCAL_ACTIVITY_LIMIT });
           return Object.freeze({ records: Object.freeze(page.entries.map(smartActivity)), truncated: page.nextCursor !== null });
         }
         const recent=await records.readRecent(session,network.chainId,account.address,LOCAL_ACTIVITY_LIMIT);
@@ -158,10 +161,7 @@ export function createNativeSignedRecordView(
     },
     activityByHash(hash: string) {
       return checked(async () => {
-        if (account.type === 'SmartAccount') {
-          const retained = await records.readSmartAccountReplayExact(session, network.chainId, account.address, hash);
-          return retained ? smartActivity(retained) : null;
-        }
+        if (account.type === 'SmartAccount') return smartActivityByHash(hash);
         const retained = await records.readExact(session, network.chainId, account.address, hash);
         return retained ? activity(retained) : null;
       });
@@ -170,7 +170,7 @@ export function createNativeSignedRecordView(
       return checked(async () => {
         if (account.type === 'SmartAccount') {
           const page = await records.readSmartAccountReplayPage(session, network.chainId, account.address,
-            { beforeHash, maximum: 20 });
+            { after: smartActivityAfter, beforeHash, maximum: 20 });
           return Object.freeze({ records: Object.freeze(page.entries.map(smartActivity)), nextCursor: page.nextCursor });
         }
         const page = await records.readPage(session, network.chainId, account.address,

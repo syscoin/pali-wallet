@@ -3702,9 +3702,10 @@ export function createKeyringRuntimeFactory(
         let scopedActivityLoad: Promise<unknown> = Promise.resolve();
         const loadActivity = async (assertCurrent: () => void, target?: NativeTokenPortfolioScope) => {
           const { scope, guard, index, type } = await activityContext(assertCurrent, target);
-          const journal = createNativeSignedRecordView(signedRecords, { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, scope.walletFingerprint, { index, type, address: scope.address }, scope.network, supportsRetainedSpeedUpIntent(keyring.ethereumTransaction));
-          const recent = await journal.activities(); guard();
           const saved = await activityHistory.load(scope, guard); guard();
+          const journal = createNativeSignedRecordView(signedRecords, { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, scope.walletFingerprint,
+            { index, type, address: scope.address }, scope.network, supportsRetainedSpeedUpIntent(keyring.ethereumTransaction), saved.clearedAt);
+          const recent = await journal.activities(); guard();
           const smartAuthorizations = type === 'SmartAccount'
             ? await signedRecords.listSmartAccountAuthorizations({ keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard },
               scope.network.chainId, scope.address, { maximum: 20 })
@@ -3757,8 +3758,9 @@ export function createKeyringRuntimeFactory(
           const { scope, guard, index, type } = await activityContext(assertOwner, target);
           if (scope.key !== previous.key || scope.sourceId !== previous.sourceId) throw new KeyringRuntimeError('CANCELLED');
           const session = { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard };
+          const saved = type === 'SmartAccount' ? await activityHistory.load(scope, guard) : undefined; guard();
           const journal = createNativeSignedRecordView(signedRecords, session, scope.walletFingerprint,
-            { index, type, address: scope.address }, scope.network, supportsRetainedSpeedUpIntent(keyring.ethereumTransaction));
+            { index, type, address: scope.address }, scope.network, supportsRetainedSpeedUpIntent(keyring.ethereumTransaction), saved?.clearedAt);
           const local = await journal.activityByHash(hash);
           guard();
           if (local) return { local: target ? inspectionOnly(local, true) : local };
@@ -7204,7 +7206,8 @@ export function createKeyringRuntimeFactory(
               const session = signedRecords.captureSession({ keyring: recordKeyring, assertCurrent: guard });
               await signedRecords.clearScope(session, { profileId, chainId: network.chainId, from: selected.address });
               guard();
-              await activityHistory.clearScope(createActivityScope(fingerprint, selected.id, selected.address, network), guard);
+              await activityHistory.clearScope(createActivityScope(fingerprint, selected.id, selected.address, network), guard,
+                selected.type === 'SmartAccount' ? Date.now() : undefined);
               guard();
             }).catch(async (error: unknown) => {
               if (requiresReopen()) {
@@ -7819,12 +7822,12 @@ export function createKeyringRuntimeFactory(
                 async loadSavedPending(previousScope, beforeHash, assertCurrent) {
                   const { scope, guard, index, type } = await activityContext(checked(assertCurrent), target);
                   if (previousScope.key !== scope.key || previousScope.sourceId !== scope.sourceId) throw new KeyringRuntimeError('CANCELLED');
+                  const saved = type === 'SmartAccount' ? await activityHistory.load(scope, guard) : undefined; guard();
                   const journal = createNativeSignedRecordView(signedRecords, { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, scope.walletFingerprint,
-                    { index, type, address: scope.address }, scope.network, supportsRetainedSpeedUpIntent(keyring.ethereumTransaction));
+                    { index, type, address: scope.address }, scope.network, supportsRetainedSpeedUpIntent(keyring.ethereumTransaction), saved?.clearedAt);
                   const page = await journal.pendingActivities(beforeHash); guard();
                   if (type !== 'SmartAccount') return { ...page, records: page.records.map(local => inspectionOnly(local, true)) };
-                  const saved = await activityHistory.load(scope, guard); guard();
-                  return { ...page, records: page.records.filter(local => !saved.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')).map(local => inspectionOnly(local, true)) };
+                  return { ...page, records: page.records.filter(local => !saved?.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')).map(local => inspectionOnly(local, true)) };
                 },
                 async observeLocal(local, assertCurrent, signal, sharedObserve) {
                   const { scope, guard } = await activityContext(checked(assertCurrent), target);
@@ -7846,12 +7849,12 @@ export function createKeyringRuntimeFactory(
             },
             async loadSavedPending(previousScope, beforeHash, assertCurrent) {
               const { scope, guard, index, type } = await checkActivityContext(previousScope, assertCurrent);
+              const saved = type === 'SmartAccount' ? await activityHistory.load(scope, guard) : undefined; guard();
               const journal = createNativeSignedRecordView(signedRecords, { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, scope.walletFingerprint,
-                { index, type, address: scope.address }, scope.network, supportsRetainedSpeedUpIntent(keyring.ethereumTransaction));
+                { index, type, address: scope.address }, scope.network, supportsRetainedSpeedUpIntent(keyring.ethereumTransaction), saved?.clearedAt);
               const page = await journal.pendingActivities(beforeHash); guard();
               if (type !== 'SmartAccount') return page;
-              const saved = await activityHistory.load(scope, guard); guard();
-              return { ...page, records: page.records.filter(local => !saved.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')) };
+              return { ...page, records: page.records.filter(local => !saved?.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')) };
             },
             async observeLocal(local, assertCurrent, signal, sharedObserve) {
               const { hash, chainId, address, walletFingerprint } = local;
@@ -7859,12 +7862,12 @@ export function createKeyringRuntimeFactory(
               if (chainId !== scope.network.chainId || address !== scope.address || walletFingerprint !== scope.walletFingerprint || local.accountId !== scope.accountId)
                 throw new KeyringRuntimeError('CANCELLED');
               if (type === 'SmartAccount') {
+                const saved = await activityHistory.load(scope, guard); guard();
                 const journal = createNativeSignedRecordView(signedRecords,
                   { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, scope.walletFingerprint,
-                  { index: selectedAccount().index, type, address: scope.address }, scope.network);
+                  { index: selectedAccount().index, type, address: scope.address }, scope.network, false, saved.clearedAt);
                 const retained = await journal.smartActivity(hash); guard();
-                const saved = retained ? null : await activityHistory.load(scope, guard); guard();
-                const source = retained ?? saved?.archived.find(item => item.hash === hash);
+                const source = retained ?? saved.archived.find(item => item.hash === hash);
                 const record = source ? { ...source, recipient: source.recipient ?? scope.address } : undefined;
                 if (!record?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
                 const rpc = new EvmTransferReadRpc(scope.network, { infrastructureReader, capabilities: transferReadCapabilities.get(scope.network.registrationHash, scope.network.rpcUrl), fetch: transferFetch });
