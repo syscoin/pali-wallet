@@ -54,6 +54,7 @@ import {
 } from 'utils/smartAccount/contracts';
 import { getSmartAccountUserOpHash } from 'utils/smartAccount/userOperationHash';
 
+import { ReceiptBalanceRefresh } from './balances/ReceiptBalanceRefresh';
 import MainController from './MainController';
 import { CancellablePromises } from './promises/cancellablesPromises';
 import SmartAccountController from './smartAccount';
@@ -762,6 +763,76 @@ it('does not give a native recipient the outcome of an unrelated originating ope
   ).toBe('0');
 });
 
+it('settles the local Smart Account Activity row and balance when explorer history rejects', async () => {
+  const f = await fixture();
+  const { vault } = mockState;
+  vault.activeNetwork.apiUrl = 'https://explorer.invalid';
+  vault.accounts.SmartAccount[1].balances = { ethereum: '0.07429548' };
+  vault.accountAssets = {};
+  await saveNativeRecipientCopies(f, 'HDAccount');
+  await settleReplay(f, 'confirmed');
+
+  const historyError = new Error('Explorer unavailable');
+  const receiptProvider = {
+    send: async (method: string) => {
+      expect(method).toBe('eth_blockNumber');
+      return '0xc';
+    },
+    getBalance: jest.fn(async () => BigInt('15226800000000000')),
+  };
+  const receiptBalanceRefresh = new ReceiptBalanceRefresh();
+  delete f.wallet.refreshBalancesAfterReceipt;
+  Object.assign(f.wallet, {
+    transactionUpdateRequestId: 0,
+    transactionUpdateCommitId: 0,
+    cancellablePromises: new CancellablePromises(),
+    transactionsManager: {
+      utils: {
+        updateTransactionsFromCurrentAccount: jest.fn(async () => {
+          throw historyError;
+        }),
+      },
+    },
+    receiptBalanceRefresh,
+    targetedBalanceVersions: new Map(),
+    targetedBalanceEvictions: 0,
+    withReceiptReadProvider: async (
+      _signal: AbortSignal,
+      _network: unknown,
+      read: (provider: typeof receiptProvider) => Promise<void>
+    ) => read(receiptProvider),
+  });
+  const senderRow = () =>
+    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
+  expect(senderRow().blockNumber).toBeFalsy();
+
+  jest.useFakeTimers();
+  try {
+    await expect(
+      f.wallet.updateUserTransactionsState({
+        isBitcoinBased: false,
+        activeNetwork: mockState.vault.activeNetwork,
+        isPolling: true,
+      })
+    ).rejects.toBe(historyError);
+    expect(senderRow()).toMatchObject({
+      blockNumber: 12,
+      blockHash,
+      status: 'success',
+      success: true,
+    });
+    await jest.advanceTimersByTimeAsync(100);
+    expect(receiptProvider.getBalance).toHaveBeenCalledWith(smart, 12);
+    expect(mockState.vault.accounts.SmartAccount[1].balances.ethereum).toBe(
+      '0.0152268'
+    );
+    expect(f.broadcasts).toEqual([]);
+  } finally {
+    receiptBalanceRefresh.cancel();
+    jest.useRealTimers();
+  }
+});
+
 it.each(['forceRefresh', 'bypassCompletedCache'] as const)(
   'rechecks a recipient after logs recover on explicit %s while routine polling respects cooldown',
   async (refreshOption) => {
@@ -839,6 +910,60 @@ it.each(['endpoint', 'account'] as const)(
     expect(f.wallet.refreshBalancesAfterReceipt).not.toHaveBeenCalled();
   }
 );
+
+it('settles a late mined Smart Account send on the fourth rapid check after a transient failure', async () => {
+  const f = await fixture();
+  await saveNativeRecipientCopies(f, 'HDAccount');
+  await settleReplay(f, 'confirmed');
+  const account = { id: 1, type: 'SmartAccount' };
+  const savedRow = () =>
+    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
+  const lookup = jest
+    .spyOn(f.wallet, 'getEvmTransactionFromProvider')
+    .mockRejectedValueOnce(new Error('Transient RPC error'))
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce(null);
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  jest.useFakeTimers();
+  try {
+    f.wallet.activeRapidPolls = new Map();
+    MainController.prototype['startRapidTransactionPolling'].call(
+      f.wallet,
+      f.hash,
+      1,
+      false,
+      account
+    );
+    for (const [index, delay] of [4000, 4000, 12000, 28000].entries()) {
+      await jest.advanceTimersByTimeAsync(delay - 1);
+      expect(lookup).toHaveBeenCalledTimes(index);
+      expect(savedRow().blockNumber).toBeFalsy();
+      expect(f.wallet.refreshBalancesAfterReceipt).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      expect(lookup).toHaveBeenCalledTimes(index + 1);
+    }
+
+    expect(mockState.vault.activeAccount).toEqual(account);
+    expect(savedRow()).toMatchObject({
+      blockNumber: 12,
+      blockHash,
+      status: 'success',
+      success: true,
+    });
+    expect(f.wallet.refreshBalancesAfterReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hash: f.hash,
+        blockNumber: 12,
+        smartAccountExecutionFrom: smart,
+      })
+    );
+    expect(f.wallet.activeRapidPolls.size).toBe(0);
+    await jest.advanceTimersByTimeAsync(60000);
+    expect(lookup).toHaveBeenCalledTimes(4);
+  } finally {
+    jest.useRealTimers();
+  }
+});
 
 it('keeps mined outer-only cancellation rows terminal without requiring a UserOperation event', async () => {
   const f = await fixture();

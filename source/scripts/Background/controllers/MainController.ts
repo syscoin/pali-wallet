@@ -10103,20 +10103,33 @@ class MainController {
           try {
             // For background transaction updates, do not toggle UI loading flags
 
-            const txs =
-              await this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
-                currentAccount,
-                isBitcoinBased,
-                activeNetwork.url,
-                currentAccountTxs,
-                isPolling,
-                isRapidPolling,
-                forceRefresh,
-                `${session}:${networkRequest}`,
-                isCurrentRead,
-                bypassCompletedCache,
-                historyAbort.signal
-              );
+            let txs;
+            try {
+              txs =
+                await this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
+                  currentAccount,
+                  isBitcoinBased,
+                  activeNetwork.url,
+                  currentAccountTxs,
+                  isPolling,
+                  isRapidPolling,
+                  forceRefresh,
+                  `${session}:${networkRequest}`,
+                  isCurrentRead,
+                  bypassCompletedCache,
+                  historyAbort.signal
+                );
+            } catch (error) {
+              // Locally acknowledged Smart Account transactions can settle
+              // through RPC even when the explorer history is unavailable.
+              if (!isBitcoinBased && isCurrentRead())
+                await this.reconcileLocalPendingEvmSmartAccountTransactions(
+                  activeAccount,
+                  activeNetwork.chainId,
+                  forceRefresh || bypassCompletedCache
+                ).catch(() => undefined);
+              throw error;
+            }
 
             const latestVault = store.getState().vault;
             if (
@@ -14554,8 +14567,11 @@ class MainController {
   ) {
     const generation = this.walletSessionGeneration;
     const pollKey = `${txHash}_${chainId}`;
-    const maxPolls = 4;
-    const pollInterval = 4000; // 4 seconds
+    // Keep the same request budget while allowing slower EVM blocks to land
+    // before the last check. Intervals stay below the worker idle timeout.
+    const delays = isBitcoinBased
+      ? [4000, 4000, 4000, 4000]
+      : [4000, 4000, 12000, 28000];
 
     // Cancel any existing poll for this transaction
     if (this.activeRapidPolls.has(pollKey)) {
@@ -14570,9 +14586,16 @@ class MainController {
     let pollCount = 0;
 
     const poll = async () => {
+      const owner = this.activeRapidPolls.get(pollKey);
+      const ownsPoll = () =>
+        owner !== undefined && this.activeRapidPolls.get(pollKey) === owner;
+      const stop = () => {
+        if (ownsPoll()) this.activeRapidPolls.delete(pollKey);
+      };
+      if (!ownsPoll()) return;
       pollCount++;
       console.log(
-        `[RapidPoll] Poll ${pollCount}/${maxPolls} for transaction ${txHash}`
+        `[RapidPoll] Poll ${pollCount}/${delays.length} for transaction ${txHash}`
       );
 
       try {
@@ -14588,7 +14611,7 @@ class MainController {
           console.log(
             '[RapidPoll] Network or account changed, stopping rapid poll'
           );
-          this.activeRapidPolls.delete(pollKey);
+          stop();
           return;
         }
 
@@ -14600,6 +14623,7 @@ class MainController {
           } = store.getState().vault;
 
           if (
+            !ownsPoll() ||
             generation !== this.walletSessionGeneration ||
             this.clearingActivity ||
             contextIsCurrent?.() === false ||
@@ -14611,7 +14635,7 @@ class MainController {
             console.log(
               '[RapidPoll] Account or network changed during direct lookup, stopping rapid poll'
             );
-            this.activeRapidPolls.delete(pollKey);
+            stop();
             return;
           }
 
@@ -14629,7 +14653,7 @@ class MainController {
               console.log(
                 `[RapidPoll] Transaction ${txHash} confirmed by direct lookup! In block: ${blockInfo}. Stopping rapid poll.`
               );
-              this.activeRapidPolls.delete(pollKey);
+              stop();
 
               return;
             }
@@ -14646,6 +14670,7 @@ class MainController {
         } = store.getState().vault;
 
         if (
+          !ownsPoll() ||
           generation !== this.walletSessionGeneration ||
           this.clearingActivity ||
           contextIsCurrent?.() === false ||
@@ -14657,7 +14682,7 @@ class MainController {
           console.log(
             '[RapidPoll] Account or network changed during poll, stopping rapid poll'
           );
-          this.activeRapidPolls.delete(pollKey);
+          stop();
           return;
         }
 
@@ -14681,34 +14706,29 @@ class MainController {
             console.log(
               `[RapidPoll] Transaction ${txHash} confirmed! In block: ${blockInfo}. Stopping rapid poll.`
             );
-            this.activeRapidPolls.delete(pollKey);
+            stop();
 
             return;
           }
         }
-
-        // Continue polling if not confirmed and haven't reached max polls
-        if (pollCount < maxPolls) {
-          console.log(
-            `[RapidPoll] Transaction ${txHash} still pending, scheduling next poll...`
-          );
-          const timeoutId = setTimeout(poll, pollInterval);
-          this.activeRapidPolls.set(pollKey, timeoutId);
-        } else {
-          console.log(
-            `[RapidPoll] Reached max polls (${maxPolls}) for transaction ${txHash}. Regular background polling will continue.`
-          );
-          this.activeRapidPolls.delete(pollKey);
-        }
       } catch (error) {
         console.error('[RapidPoll] Error during rapid polling:', error);
-        this.activeRapidPolls.delete(pollKey);
+        if (isBitcoinBased) {
+          stop();
+          return;
+        }
+        // A transient EVM RPC failure still leaves the remaining checks.
+      }
+
+      if (!ownsPoll()) return;
+      if (pollCount < delays.length) {
+        this.activeRapidPolls.set(pollKey, setTimeout(poll, delays[pollCount]));
+      } else {
+        stop();
       }
     };
 
-    // Start the first poll after a delay
-    const timeoutId = setTimeout(poll, pollInterval);
-    this.activeRapidPolls.set(pollKey, timeoutId);
+    this.activeRapidPolls.set(pollKey, setTimeout(poll, delays[0]));
   }
 
   private async updateTrackedEvmTransactionCopies(
