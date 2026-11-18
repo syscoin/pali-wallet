@@ -47,15 +47,17 @@ function fixture() {
 }
 test('native completion uses the shared finalized event/nonce verifier and rechecks its original RPC before removal', async () => {
   const f = fixture();
-  const lease = await f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session);
+  const lease = await f.ports.prepareCompletionProof(identity, withdrawal, f.session);
   assert.equal(f.calls.length, 7); assert(!f.calls.some(call => JSON.stringify(call.params).includes(identity.nullifierHash)));
   await lease.revalidate(); assert.equal(f.calls.length, 14);
   assert.equal(f.calls.filter(call => call.method === 'eth_chainId').length, 2);
+  assert.deepEqual(f.calls.filter(call => call.method === 'eth_getTransactionReceipt' ||
+    call.method === 'eth_getTransactionByHash').map(call => call.params), [[hash], [hash], [hash], [hash]]);
   f.reorg(); await assert.rejects(lease.revalidate(), /privacy_spent_proof_unavailable/);
 });
 test('each maintenance run rechecks chain identity before disclosing a transaction', async () => {
   const f = fixture();
-  const lease = await f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session);
+  const lease = await f.ports.prepareCompletionProof(identity, withdrawal, f.session);
   const before = f.calls.length;
   f.setChain('0x2');
   await assert.rejects(lease.revalidate());
@@ -83,15 +85,15 @@ test('an aborted or failed maintenance read cannot produce a completion proof', 
       if (failure === 'abort') f.signal.abort();
       else throw new Error('transport failed');
     });
-    await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session));
+    await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, f.session));
     assert(!f.calls.some(call => call.method === 'eth_getTransactionByHash'));
   }
 });
 test('native maintenance refuses unknown attempts, revoked sessions and aborts without additional RPC', async () => {
   const f = fixture();
-  await assert.rejects(f.ports.prepareCompletionProof(identity, { ...withdrawal, phase: 'unknown' }, undefined, f.session));
+  await assert.rejects(f.ports.prepareCompletionProof(identity, { ...withdrawal, phase: 'unknown' }, f.session));
   assert.equal(f.calls.length, 0); f.setCurrent(false);
-  await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session)); assert.equal(f.calls.length, 0);
+  await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, f.session)); assert.equal(f.calls.length, 0);
   f.setCurrent(true); f.signal.abort();
-  await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session)); assert.equal(f.calls.length, 0);
+  await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, f.session)); assert.equal(f.calls.length, 0);
 });

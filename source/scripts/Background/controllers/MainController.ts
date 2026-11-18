@@ -554,7 +554,6 @@ import {
 } from './nativeEvmFeeReviews';
 import type {
   IPrivateVaultDepositController,
-  IPrivateVaultDepositJournal,
   IPrivateVaultWithdrawalController,
   IPrivateVaultRestoreController,
   IPrivateVaultSession,
@@ -4157,16 +4156,10 @@ class MainController {
           createPrivateVaultController(
             {
               captureSession: () => this.capturePrivateVaultSession(),
-              prepareCompletionProof: (
-                identity,
-                withdrawal,
-                deposit,
-                session
-              ) =>
+              prepareCompletionProof: (identity, withdrawal, session) =>
                 this.preparePrivateVaultCompletionProof(
                   identity,
                   withdrawal,
-                  deposit,
                   session
                 ),
               readNote: (identity) =>
@@ -4262,7 +4255,6 @@ class MainController {
   private async preparePrivateVaultCompletionProof(
     identity: IClassicNoteIdentity,
     withdrawal: IPrivacyWithdrawalJournal,
-    deposit: IPrivateVaultDepositJournal | undefined,
     session: IPrivateVaultSession
   ): Promise<{ revalidate: () => Promise<void> }> {
     session.assertCurrent();
@@ -4355,30 +4347,10 @@ class MainController {
           : {}),
       };
     } else throw new Error('privacy_spent_proof_unavailable');
-    let submittedDeposit: SpentCompletionRequest['deposit'];
-    if (deposit) {
-      if (
-        deposit.phase !== 'submitted' ||
-        typeof deposit.transactionHash !== 'string' ||
-        !/^0x[0-9a-fA-F]{64}$/.test(deposit.transactionHash) ||
-        typeof deposit.from !== 'string' ||
-        !/^0x[0-9a-fA-F]{40}$/.test(deposit.from) ||
-        typeof deposit.nonce !== 'string' ||
-        !/^(?:0|[1-9][0-9]{0,19})$/.test(deposit.nonce)
-      )
-        throw new Error('privacy_spent_proof_unavailable');
-      submittedDeposit = {
-        phase: 'submitted',
-        transactionHash: deposit.transactionHash,
-        from: deposit.from,
-        nonce: deposit.nonce,
-      };
-    }
     return prepareSpentCompletion({
       poolAddress: getPrivacyPool(identity.poolId).address,
       nullifierHash: identity.nullifierHash,
       withdrawal: submittedWithdrawal,
-      deposit: submittedDeposit,
       assertCurrent,
       rpc: (method, params, signal) =>
         readCompletionRpc(rpcUrl, method, params, signal),

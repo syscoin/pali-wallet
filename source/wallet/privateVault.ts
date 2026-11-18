@@ -244,12 +244,11 @@ export interface IPrivateVaultHost {
     reveal: () => Promise<string>
   ) => Promise<string>;
   captureSession: () => IPrivateVaultSession;
-  // Background-only callback. It receives public identity and journal metadata,
-  // never the raw bearer note. The host must bind its bounded RPC to session.
+  // The host receives the public note identity and withdrawal journal and
+  // must bind its bounded RPC to the active session.
   prepareCompletionProof?: (
     identity: IClassicNoteIdentity,
     withdrawal: IPrivacyWithdrawalJournal,
-    deposit: IPrivateVaultDepositJournal | undefined,
     session: IPrivateVaultSession
   ) => Promise<{ revalidate: () => Promise<void> }>;
   readNote: IPrivacyNoteReader;
@@ -1999,7 +1998,6 @@ export function createPrivateVaultController(
               }),
               identity: { ...identity },
               withdrawal: { ...note.withdrawal },
-              deposit: note.deposit ? { ...note.deposit } : undefined,
             };
           });
           if (!candidate || !host.prepareCompletionProof) {
@@ -2012,7 +2010,6 @@ export function createPrivateVaultController(
             proof = await host.prepareCompletionProof(
               { ...candidate.identity },
               candidate.withdrawal,
-              candidate.deposit,
               context.session
             );
             context.session.assertCurrent();

@@ -2757,6 +2757,42 @@ it('clear completed preserves a note with an unknown deposit journal even after 
   expect((await f.controller.getNotes()).notes).toHaveLength(1);
 });
 
+it('clear completed keeps the recorded deposit hash out of verification', async () => {
+  const f = fixture(() => NOTE);
+  f.setStatus({ phase: 'not-found' });
+  const note = await f.controller.createDepositNote('eth-1');
+  const session = f.captureSession();
+  const deposit = depositAttempt(note.id);
+  const depositHash = '0x' + 'cd'.repeat(32);
+  await f.controller.reserveDepositAttempt(deposit, session);
+  await f.controller.recordDepositBroadcast(deposit, depositHash, session);
+  expect(await f.controller.getDepositAttempt(note.id, session)).toMatchObject({
+    transactionHash: depositHash,
+  });
+
+  f.setStatus({ phase: 'verified' });
+  const withdrawal = withdrawalAttempt(note.id, 'relayed');
+  await f.controller.reserveWithdrawalAttempt(
+    withdrawal,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
+  await f.controller.recordWithdrawalSubmission(
+    withdrawal,
+    { transactionHash: TX_HASH },
+    session
+  );
+  expect(await f.controller.clearCompletedNotes([note.id])).toEqual({
+    removed: [note.id],
+    unresolved: [],
+  });
+  expect(f.prepareCompletionProof).toHaveBeenCalledWith(
+    expect.objectContaining({ poolId: 'eth-1' }),
+    expect.objectContaining({ transactionHash: TX_HASH }),
+    expect.any(Object)
+  );
+});
+
 it('clear completed refuses to write if proof revalidation exhausts its deadline', async () => {
   const { f, completed } = await completedClearFixture();
   const count = f.storage.setItem.mock.calls.length;

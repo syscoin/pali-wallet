@@ -1880,7 +1880,7 @@
       "save": "Guardar límite",
       "reportedSpent": "Notas indicadas como gastadas ({{count}})",
       "clear": "Archivar notas completadas",
-      "clearHelp": "Tu RPC puede vincular los hashes de depósito y retiro. Las notas que marque como finalizadas pasan al archivo cifrado y liberan espacio activo.",
+      "clearHelp": "Tu RPC comprueba los hashes de retiro guardados. Los secretos de las notas se quedan en tu dispositivo. Las notas con retiros finalizados pasan al archivo cifrado.",
       "confirmClear": "Verificar y archivar",
       "clearResult": "Archivadas: {{removed}}. Aún activas: {{unresolved}}.",
       "clearError": "No se pudo completar la comprobación. Actualiza para ver las notas restantes.",

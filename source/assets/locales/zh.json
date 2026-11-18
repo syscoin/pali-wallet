@@ -1880,7 +1880,7 @@
       "save": "保存上限",
       "reportedSpent": "标记为已使用的票据（{{count}}）",
       "clear": "归档已完成票据",
-      "clearHelp": "RPC 可关联存款和提款哈希。RPC 报告已最终确认的票据会移入加密归档，并释放活跃名额。",
+      "clearHelp": "RPC 会检查已保存的提款交易哈希。票据秘密保留在你的设备上。提款已最终确认的票据会移入加密归档。",
       "confirmClear": "验证并归档",
       "clearResult": "已归档：{{removed}}。仍活跃：{{unresolved}}。",
       "clearError": "无法完成票据检查。请刷新以查看剩余票据。",

@@ -42,12 +42,11 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
     }
   };
   return Object.freeze<NativeNoteMaintenanceProofs>({
-    async prepareCompletionProof(identity, withdrawal, deposit, session) {
+    async prepareCompletionProof(identity, withdrawal, session) {
       const guard = () => { check(); assertSynchronousEvmFeeGuard(session.assertCurrent); };
       guard();
       if (!['direct', 'relayed'].includes(withdrawal.mode) || withdrawal.phase !== 'submitted' || !withdrawal.transactionHash ||
-          withdrawal.mode === 'direct' && (typeof withdrawal.from !== 'string' || typeof withdrawal.nonce !== 'string') ||
-          deposit && (deposit.phase !== 'submitted' || !deposit.transactionHash))
+          withdrawal.mode === 'direct' && (typeof withdrawal.from !== 'string' || typeof withdrawal.nonce !== 'string'))
         throw new Error('privacy_spent_proof_unavailable');
       const submitted: SpentCompletionRequest['withdrawal'] = withdrawal.mode === 'direct'
         ? { phase: 'submitted', mode: 'direct', transactionHash: withdrawal.transactionHash,
@@ -56,7 +55,6 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
             ...(withdrawal.transactionHashes ? { transactionHashes: withdrawal.transactionHashes } : {}) };
       return prepareSpentCompletion({ poolAddress: getPrivacyPool(identity.poolId).address,
         nullifierHash: identity.nullifierHash, withdrawal: submitted,
-        ...(deposit ? { deposit: { phase: 'submitted', transactionHash: deposit.transactionHash!, from: deposit.from, nonce: deposit.nonce } } : {}),
         assertCurrent: guard, rpc: read(guard) });
     },
   });

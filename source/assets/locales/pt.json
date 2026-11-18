@@ -1880,7 +1880,7 @@
       "save": "Salvar limite",
       "reportedSpent": "Notas informadas como gastas ({{count}})",
       "clear": "Arquivar notas concluídas",
-      "clearHelp": "Seu RPC pode vincular os hashes de depósito e saque. Notas que ele indicar como finalizadas vão para o arquivo criptografado e liberam vagas ativas.",
+      "clearHelp": "Seu RPC verifica os hashes de saque salvos. Os segredos das notas ficam no seu dispositivo. Notas com saques finalizados vão para o arquivo criptografado.",
       "confirmClear": "Verificar e arquivar",
       "clearResult": "Arquivadas: {{removed}}. Ainda ativas: {{unresolved}}.",
       "clearError": "Não foi possível concluir a verificação. Atualize para ver as notas restantes.",

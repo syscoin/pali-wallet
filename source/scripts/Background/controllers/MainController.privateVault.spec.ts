@@ -1008,7 +1008,6 @@ it('completion proof wiring binds selected RPC and routes only the explicit clea
       endpoint: 'https://relay.example',
       jobId: 'synthetic-job',
     },
-    undefined,
     session
   );
   expect(request.withdrawal).toEqual({
@@ -1016,6 +1015,7 @@ it('completion proof wiring binds selected RPC and routes only the explicit clea
     mode: 'relayed',
     transactionHash: '0x' + '03'.repeat(32),
   });
+  expect(request).not.toHaveProperty('deposit');
   const signal = new AbortController().signal;
   await request.rpc('eth_chainId', [], signal);
   expect(rpc).toHaveBeenCalledWith(
@@ -1056,7 +1056,6 @@ it.each([
         mode: 'relayed',
         transactionHash: '0x' + '03'.repeat(32),
       },
-      undefined,
       session
     );
     if (change === 'rpc')
@@ -1070,12 +1069,7 @@ it.each([
   }
 );
 
-it.each([
-  'unknown-withdrawal',
-  'missing-hash',
-  'invalid-direct-nonce',
-  'unknown-deposit',
-])(
+it.each(['unknown-withdrawal', 'missing-hash', 'invalid-direct-nonce'])(
   'completion proof wiring rejects %s before invoking the verifier',
   async (kind) => {
     const { wallet } = depositFixture();
@@ -1087,7 +1081,6 @@ it.each([
       mode: 'relayed',
       transactionHash: '0x' + '03'.repeat(32),
     };
-    let deposit: any;
     if (kind === 'unknown-withdrawal') withdrawal.phase = 'unknown';
     if (kind === 'missing-hash') delete withdrawal.transactionHash;
     if (kind === 'invalid-direct-nonce')
@@ -1096,13 +1089,6 @@ it.each([
         from: '0x' + '11'.repeat(20),
         nonce: 'not-a-nonce',
       });
-    if (kind === 'unknown-deposit')
-      deposit = {
-        phase: 'unknown',
-        transactionHash: '0x' + '04'.repeat(32),
-        from: '0x' + '11'.repeat(20),
-        nonce: '1',
-      };
     await expect(
       wallet.preparePrivateVaultCompletionProof(
         {
@@ -1111,7 +1097,6 @@ it.each([
           nullifierHash: '0x' + '02'.repeat(32),
         },
         withdrawal,
-        deposit,
         session
       )
     ).rejects.toThrow('privacy_spent_proof_unavailable');

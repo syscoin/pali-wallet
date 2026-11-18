@@ -1880,7 +1880,7 @@
       "save": "Limit speichern",
       "reportedSpent": "Als ausgegeben gemeldete Notizen ({{count}})",
       "clear": "Abgeschlossene Notizen archivieren",
-      "clearHelp": "Dein RPC kann Ein- und Auszahlungshashes verknüpfen. Als final gemeldete Notizen kommen ins verschlüsselte Archiv und geben aktive Plätze frei.",
+      "clearHelp": "Dein RPC prüft die gespeicherten Auszahlungshashes. Das Notizgeheimnis bleibt lokal. Notizen mit finalisierter Auszahlung kommen ins verschlüsselte Archiv.",
       "confirmClear": "Prüfen und archivieren",
       "clearResult": "Archiviert: {{removed}}. Noch aktiv: {{unresolved}}.",
       "clearError": "Die Prüfung konnte nicht abgeschlossen werden. Aktualisiere die Liste.",

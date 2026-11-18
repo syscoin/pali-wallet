@@ -53,7 +53,7 @@ export function verifySnapshotAnchor(
 }
 
 // Explicit user-requested completion checks only. The caller must disclose that
-// requesting withdrawal and related deposit hashes can link them to the RPC.
+// requesting withdrawal hashes discloses those public transactions to the RPC.
 // The shared streaming reader caps raw response bytes before JSON parsing.
 export async function readCompletionRpc(
   rpcUrl: string,

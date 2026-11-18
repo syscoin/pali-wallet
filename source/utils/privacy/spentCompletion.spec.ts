@@ -14,9 +14,9 @@ const pool = '0x' + '11'.repeat(20),
 const account = '0x' + '44'.repeat(20),
   nullifier = '0x' + '55'.repeat(32);
 const wHash = '0x' + '66'.repeat(32),
-  dHash = '0x' + '77'.repeat(32);
+  pendingHash = '0x' + '77'.repeat(32);
 const wBlock = '0x' + '88'.repeat(32),
-  dBlock = '0x' + '99'.repeat(32),
+  alternateBlock = '0x' + '99'.repeat(32),
   finalHash = '0x' + 'aa'.repeat(32);
 
 function fixture() {
@@ -30,7 +30,6 @@ function fixture() {
     finalized: { number: '0x80', hash: finalHash },
     '0x80': { number: '0x80', hash: finalHash },
     '0x70': { number: '0x70', hash: wBlock },
-    '0x60': { number: '0x60', hash: dBlock },
   };
   const receipts: Record<string, any> = {
     [wHash]: {
@@ -49,13 +48,6 @@ function fixture() {
         },
       ],
     },
-    [dHash]: {
-      transactionHash: dHash,
-      blockHash: dBlock,
-      blockNumber: '0x60',
-      status: '0x1',
-      logs: [],
-    },
   };
   const txs: Record<string, any> = {
     [wHash]: {
@@ -64,13 +56,6 @@ function fixture() {
       nonce: '0x2',
       blockHash: wBlock,
       blockNumber: '0x70',
-    },
-    [dHash]: {
-      hash: dHash,
-      from: account,
-      nonce: '0x1',
-      blockHash: dBlock,
-      blockNumber: '0x60',
     },
   };
   let current = true;
@@ -92,12 +77,6 @@ function fixture() {
       from: account,
       nonce: '2',
     },
-    deposit: {
-      phase: 'submitted',
-      transactionHash: dHash,
-      from: account,
-      nonce: '1',
-    },
     rpc,
     assertCurrent: () => {
       if (!current) throw new Error('session changed');
@@ -115,22 +94,26 @@ function fixture() {
   };
 }
 
-it('checks exact finalized event and both settled journal nonces without sending the nullifier', async () => {
+it('requests only the direct withdrawal hash during preparation and revalidation', async () => {
   const f = fixture();
+  const expectedCalls = [
+    ['eth_chainId', []],
+    ['eth_getBlockByNumber', ['finalized', false]],
+    ['eth_getBlockByNumber', ['0x80', false]],
+    ['eth_getTransactionReceipt', [wHash]],
+    ['eth_getBlockByNumber', ['0x70', false]],
+    ['eth_getTransactionByHash', [wHash]],
+    ['eth_getBlockByNumber', ['0x80', false]],
+  ];
+
   const lease = await prepareSpentCompletion(f.request);
+  expect(f.rpc.mock.calls.map(([method, params]) => [method, params])).toEqual(
+    expectedCalls
+  );
+  f.rpc.mockClear();
   await lease.revalidate();
-  expect(
-    f.rpc.mock.calls.some(([, params]) =>
-      JSON.stringify(params).includes(nullifier)
-    )
-  ).toBe(false);
-  expect(new Set(f.rpc.mock.calls.map(([method]) => method))).toEqual(
-    new Set([
-      'eth_chainId',
-      'eth_getBlockByNumber',
-      'eth_getTransactionReceipt',
-      'eth_getTransactionByHash',
-    ])
+  expect(f.rpc.mock.calls.map(([method, params]) => [method, params])).toEqual(
+    expectedCalls
   );
 });
 
@@ -141,8 +124,7 @@ it.each([
   'unfinalized',
   'changed-canonical',
   'wrong-withdrawal-nonce',
-  'wrong-deposit-nonce',
-  'unknown-deposit',
+  'wrong-withdrawal-payer',
   'duplicate-event',
 ])('fails closed for %s', async (kind) => {
   const f = fixture();
@@ -151,25 +133,18 @@ it.each([
     f.request.nullifierHash = '0x' + 'ab'.repeat(32);
   if (kind === 'failed-withdrawal') f.receipts[wHash].status = '0x0';
   if (kind === 'unfinalized') f.blocks.finalized.number = '0x60';
-  if (kind === 'changed-canonical') f.blocks['0x70'].hash = dBlock;
+  if (kind === 'changed-canonical') f.blocks['0x70'].hash = alternateBlock;
   if (kind === 'wrong-withdrawal-nonce') f.txs[wHash].nonce = '0x3';
-  if (kind === 'wrong-deposit-nonce') f.txs[dHash].nonce = '0x2';
-  if (kind === 'unknown-deposit') (f.request.deposit as any).phase = 'unknown';
+  if (kind === 'wrong-withdrawal-payer') f.txs[wHash].from = relayer;
   if (kind === 'duplicate-event')
     f.receipts[wHash].logs.push(f.receipts[wHash].logs[0]);
   await expect(prepareSpentCompletion(f.request)).rejects.toThrow();
 });
 
-it('allows a finalized reverted deposit receipt because its matching nonce was consumed', async () => {
-  const f = fixture();
-  f.receipts[dHash].status = '0x0';
-  await expect(prepareSpentCompletion(f.request)).resolves.toBeDefined();
-});
-
 it('refuses a reorg or changed session between preparation and commit revalidation', async () => {
   const f = fixture();
   const lease = await prepareSpentCompletion(f.request);
-  f.blocks['0x70'].hash = dBlock;
+  f.blocks['0x70'].hash = alternateBlock;
   await expect(lease.revalidate()).rejects.toThrow(
     'privacy_spent_proof_unavailable'
   );
@@ -187,7 +162,6 @@ it('accepts a relayed submitted hash without inventing an account nonce, but not
     mode: 'relayed',
     transactionHash: wHash,
   };
-  delete f.request.deposit;
   await expect(prepareSpentCompletion(f.request)).resolves.toBeDefined();
   (f.request.withdrawal as any).transactionHash = undefined;
   await expect(prepareSpentCompletion(f.request)).rejects.toThrow();
@@ -243,16 +217,15 @@ it('aborts and fails closed when the proof run exceeds its total deadline', asyn
 
 it('selects a finalized matching replacement while preserving the original hash and exact prewrite evidence', async () => {
   const f = fixture();
-  delete f.request.deposit;
   f.request.withdrawal = {
     phase: 'submitted',
     mode: 'relayed',
-    transactionHash: dHash,
-    transactionHashes: [dHash, wHash],
+    transactionHash: pendingHash,
+    transactionHashes: [pendingHash, wHash],
   };
-  f.receipts[dHash] = null;
+  f.receipts[pendingHash] = null;
   const proof = await prepareSpentCompletion(f.request);
-  expect(f.request.withdrawal.transactionHash).toBe(dHash);
+  expect(f.request.withdrawal.transactionHash).toBe(pendingHash);
   f.rpc.mockClear();
   await proof.revalidate();
   expect(
@@ -279,18 +252,17 @@ it.each([
   'duplicate',
 ])('does not treat candidate/status hints as completion: %s', async (kind) => {
   const f = fixture();
-  delete f.request.deposit;
   f.request.withdrawal = {
     phase: 'submitted',
     mode: 'relayed',
-    transactionHash: dHash,
-    transactionHashes: [dHash, wHash],
+    transactionHash: pendingHash,
+    transactionHashes: [pendingHash, wHash],
   };
-  f.receipts[dHash] = null;
+  f.receipts[pendingHash] = null;
   if (kind === 'unmined') f.receipts[wHash] = null;
   if (kind === 'failed') f.receipts[wHash].status = '0x0';
   if (kind === 'wrong-event') f.receipts[wHash].logs[0].address = account;
-  if (kind === 'reorg') f.blocks['0x70'].hash = dBlock;
+  if (kind === 'reorg') f.blocks['0x70'].hash = alternateBlock;
   if (kind === 'wrong-chain') {
     const rpc = f.request.rpc;
     f.request.rpc = async (...args) =>
@@ -302,7 +274,10 @@ it.each([
       (_, i) => '0x' + (i + 1).toString(16).padStart(64, '0')
     );
   if (kind === 'duplicate')
-    (f.request.withdrawal as any).transactionHashes = [dHash, dHash];
+    (f.request.withdrawal as any).transactionHashes = [
+      pendingHash,
+      pendingHash,
+    ];
   await expect(prepareSpentCompletion(f.request)).rejects.toThrow(
     'privacy_spent_proof_unavailable'
   );
@@ -312,7 +287,6 @@ it('checks sixteen healthy candidates within one bounded operation using four wo
   jest.useFakeTimers();
   try {
     const f = fixture();
-    delete f.request.deposit;
     const hashes = Array.from(
       { length: 16 },
       (_, i) => '0x' + (i + 1).toString(16).padStart(64, '0')
@@ -360,17 +334,19 @@ it.each(['rejects', 'stalls'] as const)(
   'an unrelated candidate that %s cannot veto a finalized matching replacement',
   async (failure) => {
     const f = fixture();
-    delete f.request.deposit;
     f.request.withdrawal = {
       phase: 'submitted',
       mode: 'relayed',
-      transactionHash: dHash,
-      transactionHashes: [dHash, wHash],
+      transactionHash: pendingHash,
+      transactionHashes: [pendingHash, wHash],
     };
     const rpc = f.request.rpc;
     let held: AbortSignal | undefined;
     f.request.rpc = async (...args) => {
-      if (args[0] === 'eth_getTransactionReceipt' && args[1][0] === dHash) {
+      if (
+        args[0] === 'eth_getTransactionReceipt' &&
+        args[1][0] === pendingHash
+      ) {
         held = args[2];
         if (failure === 'rejects') {
           await new Promise((resolve) => setTimeout(resolve, 20));
@@ -393,16 +369,15 @@ it.each(['rejects', 'stalls'] as const)(
 
 it('owner retirement during candidate exploration remains fatal even when a matching event is available', async () => {
   const f = fixture();
-  delete f.request.deposit;
   f.request.withdrawal = {
     phase: 'submitted',
     mode: 'relayed',
-    transactionHash: dHash,
-    transactionHashes: [dHash, wHash],
+    transactionHash: pendingHash,
+    transactionHashes: [pendingHash, wHash],
   };
   const rpc = f.request.rpc;
   f.request.rpc = async (...args) => {
-    if (args[0] === 'eth_getTransactionReceipt' && args[1][0] === dHash) {
+    if (args[0] === 'eth_getTransactionReceipt' && args[1][0] === pendingHash) {
       f.invalidate();
       throw Error('retired');
     }

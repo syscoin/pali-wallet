@@ -30,15 +30,8 @@ type SubmittedWithdrawal = { phase: 'submitted'; transactionHash: string } & (
       transactionHashes?: readonly string[];
     }
 );
-interface ISubmittedDeposit {
-  from: string;
-  nonce: string;
-  phase: 'submitted';
-  transactionHash: string;
-}
 interface ISpentCompletionRequest {
   assertCurrent: () => void;
-  deposit?: ISubmittedDeposit;
   nullifierHash: string; // Kept local; never put into RPC arguments.
   poolAddress: string;
   rpc: Rpc;
@@ -69,7 +62,7 @@ const expectedAccount = (from: unknown, nonce: unknown) => {
 /**
  * Proves receipt-level finality against the configured RPC, not the privacy
  * service. Tx-hash-specific requests still disclose that public transaction to
- * the RPC; checking a related deposit hash can also link deposit to withdrawal.
+ * the RPC. This function requests only withdrawal transaction hashes.
  * The caller must obtain user consent before invoking this function.
  * No note preimage or nullifier is sent to the RPC. The RPC and Ethereum
  * finality are trust assumptions; this is not a cryptographic receipt proof.
@@ -103,16 +96,6 @@ export async function prepareSpentCompletion(
     req.withdrawal.nonce !== undefined
   )
     throw new Error('privacy_spent_proof_unavailable');
-  const d = req.deposit
-    ? {
-        ...req.deposit,
-        transactionHash: lower(req.deposit.transactionHash),
-        from: lower(req.deposit.from),
-      }
-    : undefined;
-  if (d && (d.phase !== 'submitted' || !HASH.test(d.transactionHash)))
-    throw new Error('privacy_spent_proof_unavailable');
-  if (d) expectedAccount(d.from, d.nonce);
   const candidates =
     req.withdrawal.mode === 'relayed' &&
     req.withdrawal.transactionHashes !== undefined
@@ -198,8 +181,7 @@ export async function prepareSpentCompletion(
     const blocks = new Map<string, Promise<Record<string, any>>>();
     const verify = async (
       hash: string,
-      account?: { from?: string; nonce?: string },
-      requireEvent = false,
+      account?: { from: string; nonce: string },
       candidate = false
     ) => {
       const value = await read('eth_getTransactionReceipt', [hash], candidate);
@@ -212,10 +194,7 @@ export async function prepareSpentCompletion(
       )
         throw new Error('invalid');
       const blockNumber = quantity(receipt.blockNumber);
-      if (
-        blockNumber > quantity(anchor.number) ||
-        (requireEvent && receipt.status !== '0x1')
-      ) {
+      if (blockNumber > quantity(anchor.number) || receipt.status !== '0x1') {
         if (candidate) return null;
         throw new Error('invalid');
       }
@@ -239,53 +218,50 @@ export async function prepareSpentCompletion(
         if (
           lower(tx.hash) !== hash ||
           lower(tx.from) !== account.from ||
-          quantity(tx.nonce) !== BigInt(account.nonce!) ||
+          quantity(tx.nonce) !== BigInt(account.nonce) ||
           lower(tx.blockHash) !== lower(receipt.blockHash) ||
           quantity(tx.blockNumber) !== blockNumber
         )
           throw new Error('invalid');
       }
-      let event = '';
-      if (requireEvent) {
-        if (
-          !Array.isArray(receipt.logs) ||
-          receipt.logs.length > MAX_RECEIPT_LOGS
-        )
-          throw new Error('invalid');
-        const matching = receipt.logs.filter((item: unknown) => {
-          try {
-            const log = obj(item);
-            if (
-              lower(log.address) !== pool ||
-              lower(log.transactionHash) !== hash ||
-              lower(log.blockHash) !== lower(receipt.blockHash) ||
-              quantity(log.blockNumber) !== blockNumber ||
-              (log.removed !== undefined && log.removed !== false) ||
-              !Array.isArray(log.topics) ||
-              log.topics.length !== 2 ||
-              !log.topics.every((topic: unknown) => HASH.test(lower(topic))) ||
-              typeof log.data !== 'string' ||
-              !/^0x[0-9a-fA-F]{192}$/.test(log.data)
-            )
-              return false;
-            const parsed = ABI.parseLog({ topics: log.topics, data: log.data });
-            return (
-              parsed?.name === 'Withdrawal' &&
-              lower(parsed.args.nullifierHash) === nullifier
-            );
-          } catch {
+      if (
+        !Array.isArray(receipt.logs) ||
+        receipt.logs.length > MAX_RECEIPT_LOGS
+      )
+        throw new Error('invalid');
+      const matching = receipt.logs.filter((item: unknown) => {
+        try {
+          const log = obj(item);
+          if (
+            lower(log.address) !== pool ||
+            lower(log.transactionHash) !== hash ||
+            lower(log.blockHash) !== lower(receipt.blockHash) ||
+            quantity(log.blockNumber) !== blockNumber ||
+            (log.removed !== undefined && log.removed !== false) ||
+            !Array.isArray(log.topics) ||
+            log.topics.length !== 2 ||
+            !log.topics.every((topic: unknown) => HASH.test(lower(topic))) ||
+            typeof log.data !== 'string' ||
+            !/^0x[0-9a-fA-F]{192}$/.test(log.data)
+          )
             return false;
-          }
-        });
-        if (matching.length !== 1) {
-          if (candidate) return null;
-          throw new Error('invalid');
+          const parsed = ABI.parseLog({ topics: log.topics, data: log.data });
+          return (
+            parsed?.name === 'Withdrawal' &&
+            lower(parsed.args.nullifierHash) === nullifier
+          );
+        } catch {
+          return false;
         }
-        event = JSON.stringify([
-          lower(matching[0].data),
-          matching[0].topics.map(lower),
-        ]);
+      });
+      if (matching.length !== 1) {
+        if (candidate) return null;
+        throw new Error('invalid');
       }
+      const event = JSON.stringify([
+        lower(matching[0].data),
+        matching[0].topics.map(lower),
+      ]);
       return {
         anchor,
         hash,
@@ -298,8 +274,7 @@ export async function prepareSpentCompletion(
     if (evidence || candidates.length === 1) {
       selected = await verify(
         evidence?.hash ?? w.transactionHash,
-        w.mode === 'direct' ? w : undefined,
-        true
+        w.mode === 'direct' ? w : undefined
       );
     } else {
       // Four bounded workers share block reads and the operation deadline.
@@ -310,12 +285,7 @@ export async function prepareSpentCompletion(
             while (!selected && next < candidates.length) {
               const index = next++;
               try {
-                const value = await verify(
-                  candidates[index]!,
-                  undefined,
-                  true,
-                  true
-                );
+                const value = await verify(candidates[index]!, undefined, true);
                 if (value && !selected) {
                   selected = value;
                   // A verified replacement ends hint exploration. Peers cannot
@@ -341,7 +311,6 @@ export async function prepareSpentCompletion(
       (evidence && JSON.stringify(selected) !== JSON.stringify(evidence))
     )
       throw new Error('invalid');
-    if (d) await verify(d.transactionHash, d);
     // Check that the exact finalized anchor has not changed during the reads.
     const after = obj(
       await read('eth_getBlockByNumber', [anchor.number, false])
