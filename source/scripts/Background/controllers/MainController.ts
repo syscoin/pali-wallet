@@ -363,6 +363,7 @@ import {
 } from 'utils/nativeBalanceCache';
 import { getNetworkChain } from 'utils/network';
 import {
+  NETWORK_REGISTRATION_SWITCHING,
   NETWORK_SWITCH_REVIEW_CHANGED,
   networkRegistrationFingerprint,
   resolvePinnedUtxoBackendChain,
@@ -778,6 +779,10 @@ class MainController {
   // Add a property to track network switching state
   private isNetworkSwitching = false;
   private isRemovingNetwork = false;
+  private networkRegistrationOperations?: Map<
+    string,
+    { kind: 'edit' | 'switch'; pending: number }
+  >;
   private walletSessionGeneration = 0;
   private extensionActivityNotifications?: ExtensionActivityNotifications;
   private guardianNotificationScan?: Promise<void>;
@@ -7414,6 +7419,28 @@ class MainController {
     return incompatibleHosts.length > 0;
   }
 
+  private holdNetworkRegistration(
+    network: INetwork,
+    kind: 'edit' | 'switch'
+  ): () => void {
+    const operations = (this.networkRegistrationOperations ??= new Map());
+    const key = `${network.kind}:${network.chainId}`;
+    const operation = operations.get(key) ?? { kind, pending: 0 };
+    if (operation.kind !== kind) {
+      throw new Error(
+        kind === 'switch'
+          ? NETWORK_SWITCH_REVIEW_CHANGED
+          : NETWORK_REGISTRATION_SWITCHING
+      );
+    }
+    operation.pending += 1;
+    operations.set(key, operation);
+    return () => {
+      operation.pending -= 1;
+      if (operation.pending === 0) operations.delete(key);
+    };
+  }
+
   public async setActiveNetwork(
     network: INetwork,
     syncUpdates = false,
@@ -7435,6 +7462,20 @@ class MainController {
     ) {
       throw new Error(NETWORK_SWITCH_REVIEW_CHANGED);
     }
+    // A durable edit may still be waiting for its storage acknowledgement and
+    // therefore absent from the registry until after this fingerprint check.
+    const release =
+      expectedRegistration === undefined
+        ? undefined
+        : this.holdNetworkRegistration(network, 'switch');
+    try {
+      return await this.runNetworkSwitch(network, syncUpdates);
+    } finally {
+      release?.();
+    }
+  }
+
+  private async runNetworkSwitch(network: INetwork, syncUpdates: boolean) {
     const requestGeneration = ++this.networkRequestGeneration;
     this.activeFiatReads?.forEach((owner) => owner.abort());
     this.postSwitchHistorySave = undefined;
@@ -8106,7 +8147,12 @@ class MainController {
     ) {
       throw new Error('Network changed. Please save it again.');
     }
-    return this.persistCustomRpc(network, true);
+    const release = this.holdNetworkRegistration(network, 'edit');
+    try {
+      return await this.persistCustomRpc(network, true);
+    } finally {
+      release();
+    }
   }
 
   public async editAccountLabel(

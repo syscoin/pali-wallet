@@ -683,6 +683,7 @@
     "connectedSiteCount_many": "К Pali Wallet подключено {{count}} сайтов.",
     "connectedToAccount": "Подключено к: {{account}}",
     "networkChangedRetry": "Сеть изменилась. Сохраните снова.",
+    "networkSwitchInProgress": "Дождитесь завершения переключения сети и сохраните изменения снова.",
     "apiReturnedHtml": "API вернул HTML вместо JSON. Проверьте URL.",
     "apiNotFound": "Эндпоинт API не найден (404).",
     "apiForbidden": "Доступ к API запрещён (403). Проверьте ключ API.",

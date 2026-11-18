@@ -4,6 +4,7 @@ import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { AccountActivityController } from '../src/activity/accountActivity.ts';
+import { activityRowKey } from '../src/activity/nativeActivity.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
 import { decodeActivityPage } from '../src/activity/explorerReader.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
@@ -70,6 +71,7 @@ function fixture(failures: number, olderTarget = false, unavailableHistory = fal
     './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen', nativeActivityRowPresentation: () => ({ date: { key: 'today', label: 'Today', time: '' }, direction: 'received', amount: '1', title: 'Received' }) },
     './NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
     '../activity/assetIcon': { activityAssetIcon: () => undefined },
+    '../activity/nativeActivity': { activityRowKey },
   };
   const module = { exports: {} as Record<string, any> };
   const compiled = ts.transpileModule(readFileSync(new URL('../src/screens/AllNetworksActivity.tsx', import.meta.url), 'utf8'), {

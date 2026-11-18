@@ -29,7 +29,7 @@ import { ActivityListRow, activityDate } from './ActivityListRow';
 import { activityAssetIcon } from '../activity/assetIcon';
 import { TransactionDetailLayout } from './TransactionDetailLayout';
 import type { ShellLeafNavigation } from './RealAppShell';
-import { activityRowTimestamp } from '../activity/nativeActivity';
+import { activityRowKey, activityRowTimestamp, findActivityRow } from '../activity/nativeActivity';
 import type {
   ActivityRow,
   NativeActivity,
@@ -58,7 +58,19 @@ const currentObservation = (row: ActivityRow) =>
     ? row.observation
     : undefined;
 const statusTag = (row: ActivityRow) => {
+  if (row.authorizationOnly) {
+    if (row.checking) return 'checking';
+    if (row.unavailable) return 'authorizationUnavailable';
+    const observation = row.smartAuthorizations?.[0]?.observation;
+    if (observation?.kind === 'observed') return observation.success ? 'confirmed' : 'reverted';
+    if (observation?.kind === 'nonce-consumed') return 'nonceConsumed';
+    return 'noTransactionRecorded';
+  }
   const observation = currentObservation(row);
+  const linked = row.smartAuthorizations?.length === 1 && row.smartAuthorizations[0]?.observation;
+  if (linked && linked.kind === 'observed' && linked.transactionHash === row.hash &&
+      (!observation || observation.status === 'confirmed' && observation.block?.hash === linked.block.hash))
+    return linked.success ? 'confirmed' : 'reverted';
   if (observation && observation.status !== 'pending')
     return observation.status === 'confirmed'
       ? 'confirmed'
@@ -112,9 +124,12 @@ const statusLabels = {
   checking: () => t('mobile.connections.psbt.checking'),
   indexed: () => t('mobile.activityViews.nativeActivity.indexedNotVerified'),
   unavailable: () => t('mobile.activityViews.nativeActivity.currentStatusUnavailable'),
+  authorizationUnavailable: () => t('transactions.smartAuthorizations.statusUnavailable'),
+  noTransactionRecorded: () => t('transactions.smartAuthorizations.noTransactionRecorded'),
 };
 const status = (row: ActivityRow) => statusLabels[statusTag(row)]();
 function amount(row: ActivityRow, symbol: string): string {
+  if (row.authorizationOnly) return t('transactions.smartAuthorizations.signedOperation');
   if (row.local?.collectibleTransfer) return t('mobile.activityViews.nativeActivity.collectibleTransfer');
   if (row.local?.contractInteraction && row.local.amountUnits === '0') return t('transactionDisplay.contractInteraction');
   if (row.display) {
@@ -163,13 +178,14 @@ export function nativeActivityRowPresentation(row: ActivityRow, context: {
   const movement = flow === 'sent' ? t('send.sent') : flow === 'received' ? t('send.received') : flow === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity');
   const privacy = privacyPresentation(row, context.hideBalances);
   const title = privacy?.title ?? (!numeric ? fullAmount : movement);
-  const statusSummary = `${state}${row.unavailable && tag !== 'unavailable' ? ` · ${t('mobile.activityViews.nativeActivity.detailsUnavailable')}` : ''}`;
+  const statusSummary = `${state}${!row.authorizationOnly && row.unavailable && tag !== 'unavailable' ? ` · ${t('mobile.activityViews.nativeActivity.detailsUnavailable')}` : ''}`;
   return {
     date, direction: flow, status: state, statusSummary, fullAmount, numeric,
     title, poolBadge: privacy?.poolBadge,
     subtitle: `${context.networkName} · ${statusSummary}`,
     amount: numeric && context.hideBalances ? HIDDEN_BALANCE : numeric ? compactActivityAmountLabel(`${/^[+−-]/.test(fullAmount) ? '' : flow === 'received' ? '+' : flow === 'sent' ? '-' : ''}${fullAmount}`.replace(/^−/, '-')) : '',
-    label: `${privacy?.title ?? movement}. ${privacy?.poolBadge ? `${privacy.poolBadge}. ` : ''}${t('mobile.activityViews.nativeActivity.transactionLabel', { amount: context.hideBalances && numeric ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: state, date: date.label, time: date.time })}`,
+    label: row.authorizationOnly ? `${title}. ${state}. ${date.label} ${date.time}` :
+      `${privacy?.title ?? movement}. ${privacy?.poolBadge ? `${privacy.poolBadge}. ` : ''}${t('mobile.activityViews.nativeActivity.transactionLabel', { amount: context.hideBalances && numeric ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: state, date: date.label, time: date.time })}`,
   };
 }
 function fee(row: ActivityRow, symbol: string): string {
@@ -311,10 +327,11 @@ function NativeActivityContent({
       if (targetOwner.current.hash !== target || lifetime.current.epoch !== epoch || arrival.current !== attempt || attempt.opened) return false;
       const current = controller.getSnapshot();
       if (current.status !== 'ready' || current.scopeKey !== snapshot.scopeKey) return false;
-      if (current.rows.some(row => row.hash === target || row.smartAuthorizations?.some(value => value.instruction.operationHash === target))) {
+      const row = findActivityRow(current.rows, target);
+      if (row) {
         attempt.opened = true;
         setSelected(target);
-        controller.inspect(target);
+        if (!row.authorizationOnly) controller.inspect(row.hash);
         targetOwner.current.opened?.();
         return true;
       }
@@ -335,7 +352,7 @@ function NativeActivityContent({
   const navigateAfterSave = useRef<(() => void) | null>(null);
   const visibleItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: { item: ActivityRow }[] }) => {
-      firstVisible.current = viewableItems[0]?.item.hash ?? null;
+      firstVisible.current = viewableItems[0] ? activityRowKey(viewableItems[0].item) : null;
     },
     []
   );
@@ -351,24 +368,25 @@ function NativeActivityContent({
   // Keep unclassified rows visible in this single-network fallback view.
   const rows = snapshot.rows.filter(row => matchesActivityView(row, owner, snapshot.view, 'include'));
   const findRow = (predicate: (row: ActivityRow) => boolean) => snapshot.rows.find(predicate);
-  const chosen = findRow((row) => row.hash === selected ||
-    row.smartAuthorizations?.some(value => value.instruction.operationHash === selected) === true);
-  const authorizationView = useRef({ hash: chosen?.hash, abort: new AbortController() });
+  const chosen = selected ? findActivityRow(snapshot.rows, selected) : undefined;
+  const chosenKey = chosen && activityRowKey(chosen);
+  const authorizationView = useRef({ key: chosenKey, abort: new AbortController() });
   const operation = chosen?.local?.smartAccount?.operations.length === 1
     ? chosen.local.smartAccount.operations[0] : undefined;
-  const smartAuthorization = chosen?.smartAuthorizations?.find(value => value.instruction.operationHash === operation?.operationHash);
+  const smartAuthorization = chosen?.authorizationOnly ? chosen.smartAuthorizations?.[0]
+    : chosen?.smartAuthorizations?.find(value => value.instruction.operationHash === operation?.operationHash);
   const operationHash = smartAuthorization?.instruction.operationHash ?? (chosen?.mayHaveOlderAuthorization ? operation?.operationHash : undefined);
   const inspectAuthorization = useCallback(() => {
     if (!operationHash || AppState.currentState !== 'active') return;
     authorizationView.current.abort.abort();
-    const view = { hash: chosen?.hash, abort: new AbortController() };
+    const view = { key: chosenKey, abort: new AbortController() };
     authorizationView.current = view;
     const guard = () => {
       if (authorizationView.current !== view || view.abort.signal.aborted || AppState.currentState !== 'active')
         throw Error('CANCELLED');
     };
     void controller.inspectSmartAuthorization(operationHash, guard, view.abort.signal);
-  }, [chosen?.hash, controller, operationHash]);
+  }, [chosenKey, controller, operationHash]);
   useLayoutEffect(() => {
     if (!operationHash) return;
     inspectAuthorization();
@@ -384,7 +402,7 @@ function NativeActivityContent({
   const chosenObservation = chosen ? currentObservation(chosen) : undefined;
   const replacement = findRow((row) => row.local?.originalHash === chosen?.hash &&
     (row.local?.operation === 'cancel' || row.local?.operation === 'speed-up'));
-  const original = chosen?.local?.originalHash && findRow((row) => row.hash === chosen.local!.originalHash);
+  const original = chosen?.local?.originalHash && findRow((row) => !row.authorizationOnly && row.hash === chosen.local!.originalHash);
   // A Smart account can use different outer fee payers. Only their own nonce
   // group conflicts; a cancellation of any speed-up descendant still blocks it.
   const detailPrivacy = chosen ? privacyPresentation(chosen, hideBalances) : undefined;
@@ -423,6 +441,9 @@ function NativeActivityContent({
     ? reviewAction('speed-up', onSpeedUpPending) : undefined;
   const cancelPending = reviewAction('cancel', onCancelPending);
   const cancelSaved = reviewAction('cancel-saved', onCancelSaved);
+  const cancelAuthorization = onCancelPending ?? (onNavigateToReview
+    ? (key: string, hash: string) => onNavigateToReview('cancel', key, hash)
+    : undefined);
   // An outer receipt/nonce does not revoke its independently usable inner proof.
   const canCancelSmartInstruction = snapshot.status === 'ready' && chosen?.local?.smartAccount && !chosen.checking &&
     !chosen.local.cancellationUnavailable && !chosen.local.smartAccount.cancellation &&
@@ -439,8 +460,8 @@ function NativeActivityContent({
   const savePosition = async (): Promise<void> => {
     if (detailOnly) return;
     const first =
-      rows.find((row) => row.hash === firstVisible.current) ?? rows[0];
-    if (!first) {
+      rows.find((row) => activityRowKey(row) === firstVisible.current) ?? rows[0];
+    if (!first || first.authorizationOnly) {
       await controller.setView({ anchor: null, offset: 0 });
       return;
     }
@@ -531,7 +552,7 @@ function NativeActivityContent({
   const restorePosition = () => {
     if (!snapshot.view.anchor || !rows.length || restoreAttempts.current >= 3)
       return;
-    const index = rows.findIndex((row) => row.hash === snapshot.view.anchor);
+    const index = rows.findIndex((row) => !row.authorizationOnly && row.hash === snapshot.view.anchor);
     if (index < 0) {
       restored.current = true;
       setFeedback(
@@ -578,7 +599,8 @@ function NativeActivityContent({
         accessibilityElementsHidden={dialogOpen} aria-hidden={dialogOpen} importantForAccessibility={dialogOpen ? 'no-hide-descendants' : 'auto'}>
       <View style={s.header}>
         <Header
-          title={chosen || detailOnly || refreshingDetail ? t('mobile.activityViews.nativeActivity.transactionDetails') : t('buttons.activity')}
+          title={chosen?.authorizationOnly ? t('send.details') : chosen || detailOnly || refreshingDetail
+            ? t('mobile.activityViews.nativeActivity.transactionDetails') : t('buttons.activity')}
           subtitle={`${accountLabel}${
             snapshot.networkName ? ` · ${snapshot.networkName}` : ''
           }`}
@@ -599,7 +621,7 @@ function NativeActivityContent({
         <FlatList
           ref={list}
           data={rows}
-          keyExtractor={(row) => row.hash}
+          keyExtractor={activityRowKey}
           contentContainerStyle={s.content}
           onViewableItemsChanged={visibleItemsChanged}
           onMomentumScrollEnd={savePosition}
@@ -639,12 +661,13 @@ function NativeActivityContent({
             const last = index === rows.length - 1 || rowDate(rows[index + 1]!).key !== date.key;
             const display = nativeActivityRowPresentation(item, { accountAddress: owner, nativeSymbol: snapshot.nativeSymbol ?? 'ETH',
               networkName: snapshot.networkName ?? snapshot.nativeSymbol ?? t('transactions.replay.network'), hideBalances });
+            const key = activityRowKey(item);
             return <ActivityListRow
               rowRef={(node) => {
-                if (node) rowViews.current.set(item.hash, node);
-                else rowViews.current.delete(item.hash);
+                if (node) rowViews.current.set(key, node);
+                else rowViews.current.delete(key);
               }}
-              testID={`activity-row-${item.hash}`} direction={display.direction}
+              testID={`activity-row-${key}`} direction={display.direction}
               asset={activityAssetIcon(item, snapshot.chainId, snapshot.registrationHash)} registrationHash={snapshot.registrationHash ?? undefined} assetSymbol={item.display?.displaySymbol ?? item.local?.token?.symbol}
               first={first} last={last} heading={first ? date.label : undefined}
               title={display.title}
@@ -661,8 +684,8 @@ function NativeActivityContent({
                 }
                 return afterPositionSaved(() => {
                   setFeedback('');
-                  setSelected(item.hash);
-                  controller.inspect(item.hash);
+                  setSelected(key);
+                  if (!item.authorizationOnly) controller.inspect(item.hash);
                 });
               }}
             />;
@@ -699,7 +722,34 @@ function NativeActivityContent({
         <ActivityIndicator accessibilityLabel={t('mobile.activityViews.nativeActivity.loadingTransactionDetails')} color={colors.pink} />
         <Text style={styles.muted}>{t('mobile.activityViews.nativeActivity.loadingTransactionDetails2')}</Text>
       </View>}
-      {chosen && (
+      {chosen?.authorizationOnly && smartAuthorization && operationHash && (
+        <ScrollView key={chosenKey} contentContainerStyle={[s.content, s.detailContent]}>
+          <TransactionDetailLayout
+            amount={amount(chosen, snapshot.nativeSymbol ?? 'ETH')}
+            status={status(chosen)}
+            tone={smartAuthorization.unavailable || smartAuthorization.observation?.kind !== 'observed' ? 'unknown'
+              : smartAuthorization.observation.success ? 'confirmed' : 'failed'}
+            rows={[
+              { label: t('transactions.replay.network'), value: snapshot.networkName ?? snapshot.nativeSymbol ?? t('transactions.replay.network') },
+              { label: t('transactions.smartAuthorizations.operationHash'), value: operationHash },
+            ]}
+          />
+          <Button title={t('transactions.utxoReplacement.checkStatus')} variant="secondary" disabled={smartAuthorization.checking} onPress={inspectAuthorization} />
+          {cancelAuthorization && snapshot.status === 'ready' && !smartAuthorization.checking && !smartAuthorization.unavailable &&
+            smartAuthorization.observation?.kind === 'pending' && (
+              <Button title={t('buttons.cancel')} variant="secondary" onPress={() => {
+                const view = authorizationView.current;
+                const current = controller.getSnapshot();
+                const live = current.rows.find(row => row.authorizationOnly && row.hash === operationHash)?.smartAuthorizations?.[0];
+                if (!chosenKey || view.key !== chosenKey || view.abort.signal.aborted || AppState.currentState !== 'active' ||
+                    current.status !== 'ready' || live !== smartAuthorization) return;
+                view.abort.abort();
+                cancelAuthorization(chosenKey, operationHash);
+              }} />
+            )}
+        </ScrollView>
+      )}
+      {chosen && !chosen.authorizationOnly && (
         <ScrollView key={chosen.hash} contentContainerStyle={[s.content, s.detailContent]}>
           <TransactionDetailLayout
             asset={activityAssetIcon(chosen, snapshot.chainId, snapshot.registrationHash)} registrationHash={snapshot.registrationHash ?? undefined} assetSymbol={chosen.display?.displaySymbol ?? chosen.local?.token?.symbol}
@@ -856,10 +906,10 @@ function NativeActivityContent({
                 const view = authorizationView.current;
                 void afterPositionSaved(() => {
                   const current = controller.getSnapshot();
-                  const row = current.rows.find(value => value.hash === chosen.hash);
+                  const row = current.rows.find(value => !value.authorizationOnly && value.hash === chosen.hash);
                   if (current.status !== 'ready' || !row || row.mayHaveOlderAuthorization) return;
                   if (operationHash) {
-                    if (view.hash !== chosen.hash || authorizationView.current !== view || view.abort.signal.aborted || AppState.currentState !== 'active') return;
+                    if (view.key !== chosen.hash || authorizationView.current !== view || view.abort.signal.aborted || AppState.currentState !== 'active') return;
                     const live = row.smartAuthorizations?.find(value => value.instruction.operationHash === operationHash);
                     if (!live || live.checking || live.unavailable || live.observation && live.observation.kind !== 'pending') return;
                     view.abort.abort();

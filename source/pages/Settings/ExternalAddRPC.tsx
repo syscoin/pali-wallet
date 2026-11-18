@@ -12,6 +12,10 @@ import { INetwork } from 'types/network';
 import { ICustomRpcParams } from 'types/transactions';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { extractErrorMessage } from 'utils/index';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 import { translateRpcValidationError } from 'utils/rpcValidationError';
 
 const networkKey = (network?: INetwork) =>
@@ -34,7 +38,7 @@ const CustomRPCExternal = () => {
   const [loading, setLoading] = useState(false);
   const [switchingNetwork, setSwitchingNetwork] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const addedNetwork = useRef<string>();
+  const addedNetwork = useRef<{ key: string; network: INetwork }>();
   const submitting = useRef(false);
   const rpcValidation = useRef(0);
   const apiValidation = useRef(0);
@@ -282,8 +286,11 @@ const CustomRPCExternal = () => {
       // Add the network
       const fingerprint = networkKey(network);
       const key = JSON.stringify([host, fingerprint]);
-      let needsAdd = addedNetwork.current !== key;
-      if (!needsAdd) {
+      let saved =
+        addedNetwork.current?.key === key
+          ? addedNetwork.current.network
+          : undefined;
+      if (saved) {
         // Popup state broadcasts can lag the successful add response.
         const state = (await controllerEmitter(
           ['wallet', 'getState'],
@@ -291,15 +298,25 @@ const CustomRPCExternal = () => {
         )) as RootState;
         if (!state?.vaultGlobal?.networks?.ethereum)
           throw new Error(t('settings.failedValidateRpc'));
-        needsAdd =
-          networkKey(state.vaultGlobal.networks.ethereum[network.chainId]) !==
-          fingerprint;
+        const registered = state.vaultGlobal.networks.ethereum[network.chainId];
+        if (
+          registered &&
+          networkRegistrationFingerprint(registered) !==
+            networkRegistrationFingerprint(saved)
+        )
+          throw new Error(NETWORK_SWITCH_REVIEW_CHANGED);
+        saved = registered;
       }
       // A switch can fail after the add is already saved. Retry that switch,
       // but never reuse a successful add for a changed network proposal.
-      if (needsAdd) {
-        await controllerEmitter(['wallet', 'addCustomRpc'], [network]);
-        addedNetwork.current = key;
+      if (!saved) {
+        saved = (await controllerEmitter(
+          ['wallet', 'addCustomRpc'],
+          [network]
+        )) as INetwork;
+        if (networkKey(saved) !== fingerprint)
+          throw new Error(t('settings.failedValidateRpc'));
+        addedNetwork.current = { key, network: saved };
       }
 
       // Switch to network switching state
@@ -310,7 +327,7 @@ const CustomRPCExternal = () => {
       await controllerEmitter(
         ['wallet', 'setActiveNetwork'],
         // Do not hold the dapp approval open for post-switch balance loading.
-        [network, false]
+        [saved, false, networkRegistrationFingerprint(saved)]
       );
 
       const type = data.eventName;
@@ -320,20 +337,17 @@ const CustomRPCExternal = () => {
 
       // Show success and close
       alert.success(t('settings.rpcSuccessfullyAdded'));
-      // Signal success to the DApp
-      setTimeout(() => {
-        dispatchBackgroundEvent(`${type}.${host}`, null);
-        window.close();
-      }, 2000);
+      dispatchBackgroundEvent(`${type}.${host}`, null);
+      window.close();
     } catch (error: any) {
       setLoading(false);
       setSwitchingNetwork(false);
       setConfirmed(false);
 
-      const errorMessage = extractErrorMessage(
-        error,
-        t('settings.networkAdditionFailed')
-      );
+      const errorMessage =
+        error?.message === NETWORK_SWITCH_REVIEW_CHANGED
+          ? t('settings.unknownNetwork')
+          : extractErrorMessage(error, t('settings.networkAdditionFailed'));
 
       // Show error alert prominently
       alert.error(errorMessage, {
@@ -552,7 +566,7 @@ const CustomRPCExternal = () => {
             variant="secondary"
             type="button"
             onClick={window.close}
-            disabled={loading || switchingNetwork}
+            disabled={confirmed || loading || switchingNetwork}
           >
             {t('buttons.cancel')}
           </Button>

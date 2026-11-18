@@ -3718,7 +3718,7 @@ export function createKeyringRuntimeFactory(
           const recent = await journal.activities(); guard();
           const smartAuthorizations = type === 'SmartAccount'
             ? await signedRecords.listSmartAccountAuthorizations({ keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard },
-              scope.network.chainId, scope.address, { maximum: 20 })
+              scope.network.chainId, scope.address, { maximum: 20, includeOuterPresence: true, after: saved.clearedAt })
             : undefined;
           guard();
           let locals = type === 'SmartAccount' ? recent.records.map(local => {
@@ -3749,15 +3749,17 @@ export function createKeyringRuntimeFactory(
           const { scope, guard } = context;
           if (context.type !== 'SmartAccount' || scope.key !== previous.key || scope.sourceId !== previous.sourceId)
             throw new KeyringRuntimeError('CANCELLED');
-          return { account: { address: scope.address }, network: scope.network, check: guard,
+          return { scope, account: { address: scope.address }, network: scope.network, check: guard,
             session: { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard } };
         };
         const loadActivitySmartAuthorizations = async (
           scope: EvmActivityReadScope, beforeHash: string, assertOwner: () => void, target?: NativeTokenPortfolioScope
         ) => {
           const owner = await activitySmartAuthorizationOwner(scope, assertOwner, target);
+          const saved = await activityHistory.load(owner.scope, owner.check);
+          owner.check();
           const result = await signedRecords.listSmartAccountAuthorizations(owner.session, scope.network.chainId,
-            scope.address, { maximum: 20, beforeHash });
+            scope.address, { maximum: 20, beforeHash, includeOuterPresence: true, after: saved.clearedAt });
           owner.check();
           return result;
         };
@@ -3777,9 +3779,11 @@ export function createKeyringRuntimeFactory(
           if (type !== 'SmartAccount') return null;
           const stored = await signedRecords.readSmartAccountAuthorizationExact(session, scope.network.chainId, scope.address, hash);
           guard();
-          if (!stored) return null;
+          if (!stored || (saved?.clearedAt !== undefined && stored.createdAt <= saved.clearedAt)) return null;
+          const outer = await signedRecords.findSmartAccountAuthorizationOuter(session, scope.network.chainId, scope.address, hash);
+          guard();
           const { userOperation: _operation, signatureDigest: _digest, ...authorization } = stored;
-          return { authorization };
+          return { authorization, ...(outer ? { hasOuter: true as const } : {}) };
         };
         const observeActivitySmartAuthorization = async (
           scope: EvmActivityReadScope, hash: string, assertOwner: () => void, signal: AbortSignal, target?: NativeTokenPortfolioScope

@@ -2,6 +2,8 @@ import { INetwork, INetworkType } from 'types/network';
 
 export const NETWORK_SWITCH_REVIEW_CHANGED =
   'PALI_NETWORK_SWITCH_REVIEW_CHANGED';
+export const NETWORK_REGISTRATION_SWITCHING =
+  'PALI_NETWORK_REGISTRATION_SWITCHING';
 
 /** Stable across extension-message serialization, including absent optional fields. */
 export const networkRegistrationFingerprint = (

@@ -32,6 +32,10 @@ import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 
 const GlobeIcon = memo(() => (
   <Icon
@@ -75,7 +79,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const { controllerEmitter } = useController();
   const { t, i18n } = useTranslation();
   const { language } = i18n;
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
   const groupId = useId();
   const [openNetworkGroups, setOpenNetworkGroups] = useState({
     [INetworkType.Syscoin]: false,
@@ -153,11 +157,18 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         }
 
         // Then perform the actual network switch in the background
-        controllerEmitter(['wallet', 'setActiveNetwork'], [network])
+        controllerEmitter(
+          ['wallet', 'setActiveNetwork'],
+          [network, false, networkRegistrationFingerprint(network)]
+        )
           .then(() => {
             // Success is already handled by the controller via setNetworkChange
           })
           .catch((error) => {
+            if (error?.message === NETWORK_SWITCH_REVIEW_CHANGED) {
+              alert.error(t('settings.unknownNetwork'));
+              return;
+            }
             console.error('[NetworkMenu] Network switch failed:', error);
             store.dispatch(switchNetworkError());
           });
@@ -170,7 +181,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         store.dispatch(switchNetworkError());
       }
     },
-    [activeNetworkValidator, disabled, isNetworkChanging]
+    [
+      activeNetworkValidator,
+      alert,
+      controllerEmitter,
+      disabled,
+      isNetworkChanging,
+      t,
+    ]
   );
 
   // ✅ MEMOIZED: Navigation handlers

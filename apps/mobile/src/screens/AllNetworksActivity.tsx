@@ -3,6 +3,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalSto
 import { ActivityIndicator, AppState, FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { AccountActivityController, AccountActivityRow } from '../activity/accountActivity';
+import { activityRowKey } from '../activity/nativeActivity';
 import { useBalancePrivacy } from '../platform/balancePrivacy';
 import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, Coin, colors, Header, Icon, IconButton, Notice, SegmentedControl, styles, Text } from '../ui';
@@ -47,7 +48,7 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   };
   useLayoutEffect(() => controller.connect(), [controller]);
   useLayoutEffect(() => { const owner = lifetime.current; owner.alive = true; return () => { owner.alive = false; owner.generation++; }; }, []);
-  const currentSelection = selection && controller.findRow(selection.choice.scope.network.id, selection.row.hash);
+  const currentSelection = selection && controller.findRow(selection.choice.scope.network.id, activityRowKey(selection.row));
   const selectedNetwork = selection && controller.getNetwork(selection.choice.scope.network.id);
   const selected = currentSelection?.controller === selection?.controller ? currentSelection :
     selectedNetwork?.controller === selection?.controller ? selection ?? undefined : undefined;
@@ -126,12 +127,13 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
     const action = onAction ? (kind: AccountActivityAction, hash: string, operationHash?: string) => { void run(async check => {
       const current = controller.getNetwork(detailSource.choice.scope.network.id);
       const child = detailSource.controller.getSnapshot();
-      const row = child.rows.find(value => value.hash === hash);
-      if (current?.controller !== detailSource.controller || !row || JSON.stringify(current.choice.scope) !== JSON.stringify(detailSource.choice.scope)) throw Error('Activity scope changed');
-      await onAction({ ...detailSource, key: `${JSON.stringify(detailSource.choice.scope)}:${hash}`, row }, kind, hash, check, operationHash);
+      const row = child.rows.find(value => activityRowKey(value) === hash);
+      if (current?.controller !== detailSource.controller || !row || JSON.stringify(current.choice.scope) !== JSON.stringify(detailSource.choice.scope) ||
+          row.authorizationOnly && (kind !== 'cancel' || operationHash !== row.hash)) throw Error('Activity scope changed');
+      await onAction({ ...detailSource, key: `${JSON.stringify(detailSource.choice.scope)}:${hash}`, row }, kind, row.hash, check, operationHash);
     }); } : undefined;
     return <View style={s.root}><NativeActivityScreen key={selected?.key ?? JSON.stringify(detailSource.choice.scope)} controller={detailSource.controller} accountLabel={accountLabel}
-      externallyConnected detailOnly initialHash={selected?.row.hash} navigation={navigation}
+      externallyConnected detailOnly initialHash={activityRowKey(detailSource.row)} navigation={navigation}
       onBack={closeDetail} onNavigateToReview={action} />
       {busy && <Text accessibilityLiveRegion="polite" style={s.actionFeedback}>{t('mobile.activityViews.allNetworksActivity.openingTransfer')}</Text>}
       {!!error && <Notice title={t('mobile.activityViews.allNetworksActivity.couldNotOpenTransfer')} body={error} tone="amber" />}
@@ -182,7 +184,7 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
       renderItem={({ item, index }) => {
         const display = present(item), previous = snapshot.rows[index - 1], next = snapshot.rows[index + 1];
         const first = !previous || present(previous).date.key !== display.date.key, last = !next || present(next).date.key !== display.date.key;
-        return <ActivityListRow testID={`account-activity-row-${item.choice.scope.network.id}-${item.row.hash}`} first={first} last={last}
+        return <ActivityListRow testID={`account-activity-row-${item.choice.scope.network.id}-${activityRowKey(item.row)}`} first={first} last={last}
           heading={first ? display.date.label : undefined} title={display.title} subtitle={display.statusSummary}
           networkBadge={snapshot.filter === 'all' ? item.choice.networkName : undefined} networkId={item.choice.scope.network.id} networkSymbol={item.choice.symbol}
           poolBadge={display.poolBadge} direction={display.direction} amount={display.amount} time={display.date.time}

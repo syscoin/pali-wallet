@@ -1674,6 +1674,7 @@ export class EvmSignedRecords {
     options: Readonly<{
       after?: number;
       beforeHash?: string;
+      includeOuterPresence?: true;
       maximum: number;
       withoutOuter?: boolean;
     }>
@@ -1681,6 +1682,7 @@ export class EvmSignedRecords {
     Readonly<{
       entries: readonly SmartAccountAuthorizationSummary[];
       nextCursor: string | null;
+      withOuterOperationHashes?: readonly string[];
     }>
   > {
     session = this.captureSession(session);
@@ -1702,11 +1704,14 @@ export class EvmSignedRecords {
           entry.account === account &&
           (options.after === undefined || entry.createdAt > options.after)
       );
-      if (options.withoutOuter && matching.length) {
-        const unmatched = new Set(matching.map((entry) => entry.operationHash));
-        const payers = new Set(
-          matching.map((entry) => entry.payer.toLowerCase())
-        );
+      const findWithoutOuter = async (
+        entries: readonly AuthorizationEntry[],
+        includeLegacyPayers = false
+      ) => {
+        const unmatched = new Set(entries.map((entry) => entry.operationHash));
+        const payers = includeLegacyPayers
+          ? new Set(entries.map((entry) => entry.payer.toLowerCase()))
+          : undefined;
         for (const outer of bundle?.entries ?? []) {
           if (!unmatched.size) break;
           const hint = outer.metadata?.smartAccountOperationHash;
@@ -1714,7 +1719,7 @@ export class EvmSignedRecords {
             outer.chainId !== chainId ||
             outer.payloadKind === 'unsigned-eoa' ||
             (!isSmartAccountActivityCandidate(outer, account) &&
-              !payers.has(outer.from)) ||
+              !payers?.has(outer.from)) ||
             (typeof hint === 'string' && !unmatched.has(hint.toLowerCase()))
           )
             continue;
@@ -1723,6 +1728,10 @@ export class EvmSignedRecords {
             if (operation.account === account)
               unmatched.delete(operation.operationHash.toLowerCase());
         }
+        return unmatched;
+      };
+      if (options.withoutOuter && matching.length) {
+        const unmatched = await findWithoutOuter(matching, true);
         matching = matching.filter((entry) =>
           unmatched.has(entry.operationHash)
         );
@@ -1735,18 +1744,30 @@ export class EvmSignedRecords {
             );
       if (end < 0) throw new Error('SMART_ACCOUNT_AUTHORIZATION_CORRUPT');
       const start = Math.max(0, end - options.maximum);
-      const entries = matching
-        .slice(start, end)
-        .reverse()
-        .map((entry) => {
-          const { chunks: _chunks, ...header } = entry;
-          void _chunks;
-          return Object.freeze(header);
-        });
+      const page = matching.slice(start, end).reverse();
+      // Presence annotations are scoped to the returned page and to the Smart
+      // account records that mobile's Activity can project.
+      const unmatched =
+        options.includeOuterPresence && !options.withoutOuter
+          ? await findWithoutOuter(page)
+          : undefined;
+      const entries = page.map((entry) => {
+        const { chunks: _chunks, ...header } = entry;
+        void _chunks;
+        return Object.freeze(header);
+      });
+      const withOuterOperationHashes =
+        unmatched &&
+        Object.freeze(
+          entries
+            .map(({ operationHash }) => operationHash)
+            .filter((hash) => !unmatched.has(hash))
+        );
       guard(session);
       return Object.freeze({
         entries: Object.freeze(entries),
         nextCursor: start > 0 ? entries.at(-1)!.operationHash : null,
+        ...(withOuterOperationHashes ? { withOuterOperationHashes } : {}),
       });
     });
   }

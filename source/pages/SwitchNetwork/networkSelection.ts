@@ -2,6 +2,7 @@ import { INetwork } from 'types/network';
 
 export type NetworkSelection = {
   current: INetwork;
+  expectedRegistration?: string;
 };
 
 export const getInitialNetworkSelection = (

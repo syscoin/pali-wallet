@@ -683,6 +683,7 @@
     "connectedSiteCount_many": "{{count}} sites sont connectés à Pali Wallet.",
     "connectedToAccount": "Connecté à : {{account}}",
     "networkChangedRetry": "Le réseau a changé. Enregistrez à nouveau.",
+    "networkSwitchInProgress": "Attendez la fin du changement de réseau, puis enregistrez à nouveau.",
     "apiReturnedHtml": "L’API a renvoyé du HTML, pas du JSON. Vérifiez l’URL.",
     "apiNotFound": "Point d’accès API introuvable (404).",
     "apiForbidden": "Accès API refusé (403). Vérifiez la clé API.",

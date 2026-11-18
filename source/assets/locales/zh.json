@@ -683,6 +683,7 @@
     "connectedSiteCount_many": "{{count}} 个网站已连接到 Pali Wallet。",
     "connectedToAccount": "连接账户：{{account}}",
     "networkChangedRetry": "网络已更改，请重新保存。",
+    "networkSwitchInProgress": "请等待网络切换完成，然后重新保存。",
     "apiReturnedHtml": "API 返回了 HTML 而非 JSON，请检查 URL。",
     "apiNotFound": "找不到 API 端点（404）。",
     "apiForbidden": "API 访问被拒绝（403），请检查 API 密钥。",

@@ -202,6 +202,38 @@ test('authorization outer lookup decodes only matching authenticated hints and s
   assert.equal(await reopened.findSmartAccountAuthorizationOuter(
     f.session(), '1', account, `0x${'ff'.repeat(32)}`
   ), null);
+  await f.store.retainSmartAccountAuthorization(f.session(), {
+    chainId: 1, userOperation: f.originalOperation, payer: owner.address,
+    observedAt: { number: '100', hash: blockHash },
+  });
+  await f.retain();
+  const first = await reopened.listSmartAccountAuthorizations(f.session(), '1', account, { maximum: 1, includeOuterPresence: true });
+  assert(first.nextCursor);
+  const second = await reopened.listSmartAccountAuthorizations(f.session(), '1', account, {
+    maximum: 1, includeOuterPresence: true, beforeHash: first.nextCursor,
+  });
+  for (const page of [first, second]) {
+    assert.equal(page.entries.length, 1);
+    assert.deepEqual(page.withOuterOperationHashes,
+      page.entries[0]!.operationHash === operationHash ? [operationHash] : []);
+  }
+});
+
+test('mobile outer presence uses Smart metadata while extension lists exclude legacy payer outers', async () => {
+  const f = await fixture();
+  await f.store.retainSmartAccountAuthorization(f.session(), {
+    chainId: 1, userOperation: f.originalOperation, payer: owner.address,
+    observedAt: { number: '100', hash: blockHash },
+  });
+  const mobile = await f.store.listSmartAccountAuthorizations(f.session(), '1', account, {
+    maximum: 20, includeOuterPresence: true,
+  });
+  const extension = await f.store.listSmartAccountAuthorizations(f.session(), '1', account, {
+    maximum: 20, withoutOuter: true,
+  });
+  assert.equal(mobile.entries.length, 1);
+  assert.deepEqual(mobile.withOuterOperationHashes, []);
+  assert.deepEqual(extension.entries, []);
 });
 
 for (const legacy of [false, true])

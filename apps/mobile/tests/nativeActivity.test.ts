@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { NativeActivity, type NativeActivityRuntime } from '../src/activity/nativeActivity.ts';
+import { activityRowKey, findActivityRow, NativeActivity, type NativeActivityRuntime } from '../src/activity/nativeActivity.ts';
 import { ActivityExplorerReader, type ActivityFeed, type DiscoveredActivityCandidate } from '../src/activity/explorerReader.ts';
 import { ActivityReceiptReader, type ActivityTransactionObservation } from '../src/activity/receiptReader.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW, type ActivityCandidate, type EvmActivityReadScope as ActivityScope, type ActivityViewState, type LocalActivityRecord, type TerminalActivityRecord } from '../src/activity/types.ts';
@@ -1368,8 +1368,9 @@ const smartInstruction = (index: number) => ({
   payer: OTHER, observedAt: { hash: hash(90), number: '90' },
 });
 
-test('Activity attaches an authenticated instruction to its outer row and hides instructions without transactions', async () => {
-  const first = smartInstruction(41), second = smartInstruction(42);
+test('Activity shows an original instruction without an outer once, even with a signed revocation', async () => {
+  const first = smartInstruction(41), second = smartInstruction(42), olderOuter = smartInstruction(43);
+  const revocation = { ...smartInstruction(44), replacesOperationHash: second.operationHash };
   const outer = { ...fixture().local(50), smartAccount: {
     payer: OTHER, operations: [{ operationHash: first.operationHash, operationNonce: first.operationNonce }],
   } };
@@ -1378,7 +1379,8 @@ test('Activity attaches an authenticated instruction to its outer row and hides 
     locals: [outer], smartAuthorizations: { entries: [first], nextCursor: first.operationHash },
     async loadSmartAuthorizations(_scope, cursor) {
       cursors.push(cursor);
-      return { entries: [first, second], nextCursor: null };
+      return { entries: [first, second, olderOuter, revocation], nextCursor: null,
+        withOuterOperationHashes: [first.operationHash, olderOuter.operationHash] };
     },
     async loadTarget(_scope, target) {
       return target === second.operationHash ? { authorization: second } : null;
@@ -1389,12 +1391,36 @@ test('Activity attaches an authenticated instruction to its outer row and hides 
   assert.equal(f.controller.getSnapshot().rows[0]!.smartAuthorizations?.[0]?.instruction.operationNonce, first.operationNonce);
   await f.controller.loadMore();
   assert.deepEqual(cursors, [first.operationHash]);
-  assert.deepEqual(f.controller.getSnapshot().rows.map(row => row.hash), [outer.hash]);
-  assert.equal(f.controller.getSnapshot().rows[0]!.smartAuthorizations?.length, 1);
+  const rows = f.controller.getSnapshot().rows;
+  const operationKey = `operation:${second.operationHash}`;
+  assert.deepEqual(rows.map(activityRowKey), [operationKey, outer.hash]);
+  assert.equal(findActivityRow(rows, outer.hash)?.smartAuthorizations?.length, 1);
+  assert.equal(findActivityRow(rows, operationKey)?.smartAuthorizations?.[0]?.instruction, second);
   await f.controller.loadTarget(second.operationHash);
-  assert.deepEqual(f.controller.getSnapshot().rows.map(row => row.hash), [outer.hash]);
+  assert.deepEqual(f.controller.getSnapshot().rows.map(activityRowKey), [operationKey, outer.hash]);
   f.controller.inspect(second.operationHash);
+  f.controller.inspect(operationKey);
   assert.equal(f.receipts.calls.length, 0, 'An operation hash is never queried as a transaction hash');
+});
+
+test('an observed transaction replaces its operation-only row and keeps the operation target reachable', async () => {
+  const instruction = smartInstruction(42), outer = candidate(50);
+  const f = fixture({
+    explorer: new FakeExplorer(call => call.feed === 'txlist' ? [outer] : []),
+    smartAuthorizations: { entries: [instruction], nextCursor: null },
+    async observeSmartAuthorization(_scope, operationHash, guard) {
+      guard();
+      return { kind: 'observed', operationHash, currentNonce: (BigInt(instruction.operationNonce) + 1n).toString(),
+        anchor: instruction.observedAt, block: instruction.observedAt, success: true, transactionHash: outer.hash };
+    },
+  });
+  await f.controller.refresh();
+  const target = `operation:${instruction.operationHash}`;
+  assert.equal(findActivityRow(f.controller.getSnapshot().rows, target)?.authorizationOnly, true);
+  await f.controller.inspectSmartAuthorization(instruction.operationHash, () => {}, new AbortController().signal);
+  const { rows } = f.controller.getSnapshot();
+  assert.deepEqual(rows.map(activityRowKey), [outer.hash]);
+  assert.equal(findActivityRow(rows, target), rows[0]);
 });
 
 test('the authorization-only cursor is browseable and needs no explorer or cache work to reach the last page', async () => {
@@ -1414,7 +1440,7 @@ test('the authorization-only cursor is browseable and needs no explorer or cache
   await f.controller.refresh();
   const initial = f.controller.getSnapshot();
   assert.equal(initial.hasMore, true);
-  assert.equal(initial.rows[0]!.mayHaveOlderAuthorization, true);
+  assert.equal(findActivityRow(initial.rows, outer.hash)?.mayHaveOlderAuthorization, true);
   const explorerReads = f.explorer.pages.length, cacheWrites = f.cacheWrites.length;
   await f.controller.loadMore();
   assert.equal(f.controller.getSnapshot().error, 'older-unavailable');
@@ -1424,8 +1450,8 @@ test('the authorization-only cursor is browseable and needs no explorer or cache
   assert.deepEqual(reads, [cursor, cursor]);
   assert.equal(last.error, null);
   assert.equal(last.hasMore, false);
-  assert.deepEqual(last.rows.map(row => row.hash), [outer.hash]);
-  assert.equal(last.rows[0]!.smartAuthorizations?.[0]?.instruction.operationHash, older.operationHash);
+  assert.equal(last.rows.length, newest.length + 1);
+  assert.equal(findActivityRow(last.rows, outer.hash)?.smartAuthorizations?.[0]?.instruction.operationHash, older.operationHash);
   assert.equal(f.explorer.pages.length, explorerReads);
   assert.equal(f.cacheWrites.length, cacheWrites);
 });

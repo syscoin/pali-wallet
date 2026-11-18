@@ -683,6 +683,7 @@
     "connectedSiteCount_many": "사이트 {{count}}개가 Pali Wallet에 연결되어 있습니다.",
     "connectedToAccount": "연결 계정: {{account}}",
     "networkChangedRetry": "네트워크가 변경되었습니다. 다시 저장하세요.",
+    "networkSwitchInProgress": "네트워크 전환이 완료되면 다시 저장하세요.",
     "apiReturnedHtml": "API가 JSON 대신 HTML을 반환했습니다. URL을 확인하세요.",
     "apiNotFound": "API 엔드포인트를 찾을 수 없습니다(404).",
     "apiForbidden": "API 접근이 거부되었습니다(403). API 키를 확인하세요.",

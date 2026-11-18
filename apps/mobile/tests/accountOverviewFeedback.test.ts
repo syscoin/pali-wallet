@@ -8,7 +8,7 @@ import ts from 'typescript';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
-import type { NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
+import { activityRowKey, type NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
 import { formatIndicativeFiat } from '../src/portfolio/fiatDisplay.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 
@@ -68,6 +68,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     '../custody/networkContext': { nativeSigningEnabled: () => true },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' }, './WalletBackupBadge': { WalletBackupBadge: 'WalletBackupBadge' },
     './ActivityListRow': { ActivityListRow: 'ActivityListRow' }, '../activity/assetIcon': { activityAssetIcon: () => undefined },
+    '../activity/nativeActivity': { activityRowKey },
     './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen', nativeActivityRowPresentation: () => { if (activityPresentation) return activityPresentation; throw Error('No activity rows expected'); } },
     './IdleActivityBoundary': { IdlePressable: 'Pressable', IdleTextInput: 'TextInput' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'SegmentedControl', 'Text'].map(name => [name, name])), colors: {}, styles: {} },

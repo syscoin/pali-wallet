@@ -10,7 +10,7 @@ import { AbiCoder, id } from 'ethers';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
-import { activityRowTimestamp, NativeActivity, type NativeActivityRuntime } from '../src/activity/nativeActivity.ts';
+import { activityRowKey, activityRowTimestamp, findActivityRow, NativeActivity, type NativeActivityRuntime } from '../src/activity/nativeActivity.ts';
 import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
 import { activityAssetIcon } from '../src/activity/assetIcon.ts';
 import { getEvmTransactionDisplayInfo, type EvmDisplayTokenMetadata } from '../../../source/shared/evmTransactionDisplay.ts';
@@ -149,7 +149,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     '../activity/activityAmountLabel': { compactActivityAmountLabel },
     './ActivityListRow': { ActivityListRow: 'ActivityListRow', activityDate: () => ({ key: 'today', label: 'Today', time: '10:00' }) },
     './TransactionDetailLayout': { TransactionDetailLayout: 'TransactionDetailLayout' },
-    '../activity/nativeActivity': { activityRowTimestamp },
+    '../activity/nativeActivity': { activityRowKey, activityRowTimestamp, findActivityRow },
     '../activity/assetIcon': { activityAssetIcon },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '0' },
     '../activity/activityFiltering': {

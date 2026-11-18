@@ -1,5 +1,5 @@
 import { matchesActivityView } from './activityFiltering.ts';
-import { activityRowTimestamp, NativeActivity, type ActivityRow, type NativeActivityRuntime, type ActivityExplorerPort, type ActivityReceiptPort } from './nativeActivity.ts';
+import { activityRowKey, activityRowTimestamp, findActivityRow, NativeActivity, type ActivityRow, type NativeActivityRuntime, type ActivityExplorerPort, type ActivityReceiptPort } from './nativeActivity.ts';
 import { DEFAULT_ACTIVITY_VIEW, type ActivityViewState } from './types.ts';
 import { ActivityReadConcurrency } from './readConcurrency.ts';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio.ts';
@@ -89,9 +89,8 @@ export class AccountActivityController {
     if (!this.connection || this.pendingFilter !== null) return undefined;
     for (const child of this.children.values()) {
       if (child.choice.scope.network.id !== networkId) continue;
-      const row = child.controller.getSnapshot().rows.find(value => value.hash === hash ||
-        value.smartAuthorizations?.some(item => item.instruction.operationHash === hash));
-      if (row) return { key: `${scopeKey(child.choice)}:${row.hash}`, choice: child.choice, row, controller: child.controller };
+      const row = findActivityRow(child.controller.getSnapshot().rows, hash);
+      if (row) return { key: `${scopeKey(child.choice)}:${activityRowKey(row)}`, choice: child.choice, row, controller: child.controller };
     }
     return undefined;
   }
@@ -115,7 +114,7 @@ export class AccountActivityController {
     if (!this.connection || this.pendingFilter !== null || this.filterStatus !== 'ready' || this.state.filter === null) return;
     const values = [...this.children.values()];
     const rows = values.flatMap(child => child.controller.getSnapshot().rows.map(row => ({
-      key: `${scopeKey(child.choice)}:${row.hash}`, choice: child.choice, row, controller: child.controller,
+      key: `${scopeKey(child.choice)}:${activityRowKey(row)}`, choice: child.choice, row, controller: child.controller,
     }))).filter(({ row, choice }) => matchesActivityView(row, choice.scope.accountAddress, this.state.view, 'exclude'))
     .sort((a, b) => activityRowTimestamp(b.row) - activityRowTimestamp(a.row) || a.key.localeCompare(b.key));
     const snapshots = values.map(child => child.controller.getSnapshot());

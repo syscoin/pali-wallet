@@ -14,6 +14,7 @@ import en from 'assets/locales/en.json';
 import fr from 'assets/locales/fr.json';
 import vaultGlobalReducer, { setNetwork } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import { NetworkMenu } from './NetworkMenu';
 
@@ -219,7 +220,7 @@ it('keeps distinct-label choices unchanged and dispatches the exact chosen confi
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter.mock.calls[0]).toEqual([
     ['wallet', 'setActiveNetwork'],
-    [second],
+    [second, false, networkRegistrationFingerprint(second)],
   ]);
   expect(mockEmitter.mock.calls[0][1][0]).toBe(second);
   expect(screen.queryByRole('menu')).toBeNull();
@@ -273,7 +274,7 @@ it.each([
     expect(mockEmitter).toHaveBeenCalledTimes(1);
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'setActiveNetwork'],
-      [expected]
+      [expected, false, networkRegistrationFingerprint(expected)]
     );
     expect(mockEmitter.mock.calls[0][1][0]).toBe(expected);
     expect(screen.queryByRole('menu')).toBeNull();

@@ -42,15 +42,28 @@ import { nativeLocalReplacementStatuses, nativeLocalReplacementWinnersToObserve 
 type SmartAuthorizationPage = Readonly<{
   entries: readonly SmartAccountAuthorizationSummary[];
   nextCursor: string | null;
+  withOuterOperationHashes?: readonly string[];
 }>;
 type ActivityAuthorization = Readonly<{
   instruction: SmartAccountAuthorizationSummary;
   observation?: SmartAccountAuthorizationObservation;
   checking: boolean;
   unavailable: boolean;
+  hasOuter?: true;
 }>;
 export const activityRowTimestamp = (row: ActivityRow) =>
-  row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt ?? 0;
+  row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt ??
+  (row.authorizationOnly ? row.smartAuthorizations?.[0]?.instruction.createdAt : undefined) ?? 0;
+
+const operationRowKey = (hash: string) => `operation:${hash}`;
+export const activityRowKey = (row: ActivityRow) =>
+  row.authorizationOnly ? operationRowKey(row.hash) : row.hash;
+
+export function findActivityRow(rows: readonly ActivityRow[], target: string) {
+  return rows.find(row => activityRowKey(row) === target) ?? rows.find(row =>
+    row.smartAuthorizations?.some(({ instruction: { operationHash } }) =>
+      operationHash === target || operationRowKey(operationHash) === target));
+}
 
 export interface NativeActivityRuntime {
   /** Selected-account public reads on an explicit saved network. */
@@ -71,6 +84,7 @@ export interface NativeActivityRuntime {
   loadTarget?(scope: EvmActivityReadScope, hash: string, guard: () => void): Promise<Readonly<{
     local?: LocalActivityRecord;
     authorization?: SmartAccountAuthorizationSummary;
+    hasOuter?: true;
   }> | null>;
   loadSavedPending?(
     scope: EvmActivityReadScope,
@@ -99,6 +113,8 @@ export interface NativeActivityRuntime {
 }
 export type ActivityRow = Readonly<{
   hash: string;
+  /** The hash identifies an authenticated operation, with no transaction row. */
+  authorizationOnly?: true;
   smartAuthorizations?: readonly ActivityAuthorization[];
   mayHaveOlderAuthorization?: true;
   local?: LocalActivityRecord;
@@ -332,17 +348,18 @@ export class NativeActivity {
     const previous = state.phase === 'ready' && state.revision === this.scopeRevision
       ? this.snapshot : null;
     this.reset();
-    this.refreshingRows = previous && new Map(previous.rows.map(row => [row.hash, row]));
+    const previousTransactions = previous?.rows.filter(row => !row.authorizationOnly) ?? [];
+    this.refreshingRows = previous && new Map(previousTransactions.map(row => [row.hash, row]));
     const generation = this.generation;
     const revision = state.revision;
     this.request = new AbortController();
     const signal = this.request.signal;
     const guard = () => this.guard(generation, revision);
     this.publish({ ...(previous ?? initial()),
-      rows: previous?.rows.map(row => {
+      rows: previousTransactions.map(row => {
         if (!row.smartAuthorizations && !row.replacementStatus) return row;
         return { ...row, smartAuthorizations: undefined, replacementStatus: undefined };
-      }) ?? [],
+      }),
       status: 'loading', loadingMore: false, error: null });
     try {
       const runtime = this.runtime();
@@ -631,14 +648,17 @@ export class NativeActivity {
       this.pagedLocals.add(hash);
     }
     if (target.authorization && !this.smartAuthorizations.has(hash))
-      this.smartAuthorizations.set(hash, { instruction: target.authorization, checking: false, unavailable: false });
+      this.smartAuthorizations.set(hash, { instruction: target.authorization, checking: false, unavailable: false,
+        ...(target.hasOuter ? { hasOuter: true } : {}) });
     this.renderRows();
     this.observeRetained();
   }
   private applySmartAuthorizationPage(page: SmartAuthorizationPage) {
+    const withOuter = new Set(page.withOuterOperationHashes);
     for (const instruction of page.entries) {
       if (!this.smartAuthorizations.has(instruction.operationHash))
-        this.smartAuthorizations.set(instruction.operationHash, { instruction, checking: false, unavailable: false });
+        this.smartAuthorizations.set(instruction.operationHash, { instruction, checking: false, unavailable: false,
+          ...(withOuter.has(instruction.operationHash) ? { hasOuter: true } : {}) });
     }
     this.authorizationCursor = page.nextCursor;
   }
@@ -673,7 +693,8 @@ export class NativeActivity {
             return;
           }
           if (target.authorization.operationHash !== hash) throw new ActivityError('INVALID');
-          existing = { instruction: target.authorization, checking: false, unavailable: false };
+          existing = { instruction: target.authorization, checking: false, unavailable: false,
+            ...(target.hasOuter ? { hasOuter: true } : {}) };
         }
       }
       checking = { ...existing, checking: true };
@@ -808,15 +829,22 @@ export class NativeActivity {
         mayHaveOlderAuthorization: mayHaveOlder ? true : undefined });
     });
     const byHash = new Map(rows.map(row => [row.hash, row]));
+    const authorizationRows: ActivityRow[] = [];
     for (const [hash, authorization] of this.smartAuthorizations) {
-      if (carried.has(hash) || authorization.observation?.kind !== 'observed') continue;
-      const row = byHash.get(authorization.observation.transactionHash);
-      if (row) byHash.set(row.hash, { ...row, smartAuthorizations: [...(row.smartAuthorizations ?? []), authorization] });
+      if (carried.has(hash)) continue;
+      const row = authorization.observation?.kind === 'observed'
+        ? byHash.get(authorization.observation.transactionHash) : undefined;
+      if (row) {
+        byHash.set(row.hash, { ...row, smartAuthorizations: [...(row.smartAuthorizations ?? []), authorization] });
+      } else if (!authorization.hasOuter && !authorization.instruction.replacesOperationHash) {
+        authorizationRows.push({ hash, authorizationOnly: true, smartAuthorizations: [authorization],
+          checking: authorization.checking, unavailable: authorization.unavailable });
+      }
     }
     const moreToLoad = Object.values(this.feeds).some((f) => !f.done);
     const atDisplayLimit = this.visible >= 200 && candidates.length >= 200;
     this.publish({
-      rows: [...byHash.values()].sort((a, b) => activityRowTimestamp(b) - activityRowTimestamp(a)),
+      rows: [...byHash.values(), ...authorizationRows].sort((a, b) => activityRowTimestamp(b) - activityRowTimestamp(a)),
       hasMore:
         this.authorizationCursor !== null && !!this.runtime()?.loadSmartAuthorizations ||
         this.pendingCursor !== null && !!this.runtime()?.loadSavedPending || !atDisplayLimit && (candidates.length > this.visible || moreToLoad),
@@ -903,7 +931,7 @@ export class NativeActivity {
     }
   }
   inspect(hash: string) {
-    if (this.snapshot.rows.some((row) => row.hash === hash)) {
+    if (this.snapshot.rows.some((row) => !row.authorizationOnly && row.hash === hash)) {
       this.observations.delete(hash);
       this.unavailable.delete(hash);
       if (this.pagedLocals.has(hash) || this.locals.get(hash)?.smartAccount) this.retainedObservations.delete(hash);

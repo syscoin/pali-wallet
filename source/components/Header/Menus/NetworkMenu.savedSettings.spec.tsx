@@ -5,6 +5,7 @@ import React from 'react';
 
 import vaultGlobalReducer, { setNetwork } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import { NetworkMenu } from './NetworkMenu';
 
@@ -102,7 +103,7 @@ const expectActivation = (updated: INetwork) => {
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'setActiveNetwork'],
-    [updated]
+    [updated, false, networkRegistrationFingerprint(updated)]
   );
 };
 

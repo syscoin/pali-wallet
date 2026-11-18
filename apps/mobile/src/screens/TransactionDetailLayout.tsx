@@ -19,7 +19,7 @@ const bounded = (value: string) => value.length > 42 ? `${value.slice(0, 16)}…
 
 export function TransactionDetailLayout({ amount, direction, status, tone, rows, onExplorer, explorerDisabled = false, asset, registrationHash, assetSymbol, poolBadge }: {
   amount: string;
-  direction: string;
+  direction?: string;
   poolBadge?: string;
   status: string;
   tone: 'confirmed' | 'failed' | 'pending' | 'unknown';
@@ -38,7 +38,7 @@ export function TransactionDetailLayout({ amount, direction, status, tone, rows,
         {asset ? <Coin id="activity-asset" asset={asset} registrationHash={registrationHash} fallbackSymbol={assetSymbol} size={46} />
           : <Icon name={tone === 'confirmed' ? 'check' : tone === 'failed' ? 'close' : tone === 'pending' ? 'clock' : 'activity'} size={26} color={accent} />}
       </View>
-      <Text style={s.direction}>{direction}</Text>
+      {direction && <Text style={s.direction}>{direction}</Text>}
       {poolBadge && <Text style={s.poolBadge}>{poolBadge}</Text>}
       <Text accessibilityLabel={amount} style={s.amount} numberOfLines={2}>{compactActivityAmountLabel(amount.replace(/^−/, '-'))}</Text>
       <Text style={[s.status, { color: accent }]}>{status}</Text>

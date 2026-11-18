@@ -683,6 +683,7 @@
     "connectedSiteCount_many": "{{count}} sites estão conectados à Pali Wallet.",
     "connectedToAccount": "Conectado a: {{account}}",
     "networkChangedRetry": "A rede mudou. Salve novamente.",
+    "networkSwitchInProgress": "Aguarde a conclusão da troca de rede e salve novamente.",
     "apiReturnedHtml": "A API retornou HTML, não JSON. Verifique a URL.",
     "apiNotFound": "Endpoint da API não encontrado (404).",
     "apiForbidden": "Acesso à API negado (403). Verifique a chave API.",

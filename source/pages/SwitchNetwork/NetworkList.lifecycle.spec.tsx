@@ -4,7 +4,9 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import { INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import { NetworkList } from './NetworkList';
 
@@ -15,20 +17,27 @@ let mockQueryData: Record<string, string> = {};
 const firstNetwork = {
   label: 'First network',
   chainId: 57,
-  kind: 'syscoin',
+  kind: INetworkType.Syscoin,
+  currency: 'SYS',
+  slip44: 57,
   url: 'https://first.invalid',
 };
 const secondNetwork = {
   label: 'Second network',
   chainId: 5700,
-  kind: 'syscoin',
+  kind: INetworkType.Syscoin,
+  currency: 'SYS',
+  slip44: 1,
   url: 'https://second.invalid',
 };
 const mockState = {
   vault: { isBitcoinBased: true, activeNetwork: firstNetwork },
   vaultGlobal: {
     networks: {
-      syscoin: { 57: firstNetwork, 5700: secondNetwork },
+      syscoin: { 57: firstNetwork, 5700: secondNetwork } as Record<
+        number,
+        typeof firstNetwork
+      >,
       ethereum: {},
     },
   },
@@ -75,6 +84,10 @@ const selectAndConnect = async () => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockQueryData = {};
+  mockState.vaultGlobal.networks.syscoin = {
+    57: firstNetwork,
+    5700: secondNetwork,
+  };
   jest.spyOn(console, 'error').mockImplementation();
   jest.spyOn(window, 'close').mockImplementation();
 });
@@ -87,11 +100,51 @@ it('navigates after the current picker successfully commits the selected network
   await selectAndConnect();
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'setActiveNetwork'],
-    [secondNetwork, false]
+    [secondNetwork, false, networkRegistrationFingerprint(secondNetwork)]
   );
   expect(mockNavigate).not.toHaveBeenCalled();
   await act(async () => pending.resolve());
   expect(mockNavigate).toHaveBeenCalledWith('/home');
+});
+
+it('requires a fresh row choice if the selected registration changes before Connect', async () => {
+  const user = userEvent.setup();
+  const { rerender } = render(<NetworkList />);
+  await user.click(screen.getByTitle('Second network'));
+  const replacement = { ...secondNetwork, url: 'https://replacement.invalid' };
+  mockState.vaultGlobal.networks = {
+    ...mockState.vaultGlobal.networks,
+    syscoin: { 57: firstNetwork, 5700: replacement },
+  };
+  rerender(<NetworkList />);
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'settings.unknownNetwork'
+  );
+  expect(
+    screen.getByRole('button', { name: 'buttons.connect' })
+  ).toBeDisabled();
+  expect(mockEmitter).not.toHaveBeenCalled();
+
+  await selectAndConnect();
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'setActiveNetwork'],
+    [replacement, false, networkRegistrationFingerprint(replacement)]
+  );
+});
+
+it('can reconnect the active network when it has no saved registration', async () => {
+  mockState.vaultGlobal.networks = {
+    ...mockState.vaultGlobal.networks,
+    syscoin: { 5700: secondNetwork },
+  };
+  render(<NetworkList />);
+  await userEvent.click(
+    screen.getByRole('button', { name: 'buttons.connect' })
+  );
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'setActiveNetwork'],
+    [firstNetwork, false]
+  );
 });
 
 it('keeps a failed current picker retryable and displays its error', async () => {

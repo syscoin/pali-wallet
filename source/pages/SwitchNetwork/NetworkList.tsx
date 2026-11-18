@@ -12,6 +12,10 @@ import { RootState } from 'state/store';
 import { INetwork, INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { getChainIdPriority } from 'utils/chainIdPriority';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 
 import { useNetworkInfo } from './NetworkInfo';
 import {
@@ -46,9 +50,26 @@ export const NetworkList = ({
   const { host, eventName } = queryData;
 
   const [selectCurrentNetwork, setSelectCurrentNetwork] =
-    useState<NetworkSelection | null>(() =>
-      getInitialNetworkSelection(activeNetwork, isTypeSwitch)
-    );
+    useState<NetworkSelection | null>(() => {
+      const initial = getInitialNetworkSelection(activeNetwork, isTypeSwitch);
+      if (!initial) return null;
+      const { current } = initial;
+      const saved = networks[current.kind]?.[current.chainId];
+      if (!saved) return initial;
+      return isSameNetworkSelection(current, saved)
+        ? {
+            current: saved,
+            expectedRegistration: networkRegistrationFingerprint(saved),
+          }
+        : null;
+    });
+  const selected = selectCurrentNetwork?.current;
+  const savedSelection =
+    selected && networks[selected.kind]?.[selected.chainId];
+  const selectionChanged =
+    !!selectCurrentNetwork &&
+    networkRegistrationFingerprint(savedSelection) !==
+      selectCurrentNetwork.expectedRegistration;
   const [selectedNetwork, setSelectedNetwork] = useState<INetworkType>(() => {
     // If this is a type switch, force the target network type
     if (isTypeSwitch && forceNetworkType) {
@@ -86,7 +107,9 @@ export const NetworkList = ({
   const seletedUtxoButtonStyle =
     selectedNetwork === INetworkType.Syscoin ? 'opacity-100' : 'opacity-60';
 
-  const handleChangeNetwork = async (network: INetwork) => {
+  const handleChangeNetwork = async (selection: NetworkSelection | null) => {
+    if (isLoading || !selection || selectionChanged) return;
+    const { current, expectedRegistration } = selection;
     try {
       setIsLoading(true);
 
@@ -96,7 +119,9 @@ export const NetworkList = ({
         ['wallet', 'setActiveNetwork'],
         // Forced dapp type switches only need the committed network/account
         // state; balance refreshes continue independently in the background.
-        [network, false]
+        expectedRegistration
+          ? [current, false, expectedRegistration]
+          : [current, false]
       );
       if (!mounted.current) return;
 
@@ -131,7 +156,12 @@ export const NetworkList = ({
       }
 
       // Show appropriate error message based on the type of error
-      if (
+      if (errorMessage === NETWORK_SWITCH_REVIEW_CHANGED) {
+        setSelectCurrentNetwork((previous) =>
+          previous === selection ? null : previous
+        );
+        alert.error(t('settings.unknownNetwork'));
+      } else if (
         errorMessage.includes('timeout') ||
         errorMessage.includes('timed out')
       ) {
@@ -235,10 +265,12 @@ export const NetworkList = ({
             {selectedNetworkText}
           </p>
           {sortedNetworks.map((currentNetworks: INetwork) => {
-            const isSelected = isSameNetworkSelection(
-              selectCurrentNetwork?.current,
-              currentNetworks
-            );
+            const isSelected =
+              !selectionChanged &&
+              isSameNetworkSelection(
+                selectCurrentNetwork?.current,
+                currentNetworks
+              );
             const isActive = isSameNetworkSelection(
               activeNetwork,
               currentNetworks
@@ -270,6 +302,8 @@ export const NetworkList = ({
                 onClick={() =>
                   setSelectCurrentNetwork({
                     current: currentNetworks,
+                    expectedRegistration:
+                      networkRegistrationFingerprint(currentNetworks),
                   })
                 }
               >
@@ -306,12 +340,17 @@ export const NetworkList = ({
           })}
         </div>
         <div ref={actionFooter} className="mt-4">
+          {selectionChanged && (
+            <p role="status" className="mb-2 text-sm text-content-error">
+              {t('settings.unknownNetwork')}
+            </p>
+          )}
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
             type="submit"
-            disabled={!selectCurrentNetwork?.current || isLoading}
-            onClick={() => handleChangeNetwork(selectCurrentNetwork?.current)}
+            disabled={!selectCurrentNetwork || selectionChanged || isLoading}
+            onClick={() => handleChangeNetwork(selectCurrentNetwork)}
             loading={isLoading}
             fullWidth
           >

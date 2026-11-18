@@ -12,22 +12,31 @@ import React from 'react';
 
 import { switchNetworkError } from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 
 import { NetworkMenu } from './NetworkMenu';
 
 const mockEmitter = jest.fn();
 const mockDispatch = jest.fn();
+const mockAlertError = jest.fn();
 const mockNetworks = {
   syscoin: {
     mainnet: {
       chainId: 57,
       kind: INetworkType.Syscoin,
+      currency: 'SYS',
+      slip44: 57,
       url: 'https://syscoin-main.example',
       label: 'Syscoin Mainnet',
     },
     testnet: {
       chainId: 5700,
       kind: INetworkType.Syscoin,
+      currency: 'SYS',
+      slip44: 1,
       url: 'https://syscoin-test.example',
       label: 'Syscoin Testnet',
     },
@@ -36,12 +45,16 @@ const mockNetworks = {
     mainnet: {
       chainId: 1,
       kind: INetworkType.Ethereum,
+      currency: 'ETH',
+      slip44: 60,
       url: 'https://ethereum-main.example',
       label: 'Ethereum Mainnet',
     },
     testnet: {
       chainId: 11155111,
       kind: INetworkType.Ethereum,
+      currency: 'ETH',
+      slip44: 60,
       url: 'https://ethereum-test.example',
       label: 'Ethereum Sepolia',
     },
@@ -78,7 +91,7 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 jest.mock('hooks/index', () => ({
-  useUtils: () => ({ navigate: jest.fn() }),
+  useUtils: () => ({ navigate: jest.fn(), alert: { error: mockAlertError } }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
@@ -184,7 +197,7 @@ it.each([
     expect(mockEmitter).toHaveBeenCalledTimes(1);
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'setActiveNetwork'],
-      [chosen]
+      [chosen, false, networkRegistrationFingerprint(chosen)]
     );
     expect(screen.queryByRole('menu')).toBeNull();
   }
@@ -266,7 +279,7 @@ it.each([
       expect(mockEmitter).toHaveBeenCalledTimes(1);
       expect(mockEmitter).toHaveBeenCalledWith(
         ['wallet', 'setActiveNetwork'],
-        [network]
+        [network, false, networkRegistrationFingerprint(network)]
       );
     } finally {
       network.label = originalLabel;
@@ -395,7 +408,11 @@ it('uses the normal pointer selection for individual network choices', async () 
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'setActiveNetwork'],
-    [mockNetworks.syscoin.testnet]
+    [
+      mockNetworks.syscoin.testnet,
+      false,
+      networkRegistrationFingerprint(mockNetworks.syscoin.testnet),
+    ]
   );
   expect(screen.queryByRole('menu')).toBeNull();
 });
@@ -414,7 +431,11 @@ it('closes the menu while a network change is still pending', async () => {
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'setActiveNetwork'],
-    [mockNetworks.syscoin.testnet]
+    [
+      mockNetworks.syscoin.testnet,
+      false,
+      networkRegistrationFingerprint(mockNetworks.syscoin.testnet),
+    ]
   );
   expect(screen.queryByRole('menu')).toBeNull();
   expect(mockDispatch).not.toHaveBeenCalled();
@@ -452,6 +473,17 @@ it('dispatches a switch error when the closed menu network request rejects', asy
   } finally {
     log.mockRestore();
   }
+});
+
+it('reports a changed registration without putting the still-active network in an error state', async () => {
+  mockEmitter.mockRejectedValueOnce(new Error(NETWORK_SWITCH_REVIEW_CHANGED));
+  const { user } = await openMenu();
+  await user.click(screen.getByRole('menuitem', { name: 'UTXO networks' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Syscoin Testnet' }));
+  await waitFor(() =>
+    expect(mockAlertError).toHaveBeenCalledWith('settings.unknownNetwork')
+  );
+  expect(mockDispatch).not.toHaveBeenCalled();
 });
 
 it('dispatches a switch error when starting a network request throws', async () => {
