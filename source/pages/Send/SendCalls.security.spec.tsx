@@ -266,7 +266,7 @@ describe('sendCalls submission lifecycle', () => {
       expect(screen.getByRole('status').textContent).toBe(
         'transactions.replay.unknown'
       );
-      expect(screen.getByText('buttons.unknown')).toBeTruthy();
+      expect(screen.getByText('components.unknown')).toBeTruthy();
       await signButton().props.onClick();
       expect(sends()).toHaveLength(1);
       expect(records().some((record) => record.submissionStarted)).toBe(true);
