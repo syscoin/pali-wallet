@@ -89,7 +89,7 @@ async function capture(page: Page, info: TestInfo, name: string) {
     animations: 'disabled',
     mask: [
       page.locator(
-        'input[type=password],textarea,p.font-mono,.select-none.filter.blur-sm p,#import-account-identifier'
+        'input[type=password],textarea,p.font-mono,p.select-none.filter.blur-sm,#import-account-identifier'
       ),
     ],
   });
@@ -119,7 +119,7 @@ async function privateKeyPresentation(page: Page) {
   return page
     .getByText(en.settings.yourPrivateKey, { exact: true })
     .locator('../..')
-    .locator(':scope > div:nth-child(2) > p')
+    .locator(':scope > p')
     .evaluate((element) => {
       const text = element.textContent || '';
       return {
@@ -226,7 +226,7 @@ test('backup and private key require fresh reveal after reauthentication', async
           await wallet.gotoRoute('#/settings/account/private-key');
           await page.addStyleTag({
             content:
-              'p.font-mono,.select-none.filter.blur-sm p{-webkit-text-security:disc!important}',
+              'p.font-mono,p.select-none.filter.blur-sm{-webkit-text-security:disc!important}',
           });
           await expect
             .poll(() => privateKeyPresentation(page))

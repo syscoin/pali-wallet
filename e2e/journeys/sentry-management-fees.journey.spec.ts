@@ -8,6 +8,7 @@ import { pathToFileURL } from 'url';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
 import { PaliWallet } from '../harness/pali';
 import { expectContainedSentryPasswordFocus } from '../harness/sentryPasswordFocus';
 import {
@@ -557,11 +558,13 @@ test('BLS management links the node and preserves operator authorization through
               );
             })
           ).toBe(true);
-          await cancelPopup
-            .getByRole('button', { name: 'Cancel', exact: true })
-            .click();
-          const cancelled = await settle(page, cancelId);
-          expect(cancelled.error).toBeTruthy();
+          const cancelled = await dismissRejectedApproval({
+            click: () => cancelButton.click(),
+            isClosed: () => cancelPopup.isClosed(),
+            settle: () => settle(page, cancelId),
+          });
+          expect(cancelled.error?.code).toBe(4001);
+          expect(cancelled.result).toBeUndefined();
           const fee = await approve(
             wallet!.context,
             page,

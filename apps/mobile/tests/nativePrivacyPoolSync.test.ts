@@ -783,6 +783,81 @@ test('deadline retires held start without letting a replacement reserve before r
   await sync.dispose();
 });
 
+for (const stage of ['start', 'pull', 'release'] as const) {
+  test(`overall deadline cancels final checkpoint ${stage} and preserves the physical drain`, async (context) => {
+    const timers = context.mock.method(globalThis, 'setTimeout');
+    const entered = Promise.withResolvers<void>();
+    const lateResponse = Promise.withResolvers<void>();
+    const drain = Promise.withResolvers<void>();
+    const provider = fixture();
+    let heldSignal: AbortSignal | undefined;
+    let releases = 0;
+    const { sync } = create({
+      ...provider.transport,
+      prepareProofCheckpoint(binding, read, id, signal) {
+        const handle = provider.transport.prepareProofCheckpoint!(binding, read, id, signal);
+        if (heldSignal || read !== 'chainId' || !provider.requests.includes('snapshot'))
+          return handle;
+        heldSignal = signal;
+        return {
+          async start(check) {
+            const metadata = await handle.start(check);
+            if (stage === 'start') {
+              entered.resolve();
+              await lateResponse.promise;
+            }
+            return metadata;
+          },
+          async pull(check) {
+            const chunk = await handle.pull(check);
+            if (stage === 'pull') {
+              entered.resolve();
+              await lateResponse.promise;
+            }
+            return chunk;
+          },
+          async release() {
+            releases++;
+            if (stage === 'release') entered.resolve();
+            await drain.promise;
+            await handle.release();
+          },
+        };
+      },
+    });
+    try {
+      const refresh = sync.refresh();
+      let settled = false;
+      const cancelled = assert.rejects(refresh, { message: 'privacy_cancelled' })
+        .then(() => { settled = true; });
+      await entered.promise;
+      const requestCount = provider.steps.length;
+      const deadline = timers.mock.calls.find(({ arguments: args }) => args[1] === 45_000);
+      assert.ok(deadline);
+      deadline.arguments[0]();
+      assert.equal(heldSignal?.aborted, true);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(settled, true, 'refresh settles before the request timeout or drain');
+      await cancelled;
+      assert.equal(releases, 1);
+      assert.equal(sync.getStatus().phase, 'idle');
+      await assert.rejects(sync.refresh(), { message: 'privacy_verification_pending' });
+      lateResponse.resolve();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(provider.steps.length, requestCount);
+      drain.resolve();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal((await sync.refresh()).phase, 'ready');
+      assert.equal((await sync.readNote(note)).phase, 'spent');
+      assert.equal(releases, 1);
+    } finally {
+      lateResponse.resolve();
+      drain.resolve();
+      await sync.dispose();
+    }
+  });
+}
+
 test('a failed exact release does not admit another snapshot or any anchor', async () => {
   let reservations = 0;
   const { sync } = create(

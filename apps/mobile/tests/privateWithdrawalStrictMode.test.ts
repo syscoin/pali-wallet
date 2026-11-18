@@ -72,7 +72,8 @@ test('real React StrictMode gives Withdrawal a fresh effect scope and preserves 
     '../ui': { Button: ({ title, onPress, disabled }: any) => React.createElement('button', { onClick: onPress, disabled }, title),
       Header: ({ title, onBack }: any) => React.createElement('header', null, React.createElement('button', { onClick: onBack }, 'Back'), title),
       Screen: ({ children, footer }: any) => React.createElement('section', null, children, footer),
-      Card: children, Text: children, colors: {}, styles: {} },
+      Card: children, Text: children, colors: {}, styles: {},
+      Notice: ({ title, body }: { title: string; body?: string }) => React.createElement('div', null, title, body) },
   };
   const module = { exports: {} as { NativePrivateWithdrawal: React.ComponentType<any> } };
   const code = ts.transpileModule(readFileSync(fileURLToPath(new NodeURL('../src/screens/NativePrivateWithdrawal.tsx', import.meta.url)), 'utf8'), {

@@ -324,7 +324,7 @@ export function createNativePrivacyPoolSync(
         check();
         if (started) throw cancelled();
         started = true;
-        const { status, byteCount } = await abortable(
+        const { status, byteCount } = await waitForHandle(
           handle.start(check),
           signal
         );
@@ -391,23 +391,37 @@ export function createNativePrivacyPoolSync(
     };
   }
 
-  async function fetchSnapshot(id: PrivacyPoolId, requestSignal: AbortSignal) {
+  async function withRunSignal<T>(
+    requestSignal: AbortSignal,
+    read: (active: Run, signal: AbortSignal) => Promise<T>
+  ) {
     const active = checkRun();
-    if (id !== poolId || requestSignal.aborted) throw cancelled();
+    if (requestSignal.aborted) throw cancelled();
     const local = new AbortController();
     const abort = () => local.abort();
     requestSignal.addEventListener('abort', abort, { once: true });
     active.abort.signal.addEventListener('abort', abort, { once: true });
     try {
-      return await readPrivacyPoolSnapshot(
+      return await read(active, local.signal);
+    } finally {
+      requestSignal.removeEventListener('abort', abort);
+      active.abort.signal.removeEventListener('abort', abort);
+      local.abort();
+    }
+  }
+
+  function fetchSnapshot(id: PrivacyPoolId, requestSignal: AbortSignal) {
+    return withRunSignal(requestSignal, (active, signal) => {
+      if (id !== poolId) throw cancelled();
+      return readPrivacyPoolSnapshot(
         id,
-        local.signal,
+        signal,
         async (_url, _init, responseLimit, readResponse) => {
           const limit = (status: number) =>
             responseLimit({ status, ok: status === 200 });
           const operation = reserve(
-            () => prepareSnapshot(id, serviceOrigin, local.signal),
-            local.signal,
+            () => prepareSnapshot(id, serviceOrigin, signal),
+            signal,
             limit
           );
           try {
@@ -416,16 +430,12 @@ export function createNativePrivacyPoolSync(
             checkRun(active);
             return { data, status: response.status };
           } finally {
-            await waitForHandle(operation.release(), local.signal);
+            await waitForHandle(operation.release(), signal);
           }
         },
         serviceOrigin
       );
-    } finally {
-      requestSignal.removeEventListener('abort', abort);
-      active.abort.signal.removeEventListener('abort', abort);
-      local.abort();
-    }
+    });
   }
 
   async function verifyAnchor(
@@ -467,9 +477,9 @@ export function createNativePrivacyPoolSync(
   function checkpointReader(
     id: PrivacyPoolId,
     url: string,
+    active: Run,
     signal: AbortSignal
   ) {
-    const active = checkRun();
     if (id !== poolId || url !== rpcUrl || !prepareProofCheckpoint)
       throw cancelled();
     const prepare = prepareProofCheckpoint;
@@ -525,7 +535,12 @@ export function createNativePrivacyPoolSync(
       verifyAnchor,
       selectProofCheckpoint: prepareProofCheckpoint
         ? (id, url, signal) =>
-            readPrivacyProofCheckpoint(id, checkpointReader(id, url, signal))
+            withRunSignal(signal, (active, ownedSignal) =>
+              readPrivacyProofCheckpoint(
+                id,
+                checkpointReader(id, url, active, ownedSignal)
+              )
+            )
         : undefined,
       verifyProofCheckpoint: (
         id,
@@ -533,9 +548,11 @@ export function createNativePrivacyPoolSync(
         url,
         signal
       ) =>
-        verifyPrivacyProofCheckpoint(
-          checkpoint,
-          checkpointReader(id, url, signal)
+        withRunSignal(signal, (active, ownedSignal) =>
+          verifyPrivacyProofCheckpoint(
+            checkpoint,
+            checkpointReader(id, url, active, ownedSignal)
+          )
         ),
       now: Date.now,
       // Only CPU continuations are driven by the explicit refresh call below.

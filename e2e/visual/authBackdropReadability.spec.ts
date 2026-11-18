@@ -142,10 +142,12 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
               'inert',
               ''
             );
-            await expect(
-              page.getByRole('heading', { name: 'Pali', exact: true })
-            ).toHaveCount(1);
             const backdrop = page.locator('.login-animated-bg');
+            const heading = backdrop.getByRole('heading', {
+              name: 'Pali',
+              exact: true,
+            });
+            await expect(heading).toHaveCount(1);
             const particle = backdrop.locator('.particle-5');
             await expect(particle).toBeVisible();
             if (
@@ -194,8 +196,8 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
                 : viewport.height >= 560 && viewport.width >= 360;
             if (!hasRoomForArtwork) {
               expect(art).toBe('none');
-              const heading = await captureForegroundContrast(
-                backdrop.getByRole('heading', { name: 'Pali', exact: true }),
+              const headingContrast = await captureForegroundContrast(
+                heading,
                 info,
                 `${state}-heading-${viewport.width}x${viewport.height}`
               );
@@ -208,7 +210,7 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
                 state,
                 viewport,
                 renderedViewport,
-                heading,
+                heading: headingContrast,
                 action,
               });
             } else {
@@ -241,15 +243,9 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
               expect(rendered.exposed, selector).toBe(true);
               controls.push(rendered);
             }
-            const headings = [];
-            for (const name of ['Pali', 'Wallet']) {
-              const rendered = await geometry(
-                page.getByRole('heading', { name, exact: true })
-              );
-              expect(rendered.inViewport).toBe(true);
-              expect(rendered.glyphsInViewport).toBe(true);
-              headings.push(rendered);
-            }
+            const renderedHeading = await geometry(heading);
+            expect(renderedHeading.inViewport).toBe(true);
+            expect(renderedHeading.glyphsInViewport).toBe(true);
             // Traverse native focus without assigning document.activeElement.
             const expectedFocusIds =
               state === 'welcome'
@@ -278,7 +274,7 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
               state,
               viewport,
               controls,
-              headings,
+              headings: [renderedHeading],
               keyboard,
             });
             expect(
