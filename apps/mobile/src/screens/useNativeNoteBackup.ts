@@ -15,7 +15,12 @@ type Owner = {
   captureNoteFileOwner(assertOwner: Guard): Promise<() => Promise<void>>;
 };
 type ExportOutcome = Extract<NativeNoteExportStep, { phase: 'saved' | 'verified' | 'unconfirmed' }>;
-type ExportAccount = NonNullable<CustodySnapshot['account']>;
+type RestoreOutcome = Extract<NativeNoteRestoreStep, { phase: 'restored' | 'unconfirmed' }>;
+type BackupAccount = NonNullable<CustodySnapshot['account']>;
+type BackupOutcome = { owner: Owner; account: BackupAccount } & (
+  | { mode: 'export'; outcome: ExportOutcome }
+  | { mode: 'restore'; outcome: RestoreOutcome }
+);
 type Route = {
   readonly owner: Owner;
   readonly mode: 'restore' | 'export';
@@ -24,8 +29,9 @@ type Route = {
   checkPair?: () => Promise<void>;
   destination: boolean;
   pickerFeedbackKey?: string;
-  exportAccount?: ExportAccount;
+  outcomeAccount?: BackupAccount;
   exportOutcome?: ExportOutcome;
+  restoreOutcome?: RestoreOutcome;
   saving: boolean;
   handoff: boolean;
   busy: boolean;
@@ -46,7 +52,7 @@ const failureKey = (cause: unknown) => {
 export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: Route['mode']) => void) {
   const { t } = useNativeTranslation();
   const route = useRef<Route | null>(null);
-  const interruptedExport = useRef<{ owner: Owner; account: ExportAccount; outcome: ExportOutcome } | null>(null);
+  const interruptedBackup = useRef<BackupOutcome | null>(null);
   const [step, setStep] = useState<NativeNoteRestoreStep>({ phase: 'select' });
   const [exportStep, setExportStep] = useState<NativeNoteExportStep>({ phase: 'select' });
   const [busy, setBusy] = useState(false);
@@ -54,7 +60,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   const cancel = useCallback(() => {
     const previous = route.current;
     route.current = null;
-    interruptedExport.current = null;
+    interruptedBackup.current = null;
     previous?.authentication.retire();
     previous?.flow?.cancel();
     previous?.exporter?.cancel();
@@ -76,16 +82,20 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     const owned = route.current;
     owned?.authentication.retire();
     if (owned?.handoff) return;
-    // A dispatched provider write may have created a file. Keep only its
-    // outcome across a background lock and revoke all file capabilities.
-    const outcome: ExportOutcome | undefined = owned?.saving ? { phase: 'unconfirmed' } : owned?.exportOutcome;
-    const interrupted = owned?.exportAccount && outcome ? {
-      owner: owned.owner,
-      account: owned.exportAccount,
-      outcome: outcome.phase === 'saved' ? { ...outcome, canVerify: false } : outcome,
-    } : interruptedExport.current;
+    // A dispatched write can outlive its route. Retain only the outcome
+    // for that wallet and account while revoking all file capabilities.
+    let interrupted = interruptedBackup.current;
+    if (owned?.outcomeAccount) {
+      const identity = { owner: owned.owner, account: owned.outcomeAccount };
+      if (owned.mode === 'restore' && owned.restoreOutcome) {
+        interrupted = { ...identity, mode: 'restore', outcome: owned.restoreOutcome };
+      } else if (owned.mode === 'export') {
+        const outcome: ExportOutcome | undefined = owned.saving ? { phase: 'unconfirmed' } : owned.exportOutcome;
+        if (outcome) interrupted = { ...identity, mode: 'export', outcome: outcome.phase === 'saved' ? { ...outcome, canVerify: false } : outcome };
+      }
+    }
     cancel();
-    if (background) interruptedExport.current = interrupted;
+    if (background) interruptedBackup.current = interrupted;
   }, [cancel]);
   useLayoutEffect(() => () => { route.current?.authentication.retire(); route.current?.flow?.cancel(); route.current?.exporter?.cancel(); route.current = null; }, []);
   const current = (owned: Route) => route.current === owned && getOwner() === owned.owner;
@@ -103,22 +113,23 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   const resume = (expected?: Route) => {
     const owned = route.current;
     if (expected && owned !== expected) return false;
-    const interrupted = interruptedExport.current;
+    const interrupted = interruptedBackup.current;
     if (interrupted) {
       if (AppState.currentState !== 'active') return false;
       const owner = getOwner();
       if (owner !== interrupted.owner) {
-        interruptedExport.current = null;
+        interruptedBackup.current = null;
         return false;
       }
       const snapshot = owner.authority.getSnapshot();
       if (snapshot.phase !== 'ready') return false;
       if (snapshot.account?.address !== interrupted.account.address || snapshot.account.network !== interrupted.account.network) {
-        interruptedExport.current = null;
+        interruptedBackup.current = null;
         return false;
       }
-      setExportStep(interrupted.outcome);
-      enter('export');
+      if (interrupted.mode === 'restore') setStep(interrupted.outcome);
+      else setExportStep(interrupted.outcome);
+      enter(interrupted.mode);
       return true;
     }
     if (!owned?.handoff || !foreground(owned)) return false;
@@ -237,18 +248,27 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   const restore = async (id: string) => {
     const owned = route.current;
     const flow = owned?.flow;
-    if (!owned || !flow || !foreground(owned) || owned.busy) return;
+    if (!owned || !flow || !foreground(owned) || owned.busy || owned.restoreOutcome ||
+        step.phase !== 'review' || step.preview.id !== id) return;
+    owned.outcomeAccount = owned.owner.authority.getSnapshot().account ?? undefined;
+    owned.restoreOutcome = { phase: 'unconfirmed' };
     owned.busy = true; setBusy(true); setErrorKey('');
     try {
       const receipt = await flow.restore(id);
-      if (foreground(owned)) setStep({ phase: 'restored', receipt });
+      if (foreground(owned)) {
+        owned.restoreOutcome = { phase: 'restored', added: receipt.added };
+        setStep(owned.restoreOutcome);
+      }
     } catch (cause) {
       if (foreground(owned)) {
         if (cause instanceof Error && cause.message === 'BACKUP_COMMIT_UNCONFIRMED') {
+          const outcome = { phase: 'unconfirmed' } as const;
           cancel();
-          setStep({ phase: 'unconfirmed' });
+          if (owned.outcomeAccount) interruptedBackup.current = { owner: owned.owner, account: owned.outcomeAccount, mode: 'restore', outcome };
+          setStep(outcome);
           owned.owner.authority.lock();
         } else {
+          owned.restoreOutcome = undefined;
           const code = cause instanceof Error ? cause.message : '';
           setStep({ phase: 'select' });
           setErrorKey(code === 'BACKUP_CANCELLED' || code === 'BACKUP_STALE'
@@ -261,7 +281,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   const persistExport = async (owned: Route, noteCount: number) => {
     try {
       if (!foreground(owned)) throw invalidated();
-      owned.exportAccount = owned.owner.authority.getSnapshot().account ?? undefined;
+      owned.outcomeAccount = owned.owner.authority.getSnapshot().account ?? undefined;
       owned.saving = true;
       setExportStep({ phase: 'writing' });
       await owned.exporter!.save();

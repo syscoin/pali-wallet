@@ -570,7 +570,7 @@
     "failed": "失败",
     "progress": "进度",
     "complete": "完成",
-    "partialSuccess": "{{count}} / {{total}} 交易成功完成",
+    "partialSubmission": "已提交 {{count}} 笔交易，共 {{total}} 笔",
     "allTransactionsFailed": "所有交易均失败",
     "enoughFunds": "您的资金不足以进行此交易。",
     "txWillFail": "交易将失败，请修复后重试！",

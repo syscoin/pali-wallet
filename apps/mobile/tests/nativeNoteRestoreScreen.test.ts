@@ -51,7 +51,7 @@ test('note restore keeps Back available outside the commit in progress', () => {
     assert.equal(hardwareBack?.(), true);
     assert.equal(backs, 2);
 
-    const restored = render({ phase: 'restored', receipt: { id: 'restore-id', added: 2, duplicates: 1, guarded: 0, confirmed: true } }, false);
+    const restored = render({ phase: 'restored', added: 2 }, false);
     assert.equal(restored.find(element => element.type === 'Header')?.props.onBack, onBack);
     assert.equal(hardwareBack?.(), true);
     assert.equal(backs, 3);

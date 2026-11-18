@@ -3,7 +3,7 @@ import { useNativeTranslation } from '../platform/localization';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { AppState, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { INoteBackupPreview, INoteBackupConfirmation } from '../../../../source/wallet/noteBackupService';
+import type { INoteBackupPreview } from '../../../../source/wallet/noteBackupService';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
 import { NoteBackupPasswordField } from './NoteBackupPasswordField';
 
@@ -11,7 +11,7 @@ export type NativeNoteRestoreStep =
   | { phase: 'select' }
   | { phase: 'password' }
   | { phase: 'review'; preview: INoteBackupPreview }
-  | { phase: 'restored'; receipt: INoteBackupConfirmation }
+  | { phase: 'restored'; added: number }
   | { phase: 'unconfirmed' };
 
 type Props = {
@@ -63,7 +63,7 @@ export function NativeNoteRestore({ step, busy, error, onChoose, onOpen, onResto
   } else if (step.phase === 'restored' || step.phase === 'unconfirmed') {
     content = <Screen footer={<Button title={t('privacy.deposit.done')} onPress={onBack} />}>{header}
       {step.phase === 'restored'
-        ? <Notice title={step.receipt.added === 0 ? t('mobile.noteFlows.restore.noNewNotes') : t('mobile.noteFlows.restore.notesRestored')} body={step.receipt.added === 0
+        ? <Notice title={step.added === 0 ? t('mobile.noteFlows.restore.noNewNotes') : t('mobile.noteFlows.restore.notesRestored')} body={step.added === 0
           ? t('mobile.noteFlows.restore.yourExistingNotesWereKeptTheirStatusMay')
           : t('mobile.noteFlows.restore.yourNotesAreSavedInThisWalletTheir')} />
         : <NoteRestoreUnconfirmedNotice />}

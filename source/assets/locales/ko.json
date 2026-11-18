@@ -570,7 +570,7 @@
     "failed": "실패",
     "progress": "진행률",
     "complete": "완료",
-    "partialSuccess": "{{count}} / {{total}} 거래가 성공적으로 완료됨",
+    "partialSubmission": "거래 {{total}}건 중 {{count}}건 제출됨",
     "allTransactionsFailed": "모든 거래가 실패했습니다",
     "enoughFunds": "이 거래에 충분한 자금이 없습니다.",
     "txWillFail": "거래가 실패합니다. 수정하고 다시 시도하세요!",

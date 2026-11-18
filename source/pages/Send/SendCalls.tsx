@@ -744,6 +744,9 @@ export const SendCalls = () => {
       Boolean(feeQuoteError)
     )
       return;
+    const submittedMessage = t(
+      'mobile.recoveryStatusViews.operation.callsSubmitted'
+    );
     submissionInFlightRef.current = true;
     const generation = eoaLifetimeRef.current;
     try {
@@ -947,7 +950,7 @@ export const SendCalls = () => {
           });
           setProcessingIndex(-1);
           setLoading(false);
-          alert.success(t('send.txSuccessfull'));
+          alert.success(submittedMessage);
           return;
         } catch (error) {
           if (
@@ -1034,7 +1037,7 @@ export const SendCalls = () => {
           });
           setLoading(false);
           setProcessingIndex(-1);
-          if (txHash) alert.success(t('send.txSuccessfull'));
+          if (txHash) alert.success(submittedMessage);
           else alert.error(errorMessage);
           return;
         } finally {
@@ -1220,11 +1223,11 @@ export const SendCalls = () => {
       if (outcome.hashes.length) {
         alert.success(
           outcome.failed
-            ? t('send.partialSuccess', {
+            ? t('send.partialSubmission', {
                 count: outcome.hashes.length,
                 total: selectedCallsData.length,
               })
-            : t('send.txSuccessfull')
+            : submittedMessage
         );
       } else alert.error(t('send.allTransactionsFailed'));
     } catch (error) {

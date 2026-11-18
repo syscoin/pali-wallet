@@ -490,6 +490,77 @@ for (const scenario of ['owned-proof', 'background', 'picker-handoff'] as const)
   } finally { held.resolve(); render().cancel(); f.close(); }
 });
 
+for (const scenario of ['writing', 'restored', 'unconfirmed', 'changed account', 'changed wallet', 'preview only'] as const) test(
+  `backgrounded note restore keeps only a dispatched outcome for its owning wallet and account (${scenario})`, async () => {
+    const app = { currentState: 'active' };
+    const ready = { phase: 'ready', account: { network: 'ethereum', address: '0x' + '11'.repeat(20) } };
+    let snapshot: typeof ready | { phase: 'locked' } = ready;
+    const write = Promise.withResolvers<void>();
+    const file = await createNoteBackupCodec({ crypto: globalThis.crypto, assertCurrent: () => undefined }).encrypt({
+      format: 'pali-private-notes', version: 1, createdAt: 1, notes: [{ note: 'tornado-eth-1-1-0x' + '01'.repeat(62), createdAt: 1 }],
+    }, 'Portable test backup password');
+    let commits = 0, cancellations = 0, lockCalls = 0;
+    const entered: string[] = [];
+    const owner = {
+      authority: { getSnapshot: () => snapshot, lock() { lockCalls++; snapshot = { phase: 'locked' }; } },
+      captureNoteFileOwner: async () => async () => undefined,
+      openNoteBackup: async () => ({
+        begin: () => 'restore', cancel() { cancellations++; },
+        prepareImport: async () => ({ id: 'restore', added: 1, duplicates: 0, guarded: 1, expiresAt: performance.now() + 10000 }),
+        async commitImport() {
+          commits++;
+          if (scenario === 'unconfirmed') throw new Error('BACKUP_COMMIT_UNCONFIRMED');
+          if (scenario !== 'restored') await write.promise;
+          return { id: 'restore', confirmed: true, added: 1, duplicates: 0, guarded: 1 };
+        },
+      }),
+    };
+    let currentOwner = owner;
+    const f = screenFixture(new URL('../src/screens/useNativeNoteBackup.ts', import.meta.url), 'useNativeNoteBackup', {
+      'react-native': { AppState: app },
+      '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+      './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+      '../custody/nativeNoteRestore': { createNativeNoteRestore },
+      '../platform/noteBackupPicker': { shouldLockWalletForNotePicker: () => false, pickNoteBackupFile: async () => file.slice() },
+    });
+    const render = () => f.render(() => currentOwner, (mode: string) => { entered.push(mode); }) as unknown as ReturnType<typeof useNativeNoteBackup>;
+    try {
+      assert.equal(render().begin('restore'), true);
+      await render().choose();
+      await render().open('Portable test backup password');
+      assert.equal(render().step.phase, 'review');
+      const pending = scenario === 'preview only' ? undefined : render().restore('restore');
+      if (scenario === 'restored' || scenario === 'unconfirmed') await pending;
+      assert.equal(commits, Number(scenario !== 'preview only'));
+      assert.equal(lockCalls, Number(scenario === 'unconfirmed'));
+      const before = entered.length;
+
+      app.currentState = 'background';
+      render().lock(true);
+      snapshot = { phase: 'locked' };
+      render().lock(true);
+      assert.equal(cancellations, 1);
+      assert.equal(render().resume(), false);
+      assert.equal(render().step.phase, 'select');
+
+      if (scenario === 'changed wallet') currentOwner = { ...owner };
+      snapshot = scenario === 'changed account' ? { ...ready, account: { ...ready.account, address: '0x' + '22'.repeat(20) } } : ready;
+      app.currentState = 'active';
+      const resumes = scenario === 'writing' || scenario === 'restored' || scenario === 'unconfirmed';
+      const outcome = scenario === 'restored' ? { phase: 'restored', added: 1 } : resumes ? { phase: 'unconfirmed' } : { phase: 'select' };
+      assert.equal(render().resume(), resumes);
+      assert.deepEqual(entered.slice(before), resumes ? ['restore'] : []);
+      assert.deepEqual({ ...render().step }, outcome);
+      write.resolve(); await pending;
+      assert.deepEqual({ ...render().step }, outcome);
+      await render().restore('restore');
+      assert.equal(commits, Number(scenario !== 'preview only'));
+      assert.equal(render().leaveRestore(), true);
+      assert.equal(render().resume(), false);
+    } finally { write.resolve(); render().cancel(); f.close(); }
+  }
+);
+
 for (const boundary of ['background', 'back', 'wallet'] as const)
   test(`Inventory never publishes after ${boundary} retires the authentication owner`, async () => {
     const f = fixture('Inventory');

@@ -570,7 +570,7 @@
     "failed": "Échoué",
     "progress": "Progrès",
     "complete": "Terminé",
-    "partialSuccess": "{{count}} sur {{total}} transactions terminées avec succès",
+    "partialSubmission": "Transactions envoyées ({{count}} sur {{total}})",
     "allTransactionsFailed": "Toutes les transactions ont échoué",
     "enoughFunds": "Vous n'avez pas assez de fonds pour cette transaction.",
     "txWillFail": "La transaction échouera, corrigez-la et réessayez !",
