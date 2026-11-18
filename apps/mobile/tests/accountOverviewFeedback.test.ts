@@ -28,7 +28,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
   const snapshot: any = { status: 'ready', filter: 'all', accountId: 'account-1', choices: [choice], rows: screen === 'wallet' ? [row] : [],
     refreshing: false, knownValue: failed ? null : 1005, partial: failed, currency: 'usd',
     view: { filter: 'all', showZero: false }, hasMore: false };
-  let rejectSelection = true, hidden = false, writes = 0, cursor = 0, savedNetworks = false;
+  let rejectSelection = true, hidden = false, writes = 0, cursor = 0;
   let selectionGate: Promise<void> | undefined;
   const cells: Cell[] = [], effects: (() => void)[] = [];
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
