@@ -244,6 +244,66 @@ for (const mode of ['restore', 'export'] as const) test(`cancelled ${mode} picke
   } finally { render().cancel(); f.close(); }
 });
 
+test('export Back can cancel preparation but retains a dispatched write through its unconfirmed outcome', async () => {
+  const preparing = Promise.withResolvers<void>();
+  const write = Promise.withResolvers<void>();
+  const ready = { phase: 'ready' };
+  let opens = 0, writes = 0;
+  let leaveFromPasswordScreen: () => boolean;
+  const owner = {
+    authority: { getSnapshot: () => ready },
+    captureNoteFileOwner: async () => async () => undefined,
+    async openNoteBackup() {
+      if (++opens === 1) await preparing.promise;
+      return { begin: () => 'export', cancel() {},
+        exportEncrypted: async () => ({ bytes: new Uint8Array([1, 2]), noteCount: 1, createdAt: 1 }) };
+    },
+  };
+  const f = screenFixture(new URL('../src/screens/useNativeNoteBackup.ts', import.meta.url), 'useNativeNoteBackup', {
+    'react-native': { AppState: { currentState: 'active' } },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../custody/nativeNoteExport': { createNativeNoteExport },
+    '../platform/noteBackupPicker': {
+      shouldLockWalletForNotePicker: () => false,
+      pickNoteBackupDestination: async () => globalThis.crypto.randomUUID(),
+      async writeNoteBackupFile() {
+        writes++;
+        assert.equal(leaveFromPasswordScreen(), false, 'Back can fire before the writing state renders');
+        await write.promise;
+        throw Error('FILE_WRITE_UNCONFIRMED');
+      },
+      revokeNoteBackupDestination: async () => undefined,
+    },
+  });
+  const render = () => f.render(() => owner, () => undefined) as unknown as ReturnType<typeof useNativeNoteBackup>;
+  try {
+    assert.equal(render().begin('export'), true);
+    await render().choose();
+    render().saveExport('Portable test backup password');
+    await tick();
+    assert.equal(opens, 1);
+    assert.equal(render().leaveExport(), true);
+    preparing.resolve();
+    await tick();
+    assert.equal(writes, 0);
+
+    assert.equal(render().begin('export'), true);
+    await render().choose();
+    const passwordScreen = render();
+    assert.equal(passwordScreen.exportStep.phase, 'passwords');
+    leaveFromPasswordScreen = passwordScreen.leaveExport;
+    passwordScreen.saveExport('Portable test backup password');
+    await tick();
+    assert.equal(writes, 1);
+    assert.equal(render().exportStep.phase, 'writing');
+    write.resolve();
+    await tick();
+    assert.equal(render().exportStep.phase, 'unconfirmed');
+    assert.equal(render().leaveExport(), true);
+  } finally { preparing.resolve(); write.resolve(); render().cancel(); f.close(); }
+});
+
 test('native backup shows distinct French errors for an invalid file and a saved file that cannot be verified', async () => {
   const language = languageMessages('fr');
   const i18n = createInstance();

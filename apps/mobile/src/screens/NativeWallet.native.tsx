@@ -1978,7 +1978,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         if (returning && (!current || returning.owner !== controllersRef.current || returning.identity !== current.identity)) {
           depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null); return;
         }
-        cancelNoteRestore(); depositBackupReturn.current = null; setDepositBackupRoute(null);
+        if (!noteRestore.leaveExport()) return;
+        depositBackupReturn.current = null; setDepositBackupRoute(null);
         if (returning && current) {
           setDepositTask(returning.task); setStage('note-deposit');
         } else { setDepositTask(null); setStage('private-notes'); }

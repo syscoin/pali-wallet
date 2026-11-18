@@ -61,6 +61,12 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     cancel();
     return true;
   };
+  const leaveExport = () => {
+    // The provider can already have created the file before the next render.
+    if (route.current?.saving) return false;
+    cancel();
+    return true;
+  };
   const lock = useCallback(() => {
     // Only the picker ticket or its bounded ciphertext can outlive this lock.
     route.current?.authentication.retire();
@@ -147,8 +153,10 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
               const key = 'mobile.sentryViews.requestExpired';
               if (!foreground(owned)) {
                 if (current(owned) && owned.handoff) owned.pickerFeedbackKey = key;
-              } else if (owned.saving) setExportStep({ phase: 'unconfirmed' });
-              else if (owned.savedCount !== undefined)
+              } else if (owned.saving) {
+                // The write reports its outcome after the destination is revoked.
+                return;
+              } else if (owned.savedCount !== undefined)
                 setExportStep({ phase: 'saved', noteCount: owned.savedCount, canVerify: false });
               else { setExportStep({ phase: 'select' }); setErrorKey(key); }
             });
@@ -221,6 +229,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     try {
       if (!foreground(owned)) throw invalidated();
       owned.saving = true;
+      setExportStep({ phase: 'writing' });
       await owned.exporter!.save();
       if (foreground(owned)) {
         owned.savedCount = noteCount;
@@ -281,5 +290,5 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
       }
     } finally { finish(owned); }
   };
-  return { begin, cancel, leaveRestore, lock, resume, step, exportStep, busy, error: errorKey ? t(errorKey) : '', choose, open, restore, saveExport, showVerify, verifyExport };
+  return { begin, cancel, leaveRestore, leaveExport, lock, resume, step, exportStep, busy, error: errorKey ? t(errorKey) : '', choose, open, restore, saveExport, showVerify, verifyExport };
 }

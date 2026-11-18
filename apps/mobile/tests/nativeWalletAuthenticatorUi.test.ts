@@ -613,6 +613,7 @@ for (const route of [
         });
       };
       const controller = {
+        getSnapshot: operationState,
         dispose() {
           calls.push('dispose');
           return new Promise<void>((resolve) => {
@@ -684,6 +685,7 @@ for (const action of ['back', 'background', 'blur', 'unmount'] as const)
       let signal!: AbortSignal, check!: () => void;
       let release!: (operation: object) => void, finishDisposal!: () => void;
       const controller = {
+        getSnapshot: operationState,
         background() {assert.equal(signal.aborted, false); events.push('background');},
         dispose() {
           assert.equal(signal.aborted, true);
@@ -842,6 +844,7 @@ for (const action of ['header-event', 'close-event', 'review-event', 'app-backgr
     let signal!: AbortSignal, release!: (operation: object) => void, handoff!: NativeSigningHandoff;
     const manager = new NativeSigningHandoffs({ async cancel(value) { canceled.push(value); }, changed() {} });
     const controller = {
+      getSnapshot: operationState,
       background() { assert.equal(signal.aborted, false); events.push('background'); assert(manager.background(handoff)); },
       async dispose() {
         assert.equal(signal.aborted, true); events.push('dispose');
@@ -887,7 +890,7 @@ async function authenticationRoute(route: AuthenticationRoute) {
   const component = route === 'deployment' ? 'NativeSmartAccountOperationRoute' : route === 'slh' ? 'NativeSlhDsaManagementScreen' : name;
   const f = harness(name);
   let authentication!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void, returned = 0;
-  const operation = { async dispose() {} };
+  const operation = { getSnapshot: operationState, async dispose() {} };
   const open = async (...args: unknown[]) => {
     authentication = args.at(-1) as privateAuthentication.NativePrivateAuthenticationScope;
     guard = (route === 'deployment' ? args[0] : args.at(-2)) as () => void;
@@ -973,4 +976,40 @@ test('additive approval review says the existing method stays active through pay
     assert(all(tree).some(node=>node.children.includes(dictionary.settings.existingApprovalUnchanged)));
     assert(!all(tree).some(node=>node.children.includes('Replace how this account approves transactions. Review the new owners and threshold.')));
   }finally{f.dispose();}
+});
+
+test('Smart operation route protects an in-flight funding transaction and retires a stale Leave', async () => {
+  const f = harness('NativeSmartAccountOperation');
+  const fundingHash = `0x${'12'.repeat(32)}`;
+  let snapshot = { ...operationState(), phase: 'waiting', transactionHash: fundingHash };
+  let retired = 0;
+  const operation = { getSnapshot: () => snapshot, subscribe: () => () => {}, dispose() { retired++; } };
+  const props = { open: async () => operation, onBack() {} };
+  try {
+    f.render('NativeSmartAccountOperationRoute', props);
+    await settle();
+    f.render('NativeSmartAccountOperationRoute', props);
+    assert.equal(f.back(), true);
+    const prompt = f.render('NativeSmartAccountOperationRoute', props).props.leavePrompt;
+    assert.equal(prompt.type, 'SubmissionLeavePrompt');
+    snapshot = { ...snapshot, revision: snapshot.revision + 1 };
+    prompt.props.onLeave();
+    assert.equal(f.render('NativeSmartAccountOperationRoute', props).props.leavePrompt, false);
+    assert.equal(retired, 0);
+  } finally { f.dispose(); }
+});
+
+test('intercepted Smart operation Back leaves the confirmed Activity link usable', () => {
+  const f = harness('NativeSmartAccountOperation');
+  const hash = `0x${'12'.repeat(32)}`;
+  const state = { ...operationState(), phase: 'waiting', transactionHash: hash, userOperationSubmissionStarted: true };
+  const viewed: string[] = [];
+  const props = { state, onBack: () => false, onViewTransaction: (hash: string) => viewed.push(hash), authorize() {}, confirmPayer() {} };
+  try {
+    const waiting = f.render('NativeSmartAccountOperationContent', props);
+    one(waiting, 'Header').props.onBack();
+    const complete = f.render('NativeSmartAccountOperationContent', { ...props, state: { ...state, phase: 'complete' } });
+    one(complete, 'Button', 'View transaction').props.onPress();
+    assert.deepEqual(viewed, [hash]);
+  } finally { f.dispose(); }
 });

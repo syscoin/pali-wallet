@@ -53,6 +53,8 @@ import { SendNetworkCard } from './SendNetworkCard';
 import { SendAssetSelector, type SendAssetItem } from './SendAssetSelector';
 import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
+import { SubmissionLeavePrompt } from './SubmissionLeavePrompt';
+import { useSmartAccountSubmissionLeave } from './useSmartAccountSubmissionLeave';
 import { Button, Card, Coin, colors, Header, IconButton, Notice, Screen, styles, Text } from '../ui';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
@@ -268,10 +270,12 @@ export function NativeSmartAccountSend({
         if (owner.current === current && current.returning) close();
       });
   }, [retireRecipient, closeScanner]);
+  const currentOperation = useCallback(() => owner.current.active ? owner.current.operation : null, []);
+  const { requestBack, visible, stay, leave } = useSmartAccountSubmissionLeave(currentOperation, back);
   const userBack = useCallback(() => {
     if (scannerOwner.current) { closeScanner(); return; }
-    back();
-  }, [back, closeScanner]);
+    return requestBack();
+  }, [requestBack, closeScanner]);
   useEffect(() => {
     const current: SendOwner = {
       active: true,
@@ -465,8 +469,9 @@ export function NativeSmartAccountSend({
         </Screen>
       </SafeAreaView>
     );
+  const leavePrompt = visible && <SubmissionLeavePrompt visible onStay={stay} onLeave={leave} />;
   if (controller && !resolvedRecipient)
-    return <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={back} onViewTransaction={onViewTransaction} />;
+    return <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={userBack} onViewTransaction={onViewTransaction} leavePrompt={leavePrompt} />;
   if (controller)
     return (
       <>
@@ -474,7 +479,7 @@ export function NativeSmartAccountSend({
           <Text selectable style={styles.muted}>{t("mobile.smartSendViews.ensName")}{' '}{resolvedRecipient.input}</Text>
           <Text selectable style={styles.muted}>{t("mobile.smartSendViews.resolvedAddress")}{' '}{resolvedRecipient.address}</Text>
         </SafeAreaView>}
-        <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={back} onViewTransaction={onViewTransaction} />
+        <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={userBack} onViewTransaction={onViewTransaction} leavePrompt={leavePrompt} />
       </>
     );
   if (scanner && scanner.account.address === account.address && scanner.account.network === account.network &&

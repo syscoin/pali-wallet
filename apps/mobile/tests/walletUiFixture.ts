@@ -1,4 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import ts from 'typescript';
 import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../../source/shared/smartAccountFeeQuote.ts';
+
+let smartSubmissionLeaveCode: string | undefined;
 
 /** Leaf tests retain their native event ports; the real host has its own tests. */
 export function walletUiFixture(name: string, ports: Record<string, any>): Record<string, unknown> | undefined {
@@ -8,5 +13,15 @@ export function walletUiFixture(name: string, ports: Record<string, any>): Recor
     return { get WalletBackHandler() { return ports['react-native'].BackHandler; } };
   if (name === '../ui/WalletModal' || name === './src/ui/WalletModal')
     return { WalletModal: ports['react-native'].Modal ?? 'Modal', WalletModalHost: 'WalletModalHost' };
+  if (name === './SubmissionLeavePrompt' && !Object.hasOwn(ports, name)) return { SubmissionLeavePrompt: 'SubmissionLeavePrompt' };
+  if (name === './useSmartAccountSubmissionLeave') {
+    smartSubmissionLeaveCode ??= ts.transpileModule(
+      readFileSync(new URL('../src/screens/useSmartAccountSubmissionLeave.ts', import.meta.url), 'utf8'),
+      { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }
+    ).outputText;
+    const exports = {};
+    runInNewContext(smartSubmissionLeaveCode, { exports, require: () => ports.react });
+    return exports;
+  }
   return undefined;
 }

@@ -9,6 +9,7 @@ import { NoteBackupPasswordField } from './NoteBackupPasswordField';
 export type NativeNoteExportStep =
   | { phase: 'select' }
   | { phase: 'passwords' }
+  | { phase: 'writing' }
   | { phase: 'saved' | 'verify' | 'verified'; noteCount: number; canVerify?: boolean }
   | { phase: 'unconfirmed' };
 
@@ -43,17 +44,22 @@ export function NativeNoteFilesMenu({ onBack, onExport, onRestore, onCapacity, o
 
 export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVerify, onVerify, onBack, doneLabel }: Props) {
   const { t } = useNativeTranslation();
+  const writing = step.phase === 'writing';
   useLayoutEffect(() => {
-    const back = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
+    const back = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!writing) onBack();
+      return true;
+    });
     return () => back.remove();
-  }, [onBack]);
+  }, [onBack, writing]);
   const feedback = error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text> : null;
-  const header = <Header title={step.phase === 'verify' ? t('mobile.noteFlows.export.verifyBackup') : t('mobile.noteFlows.export.backUpPrivateNotes')} onBack={onBack} />;
+  const header = <Header title={step.phase === 'verify' ? t('mobile.noteFlows.export.verifyBackup') : t('mobile.noteFlows.export.backUpPrivateNotes')} onBack={writing ? undefined : onBack} />;
   let content;
   switch (step.phase) {
     case 'passwords':
+    case 'writing':
     case 'verify':
-      content = <BackupForm key={step.phase} verify={step.phase === 'verify'} busy={busy} header={header} feedback={feedback}
+      content = <BackupForm key={step.phase === 'verify' ? 'verify' : 'save'} verify={step.phase === 'verify'} busy={busy || writing} header={header} feedback={feedback}
         submit={step.phase === 'verify' ? onVerify : onSave} />;
       break;
     case 'saved':

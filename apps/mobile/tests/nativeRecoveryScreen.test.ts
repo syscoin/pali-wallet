@@ -524,7 +524,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, resume: () => false, step: { phase: 'select' }, exportStep: { phase: 'select' } as { phase: 'select' | 'saved'; noteCount?: number }, busy: false, error: '',
-    begin(mode: string) { assert(depositMode && mode === 'export'); return true; } };
+    begin(mode: string) { assert(depositMode && mode === 'export'); return true; }, leaveExport: () => true };
   Object.assign(dependencies, {
     ...walletScreenPorts,
     '../notifications/permissionReturn': { NotificationPermissionReturn },

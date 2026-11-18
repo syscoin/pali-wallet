@@ -33,6 +33,8 @@ import type {
   NativeSmartAccountOperationSnapshot,
 } from '../smartAccount/operation';
 import { TransactionDetails } from './NativeTransactionReview';
+import { SubmissionLeavePrompt } from './SubmissionLeavePrompt';
+import { useSmartAccountSubmissionLeave } from './useSmartAccountSubmissionLeave';
 import { Button, Card, Coin, colors, Header, Notice, Screen, Text } from '../ui';
 import { guardianDelayLabel } from './guardianPolicyLabels';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
@@ -97,6 +99,8 @@ export function NativeSmartAccountOperationRoute({
         if (owner.current === current && current.returning) close();
       });
   }, [open]);
+  const currentOperation = useCallback(() => owner.current?.live ? owner.current.operation : null, []);
+  const { requestBack, visible, stay, leave } = useSmartAccountSubmissionLeave(currentOperation, back);
   useEffect(() => {
     const current: DeploymentOwner = { live: true, returning: false, lifetime: new AbortController(), authentication: createNativePrivateAuthenticationScope() };
     owner.current = current;
@@ -125,7 +129,7 @@ export function NativeSmartAccountOperationRoute({
         if (current.live) setOpened({ source: open, failed: true });
       });
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
-      back();
+      requestBack();
       return true;
     });
     const appState = AppState.addEventListener('change', state => {
@@ -142,7 +146,7 @@ export function NativeSmartAccountOperationRoute({
       appState.remove();
       blur?.remove();
     };
-  }, [back, open]);
+  }, [back, open, requestBack]);
   const current = opened?.source === open ? opened : undefined;
   if (current?.controller)
     return (
@@ -150,8 +154,9 @@ export function NativeSmartAccountOperationRoute({
         authentication={current.authentication}
         controller={current.controller}
         ledgerConnection={ledgerConnection}
-        onBack={() => back()}
+        onBack={requestBack}
         onViewTransaction={onViewTransaction}
+        leavePrompt={visible && <SubmissionLeavePrompt visible onStay={stay} onLeave={leave} />}
       />
     );
   return (
@@ -185,12 +190,14 @@ export function NativeSmartAccountOperationScreen({
   ledgerConnection,
   authentication,
   onViewTransaction,
+  leavePrompt,
 }: {
   authentication?: NativePrivateAuthenticationScope;
   ledgerConnection?: NativeLedgerConnectionView;
   controller: NativeSmartAccountOperation;
-  onBack(): void;
+  onBack(): false | void;
   onViewTransaction?(hash: string): void;
+  leavePrompt?: React.ReactNode;
 }) {
   useNativeTranslation();
   const state = useSyncExternalStore(
@@ -218,7 +225,7 @@ export function NativeSmartAccountOperationScreen({
       onBack={onBack}
       onViewTransaction={onViewTransaction}
       disabled={state.phase === 'authorize' && ledger.blocked}
-      before={<>{ledger.showConnect && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}{ledger.modal}</>}
+      before={<>{ledger.showConnect && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}{ledger.modal}{leavePrompt}</>}
       authorize={(acknowledgedCustomRisk) => {
         if (AppState.currentState !== 'active') return;
         if (!ledger.canApprove()) return;
@@ -252,7 +259,7 @@ export function NativeSmartAccountOperationContent({
 }: {
   authentication?: Pick<NativePrivateAuthenticationScope, 'isAuthenticating'>;
   state: NativeSmartAccountOperationSnapshot;
-  onBack(): void;
+  onBack(): false | void;
   onViewTransaction?(hash: string): void;
   authorize(acknowledgedCustomRisk: boolean): void;
   confirmPayer(id: number): void;
@@ -295,7 +302,7 @@ export function NativeSmartAccountOperationContent({
     if (customInstall && !acknowledged) return;
     authorize(customInstall && acknowledged);
   };
-  const close = () => { live.current = false; clearRisk(); onBack(); };
+  const close = () => { if (onBack() !== false) { live.current = false; clearRisk(); } };
   const network = getNativeSendContext(state.network);
   const amount = (units: string, token?: Erc20Metadata) => {
     const value = token
