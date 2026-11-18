@@ -264,7 +264,8 @@
     "thereWasAnError": "Il y a eu une erreur lors de la tentative de changement de réseau. Réessayez plus tard.",
     "errorSwitching": "Erreur lors du changement de réseaux",
     "speedUp": "Accélérer",
-    "cancelTx": "Annuler la transaction"
+    "cancelTx": "Annuler la transaction",
+    "speedTx": "Accélérer la transaction"
   },
   "connections": {
     "connectRequest": "Demande de connexion",
@@ -1307,6 +1308,8 @@
     "cancelFeePreview": "Vérification des frais réseau d’annulation…",
     "cancelFeeConsent": "Annuler cette transaction avec des frais de gaz maximum de {{fee}} {{currency}} ?",
     "cancelFeeUnavailable": "Impossible de vérifier les frais d’annulation. Réessayez.",
+    "speedUpFeePreview": "Vérification des frais de réseau…",
+    "speedUpFeeConsent": "Accélérer cette transaction avec des frais de réseau maximum de {{fee}} {{currency}} ?",
     "speedUpAmountWouldChange": "Ajoutez des fonds à ce compte avant d’accélérer la transaction. Le montant initial ne sera pas modifié.",
     "speedUpFeeUnavailable": "Impossible de vérifier les frais. Veuillez réessayer.",
     "utxoReplacement": {

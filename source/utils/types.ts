@@ -25,7 +25,6 @@ export interface ITransactionOptions {
   setIsOpenModal: React.Dispatch<React.SetStateAction<boolean>>;
   setModalData: React.Dispatch<
     React.SetStateAction<{
-      allowCloseWhileLoading?: boolean;
       buttonText: string;
       description: string;
       isButtonLoading?: boolean;

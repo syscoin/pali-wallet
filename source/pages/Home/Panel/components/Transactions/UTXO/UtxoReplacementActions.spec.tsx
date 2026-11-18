@@ -23,7 +23,18 @@ jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
 const original = 'ab'.repeat(32);
 const replacement = 'cd'.repeat(32);
 const mockEmitter = jest.mocked(controllerEmitter);
+const originalResizeObserver = globalThis.ResizeObserver;
 
+beforeAll(() => {
+  globalThis.ResizeObserver = class {
+    observe = jest.fn();
+    unobserve = jest.fn();
+    disconnect = jest.fn();
+  };
+});
+afterAll(() => {
+  globalThis.ResizeObserver = originalResizeObserver;
+});
 beforeEach(() => mockEmitter.mockReset());
 
 it('reviews exact cancellation outputs and checks the replacement after an uncertain submission', async () => {
@@ -49,9 +60,20 @@ it('reviews exact cancellation outputs and checks the replacement after an uncer
     await screen.findByRole('button', { name: 'header.cancelTx' })
   );
 
-  const dialog = within(await screen.findByRole('dialog'));
-  expect(dialog.getByText('0.00001 SYS')).toBeVisible();
+  const dialog = within(
+    await screen.findByRole('dialog', { name: 'header.cancelTx' })
+  );
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  expect(
+    dialog.getByText('transactions.utxoReplacement.cancelDescription')
+  ).toBeVisible();
+  expect(dialog.getByText('send.networkFee')).toBeVisible();
   expect(dialog.getByText('0.000015 SYS')).toBeVisible();
+  expect(dialog.getByText(original)).not.toBeVisible();
+  expect(dialog.getByText('wallet-output')).not.toBeVisible();
+  await user.click(dialog.getByText('send.details'));
+  expect(dialog.getByText(original)).toBeVisible();
+  expect(dialog.getByText('0.00001 SYS')).toBeVisible();
   expect(dialog.getByText('0.00075 SYS')).toBeVisible();
   expect(dialog.getByText('wallet-output')).toBeVisible();
   expect(mockEmitter.mock.calls.map(([method]) => method[1])).toEqual([
@@ -84,6 +106,47 @@ it('reviews exact cancellation outputs and checks the replacement after an uncer
     false
   );
   expect(await screen.findByText('send.confirmed')).toBeVisible();
+});
+
+it('shows the exact Speed Up fee before confirmation and discards an abandoned review', async () => {
+  const user = userEvent.setup();
+  mockEmitter
+    .mockResolvedValueOnce({ speedUp: true })
+    .mockResolvedValueOnce({
+      kind: 'speed-up',
+      id: 'review-id',
+      validForMs: 90_000,
+      previousFeeSatoshis: '1000',
+      feeSatoshis: '2049',
+      outputs: [{ address: 'recipient-output', amountSatoshis: '75000' }],
+    })
+    .mockResolvedValueOnce(undefined);
+
+  render(<UtxoReplacementActions txid={original} currency="SYS" />);
+  await user.click(
+    await screen.findByRole('button', { name: 'header.speedUp' })
+  );
+  const dialog = within(
+    await screen.findByRole('dialog', { name: 'header.speedUp' })
+  );
+  expect(
+    dialog.getByText('transactions.utxoReplacement.speedUpDescription')
+  ).toBeVisible();
+  expect(dialog.getByText('0.00002049 SYS')).toBeVisible();
+  expect(dialog.getByText('recipient-output')).not.toBeVisible();
+  await user.click(dialog.getByRole('button', { name: 'buttons.cancel' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockEmitter.mock.calls.map(([method]) => method[1])).toEqual([
+    'getUtxoReplacementActions',
+    'prepareUtxoReplacement',
+    'discardUtxoReplacement',
+  ]);
+  expect(mockEmitter).toHaveBeenLastCalledWith(
+    ['wallet', 'discardUtxoReplacement'],
+    ['review-id'],
+    10_000,
+    false
+  );
 });
 
 it('opens a hardware transaction in a standalone wallet tab without preparing or signing', async () => {

@@ -280,6 +280,7 @@ export function UtxoReplacementActions({
       )}
       {review && (
         <ConfirmationModal
+          compact
           describeDialog
           show
           title={t(
@@ -295,33 +296,40 @@ export function UtxoReplacementActions({
           onClick={() => void confirm()}
           isButtonLoading={busy}
         >
-          <dl className="mt-4 space-y-3 text-sm">
-            <div>
-              <dt className="text-brand-gray200">
-                {t('transactions.utxoReplacement.originalTransaction')}
-              </dt>
-              <dd className="break-all font-mono">{txid}</dd>
-            </div>
-            <div>
-              <dt className="text-brand-gray200">
-                {t('transactions.utxoReplacement.originalFee')}
-              </dt>
-              <dd>{amount(review.previousFeeSatoshis)}</dd>
-            </div>
-            <div>
-              <dt className="text-brand-gray200">{t('send.networkFee')}</dt>
-              <dd>{amount(review.feeSatoshis)}</dd>
-            </div>
-            {review.outputs.map((output, index) => (
-              <div key={index}>
-                <dt className="text-brand-gray200">
-                  {t('transactions.outputNumber', { index: index + 1 })}
-                </dt>
-                <dd className="break-all">{output.address}</dd>
-                <dd>{amount(output.amountSatoshis)}</dd>
-              </div>
-            ))}
+          <dl className="mt-3 rounded-xl bg-alpha-whiteAlpha100 px-3 py-2">
+            <dt className="text-brand-gray200">{t('send.networkFee')}</dt>
+            <dd className="break-words text-base font-semibold text-white">
+              {amount(review.feeSatoshis)}
+            </dd>
           </dl>
+          <details className="mt-3 text-xs">
+            <summary className="cursor-pointer text-brand-gray200">
+              {t('send.details')}
+            </summary>
+            <dl className="mt-2 space-y-2">
+              <div>
+                <dt className="text-brand-gray200">
+                  {t('transactions.utxoReplacement.originalTransaction')}
+                </dt>
+                <dd className="break-all font-mono">{txid}</dd>
+              </div>
+              <div>
+                <dt className="text-brand-gray200">
+                  {t('transactions.utxoReplacement.originalFee')}
+                </dt>
+                <dd>{amount(review.previousFeeSatoshis)}</dd>
+              </div>
+              {review.outputs.map((output, index) => (
+                <div key={index}>
+                  <dt className="text-brand-gray200">
+                    {t('transactions.outputNumber', { index: index + 1 })}
+                  </dt>
+                  <dd className="break-all">{output.address}</dd>
+                  <dd>{amount(output.amountSatoshis)}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
         </ConfirmationModal>
       )}
     </div>

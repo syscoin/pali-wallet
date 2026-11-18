@@ -49,6 +49,7 @@ interface IWarningModal extends IDefaultModal {
 interface IConfirmationModal extends Omit<IDefaultModal, 'title'> {
   actionsInBody?: boolean;
   allowCloseWhileLoading?: boolean;
+  compact?: boolean;
   describeDialog?: boolean;
   onClick: () => void;
   title: ReactNode;
@@ -149,6 +150,7 @@ export const ConfirmationModal = ({
   actionsInBody = false,
   buttonText,
   children,
+  compact = false,
   description = '',
   describeDialog = false,
   onClose,
@@ -165,8 +167,10 @@ export const ConfirmationModal = ({
     if (!dismissalBlocked) onClose?.();
   };
   const actions = (
-    <DialogFooter>
-      <DialogActions>
+    <DialogFooter className={compact ? '!px-4 !py-3' : undefined}>
+      <DialogActions
+        className={compact ? '!gap-2 [&>button]:!basis-0' : undefined}
+      >
         <DialogActionButton
           tone="secondary"
           type="button"
@@ -197,15 +201,22 @@ export const ConfirmationModal = ({
         aria-busy={isButtonLoading}
         padded={false}
         scroll={false}
-        className="flex flex-col"
+        className={compact ? 'flex flex-col !max-w-xs' : 'flex flex-col'}
       >
         <DialogHeader
           title={title}
           icon={<ShieldCheckIcon />}
           onClose={close}
           disabled={dismissalBlocked}
+          className={
+            compact ? '!px-4 !py-1 [&>span:first-child]:hidden' : undefined
+          }
         />
-        <DialogBody className={actionsInBody ? '!px-0 !py-0' : ''}>
+        <DialogBody
+          className={
+            actionsInBody ? '!px-0 !py-0' : compact ? '!px-4 !py-3 text-sm' : ''
+          }
+        >
           {actionsInBody ? (
             <div className="px-5 py-5 [@media(max-width:360px)]:px-4 [@media(max-width:360px)]:py-3">
               <DialogDescription className="[overflow-wrap:anywhere]">

@@ -37,16 +37,8 @@ type Options = {
 
 /** Opt-in, real built-wallet journey. Every signature and transaction stays on loopback. */
 export async function runSmartAccountCancellationJourney(options: Options) {
-  const {
-    account,
-    chain,
-    currency,
-    fenceUrl,
-    installRoutes,
-    mark,
-    payer,
-    recipient,
-  } = options;
+  const { account, chain, currency, fenceUrl, installRoutes, mark, recipient } =
+    options;
   let wallet = options.wallet;
   let page = wallet.page;
   const entryPoint = getPaliEntryPointAddress(chain.chainId);
@@ -212,9 +204,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
       name: en.transactions.smartAccountCancelSign,
       exact: true,
     });
-  const reviewCancellation = async (
-    original: SmartAccountPackedUserOperation
-  ) => {
+  const reviewCancellation = async () => {
     const modal = cancellationDialog();
     await expect(modal).toBeVisible({ timeout: 30000 });
     await expect(signCancellation(modal)).toBeEnabled();
@@ -231,31 +221,13 @@ export async function runSmartAccountCancellationJourney(options: Options) {
     const maximumNetworkFee = await reviewedFee(
       en.transactions.smartAccountCancelMaximumReplacementFee
     );
-    const payerAddress = modal
-      .getByText(en.transactions.feePayer, { exact: true })
-      .locator('..')
-      .locator('dd');
-    await expect(payerAddress).toHaveText(payer, { ignoreCase: true });
-    const details = modal.locator('details');
-    await details.locator('summary').click();
-    await expect(
-      details.getByText(getSmartAccountUserOpHash(original, chain.chainId), {
-        exact: true,
-      })
-    ).toBeVisible();
-    await expect(
-      details.getByText(original.nonce, { exact: true })
-    ).toBeVisible();
-    await details.locator('summary').click();
     await expect(networkFeeReview()).toHaveCount(0);
     return { modal, entryPointFee, maximumNetworkFee };
   };
-  const approveCancellation = async (
-    original: SmartAccountPackedUserOperation
-  ) => {
+  const approveCancellation = async () => {
     const before = deliveries.length;
     const { modal, entryPointFee, maximumNetworkFee } =
-      await reviewCancellation(original);
+      await reviewCancellation();
     await signCancellation(modal).click();
     await expect
       .poll(() => deliveries.length, { timeout: 30000 })
@@ -349,7 +321,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         const before = deliveries.length;
         const beforeEstimates = signedEstimates;
         await cancelFromActivity(original.hash);
-        const { modal } = await reviewCancellation(original.operation);
+        const { modal } = await reviewCancellation();
         await modal
           .getByRole('button', { name: en.buttons.cancel, exact: true })
           .click();
@@ -360,7 +332,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
           BigInt(original.operation.nonce)
         );
         await cancelFromActivity(original.hash);
-        const cancelled = await approveCancellation(original.operation);
+        const cancelled = await approveCancellation();
         expect(cancelled.operation.nonce).toBe(original.operation.nonce);
         const cancellationOperationHash = getSmartAccountUserOpHash(
           cancelled.operation,
@@ -423,7 +395,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         ).toLowerCase();
         await openActivity();
         await cancelFromActivity(original.hash);
-        const { modal } = await reviewCancellation(original.operation);
+        const { modal } = await reviewCancellation();
         await rpc('evm_mine');
         await mined(original.hash);
         expect(await canonicalNonce(original.operation)).toBe(

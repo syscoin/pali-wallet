@@ -136,7 +136,7 @@ beforeEach(() => {
   Object.values(mockAlert).forEach((alert) => alert.mockClear());
 });
 
-it('reviews the complete fee budget before signing and submits after one confirmation', async () => {
+it('reviews the fee ceilings in one confirmation before signing', async () => {
   prepare(TRANSACTION, reviewedQuote);
   mockSubmit.mockResolvedValue({});
   render(<Harness originalHash={TRANSACTION} />);
@@ -144,12 +144,14 @@ it('reviews the complete fee budget before signing and submits after one confirm
   const dialog = await screen.findByRole('dialog', {
     name: en.header.cancelTx,
   });
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
   const review = within(dialog);
   expect(dialog).toHaveAccessibleDescription(
     en.transactions.smartAccountCancelReviewDescription
   );
-  expect(review.getByText(ACCOUNT)).toBeVisible();
-  expect(review.getByText(PAYER)).toBeVisible();
+  for (const identifier of [ACCOUNT, PAYER, TRANSACTION, OPERATION, NONCE]) {
+    expect(review.queryByText(identifier)).not.toBeInTheDocument();
+  }
   for (const [label, amount] of [
     [en.send.smartAccountMaxFee, '0.003 SYS'],
     [en.transactions.smartAccountCancelMaximumReplacementFee, '0.004 SYS'],
@@ -160,14 +162,6 @@ it('reviews the complete fee budget before signing and submits after one confirm
       amount
     );
   }
-  const details = review
-    .getByText(en.transactions.technicalDetails)
-    .closest('details')!;
-  expect(details.open).toBe(false);
-  details.open = true;
-  expect(within(details).getByText(TRANSACTION)).toBeVisible();
-  expect(within(details).getByText(OPERATION)).toBeVisible();
-  expect(within(details).getByText(NONCE)).toBeVisible();
   expect(mockSubmit).not.toHaveBeenCalled();
 
   fireEvent.click(
@@ -189,9 +183,8 @@ it('reviews the complete fee budget before signing and submits after one confirm
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
-it('dismisses without signing and shows one hash when both references match', async () => {
-  const originalHash = `0x${OPERATION.slice(2).toUpperCase()}`;
-  prepare(originalHash, {
+it('shows the gas tank fee without funding rows and dismisses without signing', async () => {
+  prepare(TRANSACTION, {
     ...reviewedQuote,
     cancellationPayerBudget: {
       ...reviewedQuote.cancellationPayerBudget,
@@ -200,15 +193,9 @@ it('dismisses without signing and shows one hash when both references match', as
       maximumPrefundFeeWei: '0',
     },
   });
-  render(<Harness originalHash={originalHash} />);
+  render(<Harness originalHash={TRANSACTION} />);
   fireEvent.click(screen.getByRole('button', { name: 'Request cancellation' }));
   const dialog = within(await screen.findByRole('dialog'));
-  const details = dialog
-    .getByText(en.transactions.technicalDetails)
-    .closest('details')!;
-  details.open = true;
-  expect(within(details).getByText(OPERATION)).toBeVisible();
-  expect(within(details).queryByText(originalHash)).not.toBeInTheDocument();
   expect(
     dialog.getByText(en.settings.smartAccountFeeReviewGasTank)
       .nextElementSibling
@@ -216,7 +203,11 @@ it('dismisses without signing and shows one hash when both references match', as
   expect(
     dialog.queryByText(en.transactions.smartAccountCancelMaximumDeposit)
   ).not.toBeInTheDocument();
+  expect(
+    dialog.queryByText(en.transactions.smartAccountCancelMaximumDepositFee)
+  ).not.toBeInTheDocument();
   fireEvent.click(dialog.getByRole('button', { name: en.buttons.cancel }));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(mockSubmit).not.toHaveBeenCalled();
   expect(mockEmitter).toHaveBeenCalledTimes(2);
 });

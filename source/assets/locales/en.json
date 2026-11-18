@@ -264,7 +264,8 @@
     "thereWasAnError": "There was an error while trying to switch network. Try again later.",
     "errorSwitching": "Error switching networks",
     "speedUp": "Speed Up",
-    "cancelTx": "Cancel Transaction"
+    "cancelTx": "Cancel Transaction",
+    "speedTx": "Speed Up Transaction"
   },
   "connections": {
     "connectRequest": "Connect Request",
@@ -1307,6 +1308,8 @@
     "cancelFeePreview": "Checking the cancellation network fee…",
     "cancelFeeConsent": "Cancel this transaction with a maximum gas fee of {{fee}} {{currency}}?",
     "cancelFeeUnavailable": "Unable to check the cancellation fee. Please try again.",
+    "speedUpFeePreview": "Checking the network fee…",
+    "speedUpFeeConsent": "Speed up this transaction with a maximum network fee of {{fee}} {{currency}}?",
     "speedUpAmountWouldChange": "Add funds to this account before speeding up this transaction. The original amount will not be changed.",
     "speedUpFeeUnavailable": "Unable to check the fee. Please try again.",
     "utxoReplacement": {

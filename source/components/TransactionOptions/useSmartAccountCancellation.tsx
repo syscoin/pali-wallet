@@ -46,69 +46,50 @@ const hashPattern = /^0x[\da-f]{64}$/i;
 const isWeiAmount = (value: unknown): value is string =>
   typeof value === 'string' && /^(?:0|[1-9]\d{0,77})$/.test(value);
 
-function CancellationReviewDetails({
-  prepared,
+function CancellationFeeReview({
+  quote,
   symbol,
 }: {
-  prepared: PreparedCancellation;
+  quote: CancellationFeeQuote;
   symbol: string;
 }) {
   const { t } = useTranslation();
-  const { accountAddress, entryPointFeeQuote, operationCancellation } =
-    prepared;
-  const { cancellationPayerBudget, feePayer, maximumFeeWei } =
-    entryPointFeeQuote;
-  const { originalHash, operationHash, operationNonce } = operationCancellation;
+  const { cancellationPayerBudget, maximumFeeWei } = quote;
   const showFunding =
     cancellationPayerBudget.maximumPrefundWei !== '0' ||
     cancellationPayerBudget.maximumPrefundFeeWei !== '0';
-  const formatFee = (amount: string) => `${formatEther(amount)} ${symbol}`;
-  const row = (label: string, value: string) => (
-    <div>
-      <dt className="text-brand-gray200">{label}</dt>
-      <dd className="break-all">{value}</dd>
+  const row = (label: string, amount: string) => (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="min-w-0 text-brand-gray200 [overflow-wrap:anywhere]">
+        {label}
+      </dt>
+      <dd className="max-w-[50%] shrink-0 text-right font-medium tabular-nums [overflow-wrap:anywhere]">
+        {formatEther(amount)} {symbol}
+      </dd>
     </div>
   );
   return (
-    <>
-      <dl className="mt-4 space-y-3 rounded-2xl bg-alpha-whiteAlpha100 p-3 text-left text-sm">
-        {row(t('smartAccountHub.accountAddress'), accountAddress)}
-        {row(t('send.smartAccountMaxFee'), formatFee(maximumFeeWei))}
-        {row(t('transactions.feePayer'), feePayer.address)}
-        {row(
-          cancellationPayerBudget.gasTank
-            ? t('settings.smartAccountFeeReviewGasTank')
-            : t('transactions.smartAccountCancelMaximumReplacementFee'),
-          formatFee(cancellationPayerBudget.maximumFeeWei)
-        )}
-        {showFunding && (
-          <>
-            {row(
-              t('transactions.smartAccountCancelMaximumDeposit'),
-              formatFee(cancellationPayerBudget.maximumPrefundWei)
-            )}
-            {row(
-              t('transactions.smartAccountCancelMaximumDepositFee'),
-              formatFee(cancellationPayerBudget.maximumPrefundFeeWei)
-            )}
-          </>
-        )}
-      </dl>
-      <details className="mt-4 text-left text-sm">
-        <summary className="cursor-pointer text-brand-gray200">
-          {t('transactions.technicalDetails')}
-        </summary>
-        <dl className="mt-2 space-y-2">
-          {originalHash.toLowerCase() !== operationHash.toLowerCase() &&
-            row(t('transactions.smartAuthorizations.reference'), originalHash)}
+    <dl className="mt-3 space-y-2 rounded-xl bg-alpha-whiteAlpha100 p-3 text-left text-sm">
+      {row(t('send.smartAccountMaxFee'), maximumFeeWei)}
+      {row(
+        cancellationPayerBudget.gasTank
+          ? t('settings.smartAccountFeeReviewGasTank')
+          : t('transactions.smartAccountCancelMaximumReplacementFee'),
+        cancellationPayerBudget.maximumFeeWei
+      )}
+      {showFunding && (
+        <>
           {row(
-            t('transactions.smartAuthorizations.operationHash'),
-            operationHash
+            t('transactions.smartAccountCancelMaximumDeposit'),
+            cancellationPayerBudget.maximumPrefundWei
           )}
-          {row(t('transactions.replay.nonce'), operationNonce)}
-        </dl>
-      </details>
-    </>
+          {row(
+            t('transactions.smartAccountCancelMaximumDepositFee'),
+            cancellationPayerBudget.maximumPrefundFeeWei
+          )}
+        </>
+      )}
+    </dl>
   );
 }
 
@@ -335,6 +316,7 @@ export function useSmartAccountCancellation(
     content: shown && (
       <ConfirmationModal
         show
+        compact
         title={t('header.cancelTx')}
         description={t('transactions.smartAccountCancelReviewDescription')}
         buttonText={t('transactions.smartAccountCancelSign')}
@@ -350,8 +332,8 @@ export function useSmartAccountCancellation(
         }}
         onClick={() => void confirm(shown)}
       >
-        <CancellationReviewDetails
-          prepared={shown.prepared}
+        <CancellationFeeReview
+          quote={shown.prepared.entryPointFeeQuote}
           symbol={activeNetwork.currency.toUpperCase()}
         />
       </ConfirmationModal>
