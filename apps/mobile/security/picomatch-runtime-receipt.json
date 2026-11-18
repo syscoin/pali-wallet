@@ -1,18 +1,18 @@
 {
-  "source": "7e3b634fd04a761dc778bb97f41beb2fb256dfca",
-  "tree": "8090a25046610f36cecdd329bb96d302187f511b",
+  "source": "6cf7d28687f15c1ed3f85e59c941731518a1c5bf",
+  "tree": "3c76b01f0146c08c99c0a57077b55f22c4ef087c",
   "scope": "Current exact-source production extension and normal Android JavaScript runtime exclusion; not build-time remediation or complete native/device qualification",
   "android": {
-    "sourceRevision": "7e3b634fd04a761dc778bb97f41beb2fb256dfca",
-    "sourceTree": "8090a25046610f36cecdd329bb96d302187f511b",
+    "sourceRevision": "6cf7d28687f15c1ed3f85e59c941731518a1c5bf",
+    "sourceTree": "3c76b01f0146c08c99c0a57077b55f22c4ef087c",
     "variant": "normal Android JavaScript/Hermes only; no APK/native/device claim",
-    "map": "/private/tmp/pali-dependency-requalification-7e3b634f/android/index.android.bundle.map",
-    "mapSha256": "16acfef32eec849f83903a64c8a33f74a3aeb597a3c3d857abee9ba885344536",
-    "bundle": "/private/tmp/pali-dependency-requalification-7e3b634f/android/index.android.bundle",
-    "bundleSha256": "125a7467b9938cb9e2849ce6e547c55a6c0dc02d5c6431b7fec77df804e5217a",
-    "bundleBytes": 20366956,
+    "map": "/private/tmp/pali-dependency-requalification-6cf7d286/android/index.android.bundle.map",
+    "mapSha256": "1af8f7e263dc343048c3791d0d5672a6b7c1ef6e83141a1409d710258aa514e3",
+    "bundle": "/private/tmp/pali-dependency-requalification-6cf7d286/android/index.android.bundle",
+    "bundleSha256": "8a702ae1df43db85b71b89fe85523041b2e17900f711283c90ae1bcdc0d69eaa",
+    "bundleBytes": 20370168,
     "hermesBytecodeVersion": 99,
-    "verifiedSourceContents": 5641,
+    "verifiedSourceContents": 5643,
     "generatedSourceBodies": [
       {
         "source": "\u0000polyfill:external-require",
@@ -28,8 +28,8 @@
       "drivers/fs": []
     },
     "sourceReceipt": {
-      "path": "/private/tmp/pali-dependency-requalification-7e3b634f/android-evidence.json",
-      "sha256": "ee9be723ea096e85d56b57b05515f53358bed739f3ab5e5e15f772daffacdcce"
+      "path": "/private/tmp/pali-dependency-requalification-6cf7d286/android-evidence.json",
+      "sha256": "72d7b909e1a87d2c18e4d1226d26a456c7ccb4387444f60eeacef8e60f279672"
     },
     "officialPackages": [
       {
@@ -142,10 +142,10 @@
   },
   "productionExtension": {
     "source": {
-      "revision": "7e3b634fd04a761dc778bb97f41beb2fb256dfca",
-      "tree": "8090a25046610f36cecdd329bb96d302187f511b",
+      "revision": "6cf7d28687f15c1ed3f85e59c941731518a1c5bf",
+      "tree": "3c76b01f0146c08c99c0a57077b55f22c4ef087c",
       "files": 4732,
-      "sha256": "cda5f7e2bfe9b11fc8dead83d23f4fe6f27d9cb21def1989f2f7142187e17719"
+      "sha256": "5a09159739009ea29890668dce31328f5dee4aaee98bfb00325ea35959e05930"
     },
     "officialPackages": [
       {
@@ -1028,11 +1028,11 @@
         "sha256": "4770a99813d6b8003120e318f01c76448060e24e265deeb233e5861d318ca88a"
       }
     ],
-    "zip": "/private/tmp/pali-dependency-requalification-7e3b634f/source/build/pali-wallet-production-chrome-5.0.0.zip",
-    "zipSha256": "3b3f813a49b67647cf26e7291c621f16381a438e58b5b1f8dbfe1b8a5cf82e1a",
-    "analyzer": "/private/tmp/pali-dependency-requalification-7e3b634f/source/build/chrome-report.html",
-    "analyzerSha256": "815dd59b8404a5badebc6fcf35df262dff74d3c30e20460926d9304a9a6c3b88",
-    "assetManifest": "/private/tmp/pali-dependency-requalification-7e3b634f/source/build/chrome-asset-manifest.json",
+    "zip": "/private/tmp/pali-dependency-requalification-6cf7d286/source/build/pali-wallet-production-chrome-5.0.0.zip",
+    "zipSha256": "2a783cc741d51dd9b4c88910f4d227705973cc6dd5a0e55e3f8d35dbd8ff82f4",
+    "analyzer": "/private/tmp/pali-dependency-requalification-6cf7d286/source/build/chrome-report.html",
+    "analyzerSha256": "69b72e2be15d0c6c735d062106912edfc046464cf7653cf8a9f7987aa7e2833e",
+    "assetManifest": "/private/tmp/pali-dependency-requalification-6cf7d286/source/build/chrome-asset-manifest.json",
     "assetManifestSha256": "f6558e9de14ef3acdfe2654d9b3a5934ff9dde7d70d01b14c57599b7393d3998",
     "nodes": 8124,
     "moduleHits": {
@@ -1047,8 +1047,8 @@
     "webpackJsAssets": [
       {
         "path": "js/background.bundle.js",
-        "bytes": 4062291,
-        "sha256": "82b7e4f6288e96dd045098beadba644db5286133b3e55a03593377217c829e17"
+        "bytes": 4062490,
+        "sha256": "2f463a62ed27bb4051a8fefa573f71e05e3542446476a943f6687bac7ae06fec"
       },
       {
         "path": "js/ledgerHost.bundle.js",
@@ -1092,13 +1092,13 @@
       },
       {
         "path": "js/4995.bundle.js",
-        "bytes": 88593,
-        "sha256": "0a58c85d6802fafffaf70e59a24b1641bd5894663f70a43349b3a42597083ad4"
+        "bytes": 87685,
+        "sha256": "bad250837983b6dc8dc78c3c94d966fb6ce958cf5a03bc427e571c2c3f3e1088"
       },
       {
         "path": "js/5182.bundle.js",
-        "bytes": 84520,
-        "sha256": "e5f143b4b939df94afd6b11a5646158fccdc995cf18418ba75099b25ef775f39"
+        "bytes": 83484,
+        "sha256": "444696895c009e55f1554d2de385ea2aeb487234864ca10ae58453445ab2ad1b"
       },
       {
         "path": "js/450.bundle.js",
@@ -1162,8 +1162,8 @@
       },
       {
         "path": "js/682.bundle.js",
-        "bytes": 54577,
-        "sha256": "93a8a2e967daf460d43b4eb0510abe41dda342be51fd22f218672efe953659f6"
+        "bytes": 54711,
+        "sha256": "e37d56831ba7c24a17a594dff3e37873c519b44625243b0e5dac00d29548f69a"
       },
       {
         "path": "js/asset-views.bundle.js",
@@ -1181,6 +1181,11 @@
         "sha256": "f7c5897038b01fe2dbcacfed58ff9d33ee0c653665f9f0d7342e16a596693494"
       },
       {
+        "path": "js/transaction-details.bundle.js",
+        "bytes": 45469,
+        "sha256": "25fb68ba2ae92c15adf8d88bdaa8c944ac54cab05c5128b2ab9b8a2809355eb9"
+      },
+      {
         "path": "js/ui-shared-vendors.bundle.js",
         "bytes": 45221,
         "sha256": "aaf5da44e1dd2e9a700f50eed724a6ceba40392377c4456b6c1848859803680b"
@@ -1194,11 +1199,6 @@
         "path": "js/4934.bundle.js",
         "bytes": 44522,
         "sha256": "104fe8ecfae6c2a9d5ebe30fc127ffaca4aad9672f1b77f15835736e532b917f"
-      },
-      {
-        "path": "js/transaction-details.bundle.js",
-        "bytes": 44414,
-        "sha256": "cb5c0eb62e0478482c9ba7cb7da766d756762e44fead384981f465641db960d8"
       },
       {
         "path": "js/8895.bundle.js",
@@ -1735,8 +1735,8 @@
     ],
     "packagedFiles": 183,
     "variant": "Actual extension artifact; no mobile/native/device claim",
-    "sourceRevision": "7e3b634fd04a761dc778bb97f41beb2fb256dfca",
-    "sourceTree": "8090a25046610f36cecdd329bb96d302187f511b",
+    "sourceRevision": "6cf7d28687f15c1ed3f85e59c941731518a1c5bf",
+    "sourceTree": "3c76b01f0146c08c99c0a57077b55f22c4ef087c",
     "sourceDirty": false
   },
   "canary": {
@@ -2550,11 +2550,11 @@
     ],
     "excludedPolicyHelper": "apps/mobile/scripts/check-dependency-advisories.cjs",
     "files": 2573,
-    "sha256": "e945079f2016675d43fe298e606fb664284a14474e952e0e4cae6745477618ce"
+    "sha256": "9a4301cae170065f3a4992835e90ee3bec6583513689b8e9f6ed982db01b81d6"
   },
   "normalMobileAssessment": {
     "kind": "Actual normal Android JavaScript/Hermes graph; static iOS resolver/storage assessment",
-    "normalAndroid": "All 5641 mapped source bodies and 458 SDK files verified under normal Metro with the exact Keyring PR #121 runtime patch. No QA aliases.",
+    "normalAndroid": "All 5643 mapped source bodies and 458 SDK files verified under normal Metro with the exact Keyring PR #121 runtime patch. No QA aliases.",
     "nativeLimits": "No current APK or native compilation, signing, device operation, or complete iOS artifact qualification. Earlier Android32 APK is historical isolated QA packaging.",
     "ios": "Pinned common RN resolver and supplied storage path assessed statically; no new iOS export/device claim."
   },
@@ -2566,12 +2566,12 @@
   },
   "evidence": {
     "android": {
-      "path": "/private/tmp/pali-dependency-requalification-7e3b634f/android-evidence.json",
-      "sha256": "ee9be723ea096e85d56b57b05515f53358bed739f3ab5e5e15f772daffacdcce"
+      "path": "/private/tmp/pali-dependency-requalification-6cf7d286/android-evidence.json",
+      "sha256": "72d7b909e1a87d2c18e4d1226d26a456c7ccb4387444f60eeacef8e60f279672"
     },
     "extension": {
-      "path": "/private/tmp/pali-dependency-requalification-7e3b634f/extension-evidence.json",
-      "sha256": "b9b0502b494c35107cabe04df79682fe9b5c3af437fc5ef2307cc2e25b67e05e"
+      "path": "/private/tmp/pali-dependency-requalification-6cf7d286/extension-evidence.json",
+      "sha256": "a52596a652c8360ece812f371f03d83d0c68945b0d1a8a48c959e2ea3123c7e4"
     },
     "receiptRefreshHelper": {
       "path": "/private/tmp/pali-retained-speed-up-audit-tools/refresh.py",
@@ -2583,6 +2583,7 @@
     "Current normal Android evidence is JavaScript/Hermes only; no new APK/native compilation/device qualification.",
     "iOS runtime path is statically assessed; no current iOS artifact/device claim.",
     "Any later source/config/dependency/interpreter/consumer drift closes this attestation; no automatic fingerprint refresh.",
+    "Historical Canary and APK receipts are retained as history only; current qualification uses the normal production extension and Android JavaScript/Hermes evidence above.",
     "Historical Canary and APK receipts are retained as history only; current qualification uses the normal production extension and Android JavaScript/Hermes evidence above.",
     "Historical Canary and APK receipts are retained as history only; current qualification uses the normal production extension and Android JavaScript/Hermes evidence above.",
     "Historical Canary and APK receipts are retained as history only; current qualification uses the normal production extension and Android JavaScript/Hermes evidence above.",
