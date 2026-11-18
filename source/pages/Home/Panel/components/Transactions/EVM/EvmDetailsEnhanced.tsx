@@ -1118,7 +1118,7 @@ export const EvmTransactionDetailsEnhanced = ({
         <div className="p-8 text-center">
           {lookupFailed || localFailed ? (
             <>
-              <p role="alert" className="text-brand-gray200 text-sm mb-4">
+              <p role="alert" className="text-warning-error text-sm mb-4">
                 {t('transactions.detailsUnavailable')}
               </p>
               <button

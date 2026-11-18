@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogPrimitive,
 } from 'components/Dialog/Dialog';
+import { InlineFeedback } from 'components/InlineFeedback';
 import { ValidatedPasswordInput } from 'components/Input/ValidatedPasswordInput';
 import { SecretQrDisplay } from 'components/SecretQrDisplay';
 import { useController } from 'hooks/useController';
@@ -65,7 +66,9 @@ function BackupBody({
         <DialogHeader title={t('privacy.revealNote')} onClose={close} />
         <DialogBody>
           <div className="space-y-3 text-left text-xs">
-            <p>{t('privacy.deposit.backupWarning')}</p>
+            <InlineFeedback>
+              {t('privacy.deposit.backupWarning')}
+            </InlineFeedback>
             {note ? (
               <>
                 <SecretQrDisplay secret={note}>

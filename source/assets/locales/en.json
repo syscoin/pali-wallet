@@ -1880,7 +1880,7 @@
       "save": "Save limit",
       "reportedSpent": "Reported spent notes ({{count}})",
       "clear": "Archive completed notes",
-      "clearHelp": "The selected Ethereum RPC receives known withdrawal and related deposit transaction hashes, which can link them at that provider. Only notes that this RPC reports finalized are moved to encrypted archives; others stay active. Archived notes do not count toward the active limit.",
+      "clearHelp": "Your RPC can link deposit and withdrawal hashes. Notes it reports finalized move to the encrypted archive, freeing active slots.",
       "confirmClear": "Verify and archive",
       "clearResult": "Archived: {{removed}}. Still active: {{unresolved}}.",
       "clearError": "Could not finish checking notes. Refresh to see what remains.",
@@ -1902,7 +1902,7 @@
       "refresh": "Refresh review",
       "confirm": "Confirm deposit",
       "submitting": "Submitting…",
-      "backupWarning": "Save a private backup of this note. Generated notes cannot be restored from your recovery phrase.",
+      "backupWarning": "Back up this note separately. Your recovery phrase can’t restore it.",
       "backup": "Back up note",
       "backupAck": "I understand that I need the note backup to withdraw.",
       "submitted": "Transaction submitted",
@@ -1952,7 +1952,7 @@
       "prepareFailed": "Could not prepare this withdrawal. Check the pool data and your network, then retry.",
       "prepareInterrupted": "Preparation was interrupted. Check the pool data, then try again.",
       "checkStatus": "Check status",
-      "previousStatusUnavailable": "A previous withdrawal may still complete. Its current status is unavailable.",
+      "previousStatusUnavailable": "Relayer status unavailable. A prior withdrawal may still complete.",
       "statusFailed": "Could not check the relayer status. Try again.",
       "statusUnknown": "Withdrawal submission status unknown. Check before trying again.",
       "statusPending": "Withdrawal submitted. Waiting for public pool confirmation.",
@@ -2615,8 +2615,7 @@
         "noteDate": "Note {{number}} · {{date}}"
       },
       "maintenance": {
-        "chooseNote": "Select one saved note to verify and clear. Each attempt checks only that note.",
-        "clearHelp": "The selected Ethereum RPC receives known withdrawal and related deposit transaction hashes, which can link them at that provider. Only notes that this RPC reports finalized are moved to encrypted archives; others stay active. Archived notes do not count toward the active limit."
+        "chooseNote": "Select one saved note to verify and clear. Each attempt checks only that note."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Could not load the note limit.",
@@ -3080,7 +3079,6 @@
         "gasPrice": "Gas price",
         "maximumFeePerGas": "Maximum fee per gas",
         "maximumPriorityFeePerGas": "Maximum priority fee per gas",
-        "keepAPrivateBackupOfThisNoteYourRecoveryPhrase": "Keep a private backup of this note. Your recovery phrase cannot restore it.",
         "iUnderstandThatINeedTheNoteBackupToWithdraw": "I understand that I need the note backup to withdraw",
         "noteAlreadySpent": "Note already spent",
         "theDepositIsPresentInTheVerifiedPoolHistory": "The deposit is present in the verified pool history.",

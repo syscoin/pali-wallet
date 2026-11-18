@@ -446,7 +446,7 @@ export function NativeUtxoSendScreen({
             />
           )}
           {!!error && (
-            <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.errorText}>
               {error}
             </Text>
           )}

@@ -1880,7 +1880,7 @@
       "save": "上限を保存",
       "reportedSpent": "使用済みと報告されたノート（{{count}}件）",
       "clear": "完了したノートをアーカイブ",
-      "clearHelp": "選択したEthereum RPCに既知の出金と関連する入金のトランザクションハッシュが送信され、提供者がそれらを関連付けられる場合があります。このRPCが確定済みと報告したノートのみ暗号化してアーカイブし、その他はアクティブなまま残します。アーカイブ済みノートはアクティブなノートの上限に含まれません。",
+      "clearHelp": "RPCは入金と出金のハッシュを関連付けられます。RPCが確定と報告したノートは暗号化アーカイブに移動し、使用中の枠が空きます。",
       "confirmClear": "確認してアーカイブ",
       "clearResult": "アーカイブ済み：{{removed}}件。引き続きアクティブ：{{unresolved}}件。",
       "clearError": "ノートの確認を完了できませんでした。更新して残りを確認してください。",
@@ -1902,7 +1902,7 @@
       "refresh": "確認を更新",
       "confirm": "入金を確定",
       "submitting": "送信中…",
-      "backupWarning": "このノートのバックアップを秘密に保管してください。生成したノートはリカバリーフレーズから復元できません。",
+      "backupWarning": "このノートは別にバックアップしてください。復元フレーズでは復元できません。",
       "backup": "ノートをバックアップ",
       "backupAck": "出金にはノートのバックアップが必要であることを理解しました。",
       "submitted": "トランザクション送信済み",
@@ -1952,7 +1952,7 @@
       "prepareFailed": "出金を準備できませんでした。プールデータとネットワークを確認して再試行してください。",
       "prepareInterrupted": "準備が中断されました。プールデータを確認して、もう一度お試しください。",
       "checkStatus": "状況を確認",
-      "previousStatusUnavailable": "以前の出金がまだ完了する可能性があります。現在の状態は確認できません。",
+      "previousStatusUnavailable": "リレイヤーのステータスを確認できません。以前の出金が完了する可能性があります。",
       "statusFailed": "リレイヤーの状況を確認できませんでした。再試行してください。",
       "statusUnknown": "出金の送信状況が不明です。再試行前に確認してください。",
       "statusPending": "出金を送信しました。公開プールデータの確認を待っています。",
@@ -2615,8 +2615,7 @@
         "noteDate": "ノート{{number}} · {{date}}"
       },
       "maintenance": {
-        "chooseNote": "検証して削除する保存済みノートを1つ選択してください。各試行では、そのノートだけを確認します。",
-        "clearHelp": "選択したEthereum RPCに既知の出金と関連する入金のトランザクションハッシュが送信され、提供者がそれらを関連付けられる場合があります。このRPCが確定済みと報告したノートのみ暗号化してアーカイブし、その他はアクティブなまま残します。アーカイブ済みノートはアクティブなノートの上限に含まれません。"
+        "chooseNote": "検証して削除する保存済みノートを1つ選択してください。各試行では、そのノートだけを確認します。"
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "ノート数の上限を読み込めませんでした。",
@@ -3080,7 +3079,6 @@
         "gasPrice": "ガス価格",
         "maximumFeePerGas": "ガスあたりの最大手数料",
         "maximumPriorityFeePerGas": "ガスあたりの最大優先手数料",
-        "keepAPrivateBackupOfThisNoteYourRecoveryPhrase": "このノートの非公開バックアップを保管してください。リカバリーフレーズでは復元できません。",
         "iUnderstandThatINeedTheNoteBackupToWithdraw": "引き出しにはノートのバックアップが必要だと理解しました",
         "noteAlreadySpent": "ノートは使用済みです",
         "theDepositIsPresentInTheVerifiedPoolHistory": "入金は検証済みのプール履歴に存在します。",

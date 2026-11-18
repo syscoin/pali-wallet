@@ -150,7 +150,7 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
             ? <Notice title={t('mobile.security.wifTitle')} body={t('mobile.security.wifBody')} tone="amber" />
             : <Notice title={t('mobile.security.evmTitle')} body={t('mobile.security.evmBody')} tone="amber" />}
           {shown ? <>
-            <Text style={styles.muted}>{t('secretClipboard.warning')}</Text>
+            <Text style={styles.warningText}>{t('secretClipboard.warning')}</Text>
             <SecretQrReveal key={shown.id} value={shown.privateKey} isCurrent={() => keyExport.isCurrent(shown.id)}>
               <View style={s.secret}><Text selectable={false} style={s.key}>{shown.privateKey}</Text>
                 <IconButton icon={copied ? 'check' : 'copy'} label={t(copied ? 'components.copied' : 'secretClipboard.copyKey')}

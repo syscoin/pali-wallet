@@ -274,7 +274,7 @@ export function UtxoReplacementActions({
         </div>
       )}
       {feedback && (
-        <p role="alert" className="mt-2 text-sm text-brand-gray200">
+        <p role="alert" className="mt-2 text-sm text-warning-error">
           {t(`transactions.utxoReplacement.${feedback}`)}
         </p>
       )}

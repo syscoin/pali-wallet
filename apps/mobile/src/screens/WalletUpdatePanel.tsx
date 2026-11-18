@@ -6,7 +6,7 @@ import { checkAppUpdate, completeAppUpdate, startAppUpdate, subscribeAppUpdates,
 import { mobileUpdates } from '../updates/service';
 import type { MobileUpdateService } from '../updates/types';
 import { useNativeTranslation } from '../platform/localization';
-import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
+import { Button, Card, colors, Header, Icon, Notice, Screen, styles, Text } from '../ui';
 
 function updateInProgress(store: AppUpdateState | null): boolean {
   return !!store && !['failed', 'cancelled', 'installed'].includes(store.installStatus) &&
@@ -90,7 +90,7 @@ export function WalletUpdatePanel({ allowInstall = false, onCloseWallet, service
       onPress={() => void act(() => service.setAlerts(!(update.alertsEnabled && update.permission === 'granted')))} />
     <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>{t('mobile.shellViews.walletUpdatePanel.importantUpdatesCanNotifyYouWhenPaliChecks')}</Text>
     {update.alertsEnabled && update.permission === 'denied' && <Text style={{ color: colors.muted }}>{t('mobile.shellViews.walletUpdatePanel.allowPaliNotificationsInYourPhoneSSettings')}</Text>}
-    {release && update.status === 'error' && <Text accessibilityRole="alert">{t('mobile.shellViews.walletUpdatePanel.theLatestCheckFailedShowingTheLastKnown')}</Text>}
+    {release && update.status === 'error' && <Text accessibilityRole="alert" style={styles.warningText}>{t('mobile.shellViews.walletUpdatePanel.theLatestCheckFailedShowingTheLastKnown')}</Text>}
     {!!error && <Text accessibilityRole="alert" style={{ color: colors.red }}>{error}</Text>}
   </Card>;
 }

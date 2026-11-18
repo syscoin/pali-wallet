@@ -1880,7 +1880,7 @@
       "save": "Limit speichern",
       "reportedSpent": "Als ausgegeben gemeldete Notizen ({{count}})",
       "clear": "Abgeschlossene Notizen archivieren",
-      "clearHelp": "Der ausgewählte Ethereum-RPC erhält bekannte Transaktions-Hashes für Auszahlungen und zugehörige Einzahlungen. Der Anbieter kann diese verknüpfen. Nur von diesem RPC als endgültig bestätigte Notizen werden verschlüsselt archiviert; andere bleiben aktiv. Archivierte Notizen zählen nicht zum aktiven Limit.",
+      "clearHelp": "Dein RPC kann Ein- und Auszahlungshashes verknüpfen. Als final gemeldete Notizen kommen ins verschlüsselte Archiv und geben aktive Plätze frei.",
       "confirmClear": "Prüfen und archivieren",
       "clearResult": "Archiviert: {{removed}}. Noch aktiv: {{unresolved}}.",
       "clearError": "Die Prüfung konnte nicht abgeschlossen werden. Aktualisiere die Liste.",
@@ -1902,7 +1902,7 @@
       "refresh": "Prüfung aktualisieren",
       "confirm": "Einzahlung bestätigen",
       "submitting": "Wird übermittelt…",
-      "backupWarning": "Bewahre eine private Sicherung dieser Notiz auf. Erstellte Notizen lassen sich nicht aus deiner Wiederherstellungsphrase wiederherstellen.",
+      "backupWarning": "Sichere diese Notiz separat. Deine Wiederherstellungsphrase kann sie nicht wiederherstellen.",
       "backup": "Notiz sichern",
       "backupAck": "Ich verstehe, dass ich die Sicherung der Notiz zum Abheben benötige.",
       "submitted": "Transaktion übermittelt",
@@ -1952,7 +1952,7 @@
       "prepareFailed": "Die Auszahlung konnte nicht vorbereitet werden. Prüfe Pooldaten und Netzwerk und versuche es erneut.",
       "prepareInterrupted": "Die Vorbereitung wurde unterbrochen. Prüfe die Pooldaten und versuche es erneut.",
       "checkStatus": "Status prüfen",
-      "previousStatusUnavailable": "Eine frühere Abhebung kann noch abgeschlossen werden. Ihr aktueller Status ist nicht verfügbar.",
+      "previousStatusUnavailable": "Relayer-Status nicht verfügbar. Eine frühere Auszahlung kann noch abgeschlossen werden.",
       "statusFailed": "Der Relayer-Status konnte nicht geprüft werden. Erneut versuchen.",
       "statusUnknown": "Der Übermittlungsstatus der Auszahlung ist unbekannt. Vor einem erneuten Versuch prüfen.",
       "statusPending": "Auszahlung übermittelt. Öffentliche Poolbestätigung wird erwartet.",
@@ -2615,8 +2615,7 @@
         "noteDate": "Notiz {{number}} · {{date}}"
       },
       "maintenance": {
-        "chooseNote": "Wähle eine gespeicherte Note zum Prüfen und Entfernen aus. Jeder Versuch prüft nur diese Note.",
-        "clearHelp": "Der ausgewählte Ethereum-RPC erhält bekannte Transaktions-Hashes für Auszahlungen und zugehörige Einzahlungen. Der Anbieter kann diese verknüpfen. Nur von diesem RPC als endgültig bestätigte Notizen werden verschlüsselt archiviert; andere bleiben aktiv. Archivierte Notizen zählen nicht zum aktiven Limit."
+        "chooseNote": "Wähle eine gespeicherte Note zum Prüfen und Entfernen aus. Jeder Versuch prüft nur diese Note."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Notizlimit konnte nicht geladen werden.",
@@ -3080,7 +3079,6 @@
         "gasPrice": "Gaspreis",
         "maximumFeePerGas": "Maximale Gebühr pro Gas",
         "maximumPriorityFeePerGas": "Maximale Prioritätsgebühr pro Gas",
-        "keepAPrivateBackupOfThisNoteYourRecoveryPhrase": "Eine private Sicherung dieser Note aufbewahren. Die Wiederherstellungsphrase kann sie nicht wiederherstellen.",
         "iUnderstandThatINeedTheNoteBackupToWithdraw": "Ich verstehe, dass ich zum Abheben die Sicherung der Note benötige",
         "noteAlreadySpent": "Note bereits ausgegeben",
         "theDepositIsPresentInTheVerifiedPoolHistory": "Die Einzahlung ist im verifizierten Pool-Verlauf enthalten.",

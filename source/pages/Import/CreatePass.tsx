@@ -79,7 +79,7 @@ export const CreatePasswordImport = () => {
 
   return recoveryError ? (
     <OnboardingLayout scrollable title={t('settings.recoveryTitle')}>
-      <p role="alert" className="mb-6 text-brand-gray200 text-center text-sm">
+      <p role="alert" className="mb-6 text-warning-error text-center text-sm">
         {t(recoveryError)}
       </p>
       <Button

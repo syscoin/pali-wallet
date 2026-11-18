@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 
 import { Button } from 'components/Button';
+import { InlineFeedback } from 'components/InlineFeedback';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
@@ -478,13 +479,13 @@ function WithdrawalFlow({
               {t('privacy.withdrawal.watchOnlyDirectUnavailable')}
             </p>
           )}
-          <p className="text-xs text-brand-gray200">
+          <InlineFeedback>
             {t(
               `privacy.withdrawal.${
                 mode === 'direct' ? 'directWarning' : 'relayedWarning'
               }`
             )}
-          </p>
+          </InlineFeedback>
           {mode === 'relayed' && (
             <div className="space-y-2">
               {busy === 'directory' ? (
@@ -520,11 +521,14 @@ function WithdrawalFlow({
                       </option>
                     ))}
                   </select>
-                  {directoryLoaded && !relayers.length && (
-                    <p className="text-xs">
-                      {t('privacy.withdrawal.noRelayers')}
-                    </p>
-                  )}
+                  {directoryLoaded &&
+                    !relayers.some(
+                      ({ health }) => health === 'reported-healthy'
+                    ) && (
+                      <InlineFeedback role="status">
+                        {t('privacy.withdrawal.noRelayers')}
+                      </InlineFeedback>
+                    )}
                   <button
                     type="button"
                     className={actionClass}
@@ -621,23 +625,28 @@ function WithdrawalFlow({
               </dd>
             </div>
           </dl>
-          <p className="text-xs text-brand-gray200">
+          <InlineFeedback>
             {t(
               `privacy.withdrawal.${
                 mode === 'direct' ? 'directWarning' : 'relayedWarning'
               }`
             )}
-          </p>
-          {!consumed && (
-            <p role="status" className="text-xs">
-              {t(`privacy.withdrawal.${expired ? 'expired' : 'expires'}`, {
-                seconds: Math.max(
-                  0,
-                  Math.ceil((review.expiresAt - clock) / 1000)
-                ),
-              })}
-            </p>
-          )}
+          </InlineFeedback>
+          {!consumed &&
+            (expired ? (
+              <InlineFeedback role="status">
+                {t('privacy.withdrawal.expired')}
+              </InlineFeedback>
+            ) : (
+              <p className="text-xs">
+                {t('privacy.withdrawal.expires', {
+                  seconds: Math.max(
+                    0,
+                    Math.ceil((review.expiresAt - clock) / 1000)
+                  ),
+                })}
+              </p>
+            ))}
           {(expired || consumed) && busy !== 'submit' ? (
             <Button
               type="button"
@@ -669,17 +678,19 @@ function WithdrawalFlow({
       )}
       {result && (
         <div role="status" className="text-sm space-y-3">
-          <p>
-            {t(
-              `privacy.withdrawal.${
-                result.phase === 'unknown'
-                  ? 'unknownHelp'
-                  : result.jobId && !result.transactionHash
-                  ? 'acceptedHelp'
-                  : 'submittedHelp'
-              }`
-            )}
-          </p>
+          {result.phase === 'unknown' ? (
+            <InlineFeedback>
+              {t('privacy.withdrawal.unknownHelp')}
+            </InlineFeedback>
+          ) : (
+            <p>
+              {t(
+                result.jobId && !result.transactionHash
+                  ? 'privacy.withdrawal.acceptedHelp'
+                  : 'privacy.withdrawal.submittedHelp'
+              )}
+            </p>
+          )}
           {(result.transactionHash || result.signedTransactionHash) && (
             <div className="text-xs">
               <p>{t('privacy.deposit.txHash')}</p>

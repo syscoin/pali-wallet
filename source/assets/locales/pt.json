@@ -1880,7 +1880,7 @@
       "save": "Salvar limite",
       "reportedSpent": "Notas informadas como gastas ({{count}})",
       "clear": "Arquivar notas concluídas",
-      "clearHelp": "O RPC Ethereum selecionado recebe os hashes conhecidos de levantamentos e depósitos relacionados, o que pode permitir ao fornecedor associá-los. Apenas as notas que este RPC confirma como finalizadas são arquivadas de forma encriptada; as restantes permanecem ativas. As notas arquivadas não contam para o limite ativo.",
+      "clearHelp": "Seu RPC pode vincular os hashes de depósito e saque. Notas que ele indicar como finalizadas vão para o arquivo criptografado e liberam vagas ativas.",
       "confirmClear": "Verificar e arquivar",
       "clearResult": "Arquivadas: {{removed}}. Ainda ativas: {{unresolved}}.",
       "clearError": "Não foi possível concluir a verificação. Atualize para ver as notas restantes.",
@@ -1902,7 +1902,7 @@
       "refresh": "Atualizar revisão",
       "confirm": "Confirmar depósito",
       "submitting": "Enviando…",
-      "backupWarning": "Guarde uma cópia privada desta nota. Notas geradas não podem ser restauradas com sua frase de recuperação.",
+      "backupWarning": "Faça um backup separado desta nota. Sua frase de recuperação não pode restaurá-la.",
       "backup": "Fazer backup da nota",
       "backupAck": "Entendo que preciso do backup da nota para sacar.",
       "submitted": "Transação enviada",
@@ -1952,7 +1952,7 @@
       "prepareFailed": "Não foi possível preparar o saque. Verifique os dados do pool e sua rede e tente novamente.",
       "prepareInterrupted": "A preparação foi interrompida. Verifique os dados do pool e tente novamente.",
       "checkStatus": "Verificar status",
-      "previousStatusUnavailable": "Um saque anterior ainda pode ser concluído. Seu status atual está indisponível.",
+      "previousStatusUnavailable": "Status do relayer indisponível. Um saque anterior ainda pode ser concluído.",
       "statusFailed": "Não foi possível verificar o status do relayer. Tente novamente.",
       "statusUnknown": "Status de envio do saque desconhecido. Verifique antes de tentar novamente.",
       "statusPending": "Saque enviado. Aguardando confirmação pública do pool.",
@@ -2615,8 +2615,7 @@
         "noteDate": "Nota {{number}} · {{date}}"
       },
       "maintenance": {
-        "chooseNote": "Selecione uma nota salva para verificar e remover. Cada tentativa verifica apenas essa nota.",
-        "clearHelp": "O RPC Ethereum selecionado recebe os hashes conhecidos de levantamentos e depósitos relacionados, o que pode permitir ao fornecedor associá-los. Apenas as notas que este RPC confirma como finalizadas são arquivadas de forma encriptada; as restantes permanecem ativas. As notas arquivadas não contam para o limite ativo."
+        "chooseNote": "Selecione uma nota salva para verificar e remover. Cada tentativa verifica apenas essa nota."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Não foi possível carregar o limite de notas.",
@@ -3080,7 +3079,6 @@
         "gasPrice": "Preço do gás",
         "maximumFeePerGas": "Taxa máxima por gás",
         "maximumPriorityFeePerGas": "Taxa de prioridade máxima por gás",
-        "keepAPrivateBackupOfThisNoteYourRecoveryPhrase": "Guarde um backup privado desta nota. Sua frase de recuperação não pode restaurá-la.",
         "iUnderstandThatINeedTheNoteBackupToWithdraw": "Entendo que preciso do backup da nota para sacar",
         "noteAlreadySpent": "Nota já gasta",
         "theDepositIsPresentInTheVerifiedPoolHistory": "O depósito está no histórico verificado do pool.",

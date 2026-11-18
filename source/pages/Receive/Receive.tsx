@@ -201,7 +201,7 @@ export const Receive = () => {
         </div>
       ) : isAddressReady || timedOutScope === walletScope ? (
         <div className="flex flex-col items-center justify-center h-80 gap-4 px-6">
-          <p className="text-sm text-brand-gray200 text-center">
+          <p role="alert" className="text-sm text-warning-error text-center">
             {t('receive.addressUnavailable')}
           </p>
           <Button

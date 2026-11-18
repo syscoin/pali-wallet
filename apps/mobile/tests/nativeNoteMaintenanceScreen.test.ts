@@ -39,7 +39,7 @@ function fixture(fail = false, withHistory = false, count = 7, unresolved = fals
     '../custody/privateAuthentication': { createNativePrivateAuthenticationScope: () => ({ retire() {}, isAuthenticating: () => false }) },
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption: () => false },
     '../core/operationAuthentication': { isOperationAuthenticationCancellation },
-    '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Row: 'Row', Screen: 'Screen', Text: 'Text', colors: {}, styles: {} },
+    '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Notice: 'Notice', Row: 'Row', Screen: 'Screen', Text: 'Text', colors: {}, styles: {} },
   }, { AbortController });
   const open = async () => runtime, replacementOpen = async () => runtime, onBack = () => { backs++; };
   const render = () => screenElements(f.render({ open: runtimeSource ? replacementOpen : open, onBack }));
@@ -108,7 +108,8 @@ test('choosing a note shows amount and date without invoking cleanup; cancel can
   try {
     f.render(); await settle(); f.select(1);
     assert(f.render().some(element => element.props.title === '1 ETH pool' && element.props.subtitle?.startsWith('Note 1 ·')));
-    assert(f.render().some(element => element.children.includes('mobile.noteFlows.maintenance.clearHelp')));
+    const warning = f.render().find(element => element.type === 'Notice' && element.props.title === 'privacy.capacity.clearHelp');
+    assert(warning?.props.compact && warning.props.tone === 'amber');
     assert.deepEqual(f.idsChecked, []); f.press('buttons.cancel'); f.select();
     f.press('privacy.capacity.confirmClear'); await settle(); assert.deepEqual(f.idsChecked, [['7']]);
   } finally { f.close(); }

@@ -1880,7 +1880,7 @@
       "save": "保存上限",
       "reportedSpent": "标记为已使用的票据（{{count}}）",
       "clear": "归档已完成票据",
-      "clearHelp": "所选Ethereum RPC会收到已知的提现及相关存款交易哈希，因此提供方可能将它们关联起来。只有此RPC报告已最终确认的票据才会移至加密归档，其他票据仍保持活跃。已归档票据不占用活跃额度。",
+      "clearHelp": "RPC 可关联存款和提款哈希。RPC 报告已最终确认的票据会移入加密归档，并释放活跃名额。",
       "confirmClear": "验证并归档",
       "clearResult": "已归档：{{removed}}。仍活跃：{{unresolved}}。",
       "clearError": "无法完成票据检查。请刷新以查看剩余票据。",
@@ -1902,7 +1902,7 @@
       "refresh": "刷新核对信息",
       "confirm": "确认存款",
       "submitting": "正在提交…",
-      "backupWarning": "请秘密保存此票据的备份。生成的票据无法通过恢复短语还原。",
+      "backupWarning": "请单独备份此票据。助记词无法恢复它。",
       "backup": "备份票据",
       "backupAck": "我了解提款需要票据备份。",
       "submitted": "交易已提交",
@@ -1952,7 +1952,7 @@
       "prepareFailed": "无法准备提款。请检查资金池数据和网络后重试。",
       "prepareInterrupted": "准备已中断。请检查资金池数据，然后重试。",
       "checkStatus": "检查状态",
-      "previousStatusUnavailable": "先前的提款仍可能完成。目前无法获取其状态。",
+      "previousStatusUnavailable": "无法获取中继器状态。先前的提款仍可能完成。",
       "statusFailed": "无法检查中继器状态，请重试。",
       "statusUnknown": "提款提交状态未知，请在重试前检查。",
       "statusPending": "提款已提交，正在等待公开资金池确认。",
@@ -2615,8 +2615,7 @@
         "noteDate": "票据 {{number}} · {{date}}"
       },
       "maintenance": {
-        "chooseNote": "选择一条已保存的票据进行验证并清除。每次尝试只检查该票据。",
-        "clearHelp": "所选Ethereum RPC会收到已知的提现及相关存款交易哈希，因此提供方可能将它们关联起来。只有此RPC报告已最终确认的票据才会移至加密归档，其他票据仍保持活跃。已归档票据不占用活跃额度。"
+        "chooseNote": "选择一条已保存的票据进行验证并清除。每次尝试只检查该票据。"
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "无法加载票据上限。",
@@ -3080,7 +3079,6 @@
         "gasPrice": "Gas 价格",
         "maximumFeePerGas": "每单位 Gas 的最高手续费",
         "maximumPriorityFeePerGas": "每单位 Gas 的最高优先费",
-        "keepAPrivateBackupOfThisNoteYourRecoveryPhrase": "请保留此票据的私密备份。恢复助记词无法恢复它。",
         "iUnderstandThatINeedTheNoteBackupToWithdraw": "我了解提现需要票据备份",
         "noteAlreadySpent": "票据已花费",
         "theDepositIsPresentInTheVerifiedPoolHistory": "存款已记录在经过验证的资金池历史中。",

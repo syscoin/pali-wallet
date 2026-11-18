@@ -222,7 +222,7 @@ export const ChangeConnectedAccount = () => {
       <div className="flex-1 overflow-y-auto remove-scrollbar">
         {/* Header section */}
         <div className="text-center px-6 py-6 border-b border-brand-gray300">
-          <h3 className="text-xs text-brand-graylight uppercase tracking-wider mb-2">
+          <h3 className="text-xs text-warning-info uppercase tracking-wider mb-2">
             {t('connections.accountMismatch')}
           </h3>
           <div className="flex items-center justify-center gap-2">

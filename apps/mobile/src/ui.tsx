@@ -599,11 +599,13 @@ export function Notice({
   body,
   tone = 'blue',
   compact = false,
+  announce = false,
 }: {
   title: string;
   body?: string;
   tone?: 'blue' | 'amber' | 'red';
   compact?: boolean;
+  announce?: boolean;
 }) {
   const accent = colors[tone];
   return (
@@ -628,6 +630,7 @@ export function Notice({
       />
       <View style={{ flex: 1, gap: 5 }}>
         <Text
+          accessibilityLiveRegion={announce ? 'polite' : undefined}
           style={{
             color: accent,
             fontSize: 13,
@@ -749,5 +752,7 @@ export const styles = StyleSheet.create({
     gap: 12,
   },
   muted: { color: colors.muted },
+  warningText: { color: colors.amber },
+  errorText: { color: colors.red },
   h1: { fontSize: 32, lineHeight: 40, fontWeight: '700', letterSpacing: -1.1 },
 });

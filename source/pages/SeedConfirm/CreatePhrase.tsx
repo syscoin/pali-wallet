@@ -134,7 +134,7 @@ export const CreatePhrase = () => {
           </p>
         )}
         {generationFailed && (
-          <p role="alert" className="text-brand-gray200">
+          <p role="alert" className="text-warning-error">
             {t('createPhrase.generationFailed')}
           </p>
         )}

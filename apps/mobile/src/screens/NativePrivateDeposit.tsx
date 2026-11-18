@@ -21,7 +21,7 @@ import { PRIVACY_POOLS } from '../../../../source/utils/privacy/registry';
 import type { PrivacyPoolId } from '../../../../source/utils/privacy/types';
 import type { NativePrivateDepositView as DepositController } from '../custody/privateDeposit';
 import { formatBaseUnits } from '../core/amounts';
-import { Button, Card, colors, Header, Screen, Text } from '../ui';
+import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
 import { recordIdleActivity } from '../platform/security';
 import { IdlePressable } from './IdleActivityBoundary';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
@@ -177,7 +177,7 @@ export function NativePrivateDeposit({
       >
         <Header title={t('privacy.deposit.title')} onBack={back} />
         {current?.failed ? (
-          <Text accessibilityRole="alert" style={s.muted}>
+          <Text accessibilityRole="alert" style={styles.errorText}>
             {t('mobile.privacyFlows.deposit.thisDepositCouldNotBeOpenedReturnToYourWallet')}</Text>
         ) : current?.closing ? (
           <Text style={s.muted}>{t('mobile.privacyFlows.deposit.closingDeposit')}</Text>
@@ -289,6 +289,8 @@ function DepositContent({
       {error}
     </Text>
   );
+  const unknownResult = result?.phase === 'unknown' &&
+    state.status?.phase !== 'verified' && state.status?.phase !== 'spent';
   const primary = result ? (
     <Button title={t('privacy.deposit.done')} onPress={onBack} />
   ) : showReview && review ? (
@@ -454,8 +456,7 @@ function DepositContent({
               )}
             </Card>
             <View style={s.backup}>
-              <Text style={s.muted}>
-                {t('mobile.privacyFlows.deposit.keepAPrivateBackupOfThisNoteYourRecoveryPhrase')}</Text>
+              <Notice compact tone="amber" title={t('privacy.deposit.backupWarning')} />
               <Button icon="shield"
                 title={t('mobile.noteFlows.export.backUpPrivateNotes')}
                 variant="secondary" size="compact"
@@ -531,15 +532,15 @@ function DepositContent({
                   : t('privacy.deposit.unknown')}
               </Text>
             </View>
-            <Text style={s.muted}>
+            {unknownResult ? (
+              <Notice compact announce tone="amber" title={t('mobile.privacyFlows.deposit.yourNoteIsSavedCheckActivityBeforeTryingAnotherDeposit')} />
+            ) : <Text style={s.muted}>
               {state.status?.phase === 'verified'
                 ? t('mobile.privacyFlows.deposit.theDepositIsPresentInTheVerifiedPoolHistory')
                 : state.status?.phase === 'spent'
                 ? t('mobile.privacyFlows.deposit.thisNoteHasAlreadyBeenWithdrawn')
-                : result.phase === 'submitted'
-                ? t('mobile.privacyFlows.deposit.yourNoteIsSavedCheckThePoolStatusToVerify')
-                : t('mobile.privacyFlows.deposit.yourNoteIsSavedCheckActivityBeforeTryingAnotherDeposit')}
-            </Text>
+                : t('mobile.privacyFlows.deposit.yourNoteIsSavedCheckThePoolStatusToVerify')}
+            </Text>}
             {hash && (
               <Card style={s.card}>
                 <Text style={s.label}>{t('privacy.deposit.txHash')}</Text>
@@ -581,8 +582,7 @@ function DepositContent({
         )}
         {showReview && feedback}
         {expired && !error && showReview && (
-          <Text accessibilityRole="alert" style={s.muted}>
-            {t('privacy.deposit.expired')}</Text>
+          <Notice compact announce tone="amber" title={t('privacy.deposit.expired')} />
         )}
         {busy && (
           <ActivityIndicator

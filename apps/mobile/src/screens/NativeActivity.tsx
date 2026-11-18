@@ -310,7 +310,7 @@ function NativeActivityContent({
   const targetOwner = useRef({ hash: initialHash, opened: onInitialTargetOpened });
   useLayoutEffect(() => { targetOwner.current = { hash: initialHash, opened: onInitialTargetOpened }; }, [initialHash, onInitialTargetOpened]);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState('');
+  const [feedback, setFeedback] = useState<{ message: string; failed?: boolean } | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [copying, setCopying] = useState(false);
   const dialogOpen = optionsOpen || copyAddress !== null;
@@ -558,7 +558,7 @@ function NativeActivityContent({
     if (index < 0) {
       restored.current = true;
       setFeedback(
-        t('mobile.activityViews.nativeActivity.yourSavedPositionIsOutsideTheCachedHistoryShowing')
+        { message: t('mobile.activityViews.nativeActivity.yourSavedPositionIsOutsideTheCachedHistoryShowing') }
       );
       return;
     }
@@ -575,17 +575,17 @@ function NativeActivityContent({
     if (!address || copying) return;
     const captured = lifetime.current.epoch;
     setCopying(true);
-    setFeedback('');
+    setFeedback(null);
     try {
       if ((await Clipboard.setStringAsync(address)) === false)
         throw new Error('COPY_FAILED');
       if (captured === lifetime.current.epoch) {
         setCopyAddress(null);
-        setFeedback(t('mobile.activityViews.nativeActivity.addressCopiedVerifyItAgainBeforeSendingFunds'));
+        setFeedback({ message: t('mobile.activityViews.nativeActivity.addressCopiedVerifyItAgainBeforeSendingFunds') });
       }
     } catch {
       if (captured === lifetime.current.epoch)
-        setFeedback(t('mobile.activityViews.nativeActivity.couldNotCopyTheAddressTryAgain'));
+        setFeedback({ message: t('mobile.activityViews.nativeActivity.couldNotCopyTheAddressTryAgain'), failed: true });
     } finally {
       if (captured === lifetime.current.epoch) setCopying(false);
     }
@@ -685,7 +685,7 @@ function NativeActivityContent({
                   targetOwner.current.opened?.();
                 }
                 return afterPositionSaved(() => {
-                  setFeedback('');
+                  setFeedback(null);
                   setSelected(key);
                   if (!item.authorizationOnly) controller.inspect(item.hash);
                 });
@@ -780,7 +780,7 @@ function NativeActivityContent({
                 actionLabel: t('transactions.copyAddress'), onPress: () => setCopyAddress(chosen.local!.smartAccount!.payer) }] : []),
               { label: t('send.transactionId'), value: chosen.hash },
             ]}
-            {...(snapshot.explorerUrl ? { onExplorer: () => { void Linking.openURL(`${snapshot.explorerUrl!.replace(/\/$/, '')}/tx/${chosen.hash}`).catch(() => setFeedback(t('mobile.activityViews.nativeActivity.couldNotOpenTheExplorer'))); } } : {})}
+            {...(snapshot.explorerUrl ? { onExplorer: () => { void Linking.openURL(`${snapshot.explorerUrl!.replace(/\/$/, '')}/tx/${chosen.hash}`).catch(() => setFeedback({ message: t('mobile.activityViews.nativeActivity.couldNotOpenTheExplorer'), failed: true })); } } : {})}
           />
           <Button title={t('send.details')} icon={detailsFor === chosen.hash ? 'chevron-up' : 'chevron-down'} variant="quiet" size="compact" expanded={detailsFor === chosen.hash}
             onPress={() => setDetailsFor(detailsFor === chosen.hash ? null : chosen.hash)} />
@@ -927,8 +927,8 @@ function NativeActivityContent({
             <Button title={t('mobile.activityViews.nativeActivity.cancelSavedTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelSaved(chosen.hash))} />
           )}
           {!!feedback && (
-            <Text accessibilityLiveRegion="polite" style={styles.muted}>
-              {feedback}
+            <Text accessibilityLiveRegion="polite" style={feedback.failed ? styles.errorText : styles.muted}>
+              {feedback.message}
             </Text>
           )}
         </ScrollView>
@@ -951,7 +951,7 @@ function NativeActivityContent({
           <ScrollView contentContainerStyle={s.modalContent}>
             <Card style={s.confirm}>
               <Text style={s.detailAmount}>{t('mobile.activityViews.nativeActivity.copyThisAddress')}</Text>
-              <Text style={styles.muted}>
+              <Text style={styles.warningText}>
                 {t('mobile.activityViews.nativeActivity.historyCanContainMisleadingOrLookalikeAddressesCompareThe')}</Text>
               <Text style={s.full}>{copyAddress}</Text>
               <Button
@@ -965,7 +965,7 @@ function NativeActivityContent({
                 disabled={copying}
                 onPress={() => setCopyAddress(null)}
               />
-              {!!feedback && <Text accessibilityRole="alert">{feedback}</Text>}
+              {!!feedback && <Text accessibilityRole="alert" style={feedback.failed ? styles.errorText : styles.muted}>{feedback.message}</Text>}
             </Card>
           </ScrollView>
       </SafeAreaView>}

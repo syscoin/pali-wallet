@@ -501,6 +501,7 @@ it('keeps a reserved withdrawal out of balance and checks a saved relay job only
 
 it('keeps the saved withdrawal visible when its relayer status is unavailable', async () => {
   const transactionHash = `0x${'ab'.repeat(32)}`;
+  let spent = false;
   const withdrawal = {
     mode: 'relayed',
     phase: 'submitted',
@@ -509,7 +510,9 @@ it('keeps the saved withdrawal visible when its relayer status is unavailable', 
   };
   mockEmitter.mockImplementation(async ([, method]) => {
     if (method === 'getNotes')
-      return { notes: [{ ...note, phase: 'waiting', withdrawal }] };
+      return {
+        notes: [{ ...note, phase: spent ? 'spent' : 'waiting', withdrawal }],
+      };
     if (method === 'statusByNote')
       return { ...withdrawal, noteId: note.id, observationUnavailable: true };
     throw new Error('Unexpected call');
@@ -521,11 +524,25 @@ it('keeps the saved withdrawal visible when its relayer status is unavailable', 
       name: en.privacy.withdrawal.checkStatus,
     })
   );
-  expect(
-    await screen.findByText(en.privacy.withdrawal.previousStatusUnavailable)
-  ).toBeVisible();
+  const notice = await screen.findByText(
+    en.privacy.withdrawal.previousStatusUnavailable
+  );
+  expect(notice).toBeVisible();
+  expect(notice.closest('[role="alert"]')).toHaveClass('text-brand-yellowInfo');
   expect(screen.getByText(new RegExp(depositIntentId))).toBeVisible();
   expect(screen.getByText(new RegExp(transactionHash))).toBeVisible();
+
+  spent = true;
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.refreshNotes })
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Reported spent notes (1)' })
+  );
+  expect(
+    screen.queryByText(en.privacy.withdrawal.previousStatusUnavailable)
+  ).toBeNull();
+  expect(screen.getByText(en.privacy.withdrawal.statusFailed)).toBeVisible();
 });
 
 it.each([

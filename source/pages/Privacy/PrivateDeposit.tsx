@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 
 import { Button } from 'components/Button';
+import { InlineFeedback } from 'components/InlineFeedback';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { PRIVACY_POOLS } from 'utils/privacy/registry';
@@ -357,7 +358,9 @@ function DepositFlow({
             </div>
           </dl>
           <div className="rounded-lg border border-alpha-whiteAlpha300 p-3 text-xs space-y-2">
-            <p>{t('privacy.deposit.backupWarning')}</p>
+            <InlineFeedback>
+              {t('privacy.deposit.backupWarning')}
+            </InlineFeedback>
             <button
               type="button"
               className={linkClass}
@@ -434,13 +437,11 @@ function DepositFlow({
       )}
       {result && (
         <div role="status" className="text-sm space-y-3">
-          <p>
-            {t(
-              `privacy.deposit.${
-                result.phase === 'submitted' ? 'submittedHelp' : 'unknownHelp'
-              }`
-            )}
-          </p>
+          {result.phase === 'submitted' ? (
+            <p>{t('privacy.deposit.submittedHelp')}</p>
+          ) : (
+            <InlineFeedback>{t('privacy.deposit.unknownHelp')}</InlineFeedback>
+          )}
           {result.transactionHash && (
             <div className="text-xs">
               <p className="text-brand-gray200">
@@ -449,9 +450,7 @@ function DepositFlow({
               <p className="break-all">{result.transactionHash}</p>
             </div>
           )}
-          <p className="text-xs text-brand-gray200">
-            {t('privacy.deposit.backupWarning')}
-          </p>
+          <InlineFeedback>{t('privacy.deposit.backupWarning')}</InlineFeedback>
           <button
             type="button"
             className={linkClass}

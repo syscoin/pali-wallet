@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogPrimitive,
 } from 'components/Dialog';
+import { InlineFeedback } from 'components/InlineFeedback';
 import { useController } from 'hooks/useController';
 import type { RootState } from 'state/store';
 import type { INoteBackupController } from 'utils/privacy/noteBackupTypes';
@@ -633,7 +634,9 @@ function BundleBody({
               {stage === 'confirmed' && <p role="status">{text('restored')}</p>}
               {stage === 'unconfirmed' && (
                 <>
-                  <p role="alert">{text('unconfirmed')}</p>
+                  <InlineFeedback role="alert">
+                    {text('unconfirmed')}
+                  </InlineFeedback>
                   <DialogActionButton
                     type="button"
                     disabled={busy}
@@ -642,7 +645,9 @@ function BundleBody({
                     {text('checkReceipt')}
                   </DialogActionButton>
                   {receiptChecked && (
-                    <p role="status">{text('receiptUnavailable')}</p>
+                    <InlineFeedback role="status">
+                      {text('receiptUnavailable')}
+                    </InlineFeedback>
                   )}
                 </>
               )}

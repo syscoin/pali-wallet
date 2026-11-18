@@ -200,6 +200,8 @@ function SecretQrCamera({
     };
   }, [kind]);
 
+  const cameraUnavailable = status === 'unavailable' || status === 'useTab';
+
   return (
     <Modal onClose={close}>
       <CenterPanel padded={false} className="flex flex-col">
@@ -213,8 +215,15 @@ function SecretQrCamera({
             hidden={status !== 'ready'}
             aria-hidden="true"
           />
-          <p role="status" className="mt-2 text-sm text-brand-graylight">
-            {status === 'unavailable' || status === 'useTab'
+          <p
+            role="status"
+            className={`mt-2 text-sm ${
+              cameraUnavailable || invalid
+                ? 'text-warning-error'
+                : 'text-brand-graylight'
+            }`}
+          >
+            {cameraUnavailable
               ? t('secretQr.cameraUnavailable')
               : t(invalid ? 'secretQr.scanInvalid' : 'secretQr.scanHelp')}
           </p>

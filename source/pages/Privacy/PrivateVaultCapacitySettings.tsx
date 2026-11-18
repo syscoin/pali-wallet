@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { InlineFeedback } from 'components/InlineFeedback';
 import type {
   IPrivateVaultCapacity,
   PrivateVaultCapacity,
@@ -27,8 +28,8 @@ export default function PrivateVaultCapacitySettings({
   controllerEmitter,
   noteCount,
 }: {
-  noteCount?: number;
   controllerEmitter: (...args: any[]) => Promise<unknown>;
+  noteCount?: number;
 }) {
   const { t } = useTranslation();
   const [data, setData] = useState<IPrivateVaultCapacity>();
@@ -153,13 +154,13 @@ export default function PrivateVaultCapacitySettings({
       )}
       <p>{t('privacy.capacity.compatibility')}</p>
       {error && (
-        <p role="alert">
+        <InlineFeedback role="alert" tone="error">
           {t(
             error === 'save'
               ? 'privacy.capacity.error'
               : 'privacy.capacity.loadError'
           )}
-        </p>
+        </InlineFeedback>
       )}
       {error === 'load' && (
         <button

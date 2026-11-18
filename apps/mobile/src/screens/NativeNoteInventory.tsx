@@ -290,7 +290,7 @@ export function NativeNoteInventory({ readInventory, onBack, onLock, onExport }:
             : t('mobile.noteFlows.inventory.observedBlock', { block: checked.status.blockNumber })} last />}
         </Card>
         {!archived && note.withdrawalPending && (
-          <Text style={styles.muted}>{t('privacy.withdrawal.pendingActivity')}</Text>
+          <Notice compact tone="amber" title={t('privacy.withdrawal.pendingActivity')} />
         )}
         {!archived && !inventory?.openWithdrawal && note.reconciliation === 'withdrawal-history' && (
           <Notice title={t('mobile.noteFlows.inventory.savedWithdrawalHistory')}

@@ -10,6 +10,7 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { InlineFeedback } from 'components/InlineFeedback';
 import { ValidatedPasswordInput } from 'components/Input/ValidatedPasswordInput';
 import { SecretQrDisplay } from 'components/SecretQrDisplay';
 import { SecretQrImport } from 'components/SecretQrImport';
@@ -499,17 +500,17 @@ function NotesView() {
               )}
               {note.withdrawal && (
                 <div className="space-y-2 text-xs text-brand-gray200">
-                  {note.phase !== 'spent' && (
-                    <p>
-                      {t(
-                        `privacy.withdrawal.${
-                          note.withdrawal.phase === 'unknown'
-                            ? 'statusUnknown'
-                            : 'statusPending'
-                        }`
-                      )}
-                    </p>
-                  )}
+                  {note.phase !== 'spent' &&
+                    (note.withdrawal.phase === 'unknown' ? (
+                      statusError?.id !== note.id ||
+                      !statusError.observationUnavailable ? (
+                        <InlineFeedback>
+                          {t('privacy.withdrawal.statusUnknown')}
+                        </InlineFeedback>
+                      ) : null
+                    ) : (
+                      <p>{t('privacy.withdrawal.statusPending')}</p>
+                    ))}
                   {note.withdrawal.transactionHash && (
                     <p className="break-all">
                       {t('privacy.deposit.txHash')}:{' '}
@@ -591,13 +592,19 @@ function NotesView() {
                       </button>
                     )}
                   {statusError?.id === note.id && (
-                    <p role="alert">
+                    <InlineFeedback
+                      role="alert"
+                      tone={
+                        statusError.observationUnavailable ? 'warning' : 'error'
+                      }
+                    >
                       {t(
-                        statusError.observationUnavailable
+                        statusError.observationUnavailable &&
+                          note.phase !== 'spent'
                           ? 'privacy.withdrawal.previousStatusUnavailable'
                           : 'privacy.withdrawal.statusFailed'
                       )}
-                    </p>
+                    </InlineFeedback>
                   )}
                   {reportedStatus?.id === note.id && (
                     <p>

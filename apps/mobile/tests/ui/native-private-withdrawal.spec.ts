@@ -574,6 +574,7 @@ test('a relayer outage keeps the earlier submission and inline notice during rev
     exact: true,
   });
   await expect(notice).toBeVisible();
+  await expect(notice).toHaveCSS('color', 'rgb(237, 197, 140)');
   await prepare(page);
 
   await expect(

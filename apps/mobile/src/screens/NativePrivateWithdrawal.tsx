@@ -20,7 +20,7 @@ import { getAddress } from 'ethers/address';
 import type { NativeSavedNote } from '../custody/noteBackupRuntime';
 import type { NativePrivateWithdrawalView as WithdrawalView } from '../custody/privateWithdrawal';
 import { formatBaseUnits } from '../core/amounts';
-import { Button, Card, colors, Header, Screen, styles, Text } from '../ui';
+import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import { createNativePrivateAuthenticationChild, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
@@ -153,7 +153,7 @@ export function NativePrivateWithdrawal({ note, open, onBack, authentication }: 
         <Header title={t('privacy.withdrawal.title')} onBack={back} />
         <Text
           accessibilityRole={current?.failed ? 'alert' : undefined}
-          style={styles.muted}
+          style={current?.failed ? styles.errorText : styles.muted}
         >
           {current?.failed
             ? t('mobile.privacyFlows.withdrawal.couldNotOpenThisWithdrawalCheckThePoolDataAnd')
@@ -369,9 +369,7 @@ function WithdrawalContent({
             </Text>
           )}
           {previousStatusUnavailable && (
-            <Text accessibilityLiveRegion="polite" style={styles.muted}>
-              {t('privacy.withdrawal.previousStatusUnavailable')}
-            </Text>
+            <Notice compact announce tone="amber" title={t('privacy.withdrawal.previousStatusUnavailable')} />
           )}
           {!showReview && !submitted ? (
             <>
@@ -438,20 +436,22 @@ function WithdrawalContent({
                 <Text style={styles.muted}>
                   {t('mobile.privacyFlows.withdrawal.thisAccountCannotSignADirectWithdrawal')}</Text>
               )}
-              <Text style={styles.muted}>
-                {mode === 'direct'
+              <Notice compact tone="amber" title={mode === 'direct'
                   ? t('privacy.withdrawal.directWarning')
-                  : t('privacy.withdrawal.relayedWarning')}
-              </Text>
+                  : t('privacy.withdrawal.relayedWarning')} />
               {mode === 'relayed' && (
                 <>
                   <Text style={s.label}>{t('privacy.withdrawal.relayed')}</Text>
-                  {state.relayers.length === 0 && (
+                  {state.relayers.length === 0 && !state.error && (
                     <Text style={styles.muted}>
                       {state.checking
                         ? t('privacy.withdrawal.loadingRelayers')
                         : t('privacy.withdrawal.noRelayers')}
                     </Text>
+                  )}
+                  {state.relayers.length > 0 && !state.checking && !state.error &&
+                    !state.relayers.some(({ health }) => health === 'reported-healthy') && (
+                    <Notice compact announce tone="amber" title={t('privacy.withdrawal.noRelayers')} />
                   )}
                   {state.relayers.map((relayer) => (
                     <Button
@@ -549,15 +549,12 @@ function WithdrawalContent({
                 <Text style={s.label}>{t('privacy.withdrawal.receive')}</Text>
                 <Text selectable>{amount(review.receiveWei)}</Text>
               </Card>
-              <Text style={styles.muted}>
-                {review.mode === 'direct'
+              <Notice compact tone="amber" title={review.mode === 'direct'
                   ? t('privacy.withdrawal.directWarning')
-                  : t('privacy.withdrawal.relayedWarning')}
-              </Text>
+                  : t('privacy.withdrawal.relayedWarning')} />
 
               {reviewExpired && (
-                <Text accessibilityLiveRegion="polite" style={styles.muted}>
-                  {t('mobile.privacyFlows.withdrawal.thisReviewExpiredPrepareAFreshReviewBeforeConfirming')}</Text>
+                <Notice compact announce tone="amber" title={t('mobile.privacyFlows.withdrawal.thisReviewExpiredPrepareAFreshReviewBeforeConfirming')} />
               )}
               <Button icon="edit"
                 title={t('mobile.privacyFlows.withdrawal.editWithdrawal')}
@@ -569,19 +566,19 @@ function WithdrawalContent({
           )}
           {(submitted || hasPreviousSubmission) && (
             <>
-              {!previousStatusUnavailable && (
+              {!previousStatusUnavailable && (unknown && !spent && !claimedStatus ? (
+                <Notice compact announce tone="amber" title={t('privacy.withdrawal.unknownHelp')} />
+              ) : (
                 <Text accessibilityLiveRegion="polite" style={styles.muted}>
                   {spent
                     ? t('mobile.privacyFlows.withdrawal.poolDataConfirmsTheNoteIsSpent')
                     : claimedStatus
                     ? t('privacy.withdrawal.reportedStatus', { status: claimedStatus })
-                    : unknown
-                    ? t('privacy.withdrawal.unknownHelp')
                     : jobId && !hash
                     ? t('privacy.withdrawal.acceptedHelp')
                     : t('privacy.withdrawal.submittedHelp')}
                 </Text>
-              )}
+              ))}
               {hash && (
                 <Card style={s.card}>
                   <Text style={s.label}>{t('privacy.deposit.txHash')}</Text>

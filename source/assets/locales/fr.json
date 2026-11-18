@@ -1880,7 +1880,7 @@
       "save": "Enregistrer la limite",
       "reportedSpent": "Notes signalées comme dépensées ({{count}})",
       "clear": "Archiver les notes terminées",
-      "clearHelp": "Le RPC Ethereum sélectionné reçoit les hachages connus des retraits et dépôts associés, ce qui peut permettre au fournisseur de les relier. Seules les notes que ce RPC confirme comme finalisées sont archivées sous forme chiffrée ; les autres restent actives. Les notes archivées ne comptent pas dans la limite active.",
+      "clearHelp": "Votre RPC peut relier les hachages des dépôts et retraits. Les notes qu’il indique comme finalisées passent dans l’archive chiffrée et libèrent des places actives.",
       "confirmClear": "Vérifier et archiver",
       "clearResult": "Archivées : {{removed}}. Encore actives : {{unresolved}}.",
       "clearError": "La vérification est incomplète. Actualisez pour voir les notes restantes.",
@@ -1902,7 +1902,7 @@
       "refresh": "Actualiser la vérification",
       "confirm": "Confirmer le dépôt",
       "submitting": "Envoi en cours…",
-      "backupWarning": "Conservez une sauvegarde privée de cette note. Les notes générées ne peuvent pas être restaurées avec votre phrase de récupération.",
+      "backupWarning": "Sauvegardez cette note séparément. Votre phrase de récupération ne peut pas la restaurer.",
       "backup": "Sauvegarder la note",
       "backupAck": "Je comprends que la sauvegarde de la note est nécessaire pour retirer les fonds.",
       "submitted": "Transaction envoyée",
@@ -1952,7 +1952,7 @@
       "prepareFailed": "Impossible de préparer le retrait. Vérifiez les données du pool et votre réseau, puis réessayez.",
       "prepareInterrupted": "La préparation a été interrompue. Vérifiez les données du pool, puis réessayez.",
       "checkStatus": "Vérifier le statut",
-      "previousStatusUnavailable": "Un retrait précédent peut encore aboutir. Son statut actuel est indisponible.",
+      "previousStatusUnavailable": "Statut du relayer indisponible. Un retrait précédent peut encore aboutir.",
       "statusFailed": "Impossible de vérifier le statut du relais. Réessayez.",
       "statusUnknown": "Statut d’envoi du retrait inconnu. Vérifiez avant de réessayer.",
       "statusPending": "Retrait envoyé. En attente de confirmation publique du pool.",
@@ -2615,8 +2615,7 @@
         "noteDate": "Note {{number}} · {{date}}"
       },
       "maintenance": {
-        "chooseNote": "Sélectionnez une note enregistrée à vérifier et à supprimer. Chaque tentative ne vérifie que cette note.",
-        "clearHelp": "Le RPC Ethereum sélectionné reçoit les hachages connus des retraits et dépôts associés, ce qui peut permettre au fournisseur de les relier. Seules les notes que ce RPC confirme comme finalisées sont archivées sous forme chiffrée ; les autres restent actives. Les notes archivées ne comptent pas dans la limite active."
+        "chooseNote": "Sélectionnez une note enregistrée à vérifier et à supprimer. Chaque tentative ne vérifie que cette note."
       },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Impossible de charger la limite de notes.",
@@ -3080,7 +3079,6 @@
         "gasPrice": "Prix du gaz",
         "maximumFeePerGas": "Frais maximum par unité de gaz",
         "maximumPriorityFeePerGas": "Frais prioritaires maximum par unité de gaz",
-        "keepAPrivateBackupOfThisNoteYourRecoveryPhrase": "Conservez une sauvegarde privée de cette note. Votre phrase de récupération ne peut pas la restaurer.",
         "iUnderstandThatINeedTheNoteBackupToWithdraw": "Je comprends que la sauvegarde de la note est nécessaire pour retirer",
         "noteAlreadySpent": "Note déjà dépensée",
         "theDepositIsPresentInTheVerifiedPoolHistory": "Le dépôt figure dans l’historique vérifié du pool.",

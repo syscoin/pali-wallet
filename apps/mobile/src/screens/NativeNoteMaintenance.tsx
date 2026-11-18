@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { IPrivateNoteView } from '../../../../source/utils/privacy/privateVaultTypes';
 import type { NativeNoteMaintenanceRuntime } from '../custody/noteBackupRuntime';
 import { useNativeTranslation } from '../platform/localization';
-import { Button, Card, colors, Header, Row, Screen, styles, Text } from '../ui';
+import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { isOperationAuthenticationCancellation } from '../core/operationAuthentication';
@@ -138,7 +138,7 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
         {shownReady && selectedNote && <>
           <Card><Row title={t('mobile.noteFlows.inventory.poolAmount', { amount: selectedNote.amount })}
             subtitle={t('mobile.noteFlows.inventory.noteDate', { number: notes.indexOf(selectedNote) + 1, date: recordedDate(selectedNote.createdAt) })} last /></Card>
-          <Text style={styles.muted}>{t('mobile.noteFlows.maintenance.clearHelp')}</Text>
+          <Notice compact tone="amber" title={t('privacy.capacity.clearHelp')} />
           <Button title={t('privacy.capacity.confirmClear')} icon="trash" disabled={busy} onPress={() => { void clear(); }} />
           <Button title={t('buttons.cancel')} variant="secondary" disabled={busy} onPress={cancel} />
         </>}

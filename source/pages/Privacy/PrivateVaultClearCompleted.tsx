@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { InlineFeedback } from 'components/InlineFeedback';
 import { useUtils } from 'hooks/useUtils';
 
 export default function PrivateVaultClearCompleted({
@@ -116,7 +117,7 @@ export default function PrivateVaultClearCompleted({
             role="group"
             aria-label={t('privacy.capacity.clear')}
           >
-            <p>{t('privacy.capacity.clearHelp')}</p>
+            <InlineFeedback>{t('privacy.capacity.clearHelp')}</InlineFeedback>
             <button
               type="button"
               className="rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
