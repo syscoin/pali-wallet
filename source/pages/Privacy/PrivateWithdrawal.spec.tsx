@@ -382,30 +382,37 @@ it('treats an ambiguous send failure as unknown without a retry action', async (
   expect(screen.queryByText('secret provider detail')).not.toBeInTheDocument();
 });
 
-it('requires refreshing after a proven unbroadcast failure', async () => {
-  const original = mockEmitter.getMockImplementation()!;
-  mockEmitter.mockImplementation((path, ...rest) =>
-    path[1] === 'submitWithdrawal'
-      ? Promise.reject(
-          Object.assign(new Error('blocked'), { transactionNotBroadcast: true })
-        )
-      : original(path, ...rest)
-  );
-  mount();
-  await prepare();
-  fireEvent.click(
-    screen.getByRole('button', { name: en.privacy.withdrawal.confirm })
-  );
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    en.privacy.withdrawal.notBroadcast
-  );
-  expect(
-    screen.getByRole('button', { name: en.privacy.withdrawal.refresh })
-  ).toBeVisible();
-  expect(
-    mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
-  ).toHaveLength(1);
-});
+it.each([
+  ['blocked', en.privacy.withdrawal.notBroadcast],
+  [
+    'privacy_withdrawal_activity_pending',
+    en.privacy.withdrawal.pendingActivity,
+  ],
+])(
+  'requires refreshing after a proven unbroadcast failure (%s)',
+  async (code, message) => {
+    const original = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path, ...rest) =>
+      path[1] === 'submitWithdrawal'
+        ? Promise.reject(
+            Object.assign(new Error(code), { transactionNotBroadcast: true })
+          )
+        : original(path, ...rest)
+    );
+    mount();
+    await prepare();
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.withdrawal.confirm })
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(
+      screen.getByRole('button', { name: en.privacy.withdrawal.refresh })
+    ).toBeVisible();
+    expect(
+      mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
+    ).toHaveLength(1);
+  }
+);
 
 it.each([
   new Error('privacy_proof_cancelled'),
@@ -455,6 +462,10 @@ it.each([
 it.each([
   ['privacy_withdrawal_nonce_conflict', en.send.savedNonceConflict],
   ['privacy_vault_unavailable', en.privacy.withdrawal.prepareFailed],
+  [
+    'privacy_withdrawal_activity_pending',
+    en.privacy.withdrawal.pendingActivity,
+  ],
 ])(
   'renders the preparation diagnostic for %s without allowing submission',
   async (code, message) => {

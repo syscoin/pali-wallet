@@ -67,7 +67,7 @@ test('saved-note detail shows unchecked status and separate local hints at 320px
   await restored.press('Enter');
   await expect(heading(page, 'Note details')).toBeVisible();
   await expect(page.getByText('Status not checked', { exact: true })).toBeVisible();
-  await expect(page.getByText('Restored note needs review', { exact: true })).toBeVisible();
+  await expect(page.getByText('Restored note needs review', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Saved withdrawal history', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('textbox')).toHaveCount(0);
   await expect(page.getByRole('button')).toHaveCount(3); // Back, individual backup, and Lock wallet

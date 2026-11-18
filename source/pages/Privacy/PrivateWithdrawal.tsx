@@ -290,21 +290,19 @@ function WithdrawalFlow({
     } catch (failure) {
       if (current(revision)) {
         cancel();
-        const interrupted =
+        const code =
           typeof failure === 'object' &&
           failure !== null &&
-          'message' in failure &&
-          (failure.message === 'privacy_proof_cancelled' ||
-            failure.message === 'privacy_verification_pending');
-        const nonceConflict =
-          typeof failure === 'object' &&
-          failure !== null &&
-          'message' in failure &&
-          failure.message === 'privacy_withdrawal_nonce_conflict';
+          'message' in failure
+            ? failure.message
+            : undefined;
         setError(
-          nonceConflict
+          code === 'privacy_withdrawal_activity_pending'
+            ? 'pendingActivity'
+            : code === 'privacy_withdrawal_nonce_conflict'
             ? 'nonceConflict'
-            : interrupted
+            : code === 'privacy_proof_cancelled' ||
+              code === 'privacy_verification_pending'
             ? 'prepareInterrupted'
             : 'prepareFailed'
         );
@@ -369,6 +367,11 @@ function WithdrawalFlow({
     } catch (failure) {
       if (!current(revision)) return;
       if (
+        (failure as { message?: string })?.message ===
+        'privacy_withdrawal_activity_pending'
+      )
+        setError('pendingActivity');
+      else if (
         (failure as { transactionNotBroadcast?: boolean })
           ?.transactionNotBroadcast === true
       )

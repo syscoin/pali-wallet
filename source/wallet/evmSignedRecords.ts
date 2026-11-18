@@ -3391,6 +3391,37 @@ export class EvmSignedRecords {
       return entry ? this.materializeRecord(session, entry) : null;
     });
   }
+  pendingPrivacyWithdrawalNotes(
+    session: EvmSignedRecordSession,
+    payer: string
+  ): Promise<ReadonlySet<string>> {
+    const from = getAddress(payer).toLowerCase();
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      const notes = new Set<string>();
+      for (const entry of bundle?.entries ?? []) {
+        if (
+          entry.from !== from ||
+          entry.chainId !== '1' ||
+          !isPendingPhase(entry.phase)
+        )
+          continue;
+        const withdrawal = entry.metadata?.privateWithdrawal;
+        if (
+          withdrawal &&
+          typeof withdrawal === 'object' &&
+          'noteId' in withdrawal &&
+          typeof withdrawal.noteId === 'string'
+        )
+          notes.add(withdrawal.noteId);
+      }
+      guard(session);
+      return notes;
+    });
+  }
+
   readRecent(
     session: EvmSignedRecordSession,
     chainId: string,

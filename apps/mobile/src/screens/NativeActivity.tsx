@@ -154,6 +154,14 @@ const rowMonetaryAmount = (row: ActivityRow) => {
   if (row.display) return !row.display.amountUnavailable && !row.display.hasUnknownDecimals;
   return !row.indexed && (!!row.local || !!row.observation && row.observation.events.length === 0);
 };
+function privacyPresentation(row: ActivityRow, hideBalances: boolean) {
+  const privacy = row.local?.privacyActivity ??
+    (row.observation ? row.observation.privacyActivity : row.indexed?.privacyActivity);
+  return privacy ? {
+    title: t(`privacy.activity.${privacy.kind}`),
+    poolBadge: hideBalances ? undefined : t('privacy.poolAmount', { amount: privacy.amount }),
+  } : undefined;
+}
 const rowDate = (row: ActivityRow) => activityDate(row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt);
 /** Shared list presentation for concrete-network and account-wide Activity. */
 export function nativeActivityRowPresentation(row: ActivityRow, context: {
@@ -164,13 +172,15 @@ export function nativeActivityRowPresentation(row: ActivityRow, context: {
   const numeric = !!rowMonetaryAmount(row), state = statusLabels[tag]();
   const date = rowDate(row);
   const movement = flow === 'sent' ? t('send.sent') : flow === 'received' ? t('send.received') : flow === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity');
+  const privacy = privacyPresentation(row, context.hideBalances);
+  const title = privacy?.title ?? (!numeric ? fullAmount : movement);
   const statusSummary = `${state}${row.unavailable && tag !== 'unavailable' ? ` · ${t('mobile.activityViews.nativeActivity.detailsUnavailable')}` : ''}`;
   return {
     date, direction: flow, status: state, statusSummary, fullAmount, numeric,
-    title: !numeric ? fullAmount : movement,
+    title, poolBadge: privacy?.poolBadge,
     subtitle: `${context.networkName} · ${statusSummary}`,
     amount: numeric && context.hideBalances ? HIDDEN_BALANCE : numeric ? compactActivityAmountLabel(`${/^[+−-]/.test(fullAmount) ? '' : flow === 'received' ? '+' : flow === 'sent' ? '-' : ''}${fullAmount}`.replace(/^−/, '-')) : '',
-    label: `${movement}. ${t('mobile.activityViews.nativeActivity.transactionLabel', { amount: context.hideBalances && numeric ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: state, date: date.label, time: date.time })}`,
+    label: `${privacy?.title ?? movement}. ${privacy?.poolBadge ? `${privacy.poolBadge}. ` : ''}${t('mobile.activityViews.nativeActivity.transactionLabel', { amount: context.hideBalances && numeric ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: state, date: date.label, time: date.time })}`,
   };
 }
 function fee(row: ActivityRow, symbol: string): string {
@@ -360,6 +370,7 @@ function NativeActivityContent({
   const original = chosen?.local?.originalHash && findRow((row) => row.hash === chosen.local!.originalHash);
   // A Smart account can use different outer fee payers. Only their own nonce
   // group conflicts; a cancellation of any speed-up descendant still blocks it.
+  const detailPrivacy = chosen ? privacyPresentation(chosen, hideBalances) : undefined;
   const replacementBlocksReview = chosen?.local && !!findRow(({ local }) =>
     local?.chainId === chosen.local!.chainId && local.nonce === chosen.local!.nonce &&
     (local.smartAccount?.payer ?? local.address).toLowerCase() ===
@@ -636,6 +647,7 @@ function NativeActivityContent({
               first={first} last={last} heading={first ? date.label : undefined}
               title={display.title}
               subtitle={display.subtitle}
+              poolBadge={display.poolBadge}
               amount={display.amount}
               time={date.time}
               label={display.label}
@@ -688,7 +700,8 @@ function NativeActivityContent({
           <TransactionDetailLayout
             asset={activityAssetIcon(chosen, snapshot.chainId, snapshot.registrationHash)} registrationHash={snapshot.registrationHash ?? undefined} assetSymbol={chosen.display?.displaySymbol ?? chosen.local?.token?.symbol}
             amount={`${rowMonetaryAmount(chosen) ? direction(chosen, owner) === 'sent' ? '-' : direction(chosen, owner) === 'received' ? '+' : '' : ''}${amount(chosen, snapshot.nativeSymbol ?? 'ETH')}`}
-            direction={direction(chosen, owner) === 'sent' ? t('send.sent') : direction(chosen, owner) === 'received' ? t('send.received') : direction(chosen, owner) === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity')}
+            poolBadge={detailPrivacy?.poolBadge}
+            direction={detailPrivacy?.title ?? (direction(chosen, owner) === 'sent' ? t('send.sent') : direction(chosen, owner) === 'received' ? t('send.received') : direction(chosen, owner) === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity'))}
             status={displayStatus(chosen)}
             tone={(() => { const tag = (savedPending ? savedPendingStatusTag : statusTag)(chosen); return tag === 'confirmed' ? 'confirmed' : tag === 'reverted' ? 'failed' : tag === 'pending' || tag === 'replacementPending' ? 'pending' : 'unknown'; })()}
             rows={[

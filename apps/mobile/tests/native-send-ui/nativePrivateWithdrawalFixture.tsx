@@ -35,6 +35,9 @@ export function NativePrivateWithdrawalFixture() {
       const note = Object.freeze({
         amount: '1',
         createdAt: 1762000000000,
+        ...(query.has('pending-history') || (query.has('unknown') && events.some(event => event.startsWith('confirm:')))
+          ? { withdrawalPending: true as const } : {}),
+        ...(query.has('history') ? { withdrawalStatusAvailable: true as const } : {}),
         ...(query.has('restored') ? {reconciliation:'restored-note' as const} : query.has('history') ||
         events.some((event) => event.startsWith('confirm:'))
           ? { reconciliation: 'withdrawal-history' as const }
@@ -69,7 +72,7 @@ export function NativePrivateWithdrawalFixture() {
               ? {
                   phase: 'unknown',
                   noteId,
-                  mode: 'direct',
+                  mode: 'relayed',
                   transactionHash: hash,
                 }
               : null,

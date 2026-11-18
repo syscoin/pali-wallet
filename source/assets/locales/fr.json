@@ -1786,6 +1786,11 @@
     }
   },
   "privacy": {
+    "poolAmount": "Pool de {{amount}} ETH",
+    "activity": {
+      "deposit": "Dépôt privé",
+      "withdrawal": "Retrait privé"
+    },
     "title": "Confidentialité",
     "bundle": {
       "snapshotTime": "Date de l’instantané : {{time}}",
@@ -1940,6 +1945,7 @@
       "backupFailed": "Impossible d’ouvrir la sauvegarde de la note. Réessayez."
     },
     "withdrawal": {
+      "pendingActivity": "Retrait en attente dans l’activité.",
       "watchOnlyDirectUnavailable": "Un retrait direct nécessite une clé privée. Ce compte est en lecture seule.",
       "title": "Retirer une note",
       "open": "Retirer",
@@ -1984,31 +1990,9 @@
       "submitted": "Transaction envoyée",
       "notBroadcast": "La transaction n’a pas été envoyée. Actualisez la vérification avant de confirmer à nouveau."
     },
-    "recovery": {
-      "action": "Vérifier la récupération du retrait",
-      "help": "La récupération nécessite une vérification finalisée confirmant que la racine de preuve divulguée n’est plus acceptée et que la note reste non dépensée. Pour un retrait direct, il faut aussi une transaction définitivement échouée ou un nonce du payeur définitivement consommé. La note et l’historique du retrait sont conservés. Un nouveau retrait nécessite une nouvelle vérification.",
-      "disclosure": "Cette vérification partage la racine de preuve initiale et le nullifier public de la note avec votre RPC Ethereum sélectionné. Pour un retrait direct, elle partage aussi l’adresse du payeur et le hash de transaction. Une ancienne tâche du relais peut être consultée pour retrouver les entrées de preuve enregistrées.",
-      "password": "Mot de passe du portefeuille",
-      "failed": "La récupération n’a pas pu être confirmée. La preuve peut rester utilisable, la note peut être dépensée ou les données indisponibles. Actualisez avant de réessayer.",
-      "checking": "Vérification de l’expiration finalisée de la preuve…",
-      "confirm": "Vérifier et récupérer"
-    },
-    "restoreReview": {
-      "action": "Examiner la note restaurée",
-      "help": "Autorisez cette vérification de la note. Un retrait nécessite une vérification distincte.",
-      "disclosure": "La restauration n’annule pas les retraits antérieurs et n’invalide pas les autres copies de cette note.",
-      "snapshot": "Données du pool vérifiées au bloc {{block}}. Il s’agit de données enregistrées, pas d’une vérification en direct.",
-      "noSnapshot": "Préparez ou actualisez les données du pool avant d’examiner cette note.",
-      "pending": "L’activité des retraits précédents est conservée. Vérifiez-la avant de soumettre un autre retrait.",
-      "password": "Mot de passe du portefeuille",
-      "confirm": "Confirmer l’examen de la note",
-      "busy": "Enregistrement de l’examen…",
-      "failed": "Impossible d’enregistrer l’examen. Vérifiez le mot de passe et les données du pool, puis réessayez."
-    },
     "archive": {
       "title": "Notes archivées",
       "help": "Les notes terminées restent chiffrées ici jusqu’à leur restauration ou la suppression de l’archive. Elles ne comptent pas dans la limite des notes actives.",
-      "poolAmount": "Pool de {{amount}} ETH",
       "previous": "Précédent",
       "empty": "Aucune note archivée",
       "restore": "Restaurer la note",
@@ -2634,8 +2618,6 @@
         "statusNotChecked": "Statut non vérifié",
         "noteDetails": "Détails de la note",
         "paliHasntCheckedThisNoteAgainstItsEthereum": "Pali n’a pas vérifié cette note auprès de son pool Ethereum.",
-        "restoredNoteNeedsReview": "La note restaurée doit être vérifiée",
-        "thisNoteCameFromABackupAndStill": "Cette note provient d’une sauvegarde et doit encore être vérifiée auprès du pool.",
         "savedWithdrawalHistory": "Historique des retraits enregistré",
         "thisNoteHasASavedWithdrawalRecordThat": "Cette note a un retrait enregistré à vérifier. Son résultat n’a pas été vérifié ici.",
         "checkStatusAgain": "Revérifier le statut",

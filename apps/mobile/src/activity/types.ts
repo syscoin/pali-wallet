@@ -1,3 +1,4 @@
+import type { PrivacyPoolActivity } from '../../../../source/shared/privacyPoolActivity.ts';
 import type { EvmDisplayTransaction } from '../../../../source/shared/evmTransactionDisplay.ts';
 import type { SmartAccountActivityGroupIdentity } from '../../../../source/wallet/smartAccountActivity.ts';
 import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
@@ -58,6 +59,7 @@ export type LocalActivityRecord = Omit<
 > &
   Readonly<{
     recipient: string | null;
+    privacyActivity?: PrivacyPoolActivity;
     inspectionOnly?: true;
     cancellationUnavailable?: true;
     speedUpEligible?: true;
@@ -87,6 +89,7 @@ export type IndexedActivityTransaction = EvmDisplayTransaction &
     from: string;
     to: string | null;
     tokenRecipient?: string;
+    privacyActivity?: PrivacyPoolActivity;
     timestamp: number;
     confirmations: number;
     blockNumber?: number;

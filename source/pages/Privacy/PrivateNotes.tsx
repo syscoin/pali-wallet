@@ -22,7 +22,6 @@ import PrivateNoteBackupDialog from './PrivateNoteBackupDialog';
 import PrivateVaultCapacitySettings from './PrivateVaultCapacitySettings';
 import PrivateVaultClearCompleted from './PrivateVaultClearCompleted';
 import PrivateWithdrawal from './PrivateWithdrawal';
-import PrivateWithdrawalRecovery from './PrivateWithdrawalRecovery';
 import { usePrivateNotes } from './usePrivateNotes';
 
 const PrivateNoteBundleDialog = lazy(
@@ -440,21 +439,8 @@ function NotesView() {
                   {t('privacy.noteAsOfBlock', { block: note.blockNumber })}
                 </p>
               )}
-              {note.phase !== 'spent' &&
-                note.restoration === 'withdrawal-pending' && (
-                  <p className="text-xs text-brand-gray200">
-                    {t('privacy.restoreReview.pending')}
-                  </p>
-                )}
               {note.withdrawal && (
                 <div className="space-y-2 text-xs text-brand-gray200">
-                  {note.withdrawal.canCheckRecovery && (
-                    <PrivateWithdrawalRecovery
-                      id={note.id}
-                      controllerEmitter={controllerEmitter}
-                      onRecovered={() => void refresh()}
-                    />
-                  )}
                   {note.phase !== 'spent' && (
                     <p>
                       {t(
@@ -549,6 +535,12 @@ function NotesView() {
                 <button
                   type="button"
                   className={actionClass}
+                  disabled={note.withdrawalPending}
+                  aria-describedby={
+                    note.withdrawalPending
+                      ? `pending-withdrawal-${note.id}`
+                      : undefined
+                  }
                   onClick={() => {
                     clear();
                     setWithdrawing(note);
@@ -556,6 +548,14 @@ function NotesView() {
                 >
                   {t('privacy.withdrawal.open')}
                 </button>
+              )}
+              {note.phase === 'verified' && note.withdrawalPending && (
+                <p
+                  id={`pending-withdrawal-${note.id}`}
+                  className="text-xs text-brand-gray200"
+                >
+                  {t('privacy.withdrawal.pendingActivity')}
+                </p>
               )}
               {selected !== note.id ? (
                 <button

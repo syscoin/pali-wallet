@@ -237,7 +237,7 @@ export default function PrivateArchivedNotes({
                     className="rounded-lg border border-alpha-whiteAlpha300 p-3 space-y-2"
                   >
                     <p>
-                      {t('privacy.archive.poolAmount', {
+                      {t('privacy.poolAmount', {
                         amount: note.amount,
                       })}{' '}
                       · {new Date(note.archivedAt).toLocaleDateString()}

@@ -27,7 +27,6 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
   const [notes, setNotes] = useState<readonly IPrivateNoteView[]>([]);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +49,7 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
         const value = await open(current.abort.signal, check, current.authentication); check();
         const inventory = await value.getNotes(check); check();
         if (AppState.currentState !== 'active') throw Error('CANCELLED');
-        setNotes(inventory.notes); setSelected(null); setConfirmClear(false); setPage(0);
+        setNotes(inventory.notes); setSelected(null); setPage(0);
         setRuntime({ source: open, value }); setReady(true);
       } catch { if (current.live && AppState.currentState === 'active') setError('privacy.capacity.loadError'); }
       finally { current.busy = false; }
@@ -61,11 +60,11 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
     return () => { current.live = false; current.authentication.retire(); current.abort.abort(); change.remove(); blur?.remove(); back.remove(); };
   }, [close, open]);
   const activeRuntime = runtime?.source === open ? runtime.value : undefined;
-  const act = async (kind: 'clear' | 'recover') => {
+  const clear = async () => {
     const current = owner.current;
     const note = notes.find(value => value.id === selected);
     if (!activeRuntime || !ready || !current.live || current.busy || AppState.currentState !== 'active' ||
-        !note || (kind === 'clear' ? !confirmClear : !note.withdrawal?.canCheckRecovery)) return;
+        !note) return;
     const selectedId = note.id;
     current.busy = true; setBusy(true); setError(null); setResult(null);
     const request = {}; current.request = request;
@@ -78,25 +77,19 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
     let cancelledBeforeAccess = false;
     const reload = (inventory: Awaited<ReturnType<NativeNoteMaintenanceRuntime['getNotes']>>) => {
       check(); if (AppState.currentState !== 'active') throw Error('CANCELLED');
-      setNotes(inventory.notes); setSelected(null); setConfirmClear(false); setPage(0); reloaded = true;
+      setNotes(inventory.notes); setSelected(null); setPage(0); reloaded = true;
     };
     try {
-      if (kind === 'recover') {
-        await activeRuntime.recoverFailedWithdrawal(selectedId, check, reload); check();
-        if (AppState.currentState !== 'active') throw Error('CANCELLED');
-        setSelected(null);
-      } else {
-        setProgress({ checked: 0, total: 1 });
-        const value = await activeRuntime.clearCompletedNotes([selectedId], check,
-          value => { check(); setProgress(value); }, reload);
-        check(); if (AppState.currentState !== 'active') throw Error('CANCELLED');
-        setResult({ removed: value.removed.length, unresolved: value.unresolved.length }); setConfirmClear(false);
-      }
+      setProgress({ checked: 0, total: 1 });
+      const value = await activeRuntime.clearCompletedNotes([selectedId], check,
+        value => { check(); setProgress(value); }, reload);
+      check(); if (AppState.currentState !== 'active') throw Error('CANCELLED');
+      setResult({ removed: value.removed.length, unresolved: value.unresolved.length });
     } catch (error) {
       if (!reloaded && isOperationAuthenticationCancellation(error)) {
         try { check(); cancelledBeforeAccess = AppState.currentState === 'active'; } catch { /* Retired owners stay fail-closed. */ }
       }
-      if (!cancelledBeforeAccess && current.live) setError(kind === 'clear' ? error instanceof Error && error.message === 'privacy_archive_limit' ? 'privacy.archive.full' : 'privacy.capacity.clearError' : 'privacy.recovery.failed');
+      if (!cancelledBeforeAccess && current.live) setError(error instanceof Error && error.message === 'privacy_archive_limit' ? 'privacy.archive.full' : 'privacy.capacity.clearError');
     }
     finally {
       // The action reloads within its authorization, even after a lost acknowledgement.
@@ -104,21 +97,20 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
         check();
         if (!reloaded && !cancelledBeforeAccess) throw Error('Maintenance inventory unavailable');
       }
-      catch { if (current.live) { setReady(false); setNotes([]); setSelected(null); setConfirmClear(false); setError('privacy.capacity.clearError'); } }
+      catch { if (current.live) { setReady(false); setNotes([]); setSelected(null); setError('privacy.capacity.clearError'); } }
       current.busy = false;
       if (current.live) { setBusy(false); setProgress(null); }
     }
   };
   const shownReady = ready && !!activeRuntime;
   const selectedNote = notes.find(note => note.id === selected);
-  const recovering = !confirmClear && selectedNote?.withdrawal?.canCheckRecovery;
   const start = page * PAGE_SIZE;
   const rows = notes.slice(start, start + PAGE_SIZE);
-  const choose = (note: IPrivateNoteView, clear: boolean) => {
+  const choose = (note: IPrivateNoteView) => {
     if (!shownReady || !owner.current.live || owner.current.busy || AppState.currentState !== 'active') return;
-    setSelected(note.id); setConfirmClear(clear); setError(null); setResult(null);
+    setSelected(note.id); setError(null); setResult(null);
   };
-  const cancel = () => { if (!owner.current.busy) { setSelected(null); setConfirmClear(false); setError(null); } };
+  const cancel = () => { if (!owner.current.busy) { setSelected(null); setError(null); } };
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen footer={<Button title={t('buttons.close')} variant="secondary" onPress={close} />}>
@@ -135,14 +127,8 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
               {rows.map((note, index) => <Row key={note.id} icon="trash"
                 title={t('mobile.noteFlows.inventory.poolAmount', { amount: note.amount })}
                 subtitle={t('mobile.noteFlows.inventory.noteDate', { number: start + index + 1, date: recordedDate(note.createdAt) })}
-                onPress={busy ? undefined : () => choose(note, true)} last={index === rows.length - 1} />)}
+                onPress={busy ? undefined : () => choose(note)} last={index === rows.length - 1} />)}
             </Card>
-            {rows.some(note => note.withdrawal?.canCheckRecovery) && <Card>
-              {rows.filter(note => note.withdrawal?.canCheckRecovery).map((note, index, recoveryRows) => <Row key={note.id} icon="refresh"
-                title={t('privacy.recovery.action')}
-                subtitle={`${t('mobile.noteFlows.inventory.poolAmount', { amount: note.amount })} · ${t('mobile.noteFlows.inventory.noteDate', { number: notes.indexOf(note) + 1, date: recordedDate(note.createdAt) })}`}
-                onPress={busy ? undefined : () => choose(note, false)} last={index === recoveryRows.length - 1} />)}
-            </Card>}
             {(page > 0 || start + rows.length < notes.length) && <View style={s.pages}>
               <View style={s.page}><Button title={t('mobile.noteFlows.inventory.previous')} variant="secondary" disabled={busy || page === 0} onPress={() => setPage(value => value - 1)} /></View>
               <View style={s.page}><Button title={t('buttons.next')} variant="secondary" disabled={busy || start + rows.length >= notes.length} onPress={() => setPage(value => value + 1)} /></View>
@@ -152,13 +138,8 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
         {shownReady && selectedNote && <>
           <Card><Row title={t('mobile.noteFlows.inventory.poolAmount', { amount: selectedNote.amount })}
             subtitle={t('mobile.noteFlows.inventory.noteDate', { number: notes.indexOf(selectedNote) + 1, date: recordedDate(selectedNote.createdAt) })} last /></Card>
-          {confirmClear ? <>
-            <Text style={styles.muted}>{t('mobile.noteFlows.maintenance.clearHelp')}</Text>
-            <Button title={t('privacy.capacity.confirmClear')} icon="trash" disabled={busy} onPress={() => { void act('clear'); }} />
-          </> : recovering ? <>
-            <Text style={styles.muted}>{t('privacy.recovery.help')}</Text><Text style={styles.muted}>{t('privacy.recovery.disclosure')}</Text>
-            <Button title={t('privacy.recovery.confirm')} disabled={busy} onPress={() => { void act('recover'); }} />
-          </> : null}
+          <Text style={styles.muted}>{t('mobile.noteFlows.maintenance.clearHelp')}</Text>
+          <Button title={t('privacy.capacity.confirmClear')} icon="trash" disabled={busy} onPress={() => { void clear(); }} />
           <Button title={t('buttons.cancel')} variant="secondary" disabled={busy} onPress={cancel} />
         </>}
         {progress && <Text accessibilityLiveRegion="polite" style={styles.muted}>{t('privacy.capacity.clearProgress', progress)}</Text>}

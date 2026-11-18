@@ -8,6 +8,7 @@ import {
   mergeEvmExplorerTransactions,
 } from '../../../../../../shared/evmHistory';
 import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
+import { getPrivacyPoolActivity } from '../../../../../../shared/privacyPoolActivity';
 import {
   filterSmartAccountNativeRecipientOperations,
   projectSmartAccountNativePayment,
@@ -186,10 +187,33 @@ const EvmTransactionItem = React.memo(
     // Check transaction status from API
     // txreceipt_status: '0' = failed, '1' = success, null/undefined = pending
     const isFailed = settlement === 'failed';
+    const privacyActivity =
+      !smartBatch && !isCancel
+        ? getPrivacyPoolActivity(
+            tx.chainId ?? chainId,
+            tx.to,
+            tx.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+              (!tx.input || tx.input === '0x') &&
+              tx.methodSelector
+              ? tx.methodSelector
+              : tx.input || ('data' in tx && tx.data)
+          )
+        : undefined;
+    const poolBadge = privacyActivity && (
+      <span className="max-w-full rounded-full border border-brand-blue/20 bg-brand-blue/10 px-1.5 py-0.5 text-[10px] leading-tight text-brand-blue">
+        {t('privacy.poolAmount', { amount: privacyActivity.amount })}
+      </span>
+    );
     const transactionLabel = smartBatch
       ? t('send.batchTransaction')
       : isCancel
       ? t('transactions.cancellation')
+      : privacyActivity
+      ? t(
+          privacyActivity.kind === 'deposit'
+            ? 'privacy.activity.deposit'
+            : 'privacy.activity.withdrawal'
+        )
       : getTransactionTypeDisplayLabel(
           'historySource' in tx &&
             tx.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
@@ -489,10 +513,11 @@ const EvmTransactionItem = React.memo(
         >
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
-            <div className="flex flex-col">
+            <div className="flex min-w-0 flex-col items-start">
               <div className="text-brand-gray200 text-xs font-normal line-through">
                 {transactionLabel}
               </div>
+              {poolBadge}
               <div className="text-warning-error text-xs">
                 {t('transactions.replaced')}
               </div>
@@ -524,10 +549,11 @@ const EvmTransactionItem = React.memo(
         >
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
-            <div className="flex flex-col">
+            <div className="flex min-w-0 flex-col items-start">
               <div className="text-brand-gray200 text-xs font-normal line-through">
                 {transactionLabel}
               </div>
+              {poolBadge}
               <div className="text-warning-error text-xs">
                 {t('send.failed')}
               </div>
@@ -566,48 +592,52 @@ const EvmTransactionItem = React.memo(
                 <span className="min-w-0 break-words text-white text-xs font-normal">
                   {transactionLabel}
                 </span>
-                {!smartBatch && isContractCall && displayTx?.to && (
-                  <Tooltip
-                    content={
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs font-medium text-white">
-                          {t('settings.contractAddress')}
-                        </span>
-                        <span className="text-xs font-mono text-brand-gray300">
-                          {/* For smart-account executions, show the decoded
+                {poolBadge}
+                {!privacyActivity &&
+                  !smartBatch &&
+                  isContractCall &&
+                  displayTx?.to && (
+                    <Tooltip
+                      content={
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium text-white">
+                            {t('settings.contractAddress')}
+                          </span>
+                          <span className="text-xs font-mono text-brand-gray300">
+                            {/* For smart-account executions, show the decoded
                               inner target, not the outer EntryPoint */}
-                          {displayTx.to}
+                            {displayTx.to}
+                          </span>
+                        </div>
+                      }
+                    >
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-blue/10 border border-brand-blue/20 cursor-default transition-all duration-200 hover:bg-brand-blue/20 hover:border-brand-blue/30 hover:scale-105 whitespace-nowrap">
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="text-brand-blue"
+                        >
+                          <path
+                            d="M2 4.5A2.5 2.5 0 014.5 2h7A2.5 2.5 0 0114 4.5v7a2.5 2.5 0 01-2.5 2.5h-7A2.5 2.5 0 012 11.5v-7z"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                          />
+                          <path
+                            d="M5 7h6M5 9h4"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <span className="text-brand-blue text-[10px] font-medium">
+                          {t('transactions.contract')}
                         </span>
-                      </div>
-                    }
-                  >
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-blue/10 border border-brand-blue/20 cursor-default transition-all duration-200 hover:bg-brand-blue/20 hover:border-brand-blue/30 hover:scale-105 whitespace-nowrap">
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="text-brand-blue"
-                      >
-                        <path
-                          d="M2 4.5A2.5 2.5 0 014.5 2h7A2.5 2.5 0 0114 4.5v7a2.5 2.5 0 01-2.5 2.5h-7A2.5 2.5 0 012 11.5v-7z"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                        <path
-                          d="M5 7h6M5 9h4"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <span className="text-brand-blue text-[10px] font-medium">
-                        {t('transactions.contract')}
                       </span>
-                    </span>
-                  </Tooltip>
-                )}
+                    </Tooltip>
+                  )}
                 {isSpeedUp && (
                   <span className="text-green-400 ml-1 text-xs">
                     ({t('header.speedUp')})

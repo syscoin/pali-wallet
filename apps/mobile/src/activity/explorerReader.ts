@@ -1,3 +1,4 @@
+import { getPrivacyPoolActivity } from '../../../../source/shared/privacyPoolActivity.ts';
 import {
   buildAccountHistoryUrl,
   createRoutescanFetch,
@@ -76,6 +77,9 @@ export function decodeActivityPage(
         )
           timestamp = seconds * 1000;
       }
+      const privacyActivity = feed === 'txlist'
+        ? getPrivacyPoolActivity(chainId, transaction.to, transaction.input)
+        : undefined;
       return Object.freeze({
         hash: transaction.hash.toLowerCase(),
         blockNumber,
@@ -84,6 +88,7 @@ export function decodeActivityPage(
         ...(feed === 'tokentx' ? { tokenEvent: Object.freeze({ ...item }) } : {}),
         indexed: Object.freeze({
           ...transaction,
+          ...(privacyActivity ? { privacyActivity } : {}),
           ...(transaction.tokenTransfer
             ? { tokenTransfer: Object.freeze({ ...transaction.tokenTransfer }) }
             : {}),

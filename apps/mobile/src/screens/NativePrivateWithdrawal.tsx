@@ -297,6 +297,8 @@ function WithdrawalContent({
   const error =
     state.error === 'expired'
       ? t('mobile.privacyFlows.withdrawal.thisReviewExpiredPrepareAFreshReviewBeforeConfirming')
+      : state.error === 'pending-activity'
+      ? t('privacy.withdrawal.pendingActivity')
       : state.error === 'pending'
       ? t('mobile.privacyFlows.withdrawal.thisNoteHasASavedWithdrawalCheckItsStatusBefore')
       : state.error === 'verification'

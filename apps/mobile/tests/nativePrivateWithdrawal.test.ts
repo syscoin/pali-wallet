@@ -572,7 +572,7 @@ test('changed proof public signals cannot create a review or retained withdrawal
   }
 });
 
-test('unknown withdrawal preserves the signed transaction and note reservation for explicit recovery', async () => {
+test('pending withdrawal Activity pauses the note until a generic reset permits a fresh review', async () => {
   const f = await fixture();
   try {
     const inventory = await f.seed();
@@ -596,13 +596,28 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
     assert.equal((await f.privateNotes())[0]!.withdrawal?.unsigned, undefined);
     await model.dispose();
     await f.reopen();
-    const reopened = await readTestNoteInventory(f.runtime, noop);
-    const resumed = await reopened.openWithdrawal!(
-      reopened.notes[0]!,
-      new AbortController().signal,
-      noop
-    , testInventoryAuthentication(reopened));
-    assert.equal(resumed.getSnapshot().status?.phase, 'unknown');
+    const reopenInventory = () => readTestNoteInventory(f.runtime, noop);
+    const openWithdrawal = (inventory: Awaited<ReturnType<typeof reopenInventory>>) =>
+      inventory.openWithdrawal!(
+        inventory.notes[0]!,
+        new AbortController().signal,
+        noop,
+        testInventoryAuthentication(inventory)
+      );
+    const pending = await reopenInventory();
+    assert.equal(pending.notes[0]?.withdrawalPending, true);
+    const blocked = await openWithdrawal(pending);
+    assert.equal(blocked.getSnapshot().status?.phase, 'unknown');
+    await blocked.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    assert.equal(blocked.getSnapshot().review, null);
+    assert.equal(f.posted.length, 2);
+    await blocked.dispose();
+
+    await f.runtime.resetActivity(noop, noop);
+    const cleared = await reopenInventory();
+    assert.equal(cleared.notes[0]?.withdrawalPending, undefined);
+    assert.equal((await cleared.checkNote!(cleared.notes[0]!, noop)).phase, 'verified');
+    const resumed = await openWithdrawal(cleared);
     await resumed.prepare({ recipient: RECIPIENT, mode: 'direct' });
     assert.equal(resumed.getSnapshot().phase, 'review');
     const freshReview = resumed.getSnapshot().review!;
@@ -611,9 +626,10 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
     assert.equal(freshReview.mode, 'direct');
     assert.equal(resumed.getSnapshot().status?.phase, 'unknown');
     assert.equal(f.posted.length, 2, 'a fresh review never resubmits before explicit Confirm');
-    assert.deepEqual((await f.privateNotes())[0]!.withdrawal,oldJournal,'preparation preserves the prior journal');
-    const signed=await f.storage.signedRecords.read((await f.storage.recovery.readIdentity())!.root!.profileId);
-    assert(signed);assert(JSON.parse(signed).entries.some((entry:{hash:string})=>entry.hash===oldHash),'the exact old signed outer remains available');
+    assert.deepEqual((await f.privateNotes())[0]!.withdrawal, oldJournal, 'reset and preparation preserve the prior Vault journal');
+    const signed = await f.storage.signedRecords.read((await f.storage.recovery.readIdentity())!.root!.profileId);
+    assert(signed);
+    assert(!JSON.parse(signed).entries.some((entry: { hash: string }) => entry.hash === oldHash), 'reset drops the old local Activity row');
     await resumed.dispose();
   } finally {
     await f.close();
@@ -1453,6 +1469,7 @@ test('a displaced privacy withdrawal recovers only after finalized nonce consump
     assert.equal(after.withdrawal.proofHash, before.withdrawal.proofHash); assert.equal(after.withdrawal.inputHash, before.withdrawal.inputHash);
     route.abort(); await maintenance.dispose(); maintenance = undefined; await f.reopen();
     assert.deepEqual((await f.privateNotes())[0]!.withdrawal, after.withdrawal);
+    await f.runtime.resetActivity(noop, noop);
     const freshInventory = await readTestNoteInventory(f.runtime, noop);
     const retry = await freshInventory.openWithdrawal!(freshInventory.notes[0]!, new AbortController().signal, noop, testInventoryAuthentication(freshInventory));
     await retry.prepare({ recipient: RECIPIENT, mode: 'direct' });

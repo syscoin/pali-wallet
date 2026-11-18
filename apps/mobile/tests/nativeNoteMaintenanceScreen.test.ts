@@ -67,12 +67,12 @@ for (const fail of [false, true]) test(`maintenance screen targets the last of s
   } finally { f.close(); }
 });
 
-test('maintenance recovery consumes its action inventory without a second reload', async () => {
+test('maintenance keeps a cleanup choice for notes with prior history', async () => {
   const f = fixture(false, true);
   try {
-    f.render(); await settle(); f.press('privacy.recovery.action'); f.press('privacy.recovery.confirm'); await settle();
-    assert.equal(f.recoveries(), 1); assert.equal(f.reads(), 1);
-    assert(!f.render().some(element => element.props.title === 'privacy.recovery.confirm'));
+    f.render(); await settle(); f.select(1);
+    assert.equal(f.recoveries(), 0); assert.equal(f.reads(), 1);
+    assert(f.render().some(element => element.props.title === 'privacy.capacity.confirmClear'));
   } finally { f.close(); }
 });
 

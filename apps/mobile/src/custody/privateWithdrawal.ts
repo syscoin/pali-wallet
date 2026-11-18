@@ -32,6 +32,7 @@ export type NativePrivateWithdrawalSnapshot = Readonly<{
   error:
     | 'expired'
     | 'pending'
+    | 'pending-activity'
     | 'verification'
     | 'unavailable'
     | 'failed'
@@ -54,6 +55,7 @@ type Host = Readonly<{
 function failureCode(error: unknown): NativePrivateWithdrawalSnapshot['error'] {
   const message = error instanceof Error ? error.message : '';
   if (message === 'privacy_withdrawal_intent_expired') return 'expired';
+  if (message === 'privacy_withdrawal_activity_pending') return 'pending-activity';
   if (
     message === 'privacy_withdrawal_attempt_exists' ||
     message === 'privacy_withdrawal_note_busy'

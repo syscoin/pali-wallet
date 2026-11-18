@@ -170,7 +170,7 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
         return <ActivityListRow testID={`account-activity-row-${item.choice.scope.network.id}-${item.row.hash}`} first={first} last={last}
           heading={first ? display.date.label : undefined} title={display.title} subtitle={display.statusSummary}
           networkBadge={snapshot.filter === 'all' ? item.choice.networkName : undefined} networkId={item.choice.scope.network.id} networkSymbol={item.choice.symbol}
-          direction={display.direction} amount={display.amount} time={display.date.time}
+          poolBadge={display.poolBadge} direction={display.direction} amount={display.amount} time={display.date.time}
           asset={activityAssetIcon(item.row, String(item.choice.scope.network.chainId), 'registrationHash' in item.choice.scope.network ? item.choice.scope.network.registrationHash : undefined)}
           registrationHash={'registrationHash' in item.choice.scope.network ? item.choice.scope.network.registrationHash : undefined} assetSymbol={item.row.display?.displaySymbol ?? item.row.local?.token?.symbol}
           label={t('mobile.activityViews.allNetworksActivity.networkRowLabel', { description: display.label, network: item.choice.networkName })} disabled={busy} onPress={() => { rememberScroll(); setError(''); setSelection(item); }} />;

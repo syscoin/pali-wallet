@@ -1,3 +1,4 @@
+import { getPrivacyPoolActivity } from '../../../../source/shared/privacyPoolActivity.ts';
 import { Transaction } from 'ethers/transaction';
 import { getAddress } from 'ethers/address';
 import { EvmSignedRecords, retainedEvmTransaction, type EvmSignedRecordSession, type EvmRetainedRecord, type EvmRetainedSmartAccountRecord } from '../../../../source/wallet/evmSignedRecords.ts';
@@ -70,9 +71,11 @@ export function createNativeSignedRecordView(
     const inspectionOnly = entry.payloadKind === 'unsigned-eoa' || (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
       (!saved.collectibleTransfer || !isRetainedNftReplayEnvelope(retainedEvmTransaction(entry)));
     const speedUpEligible = maySpeedUp(entry, saved.type);
+    const privacyActivity = getPrivacyPoolActivity(saved.chainId, saved.to, saved.selector);
     return Object.freeze({walletFingerprint:walletBindingId,accountId:nativeAccountId(account.type,account.index),address:account.address,networkId:network.id,registrationHash:network.registrationHash,chainId:network.chainId,hash:entry.hash,phase:entry.phase,nonce:entry.nonce,createdAt:entry.createdAt,
       recipient:saved.collectibleTransfer?.recipient??saved.tokenTransfer?.recipient??saved.to,amountUnits:token?saved.tokenTransfer!.amountUnits:saved.value,maximumFeeUnits:saved.maximumFee,...(token?{token}:{}),
       operation: saved.operation, transactionType: saved.type, ...(saved.originalHash ? { originalHash: saved.originalHash } : {}),
+      ...(privacyActivity ? { privacyActivity } : {}),
       ...(saved.cancellationUnavailable ? { cancellationUnavailable: true as const } : {}),
       ...(saved.value === '0' && saved.dataBytes > 0 && !saved.tokenTransfer && !saved.collectibleTransfer ? { contractInteraction: true as const } : {}),
       ...(inspectionOnly ? { inspectionOnly: true as const } : {}),

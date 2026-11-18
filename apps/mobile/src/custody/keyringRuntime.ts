@@ -2523,8 +2523,14 @@ export function createKeyringRuntimeFactory(
             const reveal = (id: string, guard: () => void, scope: NativePrivateAuthenticationScope) => openNotes(guard,
               (ownedNotes, ownedSession) => ownedNotes.reveal(ownedSession, id),
               bindNativePrivateAuthenticationChild(authentication, scope));
+            const readPendingWithdrawals = withdrawal ? (assertCurrent: () => void) => {
+              const ring = keyring;
+              return signedRecords.pendingPrivacyWithdrawalNotes(
+                { keyring: transactionRecordKeyring(ring, assertCurrent), assertCurrent }, selected.address
+              );
+            } : undefined;
             function bindInventory(ownedNotes: NoteRuntime, readSession: IPrivateVaultSession): Promise<NativeNoteInventory> {
-              return ownedNotes.readInventory(readSession, readStatus, withdrawal, reveal, openArchive, parentSession);
+              return ownedNotes.readInventory(readSession, readStatus, withdrawal, reveal, openArchive, parentSession, readPendingWithdrawals);
             }
             function bindArchive(ownedNotes: NoteRuntime, readSession: IPrivateVaultSession): Promise<NativeNoteArchiveInventory> {
               return ownedNotes.readArchive(readSession, reveal, restore, clear, parentSession);
@@ -2675,6 +2681,16 @@ export function createKeyringRuntimeFactory(
                           await ownedPool.refresh();
                           check();
                           return vault.withNote(id, use);
+                        },
+                        async hasPendingWithdrawal(id) {
+                          check();
+                          if (id !== noteId) throw new Error('privacy_note_missing');
+                          const pending = await signedRecords.pendingPrivacyWithdrawalNotes(
+                            { keyring: transactionRecordKeyring(keyring, check), assertCurrent: check },
+                            selected.address
+                          );
+                          check();
+                          return pending.has(id);
                         },
                         getWithdrawalAttempt(id) {
                           check();

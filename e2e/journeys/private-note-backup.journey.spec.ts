@@ -654,12 +654,6 @@ test('private note files: real download, saved-file verification and fenced rest
           )
         ).toEqual([]);
         expect(await privateStorage(page)).toEqual(unchanged);
-        await expect(
-          page.getByRole('button', {
-            name: en.privacy.restoreReview.action,
-            exact: true,
-          })
-        ).toHaveCount(0);
         await page
           .getByRole('button', { name: en.buttons.back, exact: true })
           .click();
@@ -689,12 +683,6 @@ test('private note files: real download, saved-file verification and fenced rest
             exact: true,
           })
         ).toBeEnabled();
-        await expect(
-          row.getByRole('button', {
-            name: en.privacy.restoreReview.action,
-            exact: true,
-          })
-        ).toHaveCount(0);
         expect(
           await row.evaluate(
             (element) => element.scrollWidth <= element.clientWidth
@@ -925,12 +913,6 @@ test('private note files: real download, saved-file verification and fenced rest
         await confirmRestore(page, DESTINATION_PASSWORD, capture);
         await expect(noteRows(page)).toHaveCount(2);
         // Import keeps history as information; normal withdrawal readiness still needs public pool verification.
-        await expect(
-          noteRows(page).getByRole('button', {
-            name: en.privacy.restoreReview.action,
-            exact: true,
-          })
-        ).toHaveCount(0);
         await expect(
           noteRows(page).getByRole('button', {
             name: en.privacy.withdrawal.open,

@@ -74,6 +74,7 @@ const PUBLIC_ERRORS = new Set([
   'privacy_withdrawal_snapshot_invalid',
   'privacy_withdrawal_invalid',
   'privacy_withdrawal_attempt_exists',
+  'privacy_withdrawal_activity_pending',
   'privacy_withdrawal_nonce_conflict',
   'privacy_withdrawal_attempt_invalid',
   'privacy_withdrawal_quote_changed',
@@ -528,6 +529,9 @@ export function createPrivacyWithdrawalsController(
       const preparationStarted = performance.now();
       let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
       try {
+        if (await host.hasPendingWithdrawal?.(request.noteId, session))
+          throw fail('privacy_withdrawal_activity_pending');
+        current(intent);
         let originalIdentity:
           | ReturnType<typeof identifyClassicNote>
           | undefined;
@@ -850,6 +854,9 @@ export function createPrivacyWithdrawalsController(
         await pending;
       };
       try {
+        if (await host.hasPendingWithdrawal?.(attempt.noteId, intent.session))
+          throw fail('privacy_withdrawal_activity_pending');
+        current(intent);
         if (intent.selection) {
           await host.relayers.checkRelayer(
             intent.selection.directory,

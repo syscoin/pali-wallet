@@ -1786,6 +1786,11 @@
     }
   },
   "privacy": {
+    "poolAmount": "{{amount}} ETH pool",
+    "activity": {
+      "deposit": "Privacy deposit",
+      "withdrawal": "Privacy withdrawal"
+    },
     "title": "Privacy",
     "bundle": {
       "snapshotTime": "Snapshot time: {{time}}",
@@ -1940,6 +1945,7 @@
       "backupFailed": "Could not open the note backup. Try again."
     },
     "withdrawal": {
+      "pendingActivity": "Withdrawal pending in Activity.",
       "watchOnlyDirectUnavailable": "Direct withdrawal requires a private key. This account is watch-only.",
       "title": "Withdraw note",
       "open": "Withdraw",
@@ -1984,31 +1990,9 @@
       "submitted": "Transaction submitted",
       "notBroadcast": "The transaction was not sent. Refresh the review before confirming again."
     },
-    "recovery": {
-      "action": "Check withdrawal recovery",
-      "help": "Recovery requires a finalized check that the disclosed proof root is no longer accepted and the note remains unspent. Direct withdrawals also require a finalized failed transaction or consumed payer nonce. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.",
-      "disclosure": "This check shares the original proof root and public note nullifier with your selected Ethereum RPC. Direct withdrawal checks also share the payer address and transaction hash. An older relayer job may be read to recover its saved proof inputs.",
-      "password": "Wallet password",
-      "failed": "Recovery could not be confirmed. The original proof may still be usable, the note may be spent, or the evidence may be unavailable. Refresh before trying again.",
-      "checking": "Checking finalized proof expiry…",
-      "confirm": "Check and recover"
-    },
-    "restoreReview": {
-      "action": "Review restored note",
-      "help": "Authorize this note review. A withdrawal requires a separate review.",
-      "disclosure": "Restoring does not cancel earlier withdrawals or invalidate other copies of this note.",
-      "snapshot": "Verified pool data as of block {{block}}. This is saved data, not a live chain check.",
-      "noSnapshot": "Prepare or refresh pool data before reviewing this note.",
-      "pending": "Previous withdrawal activity is saved. Review it before submitting another withdrawal.",
-      "password": "Wallet password",
-      "confirm": "Confirm note review",
-      "busy": "Saving review…",
-      "failed": "The review could not be saved. Check your password and pool data, then try again."
-    },
     "archive": {
       "title": "Archived notes",
       "help": "Completed notes stay encrypted here until you restore them or clear the archive. They do not count toward your active note limit.",
-      "poolAmount": "{{amount}} ETH pool",
       "previous": "Previous",
       "empty": "No archived notes",
       "restore": "Restore note",
@@ -2634,8 +2618,6 @@
         "statusNotChecked": "Status not checked",
         "noteDetails": "Note details",
         "paliHasntCheckedThisNoteAgainstItsEthereum": "Pali hasn’t checked this note against its Ethereum pool.",
-        "restoredNoteNeedsReview": "Restored note needs review",
-        "thisNoteCameFromABackupAndStill": "This note came from a backup and still needs to be checked against the pool.",
         "savedWithdrawalHistory": "Saved withdrawal history",
         "thisNoteHasASavedWithdrawalRecordThat": "This note has a saved withdrawal record that needs review. Its outcome hasn’t been checked here.",
         "checkStatusAgain": "Check status again",

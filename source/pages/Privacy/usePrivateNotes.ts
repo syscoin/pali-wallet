@@ -21,6 +21,7 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
     !['prepared', 'verified', 'spent', 'waiting', 'not-found'].includes(
       note.phase
     ) ||
+    (note.withdrawalPending !== undefined && note.withdrawalPending !== true) ||
     (note.restoration !== undefined &&
       !['review-required', 'reviewed', 'withdrawal-pending'].includes(
         note.restoration
@@ -52,6 +53,7 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
     amount: pool.amount,
     createdAt: note.createdAt,
     phase: note.phase,
+    ...(note.withdrawalPending ? { withdrawalPending: true as const } : {}),
     ...(note.restoration ? { restoration: note.restoration } : {}),
     ...(withdrawal
       ? {

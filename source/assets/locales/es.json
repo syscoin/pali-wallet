@@ -1786,6 +1786,11 @@
     }
   },
   "privacy": {
+    "poolAmount": "Pool de {{amount}} ETH",
+    "activity": {
+      "deposit": "Depósito privado",
+      "withdrawal": "Retiro privado"
+    },
     "title": "Privacidad",
     "bundle": {
       "snapshotTime": "Fecha de la instantánea: {{time}}",
@@ -1940,6 +1945,7 @@
       "backupFailed": "No se pudo abrir la copia de la nota. Reintenta."
     },
     "withdrawal": {
+      "pendingActivity": "Retiro pendiente en Actividad.",
       "watchOnlyDirectUnavailable": "El retiro directo requiere una clave privada. Esta cuenta es de solo observación.",
       "title": "Retirar nota",
       "open": "Retirar",
@@ -1984,31 +1990,9 @@
       "submitted": "Transacción enviada",
       "notBroadcast": "La transacción no se envió. Actualiza la revisión antes de confirmar de nuevo."
     },
-    "recovery": {
-      "action": "Comprobar recuperación del retiro",
-      "help": "La recuperación requiere una comprobación finalizada de que la raíz de la prueba divulgada ya no se acepta y la nota sigue sin gastarse. Los retiros directos también requieren una transacción fallida finalizada o un nonce del pagador consumido de forma definitiva. La nota y el historial del retiro se conservan. Un nuevo retiro requiere una nueva revisión.",
-      "disclosure": "Esta comprobación comparte la raíz original de la prueba y el nullifier público de la nota con el RPC de Ethereum seleccionado. Para los retiros directos también comparte la dirección del pagador y el hash de la transacción. Puede consultarse un trabajo anterior del relayer para recuperar las entradas de prueba guardadas.",
-      "password": "Contraseña de la cartera",
-      "failed": "No se pudo confirmar la recuperación. La prueba original puede seguir siendo válida, la nota puede estar gastada o las pruebas pueden no estar disponibles. Actualiza antes de intentarlo de nuevo.",
-      "checking": "Comprobando la caducidad finalizada de la prueba…",
-      "confirm": "Comprobar y recuperar"
-    },
-    "restoreReview": {
-      "action": "Revisar nota restaurada",
-      "help": "Autoriza esta revisión de la nota. Un retiro requiere una revisión por separado.",
-      "disclosure": "Restaurar no cancela retiros anteriores ni invalida otras copias de esta nota.",
-      "snapshot": "Datos del pool verificados hasta el bloque {{block}}. Son datos guardados, no una comprobación en vivo.",
-      "noSnapshot": "Prepara o actualiza los datos del pool antes de revisar esta nota.",
-      "pending": "Se conserva la actividad de retiros anteriores. Revísala antes de enviar otro retiro.",
-      "password": "Contraseña de la cartera",
-      "confirm": "Confirmar revisión de la nota",
-      "busy": "Guardando revisión…",
-      "failed": "No se pudo guardar la revisión. Comprueba la contraseña y los datos del pool e inténtalo de nuevo."
-    },
     "archive": {
       "title": "Notas archivadas",
       "help": "Las notas completadas permanecen cifradas aquí hasta que las restaures o vacíes el archivo. No cuentan para el límite de notas activas.",
-      "poolAmount": "Pool de {{amount}} ETH",
       "previous": "Anterior",
       "empty": "No hay notas archivadas",
       "restore": "Restaurar nota",
@@ -2634,8 +2618,6 @@
         "statusNotChecked": "Estado sin comprobar",
         "noteDetails": "Detalles de la nota",
         "paliHasntCheckedThisNoteAgainstItsEthereum": "Pali no ha comprobado esta nota en su pool de Ethereum.",
-        "restoredNoteNeedsReview": "La nota restaurada necesita revisión",
-        "thisNoteCameFromABackupAndStill": "Esta nota proviene de un respaldo y aún debe comprobarse en el pool.",
         "savedWithdrawalHistory": "Historial de retiros guardado",
         "thisNoteHasASavedWithdrawalRecordThat": "Esta nota tiene un registro de retiro guardado que debe revisarse. Aquí no se ha comprobado su resultado.",
         "checkStatusAgain": "Comprobar estado de nuevo",

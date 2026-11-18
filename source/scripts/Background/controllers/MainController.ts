@@ -4369,6 +4369,24 @@ class MainController {
     return this.usePrivateVault((vault) => vault.clearArchive(password));
   }
 
+  private async pendingPrivacyWithdrawalNotes(
+    context: IPrivacyDepositSession,
+    session: IPrivateVaultSession
+  ) {
+    const assertCurrent = () => {
+      context.assertCurrent();
+      session.assertCurrent();
+    };
+    assertCurrent();
+    const pending =
+      await this.getRetainedEvmRecords().pendingPrivacyWithdrawalNotes(
+        { keyring: session.keyring, assertCurrent },
+        context.context.account.address
+      );
+    assertCurrent();
+    return pending;
+  }
+
   public async getPrivateVaultNotes() {
     // Admission belongs to the current session even if reconciliation yields.
     const session = this.capturePrivateVaultSession();
@@ -4390,7 +4408,19 @@ class MainController {
       );
       current.assertCurrent();
       session.assertCurrent();
-      return result;
+      if (!result.notes.length) return result;
+      const pending = await this.pendingPrivacyWithdrawalNotes(
+        current,
+        session
+      );
+      return {
+        ...result,
+        notes: result.notes.map((note) =>
+          pending.has(note.id)
+            ? { ...note, withdrawalPending: true as const }
+            : note
+        ),
+      };
     }
     return this.usePrivateVault((vault) => vault.getNotes(), session);
   }
@@ -4859,6 +4889,14 @@ class MainController {
         if (!this.privacySnapshotReader)
           throw new Error('privacy_verification_pending');
         return this.privacySnapshotReader(poolId);
+      },
+      hasPendingWithdrawal: async (noteId, session) => {
+        const saved = sessionBinding(session);
+        const pending = await this.pendingPrivacyWithdrawalNotes(
+          session,
+          saved.session
+        );
+        return pending.has(noteId);
       },
       getWithdrawalAttempt: async (noteId, session) => {
         const saved = sessionBinding(session);

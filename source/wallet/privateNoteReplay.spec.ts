@@ -475,6 +475,32 @@ it.each(['deposit', 'withdrawal'] as const)(
   }
 );
 
+it('clears the local withdrawal pause with Activity while preserving the note history', async () => {
+  const f = await fixture(true, true, 'withdrawal');
+  const records = f.records();
+  const session = f.session();
+  const previous = await f
+    .vault()
+    .getWithdrawalAttempt(f.attempt.noteId, session);
+  await expect(
+    records.pendingPrivacyWithdrawalNotes(session, signer.address)
+  ).resolves.toEqual(new Set([f.attempt.noteId]));
+  await expect(
+    records.pendingPrivacyWithdrawalNotes(session, '0x' + 'ab'.repeat(20))
+  ).resolves.toEqual(new Set());
+  await records.clearScope(session, {
+    profileId: await session.keyring.getPrivateRecordProfileId(),
+    chainId: '1',
+    from: signer.address,
+  });
+  await expect(
+    records.pendingPrivacyWithdrawalNotes(f.session(), signer.address)
+  ).resolves.toEqual(new Set());
+  await expect(
+    f.vault().getWithdrawalAttempt(f.attempt.noteId, f.session())
+  ).resolves.toEqual(previous);
+});
+
 it('refuses generic private withdrawal cancellation and preserves the encrypted reservation after restart', async () => {
   const f = await fixture(true, true, 'withdrawal');
   const before = f.storedJournal();

@@ -1,5 +1,6 @@
 import { deviceAuthorizationPrompt } from './operationAuthentication';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import en from '../../../../source/assets/locales/en.json';
 
 const baseURL = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179';
 const recipient = `0x${'11'.repeat(20)}`;
@@ -309,8 +310,8 @@ test('unknown result offers status without a duplicate confirmation', async ({
   ).toBeVisible();
   await page.getByRole('button', { name: /1 ETH pool/ }).click();
   await expect(
-    page.getByRole('button', { name: 'View withdrawal status', exact: true })
-  ).toBeVisible();
+    page.getByRole('button', { name: 'Withdraw', exact: true })
+  ).toBeDisabled();
 });
 
 for (const [observation, heading] of [
@@ -570,4 +571,16 @@ test('a spent saved note retains status and does not offer a withdrawal', async 
   await expect(
     page.getByRole('button', { name: 'Withdraw', exact: true })
   ).toHaveCount(0);
+});
+
+
+test('pending local withdrawal Activity keeps ordinary Withdraw disabled after a fresh pool check', async ({ page }) => {
+  await page.goto('/?private-withdrawal&pending-history');
+  await page.getByRole('button', { name: /1 ETH pool/ }).click();
+  await expect(page.getByText(en.privacy.withdrawal.pendingActivity, { exact: true })).toBeVisible();
+  const withdraw = page.getByRole('button', { name: 'Withdraw', exact: true });
+  await expect(withdraw).toBeDisabled();
+  await page.getByRole('button', { name: 'Check pool status', exact: true }).click();
+  await expect(withdraw).toBeDisabled();
+  expect(await page.evaluate(() => window.__privateWithdrawalFixture.events())).toContain('note:status');
 });

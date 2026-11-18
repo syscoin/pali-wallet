@@ -94,6 +94,10 @@ export interface IPrivacyWithdrawalsHost {
     noteId: string,
     session: IPrivacyWithdrawalSession
   ) => Promise<IPrivacyWithdrawalStatusRecord | null>;
+  hasPendingWithdrawal?: (
+    noteId: string,
+    session: IPrivacyWithdrawalSession
+  ) => Promise<boolean>;
   onProgress?: (progress: IPrivacyProofProgress) => void;
   prove: (
     request: IPrivacyWithdrawalRequest,

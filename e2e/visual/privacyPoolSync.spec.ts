@@ -1374,7 +1374,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
       }
     );
     await wallet.step(
-      'privacy: an unresolved payer remains blocked and a different payer can explicitly confirm a competing withdrawal',
+      'privacy: a pending withdrawal pauses its payer and a different payer can use normal confirmation',
       async () => {
         const page = wallet!.page;
         const notes = page.locator(
@@ -1406,17 +1406,19 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         const unchanged = await encryptedNotesFingerprint(page);
         const lookupsBefore = retainedHashLookups;
         const snapshotsBefore = snapshots.length;
-        await openReview(COMPETING_RECIPIENT);
-        await expect(withdrawal.getByRole('alert')).toHaveText(
-          en.send.savedNonceConflict
-        );
-        expect(retainedHashLookups).toBe(lookupsBefore + 1);
+        await expect(
+          note.getByRole('button', {
+            name: en.privacy.withdrawal.open,
+            exact: true,
+          })
+        ).toBeDisabled();
+        await expect(
+          note.getByText(en.privacy.withdrawal.pendingActivity)
+        ).toBeVisible();
+        expect(retainedHashLookups).toBe(lookupsBefore);
         expect(withdrawalBroadcastAttempts).toBe(1);
         expect(snapshots.length).toBe(snapshotsBefore);
         expect(await encryptedNotesFingerprint(page)).toBe(unchanged);
-        await withdrawal
-          .getByRole('button', { name: en.buttons.cancel, exact: true })
-          .click();
         await page
           .getByRole('button', { name: en.buttons.back, exact: true })
           .click();

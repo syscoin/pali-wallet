@@ -44,6 +44,8 @@ export type NativeSavedNote = Readonly<{
   archivedAt?: number;
   createdAt: number;
   reconciliation?: 'restored-note' | 'withdrawal-history';
+  withdrawalPending?: true;
+  withdrawalStatusAvailable?: true;
 }>;
 export type NativeNoteInventory = Readonly<{
   archiveSummary?: NonNullable<Awaited<ReturnType<IPrivateVaultController['getNotes']>>['archiveSummary']>;
@@ -249,18 +251,24 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       openWithdrawal: ((id: string, poolId: PrivacyPoolId, signal: AbortSignal, guard: () => void, authentication: NativePrivateAuthenticationScope) => Promise<NativePrivateWithdrawalView>) | null,
       reveal: (id: string, guard: () => void, authentication: NativePrivateAuthenticationScope) => Promise<string>,
       openArchive: (guard: () => void, authentication: NativePrivateAuthenticationScope) => Promise<NativeNoteArchiveInventory>,
-      parentSession = session): Promise<NativeNoteInventory> {
+      parentSession = session,
+      readPendingWithdrawals?: (guard: () => void) => Promise<ReadonlySet<string>>): Promise<NativeNoteInventory> {
       session.assertCurrent(); parentSession.assertCurrent();
       const scope = ports.withdrawalScope();
       const { notes, archiveSummary } = await withSession(session, () => scope
         ? vault.reconcileUnsignedWithdrawals(scope.context, scope.lifetime, session, true)
         : vault.getNotes(true));
+      const pendingWithdrawals = await readPendingWithdrawals?.(session.assertCurrent);
       session.assertCurrent(); parentSession.assertCurrent();
       const selections = new WeakMap<NativeSavedNote, { id: string; poolId: PrivacyPoolId }>();
       const rows = notes.map((note) => {
         const row = Object.freeze<NativeSavedNote>({
           amount: note.amount,
           createdAt: note.createdAt,
+          ...(pendingWithdrawals?.has(note.id) ? { withdrawalPending: true } : {}),
+          ...(openWithdrawal && (note.withdrawal?.mode === 'relayed' || note.restoration === 'withdrawal-pending')
+            ? { withdrawalStatusAvailable: true }
+            : {}),
           ...(note.withdrawal || note.restoration === 'withdrawal-pending'
             ? { reconciliation: 'withdrawal-history' }
             : note.restoration === 'review-required'

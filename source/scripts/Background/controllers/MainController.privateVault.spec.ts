@@ -456,6 +456,31 @@ it('never retries an ambiguous note-file commit', async () => {
   expect(readCommitReceipt).toHaveBeenCalledTimes(1);
 });
 
+it('overlays only the selected payer’s pending note after vault reconciliation', async () => {
+  const { wallet } = depositFixture();
+  const notes = [{ id: 'note-a' }, { id: 'note-b' }];
+  const reconcile = jest.fn(async () => ({ notes }));
+  wallet.getPrivateVaultController = async () => ({
+    reconcileUnsignedWithdrawals: reconcile,
+  });
+  const lookup = jest.fn(async (session, payer) => {
+    session.assertCurrent();
+    expect(payer).toBe('0x' + '11'.repeat(20));
+    expect(reconcile).toHaveBeenCalled();
+    return new Set(['note-a']);
+  });
+  wallet.getRetainedEvmRecords = () => ({
+    pendingPrivacyWithdrawalNotes: lookup,
+  });
+  expect((await wallet.getPrivateVaultNotes()).notes).toEqual([
+    { id: 'note-a', withdrawalPending: true },
+    { id: 'note-b' },
+  ]);
+  expect(lookup).toHaveBeenCalledTimes(1);
+  lookup.mockResolvedValueOnce(new Set());
+  expect((await wallet.getPrivateVaultNotes()).notes).toEqual(notes);
+});
+
 it('does not transfer an admitted request across a delayed chunk load', async () => {
   const { wallet } = fixture();
   const entered = deferred();

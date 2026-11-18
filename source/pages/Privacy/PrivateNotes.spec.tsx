@@ -1192,15 +1192,43 @@ it.each(['review-required', 'withdrawal-pending'] as const)(
       await screen.findByRole('button', { name: en.privacy.withdrawal.open })
     ).toBeEnabled();
     expect(
-      screen.queryByRole('button', { name: en.privacy.restoreReview.action })
-    ).not.toBeInTheDocument();
-    if (restoration === 'withdrawal-pending')
-      expect(screen.getByText(en.privacy.restoreReview.pending)).toBeVisible();
-    expect(
       mockEmitter.mock.calls.every(([methods]) => methods[1] === 'getNotes')
     ).toBe(true);
   }
 );
+
+it('disables Withdraw for the note with pending payer activity and refreshes after it clears', async () => {
+  const pending = {
+    ...note,
+    withdrawalPending: true,
+    withdrawal: {
+      mode: 'direct',
+      phase: 'submitted',
+      transactionHash: depositHash,
+      canCheckRecovery: true,
+    },
+  };
+  const other = { ...note, id: 'other-note' };
+  mockEmitter.mockResolvedValue({ notes: [pending, other] });
+  render(<PrivateNotes />);
+  const [blocked, available] = await screen.findAllByRole('button', {
+    name: en.privacy.withdrawal.open,
+  });
+  expect(blocked).toBeDisabled();
+  expect(available).toBeEnabled();
+  expect(blocked).toHaveAccessibleDescription(
+    en.privacy.withdrawal.pendingActivity
+  );
+  mockEmitter.mockResolvedValue({ notes: [note, other] });
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.refreshNotes })
+  );
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole('button', { name: en.privacy.withdrawal.open })[0]
+    ).toBeEnabled()
+  );
+});
 
 it('quietly polls saved-note status every 15 seconds without clearing displayed metadata', async () => {
   jest.useFakeTimers();

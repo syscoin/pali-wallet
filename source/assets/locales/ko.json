@@ -1786,6 +1786,11 @@
     }
   },
   "privacy": {
+    "poolAmount": "{{amount}} ETH 풀",
+    "activity": {
+      "deposit": "비공개 입금",
+      "withdrawal": "비공개 출금"
+    },
     "title": "개인정보 보호",
     "bundle": {
       "snapshotTime": "스냅샷 시각: {{time}}",
@@ -1940,6 +1945,7 @@
       "backupFailed": "노트 백업을 열지 못했습니다. 다시 시도하세요."
     },
     "withdrawal": {
+      "pendingActivity": "활동에 대기 중인 출금이 있습니다.",
       "watchOnlyDirectUnavailable": "직접 출금하려면 개인 키가 필요합니다. 이 계정은 보기 전용입니다.",
       "title": "노트 출금",
       "open": "출금",
@@ -1984,31 +1990,9 @@
       "submitted": "트랜잭션 전송됨",
       "notBroadcast": "트랜잭션이 전송되지 않았습니다. 다시 확인하기 전에 검토를 새로고침하세요."
     },
-    "recovery": {
-      "action": "출금 복구 가능 여부 확인",
-      "help": "복구하려면 공개된 증명 루트가 더 이상 허용되지 않고 노트가 미사용 상태임을 최종 확정된 상태에서 확인해야 합니다. 직접 출금은 트랜잭션 실패 또는 수수료 지불자의 nonce 사용도 최종 확정되어야 합니다. 노트와 출금 내역은 보존됩니다. 새 출금에는 새로운 검토가 필요합니다.",
-      "disclosure": "이 확인은 원래 증명 루트와 노트의 공개 nullifier를 선택한 Ethereum RPC와 공유합니다. 직접 출금은 수수료 지불자 주소와 트랜잭션 해시도 공유합니다. 저장된 증명 입력을 복원하기 위해 이전 릴레이 작업을 조회할 수 있습니다.",
-      "password": "지갑 비밀번호",
-      "failed": "복구를 확인할 수 없습니다. 원래 증명이 아직 유효하거나, 노트가 사용되었거나, 증거를 가져올 수 없을 수 있습니다. 새로 고친 후 다시 시도하세요.",
-      "checking": "최종 확정된 상태에서 증명 만료 확인 중…",
-      "confirm": "확인 및 복구"
-    },
-    "restoreReview": {
-      "action": "복원한 노트 검토",
-      "help": "이 노트 검토를 인증하세요. 출금에는 별도의 검토가 필요합니다.",
-      "disclosure": "복원해도 이전 출금이 취소되거나 이 노트의 다른 사본이 무효화되지 않습니다.",
-      "snapshot": "블록 {{block}}까지 검증된 풀 데이터입니다. 저장된 데이터이며 실시간 체인 확인이 아닙니다.",
-      "noSnapshot": "이 노트를 검토하기 전에 풀 데이터를 준비하거나 새로 고치세요.",
-      "pending": "이전 출금 내역이 저장되어 있습니다. 다른 출금을 제출하기 전에 확인하세요.",
-      "password": "지갑 비밀번호",
-      "confirm": "노트 검토 확인",
-      "busy": "검토 결과 저장 중…",
-      "failed": "검토 결과를 저장하지 못했습니다. 비밀번호와 풀 데이터를 확인한 후 다시 시도하세요."
-    },
     "archive": {
       "title": "보관된 노트",
       "help": "완료된 노트는 복원하거나 보관함을 비울 때까지 암호화되어 보관됩니다. 활성 노트 한도에는 포함되지 않습니다.",
-      "poolAmount": "{{amount}} ETH 풀",
       "previous": "이전",
       "empty": "보관된 노트가 없습니다",
       "restore": "노트 복원",
@@ -2634,8 +2618,6 @@
         "statusNotChecked": "상태 확인 안 됨",
         "noteDetails": "노트 세부 정보",
         "paliHasntCheckedThisNoteAgainstItsEthereum": "Pali가 아직 이 노트를 Ethereum 풀과 대조하지 않았습니다.",
-        "restoredNoteNeedsReview": "복원된 노트 검토 필요",
-        "thisNoteCameFromABackupAndStill": "이 노트는 백업에서 복원되었으며 아직 풀과 대조해야 합니다.",
         "savedWithdrawalHistory": "저장된 출금 기록",
         "thisNoteHasASavedWithdrawalRecordThat": "이 노트에는 검토가 필요한 출금 기록이 있습니다. 여기서는 아직 결과를 확인하지 않았습니다.",
         "checkStatusAgain": "상태 다시 확인",

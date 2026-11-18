@@ -1786,6 +1786,11 @@
     }
   },
   "privacy": {
+    "poolAmount": "Pool de {{amount}} ETH",
+    "activity": {
+      "deposit": "Depósito privado",
+      "withdrawal": "Saque privado"
+    },
     "title": "Privacidade",
     "bundle": {
       "snapshotTime": "Data do instantâneo: {{time}}",
@@ -1940,6 +1945,7 @@
       "backupFailed": "Não foi possível abrir o backup da nota. Tente novamente."
     },
     "withdrawal": {
+      "pendingActivity": "Saque pendente na atividade.",
       "watchOnlyDirectUnavailable": "O saque direto requer uma chave privada. Esta conta é somente para observação.",
       "title": "Sacar nota",
       "open": "Sacar",
@@ -1984,31 +1990,9 @@
       "submitted": "Transação enviada",
       "notBroadcast": "A transação não foi enviada. Atualize a revisão antes de confirmar novamente."
     },
-    "recovery": {
-      "action": "Verificar recuperação do saque",
-      "help": "A recuperação exige uma verificação finalizada de que a raiz da prova divulgada deixou de ser aceita e a nota permanece não gasta. Saques diretos também exigem uma transação com falha finalizada ou um nonce do pagador consumido de forma definitiva. A nota e o histórico do saque são preservados. Um novo saque exige uma nova revisão.",
-      "disclosure": "Esta verificação compartilha a raiz original da prova e o nullifier público da nota com o RPC Ethereum selecionado. Para saques diretos, também compartilha o endereço do pagador e o hash da transação. Um trabalho anterior do relayer pode ser consultado para recuperar as entradas de prova salvas.",
-      "password": "Senha da carteira",
-      "failed": "Não foi possível confirmar a recuperação. A prova original pode continuar válida, a nota pode ter sido gasta ou as evidências podem estar indisponíveis. Atualize antes de tentar novamente.",
-      "checking": "Verificando a expiração finalizada da prova…",
-      "confirm": "Verificar e recuperar"
-    },
-    "restoreReview": {
-      "action": "Revisar nota restaurada",
-      "help": "Autorize esta revisão da nota. Um saque exige uma revisão separada.",
-      "disclosure": "Restaurar não cancela saques anteriores nem invalida outras cópias desta nota.",
-      "snapshot": "Dados do pool verificados até o bloco {{block}}. São dados salvos, não uma consulta em tempo real.",
-      "noSnapshot": "Prepare ou atualize os dados do pool antes de revisar esta nota.",
-      "pending": "A atividade dos saques anteriores foi preservada. Confira antes de enviar outro saque.",
-      "password": "Senha da carteira",
-      "confirm": "Confirmar revisão da nota",
-      "busy": "Salvando revisão…",
-      "failed": "Não foi possível salvar a revisão. Confira a senha e os dados do pool e tente novamente."
-    },
     "archive": {
       "title": "Notas arquivadas",
       "help": "As notas concluídas ficam encriptadas aqui até as restaurar ou limpar o arquivo. Não contam para o limite de notas ativas.",
-      "poolAmount": "Pool de {{amount}} ETH",
       "previous": "Anterior",
       "empty": "Não há notas arquivadas",
       "restore": "Restaurar nota",
@@ -2634,8 +2618,6 @@
         "statusNotChecked": "Status não verificado",
         "noteDetails": "Detalhes da nota",
         "paliHasntCheckedThisNoteAgainstItsEthereum": "O Pali não verificou esta nota no pool de Ethereum.",
-        "restoredNoteNeedsReview": "A nota restaurada precisa de revisão",
-        "thisNoteCameFromABackupAndStill": "Esta nota veio de um backup e ainda precisa ser verificada no pool.",
         "savedWithdrawalHistory": "Histórico de saques salvo",
         "thisNoteHasASavedWithdrawalRecordThat": "Esta nota tem um registro de saque salvo que precisa de revisão. O resultado ainda não foi verificado aqui.",
         "checkStatusAgain": "Verificar status novamente",

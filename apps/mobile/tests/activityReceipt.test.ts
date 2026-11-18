@@ -604,3 +604,15 @@ test('retired Activity reads keep physical slots until an ignored abort drains',
   } finally { held.resolve(); }
   assert.equal((await next)?.status, 'confirmed');
 });
+
+test('privacy pool detail retains the observed transfer value and fee', async () => {
+  const pool = '0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936';
+  const f = fixture(call => call.method === 'eth_getTransactionByHash'
+    ? tx({ to: pool, value: '0x0', input: '0x21a0adb6' + '0'.repeat(64) })
+    : call.method === 'eth_getTransactionReceipt' ? receipt({ to: pool }) : undefined);
+  const result = await f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'));
+  assert.deepEqual(result?.privacyActivity, { kind: 'withdrawal', amount: '1' });
+  assert.equal(result?.valueUnits, '0');
+  assert.equal(result?.feeUnits, '210000');
+  assert.equal(Object.hasOwn(result!, 'input'), false);
+});

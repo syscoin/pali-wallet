@@ -5,6 +5,7 @@ import type { WalletAuthentication } from '../../shared/walletAuthentication.ts'
 export interface IPrivateNoteStatus {
   blockNumber?: number;
   phase: 'verified' | 'spent' | 'waiting' | 'not-found';
+  withdrawalPending?: true;
 }
 
 // This callback stays in the background. It never sends a note-specific RPC.

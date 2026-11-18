@@ -63,6 +63,7 @@ export const savedTransactionHistoryRow = (
     gas: tx.gasLimit,
     gasPrice: tx.feePerGas,
     dataBytes: tx.dataBytes,
+    ...(tx.selector ? { methodSelector: tx.selector } : {}),
     ...(tx.speedUpAvailable && !smart ? { speedUpAvailable: true } : {}),
     isCancel: tx.operation === 'cancel' || smart?.cancellation === true,
     isSpeedUp: tx.operation === 'speed-up',

@@ -1,3 +1,4 @@
+import { getPrivacyPoolActivity, type PrivacyPoolActivity } from '../../../../source/shared/privacyPoolActivity.ts';
 import { JsonRpcReadClient, RpcReadCapabilities } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
 import { getAddress } from 'ethers/address';
 import { observeEvmTransaction, readEvmReceiptFeeUnits, type EvmObservationRequest, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
@@ -28,6 +29,7 @@ export type ActivityTransactionObservation = Readonly<{
   from: string;
   to: string | null;
   valueUnits: string;
+  privacyActivity?: PrivacyPoolActivity;
   nonce: string;
   timestamp: number | null;
   block: Readonly<{ hash: string; number: string }> | null;
@@ -73,6 +75,7 @@ type Transaction = Readonly<{
   from: string;
   to: string | null;
   valueUnits: string;
+  privacyActivity?: PrivacyPoolActivity;
   nonce: string;
   block: Readonly<{
     hash: string;
@@ -165,7 +168,7 @@ function readBlock(value: unknown): Block {
   }
   return Object.freeze({ number, hash: hash(raw.hash), timestamp });
 }
-function readTransaction(value: unknown, expectedHash: string): Transaction {
+function readTransaction(value: unknown, expectedHash: string, chainId?: string): Transaction {
   const raw = object(value);
   if (hash(raw.hash) !== expectedHash) return fail('INVALID_RESPONSE');
   const noBlock =
@@ -179,10 +182,13 @@ function readTransaction(value: unknown, expectedHash: string): Transaction {
         number: quantity(raw.blockNumber).toString(),
         transactionIndex: quantity(raw.transactionIndex).toString(),
       });
+  const to = raw.to === null ? null : address(raw.to);
+  const privacyActivity = chainId && getPrivacyPoolActivity(chainId, to, raw.input);
   return Object.freeze({
     hash: expectedHash,
     from: address(raw.from),
-    to: raw.to === null ? null : address(raw.to),
+    to,
+    ...(privacyActivity ? { privacyActivity } : {}),
     valueUnits: quantity(raw.value).toString(),
     nonce: quantity(raw.nonce).toString(),
     block,
@@ -810,7 +816,7 @@ export class ActivityReceiptReader {
             await checkChain();
             return null;
           }
-          let transaction = readTransaction(rawTransaction, expectedHash);
+          let transaction = readTransaction(rawTransaction, expectedHash, registration.chainId);
           if (rawReceipt === null) {
             if (transaction.from !== owner && transaction.to !== owner)
               return fail('IRRELEVANT');
@@ -832,7 +838,7 @@ export class ActivityReceiptReader {
               expectedHash,
             ]);
             if (rawTransaction === null) return fail('CONTEXT_CHANGED');
-            transaction = readTransaction(rawTransaction, expectedHash);
+            transaction = readTransaction(rawTransaction, expectedHash, registration.chainId);
           }
           assertPair(transaction, receipt);
           if (
@@ -849,6 +855,7 @@ export class ActivityReceiptReader {
             from: transaction.from,
             to: transaction.to,
             valueUnits: transaction.valueUnits,
+            ...(transaction.privacyActivity ? { privacyActivity: transaction.privacyActivity } : {}),
             nonce: transaction.nonce,
             timestamp: included.timestamp,
             block: Object.freeze({

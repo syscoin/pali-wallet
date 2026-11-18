@@ -222,6 +222,9 @@ function setup() {
     if (supplied !== snapshot) throw new Error('privacy_verification_pending');
   });
   Object.assign(wallet, {
+    getRetainedEvmRecords: () => ({
+      pendingPrivacyWithdrawalNotes: async () => new Set<string>(),
+    }),
     walletSessionGeneration: 0,
     walletStateGeneration: 0,
     authenticationMutex: new AsyncMutex(),
@@ -327,6 +330,35 @@ const prepare = (wallet: any) =>
     recipient: RECIPIENT,
     mode: 'direct',
   });
+
+it('uses the selected payer’s Activity before proving and again before submission', async () => {
+  const { wallet, host, vault } = setup();
+  const pending = new Set([NOTE_ID]);
+  const lookup = jest.fn(async (session, payer) => {
+    session.assertCurrent();
+    expect(payer.toLowerCase()).toBe(
+      wallet
+        .capturePrivacyDepositContext()
+        .context.account.address.toLowerCase()
+    );
+    return pending;
+  });
+  wallet.getRetainedEvmRecords = () => ({
+    pendingPrivacyWithdrawalNotes: lookup,
+  });
+  await expect(prepare(wallet)).rejects.toThrow(
+    'privacy_withdrawal_activity_pending'
+  );
+  expect(host.prove).not.toHaveBeenCalled();
+  pending.clear();
+  const review = await prepare(wallet);
+  pending.add(NOTE_ID);
+  await expect(wallet.submitPrivacyWithdrawal(review.intentId)).rejects.toThrow(
+    'privacy_withdrawal_activity_pending'
+  );
+  expect(vault.reserveWithdrawalAttempt).not.toHaveBeenCalled();
+  expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+});
 
 it.each([true, false])(
   'preserves only a diagnosed retained nonce conflict through private preparation (conflict=%s)',

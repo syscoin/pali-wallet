@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 
 import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
+import { getPrivacyPoolActivity } from '../../../../../../shared/privacyPoolActivity';
 import {
   filterSmartAccountNativeRecipientOperations,
   projectSmartAccountNativePayment,
@@ -1126,8 +1127,27 @@ export const EvmTransactionDetailsEnhanced = ({
   const directionLabel = hasAccountDirection
     ? getTxType(displayTransaction || transactionTx, isTxSent)
     : 'Transaction';
+  const detailTransaction = displayTransaction || transactionTx;
+  const privacy = isCancellation
+    ? undefined
+    : getPrivacyPoolActivity(
+        chainId,
+        detailTransaction?.to,
+        detailTransaction?.input || detailTransaction?.data
+      ) ??
+      getPrivacyPoolActivity(
+        chainId,
+        transactionTx?.to,
+        savedSummary?.methodSelector
+      );
   const txType = isCancellation
     ? t('transactions.cancellation')
+    : privacy
+    ? t(
+        privacy.kind === 'deposit'
+          ? 'privacy.activity.deposit'
+          : 'privacy.activity.withdrawal'
+      )
     : directionLabel;
   return (
     <>
@@ -1136,18 +1156,27 @@ export const EvmTransactionDetailsEnhanced = ({
         statusIcon={getTxStatusIcons(directionLabel, true)}
         displayInfo={displayTransaction ? transactionDisplayInfo : null}
         txStatus={
-          <p
-            className={`text-xs font-normal ${evmSettlementClass(settlement)}`}
-          >
-            {t(
-              settlement === 'pending' &&
-                !enhancedDetails &&
-                (transactionTx as any)?.historySource ===
-                  EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned
-                ? 'transactions.savedUnconfirmed'
-                : evmSettlementLabel(settlement)
+          <>
+            <p
+              className={`text-xs font-normal ${evmSettlementClass(
+                settlement
+              )}`}
+            >
+              {t(
+                settlement === 'pending' &&
+                  !enhancedDetails &&
+                  (transactionTx as any)?.historySource ===
+                    EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned
+                  ? 'transactions.savedUnconfirmed'
+                  : evmSettlementLabel(settlement)
+              )}
+            </p>
+            {privacy && (
+              <span className="inline-flex rounded-full border border-brand-blue/20 bg-brand-blue/10 px-2 py-0.5 text-xs text-brand-blue">
+                {t('privacy.poolAmount', { amount: privacy.amount })}
+              </span>
             )}
-          </p>
+          </>
         }
         isLoading={isLoadingDetails}
       />

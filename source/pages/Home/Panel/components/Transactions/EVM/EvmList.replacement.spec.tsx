@@ -41,9 +41,12 @@ const mockEmitter = jest.fn();
 const mockNavigate = jest.fn();
 const mockAlert = { success: jest.fn(), warning: jest.fn(), error: jest.fn() };
 const mockFiat = () => '0 USD';
-const mockT = (key: string) =>
+const mockT = (key: string, values?: { amount?: string }) =>
   ((
     {
+      'privacy.activity.deposit': 'Privacy deposit',
+      'privacy.activity.withdrawal': 'Privacy withdrawal',
+      'privacy.poolAmount': `${values?.amount} ETH pool`,
       'send.confirmed': 'Confirmed',
       'send.pending': 'Pending',
       'transactions.savedUnconfirmed': 'Saved · unconfirmed',
@@ -774,3 +777,54 @@ it('keeps existing activity rows and renders signed controls only when no visibl
     })
   ).toBeTruthy();
 });
+
+it.each([
+  {
+    fields: { input: '0xb214faa5' + '00'.repeat(32) },
+    label: 'Privacy deposit',
+    status: 'Pending',
+  },
+  {
+    fields: { input: undefined, data: '0x21a0adb6' + '00'.repeat(32) },
+    label: 'Privacy withdrawal',
+    status: 'Pending',
+  },
+  {
+    fields: {
+      input: '0x',
+      historySource: 'local-signed',
+      methodSelector: '0xb214faa5',
+    },
+    label: 'Privacy deposit',
+    status: 'Saved · unconfirmed',
+  },
+])(
+  'identifies the pool action while preserving its settlement status',
+  async ({ fields, label, status }) => {
+    mockRows = [
+      transaction('a', {
+        to: '0x12d66f87a04a9e220743712ce6d9bb1b5616b8fc',
+        ...fields,
+      }),
+    ];
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    expect(await screen.findByText(label)).toBeTruthy();
+    expect(screen.getByText('0.1 ETH pool')).toBeTruthy();
+    expect(screen.getByText(status)).toBeTruthy();
+  }
+);
+
+it.each([
+  { to: '0x12d66f87a04a9e220743712ce6d9bb1b5616b8fc', input: '0x' },
+  { to: TARGET, input: '0xb214faa5' },
+  { to: ACCOUNT, input: '0x', value: '0', isCancel: true },
+])(
+  'omits pool labels from ordinary transfers and cancellations',
+  async (fields) => {
+    mockRows = [transaction('a', fields)];
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    expect(await screen.findByText('Pending')).toBeTruthy();
+    expect(screen.queryByText('0.1 ETH pool')).toBeNull();
+    expect(screen.queryByText(/Privacy (deposit|withdrawal)/)).toBeNull();
+  }
+);

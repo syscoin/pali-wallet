@@ -1786,6 +1786,11 @@
     }
   },
   "privacy": {
+    "poolAmount": "{{amount}} ETH 池",
+    "activity": {
+      "deposit": "隐私存款",
+      "withdrawal": "隐私提款"
+    },
     "title": "隐私",
     "bundle": {
       "snapshotTime": "快照时间：{{time}}",
@@ -1940,6 +1945,7 @@
       "backupFailed": "无法打开票据备份。请重试。"
     },
     "withdrawal": {
+      "pendingActivity": "活动中有待确认的提款。",
       "watchOnlyDirectUnavailable": "直接提款需要私钥。此账户为只读账户。",
       "title": "凭证提款",
       "open": "提款",
@@ -1984,31 +1990,9 @@
       "submitted": "交易已提交",
       "notBroadcast": "交易未发送。再次确认之前，请刷新核对信息。"
     },
-    "recovery": {
-      "action": "检查提款恢复条件",
-      "help": "恢复前，需要在已最终确定的状态下确认：已公开的证明根不再被接受，且凭证仍未花费。直接提款还要求原交易已最终确定为失败，或付款方的 nonce 已最终确定为已使用。凭证和提款记录会保留。新提款需要重新审核。",
-      "disclosure": "此检查会将原始证明根和凭证的公开 nullifier 发送给所选的 Ethereum RPC。直接提款检查还会发送付款方地址和交易哈希。为恢复已保存的证明输入，可能会读取之前的中继任务。",
-      "password": "钱包密码",
-      "failed": "无法确认恢复。原证明可能仍然有效，票据可能已花费，或证据暂不可用。请刷新后再试。",
-      "checking": "正在按已最终确定的状态检查证明是否失效…",
-      "confirm": "检查并恢复"
-    },
-    "restoreReview": {
-      "action": "检查恢复的票据",
-      "help": "请授权审核此票据。提现需要单独审核。",
-      "disclosure": "恢复不会取消之前的提款，也不会使此票据的其他副本失效。",
-      "snapshot": "资金池数据已验证至区块 {{block}}。这是保存的数据，并非实时链上检查。",
-      "noSnapshot": "检查此票据前，请准备或刷新资金池数据。",
-      "pending": "先前的提款记录已保留。提交另一笔提款前请先查看。",
-      "password": "钱包密码",
-      "confirm": "确认票据检查",
-      "busy": "正在保存检查结果…",
-      "failed": "无法保存检查结果。请检查密码和资金池数据后重试。"
-    },
     "archive": {
       "title": "已归档票据",
       "help": "已完成的票据会在此加密保存，直到您恢复票据或清空归档。它们不占用活跃票据额度。",
-      "poolAmount": "{{amount}} ETH 池",
       "previous": "上一页",
       "empty": "没有已归档票据",
       "restore": "恢复票据",
@@ -2634,8 +2618,6 @@
         "statusNotChecked": "状态尚未检查",
         "noteDetails": "票据详情",
         "paliHasntCheckedThisNoteAgainstItsEthereum": "Pali 尚未对照 Ethereum 池检查此票据。",
-        "restoredNoteNeedsReview": "恢复的票据需要检查",
-        "thisNoteCameFromABackupAndStill": "此票据来自备份，仍需对照池进行检查。",
         "savedWithdrawalHistory": "已保存的提款历史",
         "thisNoteHasASavedWithdrawalRecordThat": "此票据有待检查的已保存提款记录，其结果尚未在此核实。",
         "checkStatusAgain": "重新检查状态",

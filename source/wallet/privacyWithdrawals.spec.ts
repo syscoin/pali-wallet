@@ -276,6 +276,34 @@ it('prepares direct proof without submission and reviews no secret-derived ident
   run.controller.close();
 });
 
+it('uses the local pending withdrawal to pause review until Activity is cleared', async () => {
+  const run = setup();
+  run.host.hasPendingWithdrawal = jest
+    .fn()
+    .mockResolvedValueOnce(true)
+    .mockResolvedValue(false);
+  await expect(run.controller.prepareWithdrawal(direct())).rejects.toThrow(
+    'privacy_withdrawal_activity_pending'
+  );
+  expect(run.host.withNote).not.toHaveBeenCalled();
+  expect(await run.controller.prepareWithdrawal(direct())).toMatchObject({
+    noteId: NOTE_ID,
+  });
+  run.controller.close();
+});
+
+it('rechecks Activity before submitting an already opened withdrawal review', async () => {
+  const run = setup();
+  const review = await run.controller.prepareWithdrawal(direct());
+  run.host.hasPendingWithdrawal = jest.fn().mockResolvedValue(true);
+  await expect(
+    run.controller.submitWithdrawal(review.intentId)
+  ).rejects.toThrow('privacy_withdrawal_activity_pending');
+  expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+  expect(run.host.sendTransaction).not.toHaveBeenCalled();
+  run.controller.close();
+});
+
 it('consumes the reviewed withdrawal once', async () => {
   const run = setup();
   const review = await run.controller.prepareWithdrawal(direct());

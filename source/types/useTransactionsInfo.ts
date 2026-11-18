@@ -28,6 +28,7 @@ export interface ITransactionInfoEvm {
   isError?: string | null;
   maxFeePerGas: string;
   maxPriorityFeePerGas: string;
+  methodSelector?: string;
   nonce: string;
   r: string;
   s: string;
