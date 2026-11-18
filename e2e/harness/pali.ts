@@ -285,7 +285,11 @@ export class PaliWallet {
   async dismissBlockingModals() {
     const dismissed: string[] = [];
     for (let attempt = 0; attempt < 5; attempt++) {
-      const dismissButton = this.page
+      const openDialog = this.page
+        .locator('[role="dialog"], [id^="headlessui-dialog"]')
+        .first();
+      if (!(await openDialog.isVisible().catch(() => false))) break;
+      const dismissButton = openDialog
         .getByRole('button', { name: /^(cancel|close|not now|skip)$/i })
         .first();
       if (await dismissButton.isVisible().catch(() => false)) {
@@ -296,17 +300,9 @@ export class PaliWallet {
         continue;
       }
 
-      const openDialog = this.page
-        .locator('[role="dialog"], [id^="headlessui-dialog"]')
-        .first();
-      if (await openDialog.isVisible().catch(() => false)) {
-        await this.page.keyboard.press('Escape');
-        dismissed.push('dialog via Escape');
-        await this.page.waitForTimeout(400);
-        continue;
-      }
-
-      break;
+      await this.page.keyboard.press('Escape');
+      dismissed.push('dialog via Escape');
+      await this.page.waitForTimeout(400);
     }
     if (dismissed.length > 0) {
       this.finding({

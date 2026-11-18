@@ -403,8 +403,19 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         await expect(
           activity.locator(`[data-transaction-hash="${cancelled.hash}"]`)
         ).toHaveCount(1);
+        const cancelledInstruction = activity.locator(
+          `[data-operation-hash="${originalOperationHash}"]`
+        );
+        await expect(cancelledInstruction).toHaveCount(1);
+        await cancelledInstruction.locator('details > summary').click();
+        await expect(cancelledInstruction.getByRole('status')).toHaveText(
+          en.transactions.smartAuthorizations.cancellationConfirmed
+        );
         await expect(
-          activity.locator(`[data-operation-hash="${originalOperationHash}"]`)
+          cancelledInstruction.getByRole('button', {
+            name: en.buttons.cancel,
+            exact: true,
+          })
         ).toHaveCount(0);
         const replayHash = await originalReplayFails(original.operation);
         expect(await rpc('eth_getBalance', [recipient, 'latest'])).toBe(
