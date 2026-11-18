@@ -1676,7 +1676,8 @@ export class EvmSignedRecords {
     if (
       !Number.isSafeInteger(options.maximum) ||
       options.maximum < 1 ||
-      options.maximum > 100 ||
+      options.maximum >
+        (options.withoutOuter ? EVM_SIGNED_RECORD_LIMITS.transactions : 100) ||
       (options.beforeHash !== undefined && !HASH.test(options.beforeHash))
     )
       throw new Error('SMART_ACCOUNT_AUTHORIZATION_CORRUPT');

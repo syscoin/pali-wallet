@@ -390,6 +390,46 @@ it('projects only the unresolved Smart Account authorization without an outer tr
   expect(nonceReads()).toHaveLength(2);
 });
 
+it('shows an older unresolved operation behind a full page of consumed authorizations', async () => {
+  const f = await fixture();
+  const retain = (nonce: bigint) =>
+    f.records.retainSmartAccountAuthorization(f.session, {
+      chainId: 1,
+      payer: payer.address,
+      observedAt: { number: '16', hash: blockHash },
+      userOperation: {
+        ...f.operation,
+        nonce: nonce.toString(),
+        preVerificationGas: String(f.operation.preVerificationGas),
+      },
+    });
+  const olderNonce = (BigInt(1) << BigInt(64)) + BigInt(9);
+  const older = await retain(olderNonce);
+  for (let sequence = 10; sequence < 45; sequence++)
+    await retain(BigInt(sequence));
+  const send = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method !== 'eth_call') return send(method, params);
+    const [, key] = paliEntryPointInterface.decodeFunctionData(
+      'getNonce',
+      (params[0] as { data: string }).data
+    );
+    const nonce = BigInt(key) === BigInt(1) ? olderNonce : BigInt(45);
+    return '0x' + nonce.toString(16).padStart(64, '0');
+  });
+
+  const page = await f.wallet.getSavedEvmTransactions();
+  expect(page.signedOperations).toEqual([
+    expect.objectContaining({
+      operationHash: older.operationHash,
+      status: 'unresolved',
+    }),
+  ]);
+  expect(
+    f.provider.send.mock.calls.filter(([method]) => method === 'eth_call')
+  ).toHaveLength(2);
+});
+
 it('keeps payer records while honoring the selected Smart Account activity reset', async () => {
   const f = await fixture();
   const { activeAccount, accounts } = mockState.vault;

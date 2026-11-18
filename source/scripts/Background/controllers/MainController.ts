@@ -2188,11 +2188,17 @@ class MainController {
       );
       const signedOperations = new Map<string, SmartAccountSignedActivity>();
       if (!beforeHash) {
+        // Apply the display limit after checking consumed nonces. Many old
+        // records can share one nonce key, so read that key once for the batch.
         const { entries } = await records.listSmartAccountAuthorizations(
           session,
           chainId,
           address,
-          { after, maximum: limit, withoutOuter: true }
+          {
+            after,
+            maximum: EVM_SIGNED_RECORD_LIMITS.transactions,
+            withoutOuter: true,
+          }
         );
         if (entries.length) {
           const nonceKeys = new Set(
@@ -2227,7 +2233,11 @@ class MainController {
             if (current !== undefined && current > nonce) continue;
             const reference =
               entry.replacesOperationHash ?? entry.operationHash;
-            if (entry.replacesOperationHash && signedOperations.has(reference))
+            if (
+              signedOperations.has(reference)
+                ? entry.replacesOperationHash
+                : signedOperations.size >= limit
+            )
               continue;
             signedOperations.set(reference, {
               account: entry.account,
