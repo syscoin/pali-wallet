@@ -1913,7 +1913,7 @@ for (const alreadyDeployed of [false, true]) test(`one Smart Send confirmation c
     // Counterfactual sends also recheck before prefunding and in prefund calculation.
     const expectedReads = alreadyDeployed ? 4 : 6;
     assert.equal(f.spendabilityReads.native - initialReads.native, expectedReads);
-    assert.equal(f.spendabilityReads.deposit - initialReads.deposit, expectedReads);
+    assert.equal(f.spendabilityReads.deposit - initialReads.deposit, alreadyDeployed ? expectedReads : expectedReads + 1);
   } finally { operation?.dispose(); await f.close(); }
 });
 
@@ -2484,7 +2484,7 @@ for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`co
     assert(BigInt(operation.getSnapshot().payerBudget!.maximumPrefundWei) > 0n);
     const lose = () => { changed = true; readsAtChange = f.spendabilityReads.token; f.tokenBalance(token.contractAddress, 0n, token.decimals); };
     if (boundary === 'payer-signing') f.onPayerSignature(lose);
-    else loseBalance = lose;
+    else f.onNextPayerEstimate(() => { loseBalance = lose; });
     f.onBroadcast(() => operation!.cancel());
     await operation.authorize(operation.getSnapshot().revision);
     assert.equal(changed, true, 'the failure is injected after the payer quote');
@@ -2517,7 +2517,7 @@ for (const change of ['balance', 'nonce'] as const) for (const boundary of ['pay
     const mutate = () => { changed = true; if (change === 'balance') f.smartBalance(8n); else f.advanceSmartNonce(); };
     if (boundary === 'payer-quote') f.onNextPayerEstimate(mutate);
     else if (boundary === 'payer-signing') f.onPayerSignature(mutate);
-    else changeState = mutate;
+    else f.onNextPayerEstimate(() => { changeState = mutate; });
     f.onBroadcast(() => operation!.cancel());
     await operation.authorize(operation.getSnapshot().revision);
     assert(changed, 'the fixture must reach the payer boundary');
@@ -6750,7 +6750,7 @@ for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`sp
     assert.equal(operation.getSnapshot().payerBudget?.gasTank, true);
     let changed = false;
     const mutate = () => { changed = true; f.loseGasCredit(); };
-    if (boundary === 'payer-signing') f.onPayerSignature(mutate); else loseCredit = mutate;
+    if (boundary === 'payer-signing') f.onPayerSignature(mutate); else f.onNextPayerEstimate(() => { loseCredit = mutate; });
     await operation.authorize(operation.getSnapshot().revision);
     assert(changed);
     assert.equal(f.payerSignatures.length, 1);
@@ -6830,7 +6830,7 @@ for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`Sm
     await operation.prepare();
     assert.equal(operation.getSnapshot().phase, 'authorize');
     if (boundary === 'payer-signing') f.onPayerSignature(f.increaseInnerGas);
-    else afterPersist = f.increaseInnerGas;
+    else f.onNextPayerEstimate(() => { afterPersist = f.increaseInnerGas; });
     await operation.authorize(operation.getSnapshot().revision);
     assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(f.payerSignatures.length, 1);
@@ -6875,7 +6875,7 @@ for (const codeBytes of [1, 20 * 1024]) test(`counted native Smart asset payer p
       http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
       chains: f.calls.filter(method => method === 'eth_chainId').length };
     // The final canonical check is fresh even when this phase already read its parent.
-    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 48 : 50, http: standard === 'ERC20' ? 34 : 38, chains: 8 });
+    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 50 : 53, http: standard === 'ERC20' ? 35 : 41, chains: 8 });
     console.log('NATIVE_ASSET_CONFIRM_COUNTS', JSON.stringify({ standard, ...counts }));
   } finally { operation?.dispose(); await f.close(); }
 });
@@ -6916,7 +6916,7 @@ test(`deployed Smart ${standard} final admission rejects asset loss during ${bou
     };
     if (boundary === 'payer-quote') f.onNextPayerEstimate(lose);
     else if (boundary === 'payer-signing') f.onPayerSignature(lose);
-    else loseBalance = lose;
+    else f.onNextPayerEstimate(() => { loseBalance = lose; });
     await operation.authorize(operation.getSnapshot().revision);
     assert(changed);
     assert.equal(f.payerSignatures.length, boundary === 'payer-quote' ? 0 : 1);
@@ -6991,7 +6991,7 @@ test(`Smart ERC20 reviewed precision rejects changes at ${boundary}`, async () =
       if (boundary === 'after-owner-signing') f.onSignature(change);
       if (boundary === 'payer-quote') f.onNextPayerEstimate(change);
       if (boundary === 'payer-signing') f.onPayerSignature(change);
-      if (boundary === 'payer-persistence') changePrecision = change;
+      if (boundary === 'payer-persistence') f.onNextPayerEstimate(() => { changePrecision = change; });
       await operation.authorize(operation.getSnapshot().revision);
     }
     assert.equal(operation.getSnapshot().phase, 'failed', JSON.stringify(operation.getSnapshot()));
