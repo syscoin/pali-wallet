@@ -2192,7 +2192,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const walletScreen = <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen footer={footer} gap={16}>{locked
-        ? <View style={s.unlockBrand}><PaliMark size={36} /><Text style={s.unlockBrandName}>Pali Wallet</Text></View>
+        ? <View style={s.unlockBrand}><PaliMark size={36} /><Text style={s.unlockBrandName}>Pali</Text></View>
         : stage === 'backup-complete' ? null : <Header title={title} onBack={['backup-intro', 'backup-auth', 'words', 'backup-verify'].includes(stage) ? closeBackup : exit} subtitle={typeof __DEV__ !== 'undefined' && __DEV__ ? t("mobile.common.development") : undefined} />}
         {recoveryNotice}
         {restoreNotice}

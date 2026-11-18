@@ -669,7 +669,7 @@ for (const [code, feedback] of [
     assert(inputs.every(input => input.props.value === ''));
     assert.equal(button(form, 'Check phrase').props.disabled, true);
     assert.deepEqual(all(form).find(node => node.props.accessibilityRole === 'alert')?.children, [feedback]);
-    assert.match(text(form), /Enter each word in order to restore your Pali wallet/);
+    assert.match(text(form), /Enter each word in order to restore your wallet/);
     assert.doesNotMatch(text(form), /abandon/);
     (fallback.props.onConfirmed as (value: string) => void)(phrase);
     assert.equal(all(f.render()).some(node => node.props.title === 'Wallet setup was not completed'), false);

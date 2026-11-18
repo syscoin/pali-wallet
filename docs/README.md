@@ -1,4 +1,4 @@
-# Pali Wallet documentation
+# Pali documentation
 
 The current user guides and developer API reference are published at [docs.paliwallet.com](https://docs.paliwallet.com). Their source lives in [`portal/`](portal/README.md), including all supported translations.
 

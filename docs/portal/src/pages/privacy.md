@@ -1,9 +1,9 @@
 ---
 title: Privacy policy
-description: How Pali Wallet handles local wallet data and information used by network services.
+description: How Pali handles local wallet data and information used by network services.
 ---
 
-<h1 id="privacy-policy" style={{ scrollMarginTop: '5rem' }}>Pali Wallet privacy policy</h1>
+<h1 id="privacy-policy" style={{ scrollMarginTop: '5rem' }}>Pali privacy policy</h1>
 
 Updated November 12, 2026.
 
@@ -51,7 +51,7 @@ You can manage connected sites and revoke their wallet access, select or configu
 
 ## Contact
 
-For questions about the Pali Wallet extension, contact the developer at [pali@syscoin.org](mailto:pali@syscoin.org), the developer email listed on the [Pali Wallet Chrome Web Store listing](https://chromewebstore.google.com/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn). The [Pali Wallet website](https://www.paliwallet.com/) also points users to its community support channel. Never include a recovery phrase, password, private key or private note in a support request.
+For questions about the Pali extension, contact the developer at [pali@syscoin.org](mailto:pali@syscoin.org), the developer email listed on the [Pali Wallet Chrome Web Store listing](https://chromewebstore.google.com/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn). The [Pali website](https://www.paliwallet.com/) also points users to its community support channel. Never include a recovery phrase, password, private key or private note in a support request.
 
 ## Policy updates
 

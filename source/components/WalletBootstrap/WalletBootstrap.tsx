@@ -73,7 +73,7 @@ export const WalletBootstrap = ({ children }: PropsWithChildren) => {
 
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#061120] p-6 text-center text-white">
-      <h1 className="mb-5 font-poppins text-3xl text-[#4DA2CF]">Pali Wallet</h1>
+      <h1 className="mb-5 font-poppins text-3xl text-[#4DA2CF]">Pali</h1>
       <p role="status" aria-live="polite" className="mb-4 text-sm">
         {recoveryRequired
           ? t('settings.walletRecoveryRestartRequired')

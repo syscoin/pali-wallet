@@ -11,15 +11,15 @@ private struct PaliCredentialCopy {
 }
 private func credentialCopy(_ language: String) throws -> PaliCredentialCopy {
   switch language {
-  case "en": return PaliCredentialCopy(unlock: "Unlock Pali Wallet", authorize: "Authorize access to Pali Wallet")
-  case "es": return PaliCredentialCopy(unlock: "Desbloquear Pali Wallet", authorize: "Autorizar el acceso a Pali Wallet")
-  case "pt": return PaliCredentialCopy(unlock: "Desbloquear a Pali Wallet", authorize: "Autorizar o acesso à Pali Wallet")
-  case "fr": return PaliCredentialCopy(unlock: "Déverrouiller Pali Wallet", authorize: "Autoriser l’accès à Pali Wallet")
-  case "de": return PaliCredentialCopy(unlock: "Pali Wallet entsperren", authorize: "Zugriff auf Pali Wallet erlauben")
-  case "zh": return PaliCredentialCopy(unlock: "解锁 Pali Wallet", authorize: "授权访问 Pali Wallet")
-  case "ja": return PaliCredentialCopy(unlock: "Pali Walletのロックを解除", authorize: "Pali Walletへのアクセスを許可")
-  case "ko": return PaliCredentialCopy(unlock: "Pali Wallet 잠금 해제", authorize: "Pali Wallet 접근 허용")
-  case "ru": return PaliCredentialCopy(unlock: "Разблокировать Pali Wallet", authorize: "Разрешить доступ к Pali Wallet")
+  case "en": return PaliCredentialCopy(unlock: "Unlock Pali", authorize: "Authorize access to Pali")
+  case "es": return PaliCredentialCopy(unlock: "Desbloquear Pali", authorize: "Autorizar el acceso a Pali")
+  case "pt": return PaliCredentialCopy(unlock: "Desbloquear a Pali", authorize: "Autorizar o acesso à Pali")
+  case "fr": return PaliCredentialCopy(unlock: "Déverrouiller Pali", authorize: "Autoriser l’accès à Pali")
+  case "de": return PaliCredentialCopy(unlock: "Pali entsperren", authorize: "Zugriff auf Pali erlauben")
+  case "zh": return PaliCredentialCopy(unlock: "解锁 Pali", authorize: "授权访问 Pali")
+  case "ja": return PaliCredentialCopy(unlock: "Paliのロックを解除", authorize: "Paliへのアクセスを許可")
+  case "ko": return PaliCredentialCopy(unlock: "Pali 잠금 해제", authorize: "Pali 접근 허용")
+  case "ru": return PaliCredentialCopy(unlock: "Разблокировать Pali", authorize: "Разрешить доступ к Pali")
   default: throw PaliCredentialError.unavailable
   }
 }

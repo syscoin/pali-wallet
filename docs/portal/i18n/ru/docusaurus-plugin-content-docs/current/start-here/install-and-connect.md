@@ -77,7 +77,7 @@ try {
 
 <figure>
   <a className="pali-media-link" href="/img/screens/install-unlocked-wallet.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/install-unlocked-wallet.png" alt="Pali Wallet установлен и разблокирован в чистом профиле браузера" />
+  <img src="/img/screens/install-unlocked-wallet.png" alt="Pali установлен и разблокирован в чистом профиле браузера" />
 </a>
   <figcaption>Используйте чистый тестовый профиль при записи flows установки и разблокировки.</figcaption>
 </figure>

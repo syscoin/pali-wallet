@@ -21,7 +21,7 @@ type Component = (props: any) => Element;
 const node = Object.freeze({ proTxHash: 'ab'.repeat(32), collateralOutpoint: Object.freeze({ txid: 'cd'.repeat(32), vout: 2 }), service: '127.0.0.1:18369', nevmAddress: `0x${'12'.repeat(20)}` });
 const reservation = Object.freeze({ ...node.collateralOutpoint, proTxHash: node.proTxHash });
 const empty: Snapshot = { network: 'testnet', serviceUrl: 'https://sentry.example', linkedNodes: [], collateral: [] };
-const review: SentryNodeLinkReview = Object.freeze({ id: 'review-1', origin: 'Pali Wallet', network: 'testnet', serviceUrl: empty.serviceUrl, node });
+const review: SentryNodeLinkReview = Object.freeze({ id: 'review-1', origin: 'Pali', network: 'testnet', serviceUrl: empty.serviceUrl, node });
 const deferred = <T>() => {
   let resolve!: (value: T) => void, reject!: (cause: Error) => void;
   const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
@@ -213,7 +213,7 @@ test('invalid registration stays in the draft and never starts node review', asy
 
 test('node link displays exact reviewed fields, confirms that same object and refreshes persisted state', async () => {
   const f = fixture(); let tree = await reviewNode(f);
-  assert.deepEqual(JSON.parse(JSON.stringify(f.calls.prepare)), [{ request: { version: 1, proTxHash: node.proTxHash, genesisHash: SENTRY_NETWORKS.testnet.genesisHash }, origin: 'Pali Wallet' }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.calls.prepare)), [{ request: { version: 1, proTxHash: node.proTxHash, genesisHash: SENTRY_NETWORKS.testnet.genesisHash }, origin: 'Pali' }]);
   for (const value of [review.serviceUrl, node.proTxHash, node.service, node.nevmAddress, `${node.collateralOutpoint.txid}:2`]) assert.ok(text(tree).includes(value), `Missing reviewed field ${value}: ${text(tree)}`);
   assert.equal(all(tree).filter(element => element.type === 'TextInput').length, 0);
   press(button(tree, 'Link node')); await settle(); tree = f.render();

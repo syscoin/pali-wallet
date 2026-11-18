@@ -1,9 +1,9 @@
 ---
-title: Bienvenue dans Pali Wallet
+title: Bienvenue dans Pali
 slug: /
 ---
 
-Pali Wallet est un portefeuille sous forme d'extension de navigateur pour les personnes et les applications qui ont besoin d'un accès blockchain à la fois basé sur des comptes et basé sur UTXO depuis une même couche de sécurité.
+Pali est un portefeuille sous forme d'extension de navigateur pour les personnes et les applications qui ont besoin d'un accès blockchain à la fois basé sur des comptes et basé sur UTXO depuis une même couche de sécurité.
 
 Pour les dapps EVM, Pali expose un provider `window.ethereum` compatible avec MetaMask, avec des requêtes EIP-1193, la découverte EIP-6963, les permissions de compte, le changement de chaîne, les signatures, les transactions et les appels groupés. Pour les applications Syscoin UTXO et de style Bitcoin, Pali expose `window.pali` avec des méthodes de compte, xpub, adresse de rendu de monnaie, signature PSBT, transaction et actifs.
 

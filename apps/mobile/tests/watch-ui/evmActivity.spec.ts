@@ -400,7 +400,7 @@ test('same-address network change closes old details and pending copy feedback',
   await page.evaluate(() => window.__watchFixture.selectWatchNetwork('rollux'));
   // The existing shell deliberately returns to Wallet when network identity changes.
   await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('heading', { name: 'Pali Wallet', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pali', exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Network Rollux', exact: true })
   ).toBeVisible();

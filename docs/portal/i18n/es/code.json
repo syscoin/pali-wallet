@@ -18,7 +18,7 @@
     "message": "Crea cuentas modulares, elige validadores, configura recuperación con guardianes, gestiona módulos y envía lotes atómicos."
   },
   "homepage.hero.eyebrow": {
-    "message": "Documentación de Pali Wallet"
+    "message": "Documentación de Pali"
   },
   "homepage.hero.title": {
     "message": "Una sola superficie de wallet para EVM, Syscoin UTXO, apps estilo Bitcoin y cuentas inteligentes."
@@ -33,10 +33,10 @@
     "message": "Guías de usuario"
   },
   "homepage.layout.title": {
-    "message": "Docs de Pali Wallet"
+    "message": "Docs de Pali"
   },
   "homepage.layout.description": {
-    "message": "Documentación para desarrolladores, usuarios e instituciones de Pali Wallet."
+    "message": "Documentación para desarrolladores, usuarios e instituciones de Pali."
   },
   "homepage.flow.title": {
     "message": "Elige la ruta de integración adecuada"

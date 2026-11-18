@@ -18,7 +18,7 @@
     "message": "Создавайте модульные аккаунты, выбирайте валидаторы, настраивайте guardian recovery, управляйте модулями и отправляйте атомарные batches."
   },
   "homepage.hero.eyebrow": {
-    "message": "Документация Pali Wallet"
+    "message": "Документация Pali"
   },
   "homepage.hero.title": {
     "message": "Одна поверхность кошелька для EVM, Syscoin UTXO, Bitcoin-style apps и смарт-аккаунтов."
@@ -33,10 +33,10 @@
     "message": "Руководства пользователя"
   },
   "homepage.layout.title": {
-    "message": "Документация Pali Wallet"
+    "message": "Документация Pali"
   },
   "homepage.layout.description": {
-    "message": "Документация Pali Wallet для разработчиков, пользователей и институтов."
+    "message": "Документация Pali для разработчиков, пользователей и институтов."
   },
   "homepage.flow.title": {
     "message": "Выберите правильный путь интеграции"

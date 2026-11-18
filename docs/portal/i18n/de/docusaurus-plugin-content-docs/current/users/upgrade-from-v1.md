@@ -6,11 +6,11 @@ Wenn Sie von einer älteren Pali-Version migrieren, ist der sicherste Weg, Ihre 
 
 ## Migrationsschritte
 
-1. Öffnen Sie die alte Pali Wallet.
+1. Öffnen Sie die alte Version von Pali.
 2. Öffnen Sie die allgemeinen Einstellungen.
 3. Wählen Sie Wallet-Seed-Phrase.
 4. Geben Sie Ihr Passwort ein und kopieren Sie die Seed-Phrase.
-5. Installieren oder öffnen Sie die aktuelle Pali Wallet.
+5. Installieren oder öffnen Sie die aktuelle Version von Pali.
 6. Wählen Sie Import using wallet seed phrase.
 7. Fügen Sie die Seed-Phrase ein.
 8. Legen Sie ein neues Wallet-Passwort fest.

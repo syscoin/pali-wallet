@@ -3935,7 +3935,7 @@ class SmartAccountController {
     }
 
     throw new Error(
-      'This wallet address is not available in Pali. Import or select a local Pali wallet address before using it for recovery.'
+      'This wallet address is not available in Pali. Import or select a local wallet address in Pali before using it for recovery.'
     );
   }
 

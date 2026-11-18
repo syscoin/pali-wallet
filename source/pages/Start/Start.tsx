@@ -65,20 +65,9 @@ export const Start = (props: any) => {
         </p>
 
         <div className="relative z-10 mb-6 flex flex-col items-center gap-2">
-          <div className="flex flex-row gap-3">
-            {['Pali', 'Wallet'].map((word, index) => (
-              <h1
-                key={word}
-                className={`text-[#4DA2CF] ${
-                  index ? '' : 'text-justify '
-                }font-poppins text-[37.87px] ${
-                  index ? 'font-light' : 'font-bold'
-                } leading-[37.87px] tracking-[0.379px]`}
-              >
-                {word}
-              </h1>
-            ))}
-          </div>
+          <h1 className="font-poppins text-[37.87px] font-bold leading-[37.87px] tracking-[0.379px] text-[#4DA2CF]">
+            Pali
+          </h1>
           <CanaryBadge />
         </div>
 

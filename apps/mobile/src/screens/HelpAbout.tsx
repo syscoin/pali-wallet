@@ -47,7 +47,7 @@ export function HelpAbout({ onBack, onUpdates, onResetActivity, resetUtxoActivit
     ? <Text testID={`help-${action}-feedback`} accessibilityLiveRegion="polite">{t(feedback.message)}</Text> : null;
   return <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen footer={<Button title={t('privacy.deposit.done')} variant="secondary" onPress={onBack} />}>
     <Header title={t('mobile.settings.helpTitle')} onBack={onBack} />
-    <Card style={{ padding: 18, gap: 8 }}><Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: '600' }}>Pali Wallet</Text>
+    <Card style={{ padding: 18, gap: 8 }}><Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: '600' }}>Pali</Text>
       <Text>{t('mobile.generalViews.version', { version: app.expo.version })}{typeof __DEV__ !== 'undefined' && __DEV__ ? t('mobile.generalViews.developmentBuild') : ''}</Text>
       <Text style={{ color: colors.muted, lineHeight: 22 }}>{t('mobile.generalViews.qualificationNotice')}</Text></Card>
     {onUpdates && <Card><Row icon="refresh" title={update.release ? t('mobile.generalViews.updateAvailable', { version: update.release.version }) : t('mobile.generalViews.appUpdates')}

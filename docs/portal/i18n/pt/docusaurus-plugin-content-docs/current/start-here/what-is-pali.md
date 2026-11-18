@@ -2,7 +2,7 @@
 title: O que é a Pali?
 ---
 
-A Pali Wallet é a extensão oficial de carteira da Syscoin e uma carteira web3 de uso geral para chains compatíveis com EVM. Ela foi projetada para três públicos sobrepostos:
+A Pali é a extensão oficial de carteira da Syscoin e uma carteira web3 de uso geral para chains compatíveis com EVM. Ela foi projetada para três públicos sobrepostos:
 
 - **Usuários comuns** que querem uma carteira de navegador segura para EVM, Syscoin, Rollux e ativos UTXO.
 - **Desenvolvedores de dapps** que querem acesso EVM compatível com MetaMask e acesso UTXO na mesma extensão.

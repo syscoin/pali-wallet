@@ -15,8 +15,8 @@ test('both native platforms package the same fixed nine-language authorization c
   assert.deepEqual(android, ios);
   assert.deepEqual(ios.map(item => item[0]).sort(), PALI_LANGUAGE_OPTIONS.map(item => item.value).sort());
   for (const [language, unlock, authorize] of ios) {
-    assert(unlock.includes('Pali Wallet')); assert(authorize.includes('Pali Wallet'));
-    if (language !== 'en') { assert.notEqual(unlock, 'Unlock Pali Wallet'); assert.notEqual(authorize, 'Authorize access to Pali Wallet'); }
+    assert(unlock.includes('Pali')); assert(authorize.includes('Pali'));
+    if (language !== 'en') { assert.notEqual(unlock, 'Unlock Pali'); assert.notEqual(authorize, 'Authorize access to Pali'); }
   }
   assert.match(swift, /default: throw PaliCredentialError\.unavailable/);
   assert.match(kotlin, /else -> credentialFailure\(\)/);

@@ -18,7 +18,7 @@
     "message": "Erstelle modulare Konten, wähle Validatoren, konfiguriere Guardian-Recovery, verwalte Module und sende atomare Batches."
   },
   "homepage.hero.eyebrow": {
-    "message": "Pali Wallet Dokumentation"
+    "message": "Pali Dokumentation"
   },
   "homepage.hero.title": {
     "message": "Eine Wallet-Oberfläche für EVM, Syscoin UTXO, Bitcoin-ähnliche Apps und Smart Accounts."
@@ -33,10 +33,10 @@
     "message": "Nutzerhandbücher"
   },
   "homepage.layout.title": {
-    "message": "Pali Wallet Docs"
+    "message": "Pali Docs"
   },
   "homepage.layout.description": {
-    "message": "Dokumentation für Entwickler, Nutzer und Institutionen von Pali Wallet."
+    "message": "Dokumentation für Entwickler, Nutzer und Institutionen von Pali."
   },
   "homepage.flow.title": {
     "message": "Den richtigen Integrationspfad wählen"

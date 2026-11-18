@@ -834,7 +834,7 @@ test('SLH payer review describes the exact approved target without claiming ECDS
     intent:{...state.intent,command:{...state.intent.command,target:{module:'slh-dsa',validator:account,data:'0x'},targetModule:{id:'slh-dsa',type:'validator',address:account,config:{pkRoot:hash,pkSeed:hash}}}}},onBack(){},authorize(){},confirmPayer(){} });
   const notice = one(tree,'Notice','Change approval method');
   assert.equal(notice.props.body,'Saving updates your account on-chain and may require a network fee.');
-  assert(!notice.props.body.includes('Pali wallet owner')); one(tree,'Button','Change approval method'); f.dispose();
+  assert(!notice.props.body.includes('Pali owner')); one(tree,'Button','Change approval method'); f.dispose();
 });
 
 

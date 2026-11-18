@@ -4,7 +4,7 @@ import React from 'react';
 export const CanaryBadge = ({ className = '' }: { className?: string }) =>
   process.env.PALI_EXTENSION_CHANNEL === 'canary' ? (
     <span
-      aria-label="Pali Wallet Canary"
+      aria-label="Pali Canary"
       className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#F6C453]/40 bg-[#F6C453]/10 px-2 py-0.5 font-poppins text-[10px] font-semibold leading-4 tracking-wide text-[#F6C453] ${className}`}
     >
       <span

@@ -77,7 +77,7 @@ try {
 
 <figure>
   <a className="pali-media-link" href="/img/screens/install-unlocked-wallet.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/install-unlocked-wallet.png" alt="在干净浏览器配置文件中已安装并解锁的 Pali Wallet" />
+  <img src="/img/screens/install-unlocked-wallet.png" alt="在干净浏览器配置文件中已安装并解锁的 Pali" />
 </a>
   <figcaption>捕获安装和解锁流程时，请使用干净的测试配置文件。</figcaption>
 </figure>

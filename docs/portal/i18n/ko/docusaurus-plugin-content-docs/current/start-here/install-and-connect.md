@@ -77,7 +77,7 @@ try {
 
 <figure>
   <a className="pali-media-link" href="/img/screens/install-unlocked-wallet.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/install-unlocked-wallet.png" alt="깨끗한 브라우저 profile에 설치되고 잠금 해제된 Pali Wallet" />
+  <img src="/img/screens/install-unlocked-wallet.png" alt="깨끗한 브라우저 profile에 설치되고 잠금 해제된 Pali" />
 </a>
   <figcaption>설치 및 잠금 해제 flow를 캡처할 때는 깨끗한 test profile을 사용하세요.</figcaption>
 </figure>

@@ -1,9 +1,9 @@
 ---
-title: 欢迎使用 Pali Wallet
+title: 欢迎使用 Pali
 slug: /
 ---
 
-Pali Wallet 是一款浏览器扩展钱包，面向需要在同一安全层中同时访问基于账户和基于 UTXO 的区块链的用户与应用。
+Pali 是一款浏览器扩展钱包，面向需要在同一安全层中同时访问基于账户和基于 UTXO 的区块链的用户与应用。
 
 对于 EVM dapp，Pali 暴露一个兼容 MetaMask 的 `window.ethereum` provider，支持 EIP-1193 请求、EIP-6963 发现、账户权限、链切换、签名、交易和批量调用。对于 Syscoin UTXO 和 Bitcoin 风格应用，Pali 暴露 `window.pali`，提供账户、xpub、找零地址、PSBT 签名、交易和资产方法。
 

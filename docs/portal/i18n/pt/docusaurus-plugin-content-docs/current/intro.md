@@ -1,9 +1,9 @@
 ---
-title: Boas-vindas à Pali Wallet
+title: Boas-vindas à Pali
 slug: /
 ---
 
-A Pali Wallet é uma carteira em extensão de navegador para pessoas e aplicações que precisam de acesso a blockchains baseadas em contas e baseadas em UTXO a partir de uma única camada de segurança.
+A Pali é uma carteira em extensão de navegador para pessoas e aplicações que precisam de acesso a blockchains baseadas em contas e baseadas em UTXO a partir de uma única camada de segurança.
 
 Para dapps EVM, a Pali expõe um provider `window.ethereum` compatível com MetaMask, com solicitações EIP-1193, descoberta EIP-6963, permissões de conta, troca de chain, assinatura, transações e chamadas em lote. Para aplicações Syscoin UTXO e no estilo Bitcoin, a Pali expõe `window.pali` com métodos de conta, xpub, endereço de troco, assinatura PSBT, transação e ativos.
 

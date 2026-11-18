@@ -90,7 +90,7 @@ export async function runLocalPasskeyCeremony(
       const credential = await navigator.credentials.create({
         signal,
         publicKey: {
-          rp: { name: 'Pali Wallet', id: rpId },
+          rp: { name: 'Pali', id: rpId },
           challenge,
           user: {
             id: bytes(prompt.userHandle, 32),

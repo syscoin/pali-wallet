@@ -44,9 +44,9 @@ const searchLanguages = docsLocales.filter((locale) => locale !== 'ko');
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'Pali Wallet Docs',
+  title: 'Pali Docs',
   tagline:
-    'Build EVM, Syscoin UTXO, Bitcoin-style, and smart-account dapps with Pali Wallet.',
+    'Build EVM, Syscoin UTXO, Bitcoin-style, and smart-account dapps with Pali.',
   favicon: 'img/favicon.svg',
 
   url: 'https://docs.paliwallet.com',
@@ -64,7 +64,7 @@ const config = {
 
   i18n: {
     defaultLocale: 'en',
-    // Match Pali Wallet locales. Non-English routes are enabled so the
+    // Match Pali locales. Non-English routes are enabled so the
     // language selector, translated chrome, and localized docs are published.
     locales: docsLocales,
     localeConfigs: docsLocaleConfigs,
@@ -112,7 +112,7 @@ const config = {
       navbar: {
         title: 'Pali Docs',
         logo: {
-          alt: 'Pali Wallet',
+          alt: 'Pali',
           src: 'img/logo.svg',
         },
         items: [
@@ -184,7 +184,7 @@ const config = {
                 href: 'https://discord.com/invite/syscoin',
               },
               {
-                label: 'Pali Wallet GitHub',
+                label: 'Pali GitHub',
                 href: 'https://github.com/syscoin/pali-wallet',
               },
               {
@@ -194,7 +194,7 @@ const config = {
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} Syscoin. Built for Pali Wallet.`,
+        copyright: `Copyright © ${new Date().getFullYear()} Syscoin. Built for Pali.`,
       },
       prism: {
         additionalLanguages: ['bash', 'json'],

@@ -1,6 +1,6 @@
-# Pali Wallet Docs Portal
+# Pali Docs Portal
 
-This is the public documentation portal for Pali Wallet.
+This is the public documentation portal for Pali.
 
 ## Local development
 
@@ -42,7 +42,7 @@ Do not use `yarn start` to test the built multilingual site. In dev mode, clicki
 
 ## Internationalization
 
-The portal is configured for the same locale set as Pali Wallet: English, Spanish, Portuguese, French, German, Russian, Chinese, Japanese, and Korean.
+The portal is configured for the same locale set as Pali: English, Spanish, Portuguese, French, German, Russian, Chinese, Japanese, and Korean.
 
 The language selector is live. Navbar, footer, sidebar category labels, homepage chrome, and technical markdown pages are translated under `i18n/<locale>/docusaurus-plugin-content-docs/current/`.
 

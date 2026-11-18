@@ -120,6 +120,7 @@ jest.mock('react-i18next', () => ({
 }));
 jest.mock('components/Icon/Icon', () => ({
   LoadingSvg: () => null,
+  QrcodeOutlined: () => null,
   QuestionCircleOutlined: () => null,
 }));
 jest.mock('components/index', () => ({

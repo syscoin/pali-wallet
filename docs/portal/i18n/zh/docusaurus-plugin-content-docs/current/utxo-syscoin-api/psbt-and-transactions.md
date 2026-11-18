@@ -11,7 +11,7 @@ UTXO 应用应谨慎构造交易，通过 Pali 请求签名，并仅在用户批
     <div className="pali-capture-card__copy">
       <div className="pali-capture-card__brand">
         <img className="pali-capture-card__icon" src="/img/logo.svg" alt="" aria-hidden="true" />
-        <span>Pali Wallet</span>
+        <span>Pali</span>
       </div>
       <p className="pali-capture-card__chip">UTXO • Syscoin</p>
       <p className="pali-capture-card__title">PSBT 签名审核</p>

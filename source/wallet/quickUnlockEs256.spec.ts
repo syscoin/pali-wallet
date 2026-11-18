@@ -656,7 +656,7 @@ describe('Shared smart-account raw credential normalization', () => {
     expect(result.y).toBe(bytesToHex(fixture.publicKey.slice(33)));
     expect(result.userHandle).toBe(bytesToBase64Url(fixture.userId));
     const options = create.mock.calls[0][0] as CredentialCreationOptions;
-    expect(options.publicKey?.rp).toEqual({ name: 'Pali Wallet' });
+    expect(options.publicKey?.rp).toEqual({ name: 'Pali' });
     expect(options.publicKey?.authenticatorSelection?.userVerification).toBe(
       'required'
     );

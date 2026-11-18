@@ -18,7 +18,7 @@
     "message": "创建模块化账户，选择验证器，配置守护人恢复，管理模块，并发送原子批量交易。"
   },
   "homepage.hero.eyebrow": {
-    "message": "Pali Wallet 文档"
+    "message": "Pali 文档"
   },
   "homepage.hero.title": {
     "message": "一个钱包界面，同时服务 EVM、Syscoin UTXO、Bitcoin 风格应用和智能账户。"
@@ -33,10 +33,10 @@
     "message": "用户指南"
   },
   "homepage.layout.title": {
-    "message": "Pali Wallet 文档"
+    "message": "Pali 文档"
   },
   "homepage.layout.description": {
-    "message": "面向 Pali Wallet 开发者、用户和机构的文档。"
+    "message": "面向 Pali 开发者、用户和机构的文档。"
   },
   "homepage.flow.title": {
     "message": "选择正确的集成路径"

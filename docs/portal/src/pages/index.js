@@ -52,9 +52,7 @@ function HomepageHeader() {
     <header className={styles.hero}>
       <div className="container">
         <p className={styles.eyebrow}>
-          <Translate id="homepage.hero.eyebrow">
-            Pali Wallet documentation
-          </Translate>
+          <Translate id="homepage.hero.eyebrow">Pali documentation</Translate>
         </p>
         <h1 className={styles.heroTitle}>
           <Translate id="homepage.hero.title">
@@ -111,12 +109,11 @@ export default function Home() {
     <Layout
       title={translate({
         id: 'homepage.layout.title',
-        message: 'Pali Wallet Docs',
+        message: 'Pali Docs',
       })}
       description={translate({
         id: 'homepage.layout.description',
-        message:
-          'Developer, user, and institutional documentation for Pali Wallet.',
+        message: 'Developer, user, and institutional documentation for Pali.',
       })}
     >
       <HomepageHeader />

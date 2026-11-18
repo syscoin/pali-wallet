@@ -77,7 +77,7 @@ try {
 
 <figure>
   <a className="pali-media-link" href="/img/screens/install-unlocked-wallet.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/install-unlocked-wallet.png" alt="Pali Wallet installé et déverrouillé dans un profil de navigateur propre" />
+  <img src="/img/screens/install-unlocked-wallet.png" alt="Pali installé et déverrouillé dans un profil de navigateur propre" />
 </a>
   <figcaption>Utilisez un profil de test propre lors de la capture des flux d'installation et de déverrouillage.</figcaption>
 </figure>
