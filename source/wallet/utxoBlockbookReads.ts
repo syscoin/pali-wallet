@@ -3,6 +3,7 @@ import {
   cancelResponseBody,
   ResponseSizeLimitError,
 } from '../shared/boundedHttp.ts';
+import { UTXO_REVIEW_FUNDING_CHANGED } from '../shared/utxoSendErrors.ts';
 import { UTXO_DETAIL_RESPONSE_BYTES } from '../shared/utxoTransactionDetailCache.ts';
 
 import { fetchUtxoRead } from './utxoReadRetry.ts';
@@ -23,7 +24,6 @@ const RESPONSE_BYTES = 1024 * 1024;
 const OPERATION_BYTES = RESPONSE_BYTES * 2;
 const READ_TIMEOUT_MS = 12_000;
 const FEE = '/api/v2/estimatefee/1';
-export const UTXO_REVIEW_FUNDING_CHANGED = 'UTXO_REVIEW_FUNDING_CHANGED';
 
 /** A background-owned Blockbook GET port for one captured wallet read. */
 export function createOwnedUtxoBlockbookRead(

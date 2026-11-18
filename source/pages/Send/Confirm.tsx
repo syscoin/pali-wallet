@@ -22,13 +22,13 @@ import {
 } from '../../shared/evmNativeMaximum';
 import { getEvmTransferCost } from '../../shared/evmTransferCost';
 import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../shared/smartAccountFeeQuote';
+import { UTXO_REVIEW_FUNDING_CHANGED } from '../../shared/utxoSendErrors';
 import {
   ICustomFeeParams,
   IFeeState,
   ITxState,
   TransactionType,
 } from '../../types/transactions';
-import { UTXO_REVIEW_FUNDING_CHANGED } from '../../wallet/utxoBlockbookReads';
 import {
   Button,
   Icon,

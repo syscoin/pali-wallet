@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount } from '../../../../source/utils/syscoinAssetAmount';
+import { UTXO_REVIEW_FUNDING_CHANGED } from '../../../../source/shared/utxoSendErrors';
 import { snapshotUtxoRbf } from '../../../../source/shared/utxoTransactionOptions';
 
 import { formatBaseUnits } from '../core/amounts';
@@ -85,7 +86,7 @@ function describe(error: unknown): string {
   if (
     code === 'CANCELLED' ||
     code === 'NOT_READY' ||
-    code === 'UTXO_REVIEW_FUNDING_CHANGED'
+    code === UTXO_REVIEW_FUNDING_CHANGED
   )
     return t('mobile.sendAssetViews.utxo.thisReviewIsNoLongerAvailableOpenANewReview');
   if (code === 'UTXO_OPTIONS_CHANGED') return t('mobile.sendAssetViews.utxo.transactionOptionsChangedReviewANewQuote');
