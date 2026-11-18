@@ -99,18 +99,18 @@ const publicCaller = () => ({
   scrollPositions: { 'smart-account-policy': 87 },
   walletScope: getWalletNavigationScope(),
 });
-const draft = async (caller = true) => {
+const draft = async (caller = true, amount = '3') => {
   await saveNavigationState(
     '/send/eth',
     undefined,
     {
-      formValues: { receiver: '0x' + '22'.repeat(20), amount: '3' },
+      formValues: { receiver: '0x' + '22'.repeat(20), amount },
       rawTransaction: 'discard-signed-payload',
       psbt: 'discard-psbt',
     },
     caller ? publicCaller() : undefined
   );
-  expect(mockStorage[KEY].state.formValues.amount).toBe('3');
+  expect(mockStorage[KEY].state.formValues.amount).toBe(amount);
 };
 const prepareSign = async (signOnly = true) => {
   const view = render(<Sign signOnly={signOnly} />);
@@ -242,79 +242,64 @@ it.each(['before opening status', 'while status is open'])(
   }
 );
 
-it.each(['cancel', 'error-close', 'success'])(
-  'sign approval %s discards an unsigned Send draft and retains its validated public caller',
-  async (mode) => {
+it.each([
+  ['cancellation', true],
+  ['error dismissal', true],
+  ['sign-only completion', true],
+  ['submission completion', false],
+] as const)(
+  'Sign %s preserves a separate Send draft saved while the popup is open',
+  async (mode, signOnly) => {
     await draft();
+    const result = signOnly ? 'public-test-response' : { txid: 'acknowledged' };
     mockEmitter.mockImplementation(async () => {
-      if (mode === 'error-close') throw new Error('signing refused');
-      return 'public-test-response';
+      if (mode === 'error dismissal') throw new Error('signing refused');
+      return result;
     });
-    await prepareSign();
-    if (mode === 'cancel')
+    await prepareSign(signOnly);
+    if (mode !== 'cancellation')
+      await act(async () =>
+        mockButtonHandlers[signOnly ? 'send.sign' : 'buttons.confirm']()
+      );
+    await draft(true, '4');
+    const saved = JSON.stringify(mockStorage[KEY]);
+    mockGet.mockClear();
+    mockSet.mockClear();
+    mockRemove.mockClear();
+
+    if (mode === 'cancellation')
       fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+    else if (mode === 'error dismissal')
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss error' }));
     else {
-      fireEvent.click(screen.getByRole('button', { name: 'send.sign' }));
-      if (mode === 'error-close')
-        fireEvent.click(
-          await screen.findByRole('button', { name: 'Dismiss error' })
-        );
-      else
-        await act(async () => {
-          await Promise.resolve();
-          jest.advanceTimersByTime(2000);
-          await Promise.resolve();
-        });
+      await act(async () => jest.advanceTimersByTime(2000));
+      expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+      expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+        'signPsbt.https://dapp.example',
+        result
+      );
     }
-    await waitFor(() => expect(mockClose).toHaveBeenCalledTimes(1));
-    const saved = await loadNavigationState();
-    expect(saved?.currentPath).toBe(POLICY);
-    expect(saved?.state.formValues).toBeUndefined();
-    expect(saved?.scrollPositions).toEqual({ 'smart-account-policy': 87 });
-    expect(JSON.stringify(saved)).not.toMatch(
-      /discard-signed-payload|discard-psbt|never-copy-this|formValues/
-    );
+    expect(mockClose).toHaveBeenCalledTimes(1);
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(mockRemove).not.toHaveBeenCalled();
+    expect(JSON.stringify(mockStorage[KEY])).toBe(saved);
+    expect((await loadNavigationState())?.state.formValues.amount).toBe('4');
   }
 );
 
-it('sign cancel removes a Send draft with no public caller instead of restoring a signing payload', async () => {
+it('Sign cancellation preserves a separate Send draft without a return route', async () => {
   await draft(false);
   await prepareSign();
   fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
-  await waitFor(() => expect(mockClose).toHaveBeenCalledTimes(1));
-  expect(await loadNavigationState()).toBeNull();
-  expect(mockStorage[KEY]).toBeUndefined();
-});
-
-it('waits for transaction cleanup to finish before closing the approval document', async () => {
-  await draft();
-  let finishRead!: (value: any) => void;
-  const snapshot = mockStorage[KEY];
-  mockGet.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        finishRead = resolve;
-      })
-  );
-  await prepareSign();
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
-  expect(mockClose).not.toHaveBeenCalled();
-  await act(async () => {
-    finishRead(snapshot);
-  });
   expect(mockClose).toHaveBeenCalledTimes(1);
-  expect(mockStorage[KEY].currentPath).toBe(POLICY);
+  expect((await loadNavigationState())?.state.formValues.amount).toBe('3');
 });
 
 it.each(['before render', 'after render'])(
-  'sign cancellation blocks approval %s while storage cleanup is pending',
+  'Sign cancellation blocks approval %s',
   async (phase) => {
     await draft();
-    let finishRead!: (value: any) => void;
-    const snapshot = mockStorage[KEY];
-    mockGet.mockImplementationOnce(
-      () => new Promise((resolve) => (finishRead = resolve))
-    );
     await prepareSign();
     const cancel = mockButtonHandlers['buttons.cancel'];
     const sign = mockButtonHandlers['send.sign'];
@@ -336,31 +321,22 @@ it.each(['before render', 'after render'])(
       (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
         .disabled
     ).toBe(true);
-    expect(mockClose).not.toHaveBeenCalled();
-    await act(async () => finishRead(snapshot));
     expect(mockClose).toHaveBeenCalledTimes(1);
     await act(async () => sign());
     expect(mockEmitter).not.toHaveBeenCalled();
   }
 );
 
-it('duplicate Sign cancellation shares one cleanup and one close', async () => {
+it('duplicate Sign cancellation closes once without reading navigation storage', async () => {
   await draft();
-  let finishRead!: (value: any) => void;
-  const snapshot = mockStorage[KEY];
-  mockGet
-    .mockClear()
-    .mockImplementationOnce(
-      () => new Promise((resolve) => (finishRead = resolve))
-    );
+  mockGet.mockClear();
   await prepareSign();
   const cancel = mockButtonHandlers['buttons.cancel'];
   act(() => {
     void cancel();
     void cancel();
   });
-  expect(mockGet).toHaveBeenCalledTimes(1);
-  await act(async () => finishRead(snapshot));
+  expect(mockGet).not.toHaveBeenCalled();
   expect(mockClose).toHaveBeenCalledTimes(1);
 });
 
@@ -385,18 +361,6 @@ it('a stale Cancel callback cannot close a Sign submission already in flight', a
   await act(async () => cancel());
   expect(mockGet).not.toHaveBeenCalled();
   expect(mockClose).not.toHaveBeenCalled();
-});
-
-it('failed Sign cancellation cleanup remains terminal', async () => {
-  await draft();
-  mockGet.mockRejectedValueOnce(new Error('Storage temporarily unavailable'));
-  await prepareSign();
-  const cancel = mockButtonHandlers['buttons.cancel'];
-  const sign = mockButtonHandlers['send.sign'];
-  await act(async () => cancel());
-  await act(async () => sign());
-  expect(mockEmitter).not.toHaveBeenCalled();
-  expect(mockClose).toHaveBeenCalledTimes(1);
 });
 
 it.each([true, false])(
@@ -449,8 +413,10 @@ it('a dapp send timeout consumes its approval and cannot be retried by a retaine
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockClose).not.toHaveBeenCalled();
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  await draft(true, '4');
   await act(async () => mockButtonHandlers['buttons.close']());
   expect(mockClose).toHaveBeenCalledTimes(1);
+  expect((await loadNavigationState())?.state.formValues.amount).toBe('4');
 });
 
 it('a proven dapp pre-send fee rejection permits an explicit fresh approval attempt', async () => {
@@ -497,7 +463,8 @@ it('only the latest failed Sign attempt owns its error exit', async () => {
   expect(mockGet).not.toHaveBeenCalled();
   await act(async () => secondTimer());
   expect(mockClose).toHaveBeenCalledTimes(1);
-  expect((await loadNavigationState())?.currentPath).toBe(POLICY);
+  expect(mockGet).not.toHaveBeenCalled();
+  expect((await loadNavigationState())?.state.formValues.amount).toBe('3');
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
 });
 
@@ -527,25 +494,20 @@ it('an old Sign error cannot replace successful retry completion', async () => {
   );
 });
 
-it('the current Sign error exit claims dismissal before delayed cleanup', async () => {
+it('the current Sign error exit closes once and blocks a retained retry', async () => {
   await draft();
   mockEmitter.mockRejectedValueOnce(new Error('Device signing cancelled'));
   await prepareSign();
   const sign = mockButtonHandlers['send.sign'];
   await act(async () => sign());
   const timer = lastCloseTimer();
-  let finishRead!: (value: any) => void;
-  const snapshot = mockStorage[KEY];
-  mockGet.mockImplementationOnce(
-    () => new Promise((resolve) => (finishRead = resolve))
-  );
+  mockGet.mockClear();
   act(() => {
     void timer();
     void sign();
     void timer();
   });
   expect(mockEmitter).toHaveBeenCalledTimes(1);
-  expect(mockClose).not.toHaveBeenCalled();
   expect(
     (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
       .disabled
@@ -557,8 +519,8 @@ it('the current Sign error exit claims dismissal before delayed cleanup', async 
       }) as HTMLButtonElement
     ).disabled
   ).toBe(true);
-  await act(async () => finishRead(snapshot));
   expect(mockClose).toHaveBeenCalledTimes(1);
+  expect(mockGet).not.toHaveBeenCalled();
 });
 
 it('a Sign error timer is inert after manual cancellation', async () => {
@@ -593,23 +555,6 @@ it('unmount invalidates a pending Sign error exit and retained Sign handler', as
   expect(mockClose).not.toHaveBeenCalled();
 });
 
-it('unmount during Sign error cleanup cannot close a later page', async () => {
-  await draft();
-  mockEmitter.mockRejectedValueOnce(new Error('Device signing cancelled'));
-  const view = await prepareSign();
-  await act(async () => mockButtonHandlers['send.sign']());
-  let finishRead!: (value: any) => void;
-  const snapshot = mockStorage[KEY];
-  mockGet.mockImplementationOnce(
-    () => new Promise((resolve) => (finishRead = resolve))
-  );
-  act(() => void lastCloseTimer()());
-  view.unmount();
-  await act(async () => finishRead(snapshot));
-  expect(mockClose).not.toHaveBeenCalled();
-  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
-});
-
 it('the current Sign error still exits after four seconds without a retry', async () => {
   await draft();
   mockEmitter.mockRejectedValueOnce(new Error('Device signing cancelled'));
@@ -618,23 +563,6 @@ it('the current Sign error still exits after four seconds without a retry', asyn
   await act(async () => jest.advanceTimersByTime(3999));
   expect(mockClose).not.toHaveBeenCalled();
   await act(async () => jest.advanceTimersByTime(1));
-  expect(mockClose).toHaveBeenCalledTimes(1);
-});
-
-it('failed timed Sign cleanup stays terminal and closes once', async () => {
-  await draft();
-  mockEmitter.mockRejectedValueOnce(new Error('Device signing cancelled'));
-  await prepareSign();
-  const sign = mockButtonHandlers['send.sign'];
-  await act(async () => sign());
-  const timer = lastCloseTimer();
-  mockGet.mockRejectedValueOnce(new Error('Storage unavailable'));
-  await act(async () => timer());
-  await act(async () => {
-    await timer();
-    await sign();
-  });
-  expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockClose).toHaveBeenCalledTimes(1);
 });
 
@@ -670,19 +598,14 @@ it.each(['resolved', 'rejected'])(
   }
 );
 
-it('unmount during successful Sign cleanup cannot dispatch or close a later page', async () => {
+it('unmount invalidates a scheduled successful Sign completion', async () => {
   await draft();
   mockEmitter.mockResolvedValueOnce('test-response');
   const view = await prepareSign();
   await act(async () => mockButtonHandlers['send.sign']());
-  let finishRead!: (value: any) => void;
-  const snapshot = mockStorage[KEY];
-  mockGet.mockImplementationOnce(
-    () => new Promise((resolve) => (finishRead = resolve))
-  );
-  act(() => void lastCloseTimer(2000)());
+  const completion = lastCloseTimer(2000);
   view.unmount();
-  await act(async () => finishRead(snapshot));
+  await act(async () => completion());
   expect(mockClose).not.toHaveBeenCalled();
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
 });

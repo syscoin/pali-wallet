@@ -257,6 +257,7 @@ describe('PSBT approval context', () => {
     return { txid: id };
   };
   beforeEach(() => {
+    jest.mocked(clearTransactionNavigationState).mockClear();
     jest.mocked(withWalletBackend).mockClear();
     Object.defineProperty(global, 'crypto', {
       value: webcrypto,
@@ -1436,20 +1437,43 @@ describe('PSBT approval context', () => {
     expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
   });
 
-  it('does not classify a sender timeout as safe even if its error carries an earlier safe marker', async () => {
-    jest.mocked(globalThis.fetch).mockRejectedValueOnce(
-      Object.assign(new Error('Network request timed out'), {
+  it.each(['wallet', 'dapp'])(
+    'keeps a %s POST timeout uncertain without clearing draft navigation',
+    async (caller) => {
+      const quote =
+        caller === 'wallet'
+          ? await wallet.getEstimateSysTransactionFee({ amount: '1' })
+          : undefined;
+      const fetch = jest.mocked(globalThis.fetch);
+      const backend = fetch.getMockImplementation()!;
+      const timeout = Object.assign(new Error('Network request timed out'), {
         transactionNotBroadcast: true,
-      })
-    );
-    await expect(
-      wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
-    ).rejects.toMatchObject({
-      message: 'Transaction submission could not be verified.',
-      transactionNotBroadcast: false,
-    });
-    expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
-  });
+      });
+      fetch.mockImplementation(async (url, init) => {
+        if (init?.method === 'POST') throw timeout;
+        return backend(url, init);
+      });
+
+      await expect(
+        quote
+          ? wallet.signSendAndSaveTransaction({
+              psbt: quote.psbt,
+              ordinaryWalletSend: true,
+              utxoFeeReview: quote.utxoFeeReview,
+            })
+          : wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
+      ).rejects.toMatchObject({
+        code: 'UTXO_SUBMISSION_UNKNOWN',
+        message: 'Transaction submission could not be verified.',
+        transactionNotBroadcast: false,
+        txid: defaultTxid,
+      });
+      expect(
+        fetch.mock.calls.filter(([, init]) => init?.method === 'POST')
+      ).toHaveLength(1);
+      expect(clearTransactionNavigationState).not.toHaveBeenCalled();
+    }
+  );
 
   it('extracts an ordinary finalized PSBT with the fee guard before invoking the sender', async () => {
     const psbt = syntheticPsbt(BigInt(1000));

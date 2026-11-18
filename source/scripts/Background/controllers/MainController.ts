@@ -10752,17 +10752,6 @@ class MainController {
       }
     } catch (error) {
       const disposition = submission.read();
-      // A request that never dispatched leaves draft navigation to its UI owner.
-      if (!disposition.transactionNotBroadcast) {
-        try {
-          await clearTransactionNavigationState();
-        } catch (cleanupError) {
-          console.error(
-            '[MainController] Failed to clear navigation state on error:',
-            cleanupError
-          );
-        }
-      }
       throw Object.assign(
         new Error(
           error instanceof Error
