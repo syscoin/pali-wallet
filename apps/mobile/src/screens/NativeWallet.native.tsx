@@ -351,7 +351,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const [notificationReturn, setNotificationReturn] = useState<NotificationReturn | null>(null);
   const permissionReturnContext = useRef<() => NotificationReturnContext | null>(() => null);
   const cancelNotificationReturn = useCallback(() => { permissionReturn.discard(); setNotificationReturn(null); }, [permissionReturn]);
-  const revoke = useCallback((background = false) => {
+  const revoke = useCallback((background = false, preserveBackupOutcome = background) => {
     // The AppState owner records exact Suite suspension before authority.lock
     // synchronously revalidates and removes the old request consent.
     const local = controllersRef.current;
@@ -373,7 +373,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     removal?.local.removal.cancel();
     const retainRemoval = removal && removal.phase !== 'reviewing';
     if (removal && !retainRemoval) { removalRef.current = null; setRemovalScope(null); }
-    lockNoteRestore(background);
+    lockNoteRestore(preserveBackupOutcome);
     rootOrigin.current = null;
     accountNavigation.current = null; setPortfolioSend(null); setPortfolioDetail(null);
     networkReturnOwner.current = null; setNetworkReturn(null); setReceiveContinuation(undefined);
@@ -384,14 +384,15 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     controllersRef.current?.keyExport.cancel(); controllersRef.current?.backup.cancel(); controllersRef.current?.authority.lock();
     Keyboard.dismiss(); clearSecrets(); setSendDraft(null); setSmartResumeId(null); setInfrastructureResumeId(null); setInfrastructureReviewNext(false); if (!recoveryRef.current && !retainRemoval) setStage('choose'); setError('');
   }, [clearSecrets, lockNoteRestore, controllersRef, permissionReturn]);
-  const lockWallet = useCallback(() => {
+  const lockWallet = useCallback((reason?: 'idle') => {
     // Deliberate and idle locks survive reopening; background retirement does not.
-    try { void publicViewLock.lock().catch(() => undefined); } finally { revoke(); }
+    try { void publicViewLock.lock().catch(() => undefined); } finally { revoke(false, reason === 'idle'); }
   }, [revoke]);
+  const lockIdleWallet = useCallback(() => lockWallet('idle'), [lockWallet]);
   useLayoutEffect(() => {
-    if (!pausedIdle.current && !updateSession.current && mounted.current && AppState.currentState === 'active' && securityPreferences.getSnapshot().status === 'ready') custodyIdle.begin(screenToken.current, lockWallet);
+    if (!pausedIdle.current && !updateSession.current && mounted.current && AppState.currentState === 'active' && securityPreferences.getSnapshot().status === 'ready') custodyIdle.begin(screenToken.current, lockIdleWallet);
   });
-  useLayoutEffect(() => { const owner = screenToken.current; if (!pausedIdle.current) custodyIdle.begin(owner, lockWallet); return () => custodyIdle.stop(owner); }, [lockWallet]);
+  useLayoutEffect(() => { const owner = screenToken.current; if (!pausedIdle.current) custodyIdle.begin(owner, lockIdleWallet); return () => custodyIdle.stop(owner); }, [lockIdleWallet]);
   const exit = useCallback(() => { abandonedEmptySetup.current = false; cancelNoteRestore(); revoke(); onExit(); }, [cancelNoteRestore, onExit, revoke]);
   useLayoutEffect(() => {
     finishAbandonedSetup.current = () => {
@@ -1346,9 +1347,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const resume = () => {
       if (updateSession.current || storageResetOwner.current || publicViewLock.getSnapshot().phase !== 'unlocked' || !mounted.current || AppState.currentState !== 'active') return;
       const restoreIdle = pausedIdle.current; pausedIdle.current = null;
-      if (restoreIdle && !restoreIdle()) { lockWallet(); return; }
+      if (restoreIdle && !restoreIdle()) { lockIdleWallet(); return; }
       if (finishAbandonedSetup.current()) return;
-      custodyIdle.begin(screenToken.current, lockWallet);
+      custodyIdle.begin(screenToken.current, lockIdleWallet);
       const local = controllersRef.current;
       // The removal layout effect owns retirement and fresh installation.
       // Resuming this bundle can race that effect and revive retired producers.
@@ -1396,7 +1397,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       lifecycle.remove(); blur?.remove(); focus.remove(); pausedIdle.current = null; custodyIdle.stop(ownedToken);
       void nativeLifecycle.release(ownedToken).catch(() => undefined);
     };
-  }, [install, revoke, lockWallet, clearSecrets, controllersRef]);
+  }, [install, revoke, lockIdleWallet, clearSecrets, controllersRef]);
 
   const openRemoval = () => {
     const local = controllersRef.current, authority = local?.authority.getSnapshot();

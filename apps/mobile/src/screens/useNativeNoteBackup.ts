@@ -78,7 +78,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     cancel();
     return true;
   };
-  const lock = useCallback((background = false) => {
+  const lock = useCallback((preserveOutcome = false) => {
     const owned = route.current;
     owned?.authentication.retire();
     if (owned?.handoff) return;
@@ -95,7 +95,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
       }
     }
     cancel();
-    if (background) interruptedBackup.current = interrupted;
+    if (preserveOutcome) interruptedBackup.current = interrupted;
   }, [cancel]);
   useLayoutEffect(() => () => { route.current?.authentication.retire(); route.current?.flow?.cancel(); route.current?.exporter?.cancel(); route.current = null; }, []);
   const current = (owned: Route) => route.current === owned && getOwner() === owned.owner;

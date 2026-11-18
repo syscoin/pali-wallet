@@ -568,6 +568,10 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './useRealShell': { useRealShell: () => ({ tab: shellTab, navigation: {}, goBack() {}, select(tab: string) { shellTab = tab; notificationRoutes.push({ tab, identity: 'tab-switch' }); }, restoreRoot(tab: string, identity: string) { shellTab = tab; notificationRoutes.push({ tab, identity }); } }) },
     './AllNetworksActivity': { AllNetworksActivity: 'AllNetworksActivity' },
   });
+  if (idleClock) dependencies['../platform/credential'] = {
+    async authorizePublicView(signal: AbortSignal, check: () => void) { signal.throwIfAborted(); check(); },
+    isNativeCredentialPromptActive: () => false,
+  };
   if (restoreFailure) {
     const file = await createNoteBackupCodec({ crypto: globalThis.crypto, assertCurrent() {} }).encrypt({
       format: 'pali-private-notes', version: 1, createdAt: 1,
@@ -1511,6 +1515,42 @@ test('ambiguous note restore retains its recovery instructions on the public reo
     assert.equal(button(retry, 'Open wallet').props.disabled, false);
     assert(all(retry).some(node => node.props.title === 'Restore could not be confirmed'), 'a failed unlock must retain the restore warning');
     assert.equal(failure.commits, 1, 'unlock retry must not repeat the restore');
+  } finally { acknowledgement.resolve(); f.dispose(); }
+});
+
+test('elapsed auto-lock preserves an interrupted restore outcome for the same wallet after unlock', async () => {
+  const acknowledgement = Promise.withResolvers<void>();
+  const restore = { commits: 0, wait: acknowledgement.promise };
+  const clock = { minutes: 5, time: 0 };
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, true, undefined, undefined,
+    quietActivityNotifications, undefined, undefined, restore, undefined, undefined, clock);
+  try {
+    const tools = all(f.render()).find(node => node.type === 'RealTools'); assert(tools);
+    (tools.props.onPrivateNotes as () => void)();
+    (f.render().props.onRestore as () => void)();
+    await (f.render().props.onChoose as () => Promise<void>)();
+    await (f.render().props.onOpen as (password: string) => Promise<void>)('Portable test backup password');
+    const review = f.render();
+    const step = review.props.step as { phase: string; preview: { id: string } };
+    assert.equal(step.phase, 'review');
+    const pending = (review.props.onRestore as (id: string) => Promise<void>)(step.preview.id);
+    assert.equal(restore.commits, 1);
+
+    clock.time = 10000; f.emit('change', 'background'); f.render();
+    clock.time = 310000; f.emit('change', 'active'); await lifecycleTick();
+    const locked = f.render();
+    assert.equal(f.publicViewLock.getSnapshot().phase, 'locked');
+    assert.notEqual(locked.type, 'NativeNoteRestore');
+    press(button(locked, 'Unlock wallet'));
+    await lifecycleTick();
+    assert.equal(f.publicViewLock.getSnapshot().phase, 'unlocked');
+    const outcome = f.render();
+    assert.equal(outcome.type, 'NativeNoteRestore');
+    assert.equal((outcome.props.step as { phase: string }).phase, 'unconfirmed');
+
+    acknowledgement.resolve(); await pending;
+    assert.equal((f.render().props.step as { phase: string }).phase, 'unconfirmed');
+    assert.equal(restore.commits, 1);
   } finally { acknowledgement.resolve(); f.dispose(); }
 });
 
