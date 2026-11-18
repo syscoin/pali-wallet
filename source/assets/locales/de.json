@@ -1051,6 +1051,7 @@
     "unlockConfirmationFailed": "Das Entsperren der Wallet konnte nicht bestätigt werden. Bitte versuche es erneut.",
     "importUsing": "Passwort vergessen? Mit Seed wiederherstellen",
     "wrongPassword": "Falsches Passwort",
+    "unlockRateLimited": "Zu viele fehlgeschlagene Versuche. Versuche es {{retryTime}} erneut.",
     "welcomeTo": "WILLKOMMEN BEI"
   },
   "tokens": {

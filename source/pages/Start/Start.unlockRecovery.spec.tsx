@@ -48,6 +48,7 @@ const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 const originalMessageChannel = globalThis.MessageChannel;
 const originalResizeObserver = globalThis.ResizeObserver;
 let records: Record<string, any>;
+let mockLanguage: 'en' | 'fr' = 'en';
 const PASSWORD = 'Synthetic-only-Password123!';
 const ADDRESS = '0x1111111111111111111111111111111111111111';
 const NETWORK = {
@@ -101,7 +102,21 @@ jest.mock('hooks/useUtils', () => ({
 }));
 jest.mock('hooks/useAppReady', () => ({ useAppReady: jest.fn() }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
+  useTranslation: () => ({
+    i18n: { language: mockLanguage },
+    t: (key: string, options?: { retryTime: string }) => {
+      if (mockLanguage === 'fr') {
+        const { start } = jest.requireActual('assets/locales/fr.json');
+        if (key === 'start.wrongPassword') return start.wrongPassword;
+        if (key === 'start.unlockRateLimited')
+          return start.unlockRateLimited.replace(
+            '{{retryTime}}',
+            options?.retryTime
+          );
+      }
+      return key;
+    },
+  }),
 }));
 jest.mock('components/Icon/Icon', () => ({
   LoadingSvg: () => null,
@@ -138,6 +153,7 @@ const mount = () =>
   );
 beforeEach(() => {
   jest.clearAllMocks();
+  mockLanguage = 'en';
   jest.spyOn(console, 'log').mockImplementation();
   jest.spyOn(console, 'warn').mockImplementation();
   jest.spyOn(console, 'error').mockImplementation();
@@ -348,7 +364,7 @@ it('ordinary rejected password remains on the locked screen and permits retry', 
     expect(document.getElementById('unlock-btn')).not.toBeDisabled()
   );
   expect(screen.getByTestId('route').textContent).toBe('/');
-  expect(screen.getByText('Invalid password')).toBeVisible();
+  expect(screen.getByText('start.wrongPassword')).toBeVisible();
 });
 it('ordinary recovery without an outstanding unlock reaches the real import form', async () => {
   mount();
@@ -388,7 +404,7 @@ it('allows recovery after a failed pending unlock without a stale success redire
       screen.getByRole('button', { name: 'start.importUsing' })
     ).toBeEnabled()
   );
-  expect(screen.getByText('Invalid password')).toBeVisible();
+  expect(screen.getByText('start.wrongPassword')).toBeVisible();
   await beginRecovery();
   expect(screen.getByTestId('route').textContent).toBe('/import');
   expect(document.getElementById('import-wallet-input')).toBeVisible();
@@ -539,7 +555,8 @@ it.each([true, false])(
   }
 );
 
-it('keeps the ordinary real-message wrong-password response and subsequent recovery usable', async () => {
+it('localizes an ordinary wrong password from the worker transport and keeps recovery usable', async () => {
+  mockLanguage = 'fr';
   const replies = realTimedTransport();
   mount();
   await beginUnlock();
@@ -550,10 +567,41 @@ it('keeps the ordinary real-message wrong-password response and subsequent recov
     release(false);
     await unlock.catch(() => undefined);
   });
-  expect(screen.getByText('Invalid password')).toBeVisible();
+  expect(screen.getByText('Mot de passe incorrect')).toBeVisible();
+  expect(screen.queryByText('Invalid password')).toBeNull();
   expect(screen.queryByText('Network request timed out')).toBeNull();
   expect(document.getElementById('import-wallet-link')).toBeEnabled();
   await beginRecovery();
+});
+
+it('localizes the worker retry interval and permits another attempt after it expires', async () => {
+  mockLanguage = 'fr';
+  let now = 1_700_000_000_000;
+  jest.spyOn(Date, 'now').mockImplementation(() => now);
+  wallet.MAX_FAILED_ATTEMPTS = 1;
+  wallet.LOCKOUT_DURATION = 1000;
+  realTimedTransport();
+  mount();
+  await beginUnlock();
+  await act(async () => release(false));
+  await screen.findByText('Mot de passe incorrect');
+
+  const user = userEvent.setup();
+  const button = screen.getByRole('button', { name: 'buttons.unlock' });
+  await user.click(button);
+  await waitFor(() =>
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      'Trop de tentatives ont échoué. Réessayez dans 1 seconde.'
+    )
+  );
+  expect(button).toBeEnabled();
+  expect(keyring.unlock).toHaveBeenCalledTimes(1);
+  expect(wallet.isUnlocked()).toBe(false);
+
+  now += 1000;
+  await user.click(button);
+  await waitFor(() => expect(keyring.unlock).toHaveBeenCalledTimes(2));
+  await act(async () => release(false));
 });
 
 it('rejects queued recovery when its admitted wallet session changes', async () => {

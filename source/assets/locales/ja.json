@@ -1051,6 +1051,7 @@
     "unlockConfirmationFailed": "ウォレットのロック解除を確認できませんでした。もう一度お試しください。",
     "importUsing": "パスワードをお忘れですか？シードで復元",
     "wrongPassword": "パスワードが間違っています",
+    "unlockRateLimited": "試行回数の上限に達しました。{{retryTime}}にもう一度お試しください。",
     "welcomeTo": "ようこそ"
   },
   "tokens": {

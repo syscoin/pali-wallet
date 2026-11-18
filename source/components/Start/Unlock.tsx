@@ -107,16 +107,26 @@ const Unlock: React.FC<{
       if (!mounted.current) return;
       setIsLoading(false);
 
-      // Extract the actual error message
       const errorMsg = extractErrorMessage(e, t('start.wrongPassword'));
-
-      // Check if it's a rate limiting error
       if (errorMsg.includes('Too many failed attempts')) {
-        // Show rate limiting error as an alert for better visibility
-        alert.error(errorMsg);
+        const seconds =
+          /^Too many failed attempts\. Please wait (\d+) seconds before trying again\.$/.exec(
+            errorMsg
+          )?.[1];
+        const retryTime =
+          seconds === undefined
+            ? undefined
+            : new Intl.RelativeTimeFormat(language).format(
+                Number(seconds),
+                'second'
+              );
+        alert.error(
+          retryTime ? t('start.unlockRateLimited', { retryTime }) : errorMsg
+        );
       } else {
-        // For regular password errors, show in the form
-        setErrorMessage(errorMsg);
+        setErrorMessage(
+          errorMsg === 'Invalid password' ? t('start.wrongPassword') : errorMsg
+        );
       }
     } finally {
       submitting.current = false;

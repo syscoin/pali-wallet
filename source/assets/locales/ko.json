@@ -1051,6 +1051,7 @@
     "unlockConfirmationFailed": "지갑 잠금 해제를 확인할 수 없습니다. 다시 시도하세요.",
     "importUsing": "비밀번호를 잊으셨나요? 시드로 복구",
     "wrongPassword": "잘못된 비밀번호",
+    "unlockRateLimited": "실패 횟수가 너무 많습니다. {{retryTime}} 다시 시도하세요.",
     "welcomeTo": "환영합니다"
   },
   "tokens": {

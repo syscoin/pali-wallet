@@ -1051,6 +1051,7 @@
     "unlockConfirmationFailed": "Le déverrouillage du portefeuille n’a pas pu être confirmé. Réessayez.",
     "importUsing": "Mot de passe oublié ? Récupérez avec la phrase",
     "wrongPassword": "Mot de passe incorrect",
+    "unlockRateLimited": "Trop de tentatives ont échoué. Réessayez {{retryTime}}.",
     "welcomeTo": "BIENVENUE SUR"
   },
   "tokens": {

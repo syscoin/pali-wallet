@@ -1051,6 +1051,7 @@
     "unlockConfirmationFailed": "Wallet unlock could not be confirmed. Please try again.",
     "importUsing": "Forgot password? Recover with seed",
     "wrongPassword": "Wrong password",
+    "unlockRateLimited": "Too many failed attempts. Try again {{retryTime}}.",
     "welcomeTo": "WELCOME TO"
   },
   "tokens": {

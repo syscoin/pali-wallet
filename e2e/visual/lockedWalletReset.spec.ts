@@ -173,7 +173,9 @@ test('locked wallet can explicitly erase and create a different wallet without i
           .fill('WrongLockedResetSyntheticOnly!2026');
         await page.locator('#unlock-btn').click();
         await expect(
-          page.locator('#login').getByText('Invalid password', { exact: true })
+          page
+            .locator('#login')
+            .getByText(en.start.wrongPassword, { exact: true })
         ).toBeVisible();
         expect(await publicState(page)).toEqual({
           ...(observations.original as any),

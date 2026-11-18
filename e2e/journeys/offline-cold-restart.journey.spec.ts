@@ -69,7 +69,7 @@ test('offline cold browser restart stays locked and unlocks the same synthetic a
       await expect(
         wallet!.page
           .locator('#login')
-          .getByText('Invalid password', { exact: true })
+          .getByText(en.start.wrongPassword, { exact: true })
       ).toBeVisible();
       await locked();
     };

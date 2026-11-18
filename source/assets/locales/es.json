@@ -1051,6 +1051,7 @@
     "unlockConfirmationFailed": "No se pudo confirmar el desbloqueo de la cartera. Inténtalo de nuevo.",
     "importUsing": "¿Olvidaste la contraseña? Recupera con la semilla",
     "wrongPassword": "Contraseña incorrecta",
+    "unlockRateLimited": "Demasiados intentos fallidos. Inténtalo de nuevo {{retryTime}}.",
     "welcomeTo": "BIENVENIDO A"
   },
   "tokens": {

@@ -1051,6 +1051,7 @@
     "unlockConfirmationFailed": "Não foi possível confirmar o desbloqueio da carteira. Tente novamente.",
     "importUsing": "Esqueceu a senha? Recupere com a seed",
     "wrongPassword": "Senha incorreta",
+    "unlockRateLimited": "Muitas tentativas malsucedidas. Tente novamente {{retryTime}}.",
     "welcomeTo": "BEM-VINDO AO"
   },
   "tokens": {
