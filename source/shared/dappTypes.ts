@@ -3,6 +3,7 @@ import { getDappOrigin } from '../utils/dappOrigin.ts';
 import type { INetwork, KeyringAccountType } from '../types/network';
 
 export const MAX_DAPP_ORIGIN_LENGTH = 2048;
+export const DAPP_GRANT_REVIEW_CHANGED = 'PALI_DAPP_GRANT_REVIEW_CHANGED';
 
 /** Persisted grants retain their existing extension data shape. */
 export type DappGrant = {
@@ -15,6 +16,24 @@ export type DappGrant = {
   logo?: string;
   utxoAccount?: { slip44: number; xpub: string };
 };
+
+/** Identify the stored grant shown in a connection review across extension IPC. */
+export const dappGrantIdentity = (grant: DappGrant): string =>
+  JSON.stringify([
+    grant.host,
+    grant.date,
+    grant.accountId,
+    grant.accountType,
+    grant.chain,
+    grant.chainId,
+    grant.utxoAccount?.slip44,
+    grant.utxoAccount?.xpub,
+  ]);
+
+export type DappRevocationOptions = Readonly<{
+  allowAlreadyDisconnected: boolean;
+  expectedGrant?: string;
+}>;
 
 export type DappAccountSelection = {
   address: string;

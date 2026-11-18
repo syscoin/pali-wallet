@@ -79,6 +79,7 @@ CopyIcon.displayName = 'CopyIcon';
 
 interface ISyscoinTransactionDetailsProps {
   hash: string;
+  ownedReplacementTarget?: true;
   routeSummaryObservation?: UtxoSummaryStatus;
   tx?: ISysTransaction;
 }
@@ -86,6 +87,7 @@ interface ISyscoinTransactionDetailsProps {
 export const SyscoinTransactionDetails = ({
   hash,
   tx,
+  ownedReplacementTarget,
   routeSummaryObservation,
 }: ISyscoinTransactionDetailsProps) => {
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
@@ -574,7 +576,9 @@ export const SyscoinTransactionDetails = ({
       {!isConfirmed &&
         !isTxCanceled &&
         !hasTokenInfo &&
-        (isTxSent || nativeAccountChange?.startsWith('-')) && (
+        (ownedReplacementTarget ||
+          isTxSent ||
+          nativeAccountChange?.startsWith('-')) && (
           <UtxoReplacementActions
             key={scope}
             currency={currency ?? ''}

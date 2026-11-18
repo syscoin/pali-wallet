@@ -800,6 +800,7 @@
     "connectedSites": "VERBUNDENE SEITEN",
     "isConnected": "Dies sind vertrauenswürdige Websites, mit denen Sie sich verbinden und Ihre öffentlichen Kontoinformationen teilen können.",
     "editConnection": "Verbindung bearbeiten",
+    "connectionReviewChanged": "Die Verbindung wurde geändert. Öffne sie erneut, um sie zu überprüfen.",
     "deleteConnected": "Verbundene Seite löschen",
     "permissions": "Berechtigungen",
     "errorCreatingHardWallet": "Fehler beim Erstellen der Hardware-Wallet.",

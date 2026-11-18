@@ -800,6 +800,7 @@
     "connectedSites": "CONNECTED SITES",
     "isConnected": "These are trusted sites you can connect to and share your public account information with.",
     "editConnection": "Edit connection",
+    "connectionReviewChanged": "Connection changed. Open it again to review.",
     "deleteConnected": "Delete connected site",
     "permissions": "Permissions",
     "errorCreatingHardWallet": "Error creating hardware wallet.",

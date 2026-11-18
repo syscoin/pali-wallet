@@ -800,6 +800,7 @@
     "connectedSites": "接続済みサイト",
     "isConnected": "これらは接続してアカウントの公開情報を共有できる信頼できるサイトです。",
     "editConnection": "接続を編集",
+    "connectionReviewChanged": "接続が変更されました。もう一度開いて確認してください。",
     "deleteConnected": "接続済みサイトを削除",
     "permissions": "権限",
     "errorCreatingHardWallet": "ハードウェアウォレットの作成エラー。",

@@ -800,6 +800,7 @@
     "connectedSites": "已连接网站",
     "isConnected": "这些是您可以连接并与之分享账户公共信息的可信网站。",
     "editConnection": "编辑连接",
+    "connectionReviewChanged": "连接已更改。请重新打开以查看。",
     "deleteConnected": "删除已连接的网站",
     "permissions": "权限",
     "errorCreatingHardWallet": "创建硬件钱包时出错。",

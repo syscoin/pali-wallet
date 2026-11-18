@@ -7,7 +7,10 @@ import { IOmmitedAccount } from 'state/vault/types';
 import { KeyringAccountType, INetwork } from 'types/network';
 
 export type { DappAccountSelection as IDAppAccountSelectionContext } from '../shared/dappTypes';
-import type { DappAccountSelection } from '../shared/dappTypes';
+import type {
+  DappAccountSelection,
+  DappRevocationOptions,
+} from '../shared/dappTypes';
 
 export interface IDAppController {
   /** Internal retirement of the sessions captured for one removed account. */
@@ -90,10 +93,7 @@ export interface IDAppController {
    * Removes a connection with a DApp
    * @emits disconnect
    */
-  revoke: (
-    host: string,
-    options: Readonly<{ allowAlreadyDisconnected: boolean }>
-  ) => Promise<void>;
+  revoke: (host: string, options: DappRevocationOptions) => Promise<void>;
   /**
    * Sets whether a DApp has an open popup
    */

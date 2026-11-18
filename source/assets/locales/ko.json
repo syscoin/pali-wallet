@@ -800,6 +800,7 @@
     "connectedSites": "연결된 사이트",
     "isConnected": "이것들은 연결하고 계정의 공개 정보를 공유할 수 있는 신뢰할 수 있는 사이트입니다.",
     "editConnection": "연결 편집",
+    "connectionReviewChanged": "연결이 변경되었습니다. 다시 열어 확인하세요.",
     "deleteConnected": "연결된 사이트 삭제",
     "permissions": "권한",
     "errorCreatingHardWallet": "하드웨어 지갑 생성 오류.",

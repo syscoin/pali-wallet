@@ -1625,9 +1625,12 @@ class MainController {
   }
 
   public async getUtxoReplacementActions(
-    txid: string
+    txid: string,
+    expectedScope?: IWalletNavigationScope
   ): Promise<ExtensionUtxoReplacementActions> {
     try {
+      if (expectedScope !== undefined)
+        this.assertAssetMutationContext(expectedScope);
       const signing = this.captureReplacementSigning();
       const predecessor = await this.readUtxoReplacementCandidate(
         signing,

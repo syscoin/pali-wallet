@@ -1,10 +1,12 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
 import { useUtils } from 'hooks/useUtils';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import type { ExtensionUtxoReplacementActions } from 'scripts/Background/controllers/utxoReplacementReview';
 import { RootState } from 'state/store';
 import { selectActiveAccountTransactions } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
@@ -43,19 +45,6 @@ export const DetailsView = () => {
     accountTransactions[
       isBitcoinBased ? TransactionsType.Syscoin : TransactionsType.Ethereum
     ]?.[activeNetwork.chainId] || [];
-  const tabTxid = isBitcoinBased
-    ? readUtxoReplacementTabTxid(location.search)
-    : undefined;
-  const hash =
-    typeof rawHash === 'string' && rawHash.trim()
-      ? rawHash
-      : tabTxid &&
-        transactions.some(
-          (transaction) => transaction.txid?.toLowerCase() === tabTxid
-        )
-      ? tabTxid
-      : undefined;
-
   const routeScope = location.state?.walletScope;
   const isCurrentRoute =
     routeScope?.account === walletScope.account &&
@@ -66,6 +55,64 @@ export const DetailsView = () => {
   if (publicEntry.current.key !== location.key)
     publicEntry.current = { key: location.key, scope: walletScope };
   const publicScope = routeScope || publicEntry.current.scope;
+  const routeHash =
+    typeof rawHash === 'string' && rawHash.trim() ? rawHash : undefined;
+  const tabTxid =
+    !routeHash &&
+    isBitcoinBased &&
+    publicScope.account === walletScope.account &&
+    publicScope.network === walletScope.network
+      ? readUtxoReplacementTabTxid(location.search)
+      : undefined;
+  const cachedTabTarget =
+    tabTxid &&
+    transactions.some(
+      (transaction) => transaction.txid?.toLowerCase() === tabTxid
+    );
+  const lookupKey =
+    tabTxid && !cachedTabTarget
+      ? JSON.stringify([
+          location.key,
+          tabTxid,
+          walletScope.account,
+          walletScope.network,
+          accountTransactions.utxoActivityReset?.[activeNetwork.chainId]
+            ?.revision,
+        ])
+      : undefined;
+  const [tabLookup, setTabLookup] = useState<{
+    eligible: boolean;
+    key: string;
+  }>();
+  useEffect(() => {
+    if (!lookupKey || !tabTxid) return;
+    let live = true;
+    const finish = (eligible: boolean) => {
+      if (live) setTabLookup({ key: lookupKey, eligible });
+    };
+    void controllerEmitter(
+      ['wallet', 'getUtxoReplacementActions'],
+      [tabTxid, { account: walletScope.account, network: walletScope.network }],
+      15_000,
+      false
+    ).then(
+      (value: ExtensionUtxoReplacementActions) =>
+        finish(
+          value?.hardware === true &&
+            (value.speedUp === true || value.cancel === true)
+        ),
+      () => finish(false)
+    );
+    return () => {
+      live = false;
+    };
+  }, [lookupKey, tabTxid, walletScope.account, walletScope.network]);
+  const checkingTabTarget = !!lookupKey && tabLookup?.key !== lookupKey;
+  const ownedReplacementTarget =
+    !!lookupKey && tabLookup?.key === lookupKey && tabLookup.eligible;
+  const hash =
+    routeHash ??
+    (cachedTabTarget || ownedReplacementTarget ? tabTxid : undefined);
   const payloadChain = (nftData || location.state)?.chainId;
   const isCurrentPublicPayload =
     publicScope.account === walletScope.account &&
@@ -120,15 +167,18 @@ export const DetailsView = () => {
       : undefined;
 
   useEffect(() => {
-    if (!hasDetails) navigateBack(navigate, location);
-  }, [hasDetails, navigate, location]);
+    if (!hasDetails && !checkingTabTarget) navigateBack(navigate, location);
+  }, [hasDetails, checkingTabTarget, navigate, location]);
 
   const openExplorer = () => {
     if (!explorer) return;
     window.open(buildExplorerUrl(explorer, 'tx', hash), '_blank');
   };
 
-  if (!hasDetails) return null;
+  if (!hasDetails)
+    return checkingTabTarget ? (
+      <p role="status">{t('networkConnection.loadingTransactions')}</p>
+    ) : null;
 
   return (
     <ul
@@ -148,6 +198,9 @@ export const DetailsView = () => {
           hash={hash}
           tx={restoredTransaction || routeTransaction}
           utxoRouteSummaryObservation={utxoRouteSummaryObservation}
+          {...(ownedReplacementTarget
+            ? { ownedUtxoReplacementTarget: true }
+            : {})}
           {...winnerProps}
         />
       )}

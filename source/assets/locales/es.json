@@ -800,6 +800,7 @@
     "connectedSites": "SITIOS CONECTADOS",
     "isConnected": "Estos son sitios de confianza a los que puedes conectarte y compartir la información pública de tu cuenta.",
     "editConnection": "Editar conexión",
+    "connectionReviewChanged": "La conexión ha cambiado. Vuelve a abrirla para revisarla.",
     "deleteConnected": "Eliminar sitio conectado",
     "permissions": "Permisos",
     "errorCreatingHardWallet": "Error al crear monedero hardware.",

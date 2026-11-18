@@ -1,15 +1,17 @@
 /** @jest-environment jsdom */
-import { render } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { navigateBack } from 'utils/navigationState';
 
 import { DetailsView } from './Details';
 import { TransactionDetails } from './TransactionDetails';
+import { openUtxoReplacementTab } from './Transactions/UTXO/utxoReplacementNavigation';
 
 let mockState: any;
 let mockLocation: any;
 const mockNavigate = jest.fn();
+const mockEmitter = jest.fn();
 
 jest.mock('react-redux', () => ({
   useSelector: (selector: any) => selector(mockState),
@@ -20,6 +22,9 @@ jest.mock('hooks/useUtils', () => ({
 }));
 jest.mock('hooks/useAdjustedExplorer', () => ({
   useAdjustedExplorer: () => 'https://explorer.example/',
+}));
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: (...args: unknown[]) => mockEmitter(...args),
 }));
 jest.mock('state/vault/selectors', () => ({
   selectActiveAccountTransactions: (state: any) => state.transactions,
@@ -41,6 +46,7 @@ jest.mock('./TransactionDetails', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockEmitter.mockResolvedValue({ cancel: false, speedUp: false });
   mockState = {
     vault: { activeNetwork: { chainId: 1 }, isBitcoinBased: false },
     transactions: { ethereum: {}, syscoin: {} },
@@ -228,7 +234,7 @@ it.each(['account', 'network', 'unscoped', 'utxo', 'malformed', 'same-hash'])(
   }
 );
 
-it('reopens hardware activity in a wallet tab from the currently selected account only', () => {
+it('reopens hardware activity in a wallet tab from the currently selected account only', async () => {
   const txid = 'ab'.repeat(32);
   const tx = { txid, value: 'current-account' };
   mockState.vault.isBitcoinBased = true;
@@ -244,5 +250,95 @@ it('reopens hardware activity in a wallet tab from the currently selected accoun
   mockState.transactions.syscoin[1] = [];
   view.rerender(<DetailsView />);
   expect(TransactionDetails).not.toHaveBeenCalled();
-  expect(navigateBack).toHaveBeenCalledWith(mockNavigate, mockLocation);
+  await waitFor(() =>
+    expect(navigateBack).toHaveBeenCalledWith(mockNavigate, mockLocation)
+  );
 });
+
+it('opens a paged hardware predecessor in its wallet tab through the ownership lookup', async () => {
+  const txid = 'ab'.repeat(32);
+  const tx = { txid, direction: 'sent' };
+  const walletScope = { account: 'account1', network: 'network1' };
+  mockState.vault.isBitcoinBased = true;
+  mockState.transactions.syscoin[1] = [{ txid: 'cd'.repeat(32) }];
+  mockLocation = {
+    ...mockLocation,
+    key: 'popup',
+    state: { hash: txid, tx, walletScope },
+  };
+  const view = render(<DetailsView />);
+  expect(TransactionDetails).toHaveBeenLastCalledWith(
+    expect.objectContaining({ hash: txid, tx }),
+    expect.anything()
+  );
+  expect(mockEmitter).not.toHaveBeenCalled();
+
+  let openedURL: string;
+  const previous = globalThis.chrome;
+  globalThis.chrome = {
+    ...previous,
+    runtime: {
+      ...previous.runtime,
+      getURL: (path) => `chrome-extension://pali-extension/${path}`,
+    },
+    tabs: {
+      ...previous.tabs,
+      create: (options, callback) => {
+        openedURL = options.url;
+        callback({ id: 7 } as chrome.tabs.Tab);
+      },
+    },
+  } as typeof chrome;
+  try {
+    await openUtxoReplacementTab(txid);
+  } finally {
+    globalThis.chrome = previous;
+  }
+  mockEmitter.mockResolvedValueOnce({
+    hardware: true,
+    speedUp: true,
+    cancel: true,
+  });
+  mockLocation = {
+    ...mockLocation,
+    key: 'wallet-tab',
+    state: null,
+    search: openedURL.slice(openedURL.indexOf('?')),
+  };
+  view.rerender(<DetailsView />);
+  await waitFor(() =>
+    expect(TransactionDetails).toHaveBeenLastCalledWith(
+      { hash: txid, tx: undefined, ownedUtxoReplacementTarget: true },
+      expect.anything()
+    )
+  );
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getUtxoReplacementActions'],
+    [txid, walletScope],
+    15_000,
+    false
+  );
+  expect(navigateBack).not.toHaveBeenCalled();
+});
+
+it.each(['scopeAccount', 'scopeNetwork'])(
+  'drops a pending hardware lookup when %s changes',
+  async (field) => {
+    let resolveLookup: (value: unknown) => void;
+    mockEmitter.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveLookup = resolve;
+      })
+    );
+    mockState.vault.isBitcoinBased = true;
+    mockLocation.search = `?utxoTxid=${'ab'.repeat(32)}`;
+    const view = render(<DetailsView />);
+    mockState[field] = 'new';
+    view.rerender(<DetailsView />);
+    await act(async () =>
+      resolveLookup({ cancel: true, speedUp: true, hardware: true })
+    );
+    expect(TransactionDetails).not.toHaveBeenCalled();
+    expect(navigateBack).toHaveBeenCalledWith(mockNavigate, mockLocation);
+  }
+);

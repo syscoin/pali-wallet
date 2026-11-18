@@ -78,6 +78,11 @@ jest.mock('components/Icon/Icon', () => ({
   NftFallbackSvg: () => null,
 }));
 jest.mock('components/TokenIcon', () => ({ TokenIcon: () => null }));
+jest.mock('./UtxoReplacementActions', () => ({
+  UtxoReplacementActions: ({ txid }: { txid: string }) => (
+    <span data-testid={`replacement-${txid}`} />
+  ),
+}));
 jest.mock('hooks/index', () => ({
   useTransactionsListConfig: jest.requireActual(
     'pages/Home/Panel/components/Transactions/utils/useTransactionsInfos'
@@ -273,6 +278,34 @@ const copyFrom = () => {
   );
   return mockCopy.mock.calls.at(-1)?.[0];
 };
+
+it.each([0, 1])(
+  'shows replacement controls for an owned tab target only while pending (%s confirmations)',
+  async (confirmations) => {
+    mockEmitter.mockResolvedValue({
+      txid: mockHash,
+      transaction: {
+        txid: mockHash,
+        fees: '1000',
+        value: '0',
+        valueIn: '0',
+        vin: [],
+        vout: [],
+        confirmations,
+        ...(confirmations
+          ? { blockHeight: 42, blockHash: 'b'.repeat(64) }
+          : {}),
+      },
+    });
+    render(
+      <SyscoinTransactionDetails hash={mockHash} ownedReplacementTarget />
+    );
+    await screen.findByText('Fees');
+    expect(screen.queryAllByTestId(`replacement-${mockHash}`)).toHaveLength(
+      confirmations ? 0 : 1
+    );
+  }
+);
 
 it('keeps vetted detail visible without showing Z-DAG for malformed inputs', async () => {
   await mountFromBlockbook([[FROM_A]], { malformedRawEntries: true });

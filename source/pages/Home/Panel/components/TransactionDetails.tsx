@@ -14,6 +14,7 @@ import type { UtxoSummaryStatus } from '../../../../shared/utxoDetailFreshness';
 
 export type TransactionDetailsProps = {
   hash: string;
+  ownedUtxoReplacementTarget?: true;
   replacementWinner?: ReplacementWinner;
   replacementWinnerHash?: string;
   tx?: IEvmTransactionResponse | ISysTransaction;
@@ -25,6 +26,7 @@ export const TransactionDetails = ({
   tx,
   replacementWinnerHash,
   replacementWinner,
+  ownedUtxoReplacementTarget,
   utxoRouteSummaryObservation,
 }: TransactionDetailsProps) => {
   const isBitcoinBased = useSelector(
@@ -36,6 +38,7 @@ export const TransactionDetails = ({
       <SyscoinTransactionDetails
         hash={hash}
         tx={tx as ISysTransaction}
+        ownedReplacementTarget={ownedUtxoReplacementTarget}
         routeSummaryObservation={utxoRouteSummaryObservation}
       />
     );
