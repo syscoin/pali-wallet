@@ -1003,6 +1003,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     controllersRef.current?.backup.cancel(); clearSecrets(); setError('');
     if (securityOrigin && securityRouteCurrent()) setStage('security'); else closeStage();
   };
+  const backFromBackupVerification = () => {
+    if (!presentation || AppState.currentState !== 'active' || !controllersRef.current?.backup.isCurrent(presentation.id)) return;
+    if (submitting.current) { closeBackup(); return; }
+    setStage(current => current === 'backup-verify' ? 'words' : current);
+  };
   const sendTarget = stage === 'send' && sendDraft &&
     sendDraft.origin.context === (sendDraft.origin.publicDraft ? publicSendContext(snapshot, catalogue) : custodyContext(snapshot, catalogue))?.context
     ? sendDraft.target : undefined;
@@ -1281,6 +1286,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       if (snapshot.phase === 'empty' && (stage === 'create' || stage === 'import-security' && !!phrase)) {
         backFromSetupSecurity(); return true;
       }
+      if (stage === 'backup-verify' && presentation && !submitting.current && snapshot.phase === 'ready') { backFromBackupVerification(); return true; }
       if (['backup-intro', 'backup-auth', 'words', 'backup-verify'].includes(stage) && snapshot.phase === 'ready') { closeBackup(); return true; }
       if (stage === 'backup-complete' && snapshot.phase === 'ready') {
         closeBackup();
@@ -1715,7 +1721,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       }
     }} />;
   if (stage === 'backup-verify' && presentation && snapshot.phase === 'ready')
-    return <BackupVerification key={presentation.id} presentation={presentation} busy={busy} error={error} onBack={() => setStage('words')}
+    return <BackupVerification key={presentation.id} presentation={presentation} busy={busy} error={error} onBack={backFromBackupVerification}
       onConfirm={answers => {
         const id = presentation.id;
         void perform(async local => {

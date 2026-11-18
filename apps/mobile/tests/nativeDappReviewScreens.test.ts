@@ -54,6 +54,21 @@ test('expired control cannot become a new asset consent without a new current re
   f.review.id = 'request-2'; f.review.expiresAt = 2000; f.render(); assert(!f.button().props.disabled); f.close();
 });
 
+test('control review consumes physical Back and disables rejection once the change is committing', () => {
+  const f = fixture('control');
+  try {
+    f.replaceReview({ busy: true, committing: false });
+    f.render(); assert.equal(f.back(), true);
+    assert.deepEqual(f.rejections, ['request-1']);
+    f.replaceReview({ committing: true });
+    const elements = f.render();
+    assert.equal(elements.find(node => node.type === 'Header')!.props.onBack, undefined);
+    assert.equal(elements.find(node => node.type === 'Button' && node.props.title === 'Reject')!.props.disabled, true);
+    assert.equal(f.back(), true);
+    assert.deepEqual(f.rejections, ['request-1']);
+  } finally { f.close(); }
+});
+
 test('a failed control approval reports to the wallet shell even when the review closes', async () => {
   const f = fixture('control'), approval = Promise.withResolvers<void>();
   try {
@@ -75,6 +90,22 @@ test('Sentry signature requests shared authorization for the displayed role/slot
   submit(); submit(); await f.tick();
   assert.deepEqual(f.approvals, [['request-1', 1, { kind: 'operation', keyId: 'new', authorizationId: 'newOwner' }]]);
   assert(f.button().props.disabled); held.resolve(); await f.tick(); f.close();
+});
+
+test('Sentry offers Close after handoff while waiting for acknowledgement and after delivery becomes uncertain', () => {
+  const f = fixture('sentry');
+  try {
+    const secondary = () => f.render().find(node => node.type === 'Button' && node.props.variant === 'secondary' && ['Reject', 'Close'].includes(node.props.title))!;
+    assert.equal(secondary().props.title, 'Reject');
+    f.replaceReview({ busy: true, handedOff: true });
+    assert.equal(secondary().props.title, 'Close');
+    f.replaceReview({ busy: false, error: 'DELIVERY_UNCERTAIN' });
+    const close = secondary();
+    assert.equal(close.props.title, 'Close');
+    close.props.onPress();
+    assert.deepEqual(f.rejections, ['request-1']);
+    assert.deepEqual(f.approvals, []);
+  } finally { f.close(); }
 });
 
 test('immutable Sentry busy/error snapshots settle pending feedback without re-enabling terminal errors', async () => {

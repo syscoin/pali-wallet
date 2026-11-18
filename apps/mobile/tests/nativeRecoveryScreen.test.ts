@@ -1948,7 +1948,8 @@ for (const leave of ['header', 'android', 'done', 'complete-android'] as const) 
     else {
       press(button(tree, 'Continue')); tree = f.render(); assert.equal(tree.type, 'BackupVerification');
       // The internal verification Back step still returns to the displayed phrase.
-      (tree.props.onBack as () => void)(); assert.match(text(f.render()), /abandon/);
+      if (leave === 'complete-android') f.hardware(); else (tree.props.onBack as () => void)();
+      assert.match(text(f.render()), /abandon/);
       press(button(f.render(), 'Continue')); tree = f.render();
       (tree.props.onConfirm as (answers: readonly string[]) => void)([...Array(11).fill('abandon'), 'about']);
       await lifecycleTick(); tree = f.render(); assert.match(text(tree), /Backup complete/);

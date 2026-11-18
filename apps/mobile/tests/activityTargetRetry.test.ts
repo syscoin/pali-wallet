@@ -15,7 +15,7 @@ const tick = async () => { for (let n = 0; n < 12; n++) await new Promise<void>(
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 
-function fixture(failures: number, olderTarget = false) {
+function fixture(failures: number, olderTarget = false, unavailableHistory = false) {
   const networks = ['ethereum', 'rollux'].map(id => getNativeNetwork(id));
   const choices = networks.map(network => ({ label: 'Account 1', networkName: network.name, symbol: network.symbol,
     scope: { id: `hd:60:0:${network.id}`, accountId: 'hd:60:0', accountType: 'HDAccount' as const, accountAddress: address, network, guardian: false } }));
@@ -37,6 +37,7 @@ function fixture(failures: number, olderTarget = false) {
       async saveView(_scope, _view, check) { guard(); check(); },
     }),
     explorer: { async page(scope, feed, page, _signal, guard) { guard(); reads.push(scope.network.id);
+      if (unavailableHistory && scope.network.id === 'rollux' && feed === 'txlist') throw Error('Explorer unavailable');
       const hashes = olderTarget && page === 1 ? Array.from({ length: 20 }, (_, i) => '0x' + String(i + 1).padStart(64, '0')) : [hash];
       return feed === 'tokentx' ? [] : decodeActivityPage({ status: '1', result: hashes.map((entry, i) => ({ hash: entry, from: recipient, to: scope.address,
         value: '1', timeStamp: '1700000000', blockNumber: String(page === 1 ? 100 - i : 50), confirmations: '1', nonce: String(page * 20 + i), txreceipt_status: '1' })) }, feed, scope.address, Number(scope.network.chainId));
@@ -85,6 +86,7 @@ function fixture(failures: number, olderTarget = false) {
     return [value, ...value.children.flatMap(nodes), ...nodes(value.props.right), ...nodes(value.props.ListHeaderComponent), ...nodes(value.props.ListFooterComponent)];
   };
   return { controller, writes, reads, render, nodes, opened: () => opened,
+    restoreHistory() { unavailableHistory = false; },
     holdSave(promise: Promise<void>) { heldSave = promise; },
     setTarget(value: typeof target) { target = value; render(); },
     choose(filter: string) {
@@ -162,5 +164,19 @@ test('manually loading an older indexed EVM notification leaves the Activity lis
     f.setTarget(undefined);
     f.refresh(); await tick();
     assert(!f.detail());
+  } finally { f.close(); }
+});
+
+test('retrying unavailable Activity may still open the pending notification', async () => {
+  const f = fixture(0, false, true);
+  try {
+    f.render(); await tick(); f.render(); await tick();
+    assert.equal(f.opened(), 0);
+    assert(!f.controller.findRow('rollux', hash));
+    const retry = f.nodes(f.render()).find(node => node.props.title === 'Retry activity');
+    assert(retry && !retry.props.disabled);
+    f.restoreHistory(); retry.props.onPress(); await tick();
+    assert(f.detail());
+    assert.equal(f.opened(), 1);
   } finally { f.close(); }
 });

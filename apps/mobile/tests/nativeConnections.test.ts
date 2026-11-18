@@ -2757,6 +2757,27 @@ for (const method of ['wallet_switchEthereumChain', 'wallet_addEthereumChain', '
   } finally { await f.controller.dispose(); }
 });
 
+for (const stage of ['checking', 'committing'] as const) test(`control rejection during ${stage} preserves the announced outcome`, async () => {
+  const f = await connectedFixture();
+  const held = Promise.withResolvers<void>();
+  try {
+    await messageRequest(f, 'wallet_watchAsset', [{ type: 'ERC20', options: { address: `0x${'12'.repeat(20)}` } }], 801);
+    const review = f.view.getSnapshot().controlReview!;
+    if (stage === 'checking') f.setSiteWait(held.promise);
+    else f.setResponseWait(held.promise);
+    const approving = f.view.approveControl(review.id, review.revision);
+    await settle();
+    assert.equal(f.view.getSnapshot().controlReview?.committing, stage === 'committing');
+    await f.view.rejectControl(review.id);
+    held.resolve();
+    await approving;
+    assert.equal(f.view.getSnapshot().controlReview, null);
+    assert.equal(f.controlCommits.length, stage === 'committing' ? 1 : 0);
+    assert.deepEqual(f.responses, [{ id: 801, result: stage === 'committing'
+      ? { result: true } : { error: { code: 4001, message: 'User rejected or request expired' } } }]);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
 test('control requests cannot bypass method, source-chain, origin or blacklist isolation', async () => {
   const f = await connectedFixture();
   try {
@@ -5930,6 +5951,30 @@ for (const boundary of ['reject', 'lock', 'expiry', 'network'] as const) test(`a
     assert.equal(f.preparedAccountUpdates.length, 0); assert.equal(f.signatures.length, 0);
   } finally { await f.controller.dispose(); }
 });
+test('rejecting an account change during the site check sends one denial and preserves the current grant', async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true });
+  const held = Promise.withResolvers<void>();
+  try {
+    const review = await accountChangeRequest(f); assert(review);
+    f.view.selectConnectionAccount(review.id, 'hd:60:1', review.revision);
+    const chosen = f.view.getSnapshot().accountChangeReview!;
+    const before = f.view.getSnapshot().sessions;
+    f.setSiteWait(held.promise);
+    const approving = f.view.approveAccountChange(chosen.id, chosen.revision);
+    assert.equal(f.view.getSnapshot().accountChangeReview?.busy, true);
+    await f.view.rejectAccountChange(chosen.id);
+    assert.equal(f.view.getSnapshot().accountChangeReview, null);
+    assert.deepEqual(f.responses, [{ id: 917, result: { error: { code: 4001, message: 'User rejected account selection' } } }]);
+    held.resolve();
+    await approving;
+    assert.equal(f.view.getSnapshot().error, null);
+    assert.deepEqual(f.view.getSnapshot().sessions, before);
+    assert.equal(f.preparedAccountUpdates.length, 0);
+    assert.equal(f.remoteDisconnects.length, 0);
+    assert.equal(f.responses.length, 1);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
 for (const failure of ['ack', 'response', 'write-cancel'] as const) test(`account switch ${failure} retires the grant and remote session`, async () => {
   const f = await connectedFixture({ accountSwitch: true, secondAccount: true }), held = Promise.withResolvers<void>();
   try {

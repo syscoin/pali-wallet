@@ -333,7 +333,7 @@ export class NativeConnectionsController {
       changed: () => { this.publish(); void this.controls?.prepare(); void this.sentry?.prepare(); void this.psbt?.prepare(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
       commit: (wire, account, signal, check) => this.commitAccountChange(wire, account, signal, check),
-      reject: wire => this.transport!.respond(wire.session.binding, wire.id, { error: { code: 4001, message: 'User rejected account selection' } }, () => this.check(), () => {}),
+      reject: (wire, check) => this.transport!.respond(wire.session.binding, wire.id, { error: { code: 4001, message: 'User rejected account selection' } }, check, () => {}),
     });
     this.controls = new NativeDappControlRequests({
       host: () => this.host!.controls,

@@ -3637,7 +3637,7 @@ test('Trezor Activity reconciles UTXO status without Suite, signing or broadcast
   } finally { await owner.dispose(); await fixture.sessions.dispose(); }
 });
 
-for (const variant of ['exact', 'MAX', 'replacement', 'changed-replacement'] as const) test(`Trezor runtime resumes a UTXO ${variant} draft through a fresh review and device signature`, async () => {
+for (const variant of ['exact', 'MAX', 'replacement', 'changed-replacement', 'finish-failure', 'unknown-ack'] as const) test(`Trezor runtime resumes a UTXO ${variant} draft through a fresh review and device signature`, async () => {
   const maximum = variant === 'MAX';
   const [{ createTrezorSessions }, { getUtxoNetwork }, { getNetworkConfig }, { utils }, { metadata }] = await Promise.all([
     import('../src/hardware/trezorSessions.ts'), import('../src/core/utxoNetworks.ts'), import('@sidhujag/sysweb3-network'),
@@ -3716,7 +3716,18 @@ for (const variant of ['exact', 'MAX', 'replacement', 'changed-replacement'] as 
       else assert.equal(sessions.receiveCallback(callback.toString()), true);
     },
   });
-  const disk = memoryDisk(undefined, undefined, undefined, sessions, async (input, init) => {
+  const runtimeSessions = {
+    ...sessions,
+    resume(request: Parameters<typeof sessions.resume>[0]) {
+      const session = sessions.resume(request);
+      if (variant !== 'finish-failure') return session;
+      return { ...session, async finish() {
+        await session.finish();
+        throw new Error('Trezor retirement failed');
+      } };
+    },
+  };
+  const disk = memoryDisk(undefined, undefined, undefined, runtimeSessions, async (input, init) => {
     const url = String(input), route = url.slice(network.endpoint.length);
     let result: unknown;
     if (route === '/api/v2/') result = metadata(network);
@@ -3727,7 +3738,10 @@ for (const variant of ['exact', 'MAX', 'replacement', 'changed-replacement'] as 
     else if (route === '/api/v2/tx/' + previous.getId()) result = { hex: previous.toHex() };
     else if (route === '/api/v2/sendtx/' && init?.method === 'POST') {
       const transaction = utils.bitcoinjs.Transaction.fromHex(String(init.body));
-      broadcasts++; submitted.set(transaction.getId(), transaction.toHex()); result = { result: transaction.getId() };
+      broadcasts++;
+      assert.equal(sessions.getSnapshot(), null, 'the signing job must retire before POST');
+      submitted.set(transaction.getId(), transaction.toHex());
+      result = { result: variant === 'unknown-ack' ? '0'.repeat(64) : transaction.getId() };
     } else if (route.startsWith('/api/v2/tx/') && submitted.has(route.slice('/api/v2/tx/'.length))) {
       const txid = route.slice('/api/v2/tx/'.length);
       result = { txid, hex: submitted.get(txid), confirmations: 0 };
@@ -3825,7 +3839,22 @@ for (const variant of ['exact', 'MAX', 'replacement', 'changed-replacement'] as 
     assert.notEqual(freshReview, review); assert.equal(methods.length, callCount); assert.equal(broadcasts, 0);
     const beforeAuthentication = methods.filter(method => method === 'signTransaction').length;
     assert.equal(methods.filter(method => method === 'signTransaction').length, beforeAuthentication);
-    await fresh.confirm(freshReview, { method: 'device' });
+    const outcome = fresh.confirm(freshReview, { method: 'device' });
+    if (variant === 'finish-failure') {
+      await assert.rejects(outcome, /Trezor retirement failed/);
+      assert.equal(broadcasts, 0);
+      return;
+    }
+    if (variant === 'unknown-ack') {
+      await assert.rejects(outcome, (error: unknown) => {
+        assert(error instanceof Error && 'code' in error && 'txid' in error);
+        assert.equal(error.code, 'UTXO_SUBMISSION_UNKNOWN');
+        assert.equal(error.txid, [...submitted.keys()][0]);
+        return true;
+      });
+    } else {
+      assert.equal((await outcome).txid, [...submitted.keys()][0]);
+    }
     assert.equal(methods.filter(method => method === 'signTransaction').length, 1);
     assert.equal(broadcasts, 1);
   } finally { await owner.dispose(); await sessions.dispose(); }

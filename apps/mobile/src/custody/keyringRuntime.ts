@@ -7737,18 +7737,28 @@ export function createKeyringRuntimeFactory(
                 const capturedInput = snapshotUtxoSigningInput(input), target = utxoSigningTarget(capturedInput);
                 if (accountType === 'Ledger' || accountType === 'Trezor') {
                   consumeOperationAuthorization(receipt, check, target);
-                  if (accountType === 'Trezor' && replacement) {
+                  if (accountType === 'Ledger') return ring.syscoinTransaction.signPSBT(capturedInput, read);
+                  if (!trezorAttempt) throw new KeyringRuntimeError('NOT_READY');
+                  const session = trezorAttempt.session;
+                  const assertCurrent = () => { guard(); check(); read.assertCurrent(); };
+                  let signed;
+                  if (replacement) {
                     const trezor = ring.trezorSigner, pending = pendingTrezor;
-                    if (!trezor || !trezorAttempt || pending?.job !== trezorAttempt.session.job ||
+                    if (!trezor || pending?.job !== session.job ||
                         pending.resume?.kind !== 'utxo-replacement' || pending.resume.replacement.txid !== replacement.txid ||
                         pending.resume.replacement.mode !== replacement.mode || pending.replacementReviewDigest !== sha256(toUtf8Bytes(target)))
                       throw new KeyringRuntimeError('NOT_READY');
                     const { signTrezorReplacementPsbt } = await import('../../../../source/wallet/trezorReplacementSigner.ts');
-                    const assertCurrent = () => { guard(); check(); read.assertCurrent(); };
                     assertCurrent();
-                    return signTrezorReplacementPsbt({ psbt: capturedInput.psbt, scope: signingScope, trezor, assertCurrent, signal: read.signal });
+                    signed = await signTrezorReplacementPsbt({ psbt: capturedInput.psbt, scope: signingScope, trezor, assertCurrent, signal: read.signal });
+                  } else {
+                    signed = await ring.syscoinTransaction.signPSBT(capturedInput, read);
                   }
-                  return ring.syscoinTransaction.signPSBT(capturedInput, read);
+                  // Retire the device before the shared submitter can persist or POST these bytes.
+                  await finishTrezor(session, assertCurrent);
+                  trezorAttempt = undefined;
+                  assertCurrent();
+                  return signed;
                 }
                 const prepared = await ring.syscoinTransaction.preparePSBTForSigning(capturedInput, read);
                 guard(); check();
@@ -7808,9 +7818,7 @@ export function createKeyringRuntimeFactory(
               const pending = opened.confirm(view, credential);
               pendingSubmissions.add(pending);
               try {
-                const result = await pending;
-                if (trezorAttempt) await finishTrezor(trezorAttempt.session, guard);
-                return result;
+                return await pending;
               } catch (error) {
                 if (trezorAttempt && !(error instanceof Error && operationAuthenticationRefusals.has(error)))
                   await failTrezor(captured, admittedTrezorEpoch, error);

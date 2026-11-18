@@ -39,6 +39,7 @@ test('handoff publishes once and lost ACK retirement preserves it without anothe
   try {
     f.enqueue(); await tick(); const id = f.manager.review(1)!.id;
     const pending = f.manager.approve(id, { kind: 'link' }); await tick(); assert.equal(f.published(), true);
+    assert.equal(f.manager.review(1)?.handedOff, true);
     await assert.rejects(f.manager.approve(id, { kind: 'link' })); held.resolve(); await assert.rejects(pending);
     assert.equal(f.manager.review(1)!.error, 'DELIVERY_UNCERTAIN');
     f.manager.reject(id); assert.equal(f.cancelled(), 0); assert.equal(f.calls(), 1);

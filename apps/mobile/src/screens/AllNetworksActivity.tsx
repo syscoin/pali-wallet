@@ -187,7 +187,7 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
       </View> : undefined}
       ListFooterComponent={<View style={s.section}>{snapshot.hasMore && !snapshot.refreshing && <Button title={snapshot.loadingMore ? t('mobile.activityViews.nativeActivity.loadingOlderActivity') : snapshot.partial ? t('mobile.activityViews.allNetworksActivity.retryActivity') : t('mobile.activityViews.nativeActivity.loadOlderActivity')} variant="secondary" size="compact"
         disabled={busy || snapshot.loadingMore} onPress={() => void run(async () => {
-          if (targetHash && arrival.current !== targetKey) {
+          if (!snapshot.partial && targetHash && arrival.current !== targetKey) {
             arrival.current = targetKey;
             targetOwner.current.opened?.();
           }

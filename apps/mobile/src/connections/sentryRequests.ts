@@ -19,7 +19,7 @@ export type NativeSentryAssent = Readonly<
 export type NativeSentryReview = Readonly<{
   id: string; revision: number; appName: string; origin: string; verification: WalletConnectVerification;
   accountLabel: string; address: string; networkLabel: string; chainId: string; expiresAt: number;
-  busy: boolean; error: 'BLOCKED_SITE' | 'SITE_MISMATCH' | 'SENTRY_UNAVAILABLE' | 'DELIVERY_UNCERTAIN' | null;
+  busy: boolean; handedOff: boolean; error: 'BLOCKED_SITE' | 'SITE_MISMATCH' | 'SENTRY_UNAVAILABLE' | 'DELIVERY_UNCERTAIN' | null;
   details: NativeSentryDetails | null;
 }>;
 export type NativePreparedSentryRequest = Readonly<{
@@ -65,7 +65,7 @@ export class NativeSentryRequests {
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) throw new Error('REQUEST_EXPIRED');
     const id = `sentry-${++this.serial}`;
     const entry: Pending = { id, wire, owner, signal: new AbortController(), expiresAt, busy: false, handedOff: false,
-      timer: setTimeout(() => { this.retire(entry, true); }, expiresAt - Date.now()),
+      timer: setTimeout(() => { this.retire(entry, !entry.handedOff); }, expiresAt - Date.now()),
       error: wire.verification.isScam ? 'BLOCKED_SITE' : wire.verification.validation === 'INVALID' ? 'SITE_MISMATCH' : null };
     this.pending.set(id, entry); this.options.changed(); void this.prepare();
   }
@@ -74,7 +74,7 @@ export class NativeSentryRequests {
     return Object.freeze({ id: entry.id, revision, appName: entry.wire.session.metadata.name, origin: entry.wire.session.binding.origin,
       verification: entry.wire.verification, accountLabel: entry.owner.accountLabel, address: entry.owner.address,
       networkLabel: entry.owner.networkLabel, chainId: entry.owner.chainId, expiresAt: entry.expiresAt, busy: entry.busy,
-      error: entry.error, details: entry.prepared?.details ?? null });
+      handedOff: entry.handedOff, error: entry.error, details: entry.prepared?.details ?? null });
   }
   async prepare() {
     const entry = this.first();
@@ -103,7 +103,12 @@ export class NativeSentryRequests {
       const site = await this.options.checkSite(entry.wire.session.binding.origin); this.check(entry);
       if (site.isBlacklisted) throw new Error('BLOCKED_SITE');
       const result = await entry.prepared.approve(assent, () => this.check(entry)); this.check(entry);
-      await this.options.respond(entry.wire, { result }, () => this.check(entry), () => { this.check(entry); entry.prepared!.disclose(); entry.handedOff = true; });
+      await this.options.respond(entry.wire, { result }, () => this.check(entry), () => {
+        this.check(entry);
+        entry.prepared!.disclose();
+        entry.handedOff = true;
+        this.options.changed();
+      });
       this.retire(entry, false);
     } catch (cause) {
       if (this.pending.get(entry.id) === entry) {
