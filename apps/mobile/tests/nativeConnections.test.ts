@@ -2838,6 +2838,25 @@ test('return-to-dapp is a separate explicit origin-only action and never follows
   } finally { await f.controller.dispose(); }
 });
 
+test('return-to-dapp cannot launch after its view retires during site verification', async () => {
+  const f = await connectedFixture();
+  const site = Promise.withResolvers<void>();
+  try {
+    const snapshot = f.view.getSnapshot();
+    const session = snapshot.sessions[0]!;
+    f.setSiteWait(site.promise);
+    let viewOpen = true;
+    const returning = f.view.returnToDapp(session.id, snapshot.revision, () => {
+      if (!viewOpen) throw Error('CONTEXT_CHANGED');
+    });
+    viewOpen = false;
+    site.resolve();
+    await assert.rejects(returning, { message: 'CONTEXT_CHANGED' });
+    assert.equal(f.view.getSnapshot().revision, snapshot.revision);
+    assert.deepEqual(f.externalUrls, []);
+  } finally { site.resolve(); await f.controller.dispose(); }
+});
+
 for (const smart of [false, true])
   test(`capabilities reflect native batching support for ${
     smart ? 'Smart' : 'software'

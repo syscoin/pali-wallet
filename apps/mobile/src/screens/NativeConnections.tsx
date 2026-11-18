@@ -151,7 +151,10 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
   const { t, i18n } = useNativeTranslation();
   const subscribe = useCallback((listener: () => void) => controller.subscribe(listener), [controller]);
   const snapshot = useSyncExternalStore(subscribe, controller.getSnapshot, controller.getSnapshot);
-  const [selection, setSelection] = useState<{ controller: NativeConnectionsView; accountId: string } | null>(null);
+  const proposal = snapshot.proposals[0];
+  const proposalId = proposal?.id, proposalOrigin = proposal?.origin, proposalExpiry = proposal?.expiresAt;
+  const proposalOwner = useMemo(() => ({ controller, proposalId, proposalOrigin, proposalExpiry }), [controller, proposalId, proposalOrigin, proposalExpiry]);
+  const [selection, setSelection] = useState<{ owner: typeof proposalOwner; accountId: string } | null>(null);
   const [clipboardError, setClipboardError] = useState(false);
   const [scanning, setScanning] = useState(initialScan);
   const [entryExpired, setEntryExpired] = useState(false);
@@ -161,9 +164,8 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
   const [clockRevision, setClockRevision] = useState(0);
   const handledEntry = useRef<string | null>(null);
   const lifetime = useRef({ active: true, revision: 0 });
-  const proposal = snapshot.proposals[0];
   const busy = snapshot.status === 'pairing' || snapshot.status === 'approving';
-  const selectedAccountId = selection?.controller === controller && snapshot.accounts.some((account) => account.id === selection.accountId)
+  const selectedAccountId = selection?.owner === proposalOwner && snapshot.accounts.some((account) => account.id === selection.accountId)
     ? selection.accountId : snapshot.selectedAccountId;
   const selectedPermissions = proposal?.methodsByAccount.find(account => account.accountId === selectedAccountId);
   const selectedSession = snapshot.status !== 'locked' && !proposal && sessionSelection?.controller === controller && snapshot.sessions.find(session => session.id === sessionSelection.id);
@@ -275,8 +277,11 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
     owner.pending = true;
     setSessionFeedback({ owner: sessionOwner, busy: true, error: null });
     try {
-      if (action === 'open') await controller.returnToDapp(selectedSession.id, snapshot.revision);
-      else await controller.disconnect(selectedSession.id);
+      if (action === 'open') {
+        await controller.returnToDapp(selectedSession.id, snapshot.revision, () => {
+          if (!current()) throw Error('CONTEXT_CHANGED');
+        });
+      } else await controller.disconnect(selectedSession.id);
     } catch (cause) {
       if (current()) {
         const code = cause && typeof cause === 'object' && 'code' in cause ? cause.code : null;
@@ -362,7 +367,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
         <View accessibilityRole="radiogroup" accessibilityLabel={t('mobile.connections.account')} style={s.accounts}>
           {snapshot.accounts.map((account) => <IdlePressable key={account.id} accessibilityRole="radio"
             accessibilityLabel={`${account.label}, ${account.address}`} accessibilityState={{ checked: account.id === selectedAccountId, disabled: busy }}
-            disabled={busy} onPress={() => setSelection({ controller, accountId: account.id })}
+            disabled={busy} onPress={() => setSelection({ owner: proposalOwner, accountId: account.id })}
             style={({ pressed }) => [s.account, account.id === selectedAccountId && s.selected, pressed && s.pressed]}>
             <View style={s.accountText}><Text style={s.accountLabel}>{account.label}</Text>
               <Text numberOfLines={1} ellipsizeMode="middle" style={s.address}>{account.address}</Text></View>

@@ -193,7 +193,7 @@ export type NativeConnectionsView = Readonly<{
   rejectSentry(id: string): Promise<void>;
   approveControl(id: string, revision: number): Promise<void>;
   rejectControl(id: string): Promise<void>;
-  returnToDapp(id: string, revision: number): Promise<void>;
+  returnToDapp(id: string, revision: number, assertCurrent?: () => void): Promise<void>;
   callsStatusShown(id: string): Promise<void>;
   refreshCallsStatus(id: string): Promise<void>;
   dismissCallsStatus(id: string): void;

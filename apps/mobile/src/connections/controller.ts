@@ -456,7 +456,7 @@ export class NativeConnectionsController {
         await this.controls.approve(id);
       },
       rejectControl: id => this.controls.reject(id),
-      returnToDapp: async (id, revision) => {
+      returnToDapp: async (id, revision, assertCurrent) => {
         this.check();
         const connection = [...this.connections.values()].find(value => value.id === id);
         if (revision !== this.revision || this.disposed || this.options.source.getSnapshot().phase !== 'ready' || !connection?.engine.isConnected(connection.session.binding.origin)) return failure('REQUEST_EXPIRED');
@@ -466,6 +466,7 @@ export class NativeConnectionsController {
         this.check();
         if (site.isBlacklisted) return failure('BLOCKED_SITE');
         if (revision !== this.revision || this.options.source.getSnapshot().phase !== 'ready' || this.connections.get(sessionKey(connection.session)) !== connection || !connection.engine.isConnected(target.origin)) return failure('CONTEXT_CHANGED');
+        assertCurrent?.();
         await this.options.openExternalUrl(target.url);
       },
       callsStatusShown: async (id) => {
