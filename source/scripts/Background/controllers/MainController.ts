@@ -10751,17 +10751,17 @@ class MainController {
         throw new Error('Unsupported transaction type for this wrapper');
       }
     } catch (error) {
-      // A failed attempt must not erase the public screen that requested it.
-      try {
-        await clearTransactionNavigationState();
-        console.error(
-          '[MainController] Transaction navigation cleaned on error'
-        );
-      } catch (e) {
-        console.error(
-          '[MainController] Failed to clear navigation state on error:',
-          e
-        );
+      const disposition = submission.read();
+      // A request that never dispatched leaves draft navigation to its UI owner.
+      if (!disposition.transactionNotBroadcast) {
+        try {
+          await clearTransactionNavigationState();
+        } catch (cleanupError) {
+          console.error(
+            '[MainController] Failed to clear navigation state on error:',
+            cleanupError
+          );
+        }
       }
       throw Object.assign(
         new Error(
@@ -10772,7 +10772,7 @@ class MainController {
             : 'Failed to submit transaction.'
         ),
         error && typeof error === 'object' ? error : {},
-        submission.read()
+        disposition
       );
     }
   }

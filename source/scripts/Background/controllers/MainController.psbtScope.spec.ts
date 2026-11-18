@@ -60,6 +60,7 @@ import {
 } from '../handlers/approvalSubmission';
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { clearTransactionNavigationState } from 'utils/navigationState';
 import {
   captureSentryCollateralAdmission,
   reserveSentryCollateral,
@@ -711,6 +712,7 @@ describe('PSBT approval context', () => {
       expect(wallet.getRetainedUtxoRecords).not.toHaveBeenCalled();
       expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
       expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+      expect(clearTransactionNavigationState).not.toHaveBeenCalled();
     }
   );
 
