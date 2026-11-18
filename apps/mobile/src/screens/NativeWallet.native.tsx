@@ -871,7 +871,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   };
   useEffect(() => {
     const eventId = notificationSnapshot.pendingEventId, local = controllersRef.current;
-    const attemptKey = `${eventId}:${snapshot.revision}`;
+    const tapRevision = notificationSnapshot.tapRevision;
+    const attemptKey = `${eventId}:${tapRevision}:${snapshot.revision}`;
     if (!eventId || !local || !protectedScreen || snapshot.phase !== 'ready' || stage !== 'choose' || busy || shell.immersive ||
         rootOrigin.current || notificationTransition.current || lastNotificationAttempt.current === attemptKey || AppState.currentState !== 'active') return;
     const connections = local.connections.getSnapshot();
@@ -926,10 +927,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     })().catch(() => undefined).finally(() => {
       if (notificationTransition.current !== token) return;
       notificationTransition.current = null;
-      const pending = nativeActivityNotifications.getSnapshot().pendingEventId;
-      if (mounted.current && pending && pending !== eventId) setNotificationWake(value => value + 1);
+      const pending = nativeActivityNotifications.getSnapshot();
+      if (mounted.current && pending.pendingEventId && (pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision)) setNotificationWake(value => value + 1);
     });
-  }, [notificationSnapshot.pendingEventId, notificationWake, snapshot.phase, snapshot.revision, protectedScreen, stage, busy, shell.immersive, connectionSnapshot, controllersRef, readyContext, restoreRoot]);
+  }, [notificationSnapshot.pendingEventId, notificationSnapshot.tapRevision, notificationWake, snapshot.phase, snapshot.revision, protectedScreen, stage, busy, shell.immersive, connectionSnapshot, controllersRef, readyContext, restoreRoot]);
   useEffect(() => {
     if (incomingPairing && incomingPairing.expiresAt <= Date.now()) { onPairingHandled?.(incomingPairing.id); return; }
     const pendingLink = incomingPairing && onPairingHandled;

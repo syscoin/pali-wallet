@@ -5975,7 +5975,28 @@ test('rejecting an account change during the site check sends one denial and pre
   } finally { held.resolve(); await f.controller.dispose(); }
 });
 
-for (const failure of ['ack', 'response', 'write-cancel'] as const) test(`account switch ${failure} retires the grant and remote session`, async () => {
+test('late rejection during an account switch preserves the session and completes the approved change', async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true });
+  const held = Promise.withResolvers<void>();
+  try {
+    const review = await accountChangeRequest(f); assert(review);
+    f.view.selectConnectionAccount(review.id, 'hd:60:1', review.revision);
+    const chosen = f.view.getSnapshot().accountChangeReview!;
+    f.holdAccountUpdate(held.promise);
+    const approving = f.view.approveAccountChange(chosen.id, chosen.revision);
+    await settle();
+    assert.equal(f.view.getSnapshot().accountChangeReview?.committing, true);
+    await f.view.rejectAccountChange(chosen.id);
+    assert.equal(f.view.getSnapshot().accountChangeReview?.committing, true);
+    held.resolve();
+    await approving;
+    assert.equal(f.view.getSnapshot().sessions[0]?.accountLabel, 'Account 2');
+    assert.deepEqual(f.responses, [{ id: 917, result: { result: null } }]);
+    assert.equal(f.remoteDisconnects.length, 0);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const failure of ['ack', 'response', 'write-lock'] as const) test(`account switch ${failure} retires the grant and remote session`, async () => {
   const f = await connectedFixture({ accountSwitch: true, secondAccount: true }), held = Promise.withResolvers<void>();
   try {
     const review = await accountChangeRequest(f); assert(review);
@@ -5983,13 +6004,13 @@ for (const failure of ['ack', 'response', 'write-cancel'] as const) test(`accoun
     const chosen = f.view.getSnapshot().accountChangeReview!;
     if (failure === 'ack') f.failCreationUpdate();
     if (failure === 'response') f.failBeforeDispatch();
-    if (failure === 'write-cancel') f.beforeCreationGrantWrite(() => f.setStorageWait(held.promise));
+    if (failure === 'write-lock') f.beforeCreationGrantWrite(() => f.setStorageWait(held.promise));
     const approving = f.view.approveAccountChange(chosen.id, chosen.revision), rejected = assert.rejects(approving);
-    if (failure === 'write-cancel') { await settle(); await f.view.rejectAccountChange(chosen.id); held.resolve(); }
+    if (failure === 'write-lock') { await settle(); f.lock(); held.resolve(); }
     await rejected; await settle();
     assert.equal(f.view.getSnapshot().sessions.length, 0);
     assert.equal(f.remoteDisconnects.length, 1);
-    if (failure !== 'write-cancel') assert.equal(f.view.getSnapshot().error, 'CONNECTION_UNAVAILABLE');
+    if (failure !== 'write-lock') assert.equal(f.view.getSnapshot().error, 'CONNECTION_UNAVAILABLE');
     const permissions = (await f.repository).permissions(f.session.binding).read();
     assert.equal(permissions.dapps[ORIGIN], undefined);
     assert.equal(f.signatures.length, 0);

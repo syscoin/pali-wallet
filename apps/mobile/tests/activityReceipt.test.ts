@@ -77,6 +77,13 @@ test('historical root receipts retain canonical placement and fee without an inv
   assert.equal(f.calls.length, 5);
   const legacy = fixture(call => call.method === 'eth_getTransactionReceipt' ? receipt({ status: undefined, root: stateRoot, type: '0x0' }) : undefined);
   assert.equal((await legacy.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum')))?.status, 'unknown');
+  for (const [networkId, height] of [['ethereum', 4370000], ['base', 80]] as const) {
+    const network = getNativeNetwork(networkId), blockNumber = `0x${height.toString(16)}`;
+    const unexpected = fixture(call => call.method === 'eth_getTransactionReceipt'
+      ? receipt({ status: undefined, root: stateRoot, blockNumber })
+      : call.method === 'eth_getTransactionByHash' ? tx({ blockNumber }) : undefined, undefined, network);
+    await assert.rejects(unexpected.reader.read(HASH, OWNER, signal(), () => undefined, network), { code: 'INVALID_RESPONSE' });
+  }
   for (const type of ['0x1', '0x2', '0x3', '0x4', null]) {
     const typed = fixture(call => call.method === 'eth_getTransactionReceipt' ? receipt({ status: undefined, root: stateRoot, type }) : undefined);
     await assert.rejects(typed.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum')), { code: 'INVALID_RESPONSE' });

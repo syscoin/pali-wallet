@@ -96,14 +96,21 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   const handledInitial = useRef<string | null>(null);
   useLayoutEffect(() => {
     if (!initialHash) { handledInitial.current = null; return; }
-    if (handledInitial.current === initialHash || !network || state.status !== 'ready' || !controller.isCurrent(state.context)) return;
-    handledInitial.current = initialHash;
-    if (state.rows.some(row => row.txid === initialHash)) selectTransaction(initialHash);
-    else {
-      selectTransaction(null);
-      setUnlistedTarget(initialHash);
-    }
-    onInitialTargetOpened?.();
+    if (handledInitial.current === initialHash || !network || state.status !== 'ready') return;
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (!active || handledInitial.current === initialHash || !controller.isCurrent(state.context)) return;
+      const current = controller.getSnapshot();
+      if (current.status !== 'ready') return;
+      handledInitial.current = initialHash;
+      if (current.rows.some(row => row.txid === initialHash)) selectTransaction(initialHash);
+      else {
+        selectTransaction(null);
+        setUnlistedTarget(initialHash);
+      }
+      onInitialTargetOpened?.();
+    });
+    return () => { active = false; };
   }, [controller, initialHash, network, state.context, state.status, state.rows, selectTransaction, onInitialTargetOpened]);
   useLayoutEffect(() => {
     const life = lifetime.current; life.alive = true;

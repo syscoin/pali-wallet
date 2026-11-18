@@ -140,7 +140,21 @@ export function assertEvmReceiptIdentity(
     invalid();
   }
 }
-export function assertEvmReceiptCoherence(
+/** EIP-609 and EIP-658: Ethereum mainnet replaced post-state roots at Byzantium. */
+export function readHistoricalEvmReceiptRoot(value: unknown, chainId: string) {
+  const receipt = object(value);
+  if (
+    chainId !== '1' ||
+    normalizedQuantity(receipt.blockNumber) >= BigInt(4370000) ||
+    (receipt.type !== undefined &&
+      normalizedQuantity(receipt.type) !== BigInt(0)) ||
+    receipt.status != null
+  )
+    invalid();
+  return hash(receipt.root);
+}
+
+export function assertEvmReceiptPlacement(
   expected: ReceiptIdentity,
   value: unknown,
   header: unknown
@@ -151,8 +165,6 @@ export function assertEvmReceiptCoherence(
   try {
     const number = normalizedQuantity(receipt.blockNumber),
       blockHash = hash(receipt.blockHash);
-    const status = normalizedQuantity(receipt.status);
-    if (status !== BigInt(0) && status !== BigInt(1)) invalid();
     if (
       normalizedQuantity(block.number) !== number ||
       hash(block.hash) !== blockHash ||
@@ -162,10 +174,21 @@ export function assertEvmReceiptCoherence(
         hash(expected.blockHash) !== blockHash)
     )
       invalid();
-    return { number, blockHash, status };
+    return { number, blockHash };
   } catch {
     return invalid();
   }
+}
+
+export function assertEvmReceiptCoherence(
+  expected: ReceiptIdentity,
+  value: unknown,
+  header: unknown
+) {
+  const placement = assertEvmReceiptPlacement(expected, value, header);
+  const status = normalizedQuantity(object(value).status);
+  if (status !== BigInt(0) && status !== BigInt(1)) invalid();
+  return { ...placement, status };
 }
 
 /** One ordinary canonical-receipt observation, shared by both host transports. */

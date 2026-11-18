@@ -1647,7 +1647,7 @@ test('Receive network selection returns to the canonical address and does not re
 function notificationTapPort(kind: 'transaction-confirmed' | 'recovery-started', wait = Promise.resolve(), accountType = 'HDAccount') {
   const eventId = `pali-alert-${'ab'.repeat(16)}`, network = networkContext.getNativeNetwork('syscoin-nevm');
   const scope = { id: 'native:hd:60:0:syscoin-nevm', accountId: 'hd:60:0', accountType, accountAddress: '0x' + '11'.repeat(20), network, guardian: false };
-  let state = { ...quietActivityNotifications.getSnapshot(), pendingEventId: eventId as string | null };
+  let state = { ...quietActivityNotifications.getSnapshot(), pendingEventId: eventId as string | null, tapRevision: 1 };
   let resolutions = 0;
   const port: NotificationTestPort = {
     ...quietActivityNotifications, getSnapshot: () => state,
@@ -1659,7 +1659,7 @@ function notificationTapPort(kind: 'transaction-confirmed' | 'recovery-started',
       return { scopeId: scope.id, accountId: scope.accountId, accountType, networkId: network.id, kind, transactionHash: '0x' + 'ab'.repeat(32) };
     },
   };
-  return { port, resolutions: () => resolutions };
+  return { port, resolutions: () => resolutions, tapAgain() { state = { ...state, pendingEventId: eventId, tapRevision: state.tapRevision + 1 }; } };
 }
 
 for (const kind of ['transaction-confirmed', 'recovery-started'] as const) test(`native ${kind} tap selects its exact network before opening the public destination`, async () => {
@@ -1671,6 +1671,32 @@ for (const kind of ['transaction-confirmed', 'recovery-started'] as const) test(
     assert.deepEqual(f.notificationRoutes, [{ tab: kind === 'transaction-confirmed' ? 'activity' : 'tools', identity: 'hd:60:0:syscoin-nevm' }]);
     assert.equal(tap.resolutions(), 1);
   } finally { f.dispose(); }
+});
+
+for (const repeatDuringLookup of [false, true]) test(`a repeat native tap retries an unavailable owner ${repeatDuringLookup ? 'during' : 'after'} the lookup`, async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('transaction-confirmed');
+  const getOwner = tap.port.getPendingOwner;
+  let lookups = 0;
+  tap.port.getPendingOwner = async () => {
+    if (++lookups === 1) { await held.promise; throw Error('Monitoring metadata temporarily unavailable'); }
+    return getOwner();
+  };
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.render(); await settle();
+    assert.equal(lookups, 1);
+    if (!repeatDuringLookup) { held.resolve(); await settle(); f.render(); await settle(); }
+    assert.equal(lookups, 1);
+    tap.tapAgain(); f.render(); await settle();
+    if (repeatDuringLookup) {
+      assert.equal(lookups, 1, 'the pending lookup owns the transition');
+      held.resolve(); await settle(); f.render(); await settle();
+    }
+    assert.equal(lookups, 2);
+    assert.equal(tap.resolutions(), 1);
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
+  } finally { held.resolve(); f.dispose(); }
 });
 
 test('native tap resolution cannot select a network after background revocation', async () => {

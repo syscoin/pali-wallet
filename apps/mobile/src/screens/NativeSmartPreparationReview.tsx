@@ -64,7 +64,7 @@ export function NativeSmartPreparationReview({ review, controller }: { review: R
   const authenticator = t(review.requestedAuthenticatorId === 'ecdsa' ? 'settings.ecdsaAuthenticator' : review.requestedAuthenticatorId === 'p256-webauthn' ? 'settings.passkeyAuthenticator' : review.requestedAuthenticatorId === 'slh-dsa' ? 'settings.slhDsaAuthenticator' : 'settings.unavailable');
   return <SafeAreaView style={s.safe} edges={['top', 'bottom']}><Screen key={review.id} footer={<>
     <Button title={t(review.canRetry ? 'settings.smartAccountMetadataRetry' : 'buttons.confirm')} disabled={blocked || !!review.error && !review.canRetry || !!review.externalOwners.length && !assent} onPress={approve} />
-    <Button title={t('buttons.reject')} variant="secondary" onPress={reject} />
+    <Button title={t(review.error === 'DELIVERY_UNCERTAIN' ? 'buttons.close' : 'buttons.reject')} variant="secondary" onPress={reject} />
   </>}>
     <Header title={t('connections.prepareSmartAccountTitle')} onBack={reject} />
     {site}

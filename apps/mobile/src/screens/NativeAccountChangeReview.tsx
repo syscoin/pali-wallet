@@ -16,15 +16,18 @@ export function NativeAccountChangeReview({ review, controller, onUnavailable }:
   const reject = () => { void controller.rejectAccountChange(review.id).catch(() => undefined); };
   useEffect(() => {
     const timer = setTimeout(() => setExpiredReview(identity), Math.max(0, review.expiresAt - Date.now()));
-    const back = BackHandler.addEventListener('hardwareBackPress', () => { void controller.rejectAccountChange(review.id).catch(() => undefined); return true; });
+    const back = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!review.committing) void controller.rejectAccountChange(review.id).catch(() => undefined);
+      return true;
+    });
     return () => { clearTimeout(timer); back.remove(); };
-  }, [controller, review.id, review.expiresAt, identity]);
+  }, [controller, review.id, review.expiresAt, review.committing, identity]);
   const disabled = expired || review.busy || !!review.error;
   return <SafeAreaView style={s.root} edges={['top', 'bottom']}><Screen footer={<>
     <Button title={t('connections.switchAccount')} icon="wallet" disabled={disabled} onPress={() => { if (!disabled) void controller.approveAccountChange(review.id, review.revision).catch(() => { if (controller.getSnapshot().error === 'CONNECTION_UNAVAILABLE') onUnavailable(); }); }} />
-    <Button title={t('buttons.reject')} icon="close" variant="secondary" onPress={reject} />
+    <Button title={t('buttons.reject')} icon="close" variant="secondary" disabled={review.committing} onPress={reject} />
   </>}>
-    <Header title={t('connections.changeAccount')} onBack={reject} />
+    <Header title={t('connections.changeAccount')} onBack={review.committing ? undefined : reject} />
     <Card style={s.identity}><View style={s.title}><Icon name="link" size={24} color={colors.blue} /><Text style={s.name}>{review.appName}</Text></View>
       <Text>{review.origin}</Text><DappSiteStatus verification={review.verification} /><Text style={s.muted}>{review.networkLabel}</Text></Card>
     <Text style={s.muted}>{t('connections.selectAccountToConnect')}</Text>

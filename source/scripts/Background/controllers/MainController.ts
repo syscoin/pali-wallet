@@ -103,6 +103,8 @@ import {
 } from '../../../shared/evmReadPhase';
 import {
   assertEvmReceiptCoherence,
+  assertEvmReceiptPlacement,
+  readHistoricalEvmReceiptRoot,
   observeEvmTransaction,
   readEvmRpcHash,
   readEvmRpcQuantity,
@@ -17136,17 +17138,21 @@ class MainController {
         try {
           const block = await provider.getBlock(receipt.blockNumber);
           check();
-          assertEvmReceiptCoherence(
-            {
-              hash,
-              from: tx.from,
-              to: tx.to,
-              blockHash: tx.blockHash,
-              blockNumber: tx.blockNumber,
-            },
-            receipt,
-            block
-          );
+          const identity = {
+            hash,
+            from: tx.from,
+            to: tx.to,
+            blockHash: tx.blockHash,
+            blockNumber: tx.blockNumber,
+          };
+          if (reportUnavailable === true && receipt.status == null) {
+            readHistoricalEvmReceiptRoot(receipt, String(chainId));
+            if (tx.type !== 0 || tx.blockHash == null || tx.blockNumber == null)
+              throw new Error('Historical transaction placement unavailable');
+            assertEvmReceiptPlacement(identity, receipt, block);
+          } else {
+            assertEvmReceiptCoherence(identity, receipt, block);
+          }
           timestamp = block ? block.timestamp : timestamp;
         } catch (blockError) {
           if (reportUnavailable === true) throw blockError;
@@ -17158,9 +17164,10 @@ class MainController {
       }
 
       // Convert status from hex to boolean for proper comparison
-      const isSuccess = receipt
-        ? this.convertHexValue(receipt.status, 'number') === 1
-        : null;
+      const isSuccess =
+        receipt && receipt.status != null
+          ? this.convertHexValue(receipt.status, 'number') === 1
+          : null;
 
       await verify();
       if (
@@ -17192,12 +17199,17 @@ class MainController {
         nonce: this.convertHexValue(tx.nonce, 'number'),
         gasUsed: receipt ? this.convertHexValue(receipt.gasUsed) : null,
         // Use effectiveGasPrice from receipt if available (more accurate for EIP-1559)
-        effectiveGasPrice:
-          receipt && receipt.effectiveGasPrice
-            ? this.convertHexValue(receipt.effectiveGasPrice)
-            : null,
+        effectiveGasPrice: receipt
+          ? this.convertHexValue(receipt.effectiveGasPrice ?? receipt.gasPrice)
+          : null,
         status:
-          isSuccess === null ? 'pending' : isSuccess ? 'success' : 'failed',
+          isSuccess === null
+            ? receipt
+              ? 'unknown'
+              : 'pending'
+            : isSuccess
+            ? 'success'
+            : 'failed',
         // Normalize to match Enhanced component expectations
         success: isSuccess,
         isError: isSuccess === null ? null : isSuccess ? '0' : '1',
@@ -17213,7 +17225,10 @@ class MainController {
           ? this.convertHexValue(receipt.cumulativeGasUsed)
           : null,
         transactionIndex: receipt
-          ? this.convertHexValue(receipt.transactionIndex, 'number')
+          ? this.convertHexValue(
+              receipt.transactionIndex ?? receipt.index,
+              'number'
+            )
           : null,
         // Method detection for enhanced display
         method: tx.data && tx.data !== '0x' ? 'Contract Interaction' : null,

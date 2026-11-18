@@ -1187,6 +1187,10 @@ export const EvmTransactionDetailsEnhanced = ({
     chainId,
     settlementIndex
   );
+  const unknownExecution =
+    !displayContext.isOperation &&
+    mergedTransaction?.status === 'unknown' &&
+    isTransactionInBlock(mergedTransaction);
   const isCancellation =
     savedSmartAccountCancellation ||
     hasEvmCancellationIntent(transactionTx, history, chainId);
@@ -1224,15 +1228,19 @@ export const EvmTransactionDetailsEnhanced = ({
         txStatus={
           <>
             <p
-              className={`text-xs font-normal ${evmSettlementClass(
-                settlement
-              )}`}
+              className={`text-xs font-normal ${
+                unknownExecution
+                  ? 'text-brand-gray200'
+                  : evmSettlementClass(settlement)
+              }`}
             >
               {t(
-                settlement === 'pending' &&
-                  !enhancedDetails &&
-                  (transactionTx as any)?.historySource ===
-                    EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned
+                unknownExecution
+                  ? 'notifications.activityUnknown'
+                  : settlement === 'pending' &&
+                    !enhancedDetails &&
+                    (transactionTx as any)?.historySource ===
+                      EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned
                   ? 'transactions.unconfirmed'
                   : evmSettlementLabel(settlement)
               )}

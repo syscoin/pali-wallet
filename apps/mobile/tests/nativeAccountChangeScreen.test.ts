@@ -6,18 +6,19 @@ import type { NativeAccountChangeReview } from '../src/connections/accountChange
 function fixture(busy = false) {
   const calls: unknown[] = [];
   let fail = false;
+  let back: (() => boolean) | undefined;
   const controller = { getSnapshot: () => ({ error: 'CONNECTION_UNAVAILABLE' }), selectConnectionAccount: (...args: unknown[]) => calls.push(['select', ...args]),
     approveAccountChange: async (...args: unknown[]) => { calls.push(['approve', ...args]); if (fail) throw Error('Failed'); }, rejectAccountChange: async (...args: unknown[]) => { calls.push(['reject', ...args]); } };
   const host = screenFixture(new URL('../src/screens/NativeAccountChangeReview.tsx', import.meta.url), 'NativeAccountChangeReview', {
-    'react-native': { View: 'View', StyleSheet: { create: (value: unknown) => value }, BackHandler: { addEventListener: () => ({ remove() {} }) } },
+    'react-native': { View: 'View', StyleSheet: { create: (value: unknown) => value }, BackHandler: { addEventListener(_event: string, listener: () => boolean) { back = listener; return { remove() { back = undefined; } }; } } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
     './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' },
   });
   const review: NativeAccountChangeReview = { id: 'account-1', revision: 5, appName: 'Example', origin: 'https://example.invalid', verification: { validation: 'UNKNOWN', isScam: false },
-    networkLabel: 'Ethereum', chainId: 'eip155:1', expiresAt: Date.now() + 60000, busy, error: null,
+    networkLabel: 'Ethereum', chainId: 'eip155:1', expiresAt: Date.now() + 60000, busy, committing: false, error: null,
     currentAccountId: 'old', selectedAccountId: 'old', accounts: [{ id: 'old', type: 'HDAccount', label: 'Account 1', address: '0x' + '11'.repeat(20) }, { id: 'new', type: 'Ledger', label: 'Ledger', address: '0x' + '22'.repeat(20) }] };
-  return { calls, host, fail: () => { fail = true; }, render: () => screenElements(host.render({ review, controller, onUnavailable: () => calls.push(['unavailable']) })) };
+  return { calls, host, back: () => back?.(), fail: () => { fail = true; }, render: (committing = false) => screenElements(host.render({ review: { ...review, committing }, controller, onUnavailable: () => calls.push(['unavailable']) })) };
 }
 
 test('account chooser uses public identity, selected text/check and explicit footer consent', async () => {
@@ -47,6 +48,20 @@ test('busy chooser has no actionable rows and cannot approve again', () => {
   } finally { f.host.close(); }
 });
 
+
+test('account switch remains rejectable during checks and consumes Back during commit', () => {
+  const f = fixture(true);
+  try {
+    const checking = f.render();
+    assert.equal(checking.find(node => node.type === 'Button' && node.props.title === 'Reject')!.props.disabled, false);
+    assert.equal(f.back(), true);
+    const committing = f.render(true);
+    assert.equal(committing.find(node => node.type === 'Header')!.props.onBack, undefined);
+    assert.equal(committing.find(node => node.type === 'Button' && node.props.title === 'Reject')!.props.disabled, true);
+    assert.equal(f.back(), true);
+    assert.deepEqual(f.calls, [['reject', 'account-1']]);
+  } finally { f.host.close(); }
+});
 
 test('a failed commit opens the existing connection error view', async () => {
   const f = fixture();

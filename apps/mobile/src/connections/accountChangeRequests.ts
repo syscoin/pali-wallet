@@ -4,7 +4,7 @@ import type { WalletConnectRequest, WalletConnectVerification } from './walletCo
 
 export type NativeAccountChangeReview = Readonly<{
   id: string; revision: number; appName: string; origin: string; verification: WalletConnectVerification;
-  networkLabel: string; chainId: string; expiresAt: number; busy: boolean;
+  networkLabel: string; chainId: string; expiresAt: number; busy: boolean; committing: boolean;
   accounts: readonly Readonly<{ id: string; label: string; address: string; type: string }>[];
   currentAccountId: string; selectedAccountId: string;
   error: 'BLOCKED_SITE' | 'SITE_MISMATCH' | 'UNAVAILABLE' | null;
@@ -49,7 +49,7 @@ export class NativeAccountChangeRequests {
     if (!entry || !this.options.foreground(entry.owner.order)) return null;
     return Object.freeze({ id: entry.id, revision, appName: entry.wire.session.metadata.name, origin: entry.wire.session.binding.origin,
       verification: entry.wire.verification, networkLabel: entry.owner.networkLabel, chainId: entry.owner.chainId,
-      expiresAt: Math.min(entry.wire.expiresAt, entry.wire.session.expiry * 1000), busy: entry.phase !== 'idle',
+      expiresAt: Math.min(entry.wire.expiresAt, entry.wire.session.expiry * 1000), busy: entry.phase !== 'idle', committing: entry.phase === 'committing',
       accounts: Object.freeze(entry.owner.accounts.map(({ id, label, address, type }) => Object.freeze({ id, label, address, type }))),
       currentAccountId: entry.owner.currentAccountId, selectedAccountId: entry.selected, error: entry.error });
   }
@@ -70,7 +70,7 @@ export class NativeAccountChangeRequests {
     try {
       const site = await this.options.checkSite(entry.wire.session.binding.origin); this.check(entry);
       if (site.isBlacklisted) { entry.error = 'BLOCKED_SITE'; return; }
-      entry.phase = 'committing';
+      entry.phase = 'committing'; this.options.changed();
       await this.options.commit(entry.wire, account, entry.lifetime.signal, () => this.check(entry));
       this.retire(entry);
     } catch (cause) {
@@ -80,11 +80,11 @@ export class NativeAccountChangeRequests {
   }
   private wasDenied(entry: Pending) { return entry.phase === 'denied'; }
   async reject(id: string) {
-    const entry = this.pending.get(id); if (!entry) return;
-    const responding = entry.phase !== 'committing';
-    if (responding) entry.phase = 'denied';
+    const entry = this.pending.get(id);
+    if (!entry || entry.phase === 'committing') return;
+    entry.phase = 'denied';
     this.retire(entry);
-    if (responding) await this.options.reject(entry.wire, entry.owner.assertCurrent).catch(() => undefined);
+    await this.options.reject(entry.wire, entry.owner.assertCurrent).catch(() => undefined);
   }
   private retire(entry: Pending) {
     if (this.pending.get(entry.id) !== entry) return;

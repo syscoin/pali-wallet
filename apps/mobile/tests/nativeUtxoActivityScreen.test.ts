@@ -67,7 +67,7 @@ function fixture(row: UtxoActivityRow, replacement?: {
   };
 }
 
-test('UTXO Activity waits for a successful page and keeps the target details after acknowledgment', () => {
+test('UTXO Activity waits for a successful page and keeps the target details after acknowledgment', async () => {
   const txid = 'e'.repeat(64);
   const row: UtxoActivityRow = { txid, block: null, observedConfirmations: 0, receivedUnits: '0', spentUnits: '10000',
     netUnits: '-10000', transactionFeeUnits: '100', hasAssetData: false, zdag: false, assetAmount: null, nativeTransfer: null };
@@ -78,9 +78,11 @@ test('UTXO Activity waits for a successful page and keeps the target details aft
     f.setStatus('unavailable');
     f.target(txid, acknowledge);
     f.render();
+    await Promise.resolve();
     assert.equal(opened, 0);
     f.setStatus('ready');
     f.render();
+    await Promise.resolve();
     assert.equal(opened, 1);
     f.target();
     assert(f.render().some(item => item.type === 'TransactionDetailLayout'));
@@ -88,11 +90,12 @@ test('UTXO Activity waits for a successful page and keeps the target details aft
     assert(!f.render().some(item => item.type === 'TransactionDetailLayout'));
     f.target(txid, acknowledge);
     f.render();
+    await Promise.resolve();
     assert.equal(opened, 2, 'a new deliberate visit can open the same transaction');
   } finally { f.close(); }
 });
 
-test('a notification outside the loaded UTXO page leaves older activity for the user to open', () => {
+test('a notification outside the loaded UTXO page leaves older activity for the user to open', async () => {
   const row: UtxoActivityRow = { txid: 'a'.repeat(64), block: null, observedConfirmations: 0,
     receivedUnits: '0', spentUnits: '10000', netUnits: '-10000', transactionFeeUnits: '100',
     hasAssetData: false, zdag: false, assetAmount: null, nativeTransfer: null };
@@ -104,6 +107,7 @@ test('a notification outside the loaded UTXO page leaves older activity for the 
     f.addOlderRow(older);
     f.target(older.txid, () => { handled++; });
     list();
+    await Promise.resolve();
     assert.equal(handled, 1);
     f.target();
     const before = list();

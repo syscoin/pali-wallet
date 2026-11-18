@@ -123,10 +123,13 @@ jest.mock('utils/addressPoisoning', () => ({
   getEvmHistoryAddressCopyRisk: () => null,
 }));
 jest.mock('components/TransactionDetails', () => ({
-  TransactionHeader: ({ displayInfo }: any) => (
-    <div data-testid="header">
-      {displayInfo?.formattedValue} {displayInfo?.displaySymbol}
-    </div>
+  TransactionHeader: ({ displayInfo, txStatus }: any) => (
+    <>
+      <div data-testid="header">
+        {displayInfo?.formattedValue} {displayInfo?.displaySymbol}
+      </div>
+      <div data-testid="settlement">{txStatus}</div>
+    </>
   ),
   TransactionDetailsList: ({ details }: any) => (
     <div>
@@ -239,6 +242,37 @@ const renderProviderTransaction = async (
   expect(screen.getByTestId('Gas Limit').textContent).toBe('21,000');
   expect(screen.getByTestId('Gas Used').textContent).toBe('21,000');
 };
+
+it('shows mined placement with an unknown execution outcome for a historical RPC detail', async () => {
+  const hash = nextHash();
+  mockState.vault.activeNetwork.chainId = 1;
+  const row = {
+    hash,
+    chainId: 1,
+    from: ACCOUNT,
+    to: TARGET,
+    value: '1000000000000000000',
+    input: '0x',
+  };
+  mockReads.mockImplementation(async ([, method]: string[]) => {
+    if (method === 'getEvmTransactionFromProvider')
+      return {
+        ...row,
+        blockNumber: 42,
+        blockHash: `0x${'33'.repeat(32)}`,
+        confirmations: 1,
+        status: 'unknown',
+        success: null,
+        txreceipt_status: null,
+        gasUsed: '21000',
+      };
+    throw new Error('Unexpected detail read');
+  });
+  await renderDetails(row);
+  expect(await screen.findByText('notifications.activityUnknown')).toBeTruthy();
+  expect(screen.queryByTestId('Success')).toBeNull();
+  expect(screen.getByTestId('Gas Used').textContent).toBe('21,000');
+});
 
 it('retains ordinary fees and value through the actual provider normalizer', async () => {
   await renderProviderTransaction(
