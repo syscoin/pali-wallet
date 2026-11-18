@@ -4,13 +4,11 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 // Replay has separate actual consent tests; isolate unrelated detail decoding here.
-jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
-  RetainedTransactionReplay: () => null,
-}));
+
+import { projectEvmActivityRow } from '../../../../../../wallet/evmActivityRow';
 
 import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';
 import { EvmTransactionsList } from './EvmList';
-import { savedTransactionHistoryRow } from './useSavedEvmTransactions';
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
 const TARGET = `0x${'22'.repeat(20)}`;
@@ -519,7 +517,7 @@ it.each([
   'promotes a saved local row from an older explorer page to $label without pending actions',
   async ({ receipt, error, label }) => {
     const exactValue = '9007199254740993000000001';
-    const local = savedTransactionHistoryRow({
+    const local = projectEvmActivityRow({
       hash: hash('d'),
       chainId: '1',
       from: ACCOUNT,
@@ -564,11 +562,14 @@ it.each([
     expect(mockNavigate).toHaveBeenLastCalledWith('/home/details', {
       state: expect.objectContaining({ hash: local.hash, tx: local }),
     });
-    fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+    const loadMore = screen.getByRole('button', { name: 'buttons.loadMore' });
+    fireEvent.click(loadMore);
+    fireEvent.click(loadMore);
     await waitFor(() => {
       expect(screen.queryByText('Unconfirmed')).toBeNull();
       expect(screen.getByText(label)).toBeTruthy();
     });
+    expect(mockEmitter.mock.calls.map(([, args]) => args[3])).toEqual([1, 2]);
     expect(screen.queryByText(`Options:${local.hash}`)).toBeNull();
     expect(screen.queryByText(`Options:${observed.hash}`)).toBeNull();
     expect(await screen.findAllByText(`${exactValue} ETH`)).toHaveLength(1);
@@ -611,7 +612,7 @@ it('only offers another explorer page when the initial read found more history',
 });
 
 it.each([false, true])(
-  'advances a duplicate-only saved page while revealing cached rows (explorer=%s)',
+  'advances a duplicate-only local page while revealing cached rows (explorer=%s)',
   async (explorer) => {
     mockApiUrl = explorer ? 'https://explorer.example/api' : undefined;
     mockRows = confirmedRows(51);
@@ -622,8 +623,7 @@ it.each([false, true])(
       return (
         <EvmTransactionsList
           userTransactions={mockRows}
-          savedHasMore={hasMore}
-          loadMoreSaved={loadMore}
+          olderRows={{ hasMore, loading: false, loadMore }}
         />
       );
     };
@@ -647,7 +647,7 @@ it.each([false, true])(
   }
 );
 
-it('keeps genuinely unseen saved pages available beyond the cached public window', async () => {
+it('keeps unseen local pages available beyond the cached public window', async () => {
   mockRows = confirmedRows(51);
   const loadMore = jest.fn();
   const Harness = () => {
@@ -660,8 +660,7 @@ it('keeps genuinely unseen saved pages available beyond the cached public window
     return (
       <EvmTransactionsList
         userTransactions={rows}
-        savedHasMore={page < 2}
-        loadMoreSaved={loadMore}
+        olderRows={{ hasMore: page < 2, loading: false, loadMore }}
       />
     );
   };
@@ -702,7 +701,7 @@ it('uses one ordinary row and the existing menu for authenticated Smart Account 
   const view = render(
     <EvmTransactionsList
       userTransactions={mockRows}
-      savedTransactions={[saved]}
+      smartCancellationHashes={new Set([saved.hash])}
     />
   );
   expect(
@@ -720,7 +719,7 @@ it('uses one ordinary row and the existing menu for authenticated Smart Account 
   view.rerender(
     <EvmTransactionsList
       userTransactions={mockRows}
-      savedTransactions={[saved]}
+      smartCancellationHashes={new Set([saved.hash])}
     />
   );
   expect(

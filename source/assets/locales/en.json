@@ -337,9 +337,7 @@
     "congratulations": "Congratulations",
     "youWalletWas": "Your wallet was successfully imported.",
     "youHaveNoNfts": "You have no NFTs.",
-    "noIndexedActivity": "No activity found. NFT and internal transfers may not appear here.",
-    "savedActivityUnavailable": "Saved activity could not be loaded.",
-    "retrySavedActivity": "Retry saved activity"
+    "noIndexedActivity": "No activity found. NFT and internal transfers may not appear here."
   },
   "titles": {
     "assetDetails": "ASSET DETAILS",
@@ -1322,23 +1320,14 @@
     },
     "replay": {
       "reviewCancellation": "Review cancellation",
-      "cancellationDescription": "Cancel this transaction with a maximum network fee of {{fee}} {{currency}}? The original may still confirm first.",
-      "cancellationExpired": "This cancellation review expired. Check the fee again.",
       "network": "Network",
-      "from": "From",
       "creation": "Contract creation",
       "maximumFee": "Maximum network fee",
       "nonce": "Nonce",
       "hash": "Transaction hash",
-      "original": "Original transaction",
       "unknown": "Submission could not be confirmed. Check Activity before trying again.",
-      "checkActivity": "Check Activity before trying again; the submission result is unavailable.",
       "tokenRecipient": "Token recipient",
-      "tokenAmount": "Token amount",
-      "operation": {
-        "cancel": "Cancellation",
-        "erc721": "NFT transfer"
-      }
+      "tokenAmount": "Token amount"
     },
     "detailsUnavailable": "Couldn’t load transaction details. Try again."
   },
@@ -1757,12 +1746,12 @@
     }
   },
   "privacy": {
+    "title": "Privacy",
     "poolAmount": "{{amount}} ETH pool",
     "activity": {
       "deposit": "Privacy deposit",
       "withdrawal": "Privacy withdrawal"
     },
-    "title": "Privacy",
     "bundle": {
       "snapshotTime": "Snapshot time: {{time}}",
       "empty": "This backup contains no notes.",

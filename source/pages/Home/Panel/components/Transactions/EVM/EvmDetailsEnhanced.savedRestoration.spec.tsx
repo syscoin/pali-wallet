@@ -2,8 +2,8 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
+import { projectEvmActivityRow } from '../../../../../../wallet/evmActivityRow';
 import { DetailsView } from 'pages/Home/Panel/components/Details';
-import { savedTransactionHistoryRow } from 'pages/Home/Panel/components/Transactions/EVM/useSavedEvmTransactions';
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
 const TARGET = `0x${'22'.repeat(20)}`;
@@ -199,7 +199,7 @@ beforeEach(() => {
   });
 });
 it('restores the saved-only Smart amount after hash-only reopen without duplicate reads or replay dispatch', async () => {
-  mockLocation.state.tx = savedTransactionHistoryRow(saved() as any);
+  mockLocation.state.tx = projectEvmActivityRow(saved() as any);
   const activityOpen = render(<DetailsView />);
   await waitFor(() =>
     expect(screen.getByTestId('transaction-amount').textContent).toBe(

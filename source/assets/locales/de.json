@@ -337,9 +337,7 @@
     "congratulations": "Glückwunsch!",
     "youWalletWas": "Ihre Wallet wurde erfolgreich importiert",
     "youHaveNoNfts": "Du hast keine NFTs.",
-    "noIndexedActivity": "Keine Aktivitäten gefunden. NFT- und interne Transfers werden hier möglicherweise nicht angezeigt.",
-    "savedActivityUnavailable": "Gespeicherte Aktivitäten konnten nicht geladen werden.",
-    "retrySavedActivity": "Gespeicherte Aktivitäten erneut laden"
+    "noIndexedActivity": "Keine Aktivitäten gefunden. NFT- und interne Transfers werden hier möglicherweise nicht angezeigt."
   },
   "titles": {
     "assetDetails": "ASSET-DETAILS",
@@ -1322,23 +1320,14 @@
     },
     "replay": {
       "reviewCancellation": "Stornierung prüfen",
-      "cancellationDescription": "Diese Transaktion mit einer maximalen Netzwerkgebühr von {{fee}} {{currency}} stornieren? Die ursprüngliche Transaktion kann zuerst bestätigt werden.",
-      "cancellationExpired": "Diese Stornierungsprüfung ist abgelaufen. Prüfe die Gebühr erneut.",
       "network": "Netzwerk",
-      "from": "Von",
       "creation": "Vertragserstellung",
       "maximumFee": "Maximale Netzwerkgebühr",
       "nonce": "Nonce",
       "hash": "Transaktionshash",
-      "original": "Ursprüngliche Transaktion",
       "unknown": "Die Übermittlung konnte nicht bestätigt werden. Prüfe Aktivität vor einem weiteren Versuch.",
-      "checkActivity": "Prüfe Aktivität vor einem weiteren Versuch; das Übermittlungsergebnis ist nicht verfügbar.",
       "tokenRecipient": "Token-Empfänger",
-      "tokenAmount": "Token-Betrag",
-      "operation": {
-        "cancel": "Stornierung",
-        "erc721": "NFT-Transfer"
-      }
+      "tokenAmount": "Token-Betrag"
     },
     "detailsUnavailable": "Transaktionsdetails konnten nicht geladen werden. Versuche es erneut."
   },
@@ -1757,12 +1746,12 @@
     }
   },
   "privacy": {
+    "title": "Privatsphäre",
     "poolAmount": "{{amount}}-ETH-Pool",
     "activity": {
       "deposit": "Private Einzahlung",
       "withdrawal": "Private Auszahlung"
     },
-    "title": "Privatsphäre",
     "bundle": {
       "snapshotTime": "Zeitpunkt der Momentaufnahme: {{time}}",
       "empty": "Diese Sicherung enthält keine Notizen.",

@@ -37,9 +37,6 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 // Replay has separate actual consent tests; isolate unrelated detail decoding here.
-jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
-  RetainedTransactionReplay: () => null,
-}));
 
 import MainController from 'scripts/Background/controllers/MainController';
 import EvmTransactionsController from 'scripts/Background/controllers/transactions/evm';
@@ -313,3 +310,7 @@ it('does not invent absent or null explorer price fields', async () => {
   for (const label of PRICE_LABELS)
     expect(screen.queryByTestId(label)).toBeNull();
 });
+
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: jest.fn().mockResolvedValue(null),
+}));

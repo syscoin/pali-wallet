@@ -323,10 +323,30 @@ it('keeps payer records while honoring the selected Smart Account activity reset
   );
   expect(retained).not.toBeNull();
   account.evmActivityClearedAtByChainId = { 1: retained!.createdAt - 1 };
-  expect((await f.wallet.getSavedEvmTransactions()).transactions).toHaveLength(
-    1
-  );
+  const scope = {
+    account: String(activeAccount.id),
+    network: mockState.vault.activeNetwork.url,
+  };
+  await expect(
+    f.wallet.getSavedEvmTransactions(null, 30, {
+      ...scope,
+      account: 'another-account',
+    })
+  ).rejects.toThrow();
+  await expect(
+    f.wallet.getSavedEvmTransaction(f.hash, {
+      ...scope,
+      network: 'another-endpoint',
+    })
+  ).rejects.toThrow();
+  expect(
+    (await f.wallet.getSavedEvmTransactions(null, 30, scope)).transactions
+  ).toHaveLength(1);
+  expect(await f.wallet.getSavedEvmTransaction(f.hash)).toMatchObject({
+    hash: f.hash,
+  });
   account.evmActivityClearedAtByChainId[1] = retained!.createdAt;
+  expect(await f.wallet.getSavedEvmTransaction(f.hash)).toBeNull();
   expect(await f.wallet.getSavedEvmTransactions()).toEqual({
     transactions: [],
     nextCursor: null,

@@ -3,13 +3,12 @@ import { act, renderHook } from '@testing-library/react';
 import React from 'react';
 
 import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
+import { projectEvmActivityRow } from '../../../../../../wallet/evmActivityRow';
 
-import {
-  savedTransactionHistoryRow,
-  useSavedEvmTransactions,
-} from './useSavedEvmTransactions';
+import { useEvmActivityHistory } from './useEvmActivityHistory';
 
 const mockEmitter = jest.fn();
+const navigation = (account: string) => ({ account, network: 'network' });
 jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
   controllerEmitter: (...args: any[]) => mockEmitter(...args),
 }));
@@ -48,7 +47,7 @@ const flush = async () => {
 beforeEach(() => mockEmitter.mockReset());
 
 test('local projection retains exact money, null creation target and a call hint without fabricating calldata or receipts', () => {
-  const result: any = savedTransactionHistoryRow(row('1') as any);
+  const result: any = projectEvmActivityRow(row('1') as any);
   expect(result.value).toBe('9007199254740993000000001');
   expect(result.historySource).toBe('local-signed');
   expect(result.to).toBeNull();
@@ -79,7 +78,7 @@ test('saved smart-account history uses authenticated inner transfer facts and ke
       ],
     },
   };
-  const result: any = savedTransactionHistoryRow(tx);
+  const result: any = projectEvmActivityRow(tx);
   expect(result.from).toBe(account);
   expect(result.to).toBe(recipient);
   expect(result.value).toBe('1000000000000000001');
@@ -107,7 +106,7 @@ test('saved Smart handleOps cancellation projects its local cancellation intent'
     callData: '0x1234',
     executions: [{ target: account, value: '0', data: '0x' }],
   };
-  const result = savedTransactionHistoryRow({
+  const result = projectEvmActivityRow({
     ...outer,
     phase: 'signed',
     smartAccount,
@@ -124,8 +123,9 @@ test('saved Smart handleOps cancellation projects its local cancellation intent'
 
 test('bounded pages cross the JSON message boundary and preserve older records on refresh', async () => {
   mockEmitter.mockImplementation((_: unknown, params: unknown[]) => {
-    const [cursor] = JSON.parse(JSON.stringify(params));
-    if (cursor === null) return Promise.reject(new Error('Invalid cursor'));
+    const [cursor, limit, scope] = JSON.parse(JSON.stringify(params));
+    expect(limit).toBe(30);
+    expect(scope).toEqual(navigation('a'));
     return Promise.resolve(
       cursor
         ? { transactions: [row('2')], nextCursor: null }
@@ -133,15 +133,19 @@ test('bounded pages cross the JSON message boundary and preserve older records o
     );
   });
   const { result } = renderHook(() =>
-    useSavedEvmTransactions(true, 'a:network')
+    useEvmActivityHistory({
+      includeLocal: true,
+      scope: navigation('a'),
+      chainId: 57057,
+    })
   );
   await flush();
   expect(result.current.transactions.map((tx) => tx.hash)).toEqual([hash('1')]);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'getSavedEvmTransactions'],
-    []
+    [null, 30, navigation('a')]
   );
-  await act(async () => result.current.loadMore());
+  await act(async () => result.current.olderRows.loadMore());
   expect(result.current.transactions.map((tx) => tx.hash)).toEqual([
     hash('1'),
     hash('2'),
@@ -152,7 +156,7 @@ test('bounded pages cross the JSON message boundary and preserve older records o
     hash('1'),
     hash('2'),
   ]);
-  expect(result.current.hasMore).toBe(false);
+  expect(result.current.olderRows.hasMore).toBe(false);
 });
 
 test('a stale A-B-A reply cannot publish history into the new account visit', async () => {
@@ -164,7 +168,12 @@ test('a stale A-B-A reply cannot publish history into the new account visit', as
       : Promise.resolve({ transactions: [], nextCursor: null })
   );
   const { result, rerender } = renderHook(
-    ({ scope }) => useSavedEvmTransactions(true, scope),
+    ({ scope }) =>
+      useEvmActivityHistory({
+        includeLocal: true,
+        scope: navigation(scope),
+        chainId: 57057,
+      }),
     { initialProps: { scope: 'a:network' } }
   );
   rerender({ scope: 'b:network' });
@@ -179,7 +188,12 @@ test('a stale A-B-A reply cannot publish history into the new account visit', as
 test('strict effect remount loads a current page and disabled UTXO mode performs no read', async () => {
   mockEmitter.mockResolvedValue({ transactions: [row('1')], nextCursor: null });
   const { result } = renderHook(
-    () => useSavedEvmTransactions(true, 'a:network'),
+    () =>
+      useEvmActivityHistory({
+        includeLocal: true,
+        scope: navigation('a'),
+        chainId: 57057,
+      }),
     {
       wrapper: ({ children }) => (
         <React.StrictMode>{children}</React.StrictMode>
@@ -189,7 +203,13 @@ test('strict effect remount loads a current page and disabled UTXO mode performs
   await flush();
   expect(result.current.transactions[0].hash).toBe(hash('1'));
   mockEmitter.mockClear();
-  renderHook(() => useSavedEvmTransactions(false, 'utxo'));
+  renderHook(() =>
+    useEvmActivityHistory({
+      includeLocal: false,
+      scope: navigation('utxo'),
+      chainId: 57057,
+    })
+  );
   await flush();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
@@ -200,13 +220,17 @@ test('a failed later local read leaves retained history available', async () => 
     nextCursor: hash('1'),
   });
   const { result } = renderHook(() =>
-    useSavedEvmTransactions(true, 'a:network')
+    useEvmActivityHistory({
+      includeLocal: true,
+      scope: navigation('a'),
+      chainId: 57057,
+    })
   );
   await flush();
   mockEmitter.mockRejectedValue(new Error('read unavailable'));
-  await act(async () => result.current.loadMore());
+  await act(async () => result.current.olderRows.loadMore());
   expect(result.current.transactions[0].hash).toBe(hash('1'));
-  expect(result.current.loading).toBe(false);
+  expect(result.current.olderRows.loading).toBe(false);
   expect(result.current.unavailable).toBe(true);
 });
 
@@ -215,11 +239,15 @@ test('a failed first read stays unavailable across rerenders without an automati
   try {
     mockEmitter.mockRejectedValue(new Error('Read unavailable'));
     const { result, rerender } = renderHook(() =>
-      useSavedEvmTransactions(true, 'a:network')
+      useEvmActivityHistory({
+        includeLocal: true,
+        scope: navigation('a'),
+        chainId: 57057,
+      })
     );
     await flush();
     expect(result.current.unavailable).toBe(true);
-    expect(result.current.loading).toBe(false);
+    expect(result.current.olderRows.loading).toBe(false);
     rerender();
     await act(async () => jest.advanceTimersByTimeAsync(60000));
     expect(mockEmitter).toHaveBeenCalledTimes(1);
@@ -242,28 +270,32 @@ test('an explicit local page retry preserves its failed cursor, successful rows 
     nextCursor: hash('1'),
   });
   const { result } = renderHook(() =>
-    useSavedEvmTransactions(true, 'a:network')
+    useEvmActivityHistory({
+      includeLocal: true,
+      scope: navigation('a'),
+      chainId: 57057,
+    })
   );
   await flush();
   mockEmitter.mockRejectedValueOnce(new Error('Older page unavailable'));
-  await act(async () => result.current.loadMore());
+  await act(async () => result.current.olderRows.loadMore());
   expect(result.current.unavailable).toBe(true);
-  expect(result.current.hasMore).toBe(true);
+  expect(result.current.olderRows.hasMore).toBe(true);
   mockEmitter.mockResolvedValueOnce({
     transactions: [row('2')],
     nextCursor: null,
   });
   await act(async () => result.current.retry());
   expect(mockEmitter.mock.calls.slice(-2).map(([, args]) => args)).toEqual([
-    [hash('1'), 30],
-    [hash('1'), 30],
+    [hash('1'), 30, navigation('a')],
+    [hash('1'), 30, navigation('a')],
   ]);
   expect(result.current.transactions.map((tx) => tx.hash)).toEqual([
     hash('1'),
     hash('2'),
   ]);
   expect(result.current.unavailable).toBe(false);
-  expect(result.current.hasMore).toBe(false);
+  expect(result.current.olderRows.hasMore).toBe(false);
 });
 
 test.each([
@@ -276,7 +308,11 @@ test.each([
   async (page) => {
     mockEmitter.mockResolvedValueOnce(page);
     const { result } = renderHook(() =>
-      useSavedEvmTransactions(true, 'a:network')
+      useEvmActivityHistory({
+        includeLocal: true,
+        scope: navigation('a'),
+        chainId: 57057,
+      })
     );
     await flush();
     expect(result.current.unavailable).toBe(true);
@@ -290,7 +326,12 @@ test.each(['success', 'failure'])(
     const held = deferred<any>();
     mockEmitter.mockRejectedValueOnce(new Error('Initial unavailable'));
     const { result, rerender, unmount } = renderHook(
-      ({ scope }) => useSavedEvmTransactions(true, scope),
+      ({ scope }) =>
+        useEvmActivityHistory({
+          includeLocal: true,
+          scope: navigation(scope),
+          chainId: 57057,
+        }),
       { initialProps: { scope: 'a:network' } }
     );
     await flush();
@@ -322,10 +363,15 @@ test.each(['success', 'failure'])(
   }
 );
 
-test('disabling saved history retires an exposed retry even when the account/network scope is unchanged', async () => {
+test('disabling EVM Activity retires an exposed retry even when the account/network scope is unchanged', async () => {
   mockEmitter.mockRejectedValueOnce(new Error('Read unavailable'));
   const { result, rerender } = renderHook(
-    ({ enabled }) => useSavedEvmTransactions(enabled, 'a:network'),
+    ({ enabled }) =>
+      useEvmActivityHistory({
+        includeLocal: enabled,
+        scope: navigation('a'),
+        chainId: 57057,
+      }),
     { initialProps: { enabled: true } }
   );
   await flush();
@@ -334,7 +380,7 @@ test('disabling saved history retires an exposed retry even when the account/net
   await retry();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(result.current.unavailable).toBe(false);
-  expect(result.current.loading).toBe(false);
+  expect(result.current.olderRows.loading).toBe(false);
 });
 
 test('more than a page of new records cannot leave a permanent gap after a refresh', async () => {
@@ -347,10 +393,14 @@ test('more than a page of new records cannot leave a permanent gap after a refre
   const gap = Array.from({ length: 10 }, (_, i) => numbered(40 - i));
   mockEmitter.mockResolvedValueOnce({ transactions: prior, nextCursor: null });
   const { result } = renderHook(() =>
-    useSavedEvmTransactions(true, 'a:network')
+    useEvmActivityHistory({
+      includeLocal: true,
+      scope: navigation('a'),
+      chainId: 57057,
+    })
   );
   await flush();
-  expect(result.current.hasMore).toBe(false);
+  expect(result.current.olderRows.hasMore).toBe(false);
   mockEmitter.mockResolvedValueOnce({
     transactions: newest,
     nextCursor: newest.at(-1)!.hash,
@@ -358,15 +408,15 @@ test('more than a page of new records cannot leave a permanent gap after a refre
   act(() => window.dispatchEvent(new Event('focus')));
   await flush();
   expect(result.current.transactions).toHaveLength(60);
-  expect(result.current.hasMore).toBe(true);
+  expect(result.current.olderRows.hasMore).toBe(true);
   mockEmitter.mockResolvedValueOnce({
     transactions: [...gap, ...prior.slice(0, 20)],
     nextCursor: prior[19].hash,
   });
-  await act(async () => result.current.loadMore());
+  await act(async () => result.current.olderRows.loadMore());
   expect(mockEmitter).toHaveBeenLastCalledWith(
     ['wallet', 'getSavedEvmTransactions'],
-    [newest.at(-1)!.hash, 30]
+    [newest.at(-1)!.hash, 30, navigation('a')]
   );
   expect(new Set(result.current.transactions.map((tx) => tx.hash)).size).toBe(
     70
@@ -389,7 +439,7 @@ test('projects signed ERC-20 units and recipient with or without token metadata 
       name: 'Token',
     },
   ]) {
-    const tx: any = savedTransactionHistoryRow({
+    const tx: any = projectEvmActivityRow({
       ...row('3'),
       to: tokenAddress,
       operation: 'erc20',
@@ -423,7 +473,7 @@ test.each(['ERC-721', 'ERC-1155'] as const)(
       tokenId: '0',
       amountUnits: tokenStandard === 'ERC-721' ? '1' : '9007199254740993',
     };
-    const tx: any = savedTransactionHistoryRow({
+    const tx: any = projectEvmActivityRow({
       ...row('4'),
       from: collectibleTransfer.from,
       to: collectibleTransfer.contractAddress,
@@ -446,3 +496,25 @@ test.each(['ERC-721', 'ERC-1155'] as const)(
     });
   }
 );
+
+test('retains scoped Smart cancellation eligibility while the indexed row supplies the body', async () => {
+  const accountAddress = '0x' + '44'.repeat(20);
+  const local = {
+    ...row('1'),
+    smartAccount: { account: accountAddress, operationCount: 1 },
+  };
+  const indexed = { hash: local.hash, confirmations: 4, value: '12' } as any;
+  mockEmitter.mockResolvedValue({ transactions: [local], nextCursor: null });
+  const { result } = renderHook(() =>
+    useEvmActivityHistory({
+      includeLocal: true,
+      scope: navigation('a'),
+      indexedTransactions: [indexed],
+      accountAddress,
+      chainId: 57057,
+    })
+  );
+  await flush();
+  expect(result.current.transactions).toEqual([indexed]);
+  expect(result.current.smartCancellationHashes.has(local.hash)).toBe(true);
+});

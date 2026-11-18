@@ -13,11 +13,6 @@ import {
 
 import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';
 
-// Replay consent has its own actual component/authority tests; keep detail decoding isolated.
-jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
-  RetainedTransactionReplay: () => null,
-}));
-
 let mockState: any;
 let mockHistory: any[];
 let mockLocale = 'en';
@@ -1839,3 +1834,7 @@ it.each(['de', 'fr'])(
     expect(mockEmitter).toHaveBeenCalledTimes(reads);
   }
 );
+
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: jest.fn().mockResolvedValue(null),
+}));

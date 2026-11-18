@@ -51,9 +51,6 @@ import {
 } from 'react-router-dom';
 
 // Replay has separate actual consent tests; isolate unrelated detail decoding here.
-jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
-  RetainedTransactionReplay: () => null,
-}));
 
 import { DetailsView } from 'pages/Home/Panel/components/Details';
 import { EvmTransactionDetailsEnhanced } from 'pages/Home/Panel/components/Transactions/EVM/EvmDetailsEnhanced';

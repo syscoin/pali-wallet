@@ -337,9 +337,7 @@
     "congratulations": "おめでとう！",
     "youWalletWas": "ウォレットのインポートに成功しました",
     "youHaveNoNfts": "NFTはありません。",
-    "noIndexedActivity": "アクティビティは見つかりませんでした。NFTや内部転送はここに表示されない場合があります。",
-    "savedActivityUnavailable": "保存されたアクティビティを読み込めませんでした。",
-    "retrySavedActivity": "保存されたアクティビティを再読み込み"
+    "noIndexedActivity": "アクティビティは見つかりませんでした。NFTや内部転送はここに表示されない場合があります。"
   },
   "titles": {
     "assetDetails": "資産詳細",
@@ -1322,23 +1320,14 @@
     },
     "replay": {
       "reviewCancellation": "キャンセル内容を確認",
-      "cancellationDescription": "最大ネットワーク手数料 {{fee}} {{currency}} でこの取引をキャンセルしますか？元の取引が先に承認される可能性があります。",
-      "cancellationExpired": "キャンセルの確認期限が切れました。手数料を再確認してください。",
       "network": "ネットワーク",
-      "from": "送信元",
       "creation": "コントラクト作成",
       "maximumFee": "最大ネットワーク手数料",
       "nonce": "Nonce",
       "hash": "取引ハッシュ",
-      "original": "元の取引",
       "unknown": "送信結果を確認できませんでした。再試行する前にアクティビティを確認してください。",
-      "checkActivity": "送信結果を取得できません。再試行する前にアクティビティを確認してください。",
       "tokenRecipient": "トークン受取人",
-      "tokenAmount": "トークンの金額",
-      "operation": {
-        "cancel": "キャンセル",
-        "erc721": "NFT 送信"
-      }
+      "tokenAmount": "トークンの金額"
     },
     "detailsUnavailable": "取引の詳細を読み込めませんでした。もう一度お試しください。"
   },
@@ -1757,12 +1746,12 @@
     }
   },
   "privacy": {
+    "title": "プライバシー",
     "poolAmount": "{{amount}} ETHプール",
     "activity": {
       "deposit": "プライバシー入金",
       "withdrawal": "プライバシー出金"
     },
-    "title": "プライバシー",
     "bundle": {
       "snapshotTime": "スナップショットの日時：{{time}}",
       "empty": "このバックアップにはノートがありません。",

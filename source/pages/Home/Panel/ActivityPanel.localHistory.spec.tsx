@@ -12,7 +12,7 @@ import React from 'react';
 
 import { TransactionsPanel } from './ActivityPanel';
 
-// Subject: actual ActivityPanel, actual useSavedEvmTransactions, actual contextual
+// Subject: actual ActivityPanel, actual useEvmActivityHistory, actual contextual
 // state and request-owner hooks. All inputs are synthetic public history DTOs.
 // No signing/replay storage/provider/controller implementation is imported.
 let mockState: any;
@@ -116,17 +116,14 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-const savedRetry = () =>
-  screen.getByRole('button', { name: 'home.retrySavedActivity' });
+const retryButton = () => screen.getByRole('button', { name: 'receive.retry' });
 const expectUnavailable = () => {
-  expect(screen.getByRole('status')).toHaveTextContent(
-    'home.savedActivityUnavailable'
-  );
+  expect(screen.getByRole('status')).toHaveTextContent('send.unableToLoad');
   expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
-  expect(savedRetry()).toBeEnabled();
+  expect(retryButton()).toBeEnabled();
 };
 
-it('shows a failed first saved read distinctly and recovers only that source by explicit retry', async () => {
+it('shows a failed initial local read in the Activity footer and retries only that source', async () => {
   mockEmitter.mockRejectedValueOnce(
     new Error('Synthetic saved-summary IPC unavailable')
   );
@@ -141,7 +138,7 @@ it('shows a failed first saved read distinctly and recovers only that source by 
     transactions: [SAVED],
     nextCursor: null,
   });
-  fireEvent.click(savedRetry());
+  fireEvent.click(retryButton());
   await waitFor(() =>
     expect(screen.getByTestId('rows')).toHaveTextContent(HASH)
   );
@@ -151,18 +148,16 @@ it('shows a failed first saved read distinctly and recovers only that source by 
       ([path]) => path[1] === 'getSavedEvmTransactions'
     )
   ).toBe(true);
-  expect(screen.queryByText('home.savedActivityUnavailable')).toBeNull();
+  expect(screen.queryByText('send.unableToLoad')).toBeNull();
 });
 
-it('keeps a genuinely successful empty saved read in the ordinary qualified empty state', async () => {
+it('keeps a genuinely successful empty local read in the ordinary qualified empty state', async () => {
   mockEmitter.mockResolvedValueOnce({ transactions: [], nextCursor: null });
   render(<TransactionsPanel />);
   await flush();
   expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
-  expect(screen.queryByText('home.savedActivityUnavailable')).toBeNull();
-  expect(
-    screen.queryByRole('button', { name: 'home.retrySavedActivity' })
-  ).toBeNull();
+  expect(screen.queryByText('send.unableToLoad')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
   expect(localReads()).toHaveLength(1);
 });
 
@@ -179,7 +174,7 @@ it('keeps initial local availability pending until its captured read settles', a
     screen.getByText('networkConnection.loadingTransactions')
   ).toBeVisible();
   expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
-  expect(screen.queryByText('home.savedActivityUnavailable')).toBeNull();
+  expect(screen.queryByText('send.unableToLoad')).toBeNull();
   await act(async () => resolve({ transactions: [], nextCursor: null }));
   expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
 });
@@ -201,51 +196,48 @@ it('retains focus recovery and successful rows after a later local refresh failu
   fireEvent(window, new Event('focus'));
   await flush();
   expect(screen.getByTestId('rows')).toHaveTextContent(HASH);
-  expect(savedRetry()).toBeEnabled();
+  expect(retryButton()).toBeEnabled();
   expect(localReads()).toHaveLength(3);
 });
 
-it('keeps local and remote failures and retries independent in both completion orders', async () => {
+it('retries both failed sources through one footer and keeps the button when rows arrive', async () => {
   mockState.vaultGlobal.transactionHistoryStatus.state = 'error';
-  mockEmitter.mockImplementation(([, method]) =>
-    method === 'getSavedEvmTransactions'
-      ? Promise.reject(new Error('Synthetic local-read failure'))
-      : Promise.resolve()
-  );
+  mockEmitter.mockRejectedValueOnce(new Error('Initial local failure'));
   const view = render(<TransactionsPanel />);
   await flush();
-  fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
-  await flush();
+  expectUnavailable();
+  const button = retryButton();
+  let resolveLocal!: (value: any) => void;
+  let resolveRemote!: () => void;
+  mockEmitter.mockImplementation(([, method]) =>
+    method === 'getSavedEvmTransactions'
+      ? new Promise((done) => {
+          resolveLocal = done;
+        })
+      : new Promise<void>((done) => {
+          resolveRemote = done;
+        })
+  );
+  fireEvent.click(button);
+  fireEvent.click(button);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'refreshTransactionHistory'],
     [mockScope]
   );
-  expect(localReads()).toHaveLength(1);
-  mockState = {
-    ...mockState,
-    vaultGlobal: {
-      ...mockState.vaultGlobal,
-      transactionHistoryStatus: { scope: mockScope, state: 'ready' },
-    },
-  };
-  view.rerender(<TransactionsPanel />);
-  await flush();
-  expectUnavailable();
-  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
-  mockState.vaultGlobal.transactionHistoryStatus.state = 'error';
-  view.rerender(<TransactionsPanel />);
-  mockEmitter.mockResolvedValueOnce({
-    transactions: [SAVED],
-    nextCursor: null,
-  });
-  fireEvent.click(savedRetry());
-  await flush();
+  expect(mockEmitter).toHaveBeenCalledTimes(3);
+  await act(async () =>
+    resolveLocal({ transactions: [SAVED], nextCursor: null })
+  );
   expect(screen.getByTestId('rows')).toHaveTextContent(HASH);
-  expect(
-    screen.queryByRole('button', { name: 'home.retrySavedActivity' })
-  ).toBeNull();
-  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeEnabled();
-  expect(localReads()).toHaveLength(2);
+  expect(retryButton()).toBe(button);
+  expect(button).toBeDisabled();
+
+  await act(async () => resolveRemote());
+  expect(retryButton()).toBe(button);
+  expect(button).toBeEnabled();
+  mockState.vaultGlobal.transactionHistoryStatus.state = 'ready';
+  view.rerender(<TransactionsPanel />);
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
 });
 
 it('keeps successful remote rows visible and coalesces user retry while the local read is pending', async () => {
@@ -260,12 +252,22 @@ it('keeps successful remote rows visible and coalesces user retry while the loca
       resolve = done;
     })
   );
-  fireEvent.click(savedRetry());
-  fireEvent.click(savedRetry());
-  expect(savedRetry()).toBeDisabled();
+  fireEvent.click(retryButton());
+  fireEvent.click(retryButton());
+  expect(retryButton()).toBeDisabled();
   expect(localReads()).toHaveLength(2);
   expect(screen.getByTestId('rows')).toHaveTextContent(HASH);
   await act(async () => resolve({ transactions: [], nextCursor: null }));
   expect(screen.getByTestId('rows')).toHaveTextContent(HASH);
-  expect(screen.queryByText('home.savedActivityUnavailable')).toBeNull();
+  expect(screen.queryByText('send.unableToLoad')).toBeNull();
+});
+
+it('shows indexed Activity for a watch-only import without reading local signed records', async () => {
+  mockState.vault.activeAccount.type = 'Imported';
+  mockState.publicTransactions.ethereum[57057] = [{ hash: HASH }];
+  render(<TransactionsPanel />);
+  await flush();
+  expect(screen.getByTestId('rows')).toHaveTextContent(HASH);
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
 });

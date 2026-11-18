@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -64,7 +70,7 @@ import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import { getReplacementWinner } from './replacementWinner';
 import { getTransactionDisplayCacheKey } from './transactionDisplayCache';
-import type { SmartAccountReplayIntent } from '../../../../../../wallet/smartAccountSignedReplay';
+import type { EvmActivityOlderRows } from './useEvmActivityHistory';
 
 type EvmPageResponse = {
   error?: string;
@@ -737,19 +743,13 @@ EvmTransactionItem.displayName = 'EvmTransactionItem';
 
 export const EvmTransactionsList = ({
   userTransactions,
-  savedTransactions,
-  savedHasMore = false,
-  savedLoading = false,
-  loadMoreSaved,
+  olderRows,
+  smartCancellationHashes,
   explorerHasMore,
 }: {
   explorerHasMore?: boolean;
-  loadMoreSaved?: () => Promise<void>;
-  savedHasMore?: boolean;
-  savedLoading?: boolean;
-  savedTransactions?: (ITransactionInfoEvm & {
-    smartAccount?: SmartAccountReplayIntent;
-  })[];
+  olderRows?: EvmActivityOlderRows;
+  smartCancellationHashes?: ReadonlySet<string>;
   userTransactions: ITransactionInfoEvm[];
 }) => {
   const { t } = useTranslation();
@@ -919,22 +919,6 @@ export const EvmTransactionsList = ({
     [navigate, location.state, filteredTransactions, chainId, minedNonceIndex]
   );
 
-  const smartCancellationHashes = useMemo(() => {
-    const hashes = new Set<string>();
-    for (const tx of savedTransactions ?? []) {
-      const smart = tx.smartAccount;
-      if (
-        tx.chainId === chainId &&
-        smart?.account.toLowerCase() ===
-          currentAccount?.address?.toLowerCase() &&
-        smart?.operationCount === 1 &&
-        !smart.cancellation
-      )
-        hashes.add(tx.hash.toLowerCase());
-    }
-    return hashes;
-  }, [savedTransactions, chainId, currentAccount?.address]);
-
   const groupedTransactions = useMemo(() => {
     const grouped: Record<string, ITransactionInfoEvm[]> = {};
     const visible = filteredTransactions.slice(
@@ -983,6 +967,51 @@ export const EvmTransactionsList = ({
     txDisplayInfoCache.clear();
   }, [currentAccount?.address]);
 
+  const pagePending = useRef<() => boolean>();
+  const canRevealRows = filteredTransactions.length > visibleCount;
+  const canLoadIndexedRows =
+    apiUrl && (hasMoreServer ?? explorerHasMore !== false);
+  const canLoadMore = canRevealRows || olderRows?.hasMore || canLoadIndexedRows;
+  const loadingMore = isLoadingMore || isRestoringPages || olderRows?.loading;
+  const loadMore = async () => {
+    if (loadingMore || pagePending.current?.()) return;
+    const isCurrentRequest = beginPageRequest();
+    pagePending.current = isCurrentRequest;
+    try {
+      if (olderRows?.hasMore) {
+        await olderRows.loadMore();
+        if (isCurrentRequest())
+          setVisibleCount((count) => count + (canRevealRows ? 50 : 30));
+      } else if (canRevealRows) {
+        setVisibleCount((count) => count + 50);
+      } else if (canLoadIndexedRows) {
+        setIsLoadingMore(true);
+        const response = await fetchPageResponse(nextPage);
+        if (!isCurrentRequest()) return;
+        if (response?.error) {
+          alert.warning(response.error);
+          return;
+        }
+        const rows = response?.transactions;
+        if (!Array.isArray(rows) || rows.length === 0) {
+          setHasMoreServer(false);
+          return;
+        }
+        setExtraTransactions((previous) => [...previous, ...rows]);
+        setVisibleCount((count) => count + rows.length);
+        setNextPage((page) => page + 1);
+        setHasMoreServer(response.hasMore !== false);
+      }
+    } catch (error: any) {
+      if (isCurrentRequest()) alert.error(String(error?.message || error));
+    } finally {
+      if (isCurrentRequest()) {
+        pagePending.current = undefined;
+        setIsLoadingMore(false);
+      }
+    }
+  };
+
   return (
     <>
       <ConfirmationModal show={isOpenModal} {...modalData} />
@@ -1002,9 +1031,9 @@ export const EvmTransactionsList = ({
             return (
               <EvmTransactionItem
                 key={txKey}
-                canCancelSmart={smartCancellationHashes.has(
-                  tx.hash?.toLowerCase()
-                )}
+                canCancelSmart={
+                  smartCancellationHashes?.has(txKey.toLowerCase()) ?? false
+                }
                 tx={tx}
                 chainId={chainId}
                 currentAccount={currentAccount}
@@ -1035,84 +1064,18 @@ export const EvmTransactionsList = ({
           })}
         </div>
       ))}
-      {/* Load more: API-backed if apiUrl exists; else local slicing fallback */}
-      {apiUrl
-        ? (savedHasMore ||
-            (hasMoreServer ?? explorerHasMore !== false) ||
-            filteredTransactions.length > visibleCount) && (
-            <div className="flex justify-center py-3">
-              <button
-                type="button"
-                disabled={isLoadingMore || isRestoringPages || savedLoading}
-                onClick={async () => {
-                  if (filteredTransactions.length > visibleCount) {
-                    if (savedHasMore) {
-                      const isCurrentRequest = beginPageRequest();
-                      await loadMoreSaved?.();
-                      if (!isCurrentRequest()) return;
-                    }
-                    setVisibleCount((count) => count + 50);
-                    return;
-                  }
-                  if (savedHasMore) {
-                    const isCurrentRequest = beginPageRequest();
-                    await loadMoreSaved?.();
-                    if (!isCurrentRequest()) return;
-                    setVisibleCount((count) => count + 30);
-                    return;
-                  }
-                  const isCurrentRequest = beginPageRequest();
-                  try {
-                    setIsLoadingMore(true);
-                    const res = await fetchPageResponse(nextPage);
-                    if (!isCurrentRequest()) return;
-                    if (res?.error) {
-                      alert.warning(res.error);
-                    } else if (Array.isArray(res?.transactions)) {
-                      const newTxs = res.transactions as ITransactionInfoEvm[];
-                      if (newTxs.length > 0) {
-                        setExtraTransactions((prev) => [...prev, ...newTxs]);
-                        setVisibleCount((count) => count + newTxs.length);
-                        setNextPage((p) => p + 1);
-                        setHasMoreServer(res.hasMore !== false);
-                      } else {
-                        setHasMoreServer(false);
-                      }
-                    } else {
-                      setHasMoreServer(false);
-                    }
-                  } catch (e: any) {
-                    if (isCurrentRequest())
-                      alert.error(String(e?.message || e));
-                  } finally {
-                    if (isCurrentRequest()) setIsLoadingMore(false);
-                  }
-                }}
-                className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
-              >
-                {isLoadingMore || isRestoringPages || savedLoading
-                  ? t('buttons.loading')
-                  : t('buttons.loadMore')}
-              </button>
-            </div>
-          )
-        : (savedHasMore || filteredTransactions.length > visibleCount) && (
-            <div className="flex justify-center py-3">
-              <button
-                type="button"
-                disabled={savedLoading}
-                onClick={async () => {
-                  const isCurrentRequest = beginPageRequest();
-                  if (savedHasMore) await loadMoreSaved?.();
-                  if (!isCurrentRequest()) return;
-                  setVisibleCount((c) => c + 50);
-                }}
-                className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors"
-              >
-                {savedLoading ? t('buttons.loading') : t('buttons.loadMore')}
-              </button>
-            </div>
-          )}
+      {canLoadMore && (
+        <div className="flex justify-center py-3">
+          <button
+            type="button"
+            disabled={loadingMore}
+            onClick={() => void loadMore()}
+            className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
+          >
+            {loadingMore ? t('buttons.loading') : t('buttons.loadMore')}
+          </button>
+        </div>
+      )}
     </>
   );
 };

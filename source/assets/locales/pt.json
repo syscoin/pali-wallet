@@ -337,9 +337,7 @@
     "congratulations": "Parabéns!",
     "youWalletWas": "Sua carteira foi importada com sucesso",
     "youHaveNoNfts": "Você não tem NFTs.",
-    "noIndexedActivity": "Nenhuma atividade encontrada. Transferências de NFT e internas podem não aparecer aqui.",
-    "savedActivityUnavailable": "Não foi possível carregar a atividade salva.",
-    "retrySavedActivity": "Tentar carregar a atividade salva novamente"
+    "noIndexedActivity": "Nenhuma atividade encontrada. Transferências de NFT e internas podem não aparecer aqui."
   },
   "titles": {
     "assetDetails": "Detalhes do ativo",
@@ -1322,23 +1320,14 @@
     },
     "replay": {
       "reviewCancellation": "Rever cancelamento",
-      "cancellationDescription": "Cancelar esta transação com uma taxa de rede máxima de {{fee}} {{currency}}? A transação original ainda pode ser confirmada primeiro.",
-      "cancellationExpired": "A revisão do cancelamento expirou. Verifique novamente a taxa.",
       "network": "Rede",
-      "from": "De",
       "creation": "Criação de contrato",
       "maximumFee": "Taxa de rede máxima",
       "nonce": "Nonce",
       "hash": "Hash da transação",
-      "original": "Transação original",
       "unknown": "Não foi possível confirmar o envio. Consulte Atividade antes de tentar novamente.",
-      "checkActivity": "Consulte Atividade antes de tentar novamente; o resultado do envio está indisponível.",
       "tokenRecipient": "Destinatário do token",
-      "tokenAmount": "Valor do token",
-      "operation": {
-        "cancel": "Cancelamento",
-        "erc721": "Transferência de NFT"
-      }
+      "tokenAmount": "Valor do token"
     },
     "detailsUnavailable": "Não foi possível carregar os detalhes da transação. Tente novamente."
   },
@@ -1757,12 +1746,12 @@
     }
   },
   "privacy": {
+    "title": "Privacidade",
     "poolAmount": "Pool de {{amount}} ETH",
     "activity": {
       "deposit": "Depósito privado",
       "withdrawal": "Saque privado"
     },
-    "title": "Privacidade",
     "bundle": {
       "snapshotTime": "Data do instantâneo: {{time}}",
       "empty": "Este backup não contém notas.",

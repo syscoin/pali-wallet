@@ -337,9 +337,7 @@
     "congratulations": "¡Felicitaciones!",
     "youWalletWas": "Tu billetera se importó con éxito.",
     "youHaveNoNfts": "No tienes NFTs.",
-    "noIndexedActivity": "No se encontró actividad. Es posible que las transferencias de NFT e internas no aparezcan aquí.",
-    "savedActivityUnavailable": "No se pudo cargar la actividad guardada.",
-    "retrySavedActivity": "Reintentar actividad guardada"
+    "noIndexedActivity": "No se encontró actividad. Es posible que las transferencias de NFT e internas no aparezcan aquí."
   },
   "titles": {
     "assetDetails": "Detalles del activo",
@@ -1322,23 +1320,14 @@
     },
     "replay": {
       "reviewCancellation": "Revisar cancelación",
-      "cancellationDescription": "¿Cancelar esta transacción con una comisión de red máxima de {{fee}} {{currency}}? La transacción original aún puede confirmarse primero.",
-      "cancellationExpired": "La revisión de la cancelación ha caducado. Comprueba de nuevo la comisión.",
       "network": "Red",
-      "from": "De",
       "creation": "Creación de contrato",
       "maximumFee": "Comisión de red máxima",
       "nonce": "Nonce",
       "hash": "Hash de transacción",
-      "original": "Transacción original",
       "unknown": "No se pudo confirmar el envío. Consulta Actividad antes de volver a intentarlo.",
-      "checkActivity": "Consulta Actividad antes de volver a intentarlo; el resultado del envío no está disponible.",
       "tokenRecipient": "Destinatario del token",
-      "tokenAmount": "Importe del token",
-      "operation": {
-        "cancel": "Cancelación",
-        "erc721": "Transferencia de NFT"
-      }
+      "tokenAmount": "Importe del token"
     },
     "detailsUnavailable": "No se pudieron cargar los detalles de la transacción. Vuelve a intentarlo."
   },
@@ -1757,12 +1746,12 @@
     }
   },
   "privacy": {
+    "title": "Privacidad",
     "poolAmount": "Pool de {{amount}} ETH",
     "activity": {
       "deposit": "Depósito privado",
       "withdrawal": "Retiro privado"
     },
-    "title": "Privacidad",
     "bundle": {
       "snapshotTime": "Fecha de la instantánea: {{time}}",
       "empty": "Esta copia no contiene notas.",

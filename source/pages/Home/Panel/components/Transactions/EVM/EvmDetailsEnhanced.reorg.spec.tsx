@@ -3,9 +3,6 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 // Replay has separate actual consent tests; isolate unrelated detail decoding here.
-jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
-  RetainedTransactionReplay: () => null,
-}));
 
 import { decodeSmartAccountOperations } from '../../../../../../wallet/smartAccountActivity';
 import { DetailsView } from '../../Details';
@@ -809,3 +806,7 @@ it('does not let an old successful EntryPoint receipt override the current faile
   expect(screen.getByTestId('event-logs').textContent).toBe(failedLog.data);
   expect(detailValue('Success')).toBe('Failed');
 });
+
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: jest.fn().mockResolvedValue(null),
+}));

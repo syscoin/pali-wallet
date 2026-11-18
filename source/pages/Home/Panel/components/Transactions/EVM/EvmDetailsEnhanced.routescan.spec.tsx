@@ -2,9 +2,6 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 
 // Replay has separate actual consent tests; isolate unrelated detail decoding here.
-jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
-  RetainedTransactionReplay: () => null,
-}));
 
 import { useController } from 'hooks/useController';
 
@@ -146,3 +143,7 @@ describe('transaction detail API compatibility', () => {
     );
   });
 });
+
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: jest.fn().mockResolvedValue(null),
+}));

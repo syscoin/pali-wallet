@@ -337,9 +337,7 @@
     "congratulations": "Félicitations !",
     "youWalletWas": "Votre portefeuille a été importé avec succès",
     "youHaveNoNfts": "Vous n'avez pas de NFT.",
-    "noIndexedActivity": "Aucune activité trouvée. Certains transferts, notamment de NFT ou internes, peuvent ne pas apparaître ici.",
-    "savedActivityUnavailable": "Impossible de charger l’activité enregistrée.",
-    "retrySavedActivity": "Réessayer l’activité enregistrée"
+    "noIndexedActivity": "Aucune activité trouvée. Certains transferts, notamment de NFT ou internes, peuvent ne pas apparaître ici."
   },
   "titles": {
     "assetDetails": "Détails de l'actif",
@@ -1322,23 +1320,14 @@
     },
     "replay": {
       "reviewCancellation": "Vérifier l’annulation",
-      "cancellationDescription": "Annuler cette transaction avec des frais réseau maximum de {{fee}} {{currency}} ? La transaction d’origine peut encore être confirmée en premier.",
-      "cancellationExpired": "Cette vérification a expiré. Vérifiez à nouveau les frais.",
       "network": "Réseau",
-      "from": "De",
       "creation": "Création de contrat",
       "maximumFee": "Frais réseau maximum",
       "nonce": "Nonce",
       "hash": "Hash de transaction",
-      "original": "Transaction d’origine",
       "unknown": "L’envoi n’a pas pu être confirmé. Consultez Activité avant de réessayer.",
-      "checkActivity": "Consultez Activité avant de réessayer ; le résultat de l’envoi est indisponible.",
       "tokenRecipient": "Destinataire du token",
-      "tokenAmount": "Montant du token",
-      "operation": {
-        "cancel": "Annulation",
-        "erc721": "Transfert de NFT"
-      }
+      "tokenAmount": "Montant du token"
     },
     "detailsUnavailable": "Impossible de charger les détails de la transaction. Réessayez."
   },
@@ -1757,12 +1746,12 @@
     }
   },
   "privacy": {
+    "title": "Confidentialité",
     "poolAmount": "Pool de {{amount}} ETH",
     "activity": {
       "deposit": "Dépôt privé",
       "withdrawal": "Retrait privé"
     },
-    "title": "Confidentialité",
     "bundle": {
       "snapshotTime": "Date de l’instantané : {{time}}",
       "empty": "Cette sauvegarde ne contient aucune note.",

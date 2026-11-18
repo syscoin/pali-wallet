@@ -1,7 +1,7 @@
 /** @jest-environment node */
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring/cjs/providers.js';
 
-import { readLiveEvmChainId } from './evmSignedReplay';
+import { readLiveEvmChainId } from './evmReplacementReads';
 
 it('fresh replay identity bypasses the ordinary chain cache on the same endpoint', async () => {
   let chain = '0x1';

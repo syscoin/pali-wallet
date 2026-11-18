@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { mapEvmExplorerTransaction } from '../../../../../../shared/evmHistory';
+import { projectEvmActivityRow } from '../../../../../../wallet/evmActivityRow';
 import { decodeSmartAccountOperations } from '../../../../../../wallet/smartAccountActivity';
 import { getTransactionTypeLabel } from 'utils/commonMethodSignatures';
 import { defaultAbiCoder, id } from 'utils/ethersV6Compat';
@@ -14,7 +15,6 @@ import {
 } from 'utils/smartAccount/contracts';
 
 import { EvmTransactionsList } from './EvmList';
-import { savedTransactionHistoryRow } from './useSavedEvmTransactions';
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
 const TARGET = `0x${'22'.repeat(20)}`;
@@ -482,7 +482,7 @@ it.each(['ERC-721', 'ERC-1155'] as const)(
   async (tokenStandard) => {
     const amountUnits = tokenStandard === 'ERC-721' ? '1' : '9007199254740993';
     mockRows = [
-      savedTransactionHistoryRow({
+      projectEvmActivityRow({
         hash: `0x${'6'.repeat(64)}`,
         chainId: '1',
         from: ACCOUNT,
@@ -543,7 +543,7 @@ it('labels a saved Smart batch and shows its total native value without a single
       ],
     },
   };
-  mockRows = [savedTransactionHistoryRow(saved)];
+  mockRows = [projectEvmActivityRow(saved)];
   render(<EvmTransactionsList userTransactions={mockRows} />);
   expect(await screen.findByText('send.batchTransaction')).toBeTruthy();
   expect(await screen.findByText(/3(?:\.0+)? ETH/)).toBeTruthy();

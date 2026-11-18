@@ -4,7 +4,6 @@ import {
   privateKeyToAccount,
   sendLocalEvmTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer';
-import { Interface } from 'ethers/abi';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { webcrypto } from 'node:crypto';
@@ -1056,253 +1055,6 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     };
   }
 
-  it.each([
-    'acknowledged',
-    'lost',
-    'stale-nonce',
-    'mined',
-    'session',
-    'low-preview',
-    'low-confirm',
-    'low-at-wire',
-    'expired-at-write',
-  ] as const)(
-    'cancels an authenticated saved NFT with no history after restart (%s)',
-    async (outcome) => {
-      Object.defineProperty(globalThis, 'crypto', {
-        configurable: true,
-        value: webcrypto,
-      });
-      selectOrdinaryPayer();
-      useActualLifecycle = true;
-      mockState.vault.accountTransactions = {};
-      const payer = { ...mockState.vault.activeAccount, address: PAYER };
-      const retained = Transaction.from({
-        type: 0,
-        chainId: CHAIN,
-        nonce: 0,
-        to: TARGET,
-        value: BigInt(0),
-        gasLimit: BigInt(90_000),
-        gasPrice: BigInt(200),
-        data: new Interface([
-          'function transferFrom(address,address,uint256)',
-        ]).encodeFunctionData('transferFrom', [PAYER, SMART, 0]),
-      });
-      retained.signature = testWallet.signingKey.sign(retained.unsignedHash);
-      const hash = retained.hash!;
-      let expireAtWrite = false;
-      const reopen = await encryptedJournalFixture(() => {
-        if (expireAtWrite)
-          jest.spyOn(performance, 'now').mockImplementation(() => 1e9);
-      });
-      const recordSession = { keyring, assertCurrent: () => undefined };
-      await reopen().append(recordSession, {
-        context: {
-          account: payer,
-          network: mockState.vault.activeNetwork,
-          operation: 'erc721',
-        },
-        chainId: String(CHAIN),
-        from: PAYER,
-        hash,
-        nonce: 0,
-        type: 0,
-        rawTransaction: retained.serialized,
-      });
-      const journal = reopen();
-      wallet.getRetainedEvmRecords = () => journal;
-
-      provider.getTransaction.mockResolvedValue(null);
-      provider.getGasPrice = jest.fn(async () => BigNumber.from(100));
-      provider.getNetwork = jest.fn(async () => ({ chainId: BigInt(CHAIN) }));
-      provider.readMany = jest.fn(async (requests) =>
-        Promise.allSettled(
-          requests.map(({ method, params }) =>
-            method === 'eth_chainId'
-              ? `0x${CHAIN.toString(16)}`
-              : provider.send(method, params)
-          )
-        )
-      );
-      let movedNonce = false;
-      let mined = false;
-      let balance = outcome === 'low-preview' ? '0x0' : '0xffffff';
-      const blockHash = `0x${'aa'.repeat(32)}`;
-      provider.send = jest.fn(async (method: string, params: unknown[]) => {
-        if (method === 'eth_getBalance') {
-          expect(params).toEqual([PAYER, 'latest']);
-          return balance;
-        }
-        if (method === 'eth_getTransactionReceipt')
-          return mined
-            ? {
-                transactionHash: hash,
-                from: PAYER,
-                to: TARGET,
-                blockHash,
-                blockNumber: '0x10',
-                status: '0x1',
-              }
-            : null;
-        if (method === 'eth_getBlockByNumber')
-          return { hash: blockHash, number: '0x10' };
-        if (method === 'eth_getTransactionCount')
-          return movedNonce ? '0x1' : '0x0';
-        if (method === 'eth_getCode') return '0x';
-        throw new Error(`unexpected ${method}`);
-      });
-      const actualSigner = jest.requireActual(
-        '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer'
-      );
-      jest
-        .mocked(sendLocalEvmTransaction)
-        .mockImplementation((rpc, _key, ...args) =>
-          actualSigner.sendLocalEvmTransaction(
-            rpc,
-            testWallet.privateKey,
-            ...args
-          )
-        );
-      let cancellationHash: string | undefined;
-      const posted = deferred<void>();
-      const acknowledge = deferred<void>();
-      provider.sendTransaction.mockImplementation(async (raw: string) => {
-        const signed = Transaction.from(raw);
-        cancellationHash = signed.hash!;
-        expect(signed.nonce).toBe(0);
-        expect(signed.to?.toLowerCase()).toBe(PAYER);
-        expect(signed.data).toBe('0x');
-        expect(signed.value).toBe(BigInt(0));
-        expect(signed.gasLimit).toBe(BigInt(42000));
-        expect(signed.gasPrice).toBeGreaterThan(BigInt(200));
-        expect(
-          (
-            await journal.readExact(
-              recordSession,
-              String(CHAIN),
-              PAYER,
-              cancellationHash
-            )
-          )?.rawTransaction
-        ).toBe(raw);
-        const payment = await journal.readExact(
-          recordSession,
-          String(CHAIN),
-          PAYER,
-          hash
-        );
-        expect(payment?.rawTransaction).toBe(retained.serialized);
-        expect(
-          await journal.withReplayAdmission(
-            recordSession,
-            { ...payment!, metadata: payment!.metadata },
-            async () => ({ result: true })
-          )
-        ).toBeNull();
-        posted.resolve();
-        await acknowledge.promise;
-        if (outcome === 'lost')
-          throw new Error('Lost local relay acknowledgement');
-        return { hash: cancellationHash };
-      });
-
-      if (outcome === 'low-preview') {
-        await expect(
-          wallet.prepareRetainedEvmCancellation(hash)
-        ).rejects.toThrow('Insufficient funds for reviewed EVM transfer');
-        expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
-        expect(provider.sendTransaction).not.toHaveBeenCalled();
-        return;
-      }
-      const review = await wallet.prepareRetainedEvmCancellation(hash);
-      expect(review).toMatchObject({
-        hash,
-        from: PAYER,
-        chainId: CHAIN,
-        nonce: 0,
-      });
-      expect(review).not.toHaveProperty('rawTransaction');
-      expect(BigInt(review.maximumFee)).toBeGreaterThan(BigInt(42000 * 200));
-      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
-      expect(provider.getTransaction).not.toHaveBeenCalled();
-      const append = journal.append.bind(journal);
-      const shouldBlock =
-        outcome === 'stale-nonce' ||
-        outcome === 'mined' ||
-        outcome === 'session' ||
-        outcome === 'low-at-wire';
-      if (shouldBlock)
-        jest.spyOn(journal, 'append').mockImplementation(async (...args) => {
-          const saved = await append(...args);
-          if (saved.operation === 'cancel') {
-            movedNonce = outcome === 'stale-nonce';
-            mined = outcome === 'mined';
-            if (outcome === 'session') wallet.advanceWalletSession();
-            if (outcome === 'low-at-wire') balance = '0x0';
-          }
-          return saved;
-        });
-
-      if (outcome === 'low-confirm') balance = '0x0';
-      expireAtWrite = outcome === 'expired-at-write';
-      const confirmation = wallet.confirmRetainedEvmCancellation(review.id);
-      void confirmation.catch(() => undefined);
-      await expect(
-        wallet.confirmRetainedEvmCancellation(review.id)
-      ).rejects.toThrow();
-      try {
-        if (outcome === 'low-confirm') {
-          await expect(confirmation).rejects.toThrow(
-            'Insufficient funds for reviewed EVM transfer'
-          );
-          expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
-          expect(provider.sendTransaction).not.toHaveBeenCalled();
-          return;
-        }
-        if (shouldBlock || outcome === 'expired-at-write') {
-          await expect(confirmation).resolves.toEqual({
-            status: 'not-dispatched',
-          });
-          expect(provider.sendTransaction).not.toHaveBeenCalled();
-          if (outcome === 'expired-at-write') {
-            const entries = await journal.listSender(
-              recordSession,
-              String(CHAIN),
-              PAYER
-            );
-            expect(entries.map((entry) => entry.hash)).toEqual([hash]);
-            expect(
-              await journal.withReplayAdmission(
-                recordSession,
-                { ...entries[0]!, metadata: entries[0]!.metadata },
-                async () => ({ result: true })
-              )
-            ).toEqual({ result: true });
-          }
-          return;
-        }
-        await Promise.race([
-          posted.promise,
-          confirmation.then(() => {
-            throw new Error('Cancellation did not enter POST');
-          }),
-        ]);
-        // Expiry after POST cannot turn a known acknowledgement into a failure.
-        jest.spyOn(performance, 'now').mockImplementation(() => 1e9);
-        acknowledge.resolve();
-        await expect(confirmation).resolves.toEqual({
-          status: outcome === 'acknowledged' ? 'submitted' : 'unknown',
-          hash: cancellationHash,
-        });
-        expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
-        expect(provider.getTransaction).not.toHaveBeenCalled();
-      } finally {
-        acknowledge.resolve();
-      }
-    }
-  );
-
   it('quotes then sends an ordinary pending replacement through the same guarded controller', async () => {
     selectOrdinaryPayer();
     const scope = getWalletNavigationScope();
@@ -1376,43 +1128,28 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         original.signature = testWallet.signingKey.sign(original.unsignedHash);
         const hash = original.hash!;
         mockState.vault.accountTransactions.HDAccount[3].ethereum[CHAIN] = [];
-        await journal.append(journalSession, {
-          context: {
-            account: { ...mockState.vault.activeAccount, address: PAYER },
-            network: mockState.vault.activeNetwork,
-            operation: asset ? kind : 'send',
+        expect(keyring.ethereumTransaction.supportsRetainedSpeedUpIntent).toBe(
+          true
+        );
+        await journal.append(
+          journalSession,
+          {
+            context: {
+              account: { ...mockState.vault.activeAccount, address: PAYER },
+              network: mockState.vault.activeNetwork,
+              operation: asset ? kind : 'send',
+            },
+            chainId: String(CHAIN),
+            from: PAYER,
+            hash,
+            nonce: original.nonce,
+            type: original.type!,
+            rawTransaction: original.serialized,
           },
-          chainId: String(CHAIN),
-          from: PAYER,
-          hash,
-          nonce: original.nonce,
-          type: original.type!,
-          rawTransaction: original.serialized,
-        });
-        const supported =
-          keyring.ethereumTransaction.supportsRetainedSpeedUpIntent === true;
-        await expect(
-          journal.migrateUnsignedNative(journalSession, {
-            nativeEoa: supported,
-          })
-        ).resolves.toBe(supported ? 1 : 0);
-        if (!supported) {
-          expect(
-            await journal.readExact(journalSession, String(CHAIN), PAYER, hash)
-          ).toMatchObject({ rawTransaction: original.serialized });
-          provider.getTransaction.mockResolvedValue(null);
-          await expect(
-            previewSpeedUpTransaction(
-              hash,
-              legacy,
-              CHAIN,
-              PAYER,
-              getWalletNavigationScope()
-            )
-          ).rejects.toThrow();
-          expect(posts).toHaveLength(0);
-          return;
-        }
+          undefined,
+          undefined,
+          true
+        );
         const savedOriginal = await journal.readExact(
           journalSession,
           String(CHAIN),
