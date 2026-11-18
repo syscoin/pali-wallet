@@ -2,12 +2,12 @@ import {
   expect,
   chromium,
   type BrowserContext,
-  type Page,
   type Request,
 } from '@playwright/test';
-import { HDNodeWallet, Transaction } from 'ethers';
+import { HDNodeWallet, parseEther, Transaction } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
+import { getSmartAccountUserOpRequiredPrefund } from '../../source/utils/smartAccount/account';
 import {
   paliEntryPointInterface,
   getPaliEntryPointAddress,
@@ -22,7 +22,11 @@ import {
 } from './testDappConformance';
 import type { SmartAccountPackedUserOperation } from '../../source/utils/smartAccount/account';
 
-type Delivery = { hash: string; operation: SmartAccountPackedUserOperation };
+type Delivery = {
+  hash: string;
+  maximumNetworkFee: bigint;
+  operation: SmartAccountPackedUserOperation;
+};
 type Options = {
   account: string;
   chain: { chainId: number; url: string };
@@ -52,7 +56,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
   const entryPoint = getPaliEntryPointAddress(chain.chainId);
   const deliveries: Delivery[] = [];
   let lastEstimated: SmartAccountPackedUserOperation | undefined;
-  let logRequests = 0;
+  let signedEstimates = 0;
   const operation = (data: string): SmartAccountPackedUserOperation => {
     const [operations] = paliEntryPointInterface.decodeFunctionData(
       'handleOps',
@@ -80,7 +84,6 @@ export async function runSmartAccountCancellationJourney(options: Options) {
       return;
     const payload = request.postDataJSON();
     for (const row of Array.isArray(payload) ? payload : [payload]) {
-      if (row.method === 'eth_getLogs') logRequests++;
       if (
         row.method === 'eth_estimateGas' &&
         row.params?.[0]?.to?.toLowerCase() === entryPoint.toLowerCase()
@@ -90,8 +93,10 @@ export async function runSmartAccountCancellationJourney(options: Options) {
           if (
             value.sender.toLowerCase() === account.toLowerCase() &&
             value.signature !== '0x'
-          )
+          ) {
             lastEstimated = value;
+            signedEstimates++;
+          }
         } catch {
           /* Other estimates are outside this feature. */
         }
@@ -101,7 +106,11 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         if (tx.to?.toLowerCase() !== entryPoint.toLowerCase()) continue;
         const value = operation(tx.data);
         if (value.sender.toLowerCase() === account.toLowerCase())
-          deliveries.push({ hash: tx.hash!, operation: value });
+          deliveries.push({
+            hash: tx.hash!,
+            operation: value,
+            maximumNetworkFee: tx.gasLimit * (tx.maxFeePerGas ?? tx.gasPrice!),
+          });
       }
     }
   };
@@ -201,7 +210,54 @@ export async function runSmartAccountCancellationJourney(options: Options) {
     await expect(page).toHaveURL(/#\/home$/, { timeout: 15000 });
     return { before, ...deliveries.at(-1)! };
   }
-  const prepareCancel = async () => {
+  const cancellationDialog = () =>
+    page.getByRole('dialog', { name: en.header.cancelTx, exact: true });
+  const networkFeeReview = () =>
+    page.getByRole('heading', { name: 'Review network fee', exact: true });
+  const signCancellation = (modal: ReturnType<typeof cancellationDialog>) =>
+    modal.getByRole('button', {
+      name: en.transactions.smartAccountCancelSign,
+      exact: true,
+    });
+  const reviewCancellation = async (
+    original: SmartAccountPackedUserOperation
+  ) => {
+    const modal = cancellationDialog();
+    await expect(modal).toBeVisible({ timeout: 30000 });
+    await expect(signCancellation(modal)).toBeEnabled();
+    const reviewedFee = async (label: string) => {
+      const fee = modal
+        .getByText(label, { exact: true })
+        .locator('..')
+        .locator('dd');
+      await expect(fee).toBeVisible();
+      await expect(fee).toHaveText(new RegExp(`^\\d+\\.\\d+ ${currency}$`));
+      return parseEther((await fee.innerText()).trim().split(' ')[0]);
+    };
+    const entryPointFee = await reviewedFee(en.send.smartAccountMaxFee);
+    const maximumNetworkFee = await reviewedFee(
+      en.transactions.smartAccountCancelMaximumReplacementFee
+    );
+    const payerAddress = modal
+      .getByText(en.transactions.feePayer, { exact: true })
+      .locator('..')
+      .locator('dd');
+    await expect(payerAddress).toHaveText(payer, { ignoreCase: true });
+    const details = modal.locator('details');
+    await details.locator('summary').click();
+    await expect(
+      details.getByText(getSmartAccountUserOpHash(original, chain.chainId), {
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(
+      details.getByText(original.nonce, { exact: true })
+    ).toBeVisible();
+    await details.locator('summary').click();
+    await expect(networkFeeReview()).toHaveCount(0);
+    return { modal, entryPointFee, maximumNetworkFee };
+  };
+  const openActivityCancellation = async () => {
     await wallet.gotoRoute('#/home');
     await wallet.ensureOnHome();
     await page.getByText('Activity', { exact: true }).click();
@@ -214,58 +270,38 @@ export async function runSmartAccountCancellationJourney(options: Options) {
       .getByRole('menuitem')
       .filter({ hasText: /^Cancel$/ })
       .click();
-    const modal = page
-      .getByRole('dialog')
-      .filter({ hasText: en.transactions.smartAccountCancelDescription });
-    await expect(modal).toBeVisible({ timeout: 30000 });
-    return modal;
   };
-  const approveCancellation = async (modal: ReturnType<Page['getByRole']>) => {
+  const approveCancellation = async (
+    original: SmartAccountPackedUserOperation
+  ) => {
     const before = deliveries.length;
-    await modal.getByRole('button', { name: 'Confirm', exact: true }).click();
-    await approveSmartAccountFeeReview(page, {
-      kind: 'entry-point',
-      account,
-      payer: account,
-      chainId: chain.chainId,
-      symbol: currency,
-    });
-    await approveSmartAccountFeeReview(page, {
-      kind: 'payer',
-      account,
-      payer,
-      chainId: chain.chainId,
-      symbol: currency,
-    });
+    const { modal, entryPointFee, maximumNetworkFee } =
+      await reviewCancellation(original);
+    await signCancellation(modal).click();
     await expect
       .poll(() => deliveries.length, { timeout: 30000 })
       .toBe(before + 1);
-    return deliveries.at(-1)!;
+    await expect(modal).toHaveCount(0);
+    await expect(networkFeeReview()).toHaveCount(0);
+    const submitted = deliveries.at(-1)!;
+    expect(
+      getSmartAccountUserOpRequiredPrefund(submitted.operation).toBigInt()
+    ).toBe(entryPointFee);
+    expect(submitted.maximumNetworkFee).toBeLessThanOrEqual(maximumNetworkFee);
+    return submitted;
   };
-  const instructions = async (surface: 'activity' | 'hub') => {
-    if (surface === 'hub') await wallet.gotoRoute('#/home/smart-account');
-    else {
-      await wallet.gotoRoute('#/home');
-      await wallet.ensureOnHome();
-      await page.getByText('Activity', { exact: true }).click();
-    }
-    const disclosure = page.locator('details').filter({
-      has: page
-        .locator('summary')
-        .filter({ hasText: en.transactions.smartAuthorizations.title }),
-    });
-    await expect(disclosure).toHaveCount(1);
-    const before = logRequests;
-    await disclosure.locator('summary').click();
+  const openActivity = async () => {
+    await wallet.gotoRoute('#/home');
+    await wallet.ensureOnHome();
+    await page.getByText('Activity', { exact: true }).click();
+    const activity = page.locator('#activity-panel-list');
+    await expect(activity).toBeVisible();
     await expect(
-      disclosure
-        .getByRole('button', {
-          name: en.transactions.smartAuthorizations.checkStatus,
-        })
-        .first()
-    ).toBeVisible();
-    expect(logRequests).toBe(before);
-    return disclosure;
+      activity.getByText(en.transactions.smartAuthorizations.title, {
+        exact: true,
+      })
+    ).toHaveCount(0);
+    return activity;
   };
   const originalReplayFails = async (
     value: SmartAccountPackedUserOperation
@@ -316,24 +352,49 @@ export async function runSmartAccountCancellationJourney(options: Options) {
           'latest',
         ]);
         const original = await beginSend('pending-original');
-        const saved = await instructions('activity');
-        const originalRow = saved.locator('li').filter({
-          hasText: getSmartAccountUserOpHash(
-            original.operation,
-            chain.chainId
-          ).toLowerCase(),
-        });
-        await originalRow
-          .getByRole('button', {
-            name: en.transactions.smartAuthorizations.cancelInstruction,
-          })
-          .click();
-        const cancelled = await approveCancellation(
-          page.getByRole('dialog').filter({
-            hasText: en.transactions.smartAccountCancelDescription,
-          })
+        const saved = await openActivity();
+        const originalOperationHash = getSmartAccountUserOpHash(
+          original.operation,
+          chain.chainId
+        ).toLowerCase();
+        const originalRow = saved.locator(
+          `[data-transaction-hash="${original.hash}"]`
         );
+        const fallback = saved.locator(
+          `[data-operation-hash="${originalOperationHash}"]`
+        );
+        await expect(originalRow).toHaveCount(1);
+        await expect(fallback).toHaveCount(0);
+        const cancelFromActivity = async () => {
+          await originalRow
+            .locator('#transaction-options')
+            .getByRole('button')
+            .click();
+          await page
+            .getByRole('menuitem')
+            .filter({ hasText: /^Cancel$/ })
+            .click();
+        };
+        const before = deliveries.length;
+        const beforeEstimates = signedEstimates;
+        await cancelFromActivity();
+        const { modal } = await reviewCancellation(original.operation);
+        await modal
+          .getByRole('button', { name: en.buttons.cancel, exact: true })
+          .click();
+        await expect(modal).toHaveCount(0);
+        expect(deliveries).toHaveLength(before);
+        expect(signedEstimates).toBe(beforeEstimates);
+        expect(await canonicalNonce(original.operation)).toBe(
+          BigInt(original.operation.nonce)
+        );
+        await cancelFromActivity();
+        const cancelled = await approveCancellation(original.operation);
         expect(cancelled.operation.nonce).toBe(original.operation.nonce);
+        const cancellationOperationHash = getSmartAccountUserOpHash(
+          cancelled.operation,
+          chain.chainId
+        ).toLowerCase();
         await rpc('evm_mine');
         const receipt = await mined(cancelled.hash);
         expect(await canonicalNonce(original.operation)).toBe(
@@ -354,13 +415,16 @@ export async function runSmartAccountCancellationJourney(options: Options) {
             (event: any) =>
               event?.name === 'UserOperationEvent' &&
               event.args.success &&
-              event.args.userOpHash.toLowerCase() ===
-                getSmartAccountUserOpHash(
-                  cancelled.operation,
-                  chain.chainId
-                ).toLowerCase()
+              event.args.userOpHash.toLowerCase() === cancellationOperationHash
           )
         ).toBe(true);
+        const activity = await openActivity();
+        await expect(
+          activity.locator(`[data-transaction-hash="${cancelled.hash}"]`)
+        ).toHaveCount(1);
+        await expect(
+          activity.locator(`[data-operation-hash="${originalOperationHash}"]`)
+        ).toHaveCount(0);
         const replayHash = await originalReplayFails(original.operation);
         expect(await rpc('eth_getBalance', [recipient, 'latest'])).toBe(
           beforeBalance
@@ -380,15 +444,8 @@ export async function runSmartAccountCancellationJourney(options: Options) {
           await rpc('eth_getBalance', [recipient, 'latest'])
         );
         const original = await beginSend('original-wins');
-        const modal = await prepareCancel();
-        await modal
-          .getByRole('button', { name: 'Confirm', exact: true })
-          .click();
-        const feeHeading = page.getByRole('heading', {
-          name: 'Review network fee',
-          exact: true,
-        });
-        await expect(feeHeading).toBeVisible();
+        await openActivityCancellation();
+        const { modal } = await reviewCancellation(original.operation);
         await rpc('evm_mine');
         await mined(original.hash);
         expect(await canonicalNonce(original.operation)).toBe(
@@ -401,42 +458,29 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         const before = deliveries.length;
         // Receipt refresh may retire the stale row's review before its button
         // is clicked. Either retirement or fresh admission must refuse it.
-        if (await feeHeading.isVisible()) {
+        if (await modal.isVisible()) {
           try {
-            await approveSmartAccountFeeReview(page, {
-              kind: 'entry-point',
-              account,
-              payer: account,
-              chainId: chain.chainId,
-              symbol: currency,
-            });
+            await signCancellation(modal).click({ timeout: 3000 });
           } catch (error) {
-            if (await feeHeading.isVisible()) throw error;
+            if (await modal.isVisible()) throw error;
           }
         }
-        await expect(feeHeading).toHaveCount(0);
+        await expect(modal).toHaveCount(0);
+        await expect(networkFeeReview()).toHaveCount(0);
         await expect(
           page.getByText(en.transactions.transactionCancelSubmitted, {
             exact: true,
           })
         ).toHaveCount(0);
         expect(deliveries).toHaveLength(before);
-        const shown = await instructions('hub');
         const hash = getSmartAccountUserOpHash(
           original.operation,
           chain.chainId
         ).toLowerCase();
-        const row = shown.locator('li').filter({ hasText: hash });
-        await row
-          .getByRole('button', {
-            name: en.transactions.smartAuthorizations.checkStatus,
-          })
-          .click();
+        const activity = await openActivity();
         await expect(
-          row.getByText(en.transactions.smartAuthorizations.observedSuccess, {
-            exact: true,
-          })
-        ).toBeVisible();
+          activity.locator(`[data-transaction-hash="${original.hash}"]`)
+        ).toHaveCount(1);
         evidence.originalWon = { hash: original.hash, operationHash: hash };
       }
     );
@@ -446,11 +490,13 @@ export async function runSmartAccountCancellationJourney(options: Options) {
       async () => {
         const result = await beginSend('declined-payer', true);
         abandoned = result.operation;
-        const shown = await instructions('activity');
+        const shown = await openActivity();
+        const hash = getSmartAccountUserOpHash(
+          abandoned,
+          chain.chainId
+        ).toLowerCase();
         await expect(
-          shown.getByText(getSmartAccountUserOpHash(abandoned, chain.chainId), {
-            exact: true,
-          })
+          shown.locator(`[data-operation-hash="${hash}"]`)
         ).toBeVisible();
         expect(await page.locator('body').innerText()).not.toContain(
           abandoned.signature
@@ -486,12 +532,12 @@ export async function runSmartAccountCancellationJourney(options: Options) {
     await wallet.step(
       'A retained instruction survives cold restart and can be cancelled',
       async () => {
-        const shown = await instructions('activity');
+        const shown = await openActivity();
         const hash = getSmartAccountUserOpHash(
           abandoned,
           chain.chainId
         ).toLowerCase();
-        const row = shown.locator('li').filter({ hasText: hash });
+        const row = shown.locator(`[data-operation-hash="${hash}"]`);
         await expect(row).toBeVisible();
         expect(await page.locator('body').innerText()).not.toContain(
           abandoned.signature
@@ -511,10 +557,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
             name: en.transactions.smartAuthorizations.cancelInstruction,
           })
           .click();
-        const modal = page
-          .getByRole('dialog')
-          .filter({ hasText: en.transactions.smartAccountCancelDescription });
-        const cancelled = await approveCancellation(modal);
+        const cancelled = await approveCancellation(abandoned);
         expect(cancelled.operation.nonce).toBe(abandoned.nonce);
         await rpc('evm_mine');
         await mined(cancelled.hash);

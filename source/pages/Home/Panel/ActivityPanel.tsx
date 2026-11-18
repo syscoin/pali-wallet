@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
+import { useSmartAccountAuthorizations } from 'components/TransactionOptions/SmartAccountAuthorizations';
 import { useRequestScope } from 'hooks/useRequestScope';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store, { RootState } from 'state/store';
@@ -49,6 +50,7 @@ export const TransactionsPanel = () => {
       : undefined;
   const scopeKey = `${scope.account}:${scope.network}`;
   const saved = useSavedEvmTransactions(!isBitcoinBased, scopeKey);
+  const authorizations = useSmartAccountAuthorizations(true);
   const beginRetry = useRequestScope(scopeKey);
   const retryPending = useRef<() => boolean>();
   const [retryScope, setRetryScope] = useState<string>();
@@ -100,10 +102,10 @@ export const TransactionsPanel = () => {
   ]);
   const transactions = isBitcoinBased ? utxoTransactions : evmTransactions;
 
-  const hasTransactions = useMemo(
-    () => transactions.length > 0,
-    [transactions.length]
-  );
+  const hasTransactions =
+    transactions.length > 0 || authorizations.groups.length > 0;
+  const savedActivityLoading = saved.loading || authorizations.loading;
+  const savedActivityUnavailable = saved.unavailable || authorizations.failed;
 
   // ✅ MEMOIZED: Component definitions to prevent recreation
   const NoTransactionsComponent = useMemo(
@@ -308,7 +310,9 @@ export const TransactionsPanel = () => {
 
   return (
     <>
-      {(isLoading || saved.loading) && !hasTransactions && TransactionSkeleton}
+      {(isLoading || savedActivityLoading) &&
+        !hasTransactions &&
+        TransactionSkeleton}
       {hasHistoryStatus && historyState !== 'ready' && (
         <div className="mt-8 text-center text-sm text-brand-gray200">
           {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
@@ -322,25 +326,30 @@ export const TransactionsPanel = () => {
           </button>
         </div>
       )}
-      {saved.unavailable && (
+      {savedActivityUnavailable && (
         <div className="mt-4 text-center text-sm text-brand-gray200">
           <p role="status">{t('home.savedActivityUnavailable')}</p>
           <button
             type="button"
             className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
-            disabled={saved.loading}
-            onClick={() => void saved.retry()}
+            disabled={savedActivityLoading}
+            onClick={() => {
+              if (saved.unavailable) void saved.retry();
+              if (authorizations.failed) void authorizations.retry();
+            }}
           >
             {t('home.retrySavedActivity')}
           </button>
         </div>
       )}
-      {!isLoading && !saved.loading && !hasTransactions && (
+      {!isLoading && !savedActivityLoading && !hasTransactions && (
         <div
           id="activity-panel-empty"
           className="w-full mt-8 text-white bg-brand-blue600"
         >
-          {!historyUnavailable && !saved.unavailable && NoTransactionsComponent}
+          {!historyUnavailable &&
+            !savedActivityUnavailable &&
+            NoTransactionsComponent}
           {OpenTransactionExplorer}
           {/* <Fullscreen /> */}
         </div>
@@ -360,10 +369,17 @@ export const TransactionsPanel = () => {
             <UtxoTransactionsList userTransactions={utxoTransactions} />
           ) : (
             <EvmTransactionsList
+              authorizations={authorizations}
               userTransactions={evmTransactions}
-              savedHasMore={saved.hasMore}
-              savedLoading={saved.loading}
-              loadMoreSaved={saved.loadMore}
+              savedTransactions={saved.transactions}
+              savedHasMore={saved.hasMore || Boolean(authorizations.cursor)}
+              savedLoading={savedActivityLoading}
+              loadMoreSaved={async () => {
+                await Promise.all([
+                  saved.hasMore && saved.loadMore(),
+                  authorizations.cursor && authorizations.load('more'),
+                ]);
+              }}
             />
           )}
           {OpenTransactionExplorer}

@@ -36,6 +36,31 @@ const SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER = 50_000;
 const ZKSYS_GAS_TANK_REQUIRED_ERROR = 'PALI_ZKSYS_GAS_TANK_REQUIRED';
 const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
 const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
+
+export async function readSmartAccountDeploymentShortfall(
+  provider: any,
+  accountAddress: string,
+  entryPointAddress: string,
+  userOperation: SmartAccountPackedUserOperation,
+  assertCurrent: () => void
+) {
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  if (!provider) throw new Error(PROVIDER_UNAVAILABLE_ERROR);
+  const entryPoint = new Contract(
+    entryPointAddress,
+    PALI_ENTRYPOINT_V09_ABI,
+    provider
+  );
+  const [balance, deposit] = await Promise.all([
+    provider.getBalance(accountAddress),
+    entryPoint.balanceOf(accountAddress),
+  ]);
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  return getSmartAccountUserOpRequiredPrefund(userOperation)
+    .sub(balance)
+    .sub(deposit);
+}
+
 export async function canUseSmartAccountGasTank(
   provider: any,
   {
@@ -222,22 +247,13 @@ export async function ensureSmartAccountDeploymentPrefund<
     assertSynchronousEvmFeeGuard(options.assertCurrentContext);
   };
   assertCurrent();
-  if (!provider) {
-    throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-  }
-  const entryPoint = new Contract(
+  const shortfall = await readSmartAccountDeploymentShortfall(
+    provider,
+    accountAddress,
     entryPointAddress,
-    PALI_ENTRYPOINT_V09_ABI,
-    provider
+    userOperation,
+    assertCurrent
   );
-  const [balance, rawDeposit] = await Promise.all([
-    provider.getBalance(accountAddress),
-    entryPoint.balanceOf(accountAddress),
-  ]);
-  assertCurrent();
-  const deposit = BigNumber.from(rawDeposit);
-  const required = getSmartAccountUserOpRequiredPrefund(userOperation);
-  const shortfall = required.sub(balance).sub(deposit);
   if (shortfall.lte(0)) {
     return;
   }

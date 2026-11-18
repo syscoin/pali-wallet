@@ -6892,7 +6892,10 @@ class MainController {
     );
   }
 
-  public async getSmartAccountAuthorizationStatus(operationHash: string) {
+  public async getSmartAccountAuthorizationStatus(
+    operationHash: string,
+    options?: Readonly<{ preserveRecords: true }>
+  ) {
     const owned = this.captureSmartAccountAuthorizationSession();
     const record = await owned.records.readSmartAccountAuthorizationExact(
       owned.session,
@@ -6913,7 +6916,7 @@ class MainController {
         owned.read.network.chainId
       )
     );
-    if (observation.kind !== 'pending') {
+    if (options?.preserveRecords !== true && observation.kind !== 'pending') {
       try {
         await owned.records.retireConsumedSmartAccountAuthorizations(
           owned.session,

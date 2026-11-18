@@ -10,13 +10,25 @@ import {
   readEvmRpcHash,
   readEvmRpcQuantity,
 } from '../../../../shared/evmTransactionObservation.ts';
-import { getSmartAccountUserOpRequiredPrefund } from '../../../../utils/smartAccount/account.ts';
+import {
+  matchesSmartAccountCancellationPayerBudget,
+  type SmartAccountFeeQuote,
+} from '../../../../shared/smartAccountFeeQuote.ts';
+import {
+  getSmartAccountUserOpRequiredPrefund,
+  SMART_ACCOUNT_ZERO_GAS_FEES,
+} from '../../../../utils/smartAccount/account.ts';
+import {
+  assertSmartAccountCancellationPayerFee,
+  getSmartAccountCancellationPayerBudget,
+} from '../../../../utils/smartAccount/cancellationFee';
 import {
   captureCompositePolicyChange,
   createCompositePolicyPossession,
   verifyCompositePolicyPossession,
   type CompositePolicyChange,
 } from '../../../../utils/smartAccount/compositePossession.ts';
+import { getZkSysGasTankAddress } from '../../../../utils/smartAccount/deploymentMetadata';
 import { createSmartAccountRawSigningIntent } from '../../../../utils/smartAccount/ownerSigningIntent.ts';
 import { buildSmartAccountUserOpSigningIntent } from '../../../../utils/smartAccount/userOperationHash.ts';
 import {
@@ -168,6 +180,7 @@ import {
   readSmartAccountNativeBalances,
   canUseSmartAccountGasTank,
   ensureSmartAccountDeploymentPrefund,
+  readSmartAccountDeploymentShortfall,
 } from 'utils/smartAccount/payerPolicy';
 import {
   createSmartAccountPendingState,
@@ -195,8 +208,10 @@ import {
   writeInfrastructureJournal,
   clearInfrastructureJournal,
 } from './infrastructureJournal';
-import type { SmartAccountControllerAuthority } from '../../../../shared/smartAccountControllerAuthority';
-import type { SmartAccountFeeQuote } from '../../../../shared/smartAccountFeeQuote.ts';
+import type {
+  SmartAccountControllerAuthority,
+  SmartAccountControllerFeeReview,
+} from '../../../../shared/smartAccountControllerAuthority';
 import type {
   EvmSignedRecords,
   SmartAccountPendingRecords,
@@ -666,7 +681,9 @@ class SmartAccountController {
       SmartAccountFeeQuote,
       'feePayer' | 'maximumFeeWei' | 'executionContextId'
     > &
-      Partial<Pick<SmartAccountFeeQuote, 'gasUnits'>>
+      Partial<
+        Pick<SmartAccountFeeQuote, 'gasUnits' | 'cancellationPayerBudget'>
+      >
   ): void {
     this.assertSmartAccountExecutionContext(executionContextId);
     const context = this.executionContexts.get(executionContextId)!;
@@ -675,6 +692,10 @@ class SmartAccountController {
       !expected ||
       context.entryPointFeeConsumed ||
       quote?.executionContextId !== executionContextId ||
+      !matchesSmartAccountCancellationPayerBudget(
+        expected.cancellationPayerBudget,
+        quote.cancellationPayerBudget
+      ) ||
       quote.feePayer?.id !== expected.feePayer.id ||
       quote.feePayer?.type !== expected.feePayer.type ||
       typeof quote.feePayer?.address !== 'string' ||
@@ -2100,6 +2121,7 @@ class SmartAccountController {
     let cancellationPayer:
       | Awaited<ReturnType<typeof inspectSmartAccountCancellationPayer>>
       | undefined;
+    let cancellationPrefund = BigInt(0);
     const sourceMetadata = active.metadata;
     let hydratedMetadata: ISmartAccountMetadata | undefined;
     const prepared = await withEvmReadPhase(
@@ -2236,12 +2258,27 @@ class SmartAccountController {
             return { gasPayer, useGasTank };
           },
         });
-        if (cancellation)
+        if (cancellation) {
           assertSmartAccountCancellationOperation(
             cancellation,
             result.userOperation,
             result.validator
           );
+          if (
+            result.userOperation.initCode !== '0x' &&
+            !getSmartAccountUserOpRequiredPrefund(result.userOperation).isZero()
+          ) {
+            const shortfall = await readSmartAccountDeploymentShortfall(
+              provider,
+              cancellation.account,
+              getPaliEntryPointAddress(snapshot.chainId),
+              result.userOperation,
+              assertContext
+            );
+            if (shortfall.gt(0))
+              cancellationPrefund = BigInt(shortfall.toString());
+          }
+        }
         const anchor = await provider.send('eth_getBlockByNumber', [
           'latest',
           false,
@@ -2288,21 +2325,34 @@ class SmartAccountController {
       this.executionContexts.delete(this.executionContexts.keys().next().value);
     const executionContextId = uuidv4();
     const expiresAt = Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS;
+    const gasUnits = BigNumber.from(
+      hexDataSlice(userOperation.accountGasLimits, 0, 16)
+    )
+      .add(BigNumber.from(hexDataSlice(userOperation.accountGasLimits, 16, 32)))
+      .add(BigNumber.from(userOperation.preVerificationGas))
+      .toString();
     const entryPointFeeQuote = Object.freeze({
       executionContextId,
       feePayer: Object.freeze({
         ...prepared.gasPayer,
       }) as SmartAccountFeeQuote['feePayer'],
-      gasUnits: BigNumber.from(
-        hexDataSlice(userOperation.accountGasLimits, 0, 16)
-      )
-        .add(
-          BigNumber.from(hexDataSlice(userOperation.accountGasLimits, 16, 32))
-        )
-        .add(BigNumber.from(userOperation.preVerificationGas))
-        .toString(),
+      gasUnits,
       maximumFeeWei:
         getSmartAccountUserOpRequiredPrefund(userOperation).toString(),
+      ...(cancellation
+        ? {
+            cancellationPayerBudget: getSmartAccountCancellationPayerBudget({
+              chainId: snapshot.chainId,
+              blockGasLimit: BigInt(feeDisplayBlock!.gasLimit),
+              operationGas: BigInt(gasUnits),
+              feeRate: BigInt(prepared.gasPrice ?? prepared.maxFeePerGas!),
+              prefund: cancellationPrefund,
+              gasTank:
+                Boolean(getZkSysGasTankAddress(snapshot.chainId)) &&
+                userOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES,
+            }),
+          }
+        : {}),
     });
     const proposal = captureCompositePolicyChange({
       accountAddress: active.account.address,
@@ -2506,12 +2556,28 @@ class SmartAccountController {
     };
     assertCurrent();
     this.assertExecutionFeeApproved(params.executionContextId);
-    this.executionContexts.get(
+    const executionContext = this.executionContexts.get(
       params.executionContextId
-    )!.entryPointFeeConsumed = true;
-    const pending = this.executionContexts.get(
-      params.executionContextId
-    )?.pending;
+    )!;
+    const { cancellation, pending } = executionContext;
+    const feeQuote = executionContext.entryPointFeeQuote;
+    const budget = feeQuote?.cancellationPayerBudget;
+    if (
+      cancellation &&
+      (!budget ||
+        !params.gasPayer ||
+        params.gasPayer.id !== feeQuote!.feePayer.id ||
+        params.gasPayer.type !== feeQuote!.feePayer.type ||
+        params.gasPayer.address.toLowerCase() !==
+          feeQuote!.feePayer.address.toLowerCase() ||
+        params.maxFeePerGas !== executionContext.prepared?.maxFeePerGas ||
+        params.maxPriorityFeePerGas !==
+          executionContext.prepared?.maxPriorityFeePerGas)
+    )
+      throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+        transactionNotBroadcast: true,
+      });
+    executionContext.entryPointFeeConsumed = true;
     if (!pending)
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
@@ -2525,6 +2591,19 @@ class SmartAccountController {
             return approved;
           }
         : undefined;
+    const payerConsent = (purpose: 'fund' | 'submit') =>
+      cancellation && budget
+        ? async (review: SmartAccountControllerFeeReview) => {
+            assertCurrent();
+            assertSmartAccountCancellationPayerFee(review, budget, {
+              account: cancellation.account,
+              chainId: cancellation.chainId,
+              payer: feeQuote!.feePayer.address,
+              purpose,
+            });
+            return review.id;
+          }
+        : confirmCurrentFee;
     return submitSmartAccountOperation(
       params,
       {
@@ -2583,7 +2662,7 @@ class SmartAccountController {
           this.ensureSmartAccountDeploymentPrefund(
             ...args,
             pending.provider,
-            confirmCurrentFee
+            payerConsent('fund')
           ),
         sendTransaction: (transaction, legacy, target, metadata, options) =>
           this.deps.sendAndSaveEthTransaction(
@@ -2593,7 +2672,7 @@ class SmartAccountController {
             metadata,
             {
               ...options,
-              confirmFee: confirmCurrentFee,
+              confirmFee: payerConsent('submit'),
             }
           ),
         invalidateMetadata: (address) =>

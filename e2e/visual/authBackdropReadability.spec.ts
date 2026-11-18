@@ -80,6 +80,15 @@ const geometry = (target: Locator) =>
     };
   });
 
+const particleStyle = (particle: Locator) =>
+  particle.evaluate((element) => {
+    const { opacity, scale, transform } = getComputedStyle(element);
+    const { e: x, f: y } = new DOMMatrixReadOnly(
+      transform === 'none' ? undefined : transform
+    );
+    return { opacity: Number(opacity), scale: parseFloat(scale), x, y };
+  });
+
 test('Welcome and Unlock keep readable text over the short-window backdrop', async ({}, info) => {
   test.setTimeout(120_000);
   const previous = { ...E2E_CONFIG };
@@ -105,6 +114,7 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
       server.url
     );
     const page = wallet.page;
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     const inspect = async (state: 'welcome' | 'unlock') => {
       for (const viewport of [
         { width: 400, height: 620 },
@@ -136,6 +146,29 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
               page.getByRole('heading', { name: 'Pali', exact: true })
             ).toHaveCount(1);
             const backdrop = page.locator('.login-animated-bg');
+            const particle = backdrop.locator('.particle-5');
+            await expect(particle).toBeVisible();
+            if (
+              (viewport.width === 400 && viewport.height === 580) ||
+              (viewport.width === 320 && viewport.height === 500)
+            ) {
+              const initial = await particleStyle(particle);
+              await expect
+                .poll(async () => {
+                  const current = await particleStyle(particle);
+                  return (
+                    Math.hypot(current.x - initial.x, current.y - initial.y) >
+                      1 &&
+                    Math.abs(current.scale - initial.scale) > 0.01 &&
+                    Math.abs(current.opacity - initial.opacity) > 0.01
+                  );
+                })
+                .toBe(true);
+              await page.emulateMedia({ reducedMotion: 'reduce' });
+              await expect(particle).toBeVisible();
+              await expect(particle).toHaveCSS('animation-name', 'none');
+              await page.emulateMedia({ reducedMotion: 'no-preference' });
+            }
             const link = page.locator('#import-wallet-link');
             await expect(link).toHaveText(
               state === 'welcome'
@@ -182,7 +215,6 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
               expect(art).toContain('GET_STARTED2.webp');
               if (state === 'unlock' && compact) {
                 expect(art).toContain('linear-gradient(');
-                await expect(backdrop.locator('.particle-1')).toBeVisible();
               }
               observations.push({ state, viewport, renderedViewport });
             }

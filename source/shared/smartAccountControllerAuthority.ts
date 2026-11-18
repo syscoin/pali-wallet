@@ -4,6 +4,8 @@ import type { EvmFeeEnvelope } from './evmFeeApproval';
 export const SMART_ACCOUNT_CONTROLLER_PORT = 'pali-smart-account-controller';
 export const SMART_ACCOUNT_FEE_REVIEW = 'PALI_SMART_ACCOUNT_FEE_REVIEW';
 export const SMART_ACCOUNT_FEE_APPROVAL = 'PALI_SMART_ACCOUNT_FEE_APPROVAL';
+export const SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT =
+  'pali-smart-account-authorization-signed';
 export type SmartAccountControllerFeeReview = Readonly<{
   coveredFeeUnits?: string;
   id: string;

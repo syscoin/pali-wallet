@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../../../../../shared/evmHistory';
+import { SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT } from '../../../../../../shared/smartAccountControllerAuthority';
 import { useContextualState } from 'hooks/useContextualState';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { ITransactionInfoEvm } from 'types/useTransactionsInfo';
@@ -176,10 +177,15 @@ export const useSavedEvmTransactions = (enabled: boolean, scope: string) => {
     void fetchPage();
     const refresh = () => void fetchPage();
     window.addEventListener('focus', refresh);
+    window.addEventListener(SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT, refresh);
     return () => {
       context.current.active = false;
       context.current.request++;
       window.removeEventListener('focus', refresh);
+      window.removeEventListener(
+        SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT,
+        refresh
+      );
     };
   }, [scope, enabled]);
   return {

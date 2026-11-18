@@ -1,5 +1,11 @@
 /** @jest-environment jsdom */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -663,4 +669,97 @@ it('keeps genuinely unseen saved pages available beyond the cached public window
   expect(loadMore).toHaveBeenCalledTimes(2);
   expect(screen.queryByRole('button', { name: 'buttons.loadMore' })).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('keeps existing activity rows and renders signed controls only when no visible authenticated outer represents the group', async () => {
+  const instruction = {
+    account: ACCOUNT,
+    payer: TARGET,
+    chainId: '1',
+    operationNonce: '8',
+    operationHash: hash('1'),
+    createdAt: 1791655200000,
+    observedAt: { number: '1', hash: hash('0') },
+  };
+  const cancellation = {
+    ...instruction,
+    operationHash: hash('2'),
+    replacesOperationHash: instruction.operationHash,
+  };
+  const group = {
+    hash: instruction.operationHash,
+    original: instruction,
+    cancellations: [cancellation],
+  };
+  const auths = { groups: [group], scope: 'scope', load: jest.fn() } as any;
+  const savedOuter = (outer: string, inner: string) =>
+    transaction(outer, {
+      historySource: 'local-signed',
+      smartAccount: {
+        account: ACCOUNT,
+        operationCount: 1,
+        operationHash: inner,
+        operations: [{ operationHash: inner, operationNonce: '8' }],
+      },
+    });
+  const originalOuter = savedOuter('a', instruction.operationHash);
+  const cancelledOuter = savedOuter('b', cancellation.operationHash);
+  const unrelated = transaction('c', {
+    smartAccount: originalOuter.smartAccount,
+  });
+  mockRows = [originalOuter, cancelledOuter, unrelated];
+  const ui = (saved: any[]) => (
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      savedTransactions={saved}
+      authorizations={auths}
+    />
+  );
+  const view = render(ui([originalOuter, cancelledOuter]));
+  expect(
+    screen.queryByText('transactions.smartAuthorizations.title')
+  ).toBeNull();
+  const fallbacks = () =>
+    view.container.querySelectorAll('[data-operation-hash]');
+  const ordinaryRows = () =>
+    Array.from(
+      view.container.querySelectorAll('[data-transaction-hash]'),
+      (row) => row.getAttribute('data-transaction-hash')
+    );
+  expect(fallbacks()).toHaveLength(0);
+  expect(ordinaryRows()).toEqual(mockRows.map((tx) => tx.hash));
+  expect(
+    screen.queryByText('transactions.smartAuthorizations.checkStatus')
+  ).toBeNull();
+  const details = await screen.findAllByRole('button', { name: 'Details' });
+  fireEvent.click(details[0]);
+  expect(mockNavigate.mock.lastCall[1].state.hash).toBe(originalOuter.hash);
+  fireEvent.click(details[1]);
+  expect(mockNavigate.mock.lastCall[1].state.hash).toBe(cancelledOuter.hash);
+
+  // Network status wins for the same outer. Only the retained bytes identify its inner instruction.
+  mockRows = [transaction('a'), unrelated];
+  view.rerender(ui([originalOuter]));
+  expect(fallbacks()).toHaveLength(0);
+  expect(screen.getByText(`Options:${originalOuter.hash}`)).toBeTruthy();
+  mockRows = [cancelledOuter, unrelated];
+  view.rerender(ui([cancelledOuter]));
+  expect(fallbacks()).toHaveLength(0);
+
+  // Equal nonce and an unauthenticated lookalike from the network do not hide local activity.
+  mockRows = [unrelated];
+  view.rerender(ui([originalOuter]));
+  expect(fallbacks()).toHaveLength(1);
+  expect(ordinaryRows()).toEqual([unrelated.hash]);
+  const row = within(fallbacks()[0] as HTMLElement);
+  expect(
+    row.getByRole('button', {
+      name: 'transactions.smartAuthorizations.checkStatus',
+    })
+  ).toBeTruthy();
+  expect(
+    row.getByRole('button', {
+      name: 'transactions.smartAuthorizations.cancelInstruction',
+    })
+  ).toBeTruthy();
 });

@@ -22,7 +22,11 @@ import { ConfirmationModal } from 'components/Modal';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { TransactionOptions } from 'components/TransactionOptions';
-import { SmartAccountAuthorizations } from 'components/TransactionOptions/SmartAccountAuthorizations';
+import {
+  Instruction,
+  type InstructionGroup,
+  type useSmartAccountAuthorizations,
+} from 'components/TransactionOptions/SmartAccountAuthorizations';
 import { useContextualState } from 'hooks/useContextualState';
 import { usePrice } from 'hooks/usePrice';
 import { useRequestScope } from 'hooks/useRequestScope';
@@ -64,6 +68,7 @@ import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import { getReplacementWinner } from './replacementWinner';
 import { getTransactionDisplayCacheKey } from './transactionDisplayCache';
+import type { SmartAccountReplayIntent } from '../../../../../../wallet/smartAccountSignedReplay';
 
 type EvmPageResponse = {
   error?: string;
@@ -478,7 +483,10 @@ const EvmTransactionItem = React.memo(
     // If transaction is replaced, show it with a different style
     if (isReplaced) {
       return (
-        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue">
+        <div
+          data-transaction-hash={tx.hash}
+          className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue"
+        >
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col">
@@ -510,7 +518,10 @@ const EvmTransactionItem = React.memo(
 
     if (isFailed) {
       return (
-        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue">
+        <div
+          data-transaction-hash={tx.hash}
+          className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue"
+        >
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col">
@@ -541,7 +552,10 @@ const EvmTransactionItem = React.memo(
     }
 
     return (
-      <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
+      <div
+        data-transaction-hash={tx.hash}
+        className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue"
+      >
         <div className="flex justify-between py-2 w-full">
           <div className="flex min-w-0 flex-1 items-start gap-2">
             <div className="flex-shrink-0 pt-0.5">
@@ -694,13 +708,19 @@ EvmTransactionItem.displayName = 'EvmTransactionItem';
 
 export const EvmTransactionsList = ({
   userTransactions,
+  authorizations,
+  savedTransactions,
   savedHasMore = false,
   savedLoading = false,
   loadMoreSaved,
 }: {
+  authorizations?: ReturnType<typeof useSmartAccountAuthorizations>;
   loadMoreSaved?: () => Promise<void>;
   savedHasMore?: boolean;
   savedLoading?: boolean;
+  savedTransactions?: (ITransactionInfoEvm & {
+    smartAccount?: SmartAccountReplayIntent;
+  })[];
   userTransactions: ITransactionInfoEvm[];
 }) => {
   const { t } = useTranslation();
@@ -870,18 +890,66 @@ export const EvmTransactionsList = ({
   );
 
   const groupedTransactions = useMemo(() => {
-    const grouped: { [date: string]: ITransactionInfoEvm[] } = {};
-    const sourceList = filteredTransactions.slice(0, visibleCount);
-    sourceList.forEach((tx) => {
-      const formattedDate = formatTimeStamp(tx?.timestamp);
-      if (!grouped[formattedDate]) {
-        grouped[formattedDate] = [];
+    type ActivityRow =
+      | { timestamp: number; tx: ITransactionInfoEvm }
+      | { group: InstructionGroup; timestamp: number };
+    const visible = filteredTransactions.slice(
+      0,
+      visibleCount
+    ) as ITransactionInfoEvm[];
+    const sourceList: ActivityRow[] = visible.map((tx) => ({
+      tx,
+      timestamp: tx.timestamp,
+    }));
+    if (authorizations?.groups.length) {
+      // Only an authenticated saved envelope links a visible transaction to a signed instruction.
+      const visibleHashes = new Set(
+        visible.map((tx) => tx.hash?.toLowerCase())
+      );
+      const operations = new Set<string>();
+      for (const tx of savedTransactions ?? []) {
+        const intent = tx.smartAccount;
+        if (
+          intent &&
+          tx.chainId === chainId &&
+          visibleHashes.has(tx.hash.toLowerCase()) &&
+          intent.account.toLowerCase() ===
+            currentAccount?.address?.toLowerCase()
+        )
+          for (const operation of intent.operations)
+            operations.add(operation.operationHash);
       }
-      grouped[formattedDate].push(tx);
+      for (const group of authorizations.groups) {
+        if (
+          operations.has(group.hash) ||
+          group.cancellations.some((attempt) =>
+            operations.has(attempt.operationHash)
+          )
+        )
+          continue;
+        const newest = Math.max(
+          group.original?.createdAt ?? 0,
+          ...group.cancellations.map((attempt) => attempt.createdAt)
+        );
+        sourceList.push({ group, timestamp: Math.floor(newest / 1000) });
+      }
+      sourceList.sort((a, b) => b.timestamp - a.timestamp);
+    }
+    const grouped: Record<string, ActivityRow[]> = {};
+    sourceList.forEach((row) => {
+      const date = formatTimeStamp(row.timestamp);
+      (grouped[date] ??= []).push(row);
     });
-
     return grouped;
-  }, [filteredTransactions, formatTimeStamp, visibleCount, apiUrl]);
+  }, [
+    filteredTransactions,
+    formatTimeStamp,
+    visibleCount,
+    authorizations?.groups,
+    savedTransactions,
+    currentAccount?.address,
+    chainId,
+  ]);
 
   // Build a quick lookup map for imported ERC-20 token metadata
   const tokenMetaByAddress = useMemo(() => {
@@ -923,14 +991,21 @@ export const EvmTransactionsList = ({
   return (
     <>
       <ConfirmationModal show={isOpenModal} {...modalData} />
-      <div className="mb-3">
-        <SmartAccountAuthorizations />
-      </div>
       {Object?.entries(groupedTransactions)?.map(
         ([date, transactions]: any) => (
           <div key={date} className="relative mb-[20px]">
             <div className="text-xs text-white font-normal">{date}</div>
-            {transactions?.map((tx, index) => {
+            {transactions.map((row, index) => {
+              if ('group' in row && authorizations)
+                return (
+                  <ul key={row.group.hash}>
+                    <Instruction
+                      group={row.group}
+                      scope={authorizations.scope}
+                    />
+                  </ul>
+                );
+              const tx = row.tx;
               // Create a unique key that handles replacements properly
               // Use nonce if available (EVM), otherwise use hash/txid
               const txKey =

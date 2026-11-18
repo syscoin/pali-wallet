@@ -1,4 +1,8 @@
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard';
+import {
+  matchesSmartAccountCancellationPayerBudget,
+  type SmartAccountFeeQuote,
+} from '../../shared/smartAccountFeeQuote';
 import { signP256WebAuthnActionHash } from '../passkey/authenticator';
 import type {
   ISmartAccountMetadata,
@@ -35,7 +39,6 @@ import { assertSmartAccountOwnerSigningIntent } from './ownerSigningIntent';
 import type { SmartAccountAuthenticatorSignature } from './signature';
 import { canUseReservedSLHDSASignature } from './slhDsaPurpose';
 import type { SmartAccountControllerCallOptions } from '../../shared/smartAccountControllerAuthority';
-import type { SmartAccountFeeQuote } from '../../shared/smartAccountFeeQuote';
 
 export type { SmartAccountFeeQuote } from '../../shared/smartAccountFeeQuote';
 
@@ -156,7 +159,10 @@ export type SubmitSmartAccountExecutionsParams = {
   accountId?: number;
   approvedFeeQuote?: Pick<
     SmartAccountFeeQuote,
-    'feePayer' | 'maximumFeeWei' | 'executionContextId'
+    | 'feePayer'
+    | 'maximumFeeWei'
+    | 'executionContextId'
+    | 'cancellationPayerBudget'
   >;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   controllerEmitter: ControllerEmitter;
@@ -541,6 +547,9 @@ export const signAndSubmitSmartAccountExecutions = async (
     if (approvedFeeQuote !== undefined) {
       if (
         !/^\d+$/.test(approvedFeeQuote.maximumFeeWei) ||
+        (approvedFeeQuote.cancellationPayerBudget &&
+          approvedFeeQuote.executionContextId !==
+            prepared.executionContextId) ||
         prepared.gasPayer?.id !== approvedFeeQuote.feePayer.id ||
         prepared.gasPayer?.type !== approvedFeeQuote.feePayer.type ||
         prepared.gasPayer?.address?.toLowerCase() !==
@@ -584,6 +593,10 @@ export const signAndSubmitSmartAccountExecutions = async (
           getSmartAccountUserOpRequiredPrefund(
             prepared.userOperation
           ).toString() ||
+        !matchesSmartAccountCancellationPayerBudget(
+          entryPointQuote.cancellationPayerBudget,
+          approvedFeeQuote?.cancellationPayerBudget
+        ) ||
         entryPointQuote.feePayer.id !== prepared.gasPayer?.id ||
         entryPointQuote.feePayer.type !== prepared.gasPayer?.type ||
         entryPointQuote.feePayer.address.toLowerCase() !==
