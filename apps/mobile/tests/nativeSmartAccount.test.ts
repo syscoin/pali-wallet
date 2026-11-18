@@ -2002,6 +2002,14 @@ test('native standalone authorization is encrypted before signed RPC disclosure 
   const preparing=operation.prepare();await Promise.all([canonical.promise,blocked.promise]);unwatch();assert.equal(operation.getSnapshot().phase,'preparing');operation.cancel();await preparing;
   assert.equal(f.signatures.length,signed);assert.equal(f.credentialReads,prompts);assert.equal(f.submitted.length,0);
   assert.equal(await f.storage.signedRecords.read(identity.profileId),encrypted,'ordinary preparation cannot consume/remove the old authorization');
+  await operation.dispose(); operation = undefined;
+  let invalidations = 0;
+  await f.runtime.resetActivity(() => undefined, () => { invalidations++; });
+  assert.equal(invalidations, 1);
+  assert.equal(f.owner.getSnapshot().account!.address, smart.address);
+  const activities = await f.runtime.listSmartAccountAuthorizations({ maximum: 20 }, new AbortController().signal, () => undefined);
+  assert.deepEqual(activities.entries, []);
+  assert.equal(f.submitted.length, 0);
  }finally{await operation?.dispose(); await f.close();}
 });
 

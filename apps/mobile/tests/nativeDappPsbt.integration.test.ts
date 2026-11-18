@@ -14,7 +14,7 @@ import { withOwnedLedgerConnection } from '../src/hardware/withOwnedLedgerConnec
 import type { NativeLedgerTransport } from '../src/hardware/ownedLedgerTransport.ts';
 import { createOwnedUtxoBlockbookRead } from '../../../source/wallet/utxoBlockbookReads.ts';
 import { matchesUtxoSignedDigest, UtxoSignedRecords } from '../../../source/wallet/utxoSignedRecords.ts';
-import { createNativeUtxoSend } from '../src/custody/utxoSend.ts';
+import { observeRetainedUtxo } from '../../../source/wallet/utxoSubmission.ts';
 import { prepareNativeDappPsbt } from '../src/custody/dappPsbt.ts';
 import { getUtxoNetwork, getUtxoSdkNetwork } from '../src/core/utxoNetworks.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -162,14 +162,16 @@ for (const custody of ['HDAccount', 'Ledger'] as const) test(`${custody} native 
     assert.deepEqual(sending.disposition(), { transactionNotBroadcast: false, txid });
     assert.equal(postCount, 1); assert.equal(sign.mock.callCount(), beforeSend + 1); sending.dispose();
     const retained = await records.readExact(session, owner, txid); assert(retained);
-    const send = createNativeUtxoSend(network, ports.scope, session, ring.syscoinTransaction, records, fetcher,
-      async () => { throw Error('Unexpected address lookup'); }, null, {
-        authorize: async () => Object.freeze({}) as never,
-        sign: async () => { throw Error('Saved PSBT must not be re-signed'); },
-        release() {},
-      });
-    assert((await send.list()).some(entry => entry.txid === txid && !entry.accepted));
-    assert.equal(await send.check(txid), 'unknown');
+    assert((await records.list(session, owner)).some(entry => entry.txid === txid && !entry.accepted));
+    assert.equal(await observeRetainedUtxo({
+      backendChain: network.backendChain,
+      fetch: fetcher,
+      owner,
+      records,
+      session,
+      signal: lifetime.signal,
+      txid,
+    }), 'unknown');
     assert.equal(postCount, 1);
     assert.equal(sign.mock.callCount(), beforeSend + 1);
     assert(reads.every(path => !path.includes('http')));

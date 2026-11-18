@@ -41,6 +41,7 @@ import { readPrivateVaultBundle, envelopeHash } from '../../../source/wallet/pri
 import { digest, INSTALLATION, nodeConnection, validPair, type SqlHook } from './storageHelpers.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY, UtxoSignedRecords } from '../../../source/wallet/utxoSignedRecords.ts';
+import { observeRetainedUtxo } from '../../../source/wallet/utxoSubmission.ts';
 import { ROOT_DOMAIN as UTXO_ROOT_DOMAIN } from '../../../source/wallet/utxoSignedBundle.ts';
 import { utxoInputOutpoints } from '../../../source/utils/utxoAcknowledgedInputs.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
@@ -1894,13 +1895,26 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     account = (await accountRecord(f)).groups.find((group) => group.key === '0')!.accounts.HDAccount[1]!;
     previous.addOutput(bitcoin.address.toOutputScript(account.address, network.addressNetwork), 100000n);
     const recipient = bitcoin.payments.p2wpkh({ hash: Buffer.alloc(20, 9), network: network.addressNetwork }).address!;
-    let send = await f.runtime.openUtxoSend!(current);
+    const send = await f.runtime.openUtxoSend!(current);
     const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }), { method: 'device' });
+    const records = new UtxoSignedRecords(f.store.utxoSignedRecords!, f.store.utxoSignedRecords!);
+    const owner = { chainId: network.chainId, genesisHash: network.genesisHash, slip44: network.slip44,
+      account: { id: 1, type: 'HDAccount', xpub: account.xpub } };
+    const recordSession = () => ({ keyring: f.keyring, assertCurrent: current });
+    const observe = () => observeRetainedUtxo({
+      backendChain: network.backendChain,
+      fetch: fetcher,
+      owner,
+      records,
+      session: recordSession(),
+      signal: new AbortController().signal,
+      txid,
+    });
     assert.equal(txid, posted?.txid);
     const identity = ['/api/v2/', '/api/v2/block-index/0'];
     assert.deepEqual(observationPaths.splice(0), [...identity, ...identity, ...identity]);
     const observation = ['/api/v2/', '/api/v2/block-index/0', `/api/v2/tx/${txid}`];
-    assert.equal(await send.check(txid), 'seen');
+    assert.equal(await observe(), 'seen');
     assert.deepEqual(observationPaths, observation);
 
     await manage({ kind: 'select', id: primary });
@@ -1910,10 +1924,9 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     assert(f.owner.getCatalogue()!.accounts.some(({ id }) => id === sending));
 
     await manage({ kind: 'select', id: sending });
-    send = await f.runtime.openUtxoSend!(current);
-    assert.deepEqual((await send.list()).map((entry) => entry.txid), [txid]);
+    assert.deepEqual((await records.list(recordSession(), owner)).map((entry) => entry.txid), [txid]);
     confirmed = true;
-    assert.equal(await send.check(txid), 'confirmed');
+    assert.equal(await observe(), 'confirmed');
     assert.deepEqual(observationPaths, [...observation, ...observation]);
     await manage({ kind: 'select', id: primary });
     await manage(remove);

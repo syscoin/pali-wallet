@@ -103,10 +103,6 @@ export const sysxSendFixture = {
         revision++;
         counts.cancellations++;
       },
-      async list() {
-        check();
-        return [];
-      },
       async prepare(input) {
         check();
         const owned = revision;
@@ -138,7 +134,6 @@ export const sysxSendFixture = {
         counts.confirmations++;
         return unused();
       },
-      check: unused,
     };
   },
 };

@@ -3526,7 +3526,7 @@ for (const failure of ['none', 'retirement', 'cancellation']) test(`Trezor runti
   } finally { release(); releaseRead(); await owner.dispose().catch(() => undefined); await fixture.sessions.dispose(); }
 });
 
-test('Trezor runtime reads saved UTXO status without Suite, signing or broadcast', async () => {
+test('Trezor Activity reconciles UTXO status without Suite, signing or broadcast', async () => {
   const [{ UtxoSignedRecords }, { getUtxoNetwork }, { utxoSubmissionUrl }, { utils }, { metadata }] = await Promise.all([
     import('../../../source/wallet/utxoSignedRecords.ts'), import('../src/core/utxoNetworks.ts'),
     import('../../../source/wallet/utxoSignedBinding.ts'), import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
@@ -3537,11 +3537,13 @@ test('Trezor runtime reads saved UTXO status without Suite, signing or broadcast
   class Host extends sdk.HostKeyring {
     constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) { super(...args); ring = this; }
   }
+  const statusRequested = Promise.withResolvers<void>();
   let broadcasts = 0;
   const network = getUtxoNetwork('bitcoin');
   const disk = memoryDisk(async () => ({ ...sdk, HostKeyring: Host }), undefined, undefined, fixture.sessions,
     async (url, init) => {
       if (String(url).startsWith(network.endpoint + '/api/v2/tx/')) {
+        statusRequested.resolve();
         const response = Response.json({}); Object.defineProperty(response, 'url', { value: String(url) }); return response;
       }
       if (String(url) === network.endpoint + '/api/v2/') {
@@ -3584,9 +3586,21 @@ test('Trezor runtime reads saved UTXO status without Suite, signing or broadcast
       release(); // Simulate a previously dispatched transfer without an ACK.
     });
     const calls = fixture.paths.length;
-    const send = await runtime.openUtxoSend!(() => undefined);
-    assert.deepEqual(await send.list(), [{ txid, accepted: false }]);
-    assert.equal(await send.check(txid), 'unknown');
+    const snapshot = owner.getSnapshot(), current = () => undefined;
+    await runtime.withUtxoActivityRead(
+      { accountId: account.id, networkId: network.id, address: account.address, generation: snapshot.revision },
+      new AbortController().signal,
+      current,
+      current,
+      async () => undefined,
+      'page',
+    );
+    const timeout = AbortSignal.timeout(2000);
+    await Promise.race([
+      statusRequested.promise,
+      new Promise<never>((_resolve, reject) => timeout.addEventListener('abort', () => reject(timeout.reason), { once: true })),
+    ]);
+    const send = await runtime.openUtxoSend!(current);
     assert.equal(broadcasts, 0);
     assert.equal(fixture.paths.length, calls);
     assert.equal(runtime.trezor.getSnapshot().phase, 'idle');

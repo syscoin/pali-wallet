@@ -442,31 +442,6 @@ export function createNativeUtxoSend(
         }
       });
     },
-    list() {
-      return records.list(session, owner);
-    },
-    async check(txid: string): Promise<'confirmed' | 'seen' | 'unknown'> {
-      return run(async () => {
-        const check = capture(revision, now() + REVIEW_MS);
-        check();
-        const controller = new AbortController();
-        readController = controller;
-        try {
-          return await observeRetainedUtxo({
-            backendChain: network.backendChain,
-            fetch,
-            owner,
-            records,
-            session: { ...session, assertCurrent: check },
-            signal: controller.signal,
-            txid,
-          });
-        } finally {
-          controller.abort();
-          readController = undefined;
-        }
-      });
-    },
     async confirm(view: NativeUtxoReview, credential: NativeOperationCredential): Promise<Readonly<{ txid: string }>> {
       return run(async () => {
         const selected = review;

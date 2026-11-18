@@ -48,19 +48,11 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
     prepared.set(view, revision);
     return view;
   };
-  let saved = !expireAfterSave;
-  let seen = false;
   const send: NativeUtxoSend = {
     feeRecommendations: async () => '7',
     availableReplacements: async () => [],
     async prepareReplacement() { throw Error('No replaceable transactions in this fixture'); },
     cancel() { revision++; owner?.abort(); },
-    async list() {
-      return saved ? [{ txid, accepted: false }] : [];
-    },
-    async check() {
-      return seen ? 'seen' : 'unknown';
-    },
     async prepare(input) {
       assertCurrent();
       beginPreparation();
@@ -89,9 +81,7 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
       if (expired) throw new CustodyRuntimeError('CANCELLED');
       currentReview = undefined;
       confirmations++;
-      saved = true;
       if (expireAfterSave) throw new CustodyRuntimeError('CANCELLED');
-      seen = true;
       return { txid };
     },
   };

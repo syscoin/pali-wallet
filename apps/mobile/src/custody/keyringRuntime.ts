@@ -7167,9 +7167,13 @@ export function createKeyringRuntimeFactory(
             const selected = selectedAccount();
             const account = state.accounts[selected.type][selected.index]!;
             const identifier = account.xpub;
+            const evmAvailable = canSign() || (selected.type === 'SmartAccount' &&
+              nativeSigningEnabled(snapshot.active.networkId, snapshot.networks));
             const network = findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks) ??
-              (canSign() ? getNativeNetwork(snapshot.active.networkId, snapshot.networks) : null);
-            if (!network || ('genesisHash' in network && (!utxoRecords || !identifier || selected.type === 'SmartAccount')))
+              (evmAvailable ? getNativeNetwork(snapshot.active.networkId, snapshot.networks) : null);
+            if (!network || ('genesisHash' in network
+              ? !utxoRecords || !identifier || selected.type === 'SmartAccount'
+              : selected.type === 'SmartAccount' && account.smartAccount?.chainId !== Number(network.chainId)))
               return Promise.reject(new KeyringRuntimeError('NOT_READY'));
             const prior = [active, ...pendingSubmissions];
             const reservation = {};
@@ -7754,8 +7758,6 @@ export function createKeyringRuntimeFactory(
             };
             return Object.freeze<NativeUtxoSend>({ ...opened,
               cancel: () => opened.cancel(),
-              list: () => opened.list(),
-              check: txid => opened.check(txid),
               feeRecommendations: signal => opened.feeRecommendations(signal),
               availableReplacements: (txid, assertCurrent) => opened.availableReplacements(txid, assertCurrent),
               async prepareReplacement(input, inputFeeChoice) {
