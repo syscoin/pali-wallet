@@ -39,7 +39,7 @@ only GHSA-fc5q-39xc-vjpf/source1247710 on the exact reviewed mobile picomatch
 there is no extension-audit exception. These versions remain unpatched.
 Other moderate or higher advisories still fail.
 
-Requalified on 2026-11-17 for source `a0cdce582`, which uses published Sysweb3
+Requalified on 2026-11-17 for source `6aa16610`, which uses published Sysweb3
 packages without the temporary overlay. The normal Chrome production ZIP and
 Android JavaScript/Hermes export exclude the affected modules. Verification
 covered 5,643 Android source bodies, 458 installed SDK files in each host, and
