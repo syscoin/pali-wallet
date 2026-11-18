@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -7,8 +7,12 @@ import { Button, PageActionFooter } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { INetworkType } from 'types/network';
+import { INetwork } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 import { waitForNetworkSwitch } from 'utils/stateWaitUtils';
 
 import { NetworkTypeBadge } from './NetworkTypeBadge';
@@ -16,7 +20,10 @@ import { NetworkTypeBadge } from './NetworkTypeBadge';
 const SwitchNeworkUtxoEvm: React.FC = () => {
   const { controllerEmitter } = useController();
   const { host, ...data } = useQueryData();
-  const { newNetwork, newChainValue } = data;
+  const {
+    newNetwork,
+    newChainValue,
+  }: { newChainValue?: string; newNetwork?: INetwork } = data;
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [switchError, setSwitchError] = useState('');
@@ -27,6 +34,35 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
     activeNetwork?.kind,
     activeNetwork?.label,
   ] as const).current;
+  const registeredNetwork = useSelector((state: RootState) =>
+    newNetwork
+      ? state.vaultGlobal.networks[newNetwork.kind]?.[newNetwork.chainId]
+      : undefined
+  );
+  const requestedRegistration = networkRegistrationFingerprint(newNetwork);
+  const review = useRef({
+    registration: requestedRegistration,
+    retired: false,
+    live: false,
+  });
+  const reviewedRegistration = review.current.registration;
+  const network =
+    !review.current.retired &&
+    newNetwork?.kind === newChainValue &&
+    requestedRegistration === reviewedRegistration &&
+    networkRegistrationFingerprint(registeredNetwork) === reviewedRegistration
+      ? registeredNetwork
+      : undefined;
+  const available = !!network;
+  const submitting = useRef(false);
+  useLayoutEffect(() => {
+    const owner = review.current;
+    owner.retired ||= !available;
+    owner.live = available;
+    return () => {
+      owner.live = false;
+    };
+  }, [available]);
 
   // Safety check: if required data is missing, show error or redirect
   if (!newNetwork || !newChainValue) {
@@ -56,6 +92,14 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const previousNetworkName = previousNetwork[2] || 'N/A';
 
   const onSubmit = async () => {
+    if (
+      !network ||
+      !reviewedRegistration ||
+      !review.current.live ||
+      submitting.current
+    )
+      return;
+    submitting.current = true;
     setLoading(true);
     setSwitchError('');
     try {
@@ -64,25 +108,34 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
         ['wallet', 'setActiveNetwork'],
         // The network/account state is committed before this resolves. Do not
         // keep a dapp approval popup open for the subsequent balance refresh.
-        [newNetwork, false]
+        [network, false, reviewedRegistration]
       );
+      if (!review.current.live) return;
       try {
-        await waitForNetworkSwitch(newNetwork.chainId, 5000);
+        await waitForNetworkSwitch(network.chainId, 5000, network.kind);
       } catch (_e) {
         // Best-effort; continue without blocking close
       }
 
+      if (!review.current.live) return;
       setConfirmed(true);
-      setLoading(false);
       // Dispatch MUST happen immediately before closing to avoid timing issues with subsequent popups
       const type = data.eventName;
       dispatchBackgroundEvent(`${type}.${host}`, null);
       window.close();
     } catch (networkError) {
+      if (!review.current.live) return;
+      if (networkError?.message === NETWORK_SWITCH_REVIEW_CHANGED) {
+        review.current.retired = true;
+        review.current.live = false;
+        setSwitchError(t('settings.unknownNetwork'));
+        return;
+      }
       console.error('Network switch failed:', networkError);
       setSwitchError(networkError?.message || t('send.failed'));
+    } finally {
+      submitting.current = false;
       setLoading(false);
-      // Don't throw here - just reset the loading state so user can try again
     }
   };
 
@@ -115,28 +168,28 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
                 {t('settings.newChain')}
                 <span className="flex items-center gap-2 text-content-secondary text-xs transition-opacity hover:opacity-90">
                   <ChainIcon
-                    chainId={newNetwork?.chainId}
+                    chainId={newNetwork.chainId}
                     size={18}
                     networkKind={newNetwork.kind}
                   />
-                  {newNetwork?.label || newChainValue}
-                  <NetworkTypeBadge
-                    kind={newNetwork?.kind ?? INetworkType.Syscoin}
-                  />
+                  {network
+                    ? network.label || newChainValue
+                    : t('settings.unavailable')}
+                  <NetworkTypeBadge kind={newNetwork.kind} />
                 </span>
               </div>
 
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.newNetworkUrl')}
                 <span className="text-content-secondary text-xs break-all transition-opacity hover:opacity-90">
-                  {newNetwork?.url || 'N/A'}
+                  {network?.url || 'N/A'}
                 </span>
               </p>
 
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.newNetworkChainId')}
                 <span className="text-content-secondary text-xs transition-opacity hover:opacity-90">
-                  {newNetwork?.chainId ?? 'N/A'}
+                  {newNetwork.chainId}
                 </span>
               </p>
             </div>
@@ -145,7 +198,11 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
 
         <PageActionFooter
           error={
-            switchError && <span className="break-words">{switchError}</span>
+            (!network || switchError) && (
+              <span className="break-words">
+                {network ? switchError : t('settings.unknownNetwork')}
+              </span>
+            )
           }
         >
           <div className="grid w-full grid-cols-2 gap-3">
@@ -162,7 +219,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
               variant="primary"
               type="submit"
               fullWidth
-              disabled={confirmed || loading}
+              disabled={!network || confirmed || loading}
               loading={loading}
               onClick={onSubmit}
             >

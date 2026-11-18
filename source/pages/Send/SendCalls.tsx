@@ -1220,12 +1220,13 @@ export const SendCalls = () => {
         return;
       setProcessingIndex(-1);
       setLoading(false);
-      if (outcome.hashes.length) {
+      const submittedCount = acknowledgedCallsRef.current.size;
+      if (submittedCount) {
         alert.success(
           outcome.failed
             ? t('send.partialSubmission', {
-                count: outcome.hashes.length,
-                total: selectedCallsData.length,
+                count: submittedCount,
+                total: callsData.calls.length,
               })
             : submittedMessage
         );

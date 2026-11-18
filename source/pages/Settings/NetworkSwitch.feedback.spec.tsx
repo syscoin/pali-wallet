@@ -10,7 +10,10 @@ import {
 import React from 'react';
 
 import { INetwork, INetworkType } from 'types/network';
-import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 
 import SwitchChain from './SwitchEthereumChain';
 import SwitchUtxoEvm from './SwitchNetworkUtxoEvm';
@@ -19,6 +22,7 @@ const mockEmitter = jest.fn();
 const mockDispatch = jest.fn();
 const mockWaitForSwitch = jest.fn();
 let mockActiveNetwork: any;
+let mockRegisteredEthereum: Record<number, INetwork>;
 const target: INetwork = {
   chainId: 5700,
   currency: 'ETH',
@@ -45,7 +49,18 @@ jest.mock('react-redux', () => ({
       vault: {
         activeNetwork: mockActiveNetwork,
       },
-      vaultGlobal: { networks: { ethereum: { 5700: target } } },
+      vaultGlobal: {
+        networks: {
+          ethereum: mockRegisteredEthereum,
+          syscoin: {
+            5700: {
+              ...target,
+              kind: INetworkType.Syscoin,
+              label: 'UTXO collision',
+            },
+          },
+        },
+      },
     }),
 }));
 jest.mock('react-i18next', () => ({
@@ -99,6 +114,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockEmitter.mockReset().mockResolvedValue(undefined);
   mockWaitForSwitch.mockReset().mockResolvedValue(undefined);
+  mockRegisteredEthereum = { 5700: { ...target } };
   mockActiveNetwork = {
     chainId: 57,
     kind: INetworkType.Syscoin,
@@ -247,11 +263,13 @@ describe.each([
       await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
       expect(mockEmitter).toHaveBeenCalledWith(
         ['wallet', 'setActiveNetwork'],
-        label === 'Ethereum'
-          ? [target, false, networkRegistrationFingerprint(target)]
-          : [target, false]
+        [target, false, networkRegistrationFingerprint(target)]
       );
-      expect(mockWaitForSwitch).toHaveBeenCalledWith(target.chainId, 5000);
+      expect(mockWaitForSwitch).toHaveBeenCalledWith(
+        target.chainId,
+        5000,
+        ...(label === 'UTXO/EVM' ? [target.kind] : [])
+      );
       expect(mockDispatch).toHaveBeenCalledWith(
         'switch.https://requesting.invalid',
         null
@@ -295,3 +313,50 @@ describe.each([
     });
   }
 );
+
+it('cannot approve a UTXO/EVM target already replaced before the review opens', () => {
+  mockRegisteredEthereum = {
+    5700: { ...target, url: 'https://replacement.invalid' },
+  };
+  render(<SwitchUtxoEvm />);
+
+  expect(screen.getByRole('alert')).toHaveTextContent('Unknown network');
+  expect(screen.getByRole('button', { name: 'Change' })).toBeDisabled();
+  expect(screen.queryByText(target.url)).toBeNull();
+  expect(screen.queryByText('https://replacement.invalid')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('retires a UTXO/EVM review when its target disappears despite the other family having the same chain ID', async () => {
+  const switching = deferred();
+  mockEmitter.mockReturnValueOnce(switching.promise);
+  const { rerender } = render(<SwitchUtxoEvm />);
+  fireEvent.click(screen.getByRole('button', { name: 'Change' }));
+
+  mockRegisteredEthereum = {};
+  rerender(<SwitchUtxoEvm />);
+  expect(screen.getByRole('alert')).toHaveTextContent('Unknown network');
+  expect(screen.queryByText('UTXO collision')).toBeNull();
+  mockRegisteredEthereum = { 5700: { ...target } };
+  rerender(<SwitchUtxoEvm />);
+  await act(async () => switching.resolve());
+
+  expect(screen.getByRole('button', { name: 'Change' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+  expect(mockWaitForSwitch).not.toHaveBeenCalled();
+  expect(mockDispatch).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+});
+
+it('localizes a stale UTXO/EVM review rejected by the background before the popup refreshes', async () => {
+  mockEmitter.mockRejectedValueOnce(new Error(NETWORK_SWITCH_REVIEW_CHANGED));
+  render(<SwitchUtxoEvm />);
+  fireEvent.click(screen.getByRole('button', { name: 'Change' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unknown network');
+  expect(screen.getByRole('button', { name: 'Change' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+  expect(mockDispatch).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+});

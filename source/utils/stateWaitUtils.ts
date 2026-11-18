@@ -1,4 +1,5 @@
 import store from 'state/store';
+import type { INetworkType } from 'types/network';
 
 /**
  * Wait for a specific state condition to be met
@@ -40,17 +41,22 @@ export const waitForStateCondition = <T>(
  * Wait for network to be fully switched and state to be updated
  * @param expectedNetworkId The network ID we're switching to
  * @param timeoutMs Maximum time to wait
+ * @param expectedNetworkKind Network family when chain IDs may overlap
  * @returns Promise that resolves when network is switched
  */
 export const waitForNetworkSwitch = async (
   expectedNetworkId: string | number,
-  timeoutMs: number = 5000
+  timeoutMs: number = 5000,
+  expectedNetworkKind?: INetworkType
 ): Promise<void> => {
   await waitForStateCondition((state) => {
     const { activeNetwork } = state.vault;
     const networkIdMatches =
       activeNetwork?.chainId?.toString() === expectedNetworkId.toString();
-    return networkIdMatches ? true : undefined;
+    const networkKindMatches =
+      expectedNetworkKind === undefined ||
+      activeNetwork?.kind === expectedNetworkKind;
+    return networkIdMatches && networkKindMatches ? true : undefined;
   }, timeoutMs);
 };
 

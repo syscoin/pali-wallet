@@ -448,7 +448,17 @@ it('retains known hashes when a later retry has no new hash and closes with the 
   await approve();
   await approve();
   expect(sends()).toHaveLength(3);
+  expect(mockAlert.success.mock.calls).toEqual([
+    ['1 of 2 transactions submitted'],
+    ['1 of 2 transactions submitted'],
+  ]);
+  expect(mockAlert.error).not.toHaveBeenCalledWith(
+    'send.allTransactionsFailed'
+  );
   expect(await status()).toBe(600);
+  expect(mockStored[mockQuery.host][mockQuery.bundleId].txHashes).toEqual([
+    HASH_A,
+  ]);
   await close();
   expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
     'sendCalls.' + mockQuery.host,
