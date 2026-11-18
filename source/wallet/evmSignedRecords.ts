@@ -1657,7 +1657,12 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     chainId: string,
     account: string,
-    options: Readonly<{ beforeHash?: string; maximum: number }>
+    options: Readonly<{
+      after?: number;
+      beforeHash?: string;
+      maximum: number;
+      withoutOuter?: boolean;
+    }>
   ): Promise<
     Readonly<{
       entries: readonly SmartAccountAuthorizationSummary[];
@@ -1676,9 +1681,37 @@ export class EvmSignedRecords {
     return this.exclusive(async () => {
       const id = await profile(session),
         { bundle } = await this.load(session, id);
-      const matching = (bundle?.authorizations ?? []).filter(
-        (entry) => entry.chainId === chainId && entry.account === account
+      let matching = (bundle?.authorizations ?? []).filter(
+        (entry) =>
+          entry.chainId === chainId &&
+          entry.account === account &&
+          (options.after === undefined || entry.createdAt > options.after)
       );
+      if (options.withoutOuter && matching.length) {
+        const unmatched = new Set(matching.map((entry) => entry.operationHash));
+        const payers = new Set(
+          matching.map((entry) => entry.payer.toLowerCase())
+        );
+        for (const outer of bundle?.entries ?? []) {
+          if (!unmatched.size) break;
+          const hint = outer.metadata?.smartAccountOperationHash;
+          if (
+            outer.chainId !== chainId ||
+            outer.payloadKind === 'unsigned-eoa' ||
+            (!isSmartAccountActivityCandidate(outer, account) &&
+              !payers.has(outer.from)) ||
+            (typeof hint === 'string' && !unmatched.has(hint.toLowerCase()))
+          )
+            continue;
+          const entry = await this.materialize(session, outer);
+          for (const operation of decodeRetainedSmartAccountOperations(entry))
+            if (operation.account === account)
+              unmatched.delete(operation.operationHash.toLowerCase());
+        }
+        matching = matching.filter((entry) =>
+          unmatched.has(entry.operationHash)
+        );
+      }
       const end =
         options.beforeHash === undefined
           ? matching.length
@@ -1695,6 +1728,7 @@ export class EvmSignedRecords {
           void _chunks;
           return Object.freeze(header);
         });
+      guard(session);
       return Object.freeze({
         entries: Object.freeze(entries),
         nextCursor: start > 0 ? entries.at(-1)!.operationHash : null,

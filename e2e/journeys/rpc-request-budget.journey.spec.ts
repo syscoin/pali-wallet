@@ -9,8 +9,12 @@ import { Interface, keccak256, Transaction } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
+import en from '../../source/assets/locales/en.json';
 import { getSmartAccountUserOpRequiredPrefund } from '../../source/utils/smartAccount/account';
-import { paliEntryPointInterface } from '../../source/utils/smartAccount/contracts';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+} from '../../source/utils/smartAccount/contracts';
 import {
   getPaliCanonicalEntryPointAddress,
   getPaliInfrastructureContracts,
@@ -291,6 +295,27 @@ test('RPC budget and receipts for local wallet transfers', async () => {
                 row.method,
                 row.params || []
               );
+              if (
+                phase === 'cancellation:payer-budget-refused' &&
+                row.method === 'eth_estimateGas' &&
+                row.params?.[0]?.to?.toLowerCase() ===
+                  getPaliEntryPointAddress(chain.chainId).toLowerCase() &&
+                row.params[0].data?.startsWith(
+                  paliEntryPointInterface.getFunction('handleOps')!.selector
+                )
+              ) {
+                const [operations] = paliEntryPointInterface.decodeFunctionData(
+                  'handleOps',
+                  row.params[0].data
+                );
+                if (
+                  operations.length === 1 &&
+                  operations[0].sender.toLowerCase() ===
+                    output.account.toLowerCase() &&
+                  operations[0].signature !== '0x'
+                )
+                  return { jsonrpc: '2.0', id: row.id, result: '0x2dc6c0' };
+              }
               if (row.method === 'eth_simulateV1') {
                 // Anvil executes the supplied state but omits its canonical parent
                 // and returns the parent number. Normalize only these test metadata fields.
@@ -615,7 +640,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         await page
           .getByRole('button', { name: 'Confirm', exact: true })
           .click();
-        if (!label.startsWith('eoa-'))
+        if (process.env.PALI_RPC_REFERENCE && !label.startsWith('eoa-'))
           await approveSmartAccountFeeReview(page, {
             kind: 'payer',
             account,
@@ -659,6 +684,12 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           expect(userOperationEvent?.args.success).toBe(true);
         }
         await expect(page).toHaveURL(/#\/home$/, { timeout: 20000 });
+        await expect(
+          page.getByRole('heading', {
+            name: en.settings.smartAccountFeeReviewTitle,
+            exact: true,
+          })
+        ).toHaveCount(0);
         mark(label + ':home');
         await expect(page.getByText('Pending', { exact: true })).toHaveCount(
           0,

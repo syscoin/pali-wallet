@@ -3,14 +3,14 @@ import { EVM_NATIVE_INTRINSIC_GAS } from '../../shared/evmTransferCost';
 
 import { getPaliEntryPointAddress } from './contracts';
 import type { SmartAccountControllerFeeReview } from '../../shared/smartAccountControllerAuthority';
-import type { SmartAccountCancellationPayerBudget } from '../../shared/smartAccountFeeQuote';
+import type { SmartAccountPayerBudget } from '../../shared/smartAccountFeeQuote';
 
 // The unsigned operation supplies the inner gas allowances. Leave room for
 // EntryPoint overhead and calldata, then apply the wallet's normal margin.
 // The exact signed transaction still has to fit the reviewed ceiling.
 const ENTRY_POINT_OUTER_GAS_ALLOWANCE = BigInt(50_000);
 
-export function getSmartAccountCancellationPayerBudget({
+export function getSmartAccountPayerBudget({
   chainId,
   blockGasLimit,
   operationGas,
@@ -24,7 +24,7 @@ export function getSmartAccountCancellationPayerBudget({
   gasTank: boolean;
   operationGas: bigint;
   prefund: bigint;
-}): SmartAccountCancellationPayerBudget {
+}): SmartAccountPayerBudget {
   const withMargin = (gas: bigint) =>
     selectEvmDappGasLimit(gas, undefined, BigInt(chainId), blockGasLimit);
   const outerGas = withMargin(operationGas + ENTRY_POINT_OUTER_GAS_ALLOWANCE);
@@ -39,16 +39,17 @@ export function getSmartAccountCancellationPayerBudget({
   });
 }
 
-/** Admit the controller-issued exact quote under the approved cancellation. */
-export function assertSmartAccountCancellationPayerFee(
+/** Admit a controller-issued exact quote under the reviewed payer limits. */
+export function assertSmartAccountPayerFee(
   review: SmartAccountControllerFeeReview,
-  budget: SmartAccountCancellationPayerBudget,
+  budget: SmartAccountPayerBudget,
   intent: {
     account: string;
     chainId: number;
     payer: string;
     purpose: 'submit' | 'fund';
-  }
+  },
+  refusalMessage = 'Cancellation fee exceeds the reviewed limits'
 ) {
   const { transaction } = review;
   const funding = intent.purpose === 'fund';
@@ -73,10 +74,7 @@ export function assertSmartAccountCancellationPayerFee(
       BigInt(funding ? budget.maximumPrefundFeeWei : budget.maximumFeeWei) ||
     covered !== (!funding && budget.gasTank ? fee : BigInt(0))
   )
-    throw Object.assign(
-      new Error('Cancellation fee exceeds the reviewed limits'),
-      {
-        transactionNotBroadcast: true,
-      }
-    );
+    throw Object.assign(new Error(refusalMessage), {
+      transactionNotBroadcast: true,
+    });
 }

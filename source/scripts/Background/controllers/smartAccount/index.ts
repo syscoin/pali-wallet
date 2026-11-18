@@ -11,7 +11,8 @@ import {
   readEvmRpcQuantity,
 } from '../../../../shared/evmTransactionObservation.ts';
 import {
-  matchesSmartAccountCancellationPayerBudget,
+  matchesSmartAccountPayerBudget,
+  SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED,
   type SmartAccountFeeQuote,
 } from '../../../../shared/smartAccountFeeQuote.ts';
 import {
@@ -19,8 +20,8 @@ import {
   SMART_ACCOUNT_ZERO_GAS_FEES,
 } from '../../../../utils/smartAccount/account.ts';
 import {
-  assertSmartAccountCancellationPayerFee,
-  getSmartAccountCancellationPayerBudget,
+  assertSmartAccountPayerFee,
+  getSmartAccountPayerBudget,
 } from '../../../../utils/smartAccount/cancellationFee';
 import {
   captureCompositePolicyChange,
@@ -682,7 +683,10 @@ class SmartAccountController {
       'feePayer' | 'maximumFeeWei' | 'executionContextId'
     > &
       Partial<
-        Pick<SmartAccountFeeQuote, 'gasUnits' | 'cancellationPayerBudget'>
+        Pick<
+          SmartAccountFeeQuote,
+          'gasUnits' | 'cancellationPayerBudget' | 'payerBudget'
+        >
       >
   ): void {
     this.assertSmartAccountExecutionContext(executionContextId);
@@ -692,9 +696,13 @@ class SmartAccountController {
       !expected ||
       context.entryPointFeeConsumed ||
       quote?.executionContextId !== executionContextId ||
-      !matchesSmartAccountCancellationPayerBudget(
+      !matchesSmartAccountPayerBudget(
         expected.cancellationPayerBudget,
         quote.cancellationPayerBudget
+      ) ||
+      !matchesSmartAccountPayerBudget(
+        expected.payerBudget,
+        quote.payerBudget
       ) ||
       quote.feePayer?.id !== expected.feePayer.id ||
       quote.feePayer?.type !== expected.feePayer.type ||
@@ -2044,11 +2052,14 @@ class SmartAccountController {
         maxFeePerGas?: string;
         maxPriorityFeePerGas?: string;
       };
+      includePayerBudget?: true;
       useCachedMetadata?: boolean;
     } = {},
     cancellation?: SmartAccountCancellation
   ) {
     if (cancellation) assertSmartAccountCancellation(cancellation);
+    const includePayerBudget =
+      !cancellation && options.includePayerBudget === true;
     if (options.expectedContext)
       this.assertExpectedExecutionContext(options.expectedContext, accountId);
     const feeOverrides = { ...options.feeOverrides };
@@ -2121,7 +2132,7 @@ class SmartAccountController {
     let cancellationPayer:
       | Awaited<ReturnType<typeof inspectSmartAccountCancellationPayer>>
       | undefined;
-    let cancellationPrefund = BigInt(0);
+    let payerPrefund = BigInt(0);
     const sourceMetadata = active.metadata;
     let hydratedMetadata: ISmartAccountMetadata | undefined;
     const prepared = await withEvmReadPhase(
@@ -2258,26 +2269,25 @@ class SmartAccountController {
             return { gasPayer, useGasTank };
           },
         });
-        if (cancellation) {
+        if (cancellation)
           assertSmartAccountCancellationOperation(
             cancellation,
             result.userOperation,
             result.validator
           );
-          if (
-            result.userOperation.initCode !== '0x' &&
-            !getSmartAccountUserOpRequiredPrefund(result.userOperation).isZero()
-          ) {
-            const shortfall = await readSmartAccountDeploymentShortfall(
-              provider,
-              cancellation.account,
-              getPaliEntryPointAddress(snapshot.chainId),
-              result.userOperation,
-              assertContext
-            );
-            if (shortfall.gt(0))
-              cancellationPrefund = BigInt(shortfall.toString());
-          }
+        if (
+          (cancellation || includePayerBudget) &&
+          result.userOperation.initCode !== '0x' &&
+          !getSmartAccountUserOpRequiredPrefund(result.userOperation).isZero()
+        ) {
+          const shortfall = await readSmartAccountDeploymentShortfall(
+            provider,
+            active.account.address,
+            getPaliEntryPointAddress(snapshot.chainId),
+            result.userOperation,
+            assertContext
+          );
+          if (shortfall.gt(0)) payerPrefund = BigInt(shortfall.toString());
         }
         const anchor = await provider.send('eth_getBlockByNumber', [
           'latest',
@@ -2331,6 +2341,19 @@ class SmartAccountController {
       .add(BigNumber.from(hexDataSlice(userOperation.accountGasLimits, 16, 32)))
       .add(BigNumber.from(userOperation.preVerificationGas))
       .toString();
+    const payerBudget =
+      cancellation || includePayerBudget
+        ? getSmartAccountPayerBudget({
+            chainId: snapshot.chainId,
+            blockGasLimit: BigInt(feeDisplayBlock!.gasLimit),
+            operationGas: BigInt(gasUnits),
+            feeRate: BigInt(prepared.gasPrice ?? prepared.maxFeePerGas!),
+            prefund: payerPrefund,
+            gasTank:
+              Boolean(getZkSysGasTankAddress(snapshot.chainId)) &&
+              userOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES,
+          })
+        : undefined;
     const entryPointFeeQuote = Object.freeze({
       executionContextId,
       feePayer: Object.freeze({
@@ -2339,20 +2362,8 @@ class SmartAccountController {
       gasUnits,
       maximumFeeWei:
         getSmartAccountUserOpRequiredPrefund(userOperation).toString(),
-      ...(cancellation
-        ? {
-            cancellationPayerBudget: getSmartAccountCancellationPayerBudget({
-              chainId: snapshot.chainId,
-              blockGasLimit: BigInt(feeDisplayBlock!.gasLimit),
-              operationGas: BigInt(gasUnits),
-              feeRate: BigInt(prepared.gasPrice ?? prepared.maxFeePerGas!),
-              prefund: cancellationPrefund,
-              gasTank:
-                Boolean(getZkSysGasTankAddress(snapshot.chainId)) &&
-                userOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES,
-            }),
-          }
-        : {}),
+      ...(cancellation ? { cancellationPayerBudget: payerBudget } : {}),
+      ...(includePayerBudget ? { payerBudget } : {}),
     });
     const proposal = captureCompositePolicyChange({
       accountAddress: active.account.address,
@@ -2545,7 +2556,8 @@ class SmartAccountController {
   public async submitSmartAccountExecution(
     params: SmartAccountSubmitParams,
     assertApprovalCurrent: () => void,
-    confirmFee?: SmartAccountControllerAuthority['confirmFee']
+    confirmFee?: SmartAccountControllerAuthority['confirmFee'],
+    allowWalletSendPayerBudget = false
   ) {
     const captured = this.infrastructureContext();
     const assertCurrent = () => {
@@ -2561,18 +2573,19 @@ class SmartAccountController {
     )!;
     const { cancellation, pending } = executionContext;
     const feeQuote = executionContext.entryPointFeeQuote;
-    const budget = feeQuote?.cancellationPayerBudget;
+    const budget = feeQuote?.cancellationPayerBudget ?? feeQuote?.payerBudget;
     if (
-      cancellation &&
-      (!budget ||
-        !params.gasPayer ||
-        params.gasPayer.id !== feeQuote!.feePayer.id ||
-        params.gasPayer.type !== feeQuote!.feePayer.type ||
-        params.gasPayer.address.toLowerCase() !==
-          feeQuote!.feePayer.address.toLowerCase() ||
-        params.maxFeePerGas !== executionContext.prepared?.maxFeePerGas ||
-        params.maxPriorityFeePerGas !==
-          executionContext.prepared?.maxPriorityFeePerGas)
+      (feeQuote?.payerBudget && !allowWalletSendPayerBudget) ||
+      ((cancellation || budget) &&
+        (!budget ||
+          !params.gasPayer ||
+          params.gasPayer.id !== feeQuote!.feePayer.id ||
+          params.gasPayer.type !== feeQuote!.feePayer.type ||
+          params.gasPayer.address.toLowerCase() !==
+            feeQuote!.feePayer.address.toLowerCase() ||
+          params.maxFeePerGas !== executionContext.prepared?.maxFeePerGas ||
+          params.maxPriorityFeePerGas !==
+            executionContext.prepared?.maxPriorityFeePerGas))
     )
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
@@ -2592,15 +2605,22 @@ class SmartAccountController {
           }
         : undefined;
     const payerConsent = (purpose: 'fund' | 'submit') =>
-      cancellation && budget
+      budget
         ? async (review: SmartAccountControllerFeeReview) => {
             assertCurrent();
-            assertSmartAccountCancellationPayerFee(review, budget, {
-              account: cancellation.account,
-              chainId: cancellation.chainId,
-              payer: feeQuote!.feePayer.address,
-              purpose,
-            });
+            assertSmartAccountPayerFee(
+              review,
+              budget,
+              {
+                account: executionContext.userOperation!.sender,
+                chainId: captured.chainId,
+                payer: feeQuote!.feePayer.address,
+                purpose,
+              },
+              cancellation
+                ? 'Cancellation fee exceeds the reviewed limits'
+                : SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+            );
             return review.id;
           }
         : confirmCurrentFee;

@@ -21,13 +21,13 @@ import {
   refineNativeEvmMaximum,
 } from '../../shared/evmNativeMaximum';
 import { getEvmTransferCost } from '../../shared/evmTransferCost';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../shared/smartAccountFeeQuote';
 import {
   ICustomFeeParams,
   IFeeState,
   ITxState,
   TransactionType,
 } from '../../types/transactions';
-import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import {
   Button,
   Icon,
@@ -178,15 +178,6 @@ export const SendConfirm = () => {
     connectionUnavailable,
   });
   const { state } = submission;
-  const { forExecution, feeConfirmation } = useSmartAccountFeeConfirmation(
-    JSON.stringify([
-      activeAccountMeta,
-      activeNetwork.chainId,
-      activeNetwork.url,
-      submission.reviewScope,
-      state?.walletScope,
-    ])
-  );
   const tokenReviewPort = useRef<ReturnType<typeof openWalletTokenReview>>();
   useEffect(() => {
     const retireOnDeparture = () => {
@@ -647,8 +638,10 @@ export const SendConfirm = () => {
         smartAccountFeeOverrides,
       ])
     : '';
+  const smartPayerBudget = smartAccountQuote?.payerBudget;
   const smartAccountQuoteReady = Boolean(
     smartAccountQuote?.key === smartAccountQuoteKey &&
+      smartPayerBudget &&
       smartAccountFeeOverrides &&
       !smartAccountQuoteError &&
       !smartAccountQuoteNeedsRefresh
@@ -965,6 +958,7 @@ export const SendConfirm = () => {
               }
             : {}),
           feeOverrides: overrides,
+          includePayerBudget: true,
         });
       };
       let quote;
@@ -996,6 +990,8 @@ export const SendConfirm = () => {
         execution = { ...maximum.execution };
         quote = maximum.quote;
       } else quote = await quoteExecution(execution);
+      if (!quote.payerBudget)
+        throw new Error('Smart account payer fee quote unavailable');
       if (!cancelled && submission.isActive())
         setSmartAccountQuote({
           ...quote,
@@ -1357,7 +1353,7 @@ export const SendConfirm = () => {
           assertSmartAccountConfirmationCurrent();
           if (
             !smartAccountQuoteReady ||
-            !smartAccountQuote ||
+            !smartAccountQuote?.payerBudget ||
             smartAccountQuote.executions.length !== 1 ||
             target.toLowerCase() !==
               smartAccountQuote.executions[0].target.toLowerCase() ||
@@ -1370,14 +1366,6 @@ export const SendConfirm = () => {
             throw Object.assign(new Error('Smart account fee quote changed.'), {
               transactionNotBroadcast: true,
             });
-          const feeConsent = forExecution({
-            account: activeAccount.address,
-            smartAccount: activeAccount.address,
-            chainId: activeNetwork.chainId,
-            symbol: activeNetwork.currency,
-            label: t('buttons.send'),
-            assertCurrent: assertSmartAccountConfirmationCurrent,
-          });
           await signAndSubmitSmartAccountExecutions({
             accountAddress: activeAccount.address,
             accountId: activeAccount.id,
@@ -1401,13 +1389,6 @@ export const SendConfirm = () => {
               : {}),
             feeOverrides,
             approvedFeeQuote: smartAccountQuote,
-            feeConsent: {
-              ...feeConsent,
-              confirmFee: (review, signal) => {
-                submission.ownFeeReview(signal);
-                return feeConsent.confirmFee(review, signal);
-              },
-            },
             onBeforeAuthentication: assertSmartAccountConfirmationCurrent,
             onPrepared: assertSmartAccountConfirmationCurrent,
             onBeforeSubmit: async () => {
@@ -1430,12 +1411,14 @@ export const SendConfirm = () => {
         } catch (error) {
           if (
             publicationRequested &&
-            error?.code === 4001 &&
-            error?.transactionNotBroadcast === true &&
+            error?.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED &&
             submission.isActive()
           ) {
             setSmartAccountQuote(undefined);
-            setSmartAccountQuoteNeedsRefresh(true);
+            setSmartAccountQuoteError({
+              message: t('send.smartAccountPayerFeeExceeded'),
+              pendingReview: true,
+            });
           }
           // A same-text error after the publication boundary is not evidence
           // that refreshing/re-signing is safe, regardless of its marker.
@@ -2427,7 +2410,6 @@ export const SendConfirm = () => {
 
   return (
     <>
-      {feeConfirmation}
       <EditPriorityModal
         showModal={isOpenEditFeeModal}
         setIsOpen={setIsOpenEditFeeModal}
@@ -2724,12 +2706,64 @@ export const SendConfirm = () => {
             )}
             {isSmartAccountSend && (
               <div className="text-xs text-brand-gray200 mt-2">
-                {smartAccountQuoteReady && (
-                  <SmartAccountFeePayer
-                    address={smartAccountQuote!.feePayer.address}
-                  />
+                {smartAccountQuoteReady && smartPayerBudget && (
+                  <>
+                    <SmartAccountFeePayer
+                      address={smartAccountQuote!.feePayer.address}
+                    />
+                    <dl className="mb-2 space-y-2">
+                      <div>
+                        <dt>
+                          {t(
+                            smartPayerBudget.gasTank
+                              ? 'settings.smartAccountFeeReviewGasTank'
+                              : 'transactions.replay.maximumFee'
+                          )}
+                        </dt>
+                        <dd className="text-white">
+                          {formatEther(smartPayerBudget.maximumFeeWei)}{' '}
+                          {activeNetwork.currency?.toUpperCase()}
+                        </dd>
+                      </div>
+                      {smartPayerBudget.maximumPrefundWei !== '0' && (
+                        <>
+                          <div>
+                            <dt>
+                              {t(
+                                'transactions.smartAccountCancelMaximumDeposit'
+                              )}
+                            </dt>
+                            <dd className="text-white">
+                              {formatEther(smartPayerBudget.maximumPrefundWei)}{' '}
+                              {activeNetwork.currency?.toUpperCase()}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>
+                              {t(
+                                'transactions.smartAccountCancelMaximumDepositFee'
+                              )}
+                            </dt>
+                            <dd className="text-white">
+                              {formatEther(
+                                smartPayerBudget.maximumPrefundFeeWei
+                              )}{' '}
+                              {activeNetwork.currency?.toUpperCase()}
+                            </dd>
+                          </div>
+                        </>
+                      )}
+                    </dl>
+                  </>
                 )}
-                <p>{t('send.smartAccountFeeDetails')}</p>
+                <p>
+                  {t(
+                    smartAccountQuoteReady &&
+                      smartPayerBudget?.gasTank === false
+                      ? 'send.smartAccountFeeReimbursement'
+                      : 'send.smartAccountFeeDetails'
+                  )}
+                </p>
                 {(smartAccountQuoteError || smartAccountQuoteNeedsRefresh) && (
                   <>
                     <p role="status">
@@ -2772,13 +2806,13 @@ export const SendConfirm = () => {
             <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {!basicTxValues.token?.isNft ? (
                 <>
-                  {t('send.total')} (
-                  {t(
-                    isBitcoinBased
-                      ? 'send.amountAndNetworkFee'
-                      : 'send.amountAndFee'
-                  )}
-                  )
+                  {isSmartAccountSend
+                    ? t('send.smartAccountTotal')
+                    : `${t('send.total')} (${t(
+                        isBitcoinBased
+                          ? 'send.amountAndNetworkFee'
+                          : 'send.amountAndFee'
+                      )})`}
                   <span className="text-white text-xs">
                     {(() => {
                       if (isSmartAccountSend && !smartAccountQuoteReady)

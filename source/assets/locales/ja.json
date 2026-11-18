@@ -482,6 +482,9 @@
     "maxFee": "最大手数料",
     "smartAccountMaxFee": "スマートアカウントの最大手数料",
     "smartAccountFeeDetails": "EntryPoint がこのスマートアカウントに請求する最大額です。外側のトランザクションの費用は、ガス代の支払者またはガスタンクが別途負担します。",
+    "smartAccountFeeReimbursement": "手数料支払者がネットワーク手数料を立て替えます。EntryPoint はスマートアカウントから徴収した手数料を支払者に還元します。",
+    "smartAccountTotal": "スマートアカウントの合計",
+    "smartAccountPayerFeeExceeded": "ネットワーク手数料が承認済みの上限を超えました。アクティビティで署名済みの操作を確認してください。",
     "smartAccountFeeQuoteChanged": "スマートアカウントの手数料見積もりが増加しました。見積もりを更新し、新しい最大額を確認してから承認してください。",
     "refreshFeeQuote": "手数料の見積もりを更新",
     "gasPrice": "ガス価格",
@@ -1106,6 +1109,9 @@
   },
   "transactions": {
     "smartAuthorizations": {
+      "signedOperation": "署名済みの操作",
+      "noTransactionRecorded": "トランザクションの記録なし",
+      "statusUnavailable": "ステータスを取得できません",
       "reference": "元の参照",
       "cancelInstruction": "指示を取り消す",
       "operationHash": "オペレーションハッシュ"

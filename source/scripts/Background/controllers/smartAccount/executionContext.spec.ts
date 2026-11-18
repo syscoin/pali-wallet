@@ -22,6 +22,7 @@ jest.mock('utils/smartAccount/adapter', () => ({
 import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 import { createSmartAccountJournalFixture } from 'tests/fixtures/smartAccountJournal';
 
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../../../shared/smartAccountFeeQuote';
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { BigNumber, Contract, Interface } from 'utils/ethersV6Compat';
@@ -101,7 +102,8 @@ describe('smart-account execution approval context', () => {
   const submit = async (
     prepared: any,
     changes: any = {},
-    assertCurrent: () => void = workerAuthority().assertCurrent
+    assertCurrent: () => void = workerAuthority().assertCurrent,
+    allowWalletSendPayerBudget = false
   ) => {
     controller.approveSmartAccountExecutionFeeQuote(
       prepared.executionContextId,
@@ -115,11 +117,15 @@ describe('smart-account execution approval context', () => {
         expectedContext,
         gasPayer: payer,
         gasPrice: prepared.gasPrice,
+        maxFeePerGas: prepared.maxFeePerGas,
+        maxPriorityFeePerGas: prepared.maxPriorityFeePerGas,
         signature: '0x1234',
         userOperation: prepared.userOperation,
         ...changes,
       },
-      assertCurrent
+      assertCurrent,
+      undefined,
+      allowWalletSendPayerBudget
     );
   };
 
@@ -275,6 +281,104 @@ describe('smart-account execution approval context', () => {
     controller.getWalletGasPayerCandidates = jest.fn(() => []);
     controller.getWalletGasPayerAccount = jest.fn().mockResolvedValue(payer);
     controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
+  });
+
+  it.each(['approved', 'over-budget', 'funding changed'] as const)(
+    'admits only the exact payer quote covered by the wallet Send budget (%s)',
+    async (result) => {
+      const prepared = await controller.prepareSmartAccountExecutions(
+        calls,
+        7,
+        {
+          includePayerBudget: true,
+        }
+      );
+      const { payerBudget } = prepared.entryPointFeeQuote;
+      expect(payerBudget).toMatchObject({
+        gasTank: false,
+        maximumFeeWei: '420000000000000',
+        maximumPrefundWei: '0',
+        maximumPrefundFeeWei: '0',
+      });
+      send.mockImplementation(async (tx, _legacy, _payer, _meta, options) => {
+        options.assertCurrentContext();
+        const gasLimit =
+          BigInt(payerBudget.maximumFeeWei) / BigInt(tx.maxFeePerGas) +
+          (result === 'over-budget' ? BigInt(1) : BigInt(0));
+        const fee = gasLimit * BigInt(tx.maxFeePerGas);
+        const covered = result === 'funding changed' ? fee : BigInt(0);
+        const approved = await options.confirmFee({
+          id: 'exact-review',
+          coveredFeeUnits: covered.toString(),
+          maximumFeeUnits: fee.toString(),
+          maximumTotalUnits: (fee - covered).toString(),
+          transaction: {
+            ...tx,
+            chainId: String(tx.chainId),
+            gasLimit: gasLimit.toString(),
+            type: 2,
+            value: '0',
+          },
+          validForMs: 10_000,
+        });
+        expect(approved).toBe('exact-review');
+        return { hash: HASH };
+      });
+      const sending = submit(prepared, {}, () => undefined, true);
+      if (result === 'approved')
+        await expect(sending).resolves.toEqual({ hash: HASH });
+      else
+        await expect(sending).rejects.toMatchObject({
+          message: SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED,
+          transactionNotBroadcast: true,
+        });
+      expect(send).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('binds the payer budget to the reviewed quote and wallet document', async () => {
+    const prepared = await controller.prepareSmartAccountExecutions(calls, 7, {
+      includePayerBudget: true,
+    });
+    const quote = prepared.entryPointFeeQuote;
+    expect(() =>
+      controller.approveSmartAccountExecutionFeeQuote(
+        prepared.executionContextId,
+        {
+          ...quote,
+          payerBudget: { ...quote.payerBudget, maximumFeeWei: '999999999' },
+        }
+      )
+    ).toThrow('Smart account fee quote changed');
+    await expect(submit(prepared)).rejects.toMatchObject({
+      transactionNotBroadcast: true,
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('quotes an independent first-use funding transfer and gas cap when needed', async () => {
+    state.vault.accounts.SmartAccount[7].smartAccount =
+      identity.account.smartAccount;
+    controller.assertInfrastructureSupported = jest.fn();
+    const respond = provider.send.getMockImplementation();
+    provider.send.mockImplementation((method, params) => {
+      if (params[0]?.toLowerCase?.() === ADDRESS.toLowerCase()) {
+        if (method === 'eth_getCode') return Promise.resolve('0x');
+        if (method === 'eth_getBalance') return Promise.resolve('0x1');
+      }
+      return respond(method, params);
+    });
+    const prepared = await controller.prepareSmartAccountExecutions(calls, 7, {
+      includePayerBudget: true,
+    });
+    expect(prepared.userOperation.initCode).toBe(identity.deploymentInitCode);
+    expect(prepared.entryPointFeeQuote.payerBudget).toEqual({
+      gasTank: false,
+      maximumFeeWei: '420000000000000',
+      maximumPrefundFeeWei: '25200000000000',
+      maximumPrefundWei: '299999999999999',
+    });
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('uses freshly observed deployment and caches hydrated metadata under the exact context', async () => {

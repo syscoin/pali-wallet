@@ -482,6 +482,9 @@
     "maxFee": "Max. Gebühr",
     "smartAccountMaxFee": "Maximale Smart-Account-Gebühr",
     "smartAccountFeeDetails": "Maximaler Betrag, den EntryPoint diesem Smart Account berechnet. Die äußere Transaktion wird separat vom Gaszahler oder Gastank bezahlt.",
+    "smartAccountFeeReimbursement": "Der Gebührenzahler legt die Netzwerkgebühr aus. EntryPoint erstattet ihm die vom Smart Account eingezogene Gebühr.",
+    "smartAccountTotal": "Gesamtbetrag des Smart Accounts",
+    "smartAccountPayerFeeExceeded": "Die Netzwerkgebühr hat dein genehmigtes Limit überschritten. Prüfe den signierten Vorgang unter Aktivität.",
     "smartAccountFeeQuoteChanged": "Die Gebührenschätzung für den Smart Account ist gestiegen. Aktualisiere die Schätzung und prüfe den neuen Höchstbetrag, bevor du zustimmst.",
     "refreshFeeQuote": "Gebührenschätzung aktualisieren",
     "gasPrice": "Gaspreis",
@@ -1106,6 +1109,9 @@
   },
   "transactions": {
     "smartAuthorizations": {
+      "signedOperation": "Signierter Vorgang",
+      "noTransactionRecorded": "Keine Transaktion erfasst",
+      "statusUnavailable": "Status nicht verfügbar",
       "reference": "Ursprüngliche Referenz",
       "cancelInstruction": "Anweisung abbrechen",
       "operationHash": "Operationshash"

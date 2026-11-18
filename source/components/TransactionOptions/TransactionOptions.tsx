@@ -47,6 +47,52 @@ const ACTIVE_ITEM_CLASS_NAME = 'bg-brand-blue400 bg-opacity-50';
 const ITEM_TEXT_CLASS_NAME = 'text-sm text-brand-white';
 const CANCEL_ITEM_CLASS_NAME = MENU_ITEM_CLASS_NAME.replace('mb-2 ', '');
 
+export const SmartAccountSignedOperationOptions = ({
+  operationHash,
+}: {
+  operationHash: string;
+}) => {
+  const { t } = useTranslation();
+  const cancellation = useSmartAccountCancellation(
+    operationHash,
+    operationHash
+  );
+  if (!cancellation.available) return null;
+  return (
+    <>
+      <Menu as="div" className="relative inline-block text-left">
+        <Menu.Button
+          aria-label={t('transactions.transactionOptions')}
+          className="inline-flex w-5 justify-center rounded-full text-white hover:text-button-primaryhover"
+        >
+          <EditTxIcon />
+        </Menu.Button>
+        <Menu.Items className="absolute right-0 z-10 w-max rounded-lg bg-brand-blue500 p-2 shadow-2xl ring-1 ring-black ring-opacity-5 focus:outline-none">
+          <Menu.Item as={React.Fragment} disabled={cancellation.busy}>
+            {({ active }) => (
+              <button
+                type="button"
+                className={`${CANCEL_ITEM_CLASS_NAME} ${
+                  active ? ACTIVE_ITEM_CLASS_NAME : ''
+                }`}
+                onClick={() => void cancellation.request()}
+              >
+                <span aria-hidden="true" className="mr-3 w-5">
+                  <CancelIcon />
+                </span>
+                <span className={ITEM_TEXT_CLASS_NAME}>
+                  {t('buttons.cancel')}
+                </span>
+              </button>
+            )}
+          </Menu.Item>
+        </Menu.Items>
+      </Menu>
+      {cancellation.content}
+    </>
+  );
+};
+
 const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   handleUpdateTransaction,
   transaction,

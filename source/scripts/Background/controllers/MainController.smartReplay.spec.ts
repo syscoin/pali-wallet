@@ -308,8 +308,87 @@ async function fixture(
     rawTransaction,
     hash: tx.hash!,
     predecessor,
+    operation,
   };
 }
+
+it('projects only the unresolved Smart Account authorization without an outer transaction', async () => {
+  const f = await fixture();
+  const retain = (nonce: number) =>
+    f.records.retainSmartAccountAuthorization(f.session, {
+      chainId: 1,
+      payer: payer.address,
+      observedAt: { number: '16', hash: blockHash },
+      userOperation: {
+        ...f.operation,
+        nonce: String(nonce),
+        preVerificationGas: String(f.operation.preVerificationGas),
+      },
+    });
+  await retain(7); // The existing signed outer already contains this operation.
+  const pending = await retain(9);
+  const consumed = await retain(8);
+  const revocation = encodeERC7579Executions([{ target: smart, value: '0' }]);
+  await f.records.retainSmartAccountAuthorization(f.session, {
+    chainId: 1,
+    payer: payer.address,
+    observedAt: { number: '16', hash: blockHash },
+    replacesOperationHash: pending.operationHash,
+    userOperation: {
+      ...f.operation,
+      callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+        revocation.mode,
+        revocation.executionCalldata,
+      ]),
+      nonce: '9',
+      preVerificationGas: String(f.operation.preVerificationGas),
+    },
+  });
+  let chainNonce = 9;
+  const send = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_call') {
+      expect(params[1]).toBe('latest');
+      return '0x' + chainNonce.toString(16).padStart(64, '0');
+    }
+    return send(method, params);
+  });
+
+  const page = await f.wallet.getSavedEvmTransactions();
+  expect(page.transactions.map((tx: { hash: string }) => tx.hash)).toEqual([
+    f.hash,
+  ]);
+  expect(page.signedOperations).toEqual([
+    {
+      account: smart,
+      chainId: '1',
+      createdAt: 1000,
+      operationHash: pending.operationHash,
+      status: 'unresolved',
+    },
+  ]);
+  expect(page.signedOperations[0]).not.toHaveProperty('hash');
+  expect(pending.operationHash).not.toBe(consumed.operationHash);
+  const nonceReads = () =>
+    f.provider.send.mock.calls.filter(([method]) => method === 'eth_call');
+  expect(nonceReads()).toHaveLength(1);
+  expect(f.broadcasts).toEqual([]);
+
+  chainNonce = 10;
+  await expect(f.wallet.getSavedEvmTransactions()).resolves.not.toHaveProperty(
+    'signedOperations'
+  );
+  expect(nonceReads()).toHaveLength(2);
+
+  mockState.vault.accounts.SmartAccount[1].evmActivityClearedAtByChainId = {
+    1: 1000,
+  };
+  await expect(f.wallet.getSavedEvmTransactions()).resolves.toEqual({
+    transactions: [],
+    nextCursor: null,
+  });
+  expect(nonceReads()).toHaveLength(2);
+});
 
 it('keeps payer records while honoring the selected Smart Account activity reset', async () => {
   const f = await fixture();

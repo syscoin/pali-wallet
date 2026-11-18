@@ -482,6 +482,9 @@
     "maxFee": "Frais maximaux",
     "smartAccountMaxFee": "Frais maximaux du compte intelligent",
     "smartAccountFeeDetails": "Montant maximal prélevé par EntryPoint sur ce compte intelligent. La transaction externe est payée séparément par le payeur du gaz ou le réservoir de gaz.",
+    "smartAccountFeeReimbursement": "Le payeur avance les frais réseau. EntryPoint lui reverse les frais prélevés sur le compte intelligent.",
+    "smartAccountTotal": "Total du compte intelligent",
+    "smartAccountPayerFeeExceeded": "Les frais réseau ont dépassé la limite approuvée. Consultez l’opération signée dans Activité.",
     "smartAccountFeeQuoteChanged": "L’estimation des frais du compte intelligent a augmenté. Actualisez-la et vérifiez le nouveau maximum avant d’approuver.",
     "refreshFeeQuote": "Actualiser l’estimation des frais",
     "gasPrice": "Prix du gaz",
@@ -1106,6 +1109,9 @@
   },
   "transactions": {
     "smartAuthorizations": {
+      "signedOperation": "Opération signée",
+      "noTransactionRecorded": "Aucune transaction enregistrée",
+      "statusUnavailable": "Statut indisponible",
       "reference": "Référence initiale",
       "cancelInstruction": "Annuler l’instruction",
       "operationHash": "Hash de l’opération"

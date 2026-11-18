@@ -677,6 +677,12 @@ it('keeps the ERC20 recipient separate from its execution target in Smart approv
   account.smartAccount = {};
   prepareSmartAccountFeeQuote.mockResolvedValue({
     executionContextId: 'token-review',
+    payerBudget: {
+      gasTank: false,
+      maximumFeeWei: '2',
+      maximumPrefundWei: '0',
+      maximumPrefundFeeWei: '0',
+    },
     maximumFeeWei: '1',
     gasUnits: '1',
     feePayer: { id: 0, type: 'HDAccount', address: account.address },

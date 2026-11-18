@@ -580,6 +580,7 @@ export const handleMasterControllerResponses = (
                 owned.dispose();
               };
               const controllerAuthority: SmartAccountControllerAuthority = {
+                ...(!smartApproval && { allowWalletSendPayerBudget: true }),
                 kind: 'document',
                 signal: owned.signal,
                 assertCurrent() {

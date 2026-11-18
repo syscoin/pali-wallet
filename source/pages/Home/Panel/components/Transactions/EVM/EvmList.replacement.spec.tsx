@@ -144,6 +144,9 @@ jest.mock('components/Tooltip', () => ({
 }));
 jest.mock('components/TokenIcon', () => ({ TokenIcon: () => null }));
 jest.mock('components/TransactionOptions', () => ({
+  SmartAccountSignedOperationOptions: ({ operationHash }: any) => (
+    <button type="button">Cancel instruction {operationHash}</button>
+  ),
   TransactionOptions: ({ transaction: tx, canCancelSmart }: any) => (
     <div data-smart-cancel={String(canCancelSmart)}>Options:{tx.hash}</div>
   ),
@@ -728,6 +731,52 @@ it('uses one ordinary row and the existing menu for authenticated Smart Account 
   expect(view.container.querySelectorAll('[data-operation-hash]')).toHaveLength(
     0
   );
+});
+
+it('shows a signed operation without a transaction identity and replaces its row when the outer appears', () => {
+  const operation = {
+    account: ACCOUNT,
+    chainId: '1',
+    createdAt: Date.now(),
+    operationHash: `0x${'e'.repeat(64)}`,
+    status: 'unresolved' as const,
+  };
+  const view = render(
+    <EvmTransactionsList
+      userTransactions={[]}
+      smartSignedOperations={[operation]}
+    />
+  );
+  expect(
+    screen.getByText('transactions.smartAuthorizations.signedOperation')
+  ).toBeTruthy();
+  expect(
+    screen.getByText('transactions.smartAuthorizations.noTransactionRecorded')
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', {
+      name: `Cancel instruction ${operation.operationHash}`,
+    })
+  ).toBeTruthy();
+  expect(view.container.querySelector('[data-transaction-hash]')).toBeNull();
+  expect(screen.queryByRole('link')).toBeNull();
+
+  const outer = transaction('a', {
+    historySource: 'local-signed',
+    smartAccount: { account: ACCOUNT, operations: [operation] },
+  });
+  view.rerender(
+    <EvmTransactionsList
+      userTransactions={[outer]}
+      smartSignedOperations={[operation]}
+    />
+  );
+  expect(
+    screen.queryByText('transactions.smartAuthorizations.signedOperation')
+  ).toBeNull();
+  expect(
+    view.container.querySelectorAll('[data-transaction-hash]')
+  ).toHaveLength(1);
 });
 
 it.each([

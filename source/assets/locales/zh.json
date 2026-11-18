@@ -482,6 +482,9 @@
     "maxFee": "最高费用",
     "smartAccountMaxFee": "智能账户最高费用",
     "smartAccountFeeDetails": "EntryPoint 向此智能账户收取的最高费用。外层交易由 Gas 支付方或 Gas 储备池另行支付。",
+    "smartAccountFeeReimbursement": "费用支付方先垫付网络费用。EntryPoint 会将从智能账户收取的费用返还给支付方。",
+    "smartAccountTotal": "智能账户合计",
+    "smartAccountPayerFeeExceeded": "网络费用超过了您批准的上限。请在活动中查看已签名的操作。",
     "smartAccountFeeQuoteChanged": "智能账户的费用报价已上涨。请刷新报价并查看新的最高费用后再批准。",
     "refreshFeeQuote": "刷新费用报价",
     "gasPrice": "Gas价格",
@@ -1106,6 +1109,9 @@
   },
   "transactions": {
     "smartAuthorizations": {
+      "signedOperation": "已签名的操作",
+      "noTransactionRecorded": "没有交易记录",
+      "statusUnavailable": "状态不可用",
       "reference": "原始引用",
       "cancelInstruction": "取消指令",
       "operationHash": "操作哈希"

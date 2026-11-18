@@ -2,11 +2,21 @@ import { EVM_TRANSACTION_HISTORY_SOURCE } from '../shared/evmHistory';
 import type { ITransactionInfoEvm } from 'types/useTransactionsInfo';
 
 import type { EvmSavedTransaction } from './evmSignedReplay';
+import type { SmartAccountAuthorizationSummary } from './smartAccountAuthorization';
 import type { SmartAccountReplayIntent } from './smartAccountSignedReplay';
 
 export type EvmActivitySummary = EvmSavedTransaction & {
   smartAccount?: SmartAccountReplayIntent;
 };
+
+export type SmartAccountSignedActivity = Pick<
+  SmartAccountAuthorizationSummary,
+  | 'account'
+  | 'chainId'
+  | 'createdAt'
+  | 'operationHash'
+  | 'replacesOperationHash'
+> & { status: 'unresolved' | 'unavailable' };
 
 /** Project the shared public summary without inventing unsigned calldata or receipt fields. */
 export const projectEvmActivityRow = (

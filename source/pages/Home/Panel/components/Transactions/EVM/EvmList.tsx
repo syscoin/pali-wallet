@@ -28,7 +28,10 @@ import { DetailArrowSvg } from 'components/Icon/Icon';
 import { ConfirmationModal } from 'components/Modal';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
-import { TransactionOptions } from 'components/TransactionOptions';
+import {
+  SmartAccountSignedOperationOptions,
+  TransactionOptions,
+} from 'components/TransactionOptions';
 import { useContextualState } from 'hooks/useContextualState';
 import { usePrice } from 'hooks/usePrice';
 import { useRequestScope } from 'hooks/useRequestScope';
@@ -71,6 +74,8 @@ import { isTransactionInBlock } from 'utils/transactionUtils';
 import { getReplacementWinner } from './replacementWinner';
 import { getTransactionDisplayCacheKey } from './transactionDisplayCache';
 import type { EvmActivityOlderRows } from './useEvmActivityHistory';
+import type { SmartAccountSignedActivity } from '../../../../../../wallet/evmActivityRow';
+import type { SmartAccountReplayIntent } from '../../../../../../wallet/smartAccountSignedReplay';
 
 type EvmPageResponse = {
   error?: string;
@@ -741,15 +746,50 @@ const EvmTransactionItem = React.memo(
 
 EvmTransactionItem.displayName = 'EvmTransactionItem';
 
+const SmartAccountSignedOperationItem = ({
+  operation,
+}: {
+  operation: SmartAccountSignedActivity;
+}) => {
+  const { t } = useTranslation();
+  return (
+    <div className="flex w-full items-center justify-between gap-2 border-b border-dashed border-bkg-deepBlue py-2">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="break-words text-xs text-white">
+          {t(
+            operation.replacesOperationHash
+              ? 'transactions.cancellation'
+              : 'transactions.smartAuthorizations.signedOperation'
+          )}
+        </span>
+        <span className="text-xs text-brand-gray200">
+          {t(
+            operation.status === 'unavailable'
+              ? 'transactions.smartAuthorizations.statusUnavailable'
+              : 'transactions.smartAuthorizations.noTransactionRecorded'
+          )}
+        </span>
+      </div>
+      <SmartAccountSignedOperationOptions
+        operationHash={
+          operation.replacesOperationHash ?? operation.operationHash
+        }
+      />
+    </div>
+  );
+};
+
 export const EvmTransactionsList = ({
   userTransactions,
   olderRows,
   smartCancellationHashes,
+  smartSignedOperations,
   explorerHasMore,
 }: {
   explorerHasMore?: boolean;
   olderRows?: EvmActivityOlderRows;
   smartCancellationHashes?: ReadonlySet<string>;
+  smartSignedOperations?: readonly SmartAccountSignedActivity[];
   userTransactions: ITransactionInfoEvm[];
 }) => {
   const { t } = useTranslation();
@@ -919,16 +959,69 @@ export const EvmTransactionsList = ({
     [navigate, location.state, filteredTransactions, chainId, minedNonceIndex]
   );
 
-  const groupedTransactions = useMemo(() => {
-    const grouped: Record<string, ITransactionInfoEvm[]> = {};
+  const groupedActivity = useMemo(() => {
+    type Row =
+      | { timestamp: number; transaction: ITransactionInfoEvm }
+      | { operation: SmartAccountSignedActivity; timestamp: number };
+    const grouped: Record<string, Row[]> = {};
     const visible = filteredTransactions.slice(
       0,
       visibleCount
     ) as ITransactionInfoEvm[];
-    for (const tx of visible)
-      (grouped[formatTimeStamp(tx.timestamp)] ??= []).push(tx);
+    const rows: Row[] = visible.map((transaction) => ({
+      transaction,
+      timestamp: transaction.timestamp,
+    }));
+    if (smartSignedOperations?.length) {
+      const carriedOperations = new Set<string>();
+      for (const transaction of filteredTransactions as (ITransactionInfoEvm & {
+        smartAccount?: SmartAccountReplayIntent;
+        smartAccountExecutionFrom?: string;
+      })[]) {
+        const smart = transaction.smartAccount;
+        if (smart?.operations) {
+          for (const { operationHash } of smart.operations)
+            carriedOperations.add(operationHash.toLowerCase());
+        } else if (
+          transaction.smartAccountExecutionFrom?.toLowerCase() ===
+            currentAccount?.address?.toLowerCase() &&
+          typeof transaction.input === 'string'
+        ) {
+          for (const operation of decodeSmartAccountOperations({
+            chainId: String(chainId),
+            data: transaction.input,
+            hash: transaction.hash,
+            nonce: parseEvmInteger(transaction.nonce) ?? -1,
+            payer: transaction.from,
+            to: transaction.to,
+            value: String(transaction.value),
+          }))
+            if (
+              operation.account.toLowerCase() ===
+              currentAccount?.address?.toLowerCase()
+            )
+              carriedOperations.add(operation.operationHash);
+        }
+      }
+      for (const operation of smartSignedOperations)
+        if (!carriedOperations.has(operation.operationHash.toLowerCase()))
+          rows.push({
+            operation,
+            timestamp: Math.floor(operation.createdAt / 1000),
+          });
+      rows.sort((a, b) => b.timestamp - a.timestamp);
+    }
+    for (const row of rows)
+      (grouped[formatTimeStamp(row.timestamp)] ??= []).push(row);
     return grouped;
-  }, [filteredTransactions, formatTimeStamp, visibleCount]);
+  }, [
+    filteredTransactions,
+    formatTimeStamp,
+    visibleCount,
+    smartSignedOperations,
+    currentAccount?.address,
+    chainId,
+  ]);
 
   // Build a quick lookup map for imported ERC-20 token metadata
   const tokenMetaByAddress = useMemo(() => {
@@ -1015,10 +1108,18 @@ export const EvmTransactionsList = ({
   return (
     <>
       <ConfirmationModal show={isOpenModal} {...modalData} />
-      {Object?.entries(groupedTransactions)?.map(([date, transactions]) => (
+      {Object.entries(groupedActivity).map(([date, rows]) => (
         <div key={date} className="relative mb-[20px]">
           <div className="text-xs text-white font-normal">{date}</div>
-          {transactions.map((tx, index) => {
+          {rows.map((row, index) => {
+            if ('operation' in row)
+              return (
+                <SmartAccountSignedOperationItem
+                  key={`operation:${row.operation.operationHash}`}
+                  operation={row.operation}
+                />
+              );
+            const tx = row.transaction;
             const txKey = tx.hash || `unknown-${index}`;
             const metaTarget =
               (tx?.hash &&

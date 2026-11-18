@@ -130,7 +130,9 @@ export const TransactionsPanel = () => {
   const transactions = isBitcoinBased
     ? utxoTransactions
     : activity.transactions;
-  const hasTransactions = transactions.length > 0;
+  const hasTransactions =
+    transactions.length > 0 ||
+    (!isBitcoinBased && activity.signedOperations.length > 0);
 
   // ✅ MEMOIZED: Component definitions to prevent recreation
   const NoTransactionsComponent = useMemo(
@@ -390,6 +392,7 @@ export const TransactionsPanel = () => {
                   userTransactions={activity.transactions}
                   olderRows={activity.olderRows}
                   smartCancellationHashes={activity.smartCancellationHashes}
+                  smartSignedOperations={activity.signedOperations}
                 />
               )}
             </>

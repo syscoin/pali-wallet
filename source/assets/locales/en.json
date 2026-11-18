@@ -482,6 +482,9 @@
     "maxFee": "Max Fee",
     "smartAccountMaxFee": "Smart account maximum fee",
     "smartAccountFeeDetails": "Maximum EntryPoint charge to this smart account. The outer transaction is paid separately by its gas payer or gas tank.",
+    "smartAccountFeeReimbursement": "The fee payer fronts the network fee. EntryPoint reimburses the payer with the fee collected from the Smart Account.",
+    "smartAccountTotal": "Smart Account total",
+    "smartAccountPayerFeeExceeded": "The network fee exceeded your approved limit. Review the signed operation in Activity.",
     "smartAccountFeeQuoteChanged": "The smart-account fee quote increased. Refresh the quote and review the new maximum before approving.",
     "refreshFeeQuote": "Refresh fee quote",
     "gasPrice": "Gas Price",
@@ -1106,6 +1109,9 @@
   },
   "transactions": {
     "smartAuthorizations": {
+      "signedOperation": "Signed operation",
+      "noTransactionRecorded": "No transaction recorded",
+      "statusUnavailable": "Status unavailable",
       "reference": "Original reference",
       "cancelInstruction": "Cancel instruction",
       "operationHash": "Operation hash"

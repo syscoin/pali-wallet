@@ -482,6 +482,9 @@
     "maxFee": "Taxa Máxima",
     "smartAccountMaxFee": "Taxa máxima da conta inteligente",
     "smartAccountFeeDetails": "Cobrança máxima do EntryPoint desta conta inteligente. A transação externa é paga separadamente pelo pagador de gas ou pelo tanque de gas.",
+    "smartAccountFeeReimbursement": "O pagador adianta a taxa de rede. O EntryPoint reembolsa o pagador com a taxa cobrada da conta inteligente.",
+    "smartAccountTotal": "Total da conta inteligente",
+    "smartAccountPayerFeeExceeded": "A taxa de rede excedeu o limite aprovado. Revise a operação assinada na Atividade.",
     "smartAccountFeeQuoteChanged": "A estimativa da taxa da conta inteligente aumentou. Atualize a estimativa e confira o novo máximo antes de aprovar.",
     "refreshFeeQuote": "Atualizar estimativa de taxa",
     "gasPrice": "Preço do Gas",
@@ -1106,6 +1109,9 @@
   },
   "transactions": {
     "smartAuthorizations": {
+      "signedOperation": "Operação assinada",
+      "noTransactionRecorded": "Nenhuma transação registrada",
+      "statusUnavailable": "Status indisponível",
       "reference": "Referência original",
       "cancelInstruction": "Cancelar instrução",
       "operationHash": "Hash da operação"

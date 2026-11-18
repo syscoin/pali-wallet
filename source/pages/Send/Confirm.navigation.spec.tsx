@@ -7,7 +7,6 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -229,6 +228,12 @@ jest.mock('utils/validations', () => ({
   ],
 }));
 
+const payerBudget = {
+  gasTank: false,
+  maximumFeeWei: '21000000000000',
+  maximumPrefundWei: '0',
+  maximumPrefundFeeWei: '0',
+};
 const feePayer = {
   address: '0x4444444444444444444444444444444444444444',
   id: 2,
@@ -241,6 +246,7 @@ beforeEach(() => {
   (prepareSmartAccountFeeQuote as jest.Mock).mockImplementation(
     async ({ feeOverrides }: any) => ({
       feePayer,
+      payerBudget,
       gasUnits: '650000',
       maximumFeeWei: BigNumber.from(
         feeOverrides?.gasPrice ?? feeOverrides?.maxFeePerGas ?? '1000000000'
@@ -827,6 +833,7 @@ it.each([
       };
     (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
       feePayer,
+      payerBudget,
       gasUnits: '863456',
       maximumFeeWei: '43172800000000000',
     });
@@ -835,11 +842,14 @@ it.each([
       expect(screen.getAllByText('0.0431728 TSYS').length).toBeGreaterThan(0)
     );
     expect(screen.getByText('send.smartAccountMaxFee')).toBeTruthy();
-    expect(screen.getByText('send.smartAccountFeeDetails')).toBeTruthy();
+    expect(screen.getByText('send.smartAccountFeeReimbursement')).toBeTruthy();
     expect(screen.getByText('transactions.feePayer')).toBeTruthy();
     expect(screen.getByText(feePayer.address)).toBeTruthy();
     expect(screen.getAllByText('0.0431728 TSYS').length).toBeGreaterThan(0);
-    expect(screen.queryByText('0.000021 TSYS')).toBeNull();
+    expect(screen.getByText('transactions.replay.maximumFee')).toBeTruthy();
+    expect(screen.getByText('0.000021 TSYS')).toBeTruthy();
+    if (transactionType === TransactionType.NATIVE_ETH)
+      expect(screen.getByText('send.smartAccountTotal')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
     await waitFor(() =>
       expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
@@ -850,8 +860,19 @@ it.each([
       -1
     )[0];
     expect(sent.approvedFeeQuote).toEqual(
-      expect.objectContaining({ maximumFeeWei: '43172800000000000', feePayer })
+      expect.objectContaining({
+        maximumFeeWei: '43172800000000000',
+        feePayer,
+        payerBudget,
+      })
     );
+    expect(quoted.includePayerBudget).toBe(true);
+    expect(sent).not.toHaveProperty('feeConsent');
+    expect(
+      screen.queryByRole('dialog', {
+        name: 'settings.smartAccountFeeReviewTitle',
+      })
+    ).toBeNull();
     expect(sent.executions).toEqual(quoted.executions);
     expect(sent.expectedContext).toEqual(quoted.expectedContext);
     expect(
@@ -866,6 +887,7 @@ it('quotes and displays the exact native MAX net before signing, without a submi
   prepareSmartAccountConfirmation(true);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
     feePayer,
+    payerBudget,
     gasUnits: '863456',
     maximumFeeWei: '43172800000000000',
   });
@@ -900,6 +922,7 @@ it('adds a native 1-wei amount to the full charge without rounding the displayed
   mockLocation.state.tx.amount = '0.000000000000000001';
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
     feePayer,
+    payerBudget,
     gasUnits: '863456',
     maximumFeeWei: '43172800000000000',
   });
@@ -932,6 +955,7 @@ it('requires explicit refresh after a proven fee increase, and never auto-resubm
   expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
     feePayer,
+    payerBudget,
     gasUnits: '900000',
     maximumFeeWei: '900000000000000',
   });
@@ -941,238 +965,68 @@ it('requires explicit refresh after a proven fee increase, and never auto-resubm
   expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
 });
 
-it('retires the consumed Smart Account quote after a definite payer-fee decline and requires a fresh review', async () => {
+it('opens Activity after the payer fee exceeds the approved cap without offering to sign again', async () => {
   prepareSmartAccountConfirmation();
   render(<SendConfirm />);
   await waitFor(() => expect(screen.getByText('0.00065 TSYS')).toBeTruthy());
   (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
     async (params) => {
       await params.onBeforeSubmit({ executionContextId: 'consumed' });
-      throw Object.assign(new Error('Transaction fee approval was cancelled'), {
-        code: 4001,
-        transactionNotBroadcast: true,
-      });
+      throw Object.assign(
+        new Error('PALI_SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED'),
+        {
+          transactionNotBroadcast: true,
+        }
+      );
     }
   );
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  await waitFor(() =>
-    expect(
-      screen.getByRole('button', { name: 'send.refreshFeeQuote' })
-    ).toBeEnabled()
-  );
+  const activity = await screen.findByRole('button', {
+    name: 'buttons.activity',
+  });
+  expect(screen.getByText('send.smartAccountPayerFeeExceeded')).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'send.refreshFeeQuote' })
+  ).toBeNull();
   expect(
     screen.getByRole('button', { name: 'buttons.confirm' })
   ).toBeDisabled();
   expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
-  const prepared = (prepareSmartAccountFeeQuote as jest.Mock).mock.calls.length;
-  (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
-    feePayer,
-    gasUnits: '900000',
-    maximumFeeWei: '900000000000000',
-    executionContextId: 'fresh-context',
+  fireEvent.click(activity);
+  expect(mockNavigate).toHaveBeenCalledWith('/home?tab=activity', {
+    replace: true,
   });
-  fireEvent.click(screen.getByRole('button', { name: 'send.refreshFeeQuote' }));
-  await waitFor(() => expect(screen.getByText('0.0009 TSYS')).toBeTruthy());
-  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(prepared + 1);
-  expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  await waitFor(() =>
-    expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(2)
-  );
-  expect(
-    (signAndSubmitSmartAccountExecutions as jest.Mock).mock.calls[1][0]
-      .approvedFeeQuote.executionContextId
-  ).toBe('fresh-context');
 });
 
-it.each(['focus', 'lock', 'disconnect'] as const)(
-  'keeps payer fee authority bound to the same live submission after %s',
-  async (transition) => {
-    prepareSmartAccountConfirmation();
-    mockNavigate.mockImplementation((path, options) => {
-      if (!options?.state?.submissionStarted) return;
-      mockLocation = {
-        ...mockLocation,
-        pathname: path,
-        key: 'owned-submission-marker',
-        state: options.state,
-      };
-      window.history.replaceState({ key: mockLocation.key }, '', path);
-    });
-    const payerReview = {
-      id: 'payer-envelope',
-      validForMs: 90000,
-      transaction: {
-        from: feePayer.address,
-        to: mockLocation.state.tx.receivingAddress,
-        chainId: '5700',
-        nonce: '1',
-        value: '0',
-        gasLimit: '21000',
-        type: 0,
-        gasPrice: '1000000000',
-        data: '0x',
-      },
-      maximumFeeUnits: '21000000000000',
-      maximumTotalUnits: '21000000000000',
-    };
-    const reviewLifetime = new AbortController();
-    let feeReply: string | null | undefined;
-    (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
-      async (params) => {
-        await params.onBeforeSubmit({ executionContextId: 'owned-operation' });
-        feeReply = await params.feeConsent.confirmFee(
-          payerReview,
-          reviewLifetime.signal
-        );
-        if (feeReply === null)
-          throw Object.assign(
-            new Error('Transaction fee approval was cancelled'),
-            {
-              code: 4001,
-              transactionNotBroadcast: true,
-            }
-          );
-        return { hash: 'owned-operation-hash' };
-      }
-    );
-    try {
-      const view = render(<SendConfirm />);
-      await waitFor(() =>
-        expect(screen.getByText('0.00065 TSYS')).toBeTruthy()
-      );
-      fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-      await waitFor(() =>
-        expect(
-          screen.getByRole('dialog', {
-            name: 'settings.smartAccountFeeReviewTitle',
-          })
-        ).toBeTruthy()
-      );
-      expect(mockLocation.state.submissionStarted).toBe(true);
-      expect(mockLocation.state.tx).toBeUndefined();
-      expect(
-        within(screen.getByRole('dialog')).getByText(feePayer.address)
-      ).toBeTruthy();
-      if (transition !== 'focus') {
-        if (transition === 'lock') {
-          mockAuth.isUnlocked = false;
-          view.rerender(<SendConfirm />);
-        } else {
-          await act(async () => reviewLifetime.abort());
-        }
-        await waitFor(() => expect(feeReply).toBeNull());
-        expect(screen.queryByRole('dialog')).toBeNull();
-        expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
-        return;
-      }
-      mockAuth.connectionUnavailable = true;
-      view.rerender(<SendConfirm />);
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-      expect(feeReply).toBeUndefined();
-      mockAuth.connectionUnavailable = false;
-      view.rerender(<SendConfirm />);
-      fireEvent.click(
-        within(screen.getByRole('dialog')).getByRole('button', {
-          name: 'buttons.confirm',
-        })
-      );
-      await waitFor(() => expect(feeReply).toBe(payerReview.id));
-      expect(mockAlert.error).not.toHaveBeenCalled();
-      expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
-    } finally {
-      mockNavigate.mockReset();
-    }
-  }
-);
+it('requires a payer fee cap before enabling Confirm', async () => {
+  prepareSmartAccountConfirmation();
+  (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValueOnce({
+    feePayer,
+    gasUnits: '650000',
+    maximumFeeWei: '650000000000000',
+  });
+  render(<SendConfirm />);
+  await screen.findByText('send.unableToCalculateFees');
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+});
 
-it.each(['route', 'account', 'unmount'])(
-  'does not present a late payer fee after genuine %s departure from the marker-owned attempt',
-  async (departure) => {
-    prepareSmartAccountConfirmation();
-    mockNavigate.mockImplementation((path, options) => {
-      if (!options?.state?.submissionStarted) return;
-      mockLocation = {
-        ...mockLocation,
-        pathname: path,
-        key: 'owned-submission-marker',
-        state: options.state,
-      };
-      window.history.replaceState({ key: mockLocation.key }, '', path);
-    });
-    let release!: () => void;
-    const waiting = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let finished = false;
-    (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
-      async (params) => {
-        await params.onBeforeSubmit({ executionContextId: 'owned-operation' });
-        await waiting;
-        try {
-          await params.feeConsent.confirmFee(
-            {
-              id: 'late-fee',
-              validForMs: 90000,
-              transaction: {
-                from: feePayer.address,
-                to: '0x2222222222222222222222222222222222222222',
-                chainId: '5700',
-                nonce: '1',
-                value: '0',
-                gasLimit: '21000',
-                type: 0,
-                gasPrice: '1000000000',
-                data: '0x',
-              },
-              maximumFeeUnits: '21000000000000',
-              maximumTotalUnits: '21000000000000',
-            },
-            new AbortController().signal
-          );
-        } finally {
-          finished = true;
-        }
-      }
-    );
-    const view = render(<SendConfirm />);
-    try {
-      await waitFor(() =>
-        expect(screen.getByText('0.00065 TSYS')).toBeTruthy()
-      );
-      fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-      await waitFor(() =>
-        expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
-      );
-      if (departure === 'route') {
-        mockLocation = {
-          ...mockLocation,
-          key: 'genuine-other-entry',
-          pathname: '/home',
-          state: null,
-        };
-        window.history.replaceState({ key: mockLocation.key }, '', '/home');
-        view.rerender(<SendConfirm />);
-      } else if (departure === 'account') {
-        mockNavigationScope = {
-          ...mockNavigationScope,
-          account: 'different-account',
-        };
-        view.rerender(<SendConfirm />);
-      } else view.unmount();
-      await act(async () => release());
-      await waitFor(() => expect(finished).toBe(true));
-      expect(screen.queryByRole('dialog')).toBeNull();
-    } finally {
-      mockNavigate.mockReset();
-    }
-  }
-);
+it('cancels from the combined review without authorizing either fee', async () => {
+  prepareSmartAccountConfirmation();
+  render(<SendConfirm />);
+  await waitFor(() => expect(screen.getByText('0.00065 TSYS')).toBeTruthy());
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
 
 it('uses trusted zero account-charge tank mode for native MAX without subtracting outer payer fees', async () => {
   prepareSmartAccountConfirmation(true);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
     feePayer,
+    payerBudget: { ...payerBudget, gasTank: true },
     gasUnits: '863456',
     maximumFeeWei: '0',
   });
@@ -1258,7 +1112,7 @@ it.each(['preparation refused', 'fee quote malformed'])(
     expect(screen.getByText('send.smartAccountMaxFee')).toHaveTextContent(
       'send.feeUnavailable'
     );
-    const total = screen.getByText('send.total (send.amountAndFee)');
+    const total = screen.getByText('send.smartAccountTotal');
     expect(total).toHaveTextContent('send.feeUnavailable');
     expect(total).not.toHaveTextContent('1.00000000 TSYS');
     expect(
@@ -1287,9 +1141,9 @@ it.each([
     expect(
       screen.getByRole('button', { name: 'buttons.confirm' })
     ).toBeDisabled();
-    expect(
-      screen.getByText('send.total (send.amountAndFee)')
-    ).toHaveTextContent('send.feeUnavailable');
+    expect(screen.getByText('send.smartAccountTotal')).toHaveTextContent(
+      'send.feeUnavailable'
+    );
     fireEvent.click(screen.getByRole('button', { name: 'buttons.activity' }));
     expect(mockNavigate).toHaveBeenCalledWith('/home?tab=activity', {
       replace: true,
@@ -1355,7 +1209,7 @@ it('keeps Smart account fee and total unavailable until a fresh retry succeeds',
     );
   render(<SendConfirm />);
   await screen.findByText('send.unableToCalculateFees');
-  const total = screen.getByText('send.total (send.amountAndFee)');
+  const total = screen.getByText('send.smartAccountTotal');
   expect(total).toHaveTextContent('send.feeUnavailable');
   expect(screen.queryAllByText('send.calculating')).toHaveLength(0);
   expect(
@@ -1376,6 +1230,7 @@ it('keeps Smart account fee and total unavailable until a fresh retry succeeds',
   await act(async () =>
     resolveQuote({
       feePayer,
+      payerBudget,
       gasUnits: '650000',
       maximumFeeWei: '650000000000000',
     })
@@ -1386,6 +1241,7 @@ it('keeps Smart account fee and total unavailable until a fresh retry succeeds',
   await act(async () =>
     resolveQuote({
       feePayer,
+      payerBudget,
       gasUnits: '650000',
       maximumFeeWei: '650000000000000',
     })
@@ -1419,7 +1275,7 @@ it('shows an unavailable Smart token fee without an amount-only total', async ()
   expect(screen.getByText('send.smartAccountMaxFee')).toHaveTextContent(
     'send.feeUnavailable'
   );
-  expect(screen.getByText('send.total (send.amountAndFee)')).toHaveTextContent(
+  expect(screen.getByText('send.smartAccountTotal')).toHaveTextContent(
     'send.feeUnavailable'
   );
   expect(
@@ -1433,6 +1289,7 @@ it('bounds MAX refinement and refuses to display or sign a nonconverging fee quo
   let quote = 0;
   (prepareSmartAccountFeeQuote as jest.Mock).mockImplementation(async () => ({
     feePayer,
+    payerBudget,
     gasUnits: '650000',
     maximumFeeWei: String(++quote * 1000000000000),
   }));
@@ -1451,6 +1308,7 @@ it('refuses MAX when the full account charge exceeds the refreshed balance', asy
   prepareSmartAccountConfirmation(true);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
     feePayer,
+    payerBudget,
     gasUnits: '650000',
     maximumFeeWei: '100000000000000000000',
   });
@@ -1629,6 +1487,7 @@ it.each(['network', 'fee'])(
     await act(async () =>
       finishReserve({
         feePayer,
+        payerBudget,
         gasUnits: '650000',
         maximumFeeWei: '650000000000000',
       })

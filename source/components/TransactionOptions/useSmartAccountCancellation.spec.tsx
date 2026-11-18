@@ -11,6 +11,7 @@ import React from 'react';
 
 import en from '../../assets/locales/en.json';
 
+import { SmartAccountSignedOperationOptions } from './TransactionOptions';
 import { useSmartAccountCancellation } from './useSmartAccountCancellation';
 
 const ACCOUNT = `0x${'33'.repeat(20)}`;
@@ -70,8 +71,10 @@ jest.mock('utils/smartAccount/execution', () => ({
   signAndSubmitSmartAccountExecutions: (...args: any[]) => mockSubmit(...args),
 }));
 jest.mock('components/Icon/Icon', () => ({
+  Icon: () => null,
   LoadingSvg: () => null,
   MdBugReport: () => null,
+  TrashIconSvg: () => null,
 }));
 
 const reviewedQuote = {
@@ -216,6 +219,29 @@ it('dismisses without signing and shows one hash when both references match', as
   fireEvent.click(dialog.getByRole('button', { name: en.buttons.cancel }));
   expect(mockSubmit).not.toHaveBeenCalled();
   expect(mockEmitter).toHaveBeenCalledTimes(2);
+});
+
+it('opens the existing cancellation review from a signed-only operation menu', async () => {
+  prepare(OPERATION, reviewedQuote);
+  render(<SmartAccountSignedOperationOptions operationHash={OPERATION} />);
+  fireEvent.click(
+    screen.getByRole('button', { name: en.transactions.transactionOptions })
+  );
+  const menu = within(screen.getByRole('menu'));
+  expect(menu.getAllByRole('menuitem')).toHaveLength(1);
+  fireEvent.click(menu.getByRole('menuitem', { name: en.buttons.cancel }));
+  await screen.findByRole('dialog', { name: en.header.cancelTx });
+  expect(mockEmitter).toHaveBeenLastCalledWith(
+    ['wallet', 'prepareSmartAccountCancellation'],
+    [
+      { originalHash: OPERATION, operationHash: OPERATION },
+      2,
+      expect.any(Object),
+    ],
+    300000,
+    false
+  );
+  expect(mockSubmit).not.toHaveBeenCalled();
 });
 
 it('blocks review and signing when the payer budget is missing', async () => {

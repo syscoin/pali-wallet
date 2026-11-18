@@ -1,4 +1,7 @@
-export type SmartAccountCancellationPayerBudget = Readonly<{
+export const SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED =
+  'PALI_SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED';
+
+export type SmartAccountPayerBudget = Readonly<{
   gasTank: boolean;
   maximumFeeWei: string;
   maximumPrefundFeeWei: string;
@@ -6,7 +9,7 @@ export type SmartAccountCancellationPayerBudget = Readonly<{
 }>;
 
 export type SmartAccountFeeQuote = Readonly<{
-  cancellationPayerBudget?: SmartAccountCancellationPayerBudget;
+  cancellationPayerBudget?: SmartAccountPayerBudget;
   executionContextId?: string;
   feePayer: Readonly<{
     address: string;
@@ -15,11 +18,12 @@ export type SmartAccountFeeQuote = Readonly<{
   }>;
   gasUnits: string;
   maximumFeeWei: string;
+  payerBudget?: SmartAccountPayerBudget;
 }>;
 
-export function matchesSmartAccountCancellationPayerBudget(
-  expected: SmartAccountCancellationPayerBudget | undefined,
-  approved: SmartAccountCancellationPayerBudget | undefined
+export function matchesSmartAccountPayerBudget(
+  expected: SmartAccountPayerBudget | undefined,
+  approved: SmartAccountPayerBudget | undefined
 ): boolean {
   if (!expected || !approved) return expected === approved;
   return (

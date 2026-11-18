@@ -60,9 +60,10 @@ jest.mock('components/Loader/SkeletonLoader', () => ({
   default: () => <span>Skeleton</span>,
 }));
 jest.mock('pages/Home/Panel/components/Transactions/EVM/EvmList', () => ({
-  EvmTransactionsList: ({ userTransactions }: any) => (
+  EvmTransactionsList: ({ userTransactions, smartSignedOperations }: any) => (
     <div data-testid="rows">
       {userTransactions.map((row: any) => row.hash).join(',')}
+      {smartSignedOperations?.map((row: any) => row.operationHash).join(',')}
     </div>
   ),
 }));
@@ -159,6 +160,34 @@ it('keeps a genuinely successful empty local read in the ordinary qualified empt
   expect(screen.queryByText('send.unableToLoad')).toBeNull();
   expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
   expect(localReads()).toHaveLength(1);
+});
+
+it('shows a signed-only operation in the ordinary list and retires it on Activity reset', async () => {
+  mockState.vault.activeAccount.type = 'SmartAccount';
+  const instruction = {
+    account: SAVED.from,
+    chainId: SAVED.chainId,
+    createdAt: SAVED.createdAt,
+    operationHash: HASH,
+    status: 'unresolved',
+  };
+  mockEmitter.mockResolvedValue({
+    transactions: [],
+    nextCursor: null,
+    signedOperations: [instruction],
+  });
+  const view = render(<TransactionsPanel />);
+  await flush();
+  expect(screen.getByTestId('rows')).toHaveTextContent(HASH);
+  expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
+
+  mockState.publicAccount.evmActivityClearedAtByChainId = {
+    57057: instruction.createdAt,
+  };
+  view.rerender(<TransactionsPanel />);
+  await flush();
+  expect(screen.queryByTestId('rows')).toBeNull();
+  expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
 });
 
 it('keeps initial local availability pending until its captured read settles', async () => {

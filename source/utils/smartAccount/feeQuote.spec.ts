@@ -62,6 +62,42 @@ describe('trusted smart-account fee quote', () => {
     expect(emitter.mock.calls[0][1][1]).toBe(19);
   });
 
+  it('requires the worker-issued payer budget when preparing a wallet Send quote', async () => {
+    const candidate = prepared();
+    const payerBudget = {
+      gasTank: false,
+      maximumFeeWei: '5500000',
+      maximumPrefundFeeWei: '0',
+      maximumPrefundWei: '0',
+    };
+    const controllerEmitter = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ...candidate,
+        entryPointFeeQuote: {
+          executionContextId: candidate.executionContextId,
+          payerBudget,
+        },
+      })
+      .mockResolvedValueOnce(candidate);
+    const input = {
+      accountAddress: sender,
+      controllerEmitter,
+      executions,
+      includePayerBudget: true as const,
+    };
+    const quote = await prepareSmartAccountFeeQuote(input);
+    expect(quote.payerBudget).toEqual(payerBudget);
+    expect(Object.isFrozen(quote.payerBudget)).toBe(true);
+    expect(controllerEmitter.mock.calls[0][1][2]).toHaveProperty(
+      'includePayerBudget',
+      true
+    );
+    await expect(prepareSmartAccountFeeQuote(input)).rejects.toThrow(
+      'Invalid smart account fee quote'
+    );
+  });
+
   it('captures wallet-authored precision before awaiting preparation', async () => {
     const transfers = [
       {

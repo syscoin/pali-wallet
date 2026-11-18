@@ -141,6 +141,7 @@ import {
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
 import { assertRetainedSmartAccountExecution } from '../../../utils/smartAccount/executionSimulation';
+import { readSmartAccountNonce } from '../../../utils/smartAccount/financialReads';
 import { signSmartAccountOwnerIntent } from '../../../utils/smartAccount/ownerSigning.ts';
 import { getSmartAccountUserOpHash } from '../../../utils/smartAccount/userOperationHash';
 import { bindVerifiedSyscoinBurn } from '../../../utils/syscoinPsbtReview';
@@ -596,6 +597,7 @@ import type {
 import type { GuardianRecoveryIntent } from '../../../utils/smartAccount/guardianRecoveryIntent';
 import type { GuardianRecoveryTransactionRecords } from '../../../utils/smartAccount/guardianRecoveryLifecycle';
 import type { SmartAccountOwnerSigningIntent } from '../../../utils/smartAccount/ownerSigningIntent.ts';
+import type { SmartAccountSignedActivity } from '../../../wallet/evmActivityRow';
 import type { EoaCallsStopped } from '../../../wallet/evmCallsSequence.ts';
 import type { SentryRequestLifetime } from '../../../wallet/sentryApprovalTypes';
 import type {
@@ -2197,22 +2199,82 @@ class MainController {
       assertCurrent,
     } = this.captureSavedEvmActivity(expectedScope);
     if (isSmart) {
+      const after = account.evmActivityClearedAtByChainId?.[Number(chainId)];
       const page = await records.readSmartAccountReplayPage(
         session,
         chainId,
         address,
         {
-          after: account.evmActivityClearedAtByChainId?.[Number(chainId)],
+          after,
           beforeHash: beforeHash ?? undefined,
           maximum: limit,
         }
       );
+      const signedOperations = new Map<string, SmartAccountSignedActivity>();
+      if (!beforeHash) {
+        const { entries } = await records.listSmartAccountAuthorizations(
+          session,
+          chainId,
+          address,
+          { after, maximum: limit, withoutOuter: true }
+        );
+        if (entries.length) {
+          const nonceKeys = new Set(
+            entries.map((entry) => BigInt(entry.operationNonce) >> BigInt(64))
+          );
+          const nonces = new Map<bigint, bigint>();
+          try {
+            const read = this.captureFreshEvmRead(getWalletNavigationScope());
+            await read.run((provider) =>
+              withEvmReadPhase(provider, assertCurrent, async (phase) => {
+                await Promise.allSettled(
+                  [...nonceKeys].map(async (key) => {
+                    const nonce = await readSmartAccountNonce(
+                      phase,
+                      Number(chainId),
+                      address,
+                      key,
+                      'latest'
+                    );
+                    nonces.set(key, BigInt(nonce));
+                  })
+                );
+              })
+            );
+          } catch {
+            nonces.clear();
+          }
+          assertCurrent();
+          for (const entry of entries) {
+            const nonce = BigInt(entry.operationNonce);
+            const current = nonces.get(nonce >> BigInt(64));
+            if (current !== undefined && current > nonce) continue;
+            const reference =
+              entry.replacesOperationHash ?? entry.operationHash;
+            if (entry.replacesOperationHash && signedOperations.has(reference))
+              continue;
+            signedOperations.set(reference, {
+              account: entry.account,
+              chainId: entry.chainId,
+              createdAt: entry.createdAt,
+              operationHash: entry.operationHash,
+              ...(entry.replacesOperationHash
+                ? { replacesOperationHash: entry.replacesOperationHash }
+                : {}),
+              status: current === undefined ? 'unavailable' : 'unresolved',
+            });
+          }
+        }
+      }
       assertCurrent();
       return {
         nextCursor: page.nextCursor,
         transactions: page.entries.map((record) =>
           projectSmartAccountSavedTransaction(record, address)
         ),
+        ...(signedOperations.size
+          ? { signedOperations: [...signedOperations.values()] }
+          : {}),
       };
     }
     const page = await records.readPage(session, chainId, address, {
@@ -6770,14 +6832,9 @@ class MainController {
       value: string;
     }>,
     accountId?: number,
-    options?: {
-      expectedContext?: IEvmTransactionContext;
-      feeOverrides?: {
-        maxFeePerGas?: string;
-        maxPriorityFeePerGas?: string;
-      };
-      useCachedMetadata?: boolean;
-    }
+    options?: Parameters<
+      typeof this.smartAccount.prepareSmartAccountExecutions
+    >[2]
   ): Promise<{
     accountId: number;
     actionHash: string;
@@ -6959,7 +7016,8 @@ class MainController {
             assertCurrent();
             return id;
           }
-        : undefined
+        : undefined,
+      authority.allowWalletSendPayerBudget === true
     );
   }
 
@@ -11311,7 +11369,10 @@ class MainController {
     if (authority?.kind !== 'document' || !authority.signal)
       throw new Error('Owned document authority is required');
     assertSynchronousEvmFeeGuard(authority.assertCurrent);
-    if (authority.signal.aborted)
+    if (
+      authority.signal.aborted ||
+      (quote?.payerBudget && authority.allowWalletSendPayerBudget !== true)
+    )
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     this.smartAccount.approveSmartAccountExecutionFeeQuote(
       executionContextId,

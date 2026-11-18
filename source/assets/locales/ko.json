@@ -482,6 +482,9 @@
     "maxFee": "최대 수수료",
     "smartAccountMaxFee": "스마트 계정 최대 수수료",
     "smartAccountFeeDetails": "EntryPoint가 이 스마트 계정에 청구하는 최대 금액입니다. 외부 트랜잭션 비용은 가스비 지불자 또는 가스 탱크가 별도로 부담합니다.",
+    "smartAccountFeeReimbursement": "수수료 납부자가 네트워크 수수료를 먼저 냅니다. EntryPoint는 스마트 계정에서 징수한 수수료를 납부자에게 돌려줍니다.",
+    "smartAccountTotal": "스마트 계정 합계",
+    "smartAccountPayerFeeExceeded": "네트워크 수수료가 승인한 한도를 초과했습니다. 활동에서 서명된 작업을 검토하세요.",
     "smartAccountFeeQuoteChanged": "스마트 계정 수수료 견적이 증가했습니다. 견적을 새로고침하고 새 최대 금액을 검토한 후 승인하세요.",
     "refreshFeeQuote": "수수료 견적 새로고침",
     "gasPrice": "가스 가격",
@@ -1106,6 +1109,9 @@
   },
   "transactions": {
     "smartAuthorizations": {
+      "signedOperation": "서명된 작업",
+      "noTransactionRecorded": "기록된 거래 없음",
+      "statusUnavailable": "상태를 확인할 수 없음",
       "reference": "원래 참조",
       "cancelInstruction": "지시 취소",
       "operationHash": "작업 해시"

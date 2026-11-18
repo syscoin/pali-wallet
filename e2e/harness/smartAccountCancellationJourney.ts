@@ -15,11 +15,7 @@ import {
 import { getSmartAccountUserOpHash } from '../../source/utils/smartAccount/userOperationHash';
 
 import { PaliWallet } from './pali';
-import {
-  approveSmartAccountFeeReview,
-  localRpc,
-  TEST_DAPP_MNEMONIC,
-} from './testDappConformance';
+import { localRpc, TEST_DAPP_MNEMONIC } from './testDappConformance';
 import type { SmartAccountPackedUserOperation } from '../../source/utils/smartAccount/account';
 
 type Delivery = {
@@ -159,9 +155,9 @@ export async function runSmartAccountCancellationJourney(options: Options) {
   ): Promise<Delivery & { before: number }>;
   async function beginSend(
     label: string,
-    declinePayer: true
+    exceedPayerBudget: true
   ): Promise<{ before: number; operation: SmartAccountPackedUserOperation }>;
-  async function beginSend(label: string, declinePayer = false) {
+  async function beginSend(label: string, exceedPayerBudget = false) {
     mark(`cancellation:${label}`);
     await wallet.gotoRoute('#/home');
     await wallet.ensureOnHome();
@@ -172,42 +168,39 @@ export async function runSmartAccountCancellationJourney(options: Options) {
     await expect(
       page.getByRole('button', { name: 'Confirm', exact: true })
     ).toBeEnabled();
+    const payerCap = page
+      .getByText(en.transactions.replay.maximumFee, { exact: true })
+      .locator('..')
+      .locator('dd');
+    await expect(payerCap).toBeVisible();
+    const maximumNetworkFee = parseEther(
+      (await payerCap.innerText()).split(' ')[0]
+    );
     const before = deliveries.length;
+    const beforeEstimates = signedEstimates;
     await page.getByRole('button', { name: 'Confirm', exact: true }).click();
-    // Wallet Send's Confirm screen already approves the displayed EntryPoint
-    // ceiling. Its next owned dialog is the actual outer-payer fee review.
-    if (declinePayer) {
+    if (exceedPayerBudget) {
       await expect(
-        page.getByRole('heading', { name: 'Review network fee', exact: true })
+        page.getByText(en.send.smartAccountPayerFeeExceeded, { exact: true })
       ).toBeVisible();
-      const dialog = page.getByRole('dialog').filter({
-        has: page.getByRole('heading', {
-          name: 'Review network fee',
-          exact: true,
-        }),
-      });
-      await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-      await expect(
-        page.getByRole('heading', { name: 'Review network fee', exact: true })
-      ).toHaveCount(0);
+      await expect(networkFeeReview()).toHaveCount(0);
       expect(deliveries).toHaveLength(before);
+      expect(signedEstimates).toBeGreaterThan(beforeEstimates);
       expect(lastEstimated?.signature).not.toBe('0x');
       expect(await canonicalNonce(lastEstimated!)).toBe(
         BigInt(lastEstimated!.nonce)
       );
+      mark('cancellation:retained-after-fee-refusal');
       return { before, operation: lastEstimated! };
     }
-    await approveSmartAccountFeeReview(page, {
-      kind: 'payer',
-      account,
-      payer,
-      chainId: chain.chainId,
-      symbol: currency,
-    });
     await expect
       .poll(() => deliveries.length, { timeout: 30000 })
       .toBe(before + 1);
     await expect(page).toHaveURL(/#\/home$/, { timeout: 15000 });
+    await expect(networkFeeReview()).toHaveCount(0);
+    expect(deliveries.at(-1)!.maximumNetworkFee).toBeLessThanOrEqual(
+      maximumNetworkFee
+    );
     return { before, ...deliveries.at(-1)! };
   }
   const cancellationDialog = () =>
@@ -350,7 +343,9 @@ export async function runSmartAccountCancellationJourney(options: Options) {
           `[data-transaction-hash="${original.hash}"]`
         );
         await expect(originalRow).toHaveCount(1);
-        await expect(saved.locator('[data-operation-hash]')).toHaveCount(0);
+        await expect(
+          saved.getByText(en.transactions.smartAuthorizations.signedOperation)
+        ).toHaveCount(0);
         const before = deliveries.length;
         const beforeEstimates = signedEstimates;
         await cancelFromActivity(original.hash);
@@ -398,7 +393,11 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         await expect(
           activity.locator(`[data-transaction-hash="${cancelled.hash}"]`)
         ).toHaveCount(1);
-        await expect(activity.locator('[data-operation-hash]')).toHaveCount(0);
+        await expect(
+          activity.getByText(
+            en.transactions.smartAuthorizations.signedOperation
+          )
+        ).toHaveCount(0);
         const replayHash = await originalReplayFails(original.operation);
         expect(await rpc('eth_getBalance', [recipient, 'latest'])).toBe(
           beforeBalance
@@ -461,18 +460,19 @@ export async function runSmartAccountCancellationJourney(options: Options) {
     );
     let abandoned!: SmartAccountPackedUserOperation;
     await wallet.step(
-      'Declining payer consent adds no Activity transaction',
+      'An over-budget payer quote retains only the signed operation',
       async () => {
-        const result = await beginSend('declined-payer', true);
+        const result = await beginSend('payer-budget-refused', true);
         abandoned = result.operation;
         const shown = await openActivity();
-        const hash = getSmartAccountUserOpHash(
-          abandoned,
-          chain.chainId
-        ).toLowerCase();
         await expect(
-          shown.locator(`[data-operation-hash="${hash}"]`)
-        ).toHaveCount(0);
+          shown.getByText(en.transactions.smartAuthorizations.signedOperation)
+        ).toHaveCount(1);
+        await expect(
+          shown.getByText(
+            en.transactions.smartAuthorizations.noTransactionRecorded
+          )
+        ).toHaveCount(1);
         expect(await page.locator('body').innerText()).not.toContain(
           abandoned.signature
         );
@@ -505,10 +505,17 @@ export async function runSmartAccountCancellationJourney(options: Options) {
       account.toLowerCase()
     );
     await wallet.step(
-      'Only transaction rows appear after cold restart',
+      'The signed operation remains visible after cold restart',
       async () => {
         const shown = await openActivity();
-        await expect(shown.locator('[data-operation-hash]')).toHaveCount(0);
+        await expect(
+          shown.getByText(en.transactions.smartAuthorizations.signedOperation)
+        ).toHaveCount(1);
+        await expect(
+          shown.getByText(
+            en.transactions.smartAuthorizations.noTransactionRecorded
+          )
+        ).toHaveCount(1);
         expect(await page.locator('body').innerText()).not.toContain(
           abandoned.signature
         );

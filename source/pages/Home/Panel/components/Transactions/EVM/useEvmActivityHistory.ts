@@ -8,7 +8,10 @@ import { controllerEmitter } from 'scripts/Background/controllers/controllerEmit
 import type { ITransactionInfoEvm } from 'types/useTransactionsInfo';
 import type { IWalletNavigationScope } from 'utils/navigationState';
 
-import type { EvmActivitySummary } from '../../../../../../wallet/evmActivityRow';
+import type {
+  EvmActivitySummary,
+  SmartAccountSignedActivity,
+} from '../../../../../../wallet/evmActivityRow';
 import type { SmartAccountReplayIntent } from '../../../../../../wallet/smartAccountSignedReplay';
 
 type ActivityRow = ITransactionInfoEvm & {
@@ -17,17 +20,20 @@ type ActivityRow = ITransactionInfoEvm & {
 
 type Page = {
   nextCursor: string | null;
+  signedOperations?: readonly SmartAccountSignedActivity[];
   transactions: readonly EvmActivitySummary[];
 };
 type State = {
   failedCursor?: string;
   loading: boolean;
   page: { nextCursor: string | null; transactions: ActivityRow[] };
+  signedOperations: readonly SmartAccountSignedActivity[];
   unavailable: boolean;
 };
 const EMPTY: State = {
   loading: true,
   page: { transactions: [], nextCursor: null },
+  signedOperations: [],
   unavailable: false,
 };
 
@@ -98,6 +104,21 @@ export const useEvmActivityHistory = ({
           !Array.isArray(page?.transactions) ||
           page.transactions.length > 30 ||
           page.transactions.some((row) => typeof row?.hash !== 'string') ||
+          (page.signedOperations !== undefined &&
+            (!Array.isArray(page.signedOperations) ||
+              page.signedOperations.length > 30 ||
+              page.signedOperations.some(
+                (row: SmartAccountSignedActivity) =>
+                  !row ||
+                  typeof row.account !== 'string' ||
+                  typeof row.operationHash !== 'string' ||
+                  !/^0x[\da-f]{64}$/i.test(row.operationHash) ||
+                  (row.replacesOperationHash !== undefined &&
+                    (typeof row.replacesOperationHash !== 'string' ||
+                      !/^0x[\da-f]{64}$/i.test(row.replacesOperationHash))) ||
+                  !Number.isSafeInteger(row.createdAt) ||
+                  (row.status !== 'unresolved' && row.status !== 'unavailable')
+              ))) ||
           (page.nextCursor !== null && typeof page.nextCursor !== 'string')
         )
           throw new Error('Activity page unavailable');
@@ -119,6 +140,15 @@ export const useEvmActivityHistory = ({
           return {
             loading: false,
             unavailable: false,
+            signedOperations: beforeHash
+              ? previous.signedOperations
+              : (page.signedOperations ?? []).filter(
+                  (row) =>
+                    row.chainId === String(chainId) &&
+                    row.account.toLowerCase() ===
+                      accountAddress?.toLowerCase() &&
+                    (clearedAt === undefined || row.createdAt > clearedAt)
+                ),
             page: {
               nextCursor:
                 !beforeHash && overlaps
@@ -208,6 +238,9 @@ export const useEvmActivityHistory = ({
   };
   return {
     transactions,
+    signedOperations: includeLocal
+      ? state.signedOperations
+      : EMPTY.signedOperations,
     olderRows,
     smartCancellationHashes,
     unavailable: includeLocal && state.unavailable,

@@ -33,6 +33,7 @@ export const isOwnedSmartAccountControllerCall = (methods: unknown): boolean =>
     'submitSmartAccountExecution',
   ].includes(methods[1]);
 export type SmartAccountControllerAuthority = Readonly<{
+  allowWalletSendPayerBudget?: true;
   assertCurrent(): void;
   confirmFee?(review: SmartAccountControllerFeeReview): Promise<string | null>;
   kind: 'document' | 'worker';

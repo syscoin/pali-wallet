@@ -1,6 +1,6 @@
 import {
-  assertSmartAccountCancellationPayerFee,
-  getSmartAccountCancellationPayerBudget,
+  assertSmartAccountPayerFee,
+  getSmartAccountPayerBudget,
 } from './cancellationFee';
 import { getPaliEntryPointAddress } from './contracts';
 import type { SmartAccountControllerFeeReview } from '../../shared/smartAccountControllerAuthority';
@@ -8,7 +8,7 @@ import type { SmartAccountControllerFeeReview } from '../../shared/smartAccountC
 const chainId = 1;
 const account = '0x' + '22'.repeat(20);
 const payer = '0x' + '33'.repeat(20);
-const budget = getSmartAccountCancellationPayerBudget({
+const budget = getSmartAccountPayerBudget({
   chainId,
   blockGasLimit: BigInt(30_000_000),
   operationGas: BigInt(100_000),
@@ -37,10 +37,10 @@ const intent = { account, chainId, payer, purpose: 'submit' as const };
 it('admits the exact network quote within the approved limit', () => {
   expect(budget.maximumFeeWei).toBe('360000');
   expect(() =>
-    assertSmartAccountCancellationPayerFee(review, budget, intent)
+    assertSmartAccountPayerFee(review, budget, intent)
   ).not.toThrow();
   expect(() =>
-    assertSmartAccountCancellationPayerFee(
+    assertSmartAccountPayerFee(
       { ...review, maximumFeeUnits: '360001' },
       budget,
       intent
@@ -50,11 +50,9 @@ it('admits the exact network quote within the approved limit', () => {
 
 it('requires the approved funding source even when the gross fee is within budget', () => {
   const sponsored = { ...budget, gasTank: true };
+  expect(() => assertSmartAccountPayerFee(review, sponsored, intent)).toThrow();
   expect(() =>
-    assertSmartAccountCancellationPayerFee(review, sponsored, intent)
-  ).toThrow();
-  expect(() =>
-    assertSmartAccountCancellationPayerFee(
+    assertSmartAccountPayerFee(
       { ...review, coveredFeeUnits: review.maximumFeeUnits },
       sponsored,
       intent
@@ -76,18 +74,12 @@ it('keeps the first-use transfer and its gas fee within their separate bounds', 
     },
   };
   const fund = { ...intent, purpose: 'fund' as const };
-  expect(() =>
-    assertSmartAccountCancellationPayerFee(funding, budget, fund)
-  ).not.toThrow();
+  expect(() => assertSmartAccountPayerFee(funding, budget, fund)).not.toThrow();
   for (const quote of [
     { ...funding, maximumFeeUnits: '50401' },
     { ...funding, transaction: { ...funding.transaction, value: '51' } },
     { ...funding, transaction: { ...funding.transaction, to: payer } },
   ])
-    expect(() =>
-      assertSmartAccountCancellationPayerFee(quote, budget, fund)
-    ).toThrow();
-  expect(() =>
-    assertSmartAccountCancellationPayerFee(funding, budget, intent)
-  ).toThrow();
+    expect(() => assertSmartAccountPayerFee(quote, budget, fund)).toThrow();
+  expect(() => assertSmartAccountPayerFee(funding, budget, intent)).toThrow();
 });
