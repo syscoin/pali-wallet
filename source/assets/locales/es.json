@@ -1323,6 +1323,17 @@
     "speedUpFeeConsent": "¿Acelerar esta transacción con una comisión de red máxima de {{fee}} {{currency}}?",
     "speedUpAmountWouldChange": "Añade fondos a esta cuenta antes de acelerar la transacción. El importe original no cambiará.",
     "speedUpFeeUnavailable": "No se pudo comprobar la comisión. Inténtalo de nuevo.",
+    "utxoReplacement": {
+      "checkStatus": "Comprobar estado",
+      "originalTransaction": "Transacción original",
+      "originalFee": "Comisión de red original",
+      "cancelDescription": "Devuelve los fondos a tu cartera con una comisión más alta. La transacción original podría confirmarse primero.",
+      "speedUpDescription": "Mantén el mismo destinatario e importe y paga una comisión mayor con el cambio.",
+      "unavailable": "Esta transacción no se puede reemplazar en este momento.",
+      "submitted": "Transacción de reemplazo enviada",
+      "unknown": "No se pudo confirmar el envío. Comprueba el estado de la transacción de reemplazo.",
+      "reviewExpired": "Esta revisión ha caducado. Vuelve a abrir la transacción para revisar una nueva comisión."
+    },
     "replay": {
       "reviewCancellation": "Revisar cancelación",
       "cancellationDescription": "¿Cancelar esta transacción con una comisión de red máxima de {{fee}} {{currency}}? La transacción original aún puede confirmarse primero.",

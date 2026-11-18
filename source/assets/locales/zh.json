@@ -1323,6 +1323,17 @@
     "speedUpFeeConsent": "是否以最高 {{fee}} {{currency}} 的网络费用加速此交易？",
     "speedUpAmountWouldChange": "加速此交易前，请先向此账户充值。原始金额不会改变。",
     "speedUpFeeUnavailable": "无法检查费用。请重试。",
+    "utxoReplacement": {
+      "checkStatus": "查看状态",
+      "originalTransaction": "原交易",
+      "originalFee": "原网络手续费",
+      "cancelDescription": "支付更高的手续费，将资金退回你的钱包。原交易可能先被确认。",
+      "speedUpDescription": "收款地址和金额保持不变，额外的手续费从找零中扣除。",
+      "unavailable": "目前无法替换此交易。",
+      "submitted": "替换交易已提交",
+      "unknown": "无法确认提交结果。请查看替换交易的状态。",
+      "reviewExpired": "此次确认已过期。请重新打开交易并核对新的手续费。"
+    },
     "replay": {
       "reviewCancellation": "检查取消操作",
       "cancellationDescription": "要以最高 {{fee}} {{currency}} 的网络费用取消此交易吗？原交易仍可能先得到确认。",

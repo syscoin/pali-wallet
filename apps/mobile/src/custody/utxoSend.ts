@@ -1,3 +1,4 @@
+import { readPublicSyscoinFee } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core.js';
 import { AUTOMATIC_FEE, chooseUtxoFeeRate, snapshotUtxoFeeChoice, utxoFeeRateUnits, type UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
 import { unionUtxoExclusions } from '../../../../source/shared/utxoExclusions.ts';
@@ -15,7 +16,9 @@ import { createOwnedUtxoBlockbookRead } from '../../../../source/wallet/utxoBloc
 import {
   isPositiveSptGuid,
   prepareUtxoSignedBinding,
+  utxoSubmissionUrl,
 } from '../../../../source/wallet/utxoSignedBinding.ts';
+import { availableUtxoReplacementKinds, prepareUtxoReplacement, utxoReplacementReads, type UtxoReplacementKind } from '../../../../source/wallet/utxoReplacement.ts';
 import type { SavedUtxoReviewOutput } from '../../../../source/wallet/utxoSavedReview.ts';
 import {
   observeRetainedUtxo,
@@ -40,6 +43,7 @@ import type {
 } from '../../../../source/wallet/utxoSignedBinding.ts';
 import type {
   UtxoRecordSession,
+  UtxoRetainedSubmission,
   UtxoSignedRecords,
 } from '../../../../source/wallet/utxoSignedRecords.ts';
 import {
@@ -63,10 +67,13 @@ type QuotedAmount =
       asset: NativeUtxoAsset;
     }>;
 
+export type NativeUtxoReplacement = Readonly<{ txid: string; mode: UtxoReplacementKind }>;
+
 export type NativeUtxoReview = Readonly<{
   transactionOptions: UtxoTransactionOptions;
   assetDisplay?: NativeUtxoAsset;
   feeSatoshis: string;
+  replacement?: NativeUtxoReplacement & Readonly<{ previousFeeSatoshis: string }>;
   outputs: readonly SavedUtxoReviewOutput[];
 }>;
 
@@ -102,7 +109,14 @@ export function createNativeUtxoSend(
   let busy = false;
   let readController: AbortController | undefined;
   type Prepared = Awaited<ReturnType<typeof prepareUtxoSignedBinding>>;
-  type Review = { view: NativeUtxoReview; expires: number; binding: Prepared };
+  type Review = {
+    view: NativeUtxoReview;
+    expires: number;
+    binding: Pick<Prepared, 'psbt' | 'review'> & {
+      bindSigned(signed: Parameters<Prepared['bindSigned']>[0]): Pick<ReturnType<Prepared['bindSigned']>, 'record'>;
+    };
+    predecessor?: UtxoRetainedSubmission;
+  };
   let review: Review | undefined;
   const cancel = () => {
     revision++;
@@ -190,8 +204,75 @@ export function createNativeUtxoSend(
     );
     return Object.freeze({ ...read, ...records.addressDiscovery({ ...session, assertCurrent: read.assertCurrent }, owner) });
   };
+  const candidate = async (txid: string, check: () => void, includeUnacknowledged = false) => {
+    check();
+    if (scope.account.type !== 'HDAccount' && scope.account.type !== 'Imported') return;
+    if (!/^[a-f0-9]{64}$/.test(txid)) return;
+    const retained = await records.replacementCandidate({ ...session, assertCurrent: check }, owner, txid, includeUnacknowledged);
+    check();
+    if (!retained || retained.url !== utxoSubmissionUrl(scope.network.url)) return;
+    await assertUnprotected(retained.outpoints, check);
+    return retained;
+  };
+  const observePending = async (txid: string, signal: AbortSignal, check: () => void) => {
+    const status = await observeRetainedUtxo({
+      backendChain: network.backendChain, fetch, owner, records,
+      session: { ...session, assertCurrent: check }, signal, txid,
+    });
+    check();
+    if (status !== 'seen') throw new CustodyRuntimeError('NOT_READY');
+  };
   return Object.freeze({
     cancel,
+    async availableReplacements(txid: string, assertCurrent: () => void): Promise<readonly UtxoReplacementKind[]> {
+      const retained = await candidate(txid, () => { session.assertCurrent(); assertCurrent(); }, true);
+      return retained ? availableUtxoReplacementKinds(retained) : [];
+    },
+    async prepareReplacement(input: NativeUtxoReplacement, inputFeeChoice: UtxoFeeChoice): Promise<NativeUtxoReview> {
+      const { txid, mode } = input;
+      const feeChoice = snapshotUtxoFeeChoice(inputFeeChoice);
+      return run(async () => {
+        cancel();
+        const expires = now() + REVIEW_MS;
+        const check = capture(revision, expires);
+        try {
+          if (mode !== 'speed-up' && mode !== 'cancel') throw new CustodyRuntimeError('INVALID_INPUT');
+          const before = await candidate(txid, check, true);
+          if (!before || !availableUtxoReplacementKinds(before).includes(mode))
+            throw new CustodyRuntimeError('NOT_READY');
+          const read = await ownedRead(check, true);
+          await observePending(txid, read.signal, check);
+          const predecessor = await candidate(txid, check);
+          if (!predecessor || predecessor.signedDigest !== before.signedDigest)
+            throw new CustodyRuntimeError('NOT_READY');
+          const recommended = feeChoice.kind === 'custom' ? 1e-8 : await readPublicSyscoinFee(scope.network.url, read);
+          const rate = chooseUtxoFeeRate(recommended, feeChoice) ?? recommended;
+          check();
+          const binding = await prepareUtxoReplacement({
+            scope,
+            predecessor,
+            kind: mode,
+            feeRateSatoshisPerVbyte: String(utxoFeeRateUnits(rate)),
+            isOwnedAddress: address => address === scope.account.address,
+            ...utxoReplacementReads(scope, read),
+            assertCurrent: check,
+          });
+          check();
+          await assertUnprotected(binding.review.outpoints, check);
+          const view = Object.freeze({
+            feeSatoshis: binding.review.feeSatoshis,
+            outputs: binding.review.outputs,
+            replacement: Object.freeze({ txid, mode, previousFeeSatoshis: binding.review.previousFeeSatoshis }),
+            transactionOptions: reviewUtxoTransactionOptions(true, false, true),
+          });
+          review = { expires, binding, predecessor, view };
+          return view;
+        } finally {
+          readController?.abort();
+          readController = undefined;
+        }
+      });
+    },
     async feeRecommendations(external?: AbortSignal): Promise<string> {
       return run(async () => {
         const current = revision, expires = now() + REVIEW_MS;
@@ -201,7 +282,7 @@ export function createNativeUtxoSend(
         external?.addEventListener('abort', abort, { once: true });
         try {
           const read = await ownedRead(check);
-          const rate = await sdk.getRecommendedFee(scope.network.url, read);
+          const rate = await readPublicSyscoinFee(scope.network.url, read);
           check();
           return String(utxoFeeRateUnits(rate));
         } finally { external?.removeEventListener('abort', abort); }
@@ -281,7 +362,7 @@ export function createNativeUtxoSend(
           );
           check();
           const rate = feeChoice.kind === 'automatic' || feeChoice.kind === 'medium' ? undefined
-            : chooseUtxoFeeRate(feeChoice.kind === 'custom' ? 1e-8 : await sdk.getRecommendedFee(scope.network.url, read), feeChoice);
+            : chooseUtxoFeeRate(feeChoice.kind === 'custom' ? 1e-8 : await readPublicSyscoinFee(scope.network.url, read), feeChoice);
           check();
           const result = await sdk.getEstimateSysTransactionFee(
             {
@@ -415,6 +496,13 @@ export function createNativeUtxoSend(
           try {
             await assertUnprotected(selected.binding.review.outpoints,check);
             const read = await ownedRead(check);
+            if (selected.predecessor) {
+              const predecessor = selected.predecessor;
+              await observePending(predecessor.txid, read.signal, check);
+              const retained = await candidate(predecessor.txid, check);
+              if (!retained || retained.signedDigest !== predecessor.signedDigest)
+                throw new CustodyRuntimeError('NOT_READY');
+            }
             const signed = await authorization.sign(receipt,
               { psbt: selected.binding.psbt },
               read, check
@@ -425,6 +513,7 @@ export function createNativeUtxoSend(
               record: {
                 owner,
                 operation: 'wallet',
+                ...(selected.predecessor ? { replacementOf: selected.predecessor.txid } : {}),
                 rawTransaction: record.rawTransaction,
                 txid: record.txid,
                 url: record.url,

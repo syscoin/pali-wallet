@@ -1323,6 +1323,17 @@
     "speedUpFeeConsent": "Accélérer cette transaction avec des frais de réseau maximum de {{fee}} {{currency}} ?",
     "speedUpAmountWouldChange": "Ajoutez des fonds à ce compte avant d’accélérer la transaction. Le montant initial ne sera pas modifié.",
     "speedUpFeeUnavailable": "Impossible de vérifier les frais. Veuillez réessayer.",
+    "utxoReplacement": {
+      "checkStatus": "Vérifier le statut",
+      "originalTransaction": "Transaction d’origine",
+      "originalFee": "Frais réseau d’origine",
+      "cancelDescription": "Renvoyez les fonds vers votre portefeuille avec des frais plus élevés. La transaction d’origine peut être confirmée en premier.",
+      "speedUpDescription": "Conservez le même destinataire et le même montant. Les frais supplémentaires seront prélevés sur la monnaie rendue.",
+      "unavailable": "Cette transaction ne peut pas être remplacée pour le moment.",
+      "submitted": "Transaction de remplacement envoyée",
+      "unknown": "L’envoi n’a pas pu être confirmé. Vérifiez le statut de la transaction de remplacement.",
+      "reviewExpired": "Cette vérification a expiré. Rouvrez la transaction pour examiner les nouveaux frais."
+    },
     "replay": {
       "reviewCancellation": "Vérifier l’annulation",
       "cancellationDescription": "Annuler cette transaction avec des frais réseau maximum de {{fee}} {{currency}} ? La transaction d’origine peut encore être confirmée en premier.",

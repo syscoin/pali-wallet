@@ -160,6 +160,8 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     const previousId = previous.getId(), collateralId = collateral.getId();
     const freeFunding = previous.clone(); freeFunding.ins[0].hash = Buffer.alloc(32, 9);
     const freeFundingId = freeFunding.getId();
+    const replacementFunding = previous.clone(); replacementFunding.ins[0].hash = Buffer.alloc(32, 11);
+    const replacementFundingId = replacementFunding.getId();
     const assetCarrier = previous.clone();
     assetCarrier.outs[0].value = 330n; // Taproot carrier cannot cover both asset outputs plus fees.
     const feeCollateral = bitcoin.Transaction.fromHex(SENTRY_TX_HEX);
@@ -185,6 +187,9 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     let useCollateral: false | 'asset' | 'fee' = false;
     let quoteFreeFunding = false;
     let identityFunding = false;
+    let quoteReplacementFunding = false;
+    let reportedConfirmations = 1;
+    let reportBlockHash = true;
     const recipient = bitcoin.payments.p2wpkh({
       hash: Buffer.alloc(20, 8),
       network: network.addressNetwork,
@@ -220,7 +225,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`)
         return reply(url, { tokens: [] });
       if (path === `/api/v2/utxo/${account.xpub}`) {
-        const funding = identityFunding ? [freeFunding] : fragmented ? fragments : quoteFreeFunding ? [previous, freeFunding]
+        const funding = quoteReplacementFunding ? [replacementFunding] : identityFunding ? [freeFunding] : fragmented ? fragments : quoteFreeFunding ? [previous, freeFunding]
           : useCollateral === 'fee' ? [assetCarrier, feeCollateral]
           : [useCollateral === 'asset' ? collateral : previous];
         return reply(url, funding.map((transaction) => ({
@@ -237,6 +242,8 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
         return reply(url, { hex: previous.toHex() });
       if (path === `/api/v2/tx/${freeFundingId}`)
         return reply(url, { hex: freeFunding.toHex() });
+      if (path === `/api/v2/tx/${replacementFundingId}`)
+        return reply(url, { hex: replacementFunding.toHex() });
       if (path === `/api/v2/tx/${collateralId}`)
         return reply(url, { hex: collateral.toHex() });
       if (path === `/api/v2/tx/${assetCarrierId}`)
@@ -274,8 +281,8 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
         return reply(url, !showSavedTransfer ? {} : {
           txid: ackId,
           hex: published,
-          confirmations: 1,
-          blockHash: 'a'.repeat(64),
+          confirmations: reportedConfirmations,
+          ...(reportedConfirmations > 0 && reportBlockHash ? { blockHash: 'a'.repeat(64) } : {}),
         });
       throw new Error(`Unexpected offline fixture route ${path}`);
     };
@@ -702,6 +709,46 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
         assert.equal(identityMismatch, 'genesis');
         assert((await storage.recovery.readSnapshot()).records.some(row => row.key === UTXO_SIGNED_RECORD_KEY));
       } finally { sign.mock.restore(); identityMismatch = undefined; changeIdentityOnStorage = false; identityFunding = false; calls.length = 0; }
+    }
+    if (network.id === 'bitcoin' && type === 'HDAccount') {
+      await t.test('pending Bitcoin sends can be reviewed and signed for Speed Up and Cancel', async () => {
+        quoteReplacementFunding = true;
+        reportedConfirmations = 0;
+        const credential = { method: 'device' as const };
+        const fee = { kind: 'automatic' as const };
+        const original = await send.prepare({ amount: '0.0004', recipient, rbf: true });
+        const { txid: originalId } = await send.confirm(original, credential);
+        assert.equal(bitcoin.Transaction.fromHex(published!).version, 2);
+        assert.deepEqual(await send.availableReplacements(originalId, assertCurrent), ['speed-up', 'cancel']);
+        const speedUp = { txid: originalId, mode: 'speed-up' as const };
+        const initialReview = await send.prepareReplacement(speedUp, fee);
+        assert.deepEqual(initialReview.outputs[0], original.outputs[0]);
+        assert(BigInt(initialReview.feeSatoshis) > BigInt(original.feeSatoshis));
+        assert.equal(initialReview.replacement?.previousFeeSatoshis, original.feeSatoshis);
+        await assert.rejects(send.confirm({ ...initialReview }, credential), /NOT_READY/);
+        reportedConfirmations = 1;
+        reportBlockHash = false;
+        const before = posted.length;
+        const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
+        try {
+          await assert.rejects(send.confirm(initialReview, credential), /NOT_READY/);
+          assert.equal(sign.mock.callCount(), 0);
+          assert.equal(posted.length, before);
+        } finally { sign.mock.restore(); }
+        reportedConfirmations = 0;
+        const reviewedSpeedUp = await send.prepareReplacement(speedUp, fee);
+        const { txid: bumpedId } = await send.confirm(reviewedSpeedUp, credential);
+        assert.notEqual(bumpedId, originalId);
+        assert.deepEqual(await send.availableReplacements(originalId, assertCurrent), []);
+        const cancellation = await send.prepareReplacement({ txid: bumpedId, mode: 'cancel' }, fee);
+        assert.equal(cancellation.outputs.length, 1);
+        assert.equal(cancellation.outputs[0]?.address, reviewedSpeedUp.outputs[1]?.address);
+        assert(BigInt(cancellation.feeSatoshis) > BigInt(reviewedSpeedUp.feeSatoshis));
+        const { txid: cancelled } = await send.confirm(cancellation, credential);
+        assert.notEqual(cancelled, bumpedId);
+        assert.deepEqual(await send.availableReplacements(bumpedId, assertCurrent), []);
+        assert.equal(posted.length, before + 2);
+      });
     }
     const beforeCancel = calls.length;
     active = false;

@@ -1323,6 +1323,17 @@
     "speedUpFeeConsent": "最大ネットワーク手数料 {{fee}} {{currency}} でこの取引を高速化しますか？",
     "speedUpAmountWouldChange": "この取引を高速化する前に、このアカウントに資金を追加してください。元の金額は変更されません。",
     "speedUpFeeUnavailable": "手数料を確認できませんでした。もう一度お試しください。",
+    "utxoReplacement": {
+      "checkStatus": "ステータスを確認",
+      "originalTransaction": "元のトランザクション",
+      "originalFee": "元のネットワーク手数料",
+      "cancelDescription": "手数料を上げて資金を自分のウォレットに戻します。元のトランザクションが先に承認される場合があります。",
+      "speedUpDescription": "宛先と金額はそのままで、おつりから追加の手数料を支払います。",
+      "unavailable": "現在、このトランザクションは置き換えられません。",
+      "submitted": "置き換えトランザクションを送信しました",
+      "unknown": "送信を確認できませんでした。置き換えトランザクションのステータスを確認してください。",
+      "reviewExpired": "確認画面の有効期限が切れました。トランザクションを開き直して新しい手数料を確認してください。"
+    },
     "replay": {
       "reviewCancellation": "キャンセル内容を確認",
       "cancellationDescription": "最大ネットワーク手数料 {{fee}} {{currency}} でこの取引をキャンセルしますか？元の取引が先に承認される可能性があります。",

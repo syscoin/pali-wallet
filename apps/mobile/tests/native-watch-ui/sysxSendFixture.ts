@@ -97,6 +97,8 @@ export const sysxSendFixture = {
     };
     return {
       feeRecommendations: async () => '7',
+      availableReplacements: async () => [],
+      prepareReplacement: unused,
     cancel() {
         revision++;
         counts.cancellations++;

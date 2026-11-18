@@ -1323,6 +1323,17 @@
     "speedUpFeeConsent": "Acelerar esta transação com uma taxa de rede máxima de {{fee}} {{currency}}?",
     "speedUpAmountWouldChange": "Adicione fundos a esta conta antes de acelerar a transação. O valor original não será alterado.",
     "speedUpFeeUnavailable": "Não foi possível verificar a taxa. Tente novamente.",
+    "utxoReplacement": {
+      "checkStatus": "Verificar estado",
+      "originalTransaction": "Transação original",
+      "originalFee": "Taxa de rede original",
+      "cancelDescription": "Devolve os fundos à tua carteira com uma taxa mais alta. A transação original pode ser confirmada primeiro.",
+      "speedUpDescription": "Mantém o destinatário e o montante e paga a taxa adicional com o troco.",
+      "unavailable": "De momento, não é possível substituir esta transação.",
+      "submitted": "Transação de substituição enviada",
+      "unknown": "Não foi possível confirmar o envio. Verifica o estado da transação de substituição.",
+      "reviewExpired": "A revisão expirou. Abre novamente a transação para rever a nova taxa."
+    },
     "replay": {
       "reviewCancellation": "Rever cancelamento",
       "cancellationDescription": "Cancelar esta transação com uma taxa de rede máxima de {{fee}} {{currency}}? A transação original ainda pode ser confirmada primeiro.",

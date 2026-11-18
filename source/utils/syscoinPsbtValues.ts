@@ -377,10 +377,11 @@ const verifyPreviousTransaction = (
   }
 };
 
-const resolvePreviousTransactions = async (
+export const resolvePreviousTransactions = async (
   psbt: any,
-  fetchRawTransaction: RawTransactionFetcher
-): Promise<any[]> => {
+  fetchRawTransaction: RawTransactionFetcher,
+  maxRawBytes?: number
+): Promise<Transaction[]> => {
   const previousTransactions = new Array(psbt.txInputs.length);
   const remoteInputIndexesByTxid = new Map<string, number[]>();
 
@@ -418,6 +419,8 @@ const resolvePreviousTransactions = async (
         const rawTransactionHex = getRawTransactionHex(response);
         if (
           !rawTransactionHex ||
+          (maxRawBytes !== undefined &&
+            rawTransactionHex.length > 2 * maxRawBytes) ||
           rawTransactionHex.length % 2 !== 0 ||
           !/^[0-9a-fA-F]+$/.test(rawTransactionHex)
         ) {
@@ -682,7 +685,7 @@ export const getVerifiedSyscoinPsbtValueSummary = async (
   );
 
   const inputOutputs = previousTransactions.map(
-    (previous, index) => previous.outs[psbt.txInputs[index].index]
+    (previous, index) => previous.outs[psbt.txInputs[index].index]!
   );
   return {
     ...summary,

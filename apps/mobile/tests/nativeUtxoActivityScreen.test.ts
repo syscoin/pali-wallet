@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { NativeUtxoReplacement } from '../src/custody/utxoSend.ts';
 import type { UtxoActivityRow, UtxoActivityState } from '../src/core/utxoActivity.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
@@ -8,7 +9,10 @@ import { createUtxoActivityReader } from '../src/core/utxoActivity.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 
-function fixture(row: UtxoActivityRow) {
+function fixture(row: UtxoActivityRow, replacement?: {
+  availableReplacements(txid: string, check: () => void): Promise<readonly NativeUtxoReplacement['mode'][]>;
+  onReplace(replacement: NativeUtxoReplacement): void;
+}) {
   const context = { accountId: 'watch', networkId: 'syscoin' as const, address: 'sys1public', generation: 1 };
   let state: UtxoActivityState = { status: 'ready', context, rows: [row], detail: null,
     firstPage: 1, page: 1, hasMore: false, hasNewer: false, windowed: false };
@@ -40,13 +44,39 @@ function fixture(row: UtxoActivityRow) {
     '../activity/assetIcon': { utxoActivityAssetIcon: () => undefined },
   });
   const props = { authority: {}, selectedNetwork: { id: 'syscoin', name: 'Syscoin', symbol: 'SYS', decimals: 8, chainId: 57 },
-    accountLabel: 'Daily', navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, beginNavigation() {}, setImmersive() {} }, onBack() {} };
+    ...replacement, accountLabel: 'Daily', navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, beginNavigation() {}, setImmersive() {} }, onBack() {} };
   const render = () => screenElements(host.render(props));
   return { render, close: host.close, row() {
     const list = render().find(item => item.type === 'FlatList')!;
     return screenElements(list.props.renderItem({ item: row, index: 0 })).find(item => item.type === 'ActivityListRow')!;
   } };
 }
+
+test('UTXO Activity exposes only the admitted replacement actions for its current pending detail', async () => {
+  const txid = 'e'.repeat(64);
+  const row: UtxoActivityRow = { txid, block: null, observedConfirmations: 0, receivedUnits: '0', spentUnits: '10000',
+    netUnits: '-10000', transactionFeeUnits: '100', hasAssetData: false, zdag: false, assetAmount: null, nativeTransfer: null };
+  const targets: NativeUtxoReplacement[] = [];
+  const f = fixture(row, {
+    async availableReplacements(hash, check) { check(); assert.equal(hash, txid); return ['cancel']; },
+    onReplace(target) { targets.push(target); },
+  });
+  const action = (title: string) => f.render().find(item => item.type === 'Button' && item.props.title === title);
+  try {
+    f.row().props.onPress();
+    assert.equal(action('Cancel pending transaction'), undefined);
+    await Promise.resolve();
+    assert.equal(action('Speed Up'), undefined);
+    const cancel = action('Cancel pending transaction');
+    assert(cancel);
+    cancel.props.onPress();
+    assert.equal(targets[0]?.txid, txid);
+    assert.equal(targets[0]?.mode, 'cancel');
+    f.render().find(item => item.type === 'Header')!.props.onBack();
+    cancel.props.onPress();
+    assert.equal(targets.length, 1);
+  } finally { f.close(); }
+});
 
 for (const kind of ['zdag', 'pending', 'confirmed'] as const) test(`actual UTXO list and detail render ${kind} without promoting pending to mined`, () => {
   const row: UtxoActivityRow = { txid: 'a'.repeat(64), block: kind === 'confirmed' ? { height: 190, hash: 'b'.repeat(64), timestamp: 1700000000 } : null,

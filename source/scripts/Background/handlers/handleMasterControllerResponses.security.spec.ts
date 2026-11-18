@@ -1,5 +1,6 @@
 import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 
+import { SMART_ACCOUNT_CONTROLLER_PORT } from '../../../shared/smartAccountControllerAuthority';
 import { isValidMethod } from '../controllers/message-handler/method-registry';
 import * as sendCallsBundles from '../controllers/message-handler/sendCallsBundles';
 
@@ -1330,5 +1331,66 @@ it('does not serialize forged capacity codes or messages as a local storage refu
       'code',
       'EVM_SIGNED_STORAGE_FULL'
     );
+  }
+});
+
+it('only confirms a UTXO replacement through an owned application document', async () => {
+  Object.assign(chrome.runtime, {
+    getURL: (path = '') => `chrome-extension://pali-extension/${path}`,
+    id: 'pali-extension',
+  });
+  const txid = 'aa'.repeat(32);
+  const sender = {
+    id: 'pali-extension',
+    url: 'chrome-extension://pali-extension/app.html',
+  };
+  const request = {
+    type: 'CONTROLLER_ACTION',
+    data: {
+      methods: ['wallet', 'confirmUtxoReplacement'],
+      params: ['review-id'],
+    },
+  };
+  const confirmUtxoReplacement = jest.fn(async (_id, authority) => {
+    authority.assertCurrent();
+    expect(authority.signal.aborted).toBe(false);
+    return { txid };
+  });
+  const logging = jest.spyOn(console, 'error').mockImplementation();
+  try {
+    handleMasterControllerResponses({
+      wallet: { confirmUtxoReplacement },
+    } as any);
+    const messages = chrome.runtime.onMessage.addListener as jest.Mock;
+    const listener = messages.mock.lastCall![0];
+    const reply = jest.fn();
+    expect(listener(request, sender, reply)).toBe(false);
+    expect(confirmUtxoReplacement).not.toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledWith({
+      error: expect.objectContaining({ transactionNotBroadcast: true }),
+      success: false,
+    });
+
+    const connections = chrome.runtime.onConnect.addListener as jest.Mock;
+    const connect = connections.mock.lastCall![0];
+    const port = {
+      name: SMART_ACCOUNT_CONTROLLER_PORT,
+      sender,
+      onDisconnect: { addListener: jest.fn(), removeListener: jest.fn() },
+      onMessage: { addListener: jest.fn(), removeListener: jest.fn() },
+      disconnect: jest.fn(),
+      postMessage: jest.fn(),
+    };
+    connect(port);
+    port.onMessage.addListener.mock.lastCall![0](request);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(port.postMessage).toHaveBeenCalledWith({ txid });
+    expect(confirmUtxoReplacement).toHaveBeenCalledTimes(1);
+    const [reviewId, authority] = confirmUtxoReplacement.mock.lastCall!;
+    expect(reviewId).toEqual('review-id');
+    expect(authority.signal.aborted).toBe(true);
+  } finally {
+    logging.mockRestore();
   }
 });

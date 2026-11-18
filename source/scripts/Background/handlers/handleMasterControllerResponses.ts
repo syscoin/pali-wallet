@@ -22,6 +22,7 @@ import {
   captureStartedEoaSendCallsAttempt,
   getStoredSendCallsBundle,
 } from '../controllers/message-handler/sendCallsBundles';
+import { isOwnedUtxoReplacementCall } from '../controllers/utxoReplacementReview';
 import { IMasterController } from 'scripts/Background/controllers';
 import {
   EVM_ASSET_REVIEW_REQUIRED,
@@ -271,9 +272,11 @@ export const handleMasterControllerResponses = (
       }
 
       const { methods, params } = data;
+      const ownedUtxoReplacement = isOwnedUtxoReplacementCall(methods);
       if (
-        isOwnedSmartAccountControllerCall(methods) &&
-        sourceAuthority === null
+        ((isOwnedSmartAccountControllerCall(methods) || ownedUtxoReplacement) &&
+          !sourceAuthority) ||
+        (ownedUtxoReplacement && isExternalWalletUrl(sender.url))
       )
         throw transactionApprovalExpired();
       sourceAuthority?.assertCurrent();
@@ -612,6 +615,8 @@ export const handleMasterControllerResponses = (
               argumentsForCall = [utxoApproval.input, utxoApproval.authority];
             } else if (utxoMethod) {
               argumentsForCall = [params[0]];
+            } else if (ownedUtxoReplacement) {
+              argumentsForCall = [params[0], sourceAuthority];
             }
             // Always execute the method; never attempt to send functions over messaging
             dappApproval?.assertCurrent();
@@ -888,7 +893,8 @@ export const handleMasterControllerResponses = (
         if (
           used ||
           request.type !== 'CONTROLLER_ACTION' ||
-          !isOwnedSmartAccountControllerCall(request.data?.methods) ||
+          (!isOwnedSmartAccountControllerCall(request.data?.methods) &&
+            !isOwnedUtxoReplacementCall(request.data?.methods)) ||
           !Array.isArray(request.data?.params) ||
           request.data.params.length !==
             ([

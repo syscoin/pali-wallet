@@ -1,5 +1,6 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
+import { inspectUtxoRbf } from '../shared/utxoTransactionOptions.ts';
 import { PSBT_WORK_LIMITS } from '../utils/psbtWorkBudget.ts';
 import { utxoInputOutpoints } from '../utils/utxoAcknowledgedInputs.ts';
 
@@ -37,6 +38,7 @@ import {
   type Summary,
 } from './utxoSignedBundle.ts';
 import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
+import type { Transaction } from 'bitcoinjs-lib';
 
 export {
   inspectUtxoSignedBundle,
@@ -66,6 +68,7 @@ export type UtxoDurableSubmission = Readonly<{
   outpoints: readonly string[];
   owner: UtxoRecordOwner;
   rawTransaction: string;
+  replacementOf?: string;
   txid: string;
   url: string;
   virtualSize: number;
@@ -113,6 +116,7 @@ export function snapshotUtxoSubmission(
     feeSatoshis,
     virtualSize,
     issuedPaths,
+    replacementOf,
   } = record;
   return Object.freeze({
     owner: Object.freeze({
@@ -127,6 +131,7 @@ export function snapshotUtxoSubmission(
     }),
     operation,
     rawTransaction,
+    ...(replacementOf === undefined ? {} : { replacementOf }),
     txid,
     url,
     outpoints: Object.freeze([...outpoints]),
@@ -233,6 +238,11 @@ function checkRecord(
     !isUtxoSubmissionUrl(url) ||
     !HASH.test(txid) ||
     !['wallet', 'external'].includes(operation) ||
+    (record.replacementOf !== undefined &&
+      (operation !== 'wallet' ||
+        typeof record.replacementOf !== 'string' ||
+        !HASH.test(record.replacementOf) ||
+        record.replacementOf === txid)) ||
     !validOutpoints(record.outpoints) ||
     !/^(0|[1-9][0-9]{0,19})$/.test(feeSatoshis) ||
     typeof raw !== 'string' ||
@@ -267,6 +277,57 @@ function checkRecord(
   )
     return corrupt();
   return owner;
+}
+
+const sameInputs = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((point, index) => point === b[index]);
+
+function inputGroup({ chain, outpoints, owner }: Entry) {
+  return JSON.stringify([chain, owner, outpoints]);
+}
+
+/** Keep all candidates for reorg observations, but only live groups reserve inputs. */
+function unresolvedEntries(entries: readonly Entry[]) {
+  const confirmed = new Set(
+    entries.filter(({ phase }) => phase === 'confirmed').map(inputGroup)
+  );
+  return entries.filter(
+    (entry) => entry.phase !== 'confirmed' && !confirmed.has(inputGroup(entry))
+  );
+}
+
+function inputConflicts(
+  entries: readonly Entry[],
+  chain: string,
+  outpoints: readonly string[]
+) {
+  const selected = new Set(outpoints);
+  return entries.filter(
+    (entry) =>
+      entry.chain === chain &&
+      entry.outpoints.some((point) => selected.has(point))
+  );
+}
+
+function currentReplacement(
+  conflicts: readonly Entry[],
+  owner: string,
+  txid: string,
+  outpoints: readonly string[],
+  includeUnacknowledged = false
+) {
+  const latest = conflicts[conflicts.length - 1];
+  return latest?.txid === txid &&
+    (latest.phase === 'submitted' ||
+      (includeUnacknowledged && latest.phase === 'pending')) &&
+    conflicts.every(
+      (entry) =>
+        entry.owner === owner &&
+        entry.phase !== 'confirmed' &&
+        sameInputs(entry.outpoints, outpoints)
+    )
+    ? latest
+    : undefined;
 }
 
 /** Shared outpoint fence and authenticated bytes. Platform storage owns commit atomicity. */
@@ -625,33 +686,74 @@ export class UtxoSignedRecords {
       const before = await this.load(session);
       if (before.entries.some((entry) => entry.key === key))
         throw new Error('UTXO_SIGNED_RECORD_ALREADY_RETAINED');
-      // Independently approved external/RBF PSBTs deliberately can spend a predecessor's inputs.
-      const selected = new Set(record.outpoints);
-      if (
-        record.operation === 'wallet' &&
-        before.entries.some(
-          (entry) =>
-            entry.chain === chain &&
-            entry.outpoints.some((point) => selected.has(point))
-        )
-      )
-        throw new Error('UTXO_SIGNED_OUTPOINT_PENDING');
+      let previousPaths: readonly UtxoIssuedAddress[] = [];
+      if (record.operation === 'wallet') {
+        const conflicts = inputConflicts(
+          before.entries,
+          chain,
+          record.outpoints
+        );
+        if (record.replacementOf) {
+          const latest = currentReplacement(
+            conflicts,
+            owner,
+            record.replacementOf,
+            record.outpoints
+          );
+          if (
+            !latest ||
+            !['HDAccount', 'Imported'].includes(record.owner.account.type)
+          )
+            throw new Error('UTXO_SIGNED_REPLACEMENT_CHANGED');
+          const original = await this.readEntry(session, latest);
+          const previous: Transaction =
+            syscoinUtils.bitcoinjs.Transaction.fromHex(
+              original.unsignedTransaction
+            );
+          const replacement: Transaction =
+            syscoinUtils.bitcoinjs.Transaction.fromHex(record.rawTransaction);
+          if (
+            original.operation !== 'wallet' ||
+            original.url !== record.url ||
+            previous.version !== 2 ||
+            replacement.version !== previous.version ||
+            replacement.locktime !== previous.locktime ||
+            !inspectUtxoRbf(previous.ins) ||
+            previous.ins.some(
+              ({ sequence }, index) =>
+                sequence !== replacement.ins[index]?.sequence
+            ) ||
+            BigInt(record.feeSatoshis) <= BigInt(original.feeSatoshis) ||
+            BigInt(record.feeSatoshis) * BigInt(original.virtualSize) <=
+              BigInt(original.feeSatoshis) * BigInt(record.virtualSize)
+          )
+            throw new Error('UTXO_SIGNED_REPLACEMENT_CHANGED');
+          previousPaths = original.issuedPaths ?? [];
+        } else if (conflicts.length) {
+          throw new Error('UTXO_SIGNED_OUTPOINT_PENDING');
+        }
+      }
       // Retain only locally issued paths whose scripts occur in these exact
       // signed bytes. They survive restart, independently of backend hints.
       const transaction = syscoinUtils.bitcoinjs.Transaction.fromHex(
         record.rawTransaction
       );
-      const issuedPaths = before.discovery
-        ?.find((item) => item.owner === owner)
-        ?.paths.filter((path) =>
-          transaction.outs.some(
-            (output: { script: Uint8Array }) =>
-              Buffer.from(output.script).toString('hex') === path.script
-          )
-        );
+      const candidates = [
+        ...previousPaths,
+        ...(before.discovery?.find((item) => item.owner === owner)?.paths ??
+          []),
+      ];
+      const issuedPaths = Array.from(
+        new Map(candidates.map((path) => [path.script, path])).values()
+      ).filter((path) =>
+        transaction.outs.some(
+          (output: { script: Uint8Array }) =>
+            Buffer.from(output.script).toString('hex') === path.script
+        )
+      );
       const retainedRecord = retainUnsigned({
         ...record,
-        issuedPaths: issuedPaths?.length ? issuedPaths : undefined,
+        issuedPaths: issuedPaths.length ? issuedPaths : undefined,
       });
       const chunks = await this.encryptEntry(
         session,
@@ -733,6 +835,7 @@ export class UtxoSignedRecords {
       issuedPaths,
       operation,
       owner,
+      replacementOf,
       signedDigest,
       unsignedTransaction,
       url,
@@ -744,6 +847,7 @@ export class UtxoSignedRecords {
       issuedPaths,
       operation,
       owner,
+      replacementOf,
       signedDigest,
       unsignedTransaction,
       url,
@@ -855,6 +959,46 @@ export class UtxoSignedRecords {
     return (await this.readMatching(session, owner, txid, entries))?.record;
   }
 
+  async replacementCandidate(
+    session: UtxoRecordSession,
+    owner: UtxoRecordOwner,
+    txid: string,
+    includeUnacknowledged = false
+  ): Promise<UtxoRetainedSubmission | undefined> {
+    if (
+      !HASH.test(txid) ||
+      !['HDAccount', 'Imported'].includes(owner.account.type)
+    )
+      return undefined;
+    const { entries } = await this.load(session);
+    const chain = chainKey(owner);
+    const identity = ownerId(owner);
+    const entry = entries.find(
+      (item) =>
+        item.chain === chain && item.owner === identity && item.txid === txid
+    );
+    if (!entry) return undefined;
+    if (
+      !currentReplacement(
+        inputConflicts(entries, chain, entry.outpoints),
+        identity,
+        txid,
+        entry.outpoints,
+        includeUnacknowledged
+      )
+    )
+      return undefined;
+    const record = await this.readEntry(session, entry);
+    const tx = syscoinUtils.bitcoinjs.Transaction.fromHex(
+      record.unsignedTransaction
+    );
+    return record.operation === 'wallet' &&
+      tx.version === 2 &&
+      inspectUtxoRbf(tx.ins)
+      ? record
+      : undefined;
+  }
+
   private async readMatching(
     session: UtxoRecordSession,
     owner: UtxoRecordOwner,
@@ -931,8 +1075,8 @@ export class UtxoSignedRecords {
     const { entries } = await this.load(session);
     const points = new Set<string>();
     const submitted = new Set<string>();
-    for (const entry of entries) {
-      if (entry.chain !== chain || entry.phase === 'confirmed') continue;
+    for (const entry of unresolvedEntries(entries)) {
+      if (entry.chain !== chain) continue;
       // An exact POST acknowledgment or raw network observation can set
       // submitted. Locally signed bytes alone only protect the outpoint.
       const acknowledged =
@@ -957,10 +1101,8 @@ export class UtxoSignedRecords {
   ): Promise<readonly Readonly<{ accepted: boolean; txid: string }>[]> {
     const identity = ownerId(owner);
     const { entries } = await this.load(session);
-    return entries
-      .filter(
-        (entry) => entry.owner === identity && entry.phase !== 'confirmed'
-      )
+    return unresolvedEntries(entries)
+      .filter((entry) => entry.owner === identity)
       .map(({ txid, phase }) => ({ txid, accepted: phase !== 'pending' }));
   }
 
@@ -1067,8 +1209,8 @@ export class UtxoSignedRecords {
     const identity = chainKey(chain);
     return this.exclusive(async () => {
       const { entries } = await this.load(session);
-      for (const entry of entries) {
-        if (entry.chain !== identity || entry.phase === 'confirmed') continue;
+      for (const entry of unresolvedEntries(entries)) {
+        if (entry.chain !== identity) continue;
         const retained = await this.readEntry(session, entry);
         if (retained.url === retiringSubmissionUrl)
           throw Object.assign(
@@ -1100,8 +1242,8 @@ export class UtxoSignedRecords {
     return this.exclusive(async () => {
       const { entries } = await this.load(session);
       const checked = new Set<string>();
-      for (const entry of entries) {
-        if (entry.phase === 'confirmed' || checked.has(entry.chain)) continue;
+      for (const entry of unresolvedEntries(entries)) {
+        if (checked.has(entry.chain)) continue;
         const { owner } = await this.readEntry(session, entry);
         if (owner.chainId === chainId && owner.slip44 === slip44)
           throw Object.assign(
@@ -1128,9 +1270,8 @@ export class UtxoSignedRecords {
     return this.exclusive(async () => {
       const { entries } = await this.load(session);
       const checkedChains = new Set<string>();
-      for (const entry of entries) {
-        if (entry.phase === 'confirmed' || checkedChains.has(entry.chain))
-          continue;
+      for (const entry of unresolvedEntries(entries)) {
+        if (checkedChains.has(entry.chain)) continue;
         if (entry.owner !== ownerIdForChain(entry.chain, identity)) continue;
         // The header binds a hashed chain identity, so read only exact owner
         // matches to recover the authenticated group without using a provider.
@@ -1188,6 +1329,7 @@ export class UtxoSignedRecords {
         matchesUtxoSignedDigest(retained, observed.hex) &&
         Number.isSafeInteger(observed.confirmations) &&
         observed.confirmations! >= 0;
+      const seen = matches && observed.confirmations === 0;
       const confirmed =
         matches &&
         observed.confirmations! > 0 &&
@@ -1198,15 +1340,15 @@ export class UtxoSignedRecords {
           observation,
           owner,
           txid,
-          confirmed ? 'confirmed' : matches ? 'submitted' : 'pending',
+          confirmed ? 'confirmed' : seen ? 'submitted' : 'pending',
           // An unverified observation revokes terminal eviction authority.
           // Preserve any earlier submission ACK on an already retained record.
-          matches ? undefined : 'confirmed',
+          confirmed || seen ? undefined : 'confirmed',
           match.entry.chunks,
           confirmed ? retained.issuedPaths : undefined
         )
       );
-      return confirmed ? 'confirmed' : matches ? 'seen' : 'unknown';
+      return confirmed ? 'confirmed' : seen ? 'seen' : 'unknown';
     } finally {
       if (this.observations.get(key) === request) this.observations.delete(key);
     }

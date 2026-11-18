@@ -1,6 +1,6 @@
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, FlatList, Linking, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -8,6 +8,7 @@ import { formatSyscoinTokenAmount } from '../../../../source/shared/utxoTokenAmo
 import { formatBaseUnits } from '../core/amounts';
 import type { SentryNodeObservation } from '../../../../source/shared/sentryNodeLookup';
 import { UtxoActivity, type UtxoActivityContext, type UtxoActivityOwner, type UtxoActivityRow } from '../core/utxoActivity';
+import type { NativeUtxoReplacement } from '../custody/utxoSend';
 import type { UtxoNetwork } from '../core/utxoNetworks';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { Button, Card, colors, Header, IconButton, Notice, SegmentedControl, styles, Text } from '../ui';
@@ -31,13 +32,15 @@ function assetQuantity(row: UtxoActivityRow, exact = false): string | null {
   return `${direction}${formatted} ${value.symbol ?? 'SPT'}`;
 }
 /** The active screen follows the account-owned history capability. */
-export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, navigation, onBack, initialHash }: {
+export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, navigation, onBack, initialHash, availableReplacements, onReplace }: {
   authority: UtxoActivityOwner;
   selectedNetwork: Pick<UtxoNetwork, 'id' | 'name' | 'symbol' | 'decimals' | 'chainId'>;
   accountLabel: string;
   navigation: ShellLeafNavigation;
   onBack(): void;
   initialHash?: string;
+  availableReplacements?(txid: string, assertCurrent: () => void): Promise<readonly NativeUtxoReplacement['mode'][]>;
+  onReplace?(replacement: NativeUtxoReplacement): void;
 }) {
   useNativeTranslation();
   const { hidden: hideBalances } = useBalancePrivacy();
@@ -50,12 +53,14 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   const [feedback, setFeedback] = useState('');
   const [confirmationOwner, setConfirmationOwner] = useState<UtxoActivityContext | null>(null);
   const [busy, setBusy] = useState(false);
+  const [replaceable, setReplaceable] = useState<{ detail: typeof state.detail; modes: readonly NativeUtxoReplacement['mode'][] } | null>(null);
   const [nodeInfo, setNodeInfo] = useState<SentryNodeObservation | 'unavailable' | null>(null);
   const selectTransaction = useCallback((txid: string | null) => {
     lifetime.current.selected = txid;
     lifetime.current.action++;
     lifetime.current.nodeRequest?.abort();
     setNodeInfo(null);
+    setReplaceable(null);
     setDetailsFor(null);
     setSelected(txid); setFeedback(''); setConfirmationOwner(null);
     if (txid) controller.selectDetail(txid); else controller.clearDetail();
@@ -65,6 +70,26 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   const detail = state.detail?.txid === selected ? state.detail : null;
   const chosen = detail?.row ?? summaryChosen;
   const network = state.context?.networkId === selectedNetwork.id ? selectedNetwork : null;
+  useEffect(() => {
+    if (!availableReplacements || !network || state.status !== 'ready' || detail?.status !== 'ready' ||
+        detail.row.block || detail.row.observedConfirmations !== 0 || detail.row.hasAssetData || detail.row.zdag) return;
+    let active = true;
+    const check = () => {
+      if (!active || !controller.isCurrent(state.context) || controller.getSnapshot().detail !== detail)
+        throw new Error('Activity changed');
+    };
+    void availableReplacements(detail.txid, check).then(modes => {
+      check();
+      setReplaceable({ detail, modes });
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [availableReplacements, controller, detail, network, state.context, state.status]);
+  const replacementModes = onReplace && detail && detail === replaceable?.detail && state.status === 'ready' ? replaceable.modes : [];
+  const replace = (mode: NativeUtxoReplacement['mode']) => {
+    if (!detail || !replacementModes.includes(mode) || busy || !controller.isCurrent(state.context) ||
+        controller.getSnapshot().detail !== detail) return;
+    onReplace?.(Object.freeze({ txid: detail.txid, mode }));
+  };
   const openedInitial = useRef<string | null>(null);
   useLayoutEffect(() => {
     if (initialHash && initialHash !== openedInitial.current && network && state.rows.some(row => row.txid === initialHash)) {
@@ -226,6 +251,8 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
           <Text style={styles.muted}>{t('mobile.activityViews.utxoActivityScreen.couldntLoadFullDetails')}</Text>
           <Button title={t('mobile.connections.tryAgain')} variant="secondary" onPress={() => controller.retryDetail()} />
         </View>}
+        {replacementModes.includes('speed-up') && <Button title={t('header.speedUp')} variant="secondary" disabled={busy} onPress={() => replace('speed-up')} />}
+        {replacementModes.includes('cancel') && <Button title={t('mobile.activityViews.nativeActivity.cancelPendingTransaction')} variant="secondary" disabled={busy} onPress={() => replace('cancel')} />}
         <Button title={t('send.details')} icon={detailsFor === chosen.txid ? 'chevron-up' : 'chevron-down'} variant="quiet" size="compact" expanded={detailsFor === chosen.txid}
           onPress={() => setDetailsFor(detailsFor === chosen.txid ? null : chosen.txid)} />
         {detailsFor === chosen.txid && <>

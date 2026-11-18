@@ -60,6 +60,7 @@ import {
 } from 'utils/transactionDisplay';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
+import { UtxoReplacementActions } from './UtxoReplacementActions';
 import {
   getUtxoSummaryObservation,
   watchUtxoTransactionDetails,
@@ -569,6 +570,17 @@ export const SyscoinTransactionDetails = ({
           })()}
         </div>
       )}
+
+      {!isConfirmed &&
+        !isTxCanceled &&
+        !hasTokenInfo &&
+        (isTxSent || nativeAccountChange?.startsWith('-')) && (
+          <UtxoReplacementActions
+            key={scope}
+            currency={currency ?? ''}
+            txid={normalizedHash}
+          />
+        )}
 
       {tokenGuids.map((guid: string, index: number) => (
         <div

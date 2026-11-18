@@ -116,6 +116,7 @@ import {
   filterSmartAccountNativeRecipientOperations,
   isSmartAccountNativeRecipient,
 } from '../../../shared/smartAccountExecutions';
+import { utxoFeeRateUnits } from '../../../shared/transactionFeeChoice';
 import {
   boundUtxoActivityParticipants,
   type UtxoActivityParticipants,
@@ -200,12 +201,20 @@ import {
   type UtxoBlockbookReadScope,
 } from '../../../wallet/utxoBlockbookReads';
 import {
+  availableUtxoReplacementKinds,
+  prepareUtxoReplacement as buildUtxoReplacement,
+  utxoReplacementReads,
+  type UtxoReplacementKind,
+} from '../../../wallet/utxoReplacement';
+import {
   createUtxoTransactionBinding,
   extractUtxoSignedTransaction,
   utxoSubmissionUrl,
+  type UtxoSignedScope,
 } from '../../../wallet/utxoSignedBinding';
 import {
   UTXO_SIGNED_RECORD_PREFIX,
+  type UtxoRetainedSubmission,
   type UtxoSignedRecords,
 } from '../../../wallet/utxoSignedRecords';
 import {
@@ -565,6 +574,11 @@ import {
 import { getHistoryTransaction } from './transactions/utils';
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
+import type {
+  ExtensionUtxoReplacementActions,
+  ExtensionUtxoReplacementReview,
+  PreparedUtxoReplacement,
+} from './utxoReplacementReview';
 import type {
   ActivityNotificationFact,
   ActivityNotificationScope,
@@ -1505,8 +1519,18 @@ class MainController {
     );
   }
 
-  public async checkRetainedUtxoTransfer(txid: string) {
-    const signing = this.captureUtxoSigningContext();
+  public checkRetainedUtxoTransfer(txid: string) {
+    return this.observeCapturedRetainedUtxo(
+      this.captureUtxoSigningContext(),
+      txid
+    );
+  }
+
+  private observeCapturedRetainedUtxo(
+    signing: ReturnType<MainController['captureUtxoSigningContext']>,
+    txid: string,
+    signal?: AbortSignal
+  ) {
     const { vault, vaultGlobal } = store.getState();
     const network = vault.activeNetwork;
     const owner = this.utxoRecordOwner(network, signing.context.account);
@@ -1517,26 +1541,321 @@ class MainController {
     if (!backendChain)
       throw new Error('Verify this UTXO network before checking a transfer');
     const assertCurrent = signing.assertWalletReviewCurrent;
-    return this.withUtxoReadOwner(assertCurrent, (signal) =>
-      observeRetainedUtxo({
-        records: this.getRetainedUtxoRecords(),
-        session: { keyring: signing.keyring, assertCurrent },
-        owner,
-        txid,
-        backendChain,
-        signal,
-        async fetch(input, init) {
-          if (typeof input !== 'string' || init?.method !== 'GET')
-            throw new Error('Invalid saved UTXO status request');
-          return withWalletBackend(input, () => {
-            assertCurrent();
-            if (init.signal?.aborted)
-              throw new Error('Saved UTXO status changed');
-            return globalThis.fetch(input, init);
-          });
-        },
-      })
+    return this.withUtxoReadOwner(
+      assertCurrent,
+      (signal) =>
+        observeRetainedUtxo({
+          records: this.getRetainedUtxoRecords(),
+          session: { keyring: signing.keyring, assertCurrent },
+          owner,
+          txid,
+          backendChain,
+          signal,
+          async fetch(input, init) {
+            if (typeof input !== 'string' || init?.method !== 'GET')
+              throw new Error('Invalid saved UTXO status request');
+            return withWalletBackend(input, () => {
+              assertCurrent();
+              if (init.signal?.aborted)
+                throw new Error('Saved UTXO status changed');
+              return globalThis.fetch(input, init);
+            });
+          },
+        }),
+      signal
     );
+  }
+
+  private utxoReplacementReview?: {
+    abort: AbortController;
+    binding: PreparedUtxoReplacement;
+    expires: number;
+    id: string;
+    predecessor: UtxoRetainedSubmission;
+    scope: string;
+    started: boolean;
+    timer: ReturnType<typeof setTimeout>;
+  };
+
+  private captureReplacementSigning(authority?: UtxoDappSigningAuthority) {
+    const signing = this.captureUtxoSigningContext(undefined, authority);
+    const { account } = signing.context;
+    const selected =
+      store.getState().vault.accounts[account.type]?.[account.id];
+    if (
+      (account.type !== KeyringAccountType.HDAccount &&
+        account.type !== KeyringAccountType.Imported) ||
+      !selected ||
+      selected.isLedgerWallet ||
+      selected.isTrezorWallet
+    )
+      throw new Error('UTXO replacement requires a software account');
+    signing.assertSoftwareSpend([]);
+    return {
+      ...signing,
+      context: {
+        ...signing.context,
+        account: { ...account, type: account.type },
+      },
+    };
+  }
+
+  private async readUtxoReplacementCandidate(
+    signing: ReturnType<MainController['captureReplacementSigning']>,
+    txid: string,
+    options: { passive?: true; signal?: AbortSignal } = {}
+  ) {
+    if (!/^[0-9a-f]{64}$/.test(txid)) return undefined;
+    const network = store.getState().vault.activeNetwork;
+    const owner = this.utxoRecordOwner(network, signing.context.account);
+    const session = {
+      keyring: signing.keyring,
+      assertCurrent: signing.assertWalletReviewCurrent,
+    };
+    const records = this.getRetainedUtxoRecords();
+    const url = utxoSubmissionUrl(network.url);
+    if (!options.passive) {
+      const original = await records.readExact(session, owner, txid);
+      if (
+        !original ||
+        original.url !== url ||
+        !availableUtxoReplacementKinds(original).length ||
+        (await this.observeCapturedRetainedUtxo(
+          signing,
+          txid,
+          options.signal
+        )) !== 'seen'
+      )
+        return undefined;
+    }
+    session.assertCurrent();
+    const candidate = await records.replacementCandidate(
+      session,
+      owner,
+      txid,
+      options.passive
+    );
+    session.assertCurrent();
+    return candidate?.url === url ? candidate : undefined;
+  }
+
+  public async getUtxoReplacementActions(
+    txid: string
+  ): Promise<ExtensionUtxoReplacementActions> {
+    try {
+      const signing = this.captureReplacementSigning();
+      const predecessor = await this.readUtxoReplacementCandidate(
+        signing,
+        txid,
+        {
+          passive: true,
+        }
+      );
+      const kinds = predecessor
+        ? availableUtxoReplacementKinds(predecessor)
+        : [];
+      return {
+        cancel: kinds.includes('cancel'),
+        speedUp: kinds.includes('speed-up'),
+      };
+    } catch {
+      // An unavailable private journal supplies no eligibility.
+      return { cancel: false, speedUp: false };
+    }
+  }
+
+  public async prepareUtxoReplacement(
+    txid: string,
+    kind: UtxoReplacementKind
+  ): Promise<ExtensionUtxoReplacementReview> {
+    if (kind !== 'speed-up' && kind !== 'cancel')
+      throw new Error('Invalid UTXO replacement action');
+    const signing = this.captureReplacementSigning();
+    const network = { ...store.getState().vault.activeNetwork };
+    const owner = this.utxoRecordOwner(network, signing.context.account);
+    const predecessor = await this.readUtxoReplacementCandidate(signing, txid);
+    if (
+      !predecessor ||
+      !availableUtxoReplacementKinds(predecessor).includes(kind)
+    )
+      throw new Error('UTXO replacement unavailable');
+    const profileId = await signing.keyring.getPrivateRecordProfileId();
+    const { context, assertWalletReviewCurrent } = signing;
+    assertWalletReviewCurrent();
+    const scope: UtxoSignedScope = {
+      profileId,
+      account: context.account,
+      network: {
+        kind: 'syscoin',
+        chainId: owner.chainId,
+        genesisHash: owner.genesisHash,
+        slip44: owner.slip44,
+        currency: network.currency,
+        url: network.url,
+      },
+    };
+    const binding = await signing.withRead(async (read) => {
+      const rate = await readPublicSyscoinFee(network.url, read);
+      read.assertCurrent();
+      const prepared = await buildUtxoReplacement({
+        scope,
+        predecessor,
+        kind,
+        feeRateSatoshisPerVbyte: String(utxoFeeRateUnits(rate)),
+        ...utxoReplacementReads(scope, read),
+        isOwnedAddress: (address) => address === context.account.address,
+        assertCurrent: assertWalletReviewCurrent,
+      });
+      await this.assertNoSentryCollateralInputs(
+        PsbtUtils.fromPali(prepared.psbt, network)
+      );
+      read.assertCurrent();
+      return prepared;
+    });
+    assertWalletReviewCurrent();
+    if (this.utxoReplacementReview?.started)
+      throw new Error('UTXO replacement already in progress');
+    if (this.utxoReplacementReview)
+      this.discardUtxoReplacement(this.utxoReplacementReview.id);
+    const id = crypto.randomUUID();
+    const validForMs = 90_000;
+    this.utxoReplacementReview = {
+      id,
+      binding,
+      predecessor,
+      scope: signing.walletReviewScope,
+      started: false,
+      expires: performance.now() + validForMs,
+      abort: new AbortController(),
+      timer: setTimeout(() => this.discardUtxoReplacement(id), validForMs),
+    };
+    const { feeSatoshis, outputs, previousFeeSatoshis } = binding.review;
+    return { id, kind, validForMs, feeSatoshis, outputs, previousFeeSatoshis };
+  }
+
+  public discardUtxoReplacement(id: string) {
+    const review = this.utxoReplacementReview;
+    if (review?.id !== id) return;
+    this.utxoReplacementReview = undefined;
+    clearTimeout(review.timer);
+    review.abort.abort();
+  }
+
+  public async confirmUtxoReplacement(
+    id: string,
+    authority: UtxoDappSigningAuthority
+  ): Promise<{ txid: string }> {
+    const submission = createUtxoSubmissionDisposition();
+    const review = this.utxoReplacementReview;
+    if (!authority || !review || review.id !== id || review.started)
+      throw Object.assign(new Error('UTXO replacement approval expired'), {
+        transactionNotBroadcast: true,
+      });
+    const abort = () => review.abort.abort();
+    authority.signal.addEventListener('abort', abort, { once: true });
+    if (authority.signal.aborted) abort();
+    review.started = true;
+    try {
+      const signing = this.captureReplacementSigning({
+        assertCurrent() {
+          authority.assertCurrent();
+          if (performance.now() >= review.expires)
+            throw new Error('UTXO replacement approval expired');
+        },
+        signal: review.abort.signal,
+      });
+      const assertCurrent = signing.assertWalletReviewCurrent;
+      if (review.scope !== signing.walletReviewScope)
+        throw new Error('UTXO replacement approval expired');
+      const { predecessor, binding } = review;
+      const assertPredecessorCurrent = async () => {
+        const current = await this.readUtxoReplacementCandidate(
+          signing,
+          predecessor.txid,
+          { signal: review.abort.signal }
+        );
+        assertCurrent();
+        if (current?.signedDigest !== predecessor.signedDigest)
+          throw new Error('UTXO replacement predecessor is no longer pending');
+      };
+      const network = { ...store.getState().vault.activeNetwork };
+      const psbt = PsbtUtils.fromPali(binding.psbt, network);
+      const feeReview = createUtxoTransactionBinding(
+        psbt,
+        binding.review.feeSatoshis,
+        assertCurrent
+      ).review;
+      await assertPredecessorCurrent();
+      const signed = await this.signReviewedSyscoinPsbt(
+        { psbt: binding.psbt, utxoFeeReview: feeReview },
+        signing
+      );
+      const { record: bound } = binding.bindSigned(signed);
+      assertCurrent();
+      const record = Object.freeze({
+        owner: predecessor.owner,
+        operation: 'wallet' as const,
+        replacementOf: predecessor.txid,
+        rawTransaction: bound.rawTransaction,
+        txid: bound.txid,
+        url: bound.url,
+        virtualSize: bound.virtualSize,
+        feeSatoshis: bound.review.feeSatoshis,
+        outpoints: bound.review.outpoints,
+      });
+      const sentryScope = this.getSentryCollateralScope();
+      const submit = async (markInvoked: () => void) => {
+        await this.assertNoSentryCollateralInputs(psbt);
+        await assertPredecessorCurrent();
+        return withWalletBackend(signing.context.rpcUrl, () =>
+          submitReviewedUtxo({
+            record,
+            sender: signing.transactions,
+            session: { keyring: signing.keyring, assertCurrent },
+            records: this.getRetainedUtxoRecords(),
+            signal: review.abort.signal,
+            fetch: submission.trackPost(record, (input, init) => {
+              markInvoked();
+              return globalThis.fetch(input, init);
+            }),
+          })
+        );
+      };
+      const result = sentryScope
+        ? await withSentryCollateralBroadcast(sentryScope, submit)
+        : await submit(() => undefined);
+      try {
+        assertCurrent();
+        await this.sendAndSaveTransaction(result, signing.context.account, {
+          clearNavigation: false,
+          localAcknowledgedInputs: createUtxoAcknowledgedInputs(psbt.txInputs, {
+            accountXpub: signing.context.account.xpub,
+            networkUrl: signing.context.rpcUrl,
+          }),
+        });
+      } catch {
+        // An exact network acknowledgment remains valid if local history lags.
+      }
+      return result;
+    } catch {
+      const disposition = submission.read();
+      throw Object.assign(
+        new Error(
+          disposition.transactionNotBroadcast
+            ? 'UTXO replacement was not sent'
+            : 'UTXO replacement submission could not be verified'
+        ),
+        disposition,
+        {
+          code: disposition.transactionNotBroadcast
+            ? 'UTXO_SUBMISSION_NOT_DISPATCHED'
+            : 'UTXO_SUBMISSION_UNKNOWN',
+        }
+      );
+    } finally {
+      authority.signal.removeEventListener('abort', abort);
+      this.discardUtxoReplacement(id);
+    }
   }
 
   private async recordAcknowledgedEvmReplay(

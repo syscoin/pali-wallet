@@ -1323,6 +1323,17 @@
     "speedUpFeeConsent": "Speed up this transaction with a maximum network fee of {{fee}} {{currency}}?",
     "speedUpAmountWouldChange": "Add funds to this account before speeding up this transaction. The original amount will not be changed.",
     "speedUpFeeUnavailable": "Unable to check the fee. Please try again.",
+    "utxoReplacement": {
+      "checkStatus": "Check status",
+      "originalTransaction": "Original transaction",
+      "originalFee": "Original network fee",
+      "cancelDescription": "Send the funds back to your wallet with a higher fee. The original transaction may confirm first.",
+      "speedUpDescription": "Keep the same recipient and amount and pay a higher fee from your change.",
+      "unavailable": "This transaction can’t be replaced right now.",
+      "submitted": "Replacement submitted",
+      "unknown": "Submission could not be confirmed. Check the replacement transaction’s status.",
+      "reviewExpired": "This review expired. Open the transaction again to review a new fee."
+    },
     "replay": {
       "reviewCancellation": "Review cancellation",
       "cancellationDescription": "Cancel this transaction with a maximum network fee of {{fee}} {{currency}}? The original may still confirm first.",

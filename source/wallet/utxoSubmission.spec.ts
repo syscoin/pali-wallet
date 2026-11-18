@@ -46,7 +46,7 @@ const deferred = () => {
   return { finish, promise };
 };
 
-function record(sequence = 0xfffffffd): UtxoDurableSubmission {
+function record(sequence = 0xfffffffd, fee = 1000): UtxoDurableSubmission {
   const key = bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 3));
   const address = bitcoin.payments.p2wpkh({ pubkey: key.publicKey });
   const previous = new bitcoin.Transaction();
@@ -59,7 +59,7 @@ function record(sequence = 0xfffffffd): UtxoDurableSubmission {
     sequence,
     witnessUtxo: { value: BigInt(10000), script: address.output },
   });
-  psbt.addOutput({ script: address.output, value: BigInt(9000) });
+  psbt.addOutput({ script: address.output, value: BigInt(10000 - fee) });
   psbt.signInput(0, key).finalizeAllInputs();
   const signed = psbt.extractTransaction();
   return {
@@ -69,7 +69,7 @@ function record(sequence = 0xfffffffd): UtxoDurableSubmission {
     rawTransaction: signed.toHex(),
     txid: signed.getId(),
     virtualSize: signed.virtualSize(),
-    feeSatoshis: '1000',
+    feeSatoshis: String(fee),
     outpoints: utxoInputOutpoints(signed.ins),
   };
 }
@@ -202,6 +202,124 @@ it('rejects dispatching a previously retained transaction as a new transfer', as
     transactionNotBroadcast: true,
   });
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it('submits one reviewed replacement and keeps exact custody for its next fee bump', async () => {
+  const c = context();
+  const original = record();
+  await c.records.persist(c.session, original);
+  await expect(
+    c.records.replacementCandidate(c.session, owner, original.txid)
+  ).resolves.toBeUndefined();
+  await c.records.acknowledge(c.session, owner, original.txid);
+  await expect(
+    c.records.replacementCandidate(c.session, owner, original.txid)
+  ).resolves.toEqual(unsignedRecord(original));
+  const replacement = {
+    ...record(0xfffffffd, 1200),
+    replacementOf: original.txid,
+  };
+  const competing = {
+    ...record(0xfffffffd, 1250),
+    replacementOf: original.txid,
+  };
+  const fetch = jest.fn(async () => c.response(replacement.txid));
+  const [a, b] = await Promise.allSettled([
+    submitReviewedUtxo({ ...c, record: replacement, fetch }),
+    submitReviewedUtxo({ ...c, record: competing, fetch }),
+  ]);
+  expect(a).toEqual({ status: 'fulfilled', value: { txid: replacement.txid } });
+  expect(b).toMatchObject({
+    status: 'rejected',
+    reason: {
+      code: 'UTXO_SIGNED_REPLACEMENT_CHANGED',
+      transactionNotBroadcast: true,
+    },
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(await c.records.readExact(c.session, owner, replacement.txid)).toEqual(
+    unsignedRecord(replacement)
+  );
+  await c.records.acknowledge(c.session, owner, replacement.txid);
+  const third = {
+    ...record(0xfffffffd, 1400),
+    replacementOf: replacement.txid,
+  };
+  await c.records.persist(c.session, third);
+  await expect(
+    c.records.replacementCandidate(c.session, owner, original.txid)
+  ).resolves.toBeUndefined();
+  await expect(
+    c.records.replacementCandidate(c.session, owner, replacement.txid)
+  ).resolves.toBeUndefined();
+  await c.records.observeRetained(
+    c.session,
+    owner,
+    replacement.txid,
+    async () => ({
+      txid: replacement.txid,
+      hex: replacement.rawTransaction,
+      confirmations: 1,
+      blockHash: 'ab'.repeat(32),
+    })
+  );
+  expect(await c.records.list(c.session, owner)).toEqual([]);
+  expect(
+    await c.records.readExact(c.session, owner, original.txid)
+  ).toBeDefined();
+  // Reorg observations restore the reservation. The newer signed candidate
+  // still owns the group until its status can be determined.
+  await c.records.observeRetained(
+    c.session,
+    owner,
+    replacement.txid,
+    async () => ({
+      txid: replacement.txid,
+      hex: replacement.rawTransaction,
+      confirmations: 0,
+    })
+  );
+  expect(await c.records.list(c.session, owner)).toHaveLength(3);
+});
+
+it('rejects replacement admission if the predecessor opted out, the bytes changed, or the fee fell', async () => {
+  const c = context();
+  const original = record();
+  await c.records.persist(c.session, original);
+  await c.records.acknowledge(c.session, owner, original.txid);
+  for (const changed of [
+    record(0xfffffffd, 950),
+    record(0xffffffff, 1200),
+    { ...record(0xfffffffd, 1200), url: url.replace('offline', 'changed') },
+  ]) {
+    await expect(
+      c.records.persist(c.session, { ...changed, replacementOf: original.txid })
+    ).rejects.toThrow('UTXO_SIGNED_REPLACEMENT_CHANGED');
+  }
+  const other = context();
+  const nonreplaceable = record(0xffffffff);
+  await other.records.persist(other.session, nonreplaceable);
+  await other.records.acknowledge(other.session, owner, nonreplaceable.txid);
+  await expect(
+    other.records.replacementCandidate(
+      other.session,
+      owner,
+      nonreplaceable.txid
+    )
+  ).resolves.toBeUndefined();
+  await expect(
+    other.records.persist(other.session, {
+      ...record(0xffffffff, 1200),
+      replacementOf: nonreplaceable.txid,
+    })
+  ).rejects.toThrow('UTXO_SIGNED_REPLACEMENT_CHANGED');
+  await expect(
+    c.records.observeRetained(c.session, owner, original.txid, async () => ({
+      txid: original.txid,
+      hex: original.rawTransaction,
+      confirmations: 1,
+    }))
+  ).resolves.toBe('unknown');
 });
 
 it('persists before the first POST and returns the exact ACK while its marker is held', async () => {
