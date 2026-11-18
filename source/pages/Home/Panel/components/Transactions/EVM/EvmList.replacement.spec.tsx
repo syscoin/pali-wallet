@@ -85,14 +85,12 @@ jest.mock('../../../../useHomeBrowsingState', () => ({
   getHomeBrowsingScope: () => 'scope',
 }));
 jest.mock('../useHistoryBrowsingState', () => ({
-  useHistoryBrowsingState: () => {
+  useHistoryBrowsingState: (_scope: string, initialHasMore?: boolean) => {
     const react = jest.requireActual('react');
     const [extraTransactions, setExtraTransactions] = react.useState([]);
     const [visibleCount, setVisibleCount] = react.useState(50);
     const [nextPage, setNextPage] = react.useState(2);
-    const [hasMoreServer, setHasMoreServer] = react.useState(
-      Boolean(mockApiUrl)
-    );
+    const [hasMoreServer, setHasMoreServer] = react.useState(initialHasMore);
     return {
       extraTransactions,
       visibleCount,
@@ -596,6 +594,21 @@ const confirmedRows = (count: number) =>
       txreceipt_status: '1',
     })
   );
+
+it('only offers another explorer page when the initial read found more history', () => {
+  mockApiUrl = 'https://explorer.example/api';
+  mockRows = confirmedRows(1);
+  const view = render(
+    <EvmTransactionsList userTransactions={mockRows} explorerHasMore={false} />
+  );
+  expect(screen.queryByRole('button', { name: 'buttons.loadMore' })).toBeNull();
+
+  view.rerender(
+    <EvmTransactionsList userTransactions={mockRows} explorerHasMore />
+  );
+  expect(screen.getByRole('button', { name: 'buttons.loadMore' })).toBeTruthy();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
 
 it.each([false, true])(
   'advances a duplicate-only saved page while revealing cached rows (explorer=%s)',

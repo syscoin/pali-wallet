@@ -92,7 +92,10 @@ import {
   EvmFeeBalanceError,
 } from '../../../shared/evmFeeApproval';
 import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
-import { isEvmHistoryIncomplete } from '../../../shared/evmHistory';
+import {
+  getEvmExplorerHasMore,
+  isEvmHistoryIncomplete,
+} from '../../../shared/evmHistory';
 import {
   readFreshEvmState,
   verifyEvmCanonicalBlock,
@@ -9919,9 +9922,19 @@ class MainController {
     };
     const currentAccountTxs =
       accountTransactions[activeAccount.type]?.[activeAccount.id];
-    const setHistoryStatus = (state: 'pending' | 'ready' | 'error') => {
+    const setHistoryStatus = (
+      state: 'pending' | 'ready' | 'error',
+      explorerHasMore?: boolean
+    ) => {
       if (!isBitcoinBased && !activeNetwork.apiUrl) return;
       const status = store.getState().vaultGlobal.transactionHistoryStatus;
+      const sameScope =
+        status?.scope.account === scope.account &&
+        status?.scope.network === scope.network;
+      const hasMore =
+        state === 'pending' && sameScope
+          ? status?.explorerHasMore
+          : explorerHasMore;
       const currentScope = getWalletNavigationScope();
       if (
         isCurrentRead() &&
@@ -9933,14 +9946,14 @@ class MainController {
           setTransactionHistoryStatus({
             scope,
             requestId,
+            ...(hasMore !== undefined && { explorerHasMore: hasMore }),
             // A routine poll does not invalidate an already verified empty
             // view. An explicit retry after an error remains visibly pending.
             state:
               state === 'pending' &&
               isPolling &&
               status?.state === 'ready' &&
-              status.scope.account === scope.account &&
-              status.scope.network === scope.network
+              sameScope
                 ? 'ready'
                 : state,
           })
@@ -10081,7 +10094,10 @@ class MainController {
                 })
               );
               this.transactionUpdateCommitId = requestId;
-              setHistoryStatus(isEvmHistoryIncomplete(txs) ? 'error' : 'ready');
+              setHistoryStatus(
+                isEvmHistoryIncomplete(txs) ? 'error' : 'ready',
+                getEvmExplorerHasMore(txs)
+              );
 
               const historySave = this.postSwitchHistorySave;
               if (historySave && !isBitcoinBased) {
@@ -10136,7 +10152,10 @@ class MainController {
                   activeAccount.id
                 ]?.ethereum?.[activeNetwork.chainId] || []
               );
-              setHistoryStatus(isEvmHistoryIncomplete(txs) ? 'error' : 'ready');
+              setHistoryStatus(
+                isEvmHistoryIncomplete(txs) ? 'error' : 'ready',
+                getEvmExplorerHasMore(txs)
+              );
             }
 
             if (!isBitcoinBased) {

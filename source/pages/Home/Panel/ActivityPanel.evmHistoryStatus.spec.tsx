@@ -101,8 +101,10 @@ jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
 // The real panel and complete history producer/persistence path are under test.
 // Row formatting has independent suites; display its exact committed hashes.
 jest.mock('pages/Home/Panel/components/Transactions/EVM/EvmList', () => ({
-  EvmTransactionsList: ({ userTransactions }: any) => (
-    <div>{userTransactions.map((tx: any) => tx.hash).join(',')}</div>
+  EvmTransactionsList: ({ explorerHasMore, userTransactions }: any) => (
+    <div data-explorer-has-more={String(explorerHasMore)}>
+      {userTransactions.map((tx: any) => tx.hash).join(',')}
+    </div>
   ),
 }));
 jest.mock('pages/Home/Panel/components/Transactions/UTXO/UtxoList', () => ({
@@ -129,6 +131,7 @@ const transaction = {
 let originalFetch: typeof fetch;
 let manager: ReturnType<typeof TransactionsManager>;
 let mode: 'empty' | 'failed';
+let explorerRows: (typeof transaction)[];
 let reads: string[];
 let provider: any;
 let hold: Promise<void> | undefined;
@@ -139,13 +142,13 @@ const deferred = () => {
   });
   return { promise, resolve };
 };
-const response = (status: number) =>
+const response = (status: number, result: unknown[] = []) =>
   ({
     ok: status === 200,
     status,
     statusText: status === 200 ? 'OK' : 'Synthetic history failure',
     text: async () => 'Synthetic history failure',
-    json: async () => ({ status: '1', message: 'OK', result: [] }),
+    json: async () => ({ status: '1', message: 'OK', result }),
   } as unknown as Response);
 const currentRows = () =>
   mockStore.getState().vault.accountTransactions.HDAccount[0].ethereum[
@@ -180,6 +183,7 @@ const setRows = (rows: any[]) =>
 beforeEach(() => {
   jest.clearAllMocks();
   mode = 'empty';
+  explorerRows = [];
   hold = undefined;
   reads = [];
   const initial = vaultReducer(undefined, { type: 'test/init' });
@@ -309,7 +313,10 @@ beforeEach(() => {
     reads.push(action);
     const responseMode = mode;
     await hold;
-    return response(responseMode === 'failed' ? 500 : 200);
+    return response(
+      responseMode === 'failed' ? 500 : 200,
+      action === 'txlist' ? explorerRows : []
+    );
   });
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -353,6 +360,26 @@ it('preserves cached current-account rows when configured explorer history fails
   expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
   expect(currentRows()).toEqual([transaction]);
 });
+
+it.each([1, 30])(
+  'passes the explorer page hint for %s indexed transactions',
+  async (count) => {
+    explorerRows = Array.from({ length: count }, (_, index) => ({
+      ...transaction,
+      hash: '0x' + index.toString(16).padStart(64, '0'),
+      nonce: index,
+    }));
+    await expect(fetchInitial()).resolves.toBeUndefined();
+    await renderAfterSettleTime();
+    const rows = screen.getByText(
+      explorerRows.map(({ hash }) => hash).join(',')
+    );
+    expect(rows).toHaveAttribute(
+      'data-explorer-has-more',
+      String(count === 30)
+    );
+  }
+);
 
 it('shows incomplete history after a no-API RPC fallback returns no rows', async () => {
   mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: undefined }));

@@ -17,7 +17,7 @@ export interface IHistoryPage<T> {
 
 interface IHistoryView {
   cacheKey: string;
-  hasMoreServer: boolean;
+  hasMoreServer?: boolean;
   nextPage: number;
   restoreThroughPage?: number;
   visibleCount: number;
@@ -26,7 +26,7 @@ interface IHistoryView {
 /** Fetched public rows stay in memory; navigation metadata stores only their cache key. */
 export const useHistoryBrowsingState = <T>(
   scope: string,
-  hasMoreInitially: boolean,
+  hasMoreInitially: boolean | undefined,
   fetchPage?: (page: number) => Promise<IHistoryPage<T>>
 ) => {
   const location = useLocation();

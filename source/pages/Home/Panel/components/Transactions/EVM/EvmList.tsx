@@ -741,7 +741,9 @@ export const EvmTransactionsList = ({
   savedHasMore = false,
   savedLoading = false,
   loadMoreSaved,
+  explorerHasMore,
 }: {
+  explorerHasMore?: boolean;
   loadMoreSaved?: () => Promise<void>;
   savedHasMore?: boolean;
   savedLoading?: boolean;
@@ -831,7 +833,7 @@ export const EvmTransactionsList = ({
     isRestoringPages,
   } = useHistoryBrowsingState<ITransactionInfoEvm>(
     paginationContext,
-    true,
+    undefined,
     apiUrl ? fetchHistoryPage : undefined
   );
   const combinedTransactions = useMemo(
@@ -1036,7 +1038,7 @@ export const EvmTransactionsList = ({
       {/* Load more: API-backed if apiUrl exists; else local slicing fallback */}
       {apiUrl
         ? (savedHasMore ||
-            hasMoreServer ||
+            (hasMoreServer ?? explorerHasMore !== false) ||
             filteredTransactions.length > visibleCount) && (
             <div className="flex justify-center py-3">
               <button
@@ -1072,7 +1074,7 @@ export const EvmTransactionsList = ({
                         setExtraTransactions((prev) => [...prev, ...newTxs]);
                         setVisibleCount((count) => count + newTxs.length);
                         setNextPage((p) => p + 1);
-                        if (res?.hasMore === false) setHasMoreServer(false);
+                        setHasMoreServer(res.hasMore !== false);
                       } else {
                         setHasMoreServer(false);
                       }

@@ -8,6 +8,7 @@ import {
   mergeEvmExplorerTransactions,
   explorerApiError,
   markEvmHistoryIncomplete,
+  markEvmExplorerHasMore,
   isEvmHistoryIncomplete,
 } from '../../../../shared/evmHistory';
 import { assertEvmReceiptCoherence } from '../../../../shared/evmTransactionObservation';
@@ -478,7 +479,17 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       return {
         transactions: finalTransactions, // Return the array (even if empty) - empty array is valid
         error: tokenError,
-        hasMore: finalTransactions.length >= 30, // heuristic for initial load
+        // Either feed can have another page independently. The wallet also
+        // trims the combined first page to 30, even if both feeds fit.
+        hasMore:
+          baseTxCount >= 30 ||
+          tokenEventResults.length >= 30 ||
+          (allTransactions.length > 30 &&
+            allTransactions.filter(
+              (tx) =>
+                tx.historySource !==
+                EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending
+            ).length > 30),
       };
     } finally {
       clearTimeout(timer);
@@ -615,6 +626,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     let rawTransactions: IEvmTransactionResponse[] = [];
     const isSmartAccount = Boolean((currentAccount as any).isSmartAccount);
     let apiSucceeded = false;
+    let explorerHasMore: boolean | undefined;
     let incompleteHistory = false;
 
     // Try to fetch from external API first (more efficient)
@@ -639,6 +651,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         );
         rawTransactions = apiResult.transactions;
         apiSucceeded = true;
+        explorerHasMore = apiResult.hasMore;
         incompleteHistory = Boolean(apiResult.error);
       } else if (apiResult.error) {
         // Always throw when API is configured but fails
@@ -881,13 +894,14 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
     // Process all transactions consistently, regardless of source (API or RPC)
     check();
-    const processedTransactions =
-      validateAndManageUserTransactions(rawTransactions);
+    const processedTransactions = validateAndManageUserTransactions(
+      rawTransactions
+    ) as IEvmTransactionResponse[];
+    if (explorerHasMore !== undefined)
+      markEvmExplorerHasMore(processedTransactions, explorerHasMore);
     return incompleteHistory
-      ? markEvmHistoryIncomplete(
-          processedTransactions as IEvmTransactionResponse[]
-        )
-      : (processedTransactions as IEvmTransactionResponse[]);
+      ? markEvmHistoryIncomplete(processedTransactions)
+      : processedTransactions;
   };
 
   return {

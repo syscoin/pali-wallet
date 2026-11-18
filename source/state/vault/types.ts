@@ -87,6 +87,7 @@ export interface IGlobalState {
   networks: INetworksVault;
 
   transactionHistoryStatus?: {
+    explorerHasMore?: boolean;
     requestId: number;
     scope: IWalletNavigationScope;
     state: 'pending' | 'ready' | 'error';

@@ -44,11 +44,12 @@ export const TransactionsPanel = () => {
     (state: RootState) => state.vaultGlobal.transactionHistoryStatus
   );
   const scope = useSelector(getWalletNavigationScope);
-  const historyState =
+  const currentHistory =
     historyStatus?.scope.account === scope.account &&
     historyStatus?.scope.network === scope.network
-      ? historyStatus.state
+      ? historyStatus
       : undefined;
+  const historyState = currentHistory?.state;
   const scopeKey = `${scope.account}:${scope.network}`;
   const clearedAt =
     activeAccount?.evmActivityClearedAtByChainId?.[activeNetwork.chainId];
@@ -324,9 +325,7 @@ export const TransactionsPanel = () => {
   const showHistoryRetry =
     hasHistoryStatus &&
     historyState !== 'ready' &&
-    (isRetrying ||
-      historyUnavailable ||
-      (!hasTransactions && historyState !== 'pending'));
+    (historyState !== 'pending' || isRetrying);
   const historyRetry = showHistoryRetry && (
     <div
       className={
@@ -335,7 +334,7 @@ export const TransactionsPanel = () => {
           : 'mt-4 text-center text-sm text-brand-gray200'
       }
     >
-      <p role="status" className="min-h-[1.25rem]">
+      <p role="status" className="min-h-[1.25rem] min-w-0 break-words">
         {isRetrying
           ? t('networkConnection.loadingTransactions')
           : historyUnavailable
@@ -404,6 +403,7 @@ export const TransactionsPanel = () => {
             <UtxoTransactionsList userTransactions={utxoTransactions} />
           ) : (
             <EvmTransactionsList
+              explorerHasMore={currentHistory?.explorerHasMore === true}
               userTransactions={evmTransactions}
               savedTransactions={saved.transactions}
               savedHasMore={saved.hasMore}
