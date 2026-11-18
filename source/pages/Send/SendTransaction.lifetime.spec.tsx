@@ -725,7 +725,6 @@ it.each(['dismissed', 'completed', 'outcome-unknown'])(
       await act(async () => mockButtonHandlers['buttons.cancel']());
     } else {
       if (outcome === 'outcome-unknown') {
-        mockHandleTransactionError.mockReturnValueOnce(true);
         mockEmitter
           .mockResolvedValueOnce({ nativeBalance: '1' })
           .mockRejectedValueOnce(Error('Network request timed out'));
@@ -2348,19 +2347,25 @@ describe('SendTransaction error close lifetimes', () => {
     const timer = closeTimer(4000);
     mockEmitter.mockClear();
     await act(async () => mockButtonHandlers['buttons.confirm']());
-    await act(async () => mockButtonHandlers['buttons.cancel']());
+    await act(async () => mockButtonHandlers['buttons.close']());
     expect(mockEmitter).not.toHaveBeenCalled();
     expect(mockClose).toHaveBeenCalledTimes(1);
     await act(async () => timer.callback());
     expect(mockClose).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['hardware cancellation', 'device locked', 'blind signing disabled'])(
+  it.each([
+    'Ledger request cancelled',
+    'device locked',
+    'blind signing disabled',
+  ])(
     'keeps an ambiguous %s non-retryable but allows dismissal',
     async (message) => {
       mockState.vault.accounts.HDAccount[0].isLedgerWallet = true;
       const view = await prepare();
-      mockHandleTransactionError.mockReturnValueOnce(true);
+      mockHandleTransactionError.mockImplementationOnce(
+        jest.requireActual('utils/errorHandling').handleTransactionError
+      );
       mockEmitter
         .mockResolvedValueOnce({ nativeBalance: '1' })
         .mockRejectedValueOnce(Error(message));
@@ -2368,6 +2373,13 @@ describe('SendTransaction error close lifetimes', () => {
       expect(screen.getByRole('status').textContent).toBe(
         'transactions.replay.unknown'
       );
+      expect(mockAlert.error).toHaveBeenCalledWith(
+        'transactions.replay.unknown'
+      );
+      expect(mockAlert.info).not.toHaveBeenCalledWith(
+        'transactions.transactionCancelled'
+      );
+      expect(mockHandleTransactionError).not.toHaveBeenCalled();
       expect(
         (
           screen.getByRole('button', {
@@ -2378,14 +2390,14 @@ describe('SendTransaction error close lifetimes', () => {
       expect(
         (
           screen.getByRole('button', {
-            name: 'buttons.cancel',
+            name: 'buttons.close',
           }) as HTMLButtonElement
         ).disabled
       ).toBe(false);
       mockEmitter.mockClear();
       await act(async () => mockButtonHandlers['buttons.confirm']());
       expect(mockEmitter).not.toHaveBeenCalled();
-      await act(async () => mockButtonHandlers['buttons.cancel']());
+      await act(async () => mockButtonHandlers['buttons.close']());
       expect(mockClose).toHaveBeenCalledTimes(1);
       view.unmount();
     }

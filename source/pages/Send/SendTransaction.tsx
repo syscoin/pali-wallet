@@ -1158,17 +1158,12 @@ export const SendTransaction = () => {
           setSubmissionUnknown(true);
           setLoading(false);
         }
-        // Handle specific errors (blacklist, cancellation, device issues, etc.)
-        const wasHandledSpecifically = handleTransactionError(
-          error,
-          alert,
-          t,
-          activeAccount,
-          activeNetwork
-        );
-
-        // For errors that were handled specifically, just stop loading
-        if (wasHandledSpecifically) {
+        // An ambiguous response can carry a cancellation-like error message.
+        // Only show specific failure feedback once submission is ruled out.
+        if (
+          !outcomeUnknown &&
+          handleTransactionError(error, alert, t, activeAccount, activeNetwork)
+        ) {
           setLoading(false);
           return;
         }
@@ -2333,7 +2328,7 @@ export const SendTransaction = () => {
                 }
                 onClick={handleCancel}
               >
-                {t('buttons.cancel')}
+                {t(submissionUnknown ? 'buttons.close' : 'buttons.cancel')}
               </Button>
 
               <Button
