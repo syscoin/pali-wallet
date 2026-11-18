@@ -352,7 +352,7 @@ function NativeActivityContent({
   const operation = chosen?.local?.smartAccount?.operations.length === 1
     ? chosen.local.smartAccount.operations[0] : undefined;
   const smartAuthorization = chosen?.smartAuthorizations?.find(value => value.instruction.operationHash === operation?.operationHash);
-  const operationHash = smartAuthorization?.instruction.operationHash;
+  const operationHash = smartAuthorization?.instruction.operationHash ?? (chosen?.mayHaveOlderAuthorization ? operation?.operationHash : undefined);
   const inspectAuthorization = useCallback(() => {
     if (!operationHash || AppState.currentState !== 'active') return;
     authorizationView.current.abort.abort();
@@ -419,9 +419,10 @@ function NativeActivityContent({
   const cancelPending = reviewAction('cancel', onCancelPending);
   const cancelSaved = reviewAction('cancel-saved', onCancelSaved);
   // An outer receipt/nonce does not revoke its independently usable inner proof.
-  const canCancelSmartInstruction = chosen?.local?.smartAccount && !chosen.checking &&
+  const canCancelSmartInstruction = snapshot.status === 'ready' && chosen?.local?.smartAccount && !chosen.checking &&
     !chosen.local.cancellationUnavailable && !chosen.local.smartAccount.cancellation &&
-    chosen.local.operation !== 'cancel' && !!operation && !smartAuthorization?.instruction.replacesOperationHash &&
+    chosen.local.operation !== 'cancel' && !!operation && !chosen.mayHaveOlderAuthorization &&
+    !smartAuthorization?.unavailable && !smartAuthorization?.instruction.replacesOperationHash &&
     (!smartAuthorization?.observation || smartAuthorization.observation.kind === 'pending');
   const retained = chosen?.retainedObservation;
   const chosenBlock = chosenObservation
@@ -844,13 +845,15 @@ function NativeActivityContent({
               onPress={() => {
                 const view = authorizationView.current;
                 void afterPositionSaved(() => {
+                  const current = controller.getSnapshot();
+                  const row = current.rows.find(value => value.hash === chosen.hash);
+                  if (current.status !== 'ready' || !row || row.mayHaveOlderAuthorization) return;
                   if (operationHash) {
                     if (view.hash !== chosen.hash || authorizationView.current !== view || view.abort.signal.aborted || AppState.currentState !== 'active') return;
-                    const live = controller.getSnapshot().rows.find(row => row.hash === chosen.hash)?.smartAuthorizations
-                      ?.find(value => value.instruction.operationHash === operationHash);
-                    if (!live || live.checking || live.observation && live.observation.kind !== 'pending') return;
+                    const live = row.smartAuthorizations?.find(value => value.instruction.operationHash === operationHash);
+                    if (!live || live.checking || live.unavailable || live.observation && live.observation.kind !== 'pending') return;
                     view.abort.abort();
-                  }
+                  } else if (row.smartAuthorizations?.some(value => value.instruction.operationHash === operation?.operationHash)) return;
                   cancelPending(chosen.hash);
                 });
               }} />

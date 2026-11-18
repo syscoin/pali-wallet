@@ -16,6 +16,12 @@ const orphanHash = hash('3');
 const payer = `0x${'22'.repeat(20)}`;
 const operation = { operationHash, operationNonce: nonce };
 const scope = { ...createActivityScope('a'.repeat(64), 'smart:60:0', address, 'ethereum'), apiUrl: '' };
+const olderPage = new URLSearchParams(window.location.search).has('older-authorization');
+const authorization = (operationHash: string) => ({
+  account: address, chainId: '1', createdAt: 1700000000000,
+  operationHash, operationNonce: nonce, payer, observedAt: anchor,
+});
+const firstPage = Array.from({ length: 20 }, (_, index) => authorization('0x' + (index + 64).toString(16).padStart(64, '0')));
 const runtime: NativeActivityRuntime = {
   async load(guard) {
     guard();
@@ -26,10 +32,17 @@ const runtime: NativeActivityRuntime = {
       nonce: 0, recipient: payer, amountUnits: '1', maximumFeeUnits: '10', phase: 'submitted', operation: 'send',
       smartAccount: { payer, operations: [operation] },
     }], saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false },
-      smartAuthorizations: { entries: [operationHash, orphanHash].map(operationHash => ({
-        account: address, chainId: '1', createdAt: 1700000000000,
-        operationHash, operationNonce: nonce, payer, observedAt: anchor,
-      })), nextCursor: null } };
+      smartAuthorizations: olderPage ? { entries: firstPage, nextCursor: firstPage.at(-1)!.operationHash }
+        : { entries: [operationHash, orphanHash].map(authorization), nextCursor: null } };
+  },
+  async loadSmartAuthorizations(_scope, cursor, guard) {
+    guard();
+    if (!olderPage || cursor !== firstPage.at(-1)!.operationHash) throw Error('Unexpected authorization cursor');
+    return { entries: [authorization(operationHash)], nextCursor: null };
+  },
+  async loadTarget(_scope, target, guard) {
+    guard();
+    return target === operationHash ? { authorization: authorization(target) } : null;
   },
   async observeSmartAuthorization(_scope, operationHash, guard) {
     guard();

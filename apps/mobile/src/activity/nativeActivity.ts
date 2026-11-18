@@ -100,6 +100,7 @@ export interface NativeActivityRuntime {
 export type ActivityRow = Readonly<{
   hash: string;
   smartAuthorizations?: readonly ActivityAuthorization[];
+  mayHaveOlderAuthorization?: true;
   local?: LocalActivityRecord;
   candidate?: ActivityCandidate;
   observation?: ActivityTransactionObservation;
@@ -202,6 +203,7 @@ export class NativeActivity {
   private freshCandidates = new Set<string>();
   private smartAuthorizations = new Map<string, ActivityAuthorization>();
   private authorizationCursor: string | null = null;
+  private absentAuthorizations = new Set<string>();
   private journalLifetime = new AbortController();
   private locals = new Map<string, LocalActivityRecord>();
   private pendingCursor: string | null | undefined;
@@ -307,6 +309,7 @@ export class NativeActivity {
     this.freshCandidates.clear();
     this.locals.clear();
     this.smartAuthorizations.clear();
+    this.absentAuthorizations.clear();
     this.authorizationCursor = null;
     this.observations.clear();
     this.unavailable.clear();
@@ -560,10 +563,17 @@ export class NativeActivity {
     try {
       if (this.authorizationCursor && runtime?.loadSmartAuthorizations) {
         this.publish({ loadingMore: true });
-        const page = await runtime.loadSmartAuthorizations(scope, this.authorizationCursor, journalGuard);
+        const cursor = this.authorizationCursor;
+        const page = await runtime.loadSmartAuthorizations(scope, cursor, journalGuard);
         journalGuard();
+        if (page.nextCursor === cursor) throw new ActivityError('INVALID');
         this.applySmartAuthorizationPage(page);
         this.renderRows();
+        if (this.pendingCursor === null && Object.values(this.feeds).every(feed => feed.done) &&
+            this.orderedCandidates().length <= this.visible) {
+          if (this.activityError === 'older-unavailable') this.publish({ error: null });
+          return;
+        }
       }
       if (this.pendingCursor !== null && runtime?.loadSavedPending) {
         this.publish({ loadingMore: true });
@@ -633,8 +643,10 @@ export class NativeActivity {
     this.authorizationCursor = page.nextCursor;
   }
   async inspectSmartAuthorization(hash: string, assertView: () => void, viewSignal: AbortSignal) {
-    const scope = this.scope, runtime = this.runtime(), existing = this.smartAuthorizations.get(hash);
-    if (!scope || !runtime?.observeSmartAuthorization || !existing || existing.checking) return;
+    const scope = this.scope, runtime = this.runtime();
+    let existing = this.smartAuthorizations.get(hash);
+    if (!scope || !runtime?.observeSmartAuthorization || existing?.checking ||
+        (!existing && (!this.authorizationCursor || !runtime.loadTarget || this.absentAuthorizations.has(hash)))) return;
     const generation = this.generation, revision = this.source.getSnapshot().revision;
     const lifetime = this.journalLifetime;
     const request = new AbortController(), abort = () => request.abort();
@@ -646,9 +658,25 @@ export class NativeActivity {
       if (this.scope !== scope || this.runtime() !== runtime) throw new ActivityError('CANCELLED');
       assertView();
     };
-    const checking = { ...existing, checking: true };
+    let checking: ActivityAuthorization | undefined;
     try {
       guard();
+      if (!existing) {
+        // An opened older outer needs only its own operation, even when the list
+        // has several unvisited authorization pages.
+        const target = await runtime.loadTarget!(scope, hash, guard);
+        guard();
+        existing = this.smartAuthorizations.get(hash);
+        if (!existing) {
+          if (!target?.authorization) {
+            this.absentAuthorizations.add(hash);
+            return;
+          }
+          if (target.authorization.operationHash !== hash) throw new ActivityError('INVALID');
+          existing = { instruction: target.authorization, checking: false, unavailable: false };
+        }
+      }
+      checking = { ...existing, checking: true };
       this.smartAuthorizations.set(hash, checking);
       this.renderRows();
       const observation = await runtime.observeSmartAuthorization(scope, hash, guard, request.signal);
@@ -658,13 +686,13 @@ export class NativeActivity {
     } catch {
       try {
         guard();
-        this.smartAuthorizations.set(hash, { ...existing, unavailable: true });
+        if (existing) this.smartAuthorizations.set(hash, { ...existing, unavailable: true });
       } catch { /* Revoked views publish no status. */ }
     } finally {
       request.abort();
       lifetime.signal.removeEventListener('abort', abort);
       viewSignal.removeEventListener('abort', abort);
-      if (generation === this.generation && this.smartAuthorizations.get(hash) === checking)
+      if (generation === this.generation && existing && checking && this.smartAuthorizations.get(hash) === checking)
         this.smartAuthorizations.set(hash, existing);
       if (generation === this.generation) this.renderRows();
     }
@@ -762,31 +790,35 @@ export class NativeActivity {
     // local replacement history after choosing the fetched representative.
     const retained = new Map(representatives.map((row) => [row.hash, row]));
     for (const row of observedRows) if (row.local) retained.set(row.hash, row);
-    const outerRows = new Map<string, ActivityRow>();
-    for (const row of retained.values()) {
-      // A legacy payer cancellation references the original operation but never carries it.
-      if (row.local?.smartAccount?.cancellation) continue;
-      for (const operation of row.local?.smartAccount?.operations ?? []) {
-        const previous = outerRows.get(operation.operationHash);
-        if (!previous || activityRowTimestamp(row) > activityRowTimestamp(previous))
-          outerRows.set(operation.operationHash, row);
-      }
-    }
+    // Speed-ups of an outer can carry the same instruction. Its nonce status
+    // belongs on every carrying transaction, including older attempts.
+    const carried = new Set<string>();
+    const rows = [...retained.values()].map(row => {
+      const smart = row.local?.smartAccount;
+      const operations = smart && !smart.cancellation ? smart.operations : [];
+      const authorizations = operations.flatMap(operation => {
+        carried.add(operation.operationHash);
+        const authorization = this.smartAuthorizations.get(operation.operationHash);
+        return authorization ? [authorization] : [];
+      });
+      const hash = operations.length === 1 ? operations[0]!.operationHash : undefined;
+      const mayHaveOlder = this.authorizationCursor && hash && !row.local?.cancellationUnavailable &&
+        !authorizations.length && !this.absentAuthorizations.has(hash);
+      return withReplacement({ ...row, smartAuthorizations: authorizations.length ? authorizations : undefined,
+        mayHaveOlderAuthorization: mayHaveOlder ? true : undefined });
+    });
+    const byHash = new Map(rows.map(row => [row.hash, row]));
     for (const [hash, authorization] of this.smartAuthorizations) {
-      const outer = outerRows.get(hash);
-      const observed = authorization.observation?.kind === 'observed' ? retained.get(authorization.observation.transactionHash) : undefined;
-      const row = outer ?? observed;
-      if (!row) continue;
-      const current = retained.get(row.hash) ?? row;
-      retained.set(row.hash, { ...current, smartAuthorizations: [...(current.smartAuthorizations ?? []), authorization] });
+      if (carried.has(hash) || authorization.observation?.kind !== 'observed') continue;
+      const row = byHash.get(authorization.observation.transactionHash);
+      if (row) byHash.set(row.hash, { ...row, smartAuthorizations: [...(row.smartAuthorizations ?? []), authorization] });
     }
-    const rows = [...retained.values()].map(withReplacement)
-      .sort((a, b) => activityRowTimestamp(b) - activityRowTimestamp(a));
     const moreToLoad = Object.values(this.feeds).some((f) => !f.done);
     const atDisplayLimit = this.visible >= 200 && candidates.length >= 200;
     this.publish({
-      rows,
+      rows: [...byHash.values()].sort((a, b) => activityRowTimestamp(b) - activityRowTimestamp(a)),
       hasMore:
+        this.authorizationCursor !== null && !!this.runtime()?.loadSmartAuthorizations ||
         this.pendingCursor !== null && !!this.runtime()?.loadSavedPending || !atDisplayLimit && (candidates.length > this.visible || moreToLoad),
       truncated:
         this.snapshot.truncated ||

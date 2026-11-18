@@ -1397,6 +1397,64 @@ test('Activity attaches an authenticated instruction to its outer row and hides 
   assert.equal(f.receipts.calls.length, 0, 'An operation hash is never queried as a transaction hash');
 });
 
+test('the authorization-only cursor is browseable and needs no explorer or cache work to reach the last page', async () => {
+  const newest = Array.from({ length: 20 }, (_, i) => smartInstruction(100 + i));
+  const older = smartInstruction(21), cursor = newest.at(-1)!.operationHash;
+  const outer = { ...fixture().local(50), smartAccount: { payer: OTHER, operations: [older] } };
+  const reads: string[] = [];
+  let fail = true;
+  const f = fixture({
+    locals: [outer], smartAuthorizations: { entries: newest, nextCursor: cursor },
+    async loadSmartAuthorizations(_scope, before, guard) {
+      guard(); reads.push(before);
+      if (fail) { fail = false; throw Error('Offline'); }
+      return { entries: [older], nextCursor: null };
+    },
+  });
+  await f.controller.refresh();
+  const initial = f.controller.getSnapshot();
+  assert.equal(initial.hasMore, true);
+  assert.equal(initial.rows[0]!.mayHaveOlderAuthorization, true);
+  const explorerReads = f.explorer.pages.length, cacheWrites = f.cacheWrites.length;
+  await f.controller.loadMore();
+  assert.equal(f.controller.getSnapshot().error, 'older-unavailable');
+  assert.equal(f.controller.getSnapshot().hasMore, true);
+  await f.controller.loadMore();
+  const last = f.controller.getSnapshot();
+  assert.deepEqual(reads, [cursor, cursor]);
+  assert.equal(last.error, null);
+  assert.equal(last.hasMore, false);
+  assert.deepEqual(last.rows.map(row => row.hash), [outer.hash]);
+  assert.equal(last.rows[0]!.smartAuthorizations?.[0]?.instruction.operationHash, older.operationHash);
+  assert.equal(f.explorer.pages.length, explorerReads);
+  assert.equal(f.cacheWrites.length, cacheWrites);
+});
+
+for (const hasRecord of [true, false]) test(`opening an older outer checks its exact operation without enumerating pages (record=${hasRecord})`, async () => {
+  const older = smartInstruction(21);
+  const outer = { ...fixture().local(50), smartAccount: { payer: OTHER, operations: [older] } };
+  const replacement = { ...outer, hash: hash(51), createdAt: outer.createdAt + 1 };
+  const exact: string[] = [], observations: string[] = [];
+  const f = fixture({
+    locals: [outer, replacement], smartAuthorizations: { entries: [], nextCursor: hash(30) },
+    async loadSmartAuthorizations() { assert.fail('Opening details must not enumerate pages'); },
+    async loadTarget(_scope, target, check) { check(); exact.push(target); return hasRecord ? { authorization: older } : null; },
+    async observeSmartAuthorization(_scope, target, check) {
+      check(); observations.push(target);
+      return { kind: 'nonce-consumed', currentNonce: (BigInt(older.operationNonce) + 1n).toString(), operationHash: target, anchor: older.observedAt };
+    },
+  });
+  await f.controller.refresh();
+  assert.equal(f.controller.getSnapshot().rows[0]!.mayHaveOlderAuthorization, true);
+  await f.controller.inspectSmartAuthorization(older.operationHash, () => {}, new AbortController().signal);
+  assert.deepEqual(exact, [older.operationHash]);
+  assert.deepEqual(observations, hasRecord ? [older.operationHash] : []);
+  for (const row of f.controller.getSnapshot().rows) {
+    assert.equal(row.mayHaveOlderAuthorization, undefined);
+    assert.equal(row.smartAuthorizations?.[0]?.observation?.kind, hasRecord ? 'nonce-consumed' : undefined);
+  }
+});
+
 test('Activity discards a Smart authorization status when the details are retired, then accepts fresh operation proof', async () => {
   const instruction = smartInstruction(43);
   const outer = { ...fixture().local(50), smartAccount: { payer: OTHER, operations: [instruction] } };

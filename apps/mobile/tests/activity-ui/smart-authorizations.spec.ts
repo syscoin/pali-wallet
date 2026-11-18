@@ -24,11 +24,23 @@ for (const width of [320, 390]) {
   });
 }
 
-test('a pending Smart Account transaction opens the existing cancellation review', async ({ page }) => {
-  await page.goto('/?signed-instructions&pending');
+for (const older of [false, true]) test(`a pending Smart Account transaction opens the existing cancellation review (older authorization=${older})`, async ({ page }) => {
+  await page.goto('/?signed-instructions&pending' + (older ? '&older-authorization' : ''));
   await page.getByTestId(`activity-row-0x${'2'.repeat(64)}`).click();
   const cancel = page.getByRole('button', { name: 'Cancel instruction', exact: true });
   await expect(cancel).toHaveCount(1);
   await cancel.click();
   await expect(page.getByText('Cancellation review requested', { exact: true })).toBeVisible();
+});
+
+
+test('the normal Activity footer reaches an older operation after every other source is exhausted', async ({ page }) => {
+  await page.goto('/?signed-instructions&older-authorization');
+  const older = page.getByRole('button', { name: 'Load older activity', exact: true });
+  await expect(older).toBeVisible();
+  await older.click();
+  await expect(older).toHaveCount(0);
+  await page.getByTestId(`activity-row-0x${'2'.repeat(64)}`).click();
+  await expect(page.getByText('Transaction details', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cancel instruction', exact: true })).toHaveCount(0);
 });
