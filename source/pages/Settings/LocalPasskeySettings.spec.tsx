@@ -208,3 +208,30 @@ it.each([false, true])(
     expect(runLocalPasskeyCeremony).not.toHaveBeenCalled();
   }
 );
+
+it('clears the settings cooldown guidance when the wait expires', async () => {
+  const source = controller(true);
+  source.disable.mockRejectedValueOnce(new PasswordCooldownError(3));
+  render(<LocalPasskeySettings createController={() => source} />);
+  const password = await screen.findByLabelText('localPasskey.password');
+
+  jest.useFakeTimers();
+  try {
+    await act(async () => {
+      fireEvent.change(password, { target: { value: 'wallet-password' } });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'localPasskey.turnOff' })
+      );
+    });
+    expect(screen.getByRole('alert').textContent).toBe(
+      'start.unlockRateLimited: in 3 seconds'
+    );
+    act(() => jest.advanceTimersByTime(2999));
+    expect(screen.getByRole('alert')).toBeTruthy();
+    act(() => jest.advanceTimersByTime(1));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(source.disable).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
+});

@@ -192,14 +192,16 @@ test('taps use local enrolled metadata and are rejected after account removal or
   assert.ok(h.removed.includes(id)); assert.equal(await h.coordinator.resolveTapAfterUnlock(id, () => true), null);
 });
 
-test('resolving one notification does not consume a newer tap', async () => {
+for (const sameAlert of [true, false]) test(`resolving a notification preserves a newer tap of ${sameAlert ? 'the same alert' : 'another alert'}`, async () => {
   const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true });
   h.rows([transfer('a')]); await h.coordinator.runForeground();
   h.rows([transfer('a'), transfer('b')]); await h.coordinator.runForeground();
   const [first, second] = h.posted; assert.ok(first && second);
+  const next = sameAlert ? first : second;
   h.coordinator.recordTap(first);
-  assert.ok(await h.coordinator.resolveTapAfterUnlock(first, () => { h.coordinator.recordTap(second); return true; }));
-  assert.equal(h.coordinator.getSnapshot().pendingEventId, second);
+  assert.ok(await h.coordinator.resolveTapAfterUnlock(first, () => { h.coordinator.recordTap(next); return true; }));
+  assert.equal(h.coordinator.getSnapshot().pendingEventId, next);
+  assert.equal(h.coordinator.getSnapshot().tapRevision, 2);
   await h.coordinator.disableAll(); assert.equal(await h.coordinator.getPendingOwner(), null);
 });
 

@@ -19,6 +19,7 @@ import {
 } from './types.ts';
 import type { ActivityHistorySnapshot } from './historyStore.ts';
 import {
+  EVM_ACTIVITY_CURSOR_STALE,
   EVM_TRANSACTION_HISTORY_SOURCE,
   parseEvmInteger,
   selectEvmHistoryRepresentatives,
@@ -44,6 +45,10 @@ type SmartAuthorizationPage = Readonly<{
   entries: readonly SmartAccountAuthorizationSummary[];
   nextCursor: string | null;
   withOuterOperationHashes?: readonly string[];
+}>;
+type SavedActivityPage = Readonly<{
+  records: readonly LocalActivityRecord[];
+  nextCursor: string | null;
 }>;
 type ActivityAuthorization = Readonly<{
   instruction: SmartAccountAuthorizationSummary;
@@ -81,7 +86,7 @@ export interface NativeActivityRuntime {
     smartAuthorizations?: SmartAuthorizationPage;
     olderRetained?: boolean;
   }>;
-  loadSmartAuthorizations?(scope: EvmActivityReadScope, beforeHash: string, guard: () => void): Promise<SmartAuthorizationPage>;
+  loadSmartAuthorizations?(scope: EvmActivityReadScope, beforeHash: string | undefined, guard: () => void): Promise<SmartAuthorizationPage>;
   observeSmartAuthorization?(scope: EvmActivityReadScope, operationHash: string, guard: () => void, signal: AbortSignal): Promise<SmartAccountAuthorizationObservation>;
   loadTarget?(scope: EvmActivityReadScope, hash: string, guard: () => void): Promise<Readonly<{
     local?: LocalActivityRecord;
@@ -92,10 +97,7 @@ export interface NativeActivityRuntime {
     scope: EvmActivityReadScope,
     beforeHash: string | undefined,
     guard: () => void
-  ): Promise<{
-    records: readonly LocalActivityRecord[];
-    nextCursor: string | null;
-  }>;
+  ): Promise<SavedActivityPage>;
   observeLocal?(
     record: LocalActivityRecord,
     guard: () => void,
@@ -222,7 +224,7 @@ export class NativeActivity {
   private candidates = new Map<string, ActivityCandidate>();
   private freshCandidates = new Set<string>();
   private smartAuthorizations = new Map<string, ActivityAuthorization>();
-  private authorizationCursor: string | null = null;
+  private authorizationCursor: string | null | undefined = null;
   private absentAuthorizations = new Set<string>();
   private journalLifetime = new AbortController();
   private locals = new Map<string, LocalActivityRecord>();
@@ -612,31 +614,65 @@ export class NativeActivity {
       this.guard(generation, revision, journalSignal);
       if (this.scope !== scope || this.runtime() !== runtime) throw new ActivityError('CANCELLED');
     };
-    try {
-      if (this.authorizationCursor && runtime?.loadSmartAuthorizations) {
-        this.publish({ loadingMore: true });
-        const cursor = this.authorizationCursor;
-        const page = await runtime.loadSmartAuthorizations(scope, cursor, journalGuard);
+    const readJournalPage = async <T extends { nextCursor: string | null }>(
+      cursor: string | undefined,
+      read: (beforeHash: string | undefined) => Promise<T>,
+      invalidate: (hash: string) => boolean
+    ): Promise<T> => {
+      let page: T;
+      try {
+        page = await read(cursor);
+      } catch (error) {
+        if (cursor === undefined || !(error instanceof Error) || error.message !== EVM_ACTIVITY_CURSOR_STALE)
+          throw error;
         journalGuard();
-        if (page.nextCursor === cursor) throw new ActivityError('INVALID');
+        const canRebase = invalidate(cursor);
+        this.renderRows();
+        if (!canRebase) throw error;
+        page = await read(undefined);
+      }
+      journalGuard();
+      if (page.nextCursor !== null && page.nextCursor === cursor) throw new ActivityError('INVALID');
+      return page;
+    };
+    try {
+      if (this.authorizationCursor !== null && runtime?.loadSmartAuthorizations) {
+        this.publish({ loadingMore: true });
+        const page = await readJournalPage(
+          this.authorizationCursor,
+          cursor => runtime.loadSmartAuthorizations!(scope, cursor, journalGuard),
+          stale => {
+            this.authorizationCursor = undefined;
+            this.smartAuthorizations.delete(stale);
+            return true;
+          }
+        );
         this.applySmartAuthorizationPage(page);
+        if (this.activityError === 'older-unavailable') this.publish({ error: null });
         this.renderRows();
         if (this.pendingCursor === null && Object.values(this.feeds).every(feed => feed.done) &&
-            this.orderedCandidates().length <= this.visible) {
-          if (this.activityError === 'older-unavailable') this.publish({ error: null });
-          return;
-        }
+            this.orderedCandidates().length <= this.visible) return;
       }
       if (this.pendingCursor !== null && runtime?.loadSavedPending) {
         this.publish({ loadingMore: true });
-        let added = 0;
+        let added = 0, rebased = false;
         // The recent local window already covers the first two pending pages.
         // Skip overlapping pages until this request reveals another row.
         for (let attempt = 0; attempt < 3 && this.pendingCursor !== null && !added; attempt++) {
           const cursor: string | undefined = this.pendingCursor;
-          const page = await runtime.loadSavedPending(scope, cursor, journalGuard);
-          journalGuard();
-          if (page.nextCursor !== null && page.nextCursor === cursor) throw new ActivityError('INVALID');
+          const page: SavedActivityPage = await readJournalPage(
+            cursor,
+            beforeHash => runtime.loadSavedPending!(scope, beforeHash, journalGuard),
+            stale => {
+              this.pendingCursor = undefined;
+              this.locals.delete(stale);
+              this.pagedLocals.delete(stale);
+              this.retainedObservations.delete(stale);
+              const canRebase = !rebased;
+              rebased = true;
+              return canRebase;
+            }
+          );
           this.pendingCursor = page.nextCursor;
           for (const local of page.records) {
             if (this.locals.has(local.hash)) continue;
@@ -645,6 +681,7 @@ export class NativeActivity {
             added++;
           }
         }
+        if (this.activityError === 'older-unavailable') this.publish({ error: null });
         this.renderRows();
         this.observeRetained();
         if (added || this.pendingCursor !== null) return;
@@ -701,19 +738,20 @@ export class NativeActivity {
     const scope = this.scope, runtime = this.runtime();
     let existing = this.smartAuthorizations.get(hash);
     if (!scope || !runtime?.observeSmartAuthorization || existing?.checking ||
-        (!existing && (!this.authorizationCursor || !runtime.loadTarget || this.absentAuthorizations.has(hash)))) return;
+        (!existing && (this.authorizationCursor === null || !runtime.loadTarget || this.absentAuthorizations.has(hash)))) return;
     const generation = this.generation, revision = this.source.getSnapshot().revision;
     const lifetime = this.journalLifetime;
     const request = new AbortController(), abort = () => request.abort();
     if (viewSignal.aborted || lifetime.signal.aborted) return;
     lifetime.signal.addEventListener('abort', abort, { once: true });
     viewSignal.addEventListener('abort', abort, { once: true });
+    let checking: ActivityAuthorization | undefined;
     const guard = () => {
       this.guard(generation, revision, request.signal);
-      if (this.scope !== scope || this.runtime() !== runtime) throw new ActivityError('CANCELLED');
+      if (this.scope !== scope || this.runtime() !== runtime ||
+          checking && this.smartAuthorizations.get(hash) !== checking) throw new ActivityError('CANCELLED');
       assertView();
     };
-    let checking: ActivityAuthorization | undefined;
     try {
       guard();
       if (!existing) {
@@ -858,7 +896,7 @@ export class NativeActivity {
         return authorization ? [authorization] : [];
       });
       const hash = operations.length === 1 ? operations[0]!.operationHash : undefined;
-      const mayHaveOlder = this.authorizationCursor && hash && !row.local?.cancellationUnavailable &&
+      const mayHaveOlder = this.authorizationCursor !== null && hash && !row.local?.cancellationUnavailable &&
         !authorizations.length && !this.absentAuthorizations.has(hash);
       return withReplacement({ ...row, smartAuthorizations: authorizations.length ? authorizations : undefined,
         mayHaveOlderAuthorization: mayHaveOlder ? true : undefined });

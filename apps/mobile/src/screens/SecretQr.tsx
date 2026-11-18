@@ -34,11 +34,7 @@ export function SecretQrScanner({ kind, onScan, onClose }: {
   kind: Parameters<typeof parseSecretQr>[1]; onScan(value: string): void; onClose(): void;
 }) {
   const { t } = useNativeTranslation();
-  return <QrScanner showSigningNotice={false} parse={text => {
-    const value = parseSecretQr(text, kind);
-    if (value && kind === 'recoveryPhrase' && ![12, 24].includes(value.split(' ').length)) return null;
-    return value;
-  }} onScan={onScan} onClose={onClose} copy={{
+  return <QrScanner showSigningNotice={false} parse={text => parseSecretQr(text, kind)} onScan={onScan} onClose={onClose} copy={{
     title: t('secretQr.scan'), instructions: t('secretQr.scanHelp'),
     permission: t('mobile.scanner.accessNeeded'), unavailable: t('secretQr.cameraUnavailable'),
     invalidTitle: t('secretQr.scanInvalid'),

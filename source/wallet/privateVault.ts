@@ -18,7 +18,10 @@ import {
   captureWithdrawalRootAnchor,
   createPrivateWithdrawalJournal,
 } from '../utils/privacy/withdrawalMetadata.ts';
-import { MAX_PRIVACY_RELAY_TRANSACTIONS } from '../utils/privacy/withdrawalTransactionTypes.ts';
+import {
+  hasSubmittedWithdrawalHash,
+  MAX_PRIVACY_RELAY_TRANSACTIONS,
+} from '../utils/privacy/withdrawalTransactionTypes.ts';
 import {
   type IPrivacyWithdrawalHistory,
   type IPrivacyWithdrawalSubmissionApproval,
@@ -103,6 +106,17 @@ import type {
 import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
 const restoreEpochs = new WeakMap<IPrivateVaultMutex, Map<string, object>>();
+
+function archiveEligible(note: IStoredNote): boolean {
+  return (
+    (!note.deposit ||
+      (note.deposit.phase === 'submitted' && !!note.deposit.transactionHash)) &&
+    !!note.withdrawal &&
+    (hasSubmittedWithdrawalHash(note.withdrawal) ||
+      (note.withdrawal.retired ?? []).some(hasSubmittedWithdrawalHash))
+  );
+}
+
 export interface IPrivateVaultDepositController {
   clearUnbroadcastDepositAttempt: (
     attempt: IPrivacyDepositAttempt,
@@ -700,6 +714,7 @@ export function createPrivateVaultController(
     amount: getPrivacyPool(identity.poolId).amount,
     createdAt: note.createdAt,
     ...status,
+    ...(archiveEligible(note) ? { archiveEligible: true as const } : {}),
     ...(note.withdrawal && !note.withdrawal.recovery
       ? {
           withdrawal: {
@@ -1977,12 +1992,7 @@ export function createPrivateVaultController(
               !note ||
               note.archivedAt !== undefined ||
               !note.withdrawal ||
-              note.withdrawal.recovery ||
-              note.withdrawal.phase !== 'submitted' ||
-              !note.withdrawal.transactionHash ||
-              (note.deposit &&
-                (note.deposit.phase !== 'submitted' ||
-                  !note.deposit.transactionHash))
+              !archiveEligible(note)
             )
               return undefined;
             await assertProfile(context);

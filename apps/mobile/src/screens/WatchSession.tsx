@@ -129,7 +129,8 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
     const check = () => {
       const owner = lifetime.current;
       if (!owner.alive || owner.authority !== authority || owner.immersive || owner.autoLockScope ||
-          notificationTransition.current !== token || AppState.currentState !== 'active' || !currentScope()) throw Error('CANCELLED');
+          notificationTransition.current !== token || nativeActivityNotifications.getSnapshot().tapRevision !== tapRevision ||
+          AppState.currentState !== 'active' || !currentScope()) throw Error('CANCELLED');
     };
     void (async () => {
       const owner = await nativeActivityNotifications.getPendingOwner();

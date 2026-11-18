@@ -74,6 +74,27 @@ for (const kind of ['message', 'transaction'] as const) test(`${kind} consent co
   assert.deepEqual(f.approvals, [['exact-request', 7, false]]); f.close();
 });
 
+test('a preflight refusal offers a fresh fee review on the same screen while Ledger is disconnected', async () => {
+  const f = fixture('transaction');
+  try {
+    f.review.retryPreparation = true;
+    const rendered = f.render();
+    const notice = rendered.find(value => value.type === 'Notice' && value.props.title === 'Transaction unavailable');
+    assert.equal(notice?.props.body, 'This transaction was not sent. Try again to review it with an updated fee.');
+    assert(!rendered.some(value => value.type === 'Button' && ['Confirm', 'Connect Ledger'].includes(value.props.title)));
+    const retry = rendered.find(value => value.type === 'Button' && value.props.title === 'Try again');
+    assert(retry && !retry.props.disabled);
+    retry.props.onPress();
+    await Promise.resolve();
+    assert.deepEqual(f.approvals, [['exact-request', 7, false]]);
+    f.review.retryPreparation = false;
+    f.review.revision++;
+    const renewed = f.render();
+    assert(!renewed.some(value => value.type === 'Button' && value.props.title === 'Try again'));
+    assert(renewed.find(value => value.type === 'Button' && value.props.title === 'Confirm')?.props.disabled);
+  } finally { f.close(); }
+});
+
 test('expiry closes the original picker and held connection/approval callbacks fail before a new UI commit', () => {
   const f = fixture(), old = f.state(); old.connect(); const picker = modal(f.state());
   f.expire(); old.connect(); assert(!old.canApprove()); assert.equal(f.closes(), 1);

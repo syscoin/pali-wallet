@@ -948,3 +948,42 @@ it.each([
     expect(screen.queryByText(/Privacy (deposit|withdrawal)/)).toBeNull();
   }
 );
+
+it('keeps a failed Smart Account transaction in its ordinary row with the existing menu', async () => {
+  const operationHash = hash('e');
+  const outer = transaction('a', {
+    historySource: 'local-signed',
+    smartAccount: {
+      account: ACCOUNT,
+      operationCount: 1,
+      operations: [{ operationHash }],
+    },
+  });
+  const smartCancellationHashes = new Set([outer.hash]);
+  mockRows = [outer];
+  const view = render(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      smartCancellationHashes={smartCancellationHashes}
+    />
+  );
+  expect(screen.getByText(`Options:${outer.hash}`)).toBeTruthy();
+
+  mockRows = [{ ...outer, blockNumber: 7, confirmations: 1, isError: '1' }];
+  view.rerender(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      smartCancellationHashes={smartCancellationHashes}
+    />
+  );
+  expect(await screen.findByText('Failed')).toBeTruthy();
+  expect(
+    screen.getByText(`Options:${outer.hash}`).getAttribute('data-smart-cancel')
+  ).toBe('true');
+  expect(
+    view.container.querySelectorAll('[data-transaction-hash]')
+  ).toHaveLength(1);
+  expect(view.container.querySelectorAll('[data-operation-hash]')).toHaveLength(
+    0
+  );
+});

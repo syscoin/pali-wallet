@@ -576,13 +576,17 @@ const EvmTransactionItem = React.memo(
               {renderValueDisplay()}
             </div>
             <div className="m-auto">
-              <Tooltip content={t('notifications.clickToView')}>
-                <DetailArrowSvg
-                  ariaLabel={t('notifications.clickToView')}
-                  className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
-                  onClick={handleGoTxDetails}
-                />
-              </Tooltip>
+              {canCancelSmart && !isCancel && !tx.cancellationUnavailable ? (
+                getTxOptions(tx, true)
+              ) : (
+                <Tooltip content={t('notifications.clickToView')}>
+                  <DetailArrowSvg
+                    ariaLabel={t('notifications.clickToView')}
+                    className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
+                    onClick={handleGoTxDetails}
+                  />
+                </Tooltip>
+              )}
             </div>
           </div>
         </div>

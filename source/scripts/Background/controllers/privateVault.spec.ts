@@ -2619,6 +2619,40 @@ it('clear completed leaves unknown or no-hash journals untouched', async () => {
   expect(f.prepareCompletionProof).not.toHaveBeenCalled();
 });
 
+it.each(['direct', 'relayed'] as const)(
+  'clear completed can prove an earlier submitted %s attempt with an unknown successor',
+  async (mode) => {
+    const { f, note, session, attempt } = await failedWithdrawalFixture(mode);
+    const { approval } = await competingApproval(f, note.id, session);
+    await f.controller.reserveWithdrawalAttempt(
+      competingAttempt(attempt),
+      session,
+      competingLifetime,
+      undefined,
+      approval
+    );
+    expect((await f.controller.getNotes()).notes[0]).toMatchObject({
+      archiveEligible: true,
+      withdrawal: { phase: 'unknown' },
+    });
+    expect(f.prepareCompletionProof).not.toHaveBeenCalled();
+    expect(await f.controller.clearCompletedNotes([note.id])).toEqual({
+      removed: [note.id],
+      unresolved: [],
+    });
+    expect(f.prepareCompletionProof).toHaveBeenCalledWith(
+      expect.objectContaining({ poolId: note.poolId }),
+      expect.objectContaining({
+        phase: 'unknown',
+        retired: [expect.objectContaining({ mode, transactionHash: TX_HASH })],
+      }),
+      expect.any(Object)
+    );
+    expect(f.revalidateCompletion).toHaveBeenCalledTimes(1);
+    expect((await f.controller.getArchivedNotes()).notes[0].id).toBe(note.id);
+  }
+);
+
 function holdCompletionProof(f: ReturnType<typeof fixture>) {
   const entered = deferred();
   const release = deferred();

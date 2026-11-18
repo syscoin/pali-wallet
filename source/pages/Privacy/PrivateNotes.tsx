@@ -588,8 +588,7 @@ function NotesView() {
               {!capacitySettings &&
                 !importing &&
                 !selected &&
-                note.withdrawal?.phase === 'submitted' &&
-                note.withdrawal.transactionHash && (
+                note.archiveEligible && (
                   <PrivateVaultClearCompleted
                     confirming={archiveNote === note.id}
                     controllerEmitter={controllerEmitter}

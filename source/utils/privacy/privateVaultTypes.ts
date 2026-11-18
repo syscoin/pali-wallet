@@ -15,6 +15,7 @@ export type IPrivacyNoteReader = (
 
 export interface IPrivateNoteView extends Omit<IPrivateNoteStatus, 'phase'> {
   amount: string;
+  archiveEligible?: true;
   createdAt: number;
   id: string;
   phase: IPrivateNoteStatus['phase'] | 'prepared';

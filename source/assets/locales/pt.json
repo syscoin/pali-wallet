@@ -3178,6 +3178,7 @@
         "theAppSentAnInvalidTransaction": "O app enviou uma transação inválida.",
         "thisTransactionCouldNotBePreparedRequest": "Não foi possível preparar esta transação. Solicite-a novamente no app.",
         "transactionNotSent": "Esta transação não foi enviada. Solicite-a novamente no app.",
+        "transactionRetryAvailable": "Esta transação não foi enviada. Tente novamente para revisá-la com uma taxa atualizada.",
         "theResultCouldNotBeConfirmedCheck": "Não foi possível confirmar o resultado. Verifique Atividade antes de tentar novamente.",
         "previousPage": "Página anterior",
         "nextPage": "Próxima página",
@@ -4073,7 +4074,6 @@
       "autoWatchHint": "Escolha quando as contas de observação são ocultadas"
     },
     "recoveryCopy": {
-      "wordCount": "Introduz as tuas 12 ou 24 palavras de recuperação por ordem.",
       "restored": "Autorização do dispositivo restaurada. A reabrir a tua carteira.",
       "uncertain": "Não foi possível confirmar a recuperação da autorização do dispositivo. Fecha e volta a abrir o Pali antes de tentares novamente.",
       "cancelled": "Recuperação cancelada.",

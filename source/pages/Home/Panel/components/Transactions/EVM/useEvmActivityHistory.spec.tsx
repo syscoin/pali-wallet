@@ -2,6 +2,7 @@
 import { act, renderHook } from '@testing-library/react';
 import React from 'react';
 
+import { EVM_ACTIVITY_CURSOR_STALE } from '../../../../../../shared/evmHistory';
 import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
 import { projectEvmActivityRow } from '../../../../../../wallet/evmActivityRow';
 
@@ -295,6 +296,65 @@ test('an explicit local page retry preserves its failed cursor, successful rows 
   expect(result.current.unavailable).toBe(false);
   expect(result.current.olderRows.hasMore).toBe(false);
 });
+
+test.each(['load more', 'retry'])(
+  'rebases a removed journal cursor and keeps visible indexed rows when continuing via %s',
+  async (continuation) => {
+    const scope = navigation('activity');
+    const indexed = {
+      ...projectEvmActivityRow(row('1') as any),
+      confirmations: 4,
+    };
+    mockEmitter
+      .mockResolvedValueOnce({
+        transactions: [row('a'), row('1')],
+        nextCursor: hash('1'),
+      })
+      .mockRejectedValueOnce(new Error(EVM_ACTIVITY_CURSOR_STALE));
+    if (continuation === 'retry')
+      mockEmitter.mockRejectedValueOnce(new Error('Head read unavailable'));
+    mockEmitter
+      .mockResolvedValueOnce({
+        transactions: [row('a'), row('2')],
+        nextCursor: hash('2'),
+      })
+      .mockResolvedValueOnce({ transactions: [row('3')], nextCursor: null });
+    const { result } = renderHook(() =>
+      useEvmActivityHistory({
+        includeLocal: true,
+        scope,
+        chainId: 57057,
+        indexedTransactions: [indexed],
+      })
+    );
+    await flush();
+    await act(async () => result.current.olderRows.loadMore());
+    expect(result.current.transactions).toContain(indexed);
+    if (continuation === 'retry') {
+      expect(result.current.unavailable).toBe(true);
+      expect(result.current.olderRows.hasMore).toBe(false);
+      await act(async () => result.current.retry());
+    }
+    expect(result.current.unavailable).toBe(false);
+    expect(result.current.olderRows.hasMore).toBe(true);
+    await act(async () => result.current.olderRows.loadMore());
+    expect(result.current.transactions).toContain(indexed);
+    expect(result.current.transactions.map((tx) => tx.hash)).toEqual([
+      hash('1'),
+      hash('a'),
+      hash('2'),
+      hash('3'),
+    ]);
+    expect(result.current.olderRows.hasMore).toBe(false);
+    expect(mockEmitter.mock.calls.map(([, args]) => args)).toEqual([
+      [null, 30, scope],
+      [hash('1'), 30, scope],
+      [null, 30, scope],
+      ...(continuation === 'retry' ? [[null, 30, scope]] : []),
+      [hash('2'), 30, scope],
+    ]);
+  }
+);
 
 test.each([
   undefined,

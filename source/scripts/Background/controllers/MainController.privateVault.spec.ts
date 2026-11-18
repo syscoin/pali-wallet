@@ -994,7 +994,7 @@ it('retains the shared read-only context for withdrawal callers', () => {
   expect(() => f.wallet.capturePrivacyDepositContext()).not.toThrow();
 });
 
-it('completion proof wiring binds selected RPC and routes only the explicit clear request', async () => {
+it('completion proof wiring binds selected RPC and routes only the explicit clear request for a retained hash', async () => {
   const { wallet, vault } = depositFixture();
   wallet.networkRequestGeneration = 0;
   const expectedResult = {
@@ -1027,11 +1027,23 @@ it('completion proof wiring binds selected RPC and routes only the explicit clea
       nullifierHash: '0x' + '02'.repeat(32),
     },
     {
-      phase: 'submitted',
-      mode: 'relayed',
-      transactionHash: '0x' + '03'.repeat(32),
-      endpoint: 'https://relay.example',
-      jobId: 'synthetic-job',
+      phase: 'unknown',
+      mode: 'direct',
+      retired: [
+        {
+          phase: 'submitted',
+          mode: 'relayed',
+          transactionHash: '0x' + '03'.repeat(32),
+          endpoint: 'https://relay.example',
+          jobId: 'synthetic-job',
+        },
+        {
+          phase: 'submitted',
+          mode: 'relayed',
+          endpoint: 'https://relay.example',
+          jobId: 'job-without-a-hash',
+        },
+      ],
     },
     session
   );
@@ -1041,6 +1053,7 @@ it('completion proof wiring binds selected RPC and routes only the explicit clea
     transactionHash: '0x' + '03'.repeat(32),
   });
   expect(request).not.toHaveProperty('deposit');
+  expect(request).not.toHaveProperty('retainedWithdrawals');
   const signal = new AbortController().signal;
   await request.rpc('eth_chainId', [], signal);
   expect(rpc).toHaveBeenCalledWith(

@@ -1184,7 +1184,7 @@ test('deposit cancellation immediately after reservation commit clears only its 
 });
 
 
-test('native maintenance archives only shared-verified completed notes and preserves recovery secrets, unspent notes and custody', async () => {
+test('native maintenance archives a finalized retained withdrawal and preserves recovery secrets, unspent notes and custody', async () => {
   const f = await fixture(); const route = new AbortController();
   try {
     const inventory = await f.seed();
@@ -1194,22 +1194,36 @@ test('native maintenance archives only shared-verified completed notes and prese
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     await model.confirm(model.getSnapshot().review!.intentId);
     assert.equal(model.getSnapshot().phase, 'submitted');
-    withdrawalRoute.abort(); await model.dispose(); f.enableCompletionReads();
+    withdrawalRoute.abort(); await model.dispose();
+    await f.addAccount(); await f.select('hd:60:1');
+    const nextInventory = await readTestNoteInventory(f.runtime, noop);
+    const nextRoute = new AbortController();
+    const next = await nextInventory.openWithdrawal!(nextInventory.notes.find(note => note.createdAt === inventory.notes[0]!.createdAt)!, nextRoute.signal, noop, testInventoryAuthentication(nextInventory));
+    await next.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    assert.equal(next.getSnapshot().phase, 'review', JSON.stringify(next.getSnapshot()));
+    f.loseResponse(true);
+    await next.confirm(next.getSnapshot().review!.intentId);
+    nextRoute.abort(); await next.dispose();
+    f.enableCompletionReads();
     const before = await f.privateNotes(); assert.equal(before.length, 2);
     const completed = before.find(note => note.withdrawal)!, unspent = before.find(note => !note.withdrawal)!;
-    assert(identifyClassicNote(completed.note).nullifierHash);
+    const finalizedHash = Transaction.from(f.posted[1]!).hash;
+    assert.equal(completed.withdrawal?.phase, 'unknown');
+    assert.equal(completed.withdrawal.retired?.[0]?.transactionHash, finalizedHash);
     const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
     const localReads = f.rpcMethods.length;
     const notes = await maintenance.getNotes(noop); assert.equal(notes.notes.length, 2);
+    assert.equal(notes.notes.find(note => note.id === completed.id)?.archiveEligible, true);
     assert.equal(f.rpcMethods.length, localReads, 'opening inventory performs no note-specific RPC');
     assert.deepEqual(await maintenance.clearCompletedNotes([completed.id], noop, noop, noop), { removed: [completed.id], unresolved: [] });
+    assert.deepEqual(f.rpcRequests.slice(localReads).filter(({ method }) => method === 'eth_getTransactionReceipt').map(({ params }) => params), [[finalizedHash], [finalizedHash]]);
     const saved = await f.privateNotes();
     assert.equal(saved.length, 2, 'Full encrypted recovery retains both notes');
     const archived = assertArchivedRecoveryNote(saved.find(note => note.id === completed.id), completed);
     assert.deepEqual(saved.find(note => note.id === unspent.id), unspent);
     assert.deepEqual((await maintenance.getNotes(noop)).notes.map(note => note.id), [unspent.id]);
     assert(f.runtime.catalogue.getSnapshot());
-    assert.equal(f.posted.length, 2, 'maintenance does not sign or broadcast');
+    assert.equal(f.posted.length, 3, 'maintenance does not sign or broadcast');
     route.abort(); await maintenance.dispose();
     await f.runtime.session.lock(); await f.runtime.session.unlock();
     const restarted = await f.privateNotes();

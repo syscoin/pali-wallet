@@ -134,6 +134,21 @@ test('watch catalogue changes retire pending tap resolution', async () => {
   } finally { f.close(); }
 });
 
+test('a newer same-ID tap retires an older watch route during its lookup', async () => {
+  const f = await fixture('recovery-started'), held = Promise.withResolvers<void>();
+  f.hold(held.promise);
+  try {
+    f.render(); await settle();
+    assert.equal(f.resolutions(), 1);
+    f.tap(); f.render(); held.resolve(); await settle();
+    assert.deepEqual(f.selections, []);
+    assert.equal(f.tab(), 'wallet');
+    f.render(); await settle();
+    assert.equal(f.resolutions(), 2);
+    assert.equal(f.tab(), 'tools');
+  } finally { held.resolve(); f.close(); }
+});
+
 test('privacy-locked watch sessions leave a pending tap unresolved', async () => {
   const f = await fixture('transaction-confirmed', true);
   try { f.render(); await settle(); assert.equal(f.resolutions(), 0); assert.deepEqual(f.selections, []); }

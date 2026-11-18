@@ -3178,6 +3178,7 @@
         "theAppSentAnInvalidTransaction": "アプリが無効な取引を送信しました。",
         "thisTransactionCouldNotBePreparedRequest": "この取引を準備できませんでした。アプリから再度リクエストしてください。",
         "transactionNotSent": "この取引は送信されませんでした。アプリから再度リクエストしてください。",
+        "transactionRetryAvailable": "この取引は送信されませんでした。再試行して、更新された手数料で取引を確認してください。",
         "theResultCouldNotBeConfirmedCheck": "結果を確認できませんでした。再試行前に履歴を確認してください。",
         "previousPage": "前のページ",
         "nextPage": "次のページ",
@@ -4073,7 +4074,6 @@
       "autoWatchHint": "閲覧用アカウントを隠すタイミングを選択"
     },
     "recoveryCopy": {
-      "wordCount": "12個または24個のリカバリーワードを順番どおりに入力してください。",
       "restored": "端末の認証を復元しました。ウォレットを開き直しています。",
       "uncertain": "端末の認証の復元を確認できませんでした。Paliを閉じて開き直してから、もう一度お試しください。",
       "cancelled": "復元をキャンセルしました。",

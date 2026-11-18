@@ -395,7 +395,7 @@ export function SegmentedControl<T extends string>({
 }: {
   label: string;
   value: T;
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; displayLabel?: string }[];
   onChange(value: T): void;
 }) {
   return <View accessibilityRole="tablist" accessibilityLabel={label} style={styles.segments}>
@@ -403,7 +403,7 @@ export function SegmentedControl<T extends string>({
       accessibilityLabel={option.label} accessibilityState={{ selected: value === option.value }}
       aria-selected={value === option.value} onPress={() => onChange(option.value)}
       style={({ pressed }) => [styles.segment, value === option.value && styles.segmentSelected, pressed && { opacity: 0.75 }]}>
-      <Text style={[styles.segmentLabel, value === option.value && { color: colors.bg }]}>{option.label}</Text>
+      <Text style={[styles.segmentLabel, value === option.value && { color: colors.bg }]}>{option.displayLabel ?? option.label}</Text>
     </IdlePressable>)}
   </View>;
 }

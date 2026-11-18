@@ -1,12 +1,14 @@
 import { Menu } from '@headlessui/react';
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../shared/evmHistory';
+import { isTransactionInBlock } from '../../shared/transactionBlockStatus';
 import { ExternalLinkSvg, TrashIconSvg } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { getWalletNavigationScope } from 'utils/navigationState';
@@ -46,6 +48,63 @@ const MENU_ITEM_CLASS_NAME =
 const ACTIVE_ITEM_CLASS_NAME = 'bg-brand-blue400 bg-opacity-50';
 const ITEM_TEXT_CLASS_NAME = 'text-sm text-brand-white';
 const CANCEL_ITEM_CLASS_NAME = MENU_ITEM_CLASS_NAME.replace('mb-2 ', '');
+
+const CancelTransactionMenuItem = ({
+  busy,
+  checkLive,
+  hash,
+  onClick,
+  scope,
+}: {
+  busy: boolean;
+  checkLive: boolean;
+  hash: string;
+  onClick: () => void;
+  scope: ReturnType<typeof getWalletNavigationScope>;
+}) => {
+  const { t } = useTranslation();
+  const [canCancel, setCanCancel] = useState(false);
+  const { account, network } = scope;
+  useEffect(() => {
+    if (!checkLive) return;
+    let current = true;
+    void controllerEmitter(
+      ['wallet', 'canCancelSavedSmartAccountTransaction'],
+      [hash, { account, network }]
+    ).then(
+      (eligible) => {
+        if (current) setCanCancel(eligible === true);
+      },
+      () => {
+        if (current) setCanCancel(false);
+      }
+    );
+    return () => {
+      current = false;
+    };
+  }, [checkLive, hash, account, network]);
+  if (checkLive && !canCancel) return null;
+  return (
+    <Menu.Item disabled={busy}>
+      {({ active }) => (
+        <li
+          className={`${
+            active ? ACTIVE_ITEM_CLASS_NAME : ''
+          } ${CANCEL_ITEM_CLASS_NAME}`}
+          aria-disabled={busy}
+          onClick={() => {
+            if (!busy) onClick();
+          }}
+        >
+          <div className="w-5 mr-3">
+            <CancelIcon />
+          </div>
+          <span className={ITEM_TEXT_CLASS_NAME}>{t('buttons.cancel')}</span>
+        </li>
+      )}
+    </Menu.Item>
+  );
+};
 
 export const SmartAccountSignedOperationOptions = ({
   operationHash,
@@ -120,14 +179,17 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   const local =
     'historySource' in transaction &&
     transaction.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned;
+  const mined = isTransactionInBlock(transaction);
   const speedUpAvailable =
-    !local ||
-    ('speedUpAvailable' in transaction &&
-      transaction.speedUpAvailable === true);
+    !mined &&
+    (!local ||
+      ('speedUpAvailable' in transaction &&
+        transaction.speedUpAvailable === true));
   const cancellationUnavailable =
     (transaction as { cancellationUnavailable?: unknown })
       .cancellationUnavailable === true ||
     (smartCancellation.available && transaction.isCancel === true) ||
+    (mined && !(canCancelSmart && smartCancellation.available)) ||
     (local && !(canCancelSmart && smartCancellation.available));
   const preview = useRef<{
     cancel: () => void;
@@ -147,6 +209,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     transaction.chainId,
     transaction.isReplaced,
     transaction.status,
+    mined,
     chainId,
   ]);
 
@@ -272,10 +335,13 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   };
 
   const handleOnClick = (actionType: UpdateTxAction) => {
-    if (actionType === UpdateTxAction.Cancel && smartCancellation.available) {
-      void smartCancellation.request();
-      return;
-    }
+    if (actionType === UpdateTxAction.Cancel) {
+      if (cancellationUnavailable) return;
+      if (smartCancellation.available) {
+        void smartCancellation.request();
+        return;
+      }
+    } else if (!speedUpAvailable) return;
     void previewReplacement(actionType);
   };
 
@@ -305,6 +371,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
         {({ open }) => (
           <>
             <Menu.Button
+              aria-label={t('transactions.transactionOptions')}
               className="inline-flex justify-center w-full
           hover:text-button-primaryhover text-white text-sm font-medium
           hover:bg-opacity-30 rounded-full w-5"
@@ -319,9 +386,11 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                   className={`p-4 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1
                   max-w-[calc(100vw-2rem)] font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out transform opacity-100 scale-100 pointer-events-auto`}
                 >
-                  <h1 className="text-sm font-semibold text-brand-gray200 pb-2 px-2">
-                    {t('transactions.pendingTransaction')}
-                  </h1>
+                  {!mined && (
+                    <h1 className="text-sm font-semibold text-brand-gray200 pb-2 px-2">
+                      {t('transactions.pendingTransaction')}
+                    </h1>
+                  )}
                   <Menu.Item>
                     {({ active }) => (
                       <li
@@ -381,28 +450,19 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                     </Menu.Item>
                   )}
                   {!cancellationUnavailable && (
-                    <Menu.Item>
-                      {({ active }) => (
-                        <li
-                          className={`
-                  ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
-                  ${CANCEL_ITEM_CLASS_NAME}
-                  `}
-                          aria-disabled={smartCancellation.busy}
-                          onClick={() => {
-                            if (!smartCancellation.busy)
-                              handleOnClick(UpdateTxAction.Cancel);
-                          }}
-                        >
-                          <div className="w-5 mr-3">
-                            <CancelIcon />
-                          </div>
-                          <span className={ITEM_TEXT_CLASS_NAME}>
-                            {t('buttons.cancel')}
-                          </span>
-                        </li>
-                      )}
-                    </Menu.Item>
+                    <CancelTransactionMenuItem
+                      key={JSON.stringify([
+                        transaction.hash,
+                        scope.account,
+                        scope.network,
+                        mined,
+                      ])}
+                      busy={smartCancellation.busy}
+                      checkLive={mined}
+                      hash={transaction.hash}
+                      onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+                      scope={scope}
+                    />
                   )}
                 </Menu.Items>
               )}
@@ -423,6 +483,8 @@ export const TransactionOptions = React.memo(
     return (
       prev.chainId === next.chainId &&
       prev.canCancelSmart === next.canCancelSmart &&
+      isTransactionInBlock(prevTx) === isTransactionInBlock(nextTx) &&
+      prevTx?.isCancel === nextTx?.isCancel &&
       prev.alert === next.alert &&
       prevTx?.hash === nextTx?.hash &&
       prevTx?.from === nextTx?.from &&

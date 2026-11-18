@@ -4,6 +4,7 @@ import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { isRecoveryPhraseWordCount, RECOVERY_PHRASE_WORD_COUNTS, type RecoveryPhraseWordCount } from '../../../../source/shared/recoveryPhrase';
 import { Button, Card, colors, Header, Icon, Notice, Screen, SegmentedControl, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
 
@@ -20,13 +21,13 @@ const blank = (count: number) => Array<string>(count).fill('');
 export function NativeImportWallet({ preview, setupError, onConfirmed, onBack }: NativeImportWalletProps) {
   const { t } = useNativeTranslation();
   const [scanning, setScanning] = useState(false);
-  const [count, setCount] = useState<12 | 24>(12);
+  const [count, setCount] = useState<RecoveryPhraseWordCount>(12);
   const [words, setWords] = useState(() => blank(12));
   const [addresses, setAddresses] = useState<readonly PreviewAddress[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const owner = useRef({ mounted: false, generation: 0, working: false, reviewing: false });
-  const inputs = useRef(blank(12)), length = useRef<12 | 24>(12), checkedPhrase = useRef('');
+  const inputs = useRef(blank(12)), length = useRef<RecoveryPhraseWordCount>(12), checkedPhrase = useRef('');
   const latest = useRef({ preview, onConfirmed, onBack });
   useLayoutEffect(() => { latest.current = { preview, onConfirmed, onBack }; }, [preview, onConfirmed, onBack]);
   const clear = useCallback(() => {
@@ -56,10 +57,10 @@ export function NativeImportWallet({ preview, setupError, onConfirmed, onBack }:
   }, [preview, back, clear]);
   const edit = (index: number, value: string) => {
     if (!owner.current.mounted || owner.current.working || owner.current.reviewing || AppState.currentState !== 'active') return;
-    const normalized = value.trim().toLowerCase();
+    const normalized = value.normalize('NFKD').trim().toLowerCase();
     // A full phrase must arrive through an explicit first-field input. Never read the clipboard.
     const pasted = index === 0 ? normalized.split(/\s+/) : [];
-    if (pasted.length === 12 || pasted.length === 24) {
+    if (isRecoveryPhraseWordCount(pasted.length)) {
       length.current = pasted.length; setCount(pasted.length); inputs.current = pasted;
     } else inputs.current = inputs.current.map((word, position) => position === index ? normalized : word);
     owner.current.generation++; checkedPhrase.current = '';
@@ -128,12 +129,13 @@ export function NativeImportWallet({ preview, setupError, onConfirmed, onBack }:
           <Text accessibilityRole="header" style={s.title}>{t('mobile.recoveryDevices.recovery.enterYourRecoveryPhrase')}</Text>
           {setupError && !error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{setupError}</Text>}
           <Text style={s.description}>{t('mobile.recoveryDevices.importWallet.enterEachWordInOrderToRestore')}</Text>
-          <SegmentedControl label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={count === 12 ? '12' : '24'}
-            options={[{ value: '12', label: t('mobile.recoveryDevices.common.wordCount', { count: 12 }) }, { value: '24', label: t('mobile.recoveryDevices.common.wordCount', { count: 24 }) }]}
+          <SegmentedControl label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={String(count)}
+            options={RECOVERY_PHRASE_WORD_COUNTS.map(words => ({ value: String(words), displayLabel: String(words), label: t('mobile.recoveryDevices.common.wordCount', { count: words }) }))}
             onChange={value => {
               if (owner.current.working || !owner.current.mounted) return;
-              if (value === String(length.current)) return;
-              length.current = value === '24' ? 24 : 12; setCount(length.current); clear();
+              const next = Number(value);
+              if (next === length.current || !isRecoveryPhraseWordCount(next)) return;
+              length.current = next; setCount(next); clear();
             }} />
           <SecretScanButton disabled={busy} onPress={() => { clear(); setScanning(true); }} />
           <View style={s.grid}>{words.map((word, index) => <View key={index} style={s.word}>

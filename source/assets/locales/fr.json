@@ -3178,6 +3178,7 @@
         "theAppSentAnInvalidTransaction": "L’application a envoyé une transaction invalide.",
         "thisTransactionCouldNotBePreparedRequest": "Cette transaction n’a pas pu être préparée. Redemandez-la depuis l’application.",
         "transactionNotSent": "Cette transaction n’a pas été envoyée. Redemandez-la depuis l’application.",
+        "transactionRetryAvailable": "Cette transaction n’a pas été envoyée. Réessayez pour la vérifier avec des frais actualisés.",
         "theResultCouldNotBeConfirmedCheck": "Le résultat n’a pas pu être confirmé. Consultez Activité avant de réessayer.",
         "previousPage": "Page précédente",
         "nextPage": "Page suivante",
@@ -4073,7 +4074,6 @@
       "autoWatchHint": "Choisir quand masquer les comptes en lecture seule"
     },
     "recoveryCopy": {
-      "wordCount": "Saisissez vos 12 ou 24 mots de récupération dans le bon ordre.",
       "restored": "Autorisation de l’appareil rétablie. Réouverture de votre portefeuille.",
       "uncertain": "Impossible de confirmer le rétablissement de l’autorisation de l’appareil. Fermez puis rouvrez Pali avant de réessayer.",
       "cancelled": "Récupération annulée.",

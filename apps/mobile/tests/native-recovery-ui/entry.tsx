@@ -4,6 +4,7 @@ import React, { useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { registerRootComponent } from 'expo';
 import { AppState, BackHandler } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { isRecoveryPhraseWordCount } from '../../../../source/shared/recoveryPhrase';
 import type { NativeRecoveryFlow, RecoveryOutcome } from '../../src/custody/recoveryFlow';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 import { NativeRecovery } from '../../src/screens/NativeRecovery';
@@ -52,7 +53,7 @@ class FixtureFlow {
     audit.submissions++;
     const words = phrase.trim().split(/\s+/u).length;
     const errors: { phrase?: 'INVALID_WORD_COUNT' } = {};
-    if (![12, 24].includes(words)) errors.phrase = 'INVALID_WORD_COUNT';
+    if (!isRecoveryPhraseWordCount(words)) errors.phrase = 'INVALID_WORD_COUNT';
     if (Object.keys(errors).length) { this.publish('entry', '', errors); return false; }
     audit.admissions++; audit.admittedWordCounts.push(words); this.publish('verifying'); return true;
   }

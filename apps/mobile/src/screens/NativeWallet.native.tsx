@@ -886,7 +886,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const check = () => {
       const view = notificationView.current;
       if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || notificationTransition.current !== token ||
-          AppState.currentState !== 'active' || view.stage !== 'choose' || view.busy || view.immersive || rootOrigin.current) throw Error('CANCELLED');
+          nativeActivityNotifications.getSnapshot().tapRevision !== tapRevision || AppState.currentState !== 'active' ||
+          view.stage !== 'choose' || view.busy || view.immersive || rootOrigin.current) throw Error('CANCELLED');
     };
     void (async () => {
       const owner = await nativeActivityNotifications.getPendingOwner();

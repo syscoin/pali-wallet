@@ -1632,6 +1632,7 @@ it.each([0, 1])(
     const notes = ['11', '22'].map((byte, index) => ({
       ...note,
       id: `00000000-0000-4000-8000-00000000000${index + 1}`,
+      archiveEligible: true,
       withdrawal: {
         mode: 'direct',
         phase: 'submitted',
@@ -1684,15 +1685,15 @@ it.each([0, 1])(
   }
 );
 
-it('shows archive only for a displayed note with a submitted withdrawal hash and keeps unresolved notes', async () => {
+it('offers Archive for a retained withdrawal hash when the current attempt is unknown', async () => {
   const eligible = {
     ...note,
     id: '00000000-0000-4000-8000-000000000001',
     phase: 'spent',
+    archiveEligible: true,
     withdrawal: {
       mode: 'direct',
-      phase: 'submitted',
-      transactionHash: '0x' + '11'.repeat(32),
+      phase: 'unknown',
     },
   };
   const noHash = {
@@ -1740,6 +1741,7 @@ it('does not restore a cleared note from a list request started before the clear
     ...note,
     id,
     phase: 'spent',
+    archiveEligible: true,
     withdrawal: { mode: 'direct', phase: 'submitted', transactionHash: tx },
   };
   const oldRead = deferred();
@@ -1795,6 +1797,7 @@ it.each(['resolve', 'reject'] as const)(
       ...note,
       id: removedId,
       phase: 'spent',
+      archiveEligible: true,
       withdrawal: {
         mode: 'relayed',
         phase: 'submitted',
@@ -1879,6 +1882,7 @@ it.each(['acknowledged', 'acknowledgement lost'])(
       ...note,
       id: removedId,
       phase: 'waiting',
+      archiveEligible: true,
       withdrawal: { mode: 'direct', phase: 'submitted', transactionHash },
     };
     const survivor = {

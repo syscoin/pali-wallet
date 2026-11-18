@@ -32,6 +32,7 @@ function fixture() {
   let writeStarted = deferred();
   const opened: WatchOnlyAuthority[] = [];
   const record = { writes: 0, opens: 0, reads: 0, credentials: 0, balances: 0 };
+  let notification = { pendingEventId: null as string | null, tapRevision: 0 };
   const repository = {
     assertNetworkCurrent() {},
     async load() { record.reads++; return saved; },
@@ -77,7 +78,10 @@ function fixture() {
     './src/platform/credential': { isNativeCredentialPromptActive: () => false, authorizePublicView: async () => { record.credentials++; assert.fail('No credentials'); } },
     './src/platform/cameraPermission': { isCameraPermissionPromptActive: () => false },
     './src/connections/pairingLinks': { NativePairingInbox: class { getSnapshot = () => null; subscribe = () => () => {}; consume() {} }, observePairingLinks: () => () => {} },
-    './src/notifications/service': { nativeActivityNotifications: { subscribe: () => () => {}, getSnapshot: () => ({ pendingEventId: null }), disableOwner: async () => {} }, isNotificationPermissionPromptActive: () => false },
+    './src/notifications/service': { nativeActivityNotifications: {
+      subscribe: () => () => {}, getSnapshot: () => notification, disableOwner: async () => {},
+      getPendingOwner: async () => notification.pendingEventId ? { accountId: first.id, accountType: 'watch' } : null,
+    }, isNotificationPermissionPromptActive: () => false },
     './src/notifications/choices': { watchNotificationChoices: () => [] },
     './src/notifications/permissionReturn': { NotificationPermissionReturn: class { discard() {} take() { return null; } pause() {} resume() {} } },
     './src/screens/Onboarding': { WelcomeScreen: 'WelcomeScreen', AddWatchAccount: 'AddWatchAccount' },
@@ -101,6 +105,7 @@ function fixture() {
   }; render();
   return { record, opened, render, chooser, accountProps, button, showAccounts,
     async start() { await tick(); render(); await tick(); render(); },
+    tapSameAlert() { notification = { pendingEventId: 'pali-alert-' + 'ab'.repeat(16), tapRevision: notification.tapRevision + 1 }; },
     add: () => accountProps().onAdd({ name: 'Second', address: SECOND, network: 'evm' }),
     recover() { failOpen = false; }, failOpen() { failOpen = true; }, failWrite() { failWrite = true; },
     waitForOpen() { openStarted = deferred(); return openStarted.promise; }, holdOpen() { heldOpen = deferred(); return heldOpen; },
@@ -119,6 +124,18 @@ async function started() {
   assert.equal(f.opened[0]!.getSnapshot().status, 'ready');
   f.showAccounts(); return f;
 }
+
+test('leaving an alert destination only opens it again after a deliberate new tap of that alert', async () => {
+  const f = await started();
+  try {
+    f.tapSameAlert(); f.render(); await f.start();
+    assert(f.render().some(element => element.type === 'WatchSession'));
+    f.showAccounts(); await f.start();
+    assert(f.render().some(element => element.type === 'WalletAccounts'));
+    f.tapSameAlert(); f.render(); await f.start();
+    assert(f.render().some(element => element.type === 'WatchSession'));
+  } finally { f.close(); }
+});
 
 test('committed Add plus failed reopen exposes recovery, retires the old view and never requires a duplicate Add', async () => {
   const f = await started();

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SoftwareKeyring, createKeyringHost } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import { Mnemonic } from 'ethers';
 import { previewNativePhraseAddresses } from '../src/custody/phrasePreview.ts';
 import { getUtxoNetwork, UTXO_NETWORKS, supportsUtxoSoftwareCustody } from '../src/core/utxoNetworks.ts';
 
@@ -56,6 +57,19 @@ test('the configured first supported default supplies exactly one UTXO preview r
     const rows = await previewNativePhraseAddresses(f.keyring, PHRASE, network, current);
     assert.equal(rows.length, 2);
     assert.equal(rows[1]?.label, `${network.name} UTXO`);
+    assert.deepEqual(f.accesses, []);
+  } finally { await f.close(); }
+});
+
+test('the SDK previews valid intermediate BIP39 lengths without writing custody', async () => {
+  const f = fixture();
+  try {
+    for (const bytes of [20, 24, 28]) {
+      const phrase = Mnemonic.fromEntropy(new Uint8Array(bytes)).phrase;
+      const rows = await previewNativePhraseAddresses(f.keyring, phrase, getUtxoNetwork('syscoin'), current);
+      assert.match(rows[0]!.address, /^0x[0-9a-fA-F]{40}$/);
+      assert.match(rows[1]!.address, /^sys1/);
+    }
     assert.deepEqual(f.accesses, []);
   } finally { await f.close(); }
 });

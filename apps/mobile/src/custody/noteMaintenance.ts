@@ -1,6 +1,6 @@
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import { getPrivacyPool, PRIVACY_CHAIN_ID } from '../../../../source/utils/privacy/registry.ts';
-import { prepareSpentCompletion, type SpentCompletionRequest } from '../../../../source/utils/privacy/spentCompletion.ts';
+import { prepareSpentCompletion, spentCompletionWithdrawals } from '../../../../source/utils/privacy/spentCompletion.ts';
 import type { IPrivateVaultHost } from '../../../../source/wallet/privateVault.ts';
 import type { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
@@ -45,16 +45,8 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
     async prepareCompletionProof(identity, withdrawal, session) {
       const guard = () => { check(); assertSynchronousEvmFeeGuard(session.assertCurrent); };
       guard();
-      if (!['direct', 'relayed'].includes(withdrawal.mode) || withdrawal.phase !== 'submitted' || !withdrawal.transactionHash ||
-          withdrawal.mode === 'direct' && (typeof withdrawal.from !== 'string' || typeof withdrawal.nonce !== 'string'))
-        throw new Error('privacy_spent_proof_unavailable');
-      const submitted: SpentCompletionRequest['withdrawal'] = withdrawal.mode === 'direct'
-        ? { phase: 'submitted', mode: 'direct', transactionHash: withdrawal.transactionHash,
-            from: withdrawal.from!, nonce: withdrawal.nonce! }
-        : { phase: 'submitted', mode: 'relayed', transactionHash: withdrawal.transactionHash,
-            ...(withdrawal.transactionHashes ? { transactionHashes: withdrawal.transactionHashes } : {}) };
       return prepareSpentCompletion({ poolAddress: getPrivacyPool(identity.poolId).address,
-        nullifierHash: identity.nullifierHash, withdrawal: submitted,
+        nullifierHash: identity.nullifierHash, ...spentCompletionWithdrawals(withdrawal),
         assertCurrent: guard, rpc: read(guard) });
     },
   });

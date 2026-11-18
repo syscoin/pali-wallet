@@ -3178,6 +3178,7 @@
         "theAppSentAnInvalidTransaction": "应用发送了无效的交易。",
         "thisTransactionCouldNotBePreparedRequest": "无法准备此交易。请从应用重新请求。",
         "transactionNotSent": "此交易未发送。请从应用重新请求。",
+        "transactionRetryAvailable": "此交易未发送。请重试，以查看采用最新手续费的交易。",
         "theResultCouldNotBeConfirmedCheck": "无法确认结果，重试前请检查活动。",
         "previousPage": "上一页",
         "nextPage": "下一页",
@@ -4073,7 +4074,6 @@
       "autoWatchHint": "选择观察账户隐藏时间"
     },
     "recoveryCopy": {
-      "wordCount": "请按顺序输入您的12个或24个恢复词。",
       "restored": "设备授权已恢复。正在重新打开钱包。",
       "uncertain": "无法确认设备授权是否已恢复。请关闭并重新打开Pali，然后再试。",
       "cancelled": "恢复已取消。",

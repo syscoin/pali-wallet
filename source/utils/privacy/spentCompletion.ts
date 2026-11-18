@@ -1,6 +1,11 @@
 import { Interface } from 'ethers';
 
-import { MAX_PRIVACY_RELAY_TRANSACTIONS } from './withdrawalTransactionTypes.ts';
+import {
+  hasSubmittedWithdrawalHash,
+  MAX_PRIVACY_RELAY_TRANSACTIONS,
+  MAX_PRIVACY_WITHDRAWAL_ATTEMPTS,
+  type IPrivacyWithdrawalJournal,
+} from './withdrawalTransactionTypes.ts';
 
 // The caller must bind the journal and identity to a freshly re-read encrypted
 // note under the persistence mutex and revalidate immediately before storage.
@@ -34,6 +39,7 @@ interface ISpentCompletionRequest {
   assertCurrent: () => void;
   nullifierHash: string; // Kept local; never put into RPC arguments.
   poolAddress: string;
+  retainedWithdrawals?: readonly SubmittedWithdrawal[];
   rpc: Rpc;
   withdrawal: SubmittedWithdrawal;
 }
@@ -49,15 +55,105 @@ const quantity = (x: unknown): bigint => {
     throw new Error('invalid');
   return BigInt(x);
 };
-const expectedAccount = (from: unknown, nonce: unknown) => {
-  if (
-    !ADDRESS.test(lower(from)) ||
-    typeof nonce !== 'string' ||
-    !DECIMAL.test(nonce) ||
-    BigInt(nonce) >= BigInt(1) << BigInt(64)
-  )
-    throw new Error('invalid');
+const validAccount = (from: unknown, nonce: unknown): boolean =>
+  ADDRESS.test(lower(from)) &&
+  typeof nonce === 'string' &&
+  DECIMAL.test(nonce) &&
+  BigInt(nonce) < BigInt(1) << BigInt(64);
+
+/** Project only submitted transaction evidence from the selected encrypted note. */
+export function spentCompletionWithdrawals(
+  journal: IPrivacyWithdrawalJournal
+): Pick<SpentCompletionRequest, 'withdrawal' | 'retainedWithdrawals'> {
+  const attempts = [journal, ...(journal.retired ?? []).slice().reverse()]
+    .filter(hasSubmittedWithdrawalHash)
+    .map((entry): SubmittedWithdrawal => {
+      const { mode, phase, transactionHash } = entry;
+      if (mode === 'direct' && validAccount(entry.from, entry.nonce))
+        return {
+          mode,
+          phase,
+          transactionHash,
+          from: entry.from!,
+          nonce: entry.nonce!,
+        };
+      if (
+        mode === 'relayed' &&
+        entry.from === undefined &&
+        entry.nonce === undefined
+      )
+        return {
+          mode,
+          phase,
+          transactionHash,
+          ...(entry.transactionHashes
+            ? { transactionHashes: entry.transactionHashes }
+            : {}),
+        };
+      throw new Error('privacy_spent_proof_unavailable');
+    });
+  const [withdrawal, ...retainedWithdrawals] = attempts;
+  if (!withdrawal) throw new Error('privacy_spent_proof_unavailable');
+  return {
+    withdrawal,
+    ...(retainedWithdrawals.length ? { retainedWithdrawals } : {}),
+  };
+}
+
+type CompletionCandidate = {
+  account?: { from: string; nonce: string };
+  hash: string;
 };
+
+function completionCandidates(req: SpentCompletionRequest) {
+  const retained = req.retainedWithdrawals ?? [];
+  if (
+    !Array.isArray(retained) ||
+    retained.length >= MAX_PRIVACY_WITHDRAWAL_ATTEMPTS
+  )
+    throw new Error('privacy_spent_proof_unavailable');
+  const attempts = [req.withdrawal, ...retained].map((entry) => {
+    if (
+      !entry ||
+      entry.phase !== 'submitted' ||
+      !HASH.test(lower(entry.transactionHash))
+    )
+      throw new Error('privacy_spent_proof_unavailable');
+    const hash = lower(entry.transactionHash);
+    if (entry.mode === 'direct' && validAccount(entry.from, entry.nonce))
+      return {
+        account: { from: lower(entry.from), nonce: entry.nonce },
+        hashes: [hash],
+      };
+    if (
+      entry.mode !== 'relayed' ||
+      entry.from !== undefined ||
+      entry.nonce !== undefined
+    )
+      throw new Error('privacy_spent_proof_unavailable');
+    const hashes = entry.transactionHashes ?? [hash];
+    if (
+      !Array.isArray(hashes) ||
+      !hashes.length ||
+      hashes.length > MAX_PRIVACY_RELAY_TRANSACTIONS ||
+      hashes[0] !== hash ||
+      !hashes.every((candidate) => HASH.test(candidate)) ||
+      new Set(hashes).size !== hashes.length
+    )
+      throw new Error('privacy_spent_proof_unavailable');
+    return { hashes };
+  });
+  // Check every known primary hash before walking a relay's replacement hints.
+  const candidates = new Map<string, CompletionCandidate>();
+  for (let index = 0; index < MAX_PRIVACY_RELAY_TRANSACTIONS; index++) {
+    for (const { account, hashes } of attempts) {
+      const hash = hashes[index];
+      if (hash && (!candidates.has(hash) || account))
+        candidates.set(hash, { account, hash });
+    }
+  }
+  return candidates;
+}
 
 /**
  * Proves receipt-level finality against the configured RPC, not the privacy
@@ -76,39 +172,10 @@ export async function prepareSpentCompletion(
     assertCurrent = req.assertCurrent;
   if (typeof rpc !== 'function' || typeof assertCurrent !== 'function')
     throw new Error('privacy_spent_proof_unavailable');
-  if (
-    !ADDRESS.test(pool) ||
-    !HASH.test(nullifier) ||
-    !req.withdrawal ||
-    req.withdrawal.phase !== 'submitted' ||
-    !HASH.test(lower(req.withdrawal.transactionHash)) ||
-    !['direct', 'relayed'].includes(req.withdrawal.mode)
-  )
+  if (!ADDRESS.test(pool) || !HASH.test(nullifier))
     throw new Error('privacy_spent_proof_unavailable');
-  const w = {
-    ...req.withdrawal,
-    transactionHash: lower(req.withdrawal.transactionHash),
-    from: lower(req.withdrawal.from),
-  };
-  if (w.mode === 'direct') expectedAccount(w.from, w.nonce);
-  else if (
-    req.withdrawal.from !== undefined ||
-    req.withdrawal.nonce !== undefined
-  )
-    throw new Error('privacy_spent_proof_unavailable');
-  const candidates =
-    req.withdrawal.mode === 'relayed' &&
-    req.withdrawal.transactionHashes !== undefined
-      ? [...req.withdrawal.transactionHashes]
-      : [w.transactionHash];
-  if (
-    !candidates.length ||
-    candidates.length > MAX_PRIVACY_RELAY_TRANSACTIONS ||
-    candidates[0] !== w.transactionHash ||
-    candidates.some((hash) => !HASH.test(hash)) ||
-    new Set(candidates).size !== candidates.length
-  )
-    throw new Error('privacy_spent_proof_unavailable');
+  const candidatesByHash = completionCandidates(req);
+  const candidates = [...candidatesByHash.values()];
   type Evidence = {
     anchor: { hash: string; number: string };
     blockHash: string;
@@ -180,8 +247,7 @@ export async function prepareSpentCompletion(
 
     const blocks = new Map<string, Promise<Record<string, any>>>();
     const verify = async (
-      hash: string,
-      account?: { from: string; nonce: string },
+      { account, hash }: CompletionCandidate,
       candidate = false
     ) => {
       const value = await read('eth_getTransactionReceipt', [hash], candidate);
@@ -214,7 +280,9 @@ export async function prepareSpentCompletion(
       )
         throw new Error('invalid');
       if (account) {
-        const tx = obj(await read('eth_getTransactionByHash', [hash]));
+        const tx = obj(
+          await read('eth_getTransactionByHash', [hash], candidate)
+        );
         if (
           lower(tx.hash) !== hash ||
           lower(tx.from) !== account.from ||
@@ -273,8 +341,7 @@ export async function prepareSpentCompletion(
     let selected: Evidence | null = null;
     if (evidence || candidates.length === 1) {
       selected = await verify(
-        evidence?.hash ?? w.transactionHash,
-        w.mode === 'direct' ? w : undefined
+        evidence ? candidatesByHash.get(evidence.hash)! : candidates[0]!
       );
     } else {
       // Four bounded workers share block reads and the operation deadline.
@@ -285,7 +352,7 @@ export async function prepareSpentCompletion(
             while (!selected && next < candidates.length) {
               const index = next++;
               try {
-                const value = await verify(candidates[index]!, undefined, true);
+                const value = await verify(candidates[index]!, true);
                 if (value && !selected) {
                   selected = value;
                   // A verified replacement ends hint exploration. Peers cannot

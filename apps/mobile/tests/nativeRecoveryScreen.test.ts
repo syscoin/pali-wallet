@@ -3,6 +3,7 @@ import { NotificationPermissionReturn } from '../src/notifications/permissionRet
 import type { NotificationPermissionResult } from '../src/notifications/types.ts';
 import { Transaction } from 'ethers/transaction';
 import { PALI_RECOVERY_ALERTS_URL } from '../../../source/shared/smartAccountLinks.ts';
+import * as recoveryPhrase from '../../../source/shared/recoveryPhrase.ts';
 import { getNativeGuardianRecoveryChoices } from '../src/smartAccount/guardianRecovery.ts';
 import { credentialPromptActivityState } from '../src/platform/credentialPort.ts';
 import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
@@ -133,6 +134,7 @@ function setup(phase = 'entry', translation = nativeTranslationFixture) {
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Icon', 'Notice', 'Row', 'Screen', 'Text', 'SegmentedControl'].map((name) => [name, name])), colors: {}, styles: {} };
   const idle = createIdleComponentFixture(hook, native);
   const loaded = evaluate(readFileSync(new NodeURL('../src/screens/NativeRecovery.tsx', import.meta.url), 'utf8'), {
+    '../../../../source/shared/recoveryPhrase': recoveryPhrase,
     '../platform/localization': translation,
     './IdleActivityBoundary': idle.components,
     './recoveryCopy': recoveryCopy,
@@ -644,6 +646,7 @@ for (const [code, feedback] of [
 ]) test(`first-time import shows ${code} on the cleared phrase entry`, async () => {
   const f = await walletFeedbackFixture(false, true);
   const entry = screenFixture(new URL('../src/screens/NativeImportWallet.tsx', import.meta.url), 'NativeImportWallet', {
+    '../../../../source/shared/recoveryPhrase': recoveryPhrase,
     'react-native': f.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { colors: {}, ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'SegmentedControl', 'Text'].map(name => [name, name])) },
     './IdleActivityBoundary': { IdleTextInput: 'TextInput' },
@@ -1809,6 +1812,22 @@ test('native tap resolution cannot select a network after background revocation'
     f.emit('change', 'background'); held.resolve(); await new Promise(resolve => setImmediate(resolve)); f.render();
     assert.equal(f.selectedNetwork(), 'ethereum'); assert.deepEqual(f.notificationRoutes, []);
   } finally { f.dispose(); }
+});
+
+test('a newer same-ID guardian tap retires the earlier native route before selecting its network', async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('recovery-started', held.promise);
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.render(); await settle();
+    assert.equal(tap.resolutions(), 1);
+    tap.tapAgain(); f.render(); held.resolve(); await settle();
+    assert.equal(f.selectedNetwork(), 'ethereum');
+    assert.deepEqual(f.notificationRoutes, []);
+    f.render(); await settle();
+    assert.equal(tap.resolutions(), 2);
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'tools', identity: 'hd:60:0:syscoin-nevm' }]);
+  } finally { held.resolve(); f.dispose(); }
 });
 
 type RootNavigationAction = 'native' | 'token' | 'receive' | 'asset' | 'activity' | 'speed-up';

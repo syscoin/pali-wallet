@@ -36,7 +36,7 @@ import {
 } from '../../../../source/shared/dappCalls.ts';
 import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
-import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
+import { nativeConnectionSubmissionFailure, type NativePreparedConnectionTransaction } from './transactionRuntime.ts';
 import { createNativeEoaCalls, createNativeEoaCallsContinuation, isNativeEoaCallsContinuation, type NativeEoaCalls } from './eoaCalls.ts';
 import { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
 import {
@@ -209,6 +209,7 @@ type PendingSigning = {
   eoa?: NativeEoaCalls;
   unsubscribeEoa?: () => void;
   broadcastHash?: string;
+  submissionUncertain?: boolean;
   requestExpiresAt: number;
   sourceRevision: number;
   timer: ReturnType<typeof setTimeout>;
@@ -2430,9 +2431,10 @@ export class NativeConnectionsController {
       throw error;
     }
   }
-  private captureSigningHandoff(message: PendingSigning, scope: SigningResumeScope, resume: SigningHandoffDescriptor | null): NativeSigningHandoff {
+  private captureSigningHandoff(message: PendingSigning, scope: SigningResumeScope, resume: SigningHandoffDescriptor | null,
+    expiresAt = message.review.expiresAt): NativeSigningHandoff {
     if (message.handoff) retireNativeSigningHandoff(message.handoff);
-    const entry = { id: message.resumeId, wire: message.wire, scope, expiresAt: message.review.expiresAt, order: message.queueOrder,
+    const entry = { id: message.resumeId, wire: message.wire, scope, expiresAt, order: message.queueOrder,
       assertCurrent: () => { const approval = message.approval; if (!approval) return failure('REQUEST_EXPIRED'); approval.assertCurrent(); if (this.requests.get(message.id) !== message || !this.requestConnectionCurrent(message)) failure('CONTEXT_CHANGED'); },
       eligible: () => message.busy && !message.dispatched && !message.resultReady &&
         (message.eoa ? message.eoa.isAwaitingSignature() : !message.broadcastHash),
@@ -2479,6 +2481,7 @@ export class NativeConnectionsController {
     const respondToRequest = !(
       !respond ||
       message.dispatched ||
+      message.submissionUncertain ||
       message.review.error === 'TRANSACTION_NOT_SENT' ||
       message.smart?.getSnapshot().userOperationSubmissionStarted ||
       (message.broadcastHash && !message.eoa) ||
@@ -3197,6 +3200,7 @@ export class NativeConnectionsController {
     message.prepared = prepared;
     message.review = Object.freeze({
       ...message.review,
+      retryPreparation: false,
       transaction: prepared.transaction,
       feeComparison: prepared.feeComparison,
       feeChoice: null,
@@ -3497,11 +3501,12 @@ export class NativeConnectionsController {
       return failure('REQUEST_EXPIRED');
     if (message.dispatched) return failure('REQUEST_EXPIRED');
     if (message.busy || this.action) return failure('BUSY');
+    const retryPreparation = message.review.kind === 'transaction' && message.review.retryPreparation === true;
     if (
       typeof acknowledgeWarning !== 'boolean' ||
       message.review.error ||
       (message.review.requiresWarningAcknowledgement && !acknowledgeWarning &&
-        !(message.review.kind === 'transaction' && message.review.batch?.phase === 'failed')) ||
+        !retryPreparation && !(message.review.kind === 'transaction' && message.review.batch?.phase === 'failed')) ||
       (isModuleRequest(message.request) && message.request.action === 'install' && !acknowledgeWarning) ||
       this.host!.context().activeAccountId !== message.accountId
     )
@@ -3513,6 +3518,15 @@ export class NativeConnectionsController {
     message.busy = true;
     this.publish();
     try {
+      if (retryPreparation) {
+        const scope = this.signingResumeScope(message.session.binding, 'selected');
+        if (!scope) return failure('REQUEST_EXPIRED');
+        message.handoff = this.captureSigningHandoff(message, scope, null, message.handoff.expiresAt);
+        await this.prepareTransactionReview(message);
+        message.busy = false;
+        this.publish();
+        return;
+      }
       let result: unknown;
       if (isEncryptionRequest(message.request)) {
         await this.encryptionApproval(message).approve();
@@ -3590,14 +3604,17 @@ export class NativeConnectionsController {
         ? operation.error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED || operation.payerQuoteUnavailable === true
         : error instanceof Error && ['REVIEW_REQUIRED', 'EVM fee approval changed'].includes(error.message);
       const singleTransaction = message.request.method === 'eth_sendTransaction';
+      const submissionFailure = singleTransaction && message.review.kind === 'transaction'
+        ? nativeConnectionSubmissionFailure(error) : undefined;
       const atomicCalls = message.request.method === 'wallet_sendCalls' && !!operation;
       const operationSubmissionStarted = operation?.userOperationSubmissionStarted === true;
-      const canReportUnsent = (singleTransaction || atomicCalls) && feeReviewFailed &&
+      const canReportUnsent = ((singleTransaction || atomicCalls) && feeReviewFailed || submissionFailure === 'not-sent') &&
         !operationSubmissionStarted && approval.isCurrent();
       // Execution fee review follows a successful funding receipt. A funding
       // hash cannot stand in for dispatch of the requested operation.
       const stoppedAfterFunding = canReportUnsent && !!operation?.transactionHash;
-      if (message.dispatched || operationSubmissionStarted || (message.broadcastHash && !stoppedAfterFunding)) {
+      if (submissionFailure === 'uncertain') message.submissionUncertain = true;
+      if (message.dispatched || message.submissionUncertain || operationSubmissionStarted || (message.broadcastHash && !stoppedAfterFunding)) {
         approval.dispose();
         if (this.requests.get(message.id) === message) {
           message.busy = false;
@@ -3611,6 +3628,14 @@ export class NativeConnectionsController {
       }
       if (canReportUnsent) {
         await this.reportUnsentTransaction(message, approval, stoppedAfterFunding);
+        return;
+      }
+      if ((retryPreparation || submissionFailure === 'retryable') && message.review.kind === 'transaction' &&
+          !message.handoff.isSuspended() && approval.isCurrent() && this.requestConnectionCurrent(message)) {
+        message.prepared = undefined;
+        message.busy = false;
+        message.review = Object.freeze({ ...message.review, retryPreparation: true });
+        this.publish();
         return;
       }
       if (isEncryptionRequest(message.request) && this.requestConnectionCurrent(message) && approval.isCurrent()) {

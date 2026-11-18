@@ -178,6 +178,7 @@ export class NativeNotificationCoordinator {
     });
   }
   async resolveTapAfterUnlock(id: string, validateCurrent: (scope: NativeNotificationScope) => boolean): Promise<NotificationRoute | null> {
+    const tapRevision = this.snapshot.tapRevision;
     const route = await this.transact((doc) => {
       const event = doc.events.find((entry) => entry.id === id);
       const enrolled = event && doc.scopes.find((entry) => entry.scope.id === event.scopeId && entry.generation === event.generation);
@@ -188,7 +189,8 @@ export class NativeNotificationCoordinator {
     });
     // A different mode can decline this route while App selects its owner, and
     // another tap can arrive while the encrypted row is being resolved.
-    if (route && this.snapshot.pendingEventId === id) this.publish({ pendingEventId: null });
+    if (route && this.snapshot.pendingEventId === id && this.snapshot.tapRevision === tapRevision)
+      this.publish({ pendingEventId: null });
     return route;
   }
   runForeground = () => this.run();

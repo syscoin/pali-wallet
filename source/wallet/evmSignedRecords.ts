@@ -12,6 +12,7 @@ import { snapshotEvmTransferAsset } from '../shared/evmAssetState.ts';
 import { EvmAutoNonceAcceptance } from '../shared/evmAutoNonce.ts';
 import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
+import { EVM_ACTIVITY_CURSOR_STALE } from '../shared/evmHistory.ts';
 import { EVM_SIGNED_RECORD_LIMITS } from '../shared/evmSignedRecordLimits.ts';
 import { observeEvmTransaction } from '../shared/evmTransactionObservation.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
@@ -1793,7 +1794,7 @@ export class EvmSignedRecords {
           : matching.findIndex(
               (entry) => entry.operationHash === options.beforeHash
             );
-      if (end < 0) throw new Error('SMART_ACCOUNT_AUTHORIZATION_CORRUPT');
+      if (end < 0) throw new Error(EVM_ACTIVITY_CURSOR_STALE);
       const start = Math.max(0, end - options.maximum);
       const page = matching.slice(start, end).reverse();
       // Presence annotations are scoped to the returned page and to the Smart
@@ -2321,7 +2322,8 @@ export class EvmSignedRecords {
     replacement?:
       | EvmVerifiedReplacementBinding
       | EvmVerifiedSmartAccountReplacement,
-    retainUnsignedNative = false
+    retainUnsignedNative = false,
+    trackDappCleanup = false
   ): Promise<EvmRetainedSignedRecord> {
     guard(session);
     const raw = signed.rawTransaction,
@@ -2614,7 +2616,12 @@ export class EvmSignedRecords {
           });
           if (
             reconstructable ||
-            (context.operation === 'cancel' && !retainedMetadata)
+            (context.operation === 'cancel' && !retainedMetadata) ||
+            (trackDappCleanup &&
+              context.operation === 'send' &&
+              !replacement &&
+              !source.origin &&
+              !retainedMetadata)
           ) {
             this.freshAppends.set(result, {
               profileId: id,
@@ -4048,7 +4055,8 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     chainId: string,
     address: string,
-    hash: string
+    hash: string,
+    options?: Readonly<{ excludeRevoked?: true }>
   ): Promise<EvmRetainedSmartAccountRecord | null> {
     const owner = getAddress(address);
     if (!HASH.test(hash)) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
@@ -4062,6 +4070,15 @@ export class EvmSignedRecords {
       if (!saved || saved.payloadKind === 'unsigned-eoa') return null;
       const entry = await this.materialize(session, saved);
       const operations = decodeRetainedSmartAccountOperations(entry);
+      if (options?.excludeRevoked) {
+        const revoked = await this.revokedSmartAccountOperations(
+          session,
+          bundle?.entries ?? [],
+          bundle?.authorizations ?? []
+        );
+        if (operations.some(({ operationHash }) => revoked.has(operationHash)))
+          return null;
+      }
       const original =
         entry.operation === 'cancel' && entry.originalHash
           ? bundle?.entries.find((value) => value.hash === entry.originalHash)
@@ -4176,7 +4193,7 @@ export class EvmSignedRecords {
         beforeHash === undefined
           ? candidates.length
           : candidates.findIndex((entry) => entry.hash === beforeHash);
-      if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+      if (end < 0) throw new Error(EVM_ACTIVITY_CURSOR_STALE);
       const entries: EvmRetainedSmartAccountRecord[] = [];
       for (
         let index = end - 1;
@@ -4300,7 +4317,7 @@ export class EvmSignedRecords {
         beforeHash === undefined
           ? scoped.length
           : scoped.findIndex((entry) => entry.hash === beforeHash);
-      if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+      if (end < 0) throw new Error(EVM_ACTIVITY_CURSOR_STALE);
       // Locate the anchor in append order before filtering. Its phase may
       // have changed while the preceding page was visible.
       const visible = pendingOnly
@@ -4629,6 +4646,7 @@ export function createEvmSignedRecordLifecycle(
   options: Readonly<{
     automaticNonceEndpoint?: string;
     metadata?: Readonly<Record<string, unknown>>;
+    onUnsentDappDiscarded?: () => void;
     preflight?: (
       record: EvmSignedSubmission,
       assertCurrent: () => void,
@@ -4700,7 +4718,9 @@ export function createEvmSignedRecordLifecycle(
           signed,
           metadata,
           replacement,
-          options.retainUnsignedNative
+          options.retainUnsignedNative,
+          cleanupSession !== undefined &&
+            options.onUnsentDappDiscarded !== undefined
         );
         if (
           cleanupSession &&
@@ -4876,6 +4896,7 @@ export function createEvmSignedRecordLifecycle(
             throw Object.assign(new Error(EVM_ASSET_REVIEW_MESSAGE), {
               code: EVM_ASSET_REVIEW_REQUIRED,
             });
+          options.onUnsentDappDiscarded?.();
           throw error;
         }
         if (

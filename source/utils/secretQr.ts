@@ -1,3 +1,5 @@
+import { isRecoveryPhraseWordCount } from '../shared/recoveryPhrase.ts';
+
 import { matchClassicNote } from './privacy/classicNoteFormat.ts';
 
 export type SecretQrKind = 'privateKey' | 'recoveryPhrase' | 'privateNote';
@@ -9,7 +11,7 @@ export function parseSecretQr(text: string, kind: SecretQrKind): string | null {
   if (kind === 'privateNote') return matchClassicNote(value) ? value : null;
   if (kind === 'recoveryPhrase') {
     const words = value.split(/\s+/u);
-    return [12, 15, 18, 21, 24].includes(words.length) &&
+    return isRecoveryPhraseWordCount(words.length) &&
       words.every((word) => /^[\p{L}\p{M}]+$/u.test(word))
       ? words.join(' ')
       : null;

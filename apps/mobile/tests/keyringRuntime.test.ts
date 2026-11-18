@@ -3079,26 +3079,40 @@ test('connection transactions use real SDK signing and durable shared submission
 });
 
 
-for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject', 'lock'] as const) test(`connection account selection publishes real authority context before ${outcome}`, async () => {
+for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject', 'transaction-preflight-retry', 'transaction-response-lost', 'lock'] as const) test(`connection account selection publishes real authority context before ${outcome}`, async () => {
   const submitted: string[] = [];
+  let preflightFailures = 0;
+  let estimate = '0x10000';
+  let retainedEntries = () => 0;
   const connectionFetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async function accountSelectionFixtureFetch(_url, init): Promise<Response> {
     const payload = JSON.parse(String(init?.body));
     if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async request =>
       (await accountSelectionFixtureFetch(_url, { ...init, body: JSON.stringify(request) })).json())));
     const { id, method, params } = JSON.parse(String(init?.body));
     let result: unknown;
-    if (method === 'eth_chainId') result = '0x1';
+    if (method === 'eth_chainId') {
+      result = '0x1';
+      if (outcome === 'transaction-preflight-retry' && preflightFailures === 0 && retainedEntries() === 1) {
+        preflightFailures++;
+        result = '0x2';
+      }
+    }
     else if (method === 'eth_getTransactionCount') result = '0x0';
     else if (method === 'eth_getBalance') result = '0x10000000000000000';
     else if (method === 'eth_getBlockByNumber') result = { number: params[0] === 'latest' ? '0x10' : params[0], hash: `0x${'aa'.repeat(32)}`, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
     else if (method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas') result = '0x2';
-    else if (method === 'eth_estimateGas') result = '0x10000';
+    else if (method === 'eth_estimateGas') result = estimate;
     else if (method === 'eth_getTransactionByHash' || method === 'eth_getTransactionReceipt') result = null;
-    else if (method === 'eth_sendRawTransaction') { submitted.push(params[0]); result = keccak256(params[0]); }
+    else if (method === 'eth_sendRawTransaction') {
+      submitted.push(params[0]);
+      if (outcome === 'transaction-response-lost') throw new Error('Response lost after POST');
+      result = keccak256(params[0]);
+    }
     else throw Error(`Unexpected method ${method}`);
     return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { headers: { 'content-type': 'application/json' } });
   };
   const f = await readyAccounts(undefined, connectionFetch);
+  retainedEntries = () => JSON.parse(f.disk.signedValue() ?? '{"entries":[]}').entries.length;
   const transaction = outcome.startsWith('transaction');
   let controller: NativeConnectionsController | undefined;
   let unsubscribe: () => void = () => undefined;
@@ -3171,8 +3185,49 @@ for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject
     assert.equal(published.at(-1), ADDRESS);
     const switched = controller.view.getSnapshot().signingReview;
     assert(switched && !switched.needsAccountSwitch);
-    if (outcome === 'sign' || outcome === 'transaction-sign') {
+    if (outcome === 'transaction-response-lost') {
+      assert(switched.kind === 'transaction');
+      await assert.rejects(controller.view.approveRequest(switched.id, switched.revision, false), { code: 'DELIVERY_UNCERTAIN' });
+      const uncertain = controller.view.getSnapshot().signingReview;
+      assert(uncertain?.kind === 'transaction');
+      assert.equal(uncertain.error, 'DELIVERY_UNCERTAIN');
+      assert.equal(uncertain.retryPreparation, false);
+      assert.equal(uncertain.broadcastHash, keccak256(submitted[0]!));
+      assert.equal(retainedEntries(), 1);
+      await controller.view.rejectRequest(uncertain.id);
+      assert.equal(responses.length, 0);
+      assert.equal(submitted.length, 1);
+    } else if (outcome === 'sign' || outcome === 'transaction-sign' || outcome === 'transaction-preflight-retry') {
       await controller.view.approveRequest(switched.id, switched.revision, false);
+      if (outcome === 'transaction-preflight-retry') {
+        assert(switched.kind === 'transaction');
+        const failed = controller.view.getSnapshot().signingReview;
+        assert(failed?.kind === 'transaction' && failed.id === switched.id);
+        assert.equal(failed.retryPreparation, true);
+        assert.equal(failed.busy, false);
+        assert.equal(failed.broadcastHash, null);
+        assert.equal(preflightFailures, 1);
+        assert.equal(retainedEntries(), 0, 'the exact signed nonce reservation was removed');
+        assert.equal(submitted.length, 0);
+        assert.equal(responses.length, 0);
+        await assert.rejects(controller.view.approveRequest(switched.id, switched.revision, false), { code: 'REQUEST_EXPIRED' });
+        estimate = '0x20000';
+        const retry = controller.view.getSnapshot().signingReview;
+        assert(retry?.kind === 'transaction' && retry.retryPreparation);
+        await controller.view.approveRequest(retry.id, retry.revision, false);
+        const renewed = controller.view.getSnapshot().signingReview;
+        assert(renewed?.kind === 'transaction' && renewed.id === switched.id);
+        assert.equal(renewed.retryPreparation, false);
+        assert.notEqual(renewed.maximumFeeUnits, switched.maximumFeeUnits);
+        assert.equal(retainedEntries(), 0);
+        assert.equal(submitted.length, 0);
+        assert.equal(responses.length, 0);
+        await controller.view.approveRequest(renewed.id, renewed.revision, false);
+        assert.equal(submitted.length, 1);
+        assert.equal(Transaction.from(submitted[0]!).nonce, 0);
+        assert.equal(retainedEntries(), 1);
+        assert.equal(responses.length, 1);
+      }
       const reply = responses.find(response => 'result' in response);
       assert(reply && 'result' in reply);
       if (transaction) {

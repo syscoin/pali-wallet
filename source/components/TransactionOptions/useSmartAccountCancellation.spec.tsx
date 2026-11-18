@@ -11,7 +11,10 @@ import React from 'react';
 
 import en from '../../assets/locales/en.json';
 
-import { SmartAccountSignedOperationOptions } from './TransactionOptions';
+import {
+  SmartAccountSignedOperationOptions,
+  TransactionOptions,
+} from './TransactionOptions';
 import { useSmartAccountCancellation } from './useSmartAccountCancellation';
 
 const ACCOUNT = `0x${'33'.repeat(20)}`;
@@ -63,6 +66,9 @@ jest.mock('utils/navigationState', () => ({
 jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
   controllerEmitter: (...args: any[]) => mockEmitter(...args),
 }));
+jest.mock('hooks/index', () => ({
+  useUtils: () => ({ navigate: jest.fn() }),
+}));
 jest.mock('hooks/useUtils', () => ({
   useUtils: () => ({ alert: mockAlert }),
 }));
@@ -71,6 +77,7 @@ jest.mock('utils/smartAccount/execution', () => ({
   signAndSubmitSmartAccountExecutions: (...args: any[]) => mockSubmit(...args),
 }));
 jest.mock('components/Icon/Icon', () => ({
+  ExternalLinkSvg: () => null,
   Icon: () => null,
   LoadingSvg: () => null,
   MdBugReport: () => null,
@@ -232,6 +239,64 @@ it('opens the existing cancellation review from a signed-only operation menu', a
   );
   expect(mockSubmit).not.toHaveBeenCalled();
 });
+
+it.each([true, false])(
+  'offers only a live Smart cancellation from a mined transaction menu when eligible is %s',
+  async (eligible) => {
+    mockEmitter.mockResolvedValueOnce(eligible);
+    if (eligible) prepare(TRANSACTION, reviewedQuote);
+    const update = jest.fn();
+    render(
+      <TransactionOptions
+        alert={mockAlert}
+        canCancelSmart
+        chainId={57057}
+        handleUpdateTransaction={update}
+        setIsOpenModal={jest.fn()}
+        setModalData={jest.fn()}
+        transaction={
+          {
+            hash: TRANSACTION,
+            from: PAYER,
+            blockNumber: 10,
+            speedUpAvailable: true,
+            type: 2,
+          } as any
+        }
+      />
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: en.transactions.transactionOptions })
+    );
+    const menu = within(screen.getByRole('menu'));
+    expect(
+      menu.queryByRole('menuitem', { name: en.header.speedUp })
+    ).toBeNull();
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'canCancelSavedSmartAccountTransaction'],
+      [TRANSACTION, { account: 'smart', network: 'sys' }]
+    );
+    if (eligible) {
+      fireEvent.click(
+        await menu.findByRole('menuitem', { name: en.buttons.cancel })
+      );
+      await screen.findByRole('dialog', { name: en.header.cancelTx });
+      expect(mockEmitter).toHaveBeenLastCalledWith(
+        ['wallet', 'prepareSmartAccountCancellation'],
+        [{ originalHash: TRANSACTION }, 2, expect.any(Object)],
+        300000,
+        false
+      );
+    } else {
+      expect(
+        menu.queryByRole('menuitem', { name: en.buttons.cancel })
+      ).toBeNull();
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+    }
+    expect(update).not.toHaveBeenCalled();
+    expect(mockSubmit).not.toHaveBeenCalled();
+  }
+);
 
 it('blocks review and signing when the payer budget is missing', async () => {
   prepare(TRANSACTION, {

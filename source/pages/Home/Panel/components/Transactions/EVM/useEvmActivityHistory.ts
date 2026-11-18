@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react';
 
-import { mergeEvmExplorerTransactions } from '../../../../../../shared/evmHistory';
+import {
+  EVM_ACTIVITY_CURSOR_STALE,
+  mergeEvmExplorerTransactions,
+} from '../../../../../../shared/evmHistory';
 import { SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT } from '../../../../../../shared/smartAccountControllerAuthority';
 import { projectEvmActivityRow } from '../../../../../../wallet/evmActivityRow';
 import { useContextualState } from 'hooks/useContextualState';
@@ -67,6 +70,7 @@ export const useEvmActivityHistory = ({
     epoch: number;
     includeLocal: boolean;
     pending?: Promise<void>;
+    rebase?: boolean;
     revision: number;
     scopeKey: string;
   }>({ active: false, includeLocal, epoch: 0, revision: 0, scopeKey });
@@ -93,12 +97,32 @@ export const useEvmActivityHistory = ({
     const current = () =>
       visit.active && context.current === visit && visit.epoch === epoch;
     setState((previous) => ({ ...previous, loading: true }));
+    const readPage = async (cursor?: string) =>
+      (await controllerEmitter(
+        ['wallet', 'getSavedEvmTransactions'],
+        [cursor ?? null, 30, scope]
+      )) as Page;
     const read = async () => {
+      let rebase = visit.rebase === true;
+      const cursor = rebase ? undefined : beforeHash;
       try {
-        const page = (await controllerEmitter(
-          ['wallet', 'getSavedEvmTransactions'],
-          [beforeHash ?? null, 30, scope]
-        )) as Page;
+        let page: Page;
+        try {
+          page = await readPage(cursor);
+        } catch (error) {
+          if (
+            !cursor ||
+            !(error instanceof Error) ||
+            error.message !== EVM_ACTIVITY_CURSOR_STALE
+          )
+            throw error;
+          if (!current()) return;
+          // The journal can remove the anchor while this Activity visit is open.
+          // Read the current head once and replace the invalid local page chain.
+          rebase = true;
+          visit.rebase = true;
+          page = await readPage();
+        }
         if (!current()) return;
         if (
           !Array.isArray(page?.transactions) ||
@@ -119,12 +143,17 @@ export const useEvmActivityHistory = ({
                   !Number.isSafeInteger(row.createdAt) ||
                   (row.status !== 'unresolved' && row.status !== 'unavailable')
               ))) ||
-          (page.nextCursor !== null && typeof page.nextCursor !== 'string')
+          (page.nextCursor !== null &&
+            (typeof page.nextCursor !== 'string' ||
+              page.nextCursor === beforeHash))
         )
           throw new Error('Activity page unavailable');
         const transactions = page.transactions.map(projectEvmActivityRow);
+        visit.rebase = false;
         setState((previous) => {
-          const rows = beforeHash
+          const rows = rebase
+            ? transactions
+            : beforeHash
             ? [...previous.page.transactions, ...transactions]
             : [...transactions, ...previous.page.transactions];
           const byHash = new Map<string, ActivityRow>();
@@ -140,18 +169,19 @@ export const useEvmActivityHistory = ({
           return {
             loading: false,
             unavailable: false,
-            signedOperations: beforeHash
-              ? previous.signedOperations
-              : (page.signedOperations ?? []).filter(
-                  (row) =>
-                    row.chainId === String(chainId) &&
-                    row.account.toLowerCase() ===
-                      accountAddress?.toLowerCase() &&
-                    (clearedAt === undefined || row.createdAt > clearedAt)
-                ),
+            signedOperations:
+              beforeHash && !rebase
+                ? previous.signedOperations
+                : (page.signedOperations ?? []).filter(
+                    (row) =>
+                      row.chainId === String(chainId) &&
+                      row.account.toLowerCase() ===
+                        accountAddress?.toLowerCase() &&
+                      (clearedAt === undefined || row.createdAt > clearedAt)
+                  ),
             page: {
               nextCursor:
-                !beforeHash && overlaps
+                !rebase && !beforeHash && overlaps
                   ? previous.page.nextCursor
                   : page.nextCursor,
               transactions: Array.from(byHash.values()),
@@ -165,7 +195,8 @@ export const useEvmActivityHistory = ({
             ...previous,
             loading: false,
             unavailable: true,
-            failedCursor: beforeHash,
+            failedCursor: rebase ? undefined : beforeHash,
+            ...(rebase ? { page: { ...previous.page, nextCursor: null } } : {}),
           }));
       }
     };

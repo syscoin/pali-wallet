@@ -3178,6 +3178,7 @@
         "theAppSentAnInvalidTransaction": "The app sent an invalid transaction.",
         "thisTransactionCouldNotBePreparedRequest": "This transaction could not be prepared. Request it again from the app.",
         "transactionNotSent": "This transaction was not sent. Request it again from the app.",
+        "transactionRetryAvailable": "This transaction was not sent. Try again to review it with an updated fee.",
         "theResultCouldNotBeConfirmedCheck": "The result could not be confirmed. Check Activity before trying again.",
         "previousPage": "Previous page",
         "nextPage": "Next page",
@@ -4073,7 +4074,6 @@
       "autoWatchHint": "Choose when watch accounts hide"
     },
     "recoveryCopy": {
-      "wordCount": "Enter your 12 or 24 recovery words in order.",
       "restored": "Device authorization restored. Reopening your wallet.",
       "uncertain": "We could not confirm device authorization recovery. Close and reopen Pali before trying again.",
       "cancelled": "Recovery was cancelled.",

@@ -200,6 +200,7 @@ import { captureSignedSmartAccountOperation } from '../../../wallet/smartAccount
 import {
   assertSmartAccountCancellation,
   assertSmartAccountCancellationOperation,
+  decodeSmartAccountCancellation,
   smartAccountCancellationMetadata,
   type SmartAccountCancellationDispatch,
 } from '../../../wallet/smartAccountCancellation';
@@ -386,7 +387,6 @@ import {
   getPrivacyServiceOrigin,
   privacyServiceRevision,
 } from 'utils/privacy/service';
-import type { SpentCompletionRequest } from 'utils/privacy/spentCompletion';
 import type {
   IPrivacyDepositSession,
   IPrivacyTransactionsController,
@@ -2174,6 +2174,55 @@ class MainController {
     );
     assertCurrent();
     return record ? projectSavedEvmTransaction(record) : null;
+  }
+
+  public async canCancelSavedSmartAccountTransaction(
+    hash: string,
+    expectedScope: IWalletNavigationScope
+  ): Promise<boolean> {
+    if (typeof hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(hash))
+      return false;
+    const {
+      account,
+      address,
+      chainId,
+      isSmart,
+      records,
+      session,
+      assertCurrent,
+    } = this.captureSavedEvmActivity(expectedScope);
+    if (!isSmart) return false;
+    const record = await records.readSmartAccountReplayExact(
+      session,
+      chainId,
+      address,
+      hash.toLowerCase(),
+      { excludeRevoked: true }
+    );
+    assertCurrent();
+    const clearedAt = account.evmActivityClearedAtByChainId?.[Number(chainId)];
+    if (
+      record?.operations.length !== 1 ||
+      (clearedAt !== undefined && record.entry.createdAt <= clearedAt) ||
+      record.cancellation ||
+      decodeSmartAccountCancellation(record.entry)
+    )
+      return false;
+    const nonce = BigInt(record.operations[0].operationNonce);
+    const read = this.captureFreshEvmRead(expectedScope);
+    const currentNonce = await read.run((provider) =>
+      withEvmReadPhase(provider, assertCurrent, (phase) =>
+        readSmartAccountNonce(
+          phase,
+          Number(chainId),
+          address,
+          nonce >> BigInt(64),
+          'latest'
+        )
+      )
+    );
+    assertCurrent();
+    return BigInt(currentNonce) === nonce;
   }
 
   public async getSavedEvmTransactions(
@@ -4305,7 +4354,7 @@ class MainController {
         throw new Error('privacy_spent_proof_unavailable');
     };
     const [
-      { prepareSpentCompletion },
+      { prepareSpentCompletion, spentCompletionWithdrawals },
       { readCompletionRpc },
       { getPrivacyPool },
     ] = await Promise.all([
@@ -4316,42 +4365,10 @@ class MainController {
       import(/* webpackChunkName: "private-vault" */ 'utils/privacy/registry'),
     ]);
     assertCurrent();
-    if (
-      withdrawal.phase !== 'submitted' ||
-      typeof withdrawal.transactionHash !== 'string' ||
-      !/^0x[0-9a-fA-F]{64}$/.test(withdrawal.transactionHash)
-    )
-      throw new Error('privacy_spent_proof_unavailable');
-    let submittedWithdrawal: SpentCompletionRequest['withdrawal'];
-    if (withdrawal.mode === 'direct') {
-      if (
-        typeof withdrawal.from !== 'string' ||
-        !/^0x[0-9a-fA-F]{40}$/.test(withdrawal.from) ||
-        typeof withdrawal.nonce !== 'string' ||
-        !/^(?:0|[1-9][0-9]{0,19})$/.test(withdrawal.nonce)
-      )
-        throw new Error('privacy_spent_proof_unavailable');
-      submittedWithdrawal = {
-        phase: 'submitted',
-        mode: 'direct',
-        transactionHash: withdrawal.transactionHash,
-        from: withdrawal.from,
-        nonce: withdrawal.nonce,
-      };
-    } else if (withdrawal.mode === 'relayed') {
-      submittedWithdrawal = {
-        phase: 'submitted',
-        mode: 'relayed',
-        transactionHash: withdrawal.transactionHash,
-        ...(withdrawal.transactionHashes
-          ? { transactionHashes: withdrawal.transactionHashes }
-          : {}),
-      };
-    } else throw new Error('privacy_spent_proof_unavailable');
     return prepareSpentCompletion({
       poolAddress: getPrivacyPool(identity.poolId).address,
       nullifierHash: identity.nullifierHash,
-      withdrawal: submittedWithdrawal,
+      ...spentCompletionWithdrawals(withdrawal),
       assertCurrent,
       rpc: (method, params, signal) =>
         readCompletionRpc(rpcUrl, method, params, signal),

@@ -1,6 +1,7 @@
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import * as recoveryPhrase from '../../../source/shared/recoveryPhrase.ts';
 import type { NativeImportWalletProps } from '../src/screens/NativeImportWallet.tsx';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
 
@@ -11,6 +12,7 @@ function fixture(preview: NativeImportWalletProps['preview'] = async () => rows)
   const calls: string[] = [], confirmed: string[] = [], events = new Map<string, (...args: any[]) => void>();
   let backs = 0;
   const f = screenFixture(new URL('../src/screens/NativeImportWallet.tsx', import.meta.url), 'NativeImportWallet', {
+    '../../../../source/shared/recoveryPhrase': recoveryPhrase,
     '../platform/localization': nativeTranslationFixture,
     'react-native': { StyleSheet: { create: (value: unknown) => value }, Platform: { OS: 'android' }, Keyboard: { dismiss() {} },
       AppState: { currentState: 'active', addEventListener(event: string, callback: (...args: any[]) => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } },
@@ -98,19 +100,21 @@ test('empty preview results cannot reach confirmation and errors do not echo the
   assert(!JSON.stringify(error.children).includes(phrase)); f.close();
 });
 
-test('scanning fills the numbered recovery fields without starting preview or confirming', () => {
-  const f = fixture();
-  const scan = elements(f.render()).find(row => row.type === 'SecretScanButton');
-  assert(scan);
-  scan.props.onPress();
-  const scanner = f.render();
-  assert.equal(scanner.type, 'SecretQrScanner');
-  assert.equal(scanner.props.kind, 'recoveryPhrase');
-  scanner.props.onScan(phrase);
-  const tree = f.render();
-  assert.equal(field(tree, 12).props.value, 'about');
-  assert.equal(button(tree, 'Check phrase').props.disabled, false);
-  assert.deepEqual(f.calls, []);
-  assert.deepEqual(f.confirmed, []);
-  f.close();
-});
+for (const count of [12, 15, 18, 21, 24]) {
+  test(`scanning ${count} words fills the numbered fields and waits for review`, () => {
+    const f = fixture();
+    const scan = elements(f.render()).find(row => row.type === 'SecretScanButton');
+    assert(scan);
+    scan.props.onPress();
+    const scanner = f.render();
+    assert.equal(scanner.type, 'SecretQrScanner');
+    assert.equal(scanner.props.kind, 'recoveryPhrase');
+    scanner.props.onScan([...Array<string>(count - 1).fill('abandon'), 'about'].join(' '));
+    const tree = f.render();
+    assert.equal(field(tree, count).props.value, 'about');
+    assert.equal(button(tree, 'Check phrase').props.disabled, false);
+    assert.deepEqual(f.calls, []);
+    assert.deepEqual(f.confirmed, []);
+    f.close();
+  });
+}

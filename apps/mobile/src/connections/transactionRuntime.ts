@@ -11,6 +11,21 @@ import { decodeApprovalData, summarizeApproval, type ApprovalContractMetadata, t
 import { decodeAssetTransfer, type AssetTransferCall } from '../../../../source/shared/assetTransfer.ts';
 export type NativeConnectionSubmission = EvmDappSubmission;
 
+type NativeConnectionSubmissionFailure = 'retryable' | 'not-sent' | 'uncertain';
+const nativeSubmissionFailures = new WeakMap<object, NativeConnectionSubmissionFailure>();
+
+/** The custody host supplies SDK stage evidence and the result of exact journal cleanup. */
+export function recordNativeConnectionSubmissionFailure(
+  error: unknown,
+  failure: NativeConnectionSubmissionFailure
+): void {
+  if (error && typeof error === 'object') nativeSubmissionFailures.set(error, failure);
+}
+
+export function nativeConnectionSubmissionFailure(error: unknown): NativeConnectionSubmissionFailure | undefined {
+  return error && typeof error === 'object' ? nativeSubmissionFailures.get(error) : undefined;
+}
+
 /** Private one-use capability. Only the connection controller holds it. */
 export type NativePreparedConnectionTransaction = Readonly<{
   feeComparison: EvmDappFeeComparison;

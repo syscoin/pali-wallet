@@ -41,6 +41,7 @@ import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
 import { notificationManager } from '..';
+import { EVM_ACTIVITY_CURSOR_STALE } from '../../../shared/evmHistory';
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import {
   decodeRetainedSmartAccountOperations,
@@ -312,6 +313,64 @@ async function fixture(
     operation,
   };
 }
+
+it('identifies missing transaction and authorization page anchors without classifying journal reads as corrupt', async () => {
+  const f = await fixture();
+  const options = { beforeHash: blockHash, maximum: 20 };
+  await expect(
+    f.records.readPage(f.session, '1', payer.address, options)
+  ).rejects.toThrow(EVM_ACTIVITY_CURSOR_STALE);
+  await expect(
+    f.records.readSmartAccountReplayPage(f.session, '1', smart, options)
+  ).rejects.toThrow(EVM_ACTIVITY_CURSOR_STALE);
+  await expect(
+    f.records.listSmartAccountAuthorizations(f.session, '1', smart, options)
+  ).rejects.toThrow(EVM_ACTIVITY_CURSOR_STALE);
+});
+
+it('only offers cancellation while the authenticated inner nonce is current and unrevoked', async () => {
+  const f = await fixture();
+  const scope = { account: '1', network: mockState.vault.activeNetwork.url };
+  const canCancel = () =>
+    f.wallet.canCancelSavedSmartAccountTransaction(f.hash, scope);
+  let liveNonce = 7;
+  const send = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method !== 'eth_call') return send(method, params);
+    const [address, key] = paliEntryPointInterface.decodeFunctionData(
+      'getNonce',
+      (params[0] as { data: string }).data
+    );
+    expect(address.toLowerCase()).toBe(smart);
+    expect(key).toBe(BigInt(0));
+    expect(params[1]).toBe('latest');
+    return '0x' + liveNonce.toString(16).padStart(64, '0');
+  });
+  await expect(canCancel()).resolves.toBe(true);
+  liveNonce = 8;
+  await expect(canCancel()).resolves.toBe(false);
+  liveNonce = 6;
+  await expect(canCancel()).resolves.toBe(false);
+  liveNonce = 7;
+  const revocation = encodeERC7579Executions([{ target: smart, value: '0' }]);
+  await f.records.retainSmartAccountAuthorization(f.session, {
+    chainId: 1,
+    payer: payer.address,
+    observedAt: { number: '16', hash: blockHash },
+    replacesOperationHash: getSmartAccountUserOpHash(f.operation as any, 1),
+    userOperation: {
+      ...f.operation,
+      callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+        revocation.mode,
+        revocation.executionCalldata,
+      ]),
+      nonce: '7',
+      preVerificationGas: String(f.operation.preVerificationGas),
+    },
+  });
+  await expect(canCancel()).resolves.toBe(false);
+  expect(f.broadcasts).toEqual([]);
+});
 
 it('projects only the unresolved Smart Account authorization without an outer transaction', async () => {
   const f = await fixture();

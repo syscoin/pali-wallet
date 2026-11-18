@@ -3178,6 +3178,7 @@
         "theAppSentAnInvalidTransaction": "앱이 잘못된 거래를 보냈습니다.",
         "thisTransactionCouldNotBePreparedRequest": "이 거래를 준비하지 못했습니다. 앱에서 다시 요청하세요.",
         "transactionNotSent": "이 거래는 전송되지 않았습니다. 앱에서 다시 요청하세요.",
+        "transactionRetryAvailable": "이 거래는 전송되지 않았습니다. 최신 수수료로 거래를 검토하려면 다시 시도하세요.",
         "theResultCouldNotBeConfirmedCheck": "결과를 확인하지 못했습니다. 다시 시도하기 전에 활동을 확인하세요.",
         "previousPage": "이전 페이지",
         "nextPage": "다음 페이지",
@@ -4073,7 +4074,6 @@
       "autoWatchHint": "관찰 계정을 숨기는 시간 선택"
     },
     "recoveryCopy": {
-      "wordCount": "복구 단어 12개 또는 24개를 순서대로 입력하세요.",
       "restored": "기기 인증을 복원했습니다. 지갑을 다시 여는 중입니다.",
       "uncertain": "기기 인증 복원을 확인할 수 없습니다. Pali를 닫았다가 다시 연 후 재시도하세요.",
       "cancelled": "복구가 취소되었습니다.",

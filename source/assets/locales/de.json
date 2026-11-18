@@ -3178,6 +3178,7 @@
         "theAppSentAnInvalidTransaction": "Die App hat eine ungültige Transaktion gesendet.",
         "thisTransactionCouldNotBePreparedRequest": "Diese Transaktion konnte nicht vorbereitet werden. Fordere sie erneut in der App an.",
         "transactionNotSent": "Diese Transaktion wurde nicht gesendet. Fordere sie erneut in der App an.",
+        "transactionRetryAvailable": "Diese Transaktion wurde nicht gesendet. Versuche es erneut, um sie mit einer aktualisierten Gebühr zu prüfen.",
         "theResultCouldNotBeConfirmedCheck": "Das Ergebnis konnte nicht bestätigt werden. Prüfe die Aktivität, bevor du es erneut versuchst.",
         "previousPage": "Vorherige Seite",
         "nextPage": "Nächste Seite",
@@ -4073,7 +4074,6 @@
       "autoWatchHint": "Festlegen, wann Beobachtungskonten ausgeblendet werden"
     },
     "recoveryCopy": {
-      "wordCount": "Gib deine 12 oder 24 Wiederherstellungswörter in der richtigen Reihenfolge ein.",
       "restored": "Geräteautorisierung wiederhergestellt. Deine Wallet wird erneut geöffnet.",
       "uncertain": "Die Wiederherstellung der Geräteautorisierung konnte nicht bestätigt werden. Schließe Pali und öffne es erneut, bevor du es noch einmal versuchst.",
       "cancelled": "Wiederherstellung abgebrochen.",

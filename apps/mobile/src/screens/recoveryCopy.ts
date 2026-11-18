@@ -8,7 +8,7 @@ export function recoveryErrorText(code: RecoveryErrorCode | 'INVALID_WORD_COUNT'
     case 'WRONG_PHRASE': return t('settings.walletRecoveryWrongPhrase');
     case 'AUTH_THROTTLED': return t('mobile.sendAssetViews.evm.tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesBefore');
     case 'INVALID_INPUT': return t('mobile.walletViews.checkYourRecoveryPhrase');
-    case 'INVALID_WORD_COUNT': return t('mobile.recoveryCopy.wordCount');
+    case 'INVALID_WORD_COUNT': return t('mobile.recoveryDevices.recovery.enterEachRecoveryWordInOrder');
     case 'REOPEN_REQUIRED': return t('mobile.walletViews.theWalletCouldNotBeReopenedCloseAndReopenPaliToUnlock');
   }
 }

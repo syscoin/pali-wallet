@@ -1,5 +1,7 @@
 import { isTransactionInBlock as isHistoryTransactionInBlock } from './transactionBlockStatus.ts';
 
+export const EVM_ACTIVITY_CURSOR_STALE = 'EVM_ACTIVITY_CURSOR_STALE';
+
 const orphanedPlacement = Symbol('orphanedPlacement');
 const incompleteHistory = Symbol('incompleteHistory');
 const explorerHasMore = Symbol('explorerHasMore');

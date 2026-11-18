@@ -8,6 +8,7 @@ import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AccessibilityInfo, ActivityIndicator, AppState, findNodeHandle, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text as NativeText, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { isRecoveryPhraseWordCount, RECOVERY_PHRASE_WORD_COUNTS, type RecoveryPhraseWordCount } from '../../../../source/shared/recoveryPhrase';
 import type { NativeRecoveryFlow } from '../custody/recoveryFlow';
 import type { RecoveryInventory } from '../custody/recoveryInventory';
 import { Button, Card, colors, Icon, Notice, Screen, SegmentedControl, styles, Text } from '../ui';
@@ -29,12 +30,12 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
   };
   const snapshot = useSyncExternalStore(useCallback(listener => flow.subscribe(listener), [flow]),
     useCallback(() => flow.getSnapshot(), [flow]), useCallback(() => flow.getSnapshot(), [flow]));
-  const [count, setCount] = useState<12 | 24>(12);
+  const [count, setCount] = useState<RecoveryPhraseWordCount>(12);
   const [words, setWords] = useState(() => blankWords(12));
   const [details, setDetails] = useState(false);
   const [entryError, setEntryError] = useState('');
   const [entrySequence, setEntrySequence] = useState(0);
-  const entered = useRef(blankWords(12)), wordCount = useRef<12 | 24>(12);
+  const entered = useRef(blankWords(12)), wordCount = useRef<RecoveryPhraseWordCount>(12);
   const sequence = useRef(0);
   const alive = useRef(false), cancelled = useRef(false), activeFlow = useRef(flow);
   const latestBack = useRef<() => void>(() => undefined);
@@ -83,7 +84,7 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
     if (!current() || sequence.current !== entrySequence || flow.getSnapshot().phase !== 'entry') return;
     const normalized = value.normalize('NFKD').trim().toLowerCase();
     const pasted = index === 0 ? normalized.split(/\s+/u) : [];
-    if (pasted.length === 12 || pasted.length === 24) {
+    if (isRecoveryPhraseWordCount(pasted.length)) {
       wordCount.current = pasted.length; setCount(pasted.length); entered.current = pasted;
     } else entered.current = entered.current.map((word, position) => position === index ? normalized : word);
     setWords([...entered.current]); setEntryError('');
@@ -144,11 +145,13 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
         {snapshot.phase === 'entry' && <>
           <Text accessibilityRole="header" style={s.heroTitle}>{t('mobile.recoveryDevices.recovery.enterYourRecoveryPhrase')}</Text>
           <Text style={s.body}>{t('mobile.recoveryDevices.recovery.enterEachWordInItsOriginalOrder')}</Text>
-          <SegmentedControl label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={String(count)} options={[{ value: '12', label: t('mobile.recoveryDevices.common.wordCount', { count: 12 }) }, { value: '24', label: t('mobile.recoveryDevices.common.wordCount', { count: 24 }) }]}
+          <SegmentedControl label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={String(count)}
+            options={RECOVERY_PHRASE_WORD_COUNTS.map(words => ({ value: String(words), displayLabel: String(words), label: t('mobile.recoveryDevices.common.wordCount', { count: words }) }))}
             onChange={value => {
               if (!current() || sequence.current !== entrySequence || flow.getSnapshot().phase !== 'entry') return;
-              if (value === String(wordCount.current)) return;
-              wordCount.current = value === '24' ? 24 : 12; setCount(wordCount.current); clear();
+              const next = Number(value);
+              if (next === wordCount.current || !isRecoveryPhraseWordCount(next)) return;
+              wordCount.current = next; setCount(next); clear();
             }} />
           <SecretScanButton onPress={() => { clear(); setScanning(true); }} />
           <View style={s.grid}>{words.map((word, index) => <View key={index} style={s.word}>

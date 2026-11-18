@@ -92,6 +92,7 @@ export type NativeTransactionReview = NativeSigningReviewBase &
     symbol: string;
     decimals: number;
     broadcastHash: string | null;
+    retryPreparation?: boolean;
     approval: ApprovalSummary | null;
     assetTransfer?: AssetTransferCall | null;
     batch?: Readonly<{

@@ -4,7 +4,7 @@ import { activityRowKey, findActivityRow, NativeActivity, type NativeActivityRun
 import { ActivityExplorerReader, type ActivityFeed, type DiscoveredActivityCandidate } from '../src/activity/explorerReader.ts';
 import { ActivityReceiptReader, type ActivityTransactionObservation } from '../src/activity/receiptReader.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW, type ActivityCandidate, type EvmActivityReadScope as ActivityScope, type ActivityViewState, type LocalActivityRecord, type TerminalActivityRecord } from '../src/activity/types.ts';
-import { mapEvmExplorerTransaction, mapEvmExplorerTokenTransfer, getEvmHistoryDirection } from '../../../source/shared/evmHistory.ts';
+import { EVM_ACTIVITY_CURSOR_STALE, mapEvmExplorerTransaction, mapEvmExplorerTokenTransfer, getEvmHistoryDirection } from '../../../source/shared/evmHistory.ts';
 import { observeEvmTransaction, type EvmTransactionObservation } from '../../../source/shared/evmTransactionObservation.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 
@@ -277,6 +277,40 @@ test('ordinary pagination reaches older hashes without polling them, and lock re
   held.resolve({ records: [older], nextCursor: null });
   await late;
   assert.equal(f.controller.getSnapshot().rows.length, 0);
+});
+
+test('a removed saved transaction anchor rebases once and preserves explorer and other saved rows', async () => {
+  const base = fixture();
+  const retained = base.local(5), stale = base.local(4), replacement = base.local(3), older = base.local(2);
+  const indexed = candidate(4);
+  const cursors: (string | undefined)[] = [];
+  const f = fixture({
+    explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [indexed] : []),
+    async loadSavedPending(_scope, cursor, guard) {
+      guard(); cursors.push(cursor);
+      if (cursors.length === 1) return { records: [retained, stale], nextCursor: stale.hash };
+      if (cursor === stale.hash) throw Error(EVM_ACTIVITY_CURSOR_STALE);
+      if (cursor === undefined) return { records: [retained, replacement], nextCursor: replacement.hash };
+      assert.equal(cursor, replacement.hash);
+      return { records: [older], nextCursor: null };
+    },
+  });
+  await f.controller.refresh();
+  const explorerReads = f.explorer.pages.length;
+  await f.controller.loadMore();
+  assert.equal(findActivityRow(f.controller.getSnapshot().rows, stale.hash)?.local, stale);
+  await f.controller.loadMore();
+  assert.equal(f.controller.getSnapshot().error, null);
+  assert.equal(f.controller.getSnapshot().hasMore, true);
+  await f.controller.loadMore();
+  const last = f.controller.getSnapshot();
+  assert.deepEqual(cursors, [undefined, stale.hash, undefined, replacement.hash]);
+  assert.equal(last.error, null);
+  assert.equal(last.hasMore, false);
+  assert.deepEqual(last.rows.map(row => row.hash), [stale.hash, retained.hash, replacement.hash, older.hash]);
+  assert.equal(findActivityRow(last.rows, stale.hash)?.indexed?.hash, indexed.hash);
+  assert.equal(findActivityRow(last.rows, retained.hash)?.local, retained);
+  assert.equal(f.explorer.pages.length, explorerReads);
 });
 
 test('older saved detail uses one owned observation even when explorer history still says confirmed', async () => {
@@ -1451,7 +1485,7 @@ test('Activity shows an original instruction without an outer once, even with a 
   const outer = { ...fixture().local(50), smartAccount: {
     payer: OTHER, operations: [{ operationHash: first.operationHash, operationNonce: first.operationNonce }],
   } };
-  const cursors: string[] = [];
+  const cursors: (string | undefined)[] = [];
   const f = fixture({
     locals: [outer], smartAuthorizations: { entries: [first], nextCursor: first.operationHash },
     async loadSmartAuthorizations(_scope, cursor) {
@@ -1504,7 +1538,7 @@ test('the authorization-only cursor is browseable and needs no explorer or cache
   const newest = Array.from({ length: 20 }, (_, i) => smartInstruction(100 + i));
   const older = smartInstruction(21), cursor = newest.at(-1)!.operationHash;
   const outer = { ...fixture().local(50), smartAccount: { payer: OTHER, operations: [older] } };
-  const reads: string[] = [];
+  const reads: (string | undefined)[] = [];
   let fail = true;
   const f = fixture({
     locals: [outer], smartAuthorizations: { entries: newest, nextCursor: cursor },
@@ -1531,6 +1565,48 @@ test('the authorization-only cursor is browseable and needs no explorer or cache
   assert.equal(findActivityRow(last.rows, outer.hash)?.smartAuthorizations?.[0]?.instruction.operationHash, older.operationHash);
   assert.equal(f.explorer.pages.length, explorerReads);
   assert.equal(f.cacheWrites.length, cacheWrites);
+});
+
+test('a removed authorization anchor retires its in-flight observation and retries the fresh head after a failure', async () => {
+  const retained = smartInstruction(43), stale = smartInstruction(42);
+  const replacement = smartInstruction(41), older = smartInstruction(40);
+  const indexed = candidate(50);
+  const reads: (string | undefined)[] = [];
+  const observation = deferred<Awaited<ReturnType<NonNullable<NativeActivityRuntime['observeSmartAuthorization']>>>>();
+  let heads = 0;
+  const f = fixture({
+    explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [indexed] : []),
+    smartAuthorizations: { entries: [retained, stale], nextCursor: stale.operationHash },
+    async loadSmartAuthorizations(_scope, cursor, guard) {
+      guard(); reads.push(cursor);
+      if (cursor === stale.operationHash) throw Error(EVM_ACTIVITY_CURSOR_STALE);
+      if (cursor === undefined) {
+        if (++heads === 1) throw Error('Head unavailable');
+        return { entries: [retained, replacement], nextCursor: replacement.operationHash };
+      }
+      assert.equal(cursor, replacement.operationHash);
+      return { entries: [older], nextCursor: null };
+    },
+    observeSmartAuthorization: () => observation.promise,
+  });
+  await f.controller.refresh();
+  const explorerReads = f.explorer.pages.length;
+  const pending = f.controller.inspectSmartAuthorization(stale.operationHash, () => {}, new AbortController().signal);
+  await f.controller.loadMore();
+  assert.equal(f.controller.getSnapshot().error, 'older-unavailable');
+  assert.equal(f.controller.getSnapshot().hasMore, true);
+  observation.resolve({ kind: 'pending', currentNonce: stale.operationNonce, operationHash: stale.operationHash, anchor: stale.observedAt });
+  await pending;
+  assert.equal(findActivityRow(f.controller.getSnapshot().rows, stale.operationHash), undefined);
+
+  await f.controller.loadMore();
+  await f.controller.loadMore();
+  const last = f.controller.getSnapshot();
+  assert.deepEqual(reads, [stale.operationHash, undefined, undefined, replacement.operationHash]);
+  assert.equal(last.error, null);
+  assert.equal(last.hasMore, false);
+  assert.deepEqual(last.rows.map(row => row.hash), [retained.operationHash, replacement.operationHash, older.operationHash, indexed.hash]);
+  assert.equal(f.explorer.pages.length, explorerReads);
 });
 
 for (const hasRecord of [true, false]) test(`opening an older outer checks its exact operation without enumerating pages (record=${hasRecord})`, async () => {

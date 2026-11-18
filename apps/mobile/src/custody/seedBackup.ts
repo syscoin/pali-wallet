@@ -1,3 +1,4 @@
+import { isRecoveryPhraseWordCount } from '../../../../source/shared/recoveryPhrase.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
 import { KeyringRuntimeError, type KeyringRuntime } from './keyringRuntime.ts';
 import type { NativeOperationCredential } from './types.ts';
@@ -75,7 +76,7 @@ export class SeedBackupFlow {
     try {
       current();
       const words = await runtime.readPhrase(password); current();
-      if (![12, 24].includes(words.length) || words.some((word) => !/^[a-z]+$/.test(word)))
+      if (!isRecoveryPhraseWordCount(words.length) || words.some((word) => !/^[a-z]+$/.test(word)))
         throw new Error('UNAVAILABLE');
       const fingerprint = await runtime.fingerprint(); current();
       const id = globalThis.crypto.randomUUID();

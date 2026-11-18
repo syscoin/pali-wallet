@@ -242,6 +242,56 @@ it('selects a finalized matching replacement while preserving the original hash 
   );
 });
 
+it.each(['direct', 'relayed'] as const)(
+  'verifies a retained %s withdrawal when the latest submitted attempt reverts',
+  async (mode) => {
+    const f = fixture();
+    const previous = f.request.withdrawal;
+    const oldRelayHash = '0x' + 'ab'.repeat(32);
+    f.request.withdrawal = {
+      phase: 'submitted',
+      mode: 'direct',
+      transactionHash: pendingHash,
+      from: relayer,
+      nonce: '3',
+    };
+    f.request.retainedWithdrawals = [
+      mode === 'direct'
+        ? previous
+        : {
+            phase: 'submitted',
+            mode,
+            transactionHash: oldRelayHash,
+            transactionHashes: [oldRelayHash, wHash],
+          },
+    ];
+    f.receipts[pendingHash] = {
+      ...f.receipts[wHash],
+      transactionHash: pendingHash,
+      status: '0x0',
+    };
+    f.receipts[oldRelayHash] = null;
+    const proof = await prepareSpentCompletion(f.request);
+    const receipts = () =>
+      f.rpc.mock.calls
+        .filter(([method]) => method === 'eth_getTransactionReceipt')
+        .map(([, params]) => params[0]);
+    expect(receipts()).toEqual(
+      mode === 'direct'
+        ? [pendingHash, wHash]
+        : [pendingHash, oldRelayHash, wHash]
+    );
+    f.rpc.mockClear();
+    await proof.revalidate();
+    expect(receipts()).toEqual([wHash]);
+    if (mode === 'direct') f.txs[wHash].nonce = '0x3';
+    else f.receipts[wHash].logs[0].address = recipient;
+    await expect(proof.revalidate()).rejects.toThrow(
+      'privacy_spent_proof_unavailable'
+    );
+  }
+);
+
 it.each([
   'unmined',
   'failed',

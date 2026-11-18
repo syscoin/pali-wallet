@@ -1,6 +1,7 @@
 import { createBoundedRpcFetch } from './boundedRpcFetch.ts';
 import { createSmartAccountInfrastructureReader } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
 import { createRpcReadCapabilitiesOwner } from '../../../../source/shared/rpcReadCapabilities.ts';
+import { isRecoveryPhraseWordCount } from '../../../../source/shared/recoveryPhrase.ts';
 import { buildSmartAccountBuiltinInstall, assertSmartAccountBuiltinInstallApplied, type SmartAccountAuthenticatorPurpose } from '../../../../source/utils/smartAccount/moduleCommands.ts';
 import { isAccountCompatibleWithNetwork } from '../../../../source/utils/accountCompatibility.ts';
 import type { PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
@@ -128,7 +129,7 @@ import type { NativeTrezorView, NativeTrezorResumeIntent, NativeTrezorSnapshot, 
 import type { NativeTrezorSessions, NativeTrezorSession } from '../hardware/trezorSessions.ts';
 import type { NativeTrezorHandoffOwner } from '../hardware/trezorHandoff.ts';
 import type { TrezorHost } from '@sidhujag/sysweb3-keyring/cjs/trezor/host-types.js';
-import { prepareNativeConnectionTransaction } from '../connections/transactionRuntime.ts';
+import { prepareNativeConnectionTransaction, recordNativeConnectionSubmissionFailure } from '../connections/transactionRuntime.ts';
 import { readNativeApprovalMetadata } from '../connections/approvalMetadata.ts';
 import { EvmTransferReadRpc, type NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
 import { walletFetch } from '../platform/http.ts';
@@ -1324,7 +1325,8 @@ export function createKeyringRuntimeFactory(
         }
         function capturePayerSubmission(context: EvmSubmissionContext, selected: NativeCatalogueAccount, externalGuard: () => void,
           metadata?: Readonly<Record<string, unknown>>, replacement?: EvmVerifiedReplacementBinding | EvmVerifiedSmartAccountReplacement,
-          verifyDispatch?: NativeTransferDispatchValidation, assertSmartAdmission?: NativeSmartPayerAdmission, retention?: Readonly<{ walletSend: boolean; retainUnsignedNative?: boolean }>) {
+          verifyDispatch?: NativeTransferDispatchValidation, assertSmartAdmission?: NativeSmartPayerAdmission,
+          retention?: Readonly<{ walletSend?: true; retainUnsignedNative?: boolean; onUnsentDappDiscarded?: () => void }>) {
           const captured = generation;
           const payerType = context.account.type as keyof typeof state.accounts;
           const payer = state.accounts[payerType]?.[context.account.id];
@@ -1355,7 +1357,8 @@ export function createKeyringRuntimeFactory(
               }
             ),
             metadata, replacement, retainUnsignedNative: retention?.retainUnsignedNative,
-            walletSendCleanupSession: retention?.walletSend && selected.type !== 'SmartAccount'
+            onUnsentDappDiscarded: retention?.onUnsentDappDiscarded,
+            walletSendCleanupSession: (retention?.walletSend || retention?.onUnsentDappDiscarded) && selected.type !== 'SmartAccount'
               ? { keyring: transactionRecordKeyring(keyring, checkWalletOwner), assertCurrent: checkWalletOwner }
               : undefined,
             automaticNonceEndpoint: requiresReplacement ? undefined : context.network.url,
@@ -1397,7 +1400,8 @@ export function createKeyringRuntimeFactory(
         // request retires. Rethrow outside run() without retiring the result screen.
         const infrastructureSigningFailures = new WeakSet<Error>();
         async function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
-          selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding,
+          selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void,
+          metadataOrConnection: Readonly<Record<string, unknown>> | 'walletconnect' | undefined, funding: EvmFeeFunding,
           gasPolicy: EvmGasPolicy | Readonly<{ kind: 'private-deposit' }>,
           hardwareSigner: (Pick<NativeHardwareDappSigning, 'signTransaction'> & {keyring(): IndexedKeyring}) | null,
           validateSigningAndBroadcast: (() => Promise<void>) | null,
@@ -1406,6 +1410,7 @@ export function createKeyringRuntimeFactory(
           beforePrivateExecution: (() => Promise<void>) | null = null,
           assertSmartAdmission?: NativeSmartPayerAdmission,
           finalAdmissionIncludesAssets?: true, smartCancellation?:SmartAccountCancellationDispatch) {
+          const metadata = metadataOrConnection === 'walletconnect' ? undefined : metadataOrConnection;
           check();
           if (authentication !== null) assertNativePrivateAuthentication(authentication);
           if (validateSigningAndBroadcast !== null && typeof validateSigningAndBroadcast !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
@@ -1534,8 +1539,13 @@ export function createKeyringRuntimeFactory(
                 network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl },
                 operation: 'send',
               };
+              // A single external EOA request can retry only after retiring its
+              // exact, freshly persisted signed bytes before any dispatch.
+              const directConnection = submission.kind === 'transaction' && metadataOrConnection === 'walletconnect';
+              let unsentDiscarded = false;
               const boundary = sdk.captureEvmSubmission(context, guard, () => {
-                const lifecycle = capturePayerSubmission(context, selectedContext, guard, submissionMetadata, smartReplacement, verifyDispatch, assertSmartAdmission);
+                const lifecycle = capturePayerSubmission(context, selectedContext, guard, submissionMetadata, smartReplacement, verifyDispatch, assertSmartAdmission,
+                  directConnection ? { onUnsentDappDiscarded: () => { unsentDiscarded = true; } } : undefined);
                 return submission.kind === 'eoa-calls'
                   ? bindEoaCallsSignedLifecycle(lifecycle, registry!, submission.attempt) : lifecycle;
               });
@@ -1554,7 +1564,12 @@ export function createKeyringRuntimeFactory(
                 ? sdk.submitSignedHardwareEvmTransaction<string>(signed.rawTransaction, broadcast, boundary, undefined,
                     serializePreparedEvmTransaction(transaction), () => sender.verifyChain(signal, guard))
                 : sdk.submitSignedEvmTransaction<string>(signed.rawTransaction, broadcast, boundary, undefined, serializePreparedEvmTransaction(transaction));
-              const tracked = submission.kind === 'eoa-calls' ? settleEoaCallsSignedSubmission(work, registry!, submission.attempt) : work;
+              const tracked = submission.kind === 'eoa-calls' ? settleEoaCallsSignedSubmission(work, registry!, submission.attempt) : directConnection ? work.catch(error => {
+                const failure = sdk.evmSubmissionFailure(error);
+                if (failure) recordNativeConnectionSubmissionFailure(error,
+                  failure.transactionNotBroadcast ? unsentDiscarded ? 'retryable' : 'not-sent' : 'uncertain');
+                throw error;
+              }) : work;
               const pending = tracked.finally(() => { pendingSubmissions.delete(pending); });
               pendingSubmissions.add(pending);
               return pending;
@@ -3782,7 +3797,7 @@ export function createKeyringRuntimeFactory(
             session: { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard } };
         };
         const loadActivitySmartAuthorizations = async (
-          scope: EvmActivityReadScope, beforeHash: string, assertOwner: () => void, target?: NativeTokenPortfolioScope
+          scope: EvmActivityReadScope, beforeHash: string | undefined, assertOwner: () => void, target?: NativeTokenPortfolioScope
         ) => {
           const owner = await activitySmartAuthorizationOwner(scope, assertOwner, target);
           const saved = await activityHistory.load(owner.scope, owner.check);
@@ -6918,7 +6933,7 @@ export function createKeyringRuntimeFactory(
                   selected,
                   approval.signal,
                   check,
-                  undefined,
+                  'walletconnect',
                   NATIVE_EVM_FEE_FUNDING,
                   { kind: 'estimate' }, hardwareDappSigner(selected, network, approval, check, binding, input.handoff), null, authentication
                 );
@@ -7455,7 +7470,7 @@ export function createKeyringRuntimeFactory(
             importWallet: (phrase) => run(async (captured) => {
               if (typeof phrase !== 'string' || !phrase.isWellFormed() || phrase.length > 4096) throw new KeyringRuntimeError('INVALID_INPUT');
               const normalized = phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ');
-              if (![12, 24].includes(normalized.split(' ').length) || !keyring.isSeedValid(normalized)) throw new KeyringRuntimeError('INVALID_INPUT');
+              if (!isRecoveryPhraseWordCount(normalized.split(' ').length) || !keyring.isSeedValid(normalized)) throw new KeyringRuntimeError('INVALID_INPUT');
               current(captured);
               await createStoredWallet(normalized, captured);
             }),

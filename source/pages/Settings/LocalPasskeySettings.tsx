@@ -25,6 +25,8 @@ export function LocalPasskeySettings({
   const [support, setSupport] = useState<LocalPasskeySupport | null>(null);
   const [password, setPassword] = useState('');
   const [readError, setReadError] = useState(false);
+  const [expiredCooldown, setExpiredCooldown] =
+    useState<PasswordCooldownError>();
   const version = useRef(0);
   const submitting = useRef(false);
   const flow = useLocalPasskeyFlow(createController, (action) => {
@@ -53,6 +55,16 @@ export function LocalPasskeySettings({
       version.current++;
     };
   }, [flow.status]);
+  const cooldown =
+    flow.error instanceof PasswordCooldownError ? flow.error : undefined;
+  useEffect(() => {
+    if (!cooldown) return;
+    const timer = setTimeout(
+      () => setExpiredCooldown(cooldown),
+      cooldown.retryAfterSeconds * 1000
+    );
+    return () => clearTimeout(timer);
+  }, [cooldown]);
   const canEdit =
     enabled !== null &&
     (enabled || (support !== null && support !== 'unsupported'));
@@ -71,12 +83,14 @@ export function LocalPasskeySettings({
     }
   };
   let error: string | undefined;
-  if (flow.error instanceof PasswordCooldownError) {
-    const retryTime = new Intl.RelativeTimeFormat(i18n.language).format(
-      flow.error.retryAfterSeconds,
-      'second'
-    );
-    error = t('start.unlockRateLimited', { retryTime });
+  if (cooldown) {
+    if (cooldown !== expiredCooldown) {
+      const retryTime = new Intl.RelativeTimeFormat(i18n.language).format(
+        cooldown.retryAfterSeconds,
+        'second'
+      );
+      error = t('start.unlockRateLimited', { retryTime });
+    }
   } else if (flow.error) {
     error = t(
       enabled ? 'localPasskey.disableFailed' : 'localPasskey.enrollFailed'

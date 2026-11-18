@@ -8,6 +8,7 @@ import type { IEvmTransactionContext } from '../evmTransactionContext';
 export type IPrivacyWithdrawalSession = IPrivacyDepositSession;
 export type IPrivacyWithdrawalTransaction = PrivacyDepositTransaction;
 export const MAX_PRIVACY_RELAY_TRANSACTIONS = 16;
+export const MAX_PRIVACY_WITHDRAWAL_ATTEMPTS = 16;
 /** Public proof inputs retained only in encrypted custody and explicit backups. */
 export interface IPrivacyWithdrawalPublicInputs {
   fee: string;
@@ -124,4 +125,17 @@ export interface IPrivacyWithdrawalStatusRecord
   extends Omit<IPrivacyWithdrawalJournal, 'unsigned'> {
   noteId: string;
   poolId: PrivacyPoolId;
+}
+
+export function hasSubmittedWithdrawalHash(
+  withdrawal: IPrivacyRetiredWithdrawal
+): withdrawal is IPrivacyRetiredWithdrawal & {
+  phase: 'submitted';
+  transactionHash: string;
+} {
+  return (
+    withdrawal.phase === 'submitted' &&
+    typeof withdrawal.transactionHash === 'string' &&
+    /^0x[0-9a-fA-F]{64}$/.test(withdrawal.transactionHash)
+  );
 }
