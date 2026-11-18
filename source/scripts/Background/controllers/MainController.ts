@@ -5857,12 +5857,6 @@ class MainController {
         await this.prepareWalletRecoveryAccess();
         check();
         await readPair();
-        const remaining = await this.checkRateLimit();
-        check();
-        if (remaining > 0)
-          throw new Error(
-            `Too many failed attempts. Please wait ${remaining} seconds before trying again.`
-          );
         return task();
       });
     const withSdk = async <T>(
@@ -5890,7 +5884,12 @@ class MainController {
       wallTime: Date.now,
       issue: (enrollment, password, assertCurrent) =>
         run(async () => {
+          const remaining = await this.checkRateLimit();
           check();
+          if (remaining > 0)
+            throw new Error(
+              `Too many failed attempts. Please wait ${remaining} seconds before trying again.`
+            );
           assertSynchronousEvmFeeGuard(assertCurrent);
           if (!keyring.isUnlocked()) throw localPasskeyError();
           const accepted = await withSdk(enrollment, (controls) =>
@@ -6059,6 +6058,7 @@ class MainController {
       }
       authenticated = true;
       this.assertCurrentWalletSession(generation, keyring);
+      await this.resetRateLimit();
 
       return await this.finishControllerUnlock(
         generation,
@@ -6106,9 +6106,6 @@ class MainController {
     const controller = getController();
     console.log('[MainController] Unlock successful');
 
-    // Reset failed attempts on successful unlock (persisted)
-    await this.resetRateLimit();
-    check();
     // A new authenticated session never inherits an older unsigned draft.
     // Password verification inside an existing session keeps its caller.
     if (!wasUnlocked) {

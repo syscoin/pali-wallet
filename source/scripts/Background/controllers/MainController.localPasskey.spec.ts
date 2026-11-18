@@ -262,6 +262,50 @@ test('actual SDK passkey enrollment and resume reuse unlock completion and prese
   }
 });
 
+test('an enrolled passkey unlocks during the persisted password cooldown', async () => {
+  const f = await fixture();
+  try {
+    const enrolled = f.open().controller;
+    expect(
+      (await f.finish(enrolled, await enrolled.beginEnrollment(PASSWORD)))
+        .success
+    ).toBe(true);
+    await enrolled.dispose();
+    await f.keyring.lockWallet();
+    f.wallet.advanceWalletSession();
+
+    const cooldown = { failedAttempts: 10, lastFailedTime: Date.now() };
+    f.records.pali_rate_limit_state = cooldown;
+    f.wallet.rateLimitInitialized = false;
+    const passwordUnlock = jest.spyOn(f.keyring, 'unlock');
+    await expect(f.wallet.unlockFromController(PASSWORD)).rejects.toThrow(
+      'Too many failed attempts'
+    );
+    expect(passwordUnlock).not.toHaveBeenCalled();
+
+    const resumed = f.open().controller;
+    expect((await f.finish(resumed, await resumed.beginUnlock())).success).toBe(
+      true
+    );
+    expect(f.keyring.isUnlocked()).toBe(true);
+    expect(passwordUnlock).not.toHaveBeenCalled();
+    await resumed.dispose();
+    expect(f.records.pali_rate_limit_state).toEqual(cooldown);
+    await expect(f.wallet.getRemainingLockoutTime()).resolves.toBe(300);
+
+    const settings = f.open().controller;
+    await expect(settings.beginEnrollment(PASSWORD)).rejects.toThrow(
+      'Too many failed attempts'
+    );
+    await expect(settings.disable(PASSWORD)).rejects.toThrow(
+      'Too many failed attempts'
+    );
+    expect(await settings.status()).toEqual({ enabled: true });
+  } finally {
+    await f.close();
+  }
+});
+
 test('a stale account, vault pair or document cannot install a resumed session', async () => {
   const f = await fixture();
   try {
