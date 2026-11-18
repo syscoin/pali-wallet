@@ -681,7 +681,7 @@ export class EvmTransferReadRpc {
     });
   }
 
-  prepareSpeedUp(original: Transaction, rates: EvmReplacementRates, signal: AbortSignal, guard: () => void, asset?: EvmTransferAsset, expectedDecimals?: number, retainedPayer?: string): Promise<EvmPreparedQuote> {
+  prepareSpeedUp(original: Transaction, rates: EvmReplacementRates, signal: AbortSignal, guard: () => void, asset?: EvmTransferAsset, expectedDecimals?: number, retainedPayer?: string, balanceSnapshot?: EvmAutoNonceSnapshot): Promise<EvmPreparedQuote> {
     const { to, nonce, value, data, gasLimit, chainId } = original;
     const from = original.from ?? retainedPayer;
     if (!from || rates.type !== original.type || chainId.toString() !== this.network.chainId)
@@ -694,12 +694,15 @@ export class EvmTransferReadRpc {
         if (assetState.balanceUnits < BigInt(assetState.asset.amountUnits)) throw new EvmAssetStateError('INSUFFICIENT_ASSET');
         if (expectedDecimals !== undefined) await this.assertTokenDecimals(read, assetState, expectedDecimals);
       }
-      const [rawBalance, rawNonce] = await Promise.all([
-        read('eth_getBalance', [from, 'latest']),
-        read('eth_getTransactionCount', [from, 'latest']),
+      const tag = balanceSnapshot ? hex(BigInt(sampled.number)) : 'latest';
+      const [rawBalance, rawNonce, pendingBalance, pendingNonce] = await Promise.all([
+        read('eth_getBalance', [from, tag]).then(quantity),
+        read('eth_getTransactionCount', [from, tag]).then(quantity),
+        balanceSnapshot ? read('eth_getBalance', [from, 'pending']).then(quantity) : undefined,
+        balanceSnapshot ? read('eth_getTransactionCount', [from, 'pending']).then(quantity) : undefined,
       ]);
       read.assertCurrent();
-      if (quantity(rawNonce) > BigInt(nonce) || (rates.type === 2 && sampled.baseFee === null))
+      if (rawNonce > BigInt(nonce) || (rates.type === 2 && sampled.baseFee === null))
         return rejectRead('REVIEW_REQUIRED');
       const bounds = { chainId, gasLimit, sampledBlockGasLimit: sampled.gasLimit, sampledBaseFeePerGas: sampled.baseFee,
         ...(retainedPayer ? { preserveOriginalGasLimit: true } : {}) };
@@ -723,9 +726,13 @@ export class EvmTransferReadRpc {
           type: 2, accessList: original.accessList ?? [], maxFeePerGas: plan.maxFeePerGas.toString(), maxPriorityFeePerGas: plan.maxPriorityFeePerGas.toString(),
         }),
       }, this.network);
-      const balance = quantity(rawBalance);
       const now = this.monotonicMilliseconds();
       const approval = captureEvmFeeApproval(transaction, this.network.registrationHash, now + EVM_FEE_APPROVAL_LIFETIME_MS);
+      const balance = balanceSnapshot
+        ? await availableEvmReplacementBalance(balanceSnapshot, this.network.chainId, from,
+          Number(rawNonce), Number(pendingNonce), nonce, BigInt(approval.maximumTotalUnits),
+          { canonical: rawBalance, pending: pendingBalance! }, read.assertCurrent)
+        : rawBalance;
       try {
         const estimatedGas = retainedPayer
           ? quantity(await read('eth_estimateGas', [evmEstimateRequest(transaction), hex(BigInt(sampled.number))]))

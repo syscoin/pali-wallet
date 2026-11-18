@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -751,9 +752,17 @@ const SmartAccountSignedOperationItem = ({
 }: {
   operation: SmartAccountSignedActivity;
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const hashLabelId = useId();
+  const { operationHash } = operation;
+  const createdAt = new Date(operation.createdAt);
+  const locale = i18n?.resolvedLanguage || i18n?.language || 'en-US';
   return (
-    <div className="flex w-full items-center justify-between gap-2 border-b border-dashed border-bkg-deepBlue py-2">
+    <div
+      role="group"
+      aria-labelledby={hashLabelId}
+      className="flex w-full items-center justify-between gap-2 border-b border-dashed border-bkg-deepBlue py-2"
+    >
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="break-words text-xs text-white">
           {t(
@@ -769,11 +778,25 @@ const SmartAccountSignedOperationItem = ({
               : 'transactions.smartAuthorizations.noTransactionRecorded'
           )}
         </span>
+        <div className="flex flex-wrap items-center gap-x-2 text-xs text-brand-gray200">
+          <span id={hashLabelId}>
+            {t('transactions.smartAuthorizations.operationHash')}{' '}
+            <bdi className="font-mono" title={operationHash}>
+              <span aria-hidden="true">
+                {operationHash.slice(0, 10)}…{operationHash.slice(-8)}
+              </span>
+              <span className="sr-only">{operationHash}</span>
+            </bdi>
+          </span>
+          {Number.isFinite(createdAt.getTime()) && (
+            <time dateTime={createdAt.toISOString()}>
+              {createdAt.toLocaleTimeString(locale)}
+            </time>
+          )}
+        </div>
       </div>
       <SmartAccountSignedOperationOptions
-        operationHash={
-          operation.replacesOperationHash ?? operation.operationHash
-        }
+        operationHash={operation.replacesOperationHash ?? operationHash}
       />
     </div>
   );

@@ -7966,7 +7966,7 @@ export function createKeyringRuntimeFactory(
             isAuthenticationRefusal: error => !!error && typeof error === 'object' && operationAuthenticationRefusals.has(error),
             authorizeOperation: (credential, transaction, guard) => authorizeOperation(credential, guard, `evm:${unsignedTransferBytes(transaction)}`),
             releaseOperationAuthorization,
-            async replacementOriginal(hash, mode, assertCurrent, signal) {
+            async replacementOriginal(hash, mode, assertCurrent, signal, includeReviewBalance) {
               if (active || reserved || closed || !keyring.hasPublicSession()) return null;
               const captured = generation, selected = selectedAccount(), snapshot = catalogueSnapshot!, epoch = replacementEpoch;
               const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
@@ -8040,6 +8040,10 @@ export function createKeyringRuntimeFactory(
                 executionOperation === 'erc721' && !intent && collectible?.tokenStandard === 'ERC-721' ||
                 executionOperation === 'erc1155' && !intent && collectible?.tokenStandard === 'ERC-1155'
               )) return null;
+              const balanceSnapshot = mode === 'speed-up' && includeReviewBalance
+                ? await signedRecords.captureAutoNonceSnapshot(session, network.chainId, payer.address)
+                : undefined;
+              check();
               const expiresAt = Date.now() + EVM_FEE_APPROVAL_LIFETIME_MS;
               const owner: ReplacementOwner = Object.freeze({ payer, selected, metadata: mode === 'cancel' && unsigned ? undefined : original.metadata,
                 ...(unsigned ? { unsignedExecution: original.unsignedTransaction, assetIntent: intent ?? collectible } : {}), assertCurrent() {
@@ -8055,7 +8059,7 @@ export function createKeyringRuntimeFactory(
                 : { rawTransaction: raw! };
               return Object.freeze({ ...execution, binding, rates, ...(intent ? { intent } : {}),
                 ...(collectible ? { collectible } : {}), ...(selected.type === 'SmartAccount' ? { smartAccount: selected.address } : {}),
-                ...(smartIntent ? { retainedSmartSpeedUp: true as const } : {}) });
+                ...(smartIntent ? { retainedSmartSpeedUp: true as const } : {}), ...(balanceSnapshot ? { balanceSnapshot } : {}) });
             },
             async token(contractAddress, assertCurrent) {
               const contract = normalizeErc20Address(contractAddress);

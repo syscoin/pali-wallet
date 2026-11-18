@@ -2047,6 +2047,25 @@ async function prepareTokenTransfer(f: Awaited<ReturnType<typeof cancellationFix
   await f.transfers.prepareToken(TOKEN_CONTRACT, RECIPIENT, '1');
 }
 
+test('Speed Up review accounts for an existing unrelated pending debit', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    const original = f.transfers.getSnapshot().hash!;
+    f.replacement.pending = true;
+    f.setPendingBalance(1n);
+    await assert.rejects(f.transfers.prepareSpeedUp(original), { code: 'INSUFFICIENT_BALANCE' });
+    assert.equal(f.transfers.getSnapshot().review, null);
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 1);
+    f.setPendingBalance(10n ** 18n);
+    await f.transfers.prepareSpeedUp(original);
+    assert.equal(f.transfers.getSnapshot().review?.replacement?.mode, 'speed-up');
+    assert.equal(f.broadcasts.length, 1);
+  } finally { await f.close(); }
+});
+
 for (const boundary of ['before-confirm', 'after-signature', 'after-storage'] as const)
 for (const asset of ['native', 'token'] as const) test(`replacement final admission rejects ${asset} loss ${boundary}`, async () => {
   const f = await cancellationFixture();

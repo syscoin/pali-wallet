@@ -31,9 +31,11 @@ binds that history, the note, recipient, fees, mode and session.
 
 Withdrawal uses the ordinary recipient and fee review. The backend copies the
 captured history binding into the reservation and rechecks it before dispatch.
-Changed history requires a new review. Local pending withdrawals appear in
-Activity and pause another withdrawal of the same note. Clear Activity releases
-the local pause and the next withdrawal still requires a verified unspent note.
+Changed history requires a new review. A pending direct withdrawal tracked in
+Activity pauses another withdrawal of that note with the same fee payer.
+Clear Activity for that payer releases the pause. A relayer job remains
+available for status checks independently of Activity. Every new withdrawal
+requires a verified unspent note.
 
 Available history and public inputs remain portable. Export stays available
 while a transaction is pending. Imported hints remain historical records.

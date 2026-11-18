@@ -14,7 +14,7 @@ import { activityRowKey, activityRowTimestamp, findActivityRow, NativeActivity, 
 import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
 import { activityAssetIcon } from '../src/activity/assetIcon.ts';
 import { getEvmTransactionDisplayInfo, type EvmDisplayTokenMetadata } from '../../../source/shared/evmTransactionDisplay.ts';
-import { mapEvmExplorerTokenTransfer, mapEvmExplorerTransaction } from '../../../source/shared/evmHistory.ts';
+import { EVM_TRANSACTION_HISTORY_SOURCE, mapEvmExplorerTokenTransfer, mapEvmExplorerTransaction } from '../../../source/shared/evmHistory.ts';
 import { activityRowDirection, matchesActivityView, zeroOnlyActivity } from '../src/activity/activityFiltering.ts';
 import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
 
@@ -152,6 +152,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     '../activity/nativeActivity': { activityRowKey, activityRowTimestamp, findActivityRow },
     '../activity/assetIcon': { activityAssetIcon },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '0' },
+    '../../../../source/shared/evmHistory': { EVM_TRANSACTION_HISTORY_SOURCE },
     '../activity/activityFiltering': {
       activityRowDirection, matchesActivityView, zeroOnlyActivity,
     },

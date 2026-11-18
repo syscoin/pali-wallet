@@ -371,16 +371,16 @@ export class NativeTransferRpc {
     return Object.freeze({ ...quote, original });
   }
   async prepareSpeedUp(hash: string, rawTransaction: string, payer: string, signal: AbortSignal, guard: () => void,
-    rates: EvmReplacementRates, intent?: Erc20TransferIntent, collectible?: NftTransferIntent, retainedSmartSpeedUp?: true): Promise<NativeReplacementQuote> {
+    rates: EvmReplacementRates, intent?: Erc20TransferIntent, collectible?: NftTransferIntent, retainedSmartSpeedUp?: true, balanceSnapshot?: EvmAutoNonceSnapshot): Promise<NativeReplacementQuote> {
     if (typeof rawTransaction !== 'string' || rawTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2)
       throw new NativeTransferRpcError('REVIEW_REQUIRED');
     const { transaction, original } = this.authenticatedOriginal(hash, rawTransaction, payer);
     return this.quoteSpeedUp(transaction,
       retainedSmartSpeedUp ? Object.freeze({ ...original, retainedSmartSpeedUp }) : original,
-      rates, signal, guard, intent, collectible);
+      rates, signal, guard, intent, collectible, balanceSnapshot);
   }
   private async quoteSpeedUp(transaction: Transaction, original: NativeReplacementOriginal, rates: EvmReplacementRates,
-    signal: AbortSignal, guard: () => void, intent?: Erc20TransferIntent, collectible?: NftTransferIntent): Promise<NativeReplacementQuote> {
+    signal: AbortSignal, guard: () => void, intent?: Erc20TransferIntent, collectible?: NftTransferIntent, balanceSnapshot?: EvmAutoNonceSnapshot): Promise<NativeReplacementQuote> {
     if (intent && collectible) throw new NativeTransferRpcError('REVIEW_REQUIRED');
     if (intent) try {
       assertTransferIntentEnvelope({ chainId: this.context.chainId, to: original.to!, value: original.valueUnits, data: original.data }, intent);
@@ -395,15 +395,15 @@ export class NativeTransferRpc {
       contractAddress: nft.contractAddress, tokenId: nft.tokenId, amountUnits: nft.amountUnits } : capturedIntent && { standard: 'ERC20',
       contractAddress: capturedIntent.token.contractAddress, amountUnits: capturedIntent.amountUnits };
     const retainedPayer = original.retainedUnsigned || original.retainedSmartSpeedUp ? original.from : undefined;
-    const quote = await this.receiptRpc.prepareSpeedUp(transaction, rates, signal, guard, asset, capturedIntent?.token.decimals, retainedPayer)
+    const quote = await this.receiptRpc.prepareSpeedUp(transaction, rates, signal, guard, asset, capturedIntent?.token.decimals, retainedPayer, balanceSnapshot)
       .catch((error) => this.mapReadError(error, nft ? 'nft' : 'token'));
     assertSpeedUpEnvelope(original, quote.transaction);
     return Object.freeze({ ...this.checkedQuote(quote), original, ...(capturedIntent ? { intent: capturedIntent, tokenBalanceUnits: quote.assetBalanceUnits! } : {}) });
   }
   async prepareUnsignedSpeedUp(hash: string, unsignedTransaction: string, payer: string, signal: AbortSignal, guard: () => void,
-    rates: EvmReplacementRates, intent?: Erc20TransferIntent, collectible?: NftTransferIntent): Promise<NativeReplacementQuote> {
+    rates: EvmReplacementRates, intent?: Erc20TransferIntent, collectible?: NftTransferIntent, balanceSnapshot?: EvmAutoNonceSnapshot): Promise<NativeReplacementQuote> {
     const { transaction, original } = this.authenticatedUnsignedOriginal(hash, unsignedTransaction, payer);
-    return this.quoteSpeedUp(transaction, original, rates, signal, guard, intent, collectible);
+    return this.quoteSpeedUp(transaction, original, rates, signal, guard, intent, collectible, balanceSnapshot);
   }
   private authenticatedUnsignedOriginal(hash: string, unsignedTransaction: string, payer: string) {
     if (typeof unsignedTransaction !== 'string' || unsignedTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2)

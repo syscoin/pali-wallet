@@ -261,6 +261,10 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
         if (!current()) return;
         close();
         alert.error(t('transactions.speedUpAmountWouldChange'));
+      } else if (error?.code === 'INSUFFICIENT_BALANCE') {
+        if (!current()) return;
+        close();
+        alert.error(t('send.insufficientFunds'));
       } else {
         fail();
       }

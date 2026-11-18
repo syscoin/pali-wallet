@@ -1,5 +1,11 @@
 /** @jest-environment jsdom */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -46,6 +52,7 @@ const mockT = (key: string, values?: { amount?: string }) =>
       'transactions.replaced': 'Replaced',
       'transactions.replacementPending': 'Replacement pending',
       'transactions.cancellation': 'Cancellation',
+      'transactions.smartAuthorizations.operationHash': 'Operation hash',
       'header.speedUp': 'Speed Up',
       'send.sent': 'Sent',
       'notifications.clickToView': 'Details',
@@ -779,6 +786,49 @@ it('shows a signed operation without a transaction identity and replaces its row
   ).toHaveLength(1);
 });
 
+it('distinguishes signed operations with the same status by hash and recorded time', () => {
+  const operations = [
+    {
+      operationHash: hash('e'),
+      createdAt: new Date('2026-10-10T12:30:00Z'),
+      shortHash: '0xeeeeeeee…eeeeeeee',
+    },
+    {
+      operationHash: `0x${'e'.repeat(56)}${'f'.repeat(8)}`,
+      createdAt: new Date('2026-10-10T12:31:00Z'),
+      shortHash: '0xeeeeeeee…ffffffff',
+    },
+  ];
+  render(
+    <EvmTransactionsList
+      userTransactions={[]}
+      smartSignedOperations={operations.map(({ operationHash, createdAt }) => ({
+        account: ACCOUNT,
+        chainId: '1',
+        createdAt: createdAt.getTime(),
+        operationHash,
+        status: 'unresolved',
+      }))}
+    />
+  );
+
+  for (const { operationHash, createdAt, shortHash } of operations) {
+    const row = screen.getByRole('group', {
+      name: `Operation hash ${operationHash}`,
+    });
+    expect(within(row).getByText(shortHash)).toBeTruthy();
+    expect(row.querySelector('time')?.dateTime).toBe(createdAt.toISOString());
+    expect(row.querySelector('time')?.textContent).toBe(
+      createdAt.toLocaleTimeString('en-US')
+    );
+    expect(
+      within(row).getByRole('button', {
+        name: `Cancel instruction ${operationHash}`,
+      })
+    ).toBeTruthy();
+  }
+});
+
 it('uses the pending cancellation row for retries of the same Smart Account operation', () => {
   const operation = {
     account: ACCOUNT,
@@ -807,6 +857,14 @@ it('uses the pending cancellation row for retries of the same Smart Account oper
 
   view.rerender(show([transaction('b')]));
   expect(screen.getByText(fallback)).toBeTruthy();
+  const cancellation = screen.getByRole('group', {
+    name: `Operation hash ${operation.operationHash}`,
+  });
+  expect(
+    within(cancellation).getByRole('button', {
+      name: `Cancel instruction ${operation.replacesOperationHash}`,
+    })
+  ).toBeTruthy();
 
   view.rerender(
     show([{ ...outer, confirmations: 1, blockNumber: 7, isError: '1' }])

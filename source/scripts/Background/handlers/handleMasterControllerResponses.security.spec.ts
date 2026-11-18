@@ -255,6 +255,24 @@ describe('controller action sender authorization', () => {
   });
 
   it.each([true, false])(
+    'forwards the UTXO funding-change code only before broadcast (%s)',
+    async (transactionNotBroadcast) => {
+      const code = 'UTXO_REVIEW_FUNDING_CHANGED';
+      await rejectControllerAction(
+        Object.assign(new Error(code), { code, transactionNotBroadcast })
+      );
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          message: code,
+          transactionNotBroadcast,
+          ...(transactionNotBroadcast ? { code } : {}),
+        },
+      });
+    }
+  );
+
+  it.each([true, false])(
     'preserves the exact submission boolean %s alongside the normalized message',
     async (transactionNotBroadcast) => {
       await rejectControllerAction(

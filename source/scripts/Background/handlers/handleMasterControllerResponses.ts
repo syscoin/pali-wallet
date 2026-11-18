@@ -7,6 +7,7 @@ import {
   isOwnedSmartAccountControllerCall,
   type SmartAccountControllerAuthority,
 } from '../../../shared/smartAccountControllerAuthority';
+import { UTXO_REVIEW_FUNDING_CHANGED } from '../../../shared/utxoSendErrors';
 import { walletTokenReviewError } from '../../../shared/walletTokenReview';
 import { createDappApprovalLifetime } from '../../../utils/dappApprovalLifetime';
 import {
@@ -193,6 +194,11 @@ export const controllerErrorResponse = (
     !trustedBatchHash
   )
     submission.code = error.code;
+  if (
+    error?.code === UTXO_REVIEW_FUNDING_CHANGED &&
+    submission.transactionNotBroadcast === true
+  )
+    submission.code = UTXO_REVIEW_FUNDING_CHANGED;
   if (
     (error?.code === 'UTXO_SUBMISSION_NOT_DISPATCHED' &&
       error.transactionNotBroadcast === true) ||

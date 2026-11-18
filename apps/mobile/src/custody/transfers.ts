@@ -95,7 +95,7 @@ export interface NativeTransferRuntime {
     assertCurrent: () => void;
     signal: AbortSignal;
   }>>;
-  replacementOriginal?(hash: string, mode: NativeReplacementMode, assertCurrent: () => void, signal: AbortSignal):
+  replacementOriginal?(hash: string, mode: NativeReplacementMode, assertCurrent: () => void, signal: AbortSignal, includeReviewBalance?: boolean):
     Promise<NativeReplacementSource | null>;
   releaseReplacement(): void;
   journal(assertCurrent: () => void): Promise<NativeTransferJournalHandle>;
@@ -123,6 +123,7 @@ type NativeReplacementSource = Readonly<{
   collectible?: NftTransferIntent;
   smartAccount?: string;
   retainedSmartSpeedUp?: true;
+  balanceSnapshot?: EvmAutoNonceSnapshot;
 } & ({ rawTransaction: string; unsignedTransaction?: never } | { unsignedTransaction: string; from: string; rawTransaction?: never })>;
 export type NativeReplacementApproval = Readonly<{ original: NativeReplacementOriginal; binding: EvmVerifiedReplacementBinding } & (
   | { mode: 'cancel'; source: 'pending' | 'saved'; feePlan: EvmCancellationQuote['feePlan'] }
@@ -712,7 +713,7 @@ export class NativeTransfers {
       this.review = null;
       this.publish({ phase: 'preparing', context, review: null, hash: null, message: null, intent: null,
         collectible: undefined });
-      const original = await runtime.replacementOriginal(hash, mode, assertCurrent, signal);
+      const original = await runtime.replacementOriginal(hash, mode, assertCurrent, signal, mode === 'speed-up');
       if (!original) throw new NativeTransferError('EXPIRED');
       if (mode === 'cancel') {
         const source = action === 'cancel-saved' ? 'saved' : 'pending';
@@ -739,9 +740,9 @@ export class NativeTransfers {
   }
   private quoteSpeedUp(rpc: NativeTransferRpc, hash: string, original: NativeReplacementSource, signal: AbortSignal, check: () => void) {
     return original.unsignedTransaction !== undefined
-      ? rpc.prepareUnsignedSpeedUp(hash, original.unsignedTransaction, original.from, signal, check, original.rates, original.intent, original.collectible)
+      ? rpc.prepareUnsignedSpeedUp(hash, original.unsignedTransaction, original.from, signal, check, original.rates, original.intent, original.collectible, original.balanceSnapshot)
       : rpc.prepareSpeedUp(hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, check,
-        original.rates, original.intent, original.collectible, original.retainedSmartSpeedUp);
+        original.rates, original.intent, original.collectible, original.retainedSmartSpeedUp, original.balanceSnapshot);
   }
   private async checkDraftNonce(journal: NativeTransferJournalHandle, nonce: string, manual: boolean) {
     try {

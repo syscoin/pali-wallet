@@ -776,6 +776,20 @@ it('shows the specific amount-preservation guidance when the speed-up preview wo
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
+it('reports insufficient funds when an existing pending debit prevents a speed-up review', async () => {
+  mockEmitter.mockResolvedValueOnce({
+    isSpeedUp: false,
+    error: true,
+    code: 'INSUFFICIENT_BALANCE',
+  });
+  render(<Harness />);
+  await act(async () => openSpeedUp());
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockAlert.error).toHaveBeenCalledWith('send.insufficientFunds');
+  expect(mockUpdate).not.toHaveBeenCalled();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
 it('shows amount-preservation guidance if the balance changes after fee approval', async () => {
   mockEmitter.mockResolvedValueOnce(quote()).mockResolvedValueOnce({
     isSpeedUp: false,

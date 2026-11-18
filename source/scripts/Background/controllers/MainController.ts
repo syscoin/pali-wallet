@@ -9067,6 +9067,9 @@ class MainController {
       )
         throw contextError();
     };
+    let checkedOriginal:
+      | { data: string; from: string; to: string | null; value: bigint }
+      | undefined;
     const validateOriginal = (transaction: any) => {
       assertCurrentContext();
       if (
@@ -9085,6 +9088,13 @@ class MainController {
             (original.input ?? original.data).toLowerCase())
       )
         throw contextError();
+      if (previewOnly)
+        checkedOriginal = {
+          from: sender,
+          to: transaction.to ?? null,
+          value: BigInt(String(transaction.value)),
+          data: transaction.data ?? '0x',
+        };
     };
     let broadcastStarted = false;
     try {
@@ -9136,6 +9146,60 @@ class MainController {
           },
         }
       );
+      if (previewOnly && !result.error && result.maximumFee !== undefined) {
+        const original = checkedOriginal;
+        if (!original) throw contextError();
+        if (!isEvmEmptySelfCall(original)) {
+          const total = original.value + BigInt(result.maximumFee);
+          const snapshot =
+            await this.getRetainedEvmRecords().captureAutoNonceSnapshot(
+              { keyring, assertCurrent: assertCurrentContext },
+              String(chainId),
+              sender
+            );
+          const affordable = await withEvmReadPhase(
+            provider,
+            assertCurrentContext,
+            async (phase) => {
+              const block = await readNativeEvmReviewBlock(
+                phase,
+                assertCurrentContext
+              );
+              const tag = `0x${BigInt(block.number).toString(16)}`;
+              const [latest, pending, canonicalBalance, pendingBalance] =
+                await Promise.all([
+                  phase.send('eth_getTransactionCount', [sender, tag]),
+                  phase.send('eth_getTransactionCount', [sender, 'pending']),
+                  phase.send('eth_getBalance', [sender, tag]),
+                  phase.send('eth_getBalance', [sender, 'pending']),
+                ]);
+              const available = await availableEvmReplacementBalance(
+                snapshot,
+                String(chainId),
+                sender,
+                Number(readEvmRpcQuantity(latest)),
+                Number(readEvmRpcQuantity(pending)),
+                nonce,
+                total,
+                {
+                  canonical: readEvmRpcQuantity(canonicalBalance),
+                  pending: readEvmRpcQuantity(pendingBalance),
+                },
+                assertCurrentContext
+              );
+              return total <= available;
+            }
+          );
+          assertCurrentContext();
+          if (!affordable)
+            return {
+              isSpeedUp: false,
+              error: true,
+              code: 'INSUFFICIENT_BALANCE',
+              transactionNotBroadcast: true,
+            };
+        }
+      }
       if (retainedIntent && result.isSpeedUp && result.transaction?.hash) {
         try {
           await this.getRetainedEvmRecords().updatePhase(

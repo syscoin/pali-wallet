@@ -507,6 +507,10 @@ export const previewSpeedUpTransaction = async (
     store.getState().vault.isBitcoinBased
   )
     throw new Error('Transaction context changed');
+  if (response?.code === 'INSUFFICIENT_BALANCE')
+    throw Object.assign(new Error('Insufficient funds'), {
+      code: response.code,
+    });
   if (response?.code === 'REPLACEMENT_VALUE_WOULD_CHANGE')
     throw Object.assign(new Error('Replacement would change the amount'), {
       code: 'REPLACEMENT_VALUE_WOULD_CHANGE',

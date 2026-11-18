@@ -130,6 +130,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let blockedRecipient = false;
   let smartBalance = '0x0';
   let payerBalance = '0x1000000000000000';
+  let pendingPayerBalance: string | undefined;
   let gasCredit = 0n;
   let interruptAfterReceipt = false;
   let smartCodeRead: (() => void | Promise<void>) | undefined;
@@ -227,7 +228,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         else if (request.method === 'eth_getTransactionCount') result = consumedPayerNonce === undefined
           ? nonceReset ? '0x0' : `0x${(initialEoaNonce + (request.params[1] === 'pending' ? externalPendingNonces : 0) + (request.params[1] === 'pending' || readReceipts ? submitted.length : 0)).toString(16)}`
           : '0x'+(consumedPayerNonce+(request.params[1]==='pending'?externalPendingNonces+submitted.filter(raw=>{const tx=Transaction.from(raw);return tx.from!.toLowerCase()===request.params[0].toLowerCase()&&tx.nonce>=consumedPayerNonce!;}).length:0)).toString(16);
-        else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? smartBalance : payerBalance;
+        else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? smartBalance : (request.params[1] === 'pending' ? pendingPayerBalance ?? payerBalance : payerBalance);
         else if (request.method === 'eth_gasPrice') result = '0x2';
         else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
         else if (request.method === 'eth_estimateGas') {
@@ -614,6 +615,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     initialEoaNonce(value: number) { assert(Number.isSafeInteger(value) && value >= 0); initialEoaNonce = value; },
     consumePayerNonce(value:number) {assert(Number.isSafeInteger(value)&&value>=0);consumedPayerNonce=value;},
     externalPayerPending(value: number) { externalPendingNonces = value; },
+    pendingPayerBalance(value: bigint | undefined) { pendingPayerBalance = value === undefined ? undefined : `0x${value.toString(16)}`; },
     smartGuardian(address: string, owners: string[], options: { compositeThreshold?: number; threshold?: number; deployed?: boolean } = {}) {
       smartGuardianMetadata = { address, owners: [...owners], threshold: options.threshold ?? 1, compositeThreshold: options.compositeThreshold, deployed: options.deployed ?? true };
     },
@@ -1785,6 +1787,11 @@ test('Smart Activity speeds up the exact outer transaction using its original lo
     const original = Transaction.from(f.submitted[0]!);
     const ownerProofs = f.signatures.length;
     transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    f.pendingPayerBalance(1n);
+    await assert.rejects(transfers.prepareSpeedUp(original.hash!), { code: 'INSUFFICIENT_BALANCE' });
+    assert.equal(transfers.getSnapshot().review, null);
+    assert.equal(f.submitted.length, 1);
+    f.pendingPayerBalance(undefined);
     await transfers.prepareSpeedUp(original.hash!);
     const review = transfers.getSnapshot().review;
     assert(review, JSON.stringify(transfers.getSnapshot()));

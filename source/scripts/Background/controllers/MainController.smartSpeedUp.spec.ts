@@ -267,6 +267,17 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         .fn()
         .mockResolvedValue({ gasLimit: BigNumber.from(30_000_000) }),
       verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
+      send: jest.fn(async (method: string) => {
+        if (method === 'eth_getBlockByNumber')
+          return {
+            number: '0x64',
+            hash: `0x${'71'.repeat(32)}`,
+            gasLimit: '0x1c9c380',
+          };
+        if (method === 'eth_getTransactionCount') return '0x8';
+        if (method === 'eth_getBalance') return '0x3b9aca00';
+        throw new Error(`Unexpected review read: ${method}`);
+      }),
       sendTransaction: jest.fn().mockResolvedValue(response),
     };
     currentProvider = provider;
@@ -295,6 +306,14 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     wallet.walletSessionGeneration = 5;
     wallet.isResettingWallet = false;
     wallet.getActiveKeyring = jest.fn(() => keyring);
+    wallet.getRetainedEvmRecords = () => ({
+      captureAutoNonceSnapshot: async () => ({
+        owner: 'speed-up-review-fixture',
+        minimumNonce: 0,
+        retained: [],
+      }),
+      readPendingCancellation: async () => null,
+    });
     wallet.startRapidTransactionPolling = jest.fn();
     mockPersist.mockImplementation(async (_include, _skip, current) => {
       if (!current()) throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
@@ -592,6 +611,51 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       dispose: () => rpc.destroy(),
     };
   };
+
+  it.each(['EOA', 'Smart outer'])(
+    'rejects an existing pending debit before displaying a %s Speed Up review',
+    async (kind) => {
+      const fixture = await setupDurableReplacement();
+      try {
+        if (kind === 'Smart outer') {
+          mockState.vault.activeAccount = owner;
+          mockState.vault.accountTransactions.SmartAccount[7].ethereum[CHAIN] =
+            [
+              {
+                ...rawOriginal(),
+                value: '7',
+                input: '0x1234',
+                smartAccountExecutionFrom: SMART,
+              },
+            ];
+        }
+        const walletScope = getWalletNavigationScope();
+        const preview = () =>
+          wallet.speedUpEvmTransaction(ORIGINAL, true, CHAIN, PAYER, {
+            previewOnly: true,
+            walletScope,
+          });
+        fixture.setPendingBalance(BigInt(1));
+        await expect(preview()).resolves.toMatchObject({
+          error: true,
+          code: 'INSUFFICIENT_BALANCE',
+          transactionNotBroadcast: true,
+        });
+        await expect(
+          previewSpeedUpTransaction(ORIGINAL, true, CHAIN, PAYER, walletScope)
+        ).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
+        expect(fixture.posts).toHaveLength(0);
+        fixture.setPendingBalance(BigInt('1000000000'));
+        await expect(preview()).resolves.toMatchObject({
+          isSpeedUp: false,
+          maximumFee: expect.any(String),
+        });
+        expect(fixture.posts).toHaveLength(0);
+      } finally {
+        fixture.dispose();
+      }
+    }
+  );
 
   it.each(
     [true, false].flatMap((legacy) =>

@@ -93,6 +93,27 @@ it('routes an ordinary account fee preview through the scoped wallet controller'
   ]);
 });
 
+it('preserves the insufficient-balance code through the Chrome preview response', async () => {
+  reply = (message, callback) => {
+    expect(route(message)).toBe(originalRoute);
+    expect(message.data.params[4].previewOnly).toBe(true);
+    callback({
+      isSpeedUp: false,
+      error: true,
+      code: 'INSUFFICIENT_BALANCE',
+      transactionNotBroadcast: true,
+    });
+  };
+
+  await expect(
+    previewSpeedUpTransaction(ORIGINAL, false, 5700, ACCOUNT)
+  ).rejects.toMatchObject({
+    code: 'INSUFFICIENT_BALANCE',
+    transactionNotBroadcast: true,
+  });
+  expect(messages.map(route)).toEqual([originalRoute]);
+});
+
 it('shows amount guidance for an SDK-shaped rejection through the real emitter', async () => {
   reply = (message, callback) => {
     expect(route(message)).toBe(originalRoute);
