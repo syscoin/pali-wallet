@@ -322,6 +322,35 @@ it('rejects replacement admission if the predecessor opted out, the bytes change
   ).resolves.toBe('unknown');
 });
 
+it.each(['Ledger', 'Trezor'])(
+  'admits a replacement only in the original %s account',
+  async (type) => {
+    const c = context();
+    const deviceOwner = { ...owner, account: { ...owner.account, type } };
+    const original = { ...record(), owner: deviceOwner };
+    await c.records.persist(c.session, original);
+    await c.records.acknowledge(c.session, deviceOwner, original.txid);
+    await expect(
+      c.records.replacementCandidate(c.session, owner, original.txid)
+    ).resolves.toBeUndefined();
+    await expect(
+      c.records.replacementCandidate(c.session, deviceOwner, original.txid)
+    ).resolves.toEqual(unsignedRecord(original));
+
+    const replacement = {
+      ...record(0xfffffffd, 1200),
+      replacementOf: original.txid,
+    };
+    await expect(c.records.persist(c.session, replacement)).rejects.toThrow(
+      'UTXO_SIGNED_REPLACEMENT_CHANGED'
+    );
+    await c.records.persist(c.session, { ...replacement, owner: deviceOwner });
+    await expect(
+      c.records.readExact(c.session, deviceOwner, replacement.txid)
+    ).resolves.toEqual(unsignedRecord({ ...replacement, owner: deviceOwner }));
+  }
+);
+
 it('persists before the first POST and returns the exact ACK while its marker is held', async () => {
   const c = context(),
     transaction = record();

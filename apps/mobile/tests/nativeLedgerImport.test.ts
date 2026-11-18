@@ -250,6 +250,7 @@ async function fixture() {
               psbt.signAllInputsHD(hd.getRootNode());
               authority.assertCurrent();
               check();
+              await holdSignature?.();
               return {
                 fingerprint,
                 signatures: psbt.data.inputs.flatMap(
@@ -880,7 +881,7 @@ test('Ledger UTXO review uses its saved xpub before connection and the shared si
       hash: Buffer.alloc(20, 8),
       network: network.addressNetwork,
     }).address;
-    let broadcasts = 0;
+    const submitted = new Map<string, string>();
     f.setUtxoFetch(async (input, init) => {
       const url = String(input),
         route = url.slice(network.endpoint.length);
@@ -906,9 +907,11 @@ test('Ledger UTXO review uses its saved xpub before connection and the shared si
         result = { hex: previous.toHex() };
       else if (route === '/api/v2/sendtx/' && init?.method === 'POST') {
         const transaction = bitcoin.Transaction.fromHex(String(init.body));
-        assert.equal(transaction.outs[0].value, 50000n);
-        broadcasts++;
+        submitted.set(transaction.getId(), transaction.toHex());
         result = { result: transaction.getId() };
+      } else if (route.startsWith('/api/v2/tx/') && submitted.has(route.slice('/api/v2/tx/'.length))) {
+        const txid = route.slice('/api/v2/tx/'.length);
+        result = { txid, hex: submitted.get(txid), confirmations: 0 };
       } else throw new Error('Unexpected UTXO fixture route ' + route);
       const response = Response.json(result);
       Object.defineProperty(response, 'url', { value: url });
@@ -923,9 +926,37 @@ test('Ledger UTXO review uses its saved xpub before connection and the shared si
     await f.connection.finishConnection();
     assert.equal(f.connection.isConnected(), true);
     assert.equal(f.psbtSignCount, 0);
-    await send.confirm(review, { method: 'device' });
+    const credential = { method: 'device' as const }, fee = { kind: 'automatic' as const };
+    const { txid } = await send.confirm(review, credential);
     assert.equal(f.psbtSignCount, 1);
-    assert.equal(broadcasts, 1);
+    assert.equal(submitted.size, 1);
+    assert.equal(bitcoin.Transaction.fromHex(submitted.get(txid)!).outs[0].value, 50000n);
+    assert.deepEqual(await send.availableReplacements(txid, () => undefined), ['speed-up', 'cancel']);
+    const replacement = { txid, mode: 'speed-up' as const };
+    const stale = await send.prepareReplacement(replacement, fee);
+    assert.equal(f.psbtSignCount, 1);
+    const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    f.holdSignature(async () => { entered.resolve(); await release.promise; });
+    try {
+      const pending = send.confirm(stale, credential);
+      const retired = assert.rejects(pending);
+      await entered.promise;
+      send.cancel();
+      release.resolve();
+      await retired;
+      assert.equal(submitted.size, 1);
+    } finally { release.resolve(); f.holdSignature(async () => undefined); }
+    const faster = await send.prepareReplacement(replacement, fee);
+    const bumped = await send.confirm(faster, credential);
+    assert.equal(submitted.size, 2);
+    assert.equal(bitcoin.Transaction.fromHex(submitted.get(bumped.txid)!).outs[0].value, 50000n);
+    const cancellation = await send.prepareReplacement({ txid: bumped.txid, mode: 'cancel' }, fee);
+    const cancelled = await send.confirm(cancellation, credential);
+    assert.equal(submitted.size, 3);
+    const self = bitcoin.Transaction.fromHex(submitted.get(cancelled.txid)!);
+    assert.equal(self.outs.length, 1);
+    assert.equal(bitcoin.address.fromOutputScript(self.outs[0].script, network.addressNetwork), faster.outputs[1]?.address);
+    assert.equal(f.psbtSignCount, 4);
     send.cancel();
   } finally {
     await f.close();

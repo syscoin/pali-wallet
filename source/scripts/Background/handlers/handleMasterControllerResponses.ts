@@ -616,7 +616,15 @@ export const handleMasterControllerResponses = (
             } else if (utxoMethod) {
               argumentsForCall = [params[0]];
             } else if (ownedUtxoReplacement) {
-              argumentsForCall = [params[0], sourceAuthority];
+              argumentsForCall = [
+                params[0],
+                {
+                  assertCurrent: sourceAuthority!.assertCurrent,
+                  signal: sourceAuthority!.signal,
+                  ...(Number.isSafeInteger(sender.tab?.id) &&
+                    sender.tab!.id >= 0 && { attachedTab: true }),
+                },
+              ];
             }
             // Always execute the method; never attempt to send functions over messaging
             dappApproval?.assertCurrent();

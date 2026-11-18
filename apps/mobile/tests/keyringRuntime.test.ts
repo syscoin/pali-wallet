@@ -3683,7 +3683,8 @@ test('Trezor runtime reads saved UTXO status without Suite, signing or broadcast
   } finally { await owner.dispose(); await fixture.sessions.dispose(); }
 });
 
-for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UTXO ${maximum ? 'MAX' : 'exact'} draft with its custom fee through a fresh review and device signature`, async () => {
+for (const variant of ['exact', 'MAX', 'replacement', 'changed-replacement'] as const) test(`Trezor runtime resumes a UTXO ${variant} draft through a fresh review and device signature`, async () => {
+  const maximum = variant === 'MAX';
   const [{ createTrezorSessions }, { getUtxoNetwork }, { getNetworkConfig }, { utils }, { metadata }] = await Promise.all([
     import('../src/hardware/trezorSessions.ts'), import('../src/core/utxoNetworks.ts'), import('@sidhujag/sysweb3-network'),
     import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
@@ -3701,6 +3702,9 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
   const recipient = utils.bitcoinjs.payments.p2wpkh({ hash: Buffer.alloc(20, 8), network: network.addressNetwork }).address!;
   const methods: string[] = [];
   let random = 0, requestId = 0, broadcasts = 0;
+  const submitted = new Map<string, string>();
+  let changeDeviceReply = false;
+  let deferReplacementReply: ((callback: string) => void) | undefined;
   const sessions = createTrezorSessions({
     randomBytes: length => new Uint8Array(length).fill(++random),
     async loadClient() {
@@ -3733,8 +3737,9 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
           return index >= 0x80000000 ? `${index - 0x80000000}'` : String(index);
         }).join('/');
         const psbt = new utils.bitcoinjs.Psbt({ network: network.addressNetwork });
-        psbt.setVersion(params.version); psbt.setLocktime(params.locktime);
+        psbt.setVersion(params.version); psbt.setLocktime(params.locktime + (changeDeviceReply ? 1 : 0));
         for (const input of params.inputs) {
+          if (broadcasts > 0) assert.equal(input.amount, previous.outs[input.prev_index].value.toString());
           const path = pathText(input.address_n);
           const key = hd.getRootNode().derivePath(path);
           psbt.addInput({ hash: input.prev_hash, index: input.prev_index, sequence: input.sequence,
@@ -3753,7 +3758,8 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
       } else throw new Error(`Unexpected device method ${method}`);
       const callback = new URL(url.searchParams.get('callback')!);
       callback.searchParams.set('response', JSON.stringify({ success: true, payload }));
-      assert.equal(sessions.receiveCallback(callback.toString()), true);
+      if (method === 'signTransaction' && deferReplacementReply) deferReplacementReply(callback.toString());
+      else assert.equal(sessions.receiveCallback(callback.toString()), true);
     },
   });
   const disk = memoryDisk(undefined, undefined, undefined, sessions, async (input, init) => {
@@ -3765,7 +3771,13 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
     else if (route.startsWith('/api/v2/xpub/')) result = { tokens: [] };
     else if (route.startsWith('/api/v2/utxo/')) result = [{ txid: previous.getId(), vout: 0, value: '100000', address, confirmations: 10, path: "m/84'/0'/0'/0/0" }];
     else if (route === '/api/v2/tx/' + previous.getId()) result = { hex: previous.toHex() };
-    else if (route === '/api/v2/sendtx/' && init?.method === 'POST') { broadcasts++; result = { result: utils.bitcoinjs.Transaction.fromHex(String(init.body)).getId() }; }
+    else if (route === '/api/v2/sendtx/' && init?.method === 'POST') {
+      const transaction = utils.bitcoinjs.Transaction.fromHex(String(init.body));
+      broadcasts++; submitted.set(transaction.getId(), transaction.toHex()); result = { result: transaction.getId() };
+    } else if (route.startsWith('/api/v2/tx/') && submitted.has(route.slice('/api/v2/tx/'.length))) {
+      const txid = route.slice('/api/v2/tx/'.length);
+      result = { txid, hex: submitted.get(txid), confirmations: 0 };
+    }
     else throw new Error('Unexpected UTXO route ' + route);
     const response = Response.json(result); Object.defineProperty(response, 'url', { value: url }); return response;
   });
@@ -3780,6 +3792,64 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
     const callCount = methods.length;
     const first = await runtime.openUtxoSend!(() => undefined);
     const feeChoice = { kind: 'custom' as const, satPerVbyte: '7' };
+    if (variant === 'replacement' || variant === 'changed-replacement') {
+      const credential = { method: 'device' as const };
+      const original = await first.prepare({ recipient, amount: '0.0005', rbf: true });
+      const { txid } = await first.confirm(original, credential);
+      const signingCalls = () => methods.filter(method => method === 'signTransaction').length;
+      const replacement = { txid, mode: 'speed-up' as const };
+      const send = await runtime.openUtxoSend!(() => undefined);
+      assert.deepEqual(await send.availableReplacements(txid, () => undefined), ['speed-up', 'cancel']);
+      const review = await send.prepareReplacement(replacement, feeChoice);
+      assert.equal(signingCalls(), 1);
+      if (variant === 'changed-replacement') {
+        const callback = Promise.withResolvers<string>();
+        deferReplacementReply = callback.resolve;
+        const signing = send.confirm(review, credential);
+        const retired = assert.rejects(signing);
+        const response = await callback.promise;
+        owner.lock(); await owner.unlock();
+        await retired;
+        assert.equal(sessions.receiveCallback(response), true);
+        const intent = await runtime.trezor.resumeSend();
+        assert.equal(intent.kind, 'utxo-replacement');
+        if (intent.kind !== 'utxo-replacement') throw Error('Unexpected replacement draft');
+        const fresh = await runtime.openUtxoSend!(() => undefined);
+        await assert.rejects(fresh.prepareReplacement(intent.replacement, { kind: 'custom', satPerVbyte: '8' }), /Network conditions changed/);
+        assert.equal(signingCalls(), 2);
+        assert.equal(broadcasts, 1);
+        return;
+      }
+      owner.lock(); await owner.unlock();
+      assert.equal(runtime.trezor.getSnapshot().phase, 'resume');
+      await assert.rejects(send.confirm(review, credential), /CANCELLED|NOT_READY/);
+      const intent = await runtime.trezor.resumeSend();
+      assert.equal(intent.kind, 'utxo-replacement');
+      if (intent.kind !== 'utxo-replacement') throw Error('Unexpected replacement draft');
+      assert.deepEqual(intent.replacement, replacement);
+      assert.deepEqual(intent.feeChoice, feeChoice);
+      const fresh = await runtime.openUtxoSend!(() => undefined);
+      const renewed = await fresh.prepareReplacement(intent.replacement, intent.feeChoice);
+      assert.notEqual(renewed, review);
+      assert.deepEqual(renewed.outputs, review.outputs);
+      assert.equal(signingCalls(), 1);
+      const bumped = await fresh.confirm(renewed, credential);
+      assert.equal(broadcasts, 2);
+      const cancel = { txid: bumped.txid, mode: 'cancel' as const };
+      let next = await runtime.openUtxoSend!(() => undefined);
+      let cancellation = await next.prepareReplacement(cancel, feeChoice);
+      changeDeviceReply = true;
+      await assert.rejects(next.confirm(cancellation, credential));
+      assert.equal(broadcasts, 2);
+      changeDeviceReply = false;
+      next = await runtime.openUtxoSend!(() => undefined);
+      cancellation = await next.prepareReplacement(cancel, feeChoice);
+      const cancelled = await next.confirm(cancellation, credential);
+      assert.equal(broadcasts, 3);
+      assert.equal(utils.bitcoinjs.Transaction.fromHex(submitted.get(cancelled.txid)!).outs.length, 1);
+      return;
+    }
+
     const preparing = first.prepare({ recipient, amount: maximum ? '' : '0.0005', max: maximum, rbf: false, feeChoice });
     feeChoice.satPerVbyte = '8';
     const review = await preparing;

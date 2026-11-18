@@ -820,7 +820,7 @@ for (const kind of ['native', 'erc20', 'nft'] as const) test(`Trezor ${kind} ret
     data: intent?.kind === 'erc20-transfer' ? encodeErc20Transfer(recipient, intent.amountUnits)
       : intent ? encodeNftTransferData(intent) : '0x' }).unsignedSerialized;
   const resumed = trezorResumeDraft({ id: 'resume', kind: 'evm', accountId: 'trezor:60:0', networkId: 'ethereum', unsignedTransaction, ...(intent ? { intent } : {}) });
-  if (resumed.kind === 'utxo') throw Error('Unexpected UTXO draft');
+  if (resumed.kind === 'utxo' || resumed.kind === 'utxo-replacement') throw Error('Unexpected UTXO draft');
   const f = setup(kind === 'erc20' ? token : undefined);
   try {
     f.seedDraft(resumed.draft, resumed.kind === 'collectible' ? resumed.collectible : undefined);

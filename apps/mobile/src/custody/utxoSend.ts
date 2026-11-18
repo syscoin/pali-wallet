@@ -89,8 +89,10 @@ export function createNativeUtxoSend(
   collateral: ReturnType<typeof createNativeSentryCollateral> | null,
   authorization: Readonly<{
     authorize(credential: NativeOperationCredential, input: Parameters<ISyscoinTransactions['signPSBT']>[0], assertCurrent: () => void): Promise<NativeOperationAuthorization>;
-    sign(receipt: NativeOperationAuthorization, input: Parameters<ISyscoinTransactions['signPSBT']>[0], read: Parameters<ISyscoinTransactions['signPSBT']>[1], assertCurrent: () => void): ReturnType<ISyscoinTransactions['signPSBT']>;
+    sign(receipt: NativeOperationAuthorization, input: Parameters<ISyscoinTransactions['signPSBT']>[0], read: Parameters<ISyscoinTransactions['signPSBT']>[1], assertCurrent: () => void, replacement?: NativeUtxoReplacement): ReturnType<ISyscoinTransactions['signPSBT']>;
     release(receipt: NativeOperationAuthorization): void;
+    retainReviewedReplacement?(replacement: NativeUtxoReplacement, feeChoice: UtxoFeeChoice,
+      input: Parameters<ISyscoinTransactions['signPSBT']>[0], assertCurrent: () => void): Promise<void>;
   }>,
   now = () => performance.now()
 ) {
@@ -206,7 +208,6 @@ export function createNativeUtxoSend(
   };
   const candidate = async (txid: string, check: () => void, includeUnacknowledged = false) => {
     check();
-    if (scope.account.type !== 'HDAccount' && scope.account.type !== 'Imported') return;
     if (!/^[a-f0-9]{64}$/.test(txid)) return;
     const retained = await records.replacementCandidate({ ...session, assertCurrent: check }, owner, txid, includeUnacknowledged);
     check();
@@ -265,6 +266,10 @@ export function createNativeUtxoSend(
             replacement: Object.freeze({ txid, mode, previousFeeSatoshis: binding.review.previousFeeSatoshis }),
             transactionOptions: reviewUtxoTransactionOptions(true, false, true),
           });
+          if (authorization.retainReviewedReplacement) {
+            await authorization.retainReviewedReplacement(view.replacement, feeChoice, { psbt: binding.psbt }, check);
+            check();
+          }
           review = { expires, binding, predecessor, view };
           return view;
         } finally {
@@ -505,7 +510,7 @@ export function createNativeUtxoSend(
             }
             const signed = await authorization.sign(receipt,
               { psbt: selected.binding.psbt },
-              read, check
+              read, check, selected.view.replacement
             );
             check();
             const { record } = selected.binding.bindSigned(signed);

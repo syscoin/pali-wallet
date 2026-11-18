@@ -700,11 +700,7 @@ export class UtxoSignedRecords {
             record.replacementOf,
             record.outpoints
           );
-          if (
-            !latest ||
-            !['HDAccount', 'Imported'].includes(record.owner.account.type)
-          )
-            throw new Error('UTXO_SIGNED_REPLACEMENT_CHANGED');
+          if (!latest) throw new Error('UTXO_SIGNED_REPLACEMENT_CHANGED');
           const original = await this.readEntry(session, latest);
           const previous: Transaction =
             syscoinUtils.bitcoinjs.Transaction.fromHex(
@@ -965,11 +961,7 @@ export class UtxoSignedRecords {
     txid: string,
     includeUnacknowledged = false
   ): Promise<UtxoRetainedSubmission | undefined> {
-    if (
-      !HASH.test(txid) ||
-      !['HDAccount', 'Imported'].includes(owner.account.type)
-    )
-      return undefined;
+    if (!HASH.test(txid)) return undefined;
     const { entries } = await this.load(session);
     const chain = chainKey(owner);
     const identity = ownerId(owner);

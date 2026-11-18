@@ -1,10 +1,14 @@
 jest.unmock('syscoinjs-lib');
 
+import { prepareLedgerPsbt } from '@sidhujag/sysweb3-keyring/cjs/ledger/prepare-psbt.js';
+import { TrezorKeyring } from '@sidhujag/sysweb3-keyring/cjs/trezor/index.js';
+import { assertPsbtAccountScope } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt-account-scope.js';
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import { findUtxoCoinByRegistration } from '@sidhujag/sysweb3-network/cjs/coin-utils.js';
 import { getNetworkConfig } from '@sidhujag/sysweb3-network/cjs/networks.js';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
+import { signTrezorReplacementPsbt } from './trezorReplacementSigner';
 import {
   availableUtxoReplacementKinds,
   prepareUtxoReplacement,
@@ -235,7 +239,7 @@ it.each([
     const addressNetwork =
       registration.slip44 === 1 ? networks.testnet : networks.mainnet;
     const coin = findUtxoCoinByRegistration(registration)!;
-    const network = {
+    const syscoinNetwork = {
       ...request.scope.network,
       ...registration,
       genesisHash: coin.hashGenesisBlock,
@@ -257,27 +261,158 @@ it.each([
     original.outs[1].script = changePayment.output;
     const unsigned = original.clone();
     unsigned.stripWitnesses();
-    const account = {
+    const syscoinAccount = {
       ...request.scope.account,
       address: inputPayment.address,
       xpub: accountNode.neutered().toBase58(),
     };
     const prepared = await prepareUtxoReplacement({
       ...request,
-      scope: { ...request.scope, network, account },
+      scope: {
+        ...request.scope,
+        network: syscoinNetwork,
+        account: syscoinAccount,
+      },
       predecessor: {
         ...request.predecessor,
-        owner: { ...network, account },
+        owner: { ...syscoinNetwork, account: syscoinAccount },
         issuedPaths: undefined,
         txid: original.getId(),
         unsignedTransaction: unsigned.toHex(),
         outpoints: [`${parent.getId()}:0`],
       },
     });
-    const psbt = PsbtUtils.fromPali(prepared.psbt, network);
+    const psbt = PsbtUtils.fromPali(prepared.psbt, syscoinNetwork);
     const signed = psbt.signInput(0, inputKey).finalizeAllInputs();
     expect(prepared.bindSigned(PsbtUtils.toPali(signed)).record.txid).toBe(
       signed.extractTransaction().getId()
     );
   }
 );
+
+it('derives Ledger input and wallet-output paths from the authenticated account', async () => {
+  const type = 'Ledger' as const;
+  const { request, parent } = fixture();
+  const scope = {
+    ...request.scope,
+    account: { ...request.scope.account, type },
+  };
+  const predecessor = {
+    ...request.predecessor,
+    owner: { ...request.predecessor.owner, account: scope.account },
+  };
+  expect(availableUtxoReplacementKinds(predecessor)).toEqual([
+    'speed-up',
+    'cancel',
+  ]);
+  const prepared = await prepareUtxoReplacement({
+    ...request,
+    scope,
+    predecessor,
+  });
+  const psbt = PsbtUtils.fromPali(prepared.psbt, scope.network);
+  const paths = ({
+    unknownKeyVals,
+  }: {
+    unknownKeyVals?: { key: Uint8Array; value: Uint8Array }[];
+  }) =>
+    unknownKeyVals
+      ?.filter((field) => Buffer.from(field.key).toString() === 'path')
+      .map(({ value }) => Buffer.from(value).toString()) ?? [];
+  expect(paths(psbt.data.inputs[0])).toEqual(["m/84'/0'/0'/0/0"]);
+  expect(paths(psbt.data.outputs[0])).toEqual([]);
+  expect(paths(psbt.data.outputs[1])).toEqual(["m/84'/0'/0'/1/22"]);
+
+  expect(() =>
+    assertPsbtAccountScope(psbt, {
+      account: scope.account,
+      accountId: scope.account.id,
+      accountType: type,
+      network: scope.network,
+    })
+  ).not.toThrow();
+  expect(Buffer.from(psbt.data.inputs[0].nonWitnessUtxo).toString('hex')).toBe(
+    parent.toHex()
+  );
+  const enriched = prepareLedgerPsbt(
+    psbt,
+    scope.account.xpub,
+    scope.account.id,
+    'BTC',
+    0,
+    '6e468902'
+  );
+  expect(enriched.data.inputs[0].bip32Derivation[0]).toMatchObject({
+    path: "m/84'/0'/0'/0/0",
+    masterFingerprint: Buffer.from('6e468902', 'hex'),
+  });
+  expect(enriched.data.outputs[1].bip32Derivation[0].path).toBe(
+    "m/84'/0'/0'/1/22"
+  );
+
+  // Exercise the final binding using a synthetic signature for the exact reviewed bytes.
+  const finalized = PsbtUtils.toPali(
+    psbt.signInput(0, key).finalizeAllInputs()
+  );
+  expect(prepared.bindSigned(finalized).record.review).toMatchObject(
+    prepared.review
+  );
+  await expect(
+    prepareUtxoReplacement({
+      ...request,
+      scope,
+      predecessor,
+      kind: 'cancel',
+      ownedAddress: external.address,
+      isOwnedAddress: () => true,
+    })
+  ).rejects.toThrow(/wallet-owned/);
+});
+
+it('signs the Trezor replacement with its authenticated input amount and unchanged outputs', async () => {
+  const { request, original, parent } = fixture();
+  const trezorAccount = { ...request.scope.account, type: 'Trezor' as const };
+  const scope = { ...request.scope, account: trezorAccount };
+  const predecessor = {
+    ...request.predecessor,
+    owner: { ...request.predecessor.owner, account: trezorAccount },
+  };
+  expect(availableUtxoReplacementKinds(predecessor)).toEqual([
+    'speed-up',
+    'cancel',
+  ]);
+  const prepared = await prepareUtxoReplacement({
+    ...request,
+    scope,
+    predecessor,
+  });
+  const trezor = Object.create(TrezorKeyring.prototype);
+  trezor.signUtxoTransaction = jest.fn(async (converted, psbt) => {
+    expect(
+      converted.inputs[0].address_n.map((child: number) => child >>> 0)
+    ).toEqual([0x80000054, 0x80000000, 0x80000000, 0, 0]);
+    expect(converted).toMatchObject({
+      version: original.version,
+      locktime: original.locktime,
+      inputs: [
+        {
+          sequence: original.ins[0].sequence,
+          amount: parent.outs[0].value.toString(),
+          script_type: 'SPENDWITNESS',
+        },
+      ],
+      outputs: [{ address: external.address }, { address: change.address }],
+    });
+    return psbt.signInput(0, key).finalizeAllInputs();
+  });
+  const finalized = await signTrezorReplacementPsbt({
+    psbt: prepared.psbt,
+    scope,
+    trezor,
+    assertCurrent: request.assertCurrent,
+    signal: new AbortController().signal,
+  });
+  expect(prepared.bindSigned(finalized).record.review).toMatchObject(
+    prepared.review
+  );
+});

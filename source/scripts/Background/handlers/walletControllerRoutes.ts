@@ -33,7 +33,8 @@ export function assertWalletControllerRoute(
   if (
     member === 'captureReplacementSigning' ||
     member === 'observeCapturedRetainedUtxo' ||
-    member === 'readUtxoReplacementCandidate'
+    member === 'readUtxoReplacementCandidate' ||
+    member === 'signReviewedSyscoinPsbt'
   )
     throw new Error('Use the approved wallet operation');
   if (methods.length === 2 && member !== 'getActiveKeyring') return;

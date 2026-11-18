@@ -523,16 +523,15 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
   const canSendUtxo = hasSigningAccount && !!openUtxoSend && !!utxo && supportsUtxoSoftwareCustody(utxo);
   const canSendSpt = canSendUtxo && !!utxo && supportsSptUtxoChain(utxo.chainId);
-  const canReplaceUtxo = canSendUtxo && (selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported');
   const checkUtxoReplacement = useCallback(async (txid: string, assertCurrent: () => void) => {
-    if (!canReplaceUtxo || !openUtxoSend) return [];
+    if (!canSendUtxo || !openUtxoSend) return [];
     const send = await openUtxoSend(assertCurrent);
     try {
       return await send.availableReplacements(txid, assertCurrent);
     } finally {
       send.cancel();
     }
-  }, [canReplaceUtxo, openUtxoSend]);
+  }, [canSendUtxo, openUtxoSend]);
   const canDeposit = !!openPrivateDeposit && !!snapshot.account && !utxo &&
     (selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported') &&
     Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId) === PRIVACY_CHAIN_ID;
@@ -646,7 +645,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     }
     if (next === 'send') {
       if (!sendTarget || (sendTarget.kind === 'spt' ? !canSendSpt :
-        sendTarget.kind === 'utxo-replacement' ? !canReplaceUtxo : !canSign && !(canSendUtxo && sendTarget.kind === 'native' || canSendSmart && (sendTarget.kind === 'native' || sendTarget.kind === 'token' || sendTarget.kind === 'collectible') ||
+        sendTarget.kind === 'utxo-replacement' ? !canSendUtxo : !canSign && !(canSendUtxo && sendTarget.kind === 'native' || canSendSmart && (sendTarget.kind === 'native' || sendTarget.kind === 'token' || sendTarget.kind === 'collectible') ||
           canReplaceSelectedSmart && (sendTarget.kind === 'saved' || sendTarget.kind === 'speed-up' || sendTarget.kind === 'cancel' || sendTarget.kind === 'cancel-saved')))) return;
       const sender = owner?.account?.address.toLowerCase();
       const recipientPicker = sendTarget.kind === 'native' && canSign && local && sender &&
@@ -1841,12 +1840,14 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       }
       const resume = trezorResumeDraft(intent);
       const target: SendTarget = resume.kind === 'utxo' ? { kind: 'utxo', asset: resume.asset }
+        : resume.kind === 'utxo-replacement' ? { kind: 'utxo-replacement', replacement: resume.replacement }
         : resume.kind === 'replacement' ? { kind: resume.replacement.operation, hash: resume.replacement.originalHash }
         : resume.kind === 'token' ? { kind: 'token', token: resume.token }
         : resume.kind === 'collectible' ? { kind: 'collectible', collectible: resume.collectible }
         : { kind: 'native' };
-      const origin: RootOrigin = { tab: shell.tab, stage: 'send', ...current, epoch: epoch.current };
+      const origin: RootOrigin = { tab: resume.kind === 'utxo-replacement' ? 'activity' : shell.tab, stage: 'send', ...current, epoch: epoch.current };
       rootOrigin.current = origin;
+      if (resume.kind === 'utxo-replacement') setTransactionActivity({ context: current.context, hash: resume.replacement.txid });
       setSendDraft({ origin, target, resume, resumeId: intent.id });
       setStage('send');
     }} />;
@@ -2049,7 +2050,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     assetChoices={accountPortfolio?.cachedAssets(snapshot.account.network)?.tokens}
     onChangeAsset={sendTarget.kind === 'native' || sendTarget.kind === 'token' ? changeSendAsset : undefined}
     beforeClose={selectedAccountType === 'Trezor' || canReplaceSmart ? trezorView?.cancel : undefined}
-    initialDraft={sendDraft?.form?.kind === 'evm' ? sendDraft.form : sendDraft?.resume && sendDraft.resume.kind !== 'utxo' ? sendDraft.resume.draft : undefined} draftNotice={sendDraft?.notice}
+    initialDraft={sendDraft?.form?.kind === 'evm' ? sendDraft.form : sendDraft?.resume && sendDraft.resume.kind !== 'utxo' && sendDraft.resume.kind !== 'utxo-replacement' ? sendDraft.resume.draft : undefined} draftNotice={sendDraft?.notice}
     account={{ ...snapshot.account, revision: snapshot.revision }}
     ledgerConnection={selectedAccountType === 'Ledger' || canReplaceSmart ? ledgerConnection ?? undefined : undefined}
     tokenView={tokenView ?? undefined}
@@ -2062,10 +2063,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     onChangeNetwork={networkView && !utxo && (!accountPortfolio || accountPortfolio.getSnapshot().filter === 'all') ? openSendNetwork : undefined}
     onViewTransaction={activityView ? viewCompletedTransaction : undefined}
     accountLabel={accountLabel} onBack={closeStage} />;
-  else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'spt' && canSendSpt || sendTarget?.kind === 'utxo' || sendTarget?.kind === 'utxo-replacement' && canReplaceUtxo) && utxo && canSendUtxo && openUtxoSend)
+  else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'spt' && canSendSpt || sendTarget?.kind === 'utxo' || sendTarget?.kind === 'utxo-replacement') && utxo && canSendUtxo && openUtxoSend)
     return <NativeUtxoSendScreen beforeClose={selectedAccountType === 'Trezor' ? trezorView?.cancel : undefined} initialDraft={sendDraft?.form?.kind === 'utxo' ? sendDraft.form : sendDraft?.resume?.kind === 'utxo' ? sendDraft.resume.draft : undefined} draftNotice={sendDraft?.notice} key={sendDraft?.resumeId ?? snapshot.revision} network={utxo} open={openUtxoSend}
       ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
       replacement={sendTarget.kind === 'utxo-replacement' ? sendTarget.replacement : undefined}
+      initialReplacementFeeChoice={sendDraft?.resume?.kind === 'utxo-replacement' ? sendDraft.resume.feeChoice : undefined}
       availableAmount={sendTarget.kind === 'spt' ? sendTarget.maximumAmount : sendTarget.kind === 'utxo' && sendTarget.asset ? undefined : sendAvailable}
       onChangeNetwork={networkView && !utxo && (!accountPortfolio || accountPortfolio.getSnapshot().filter === 'all') ? openSendNetwork : undefined}
       onViewTransaction={utxoActivityView ? hash => {
@@ -2112,8 +2114,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
           }} />
       : utxo && utxoActivityView
       ? <UtxoActivityScreen authority={utxoActivityView} selectedNetwork={utxo} accountLabel={accountLabel}
-          availableReplacements={canReplaceUtxo ? checkUtxoReplacement : undefined}
-          onReplace={canReplaceUtxo ? replacement => {
+          availableReplacements={canSendUtxo ? checkUtxoReplacement : undefined}
+          onReplace={canSendUtxo ? replacement => {
             const context = readyContext();
             if (!context || context.context !== guardianContext || AppState.currentState !== 'active') return;
             setTransactionActivity({ context: context.context, hash: replacement.txid });

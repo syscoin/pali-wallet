@@ -15,6 +15,7 @@ import { AssetDetails } from './AssetDetails';
 import { NftsDetails } from './Nfts';
 import { TransactionDetails } from './TransactionDetails';
 import { replacementHash } from './Transactions/EVM/replacementWinner';
+import { readUtxoReplacementTabTxid } from './Transactions/UTXO/utxoReplacementNavigation';
 import { getUtxoSummaryObservation } from './Transactions/UTXO/utxoTransactionDetails';
 
 export const DetailsView = () => {
@@ -38,8 +39,22 @@ export const DetailsView = () => {
     nftData,
     tx,
   } = location.state || {};
+  const transactions =
+    accountTransactions[
+      isBitcoinBased ? TransactionsType.Syscoin : TransactionsType.Ethereum
+    ]?.[activeNetwork.chainId] || [];
+  const tabTxid = isBitcoinBased
+    ? readUtxoReplacementTabTxid(location.search)
+    : undefined;
   const hash =
-    typeof rawHash === 'string' && rawHash.trim() ? rawHash : undefined;
+    typeof rawHash === 'string' && rawHash.trim()
+      ? rawHash
+      : tabTxid &&
+        transactions.some(
+          (transaction) => transaction.txid?.toLowerCase() === tabTxid
+        )
+      ? tabTxid
+      : undefined;
 
   const routeScope = location.state?.walletScope;
   const isCurrentRoute =
@@ -89,10 +104,6 @@ export const DetailsView = () => {
         )
   );
   const hasDetails = Boolean(isAsset || isNft || hash);
-  const transactions =
-    accountTransactions[
-      isBitcoinBased ? TransactionsType.Syscoin : TransactionsType.Ethereum
-    ]?.[activeNetwork.chainId] || [];
   const restoredTransaction = hash
     ? transactions.find(
         (transaction: any) =>

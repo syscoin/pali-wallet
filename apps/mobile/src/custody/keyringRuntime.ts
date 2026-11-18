@@ -60,7 +60,8 @@ import type { IPrivacyDepositAttempt, IPrivacyDepositSession } from '../../../..
 import type { IPrivacyWithdrawalAttempt } from '../../../../source/utils/privacy/withdrawalTransactionTypes.ts';
 import { authorizePrivateNoteReplay } from '../../../../source/wallet/privateNoteReplay.ts';
 import { Contract } from '../../../../source/utils/ethersV6Compat.ts';
-import { hexlify } from 'ethers/utils';
+import { hexlify, toUtf8Bytes } from 'ethers/utils';
+import { sha256 } from 'ethers/crypto';
 import {
   NativeGuardianRecoveryController,
   type NativeGuardianRecoveryDraft,
@@ -222,6 +223,7 @@ import { createNativeNoteImport, type NativeNoteImportRuntime } from './noteImpo
 import type { createNativePrivacyPoolSync } from '../privacy/nativePrivacyPoolSync.ts';
 import type { PrivacyPoolId } from '../../../../source/utils/privacy/types.ts';
 import type { NativeUtxoSend } from './utxoSend.ts';
+import type { UtxoSignedScope } from '../../../../source/wallet/utxoSignedBinding.ts';
 import { SENTRY_NETWORKS, type SentryNetwork } from '../../../../source/shared/sentryNetworks.ts';
 import { deriveSentryVaultId } from '../../../../source/wallet/sentryKeyVault.ts';
 import type { DeriveSentryPublicKey, NativeSentryKeyManagement } from './sentryKeyManagement.ts';
@@ -579,6 +581,7 @@ export function createKeyringRuntimeFactory(
           accountLabel: string;
           operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing' | 'smart-operation' | 'infrastructure';
           resume?: NativeTrezorResumeIntent;
+          replacementReviewDigest?: string;
           target: SmartTrezorTarget | null;
           accepted: boolean;
         } | undefined;
@@ -7573,19 +7576,58 @@ export function createKeyringRuntimeFactory(
               guard();
               return receipt;
             };
-            const createOpened = () => createNativeUtxoSend(network, {
+            const retainTrezorReview = async (resume: NativeTrezorResumeIntent, replacementReviewDigest?: string) => {
+              guard();
+              if (!trezorAttempt || !pendingTrezor || pendingTrezor.job !== trezorAttempt.session.job)
+                throw new KeyringRuntimeError('CANCELLED');
+              const previous = pendingTrezor.resume;
+              const transport = dependencies.trezorSessions?.getSnapshot();
+              if (previous && (
+                previous.kind !== resume.kind ||
+                (previous.kind === 'utxo-replacement' && resume.kind === 'utxo-replacement' &&
+                  (previous.replacement.txid !== resume.replacement.txid || previous.replacement.mode !== resume.replacement.mode)) ||
+                ((JSON.stringify(previous) !== JSON.stringify(resume) || pendingTrezor.replacementReviewDigest !== replacementReviewDigest) &&
+                  !(transport?.phase === 'active' && transport.completedSteps === 0))
+              )) {
+                await cancelTrezor(); throw new TrezorReviewChangedError();
+              }
+              pendingTrezor.resume = resume;
+              pendingTrezor.replacementReviewDigest = replacementReviewDigest;
+            };
+            const signingScope: UtxoSignedScope = Object.freeze({
               profileId,
               account: { address: selected.address, id: selected.index, type: accountType, xpub },
-              network: { kind: 'syscoin', currency: sdkNetwork.currency, chainId: sdkNetwork.chainId,
+              network: { kind: 'syscoin' as const, currency: sdkNetwork.currency, chainId: sdkNetwork.chainId,
                 genesisHash: network.genesisHash, slip44: sdkNetwork.slip44, url: sdkNetwork.url },
-            }, { keyring: transactionRecordKeyring(ring, guard), assertCurrent: guard }, ring.syscoinTransaction, utxoRecords, dependencies.utxoFetch!, ring.getAddress, collateral, {
+            });
+            const createOpened = () => createNativeUtxoSend(network, signingScope,
+              { keyring: transactionRecordKeyring(ring, guard), assertCurrent: guard }, ring.syscoinTransaction, utxoRecords, dependencies.utxoFetch!, ring.getAddress, collateral, {
               authorize: authenticateUtxoOperation,
               release: releaseOperationAuthorization,
-              async sign(receipt, input, read, check) {
+              ...(accountType === 'Trezor' ? { async retainReviewedReplacement(replacement, feeChoice, input, check) {
+                check();
+                await retainTrezorReview(Object.freeze({
+                  id: pendingTrezor?.resume?.id ?? `trezor-${++trezorSequence}`,
+                  kind: 'utxo-replacement', accountId: selected.id, networkId: network.id,
+                  replacement: Object.freeze({ txid: replacement.txid, mode: replacement.mode }), feeChoice,
+                }), sha256(toUtf8Bytes(utxoSigningTarget(input))));
+              } } : {}),
+              async sign(receipt, input, read, check, replacement) {
                 guard(); check();
                 const capturedInput = snapshotUtxoSigningInput(input), target = utxoSigningTarget(capturedInput);
                 if (accountType === 'Ledger' || accountType === 'Trezor') {
                   consumeOperationAuthorization(receipt, check, target);
+                  if (accountType === 'Trezor' && replacement) {
+                    const trezor = ring.trezorSigner, pending = pendingTrezor;
+                    if (!trezor || !trezorAttempt || pending?.job !== trezorAttempt.session.job ||
+                        pending.resume?.kind !== 'utxo-replacement' || pending.resume.replacement.txid !== replacement.txid ||
+                        pending.resume.replacement.mode !== replacement.mode || pending.replacementReviewDigest !== sha256(toUtf8Bytes(target)))
+                      throw new KeyringRuntimeError('NOT_READY');
+                    const { signTrezorReplacementPsbt } = await import('../../../../source/wallet/trezorReplacementSigner.ts');
+                    const assertCurrent = () => { guard(); check(); read.assertCurrent(); };
+                    assertCurrent();
+                    return signTrezorReplacementPsbt({ psbt: capturedInput.psbt, scope: signingScope, trezor, assertCurrent, signal: read.signal });
+                  }
                   return ring.syscoinTransaction.signPSBT(capturedInput, read);
                 }
                 const prepared = await ring.syscoinTransaction.preparePSBTForSigning(capturedInput, read);
@@ -7596,44 +7638,43 @@ export function createKeyringRuntimeFactory(
             });
             let opened = createOpened();
             utxoSend = opened;
+            const ensureTrezorAttempt = async () => {
+              if (accountType !== 'Trezor' || (trezorAttempt && pendingTrezor && trezorSession === trezorAttempt.session)) return;
+              guard();
+              const check = () => {
+                current(captured); checkGuard(assertOwner);
+                if (admittedTrezorEpoch !== trezorEpoch || catalogueSnapshot !== snapshot || active || reserved || selectedAccount().id !== selected.id)
+                  throw new KeyringRuntimeError('CANCELLED');
+              };
+              trezorAttempt = await openTrezorAttempt(captured, check, 'utxo-send', selected.label, undefined, () => undefined);
+              ring = trezorAttempt.ring;
+              opened = createOpened(); utxoSend = opened;
+            };
             return Object.freeze<NativeUtxoSend>({ ...opened,
               cancel: () => opened.cancel(),
               list: () => opened.list(),
               refreshSaved: () => opened.refreshSaved(),
               check: txid => opened.check(txid),
+              feeRecommendations: signal => opened.feeRecommendations(signal),
+              availableReplacements: (txid, assertCurrent) => opened.availableReplacements(txid, assertCurrent),
+              async prepareReplacement(input, inputFeeChoice) {
+                const replacement = Object.freeze({ txid: input.txid, mode: input.mode });
+                const feeChoice = snapshotUtxoFeeChoice(inputFeeChoice);
+                if (accountType === 'Trezor') await ensureTrezorAttempt();
+                return opened.prepareReplacement(replacement, feeChoice);
+              },
               async prepare(input) {
                 const feeChoice = snapshotUtxoFeeChoice(input.feeChoice ?? AUTOMATIC_FEE);
-                if (selected.type === 'Trezor' && (!trezorAttempt || !pendingTrezor || trezorSession !== trezorAttempt.session)) {
-                  guard();
-                  const check = () => {
-                    current(captured); checkGuard(assertOwner);
-                    if (admittedTrezorEpoch !== trezorEpoch || catalogueSnapshot !== snapshot || active || reserved || selectedAccount().id !== selected.id)
-                      throw new KeyringRuntimeError('CANCELLED');
-                  };
-                  trezorAttempt = await openTrezorAttempt(captured, check, 'utxo-send', selected.label, undefined, () => undefined);
-                  ring = trezorAttempt.ring;
-                  opened = createOpened(); utxoSend = opened;
-                }
+                if (accountType === 'Trezor') await ensureTrezorAttempt();
                 const view = await opened.prepare({ ...input, feeChoice });
-                if (trezorAttempt) {
-                  guard();
-                  if (!pendingTrezor || pendingTrezor.job !== trezorAttempt.session.job) throw new KeyringRuntimeError('CANCELLED');
-                  const resume: NativeTrezorResumeIntent = Object.freeze({
-                    id: pendingTrezor.resume?.id ?? `trezor-${++trezorSequence}`,
-                    kind: 'utxo', accountId: selected.id, networkId: network.id,
-                    recipient: input.recipient.trim(), amount: input.amount,
-                    rbf: view.transactionOptions.rbf,
-                    feeChoice,
-                    ...(input.max === true ? { max: true } : {}),
-                    ...(input.asset ? { asset: Object.freeze({ ...input.asset }) } : {}),
-                  });
-                  const transport = dependencies.trezorSessions?.getSnapshot();
-                  if (pendingTrezor.resume && JSON.stringify(pendingTrezor.resume) !== JSON.stringify(resume) &&
-                      !(transport?.phase === 'active' && transport.completedSteps === 0)) {
-                    await cancelTrezor(); throw new TrezorReviewChangedError();
-                  }
-                  pendingTrezor.resume = resume;
-                }
+                if (trezorAttempt) await retainTrezorReview(Object.freeze({
+                  id: pendingTrezor?.resume?.id ?? `trezor-${++trezorSequence}`,
+                  kind: 'utxo', accountId: selected.id, networkId: network.id,
+                  recipient: input.recipient.trim(), amount: input.amount,
+                  rbf: view.transactionOptions.rbf, feeChoice,
+                  ...(input.max === true ? { max: true } : {}),
+                  ...(input.asset ? { asset: Object.freeze({ ...input.asset }) } : {}),
+                }));
                 return view;
               },
               async confirm(view, credential) {

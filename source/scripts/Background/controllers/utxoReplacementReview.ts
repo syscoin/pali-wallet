@@ -1,10 +1,17 @@
+import type { UtxoDappSigningAuthority } from 'utils/utxoSigningContext';
+
 import type {
   prepareUtxoReplacement,
   UtxoReplacementKind,
 } from '../../../wallet/utxoReplacement';
 
+export const HARDWARE_UTXO_REPLACEMENT_TIMEOUT_MS = 300_000;
+export type ExtensionUtxoReplacementAuthority = UtxoDappSigningAuthority &
+  Readonly<{ attachedTab?: true }>;
+
 export type ExtensionUtxoReplacementActions = Readonly<{
   cancel: boolean;
+  hardware?: true;
   speedUp: boolean;
 }>;
 
@@ -15,7 +22,12 @@ export type ExtensionUtxoReplacementReview = Pick<
   PreparedUtxoReplacement['review'],
   'feeSatoshis' | 'outputs' | 'previousFeeSatoshis'
 > &
-  Readonly<{ id: string; kind: UtxoReplacementKind; validForMs: number }>;
+  Readonly<{
+    hardware?: true;
+    id: string;
+    kind: UtxoReplacementKind;
+    validForMs: number;
+  }>;
 
 export const isOwnedUtxoReplacementCall = (methods: unknown): boolean =>
   Array.isArray(methods) &&

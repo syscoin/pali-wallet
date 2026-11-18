@@ -70,7 +70,9 @@ function minimumFee(previousFee: bigint, previousSize: bigint, size: bigint) {
 
 function replacementCoin(owner: Predecessor['owner']) {
   if (
-    (owner.account.type !== 'HDAccount' && owner.account.type !== 'Imported') ||
+    !['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(
+      owner.account.type
+    ) ||
     !(
       (owner.chainId === 0 && owner.slip44 === 0) ||
       (owner.chainId === 57 && owner.slip44 === 57) ||
@@ -231,6 +233,8 @@ export async function prepareUtxoReplacement({
     network: Object.freeze({ ...scope.network }),
   });
   const { account, network } = scope;
+  const ledger = account.type === 'Ledger';
+  const hardware = ledger || account.type === 'Trezor';
   const {
     owner,
     url,
@@ -286,10 +290,13 @@ export async function prepareUtxoReplacement({
     pathByAddress.set(address, path);
     return path;
   };
+  const fullPath = (relative: string) =>
+    `m/84'/${network.slip44}'/${account.id}'/${relative}`;
   const ownsOutput = async (address: string) => {
     const localPath = await pathFor(address);
     check();
     if (localPath !== undefined) return true;
+    if (hardware) return false;
     const owned = await isOwnedAddress(address);
     check();
     return owned === true;
@@ -417,8 +424,18 @@ export async function prepareUtxoReplacement({
         'The replacement fee leaves insufficient funds for a non-dust output.'
       );
     psbt.addOutput({ script: targetScript, value: remaining });
+    if (hardware) {
+      const changePath = await pathFor(targetAddress);
+      check();
+      if (typeof changePath !== 'string') throw unsupported();
+      psbt.addUnknownKeyValToOutput(psbt.txOutputs.length - 1, {
+        key: Buffer.from('path'),
+        value: Buffer.from(fullPath(changePath)),
+      });
+    }
   }
 
+  let ledgerPrevoutBytes = 0;
   for (const [index, output] of funding.entries()) {
     const address = addressFromScript(output.script);
     const path = await pathFor(address);
@@ -427,15 +444,24 @@ export async function prepareUtxoReplacement({
       throw new Error(
         'The funding address could not be verified as wallet-owned.'
       );
-    psbt.updateInput(index, { witnessUtxo: output });
+    const previous = previousTransactions[index]!;
+    if (ledger) {
+      ledgerPrevoutBytes += previous.byteLength();
+      if (ledgerPrevoutBytes > PSBT_WORK_LIMITS.bytes)
+        throw new Error(
+          'The verified previous transactions exceed the wallet PSBT size limit.'
+        );
+    }
+    psbt.updateInput(index, {
+      witnessUtxo: output,
+      ...(ledger ? { nonWitnessUtxo: previous.toBuffer() } : {}),
+    });
     psbt.addUnknownKeyValToInput(index, {
       key: Buffer.from('address'),
       value: Buffer.from(address),
     });
     if (typeof path === 'string') {
-      const signingPath = wallet.imported
-        ? path
-        : `m/84'/${network.slip44}'/${account.id}'/${path}`;
+      const signingPath = wallet.imported ? path : fullPath(path);
       psbt.addUnknownKeyValToInput(index, {
         key: Buffer.from('path'),
         value: Buffer.from(signingPath),

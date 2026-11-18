@@ -1577,6 +1577,24 @@ test('resumed Trezor SPT drafts never label native funds as tokens while native 
   }
 });
 
+test('Trezor replacement resumes into the original transaction route with its fee preference', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'utxo', undefined, quietActivityNotifications, undefined, { nativeUnits: '125000001' });
+  try {
+    const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
+    ((home.props.hardwareRequest as Element).props.onResume as () => void)();
+    const trezor = f.render(); assert.equal(trezor.type, 'NativeTrezor');
+    const resume = {
+      id: 'rbf-resume', accountId: 'hd:60:0', networkId: 'syscoin', kind: 'utxo-replacement',
+      replacement: { txid: 'a'.repeat(64), mode: 'cancel' }, feeChoice: { kind: 'custom', satPerVbyte: '7' },
+    } satisfies NativeTrezorResumeIntent;
+    await (trezor.props.onResumeSend as (intent: NativeTrezorResumeIntent) => Promise<void>)(resume);
+    const send = f.render(); assert.equal(send.type, 'NativeUtxoSendScreen');
+    assert.deepEqual(send.props.replacement, resume.replacement);
+    assert.deepEqual(send.props.initialReplacementFeeChoice, resume.feeChoice);
+    assert.equal(send.props.initialDraft, undefined);
+  } finally { f.dispose(); }
+});
+
 test('same-network asset changes preserve recipient but clear amount, MAX, and advanced draft state', async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm');
   try {

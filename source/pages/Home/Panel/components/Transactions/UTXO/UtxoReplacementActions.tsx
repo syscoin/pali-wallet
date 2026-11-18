@@ -2,12 +2,16 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConfirmationModal } from 'components/Modal';
+import { getWalletBrowserTabId } from 'pages/Send/hardwareSendDraft';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import type {
-  ExtensionUtxoReplacementActions,
-  ExtensionUtxoReplacementReview,
+import {
+  HARDWARE_UTXO_REPLACEMENT_TIMEOUT_MS,
+  type ExtensionUtxoReplacementActions,
+  type ExtensionUtxoReplacementReview,
 } from 'scripts/Background/controllers/utxoReplacementReview';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
+
+import { openUtxoReplacementTab } from './utxoReplacementNavigation';
 
 const buttonClass =
   'rounded-lg border border-bkg-white200 px-3 py-2 text-sm text-white hover:bg-alpha-whiteAlpha50 disabled:opacity-60';
@@ -31,6 +35,7 @@ export function UtxoReplacementActions({
   const [actions, setActions] = useState<ExtensionUtxoReplacementActions>();
   const [review, setReview] = useState<ExtensionUtxoReplacementReview>();
   const [busy, setBusy] = useState(false);
+  const [walletTab, setWalletTab] = useState<boolean>();
   const [feedback, setFeedback] = useState<'unavailable' | 'reviewExpired'>();
   const [outcome, setOutcome] = useState<{
     status: 'submitted' | 'unknown';
@@ -61,6 +66,35 @@ export function UtxoReplacementActions({
       reviewId.current = undefined;
     };
   }, [txid]);
+
+  useEffect(() => {
+    if (!actions?.hardware) return;
+    let current = true;
+    void getWalletBrowserTabId()
+      .then((id) => {
+        if (current) setWalletTab(id !== undefined);
+      })
+      .catch(() => {
+        if (current) setWalletTab(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [actions?.hardware]);
+
+  const openWalletTab = async () => {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    try {
+      await openUtxoReplacementTab(txid);
+    } catch {
+      if (active.current) setFeedback('unavailable');
+    } finally {
+      pending.current = false;
+      if (active.current) setBusy(false);
+    }
+  };
 
   const closeReview = () => {
     if (pending.current) return;
@@ -113,7 +147,7 @@ export function UtxoReplacementActions({
       const response = (await controllerEmitter(
         ['wallet', 'confirmUtxoReplacement'],
         [review.id],
-        65_000,
+        review.hardware ? HARDWARE_UTXO_REPLACEMENT_TIMEOUT_MS : 65_000,
         false
       )) as { txid: string };
       if (active.current)
@@ -162,7 +196,11 @@ export function UtxoReplacementActions({
     }
   };
 
-  if (!actions?.speedUp && !actions?.cancel && !outcome) return null;
+  if (
+    (!actions?.speedUp && !actions?.cancel && !outcome) ||
+    (actions?.hardware && walletTab === undefined)
+  )
+    return null;
   const amount = (satoshis: string) =>
     `${formatSyscoinValue(satoshis)} ${currency.toUpperCase()}`;
 
@@ -202,6 +240,15 @@ export function UtxoReplacementActions({
             </p>
           )}
         </div>
+      ) : actions?.hardware && walletTab === false ? (
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={busy}
+          onClick={() => void openWalletTab()}
+        >
+          {t('send.openWalletTab')}
+        </button>
       ) : (
         <div className="flex flex-wrap gap-2">
           {actions?.speedUp && (

@@ -227,3 +227,22 @@ it.each(['account', 'network', 'unscoped', 'utxo', 'malformed', 'same-hash'])(
     );
   }
 );
+
+it('reopens hardware activity in a wallet tab from the currently selected account only', () => {
+  const txid = 'ab'.repeat(32);
+  const tx = { txid, value: 'current-account' };
+  mockState.vault.isBitcoinBased = true;
+  mockState.transactions.syscoin[1] = [tx];
+  mockLocation.search = `?utxoTxid=${txid}`;
+  const view = render(<DetailsView />);
+  expect(TransactionDetails).toHaveBeenLastCalledWith(
+    { hash: txid, tx },
+    expect.anything()
+  );
+
+  jest.mocked(TransactionDetails).mockClear();
+  mockState.transactions.syscoin[1] = [];
+  view.rerender(<DetailsView />);
+  expect(TransactionDetails).not.toHaveBeenCalled();
+  expect(navigateBack).toHaveBeenCalledWith(mockNavigate, mockLocation);
+});

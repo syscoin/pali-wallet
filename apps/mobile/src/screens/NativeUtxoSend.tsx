@@ -113,6 +113,7 @@ export function NativeUtxoSendScreen({
   draftNotice,
   onViewTransaction,
   replacement,
+  initialReplacementFeeChoice,
 }: {
   accountLabel: string;
   ledgerConnection?: NativeLedgerConnectionView;
@@ -123,6 +124,7 @@ export function NativeUtxoSendScreen({
   draftNotice?: string;
   onViewTransaction?(txid: string): void;
   replacement?: NativeUtxoReplacement;
+  initialReplacementFeeChoice?: UtxoFeeChoice;
   beforeClose?(): Promise<void>;
   asset?: NativeUtxoAsset;
   network: UtxoNetwork;
@@ -146,7 +148,7 @@ export function NativeUtxoSendScreen({
     isAssetAmountEqualToBalance(amount, maximumAmount, asset.decimals));
   const [rbf, setRbf] = useState(snapshotUtxoRbf(initialDraft?.rbf));
   const [advanced, setAdvanced] = useState(false);
-  const [feeSelection, setFeeSelection] = useState({ open, network, choice: snapshotUtxoFeeChoice(initialDraft?.feeChoice ?? AUTOMATIC_FEE) });
+  const [feeSelection, setFeeSelection] = useState({ open, network, choice: snapshotUtxoFeeChoice(initialReplacementFeeChoice ?? initialDraft?.feeChoice ?? AUTOMATIC_FEE) });
   const feeChoice = feeSelection.open === open && feeSelection.network === network ? feeSelection.choice : AUTOMATIC_FEE;
   const [feeDialog, setFeeDialog] = useState<{ open: typeof open; network: UtxoNetwork } | null>(null);
   const feeOpen = feeDialog?.open === open && feeDialog.network === network;

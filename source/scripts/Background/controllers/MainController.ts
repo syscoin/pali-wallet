@@ -196,6 +196,7 @@ import {
   type SmartAccountCancellationDispatch,
 } from '../../../wallet/smartAccountCancellation';
 import { createSmartAccountSignedReplay } from '../../../wallet/smartAccountSignedReplay';
+import { signTrezorReplacementPsbt } from '../../../wallet/trezorReplacementSigner';
 import {
   createOwnedUtxoBlockbookRead,
   type UtxoBlockbookReadScope,
@@ -574,10 +575,12 @@ import {
 import { getHistoryTransaction } from './transactions/utils';
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
-import type {
-  ExtensionUtxoReplacementActions,
-  ExtensionUtxoReplacementReview,
-  PreparedUtxoReplacement,
+import {
+  HARDWARE_UTXO_REPLACEMENT_TIMEOUT_MS,
+  type ExtensionUtxoReplacementActions,
+  type ExtensionUtxoReplacementAuthority,
+  type ExtensionUtxoReplacementReview,
+  type PreparedUtxoReplacement,
 } from './utxoReplacementReview';
 import type {
   ActivityNotificationFact,
@@ -1573,6 +1576,7 @@ class MainController {
     id: string;
     predecessor: UtxoRetainedSubmission;
     scope: string;
+    signedScope: UtxoSignedScope;
     started: boolean;
     timer: ReturnType<typeof setTimeout>;
   };
@@ -1582,20 +1586,26 @@ class MainController {
     const { account } = signing.context;
     const selected =
       store.getState().vault.accounts[account.type]?.[account.id];
+    const { type } = account;
+    const hardware =
+      type === KeyringAccountType.Ledger || type === KeyringAccountType.Trezor;
     if (
-      (account.type !== KeyringAccountType.HDAccount &&
-        account.type !== KeyringAccountType.Imported) ||
+      (!hardware &&
+        type !== KeyringAccountType.HDAccount &&
+        type !== KeyringAccountType.Imported) ||
       !selected ||
-      selected.isLedgerWallet ||
-      selected.isTrezorWallet
+      (selected.isLedgerWallet === true &&
+        type !== KeyringAccountType.Ledger) ||
+      (selected.isTrezorWallet === true && type !== KeyringAccountType.Trezor)
     )
-      throw new Error('UTXO replacement requires a software account');
+      throw new Error('UTXO replacement requires a supported signing account');
     signing.assertSoftwareSpend([]);
     return {
       ...signing,
+      hardware,
       context: {
         ...signing.context,
-        account: { ...account, type: account.type },
+        account: { ...account, type },
       },
     };
   }
@@ -1657,6 +1667,7 @@ class MainController {
       return {
         cancel: kinds.includes('cancel'),
         speedUp: kinds.includes('speed-up'),
+        ...(signing.hardware && { hardware: true as const }),
       };
     } catch {
       // An unavailable private journal supplies no eligibility.
@@ -1724,13 +1735,22 @@ class MainController {
       binding,
       predecessor,
       scope: signing.walletReviewScope,
+      signedScope: scope,
       started: false,
       expires: performance.now() + validForMs,
       abort: new AbortController(),
       timer: setTimeout(() => this.discardUtxoReplacement(id), validForMs),
     };
     const { feeSatoshis, outputs, previousFeeSatoshis } = binding.review;
-    return { id, kind, validForMs, feeSatoshis, outputs, previousFeeSatoshis };
+    return {
+      id,
+      kind,
+      validForMs,
+      feeSatoshis,
+      outputs,
+      previousFeeSatoshis,
+      ...(signing.hardware && { hardware: true as const }),
+    };
   }
 
   public discardUtxoReplacement(id: string) {
@@ -1743,7 +1763,7 @@ class MainController {
 
   public async confirmUtxoReplacement(
     id: string,
-    authority: UtxoDappSigningAuthority
+    authority: ExtensionUtxoReplacementAuthority
   ): Promise<{ txid: string }> {
     const submission = createUtxoSubmissionDisposition();
     const review = this.utxoReplacementReview;
@@ -1765,8 +1785,21 @@ class MainController {
         signal: review.abort.signal,
       });
       const assertCurrent = signing.assertWalletReviewCurrent;
-      if (review.scope !== signing.walletReviewScope)
+      if (
+        review.scope !== signing.walletReviewScope ||
+        (signing.hardware && !authority.attachedTab)
+      )
         throw new Error('UTXO replacement approval expired');
+      assertCurrent();
+      if (signing.hardware) {
+        clearTimeout(review.timer);
+        review.expires =
+          performance.now() + HARDWARE_UTXO_REPLACEMENT_TIMEOUT_MS;
+        review.timer = setTimeout(
+          () => this.discardUtxoReplacement(id),
+          HARDWARE_UTXO_REPLACEMENT_TIMEOUT_MS
+        );
+      }
       const { predecessor, binding } = review;
       const assertPredecessorCurrent = async () => {
         const current = await this.readUtxoReplacementCandidate(
@@ -1788,7 +1821,19 @@ class MainController {
       await assertPredecessorCurrent();
       const signed = await this.signReviewedSyscoinPsbt(
         { psbt: binding.psbt, utxoFeeReview: feeReview },
-        signing
+        signing,
+        signing.context.account.type === KeyringAccountType.Trezor
+          ? {
+              signPSBT: ({ psbt }, read) =>
+                signTrezorReplacementPsbt({
+                  psbt,
+                  scope: review.signedScope,
+                  trezor: signing.keyring.trezorSigner,
+                  assertCurrent: read.assertCurrent,
+                  signal: read.signal,
+                }),
+            }
+          : undefined
       );
       const { record: bound } = binding.bindSigned(signed);
       assertCurrent();
@@ -16448,7 +16493,8 @@ class MainController {
       Parameters<MainController['signSyscoinPsbt']>[0],
       'expectedContext'
     >,
-    signing: ReturnType<MainController['captureUtxoSigningContext']>
+    signing: ReturnType<MainController['captureUtxoSigningContext']>,
+    sdk: PsbtSigningPorts['sdk'] = signing.transactions
   ) {
     const assertCurrent = signing.assertWalletReviewCurrent;
     const network = Object.freeze({ ...store.getState().vault.activeNetwork });
@@ -16458,7 +16504,7 @@ class MainController {
     >;
     const host: PsbtSigningPorts = {
       network,
-      sdk: signing.transactions,
+      sdk,
       assertCurrent,
       assertSoftwareSpend: signing.assertSoftwareSpend,
       assertUnprotected: async (resolve, check) => {

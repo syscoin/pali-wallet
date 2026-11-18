@@ -5,12 +5,16 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import { getWalletBrowserTabId } from 'pages/Send/hardwareSendDraft';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 
 import { UtxoReplacementActions } from './UtxoReplacementActions';
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+}));
+jest.mock('pages/Send/hardwareSendDraft', () => ({
+  getWalletBrowserTabId: jest.fn(),
 }));
 jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
   controllerEmitter: jest.fn(),
@@ -80,4 +84,43 @@ it('reviews exact cancellation outputs and checks the replacement after an uncer
     false
   );
   expect(await screen.findByText('send.confirmed')).toBeVisible();
+});
+
+it('opens a hardware transaction in a standalone wallet tab without preparing or signing', async () => {
+  const user = userEvent.setup();
+  jest.mocked(getWalletBrowserTabId).mockResolvedValueOnce(undefined);
+  mockEmitter.mockResolvedValueOnce({
+    cancel: true,
+    speedUp: true,
+    hardware: true,
+  });
+  const create = jest.fn((_options, callback: (tab: { id: number }) => void) =>
+    callback({ id: 7 })
+  );
+  const previous = globalThis.chrome;
+  globalThis.chrome = {
+    ...previous,
+    runtime: {
+      ...previous.runtime,
+      getURL: (path) => `chrome-extension://pali-extension/${path}`,
+    },
+    tabs: { ...previous.tabs, create },
+  } as unknown as typeof chrome;
+  try {
+    render(<UtxoReplacementActions txid={original} currency="SYS" />);
+    await user.click(
+      await screen.findByRole('button', { name: 'send.openWalletTab' })
+    );
+    expect(create).toHaveBeenCalledWith(
+      {
+        url: `chrome-extension://pali-extension/app.html#/home/details?utxoTxid=${original}`,
+      },
+      expect.any(Function)
+    );
+    expect(mockEmitter.mock.calls.map(([method]) => method[1])).toEqual([
+      'getUtxoReplacementActions',
+    ]);
+  } finally {
+    globalThis.chrome = previous;
+  }
 });
