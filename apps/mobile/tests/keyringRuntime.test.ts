@@ -3601,7 +3601,14 @@ test('Trezor runtime cancellation before identity admission never opens a device
 
 for (const failure of ['none', 'retirement', 'cancellation']) test(`Trezor runtime waits for zero-step UTXO retirement with ${failure} failure`, async () => {
   const fixture = trezorFixtureSessions();
-  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions, async () => { throw new Error('No network needed'); });
+  let startRead!: () => void, releaseRead!: () => void;
+  const reading = new Promise<void>(resolve => { startRead = resolve; });
+  const heldRead = new Promise<void>(resolve => { releaseRead = resolve; });
+  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions, async () => {
+    startRead();
+    await heldRead;
+    throw new Error('UTXO read interrupted by fixture');
+  });
   const runtime = await disk.factory.open() as KeyringRuntime;
   const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
   let entered!: () => void, release!: () => void;
@@ -3617,24 +3624,29 @@ for (const failure of ['none', 'retirement', 'cancellation']) test(`Trezor runti
     const calls = fixture.paths.length;
     await runtime.openUtxoSend!(() => undefined);
     await runtime.trezor.cancel();
-    await runtime.openUtxoSend!(() => undefined);
+    const send = await runtime.openUtxoSend!(() => undefined);
     assert.equal(fixture.paths.length, calls);
+    const preparing = send.prepare({ recipient: owner.getSnapshot().account!.address, amount: '0.00001' });
+    void preparing.catch(() => undefined);
+    await Promise.race([reading, preparing.then(() => assert.fail('Prepare completed before the held backend read'))]);
+    assert.equal(fixture.sessions.getSnapshot()?.completedSteps, 0);
     if (failure === 'cancellation') fixture.holdCancellation(async () => { throw new Error('Cancellation refused'); });
     fixture.holdRetirement(async () => { entered(); await held; if (failure === 'retirement') throw new Error('Retirement refused'); });
     const cancelled = runtime.trezor.cancel();
     void cancelled.catch(() => undefined);
-    await started;
+    await Promise.race([started, cancelled.then(() => assert.fail('Cancellation completed before device retirement'))]);
     const cancelledAgain = runtime.trezor.cancel();
     assert.equal(cancelledAgain, cancelled);
     let settled = false;
     const closing = runtime.storage.close().finally(() => { settled = true; });
     void closing.catch(() => undefined);
-    await Promise.resolve(); assert.equal(settled, false); release();
+    await Promise.resolve(); assert.equal(settled, false); release(); releaseRead();
+    await assert.rejects(preparing);
     if (failure !== 'none') {
       await assert.rejects(cancelled);
       await assert.rejects(closing, /CLEANUP_FAILED/);
     } else { await cancelled; await closing; }
-  } finally { release(); await owner.dispose().catch(() => undefined); await fixture.sessions.dispose(); }
+  } finally { release(); releaseRead(); await owner.dispose().catch(() => undefined); await fixture.sessions.dispose(); }
 });
 
 test('Trezor runtime reads saved UTXO status without Suite, signing or broadcast', async () => {

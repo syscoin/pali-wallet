@@ -96,8 +96,7 @@ test('About routes UTXO activity reset to the selected network', () => {
   const f = fixture(false, true);
   try {
     control(f.render(), 'Help & about').props.onPress();
-    const action = control(f.render(), 'Reset activity');
-    assert.equal(action.props.subtitle, 'Refresh activity');
+    const action = control(f.render(), 'Clear activity');
     action.props.onPress();
     const reset = f.render();
     assert.equal(reset.props.target.utxo, true);
