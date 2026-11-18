@@ -1,16 +1,16 @@
 {
-  "source": "e183c4de00a5823b9db9a2942a983296bdafbbb4",
-  "tree": "2c73adca480065c8e78f97701533ebde7d6e492e",
+  "source": "09808a733387768e679daabdfc3464771f245e32",
+  "tree": "6110320b9a855bfaa73d852634082e14626ee756",
   "scope": "Current exact-source production extension and normal Android JavaScript runtime exclusion; not build-time remediation or complete native/device qualification",
   "android": {
-    "sourceRevision": "e183c4de00a5823b9db9a2942a983296bdafbbb4",
-    "sourceTree": "2c73adca480065c8e78f97701533ebde7d6e492e",
+    "sourceRevision": "09808a733387768e679daabdfc3464771f245e32",
+    "sourceTree": "6110320b9a855bfaa73d852634082e14626ee756",
     "variant": "normal Android JavaScript/Hermes only; no APK/native/device claim",
-    "map": "/private/tmp/pali-dependency-requalification-e183c4de/android/index.android.bundle.map",
-    "mapSha256": "a167dcb426895bc6fa95b121999484f6e3dcddd2cc4677b0cfc54f0ffd03d556",
-    "bundle": "/private/tmp/pali-dependency-requalification-e183c4de/android/index.android.bundle",
-    "bundleSha256": "04ee9317b6f4d48cb66f2700a86aab8353af24ea568aff6a3e11ad28b23e9511",
-    "bundleBytes": 20422960,
+    "map": "/private/tmp/pali-dependency-requalification-keyring2122-release/android/index.android.bundle.map",
+    "mapSha256": "1e41b723a984cd4875c110a79c8769f505c1462df40198170b982cd208e94d21",
+    "bundle": "/private/tmp/pali-dependency-requalification-keyring2122-release/android/index.android.bundle",
+    "bundleSha256": "dcafd94dc5cf053e8e37c2c1cb61acc383f4b24e7b795dd49371d52c8a3b07f2",
+    "bundleBytes": 20425888,
     "hermesBytecodeVersion": 99,
     "verifiedSourceContents": 5646,
     "generatedSourceBodies": [
@@ -28,10 +28,34 @@
       "drivers/fs": []
     },
     "sourceReceipt": {
-      "path": "/private/tmp/pali-dependency-requalification-e183c4de/android-evidence.json",
-      "sha256": "70a3d368baf7d49c17bb37ab052fdcc17d20e8abe6106498fc7358cfed9dd406"
+      "path": "/private/tmp/pali-dependency-requalification-keyring2122-release/android-evidence.json",
+      "sha256": "3ab9071fccc59a509903048e3c0967120bc53038e21cad582face3aa96003041"
     },
     "officialPackages": [
+      {
+        "name": "@sidhujag/sysweb3-keyring",
+        "version": "2.1.22",
+        "dist": {
+          "shasum": "4c19c95bd3151111b169659979963281050cce6c",
+          "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.22.tgz",
+          "fileCount": 347,
+          "integrity": "sha512-FtrRmR8G81FtB1ZEQDYnldublKkx8m6LpiicM5Izh0rqzvIxH9+Qvk3oABHhHpUEB1+RH6aKKG2CQn2u/SxJ6w==",
+          "signatures": [
+            {
+              "sig": "MEUCIDcqliOhv7j8xfjxEYZR4158ao7zVgOBtkj2tVdDmg1+AiEAqAg1tU7eC5PJQXy5KsbLmi6Q0sVAEas7ehrcFTTIN50=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEYCIQCc5CEPwZIPKXzFwlM7Ie1hCH79QLdfB63prUfYLtxfawIhAMb4wdTBpd3srYPB8jXJVs3x6GHloymlkyEP8Bu3LYim",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 2919158
+        },
+        "archiveSha256": "9ad83711b6382dbbbdfc07cd5a920a02642319388d0772fcd464975af52400a2",
+        "fileCount": 347,
+        "fileMapSha256": "40e160465bf730d088112aa77ef5fd936b05f45e0d38cbaebea3b11a003d85ce"
+      },
       {
         "name": "@sidhujag/sysweb3-network",
         "version": "2.0.1",
@@ -81,43 +105,24 @@
         "fileMapSha256": "e55169a00fea2a22a09c51e408e182557eab419f34b03a2514bdb5da4954e1dc"
       },
       {
-        "name": "@sidhujag/sysweb3-keyring",
-        "version": "2.1.21",
-        "dist": {
-          "shasum": "6b85204135196a0f4e7d78a8c68da36861ffd4c4",
-          "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.21.tgz",
-          "fileCount": 347,
-          "integrity": "sha512-0XyHXtOFH9BcVX6WXILELk9rhmB7bVL3pKYD7bNc9nsbVn1limEVC8Es6brRIISrQaehgs9gFUzxIYdPOMjrag==",
-          "signatures": [
-            {
-              "sig": "MEUCIA+EkNO7Ct9S6k4wNHrG6al/WkGAt93Mq0yugCpnhywVAiEA/1z5gcUGIh7qLbu1/WuxHTHzJciE9H8uwurztkHz8EE=",
-              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-            },
-            {
-              "sig": "MEUCIH+PSoWnt69fzf+nxo/qofg5BlvoeHh0YUayTl6qu+g3AiEAg0eax3xmoqXxWQqAsv8g5f1QJs8HNBsD8yifeJRErgE=",
-              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-            }
-          ],
-          "unpackedSize": 2909691
-        },
-        "archiveSha256": "7329322517d0edbef552e573606b723bef1ce1e10d5b790e309689d7e3fc8b69",
-        "fileCount": 347,
-        "fileMapSha256": "6ce4d080e52c97f856bf7b4f7b1badb5728720a19f0383518dcfd2cf95e18775",
-        "runtimeOverlay": {
-          "source": "deae6bc59b13d19f3c754803e4eddb1f60adaf46",
-          "draftPullRequest": "https://github.com/sidhujag/sysweb3/pull/121",
-          "archiveSha256": "9e2fa7093206c353b956547c33794be383989e0d65a27512e5aa9a198912e0e9",
-          "patchManifestSha256": "0eca14cb4a713fdc3c56822b337b27be92e8a77d0ca57ce4753c1330efb43adc",
-          "fileCount": 13,
-          "installedFileMapSha256": "3e0c21cceae7a123725ebea7905d3f812328d6c1dc9479b0f2d9e0393cc1447f"
-        }
-      },
-      {
         "name": "@sidhujag/sysweb3-core",
         "version": "1.0.30",
         "dist": {
+          "shasum": "b13e85229a1aeb727a9616719ea4ba8bed14e691",
+          "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.30.tgz",
+          "fileCount": 8,
           "integrity": "sha512-KQY33lqKuP6XiRE2fX0iEqa+4tYAUNuASgBdTSbGkqOnopAqZPlIYWAlAqc0i6+K08Fl8vNmff7SIFm33XlNpg==",
-          "shasum": "b13e85229a1aeb727a9616719ea4ba8bed14e691"
+          "signatures": [
+            {
+              "sig": "MEYCIQC3ITG5IUCeI5rGWDbp3AA6Z/W8oWxWzvC5QRLj3/0A7wIhAIJow4OCDM0cL71dJKyTeNCbZYfs9rKngdnZXAhYBm4S",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEQCIG67PazMSIsN1BEuTBc0HXhMT3RFlYWgOpLz8wPvL0mCAiBq4Y479M+Yrhkwq7ImQtBbMvxb5s3uv4fNb5O7yNbADw==",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 19010
         },
         "archiveSha256": "56ef0b19cbbd65bddb954739a88c57597da9e875515950d0a7968045119d114b",
         "fileCount": 8,
@@ -127,8 +132,21 @@
         "name": "@sidhujag/sysweb3-sentry",
         "version": "0.1.3",
         "dist": {
+          "shasum": "df8f97256de1089218a94f9706c8f8d59d2b4a8d",
+          "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-sentry/-/sysweb3-sentry-0.1.3.tgz",
+          "fileCount": 36,
           "integrity": "sha512-uFjafUFpNjIX2gdEeiIltkmPKw5vhQNuCrrGN/P+VYvWp8lgow8sfl1qGiVei0gWD0C3qTen758OxFWdtYT+gA==",
-          "shasum": "df8f97256de1089218a94f9706c8f8d59d2b4a8d"
+          "signatures": [
+            {
+              "sig": "MEQCIBkTcn+qCa7wy5dSXtYfxSuGjJv7IJzL33hIbn8/4KY8AiB0ib79WmBH9FeQvK76AOBxOWfC0RuAH1eHIo8vhqiqpA==",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEUCIDiSpTg+bsAjNqPCd+PZXomApWGnKhzuYo1/1h46BdPrAiEAsw9mq3Qc8/ziJTtuMIY4dbZMPot7df6Stlz3a9Vr6Tg=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 240930
         },
         "archiveSha256": "32e788adfaf66694d3ea1911a6f4a0565baf1ac120e4d08dadd2d6e157d867c5",
         "fileCount": 36,
@@ -142,12 +160,36 @@
   },
   "productionExtension": {
     "source": {
-      "revision": "e183c4de00a5823b9db9a2942a983296bdafbbb4",
-      "tree": "2c73adca480065c8e78f97701533ebde7d6e492e",
-      "files": 4736,
-      "sha256": "fdbc7687b3af90c050cce8f31060d89288b0bad5b302707668cbb0591f8e4c4d"
+      "revision": "09808a733387768e679daabdfc3464771f245e32",
+      "tree": "6110320b9a855bfaa73d852634082e14626ee756",
+      "files": 4734,
+      "sha256": "93f9b4ee3069b05c3f460a8412b17cfabaf01f0b6b8bd21c78b5f85a85641210"
     },
     "officialPackages": [
+      {
+        "name": "@sidhujag/sysweb3-keyring",
+        "version": "2.1.22",
+        "dist": {
+          "shasum": "4c19c95bd3151111b169659979963281050cce6c",
+          "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.22.tgz",
+          "fileCount": 347,
+          "integrity": "sha512-FtrRmR8G81FtB1ZEQDYnldublKkx8m6LpiicM5Izh0rqzvIxH9+Qvk3oABHhHpUEB1+RH6aKKG2CQn2u/SxJ6w==",
+          "signatures": [
+            {
+              "sig": "MEUCIDcqliOhv7j8xfjxEYZR4158ao7zVgOBtkj2tVdDmg1+AiEAqAg1tU7eC5PJQXy5KsbLmi6Q0sVAEas7ehrcFTTIN50=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEYCIQCc5CEPwZIPKXzFwlM7Ie1hCH79QLdfB63prUfYLtxfawIhAMb4wdTBpd3srYPB8jXJVs3x6GHloymlkyEP8Bu3LYim",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 2919158
+        },
+        "archiveSha256": "9ad83711b6382dbbbdfc07cd5a920a02642319388d0772fcd464975af52400a2",
+        "fileCount": 347,
+        "fileMapSha256": "40e160465bf730d088112aa77ef5fd936b05f45e0d38cbaebea3b11a003d85ce"
+      },
       {
         "name": "@sidhujag/sysweb3-network",
         "version": "2.0.1",
@@ -197,43 +239,24 @@
         "fileMapSha256": "e55169a00fea2a22a09c51e408e182557eab419f34b03a2514bdb5da4954e1dc"
       },
       {
-        "name": "@sidhujag/sysweb3-keyring",
-        "version": "2.1.21",
-        "dist": {
-          "shasum": "6b85204135196a0f4e7d78a8c68da36861ffd4c4",
-          "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.21.tgz",
-          "fileCount": 347,
-          "integrity": "sha512-0XyHXtOFH9BcVX6WXILELk9rhmB7bVL3pKYD7bNc9nsbVn1limEVC8Es6brRIISrQaehgs9gFUzxIYdPOMjrag==",
-          "signatures": [
-            {
-              "sig": "MEUCIA+EkNO7Ct9S6k4wNHrG6al/WkGAt93Mq0yugCpnhywVAiEA/1z5gcUGIh7qLbu1/WuxHTHzJciE9H8uwurztkHz8EE=",
-              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-            },
-            {
-              "sig": "MEUCIH+PSoWnt69fzf+nxo/qofg5BlvoeHh0YUayTl6qu+g3AiEAg0eax3xmoqXxWQqAsv8g5f1QJs8HNBsD8yifeJRErgE=",
-              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-            }
-          ],
-          "unpackedSize": 2909691
-        },
-        "archiveSha256": "7329322517d0edbef552e573606b723bef1ce1e10d5b790e309689d7e3fc8b69",
-        "fileCount": 347,
-        "fileMapSha256": "6ce4d080e52c97f856bf7b4f7b1badb5728720a19f0383518dcfd2cf95e18775",
-        "runtimeOverlay": {
-          "source": "deae6bc59b13d19f3c754803e4eddb1f60adaf46",
-          "draftPullRequest": "https://github.com/sidhujag/sysweb3/pull/121",
-          "archiveSha256": "9e2fa7093206c353b956547c33794be383989e0d65a27512e5aa9a198912e0e9",
-          "patchManifestSha256": "0eca14cb4a713fdc3c56822b337b27be92e8a77d0ca57ce4753c1330efb43adc",
-          "fileCount": 13,
-          "installedFileMapSha256": "3e0c21cceae7a123725ebea7905d3f812328d6c1dc9479b0f2d9e0393cc1447f"
-        }
-      },
-      {
         "name": "@sidhujag/sysweb3-core",
         "version": "1.0.30",
         "dist": {
+          "shasum": "b13e85229a1aeb727a9616719ea4ba8bed14e691",
+          "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.30.tgz",
+          "fileCount": 8,
           "integrity": "sha512-KQY33lqKuP6XiRE2fX0iEqa+4tYAUNuASgBdTSbGkqOnopAqZPlIYWAlAqc0i6+K08Fl8vNmff7SIFm33XlNpg==",
-          "shasum": "b13e85229a1aeb727a9616719ea4ba8bed14e691"
+          "signatures": [
+            {
+              "sig": "MEYCIQC3ITG5IUCeI5rGWDbp3AA6Z/W8oWxWzvC5QRLj3/0A7wIhAIJow4OCDM0cL71dJKyTeNCbZYfs9rKngdnZXAhYBm4S",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEQCIG67PazMSIsN1BEuTBc0HXhMT3RFlYWgOpLz8wPvL0mCAiBq4Y479M+Yrhkwq7ImQtBbMvxb5s3uv4fNb5O7yNbADw==",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 19010
         },
         "archiveSha256": "56ef0b19cbbd65bddb954739a88c57597da9e875515950d0a7968045119d114b",
         "fileCount": 8,
@@ -243,8 +266,21 @@
         "name": "@sidhujag/sysweb3-sentry",
         "version": "0.1.3",
         "dist": {
+          "shasum": "df8f97256de1089218a94f9706c8f8d59d2b4a8d",
+          "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-sentry/-/sysweb3-sentry-0.1.3.tgz",
+          "fileCount": 36,
           "integrity": "sha512-uFjafUFpNjIX2gdEeiIltkmPKw5vhQNuCrrGN/P+VYvWp8lgow8sfl1qGiVei0gWD0C3qTen758OxFWdtYT+gA==",
-          "shasum": "df8f97256de1089218a94f9706c8f8d59d2b4a8d"
+          "signatures": [
+            {
+              "sig": "MEQCIBkTcn+qCa7wy5dSXtYfxSuGjJv7IJzL33hIbn8/4KY8AiB0ib79WmBH9FeQvK76AOBxOWfC0RuAH1eHIo8vhqiqpA==",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "sig": "MEUCIDiSpTg+bsAjNqPCd+PZXomApWGnKhzuYo1/1h46BdPrAiEAsw9mq3Qc8/ziJTtuMIY4dbZMPot7df6Stlz3a9Vr6Tg=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            }
+          ],
+          "unpackedSize": 240930
         },
         "archiveSha256": "32e788adfaf66694d3ea1911a6f4a0565baf1ac120e4d08dadd2d6e157d867c5",
         "fileCount": 36,
@@ -318,6 +354,18 @@
         "package": "@sidhujag/sysweb3-network",
         "file": "cjs/types.js",
         "sha256": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149"
+      },
+      {
+        "path": "./node_modules/@sidhujag/sysweb3-core/cjs/index.js",
+        "package": "@sidhujag/sysweb3-core",
+        "file": "cjs/index.js",
+        "sha256": "9c47b71429adde552ab6ca5fc8f06dab05a78fd7b15fc9fc6650151fb060d890"
+      },
+      {
+        "path": "./node_modules/@sidhujag/sysweb3-core/cjs/utils/index.js",
+        "package": "@sidhujag/sysweb3-core",
+        "file": "cjs/utils/index.js",
+        "sha256": "b90ffe948888fae0260bc75c540ca4eaa691852af733049cfb77ae40697fabb7"
       },
       {
         "path": "./node_modules/@sidhujag/sysweb3-keyring/cjs/current-vault-refusal.js",
@@ -636,18 +684,6 @@
         "package": "@sidhujag/sysweb3-keyring",
         "file": "cjs/utils/watch-descriptor.js",
         "sha256": "02c3f6468914e8bfd9082d94a7038e1bc3f058d28f44ba1f55bfc29fc2032046"
-      },
-      {
-        "path": "./node_modules/@sidhujag/sysweb3-core/cjs/index.js",
-        "package": "@sidhujag/sysweb3-core",
-        "file": "cjs/index.js",
-        "sha256": "9c47b71429adde552ab6ca5fc8f06dab05a78fd7b15fc9fc6650151fb060d890"
-      },
-      {
-        "path": "./node_modules/@sidhujag/sysweb3-core/cjs/utils/index.js",
-        "package": "@sidhujag/sysweb3-core",
-        "file": "cjs/utils/index.js",
-        "sha256": "b90ffe948888fae0260bc75c540ca4eaa691852af733049cfb77ae40697fabb7"
       },
       {
         "path": "./node_modules/@sidhujag/sysweb3-utils/cjs/abi/erc1155.json",
@@ -1028,13 +1064,13 @@
         "sha256": "4770a99813d6b8003120e318f01c76448060e24e265deeb233e5861d318ca88a"
       }
     ],
-    "zip": "/private/tmp/pali-dependency-requalification-e183c4de/source/build/pali-wallet-production-chrome-5.0.0.zip",
-    "zipSha256": "17f18de12ce2c94dda3e32cb5492ef0d0ba8479186848d881478ac08a23404d9",
-    "analyzer": "/private/tmp/pali-dependency-requalification-e183c4de/source/build/chrome-report.html",
-    "analyzerSha256": "2b903ccdf79f761c4dfa4cb17ec83fc63c05387f8bfc088e708352840eda30d2",
-    "assetManifest": "/private/tmp/pali-dependency-requalification-e183c4de/source/build/chrome-asset-manifest.json",
+    "zip": "/private/tmp/pali-v5-merged-canary-20261117/build/pali-wallet-production-chrome-5.0.0.zip",
+    "zipSha256": "29a0186bdf0181f24e2dab260c2c1ba485509e391bba76cb41b80b8cc1161a25",
+    "analyzer": "/private/tmp/pali-v5-merged-canary-20261117/build/chrome-report.html",
+    "analyzerSha256": "034381bebda505801979f7d39f6fec079ec49272c6372936056da788bff62955",
+    "assetManifest": "/private/tmp/pali-v5-merged-canary-20261117/build/chrome-asset-manifest.json",
     "assetManifestSha256": "cb07d4becca99b6d5dcc073cb893758761f8369633c804024d721f61d45cde12",
-    "nodes": 8120,
+    "nodes": 8100,
     "moduleHits": {
       "picomatch": [],
       "anymatch": [],
@@ -1047,13 +1083,13 @@
     "webpackJsAssets": [
       {
         "path": "js/background.bundle.js",
-        "bytes": 4070981,
-        "sha256": "189b4a25320a0a95d1825df4da7667ce76ffd808b13f4a092703a05791be71ba"
+        "bytes": 4069417,
+        "sha256": "9813ca4eac520b860567223b32faa03a3c9b2c51b08c4e59b9e52dec50522e17"
       },
       {
         "path": "js/ledgerHost.bundle.js",
-        "bytes": 2756919,
-        "sha256": "9a3eda14559fafdaac6e932dd99ae3c115b2c44e70096f6c17cf5e730ce5f91a"
+        "bytes": 2754554,
+        "sha256": "6f0a26986466f380b55d07a67d63d3abc6d8a484c5e9e163f478012a34361e3a"
       },
       {
         "path": "js/5451.bundle.js",
@@ -1062,8 +1098,8 @@
       },
       {
         "path": "js/7017.bundle.js",
-        "bytes": 284060,
-        "sha256": "cd2f50aa02a60bae3995ce921c0ab2f79dee6874eae160243ea57d0743e93666"
+        "bytes": 284064,
+        "sha256": "4f57a5dd347c298670473db642b49416f9e8e9aa7635571e35c4cc91990815fa"
       },
       {
         "path": "js/3072.bundle.js",
@@ -1072,13 +1108,13 @@
       },
       {
         "path": "js/ui-shared-views.bundle.js",
-        "bytes": 193662,
-        "sha256": "2a59baac16fcea94f4e81e3411f269cfdb0e053549e7270c34ae3b479739240e"
+        "bytes": 194303,
+        "sha256": "3bcedae86f5c8282bf23f57bc1941a78d9f33f462738bb0066d98d41098d7287"
       },
       {
         "path": "js/5621.bundle.js",
-        "bytes": 176447,
-        "sha256": "539f26e19c0a7d0d622416d92c29c419dfefafcd081c1a8f981baf52a0e3cd7a"
+        "bytes": 176805,
+        "sha256": "8f169c25ae83319f9049d9b8b8a626101a02836e7e87e030fde2f10070ad8c2a"
       },
       {
         "path": "js/4099.bundle.js",
@@ -1112,8 +1148,8 @@
       },
       {
         "path": "js/7072.bundle.js",
-        "bytes": 76985,
-        "sha256": "8134a82f09e082ce8ed61a7205c53e81b6f48af6e564f084381fc8202a7229f4"
+        "bytes": 77052,
+        "sha256": "d32aa9d360d666af2f7c83d2c673f53c94acf429212766c80ba070b3fbec61ab"
       },
       {
         "path": "js/6777.bundle.js",
@@ -1268,7 +1304,7 @@
       {
         "path": "js/wallet-recovery.bundle.js",
         "bytes": 24387,
-        "sha256": "8eaed3b4fcaddf04b5fb085ecdbe074329eeec9c7660bcb93f362b3862b6aef5"
+        "sha256": "f2f6671f74472acfdfd8cdd31c0959c3e8aad18ab7f6eca4548f0c00226ac8a0"
       },
       {
         "path": "js/3472.bundle.js",
@@ -1482,8 +1518,8 @@
       },
       {
         "path": "js/2354.bundle.js",
-        "bytes": 6467,
-        "sha256": "ca05a96ecd4812db878ca8378170cbb283e886d4d6e0a54f220c25d0a38b4810"
+        "bytes": 6428,
+        "sha256": "666a10f636b3c1010d478d676fba50c458ffa51f0d758a5ccb54261512b30911"
       },
       {
         "path": "js/7393.bundle.js",
@@ -1735,8 +1771,8 @@
     ],
     "packagedFiles": 183,
     "variant": "Actual extension artifact; no mobile/native/device claim",
-    "sourceRevision": "e183c4de00a5823b9db9a2942a983296bdafbbb4",
-    "sourceTree": "2c73adca480065c8e78f97701533ebde7d6e492e",
+    "sourceRevision": "09808a733387768e679daabdfc3464771f245e32",
+    "sourceTree": "6110320b9a855bfaa73d852634082e14626ee756",
     "sourceDirty": false
   },
   "canary": {
@@ -2493,8 +2529,8 @@
     "apps/mobile/src/connections/storage.ts": "836f922c4e8055b2c2eefd13d90f9f1553a3303f54482bc6c2ece07e01b2df7e",
     "apps/mobile/src/connections/controller.ts": "60b3288f983a0bd2e58c024b431fefaeb7d478378cf2980c2d5d4cf39880d02b",
     "apps/mobile/src/custody/keyringRuntime.ts": "c1b7ee0fcd48c66c3f34bdfb58fc70b178c15b9db2ccd1fe6a5d4e38300ba4e8",
-    "apps/mobile/metro.config.js": "6230386042857ff6324f45106963d8cf1a363876d1bd997ce306de1b4807b74f",
-    "source/config/webpack.common.js": "67dbda4f285eacac2dc62ffab09759acf281337b2ff927b816730be30f4181d0",
+    "apps/mobile/metro.config.js": "6d6c081ec5db2bd849b3ab1cc95511a5122e142850ad7f31f00c2663ce666ea5",
+    "source/config/webpack.common.js": "a1dadfb3d0d2672254f5b7fda1194e742129c5b07ba5d9b3f0c43e81d3876ead",
     "source/config/webpack.prod.js": "862ae2dd5d73c1fd095571a89f60b3579837ae0e93b16143ddd756f11020a4c4"
   },
   "installedConsumerPins": {
@@ -2549,12 +2585,12 @@
       "apps/mobile/App.*"
     ],
     "excludedPolicyHelper": "apps/mobile/scripts/check-dependency-advisories.cjs",
-    "files": 2576,
-    "sha256": "646ba4a7b070e67a1524de07db7b8a7a10afcd7c3dff089710056f44c3fedb99"
+    "files": 2574,
+    "sha256": "f0ec2012fae9d501b291e69cdf09a6f4d52c583e4cfef8c3dba14344773d6ed9"
   },
   "normalMobileAssessment": {
     "kind": "Actual normal Android JavaScript/Hermes graph; static iOS resolver/storage assessment",
-    "normalAndroid": "All 5646 mapped source bodies and 458 SDK files verified under normal Metro with the exact Keyring PR #121 runtime patch. No QA aliases.",
+    "normalAndroid": "All 5646 mapped source bodies and 458 SDK files verified under normal Metro against official registry archives, including Keyring 2.1.22. No SDK overlay or QA aliases.",
     "nativeLimits": "No current APK or native compilation, signing, device operation, or complete iOS artifact qualification. Earlier Android32 APK is historical isolated QA packaging.",
     "ios": "Pinned common RN resolver and supplied storage path assessed statically; no new iOS export/device claim."
   },
@@ -2566,16 +2602,16 @@
   },
   "evidence": {
     "android": {
-      "path": "/private/tmp/pali-dependency-requalification-e183c4de/android-evidence.json",
-      "sha256": "70a3d368baf7d49c17bb37ab052fdcc17d20e8abe6106498fc7358cfed9dd406"
+      "path": "/private/tmp/pali-dependency-requalification-keyring2122-release/android-evidence.json",
+      "sha256": "3ab9071fccc59a509903048e3c0967120bc53038e21cad582face3aa96003041"
     },
     "extension": {
-      "path": "/private/tmp/pali-dependency-requalification-e183c4de/extension-evidence.json",
-      "sha256": "da81eec36ec8f5df00402b7ca5a97d8fe28051c443a349b06a246cd581ca847f"
+      "path": "/private/tmp/pali-dependency-requalification-keyring2122-release/extension-evidence.json",
+      "sha256": "2bbb920843ee2b407086640a6dc434941960d917d0afdec523a89c45ddc0240e"
     },
     "receiptRefreshHelper": {
-      "path": "/private/tmp/pali-dependency-requalification-e183c4de/refresh-reviewed-controller.py",
-      "sha256": "9573a826dfbbdc3b3725e31a703da3237459a80226b59ec8d7a8147c8d8e08b8"
+      "path": "/private/tmp/pali-dependency-requalification-keyring2122-tools/refresh.py",
+      "sha256": "b3dca0cbe8b234e0bde3902ccd49bf1ff847ef6de2ac7274e1be5d4a23c6ff3c"
     },
     "staticStorageResolverReview": {
       "path": "apps/mobile/src/connections/controller.ts",
@@ -2625,9 +2661,34 @@
     "Historical Canary and APK receipts are retained as history only; current qualification uses the normal production extension and Android JavaScript/Hermes evidence above.",
     "Historical Canary and APK receipts are retained as history only; current qualification uses the normal production extension and Android JavaScript/Hermes evidence above.",
     "Historical Canary and APK receipts are retained as history only; current qualification uses the normal production extension and Android JavaScript/Hermes evidence above.",
+    "Historical Canary and APK receipts are retained as history only; current qualification uses the normal production extension and Android JavaScript/Hermes evidence above.",
     "Historical Canary and APK receipts are retained as history only; current qualification uses the normal production extension and Android JavaScript/Hermes evidence above."
   ],
   "officialPackages": [
+    {
+      "name": "@sidhujag/sysweb3-keyring",
+      "version": "2.1.22",
+      "dist": {
+        "shasum": "4c19c95bd3151111b169659979963281050cce6c",
+        "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.22.tgz",
+        "fileCount": 347,
+        "integrity": "sha512-FtrRmR8G81FtB1ZEQDYnldublKkx8m6LpiicM5Izh0rqzvIxH9+Qvk3oABHhHpUEB1+RH6aKKG2CQn2u/SxJ6w==",
+        "signatures": [
+          {
+            "sig": "MEUCIDcqliOhv7j8xfjxEYZR4158ao7zVgOBtkj2tVdDmg1+AiEAqAg1tU7eC5PJQXy5KsbLmi6Q0sVAEas7ehrcFTTIN50=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEYCIQCc5CEPwZIPKXzFwlM7Ie1hCH79QLdfB63prUfYLtxfawIhAMb4wdTBpd3srYPB8jXJVs3x6GHloymlkyEP8Bu3LYim",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "unpackedSize": 2919158
+      },
+      "archiveSha256": "9ad83711b6382dbbbdfc07cd5a920a02642319388d0772fcd464975af52400a2",
+      "fileCount": 347,
+      "fileMapSha256": "40e160465bf730d088112aa77ef5fd936b05f45e0d38cbaebea3b11a003d85ce"
+    },
     {
       "name": "@sidhujag/sysweb3-network",
       "version": "2.0.1",
@@ -2677,43 +2738,24 @@
       "fileMapSha256": "e55169a00fea2a22a09c51e408e182557eab419f34b03a2514bdb5da4954e1dc"
     },
     {
-      "name": "@sidhujag/sysweb3-keyring",
-      "version": "2.1.21",
-      "dist": {
-        "shasum": "6b85204135196a0f4e7d78a8c68da36861ffd4c4",
-        "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.21.tgz",
-        "fileCount": 347,
-        "integrity": "sha512-0XyHXtOFH9BcVX6WXILELk9rhmB7bVL3pKYD7bNc9nsbVn1limEVC8Es6brRIISrQaehgs9gFUzxIYdPOMjrag==",
-        "signatures": [
-          {
-            "sig": "MEUCIA+EkNO7Ct9S6k4wNHrG6al/WkGAt93Mq0yugCpnhywVAiEA/1z5gcUGIh7qLbu1/WuxHTHzJciE9H8uwurztkHz8EE=",
-            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-          },
-          {
-            "sig": "MEUCIH+PSoWnt69fzf+nxo/qofg5BlvoeHh0YUayTl6qu+g3AiEAg0eax3xmoqXxWQqAsv8g5f1QJs8HNBsD8yifeJRErgE=",
-            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-          }
-        ],
-        "unpackedSize": 2909691
-      },
-      "archiveSha256": "7329322517d0edbef552e573606b723bef1ce1e10d5b790e309689d7e3fc8b69",
-      "fileCount": 347,
-      "fileMapSha256": "6ce4d080e52c97f856bf7b4f7b1badb5728720a19f0383518dcfd2cf95e18775",
-      "runtimeOverlay": {
-        "source": "deae6bc59b13d19f3c754803e4eddb1f60adaf46",
-        "draftPullRequest": "https://github.com/sidhujag/sysweb3/pull/121",
-        "archiveSha256": "9e2fa7093206c353b956547c33794be383989e0d65a27512e5aa9a198912e0e9",
-        "patchManifestSha256": "0eca14cb4a713fdc3c56822b337b27be92e8a77d0ca57ce4753c1330efb43adc",
-        "fileCount": 13,
-        "installedFileMapSha256": "3e0c21cceae7a123725ebea7905d3f812328d6c1dc9479b0f2d9e0393cc1447f"
-      }
-    },
-    {
       "name": "@sidhujag/sysweb3-core",
       "version": "1.0.30",
       "dist": {
+        "shasum": "b13e85229a1aeb727a9616719ea4ba8bed14e691",
+        "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.30.tgz",
+        "fileCount": 8,
         "integrity": "sha512-KQY33lqKuP6XiRE2fX0iEqa+4tYAUNuASgBdTSbGkqOnopAqZPlIYWAlAqc0i6+K08Fl8vNmff7SIFm33XlNpg==",
-        "shasum": "b13e85229a1aeb727a9616719ea4ba8bed14e691"
+        "signatures": [
+          {
+            "sig": "MEYCIQC3ITG5IUCeI5rGWDbp3AA6Z/W8oWxWzvC5QRLj3/0A7wIhAIJow4OCDM0cL71dJKyTeNCbZYfs9rKngdnZXAhYBm4S",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEQCIG67PazMSIsN1BEuTBc0HXhMT3RFlYWgOpLz8wPvL0mCAiBq4Y479M+Yrhkwq7ImQtBbMvxb5s3uv4fNb5O7yNbADw==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "unpackedSize": 19010
       },
       "archiveSha256": "56ef0b19cbbd65bddb954739a88c57597da9e875515950d0a7968045119d114b",
       "fileCount": 8,
@@ -2723,8 +2765,21 @@
       "name": "@sidhujag/sysweb3-sentry",
       "version": "0.1.3",
       "dist": {
+        "shasum": "df8f97256de1089218a94f9706c8f8d59d2b4a8d",
+        "tarball": "https://registry.npmjs.org/@sidhujag/sysweb3-sentry/-/sysweb3-sentry-0.1.3.tgz",
+        "fileCount": 36,
         "integrity": "sha512-uFjafUFpNjIX2gdEeiIltkmPKw5vhQNuCrrGN/P+VYvWp8lgow8sfl1qGiVei0gWD0C3qTen758OxFWdtYT+gA==",
-        "shasum": "df8f97256de1089218a94f9706c8f8d59d2b4a8d"
+        "signatures": [
+          {
+            "sig": "MEQCIBkTcn+qCa7wy5dSXtYfxSuGjJv7IJzL33hIbn8/4KY8AiB0ib79WmBH9FeQvK76AOBxOWfC0RuAH1eHIo8vhqiqpA==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEUCIDiSpTg+bsAjNqPCd+PZXomApWGnKhzuYo1/1h46BdPrAiEAsw9mq3Qc8/ziJTtuMIY4dbZMPot7df6Stlz3a9Vr6Tg=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "unpackedSize": 240930
       },
       "archiveSha256": "32e788adfaf66694d3ea1911a6f4a0565baf1ac120e4d08dadd2d6e157d867c5",
       "fileCount": 36,
