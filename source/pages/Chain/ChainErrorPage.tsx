@@ -16,7 +16,10 @@ import {
   createNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
-import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 
 const retryNetwork = (state: ReturnType<typeof store.getState>) => {
   const network = state.vaultGlobal.networkTarget || state.vault.activeNetwork;
@@ -55,6 +58,11 @@ export const ChainErrorPage = () => {
     (state: RootState) => state.vaultGlobal.networkTarget
   );
   const selectedRpc = useSelector(retryNetwork);
+  const registeredRetry = useSelector(
+    (state: RootState) =>
+      state.vaultGlobal.networks[selectedRpc.kind]?.[selectedRpc.chainId] ===
+      selectedRpc
+  );
 
   // Use the target network if we're trying to switch, otherwise use active network
   const displayNetwork = networkTarget || activeNetwork;
@@ -116,7 +124,9 @@ export const ChainErrorPage = () => {
       // Pass true for syncUpdates to ensure all updates complete before returning
       const result = await controllerEmitter(
         ['wallet', 'setActiveNetwork'],
-        [selectedRpc, true]
+        registeredRetry
+          ? [selectedRpc, true, retryIdentity]
+          : [selectedRpc, true]
       );
       if (!isCurrent()) return;
 
@@ -163,6 +173,8 @@ export const ChainErrorPage = () => {
           error.message.includes('timeout')
         ) {
           errorMessage = t('chainError.networkTimeout');
+        } else if (error.message === NETWORK_SWITCH_REVIEW_CHANGED) {
+          errorMessage = t('settings.networkChangedRetry');
         } else if (
           error.message.includes('parse error') ||
           error.message.includes('JSON')
