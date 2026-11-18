@@ -1,4 +1,5 @@
 import { getAddress } from 'ethers/address';
+import { keccak256 } from 'ethers/crypto';
 
 import { EVM_SIGNED_RECORD_LIMITS } from '../shared/evmSignedRecordLimits.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
@@ -26,7 +27,10 @@ export type SmartAccountAuthorizationSummary = Readonly<{
 }>;
 export type RetainedSmartAccountAuthorization =
   SmartAccountAuthorizationSummary &
-    Readonly<{ userOperation: SmartAccountPackedUserOperation }>;
+    Readonly<{
+      signatureDigest?: string;
+      userOperation: SmartAccountPackedUserOperation;
+    }>;
 
 const encoder = new TextEncoder();
 const maximum = (BigInt(1) << BigInt(256)) - BigInt(1);
@@ -102,6 +106,12 @@ function bytes(value: unknown, length?: number): string {
 export function captureSignedSmartAccountOperation(
   value: unknown
 ): SmartAccountPackedUserOperation {
+  return captureOperation(value, true);
+}
+function captureOperation(
+  value: unknown,
+  signed: boolean
+): SmartAccountPackedUserOperation {
   const source = exact(value, fields);
   const operation = Object.freeze({
     sender: address(source.sender),
@@ -114,7 +124,10 @@ export function captureSignedSmartAccountOperation(
     paymasterAndData: bytes(source.paymasterAndData),
     signature: bytes(source.signature),
   });
-  if (operation.signature === '0x' || operation.paymasterAndData !== '0x')
+  if (
+    (signed ? operation.signature === '0x' : operation.signature !== '0x') ||
+    operation.paymasterAndData !== '0x'
+  )
     return invalid();
   // Bound the aggregate before encoding or encrypting its chunks.
   if (JSON.stringify(operation).length > EVM_SIGNED_RECORD_LIMITS.bytes)
@@ -146,6 +159,12 @@ export function captureSmartAccountAuthorization(
     userOperation: SmartAccountPackedUserOperation;
   }>
 ): RetainedSmartAccountAuthorization {
+  return captureAuthorization(input, true);
+}
+function captureAuthorization(
+  input: Parameters<typeof captureSmartAccountAuthorization>[0],
+  signed: boolean
+): RetainedSmartAccountAuthorization {
   if (
     !Number.isSafeInteger(input.chainId) ||
     input.chainId <= 0 ||
@@ -154,7 +173,7 @@ export function captureSmartAccountAuthorization(
   )
     return invalid();
   const observed = exact(input.observedAt, ['hash', 'number']);
-  const userOperation = captureSignedSmartAccountOperation(input.userOperation);
+  const userOperation = captureOperation(input.userOperation, signed);
   const operationHash = getSmartAccountUserOpHash(
     userOperation,
     input.chainId
@@ -187,7 +206,12 @@ export function captureSmartAccountAuthorization(
 export function smartAccountAuthorizationSummary(
   value: RetainedSmartAccountAuthorization
 ): SmartAccountAuthorizationSummary {
-  const { userOperation: _operation, ...summary } = value;
+  const {
+    userOperation: _operation,
+    signatureDigest: _digest,
+    ...summary
+  } = value;
+  void _digest;
   void _operation;
   return Object.freeze(summary);
 }
@@ -246,7 +270,17 @@ export function captureSmartAccountAuthorizationSummary(
 export function encodeSmartAccountAuthorization(
   value: RetainedSmartAccountAuthorization
 ): Uint8Array {
-  const serialized = JSON.stringify(value.userOperation);
+  // Randomized revocations reuse their first authenticated proof across restart.
+  // Ordinary instructions need only the original proof digest for exact retries.
+  const { signature, ...operation } = value.userOperation;
+  const serialized = JSON.stringify(
+    value.replacesOperationHash
+      ? value.userOperation
+      : {
+          ...operation,
+          signatureDigest: value.signatureDigest ?? keccak256(signature),
+        }
+  );
   if (serialized.length > EVM_SIGNED_RECORD_LIMITS.bytes) return invalid();
   return encoder.encode(serialized);
 }
@@ -263,18 +297,46 @@ export function decodeSmartAccountAuthorization(
     nodes: 32,
     tokenCharacters: EVM_SIGNED_RECORD_LIMITS.bytes,
   });
-  const userOperation = captureSignedSmartAccountOperation(JSON.parse(text));
-  if (JSON.stringify(userOperation) !== text) return invalid();
-  const captured = captureSmartAccountAuthorization({
-    chainId: Number(summary.chainId),
-    createdAt: summary.createdAt,
-    observedAt: summary.observedAt,
-    payer: summary.payer,
-    userOperation,
-    ...(summary.replacesOperationHash === undefined
-      ? {}
-      : { replacesOperationHash: summary.replacesOperationHash }),
-  });
+  const parsed = JSON.parse(text);
+  const compact =
+    parsed !== null &&
+    typeof parsed === 'object' &&
+    Object.hasOwn(parsed, 'signatureDigest');
+  let signatureDigest: string | undefined;
+  if (compact) {
+    if (summary.replacesOperationHash) return invalid();
+    const stored = exact(parsed, [
+      ...fields.filter((field) => field !== 'signature'),
+      'signatureDigest',
+    ]);
+    signatureDigest = hash(stored.signatureDigest);
+  }
+  const { signatureDigest: _digest, ...unsigned } = compact ? parsed : {};
+  void _digest;
+  const userOperation = compact
+    ? captureOperation({ ...unsigned, signature: '0x' }, false)
+    : captureSignedSmartAccountOperation(parsed);
+  const { signature: _signature, ...canonicalUnsigned } = userOperation;
+  void _signature;
+  if (
+    JSON.stringify(
+      compact ? { ...canonicalUnsigned, signatureDigest } : userOperation
+    ) !== text
+  )
+    return invalid();
+  const captured = captureAuthorization(
+    {
+      chainId: Number(summary.chainId),
+      createdAt: summary.createdAt,
+      observedAt: summary.observedAt,
+      payer: summary.payer,
+      userOperation,
+      ...(summary.replacesOperationHash === undefined
+        ? {}
+        : { replacesOperationHash: summary.replacesOperationHash }),
+    },
+    !compact
+  );
   if (
     captured.chainId !== summary.chainId ||
     captured.account !== summary.account ||
@@ -282,5 +344,5 @@ export function decodeSmartAccountAuthorization(
     captured.operationNonce !== summary.operationNonce
   )
     return invalid();
-  return captured;
+  return compact ? Object.freeze({ ...captured, signatureDigest }) : captured;
 }

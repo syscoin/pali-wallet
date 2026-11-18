@@ -641,9 +641,9 @@ const EvmTransactionItem = React.memo(
             <div className="m-auto">
               {isConfirmed ||
               isReplaced ||
-              ('historySource' in tx &&
-                tx.historySource ===
-                  EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned) ||
+              (tx.historySource ===
+                EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+                !tx.speedUpAvailable) ||
               settlement === 'replacementPending' ? (
                 <Tooltip content={t('notifications.clickToView')}>
                   <DetailArrowSvg
@@ -741,10 +741,15 @@ export const EvmTransactionsList = ({
   );
 
   const { chainId, currency, apiUrl } = activeNetwork as any;
-  const paginationContext = getHomeBrowsingScope(
+  const browsingContext = getHomeBrowsingScope(
     { ...currentAccount, ...activeAccountRef },
     activeNetwork
   );
+  const clearedAt = currentAccount?.evmActivityClearedAtByChainId?.[chainId];
+  const paginationContext =
+    clearedAt === undefined
+      ? browsingContext
+      : `${browsingContext}:${clearedAt}`;
   const beginPageRequest = useRequestScope(paginationContext);
 
   const fetchPageResponse = useCallback(

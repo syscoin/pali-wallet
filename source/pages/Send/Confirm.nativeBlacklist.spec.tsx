@@ -492,6 +492,7 @@ it('shows the real native pre-send blacklist refusal without unknown status', as
   expect(
     screen.getByRole('button', { name: 'buttons.confirm' })
   ).toBeDisabled();
+  expect(screen.queryByText('send.unableToLoad')).not.toBeInTheDocument();
   expect(mockWallet.reviewNativeEvmFee).toHaveBeenCalledTimes(issued);
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   expect(mockNativeReplies).toHaveLength(1);

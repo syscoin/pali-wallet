@@ -6,13 +6,14 @@ import type { KeyringRuntime } from './keyringRuntime.ts';
 
 type ActivityAuthority = Pick<NativeCustodyAuthority, 'getSnapshot' | 'getCatalogue' | 'subscribe'>;
 type ActivityRuntime = Pick<KeyringRuntime, 'withUtxoActivityRead'>;
+type NativeUtxoActivity = UtxoActivityOwner & Readonly<{ reset(assertCurrent: () => void): Promise<void> }>;
 
 /** Adapt selected custody without exposing its account key or vault lease to Activity. */
 export function createNativeUtxoActivity(
   authority: ActivityAuthority,
   runtime: () => ActivityRuntime | undefined,
   reader: UtxoActivityReader,
-): UtxoActivityOwner {
+): NativeUtxoActivity {
   const capture = () => {
     const snapshot = authority.getSnapshot(), catalogue = authority.getCatalogue(), selected = runtime();
     if (snapshot.phase !== 'ready' || !snapshot.account || !catalogue || !selected ||
@@ -37,7 +38,7 @@ export function createNativeUtxoActivity(
     };
     return owner.selected.withUtxoActivityRead(owner.context, signal, assertOwner, assertView, read, refresh);
   });
-  return Object.freeze<UtxoActivityOwner>({
+  return Object.freeze<NativeUtxoActivity>({
     getUtxoActivityContext,
     getUtxoExplorer(id) {
       const network = capture()?.network;
@@ -45,6 +46,16 @@ export function createNativeUtxoActivity(
       return network.explorer;
     },
     subscribe: (listener) => authority.subscribe(listener),
+    async reset(assertCurrent: () => void) {
+      assertCurrent();
+      if (!getUtxoActivityContext()) throw new CustodyOperationError('NOT_READY');
+      rows.releaseUtxoActivity();
+      const request = new AbortController();
+      try {
+        await rows.readUtxoActivityPage({ page: 1 }, request.signal, assertCurrent);
+        assertCurrent();
+      } finally { request.abort(); }
+    },
     readUtxoActivityPage: rows.readUtxoActivityPage,
     readUtxoActivityDetail: rows.readUtxoActivityDetail,
     retainUtxoActivityRows: rows.retainUtxoActivityRows,

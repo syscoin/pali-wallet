@@ -720,7 +720,8 @@ it('rejects a mixed private marker before invoking either vault authorizer', asy
   const entry = await f
     .records()
     .readExact(f.session(), '1', signer.address, f.tx.hash!);
-  if (!entry) throw new Error('Missing retained record');
+  if (!entry || entry.payloadKind === 'unsigned-eoa')
+    throw new Error('Missing retained signature');
   const authorize = jest.fn();
   await expect(
     authorizePrivateNoteReplay(

@@ -155,6 +155,7 @@ import {
 import {
   retainedEvmAssetPreflightConflict,
   type EvmSignedRecords,
+  retainedEvmTransaction,
   type EvmRetainedSignedRecord,
   type EvmSignedRetirementReadForChain,
 } from '../../../wallet/evmSignedRecords';
@@ -198,23 +199,19 @@ import {
   createOwnedUtxoBlockbookRead,
   type UtxoBlockbookReadScope,
 } from '../../../wallet/utxoBlockbookReads';
-import { reviewSavedUtxoOutputs } from '../../../wallet/utxoSavedReview';
 import {
   createUtxoTransactionBinding,
   extractUtxoSignedTransaction,
   utxoSubmissionUrl,
 } from '../../../wallet/utxoSignedBinding';
 import {
-  snapshotUtxoSubmission,
   UTXO_SIGNED_RECORD_PREFIX,
-  type UtxoDurableSubmission,
   type UtxoSignedRecords,
 } from '../../../wallet/utxoSignedRecords';
 import {
   observeRetainedUtxo,
   reconcileRetainedUtxo,
   createUtxoSubmissionDisposition,
-  submitRetainedUtxo,
   submitReviewedUtxo,
 } from '../../../wallet/utxoSubmission';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
@@ -240,6 +237,7 @@ import {
   persistAccountRemoval,
   persistAssetMutation,
   persistEvmActivityClear,
+  persistUtxoActivityClear,
   persistAdvancedSetting,
   persistCommittedWalletState,
   persistFiatCurrency,
@@ -686,23 +684,18 @@ function readKeyringVaultState() {
     : { ...vault, activeNetwork };
 }
 
-const UTXO_RETRY_REVIEW_MS = 90_000;
+const supportsRetainedSpeedUpIntent = (
+  transactions: KeyringManager['ethereumTransaction'] | undefined
+) =>
+  !!transactions &&
+  'supportsRetainedSpeedUpIntent' in transactions &&
+  transactions.supportsRetainedSpeedUpIntent === true;
+
 const retainedCancellationReviewsByWallet = new WeakMap<
   MainController,
   ReturnType<typeof createExtensionRetainedCancellation>
 >();
 const utxoRecordsByWallet = new WeakMap<MainController, UtxoSignedRecords>();
-const utxoReviewsByWallet = new WeakMap<
-  MainController,
-  | { id: string }
-  | {
-      deadline: number;
-      id: string;
-      record: UtxoDurableSubmission;
-      signing: ReturnType<MainController['captureUtxoSigningContext']>;
-      timer: ReturnType<typeof setTimeout>;
-    }
->();
 
 class PrivateSubmissionError extends Error {
   readonly failure: Readonly<{
@@ -1360,7 +1353,7 @@ class MainController {
 
   // Initialize a keyring for a specific slip44
   private retainedEvmRecords?: EvmSignedRecords;
-  private clearingEvmActivity = false;
+  private clearingActivity = false;
   private retainedEvmReplay?: EvmSignedReplay;
   private retainedSmartAccountReplay?: ReturnType<
     typeof createSmartAccountSignedReplay
@@ -1545,103 +1538,6 @@ class MainController {
         },
       })
     );
-  }
-
-  public async prepareRetainedUtxoRetry(txid: string) {
-    if (typeof txid !== 'string' || !/^[0-9a-f]{64}$/.test(txid))
-      throw new Error('Invalid saved transaction ID');
-    const signing = this.captureUtxoSigningContext();
-    const previous = utxoReviewsByWallet.get(this);
-    if (previous) this.cancelRetainedUtxoRetry(previous.id);
-    const preparing = { id: crypto.randomUUID() };
-    utxoReviewsByWallet.set(this, preparing);
-    const network = store.getState().vault.activeNetwork;
-    const retained = await this.getRetainedUtxoRecords().readExact(
-      {
-        keyring: signing.keyring,
-        assertCurrent: signing.assertWalletReviewCurrent,
-      },
-      this.utxoRecordOwner(network, signing.context.account),
-      txid
-    );
-    signing.assertWalletReviewCurrent();
-    if (
-      utxoReviewsByWallet.get(this) !== preparing ||
-      !retained ||
-      retained.txid !== txid
-    )
-      throw new Error('Saved transfer is unavailable on this network');
-    const record = snapshotUtxoSubmission(retained);
-    const { networks } = getNetworkConfig(network.slip44, network.currency);
-    const addressNetwork =
-      network.slip44 === 1 ? networks.testnet : networks.mainnet;
-    const outputs = reviewSavedUtxoOutputs(record, addressNetwork);
-    const originalOrigin =
-      record.url === utxoSubmissionUrl(network.url)
-        ? undefined
-        : new URL(record.url).origin;
-    const { id } = preparing;
-    utxoReviewsByWallet.set(this, {
-      id,
-      deadline: performance.now() + UTXO_RETRY_REVIEW_MS,
-      record,
-      signing,
-      timer: setTimeout(
-        () => this.cancelRetainedUtxoRetry(id),
-        UTXO_RETRY_REVIEW_MS
-      ),
-    });
-    return {
-      id,
-      txid,
-      feeSatoshis: record.feeSatoshis,
-      outputs,
-      originalOrigin,
-    };
-  }
-
-  public async confirmRetainedUtxoRetry(id: string) {
-    const selected = utxoReviewsByWallet.get(this);
-    if (!selected || selected.id !== id || !('record' in selected))
-      throw new Error('Review the saved transfer again');
-    this.cancelRetainedUtxoRetry(id);
-    const { signing, record, deadline } = selected;
-    const assertCurrent = () => {
-      signing.assertWalletReviewCurrent();
-      if (performance.now() >= deadline)
-        throw new Error('Review the saved transfer again');
-    };
-    assertCurrent();
-    const transaction = syscoinjs.utils.bitcoinjs.Transaction.fromHex(
-      record.rawTransaction
-    );
-    const collateral = this.getSentryCollateralScope();
-    const submit = async (markInvoked: () => void) => {
-      await this.assertNoSentryCollateralInputs({ txInputs: transaction.ins });
-      assertCurrent();
-      return withWalletBackend(record.url, () =>
-        submitRetainedUtxo({
-          record,
-          sender: signing.transactions,
-          records: this.getRetainedUtxoRecords(),
-          session: { keyring: signing.keyring, assertCurrent },
-          fetch: (input, init) => {
-            if (init?.method === 'POST') markInvoked();
-            return globalThis.fetch(input, init);
-          },
-        })
-      );
-    };
-    return collateral
-      ? withSentryCollateralBroadcast(collateral, submit)
-      : submit(() => undefined);
-  }
-
-  public cancelRetainedUtxoRetry(id: string) {
-    const selected = utxoReviewsByWallet.get(this);
-    if (typeof id !== 'string' || selected?.id !== id) return;
-    if ('timer' in selected) clearTimeout(selected.timer);
-    utxoReviewsByWallet.delete(this);
   }
 
   private async recordAcknowledgedEvmReplay(
@@ -1999,6 +1895,8 @@ class MainController {
     const keyring = this.getActiveKeyring();
     const records = this.getRetainedEvmRecords();
     const generation = this.walletSessionGeneration + 1;
+    const historyAvailable = Boolean(vault.activeNetwork.apiUrl);
+    let finishResetStatus: (() => void) | undefined;
     const isSameWallet = () =>
       generation === this.walletSessionGeneration &&
       keyring === this.getActiveKeyring();
@@ -2013,14 +1911,17 @@ class MainController {
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
-    this.clearingEvmActivity = true;
+    this.clearingActivity = true;
+    let removed: number;
     try {
       // Revoke signing, replay and read owners before yielding to storage.
       this.advanceWalletSession();
       this.retainedEvmRecords = records;
       this.networkRequestGeneration += 1;
-      this.transactionUpdateRequestId += 1;
-      this.cancellablePromises.transactionPromise?.cancel();
+      finishResetStatus = this.beginActivityReset(
+        expectedScope,
+        historyAvailable
+      );
       this.clearWalletSaveTimeout();
       this.stopAllRapidPolling();
       this.pendingEvmReceiptChecks.clear();
@@ -2029,7 +1930,7 @@ class MainController {
       const session = records.captureSession({ keyring, assertCurrent });
       const profileId = await keyring.getPrivateRecordProfileId();
       assertCurrent();
-      const removed = await records.clearScope(session, {
+      removed = await records.clearScope(session, {
         profileId,
         chainId: String(chainId),
         from,
@@ -2037,17 +1938,107 @@ class MainController {
       assertCurrent();
       await persistEvmActivityClear(from, chainId, assertCurrent, isSameWallet);
       assertCurrent();
-      store.dispatch(setTransactionHistoryStatus(undefined));
-      return removed;
     } catch (error) {
+      finishResetStatus?.();
       // A failed second store write must not leave an unlocked host using a
       // mixture of cleared private records and its previous public nonce cache.
       if (isSameWallet()) this.lock();
       throw error;
     } finally {
-      this.clearingEvmActivity = false;
+      this.clearingActivity = false;
     }
+    void Promise.resolve()
+      .then(() => {
+        assertCurrent();
+        return this.updateUserTransactionsState({
+          activeNetwork: vault.activeNetwork,
+          isBitcoinBased: false,
+          forceRefresh: true,
+          bypassCompletedCache: true,
+        });
+      })
+      .catch(() => undefined)
+      .finally(finishResetStatus);
+    return removed;
   }
+  private beginActivityReset(
+    scope: IWalletNavigationScope,
+    historyAvailable: boolean
+  ) {
+    const requestId = ++this.transactionUpdateRequestId;
+    store.dispatch(
+      setTransactionHistoryStatus(
+        historyAvailable ? { requestId, scope, state: 'pending' } : undefined
+      )
+    );
+    this.cancellablePromises.transactionPromise?.cancel();
+    return () => {
+      if (
+        store.getState().vaultGlobal.transactionHistoryStatus?.requestId ===
+        requestId
+      )
+        store.dispatch(setTransactionHistoryStatus(undefined));
+    };
+  }
+
+  public async clearUtxoActivity(
+    expectedScope: IWalletNavigationScope,
+    confirmation: 'clear-utxo-activity'
+  ): Promise<void> {
+    this.assertWalletReadyForSigning();
+    this.assertAssetMutationContext(expectedScope);
+    const { isBitcoinBased, activeAccount, activeNetwork, accounts } =
+      store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id];
+    const identifier = account?.xpub;
+    if (
+      confirmation !== 'clear-utxo-activity' ||
+      !isBitcoinBased ||
+      !identifier ||
+      !activeNetwork.url
+    )
+      throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    const chainId = activeNetwork.chainId;
+    const keyring = this.getActiveKeyring();
+    const generation = this.walletSessionGeneration;
+    const networkGeneration = ++this.networkRequestGeneration;
+    const cacheScope = { identifier, networkUrl: activeNetwork.url };
+    const isSameWallet = () =>
+      generation === this.walletSessionGeneration &&
+      keyring === this.getActiveKeyring();
+    const assertCurrent = () => {
+      this.assertCurrentWalletSession(generation, keyring);
+      this.assertAssetMutationContext(expectedScope);
+      if (this.networkRequestGeneration !== networkGeneration)
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    };
+    this.clearingActivity = true;
+    let finishResetStatus: (() => void) | undefined;
+    try {
+      finishResetStatus = this.beginActivityReset(expectedScope, true);
+      await persistUtxoActivityClear(
+        activeAccount,
+        chainId,
+        assertCurrent,
+        isSameWallet
+      );
+      assertCurrent();
+      clearFetchBackendAccountCache(false, cacheScope);
+    } catch (error) {
+      finishResetStatus?.();
+      throw error;
+    } finally {
+      this.clearingActivity = false;
+    }
+    void Promise.resolve()
+      .then(() => {
+        assertCurrent();
+        return this.refreshTransactionHistory(expectedScope);
+      })
+      .catch(() => undefined)
+      .finally(finishResetStatus);
+  }
+
   public prepareEvmSignedReplay(hash: string) {
     return this.isSmartAccountReplay()
       ? this.getRetainedSmartAccountReplay().prepare(hash)
@@ -2095,8 +2086,12 @@ class MainController {
     nonce?: number
   ) {
     if (this.isSmartAccountReplay()) {
+      const { activeAccount, accounts, activeNetwork } = store.getState().vault;
+      const after =
+        accounts[activeAccount.type]?.[activeAccount.id]
+          ?.evmActivityClearedAtByChainId?.[activeNetwork.chainId];
       return this.getRetainedSmartAccountReplay()
-        .list({ beforeHash, maximum: limit })
+        .list({ after, beforeHash, maximum: limit })
         .then((page) =>
           nonce === undefined
             ? page
@@ -2227,6 +2222,9 @@ class MainController {
     assertCurrent();
     const records = this.getRetainedEvmRecords();
     const feePreflight = captureGenericEvmFeeDispatch(this, context);
+    const retainUnsignedNative =
+      context.operation === 'send' &&
+      supportsRetainedSpeedUpIntent(keyring.ethereumTransaction);
     const session = records.captureSession({ keyring, assertCurrent });
     const retirementReadForChain: EvmSignedRetirementReadForChain = (
       chainId,
@@ -2272,6 +2270,7 @@ class MainController {
         if (assetOperation) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
         return createEvmSignedRecordLifecycle(records, session, {
           retirementReadForChain,
+          retainUnsignedNative,
         });
       }
       const read = this.captureFreshEvmRead(navigation);
@@ -2289,6 +2288,8 @@ class MainController {
       if (replacement) void replacement.catch(() => undefined);
       const lifecycle = createEvmSignedRecordLifecycle(records, session, {
         retirementReadForChain,
+        retainUnsignedNative:
+          retainUnsignedNative && !feePreflight?.smartAccountCancellation,
         ...(replacement ? { replacement } : {}),
         automaticNonceEndpoint: context.network.url,
         retainAssetPreflightFailure: assetOperation,
@@ -2510,15 +2511,34 @@ class MainController {
       { ...original, smartAccountExecutionFrom: undefined },
       payer
     );
-    if (!originalHash || nonce === undefined)
-      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-    const replacement = records.captureVerifiedReplacement(session, {
-      chainId: String(context.network.chainId),
-      from: payer,
-      nonce,
-      originalHash,
-      operation: context.operation,
-    });
+    if (!originalHash) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const replacementChain = String(context.network.chainId);
+    const replacement =
+      nonce === undefined
+        ? (async () => {
+            const retained =
+              context.operation === 'speed-up' &&
+              (await records.readEoaSpeedUpIntent(
+                session,
+                replacementChain,
+                payer,
+                originalHash
+              ));
+            if (
+              !retained ||
+              retained.original.signer.id !== selected.id ||
+              retained.original.signer.type !== selected.type
+            )
+              throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+            return retained.binding;
+          })()
+        : records.captureVerifiedReplacement(session, {
+            chainId: replacementChain,
+            from: payer,
+            nonce,
+            originalHash,
+            operation: context.operation,
+          });
     // The capture starts before SDK RPC/signing; persistence observes any rejection.
     void replacement.catch(() => undefined);
     return createEvmSignedRecordLifecycle(records, session, {
@@ -3915,8 +3935,6 @@ class MainController {
     retainedCancellationReviewsByWallet.delete(this);
     this.retainedEvmRecords = undefined;
     utxoRecordsByWallet.delete(this);
-    const utxoReview = utxoReviewsByWallet.get(this);
-    if (utxoReview) this.cancelRetainedUtxoRetry(utxoReview.id);
     // Revoke decoded file staging synchronously, before a lock or account switch
     // can yield. A pending KDF can finish only into a revoked operation.
     this.noteBackupInvalidators?.forEach((invalidate) => invalidate());
@@ -5199,6 +5217,20 @@ class MainController {
     return result;
   }
 
+  private async migrateRetainedTransfers(
+    keyring: KeyringManager,
+    assertCurrent: () => void
+  ) {
+    const session = { keyring, assertCurrent };
+    assertCurrent();
+    await this.getRetainedEvmRecords().migrateUnsignedNative(session, {
+      nativeEoa: supportsRetainedSpeedUpIntent(keyring.ethereumTransaction),
+    });
+    assertCurrent();
+    await this.getRetainedUtxoRecords().migrate(session);
+    assertCurrent();
+  }
+
   public async unlock(pwd: string) {
     const generation = this.walletSessionGeneration;
     return this.authenticationMutex.runExclusive(() =>
@@ -5231,6 +5263,15 @@ class MainController {
         await this.resetRateLimit();
         this.assertCurrentWalletSession(generation, keyring);
         if (!wasUnlocked) {
+          const assertCurrent = () =>
+            this.assertCurrentWalletSession(generation, keyring);
+          try {
+            await this.migrateRetainedTransfers(keyring, assertCurrent);
+          } catch (error) {
+            assertCurrent();
+            await keyring.lockWallet();
+            throw error;
+          }
           await clearNavigationState();
           this.assertCurrentWalletSession(generation, keyring);
         }
@@ -5259,7 +5300,7 @@ class MainController {
   }
 
   private assertWalletReadyForSigning(): void {
-    if (this.clearingEvmActivity || this.getWalletSetupStatus())
+    if (this.clearingActivity || this.getWalletSetupStatus())
       throw new Error(
         'Wallet setup is in progress. Try again after it completes.'
       );
@@ -8847,7 +8888,58 @@ class MainController {
       ]?.ethereum?.[chainId]?.find(
         (tx: any) => tx.hash?.toLowerCase() === txHash.toLowerCase()
       ) as any;
-    const original = findOriginal();
+    if (
+      vault.isBitcoinBased ||
+      this.isResettingWallet ||
+      network.kind !== INetworkType.Ethereum ||
+      network.chainId !== chainId ||
+      !isAccountCompatibleWithNetwork(account, accountInfo.type, network)
+    )
+      throw contextError();
+    const keyring = this.getActiveKeyring();
+    const transactionController = keyring.ethereumTransaction;
+    const provider = transactionController.web3Provider;
+    const assertOwner = () => {
+      this.assertWalletReadyForSigning();
+      const currentScope = getWalletNavigationScope();
+      if (
+        this.isResettingWallet ||
+        this.walletSessionGeneration !== generation ||
+        this.networkRequestGeneration !== networkRequest ||
+        currentScope.account !== accountScope ||
+        currentScope.network !== networkScope ||
+        this.getActiveKeyring() !== keyring ||
+        keyring.ethereumTransaction !== transactionController ||
+        transactionController.web3Provider !== provider
+      )
+        throw contextError();
+    };
+    const saved =
+      !isSmartAccount &&
+      supportsRetainedSpeedUpIntent(transactionController) &&
+      (!findOriginal() || this.retainedEvmRecords)
+        ? await this.getRetainedEvmRecords().readEoaSpeedUpIntent(
+            { keyring, assertCurrent: assertOwner },
+            String(chainId),
+            account.address,
+            txHash.toLowerCase()
+          )
+        : null;
+    assertOwner();
+    const retainedIntent =
+      saved?.original.signer.id === accountInfo.id &&
+      saved.original.signer.type === accountInfo.type
+        ? saved.original
+        : undefined;
+    const retainedTx =
+      retainedIntent && Transaction.from(retainedIntent.unsignedTransaction);
+    const localOriginal = retainedTx && {
+      ...retainedIntent,
+      to: retainedTx.to,
+      value: retainedTx.value.toString(),
+      input: retainedTx.data,
+    };
+    const original = findOriginal(store.getState().vault) ?? localOriginal;
     const sender = original?.from?.toLowerCase();
     const nonce = getEoaNonceFromHistoryTransaction(
       { ...original, smartAccountExecutionFrom: undefined },
@@ -8865,11 +8957,6 @@ class MainController {
           tx.from?.toLowerCase() === account.address?.toLowerCase()) &&
       (tx.chainId === undefined || Number(tx.chainId) === chainId);
     if (
-      vault.isBitcoinBased ||
-      this.isResettingWallet ||
-      network.kind !== INetworkType.Ethereum ||
-      network.chainId !== chainId ||
-      !isAccountCompatibleWithNetwork(account, accountInfo.type, network) ||
       !sender ||
       nonce === undefined ||
       !isPendingOriginal(original) ||
@@ -8906,32 +8993,20 @@ class MainController {
     }
     const payerRef = targetAccount ?? accountInfo;
 
-    const keyring = this.getActiveKeyring();
-    const transactionController = keyring.ethereumTransaction;
-    const provider = transactionController.web3Provider;
     const assertCurrentContext = () => {
-      this.assertWalletReadyForSigning();
+      assertOwner();
       const current = store.getState();
-      const currentScope = getWalletNavigationScope();
       const currentAccount =
         current.vault.accounts[accountInfo.type]?.[accountInfo.id];
       const payer = current.vault.accounts[payerRef.type]?.[payerRef.id];
-      const tracked = findOriginal(current.vault);
+      const tracked = findOriginal(current.vault) ?? localOriginal;
       if (
-        this.isResettingWallet ||
-        this.walletSessionGeneration !== generation ||
-        this.networkRequestGeneration !== networkRequest ||
         current.vault.isBitcoinBased ||
-        currentScope.account !== accountScope ||
-        currentScope.network !== networkScope ||
         !isAccountCompatibleWithNetwork(
           currentAccount,
           accountInfo.type,
           network
         ) ||
-        this.getActiveKeyring() !== keyring ||
-        keyring.ethereumTransaction !== transactionController ||
-        transactionController.web3Provider !== provider ||
         payer?.address?.toLowerCase() !== sender ||
         !isAccountCompatibleWithNetwork(payer, payerRef.type, network) ||
         !isPendingOriginal(tracked) ||
@@ -8962,6 +9037,20 @@ class MainController {
     let broadcastStarted = false;
     try {
       assertCurrentContext();
+      if (retainedIntent)
+        await withEvmReadPhase(
+          provider,
+          assertCurrentContext,
+          async (phase) => {
+            const latest = await phase.send('eth_getTransactionCount', [
+              sender,
+              'latest',
+            ]);
+            assertCurrentContext();
+            if (readEvmRpcQuantity(latest) > BigInt(nonce))
+              throw contextError('Original transaction nonce was already used');
+          }
+        );
       // History hints only avoid journal reads for ordinary sends. The shared
       // journal is the authority for the signed cancellation and its lineage.
       const retainedCancellation =
@@ -8979,11 +9068,12 @@ class MainController {
             )
           : null;
       assertCurrentContext();
-      return await transactionController.sendTransactionWithEditedFee(
+      const result = await transactionController.sendTransactionWithEditedFee(
         txHash,
         isLegacy,
         {
           ...feeApproval,
+          ...(retainedIntent ? { retainedIntent } : {}),
           ...(retainedCancellation ? { retainedCancellation } : {}),
           targetAccount,
           assertCurrentContext,
@@ -8994,6 +9084,25 @@ class MainController {
           },
         }
       );
+      if (retainedIntent && result.isSpeedUp && result.transaction?.hash) {
+        try {
+          await this.getRetainedEvmRecords().updatePhase(
+            { keyring, assertCurrent: assertOwner },
+            String(chainId),
+            sender,
+            result.transaction.hash.toLowerCase(),
+            'submitted'
+          );
+        } catch (error) {
+          // The provider acknowledged the replacement. Let the normal history
+          // path retain that result even if the journal update could not finish.
+          console.error(
+            'Replacement acknowledgement could not be stored',
+            error
+          );
+        }
+      }
+      return result;
     } catch (error) {
       throw Object.assign(error, {
         transactionNotBroadcast: !broadcastStarted,
@@ -9310,8 +9419,69 @@ class MainController {
     const byHash = new Map<string, any>(
       currentTransactions.map((tx: any) => [String(tx.hash).toLowerCase(), tx])
     );
-    const original = byHash.get(oldTxHash.toLowerCase());
+    let original = byHash.get(oldTxHash.toLowerCase());
     const sender = transaction.from?.toLowerCase();
+    if (
+      !original &&
+      !cancellation &&
+      accountInfo.type !== KeyringAccountType.SmartAccount &&
+      sender &&
+      sender === account.address?.toLowerCase() &&
+      !vault.isBitcoinBased &&
+      network.chainId === chainId &&
+      /^0x[0-9a-f]{64}$/i.test(transaction.hash)
+    ) {
+      const keyring = this.getActiveKeyring();
+      const scope = getWalletNavigationScope();
+      const assertCurrent = () => {
+        const current = getWalletNavigationScope();
+        if (
+          this.walletSessionGeneration !== generation ||
+          this.getActiveKeyring() !== keyring ||
+          current.account !== scope.account ||
+          current.network !== scope.network
+        )
+          throw submittedError(EVM_TRANSACTION_CONTEXT_CHANGED);
+      };
+      const records = this.getRetainedEvmRecords();
+      const session = { keyring, assertCurrent };
+      const entry = await records.readExact(
+        session,
+        String(chainId),
+        sender,
+        transaction.hash.toLowerCase()
+      );
+      if (
+        (entry?.phase === 'submitted' || entry?.phase === 'confirmed') &&
+        entry.operation === 'speed-up' &&
+        entry.originalHash === oldTxHash.toLowerCase()
+      ) {
+        const previous = await records.readExact(
+          session,
+          String(chainId),
+          sender,
+          entry.originalHash
+        );
+        assertCurrent();
+        if (previous) {
+          const previousTx = retainedEvmTransaction(previous);
+          original = {
+            hash: previous.hash,
+            chainId,
+            from: previous.from,
+            to: previousTx.to,
+            nonce: previous.nonce,
+            type: previousTx.type,
+            input: previousTx.data,
+            value: previousTx.value.toString(),
+            timestamp: Math.floor(previous.createdAt / 1000),
+            ...(previous.originalHash && {
+              replacesHash: previous.originalHash,
+            }),
+          };
+        }
+      }
+    }
     const originalNonce = getEoaNonceFromHistoryTransaction(
       { ...original, smartAccountExecutionFrom: undefined },
       sender || ''
@@ -9702,7 +9872,7 @@ class MainController {
     isPolling?: boolean;
     isRapidPolling?: boolean;
   }) {
-    if (this.clearingEvmActivity) return;
+    if (this.clearingActivity) return;
     if (isPolling && !isRapidPolling && !isBitcoinBased)
       this.scheduleGuardianActivityNotifications(activeNetwork);
     // For polling, we don't need keyring access - we're just fetching public transaction data
@@ -9738,7 +9908,7 @@ class MainController {
       const account = latest.accounts[activeAccount.type]?.[activeAccount.id];
       return (
         !cancelled &&
-        !this.clearingEvmActivity &&
+        !this.clearingActivity &&
         Boolean(accountIdentity) &&
         accountIdentity === identityOf(account) &&
         session === this.walletSessionGeneration &&
@@ -14239,7 +14409,7 @@ class MainController {
           !activeAccount ||
           activeNetwork.chainId !== chainId ||
           generation !== this.walletSessionGeneration ||
-          this.clearingEvmActivity ||
+          this.clearingActivity ||
           contextIsCurrent?.() === false
         ) {
           console.log(
@@ -14258,7 +14428,7 @@ class MainController {
 
           if (
             generation !== this.walletSessionGeneration ||
-            this.clearingEvmActivity ||
+            this.clearingActivity ||
             contextIsCurrent?.() === false ||
             postLookupActiveNetwork.chainId !== chainId ||
             (!targetAccount &&
@@ -14304,7 +14474,7 @@ class MainController {
 
         if (
           generation !== this.walletSessionGeneration ||
-          this.clearingEvmActivity ||
+          this.clearingActivity ||
           contextIsCurrent?.() === false ||
           latestActiveNetwork.chainId !== chainId ||
           (!targetAccount &&
@@ -14382,7 +14552,7 @@ class MainController {
       if (
         this.walletSessionGeneration !== generation ||
         this.networkRequestGeneration !== networkGeneration ||
-        this.clearingEvmActivity ||
+        this.clearingActivity ||
         current.activeNetwork.chainId !== chainId ||
         current.activeNetwork.url !== activeNetwork.url ||
         current.activeAccount.id !== activeAccount.id ||
@@ -14968,7 +15138,7 @@ class MainController {
       return (
         generation === this.walletSessionGeneration &&
         networkGeneration === this.networkRequestGeneration &&
-        !this.clearingEvmActivity &&
+        !this.clearingActivity &&
         currentScope.account === scope.account &&
         currentScope.network === scope.network
       );
@@ -15735,13 +15905,18 @@ class MainController {
     if (vaultGlobal.activeSlip44 !== context.slip44)
       throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     const history =
-      vault.accountTransactions?.[context.account.type]?.[context.account.id]
-        ?.syscoin;
-    assertNoRecentAcknowledgedInputOverlap(psbt.txInputs, history, {
-      accountXpub: context.account.xpub,
-      chainId: context.chainId,
-      networkUrl: context.rpcUrl,
-    });
+      vault.accountTransactions?.[context.account.type]?.[context.account.id];
+    assertNoRecentAcknowledgedInputOverlap(
+      psbt.txInputs,
+      history?.syscoin,
+      {
+        accountXpub: context.account.xpub,
+        chainId: context.chainId,
+        networkUrl: context.rpcUrl,
+      },
+      Date.now(),
+      history?.utxoActivityReset?.[context.chainId]?.acknowledgements
+    );
   }
 
   private async withOwnedUtxoRead<T>(

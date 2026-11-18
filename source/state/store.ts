@@ -48,6 +48,7 @@ import vault, {
   setAccountLabel,
   setAccountAssets,
   clearEvmAccountActivity,
+  clearUtxoAccountActivity,
   setAccountPropertyByIdAndType,
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
@@ -482,6 +483,7 @@ type ImportedRecoveryMutation =
 
 type VaultMutationAction =
   | ReturnType<typeof clearEvmAccountActivity>
+  | ReturnType<typeof clearUtxoAccountActivity>
   | ReturnType<typeof setAccountLabel>
   | ReturnType<typeof removeAccount>
   | ReturnType<typeof createAccount>
@@ -752,7 +754,29 @@ export function persistEvmActivityClear(
   isSameWallet: () => boolean
 ): Promise<void> {
   return persistVaultMutation(
-    [clearEvmAccountActivity({ address, chainId })],
+    [clearEvmAccountActivity({ address, chainId, clearedAt: Date.now() })],
+    assertCurrent,
+    undefined,
+    isSameWallet
+  );
+}
+
+/** Drop the selected UTXO history while carrying forward recent input acknowledgements. */
+export function persistUtxoActivityClear(
+  account: { id: number; type: KeyringAccountType },
+  chainId: number,
+  assertCurrent: () => void,
+  isSameWallet: () => boolean
+): Promise<void> {
+  return persistVaultMutation(
+    [
+      clearUtxoAccountActivity({
+        accountId: account.id,
+        accountType: account.type,
+        chainId,
+        clearedAt: Date.now(),
+      }),
+    ],
     assertCurrent,
     undefined,
     isSameWallet

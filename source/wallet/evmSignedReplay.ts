@@ -21,6 +21,8 @@ import {
 
 import {
   EvmSignedRecords,
+  retainedEvmTransaction,
+  type EvmRetainedRecord,
   type EvmSignedRecordSession,
   type EvmRetainedSignedRecord,
   type EvmSignedRecordSummary,
@@ -45,6 +47,7 @@ export type EvmSavedTransaction = EvmReplayCandidate &
     maximumFee: string;
     phase: EvmSignedRecordSummary['phase'];
     selector: string | null;
+    speedUpAvailable?: true;
     to: string | null;
     tokenTransfer?: Readonly<{
       amountUnits: string;
@@ -81,6 +84,11 @@ export type EvmReplayReview = Readonly<{
 }>;
 export type EvmReplayPreparation = Readonly<
   | { review: EvmReplayReview; status: 'review' }
+  | {
+      reason: 'fresh-signature-required';
+      status: 'inspect-only';
+      transaction: EvmSavedTransaction;
+    }
   | {
       hash: string;
       status: 'confirmed' | 'reverted' | 'nonce-consumed';
@@ -190,8 +198,8 @@ function selectedHash(value: unknown): string {
     throw new EvmReplayError('NOT_FOUND');
   return value.toLowerCase();
 }
-const request = (entry: EvmRetainedSignedRecord): EvmObservationRequest => {
-  const tx = Transaction.from(entry.rawTransaction);
+const request = (entry: EvmRetainedRecord): EvmObservationRequest => {
+  const tx = retainedEvmTransaction(entry);
   return Object.freeze({
     chainId: entry.chainId,
     hash: entry.hash,
@@ -231,18 +239,26 @@ function tokenTransfer(
   }
 }
 export function projectSavedEvmTransaction(
-  entry: EvmRetainedSignedRecord
+  entry: EvmRetainedRecord
 ): EvmSavedTransaction {
-  const tx = Transaction.from(entry.rawTransaction),
+  const tx = retainedEvmTransaction(entry),
     fee = tx.maxFeePerGas ?? tx.gasPrice;
   if (fee === null) throw new EvmReplayError('INVALID_RESPONSE');
-  const token = tokenTransfer(entry, tx);
-  const collectible = decodeRetainedNftTransfer(entry, tx);
+  const token =
+    entry.payloadKind !== 'unsigned-eoa' ? tokenTransfer(entry, tx) : undefined;
+  const collectible =
+    entry.payloadKind !== 'unsigned-eoa'
+      ? decodeRetainedNftTransfer(entry, tx)
+      : undefined;
+  const canSpeedUp =
+    entry.payloadKind === 'unsigned-eoa' &&
+    ['signed', 'attempted', 'submitted'].includes(entry.phase);
   return Object.freeze({
     hash: entry.hash,
     nonce: entry.nonce,
     operation: entry.operation,
-    ...(Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal')
+    ...(entry.payloadKind === 'unsigned-eoa' ||
+    Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal')
       ? { cancellationUnavailable: true as const }
       : {}),
     ...(entry.originalHash ? { originalHash: entry.originalHash } : {}),
@@ -258,6 +274,7 @@ export function projectSavedEvmTransaction(
     maximumFee: (tx.gasLimit * fee).toString(),
     dataBytes: (tx.data.length - 2) / 2,
     selector: tx.data.length >= 10 ? tx.data.slice(0, 10) : null,
+    ...(canSpeedUp ? { speedUpAvailable: true as const } : {}),
     ...(token ? { tokenTransfer: token } : {}),
     ...(collectible ? { collectibleTransfer: collectible } : {}),
   });
@@ -276,7 +293,7 @@ export async function observeRetainedEvmTransaction(
   assertCurrent: () => void
 ): Promise<
   Readonly<{
-    entry: EvmRetainedSignedRecord;
+    entry: EvmRetainedRecord;
     observation: EvmTransactionObservation;
     terminalPhase: 'confirmed' | 'reverted' | 'nonce-consumed' | null;
   }>
@@ -490,7 +507,11 @@ export class EvmSignedReplay {
     );
     this.check(state);
     if (phase) {
-      if (phase === 'confirmed' && this.reconciliation === null) {
+      if (
+        phase === 'confirmed' &&
+        entry.payloadKind !== 'unsigned-eoa' &&
+        this.reconciliation === null
+      ) {
         // Explicit status inspection may reconcile a missed private ACK. One
         // bounded task never holds the public terminal result behind storage.
         const task = Promise.resolve()
@@ -513,6 +534,12 @@ export class EvmSignedReplay {
         transaction: projectSavedEvmTransaction(entry),
       });
     }
+    if (entry.payloadKind === 'unsigned-eoa')
+      return Object.freeze({
+        status: 'inspect-only',
+        reason: 'fresh-signature-required',
+        transaction: projectSavedEvmTransaction(entry),
+      });
     const authorization = await session.authorizeReplay(entry);
     this.check(state);
     assertSynchronousEvmFeeGuard(authorization.assertCurrent);
@@ -602,6 +629,7 @@ export class EvmSignedReplay {
     check();
     if (
       !current ||
+      current.payloadKind === 'unsigned-eoa' ||
       current.rawTransaction !== entry.rawTransaction ||
       JSON.stringify(current.metadata) !== JSON.stringify(entry.metadata)
     )

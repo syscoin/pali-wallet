@@ -17,6 +17,10 @@ import Currency from './Currency';
 import Languages from './Languages';
 
 const mockEmitter = jest.fn();
+const mockClearAlert = jest.fn();
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: mockClearAlert } }),
+}));
 const mockNavigate = jest.fn();
 const mockState = {
   vault: {
@@ -603,4 +607,52 @@ it('keeps activity-clear errors visible and prevents duplicate confirmation whil
       .getByRole('button', { name: 'settings.clearActivityAndNonce' })
       .hasAttribute('disabled')
   ).toBe(false);
+});
+
+it('clears only the confirmed UTXO activity scope and reports success', async () => {
+  render(<Advanced />);
+  const button = screen.getByRole('button', {
+    name: 'settings.clearUtxoActivity',
+  });
+  fireEvent.click(button);
+  expect(
+    screen.getByRole('dialog', { name: 'settings.clearUtxoActivity' })
+  ).toBeTruthy();
+  expect(screen.getByText('settings.clearUtxoActivityWarning')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+  expect(mockEmitter).not.toHaveBeenCalled();
+  fireEvent.click(button);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.clearActivityAndNonceConfirm',
+    })
+  );
+  expect((await screen.findByRole('status')).textContent).toBe(
+    'settings.clearUtxoActivitySuccess'
+  );
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'clearUtxoActivity'],
+    [{ account: 'account-a', network: 'network-a' }, 'clear-utxo-activity']
+  );
+});
+
+it('alerts once and re-enables the UTXO clear action on failure', async () => {
+  mockEmitter.mockRejectedValue(new Error('storage unavailable'));
+  render(<Advanced />);
+  const button = screen.getByRole('button', {
+    name: 'settings.clearUtxoActivity',
+  });
+  fireEvent.click(button);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.clearActivityAndNonceConfirm',
+    })
+  );
+  await waitFor(() =>
+    expect(mockClearAlert).toHaveBeenCalledWith(
+      'settings.clearActivityAndNonceFailed'
+    )
+  );
+  expect(mockClearAlert).toHaveBeenCalledTimes(1);
+  expect(button.hasAttribute('disabled')).toBe(false);
 });

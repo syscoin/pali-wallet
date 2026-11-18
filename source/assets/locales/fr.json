@@ -377,9 +377,6 @@
   "send": {
     "savedUtxo": {
       "title": "Transferts enregistrés",
-      "review": "Vérifier le transfert enregistré",
-      "empty": "Aucun transfert enregistré",
-      "seen": "Transfert détecté sur le réseau",
       "check": "Consulter le transfert"
     },
     "openWalletTab": "Ouvrir dans l’onglet du portefeuille",
@@ -669,6 +666,9 @@
     "balanceUnavailable": "Solde indisponible"
   },
   "settings": {
+    "clearUtxoActivity": "Effacer l’activité",
+    "clearUtxoActivityWarning": "Effacer l’activité enregistrée de {{account}} sur {{network}} ? L’activité de Blockbook réapparaîtra après actualisation. Les transactions en attente peuvent encore être confirmées.",
+    "clearUtxoActivitySuccess": "Activité enregistrée effacée.",
     "clearActivityAndNonce": "Effacer l’activité et les données de nonce",
     "clearActivityAndNonceWarning": "Effacer l’activité et les données de nonce de {{account}} sur {{network}} ? Les transactions en attente peuvent encore être exécutées. Les transactions enregistrées ne pourront plus être renvoyées.",
     "clearActivityAndNonceConfirm": "Effacer les données",
@@ -904,7 +904,7 @@
     "importedAccountRemovalWarning": "Sauvegardez la clé privée importée avant de supprimer ce compte. Sa clé stockée localement sera supprimée. La phrase de récupération de votre portefeuille ne peut pas restaurer cette clé importée.",
     "accountRemovalContextChanged": "Le contexte du compte a changé. Veuillez confirmer à nouveau la suppression.",
     "networkRemovalIncomplete": "La suppression du réseau n’a pas abouti. Consultez la liste des réseaux et réessayez.",
-    "networkRemovalHasSavedTransfer": "Vérifiez vos transferts enregistrés avant de supprimer ce réseau.",
+    "networkRemovalHasSavedTransfer": "Le statut d’un transfert sur ce réseau reste inconnu. Vous pourrez supprimer le réseau lorsque son statut sera établi.",
     "networkRemovalHasImportedAccounts": "Conservez ce réseau tant qu’il contient des comptes importés.",
     "networkRemovalHasSentryKeys": "Conservez ce réseau tant que des clés Sentry y sont enregistrées.",
     "accountRemovedSuccessfully": "Compte supprimé avec succès",
@@ -2109,6 +2109,8 @@
       "maintenanceTitle": "Dépannage"
     },
     "resetActivity": {
+      "utxoQuestion": "Effacer l’activité en cache ?",
+      "utxoDescription": "Pali effacera l’activité en cache de ce compte sur ce réseau, puis la rechargera depuis le réseau.",
       "title": "Réinitialiser l’activité",
       "question": "Effacer l’activité locale et les données de nonce ?",
       "description": "Pali supprimera les transactions et le suivi des nonces enregistrés localement pour ce compte sur ce réseau, puis actualisera son activité.",
@@ -3629,10 +3631,8 @@
       },
       "utxo": {
         "assetBaseUnits": "{{amount}} unités de base · Actif {{assetId}}",
-        "outputIndex": "Sortie {{index}}",
         "availableAmount": "Disponible : {{amount}} {{symbol}}",
         "rbfStatus": "Remplacement par frais (RBF) {{status}}",
-        "output1": "Sortie 1",
         "tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesThen": "Trop de tentatives d’autorisation infructueuses. Attendez quelques minutes, puis réessayez. Votre examen reste disponible jusqu’à son expiration.",
         "enterAValidAddressAndAmountForThisNetwork": "Saisissez une adresse et un montant valides pour ce réseau.",
         "thisReviewIsNoLongerAvailableOpenANewReview": "Cet examen n’est plus disponible. Ouvrez un nouvel examen pour continuer.",
@@ -3640,13 +3640,10 @@
         "aSavedTransferUsesTheseFundsCheckItsStatusBefore": "Un transfert enregistré utilise ces fonds. Vérifiez son état avant d’envoyer à nouveau.",
         "thisTransferWouldSpendAPossibleSentryCollateralOutput": "Ce transfert dépenserait une sortie pouvant servir de garantie Sentry.",
         "paliCouldNotCompleteThisRequestTryAgainOrCheck": "Pali n’a pas pu finaliser cette demande. Réessayez ou vérifiez vos transferts enregistrés.",
-        "resendSavedTransfer": "Renvoyer le transfert enregistré",
         "working": "En cours",
         "submitted": "Envoyée",
-        "thisTransferIsSavedCheckItsStatusBeforeSendingIt": "Ce transfert est enregistré. Vérifiez son état avant de le renvoyer.",
         "youCanCheckTheLatestNetworkStatusHere": "Vous pouvez consulter ici le dernier état du réseau.",
         "nativeAmountSentWithAsset": "Montant natif envoyé avec l’actif",
-        "originalProvider": "Fournisseur d’origine",
         "replacebyfee": "Replace-by-fee",
         "zDAGUnavailable": "Z-DAG indisponible",
         "zDAGIsUnavailableForThisTransactionSizeReplacebyfeeIsEnabled": "Z-DAG est indisponible pour cette taille de transaction. Replace-by-fee est activé.",

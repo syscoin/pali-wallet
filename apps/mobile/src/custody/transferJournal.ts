@@ -9,7 +9,7 @@ export type TransferJournalEntry = Readonly<{
   version: 1;
   scope: TransferJournalScope;
   phase: TransferJournalPhase;
-  rawTransaction: string;
+  rawTransaction?: string;
   hash: string;
   nonce: number;
   createdAt: number;

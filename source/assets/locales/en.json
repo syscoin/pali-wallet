@@ -377,9 +377,6 @@
   "send": {
     "savedUtxo": {
       "title": "Saved transfers",
-      "review": "Review saved transfer",
-      "empty": "No saved transfers",
-      "seen": "Transfer seen on the network",
       "check": "Check transfer"
     },
     "openWalletTab": "Open in wallet tab",
@@ -669,6 +666,9 @@
     "balanceUnavailable": "Balance unavailable"
   },
   "settings": {
+    "clearUtxoActivity": "Clear activity",
+    "clearUtxoActivityWarning": "Clear saved activity for {{account}} on {{network}}? Activity from Blockbook will reappear after refresh. Pending transactions can still confirm.",
+    "clearUtxoActivitySuccess": "Saved activity cleared.",
     "clearActivityAndNonce": "Clear activity and nonce data",
     "clearActivityAndNonceWarning": "Clear saved activity and nonce data for {{account}} on {{network}}? Pending transactions can still execute. Saved transactions will no longer be available to retry.",
     "clearActivityAndNonceConfirm": "Clear data",
@@ -904,7 +904,7 @@
     "importedAccountRemovalWarning": "Back up the imported private key before removing this account. Its locally stored key will be deleted. Your wallet recovery phrase cannot restore this imported key.",
     "accountRemovalContextChanged": "Account context changed. Please confirm removal again.",
     "networkRemovalIncomplete": "Network removal did not complete. Check the network list and try again.",
-    "networkRemovalHasSavedTransfer": "Check your saved transfers before removing this network.",
+    "networkRemovalHasSavedTransfer": "A transfer on this network is unresolved. You can remove the network once its status is known.",
     "networkRemovalHasImportedAccounts": "Keep this network while it has imported accounts.",
     "networkRemovalHasSentryKeys": "Keep this network while it has saved Sentry keys.",
     "accountRemovedSuccessfully": "Account removed successfully",
@@ -2109,6 +2109,8 @@
       "maintenanceTitle": "Troubleshooting"
     },
     "resetActivity": {
+      "utxoQuestion": "Clear cached activity?",
+      "utxoDescription": "Pali will clear cached activity for this account on this network, then reload it from the network.",
       "title": "Reset activity",
       "question": "Clear local activity and nonce data?",
       "description": "Pali will remove locally saved transactions and nonce tracking for this account on this network, then refresh its activity.",
@@ -3629,10 +3631,8 @@
       },
       "utxo": {
         "assetBaseUnits": "{{amount}} base units · Asset {{assetId}}",
-        "outputIndex": "Output {{index}}",
         "availableAmount": "Available {{amount}} {{symbol}}",
         "rbfStatus": "Replace-by-fee {{status}}",
-        "output1": "Output 1",
         "tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesThen": "Too many unsuccessful authorization attempts. Wait a few minutes, then try again. Your review remains available until it expires.",
         "enterAValidAddressAndAmountForThisNetwork": "Enter a valid address and amount for this network.",
         "thisReviewIsNoLongerAvailableOpenANewReview": "This review is no longer available. Open a new review to continue.",
@@ -3640,13 +3640,10 @@
         "aSavedTransferUsesTheseFundsCheckItsStatusBefore": "A saved transfer uses these funds. Check its status before sending again.",
         "thisTransferWouldSpendAPossibleSentryCollateralOutput": "This transfer would spend a possible Sentry collateral output.",
         "paliCouldNotCompleteThisRequestTryAgainOrCheck": "Pali could not complete this request. Try again or check your saved transfers.",
-        "resendSavedTransfer": "Resend saved transfer",
         "working": "Working",
         "submitted": "Submitted",
-        "thisTransferIsSavedCheckItsStatusBeforeSendingIt": "This transfer is saved. Check its status before sending it again.",
         "youCanCheckTheLatestNetworkStatusHere": "You can check the latest network status here.",
         "nativeAmountSentWithAsset": "Native amount sent with asset",
-        "originalProvider": "Original provider",
         "replacebyfee": "Replace-by-fee",
         "zDAGUnavailable": "Z-DAG unavailable",
         "zDAGIsUnavailableForThisTransactionSizeReplacebyfeeIsEnabled": "Z-DAG is unavailable for this transaction size. Replace-by-fee is enabled.",

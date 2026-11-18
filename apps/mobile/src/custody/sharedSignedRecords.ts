@@ -1,6 +1,6 @@
 import { Transaction } from 'ethers/transaction';
 import { getAddress } from 'ethers/address';
-import { EvmSignedRecords, type EvmSignedRecordSession, type EvmRetainedSignedRecord, type EvmRetainedSmartAccountRecord } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, retainedEvmTransaction, type EvmSignedRecordSession, type EvmRetainedRecord, type EvmRetainedSmartAccountRecord } from '../../../../source/wallet/evmSignedRecords.ts';
 import { projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { projectSmartAccountSavedTransaction } from '../../../../source/wallet/smartAccountSignedReplay.ts';
 import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope } from '../../../../source/shared/nftTransfer.ts';
@@ -12,13 +12,13 @@ import { TransferJournalError, type TransferJournalEntry, type TransferJournalPh
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { LOCAL_ACTIVITY_LIMIT, type LocalActivityRecord } from '../activity/types.ts';
 
-const maySpeedUp = (entry: EvmRetainedSignedRecord, type: number | null | undefined) =>
-  entry.operation !== 'cancel' && (type === 0 || type === 2) &&
+const maySpeedUp = (entry: EvmRetainedRecord, type: number | null | undefined) =>
+  entry.payloadKind !== 'unsigned-eoa' && entry.operation !== 'cancel' && (type === 0 || type === 2) &&
   !Object.hasOwn(entry.metadata ?? {}, 'privateDeposit') && !Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal');
 
 /** Address aliases never substitute for the signer that owns retained bytes. */
 export function findRetainedSignerAccount<T extends { type: NativeAccountType; index: number; slip44: number; address: string }>(
-  accounts: readonly T[], entry: Pick<EvmRetainedSignedRecord, 'signer' | 'from'>
+  accounts: readonly T[], entry: Pick<EvmRetainedRecord, 'signer' | 'from'>
 ): T | undefined {
   return accounts.find(account => account.slip44 === 60 &&
     ['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(account.type) &&
@@ -50,24 +50,25 @@ export function createNativeSignedRecordView(
     catch (error) { if (records.requiresReopen) throw new TransferJournalError('REOPEN_REQUIRED'); throw error; }
   };
   const planAutomaticNonce = createNativeAutomaticNoncePlanner(records, session, network.chainId, account.address, network.rpcUrl);
-  const map = (entry: EvmRetainedSignedRecord): TransferJournalEntry => {
-    const tx = Transaction.from(entry.rawTransaction);
-    const collectible = decodeRetainedNftTransfer(entry, tx);
-    const inspectionOnly = (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
+  const map = (entry: EvmRetainedRecord): TransferJournalEntry => {
+    const tx = retainedEvmTransaction(entry);
+    const collectible = entry.payloadKind === 'unsigned-eoa' ? undefined : decodeRetainedNftTransfer(entry, tx);
+    const inspectionOnly = entry.payloadKind === 'unsigned-eoa' || (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
       (!collectible || !isRetainedNftReplayEnvelope(tx));
     const intent = entry.metadata?.intent === undefined ? undefined : snapshotErc20TransferIntent(entry.metadata.intent);
     if (intent) assertTransferIntentEnvelope({ chainId: tx.chainId.toString(), to: tx.to ?? '', value: tx.value.toString(), data: tx.data }, intent);
     return Object.freeze({
-    version: 1, scope, phase: entry.phase, rawTransaction: entry.rawTransaction, hash: entry.hash,
+    version: 1, scope, phase: entry.phase, hash: entry.hash,
+    ...(entry.payloadKind !== 'unsigned-eoa' ? { rawTransaction: entry.rawTransaction } : {}),
     nonce: entry.nonce, createdAt: entry.createdAt,
     ...(intent ? { intent } : {}),
     ...(collectible ? { collectible } : {}),
     ...(inspectionOnly ? { inspectionOnly: true as const } : {}),
   }); };
-  const activity = (entry: EvmRetainedSignedRecord): LocalActivityRecord => {
+  const activity = (entry: EvmRetainedRecord): LocalActivityRecord => {
     const saved=projectSavedEvmTransaction(entry), token=saved.tokenTransfer?.token;
-    const inspectionOnly = (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
-      (!saved.collectibleTransfer || !isRetainedNftReplayEnvelope(Transaction.from(entry.rawTransaction)));
+    const inspectionOnly = entry.payloadKind === 'unsigned-eoa' || (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
+      (!saved.collectibleTransfer || !isRetainedNftReplayEnvelope(retainedEvmTransaction(entry)));
     const speedUpEligible = maySpeedUp(entry, saved.type);
     return Object.freeze({walletFingerprint:walletBindingId,accountId:nativeAccountId(account.type,account.index),address:account.address,networkId:network.id,registrationHash:network.registrationHash,chainId:network.chainId,hash:entry.hash,phase:entry.phase,nonce:entry.nonce,createdAt:entry.createdAt,
       recipient:saved.collectibleTransfer?.recipient??saved.tokenTransfer?.recipient??saved.to,amountUnits:token?saved.tokenTransfer!.amountUnits:saved.value,maximumFeeUnits:saved.maximumFee,...(token?{token}:{}),

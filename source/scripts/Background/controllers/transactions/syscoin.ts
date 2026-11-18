@@ -60,6 +60,13 @@ const { getHistoryRequestOptions, fetchAccountHistory } =
     }
   );
 
+const assertHistoryReadCurrent = (signal?: AbortSignal) => {
+  if (signal?.aborted)
+    throw Object.assign(new Error('History read cancelled'), {
+      name: 'AbortError',
+    });
+};
+
 const getSnapshotKey = (networkUrl: string, xpubOrAddress: string) =>
   `${networkUrl}::${xpubOrAddress}`;
 
@@ -123,13 +130,27 @@ const SysTransactionController = (): ISysTransactionsController => {
 
   const getInitialUserTransactionsByXpub = async (
     xpubOrAddress: string,
-    networkUrl: string
+    networkUrl: string,
+    signal?: AbortSignal
   ): Promise<ISysTransaction[]> => {
     const accountData = await fetchAccountHistory(
       networkUrl,
       xpubOrAddress,
-      getHistoryRequestOptions(networkUrl, xpubOrAddress)
+      getHistoryRequestOptions(networkUrl, xpubOrAddress),
+      false,
+      signal && {
+        assertCurrent: () => assertHistoryReadCurrent(signal),
+        fetch: (url, identifier, options, parseData) =>
+          fetchBackendAccountCached(
+            url,
+            identifier,
+            options,
+            parseData,
+            signal
+          ),
+      }
     );
+    assertHistoryReadCurrent(signal);
 
     // Record the account summary so rapid polling can detect changes cheaply
     storeActivitySnapshot(
@@ -148,7 +169,8 @@ const SysTransactionController = (): ISysTransactionsController => {
   const pollingSysTransactions = async (
     xpubOrAddress: string,
     networkUrl: string,
-    isRapidPolling = false
+    isRapidPolling = false,
+    signal?: AbortSignal
   ): Promise<ISysTransaction[]> => {
     const { activeAccount, activeNetwork, accountTransactions } =
       store.getState().vault;
@@ -175,8 +197,10 @@ const SysTransactionController = (): ISysTransactionsController => {
             networkUrl,
             xpubOrAddress,
             'details=basic&pageSize=0',
-            true
+            true,
+            signal
           );
+          assertHistoryReadCurrent(signal);
           const currentSnapshot = buildActivitySnapshot(basicData);
 
           if (snapshotsEqual(previousSnapshot, currentSnapshot)) {
@@ -186,6 +210,7 @@ const SysTransactionController = (): ISysTransactionsController => {
               : [];
           }
         } catch (error) {
+          assertHistoryReadCurrent(signal);
           // Probe failed - fall through to the history fetch below
           console.warn(
             '[SysTransactionController] Rapid poll basic probe failed, falling back to history fetch:',
@@ -197,7 +222,8 @@ const SysTransactionController = (): ISysTransactionsController => {
 
     const getSysTxs = await getInitialUserTransactionsByXpub(
       xpubOrAddress,
-      networkUrl
+      networkUrl,
+      signal
     );
 
     // Ensure both values are arrays before spreading

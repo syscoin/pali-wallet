@@ -312,6 +312,31 @@ async function fixture(
   };
 }
 
+it('keeps payer records while honoring the selected Smart Account activity reset', async () => {
+  const f = await fixture();
+  const { activeAccount, accounts } = mockState.vault;
+  const account = accounts[activeAccount.type][activeAccount.id];
+  const retained = await f.records.readExact(
+    f.session,
+    '1',
+    payer.address,
+    f.hash
+  );
+  expect(retained).not.toBeNull();
+  account.evmActivityClearedAtByChainId = { 1: retained!.createdAt - 1 };
+  expect((await f.wallet.getSavedEvmTransactions()).transactions).toHaveLength(
+    1
+  );
+  account.evmActivityClearedAtByChainId[1] = retained!.createdAt;
+  expect(await f.wallet.getSavedEvmTransactions()).toEqual({
+    transactions: [],
+    nextCursor: null,
+  });
+  expect(
+    await f.records.readExact(f.session, '1', payer.address, f.hash)
+  ).toEqual(retained);
+});
+
 it('finds metadata-free Smart operations and replays exact bytes through the recorded local payer', async () => {
   const f = await fixture();
   const page = await f.wallet.getSavedEvmTransactions();

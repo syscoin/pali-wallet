@@ -6,6 +6,7 @@ import { ExternalLinkSvg } from 'components/Icon/Icon';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useSmartAccountAuthorizations } from 'components/TransactionOptions/SmartAccountAuthorizations';
 import { useRequestScope } from 'hooks/useRequestScope';
+import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store, { RootState } from 'state/store';
 import {
@@ -39,6 +40,7 @@ export const TransactionsPanel = () => {
   const historyMayBeIncomplete = !isBitcoinBased && !activeNetwork.apiUrl;
 
   const { t } = useTranslation();
+  const { alert } = useUtils();
   const historyStatus = useSelector(
     (state: RootState) => state.vaultGlobal.transactionHistoryStatus
   );
@@ -49,7 +51,12 @@ export const TransactionsPanel = () => {
       ? historyStatus.state
       : undefined;
   const scopeKey = `${scope.account}:${scope.network}`;
-  const saved = useSavedEvmTransactions(!isBitcoinBased, scopeKey);
+  const clearedAt =
+    activeAccount?.evmActivityClearedAtByChainId?.[activeNetwork.chainId];
+  const saved = useSavedEvmTransactions(
+    !isBitcoinBased,
+    clearedAt === undefined ? scopeKey : `${scopeKey}:${clearedAt}`
+  );
   const authorizations = useSmartAccountAuthorizations(true);
   const beginRetry = useRequestScope(scopeKey);
   const retryPending = useRef<() => boolean>();
@@ -59,11 +66,21 @@ export const TransactionsPanel = () => {
     if (retryPending.current?.()) return;
     const isCurrent = beginRetry();
     retryPending.current = isCurrent;
+    const previousStatus =
+      store.getState().vaultGlobal.transactionHistoryStatus;
     setRetryScope(scopeKey);
     try {
       await controllerEmitter(['wallet', 'refreshTransactionHistory'], [scope]);
     } catch {
-      // The scoped background status owns the error; keep the retry visible.
+      const status = store.getState().vaultGlobal.transactionHistoryStatus;
+      if (
+        isCurrent() &&
+        (status?.state !== 'error' ||
+          status.requestId === previousStatus?.requestId ||
+          status.scope.account !== scope.account ||
+          status.scope.network !== scope.network)
+      )
+        alert.error(t('send.unableToLoad'));
     } finally {
       if (isCurrent()) {
         retryPending.current = undefined;
@@ -307,13 +324,17 @@ export const TransactionsPanel = () => {
     ]
   );
   const historyUnavailable = hasHistoryStatus && historyState === 'error';
+  const showHistoryRetry =
+    hasHistoryStatus &&
+    historyState !== 'ready' &&
+    (historyState !== 'pending' || isRetrying);
 
   return (
     <>
       {(isLoading || savedActivityLoading) &&
         !hasTransactions &&
         TransactionSkeleton}
-      {hasHistoryStatus && historyState !== 'ready' && (
+      {showHistoryRetry && (
         <div className="mt-8 text-center text-sm text-brand-gray200">
           {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
           <button

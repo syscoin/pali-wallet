@@ -4,6 +4,10 @@ import { Transaction, Wallet } from 'ethers';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { createSmartAccountSignedReplay } from '../../../source/wallet/smartAccountSignedReplay.ts';
 import { observeSmartAccountOperations } from '../../../source/wallet/smartAccountActivity.ts';
+import {
+  captureSmartAccountCancellation,
+  smartAccountCancellationMetadata,
+} from '../../../source/wallet/smartAccountCancellation.ts';
 import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
 import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { captureSmartAccountCallsIdentity } from '../../../source/shared/dappCallsStatus.ts';
@@ -13,6 +17,7 @@ import {
   paliEntryPointInterface,
   paliSmartAccountInterface,
 } from '../../../source/utils/smartAccount/contracts.ts';
+import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
 import { signedRecordTestSession } from './signedRecordTestSession.ts';
 import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
@@ -31,6 +36,7 @@ async function fixture() {
     rpcFailed = false,
     receipt: any = null;
   let simulationSuccess = true,
+    latestNonce = 0,
     pendingNonce = 0,
     canonicalHash = blockHash,
     reorgDuringSimulation = false;
@@ -73,7 +79,7 @@ async function fixture() {
     if (rpcFailed) throw new Error('RPC unavailable');
     if (method === 'eth_chainId') return '0x1';
     if (method === 'eth_getTransactionCount')
-      return params[1] === 'pending' ? `0x${pendingNonce.toString(16)}` : '0x0';
+      return `0x${(params[1] === 'pending' ? pendingNonce : latestNonce).toString(16)}`;
     if (method === 'eth_getTransactionReceipt') return receipt;
     if (method === 'eth_getBlockByNumber')
       return { number: '0x10', hash: canonicalHash, gasLimit: '0x100000' };
@@ -273,6 +279,7 @@ async function fixture() {
     read,
     records,
     session,
+    context,
     append,
     dispatched,
     calls,
@@ -285,6 +292,9 @@ async function fixture() {
     },
     pendingNonce(value: number) {
       pendingNonce = value;
+    },
+    latestNonce(value: number) {
+      latestNonce = value;
     },
     wrongPayer() {
       wrongPayer = true;
@@ -344,6 +354,114 @@ test('missing receipt exposes inner intent and resends only the exact retained o
       ?.rawTransaction,
     entry.rawTransaction
   );
+});
+
+for (const replaceOuter of [false, true])
+  test(`saved Smart cancellation resends its own signed handleOps (replace outer: ${replaceOuter})`, async () => {
+    const f = await fixture();
+    const { entry: original, operation } = await f.append();
+    const cancellation = captureSmartAccountCancellation({
+      account,
+      chainId: 1,
+      referenceHash: original.hash,
+      outer: original,
+      observedAt: { number: '16', hash: blockHash },
+    });
+    const noop = encodeERC7579Executions([{ target: account, value: '0' }]);
+    const userOperation = {
+      ...operation,
+      nonce: operation.nonce.toString(),
+      preVerificationGas: operation.preVerificationGas.toString(),
+      callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+        noop.mode,
+        noop.executionCalldata,
+      ]),
+    };
+    const operationHash = getSmartAccountUserOpHash(userOperation, 1);
+    const binding = replaceOuter
+      ? await f.records.captureSmartAccountCancellationReplacement(f.session, {
+          chainId: 1,
+          newUserOperation: userOperation,
+          originalHash: original.hash,
+          payer: payer.address,
+        })
+      : undefined;
+    const nonce = replaceOuter ? original.nonce : original.nonce + 1;
+    const rawTransaction = await payer.signTransaction({
+      chainId: 1,
+      nonce,
+      type: 0,
+      gasPrice: 4,
+      gasLimit: 300000,
+      to: getPaliEntryPointAddress(1),
+      data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+        [userOperation],
+        payer.address,
+      ]),
+    });
+    const hash = Transaction.from(rawTransaction).hash!;
+    const saved = await f.records.append(
+      f.session,
+      {
+        rawTransaction,
+        hash,
+        from: payer.address,
+        chainId: '1',
+        nonce,
+        type: 0,
+        context: { ...f.context, operation: 'send' },
+      },
+      {
+        smartAccountOperationCancellation: smartAccountCancellationMetadata(
+          cancellation,
+          operationHash
+        ),
+      },
+      binding
+    );
+    f.latestNonce(nonce);
+    f.pendingNonce(nonce);
+    const transaction = await f.replay.get(hash);
+    assert(transaction);
+    assert.equal(transaction.operation, 'send');
+    assert.equal(transaction.originalHash, replaceOuter ? original.hash : undefined);
+    assert.equal(transaction.smartAccount.cancellation, true);
+    assert.equal(transaction.smartAccount.operationHash, operationHash);
+    assert.deepEqual(transaction.smartAccount.executions, [
+      { target: account, value: '0', data: '0x' },
+    ]);
+    assert.equal(transaction.smartAccount.transfer, undefined);
+    assert.deepEqual((await f.replay.list()).transactions, [transaction]);
+
+    const prepared = await f.replay.prepare(hash);
+    assert.equal(prepared.status, 'review');
+    assert.equal(prepared.review.smartAccount.cancellation, true);
+    assert.deepEqual(await f.replay.confirm(prepared.review.id), {
+      hash,
+      status: 'submitted',
+    });
+    assert.deepEqual(f.dispatched, [saved.rawTransaction]);
+    assert.equal(f.simulations.length, 1);
+
+    // A successful outer receipt still needs the exact inner outcome.
+    f.mined({
+      transactionHash: hash,
+      from: payer.address,
+      to: getPaliEntryPointAddress(1),
+      status: '0x1',
+      blockNumber: '0x10',
+      blockHash,
+      logs: [],
+    });
+    await assert.rejects(f.replay.prepare(hash), /Smart account outcome unavailable/);
+  });
+
+test('an ordinary saved Smart zero-value self-call has no cancellation intent', async () => {
+  const f = await fixture();
+  const { entry } = await f.append({
+    calls: [{ target: account, value: '0' }],
+  });
+  assert.equal((await f.replay.get(entry.hash))?.smartAccount.cancellation, undefined);
 });
 
 test('general signed handleOps lookup does not depend on metadata or transfer-shaped calls', async () => {
@@ -776,7 +894,7 @@ test('a multiple-UserOperation predecessor remains inspect-only after its parent
     first.entry.hash
   );
   assert.equal(prior.status, 'inspect-only');
-  if (prior.status !== 'inspect-only') assert.fail();
+  if (prior.status !== 'inspect-only' || !('smartAccount' in prior.transaction)) assert.fail();
   assert.equal(prior.transaction.smartAccount.operationCount, 2);
   assert.equal(prior.transaction.smartAccount.replayable, false);
   await assert.rejects(f.replay.confirm(parent.review.id), { code: 'EXPIRED' });

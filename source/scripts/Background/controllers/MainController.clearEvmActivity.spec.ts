@@ -17,8 +17,15 @@ import { walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
 import vaultReducer from 'state/vault';
 import vaultCache from 'state/vaultCache';
+import vaultGlobalReducer, {
+  setTransactionHistoryStatus,
+} from 'state/vaultGlobal';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import { chromeStorage } from 'utils/storageAPI';
+import {
+  createUtxoAcknowledgedInputs,
+  UTXO_ACKNOWLEDGED_INPUTS_WINDOW_MS,
+} from 'utils/utxoAcknowledgedInputs';
 
 import MainController from './MainController';
 
@@ -58,6 +65,7 @@ describe('explicit EVM activity and nonce reset', () => {
       address,
       label: 'Test account',
       evmTxCountByChainId: { 1: 4, 2: 5 },
+      smartAccountUserOpScanByChainId: { 1: 100, 2: 200 },
     };
     const rows = () => ({
       ethereum: {
@@ -102,7 +110,11 @@ describe('explicit EVM activity and nonce reset', () => {
     };
     jest.spyOn(store, 'getState').mockImplementation(() => state);
     jest.spyOn(store, 'dispatch').mockImplementation((action: any) => {
-      state = { ...state, vault: vaultReducer(state.vault, action) };
+      state = {
+        ...state,
+        vault: vaultReducer(state.vault, action),
+        vaultGlobal: vaultGlobalReducer(state.vaultGlobal, action),
+      };
       return action;
     });
     writes = jest.spyOn(chromeStorage, 'setItems').mockResolvedValue(undefined);
@@ -129,6 +141,7 @@ describe('explicit EVM activity and nonce reset', () => {
       clearWalletSaveTimeout: jest.fn(),
       stopAllRapidPolling: jest.fn(),
       lock: jest.fn(),
+      updateUserTransactionsState: jest.fn().mockResolvedValue(undefined),
     });
   });
   afterEach(() => {
@@ -156,6 +169,18 @@ describe('explicit EVM activity and nonce reset', () => {
     ]);
     expect(state.vault.accounts.HDAccount[0].evmTxCountByChainId).toEqual({
       2: 5,
+    });
+    expect(
+      state.vault.accounts.HDAccount[0].smartAccountUserOpScanByChainId
+    ).toEqual({ 2: 200 });
+    expect(
+      state.vault.accounts.HDAccount[0].evmActivityClearedAtByChainId[1]
+    ).toEqual(expect.any(Number));
+    expect(wallet.updateUserTransactionsState).toHaveBeenCalledWith({
+      activeNetwork: beforeNetwork,
+      isBitcoinBased: false,
+      forceRefresh: true,
+      bypassCompletedCache: true,
     });
     expect(state.vault.accounts.HDAccount[1]).toEqual(
       beforeAccounts.HDAccount[1]
@@ -185,6 +210,48 @@ describe('explicit EVM activity and nonce reset', () => {
     expect(() => wallet.assertWalletReadyForSigning()).not.toThrow();
   });
 
+  it('publishes loading before cancelling the old read and keeps it through the reset', async () => {
+    state = {
+      ...state,
+      vault: {
+        ...state.vault,
+        activeNetwork: {
+          ...state.vault.activeNetwork,
+          apiUrl: 'https://explorer.invalid/api',
+        },
+      },
+    };
+    const scope = getWalletNavigationScope();
+    store.dispatch(
+      setTransactionHistoryStatus({ requestId: 0, scope, state: 'ready' })
+    );
+    const profile = deferred();
+    keyring.getPrivateRecordProfileId.mockReturnValue(profile.promise);
+    const history = deferred();
+    wallet.updateUserTransactionsState.mockReturnValue(history.promise);
+    wallet.cancellablePromises.transactionPromise.cancel.mockImplementation(
+      () => {
+        // The old request can only release its own status.
+        if (state.vaultGlobal.transactionHistoryStatus?.requestId === 0)
+          store.dispatch(setTransactionHistoryStatus(undefined));
+      }
+    );
+
+    const result = clear();
+    const loading = { requestId: 1, scope, state: 'pending' };
+    expect(state.vaultGlobal.transactionHistoryStatus).toEqual(loading);
+    profile.resolve(profileId as any);
+    await result;
+    expect(state.vaultGlobal.transactionHistoryStatus).toEqual(loading);
+    expect(wallet.updateUserTransactionsState).toHaveBeenCalledTimes(1);
+    const ready = { requestId: 2, scope, state: 'ready' as const };
+    store.dispatch(setTransactionHistoryStatus(ready));
+    history.resolve(0);
+    await history.promise;
+    await Promise.resolve();
+    expect(state.vaultGlobal.transactionHistoryStatus).toEqual(ready);
+  });
+
   it('requires the current scope and explicit confirmation before changing anything', async () => {
     await expect(
       wallet.clearEvmActivityAndNonce(getWalletNavigationScope(), 'yes')
@@ -199,6 +266,117 @@ describe('explicit EVM activity and nonce reset', () => {
     await expect(clear()).rejects.toThrow();
     expect(wallet.walletSessionGeneration).toBe(0);
     expect(records.clearScope).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  const selectUtxo = () => {
+    const activeNetwork = {
+      kind: 'syscoin',
+      chainId: 0,
+      slip44: 0,
+      url: 'https://blockbook.invalid',
+    };
+    state = {
+      ...state,
+      vault: {
+        ...state.vault,
+        isBitcoinBased: true,
+        activeNetwork,
+        accounts: {
+          ...state.vault.accounts,
+          HDAccount: {
+            ...state.vault.accounts.HDAccount,
+            0: { ...state.vault.accounts.HDAccount[0], xpub: 'zpub-selected' },
+          },
+        },
+      },
+      vaultGlobal: { ...state.vaultGlobal, activeSlip44: 0 },
+    };
+    return activeNetwork;
+  };
+
+  it('clears only the selected UTXO history and preserves the recent input guard', async () => {
+    const activeNetwork = selectUtxo();
+    const input = { hash: Buffer.alloc(32, 1), index: 0 };
+    const now = Date.now();
+    const ack = createUtxoAcknowledgedInputs(
+      [input],
+      {
+        accountXpub: 'zpub-selected',
+        networkUrl: activeNetwork.url,
+      },
+      now
+    );
+    const targetHistory = state.vault.accountTransactions.HDAccount[0];
+    targetHistory.syscoin[0] = [
+      { txid: 'unconfirmed', localAcknowledgedInputs: ack },
+      {
+        txid: 'old-acknowledgement',
+        localAcknowledgedInputs: {
+          ...ack,
+          acknowledgedAt: now - UTXO_ACKNOWLEDGED_INPUTS_WINDOW_MS,
+        },
+      },
+      { txid: 'confirmed', confirmations: 5 },
+    ];
+    state.vault.accountTransactions.HDAccount[1].syscoin[0] = [
+      { txid: 'other-account' },
+    ];
+    const scope = getWalletNavigationScope();
+    const refresh = deferred();
+    wallet.updateUserTransactionsState.mockReturnValue(refresh.promise);
+    const result = wallet.clearUtxoActivity(scope, 'clear-utxo-activity');
+    expect(state.vaultGlobal.transactionHistoryStatus).toEqual({
+      requestId: 1,
+      scope,
+      state: 'pending',
+    });
+    await result;
+    const { HDAccount } = state.vault.accountTransactions;
+    expect(HDAccount[0].syscoin[0]).toBeUndefined();
+    expect(HDAccount[0].syscoin[57]).toEqual([{ txid: 'utxo' }]);
+    expect(HDAccount[0].ethereum[1]).toEqual([{ hash: 'pending', nonce: 0 }]);
+    expect(HDAccount[1].syscoin[0]).toEqual([{ txid: 'other-account' }]);
+    expect(HDAccount[0].utxoActivityReset[0].acknowledgements).toEqual([ack]);
+    expect(records.clearScope).not.toHaveBeenCalled();
+    expect(wallet.updateUserTransactionsState).toHaveBeenCalledWith({
+      activeNetwork,
+      isBitcoinBased: true,
+      forceRefresh: true,
+      bypassCompletedCache: true,
+    });
+    expect(writes).toHaveBeenCalled();
+    expect(() =>
+      wallet.assertOrdinaryUtxoInputsCurrent(
+        { txInputs: [input] },
+        {
+          account: { type: 'HDAccount', id: 0, xpub: 'zpub-selected' },
+          chainId: 0,
+          rpcUrl: activeNetwork.url,
+          slip44: 0,
+        }
+      )
+    ).toThrow('The network is still updating');
+    refresh.resolve(0);
+  });
+
+  it('rejects UTXO clear with a stale scope, the wrong confirmation or an EVM network', async () => {
+    await expect(
+      wallet.clearUtxoActivity(
+        getWalletNavigationScope(),
+        'clear-utxo-activity'
+      )
+    ).rejects.toThrow();
+    selectUtxo();
+    await expect(
+      wallet.clearUtxoActivity(getWalletNavigationScope(), 'yes')
+    ).rejects.toThrow();
+    await expect(
+      wallet.clearUtxoActivity(
+        { account: 'stale', network: 'stale' },
+        'clear-utxo-activity'
+      )
+    ).rejects.toThrow();
     expect(writes).not.toHaveBeenCalled();
   });
 

@@ -73,6 +73,9 @@ jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
 jest.mock('hooks/index', () => ({
   useUtils: () => ({ navigate: jest.fn() }),
 }));
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: mockAlert }),
+}));
 jest.mock('components/index', () => ({
   Icon: () => null,
   Button: jest.requireActual('components/Button/Button').Button,

@@ -9,6 +9,7 @@ import { CancellablePromises } from 'scripts/Background/controllers/promises/can
 import TransactionsManager from 'scripts/Background/controllers/transactions';
 import { clearFetchBackendAccountCache } from 'scripts/Background/controllers/utils/fetchBackendAccountWrapper';
 import vaultReducer, {
+  clearUtxoAccountActivity,
   setAccounts,
   setAccountTransactions,
   setActiveAccount,
@@ -53,6 +54,16 @@ jest.mock('state/store', () => ({
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
+  persistUtxoActivityClear: async (account: any, chainId: number) => {
+    mockStore.dispatch(
+      clearUtxoAccountActivity({
+        accountId: account.id,
+        accountType: account.type,
+        chainId,
+        clearedAt: Date.now(),
+      })
+    );
+  },
 }));
 jest.mock('scripts/Background/controllers/MainController', () => ({
   __esModule: true,
@@ -93,6 +104,10 @@ jest.mock('scripts/Background/controllers/transactions/evm', () => ({
 }));
 jest.mock('react-router-dom', () => ({
   useLocation: () => ({ pathname: '/home', search: '?tab=activity', hash: '' }),
+}));
+const mockHistoryAlert = jest.fn();
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: mockHistoryAlert } }),
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -723,4 +738,55 @@ it('allows a new account retry and ignores the old account completion while it i
   });
   expect(status().state).toBe('ready');
   expect(screen.getByText('home.youHaveNoTxs')).toBeTruthy();
+});
+
+it('alerts when an explicit Retry fails before background status is published', async () => {
+  renderPanel();
+  mockController.refreshTransactionHistory = jest
+    .fn()
+    .mockRejectedValue(new Error('Controller disconnected'));
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }))
+  );
+  expect(mockHistoryAlert).toHaveBeenCalledTimes(1);
+  expect(mockHistoryAlert).toHaveBeenCalledWith('send.unableToLoad');
+  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeEnabled();
+});
+
+it('rebuilds UTXO Activity from Blockbook and ignores the history in flight before clear', async () => {
+  mockIndependentHistoryReads = true;
+  const keyring = { isUnlocked: () => true };
+  mockController.getActiveKeyring = () => keyring;
+  const stale = heldRead();
+  const fresh = heldRead();
+  mockTransport
+    .mockReturnValueOnce(stale.promise)
+    .mockReturnValueOnce(fresh.promise);
+  const cancelled = fetchInitial().catch(() => undefined);
+
+  renderPanel();
+  await act(async () => {
+    await mockController.clearUtxoActivity(
+      getWalletNavigationScope(),
+      'clear-utxo-activity'
+    );
+  });
+  expect(mockTransport).toHaveBeenCalledTimes(2);
+  expect(status().state).toBe('pending');
+  expect(screen.queryByText(first.txid)).toBeNull();
+  expect(
+    screen.getByText('networkConnection.loadingTransactions')
+  ).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+  await act(async () => {
+    stale.resolve(body([first]));
+    await cancelled;
+  });
+  expect(screen.queryByText(first.txid)).toBeNull();
+  const pending = { ...second, confirmations: 0, blockHeight: 0 };
+  await act(async () => fresh.resolve(body([pending])));
+  expect(status().state).toBe('ready');
+  expect(currentRows()).toEqual([expect.objectContaining(pending)]);
+  expect(screen.getByText(second.txid)).toBeTruthy();
+  expect(screen.queryByText(first.txid)).toBeNull();
 });

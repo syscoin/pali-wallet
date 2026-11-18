@@ -79,17 +79,6 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
         throw new CustodyRuntimeError('INVALID_INPUT');
       }
     },
-    async prepareRetry() {
-      assertCurrent();
-      beginPreparation();
-      return remember({
-        ...request,
-        ...(options.has('alternate-provider')
-          ? { retryProviderOrigin: 'https://previous-provider.example:8443' }
-          : {}),
-        retryTxid: txid,
-      });
-    },
     async confirm(review, credential) {
       assertCurrent();
       const approvedRevision = revision;

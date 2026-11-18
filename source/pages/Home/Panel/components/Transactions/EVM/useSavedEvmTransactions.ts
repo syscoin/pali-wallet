@@ -63,7 +63,8 @@ export const savedTransactionHistoryRow = (
     gas: tx.gasLimit,
     gasPrice: tx.feePerGas,
     dataBytes: tx.dataBytes,
-    isCancel: tx.operation === 'cancel',
+    ...(tx.speedUpAvailable && !smart ? { speedUpAvailable: true } : {}),
+    isCancel: tx.operation === 'cancel' || smart?.cancellation === true,
     isSpeedUp: tx.operation === 'speed-up',
     ...(tx.originalHash ? { replacesHash: tx.originalHash } : {}),
     ...(tx.collectibleTransfer

@@ -245,9 +245,8 @@ export function Instruction({
 
 /** Local authenticated history only; chain status is checked on explicit request. */
 export function useSmartAccountAuthorizations(autoLoad = false) {
-  const { activeAccount, activeNetwork, isBitcoinBased } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { accounts, activeAccount, activeNetwork, isBitcoinBased } =
+    useSelector((state: RootState) => state.vault);
   const enabled =
     !isBitcoinBased && activeAccount?.type === KeyringAccountType.SmartAccount;
   const scope = JSON.stringify([
@@ -255,6 +254,8 @@ export function useSmartAccountAuthorizations(autoLoad = false) {
     activeAccount,
     activeNetwork.chainId,
     activeNetwork.url,
+    accounts?.[activeAccount?.type]?.[activeAccount?.id]
+      ?.evmActivityClearedAtByChainId?.[activeNetwork.chainId],
   ]);
   const owner = useRef({
     scope,

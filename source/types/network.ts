@@ -222,6 +222,7 @@ export interface INativeBalanceCacheEntry {
 export interface IKeyringAccountState {
   address: string;
   balances: IKeyringBalances;
+  evmActivityClearedAtByChainId?: Record<number, number>;
   // Per-chain EVM tx count hint (chainId -> txCount)
   // Used to decide if explorer paging can be enabled safely
   evmTxCountByChainId?: Record<number, number>;

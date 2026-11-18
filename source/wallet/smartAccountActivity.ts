@@ -30,7 +30,10 @@ import {
 import { decodeSmartAccountUserOperationEvent } from '../utils/smartAccount/userOperationEvent.ts';
 import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHash.ts';
 
-import type { EvmRetainedSignedRecord } from './evmSignedRecords.ts';
+import type {
+  EvmRetainedRecord,
+  EvmRetainedSignedRecord,
+} from './evmSignedRecords.ts';
 
 const tokenPolicy = createErc20Policy(getAddress);
 const executeSelector =
@@ -270,8 +273,9 @@ export function decodeSmartAccountOperations(
 
 /** Authenticate the outer envelope independently of the inner execution mode. */
 export function decodeRetainedSmartAccountOperations(
-  entry: EvmRetainedSignedRecord
+  entry: EvmRetainedRecord
 ): readonly RetainedSmartAccountOperation[] {
+  if (entry.payloadKind === 'unsigned-eoa') return [];
   try {
     const tx = Transaction.from(entry.rawTransaction);
     if (

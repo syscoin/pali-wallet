@@ -62,7 +62,7 @@ type Outcome = Readonly<{
 function summarizeReview(review: NativeUtxoReview): ReviewedTransferSummary {
   const recipient = review.outputs[0]!;
   return Object.freeze({
-    recipientLabel: review.retryTxid ? t('mobile.sendAssetViews.utxo.output1') : t('assetTransfer.recipient'),
+    recipientLabel: t('assetTransfer.recipient'),
     recipient: Object.freeze({
       amountSatoshis: recipient.amountSatoshis,
       ...(recipient.asset ? { asset: Object.freeze({ ...recipient.asset }) } : {}),
@@ -348,10 +348,10 @@ export function NativeUtxoSendScreen({
   };
   const confirm = review && (
     <Button
-      title={review.retryTxid ? t('mobile.sendAssetViews.utxo.resendSavedTransfer') : t('mobile.sendAssetViews.evm.confirmAndSend')}
-      disabled={busy || !review.retryTxid && !ledgerReady}
+      title={t('mobile.sendAssetViews.evm.confirmAndSend')}
+      disabled={busy || !ledgerReady}
       onPress={() => {
-        if (!review.retryTxid && ledgerConnection && !ledgerConnection.isConnected()) return;
+        if (ledgerConnection && !ledgerConnection.isConnected()) return;
         setError(''); confirmAuthenticated({ method: 'device' });
       }}
       testID="native-utxo-confirm"
@@ -397,7 +397,7 @@ export function NativeUtxoSendScreen({
         style={s.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen footer={footer} scrollResetKey={outcome ? `outcome:${outcome.txid}` : review ? `review:${review.retryTxid ?? 'new'}` : 'draft'} gap={16}>
+        <Screen footer={footer} scrollResetKey={outcome ? `outcome:${outcome.txid}` : review ? 'review' : 'draft'} gap={16}>
           <Header
             title={
               outcome
@@ -420,7 +420,7 @@ export function NativeUtxoSendScreen({
               {error}
             </Text>
           )}
-          {ledgerConnection && !ledgerReady && review && !review.retryTxid && !outcome && <Button
+          {ledgerConnection && !ledgerReady && review && !outcome && <Button
             title={t('mobile.accounts.connectLedger')} disabled={busy}
             onPress={() => { Keyboard.dismiss(); setLedgerPicker(ledgerConnection); }}
           />}
@@ -435,11 +435,7 @@ export function NativeUtxoSendScreen({
                     ? t('mobile.connections.psbt.submissionTitle')
                     : t('mobile.sendAssetViews.utxo.submitted')
                 }
-                body={
-                  outcome.phase === 'unknown'
-                    ? t('mobile.sendAssetViews.utxo.thisTransferIsSavedCheckItsStatusBeforeSendingIt')
-                    : t('mobile.sendAssetViews.utxo.youCanCheckTheLatestNetworkStatusHere')
-                }
+                body={t('mobile.sendAssetViews.utxo.youCanCheckTheLatestNetworkStatusHere')}
                 tone={outcome.phase === 'unknown' ? 'amber' : undefined}
               />
               <Card>
@@ -469,29 +465,13 @@ export function NativeUtxoSendScreen({
                 disabled={busy}
                 onPress={() => checkStatus(outcome.txid)}
               />
-              {outcome.phase === 'unknown' && (
-                <Button
-                  title={t('send.savedUtxo.review')}
-                variant="secondary" size="compact"
-                  disabled={busy}
-                  onPress={() => {
-                    run(async (current) => {
-                      const next = await send!.prepareRetry(outcome.txid);
-                      if (current()) {
-                        setOutcome(null);
-                        setReview(next);
-                      }
-                    });
-                  }}
-                />
-              )}
             </>
           ) : review ? (
             <>
               {amountHero(summarizeReview(review))}
               <Card style={s.insetCard}>
                 <Text style={styles.muted}>
-                  {review.retryTxid ? t('mobile.sendAssetViews.utxo.output1') : t('assetTransfer.recipient')}
+                  {t('assetTransfer.recipient')}
                 </Text>
                 {recipient?.script && <Text style={styles.muted}>{outputScriptLabel(recipient)}</Text>}
                 <Text
@@ -510,14 +490,6 @@ export function NativeUtxoSendScreen({
                     <Text>{units(recipient.amountSatoshis)}</Text>
                   </>
                 )}
-                {review.retryProviderOrigin && (
-                  <>
-                    <Text style={styles.muted}>{t('mobile.sendAssetViews.utxo.originalProvider')}</Text>
-                    <Text selectable style={s.address}>
-                      {review.retryProviderOrigin}
-                    </Text>
-                  </>
-                )}
                 <Text style={styles.muted}>{t('send.networkFee')}</Text>
                 <Text testID="native-utxo-fee">
                   {units(review.feeSatoshis)}
@@ -533,7 +505,7 @@ export function NativeUtxoSendScreen({
                 {review.outputs.slice(1).map((output, index) => (
                   <View key={index} style={s.card}>
                     <Text style={styles.muted}>
-                      {review.retryTxid ? t('mobile.sendAssetViews.utxo.outputIndex', { index: index + 2 }) : t('buttons.change')} ·{' '}
+                      {t('buttons.change')} ·{' '}
                       {units(output.amountSatoshis)}
                     </Text>
                     {output.asset && <Text>{assetUnits(output.asset)}</Text>}

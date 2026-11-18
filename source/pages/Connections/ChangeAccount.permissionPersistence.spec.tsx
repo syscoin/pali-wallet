@@ -460,7 +460,7 @@ it.each(['requestPermissions', 'changeAccount'])(
   }
 );
 
-it('keeps a failed permission grant visible and never reports approval success', async () => {
+it('alerts once for a failed permission grant and never reports approval success', async () => {
   failNextStateWrite = true;
   const view = render(
     <Provider store={store}>
@@ -471,9 +471,11 @@ it('keeps a failed permission grant visible and never reports approval success',
     fireEvent.click(screen.getByText('buttons.confirm'));
     releasePermission();
   });
-  expect(
-    screen.getByText('synthetic permission storage failure')
-  ).toBeDefined();
+  expect(mockAlert.error).toHaveBeenCalledTimes(1);
+  expect(mockAlert.error).toHaveBeenCalledWith(
+    'synthetic permission storage failure'
+  );
+  expect(screen.queryByText('synthetic permission storage failure')).toBeNull();
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(window.close).not.toHaveBeenCalled();
   expect(mockEmitter.mock.calls.some(([path]) => path[0] === 'wallet')).toBe(
@@ -490,6 +492,7 @@ it('does not acknowledge a failed account-change save when its view disappears b
   expect(records.state.dapp.dapps[host].accountId).toBe(0);
   view.unmount();
   await act(async () => releasePermission());
+  expect(mockAlert.error).not.toHaveBeenCalled();
   expect(mockEmitter.mock.calls.map(([path]) => path)).toEqual([
     ['dapp', 'changeAccount'],
   ]);

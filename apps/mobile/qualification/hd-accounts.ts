@@ -105,7 +105,8 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
     requireEvidence(row.version === 1 && row.entries.length >= 1 &&
       identity?.pairFingerprint === fingerprint && identity.walletBindingId === stored.scope.walletFingerprint &&
       entry?.phase === 'attempted' && entry.chainId === '1' && entry.from === address.toLowerCase() && entry.nonce === 0 &&
-      entry.signer.id === index && entry.signer.type === 'HDAccount' && !row.raw?.includes(stored.rawTransaction));
+      entry.signer.id === index && entry.signer.type === 'HDAccount' && typeof stored.rawTransaction === 'string' &&
+      !row.raw?.includes(stored.rawTransaction));
     return stored.hash;
   };
   const sign = async (address: string, index: number) => {

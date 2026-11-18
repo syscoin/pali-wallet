@@ -90,7 +90,7 @@ function unsignedTransactionHex(psbt: Psbt): string {
   return Buffer.from(psbt.data.globalMap.unsignedTx.toBuffer()).toString('hex');
 }
 
-function withoutSignatures(transaction: Transaction): string {
+export function withoutSignatures(transaction: Transaction): string {
   const unsigned = transaction.clone();
   unsigned.stripWitnesses();
   for (const input of unsigned.ins) input.script = new Uint8Array();

@@ -218,6 +218,8 @@ export const EvmTransactionDetailsEnhanced = ({
         : undefined,
     [savedTransaction]
   );
+  const savedSmartAccountCancellation =
+    savedTransaction?.smartAccount?.cancellation === true;
   const copyContextRef = useRef({ active: true, sequence: 0 });
   useEffect(() => {
     copyContextRef.current.active = true;
@@ -868,7 +870,9 @@ export const EvmTransactionDetailsEnhanced = ({
     }
 
     // Use the decoded transaction data for method information
-    if (decodedTxData && decodedTxData.method) {
+    if (savedSmartAccountCancellation) {
+      mergedTx.method = t('transactions.cancellation');
+    } else if (decodedTxData && decodedTxData.method) {
       mergedTx.method = decodedTxData.method;
     } else if (!mergedTx.method) {
       // Fallback for backwards compatibility
@@ -953,10 +957,12 @@ export const EvmTransactionDetailsEnhanced = ({
           : 'N/A';
       } else if (key === 'method' && finalValue) {
         // Apply translation for method names
-        formattedValue.value = translateTransactionType(
-          formatMethodName(String(finalValue), currency.toUpperCase(), t),
-          t
-        );
+        formattedValue.value = savedSmartAccountCancellation
+          ? t('transactions.cancellation')
+          : translateTransactionType(
+              formatMethodName(String(finalValue), currency.toUpperCase(), t),
+              t
+            );
       }
 
       if (String(finalValue).length >= 20 && key !== 'image') {
@@ -1114,11 +1120,9 @@ export const EvmTransactionDetailsEnhanced = ({
     chainId,
     settlementIndex
   );
-  const isCancellation = hasEvmCancellationIntent(
-    transactionTx,
-    history,
-    chainId
-  );
+  const isCancellation =
+    savedSmartAccountCancellation ||
+    hasEvmCancellationIntent(transactionTx, history, chainId);
   const directionLabel = hasAccountDirection
     ? getTxType(displayTransaction || transactionTx, isTxSent)
     : 'Transaction';

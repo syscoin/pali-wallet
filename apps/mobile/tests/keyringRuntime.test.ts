@@ -3605,7 +3605,7 @@ for (const failure of ['none', 'retirement', 'cancellation']) test(`Trezor runti
   } finally { release(); await owner.dispose().catch(() => undefined); await fixture.sessions.dispose(); }
 });
 
-test('Trezor runtime replays saved UTXO bytes without Suite or a new signature', async () => {
+test('Trezor runtime reads saved UTXO status without Suite, signing or broadcast', async () => {
   const [{ UtxoSignedRecords }, { getUtxoNetwork }, { utxoSubmissionUrl }, { utils }, { metadata }] = await Promise.all([
     import('../../../source/wallet/utxoSignedRecords.ts'), import('../src/core/utxoNetworks.ts'),
     import('../../../source/wallet/utxoSignedBinding.ts'), import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
@@ -3620,6 +3620,9 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
   const network = getUtxoNetwork('bitcoin');
   const disk = memoryDisk(async () => ({ ...sdk, HostKeyring: Host }), undefined, undefined, fixture.sessions,
     async (url, init) => {
+      if (String(url).startsWith(network.endpoint + '/api/v2/tx/')) {
+        const response = Response.json({}); Object.defineProperty(response, 'url', { value: String(url) }); return response;
+      }
       if (String(url) === network.endpoint + '/api/v2/') {
         const response = Response.json(metadata(network)); Object.defineProperty(response, 'url', { value: String(url) }); return response;
       }
@@ -3655,12 +3658,15 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
     const records = new UtxoSignedRecords(disk.utxoPort, disk.utxoPort);
     const recordAccess = ring.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1', 'org.syscoin.pali.evm.signed.chunk.v1',
       'org.syscoin.pali.utxo.signed.root.v1', 'org.syscoin.pali.utxo.signed.chunk.v1']);
-    await records.admit({ keyring: recordAccess, assertCurrent() {} }, record, 'initial', async prepare => { await prepare(); });
+    await records.admit({ keyring: recordAccess, assertCurrent() {} }, record, 'initial', async (prepare, release) => {
+      await prepare();
+      release(); // Simulate a previously dispatched transfer without an ACK.
+    });
     const calls = fixture.paths.length;
     const send = await runtime.openUtxoSend!(() => undefined);
-    const review = await send.prepareRetry(txid);
-    const result = await send.confirm(review, { method: 'device' });
-    assert.equal(result.txid, txid); assert.equal(broadcasts, 1);
+    assert.deepEqual(await send.list(), [{ txid, accepted: false }]);
+    assert.equal(await send.check(txid), 'unknown');
+    assert.equal(broadcasts, 0);
     assert.equal(fixture.paths.length, calls);
     assert.equal(runtime.trezor.getSnapshot().phase, 'idle');
     let entered!: () => void, release!: () => void;

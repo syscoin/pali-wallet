@@ -35,6 +35,42 @@ describe('VaultCache', () => {
     expect(saveSlip44State).toHaveBeenCalledWith(60, vaultState);
   });
 
+  it('persists a native send in Activity without copying its signature', async () => {
+    const from = `0x${'1'.repeat(40)}`;
+    const tx = {
+      from,
+      to: `0x${'2'.repeat(40)}`,
+      hash: `0x${'a'.repeat(64)}`,
+      type: 2,
+      nonce: 7,
+      input: '0x',
+      value: '1',
+      raw: '0x01',
+      r: '0x02',
+      s: '0x03',
+      v: 1,
+    };
+    const vaultState = {
+      activeNetwork: { kind: INetworkType.Ethereum, slip44: 60 },
+      accounts: { HDAccount: { 0: { address: from } } },
+      accountTransactions: {
+        HDAccount: { 0: { ethereum: { 1: [tx] }, syscoin: {} } },
+      },
+    } as unknown as ISlip44State;
+    await vaultCache.setSlip44Vault(60, vaultState);
+    const history = jest.mocked(saveSlip44State).mock.calls[0][1];
+    const row = history.accountTransactions.HDAccount[0].ethereum[1][0];
+    expect(row).toMatchObject({
+      hash: tx.hash,
+      nonce: tx.nonce,
+      to: tx.to,
+      value: tx.value,
+    });
+    for (const field of ['raw', 'r', 's', 'v'])
+      expect(row).not.toHaveProperty(field);
+    expect(tx.raw).toBe('0x01');
+  });
+
   it('does not repopulate a cleared cache from a delayed old-wallet read', async () => {
     let complete!: (value: any) => void;
     jest.mocked(loadSlip44State).mockReturnValueOnce(

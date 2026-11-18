@@ -1410,7 +1410,9 @@ export class NativeTransfers {
       assertCurrent();
       if (result.status === 'inspect-only') {
         this.publish({ phase: 'unknown', hash: result.transaction.hash, review: null, intent: null, inspectionOnly: true,
-          message: SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE });
+          message: 'reason' in result && result.reason === 'fresh-signature-required'
+            ? 'The saved transaction has no signature. Check its status before sending again.'
+            : SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE });
         return;
       }
       if (result.status !== 'review') {

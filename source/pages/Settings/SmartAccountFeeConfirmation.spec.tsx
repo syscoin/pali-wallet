@@ -21,6 +21,10 @@ const TARGET = '0x3333333333333333333333333333333333333333';
 let mockAccount = ACCOUNT;
 let mockCurrent = true;
 const mockEmitter = jest.fn();
+const mockAlert = { error: jest.fn(), warning: jest.fn() };
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: mockAlert }),
+}));
 const submitted = jest.fn();
 const quote = (id = 'fee-one', extra: object = {}) => ({
   id,
@@ -484,5 +488,34 @@ test.each(['cancel', 'account'])(
     }
     await act(async () => undefined);
     expect(deployCalls()).toHaveLength(1);
+  }
+);
+
+test.each([
+  [
+    'insufficient funds for gas',
+    'error',
+    'settings.smartAccountInfrastructureInsufficientGas',
+  ],
+  [
+    'transport failed',
+    'warning',
+    'settings.smartAccountInfrastructureCheckBeforeRetry',
+  ],
+] as const)(
+  'alerts on deployment failure after fee approval: %s',
+  async (error, severity, message) => {
+    await openDeployment();
+    mockEmitter.mockRejectedValueOnce(new Error(error));
+    fireEvent.click(screen.getByText('buttons.confirm'));
+    await waitFor(() =>
+      expect(mockAlert[severity]).toHaveBeenCalledWith(message)
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByText(message)).toBeNull();
+    expect(deployCalls()).toHaveLength(2);
+    expect(
+      screen.getByText('settings.smartAccountInfrastructureCheckStatus')
+    ).toBeTruthy();
   }
 );

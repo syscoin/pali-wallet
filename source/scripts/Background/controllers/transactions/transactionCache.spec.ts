@@ -171,7 +171,12 @@ it('continues using the RPC cache for UTXO polling', async () => {
   mockVault.activeNetwork.apiUrl = updatedApi;
   expect(await read({ utxo: true })).toBe(first);
   expect(mockUtxoPolling).toHaveBeenCalledTimes(1);
-  expect(mockUtxoPolling).toHaveBeenCalledWith(account.xpub, rpc, false);
+  expect(mockUtxoPolling).toHaveBeenCalledWith(
+    account.xpub,
+    rpc,
+    false,
+    undefined
+  );
   expect(mockEvmPolling).not.toHaveBeenCalled();
 });
 

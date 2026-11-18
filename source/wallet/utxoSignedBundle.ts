@@ -38,7 +38,7 @@ export type Bundle = Readonly<{
   profileId: string;
   revision: number;
   root: IEncryptedPrivateRecord;
-  version: 1;
+  version: 1 | 2;
 }>;
 
 export const corrupt = (): never => {
@@ -112,7 +112,7 @@ export function inspectUtxoSignedBundle(
     !value ||
     Object.keys(value).length !== (value.discovery === undefined ? 5 : 6) ||
     JSON.stringify(value) !== raw ||
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     value.profileId !== profileId ||
     !PROFILE.test(profileId) ||
     !Number.isSafeInteger(value.revision) ||

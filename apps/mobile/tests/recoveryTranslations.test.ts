@@ -6,6 +6,7 @@ import { recoveryErrorText, recoveryOutcomeText } from '../src/screens/recoveryC
 
 const consent = [
   'mobile.settings.watchBody', 'mobile.resetActivity.description', 'mobile.resetActivity.pendingBody',
+  'mobile.resetActivity.utxoQuestion', 'mobile.resetActivity.utxoDescription',
   'mobile.security.phraseRestore', 'mobile.security.extendedBody', 'mobile.accounts.removeImported',
   'mobile.accounts.backupAcknowledgement', 'mobile.importAccount.separateBody',
   'mobile.importAccount.backupAcknowledgement',

@@ -377,9 +377,6 @@
   "send": {
     "savedUtxo": {
       "title": "保存済みの送金",
-      "review": "保存済みの送金を確認",
-      "empty": "保存済みの送金はありません",
-      "seen": "ネットワークで送金を検出しました",
       "check": "送金状況を確認"
     },
     "openWalletTab": "ウォレットのタブで開く",
@@ -669,6 +666,9 @@
     "balanceUnavailable": "残高を取得できません"
   },
   "settings": {
+    "clearUtxoActivity": "アクティビティを消去",
+    "clearUtxoActivityWarning": "{{network}} 上の {{account}} の保存済みアクティビティを消去しますか？ 更新すると、Blockbook のアクティビティが再表示されます。保留中のトランザクションは引き続き承認される可能性があります。",
+    "clearUtxoActivitySuccess": "保存済みアクティビティを消去しました。",
     "clearActivityAndNonce": "アクティビティと nonce データを消去",
     "clearActivityAndNonceWarning": "{{network}} の {{account}} の保存済みアクティビティと nonce データを消去しますか？保留中の取引は引き続き実行される可能性があります。保存済み取引は再送できなくなります。",
     "clearActivityAndNonceConfirm": "データを消去",
@@ -904,7 +904,7 @@
     "importedAccountRemovalWarning": "このアカウントを削除する前に、インポートした秘密鍵をバックアップしてください。ローカルに保存された鍵は削除されます。ウォレットのリカバリーフレーズでは、このインポートした鍵を復元できません。",
     "accountRemovalContextChanged": "アカウントの状態が変わりました。削除をもう一度確認してください。",
     "networkRemovalIncomplete": "ネットワークの削除は完了していません。ネットワーク一覧を確認して、もう一度お試しください。",
-    "networkRemovalHasSavedTransfer": "このネットワークを削除する前に、保存済みの送金を確認してください。",
+    "networkRemovalHasSavedTransfer": "このネットワーク上に状態が不明な送金があります。状態が確認できたら、このネットワークを削除できます。",
     "networkRemovalHasImportedAccounts": "インポートしたアカウントがある間は、このネットワークを保持してください。",
     "networkRemovalHasSentryKeys": "保存済みのSentryキーがある間は、このネットワークを保持してください。",
     "accountRemovedSuccessfully": "アカウントが正常に削除されました",
@@ -2109,6 +2109,8 @@
       "maintenanceTitle": "トラブルシューティング"
     },
     "resetActivity": {
+      "utxoQuestion": "キャッシュされたアクティビティを消去しますか？",
+      "utxoDescription": "このネットワーク上のこのアカウントのアクティビティキャッシュを消去し、ネットワークから再取得します。",
       "title": "アクティビティをリセット",
       "question": "ローカルのアクティビティとノンスデータを消去しますか？",
       "description": "Paliは、このネットワーク上のこのアカウントについて、ローカルに保存されたトランザクションとノンスの追跡を削除し、アクティビティを更新します。",
@@ -3629,10 +3631,8 @@
       },
       "utxo": {
         "assetBaseUnits": "{{amount}}最小単位 · 資産{{assetId}}",
-        "outputIndex": "出力 {{index}}",
         "availableAmount": "利用可能 {{amount}} {{symbol}}",
         "rbfStatus": "手数料引き上げによる置換 {{status}}",
-        "output1": "出力1",
         "tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesThen": "認証の失敗回数が多すぎます。数分待ってから再試行してください。確認内容は期限まで維持されます。",
         "enterAValidAddressAndAmountForThisNetwork": "このネットワークの有効なアドレスと金額を入力してください。",
         "thisReviewIsNoLongerAvailableOpenANewReview": "この確認は利用できなくなりました。続行するには新しく確認を開いてください。",
@@ -3640,13 +3640,10 @@
         "aSavedTransferUsesTheseFundsCheckItsStatusBefore": "保存済み送金がこの資金を使用しています。再送信前に状況を確認してください。",
         "thisTransferWouldSpendAPossibleSentryCollateralOutput": "この送金はSentry担保の可能性がある出力を使用します。",
         "paliCouldNotCompleteThisRequestTryAgainOrCheck": "Paliはこのリクエストを完了できませんでした。再試行するか保存済み送金を確認してください。",
-        "resendSavedTransfer": "保存済み送金を再送信",
         "working": "処理中",
         "submitted": "送信済み",
-        "thisTransferIsSavedCheckItsStatusBeforeSendingIt": "この送金は保存されました。再送信前に状況を確認してください。",
         "youCanCheckTheLatestNetworkStatusHere": "ここで最新のネットワーク状況を確認できます。",
         "nativeAmountSentWithAsset": "資産と共に送るネイティブ通貨額",
-        "originalProvider": "元のプロバイダー",
         "replacebyfee": "手数料による置換",
         "zDAGUnavailable": "Z-DAGを利用できません",
         "zDAGIsUnavailableForThisTransactionSizeReplacebyfeeIsEnabled": "この取引サイズではZ-DAGを使用できません。手数料による置換を有効にしました。",

@@ -87,6 +87,9 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 // This EVM-only suite does not parse or sign PSBTs. Avoid the unrelated UTXO
 // dependency's browser-only ESM entry under JSDOM; its controller is not used.
 jest.mock('syscointx-js', () => ({ bufferUtils: {} }));
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: jest.fn() } }),
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -387,7 +390,7 @@ it('keeps an initial configured read pending past the balance-settle timer', asy
   expect(
     screen.getByText('networkConnection.loadingTransactions')
   ).toBeVisible();
-  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
   // The timer assertion is complete. Let the real finite RPC fallback's
   // existing inter-batch waits run normally after the held explorer settles.
   jest.useRealTimers();

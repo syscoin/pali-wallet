@@ -7,6 +7,7 @@ import { createAssetTransferDisplay } from '../../shared/assetTransferDisplay';
 import { formatTokenUnits } from '../../shared/erc20';
 import { ConfirmationModal } from 'components/Modal';
 import { useContextualState } from 'hooks/useContextualState';
+import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { RetainedEvmCancellationReview } from 'scripts/Background/controllers/evmSignedReplay';
 import { RootState } from 'state/store';
@@ -40,9 +41,7 @@ type View = {
   cancellation?: RetainedEvmCancellationReview;
   cancellationHash?: string;
   loadingPrevious?: boolean;
-  message?: string;
   predecessorCursor?: string | null;
-  previousError?: boolean;
   review?: ReplayReview;
 };
 
@@ -57,6 +56,7 @@ export const RetainedTransactionReplay = ({
   onRetainedTransaction?: (transaction: SavedTransaction | null) => void;
 }) => {
   const { t } = useTranslation();
+  const { alert } = useUtils();
   const smartAccountSelected = useSelector(
     ({ vault }: RootState) =>
       vault.activeAccount.type === KeyringAccountType.SmartAccount
@@ -75,10 +75,16 @@ export const RetainedTransactionReplay = ({
   const scope = `${walletScope.account}:${
     walletScope.network
   }:${hash.toLowerCase()}`;
-  const context = useRef({ scope, generation: 0, active: true });
+  const context = useRef({
+    scope,
+    scopeRevision: 0,
+    generation: 0,
+    active: true,
+  });
   if (context.current.scope !== scope)
     context.current = {
       scope,
+      scopeRevision: context.current.scopeRevision + 1,
       generation: context.current.generation + 1,
       active: true,
     };
@@ -86,7 +92,10 @@ export const RetainedTransactionReplay = ({
     scope,
     null
   );
-  const [view, setView] = useContextualState<View>(scope, {});
+  const [view, setView] = useContextualState<View>(
+    `${scope}:${context.current.scopeRevision}`,
+    {}
+  );
   const reviewReference = useRef<ReviewReference>();
   const confirming = useRef(false);
   const cancelReview = (review?: ReviewReference) => {
@@ -194,44 +203,57 @@ export const RetainedTransactionReplay = ({
               : null,
         });
       } else {
-        setView({
-          message: t(
-            result.status === 'inspect-only'
-              ? 'transactions.replay.unavailable'
-              : `transactions.replay.${result.status}`
-          ),
-        });
+        setView({});
+        const message = t(
+          result.status === 'inspect-only'
+            ? 'transactions.replay.unavailable'
+            : `transactions.replay.${result.status}`
+        );
+        if (result.status === 'confirmed')
+          alert.info(message, undefined, current);
+        else if (result.status === 'nonce-consumed') alert.warning(message);
+        else alert.error(message);
       }
     } catch (error) {
       if (parentReviewId) cancelReview(priorReview);
-      if (current())
-        setView({
-          message: t(
+      if (current()) {
+        setView({});
+        alert.error(
+          t(
             kind === 'cancel'
               ? error instanceof Error &&
                 error.message === 'Insufficient funds for reviewed EVM transfer'
                 ? 'send.insufficientFundsForGas'
                 : 'transactions.cancelFeeUnavailable'
               : 'transactions.replay.unavailable'
-          ),
-        });
+          )
+        );
+      }
     }
   };
   const displayed = view.cancellation ?? view.review;
   useEffect(() => {
     const reference = reviewReference.current;
     if (!displayed || !reference || view.busy === 'confirm') return;
+    const generation = context.current.generation;
     const timer = setTimeout(() => {
-      if (reviewReference.current !== reference || confirming.current) return;
+      if (
+        !context.current.active ||
+        context.current.generation !== generation ||
+        reviewReference.current !== reference ||
+        confirming.current
+      )
+        return;
       cancelReview(reference);
       reviewReference.current = undefined;
-      setView({
-        message: t(
+      setView({});
+      alert.warning(
+        t(
           reference.kind === 'cancel'
             ? 'transactions.replay.cancellationExpired'
             : 'transactions.replay.expired'
-        ),
-      });
+        )
+      );
     }, displayed.validForMs);
     return () => clearTimeout(timer);
   }, [displayed?.id, view.busy, scope, t]);
@@ -269,34 +291,39 @@ export const RetainedTransactionReplay = ({
       )) as EvmReplaySubmissionResult | { status: 'not-dispatched' };
       if (current()) {
         if (result.status === 'not-dispatched') {
-          setView({ message: t('transactions.transactionCancelFailed') });
+          setView({});
+          alert.error(t('transactions.transactionCancelFailed'));
         } else {
           const cancellation = reference.kind === 'cancel';
-          setView({
-            ...(cancellation ? { cancellationHash: result.hash } : {}),
-            message: t(
-              cancellation && result.status === 'submitted'
-                ? 'transactions.transactionCancelSubmitted'
-                : result.status === 'unknown' &&
-                  result.reason === 'rpc-insufficient-funds'
-                ? 'transactions.replay.insufficientFundsUnknown'
-                : `transactions.replay.${result.status}`,
-              { payer: displayed.from }
-            ),
-          });
+          setView(cancellation ? { cancellationHash: result.hash } : {});
+          const message = t(
+            cancellation && result.status === 'submitted'
+              ? 'transactions.transactionCancelSubmitted'
+              : result.status === 'unknown' &&
+                result.reason === 'rpc-insufficient-funds'
+              ? 'transactions.replay.insufficientFundsUnknown'
+              : `transactions.replay.${result.status}`,
+            { payer: displayed.from }
+          );
+          const notice = cancellation
+            ? `${message} ${t('transactions.replay.hash')}: ${result.hash}`
+            : message;
+          if (result.status === 'submitted')
+            alert.success(notice, undefined, current);
+          else alert.warning(notice);
         }
       }
     } catch (error) {
-      if (current())
-        setView({
-          message: t(
-            reference.kind === 'cancel' &&
-              error instanceof Error &&
-              error.message === 'Insufficient funds for reviewed EVM transfer'
-              ? 'send.insufficientFundsForGas'
-              : 'transactions.replay.checkActivity'
-          ),
-        });
+      if (current()) {
+        setView({});
+        if (
+          reference.kind === 'cancel' &&
+          error instanceof Error &&
+          error.message === 'Insufficient funds for reviewed EVM transfer'
+        )
+          alert.error(t('send.insufficientFundsForGas'));
+        else alert.warning(t('transactions.replay.checkActivity'));
+      }
     } finally {
       if (current()) {
         reviewReference.current = undefined;
@@ -317,7 +344,6 @@ export const RetainedTransactionReplay = ({
     setView((previous) => ({
       ...previous,
       loadingPrevious: true,
-      previousError: false,
     }));
     try {
       const page = (await controllerEmitter(
@@ -342,12 +368,10 @@ export const RetainedTransactionReplay = ({
         ],
       }));
     } catch {
-      if (current())
-        setView((previous) => ({
-          ...previous,
-          loadingPrevious: false,
-          previousError: true,
-        }));
+      if (current()) {
+        setView((previous) => ({ ...previous, loadingPrevious: false }));
+        alert.error(t('transactions.replay.unavailable'));
+      }
     }
   };
   if (!retained) return null;
@@ -387,7 +411,11 @@ export const RetainedTransactionReplay = ({
     ? [
         [
           t('transactions.replay.operationLabel'),
-          t(`transactions.replay.operation.${review.operation}`),
+          t(
+            `transactions.replay.operation.${
+              smart?.cancellation ? 'cancel' : review.operation
+            }`
+          ),
         ],
         [
           t('transactions.replay.network'),
@@ -499,16 +527,18 @@ export const RetainedTransactionReplay = ({
           </dl>
         </section>
       )}
-      <button
-        type="button"
-        onClick={() => void prepare()}
-        disabled={Boolean(view.busy)}
-        className="w-full rounded-lg border border-bkg-white200 px-4 py-3 text-sm text-white hover:bg-alpha-whiteAlpha50 disabled:opacity-60"
-      >
-        {view.busy === 'prepare'
-          ? t('buttons.loading')
-          : t('transactions.replay.review')}
-      </button>
+      {!retained.speedUpAvailable && (
+        <button
+          type="button"
+          onClick={() => void prepare()}
+          disabled={Boolean(view.busy)}
+          className="w-full rounded-lg border border-bkg-white200 px-4 py-3 text-sm text-white hover:bg-alpha-whiteAlpha50 disabled:opacity-60"
+        >
+          {view.busy === 'prepare'
+            ? t('buttons.loading')
+            : t('transactions.replay.review')}
+        </button>
+      )}
       {(canSignRetainedCancellation || smartCancellation.available) &&
         retained.hash === hash.toLowerCase() &&
         retained.cancellationUnavailable !== true &&
@@ -531,19 +561,6 @@ export const RetainedTransactionReplay = ({
           </button>
         )}
       {smartCancellation.content}
-      {view.message && (
-        <div
-          role="status"
-          className="mt-2 break-words text-sm text-brand-gray200"
-        >
-          <p>{view.message}</p>
-          {view.cancellationHash && (
-            <p className="mt-1 break-all">
-              {t('transactions.replay.hash')}: {view.cancellationHash}
-            </p>
-          )}
-        </div>
-      )}
       {displayed && (
         <ConfirmationModal
           show
@@ -663,11 +680,6 @@ export const RetainedTransactionReplay = ({
                     ? t('buttons.loading')
                     : t('buttons.loadMore')}
                 </button>
-              )}
-              {view.previousError && (
-                <p role="status" className="mt-2 text-sm">
-                  {t('transactions.replay.unavailable')}
-                </p>
               )}
             </div>
           )}

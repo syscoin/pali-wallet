@@ -16,6 +16,10 @@ import PrivateArchivedNotes from './PrivateArchivedNotes';
 import PrivateVaultClearCompleted from './PrivateVaultClearCompleted';
 
 let mockTranslate: (key: string, options?: any) => string = (key) => key;
+const mockClearError = jest.fn();
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: mockClearError } }),
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: mockTranslate }),
 }));
@@ -290,9 +294,10 @@ it('normal completed-note cleanup reports separate archive capacity instead of s
   fireEvent.click(
     screen.getByRole('button', { name: 'privacy.capacity.confirmClear' })
   );
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'privacy.archive.full'
+  await waitFor(() =>
+    expect(mockClearError).toHaveBeenCalledWith('privacy.archive.full')
   );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   expect(removed).not.toHaveBeenCalled();
 });
 

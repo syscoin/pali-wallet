@@ -12,6 +12,10 @@ const mockTranslate = (key: string, params: any = {}) =>
     key.split('.').reduce((value: any, part: string) => value?.[part], en) ||
       key
   ).replace(/{{(\w+)}}/g, (_, name) => String(params[name]));
+const mockClearError = jest.fn();
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: mockClearError } }),
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: mockTranslate }),
 }));
@@ -54,14 +58,22 @@ it('asks before verification, uses bounded batches, and reports unresolved recor
 });
 
 it('fails closed on malformed results and refreshes after a partial operation', async () => {
-  const emit = jest.fn(async () => ({ removed: ['unknown'], unresolved: [] }));
+  const ids = [
+    '00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+  ];
+  const emit = jest
+    .fn()
+    .mockResolvedValueOnce({ removed: [ids[0]], unresolved: [] })
+    .mockResolvedValueOnce({ removed: ['unknown'], unresolved: [] });
   const done = jest.fn();
+  const removed = jest.fn();
   render(
     <PrivateVaultClearCompleted
       controllerEmitter={emit}
-      noteIds={['00000000-0000-4000-8000-000000000001']}
+      noteIds={ids}
       onComplete={done}
-      onRemoved={jest.fn()}
+      onRemoved={removed}
     />
   );
   fireEvent.click(
@@ -70,9 +82,12 @@ it('fails closed on malformed results and refreshes after a partial operation', 
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    en.privacy.capacity.clearError
+  await waitFor(() =>
+    expect(mockClearError).toHaveBeenCalledWith(en.privacy.capacity.clearError)
   );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(removed).toHaveBeenCalledTimes(1);
+  expect(removed).toHaveBeenCalledWith([ids[0]]);
   await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
 });
 

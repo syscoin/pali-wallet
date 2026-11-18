@@ -6,7 +6,7 @@ import {
   getExactAssetAllocations,
 } from '../utils/syscoinPsbtValues.ts';
 
-import type { UtxoDurableSubmission } from './utxoSignedRecords.ts';
+import type { UtxoRetainedSubmission } from './utxoSignedRecords.ts';
 import type { Transaction } from 'bitcoinjs-lib';
 
 type AssetOutput = Readonly<{ assetGuid: string; rawAmount: string }>;
@@ -24,14 +24,14 @@ export type SavedUtxoReviewOutput = Readonly<{
 
 /** Project outputs from an authenticated retained record without reclassifying change. */
 export function reviewSavedUtxoOutputs(
-  record: UtxoDurableSubmission,
+  record: UtxoRetainedSubmission,
   addressNetwork: NonNullable<
     Parameters<typeof syscoinUtils.bitcoinjs.address.fromOutputScript>[1]
   >
 ): SavedUtxoReviewOutput[] {
   const { bitcoinjs } = syscoinUtils;
   const transaction: Transaction = bitcoinjs.Transaction.fromHex(
-    record.rawTransaction
+    record.unsignedTransaction
   );
   const allocationSend =
     record.operation === 'wallet' &&

@@ -433,6 +433,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     let pendingBalance: bigint | undefined;
     let baseFee = 150;
     let blockGasLimit = 30_000_000;
+    let confirmedNonce = 8;
     const reads: string[] = [];
     const fixtureFetch = async (url, init): Promise<Response> => {
       expect(url).toBe('https://offline.example');
@@ -454,7 +455,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       reads.push(method);
       let result: unknown;
       if (method === 'eth_chainId') result = `0x${CHAIN.toString(16)}`;
-      else if (method === 'eth_getTransactionCount') result = '0x8';
+      else if (method === 'eth_getTransactionCount')
+        result = `0x${confirmedNonce.toString(16)}`;
       else if (method === 'eth_getBalance')
         result = `0x${(params[1] === 'pending'
           ? pendingBalance ?? balance
@@ -509,6 +511,9 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       },
       setBlockGasLimit(value: number) {
         blockGasLimit = value;
+      },
+      setConfirmedNonce(value: number) {
+        confirmedNonce = value;
       },
       dispose: () => rpc.destroy(),
     };
@@ -1289,6 +1294,151 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     expect(alert.success).toHaveBeenCalled();
     expect(replaceGetter).not.toHaveBeenCalled();
   });
+
+  it.each([false, true])(
+    'uses authenticated replacement for a missing transaction when the SDK supports it (legacy=%s)',
+    async (legacy) => {
+      const { journal, journalSession, posts, setConfirmedNonce, dispose } =
+        await setupDurableReplacement(undefined, legacy);
+      try {
+        const original = Transaction.from({
+          type: legacy ? 0 : 2,
+          chainId: CHAIN,
+          to: TARGET,
+          value: BigInt(7),
+          nonce: 8,
+          gasLimit: BigInt(25_000),
+          ...(legacy
+            ? { gasPrice: BigInt(100) }
+            : { maxFeePerGas: BigInt(200), maxPriorityFeePerGas: BigInt(10) }),
+        });
+        original.signature = testWallet.signingKey.sign(original.unsignedHash);
+        const hash = original.hash!;
+        mockState.vault.accountTransactions.HDAccount[3].ethereum[CHAIN] = [];
+        await journal.append(journalSession, {
+          context: {
+            account: { ...mockState.vault.activeAccount, address: PAYER },
+            network: mockState.vault.activeNetwork,
+            operation: 'send',
+          },
+          chainId: String(CHAIN),
+          from: PAYER,
+          hash,
+          nonce: original.nonce,
+          type: original.type!,
+          rawTransaction: original.serialized,
+        });
+        const supported =
+          keyring.ethereumTransaction.supportsRetainedSpeedUpIntent === true;
+        await expect(
+          journal.migrateUnsignedNative(journalSession, {
+            nativeEoa: supported,
+          })
+        ).resolves.toBe(supported ? 1 : 0);
+        if (!supported) {
+          expect(
+            await journal.readExact(journalSession, String(CHAIN), PAYER, hash)
+          ).toMatchObject({ rawTransaction: original.serialized });
+          provider.getTransaction.mockResolvedValue(null);
+          await expect(
+            previewSpeedUpTransaction(
+              hash,
+              legacy,
+              CHAIN,
+              PAYER,
+              getWalletNavigationScope()
+            )
+          ).rejects.toThrow();
+          expect(posts).toHaveLength(0);
+          return;
+        }
+        expect(
+          await journal.readExact(journalSession, String(CHAIN), PAYER, hash)
+        ).toMatchObject({
+          payloadKind: 'unsigned-eoa',
+          unsignedTransaction: original.unsignedSerialized,
+        });
+        provider.getTransaction.mockResolvedValue(null);
+        const walletScope = getWalletNavigationScope();
+        const maximumFee = await previewSpeedUpTransaction(
+          hash,
+          legacy,
+          CHAIN,
+          PAYER,
+          walletScope
+        );
+        expect(aes.decrypt).not.toHaveBeenCalled();
+        expect(posts).toHaveLength(0);
+
+        setConfirmedNonce(9);
+        await expect(
+          wallet.speedUpEvmTransaction(hash, legacy, CHAIN, PAYER, {
+            approvedMaximumFee: maximumFee,
+            walletScope,
+          })
+        ).rejects.toThrow('Original transaction nonce was already used');
+        expect(aes.decrypt).not.toHaveBeenCalled();
+        expect(posts).toHaveLength(0);
+
+        setConfirmedNonce(8);
+        await handleUpdateTransaction({
+          t: (key) => key,
+          updateData: {
+            alert,
+            approvedMaximumFee: maximumFee,
+            chainId: CHAIN,
+            isLegacy: legacy,
+            signerAddress: PAYER,
+            txHash: hash,
+            updateType: UpdateTxAction.SpeedUp,
+            walletScope,
+          },
+        });
+        expect(console.error).not.toHaveBeenCalled();
+        expect(posts).toHaveLength(1);
+        expect(posts[0]).toMatchObject({
+          chainId: original.chainId,
+          data: original.data,
+          from: original.from,
+          gasLimit: original.gasLimit,
+          nonce: original.nonce,
+          to: original.to,
+          value: original.value,
+        });
+        expect(posts[0].hash).not.toBe(hash);
+        expect(
+          await journal.readExact(
+            journalSession,
+            String(CHAIN),
+            PAYER,
+            posts[0].hash!
+          )
+        ).toMatchObject({
+          payloadKind: 'unsigned-eoa',
+          unsignedTransaction: posts[0].unsignedSerialized,
+        });
+        expect(posts[0].maxFeePerGas ?? posts[0].gasPrice).toBeGreaterThan(
+          original.maxFeePerGas ?? original.gasPrice!
+        );
+        expect(alert.success).toHaveBeenCalledWith(
+          'transactions.transactionAcceleratedSuccessfully'
+        );
+        expect(
+          mockState.vault.accountTransactions.HDAccount[3].ethereum[CHAIN]
+        ).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ hash, isReplaced: true }),
+            expect.objectContaining({
+              hash: posts[0].hash,
+              replacesHash: hash,
+            }),
+          ])
+        );
+      } finally {
+        dispose();
+      }
+    }
+  );
 
   it('rejects a stale ordinary account scope before requesting the original transaction', async () => {
     selectOrdinaryPayer();

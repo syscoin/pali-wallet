@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../shared/evmHistory';
 import { ExternalLinkSvg, TrashIconSvg } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -68,7 +69,9 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   const smartCancellation = useSmartAccountCancellation(transaction.hash);
   const cancellationUnavailable =
     (transaction as { cancellationUnavailable?: unknown })
-      .cancellationUnavailable === true;
+      .cancellationUnavailable === true ||
+    ('historySource' in transaction &&
+      transaction.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned);
   const preview = useRef<{
     cancel: () => void;
     close: () => void;
@@ -364,6 +367,7 @@ export const TransactionOptions = React.memo(
       prevTx?.chainId === nextTx?.chainId &&
       prevTx?.isReplaced === nextTx?.isReplaced &&
       prevTx?.status === nextTx?.status &&
+      prevTx?.historySource === nextTx?.historySource &&
       prevTx?.isCanceled === nextTx?.isCanceled
     );
   }

@@ -280,13 +280,14 @@ for (const scenario of ['import', 'generate'] as const) {
           assert.equal(entry.chainId, getNativeNetwork(network).chainId);
           assert.equal(entry.phase, 'attempted'); assert.equal(entry.nonce, 0);
           const saved = await (await disk.runtime.transfers!.journal(() => undefined)).load();
-          assert.equal(saved!.hash, entry.hash); signedBytes.push(saved!.rawTransaction);
-          const signed = Transaction.from(saved!.rawTransaction);
+          assert(saved?.rawTransaction);
+          assert.equal(saved.hash, entry.hash); signedBytes.push(saved.rawTransaction);
+          const signed = Transaction.from(saved.rawTransaction);
           assert(signed.isSigned()); assert.equal(signed.from, created.nevmAddress);
           assert.equal(signed.chainId, network === 'ethereum' ? 1n : 5700n);
           assert.equal(signed.value, value); assert.equal(signed.nonce, 0); assert.equal(signed.gasLimit, 21000n);
           assert.equal(signed.maxFeePerGas, 3n); assert.equal(signed.maxPriorityFeePerGas, 1n);
-          assert(!bundle.raw!.includes(saved!.rawTransaction));
+          assert(!bundle.raw!.includes(saved.rawTransaction));
         }
         await authority.selectNetwork('ethereum', authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
         await authority.manageAccounts({ kind: 'select', id: 'hd:60:1' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);

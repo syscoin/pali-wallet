@@ -231,11 +231,12 @@ for (const scenario of ['import', 'generate'] as const) {
         await authority.manageAccounts({ kind: 'select', id: 'hd:60:4' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         await authority.selectNetwork('zksys-testnet', authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
         const saved = await (await disk.runtime.transfers!.journal(() => undefined)).load();
-        assert.equal(saved!.hash, stored[0]!.hash);
-        const signed = Transaction.from(saved!.rawTransaction);
+        assert(saved?.rawTransaction);
+        assert.equal(saved.hash, stored[0]!.hash);
+        const signed = Transaction.from(saved.rawTransaction);
         assert.equal(signed.chainId, 57057n); assert.equal(signed.nonce, 0); assert.equal(signed.maxPriorityFeePerGas, 0n);
         assert.equal(signed.maxFeePerGas, 25n); assert.equal(signed.gasLimit, 36000n); assert.equal(signed.value, 789n);
-        assert.equal(stored[0]!.phase, 'signed'); assert(!savedBundle.raw!.includes(saved!.rawTransaction));
+        assert.equal(stored[0]!.phase, 'signed'); assert(!savedBundle.raw!.includes(saved.rawTransaction));
         await authority.selectNetwork('ethereum', authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
         await authority.manageAccounts({ kind: 'select', id: 'hd:60:1' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         const fingerprint = await disk.storage.getWalletFingerprint();
@@ -263,7 +264,7 @@ for (const scenario of ['import', 'generate'] as const) {
         assert(!JSON.stringify(firstReport).includes(PASSWORD));
         assert(
           !JSON.stringify(firstReport).includes(
-            saved!.rawTransaction
+            saved.rawTransaction
           )
         );
         await authority.dispose();

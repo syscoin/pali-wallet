@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useUtils } from 'hooks/useUtils';
+
 export default function PrivateVaultClearCompleted({
   controllerEmitter,
   noteIds,
@@ -13,13 +15,13 @@ export default function PrivateVaultClearCompleted({
   onRemoved: (ids: string[]) => void;
 }) {
   const { t } = useTranslation();
+  const { alert } = useUtils();
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<{
     removed: number;
     unresolved: number;
   }>();
-  const [error, setError] = useState('');
   const [progress, setProgress] = useState({ checked: 0, total: 0 });
   const owner = useRef({ active: true, busy: false, revision: 0 });
   const current = (revision: number) =>
@@ -39,7 +41,6 @@ export default function PrivateVaultClearCompleted({
     const revision = ++owner.current.revision;
     const ids = [...new Set(noteIds)];
     setPending(true);
-    setError('');
     setResult(undefined);
     setProgress({ checked: 0, total: ids.length });
     let removed = 0;
@@ -82,11 +83,13 @@ export default function PrivateVaultClearCompleted({
       }
     } catch (failure) {
       if (current(revision))
-        setError(
-          failure instanceof Error &&
-            failure.message === 'privacy_archive_limit'
-            ? 'privacy.archive.full'
-            : 'privacy.capacity.clearError'
+        alert.error(
+          t(
+            failure instanceof Error &&
+              failure.message === 'privacy_archive_limit'
+              ? 'privacy.archive.full'
+              : 'privacy.capacity.clearError'
+          )
         );
       onComplete();
     } finally {
@@ -138,7 +141,6 @@ export default function PrivateVaultClearCompleted({
       {result && (
         <p role="status">{t('privacy.capacity.clearResult', result)}</p>
       )}
-      {error && <p role="alert">{t(error)}</p>}
     </div>
   );
 }

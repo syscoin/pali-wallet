@@ -775,6 +775,7 @@ export const SendConfirm = () => {
     };
   })();
   const nativeReviewKey = nativeReviewRequest?.key;
+  const [nativeReviewRetryKey, setNativeReviewRetryKey] = useState<string>();
   const [nativeFeeApproval, setNativeFeeApproval] = useState<{
     id: string;
     key: string;
@@ -788,7 +789,11 @@ export const SendConfirm = () => {
   };
   useEffect(() => {
     setNativeFeeApproval(null);
-    if (!nativeReviewRequest) return;
+    if (
+      !nativeReviewRequest ||
+      nativeReviewRequest.key === nativeReviewRetryKey
+    )
+      return;
     const request = nativeReviewRequest;
     let cancelled = false;
     let id: string | undefined;
@@ -862,7 +867,7 @@ export const SendConfirm = () => {
         nativeFeeExpiry.current = undefined;
       discard();
     };
-  }, [nativeReviewKey]);
+  }, [nativeReviewKey, nativeReviewRetryKey]);
   const confirmationFeeReady =
     feeEstimateReady &&
     (!isOrdinaryNativeSend ||
@@ -1691,12 +1696,16 @@ export const SendConfirm = () => {
               if (
                 error?.transactionNotBroadcast === true &&
                 submission.isActive()
-              )
-                setFeeCalculationError(
-                  isSavedEvmNonceConflict(error)
-                    ? t('send.savedNonceConflict')
-                    : t('send.feeCalculationFailedRetry')
-                );
+              ) {
+                if (isSavedEvmNonceConflict(error)) {
+                  setFeeCalculationError(t('send.savedNonceConflict'));
+                  setLoading(false);
+                  return;
+                }
+                // The consumed approval needs a new review even when the
+                // submit failure happened after fees were calculated.
+                setNativeReviewRetryKey(nativeReviewKey);
+              }
             }
             // Handle specific errors (blacklist, cancellation, etc.) with detailed messages
             const wasHandledSpecifically = handleTransactionError(
@@ -2670,6 +2679,20 @@ export const SendConfirm = () => {
                     })()}
                   </span>
                 </div>
+                {nativeReviewKey &&
+                  nativeReviewRetryKey === nativeReviewKey &&
+                  !feeCalculationError && (
+                    <button
+                      type="button"
+                      className="ml-2 text-xs underline"
+                      onClick={() => {
+                        setNativeReviewRetryKey(undefined);
+                        retryFeeCalculation();
+                      }}
+                    >
+                      {t('receive.retry')}
+                    </button>
+                  )}
                 {!isBitcoinBased &&
                   (!feeCalculationError ||
                     (isNativeSoftwareSend && customFee.isCustom)) &&

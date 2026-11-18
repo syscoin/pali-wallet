@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import test from 'node:test';
-import { Transaction, Wallet } from 'ethers';
+import { Transaction, Wallet, keccak256, sha256 } from 'ethers';
 import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import {
   EvmSignedRecords,
@@ -17,6 +17,7 @@ import {
   encodeERC7579Executions,
   encodeSmartAccountValidatorNonceKey,
 } from '../../../source/utils/smartAccount/account.ts';
+import { captureSignedSmartAccountOperation } from '../../../source/wallet/smartAccountAuthorization.ts';
 import { paliSmartAccountInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
 
@@ -136,7 +137,8 @@ test('randomized same-nonce no-op retry resolves only the first retained signatu
       ).serialized,
     },
   };
-  const resolved = await f.store.retainSmartAccountAuthorization(session, retried);
+  const reopened = new EvmSignedRecords(f.port);
+  const resolved = await reopened.retainSmartAccountAuthorization(session, retried);
   assert.equal(resolved.operationHash, receipt.operationHash);
   assert.equal(f.writes(), 2, 'retry does not rewrite the first usable proof');
   assert.deepEqual(
@@ -252,7 +254,8 @@ test('authorization is durably encrypted, idempotent and independently recoverab
     account,
     receipt.operationHash
   );
-  assert.deepEqual(exact?.userOperation, input.userOperation);
+  assert.deepEqual(exact?.userOperation, { ...input.userOperation, signature: '0x' });
+  assert.ok(exact?.signatureDigest);
   assert.equal(exact?.createdAt, 1000);
   assert.equal(exact?.observedAt.number, '100');
   assert.equal(
@@ -278,6 +281,40 @@ test('authorization is durably encrypted, idempotent and independently recoverab
     ),
     null
   );
+});
+
+test('authenticated legacy proof is validated read-only and converted once without changing its nonce or receipt binding', async () => {
+  const f = fixture(), input = authorization(), session = f.session();
+  const native = await outer();
+  await f.store.append(session, native);
+  const { operationHash } = await f.store.retainSmartAccountAuthorization(session, input);
+  const encoder = new TextEncoder();
+  const legacy = captureSignedSmartAccountOperation(input.userOperation);
+  const part = await f.keyring.encryptPrivateRecord({
+    domain: 'org.syscoin.pali.evm.signed.chunk.v1',
+    recordId: `authorization/${operationHash}/0`,
+    plaintext: encoder.encode(JSON.stringify(legacy)),
+  });
+  await rewriteRoot(f, (root, bundle) => {
+    bundle.authorizations[0].chunks = [part];
+    root.authorizationsHash = sha256(encoder.encode(JSON.stringify(bundle.authorizations)));
+  });
+  const reopened = new EvmSignedRecords(f.port);
+  const before = f.value();
+  assert.equal(await reopened.validate(session), 2);
+  assert.equal(f.value(), before);
+  assert.equal(await reopened.migrateUnsignedNative(session, { nativeEoa: false }), 1);
+  assert.equal(await reopened.migrateUnsignedNative(session, { nativeEoa: false }), 0);
+  assert.equal(await reopened.validate(session), 2);
+  assert.equal((await reopened.readExact(session, native.chainId, native.from, native.hash))?.rawTransaction, native.rawTransaction);
+  const record = await reopened.readSmartAccountAuthorizationExact(session, '1', account, operationHash);
+  assert.equal(record?.userOperation.signature, '0x');
+  assert.equal(record?.signatureDigest, keccak256(input.userOperation.signature));
+  assert.equal(record?.operationNonce, input.userOperation.nonce);
+  assertSmartAccountAuthorizationReceipt(await reopened.retainSmartAccountAuthorization(session, input), input, session.assertCurrent);
+  await assert.rejects(reopened.retainSmartAccountAuthorization(session, {
+    ...input, userOperation: { ...input.userOperation, signature: '0x1234' },
+  }), /AUTHORIZATION_CONFLICT/);
 });
 
 test('summary pagination is bounded, scoped and excludes signature bytes and outer identities', async () => {
@@ -363,7 +400,7 @@ test('all four existing bundle writers preserve unrelated retained authorization
           operationHash
         )
       )?.userOperation,
-      input.userOperation
+      { ...input.userOperation, signature: '0x' }
     );
   const tx = await outer();
   await f.store.append(f.session(), tx);
@@ -466,7 +503,7 @@ test('explicit account reset removes only its own authorization and retires old 
         otherReceipt.operationHash
       )
     )?.userOperation,
-    other.userOperation
+    { ...other.userOperation, signature: '0x' }
   );
 });
 
@@ -497,7 +534,7 @@ test('a CAS retry preserves a concurrent outer append and acknowledges only comm
         receipt.operationHash
       )
     )?.userOperation,
-    input.userOperation
+    { ...input.userOperation, signature: '0x' }
   );
   assert.equal(
     (await f.store.readExact(f.session(), '1', owner.address, tx.hash))
@@ -772,7 +809,7 @@ test('same nonce refuses a different authorization except the one canonical reta
         receipt.operationHash
       )
     )?.userOperation,
-    original.userOperation
+    { ...original.userOperation, signature: '0x' }
   );
   const other = fixture();
   await assert.rejects(

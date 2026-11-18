@@ -238,7 +238,6 @@ export const ChangeAccount = () => {
   const [pendingSubmission, setPendingSubmission] =
     useState<typeof submission>();
   const isChanging = pendingSubmission === submission;
-  const [selectionError, setSelectionError] = useState('');
   const [search, setSearch] = useState('');
 
   const showTrezorUtxoDisclaimer = React.useMemo(
@@ -306,7 +305,6 @@ export const ChangeAccount = () => {
     )
       return;
     setSelection(captureSelection(id, type));
-    setSelectionError('');
   };
 
   const handleClose = () => {
@@ -388,7 +386,7 @@ export const ChangeAccount = () => {
     } catch (error) {
       console.error('Failed to change account:', error);
       if (isCurrentSubmission() && isSelectionCurrent(selection))
-        setSelectionError(error?.message || t('send.failed'));
+        alert.error(error?.message || t('send.failed'));
     } finally {
       if (submission.phase === 'submitting') {
         submission.phase = 'ready';
@@ -658,11 +656,6 @@ export const ChangeAccount = () => {
         data-connection-actions
         className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50"
       >
-        {selectionError && (
-          <p role="alert" className="text-xs text-brand-red mb-2">
-            {selectionError}
-          </p>
-        )}
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"

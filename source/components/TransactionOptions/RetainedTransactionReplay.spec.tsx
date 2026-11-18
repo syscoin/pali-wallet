@@ -11,8 +11,15 @@ const PREVIOUS = `0x${'22'.repeat(32)}`;
 let mockScope = { account: 'account-a', network: 'network-a' };
 let mockRevision = 0;
 let mockAccountType = 'HDAccount';
+let mockSmartAccountAvailable = false;
 const mockSubscribers = new Set<() => void>();
 const mockEmitter = jest.fn();
+const mockAlert = {
+  error: jest.fn(),
+  info: jest.fn(),
+  success: jest.fn(),
+  warning: jest.fn(),
+};
 const messages = jest.requireActual('../../assets/locales/en.json');
 const mockT = (key: string, values?: Record<string, string>) => {
   let value: any = messages;
@@ -36,7 +43,12 @@ jest.mock('react-redux', () => ({
     return selector({
       vault: {
         activeAccount: { id: 0, type: mockAccountType },
-        accounts: { Imported: {} },
+        accounts: {
+          Imported: {},
+          SmartAccount: mockSmartAccountAvailable
+            ? { 0: { isSmartAccount: true, smartAccount: { chainId: 57057 } } }
+            : {},
+        },
         activeNetwork: {
           label: 'Test network',
           currency: 'SYS',
@@ -49,6 +61,7 @@ jest.mock('react-redux', () => ({
 jest.mock('utils/navigationState', () => ({
   getWalletNavigationScope: () => mockScope,
 }));
+jest.mock('hooks/useUtils', () => ({ useUtils: () => ({ alert: mockAlert }) }));
 jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
   controllerEmitter: (...args: any[]) => mockEmitter(...args),
 }));
@@ -122,8 +135,10 @@ beforeEach(() => {
   jest.useFakeTimers();
   mockScope = { account: 'account-a', network: 'network-a' };
   mockAccountType = 'HDAccount';
+  mockSmartAccountAvailable = false;
   mockRevision++;
   mockEmitter.mockReset();
+  Object.values(mockAlert).forEach((method) => method.mockClear());
   mockEmitter.mockImplementation(([, method]: string[], args: any[]) => {
     if (method === 'getSavedEvmTransaction')
       return Promise.resolve({ hash: HASH });
@@ -143,7 +158,7 @@ test.each([
   [undefined, false],
   ['remote untrusted details', false],
 ])(
-  'unknown replay shows only its bounded funding diagnostic: %s',
+  'unknown replay alerts with only its bounded funding diagnostic: %s',
   async (reason, diagnostic) => {
     mockAccountType = 'SmartAccount';
     render(<RetainedTransactionReplay hash={HASH} />);
@@ -157,7 +172,8 @@ test.each([
     });
     fireEvent.click(screen.getByRole('button', { name: 'Resend' }));
     await flush();
-    const message = screen.getByRole('status').textContent;
+    expect(mockAlert.warning).toHaveBeenCalledTimes(1);
+    const [message] = mockAlert.warning.mock.calls[0];
     expect(message).toContain(
       diagnostic
         ? `The RPC reported insufficient funds for the original fee payer (${
@@ -166,6 +182,9 @@ test.each([
         : 'Submission could not be confirmed.'
     );
     expect(message).not.toContain('remote untrusted details');
+    expect(mockAlert.success).not.toHaveBeenCalled();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(
       mockEmitter.mock.calls.filter(
         ([route]) => route[1] === 'confirmEvmSignedReplay'
@@ -226,10 +245,12 @@ test('an explicit saved Cancel review sends only its opaque one-use approval', a
   ]);
   pending.resolve({ status: 'submitted', hash: PREVIOUS });
   await flush();
-  expect(screen.getByRole('status').textContent).toContain(
-    'Cancellation submitted.'
+  expect(mockAlert.success).toHaveBeenCalledWith(
+    expect.stringContaining('Cancellation submitted.'),
+    undefined,
+    expect.any(Function)
   );
-  expect(screen.getByRole('status').textContent).toContain(PREVIOUS);
+  expect(mockAlert.success.mock.calls[0][0]).toContain(PREVIOUS);
   expect(
     screen.queryByRole('button', { name: 'Review cancellation' })
   ).toBeNull();
@@ -244,8 +265,8 @@ test('saved cancellation reports a verified fee shortfall before signing', async
   );
   fireEvent.click(screen.getByRole('button', { name: 'Review cancellation' }));
   await flush();
-  expect(screen.getByRole('status').textContent).toContain(
-    'Insufficient funds to cover gas fees'
+  expect(mockAlert.error).toHaveBeenCalledWith(
+    messages.send.insufficientFundsForGas
   );
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(
@@ -285,6 +306,51 @@ test.each(['Ledger', 'Trezor', 'SmartAccount', 'Imported'])(
       screen.queryByRole('button', { name: 'Review cancellation' })
     ).toBeNull();
     expect(screen.getByRole('button', { name: 'Review resend' })).toBeTruthy();
+  }
+);
+
+test.each([false, true])(
+  'saved Smart handleOps keeps resend and offers a new cancellation only for the original (cancellation=%s)',
+  async (cancellation) => {
+    mockAccountType = 'SmartAccount';
+    mockSmartAccountAvailable = true;
+    const smartAccount = {
+      account: `0x${'66'.repeat(20)}`,
+      ...(cancellation ? { cancellation: true } : {}),
+    };
+    const result = review();
+    mockEmitter
+      .mockResolvedValueOnce({
+        hash: HASH,
+        operation: 'send',
+        phase: 'signed',
+        type: 0,
+        smartAccount,
+      })
+      .mockResolvedValueOnce({
+        ...result,
+        review: { ...result.review, smartAccount },
+      });
+    render(<RetainedTransactionReplay hash={HASH} />);
+    await flush();
+    expect(
+      Boolean(screen.queryByRole('button', { name: 'Review cancellation' }))
+    ).toBe(!cancellation);
+    fireEvent.click(screen.getByRole('button', { name: 'Review resend' }));
+    await flush();
+    expect(
+      within(screen.getByRole('dialog')).getByText(
+        cancellation ? 'Cancellation' : 'Send'
+      )
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Resend' }));
+    await flush();
+    expect(mockEmitter).toHaveBeenLastCalledWith(
+      ['wallet', 'confirmEvmSignedReplay'],
+      ['review-1'],
+      30000,
+      false
+    );
   }
 );
 
@@ -372,9 +438,14 @@ test('review shows exact amount, fee, contract creation and calldata before a si
     confirmation.resolve({ status: 'submitted', hash: HASH })
   );
   expect(screen.queryByRole('dialog')).toBeNull();
-  expect(screen.getByRole('status').textContent).toContain(
-    'Transaction resent'
+  expect(mockAlert.success).toHaveBeenCalledTimes(1);
+  expect(mockAlert.success).toHaveBeenCalledWith(
+    messages.transactions.replay.submitted,
+    undefined,
+    expect.any(Function)
   );
+  expect(mockAlert.warning).not.toHaveBeenCalled();
+  expect(screen.queryByRole('status')).toBeNull();
 });
 
 test('expiry clears old consent and a fresh review uses a different ID', async () => {
@@ -392,6 +463,9 @@ test('expiry clears old consent and a fresh review uses a different ID', async (
     jest.advanceTimersByTime(90000);
   });
   expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockAlert.warning).toHaveBeenCalledWith(
+    messages.transactions.replay.expired
+  );
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'cancelEvmSignedReplay'],
     ['review-1'],
@@ -493,13 +567,35 @@ test('lost confirm response directs the user to Activity without another dispatc
   mockEmitter.mockRejectedValue(new Error('Network request timed out'));
   fireEvent.click(screen.getByText('Resend'));
   await flush();
-  expect(screen.getByRole('status').textContent).toContain('Check Activity');
+  expect(mockAlert.warning).toHaveBeenCalledWith(
+    messages.transactions.replay.checkActivity
+  );
   expect(
     mockEmitter.mock.calls.filter(
       (call) => call[0][1] === 'confirmEvmSignedReplay'
     )
   ).toHaveLength(1);
 });
+
+test.each(['submitted', 'unknown'])(
+  'a late %s result from an old account does not show an alert',
+  async (status) => {
+    const pending = deferred<{ hash: string; status: string }>();
+    render(<RetainedTransactionReplay hash={HASH} />);
+    await flush();
+    fireEvent.click(screen.getByText('Review resend'));
+    await flush();
+    mockEmitter.mockReturnValueOnce(pending.promise);
+    fireEvent.click(screen.getByText('Resend'));
+    changeScope('account-b');
+    changeScope('account-a');
+    await act(async () => pending.resolve({ status, hash: HASH }));
+    expect(mockAlert.success).not.toHaveBeenCalled();
+    expect(mockAlert.warning).not.toHaveBeenCalled();
+    expect(mockAlert.error).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  }
+);
 
 test.each([81, 255])(
   'reviews a one-unit token with %i decimals using the shared exact formatter',
@@ -677,6 +773,39 @@ test.each(['native', 'erc20'])(
     }
   }
 );
+
+it('alerts on a failed predecessor page and keeps Load More available', async () => {
+  const result: any = review();
+  result.review.missingNonce = '0';
+  result.review.predecessorCount = 2;
+  result.review.predecessors = [
+    { hash: PREVIOUS, nonce: 0, operation: 'send' },
+  ];
+  mockEmitter.mockImplementation(([, method]: string[]) => {
+    if (method === 'getSavedEvmTransaction')
+      return Promise.resolve({ hash: HASH });
+    if (method === 'prepareEvmSignedReplay') return Promise.resolve(result);
+    if (method === 'getSavedEvmTransactions')
+      return Promise.reject(new Error('page unavailable'));
+    return Promise.resolve();
+  });
+  render(<RetainedTransactionReplay hash={HASH} />);
+  await flush();
+  fireEvent.click(
+    screen.getByRole('button', { name: mockT('transactions.replay.review') })
+  );
+  await flush();
+  const more = screen.getByRole('button', { name: mockT('buttons.loadMore') });
+  fireEvent.click(more);
+  await flush();
+  expect(mockAlert.error).toHaveBeenCalledWith(
+    mockT('transactions.replay.unavailable')
+  );
+  expect((more as HTMLButtonElement).disabled).toBe(false);
+  expect(
+    screen.queryByText(mockT('transactions.replay.unavailable'))
+  ).toBeNull();
+});
 
 it('reviews the inner Smart transfer and the recorded outer payer, then opens a bound predecessor', async () => {
   mockAccountType = 'SmartAccount';

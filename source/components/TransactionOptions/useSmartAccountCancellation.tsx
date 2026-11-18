@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT } from '../../shared/smartAccountControllerAuthority';
 import { ConfirmationModal } from 'components/Modal';
+import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
 import { ISmartAccountMetadata, KeyringAccountType } from 'types/network';
@@ -117,6 +118,7 @@ export function useSmartAccountCancellation(
   operationHash?: string
 ) {
   const { t } = useTranslation();
+  const { alert } = useUtils();
   const { activeAccount, accounts, activeNetwork, isBitcoinBased } =
     useSelector((state: RootState) => state.vault);
   const slip44 = useSelector(
@@ -158,7 +160,6 @@ export function useSmartAccountCancellation(
   const [review, setReview] = useState<Review>();
   const [view, setView] = useState<{
     busy?: boolean;
-    message?: string;
     scope: string;
   }>();
   useEffect(() => {
@@ -169,10 +170,10 @@ export function useSmartAccountCancellation(
       owner.generation++;
     };
   }, [scope]);
-  const finish = (message?: string) => {
+  const finish = () => {
     lifetime.current.pending = false;
     setReview(undefined);
-    setView({ scope, message });
+    setView({ scope });
   };
   const request = async () => {
     const owner = lifetime.current;
@@ -266,7 +267,8 @@ export function useSmartAccountCancellation(
     } catch {
       try {
         assertCurrent();
-        finish(t('transactions.smartAccountCancelUnavailable'));
+        finish();
+        alert.error(t('transactions.smartAccountCancelUnavailable'));
       } catch {
         /* retired owner */
       }
@@ -307,19 +309,19 @@ export function useSmartAccountCancellation(
         waitForConfirmation: false,
       });
       shown.assertCurrent();
-      finish(t('transactions.transactionCancelSubmitted'));
+      finish();
+      alert.success(t('transactions.transactionCancelSubmitted'));
       refreshActivity();
     } catch (error) {
       try {
         shown.assertCurrent();
-        finish(
-          authorized
-            ? t('transactions.smartAccountCancelSigned')
-            : error?.code === 4001
-            ? undefined
-            : t('transactions.smartAccountCancelUnavailable')
-        );
-        if (authorized) refreshActivity();
+        finish();
+        if (authorized) {
+          alert.warning(t('transactions.smartAccountCancelSigned'));
+          refreshActivity();
+        } else if (error?.code !== 4001) {
+          alert.error(t('transactions.smartAccountCancelUnavailable'));
+        }
       } catch {
         /* retired owner */
       }
@@ -330,38 +332,29 @@ export function useSmartAccountCancellation(
     available,
     busy: Boolean((view?.scope === scope && view.busy) || shown),
     request,
-    content: (
-      <>
-        {view?.scope === scope && view.message && (
-          <p role="status" className="mt-2 text-sm text-brand-gray200">
-            {view.message}
-          </p>
-        )}
-        {shown && (
-          <ConfirmationModal
-            show
-            title={t('header.cancelTx')}
-            description={t('transactions.smartAccountCancelReviewDescription')}
-            buttonText={t('transactions.smartAccountCancelSign')}
-            describeDialog
-            onClose={() => {
-              try {
-                shown.assertCurrent();
-              } catch {
-                return;
-              }
-              lifetime.current.generation++;
-              finish();
-            }}
-            onClick={() => void confirm(shown)}
-          >
-            <CancellationReviewDetails
-              prepared={shown.prepared}
-              symbol={activeNetwork.currency.toUpperCase()}
-            />
-          </ConfirmationModal>
-        )}
-      </>
+    content: shown && (
+      <ConfirmationModal
+        show
+        title={t('header.cancelTx')}
+        description={t('transactions.smartAccountCancelReviewDescription')}
+        buttonText={t('transactions.smartAccountCancelSign')}
+        describeDialog
+        onClose={() => {
+          try {
+            shown.assertCurrent();
+          } catch {
+            return;
+          }
+          lifetime.current.generation++;
+          finish();
+        }}
+        onClick={() => void confirm(shown)}
+      >
+        <CancellationReviewDetails
+          prepared={shown.prepared}
+          symbol={activeNetwork.currency.toUpperCase()}
+        />
+      </ConfirmationModal>
     ),
   };
 }

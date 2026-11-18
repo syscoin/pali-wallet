@@ -251,7 +251,8 @@ export async function qualifyNativeErc20Transfer(
     const retained = raw.entries.filter(entry => entry.from === address.toLowerCase());
     expect(raw.version === 1 && retained.length === 1 && retained[0]?.hash === saved.hash &&
       retained[0].phase === expectedPhase && retained[0].signer.id === 2 && retained[0].signer.type === 'HDAccount' &&
-      equalTransferIntent(retained[0].metadata?.intent, expectedIntent) && !raw.raw?.includes(saved.rawTransaction));
+      equalTransferIntent(retained[0].metadata?.intent, expectedIntent) && typeof saved.rawTransaction === 'string' &&
+      !raw.raw?.includes(saved.rawTransaction));
     expect((await storage.getWalletFingerprint()) === fingerprint);
     guard();
     return saved;

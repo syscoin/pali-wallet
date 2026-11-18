@@ -140,7 +140,6 @@ export const sysxSendFixture = {
         counts.confirmations++;
         return unused();
       },
-      prepareRetry: unused,
       check: unused,
     };
   },

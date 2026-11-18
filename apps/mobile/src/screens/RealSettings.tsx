@@ -19,6 +19,7 @@ import { Button, Card, colors, Header, Notice, Row, Screen, Text } from '../ui';
 export type ActivityResetTarget = Readonly<{
   scope: string;
   networkLabel: string;
+  utxo?: boolean;
   reset(assertCurrent: () => void): Promise<void>;
 }>;
 
@@ -52,7 +53,7 @@ function ResetActivity({ accountLabel, target, onBack }: {
     <Button title={t('buttons.back')} variant="secondary" onPress={onBack} />
   </>}>
     <Header title={t('mobile.resetActivity.title')} subtitle={`${accountLabel} · ${target.networkLabel}`} onBack={onBack} />
-    <Notice title={t('mobile.resetActivity.question')} body={t('mobile.resetActivity.description')} />
+    <Notice title={t(target.utxo ? 'mobile.resetActivity.utxoQuestion' : 'mobile.resetActivity.question')} body={t(target.utxo ? 'mobile.resetActivity.utxoDescription' : 'mobile.resetActivity.description')} />
     <Notice title={t('mobile.resetActivity.pendingTitle')} body={t('mobile.resetActivity.pendingBody')} tone="amber" />
     {error && <Notice title={t('mobile.resetActivity.failedTitle')} body={t('mobile.resetActivity.failedBody')} tone="amber" />}
   </Screen></SafeAreaView>;
@@ -103,7 +104,7 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   useLayoutEffect(() => () => { languageOwner.current = null; notificationsOwner.current = null; }, []);
   useLayoutEffect(() => navigation?.registerBack(() => { back(); return true; }));
   useLayoutEffect(() => { navigation?.setImmersive(leaf !== null); return () => navigation?.setImmersive(false); }, [navigation, leaf]);
-  if (leaf === 'about') return <HelpAbout onBack={back} onUpdates={() => setOpened({ leaf: 'updates' })} onResetActivity={activityReset ? () => setOpened({ leaf: 'activity', scope: activityReset.scope }) : undefined} />;
+  if (leaf === 'about') return <HelpAbout onBack={back} onUpdates={() => setOpened({ leaf: 'updates' })} onResetActivity={activityReset ? () => setOpened({ leaf: 'activity', scope: activityReset.scope }) : undefined} resetUtxoActivity={activityReset?.utxo} />;
   if (leaf === 'updates') return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
     <Screen footer={<Button title={t('privacy.deposit.done')} variant="secondary" onPress={back} />}>
       <Header title={t('mobile.generalViews.appUpdates')} onBack={back} /><WalletUpdatePanel allowInstall={watchOnly} onCloseWallet={onUpdate} />

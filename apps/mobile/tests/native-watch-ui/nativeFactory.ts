@@ -622,7 +622,7 @@ export function createNativeWalletControllers() {
       audit.utxoOpens++;
       check();
       const unused = async () => { throw Error('Synthetic route fixture does not sign'); };
-      return { cancel() {}, async list() { return []; }, async refreshSaved() { audit.utxoSavedReads++; return []; }, prepare: unused, prepareRetry: unused, confirm: unused, check: unused };
+      return { cancel() {}, async list() { return []; }, async refreshSaved() { audit.utxoSavedReads++; return []; }, prepare: unused, confirm: unused, check: unused };
     } } : {}),
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose(),
     async disposeConnections() { await connections.dispose(); events.push('connections:dispose'); } };

@@ -53,7 +53,7 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
   const calls: string[] = [];
   let held: { detail: ReturnType<typeof deferred<AbortSignal>>; release: ReturnType<typeof deferred<void>> } | undefined;
   const holdNextDetail = () => held = { detail: deferred<AbortSignal>(), release: deferred<void>() };
-  let badGenesis = false, disclose = false;
+  let badGenesis = false, disclose = false, historyEmpty = false;
   const fetch = exactUtxoResponseFetch(async (url, init) => {
     assert.ok(url.startsWith(network.endpoint + '/'));
     assert.equal(init.method, 'GET');
@@ -78,7 +78,7 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
       assert.ok(disclose, 'network pin must be verified before identifier lookup');
       const match = /^\/api\/v2\/(?:xpub|address)\/([^?]+)\?details=txsummary&page=1&pageSize=20$/.exec(path);
       assert.ok(match);
-      body = { address: match[1], txs: 1, unconfirmedTxs: 0, page: 1, totalPages: 1, itemsOnPage: 20, transactions: [tx] };
+      body = { address: match[1], txs: historyEmpty ? 0 : 1, unconfirmedTxs: 0, page: 1, totalPages: 1, itemsOnPage: 20, transactions: historyEmpty ? [] : [tx] };
     }
     const response = Response.json(body);
     Object.defineProperty(response, 'url', { value: url });
@@ -217,6 +217,29 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
     assert.equal(model.getSnapshot().detail?.status, 'ready');
     assert.equal(model.getSnapshot().detail?.readSentryNode, undefined);
 
+    // Leaving Activity for Settings disposes the screen's visible rows.
+    model.dispose();
+    await readPage();
+    const resetting = holdNextDetail();
+    const staleDetail = activity.readUtxoActivityDetail({ txid: TXID }, new AbortController().signal);
+    const staleRejected = assert.rejects(staleDetail);
+    const resetSignal = await resetting.detail.promise;
+    historyEmpty = true;
+    const beforeReset = calls.length;
+    await activity.reset(() => undefined);
+    assert.equal(resetSignal.aborted, true);
+    assert.deepEqual(calls.slice(beforeReset, beforeReset + 2), [statusPath, genesisPath]);
+    assert.match(calls[beforeReset + 2]!, /^\/api\/v2\/xpub\/zpub/);
+    resetting.release.resolve();
+    held = undefined;
+    await staleRejected;
+    model.activate();
+    await settle();
+    assert.equal(model.getSnapshot().status, 'ready');
+    assert.deepEqual(model.getSnapshot().rows, []);
+    assert.equal(model.getSnapshot().detail, null);
+
+    historyEmpty = false;
     model.revoke();
     await model.load();
     const locking = holdNextDetail();

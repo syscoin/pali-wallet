@@ -32,6 +32,7 @@ export type EvmAutoNonceSnapshot = Readonly<{
     chainId: string,
     address: string
   ): Promise<readonly RetainedSmartAccountOperation[]>;
+  readUnsignedNativeTransaction?(hash: string): Promise<string | null>;
   retained: readonly RetainedNonce[];
 }>;
 

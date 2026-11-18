@@ -31,6 +31,7 @@ export interface ITransactionInfoEvm {
   nonce: string;
   r: string;
   s: string;
+  speedUpAvailable?: true;
   timestamp: number;
   to: string;
   transactionIndex: string;

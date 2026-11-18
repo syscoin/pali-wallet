@@ -377,9 +377,6 @@
   "send": {
     "savedUtxo": {
       "title": "Сохранённые переводы",
-      "review": "Проверить сохранённый перевод",
-      "empty": "Нет сохранённых переводов",
-      "seen": "Перевод виден в сети",
       "check": "Проверить перевод"
     },
     "openWalletTab": "Открыть во вкладке кошелька",
@@ -669,6 +666,9 @@
     "balanceUnavailable": "Баланс недоступен"
   },
   "settings": {
+    "clearUtxoActivity": "Очистить историю",
+    "clearUtxoActivityWarning": "Очистить сохранённую историю аккаунта {{account}} в сети {{network}}? После обновления история из Blockbook появится снова. Ожидающие транзакции всё ещё могут быть подтверждены.",
+    "clearUtxoActivitySuccess": "Сохранённая история очищена.",
     "clearActivityAndNonce": "Очистить историю и данные nonce",
     "clearActivityAndNonceWarning": "Очистить сохранённую историю и данные nonce для {{account}} в сети {{network}}? Ожидающие транзакции всё ещё могут выполниться. Сохранённые транзакции больше нельзя будет отправить повторно.",
     "clearActivityAndNonceConfirm": "Очистить данные",
@@ -904,7 +904,7 @@
     "importedAccountRemovalWarning": "Перед удалением этого аккаунта сохраните резервную копию импортированного закрытого ключа. Локально сохранённый ключ будет удалён. Фраза восстановления вашего кошелька не может восстановить этот импортированный ключ.",
     "accountRemovalContextChanged": "Контекст аккаунта изменился. Подтвердите удаление ещё раз.",
     "networkRemovalIncomplete": "Удаление сети не завершено. Проверьте список сетей и попробуйте ещё раз.",
-    "networkRemovalHasSavedTransfer": "Проверьте сохранённые переводы перед удалением этой сети.",
+    "networkRemovalHasSavedTransfer": "Статус перевода в этой сети ещё не известен. Сеть можно удалить после уточнения статуса.",
     "networkRemovalHasImportedAccounts": "Сохраните эту сеть, пока в ней есть импортированные аккаунты.",
     "networkRemovalHasSentryKeys": "Сохраните эту сеть, пока для неё сохранены ключи Sentry.",
     "accountRemovedSuccessfully": "Аккаунт успешно удален",
@@ -2109,6 +2109,8 @@
       "maintenanceTitle": "Устранение неполадок"
     },
     "resetActivity": {
+      "utxoQuestion": "Очистить кеш активности?",
+      "utxoDescription": "Pali очистит кеш активности этого аккаунта в этой сети, а затем загрузит данные из сети заново.",
       "title": "Сбросить активность",
       "question": "Очистить локальную активность и данные nonce?",
       "description": "Pali удалит локально сохранённые транзакции и отслеживание nonce для этого аккаунта в этой сети, затем обновит его активность.",
@@ -3629,10 +3631,8 @@
       },
       "utxo": {
         "assetBaseUnits": "{{amount}} базовых единиц · Актив {{assetId}}",
-        "outputIndex": "Выход {{index}}",
         "availableAmount": "Доступно {{amount}} {{symbol}}",
         "rbfStatus": "Замена с повышением комиссии: {{status}}",
-        "output1": "Выход 1",
         "tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesThen": "Слишком много неудачных авторизаций. Подождите несколько минут и повторите попытку. Проверка доступна до истечения срока.",
         "enterAValidAddressAndAmountForThisNetwork": "Введите действительный адрес и сумму для этой сети.",
         "thisReviewIsNoLongerAvailableOpenANewReview": "Эта проверка больше недоступна. Откройте новую для продолжения.",
@@ -3640,13 +3640,10 @@
         "aSavedTransferUsesTheseFundsCheckItsStatusBefore": "Сохранённый перевод использует эти средства. Проверьте его статус перед повторной отправкой.",
         "thisTransferWouldSpendAPossibleSentryCollateralOutput": "Этот перевод потратит выход, который может быть залогом Sentry.",
         "paliCouldNotCompleteThisRequestTryAgainOrCheck": "Pali не смог выполнить запрос. Повторите попытку или проверьте сохранённые переводы.",
-        "resendSavedTransfer": "Повторно отправить сохранённый перевод",
         "working": "Обработка",
         "submitted": "Отправлено",
-        "thisTransferIsSavedCheckItsStatusBeforeSendingIt": "Перевод сохранён. Проверьте его статус перед повторной отправкой.",
         "youCanCheckTheLatestNetworkStatusHere": "Здесь можно проверить последний статус в сети.",
         "nativeAmountSentWithAsset": "Сумма нативной монеты вместе с активом",
-        "originalProvider": "Исходный провайдер",
         "replacebyfee": "Замена по комиссии",
         "zDAGUnavailable": "Z-DAG недоступен",
         "zDAGIsUnavailableForThisTransactionSizeReplacebyfeeIsEnabled": "Z-DAG недоступен для транзакции такого размера. Замена по комиссии включена.",

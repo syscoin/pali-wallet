@@ -9,6 +9,10 @@ import {
 let mockChanging = false;
 let mockDisconnected = false;
 const mockControllerEmitter = jest.fn();
+const mockAlert = { error: jest.fn(), warning: jest.fn() };
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: mockAlert }),
+}));
 let mockStateSetters: jest.Mock[];
 jest.mock('react-redux', () => ({
   useSelector: (select: any) =>
@@ -70,14 +74,14 @@ describe('smart account setup status safety', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('does not label an unknown network response as missing CREATE2 support', () => {
-    const markup = render([null, false, true, false, false, '']);
+    const markup = render([null, false, true, false, false]);
     expect(markup).toContain('buttons.loading');
     expect(markup).not.toContain('settings.smartAccountCreate2Missing');
     expect(markup).not.toContain('settings.deploySmartAccountInfrastructure');
   });
 
   it('shows useful feedback during a slow initial check', () => {
-    const markup = render([null, false, true, false, true, '']);
+    const markup = render([null, false, true, false, true]);
     expect(markup).toContain('settings.smartAccountInfrastructureCheckingSlow');
     expect(markup).not.toContain('settings.smartAccountCreate2Missing');
   });
@@ -95,7 +99,7 @@ describe('smart account setup status safety', () => {
     });
     mockControllerEmitter.mockReturnValue(new Promise(() => undefined));
     try {
-      render([null, false, true, false, false, '']);
+      render([null, false, true, false, false]);
       const stopSubscription = effects[0]();
       const stopFeedback = effects[2]();
       expect(mockControllerEmitter).toHaveBeenCalledWith(
@@ -117,7 +121,7 @@ describe('smart account setup status safety', () => {
   });
 
   it('does not offer deployment based on stale status after a failed refresh', () => {
-    const markup = render([status, true, false, false, true, '']);
+    const markup = render([status, true, false, false, true]);
     expect(markup).not.toContain('settings.deploySmartAccountInfrastructure');
     expect(markup).not.toContain(
       'settings.smartAccountInfrastructureMissingCount'
@@ -135,7 +139,6 @@ describe('smart account setup status safety', () => {
       false,
       false,
       false,
-      '',
     ]);
     expect(markup).toContain('settings.smartAccountInfrastructurePending');
     expect(markup).toMatch(
@@ -148,7 +151,7 @@ describe('smart account setup status safety', () => {
     (reason) => {
       mockChanging = reason === 'transition';
       mockDisconnected = reason === 'disconnect';
-      const markup = render([status, false, false, false, false, '']);
+      const markup = render([status, false, false, false, false]);
       expect(markup).toMatch(
         /<button[^>]*disabled[^>]*>settings.deploySmartAccountInfrastructure/
       );

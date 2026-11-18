@@ -84,8 +84,8 @@ test('near-cap finalized inner cleanup frees only consumed selected-account sign
  assert.equal(proof.calls.filter(call=>call.method==='eth_call').length,4,'two nonce keys are observed and revalidated at the same finalized anchor');
  const reopened=new EvmSignedRecords(f.storage);
  assert.equal(await reopened.readSmartAccountAuthorizationExact(f.session,'1',account,f.records[0]!.operationHash),null);
- assert.deepEqual((await reopened.readSmartAccountAuthorizationExact(f.session,'1',account,f.records[1]!.operationHash))?.userOperation,f.records[1]!.userOperation);
- assert.deepEqual((await reopened.readSmartAccountAuthorizationExact(f.session,'2',account,f.records[3]!.operationHash))?.userOperation,f.records[3]!.userOperation);
+ assert.deepEqual((await reopened.readSmartAccountAuthorizationExact(f.session,'1',account,f.records[1]!.operationHash))?.userOperation,{...f.records[1]!.userOperation,signature:'0x'});
+ assert.deepEqual((await reopened.readSmartAccountAuthorizationExact(f.session,'2',account,f.records[3]!.operationHash))?.userOperation,{...f.records[3]!.userOperation,signature:'0x'});
  const appended=authorization(account,7);await reopened.retainSmartAccountAuthorization(f.session,{chainId:1,payer:appended.payer,observedAt:appended.observedAt,userOperation:appended.userOperation});
  assert.equal(inspectEvmSignedBundle(f.value()).transactions,EVM_SIGNED_RECORD_LIMITS.transactions-1);
 });
@@ -106,7 +106,7 @@ test('a lost cleanup acknowledgement keeps live authorizations decryptable after
  const f=await fixture(),before=JSON.parse(f.value());f.loseAck();
  await assert.rejects(f.store.retireConsumedSmartAccountAuthorizations(f.session,1,account,evidence().read),/Lost retirement acknowledgement/);
  assert.deepEqual(JSON.parse(f.value()).authorizations,before.authorizations.slice(1));
- const reopened=new EvmSignedRecords(f.storage);assert.deepEqual((await reopened.readSmartAccountAuthorizationExact(f.session,'1',account,f.records[1]!.operationHash))?.userOperation,f.records[1]!.userOperation);
+ const reopened=new EvmSignedRecords(f.storage);assert.deepEqual((await reopened.readSmartAccountAuthorizationExact(f.session,'1',account,f.records[1]!.operationHash))?.userOperation,{...f.records[1]!.userOperation,signature:'0x'});
 });
 
 test('ordinary capacity and unmatched account cleanup perform no RPC or writes',async()=>{

@@ -1,6 +1,12 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import React from 'react';
 
 import en from '../../assets/locales/en.json';
@@ -14,6 +20,11 @@ const TRANSACTION = `0x${'11'.repeat(32)}`;
 const NONCE = '1427247692705959881058285969449495136382746625';
 const mockEmitter = jest.fn();
 const mockSubmit = jest.fn();
+const mockAlert = {
+  error: jest.fn(),
+  success: jest.fn(),
+  warning: jest.fn(),
+};
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -50,6 +61,9 @@ jest.mock('utils/navigationState', () => ({
 }));
 jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
   controllerEmitter: (...args: any[]) => mockEmitter(...args),
+}));
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: mockAlert }),
 }));
 jest.mock('utils/smartAccount/execution', () => ({
   getSmartAccountLocalOwnerContexts: jest.fn(),
@@ -116,6 +130,7 @@ afterAll(() => {
 beforeEach(() => {
   mockEmitter.mockReset();
   mockSubmit.mockReset();
+  Object.values(mockAlert).forEach((alert) => alert.mockClear());
 });
 
 it('reviews the complete fee budget before signing and submits after one confirmation', async () => {
@@ -155,7 +170,11 @@ it('reviews the complete fee budget before signing and submits after one confirm
   fireEvent.click(
     review.getByRole('button', { name: en.transactions.smartAccountCancelSign })
   );
-  await screen.findByText(en.transactions.transactionCancelSubmitted);
+  await waitFor(() =>
+    expect(mockAlert.success).toHaveBeenCalledWith(
+      en.transactions.transactionCancelSubmitted
+    )
+  );
   expect(mockSubmit).toHaveBeenCalledTimes(1);
   const submission = mockSubmit.mock.calls[0][0];
   expect(submission.approvedFeeQuote).toBe(reviewedQuote);
@@ -206,7 +225,11 @@ it('blocks review and signing when the payer budget is missing', async () => {
   });
   render(<Harness originalHash={TRANSACTION} />);
   fireEvent.click(screen.getByRole('button', { name: 'Request cancellation' }));
-  await screen.findByText(en.transactions.smartAccountCancelUnavailable);
+  await waitFor(() =>
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      en.transactions.smartAccountCancelUnavailable
+    )
+  );
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(mockSubmit).not.toHaveBeenCalled();
 });
@@ -223,8 +246,14 @@ it('reports a signed cancellation if submission fails after owner authorization'
   fireEvent.click(
     dialog.getByRole('button', { name: en.transactions.smartAccountCancelSign })
   );
-  expect(await screen.findByRole('status')).toHaveTextContent(
-    en.transactions.smartAccountCancelSigned
+  await waitFor(() =>
+    expect(mockAlert.warning).toHaveBeenCalledWith(
+      en.transactions.smartAccountCancelSigned
+    )
   );
+  expect(mockAlert.warning).toHaveBeenCalledTimes(1);
+  expect(
+    screen.queryByText(en.transactions.smartAccountCancelSigned)
+  ).toBeNull();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });

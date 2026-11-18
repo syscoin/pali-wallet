@@ -425,7 +425,10 @@ export const UtxoTransactionsList = ({
     activeNetwork,
     true
   );
-  const paginationContext = confirmationContext;
+  const reset = currentAccountTransactions?.utxoActivityReset?.[chainId];
+  const paginationContext = reset
+    ? `${confirmationContext}:${reset.revision}`
+    : confirmationContext;
   const headKey = JSON.stringify(
     userTransactions.map((transaction) => transaction.txid)
   );

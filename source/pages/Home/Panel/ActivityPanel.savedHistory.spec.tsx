@@ -19,6 +19,9 @@ let mockState: any;
 const mockEmitter = jest.fn();
 let mockScope: { account: string; network: string };
 const mockT = (key: string) => key;
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: jest.fn() } }),
+}));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: mockT }) }));
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),

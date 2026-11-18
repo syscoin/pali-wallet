@@ -9,7 +9,10 @@ import {
 
 import { fetchUtxoRead } from './utxoReadRetry.ts';
 import { RAW_BYTES } from './utxoSignedBundle.ts';
-import { snapshotUtxoSubmission } from './utxoSignedRecords.ts';
+import {
+  matchesUtxoSignedDigest,
+  snapshotUtxoSubmission,
+} from './utxoSignedRecords.ts';
 import type {
   UtxoDurableSubmission,
   UtxoRecordOwner,
@@ -344,7 +347,7 @@ export function submitRetainedUtxo({
             if (
               !retained ||
               retained.url !== record.url ||
-              retained.rawTransaction !== record.rawTransaction
+              !matchesUtxoSignedDigest(retained, record.rawTransaction)
             )
               return undefined;
             // The journal validates the canonical /api/v2/sendtx/ suffix. Only its
@@ -354,13 +357,13 @@ export function submitRetainedUtxo({
             await authority.prepare({
               url: retained.url,
               txid: retained.txid,
-              rawTransaction: retained.rawTransaction,
+              rawTransaction: record.rawTransaction,
             });
             assertCurrent();
             stage = 'status';
             timer = setTimeout(abort, IDENTITY_TIMEOUT_MS);
             deadline = Date.now() + IDENTITY_TIMEOUT_MS;
-            return retained;
+            return record;
           },
           async readJson(url, ownerSignal) {
             assertCurrent();
@@ -441,6 +444,7 @@ async function submitUtxo(
   let admitted = false;
   let preparing = false;
   let attempted = false;
+  let dispatchClosed = false;
   let admissionFailure: unknown;
   try {
     assertCurrent();
@@ -448,50 +452,62 @@ async function submitUtxo(
       session,
       record,
       intent,
-      (prepare, release) =>
-        dispatch(record, {
-          signal: controller.signal,
-          assertCurrent,
-          async prepare(received) {
-            try {
-              assertCurrent();
+      async (prepare, release) => {
+        try {
+          return await dispatch(record, {
+            signal: controller.signal,
+            assertCurrent,
+            async prepare(received) {
+              try {
+                assertCurrent();
+                if (
+                  dispatchClosed ||
+                  preparing ||
+                  received.url !== url ||
+                  received.txid !== txid ||
+                  received.rawTransaction !== rawTransaction
+                )
+                  throw new Error(
+                    'Submission differs from the reviewed signed transaction'
+                  );
+                preparing = true;
+                await prepare();
+                admitted = true;
+              } catch (error) {
+                admissionFailure = error;
+                throw error;
+              }
+            },
+            async fetch(input, init) {
               if (
-                preparing ||
-                received.url !== url ||
-                received.txid !== txid ||
-                received.rawTransaction !== rawTransaction
+                dispatchClosed ||
+                !admitted ||
+                attempted ||
+                input !== url ||
+                init?.method !== 'POST' ||
+                init.body !== rawTransaction ||
+                init.signal !== controller.signal
               )
-                throw new Error(
-                  'Submission differs from the reviewed signed transaction'
-                );
-              preparing = true;
-              await prepare();
-              admitted = true;
-            } catch (error) {
-              admissionFailure = error;
-              throw error;
-            }
-          },
-          async fetch(input, init) {
-            if (
-              !admitted ||
-              attempted ||
-              input !== url ||
-              init?.method !== 'POST' ||
-              init.body !== rawTransaction ||
-              init.signal !== controller.signal
-            )
-              throw new Error('Invalid owned UTXO POST');
-            // Revocation after dispatch does not erase a matching network ACK.
-            assertCurrent();
-            signal?.removeEventListener('abort', abort);
-            attempted = true;
-            timer = setTimeout(() => controller.abort(), ACK_TIMEOUT_MS);
-            const pending = post(fetch, url, rawTransaction, controller.signal);
-            release();
-            return pending;
-          },
-        })
+                throw new Error('Invalid owned UTXO POST');
+              // Revocation after dispatch does not erase a matching network ACK.
+              assertCurrent();
+              signal?.removeEventListener('abort', abort);
+              attempted = true;
+              timer = setTimeout(() => controller.abort(), ACK_TIMEOUT_MS);
+              const pending = post(
+                fetch,
+                url,
+                rawTransaction,
+                controller.signal
+              );
+              release();
+              return pending;
+            },
+          });
+        } finally {
+          dispatchClosed = true;
+        }
+      }
     );
     if (!admitted || !attempted || ack.txid !== txid)
       throw new Error('Invalid UTXO submission acknowledgment');

@@ -30,6 +30,10 @@ const mockTranslate = (key: string, values: any = {}) => {
     String(values[name])
   );
 };
+const mockClearError = jest.fn();
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: mockClearError } }),
+}));
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));

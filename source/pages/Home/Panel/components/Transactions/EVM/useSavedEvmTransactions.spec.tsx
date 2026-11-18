@@ -92,6 +92,36 @@ test('saved smart-account history uses authenticated inner transfer facts and ke
   expect(result.txreceipt_status).toBeUndefined();
 });
 
+test('saved Smart handleOps cancellation projects its local cancellation intent', () => {
+  const account = '0x' + '44'.repeat(20);
+  const outer = { ...row('3'), operation: 'send' as const, value: '0' };
+  const operationHash = hash('4');
+  const smartAccount = {
+    account,
+    cancellation: true as const,
+    operationHash,
+    operationNonce: '7',
+    operations: [{ operationHash, operationNonce: '7' }],
+    operationCount: 1,
+    replayable: true,
+    callData: '0x1234',
+    executions: [{ target: account, value: '0', data: '0x' }],
+  };
+  const result = savedTransactionHistoryRow({
+    ...outer,
+    phase: 'signed',
+    smartAccount,
+  });
+  expect(result).toMatchObject({
+    isCancel: true,
+    from: account,
+    to: account,
+    input: '0x',
+    value: '0',
+    feePayer: outer.from,
+  });
+});
+
 test('bounded pages cross the JSON message boundary and preserve older records on refresh', async () => {
   mockEmitter.mockImplementation((_: unknown, params: unknown[]) => {
     const [cursor] = JSON.parse(JSON.stringify(params));

@@ -33,6 +33,7 @@ import {
   observeSmartAccountActivity,
   type RetainedSmartAccountTransfer,
 } from './smartAccountActivity.ts';
+import { decodeSmartAccountCancellation } from './smartAccountCancellation.ts';
 import type { EvmObservationMethod } from '../shared/evmTransactionObservation.ts';
 import type { SmartAccountExecution } from '../utils/smartAccount/account.ts';
 
@@ -109,6 +110,11 @@ export function projectSmartAccountSavedTransaction(
       (operation) => operation.account === account
     );
   if (!selected) throw new EvmReplayError('NOT_FOUND');
+  const cancellation =
+    Boolean(record.cancellation) ||
+    decodeSmartAccountCancellation(
+      record.entry
+    )?.operationHash.toLowerCase() === selected.operationHash;
   const decoded = record.cancellation
     ? undefined
     : paliEntryPointInterface.decodeFunctionData(
@@ -126,7 +132,7 @@ export function projectSmartAccountSavedTransaction(
   });
   // Membership was proved above from handleOps bytes. Supply only that proven
   // hint to the existing transfer projection; optional asset metadata is unchanged.
-  const transfer = record.cancellation
+  const transfer = cancellation
     ? null
     : decodeRetainedSmartAccountTransfer(
         {
@@ -141,7 +147,7 @@ export function projectSmartAccountSavedTransaction(
       );
   const smartAccount: SmartAccountReplayIntent = Object.freeze({
     account,
-    ...(record.cancellation ? { cancellation: true as const } : {}),
+    ...(cancellation ? { cancellation: true as const } : {}),
     operationHash: selected.operationHash,
     operationNonce: selected.operationNonce,
     operationCount: record.operations.length,
@@ -272,7 +278,11 @@ export function createSmartAccountSignedReplay(
         : null;
     },
     async list(
-      options: Readonly<{ beforeHash?: string; maximum?: number }> = {}
+      options: Readonly<{
+        after?: number;
+        beforeHash?: string;
+        maximum?: number;
+      }> = {}
     ) {
       const serial = generation,
         { captured, address, chainId } = owner();
@@ -351,7 +361,7 @@ export function createSmartAccountSignedReplay(
               admit(send, async (snapshot) => {
                 await preflight(snapshot);
                 checkPayer();
-                if (!replayIntent || replayIntent.cancellation) return;
+                if (!replayIntent || context.operation === 'cancel') return;
                 await captured.runReadPhase(checkPayer, (provider) =>
                   assertRetainedSmartAccountExecution(
                     provider,
@@ -385,7 +395,9 @@ export function createSmartAccountSignedReplay(
               nonce: Number(expected.nonce),
               operationHash: observedIntent.operationHash,
               operationNonce: observedIntent.operationNonce,
-              ...(observedIntent.cancellation
+              // Only legacy payer self-calls lack an EntryPoint outcome.
+              ...(observedIntent.cancellation &&
+              expected.to === getAddress(expected.from)
                 ? { cancellation: true as const }
                 : {}),
             },
@@ -409,6 +421,8 @@ export function createSmartAccountSignedReplay(
       engine = replay;
       const result = await replay.prepare(record.entry.hash);
       checkPayer();
+      if (result.status === 'inspect-only')
+        throw new EvmReplayError('CONTEXT_CHANGED');
       track(result, {
         check: checkPayer,
         session,
@@ -476,6 +490,8 @@ export function createSmartAccountSignedReplay(
       if (time() >= active.expires) throw new EvmReplayError('EXPIRED');
       if (!entry || entry.nonce >= Number(active.review.nonce))
         throw new EvmReplayError('NOT_FOUND');
+      if (entry.payloadKind === 'unsigned-eoa')
+        return replay.prepare(entry.hash);
       const operations = decodeRetainedSmartAccountOperations(entry);
       const envelope = Transaction.from(entry.rawTransaction);
       if (

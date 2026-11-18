@@ -125,7 +125,7 @@ function fixture(maximumAccountType?: 'HDAccount' | 'Imported' | 'Ledger' | 'Tre
     async replacementOriginal(hash: string, mode: 'cancel' | 'speed-up', guard: () => void) {
       const retained = await signedRecords.readReplacement(signedRecordTestSession(guard), '1', wallet.address, hash, mode);
       guard();
-      if (!retained?.binding) return null;
+      if (!retained?.binding || typeof retained.original.rawTransaction !== 'string') return null;
       return { rawTransaction: retained.original.rawTransaction, binding: retained.binding, rates: retained.rates };
     },
     replay(guard: () => void, transport: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[1], options: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[2]) {
@@ -1323,7 +1323,7 @@ test('a final chain probe that outlives the review retains the exact signed reco
     await expired;
     assert.deepEqual(f.broadcasts, []);
     const saved = await (await f.runtime.journal(() => undefined)).load();
-    assert(saved);
+    assert(saved?.rawTransaction);
     assert.equal(saved.hash, durable.hash);
     assert.equal(saved.phase, 'signed');
     assert.equal(saved.hash, keccak256(saved.rawTransaction));

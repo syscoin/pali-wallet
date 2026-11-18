@@ -11,6 +11,7 @@ import {
 } from 'types/network';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 import type { IWalletNavigationScope } from 'utils/navigationState';
+import type { UtxoAcknowledgedInputs } from 'utils/utxoAcknowledgedInputs';
 
 import type {
   AccountRecords,
@@ -27,6 +28,10 @@ export interface IAccountAssets {
 export interface IAccountTransactions {
   ethereum: { [chainId: number]: IEvmTransaction[] };
   syscoin: { [chainId: number]: ISysTransaction[] };
+  utxoActivityReset?: Record<
+    number,
+    { acknowledgements: UtxoAcknowledgedInputs[]; revision: number }
+  >;
 }
 
 // Loading states interface for transient UI states

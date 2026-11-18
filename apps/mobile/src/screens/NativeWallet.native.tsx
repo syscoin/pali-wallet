@@ -2132,9 +2132,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
     else content = <RealSettings navigation={shell.navigation} notifications={notificationSettings} notificationReturn={notificationReturn} accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} backupRequired={snapshot.backup !== 'confirmed'} onBackup={() => openStage('backup-intro')} onConnections={connectionView ? () => openStage('connections') : undefined}
       onInfrastructure={canSign && openSmartInfrastructure && !utxo && (selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported' || selectedAccountType === 'Ledger' && !!ledgerConnection || selectedAccountType === 'Trezor' && !!trezorView) ? () => { setInfrastructureResumeId(null); setInfrastructureReviewNext(false); openStage('smart-infrastructure'); } : undefined}
-      activityReset={canSign && catalogue && snapshot.account ? {
+      activityReset={(canSign || (utxo && utxoActivityView)) && catalogue && snapshot.account ? {
         scope: custodyContext(snapshot, catalogue)!.context,
-        networkLabel: getNativeNetwork(snapshot.account.network, catalogue.networks).name,
+        networkLabel: utxo?.name ?? getNativeNetwork(snapshot.account.network, catalogue.networks).name,
+        utxo: !!utxo,
         async reset(assertView) {
           const local = controllersRef.current;
           const expected = custodyContext(snapshot, catalogue)!.context;

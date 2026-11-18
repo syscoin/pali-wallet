@@ -39,6 +39,7 @@ jest.mock('utils/navigationState', () => ({
     network: 'synthetic',
   }),
 }));
+jest.mock('hooks/useUtils', () => ({ useUtils: () => ({ alert: {} }) }));
 jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
   controllerEmitter: (...args: any[]) => mockEmitter(...args),
 }));

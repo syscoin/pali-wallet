@@ -1,15 +1,13 @@
 import { AUTOMATIC_FEE, chooseUtxoFeeRate, snapshotUtxoFeeChoice, utxoFeeRateUnits, type UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
 import { unionUtxoExclusions } from '../../../../source/shared/utxoExclusions.ts';
-import { inspectUtxoRbf, reviewUtxoTransactionOptions, snapshotUtxoRbf, type UtxoTransactionOptions } from '../../../../source/shared/utxoTransactionOptions.ts';
+import { reviewUtxoTransactionOptions, snapshotUtxoRbf, type UtxoTransactionOptions } from '../../../../source/shared/utxoTransactionOptions.ts';
 import type { createNativeSentryCollateral } from './sentryNodeManagement.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import { isSptDisplaySymbol, supportsSptUtxoChain } from '../../../../source/shared/sptInventory.ts';
 import { toEightDecimalBuilderAmount } from '../../../../source/utils/syscoinAssetAmount.ts';
 import {
-  ALLOCATION_SEND_VERSION,
-  assertPlainAllocationSendData,
   assertUtxoBuilderFee,
   isPositiveSptAmount,
 } from '../../../../source/utils/syscoinPsbtValues.ts';
@@ -17,13 +15,11 @@ import { createOwnedUtxoBlockbookRead } from '../../../../source/wallet/utxoBloc
 import {
   isPositiveSptGuid,
   prepareUtxoSignedBinding,
-  utxoSubmissionUrl,
 } from '../../../../source/wallet/utxoSignedBinding.ts';
-import { reviewSavedUtxoOutputs, type SavedUtxoReviewOutput } from '../../../../source/wallet/utxoSavedReview.ts';
+import type { SavedUtxoReviewOutput } from '../../../../source/wallet/utxoSavedReview.ts';
 import {
   observeRetainedUtxo,
   reconcileRetainedUtxo,
-  submitRetainedUtxo,
   submitReviewedUtxo,
 } from '../../../../source/wallet/utxoSubmission.ts';
 import { formatBaseUnits, parseDecimalAmount } from '../core/amounts.ts';
@@ -43,7 +39,6 @@ import type {
   UtxoWalletPayment,
 } from '../../../../source/wallet/utxoSignedBinding.ts';
 import type {
-  UtxoDurableSubmission,
   UtxoRecordSession,
   UtxoSignedRecords,
 } from '../../../../source/wallet/utxoSignedRecords.ts';
@@ -73,8 +68,6 @@ export type NativeUtxoReview = Readonly<{
   assetDisplay?: NativeUtxoAsset;
   feeSatoshis: string;
   outputs: readonly SavedUtxoReviewOutput[];
-  retryProviderOrigin?: string;
-  retryTxid?: string;
 }>;
 
 /** Native consent owner. The UI never receives a PSBT, raw bytes or keyring. */
@@ -88,7 +81,7 @@ export function createNativeUtxoSend(
   getAddress: IKeyringManager['getAddress'],
   collateral: ReturnType<typeof createNativeSentryCollateral> | null,
   authorization: Readonly<{
-    authorize(credential: NativeOperationCredential, input: Parameters<ISyscoinTransactions['signPSBT']>[0] | null, assertCurrent: () => void): Promise<NativeOperationAuthorization>;
+    authorize(credential: NativeOperationCredential, input: Parameters<ISyscoinTransactions['signPSBT']>[0], assertCurrent: () => void): Promise<NativeOperationAuthorization>;
     sign(receipt: NativeOperationAuthorization, input: Parameters<ISyscoinTransactions['signPSBT']>[0], read: Parameters<ISyscoinTransactions['signPSBT']>[1], assertCurrent: () => void): ReturnType<ISyscoinTransactions['signPSBT']>;
     release(receipt: NativeOperationAuthorization): void;
   }>,
@@ -109,13 +102,7 @@ export function createNativeUtxoSend(
   let busy = false;
   let readController: AbortController | undefined;
   type Prepared = Awaited<ReturnType<typeof prepareUtxoSignedBinding>>;
-  type Review =
-    | { view: NativeUtxoReview; expires: number; binding: Prepared }
-    | {
-        view: NativeUtxoReview;
-        expires: number;
-        retained: UtxoDurableSubmission;
-      };
+  type Review = { view: NativeUtxoReview; expires: number; binding: Prepared };
   let review: Review | undefined;
   const cancel = () => {
     revision++;
@@ -168,7 +155,7 @@ export function createNativeUtxoSend(
     );
 
   // SDK prepare runs inside the shared journal's dispatch admission. Check
-  // the saved endpoint after the bytes are durable and before SDK POST.
+  // the saved endpoint after the submission record is durable and before SDK POST.
   const sender: Pick<ISyscoinTransactions, 'sendTransaction'> = {
     sendTransaction(raw, authority) {
       return sdk.sendTransaction(raw, {
@@ -412,51 +399,6 @@ export function createNativeUtxoSend(
         }
       });
     },
-    async prepareRetry(txid: string): Promise<NativeUtxoReview> {
-      return run(async () => {
-        cancel();
-        const expires = now() + REVIEW_MS,
-          check = capture(revision, expires);
-        const retained = await records.readExact(
-          { ...session, assertCurrent: check },
-          owner,
-          txid
-        );
-        check();
-        if (!retained) throw new CustodyRuntimeError('NOT_READY');
-        await assertUnprotected(retained.outpoints,check);
-        const transaction = syscoinUtils.bitcoinjs.Transaction.fromHex(
-          retained.rawTransaction
-        );
-        const allocationSend = transaction.version === ALLOCATION_SEND_VERSION;
-        if (allocationSend) {
-          if (retained.operation !== 'wallet') throw new CustodyRuntimeError('NOT_READY');
-          assertPlainAllocationSendData(transaction);
-        }
-        let outputs = reviewSavedUtxoOutputs(retained, network.addressNetwork);
-        if (allocationSend) {
-          outputs = outputs.filter(output => output.script?.kind !== 'data');
-          if (outputs.some(output => !output.address) || !outputs.some(output => output.asset))
-            throw new CustodyRuntimeError('NOT_READY');
-        }
-        for (const output of outputs) {
-          Object.freeze(output.asset);
-          Object.freeze(output.script);
-          Object.freeze(output);
-        }
-        const view = Object.freeze({
-          transactionOptions: reviewUtxoTransactionOptions(inspectUtxoRbf(transaction.ins), allocationSend),
-          feeSatoshis: retained.feeSatoshis,
-          outputs: Object.freeze(outputs),
-          ...(retained.url !== utxoSubmissionUrl(scope.network.url)
-            ? { retryProviderOrigin: new URL(retained.url).origin }
-            : {}),
-          retryTxid: txid,
-        });
-        review = { view, expires, retained };
-        return view;
-      });
-    },
     async confirm(view: NativeUtxoReview, credential: NativeOperationCredential): Promise<Readonly<{ txid: string }>> {
       return run(async () => {
         const selected = review;
@@ -464,54 +406,42 @@ export function createNativeUtxoSend(
           throw new CustodyRuntimeError('NOT_READY');
         const check = capture(revision, selected.expires);
         check();
-        const receipt = await authorization.authorize(credential, 'retained' in selected ? null : { psbt: selected.binding.psbt }, check);
+        const receipt = await authorization.authorize(credential, { psbt: selected.binding.psbt }, check);
         try {
-        check();
-        if (review !== selected) throw new CustodyRuntimeError('CANCELLED');
-        review = undefined;
-        const currentSession = { ...session, assertCurrent: check };
-        try {
-          if ('retained' in selected) {
-            const controller = new AbortController();
-            readController = controller;
-            return await submitProtected(selected.retained.outpoints,check,transport=>submitRetainedUtxo({
-              record: selected.retained,
-              sender: sdk,
+          check();
+          if (review !== selected) throw new CustodyRuntimeError('CANCELLED');
+          review = undefined;
+          const currentSession = { ...session, assertCurrent: check };
+          try {
+            await assertUnprotected(selected.binding.review.outpoints,check);
+            const read = await ownedRead(check);
+            const signed = await authorization.sign(receipt,
+              { psbt: selected.binding.psbt },
+              read, check
+            );
+            check();
+            const { record } = selected.binding.bindSigned(signed);
+            return await submitProtected(record.review.outpoints,check,transport=>submitReviewedUtxo({
+              record: {
+                owner,
+                operation: 'wallet',
+                rawTransaction: record.rawTransaction,
+                txid: record.txid,
+                url: record.url,
+                feeSatoshis: record.review.feeSatoshis,
+                outpoints: record.review.outpoints,
+                virtualSize: record.virtualSize,
+              },
+              sender,
               records,
               session: currentSession,
-              signal: controller.signal,
+              signal: readController?.signal,
               fetch:transport,
             }));
+          } finally {
+            readController?.abort();
+            readController = undefined;
           }
-          await assertUnprotected(selected.binding.review.outpoints,check);
-          const read = await ownedRead(check);
-          const signed = await authorization.sign(receipt,
-            { psbt: selected.binding.psbt },
-            read, check
-          );
-          check();
-          const { record } = selected.binding.bindSigned(signed);
-          return await submitProtected(record.review.outpoints,check,transport=>submitReviewedUtxo({
-            record: {
-              owner,
-              operation: 'wallet',
-              rawTransaction: record.rawTransaction,
-              txid: record.txid,
-              url: record.url,
-              feeSatoshis: record.review.feeSatoshis,
-              outpoints: record.review.outpoints,
-              virtualSize: record.virtualSize,
-            },
-            sender,
-            records,
-            session: currentSession,
-            signal: readController?.signal,
-            fetch:transport,
-          }));
-        } finally {
-          readController?.abort();
-          readController = undefined;
-        }
         } finally { authorization.release(receipt); }
       });
     },

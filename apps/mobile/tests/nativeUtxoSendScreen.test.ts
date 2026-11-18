@@ -73,7 +73,6 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
   runInNewContext(code, { module, exports: module.exports, Error, require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const requests: any[] = []; let cancels = 0, confirmations = 0, networkChanges = 0, gate: Promise<void> | undefined, release: (() => void) | undefined;
   let confirmationFailure: Error | undefined, confirmationGate: Promise<void> | undefined, signatures = 0;
-  let retryReview: NativeUtxoReview | undefined;
   const authorized: { review: NativeUtxoReview; credential: NativeOperationCredential }[] = [];
   const openedTransactions: string[] = [];
   const networkDrafts: unknown[] = [];
@@ -83,10 +82,6 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     cancel() { cancels++; }, async list() { listReads++; return saved; },
     async refreshSaved() { refreshReads++; return service.list(); },
     async check() { saved = []; return 'confirmed' as const; },
-    async prepareRetry(txid: string) {
-      assert(retryReview);
-      return { ...retryReview, retryTxid: txid };
-    },
     async prepare(input: any): Promise<NativeUtxoReview> {
       requests.push(structuredClone(input));
       if (gate) await gate; // Deliberately deliver a late result after cancellation.
@@ -120,7 +115,6 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     failSubmissionUnknown() { confirmationFailure = Object.assign(new Error('UTXO_SUBMISSION_UNKNOWN'), { code: 'UTXO_SUBMISSION_UNKNOWN', txid: 'ab'.repeat(32) }); },
-    seedRetryReview(review: NativeUtxoReview) { retryReview = review; },
     changeBalance(value: string) { maximum = value; },
     changeNetwork(id: string) { network = getUtxoNetwork(id); },
     changeAvailable(value: string | undefined) { availableAmount = value; },
@@ -422,29 +416,17 @@ test('unknown SPT submission retains its exact public summary through a status c
   } finally { f.close(); }
 });
 
-test('saved UTXO replay outcome keeps Output 1 without identifying it as the recipient', async () => {
+test('saved UTXO outcome offers status checks without another submission', async () => {
   const f = fixture();
   try {
-    f.seedRetryReview({ transactionOptions: { rbf: true }, feeSatoshis: '100', outputs: [
-      { address: 'bc1qfirstoutput', amountSatoshis: '900001' },
-      { address: 'bc1qotheroutput', amountSatoshis: '12345678' },
-    ] });
     f.render(); await tick();
     f.edit('Recipient address', 'bc1qreviewedrecipient'); f.edit('Amount in BTC', '0.12345678');
     f.review(); await tick(); f.failSubmissionUnknown();
     f.press('Confirm and send'); await tick();
-    f.press('Review saved transfer'); await tick();
-    f.press('Resend saved transfer'); await tick();
-    const assertSummary = () => {
-      const shown = all(f.render());
-      assert(shown.some(node => node.type === 'Text' && node.children.join('') === 'Output 1'));
-      assert(!shown.some(node => node.type === 'Text' && node.children.join('') === 'Recipient'));
-      assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-recipient')?.children.join(''), 'bc1qfirstoutput');
-      assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-amount')?.children.join(''), '0.00900001 BTC');
-    };
-    assertSummary();
-    f.press('Check status'); await tick(); assertSummary();
-    assert.equal(f.counts().confirmations, 2);
+    const shown = all(f.render());
+    assert(!shown.some(node => ['Review saved transfer', 'Resend saved transfer'].includes(String(node.props.title))));
+    f.press('Check status'); await tick();
+    assert.equal(f.counts().confirmations, 1);
   } finally { f.close(); }
 });
 
@@ -491,30 +473,5 @@ test('Trezor UTXO resume keeps custom seven sat/vB, MAX and RBF in the actual fo
     assert.deepEqual(f.requests[0], { recipient: 'bc1qfixture', amount: '', max: true, asset: undefined, rbf: false,
       feeChoice: { kind: 'custom', satPerVbyte: '7' } });
     assert.equal(f.signatures(), 0);
-  } finally { f.close(); }
-});
-
-
-test('saved UTXO review identifies raw data and script outputs and keeps the exact hex after resend', async () => {
-  const f = fixture();
-  try {
-    f.seedRetryReview({ transactionOptions: { rbf: true }, feeSatoshis: '100', outputs: [
-      { script: { kind: 'data', hex: '6a0161' }, amountSatoshis: '0' },
-      { script: { kind: 'script', hex: '51' }, amountSatoshis: '1000' },
-    ] });
-    f.render(); await tick();
-    f.edit('Recipient address', 'bc1qreviewedrecipient'); f.edit('Amount in BTC', '0.12345678');
-    f.review(); await tick(); f.failSubmissionUnknown();
-    f.press('Confirm and send'); await tick();
-    f.press('Review saved transfer'); await tick();
-    const review = all(f.render()).filter(node => node.type === 'Text').map(node => node.children.join(''));
-    assert(review.includes('6a0161'));
-    assert(review.includes('51'));
-    assert(review.includes('OP_RETURN (Data)'));
-    assert(review.includes('Output script'));
-    f.press('Resend saved transfer'); await tick();
-    const outcome = all(f.render());
-    assert(outcome.some(node => node.type === 'Text' && node.children.join('') === 'OP_RETURN (Data)'));
-    assert.equal(outcome.find(node => node.props.testID === 'native-utxo-outcome-recipient')?.children.join(''), '6a0161');
   } finally { f.close(); }
 });

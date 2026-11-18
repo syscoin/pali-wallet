@@ -1032,7 +1032,7 @@ export async function readRetainedEoaCall(
       transaction.from,
       candidate.hash
     );
-    if (!retained) continue;
+    if (!retained || retained.payloadKind === 'unsigned-eoa') continue;
     try {
       assertSignedEvmTransactionMatches(
         retained.rawTransaction,

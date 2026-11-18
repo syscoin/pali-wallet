@@ -186,30 +186,14 @@ test('saved EVM signed bytes replay without connecting Ledger', async ({
   ).toEqual([]);
 });
 
-test('saved UTXO signed bytes replay without connecting Ledger', async ({
-  page,
-}) => {
+test('saved UTXO status can be checked without connecting Ledger', async ({ page }) => {
   await page.goto('/?utxo-send=1&ledger-send=1');
-  await page
-    .getByRole('button', { name: 'Check transfer aaaaaaaa…', exact: true })
-    .click();
-  await page
-    .getByRole('button', { name: 'Review saved transfer', exact: true })
-    .click();
-  await expect(
-    page.getByRole('button', { name: 'Resend saved transfer', exact: true })
-  ).toBeEnabled();
-  await expect(
-    page.getByRole('button', { name: 'Connect Ledger', exact: true })
-  ).toHaveCount(0);
-  await page.getByTestId('native-utxo-confirm').click();
-  await authenticateNativeOperation(page);
-  expect(
-    await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())
-  ).toBe(1);
-  expect(
-    await page.evaluate(() => window.__nativeLedgerSigningFixture.calls())
-  ).toEqual([]);
+  await page.getByRole('button', { name: 'Check transfer aaaaaaaa…', exact: true }).click();
+  await expect(page.getByText('Submission unverified')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Connect Ledger', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Check status', exact: true }).click();
+  expect(await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())).toBe(0);
+  expect(await page.evaluate(() => window.__nativeLedgerSigningFixture.calls())).toEqual([]);
 });
 
 test('physical disconnect restores Connect Ledger without losing the approved EVM review', async ({

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button, Icon, PageActionFooter } from 'components/index';
-import { useQueryData } from 'hooks/index';
+import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import type { SentryApproval } from 'utils/sentry/types';
@@ -44,6 +44,7 @@ const Change = ({
 
 const SentryOperation = () => {
   const { t } = useTranslation();
+  const { alert } = useUtils();
   const { controllerEmitter, connectionUnavailable, isUnlocked } =
     useController();
   const { sentryApprovalId, host, eventName } = useQueryData();
@@ -110,7 +111,6 @@ const SentryOperation = () => {
     const job = Symbol('sentry-authorization');
     inFlight.current = job;
     setBusy(true);
-    setError('');
     try {
       const response = await controllerEmitter(
         ['wallet', 'signSentryApproval'],
@@ -140,7 +140,9 @@ const SentryOperation = () => {
       window.close();
     } catch (reason: any) {
       if (alive.current && inFlight.current === job)
-        setError(reason?.message || t('sentry.unableToAuthorizeSentryUpdate'));
+        alert.error(
+          reason?.message || t('sentry.unableToAuthorizeSentryUpdate')
+        );
     } finally {
       if (inFlight.current === job) {
         inFlight.current = null;

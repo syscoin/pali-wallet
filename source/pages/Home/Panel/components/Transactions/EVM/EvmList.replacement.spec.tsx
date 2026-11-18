@@ -671,6 +671,17 @@ it('keeps genuinely unseen saved pages available beyond the cached public window
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
+it('offers the existing menu for a locally tracked payment eligible for Speed Up', () => {
+  const local = transaction('a', {
+    historySource: 'local-signed',
+    speedUpAvailable: true,
+  });
+  mockRows = [local];
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(screen.getByText('Saved · unconfirmed')).toBeTruthy();
+  expect(screen.getByText(`Options:${local.hash}`)).toBeTruthy();
+});
+
 it('keeps existing activity rows and renders signed controls only when no visible authenticated outer represents the group', async () => {
   const instruction = {
     account: ACCOUNT,

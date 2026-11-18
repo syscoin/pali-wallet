@@ -274,6 +274,108 @@ test('a replacement rechecks its pending predecessor after a concurrent journal 
   assert.equal(await f.store.readExact(f.session(), '7654321', signer.address, candidate.hash), null);
   assert.equal((await f.store.readExact(f.session(), '7654321', signer.address, original.hash))?.phase, 'confirmed');
 });
+test('ordinary native dispatch persists only unsigned bytes and keeps the signed hash after restart', async () => {
+  const f = fixture(), input = await signed(), session = f.session();
+  const unsigned = Transaction.from(input.rawTransaction).unsignedSerialized;
+  const boundary = captureEvmSubmission(input.context, session.assertCurrent,
+    () => createEvmSignedRecordLifecycle(f.store, session, { retainUnsignedNative: true, retirementReadForChain: null }));
+  let sent: string | undefined;
+  await submitSignedEvmTransaction(input.rawTransaction, ({ rawTransaction, admit }) => admit(async () => {
+    sent = rawTransaction;
+    return input.hash;
+  }), boundary, undefined, unsigned);
+  assert.equal(sent, input.rawTransaction);
+  const reopened = new EvmSignedRecords(f.port);
+  const recovered = await reopened.readExact(session, input.chainId, input.from, input.hash);
+  assert.equal(recovered?.payloadKind, 'unsigned-eoa');
+  assert.equal(recovered?.unsignedTransaction, unsigned);
+  assert.equal(recovered?.rawTransaction, undefined);
+  assert.equal(recovered?.hash, input.hash);
+  assert.equal(recovered?.phase, 'signed');
+  const row = JSON.parse(f.value()!).entries[0];
+  const pieces = await Promise.all(row.chunks.map((envelope: any, i: number) => session.keyring.decryptPrivateRecord({
+    domain: envelope.domain, recordId: input.hash + '/' + i, envelope
+  })));
+  assert.equal('0x' + Buffer.concat(pieces).toString('hex'), unsigned);
+  const snapshot = await reopened.captureAutoNonceSnapshot(session, input.chainId, input.from);
+  assert.equal(await snapshot.readMaximumCost(input.hash), 126123n);
+  await assert.rejects(snapshot.readSignedTransaction!(input.hash), /REQUIRES_NEW_SIGNATURE/);
+  const speedUp = await reopened.readEoaSpeedUpIntent(session, input.chainId, input.from, input.hash);
+  assert.equal(speedUp?.original.unsignedTransaction, unsigned);
+  assert.equal(await reopened.migrateUnsignedNative(session), 0);
+});
+
+test('native Activity exposes unsigned saved records for inspection without replay actions', async () => {
+  const { createNativeSignedRecordView } = await import('../src/custody/sharedSignedRecords.ts');
+  const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const f = fixture(), input = await signed(), session = f.session();
+  await f.store.append(session, input, undefined, undefined, true);
+  const network = createNativeNetwork({ id: 'custom:7654321', name: 'Fixture', kind: 'evm', chainId: input.chainId, slip44: 60,
+    rpcUrl: 'https://fixture.invalid', symbol: 'TEST', decimals: 18, testnet: true });
+  const view = createNativeSignedRecordView(f.store, session, '1'.repeat(64), { type: 'HDAccount', index: 0, address: signer.address }, network);
+  const entry = await view.load(input.hash);
+  assert.equal(entry?.hash, input.hash);
+  assert.equal(entry?.inspectionOnly, true);
+  assert.equal(entry?.rawTransaction, undefined);
+  const [row] = (await view.activities()).records;
+  assert.equal(row?.hash, input.hash);
+  assert.equal(row?.inspectionOnly, true);
+  assert.equal(row?.speedUpEligible, undefined);
+  assert.equal(row?.cancellationUnavailable, true);
+});
+
+test('legacy native migration rechecks CAS and preserves protected rows and phase', async () => {
+  const f = fixture(), session = f.session(), ordinary = await signed(), tagged = await signed(1);
+  await f.store.append(session, ordinary);
+  await f.store.append(session, tagged, { privateDeposit: true });
+  await f.store.updatePhase(session, ordinary.chainId, ordinary.from, ordinary.hash, 'attempted');
+  const previous = f.port.compareAndSet;
+  let refuse = true;
+  f.port.compareAndSet = async (...args) => {
+    if (refuse) { refuse = false; return false; }
+    return previous(...args);
+  };
+  assert.equal(await f.store.migrateUnsignedNative(session), 1);
+  const entry = await f.store.readExact(session, ordinary.chainId, ordinary.from, ordinary.hash);
+  assert.equal(entry?.payloadKind, 'unsigned-eoa');
+  assert.equal(entry?.phase, 'attempted');
+  assert.equal(entry?.rawTransaction, undefined);
+  assert.equal((await f.store.readExact(session, tagged.chainId, tagged.from, tagged.hash))?.rawTransaction, tagged.rawTransaction);
+  assert.equal(await f.store.migrateUnsignedNative(session), 0);
+});
+
+test('EOA Speed Up returns only unsigned intent for the current actionable hash', async () => {
+  const f = fixture(), original = await signed(), session = f.session();
+  const read = (hash: string) => f.store.readEoaSpeedUpIntent(session, original.chainId, signer.address, hash);
+  await f.store.append(session, original, undefined, undefined, true);
+  const recovered = await read(original.hash);
+  assert.ok(recovered);
+  assert.equal(recovered.original.unsignedTransaction, Transaction.from(original.rawTransaction).unsignedSerialized);
+  assert.equal('rawTransaction' in recovered.original, false);
+  const tx = Transaction.from(original.rawTransaction);
+  tx.signature = null;
+  tx.maxFeePerGas = 6n;
+  const rawTransaction = await signer.signTransaction(tx);
+  const hash = Transaction.from(rawTransaction).hash!;
+  await f.store.append(session, { ...original, hash, rawTransaction, context: {
+    ...original.context, operation: 'speed-up', originalHash: original.hash
+  } }, undefined, recovered.binding);
+  assert.equal(await read(original.hash), null);
+  assert.equal((await read(hash))?.binding.expectedTipHash, hash);
+  assert.equal((await f.store.readExact(session, original.chainId, signer.address, hash))?.payloadKind, 'unsigned-eoa');
+  await f.store.updatePhase(session, original.chainId, signer.address, hash, 'confirmed');
+  assert.equal(await read(hash), null);
+});
+
+test('EOA Speed Up excludes private, smart-account, and dapp recovery records', async () => {
+  const original = await signed();
+  for (const marker of ['privateDeposit', 'privateWithdrawal', 'smartAccountExecution', 'eoaCalls']) {
+    const f = fixture(), session = f.session();
+    await f.store.append(session, original, { [marker]: true });
+    assert.equal(await f.store.readEoaSpeedUpIntent(session, original.chainId, signer.address, original.hash), null);
+  }
+});
+
 test('a copied binding, changed tip or intervening cancellation blocks a retained replacement', async () => {
   const f = fixture(), original = await signed();
   const session = f.session();

@@ -265,8 +265,25 @@ export async function assertSignedSmartAccountExecution(
     );
     if (accepted.length !== 1) throw requireExecutionEvidence();
     const selected = accepted[0]!;
+    const unsigned = await snapshot.readUnsignedNativeTransaction?.(
+      selected.entry.hash
+    );
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    const raw = unsigned
+      ? (() => {
+          const original = Transaction.from(unsigned);
+          original.signature = {
+            r: selected.transaction.r,
+            s: selected.transaction.s,
+            v: readEvmRpcQuantity(
+              selected.transaction.v ?? selected.transaction.yParity
+            ),
+          };
+          return original.serialized;
+        })()
+      : await snapshot.readSignedTransaction(selected.entry.hash);
     const predecessor = recoverExecutionSimulationEnvelope(
-      await snapshot.readSignedTransaction(selected.entry.hash),
+      raw,
       selected.entry.hash
     );
     assertSynchronousEvmFeeGuard(assertCurrent);

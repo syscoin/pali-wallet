@@ -377,9 +377,6 @@
   "send": {
     "savedUtxo": {
       "title": "Gespeicherte Überweisungen",
-      "review": "Gespeicherte Überweisung prüfen",
-      "empty": "Keine gespeicherten Überweisungen",
-      "seen": "Überweisung im Netzwerk gefunden",
       "check": "Überweisung prüfen"
     },
     "openWalletTab": "Im Wallet-Tab öffnen",
@@ -669,6 +666,9 @@
     "balanceUnavailable": "Kontostand nicht verfügbar"
   },
   "settings": {
+    "clearUtxoActivity": "Aktivität löschen",
+    "clearUtxoActivityWarning": "Gespeicherte Aktivitäten für {{account}} auf {{network}} löschen? Aktivitäten aus Blockbook werden nach dem Aktualisieren wieder angezeigt. Ausstehende Transaktionen können weiterhin bestätigt werden.",
+    "clearUtxoActivitySuccess": "Gespeicherte Aktivitäten gelöscht.",
     "clearActivityAndNonce": "Aktivitäts- und Nonce-Daten löschen",
     "clearActivityAndNonceWarning": "Gespeicherte Aktivitäten und Nonce-Daten für {{account}} auf {{network}} löschen? Ausstehende Transaktionen können weiterhin ausgeführt werden. Gespeicherte Transaktionen können danach nicht erneut gesendet werden.",
     "clearActivityAndNonceConfirm": "Daten löschen",
@@ -904,7 +904,7 @@
     "importedAccountRemovalWarning": "Sichern Sie den importierten privaten Schlüssel, bevor Sie dieses Konto entfernen. Der lokal gespeicherte Schlüssel wird gelöscht. Die Wiederherstellungsphrase Ihrer Wallet kann diesen importierten Schlüssel nicht wiederherstellen.",
     "accountRemovalContextChanged": "Der Kontokontext hat sich geändert. Bitte bestätige das Entfernen erneut.",
     "networkRemovalIncomplete": "Das Entfernen des Netzwerks wurde nicht abgeschlossen. Prüfe die Netzwerkliste und versuche es erneut.",
-    "networkRemovalHasSavedTransfer": "Prüfe deine gespeicherten Transaktionen, bevor du dieses Netzwerk entfernst.",
+    "networkRemovalHasSavedTransfer": "Der Status einer Transaktion in diesem Netzwerk ist unklar. Du kannst das Netzwerk entfernen, sobald der Status feststeht.",
     "networkRemovalHasImportedAccounts": "Behalte dieses Netzwerk, solange es importierte Konten enthält.",
     "networkRemovalHasSentryKeys": "Behalte dieses Netzwerk, solange Sentry-Schlüssel dafür gespeichert sind.",
     "accountRemovedSuccessfully": "Konto erfolgreich entfernt",
@@ -2109,6 +2109,8 @@
       "maintenanceTitle": "Fehlerbehebung"
     },
     "resetActivity": {
+      "utxoQuestion": "Zwischengespeicherte Aktivitäten löschen?",
+      "utxoDescription": "Pali löscht die zwischengespeicherten Aktivitäten für dieses Konto in diesem Netzwerk und lädt sie anschließend erneut aus dem Netzwerk.",
       "title": "Aktivität zurücksetzen",
       "question": "Lokale Aktivitäten und Nonce-Daten löschen?",
       "description": "Pali entfernt die lokal gespeicherten Transaktionen und Nonce-Daten für dieses Konto in diesem Netzwerk und aktualisiert anschließend die Aktivitäten.",
@@ -3629,10 +3631,8 @@
       },
       "utxo": {
         "assetBaseUnits": "{{amount}} Basiseinheiten · Asset {{assetId}}",
-        "outputIndex": "Ausgang {{index}}",
         "availableAmount": "Verfügbar: {{amount}} {{symbol}}",
         "rbfStatus": "Replace-by-Fee {{status}}",
-        "output1": "Ausgang 1",
         "tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesThen": "Zu viele fehlgeschlagene Autorisierungsversuche. Warte einige Minuten und versuche es erneut. Deine Prüfung bleibt bis zum Ablauf verfügbar.",
         "enterAValidAddressAndAmountForThisNetwork": "Gib eine gültige Adresse und einen Betrag für dieses Netzwerk ein.",
         "thisReviewIsNoLongerAvailableOpenANewReview": "Diese Prüfung ist nicht mehr verfügbar. Öffne eine neue Prüfung, um fortzufahren.",
@@ -3640,13 +3640,10 @@
         "aSavedTransferUsesTheseFundsCheckItsStatusBefore": "Eine gespeicherte Übertragung verwendet dieses Guthaben. Prüfe ihren Status, bevor du erneut sendest.",
         "thisTransferWouldSpendAPossibleSentryCollateralOutput": "Diese Übertragung würde einen möglichen Sentry-Sicherheitsleistungsausgang ausgeben.",
         "paliCouldNotCompleteThisRequestTryAgainOrCheck": "Pali konnte diese Anfrage nicht abschließen. Versuche es erneut oder prüfe deine gespeicherten Übertragungen.",
-        "resendSavedTransfer": "Gespeicherte Übertragung erneut senden",
         "working": "In Bearbeitung",
         "submitted": "Gesendet",
-        "thisTransferIsSavedCheckItsStatusBeforeSendingIt": "Diese Übertragung ist gespeichert. Prüfe ihren Status, bevor du sie erneut sendest.",
         "youCanCheckTheLatestNetworkStatusHere": "Hier kannst du den aktuellen Netzwerkstatus prüfen.",
         "nativeAmountSentWithAsset": "Mit dem Asset gesendeter nativer Betrag",
-        "originalProvider": "Ursprünglicher Anbieter",
         "replacebyfee": "Replace-by-Fee",
         "zDAGUnavailable": "Z-DAG nicht verfügbar",
         "zDAGIsUnavailableForThisTransactionSizeReplacebyfeeIsEnabled": "Z-DAG ist für diese Transaktionsgröße nicht verfügbar. Replace-by-Fee ist aktiviert.",

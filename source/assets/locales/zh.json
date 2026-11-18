@@ -377,9 +377,6 @@
   "send": {
     "savedUtxo": {
       "title": "已保存的转账",
-      "review": "核对已保存的转账",
-      "empty": "没有已保存的转账",
-      "seen": "已在网络上查到转账",
       "check": "查询转账"
     },
     "openWalletTab": "在钱包标签页中打开",
@@ -669,6 +666,9 @@
     "balanceUnavailable": "余额暂不可用"
   },
   "settings": {
+    "clearUtxoActivity": "清除活动记录",
+    "clearUtxoActivityWarning": "清除 {{account}} 在 {{network}} 上保存的活动记录？刷新后，Blockbook 中的活动记录会重新显示。待处理交易仍可能获得确认。",
+    "clearUtxoActivitySuccess": "已清除保存的活动记录。",
     "clearActivityAndNonce": "清除活动和 nonce 数据",
     "clearActivityAndNonceWarning": "清除 {{account}} 在 {{network}} 上保存的活动和 nonce 数据？待处理的交易仍可能执行。已保存的交易将无法重试。",
     "clearActivityAndNonceConfirm": "清除数据",
@@ -904,7 +904,7 @@
     "importedAccountRemovalWarning": "移除此账户前，请备份导入的私钥。本地存储的密钥将被删除。钱包恢复短语无法恢复此导入的密钥。",
     "accountRemovalContextChanged": "账户状态已更改。请再次确认删除。",
     "networkRemovalIncomplete": "网络移除未完成。请检查网络列表后重试。",
-    "networkRemovalHasSavedTransfer": "移除此网络前，请检查已保存的转账。",
+    "networkRemovalHasSavedTransfer": "此网络上有一笔状态未知的转账。确认其状态后即可移除此网络。",
     "networkRemovalHasImportedAccounts": "此网络中有导入的账户，请保留该网络。",
     "networkRemovalHasSentryKeys": "此网络中有已保存的 Sentry 密钥，请保留该网络。",
     "accountRemovedSuccessfully": "账户删除成功",
@@ -2109,6 +2109,8 @@
       "maintenanceTitle": "故障排除"
     },
     "resetActivity": {
+      "utxoQuestion": "清除缓存的活动？",
+      "utxoDescription": "Pali 将清除此账户在当前网络上的活动缓存，然后从网络重新加载活动。",
       "title": "重置活动",
       "question": "清除本地活动和 nonce 数据？",
       "description": "Pali 将移除本地保存的此账户在此网络上的交易及 nonce 跟踪，然后刷新活动。",
@@ -3629,10 +3631,8 @@
       },
       "utxo": {
         "assetBaseUnits": "{{amount}} 原始单位 · 资产 {{assetId}}",
-        "outputIndex": "输出 {{index}}",
         "availableAmount": "可用 {{amount}} {{symbol}}",
         "rbfStatus": "费用替换 {{status}}",
-        "output1": "输出 1",
         "tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesThen": "授权失败次数过多，请等待几分钟后重试。当前审核在过期前仍可使用。",
         "enterAValidAddressAndAmountForThisNetwork": "请输入此网络的有效地址和金额。",
         "thisReviewIsNoLongerAvailableOpenANewReview": "此次审核已不可用。请打开新的审核以继续。",
@@ -3640,13 +3640,10 @@
         "aSavedTransferUsesTheseFundsCheckItsStatusBefore": "已保存的转账占用这些资金。再次发送前请检查其状态。",
         "thisTransferWouldSpendAPossibleSentryCollateralOutput": "此转账将花费可能属于 Sentry 抵押品的输出。",
         "paliCouldNotCompleteThisRequestTryAgainOrCheck": "Pali 无法完成此请求。请重试或检查已保存的转账。",
-        "resendSavedTransfer": "重发已保存的转账",
         "working": "正在处理",
         "submitted": "已提交",
-        "thisTransferIsSavedCheckItsStatusBeforeSendingIt": "此转账已保存。再次发送前请检查状态。",
         "youCanCheckTheLatestNetworkStatusHere": "可在此检查最新网络状态。",
         "nativeAmountSentWithAsset": "随资产发送的原生币金额",
-        "originalProvider": "原始提供方",
         "replacebyfee": "费用替换",
         "zDAGUnavailable": "Z-DAG 不可用",
         "zDAGIsUnavailableForThisTransactionSizeReplacebyfeeIsEnabled": "此交易大小无法使用 Z-DAG。已启用费用替换。",

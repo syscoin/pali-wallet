@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { Button, Card } from 'components/index';
 import { useController } from 'hooks/useController';
+import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 
 import {
@@ -48,13 +49,13 @@ const InfrastructurePanel = ({
 }) => {
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
+  const { alert } = useUtils();
   const [status, setStatus] = useState<InfrastructureStatus | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [reading, setReading] = useState(true);
   const [deploying, setDeploying] = useState(false);
   const [slow, setSlow] = useState(false);
   const [slowDeployment, setSlowDeployment] = useState(false);
-  const [message, setMessage] = useState('');
   const mounted = useRef(false);
   const pendingRead = useRef<Promise<void>>();
   const pendingDeploy = useRef(false);
@@ -142,7 +143,6 @@ const InfrastructurePanel = ({
     }
     pendingDeploy.current = true;
     setDeploying(true);
-    setMessage('');
     try {
       const assertCurrent = () => {
         if (!mounted.current || !allowed.current)
@@ -176,16 +176,17 @@ const InfrastructurePanel = ({
         assertCurrent();
       }
     } catch (error: any) {
-      if (mounted.current) {
+      if (mounted.current && allowed.current) {
         const errorText = String(error?.message || error || '').toLowerCase();
         const insufficientGas =
           /insufficient (?:funds|balance)|lack ?of ?fund/.test(errorText) ||
           (errorText.includes('maxfee') && errorText.includes('fund'));
-        setMessage(
-          insufficientGas
-            ? t('settings.smartAccountInfrastructureInsufficientGas')
-            : t('settings.smartAccountInfrastructureCheckBeforeRetry')
-        );
+        if (insufficientGas)
+          alert.error(t('settings.smartAccountInfrastructureInsufficientGas'));
+        else
+          alert.warning(
+            t('settings.smartAccountInfrastructureCheckBeforeRetry')
+          );
       }
     } finally {
       try {
@@ -240,7 +241,6 @@ const InfrastructurePanel = ({
             {(current?.pending || slowDeployment) && (
               <p>{t('settings.smartAccountInfrastructurePending')}</p>
             )}
-            {message && <p>{message}</p>}
           </div>
           <Button
             variant="neutral"

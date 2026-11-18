@@ -1571,11 +1571,15 @@ export function createKeyringRuntimeFactory(
           }
           publishAccounts(next);
           if (JSON.stringify(await readIdentity()) !== JSON.stringify(identity)) throw new KeyringRuntimeError('CANCELLED');
-          current(captured);
-          await signedRecords.validate({keyring: transactionRecordKeyring(keyring, () => current(captured)),assertCurrent:()=>current(captured)}); current(captured);
+          const assertCurrent = () => current(captured);
+          assertCurrent();
+          const transactionSession = { keyring: transactionRecordKeyring(keyring, assertCurrent), assertCurrent };
+          await signedRecords.migrateUnsignedNative(transactionSession, { nativeEoa: false });
+          assertCurrent();
           if (admitted.records.some(({ key }) => key === UTXO_SIGNED_RECORD_KEY)) {
             if (!utxoRecords) throw new KeyringRuntimeError('OPERATION_FAILED');
-            await utxoRecords.validate({ keyring: transactionRecordKeyring(keyring, () => current(captured)), assertCurrent: () => current(captured) }); current(captured);
+            await utxoRecords.migrate(transactionSession);
+            assertCurrent();
           }
           authenticatedPair = identity.pairFingerprint;
           verifiedIdentity = identity;
@@ -5190,7 +5194,7 @@ export function createKeyringRuntimeFactory(
                   check();
                   if (saved.total !== saved.entries.length)
                     throw new Error('Recovery transaction observation is incomplete');
-                  return saved.entries;
+                  return saved.entries.filter(entry => entry.payloadKind !== 'unsigned-eoa');
                 },
                 observe: entry => observeRetainedEvmTransaction(
                   signedRecords,
@@ -7515,15 +7519,6 @@ export function createKeyringRuntimeFactory(
             const selected = selectedAccount(), network = snapshot && findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
             if (!network || selected.type === 'SmartAccount' || !supportsUtxoSoftwareCustody(network)) throw new KeyringRuntimeError('NOT_READY');
             let trezorAttempt: Awaited<ReturnType<typeof openTrezorAttempt>> | undefined;
-            if (selected.type === 'Trezor') {
-              const check = () => {
-                current(captured); checkGuard(assertOwner);
-                if (admittedTrezorEpoch !== trezorEpoch || catalogueSnapshot !== snapshot || active || reserved || selectedAccount().id !== selected.id)
-                  throw new KeyringRuntimeError('CANCELLED');
-              };
-              trezorAttempt = await openTrezorAttempt(captured, check, 'utxo-send', selected.label, undefined, () => undefined);
-              ring = trezorAttempt.ring;
-            }
             const sdkNetwork = getUtxoSdkNetwork(network), account = state.accounts[selected.type][selected.index]!;
             const { xpub } = account;
             let authenticating = false;
@@ -7555,12 +7550,11 @@ export function createKeyringRuntimeFactory(
               if (typeof value.psbt !== 'string' || typeof value.assets !== 'string') throw new KeyringRuntimeError('INVALID_INPUT');
               return Object.freeze({ psbt: Object.freeze({ psbt: value.psbt, assets: value.assets }) });
             };
-            const utxoSigningTarget = (input: Parameters<IndexedKeyring['syscoinTransaction']['signPSBT']>[0] | null): string => {
-              if (input === null) return 'utxo:retained-replay';
+            const utxoSigningTarget = (input: Parameters<IndexedKeyring['syscoinTransaction']['signPSBT']>[0]): string => {
               const value = snapshotUtxoSigningInput(input).psbt;
               return `utxo:${JSON.stringify([value.psbt, value.assets])}`;
             };
-            const authenticateUtxoOperation = async (credential: NativeOperationCredential, input: Parameters<IndexedKeyring['syscoinTransaction']['signPSBT']>[0] | null, check: () => void) => {
+            const authenticateUtxoOperation = async (credential: NativeOperationCredential, input: Parameters<IndexedKeyring['syscoinTransaction']['signPSBT']>[0], check: () => void) => {
               guard();
               authenticating = true;
               let receipt: NativeOperationAuthorization;
@@ -7597,14 +7591,9 @@ export function createKeyringRuntimeFactory(
               list: () => opened.list(),
               refreshSaved: () => opened.refreshSaved(),
               check: txid => opened.check(txid),
-              async prepareRetry(txid) {
-                if (trezorAttempt && trezorSession === trezorAttempt.session) await cancelTrezor(false);
-                trezorAttempt = undefined;
-                return opened.prepareRetry(txid);
-              },
               async prepare(input) {
                 const feeChoice = snapshotUtxoFeeChoice(input.feeChoice ?? AUTOMATIC_FEE);
-                if (selected.type === 'Trezor' && (!pendingTrezor || trezorSession !== trezorAttempt?.session)) {
+                if (selected.type === 'Trezor' && (!trezorAttempt || !pendingTrezor || trezorSession !== trezorAttempt.session)) {
                   guard();
                   const check = () => {
                     current(captured); checkGuard(assertOwner);
@@ -7812,7 +7801,7 @@ export function createKeyringRuntimeFactory(
                 }
               }
               const { original, binding, rates } = retained;
-              if (!binding) return null;
+              if (!binding || typeof original.rawTransaction !== 'string') return null;
               const expiresAt = Date.now() + EVM_FEE_APPROVAL_LIFETIME_MS;
               const owner: ReplacementOwner = Object.freeze({ payer, selected, metadata: original.metadata, assertCurrent() {
                 current(captured);
@@ -7825,7 +7814,7 @@ export function createKeyringRuntimeFactory(
               const intent = mode === 'speed-up' && original.metadata?.intent !== undefined
                 ? snapshotErc20TransferIntent(original.metadata.intent) : undefined;
               const tx = Transaction.from(original.rawTransaction);
-              const collectible = mode === 'speed-up' ? decodeRetainedNftTransfer(original, tx) : undefined;
+              const collectible = mode === 'speed-up' ? decodeRetainedNftTransfer({ ...original, rawTransaction: original.rawTransaction }, tx) : undefined;
               return Object.freeze({ rawTransaction: original.rawTransaction, binding, rates, ...(intent ? { intent } : {}),
                 ...(collectible ? { collectible } : {}), ...(selected.type === 'SmartAccount' ? { smartAccount: selected.address } : {}) });
             },
@@ -8047,6 +8036,7 @@ export function createKeyringRuntimeFactory(
                       network.chainId, selected.address, hash);
                     check();
                     if (entry?.metadata && (Object.hasOwn(entry.metadata, 'privateDeposit') || Object.hasOwn(entry.metadata, 'privateWithdrawal'))) {
+                      if (entry.payloadKind === 'unsigned-eoa') throw new KeyringRuntimeError('INVALID_INPUT');
                       const deposit = readPrivateDepositAttempt(entry), withdrawal = readPrivateWithdrawalAttempt(entry);
                       if (!!deposit === !!withdrawal) throw new KeyringRuntimeError('INVALID_INPUT');
                       owner.attempt = JSON.stringify(deposit ? { kind: 'deposit', attempt: deposit } : { kind: 'withdrawal', attempt: withdrawal });
@@ -8234,7 +8224,7 @@ export function createKeyringRuntimeFactory(
                 try {
                   if (replacement?.mode === 'speed-up') {
                     const retained = await signedRecords.readExact({ keyring: transactionRecordKeyring(keyring, check), assertCurrent: check }, tx.chainId.toString(), context.account.address, replacement.original.hash);
-                    if (!retained) throw new NativeTransferError('EXPIRED');
+                    if (!retained || retained.payloadKind === 'unsigned-eoa') throw new NativeTransferError('EXPIRED');
                     const original = Transaction.from(retained.rawTransaction);
                     const savedIntent = retained.metadata?.intent === undefined ? undefined : snapshotErc20TransferIntent(retained.metadata.intent);
                     if (intent?.kind === 'nft-transfer' || !equalTransferIntent(savedIntent, intent) || !tx.from)

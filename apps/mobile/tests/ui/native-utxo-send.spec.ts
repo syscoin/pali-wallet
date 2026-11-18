@@ -50,35 +50,19 @@ test('narrow UTXO review puts the exact recipient and fee before consent', async
   await expect(page.getByText('Submitted', { exact: true })).toBeVisible();
 });
 
-test('a saved UTXO retry reviews each output and the original provider before resubmission', async ({
-  page,
-}) => {
+test('a saved UTXO transfer offers status checks without resubmission', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
-  await page.goto('/?utxo-send&alternate-provider');
+  await page.goto('/?utxo-send');
   await page.getByRole('button', { name: 'Check transfer aaaaaaaa…' }).click();
   await expect(page.getByText('Submission unverified')).toBeVisible();
-  await page.getByRole('button', { name: 'Review saved transfer' }).click();
-  await expect(page.getByText('Output 1', { exact: true })).toBeVisible();
-  await expect(
-    page.getByText('Output 2 · 0.000005 BTC', { exact: true })
-  ).toBeVisible();
-  await expect(
-    page.getByText('Original provider', { exact: true })
-  ).toBeVisible();
-  await expect(
-    page.getByText('https://previous-provider.example:8443', { exact: true })
-  ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth
-    )
-  ).toBe(true);
-  await page.getByRole('button', { name: 'Resend saved transfer' }).click();
-  await authenticateNativeOperation(page);
-  await expect(page.getByText('Submitted', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Review saved transfer' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Resend saved transfer' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Check status', exact: true }).click();
+  await expect(page.getByText('Submission unverified')).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())).toBe(0);
 });
 
-test('an expired confirmation exposes newly saved bytes in the same composer', async ({
+test('an expired confirmation exposes the saved transfer in the same composer', async ({
   page,
 }) => {
   await page.goto('/?utxo-send&saved-before-expiry');

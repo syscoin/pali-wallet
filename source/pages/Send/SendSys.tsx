@@ -45,7 +45,6 @@ import { getRefreshedSyscoinAssetSelection } from 'utils/syscoinAssetSelection';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { isValidSYSAddress } from 'utils/validations';
 
-import { SavedUtxoTransfers } from './SavedUtxoTransfers';
 import {
   getScopedSendDraft,
   useSendDraftWriter,
@@ -1296,7 +1295,6 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           </Button>
         </PageActionFooter>
       </Form>
-      <SavedUtxoTransfers symbol={activeNetwork.currency.toUpperCase()} />
     </div>
   );
 };

@@ -377,9 +377,6 @@
   "send": {
     "savedUtxo": {
       "title": "Transferências salvas",
-      "review": "Revisar transferência salva",
-      "empty": "Nenhuma transferência salva",
-      "seen": "Transferência detectada na rede",
       "check": "Consultar transferência"
     },
     "openWalletTab": "Abrir na aba da carteira",
@@ -669,6 +666,9 @@
     "balanceUnavailable": "Saldo indisponível"
   },
   "settings": {
+    "clearUtxoActivity": "Limpar atividade",
+    "clearUtxoActivityWarning": "Limpar a atividade salva de {{account}} em {{network}}? A atividade do Blockbook voltará a aparecer após a atualização. As transações pendentes ainda podem ser confirmadas.",
+    "clearUtxoActivitySuccess": "Atividade salva apagada.",
     "clearActivityAndNonce": "Limpar atividade e dados de nonce",
     "clearActivityAndNonceWarning": "Limpar a atividade e os dados de nonce de {{account}} em {{network}}? As transações pendentes ainda podem ser executadas. As transações guardadas deixarão de estar disponíveis para tentar novamente.",
     "clearActivityAndNonceConfirm": "Limpar dados",
@@ -904,7 +904,7 @@
     "importedAccountRemovalWarning": "Faça uma cópia de segurança da chave privada importada antes de remover esta conta. A chave armazenada localmente será excluída. A frase de recuperação da sua carteira não pode restaurar esta chave importada.",
     "accountRemovalContextChanged": "O contexto da conta mudou. Confirme a remoção novamente.",
     "networkRemovalIncomplete": "A remoção da rede não foi concluída. Verifique a lista de redes e tente novamente.",
-    "networkRemovalHasSavedTransfer": "Verifique as transferências salvas antes de remover esta rede.",
+    "networkRemovalHasSavedTransfer": "Ainda não se conhece o estado de uma transferência nesta rede. Pode remover a rede quando o estado for confirmado.",
     "networkRemovalHasImportedAccounts": "Mantenha esta rede enquanto ela tiver contas importadas.",
     "networkRemovalHasSentryKeys": "Mantenha esta rede enquanto ela tiver chaves Sentry salvas.",
     "accountRemovedSuccessfully": "Conta removida com sucesso",
@@ -2109,6 +2109,8 @@
       "maintenanceTitle": "Resolução de problemas"
     },
     "resetActivity": {
+      "utxoQuestion": "Limpar a atividade em cache?",
+      "utxoDescription": "O Pali limpará a atividade em cache desta conta nesta rede e voltará a carregá-la a partir da rede.",
       "title": "Redefinir atividade",
       "question": "Limpar a atividade local e os dados de nonce?",
       "description": "O Pali irá remover as transações e o acompanhamento de nonces guardados localmente para esta conta nesta rede e depois atualizará a atividade.",
@@ -3629,10 +3631,8 @@
       },
       "utxo": {
         "assetBaseUnits": "{{amount}} unidades-base · Ativo {{assetId}}",
-        "outputIndex": "Saída {{index}}",
         "availableAmount": "Disponível: {{amount}} {{symbol}}",
         "rbfStatus": "Substituição por taxa (RBF) {{status}}",
-        "output1": "Saída 1",
         "tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesThen": "Muitas tentativas de autorização malsucedidas. Aguarde alguns minutos e tente novamente. Sua revisão continua disponível até expirar.",
         "enterAValidAddressAndAmountForThisNetwork": "Insira um endereço e um valor válidos para esta rede.",
         "thisReviewIsNoLongerAvailableOpenANewReview": "Esta revisão não está mais disponível. Abra uma nova revisão para continuar.",
@@ -3640,13 +3640,10 @@
         "aSavedTransferUsesTheseFundsCheckItsStatusBefore": "Uma transferência salva usa estes fundos. Verifique seu status antes de enviar novamente.",
         "thisTransferWouldSpendAPossibleSentryCollateralOutput": "Esta transferência gastaria uma possível saída de garantia Sentry.",
         "paliCouldNotCompleteThisRequestTryAgainOrCheck": "A Pali não conseguiu concluir esta solicitação. Tente novamente ou verifique suas transferências salvas.",
-        "resendSavedTransfer": "Reenviar transferência salva",
         "working": "Em andamento",
         "submitted": "Enviada",
-        "thisTransferIsSavedCheckItsStatusBeforeSendingIt": "Esta transferência está salva. Verifique seu status antes de enviá-la novamente.",
         "youCanCheckTheLatestNetworkStatusHere": "Você pode verificar o status mais recente da rede aqui.",
         "nativeAmountSentWithAsset": "Valor nativo enviado com o ativo",
-        "originalProvider": "Provedor original",
         "replacebyfee": "Substituição por taxa",
         "zDAGUnavailable": "Z-DAG indisponível",
         "zDAGIsUnavailableForThisTransactionSizeReplacebyfeeIsEnabled": "Z-DAG está indisponível para este tamanho de transação. A substituição por taxa está ativada.",

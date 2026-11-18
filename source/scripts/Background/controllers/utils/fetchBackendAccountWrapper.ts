@@ -251,9 +251,20 @@ export const fetchBackendAccountCached = async (
 };
 
 /** Retiring a context cancels work; refreshing values only invalidates completed observations. */
-export const clearFetchBackendAccountCache = (completedOnly = false) => {
+export const clearFetchBackendAccountCache = (
+  completedOnly = false,
+  account?: { identifier: string; networkUrl: string }
+) => {
   for (const [key, entry] of requestCache) {
     if (completedOnly && !entry.settled) continue;
+    if (
+      account &&
+      entry.scopeKey !==
+        createScopeKey(account.networkUrl, account.identifier, true) &&
+      entry.scopeKey !==
+        createScopeKey(account.networkUrl, account.identifier, false)
+    )
+      continue;
     entry.abortController.abort();
     requestCache.delete(key);
   }

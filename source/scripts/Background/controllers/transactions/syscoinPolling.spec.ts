@@ -574,7 +574,8 @@ describe('SysTransactionController rapid polling', () => {
       URL,
       xpub,
       'details=basic&pageSize=0',
-      true
+      true,
+      undefined
     );
     // Local state is returned untouched
     expect(result).toEqual(localTxs);
@@ -619,7 +620,8 @@ describe('SysTransactionController rapid polling', () => {
       URL,
       xpub,
       'details=basic&pageSize=0',
-      true
+      true,
+      undefined
     );
     expect(result).toEqual(localTxs);
   });
@@ -664,7 +666,8 @@ describe('SysTransactionController rapid polling', () => {
       URL,
       xpub,
       'details=basic&pageSize=0',
-      true
+      true,
+      undefined
     );
     expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
       2,
@@ -802,7 +805,8 @@ describe('SysTransactionController validated history responses', () => {
       networkUrl,
       xpub,
       'details=basic&pageSize=0',
-      true
+      true,
+      undefined
     );
   });
 

@@ -645,6 +645,10 @@ export function createNativeWalletControllers() {
   };
   const resetActivity = async (assertOwner: () => void): Promise<void> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    if (utxoActivity.getUtxoActivityContext()) {
+      await observeFailure(() => utxoActivity.reset(assertCurrent));
+      return;
+    }
     await observeFailure(() => selected.resetActivity(assertCurrent, () => {
       transfers.cancelForActivityReset();
       activity.invalidate();

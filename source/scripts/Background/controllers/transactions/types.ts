@@ -247,7 +247,8 @@ export interface ISysTransactionsController {
   pollingSysTransactions: (
     xpub: string,
     networkUrl: string,
-    isRapidPolling?: boolean
+    isRapidPolling?: boolean,
+    signal?: AbortSignal
   ) => Promise<ISysTransaction[]>;
 }
 

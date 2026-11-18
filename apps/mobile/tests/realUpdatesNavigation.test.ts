@@ -6,7 +6,7 @@ import { PALI_LANGUAGE_OPTIONS } from '../../../source/shared/languagePolicy.ts'
 import { currencyFlag } from '../../../source/shared/currencyFlags.ts';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
 
-function fixture(watchOnly: boolean) {
+function fixture(watchOnly: boolean, utxo = false) {
   let back: (() => boolean) | undefined, exits = 0, locks = 0, immersive = false, checks = 0, resets = 0;
   const ui = { colors: {}, ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])) };
   const settings = screenFixture(new URL('../src/screens/RealSettings.tsx', import.meta.url), 'RealSettings', {
@@ -30,7 +30,7 @@ function fixture(watchOnly: boolean) {
   });
   let help: ReturnType<typeof createHelp> | undefined;
   const props = { accountLabel: 'Current account', watchOnly,
-    activityReset: { scope: 'account:network', networkLabel: 'Ethereum', async reset(check: () => void) { check(); resets++; } }, onLock() { locks++; }, onUpdate() { locks++; }, onBack() { exits++; },
+    activityReset: { scope: 'account:network', networkLabel: utxo ? 'Bitcoin' : 'Ethereum', utxo, async reset(check: () => void) { check(); resets++; } }, onLock() { locks++; }, onUpdate() { locks++; }, onBack() { exits++; },
     navigation: { registerBack(listener: () => boolean) { back = listener; return () => { if (back === listener) back = undefined; }; },
       beginNavigation() {}, setImmersive(value: boolean) { immersive = value; } } };
   const render = () => {
@@ -89,5 +89,18 @@ for (const mode of ['button', 'hardware']) test(`activity reset lives under Abou
     if (mode === 'hardware') f.hardwareBack(); else reset.props.onBack();
     assert(control(f.render(), 'Reset activity'));
     assert.equal(f.exits, 0); assert.equal(f.resets, 0);
+  } finally { f.close(); }
+});
+
+test('About routes UTXO activity reset to the selected network', () => {
+  const f = fixture(false, true);
+  try {
+    control(f.render(), 'Help & about').props.onPress();
+    const action = control(f.render(), 'Reset activity');
+    assert.equal(action.props.subtitle, 'Refresh activity');
+    action.props.onPress();
+    const reset = f.render();
+    assert.equal(reset.props.target.utxo, true);
+    assert.equal(reset.props.target.networkLabel, 'Bitcoin');
   } finally { f.close(); }
 });

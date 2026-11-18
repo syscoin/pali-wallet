@@ -69,14 +69,19 @@ export const createUtxoAcknowledgedInputs = (
 export const getRecentAcknowledgedInputOutpoints = (
   history: History | undefined,
   scope: Scope,
-  now = Date.now()
+  now = Date.now(),
+  clearedHistoryAcknowledgements: readonly UtxoAcknowledgedInputs[] = []
 ): Set<string> => {
   const outpoints = new Set<string>();
+  if (!Number.isSafeInteger(now)) return outpoints;
   const transactions = history?.[scope.chainId];
-  if (!Array.isArray(transactions) || !Number.isSafeInteger(now))
-    return outpoints;
-  for (const transaction of transactions) {
-    const local = transaction?.localAcknowledgedInputs;
+  const acknowledgements = Array.isArray(transactions)
+    ? transactions.map((transaction) => transaction?.localAcknowledgedInputs)
+    : [];
+  for (const local of [
+    ...acknowledgements,
+    ...clearedHistoryAcknowledgements,
+  ]) {
     if (
       !local ||
       typeof local !== 'object' ||
@@ -110,9 +115,15 @@ export const assertNoRecentAcknowledgedInputOverlap = (
   inputs: readonly Input[],
   history: History | undefined,
   scope: Scope,
-  now = Date.now()
+  now = Date.now(),
+  clearedHistoryAcknowledgements?: readonly UtxoAcknowledgedInputs[]
 ) => {
-  const acknowledged = getRecentAcknowledgedInputOutpoints(history, scope, now);
+  const acknowledged = getRecentAcknowledgedInputOutpoints(
+    history,
+    scope,
+    now,
+    clearedHistoryAcknowledgements
+  );
   if (utxoInputOutpoints(inputs).some((outpoint) => acknowledged.has(outpoint)))
     throw utxoNetworkCatchingUpError();
 };
