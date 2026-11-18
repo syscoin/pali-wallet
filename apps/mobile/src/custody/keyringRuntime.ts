@@ -7732,7 +7732,7 @@ export function createKeyringRuntimeFactory(
                   replacement: Object.freeze({ txid: replacement.txid, mode: replacement.mode }), feeChoice,
                 }), sha256(toUtf8Bytes(utxoSigningTarget(input))));
               } } : {}),
-              async sign(receipt, input, read, check, replacement) {
+              async sign(receipt, input, read, check, replacement, onPreSignAuthenticationRefusal) {
                 guard(); check();
                 const capturedInput = snapshotUtxoSigningInput(input), target = utxoSigningTarget(capturedInput);
                 if (accountType === 'Ledger' || accountType === 'Trezor') {
@@ -7752,8 +7752,17 @@ export function createKeyringRuntimeFactory(
                 }
                 const prepared = await ring.syscoinTransaction.preparePSBTForSigning(capturedInput, read);
                 guard(); check();
-                return withSoftwareSecret('transaction', new AbortController().signal, check,
-                  () => ring.syscoinTransaction.signPSBT({ psbt: prepared }, read), null, { receipt, target });
+                let signerEntered = false;
+                try {
+                  return await withSoftwareSecret('transaction', new AbortController().signal, check, () => {
+                    signerEntered = true;
+                    return ring.syscoinTransaction.signPSBT({ psbt: prepared }, read);
+                  }, null, { receipt, target });
+                } catch (error) {
+                  if (!signerEntered && error instanceof Error && operationAuthenticationRefusals.has(error))
+                    onPreSignAuthenticationRefusal();
+                  throw error;
+                }
               },
             });
             let opened = createOpened();
@@ -7772,6 +7781,7 @@ export function createKeyringRuntimeFactory(
             };
             return Object.freeze<NativeUtxoSend>({ ...opened,
               cancel: () => opened.cancel(),
+              isReviewCurrent: view => opened.isReviewCurrent(view),
               feeRecommendations: signal => opened.feeRecommendations(signal),
               availableReplacements: (txid, assertCurrent) => opened.availableReplacements(txid, assertCurrent),
               async prepareReplacement(input, inputFeeChoice) {

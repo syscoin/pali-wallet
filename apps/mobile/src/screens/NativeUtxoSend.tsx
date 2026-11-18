@@ -338,8 +338,11 @@ export function NativeUtxoSendScreen({
         if (current()) { setReview(null); setOutcome({ txid, phase: 'submitted', summary }); }
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : '';
-        if (current() && !['INVALID_CREDENTIAL', 'DEVICE_UNLOCK_UNAVAILABLE', 'AUTH_THROTTLED'].includes(code)) {
-          setReview(null);
+        if (!current()) throw cause;
+        if (!send.isReviewCurrent(approved)) setReview(null);
+        else if (code === 'CANCELLED') {
+          setError(t('mobile.recoveryCopy.requestCancelled'));
+          return;
         }
         throw cause;
       }

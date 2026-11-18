@@ -2526,6 +2526,7 @@
         "verifyBackup": "Verificar backup",
         "backupVerified": "Backup verificado",
         "encryptedBackupSaved": "Backup criptografado salvo",
+        "savedFileVerificationUnavailable": "O backup foi salvo, mas o Pali não conseguiu verificar o arquivo salvo.",
         "verifySavedBackup": "Verificar backup salvo",
         "saveCouldNotBeConfirmed": "Não foi possível confirmar o salvamento",
         "checkYourChosenFolderForTheEncryptedFile": "Confira o arquivo criptografado na pasta escolhida antes de salvar outra cópia.",
@@ -2561,6 +2562,7 @@
         "notesRestored": "Notas restauradas",
         "yourExistingNotesWereKeptTheirStatusMay": "Suas notas existentes foram mantidas. O status delas ainda pode precisar de verificação.",
         "yourNotesAreSavedInThisWalletTheir": "Suas notas estão salvas nesta carteira. O status atual ainda precisa ser verificado.",
+        "invalidBackupFile": "Selecione um arquivo de backup criptografado válido do Pali.",
         "chooseBackupFile": "Escolher arquivo de backup",
         "chooseAnEncryptedPaliBackupToAddIts": "Escolha um backup criptografado do Pali para adicionar suas notas privadas a esta carteira."
       },

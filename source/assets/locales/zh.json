@@ -2526,6 +2526,7 @@
         "verifyBackup": "验证备份",
         "backupVerified": "备份已验证",
         "encryptedBackupSaved": "加密备份已保存",
+        "savedFileVerificationUnavailable": "备份已保存，但 Pali 无法验证已保存的文件。",
         "verifySavedBackup": "验证已保存备份",
         "saveCouldNotBeConfirmed": "无法确认保存结果",
         "checkYourChosenFolderForTheEncryptedFile": "保存另一份副本前，请检查所选文件夹中是否已有加密文件。",
@@ -2561,6 +2562,7 @@
         "notesRestored": "票据已恢复",
         "yourExistingNotesWereKeptTheirStatusMay": "现有票据已保留，可能仍需检查其状态。",
         "yourNotesAreSavedInThisWalletTheir": "票据已保存在此钱包中，仍需检查其当前状态。",
+        "invalidBackupFile": "请选择有效的 Pali 加密备份文件。",
         "chooseBackupFile": "选择备份文件",
         "chooseAnEncryptedPaliBackupToAddIts": "选择加密的 Pali 备份，将其中的隐私票据添加到此钱包。"
       },

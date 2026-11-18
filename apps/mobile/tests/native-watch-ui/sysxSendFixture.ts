@@ -99,6 +99,7 @@ export const sysxSendFixture = {
       feeRecommendations: async () => '7',
       availableReplacements: async () => [],
       prepareReplacement: unused,
+      isReviewCurrent: () => false,
     cancel() {
         revision++;
         counts.cancellations++;

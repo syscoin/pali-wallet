@@ -31,7 +31,7 @@ import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
 import { BackupVerification } from './BackupVerification';
 import { nativeAccountSelection } from '../core/accountDirectory';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeRecoveryCoordinator, createNativeWalletControllers } from '../platform/nativeFactory';
 import { NativeControllerLifecycle } from '../custody/nativeControllerLifecycle';
@@ -1758,8 +1758,18 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     return <NativePsbtReview key={connectionSnapshot.psbtReview.id} review={connectionSnapshot.psbtReview} controller={connectionView} ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined} />;
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.sentryReview && connectionView)
     return <NativeSentryReview key={connectionSnapshot.sentryReview.id} review={connectionSnapshot.sentryReview} controller={connectionView} />;
-  if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.controlReview && connectionView)
-    return <NativeDappControlReview key={connectionSnapshot.controlReview.id} review={connectionSnapshot.controlReview} controller={connectionView} />;
+  if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.controlReview && connectionView) {
+    const owner = controllersRef.current;
+    const captured = epoch.current;
+    const review = connectionSnapshot.controlReview;
+    return <NativeDappControlReview key={review.id} review={review} controller={connectionView} onApprovalFailure={() => {
+      if (!owner || !mounted.current || controllersRef.current !== owner || epoch.current !== captured ||
+          AppState.currentState !== 'active' || owner.authority.getSnapshot().phase !== 'ready') return;
+      const active = connectionView.getSnapshot().controlReview;
+      if (active && active.id !== review.id) return;
+      Alert.alert(t('mobile.dappConsent.dappControlReview.requestUnavailable'), t('mobile.accountPortfolio.error'));
+    }} />;
+  }
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && signingReview && connectionView)
     return signingReview.kind === 'encryption'
       ? <NativeEncryptionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />

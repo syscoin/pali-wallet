@@ -289,7 +289,7 @@ function NativeActivityContent({
   const { hidden: hideBalances } = useBalancePrivacy();
   const [selected, setSelected] = useState<string | null>(null);
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
-  const arrival = useRef<string | null>(null);
+  const arrival = useRef<{ hash: string; opened: boolean; waitingForPage: boolean } | null>(null);
   const targetOwner = useRef({ hash: initialHash, opened: onInitialTargetOpened });
   useLayoutEffect(() => { targetOwner.current = { hash: initialHash, opened: onInitialTargetOpened }; }, [initialHash, onInitialTargetOpened]);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
@@ -301,24 +301,29 @@ function NativeActivityContent({
   useEffect(() => {
     const target = initialHash;
     if (!target || snapshot.status === 'loading') { arrival.current = null; return; }
-    if (snapshot.status !== 'ready' || !snapshot.scopeKey || arrival.current === target) return;
-    arrival.current = target;
+    if (snapshot.status !== 'ready' || !snapshot.scopeKey) return;
+    const previous = arrival.current?.hash === target ? arrival.current : null;
+    if (previous && (previous.opened || !previous.waitingForPage)) return;
+    const attempt = previous ?? { hash: target, opened: false, waitingForPage: snapshot.loadingMore };
+    arrival.current = attempt;
     const epoch = lifetime.current.epoch;
     const selectLoaded = () => {
-      if (targetOwner.current.hash !== target || lifetime.current.epoch !== epoch || arrival.current !== target) return false;
+      if (targetOwner.current.hash !== target || lifetime.current.epoch !== epoch || arrival.current !== attempt || attempt.opened) return false;
       const current = controller.getSnapshot();
       if (current.status !== 'ready' || current.scopeKey !== snapshot.scopeKey) return false;
-      if (current.rows.some(row => row.hash === initialHash || row.smartAuthorizations?.some(value => value.instruction.operationHash === initialHash))) {
-        setSelected(initialHash);
-        controller.inspect(initialHash);
+      if (current.rows.some(row => row.hash === target || row.smartAuthorizations?.some(value => value.instruction.operationHash === target))) {
+        attempt.opened = true;
+        setSelected(target);
+        controller.inspect(target);
         targetOwner.current.opened?.();
         return true;
       }
       return false;
     };
     if (selectLoaded()) return;
-    void controller.loadTarget(target).then(selectLoaded).catch(() => undefined);
-  }, [controller, initialHash, snapshot.scopeKey, snapshot.status]);
+    attempt.waitingForPage = snapshot.loadingMore;
+    if (!previous) void controller.loadTarget(target).then(selectLoaded).catch(() => undefined);
+  }, [controller, initialHash, snapshot.scopeKey, snapshot.status, snapshot.loadingMore, snapshot.rows]);
   const list = useRef<FlatList<ActivityRow>>(null);
   const listBounds = useRef<React.ComponentRef<typeof View>>(null);
   const rowViews = useRef(new Map<string, React.ComponentRef<typeof View>>());

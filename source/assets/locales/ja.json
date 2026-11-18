@@ -2526,6 +2526,7 @@
         "verifyBackup": "バックアップを確認",
         "backupVerified": "バックアップ確認済み",
         "encryptedBackupSaved": "暗号化バックアップを保存しました",
+        "savedFileVerificationUnavailable": "バックアップは保存されましたが、Pali は保存したファイルを検証できませんでした。",
         "verifySavedBackup": "保存したバックアップを確認",
         "saveCouldNotBeConfirmed": "保存を確認できませんでした",
         "checkYourChosenFolderForTheEncryptedFile": "別のコピーを保存する前に、選択したフォルダの暗号化ファイルを確認してください。",
@@ -2561,6 +2562,7 @@
         "notesRestored": "ノートを復元しました",
         "yourExistingNotesWereKeptTheirStatusMay": "既存のノートは保持されました。状態の確認が必要な場合があります。",
         "yourNotesAreSavedInThisWalletTheir": "ノートをこのウォレットに保存しました。現在の状態を確認する必要があります。",
+        "invalidBackupFile": "有効な Pali の暗号化バックアップファイルを選択してください。",
         "chooseBackupFile": "バックアップファイルを選択",
         "chooseAnEncryptedPaliBackupToAddIts": "暗号化されたPaliバックアップを選び、このウォレットにプライベートノートを追加します。"
       },

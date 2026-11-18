@@ -48,7 +48,7 @@ import {
 } from '../../../../source/shared/evmRecipientChoices';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
 import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE,
-  type NativeTransferReview, type NativeTransferView } from '../custody/transfers';
+  type NativeTransferView } from '../custody/transfers';
 import type { NativeReplacementMode } from '../custody/transferRpc';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import {
@@ -285,7 +285,7 @@ export function NativeSend({
     : activeTokenSnapshot?.status === 'ready' ? activeTokenSnapshot.items : assetChoices ?? [];
   const [maximum, setMaximum] = useState(initialDraft?.max ?? false);
   const [tokenDetails, setTokenDetails] = useState(false);
-  const [receipt, setReceipt] = useState<Readonly<{ controller: NativeTransferView; hash: string; review: NativeTransferReview }> | null>(null);
+  const receiptReview = snapshot.receiptReview;
   const [ledgerPicker, setLedgerPicker] = useState<NativeLedgerConnectionView | null>(null);
   const ledgerReady = useSyncExternalStore(
     (listener) => ledgerConnection?.subscribe(listener) ?? (() => undefined),
@@ -617,9 +617,6 @@ export function NativeSend({
       }
     }, () => authenticationOwner.current === held);
     if (!lifetime.current.alive || authenticationOwner.current !== held || lifetime.current.epoch !== held.epoch) return;
-    const result = controller.getSnapshot();
-    if (result.hash && result.context?.registrationHash === held.review.context.registrationHash)
-      setReceipt({ controller, hash: result.hash, review: held.review });
     held.submitted = false;
     setAuthenticationBusy(false);
     if (!authenticationCurrent(held)) { authenticationOwner.current = null; }
@@ -948,13 +945,13 @@ export function NativeSend({
                     : cancellation ? t('mobile.sendAssetViews.evm.cancellationSubmitted') : replacementHash ? t('mobile.sendAssetViews.evm.replacementSubmitted') : t('privacy.deposit.submitted')}
                 </Text>
               </View>
-              {receipt?.controller === controller && receipt.hash === snapshot.hash && <Card style={s.summary}>
+              {receiptReview && <Card style={s.summary}>
                 <Text style={s.label}>{t('send.amount')}</Text>
-                <Text testID="native-send-receipt-amount">{receipt.review.collectible
-                  ? t('mobile.sendAssetViews.evm.collectiblesAmount', { count: receipt.review.collectible.amountUnits === '1' ? 1 : 2, amount: receipt.review.collectible.amountUnits })
-                  : `${receipt.review.intent ? formatTokenUnits(receipt.review.amountUnits, receipt.review.intent.token.decimals) : formatBaseUnits(receipt.review.amountUnits, 18)} ${receipt.review.intent?.token.symbol ?? capturedContext.symbol}`}</Text>
+                <Text testID="native-send-receipt-amount">{receiptReview.collectible
+                  ? t('mobile.sendAssetViews.evm.collectiblesAmount', { count: receiptReview.collectible.amountUnits === '1' ? 1 : 2, amount: receiptReview.collectible.amountUnits })
+                  : `${receiptReview.intent ? formatTokenUnits(receiptReview.amountUnits, receiptReview.intent.token.decimals) : formatBaseUnits(receiptReview.amountUnits, 18)} ${receiptReview.intent?.token.symbol ?? capturedContext.symbol}`}</Text>
                 <Text style={s.label}>{t('send.to')}</Text>
-                <Text selectable style={s.address}>{receipt.review.collectible?.recipient ?? receipt.review.recipient}</Text>
+                <Text selectable style={s.address}>{receiptReview.collectible?.recipient ?? receiptReview.recipient}</Text>
                 <Text style={s.hint}>{capturedContext.name}</Text>
               </Card>}
               {outcomeToken && tokenIdentity(outcomeToken)}

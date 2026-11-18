@@ -634,6 +634,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
           else active = false;
           release.resolve();
           await rejected;
+          assert.equal(send.isReviewCurrent(reviewed), false);
           active = true;
           authenticationHook = undefined;
           assert.equal(sign.mock.callCount(), 0);
@@ -1353,6 +1354,19 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         assert.deepEqual(review.outputs[0], { address: recipient, amountSatoshis: '40000' });
         assert.equal(review.outputs[1]?.address, script ? address : accountAddress(1, 0));
         assert(BigInt(review.feeSatoshis) > 0n);
+        if (target === UTXO_NETWORKS[0] && index === 0) {
+          const beforePosts = posts.length, beforeReads = credentialPort.secretReads;
+          for (const [refusal, message] of [
+            [operationAuthenticationCancellation(), 'CANCELLED'],
+            [Object.assign(Error('CREDENTIAL_UNAVAILABLE'), { code: 'CREDENTIAL_UNAVAILABLE' }), 'DEVICE_UNLOCK_UNAVAILABLE'],
+          ] as const) {
+            credentialPort.refuseNext(refusal);
+            await assert.rejects(send.confirm(review, { method: 'device' }), { message });
+            assert.equal(send.isReviewCurrent(review), true);
+            assert.equal(posts.length, beforePosts);
+          }
+          assert.equal(credentialPort.secretReads, beforeReads + 2);
+        }
         let txid: string;
         if (target === custom) {
           loseAcknowledgement = true;
@@ -1394,6 +1408,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         } else {
           ({ txid } = await send.confirm(review, { method: 'device' }));
         }
+        assert.equal(send.isReviewCurrent(review), false);
 
         if (target === UTXO_NETWORKS[0] && index === 0) {
           const beforeRefusedEdit = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY);

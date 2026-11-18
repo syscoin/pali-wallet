@@ -2526,6 +2526,7 @@
         "verifyBackup": "Vérifier la sauvegarde",
         "backupVerified": "Sauvegarde vérifiée",
         "encryptedBackupSaved": "Sauvegarde chiffrée enregistrée",
+        "savedFileVerificationUnavailable": "La sauvegarde a été enregistrée, mais Pali n’a pas pu vérifier le fichier enregistré.",
         "verifySavedBackup": "Vérifier la sauvegarde enregistrée",
         "saveCouldNotBeConfirmed": "Enregistrement non confirmé",
         "checkYourChosenFolderForTheEncryptedFile": "Vérifiez le fichier chiffré dans le dossier choisi avant d’enregistrer une autre copie.",
@@ -2561,6 +2562,7 @@
         "notesRestored": "Notes restaurées",
         "yourExistingNotesWereKeptTheirStatusMay": "Vos notes existantes ont été conservées. Leur statut peut encore nécessiter une vérification.",
         "yourNotesAreSavedInThisWalletTheir": "Vos notes sont enregistrées dans ce portefeuille. Leur statut actuel doit encore être vérifié.",
+        "invalidBackupFile": "Choisissez un fichier de sauvegarde chiffré Pali valide.",
         "chooseBackupFile": "Choisir un fichier de sauvegarde",
         "chooseAnEncryptedPaliBackupToAddIts": "Choisissez une sauvegarde Pali chiffrée pour ajouter ses notes privées à ce portefeuille."
       },

@@ -51,6 +51,7 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
   const send: NativeUtxoSend = {
     feeRecommendations: async () => '7',
     availableReplacements: async () => [],
+    isReviewCurrent: view => !expired && view === currentReview && prepared.get(view) === revision,
     async prepareReplacement() { throw Error('No replaceable transactions in this fixture'); },
     cancel() { revision++; owner?.abort(); },
     async prepare(input) {

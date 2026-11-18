@@ -88,7 +88,14 @@ export function createNativeUtxoSend(
   collateral: ReturnType<typeof createNativeSentryCollateral> | null,
   authorization: Readonly<{
     authorize(credential: NativeOperationCredential, input: Parameters<ISyscoinTransactions['signPSBT']>[0], assertCurrent: () => void): Promise<NativeOperationAuthorization>;
-    sign(receipt: NativeOperationAuthorization, input: Parameters<ISyscoinTransactions['signPSBT']>[0], read: Parameters<ISyscoinTransactions['signPSBT']>[1], assertCurrent: () => void, replacement?: NativeUtxoReplacement): ReturnType<ISyscoinTransactions['signPSBT']>;
+    sign(
+      receipt: NativeOperationAuthorization,
+      input: Parameters<ISyscoinTransactions['signPSBT']>[0],
+      read: Parameters<ISyscoinTransactions['signPSBT']>[1],
+      assertCurrent: () => void,
+      replacement: NativeUtxoReplacement | undefined,
+      onPreSignAuthenticationRefusal: () => void
+    ): ReturnType<ISyscoinTransactions['signPSBT']>;
     release(receipt: NativeOperationAuthorization): void;
     retainReviewedReplacement?(replacement: NativeUtxoReplacement, feeChoice: UtxoFeeChoice,
       input: Parameters<ISyscoinTransactions['signPSBT']>[0], assertCurrent: () => void): Promise<void>;
@@ -224,6 +231,11 @@ export function createNativeUtxoSend(
   };
   return Object.freeze({
     cancel,
+    isReviewCurrent(view: NativeUtxoReview): boolean {
+      if (!review || review.view !== view) return false;
+      try { session.assertCurrent(); } catch { return false; }
+      return now() < review.expires;
+    },
     async availableReplacements(txid: string, assertCurrent: () => void): Promise<readonly UtxoReplacementKind[]> {
       const retained = await candidate(txid, () => { session.assertCurrent(); assertCurrent(); }, true);
       return retained ? availableUtxoReplacementKinds(retained) : [];
@@ -467,7 +479,10 @@ export function createNativeUtxoSend(
             }
             const signed = await authorization.sign(receipt,
               { psbt: selected.binding.psbt },
-              read, check, selected.view.replacement
+              read, check, selected.view.replacement, () => {
+                check();
+                review = selected;
+              }
             );
             check();
             const { record } = selected.binding.bindSigned(signed);

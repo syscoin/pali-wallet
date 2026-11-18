@@ -186,7 +186,13 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
         <Text style={s.caption}>{t('mobile.activityViews.nativeActivity.refreshOrChooseAnotherFilter')}</Text>
       </View> : undefined}
       ListFooterComponent={<View style={s.section}>{snapshot.hasMore && !snapshot.refreshing && <Button title={snapshot.loadingMore ? t('mobile.activityViews.nativeActivity.loadingOlderActivity') : snapshot.partial ? t('mobile.activityViews.allNetworksActivity.retryActivity') : t('mobile.activityViews.nativeActivity.loadOlderActivity')} variant="secondary" size="compact"
-        disabled={busy || snapshot.loadingMore} onPress={() => void run(async () => { await controller.loadMore(); })} />}</View>} />
+        disabled={busy || snapshot.loadingMore} onPress={() => void run(async () => {
+          if (targetHash && arrival.current !== targetKey) {
+            arrival.current = targetKey;
+            targetOwner.current.opened?.();
+          }
+          await controller.loadMore();
+        })} />}</View>} />
     <Modal visible={sheet !== null} transparent animationType="slide" onRequestClose={closeSheet}>
       {sheet === 'filter' ? <NetworkSourceSheet purpose="filter" overContent busy={busy} selectedId={snapshot.filter ?? ''}
         error={error ? t('mobile.accountPortfolio.error') : undefined}

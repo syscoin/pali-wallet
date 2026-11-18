@@ -2526,6 +2526,7 @@
         "verifyBackup": "Sicherung prüfen",
         "backupVerified": "Sicherung geprüft",
         "encryptedBackupSaved": "Verschlüsselte Sicherung gespeichert",
+        "savedFileVerificationUnavailable": "Die Sicherung wurde gespeichert, aber Pali konnte die gespeicherte Datei nicht überprüfen.",
         "verifySavedBackup": "Gespeicherte Sicherung prüfen",
         "saveCouldNotBeConfirmed": "Speicherung konnte nicht bestätigt werden",
         "checkYourChosenFolderForTheEncryptedFile": "Prüfe den gewählten Ordner auf die verschlüsselte Datei, bevor du eine weitere Kopie speicherst.",
@@ -2561,6 +2562,7 @@
         "notesRestored": "Notizen wiederhergestellt",
         "yourExistingNotesWereKeptTheirStatusMay": "Deine vorhandenen Notizen wurden beibehalten. Ihr Status muss möglicherweise noch geprüft werden.",
         "yourNotesAreSavedInThisWalletTheir": "Deine Notizen sind in dieser Wallet gespeichert. Ihr aktueller Status muss noch geprüft werden.",
+        "invalidBackupFile": "Wähle eine gültige verschlüsselte Pali-Sicherungsdatei aus.",
         "chooseBackupFile": "Sicherungsdatei wählen",
         "chooseAnEncryptedPaliBackupToAddIts": "Wähle eine verschlüsselte Pali-Sicherung, um ihre privaten Notizen dieser Wallet hinzuzufügen."
       },

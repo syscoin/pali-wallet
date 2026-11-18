@@ -79,6 +79,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
   const reviews: NativeUtxoReview[] = [];
   const service = {
     cancel() { cancels++; },
+    isReviewCurrent: (view: NativeUtxoReview) => view === reviews.at(-1),
     async prepare(input: any): Promise<NativeUtxoReview> {
       requests.push(structuredClone(input));
       if (gate) await gate; // Deliberately deliver a late result after cancellation.
@@ -119,11 +120,11 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     close() { cells.forEach((value) => value.cleanup?.()); } };
 }
 
-test('device refusal keeps the exact UTXO review available for retry', async () => {
+for (const failure of ['DEVICE_UNLOCK_UNAVAILABLE', 'CANCELLED']) test(`${failure} keeps the exact UTXO review available for retry`, async () => {
   const f = fixture(); f.render(); await tick();
   try {
     f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
-    const reviewed = f.reviews[0]; f.failConfirmation('DEVICE_UNLOCK_UNAVAILABLE');
+    const reviewed = f.reviews[0]; f.failConfirmation(failure);
     f.press('Confirm and send'); await tick();
     assert.equal(f.counts().confirmations, 1); assert.equal(f.signatures(), 0);
     assert(all(f.render()).some(node => node.props.accessibilityRole === 'alert'));

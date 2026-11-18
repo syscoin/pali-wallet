@@ -328,6 +328,33 @@ test('an already loaded indexed transaction opens without waiting for saved inve
   } finally { f.dispose(); }
 });
 
+test('a watch notification opens when its transaction arrives on the first explorer page', async () => {
+  const owner = '0x' + '22'.repeat(20);
+  const scope = createActivityScope('a'.repeat(64), 'hd:60:0', owner, 'ethereum');
+  const indexed = mapEvmExplorerTransaction({ hash, from: '0x' + '33'.repeat(20), to: owner, value: '1',
+    blockNumber: '123', timeStamp: '1700000000', nonce: '0', isError: '0', input: '0x' }, 1);
+  const entered = Promise.withResolvers<void>(), page = Promise.withResolvers<void>();
+  const runtime: NativeActivityRuntime = {
+    async load() { return { scope, locals: [], saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false } }; },
+    async saveCache() {}, async saveView() {},
+  };
+  let opened = 0, detailReads = 0;
+  const controller = new NativeActivity({ getSnapshot: () => ({ phase: 'ready', revision: 1 }), subscribe: () => () => {} }, () => runtime,
+    { async page(_scope, feed) {
+      entered.resolve(); await page.promise;
+      return feed === 'txlist' ? [{ hash, blockNumber: '123', timestamp: 1700000000000, tokenHint: false, indexed }] : [];
+    } }, { async read() { detailReads++; return null; } });
+  const f = fixture(hash, false, { controller, externallyConnected: true, onInitialTargetOpened: () => { opened++; } });
+  try {
+    const refresh = controller.refresh(); await entered.promise;
+    f.render(); await settle(); assert.equal(opened, 0);
+    page.resolve(); await refresh;
+    f.render(); await settle();
+    assert(all(f.render()).some(node => node.type === 'TransactionDetailLayout'));
+    assert.equal(opened, 1); assert.equal(detailReads, 1);
+  } finally { page.resolve(); f.dispose(); }
+});
+
 test('actual Activity opens the saved record once and never replays it', async () => {
   let opened = 0;
   const f = fixture(hash, false, { onInitialTargetOpened: () => { opened++; } });

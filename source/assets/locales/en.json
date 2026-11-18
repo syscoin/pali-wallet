@@ -2526,6 +2526,7 @@
         "verifyBackup": "Verify backup",
         "backupVerified": "Backup verified",
         "encryptedBackupSaved": "Encrypted backup saved",
+        "savedFileVerificationUnavailable": "The backup was saved, but Pali could not verify the saved file.",
         "verifySavedBackup": "Verify saved backup",
         "saveCouldNotBeConfirmed": "Save could not be confirmed",
         "checkYourChosenFolderForTheEncryptedFile": "Check your chosen folder for the encrypted file before saving another copy.",
@@ -2561,6 +2562,7 @@
         "notesRestored": "Notes restored",
         "yourExistingNotesWereKeptTheirStatusMay": "Your existing notes were kept. Their status may still need to be checked.",
         "yourNotesAreSavedInThisWalletTheir": "Your notes are saved in this wallet. Their current status still needs to be checked.",
+        "invalidBackupFile": "Choose a valid encrypted Pali backup file.",
         "chooseBackupFile": "Choose backup file",
         "chooseAnEncryptedPaliBackupToAddIts": "Choose an encrypted Pali backup to add its private notes to this wallet."
       },

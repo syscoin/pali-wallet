@@ -8,7 +8,11 @@ import type { NativeConnectionsView } from '../connections/types';
 import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { DappSiteStatus } from './DappSiteStatus';
 
-export function NativeDappControlReview({ review, controller }: { review: Review; controller: Pick<NativeConnectionsView, 'approveControl' | 'rejectControl'> }) {
+export function NativeDappControlReview({ review, controller, onApprovalFailure }: {
+  review: Review;
+  controller: Pick<NativeConnectionsView, 'approveControl' | 'rejectControl'>;
+  onApprovalFailure?: () => void;
+}) {
   const { t } = useNativeTranslation();
   const identity = `${review.id}:${review.expiresAt}`;
   const [expiredReview, setExpiredReview] = useState<string | null>(null);
@@ -25,7 +29,7 @@ export function NativeDappControlReview({ review, controller }: { review: Review
   const blocked = expired || !!review.error || !details || review.busy;
   const reject = () => { void controller.rejectControl(review.id).catch(() => undefined); };
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}><Screen key={review.id} footer={<>
-    <Button title={review.busy ? t('mobile.dappConsent.dappControlReview.applying') : title} icon={network?.kind === 'network-switch' ? 'globe' : 'plus'} disabled={blocked} onPress={() => { if (!blocked && Date.now() < review.expiresAt) void controller.approveControl(review.id, review.revision).catch(() => undefined); }} />
+    <Button title={review.busy ? t('mobile.dappConsent.dappControlReview.applying') : title} icon={network?.kind === 'network-switch' ? 'globe' : 'plus'} disabled={blocked} onPress={() => { if (!blocked && Date.now() < review.expiresAt) void controller.approveControl(review.id, review.revision).catch(() => onApprovalFailure?.()); }} />
     <Button title={t('buttons.reject')} icon="close" variant="secondary" onPress={reject} />
   </>}>
     <Header title={title} onBack={reject} />

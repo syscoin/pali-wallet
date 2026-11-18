@@ -15,7 +15,7 @@ const tick = async () => { for (let n = 0; n < 12; n++) await new Promise<void>(
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 
-function fixture(failures: number) {
+function fixture(failures: number, olderTarget = false) {
   const networks = ['ethereum', 'rollux'].map(id => getNativeNetwork(id));
   const choices = networks.map(network => ({ label: 'Account 1', networkName: network.name, symbol: network.symbol,
     scope: { id: `hd:60:0:${network.id}`, accountId: 'hd:60:0', accountType: 'HDAccount' as const, accountAddress: address, network, guardian: false } }));
@@ -36,9 +36,10 @@ function fixture(failures: number) {
       async saveCache(_scope, _rows, check) { guard(); check(); },
       async saveView(_scope, _view, check) { guard(); check(); },
     }),
-    explorer: { async page(scope, feed, _page, _signal, guard) { guard(); reads.push(scope.network.id);
-      return feed === 'tokentx' ? [] : decodeActivityPage({ status: '1', result: [{ hash, from: recipient, to: scope.address,
-        value: '1', timeStamp: '1700000000', blockNumber: '10', confirmations: '1', nonce: '0', txreceipt_status: '1' }] }, feed, scope.address, Number(scope.network.chainId));
+    explorer: { async page(scope, feed, page, _signal, guard) { guard(); reads.push(scope.network.id);
+      const hashes = olderTarget && page === 1 ? Array.from({ length: 20 }, (_, i) => '0x' + String(i + 1).padStart(64, '0')) : [hash];
+      return feed === 'tokentx' ? [] : decodeActivityPage({ status: '1', result: hashes.map((entry, i) => ({ hash: entry, from: recipient, to: scope.address,
+        value: '1', timeStamp: '1700000000', blockNumber: String(page === 1 ? 100 - i : 50), confirmations: '1', nonce: String(page * 20 + i), txreceipt_status: '1' })) }, feed, scope.address, Number(scope.network.chainId));
     } }, receipts: { async read() { throw Error('No receipt reads expected'); } },
   });
   let cursor = 0, target: { networkId: string; hash: string } | undefined = { networkId: 'rollux', hash };
@@ -81,7 +82,7 @@ function fixture(failures: number) {
   const nodes = (value: any): Element[] => {
     if (Array.isArray(value)) return value.flatMap(nodes);
     if (!value || typeof value !== 'object' || !('children' in value)) return [];
-    return [value, ...value.children.flatMap(nodes), ...nodes(value.props.right), ...nodes(value.props.ListHeaderComponent)];
+    return [value, ...value.children.flatMap(nodes), ...nodes(value.props.right), ...nodes(value.props.ListHeaderComponent), ...nodes(value.props.ListFooterComponent)];
   };
   return { controller, writes, reads, render, nodes, opened: () => opened,
     holdSave(promise: Promise<void>) { heldSave = promise; },
@@ -143,6 +144,23 @@ test('a deliberate concrete filter choice retires the failed notification target
     f.refresh(); await tick();
     assert.deepEqual(f.writes, ['rollux', 'ethereum']);
     assert.equal(f.controller.getSnapshot().filter, 'ethereum');
+    assert(!f.detail());
+  } finally { f.close(); }
+});
+
+test('manually loading an older indexed EVM notification leaves the Activity list open', async () => {
+  const f = fixture(0, true);
+  try {
+    f.render(); await tick(); f.render(); await tick();
+    assert.equal(f.opened(), 0);
+    assert(!f.controller.findRow('rollux', hash));
+    const older = f.nodes(f.render()).find(node => node.props.title === 'Load older activity');
+    assert(older && !older.props.disabled); older.props.onPress(); await tick();
+    assert(f.controller.findRow('rollux', hash));
+    assert(!f.detail());
+    assert.equal(f.opened(), 1, 'the host consumes the routing intent');
+    f.setTarget(undefined);
+    f.refresh(); await tick();
     assert(!f.detail());
   } finally { f.close(); }
 });

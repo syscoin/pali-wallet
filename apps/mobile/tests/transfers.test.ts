@@ -1307,6 +1307,7 @@ test('real SDK and NativeTransfers report a genuine journal capacity refusal wit
 test('capacity refusal of a saved cancellation preserves the original exact record and sends no replacement', async () => {
   const f=fixture();try {
     const initial=await review(f);await f.transfers.confirm(initial.id, OPERATION_CREDENTIAL);const original=f.transfers.getSnapshot().hash!;
+    assert.equal(f.transfers.getSnapshot().receiptReview, initial);
     const saved=await (await f.runtime.journal(()=>undefined)).load(original);assert(saved);
     f.setPayerEoa();
     await f.transfers.prepareSavedCancellation(original);const replacement=f.transfers.getSnapshot().review!;assert(replacement.replacement);
@@ -1316,6 +1317,7 @@ test('capacity refusal of a saved cancellation preserves the original exact reco
     const retained=await (await f.runtime.journal(()=>undefined)).load(original);assert(retained?.rawTransaction===saved.rawTransaction);
     assert.equal(f.transfers.getSnapshot().phase,'unknown');assert.equal(f.transfers.getSnapshot().hash,original);
     assert.equal(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE);
+    assert.equal(f.transfers.getSnapshot().receiptReview, undefined);
   } finally {f.close();}
 });
 

@@ -1,12 +1,15 @@
-import { nativeTranslationFixture } from './localizationFixture.ts';
+import { languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { createInstance } from 'i18next';
 import { getAddress } from 'ethers/address';
 import { createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild, bindNativePrivateAuthentication, bindNativePrivateAuthenticationChild, withNativePrivateAuthentication, type NativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { createNativeNoteRestore } from '../src/custody/nativeNoteRestore.ts';
+import { createNativeNoteExport } from '../src/custody/nativeNoteExport.ts';
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import type { useNativeNoteBackup } from '../src/screens/useNativeNoteBackup.ts';
 import { isOperationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
@@ -200,6 +203,92 @@ test('Back from a pending note check cancels its proof before refreshing the lis
     assert.equal(f.completed, 2);
     assert(screenElements(f.render()).some(value => value.props.title === '1 ETH pool'));
   } finally { f.close(); }
+});
+
+for (const mode of ['restore', 'export'] as const) test(`cancelled ${mode} picker can be reopened from the same screen`, async () => {
+  const vector = JSON.parse(readFileSync(new URL('../../../source/wallet/noteBackup.vectors.json', import.meta.url), 'utf8')).vectors[1];
+  let picks = 0, ownerChecks = 0;
+  const owner = {
+    authority: { getSnapshot: () => ({ phase: 'ready' }) },
+    captureNoteFileOwner: async () => { ownerChecks++; return async () => undefined; },
+    openNoteBackup: () => assert.fail('Choosing a file must not open custody'),
+  };
+  const f = screenFixture(new URL('../src/screens/useNativeNoteBackup.ts', import.meta.url), 'useNativeNoteBackup', {
+    'react-native': { AppState: { currentState: 'active' } },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../custody/nativeNoteRestore': { createNativeNoteRestore },
+    '../custody/nativeNoteExport': { createNativeNoteExport },
+    '../platform/noteBackupPicker': {
+      shouldLockWalletForNotePicker: () => false,
+      pickNoteBackupFile: async () => ++picks === 1 ? null : new Uint8Array(Buffer.from(vector.fileHex, 'hex')),
+      pickNoteBackupDestination: async () => ++picks === 1 ? null : globalThis.crypto.randomUUID(),
+      revokeNoteBackupDestination: async () => undefined,
+    },
+  });
+  const render = () => f.render(() => owner, () => undefined) as unknown as ReturnType<typeof useNativeNoteBackup>;
+  const step = () => mode === 'restore' ? render().step.phase : render().exportStep.phase;
+  try {
+    assert.equal(render().begin(mode), true);
+    await render().choose();
+    assert.equal(step(), 'select');
+    assert.equal(render().busy, false);
+    assert.equal(render().error, '');
+    await render().choose();
+    assert.equal(picks, 2);
+    assert.equal(ownerChecks, 2);
+    assert.equal(step(), mode === 'restore' ? 'password' : 'passwords');
+    render().cancel();
+    await render().choose();
+    assert.equal(picks, 2);
+  } finally { render().cancel(); f.close(); }
+});
+
+test('native backup shows distinct French errors for an invalid file and a saved file that cannot be verified', async () => {
+  const language = languageMessages('fr');
+  const i18n = createInstance();
+  await i18n.init({ lng: 'fr', fallbackLng: false, resources: { fr: { translation: language } } });
+  const ready = { phase: 'ready' };
+  const owner = {
+    authority: { getSnapshot: () => ready },
+    captureNoteFileOwner: async () => async () => undefined,
+    openNoteBackup: async () => ({
+      begin: () => 'export', cancel() {},
+      exportEncrypted: async () => ({ bytes: new Uint8Array([1, 2]), noteCount: 1, createdAt: 1 }),
+      verifyExport: async () => { throw Error('BACKUP_UNAVAILABLE'); },
+    }),
+  };
+  const f = screenFixture(new URL('../src/screens/useNativeNoteBackup.ts', import.meta.url), 'useNativeNoteBackup', {
+    'react-native': { AppState: { currentState: 'active' } },
+    '../platform/localization': { useNativeTranslation: () => ({ t: i18n.t.bind(i18n) }) },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../custody/nativeNoteRestore': { createNativeNoteRestore },
+    '../custody/nativeNoteExport': { createNativeNoteExport },
+    '../platform/noteBackupPicker': {
+      shouldLockWalletForNotePicker: () => false,
+      pickNoteBackupFile: async () => { throw Error('FILE_INVALID'); },
+      pickNoteBackupDestination: async () => globalThis.crypto.randomUUID(),
+      writeNoteBackupFile: async (_token: string, bytes: Uint8Array) => bytes.slice(),
+      revokeNoteBackupDestination: async () => undefined,
+    },
+  });
+  const render = () => f.render(() => owner, () => undefined) as unknown as ReturnType<typeof useNativeNoteBackup>;
+  try {
+    render().begin('restore');
+    await render().choose();
+    assert.equal(render().step.phase, 'select');
+    assert.equal(render().error, language.mobile.noteFlows.restore.invalidBackupFile);
+    render().begin('export');
+    await render().choose();
+    render().saveExport('Portable test backup password');
+    await tick();
+    assert.equal(render().exportStep.phase, 'saved');
+    render().showVerify();
+    await render().verifyExport('Portable test backup password');
+    assert.deepEqual({ ...render().exportStep }, { phase: 'saved', noteCount: 1, canVerify: false });
+    assert.equal(render().error, language.mobile.noteFlows.export.savedFileVerificationUnavailable);
+  } finally { render().cancel(); f.close(); }
 });
 
 for (const scenario of ['owned-proof', 'background', 'picker-handoff'] as const) test(`restore preview preserves only its current scope: ${scenario}`, async () => {

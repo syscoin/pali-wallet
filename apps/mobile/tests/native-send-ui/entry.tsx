@@ -172,6 +172,7 @@ const controller: NativeTransferView = {
         ...snapshot,
         phase: 'unknown',
         review: null,
+        receiptReview: review,
         hash: '0x' + '1'.repeat(64),
         message: 'Check this transaction in Activity before sending again.',
       });
@@ -198,6 +199,7 @@ const controller: NativeTransferView = {
     publish({
       context,
       phase: 'pending',
+      receiptReview: review,
       collectible,
       review: null,
       hash: '0x' + '1'.repeat(64),

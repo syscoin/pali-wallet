@@ -515,6 +515,8 @@ test('storage limit distinguishes a failed replacement from its earlier saved tr
   await page.getByRole('button', { name: 'Submit Speed Up' }).click();
   await authenticateNativeOperation(page);
   await expect(page.getByText('Check earlier transaction', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('native-send-receipt-amount')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'View transaction' })).toBeVisible();
   const alert = page.getByRole('alert');
   await expect(alert).toHaveCount(1);
   await expect(alert.getByText('Keep this transaction', { exact: true })).toBeVisible();

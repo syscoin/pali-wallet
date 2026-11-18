@@ -49,6 +49,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   const controller = useMemo(() => new UtxoActivity(authority, () => AppState.currentState === 'active'), [authority]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
+  const [unlistedTarget, setUnlistedTarget] = useState<string | null>(null);
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'sent' | 'received'>('all');
   const [feedback, setFeedback] = useState('');
@@ -62,6 +63,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
     lifetime.current.nodeRequest?.abort();
     setNodeInfo(null);
     setReplaceable(null);
+    setUnlistedTarget(null);
     setDetailsFor(null);
     setSelected(txid); setFeedback(''); setConfirmationOwner(null);
     if (txid) controller.selectDetail(txid); else controller.clearDetail();
@@ -91,15 +93,18 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
         controller.getSnapshot().detail !== detail) return;
     onReplace?.(Object.freeze({ txid: detail.txid, mode }));
   };
-  const openedInitial = useRef<string | null>(null);
+  const handledInitial = useRef<string | null>(null);
   useLayoutEffect(() => {
-    if (!initialHash) { openedInitial.current = null; return; }
-    if (initialHash !== openedInitial.current && network && state.rows.some(row => row.txid === initialHash)) {
-      openedInitial.current = initialHash;
-      selectTransaction(initialHash);
-      onInitialTargetOpened?.();
+    if (!initialHash) { handledInitial.current = null; return; }
+    if (handledInitial.current === initialHash || !network || state.status !== 'ready' || !controller.isCurrent(state.context)) return;
+    handledInitial.current = initialHash;
+    if (state.rows.some(row => row.txid === initialHash)) selectTransaction(initialHash);
+    else {
+      selectTransaction(null);
+      setUnlistedTarget(initialHash);
     }
-  }, [initialHash, network, state.rows, selectTransaction, onInitialTargetOpened]);
+    onInitialTargetOpened?.();
+  }, [controller, initialHash, network, state.context, state.status, state.rows, selectTransaction, onInitialTargetOpened]);
   useLayoutEffect(() => {
     const life = lifetime.current; life.alive = true;
     let observedContext = '';
@@ -197,6 +202,9 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
         <FlatList ref={list} testID="watch-activity-list" data={rows} keyExtractor={(row) => row.txid} contentContainerStyle={s.content}
           ListHeaderComponent={<View style={s.section}>
             {(state.status === 'unavailable' || state.status === 'stale') && <Notice title={state.status === 'stale' ? t('mobile.activityViews.utxoActivityScreen.couldNotRefreshActivity') : t('mobile.activity.unavailableTitle')} body={state.status === 'stale' ? t('mobile.activityViews.utxoActivityScreen.showingPreviouslyLoadedActivityTryRefreshingAgain') : t('mobile.activityViews.utxoActivityScreen.activityCouldNotBeLoadedTryAgain')} tone="amber" />}
+            {unlistedTarget && state.status === 'ready' && !state.rows.some(row => row.txid === unlistedTarget) && <Notice
+              title={t('mobile.activityViews.nativeActivity.detailsUnavailable')}
+              body={t(state.hasMore ? 'mobile.activityViews.nativeActivity.loadOlderActivity' : 'mobile.activityViews.nativeActivity.refreshToTryAgain')} />}
             <SegmentedControl label={t('mobile.activityViews.nativeActivity.activityFilter')} value={filter}
               options={[{ value: 'all', label: t('mobile.activityViews.nativeActivity.all') }, { value: 'sent', label: t('send.sent') }, { value: 'received', label: t('send.received') }]}
               onChange={value => { setFilter(value); list.current?.scrollToOffset({ offset: 0, animated: false }); }} />

@@ -78,7 +78,7 @@ test('expected account limit rejection remains visible without changing the read
 
 for (const [failure, message] of [
   ['credential', 'Device authentication was not completed. Please try again.'],
-  ['uncertain', 'Pali could not confirm the saved wallet state.'],
+  ['uncertain', 'Your saved wallet has been preserved. Close and reopen Pali to try again.'],
 ] as const) {
   test(`parent retains safe feedback after ${failure} unmounts account controls`, async ({ page }) => {
     await page.goto(`/?accounts=1&failure=${failure}`);

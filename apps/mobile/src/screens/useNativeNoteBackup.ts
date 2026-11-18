@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
+import { useNativeTranslation } from '../platform/localization';
 import type { NativeNoteBackupRuntime } from '../custody/noteBackupRuntime';
 import type { CustodySnapshot } from '../custody/types';
 import type { NativeNoteRestoreStep } from './NativeNoteRestore';
@@ -20,7 +21,7 @@ type Route = {
   exporter?: ReturnType<typeof import('../custody/nativeNoteExport').createNativeNoteExport>;
   checkPair?: () => Promise<void>;
   destination: boolean;
-  pickerFeedback?: string;
+  pickerFeedbackKey?: string;
   savedCount?: number;
   saving: boolean;
   handoff: boolean;
@@ -28,30 +29,31 @@ type Route = {
   authentication: NativePrivateAuthenticationScope;
 };
 const invalidated = () => new Error('BACKUP_CANCELLED');
-const failure = (cause: unknown) => {
+const failureKey = (cause: unknown) => {
   const code = cause instanceof Error ? cause.message : '';
-  if (code === 'BACKUP_OPEN_FAILED') return 'Could not open this backup. Check the password and file.';
-  if (code === 'FILE_INVALID' || code === 'BACKUP_INVALID_FORMAT') return 'Choose a valid encrypted Pali backup.';
-  if (code === 'FILE_BUSY' || code === 'BACKUP_BUSY') return 'Wait for the current file operation to finish.';
-  if (code === 'BACKUP_AUTHENTICATION_FAILED') return 'Could not authorize this restore. Choose the backup to try again.';
-  if (code === 'BACKUP_NOTE_LIMIT') return 'This backup exceeds the wallet’s private note capacity.';
-  if (code === 'BACKUP_CANCELLED' || code === 'BACKUP_STALE') return 'This restore expired. Choose the backup again.';
-  return 'Could not open or restore this backup.';
+  if (code === 'BACKUP_OPEN_FAILED') return 'privacy.bundle.fileInvalid';
+  if (code === 'FILE_INVALID' || code === 'BACKUP_INVALID_FORMAT') return 'mobile.noteFlows.restore.invalidBackupFile';
+  if (code === 'FILE_BUSY' || code === 'BACKUP_BUSY') return 'privacy.bundle.busy';
+  if (code === 'BACKUP_AUTHENTICATION_FAILED') return 'mobile.sentryViews.couldNotAuthorizeThisRequestTryAgain';
+  if (code === 'BACKUP_NOTE_LIMIT') return 'privacy.bundle.capacity';
+  if (code === 'BACKUP_CANCELLED' || code === 'BACKUP_STALE') return 'privacy.bundle.expired';
+  return 'privacy.bundle.failed';
 };
 
 export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: Route['mode']) => void) {
+  const { t } = useNativeTranslation();
   const route = useRef<Route | null>(null);
   const [step, setStep] = useState<NativeNoteRestoreStep>({ phase: 'select' });
   const [exportStep, setExportStep] = useState<NativeNoteExportStep>({ phase: 'select' });
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [errorKey, setErrorKey] = useState('');
   const cancel = useCallback(() => {
     const previous = route.current;
     route.current = null;
     previous?.authentication.retire();
     previous?.flow?.cancel();
     previous?.exporter?.cancel();
-    setStep({ phase: 'select' }); setExportStep({ phase: 'select' }); setBusy(false); setError('');
+    setStep({ phase: 'select' }); setExportStep({ phase: 'select' }); setBusy(false); setErrorKey('');
   }, []);
   const lock = useCallback(() => {
     // Only the picker ticket or its bounded ciphertext can outlive this lock.
@@ -80,10 +82,11 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     if (owned.busy) { enter(owned.mode); return true; }
     owned.authentication = createNativePrivateAuthenticationScope();
     owned.handoff = false;
-    if (owned.pickerFeedback) {
+    if (owned.pickerFeedbackKey !== undefined) {
+      owned.checkPair = undefined;
       if (owned.mode === 'restore') setStep({ phase: 'select' });
       else setExportStep({ phase: 'select' });
-      setError(owned.pickerFeedback); owned.pickerFeedback = undefined;
+      setErrorKey(owned.pickerFeedbackKey); owned.pickerFeedbackKey = undefined;
       enter(owned.mode);
       return true;
     }
@@ -103,7 +106,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     const owned = route.current;
     if (!owned || !foreground(owned) || owned.busy) return;
     const assertOwner = () => { if (!current(owned)) throw invalidated(); };
-    owned.busy = true; setBusy(true); setError('');
+    owned.busy = true; setBusy(true); setErrorKey('');
     try {
       const files = await import('../platform/noteBackupPicker');
       if (owned.mode === 'restore' && !owned.flow) {
@@ -121,38 +124,40 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
       // that handoff, and keep the same owner for the encrypted file only.
       owned.handoff = true;
       if (files.shouldLockWalletForNotePicker()) owned.owner.authority.lock();
-      if (owned.mode === 'restore') await owned.flow!.select(files.pickNoteBackupFile, assertOwner, () => {
-        const copy = 'This file selection expired. Choose the backup again.';
-        if (foreground(owned)) { setStep({ phase: 'select' }); setError(copy); }
-        else if (current(owned) && owned.handoff) owned.pickerFeedback = copy;
-      });
-      else {
+      if (owned.mode === 'restore') {
+        const selected = await owned.flow!.select(files.pickNoteBackupFile, assertOwner, () => {
+          const key = 'mobile.sentryViews.requestExpired';
+          if (foreground(owned)) { setStep({ phase: 'select' }); setErrorKey(key); }
+          else if (current(owned) && owned.handoff) owned.pickerFeedbackKey = key;
+        });
+        if (!selected) owned.pickerFeedbackKey = '';
+      } else {
         const token = await files.pickNoteBackupDestination();
         if (token !== null) {
           try {
             assertOwner();
             owned.exporter!.select(token, assertOwner, () => {
               owned.destination = false;
-              const copy = 'This folder selection expired. Choose a folder again.';
+              const key = 'mobile.sentryViews.requestExpired';
               if (!foreground(owned)) {
-                if (current(owned) && owned.handoff) owned.pickerFeedback = copy;
+                if (current(owned) && owned.handoff) owned.pickerFeedbackKey = key;
               } else if (owned.saving) setExportStep({ phase: 'unconfirmed' });
               else if (owned.savedCount !== undefined)
                 setExportStep({ phase: 'saved', noteCount: owned.savedCount, canVerify: false });
-              else { setExportStep({ phase: 'select' }); setError(copy); }
+              else { setExportStep({ phase: 'select' }); setErrorKey(key); }
             });
             owned.destination = true;
           } catch (cause) { void files.revokeNoteBackupDestination(token); throw cause; }
-        }
+        } else owned.pickerFeedbackKey = '';
       }
     } catch (cause) {
       if (current(owned)) {
         const code = cause instanceof Error ? cause.message : '';
-        const copy = owned.mode === 'export' && code !== 'FILE_BUSY'
-          ? 'Could not open that folder. Choose another folder in Files.'
-          : failure(cause);
-        if (foreground(owned)) { owned.handoff = false; setError(copy); }
-        else if (owned.handoff) owned.pickerFeedback = copy;
+        const key = owned.mode === 'export' && code !== 'FILE_BUSY'
+          ? 'privacy.bundle.failed'
+          : failureKey(cause);
+        if (foreground(owned)) { owned.handoff = false; setErrorKey(key); }
+        else if (owned.handoff) owned.pickerFeedbackKey = key;
         else cancel();
       }
     } finally {
@@ -165,20 +170,20 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     const flow = owned?.flow;
     if (!owned?.checkPair || !flow || !foreground(owned) || owned.busy) return;
     const assertWallet = walletGuard(owned);
-    owned.busy = true; setBusy(true); setError('');
+    owned.busy = true; setBusy(true); setErrorKey('');
     try {
       try { await owned.checkPair(); }
       catch { flow.cancel(); throw invalidated(); }
       assertWallet();
       const preview = await flow.prepare(password, assertWallet, () => {
-        if (foreground(owned)) { setStep({ phase: 'select' }); setError('This review expired. Choose the backup again.'); }
+        if (foreground(owned)) { setStep({ phase: 'select' }); setErrorKey('privacy.bundle.expired'); }
       });
       assertWallet();
       setStep({ phase: 'review', preview });
     } catch (cause) {
       if (foreground(owned)) {
         setStep({ phase: flow.hasFile() ? 'password' : 'select' });
-        setError(failure(cause));
+        setErrorKey(failureKey(cause));
       }
     } finally { finish(owned); }
   };
@@ -186,7 +191,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     const owned = route.current;
     const flow = owned?.flow;
     if (!owned || !flow || !foreground(owned) || owned.busy) return;
-    owned.busy = true; setBusy(true); setError('');
+    owned.busy = true; setBusy(true); setErrorKey('');
     try {
       const receipt = await flow.restore(id);
       if (foreground(owned)) setStep({ phase: 'restored', receipt });
@@ -199,9 +204,9 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
         } else {
           const code = cause instanceof Error ? cause.message : '';
           setStep({ phase: 'select' });
-          setError(code === 'BACKUP_CANCELLED' || code === 'BACKUP_STALE'
-            ? 'Pali could not confirm this restore. Open the backup again to see which notes are already saved.'
-            : failure(cause));
+          setErrorKey(code === 'BACKUP_CANCELLED' || code === 'BACKUP_STALE'
+            ? 'mobile.noteFlows.import.couldNotConfirmTheImportCheckSavedNotes'
+            : failureKey(cause));
         }
       }
     } finally { finish(owned); }
@@ -219,7 +224,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
       if (foreground(owned)) {
         owned.destination = false;
         if (cause instanceof Error && cause.message === 'FILE_WRITE_UNCONFIRMED') setExportStep({ phase: 'unconfirmed' });
-        else { setExportStep({ phase: 'select' }); setError('Could not save the backup. Choose a folder again.'); }
+        else { setExportStep({ phase: 'select' }); setErrorKey('privacy.bundle.failed'); }
       }
     } finally { owned.saving = false; finish(owned); }
   };
@@ -232,18 +237,18 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   const saveExport = (backupPassword: string) => {
     const owned = route.current;
     if (!owned?.exporter || !owned.destination || !owned.checkPair || !foreground(owned) || owned.busy) return;
-    owned.busy = true; setBusy(true); setError('');
+    owned.busy = true; setBusy(true); setErrorKey('');
     // The provider task receives only the prepared ciphertext and public count.
     void prepareExport(owned, backupPassword).then(
       ({ noteCount }) => persistExport(owned, noteCount),
       cause => {
         if (foreground(owned)) {
           const code = cause instanceof Error ? cause.message : '';
-          if (code === 'BACKUP_AUTHENTICATION_FAILED') setError('Could not authorize this backup.');
-          else if (code === 'BACKUP_INVALID_PASSWORD') setError('Use a separate backup password with at least 12 characters.');
+          if (code === 'BACKUP_AUTHENTICATION_FAILED') setErrorKey('mobile.sentryViews.couldNotAuthorizeThisRequestTryAgain');
+          else if (code === 'BACKUP_INVALID_PASSWORD') setErrorKey('mobile.noteFlows.export.useASeparateBackupPasswordWithAtLeast');
           else {
             owned.destination = false;
-            setExportStep({ phase: 'select' }); setError('Could not prepare the backup. Choose a folder again.');
+            setExportStep({ phase: 'select' }); setErrorKey('privacy.bundle.failed');
             owned.exporter!.cancel();
           }
         }
@@ -254,21 +259,21 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   const showVerify = () => {
     const owned = route.current;
     if (!owned || !foreground(owned) || owned.savedCount === undefined || !owned.destination || owned.busy) return;
-    setError(''); setExportStep({ phase: 'verify', noteCount: owned.savedCount });
+    setErrorKey(''); setExportStep({ phase: 'verify', noteCount: owned.savedCount });
   };
   const verifyExport = async (password: string) => {
     const owned = route.current;
     if (!owned?.exporter || !foreground(owned) || owned.savedCount === undefined || owned.busy) return;
-    owned.busy = true; setBusy(true); setError('');
+    owned.busy = true; setBusy(true); setErrorKey('');
     try {
       const receipt = await owned.exporter.verify(password);
       if (foreground(owned)) setExportStep({ phase: 'verified', noteCount: receipt.noteCount });
     } catch (cause) {
       if (foreground(owned)) {
-        if (cause instanceof Error && cause.message === 'BACKUP_OPEN_FAILED') setError('Could not open the saved backup with that password.');
-        else { setExportStep({ phase: 'saved', noteCount: owned.savedCount, canVerify: false }); setError('This file could not be verified.'); }
+        if (cause instanceof Error && cause.message === 'BACKUP_OPEN_FAILED') setErrorKey('privacy.bundle.fileInvalid');
+        else { setExportStep({ phase: 'saved', noteCount: owned.savedCount, canVerify: false }); setErrorKey('mobile.noteFlows.export.savedFileVerificationUnavailable'); }
       }
     } finally { finish(owned); }
   };
-  return { begin, cancel, lock, resume, step, exportStep, busy, error, choose, open, restore, saveExport, showVerify, verifyExport };
+  return { begin, cancel, lock, resume, step, exportStep, busy, error: errorKey ? t(errorKey) : '', choose, open, restore, saveExport, showVerify, verifyExport };
 }

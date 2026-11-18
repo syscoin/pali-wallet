@@ -2526,6 +2526,7 @@
         "verifyBackup": "Проверить резервную копию",
         "backupVerified": "Резервная копия проверена",
         "encryptedBackupSaved": "Зашифрованная копия сохранена",
+        "savedFileVerificationUnavailable": "Резервная копия сохранена, но Pali не удалось проверить сохранённый файл.",
         "verifySavedBackup": "Проверить сохранённую копию",
         "saveCouldNotBeConfirmed": "Не удалось подтвердить сохранение",
         "checkYourChosenFolderForTheEncryptedFile": "Перед сохранением ещё одной копии проверьте зашифрованный файл в выбранной папке.",
@@ -2561,6 +2562,7 @@
         "notesRestored": "Ноты восстановлены",
         "yourExistingNotesWereKeptTheirStatusMay": "Существующие ноты сохранены. Их статус ещё может требовать проверки.",
         "yourNotesAreSavedInThisWalletTheir": "Ноты сохранены в этом кошельке. Их текущий статус ещё нужно проверить.",
+        "invalidBackupFile": "Выберите действительный зашифрованный файл резервной копии Pali.",
         "chooseBackupFile": "Выбрать файл копии",
         "chooseAnEncryptedPaliBackupToAddIts": "Выберите зашифрованную копию Pali, чтобы добавить её приватные ноты в этот кошелёк."
       },

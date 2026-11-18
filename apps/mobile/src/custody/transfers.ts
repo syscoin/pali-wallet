@@ -69,6 +69,8 @@ export type NativeTransferSnapshot = Readonly<{
     | 'nonce-consumed'
     | 'unavailable';
   review: NativeTransferReview | null;
+  /** Present only when the outcome hash belongs to these verified signed bytes. */
+  receiptReview?: NativeTransferReview;
   hash: string | null;
   message: string | null;
   intent: Erc20TransferIntent | null;
@@ -299,7 +301,13 @@ export class NativeTransfers {
   }
   private publish(update: Partial<NativeTransferSnapshot>) {
     if (this.disposed) return;
-    const next = Object.freeze({ ...this.snapshot, ...update });
+    // Recovery hashes can belong to an earlier payment. Only the signing path
+    // supplies receipt details alongside the hash for its own verified bytes.
+    const next = Object.freeze({
+      ...this.snapshot,
+      ...(update.hash !== undefined ? { receiptReview: undefined } : {}),
+      ...update,
+    });
     this.snapshot = next;
     for (const listener of [...this.listeners]) {
       if (this.snapshot !== next) break;
@@ -1099,6 +1107,7 @@ export class NativeTransfers {
         this.verifySigned(approved.transaction!, signed);
         rawTransaction = signed.rawTransaction; transactionHash = signed.hash;
       }
+      const signedOutcome = { hash: transactionHash, receiptReview: approved.public };
       guard();
       this.publish({
         phase: 'submitting',
@@ -1189,7 +1198,7 @@ export class NativeTransfers {
             throw classified;
           }
           // Once a POST started, do not rely on any no-broadcast marker.
-          this.publish({ phase: 'unknown', review: null, hash: transactionHash,
+          this.publish({ phase: 'unknown', review: null, ...signedOutcome,
             message: 'Submission may have completed. Check this transaction before sending again.' });
           return;
         }
@@ -1202,7 +1211,7 @@ export class NativeTransfers {
           if (saved?.hash === transactionHash &&
               (saved.rawTransaction === rawTransaction || (saved.inspectionOnly && saved.rawTransaction === undefined)) &&
               (!collectible || saved.collectible)) {
-            this.publish({ hash: transactionHash });
+            this.publish(signedOutcome);
             if (validatesAsset && error instanceof NativeTransferRpcError) {
               switch (error.code) {
                 case 'INSUFFICIENT_BALANCE':
@@ -1223,7 +1232,7 @@ export class NativeTransfers {
         this.publish({
           phase: 'unknown',
           review: null,
-          hash: transactionHash,
+          ...signedOutcome,
           message:
             error instanceof NativeTransferRpcError
               ? 'Submission could not be confirmed. Check this transaction before sending again.'
@@ -1233,7 +1242,7 @@ export class NativeTransfers {
       }
       assertCurrent();
       // An RPC acknowledgement cannot be undone by a local status write.
-      this.publish({ hash: transactionHash });
+      this.publish(signedOutcome);
       assertCurrent();
       let message = 'Submitted. Waiting for network confirmation.';
       try {
@@ -1246,7 +1255,7 @@ export class NativeTransfers {
       this.publish({
         phase: 'pending',
         review: null,
-        hash: transactionHash,
+        ...signedOutcome,
         message,
       });
     }).finally(releaseAuthorization);
