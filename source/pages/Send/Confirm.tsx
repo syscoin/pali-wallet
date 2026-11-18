@@ -37,7 +37,7 @@ import {
 } from 'components/index';
 import { PqSigningOverlay } from 'components/Loading';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
-import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
+import { SmartAccountPayerFee } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useEIP1559 } from 'hooks/useEIP1559';
@@ -2707,54 +2707,11 @@ export const SendConfirm = () => {
             {isSmartAccountSend && (
               <div className="text-xs text-brand-gray200 mt-2">
                 {smartAccountQuoteReady && smartPayerBudget && (
-                  <>
-                    <SmartAccountFeePayer
-                      address={smartAccountQuote!.feePayer.address}
-                    />
-                    <dl className="mb-2 space-y-2">
-                      <div>
-                        <dt>
-                          {t(
-                            smartPayerBudget.gasTank
-                              ? 'settings.smartAccountFeeReviewGasTank'
-                              : 'transactions.replay.maximumFee'
-                          )}
-                        </dt>
-                        <dd className="text-white">
-                          {formatEther(smartPayerBudget.maximumFeeWei)}{' '}
-                          {activeNetwork.currency?.toUpperCase()}
-                        </dd>
-                      </div>
-                      {smartPayerBudget.maximumPrefundWei !== '0' && (
-                        <>
-                          <div>
-                            <dt>
-                              {t(
-                                'transactions.smartAccountCancelMaximumDeposit'
-                              )}
-                            </dt>
-                            <dd className="text-white">
-                              {formatEther(smartPayerBudget.maximumPrefundWei)}{' '}
-                              {activeNetwork.currency?.toUpperCase()}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>
-                              {t(
-                                'transactions.smartAccountCancelMaximumDepositFee'
-                              )}
-                            </dt>
-                            <dd className="text-white">
-                              {formatEther(
-                                smartPayerBudget.maximumPrefundFeeWei
-                              )}{' '}
-                              {activeNetwork.currency?.toUpperCase()}
-                            </dd>
-                          </div>
-                        </>
-                      )}
-                    </dl>
-                  </>
+                  <SmartAccountPayerFee
+                    address={smartAccountQuote!.feePayer.address}
+                    budget={smartPayerBudget}
+                    currency={activeNetwork.currency}
+                  />
                 )}
                 <p>
                   {t(

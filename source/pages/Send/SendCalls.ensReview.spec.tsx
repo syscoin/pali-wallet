@@ -131,6 +131,12 @@ beforeEach(() => {
     feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
     gasUnits: '21000',
     maximumFeeWei: '42000',
+    payerBudget: {
+      gasTank: false,
+      maximumFeeWei: '1100000000000000',
+      maximumPrefundWei: '0',
+      maximumPrefundFeeWei: '0',
+    },
   });
   mockSubmit.mockReset().mockImplementation(async (params) => {
     await params.onBeforeSubmit({ executionContextId: 'execution-context' });
@@ -252,6 +258,12 @@ it('shows the quoted smart-account ENS execution and discards its display author
       feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
       gasUnits: '21000',
       maximumFeeWei: '43000',
+      payerBudget: {
+        gasTank: false,
+        maximumFeeWei: '1100000000000000',
+        maximumPrefundWei: '0',
+        maximumPrefundFeeWei: '0',
+      },
     })
   );
   await waitFor(() => expect(screen.getByTestId('primary')).toBeEnabled());

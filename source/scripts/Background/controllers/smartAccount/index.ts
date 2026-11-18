@@ -2557,7 +2557,7 @@ class SmartAccountController {
     params: SmartAccountSubmitParams,
     assertApprovalCurrent: () => void,
     confirmFee?: SmartAccountControllerAuthority['confirmFee'],
-    allowWalletSendPayerBudget = false
+    allowInlinePayerBudget = false
   ) {
     const captured = this.infrastructureContext();
     const assertCurrent = () => {
@@ -2575,7 +2575,7 @@ class SmartAccountController {
     const feeQuote = executionContext.entryPointFeeQuote;
     const budget = feeQuote?.cancellationPayerBudget ?? feeQuote?.payerBudget;
     if (
-      (feeQuote?.payerBudget && !allowWalletSendPayerBudget) ||
+      (feeQuote?.payerBudget && !allowInlinePayerBudget) ||
       ((cancellation || budget) &&
         (!budget ||
           !params.gasPayer ||

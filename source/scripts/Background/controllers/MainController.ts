@@ -7058,7 +7058,7 @@ class MainController {
             return id;
           }
         : undefined,
-      authority.allowWalletSendPayerBudget === true
+      authority.allowInlinePayerBudget === true
     );
   }
 
@@ -11442,7 +11442,7 @@ class MainController {
     assertSynchronousEvmFeeGuard(authority.assertCurrent);
     if (
       authority.signal.aborted ||
-      (quote?.payerBudget && authority.allowWalletSendPayerBudget !== true)
+      (quote?.payerBudget && authority.allowInlinePayerBudget !== true)
     )
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     this.smartAccount.approveSmartAccountExecutionFeeQuote(

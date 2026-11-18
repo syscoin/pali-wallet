@@ -2,6 +2,7 @@ import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import type { AssetTransferCall } from '../../../../source/shared/assetTransfer';
 import { resolveAssetTransferDisplay, type AssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../../../source/shared/smartAccountFeeQuote.ts';
 import { useOwnedLedgerConnection } from './useDappLedgerConnection';
 import {
   formatTokenUnits,
@@ -359,7 +360,11 @@ export function NativeSmartAccountOperationContent({
   const primary = state.phase === 'authorize' ? (
             <Button
               title={
-                cancellation
+                state.payerBudget
+                  ? t(batch ? 'mobile.recoveryStatusViews.operation.confirmCalls'
+                    : transfer?.kind === 'dapp-call' ? 'mobile.recoveryStatusViews.operation.confirmTransaction'
+                    : 'mobile.recoveryStatusViews.operation.confirmTransfer')
+                  : cancellation
                   ? t('transactions.smartAuthorizations.cancelInstruction')
                   : modules
                   ? t('mobile.smartAccountModules.authorize')
@@ -656,7 +661,9 @@ export function NativeSmartAccountOperationContent({
                   : t('mobile.recoveryStatusViews.operation.createThisAccountOnTheNetwork')
               }
               body={
-                cancellation
+                state.payerBudget
+                  ? t('send.smartAccountFeeDetails')
+                  : cancellation
                   ? t('transactions.smartAccountCancelDescription')
                   : modules
                   ? t('mobile.smartAccountModules.authorizationHint')
@@ -680,10 +687,23 @@ export function NativeSmartAccountOperationContent({
               }
             />
             <Card style={s.card}>
-              <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.maximumAccountCharge')}</Text>
+              <Text style={s.label}>{t(state.payerBudget ? 'send.smartAccountMaxFee' : 'mobile.recoveryStatusViews.operation.maximumAccountCharge')}</Text>
               {amount(state.maximumPrefundUnits!)}
               <Text style={s.label}>
                 {t('mobile.recoveryStatusViews.operation.unusedPrefundStaysWithYourAccount')}</Text>
+              {state.payerBudget && <>
+                <Text style={s.label}>{t('transactions.feePayer')}</Text>
+                <Text selectable style={s.address}>{state.payerBudget.address}</Text>
+                <Text style={s.label}>{t(state.payerBudget.gasTank
+                  ? 'mobile.recoveryStatusViews.operation.maximumNetworkFeeGasTank' : 'transactions.replay.maximumFee')}</Text>
+                {amount(state.payerBudget.maximumFeeWei)}
+                {state.payerBudget.maximumPrefundWei !== '0' && <>
+                  <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.fundTheAccountCharge')}</Text>
+                  {amount(state.payerBudget.maximumPrefundWei)}
+                  <Text style={s.label}>{t('transactions.replay.maximumFee')}</Text>
+                  {amount(state.payerBudget.maximumPrefundFeeWei)}
+                </>}
+              </>}
               <Button
                 title={
                   details
@@ -922,7 +942,8 @@ export function NativeSmartAccountOperationContent({
                 ? t('mobile.recoveryStatusViews.operation.checkTransferStatus')
                 : t('mobile.recoveryStatusViews.operation.checkDeploymentStatus')
             }
-            body={insufficientAsset ? t('mobile.sendAssetViews.evm.notEnoughTokensForThisTransfer') : state.error}
+            body={insufficientAsset ? t('mobile.sendAssetViews.evm.notEnoughTokensForThisTransfer')
+              : state.error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED ? t('send.smartAccountPayerFeeExceeded') : state.error}
             tone="amber"
           />
         )}

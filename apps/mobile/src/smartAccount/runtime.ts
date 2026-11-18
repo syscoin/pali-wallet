@@ -24,7 +24,10 @@ import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAcco
 import { buildSmartAccountErc20Transfer, snapshotSmartAccountExpectedErc20Transfers } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
 import { assertSmartAccountSpendability } from '../../../../source/utils/smartAccount/assetSpendability.ts';
-import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
+import { getSmartAccountUserOpRequiredPrefund, SMART_ACCOUNT_ZERO_GAS_FEES } from '../../../../source/utils/smartAccount/account.ts';
+import { getZkSysGasTankAddress } from '../../../../source/utils/smartAccount/deploymentMetadata.ts';
+import { assertSmartAccountPayerFee, getSmartAccountPayerBudget } from '../../../../source/utils/smartAccount/cancellationFee.ts';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED, type SmartAccountPayerBudget } from '../../../../source/shared/smartAccountFeeQuote.ts';
 import type { SmartAccountPackedUserOperation } from '../../../../source/utils/smartAccount/account.ts';
 import { buildGuardianPolicyExecutions } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
@@ -34,7 +37,7 @@ import { canUseReservedSLHDSASignature } from '../../../../source/utils/smartAcc
 import { getSmartAccountSigningPlan, type SmartAccountAuthenticatorPorts } from '../../../../source/utils/smartAccount/authenticatorDispatch.ts';
 import { captureCompositePolicyChange, collectCompositePolicyPossession, compositeSourceConfiguration,
   createCompositePolicyPossession, verifyCompositePolicyPossession, type CompositePolicyChange } from '../../../../source/utils/smartAccount/compositePossession.ts';
-import { paliEcdsaValidatorInterface } from '../../../../source/utils/smartAccount/contracts.ts';
+import { getPaliEntryPointAddress, paliEcdsaValidatorInterface } from '../../../../source/utils/smartAccount/contracts.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
 import {
   hasUsableSmartAccountAuthMetadata,
@@ -59,6 +62,7 @@ import {
   canUseSmartAccountGasTank,
   ensureSmartAccountDeploymentPrefund,
   getSmartAccountGasPayerCandidates,
+  readSmartAccountDeploymentShortfall,
   selectSmartAccountGasPayer,
   type SmartAccountPayerWallet,
 } from '../../../../source/utils/smartAccount/payerPolicy.ts';
@@ -101,7 +105,7 @@ export type NativeSmartOperationPorts = Readonly<{
   p256WebAuthn: ((metadata: ISmartAccountMetadata, intent: SmartAccountOwnerSigningIntent, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['p256WebAuthn']>) | null;
   slhDsa: ((metadata: ISmartAccountMetadata, intent: SmartAccountOwnerSigningIntent, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
-  /** One reviewed aggregate owner proof; ends before a separate payer approval. */
+  /** One reviewed aggregate owner proof. Payer signing remains separately owned. */
   withOwnerProof<T>(signal: AbortSignal, guard: () => void, work: () => Promise<T>, options?: Readonly<{compositePossession:true}>): Promise<T>;
   retainAuthorization(operation: SmartAccountPackedUserOperation, payer: SmartAccountGasPayer,
     observedAt: SmartAccountAuthorizationBlock, guard: () => void): Promise<SmartAccountAuthorizationReceipt>;
@@ -204,7 +208,9 @@ export function createNativeSmartOperation(
     ? selectedFees.type === 0 ? Object.freeze({ gasPrice: selectedFees.gasPrice })
       : Object.freeze({ maxFeePerGas: selectedFees.maxFeePerGas, maxPriorityFeePerGas: selectedFees.maxPriorityFeePerGas })
     : undefined;
+  const combinedFeeReview = ['native-transfer', 'native-max', 'erc20-transfer', 'nft-transfer', 'dapp-call', 'dapp-batch'].includes(intent.kind);
   let issued: PreparedSmartAccountOperation | undefined;
+  let payerBudget: SmartAccountPayerBudget & Readonly<{ address: string }> | undefined;
   let observedAt: SmartAccountAuthorizationBlock | undefined;
   let authorization: SmartAccountAuthorizationReceipt | undefined;
   let pending: SmartAccountPendingState;
@@ -262,13 +268,34 @@ export function createNativeSmartOperation(
       return withEvmReadPhase(rawProvider, assertCurrent, async (scopedProvider) => {
         const pending = createSmartAccountPendingState(scopedProvider, pendingRecords, chainId, account.address, assertCurrent, undefined, false, cancellation ? 'latest' : 'pending');
         const provider = pending.provider;
-        const captureObservation = async () => {
+        const captureObservation = async (prepared: PreparedSmartAccountOperation) => {
+          let prefund = BigInt(0);
+          const operation = prepared.userOperation;
+          if (combinedFeeReview && operation.initCode !== '0x' && !getSmartAccountUserOpRequiredPrefund(operation).isZero()) {
+            const shortfall = await readSmartAccountDeploymentShortfall(provider, account.address,
+              getPaliEntryPointAddress(chainId), operation, assertCurrent);
+            if (shortfall.gt(0)) prefund = BigInt(shortfall.toString());
+          }
           // Share any earlier header read inside this preparation phase.
           const sampled = await provider.send('eth_getBlockByNumber', ['latest', false]);
           assertCurrent();
           if (!sampled || typeof sampled.number !== 'string' || !/^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/.test(sampled.number) ||
               typeof sampled.hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(sampled.hash)) throw new Error('SMART_ACCOUNT_AUTHORIZATION_REQUIRED');
           observedAt = Object.freeze({number: BigInt(sampled.number).toString(), hash: sampled.hash.toLowerCase()});
+          if (combinedFeeReview) {
+            if (typeof sampled.gasLimit !== 'string' || !/^0x[1-9a-f][0-9a-f]{0,63}$/i.test(sampled.gasLimit))
+              throw new Error('SMART_OPERATION_EXPIRED');
+            const limits = BigInt(operation.accountGasLimits);
+            const operationGas = (limits >> 128n) + (limits & ((1n << 128n) - 1n)) + BigInt(operation.preVerificationGas);
+            payerBudget = Object.freeze({
+              address: prepared.gasPayer.address,
+              ...getSmartAccountPayerBudget({
+                chainId, blockGasLimit: BigInt(sampled.gasLimit), operationGas, prefund,
+                feeRate: BigInt(prepared.gasPrice ?? prepared.maxFeePerGas!),
+                gasTank: Boolean(getZkSysGasTankAddress(chainId)) && operation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES,
+              }),
+            });
+          }
         };
         await pending.verify();
         if (intent.kind === 'modules') {
@@ -464,10 +491,11 @@ export function createNativeSmartOperation(
           });
           issued = maximum.quote;
           assertCurrent();
-          await captureObservation();
+          await captureObservation(issued);
           return {
             kind: 'authorization',
             operation: issued,
+            payerBudget,
             intent: {
               kind: 'native-transfer',
               recipient: intent.recipient,
@@ -512,12 +540,12 @@ export function createNativeSmartOperation(
           assertCurrent();
           return { kind: 'already-deployed' };
         }
-        await captureObservation();
-        return { kind: 'authorization', operation: issued, intent } as const;
+        await captureObservation(issued);
+        return { kind: 'authorization', operation: issued, intent, payerBudget } as const;
       });
     },
     async sign(prepared, assertCurrent, signal) {
-      if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
+      if (prepared !== issued || combinedFeeReview && !payerBudget) throw new Error('SMART_OPERATION_EXPIRED');
       await assertValidatorSwitch(assertCurrent);
       if (intent.kind === 'guardian-policy')
         await ports.assertGuardianPolicy!(policySignal, assertCurrent);
@@ -622,7 +650,7 @@ export function createNativeSmartOperation(
       reviewPayer,
       onBroadcast
     ) {
-      if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
+      if (prepared !== issued || combinedFeeReview && !payerBudget) throw new Error('SMART_OPERATION_EXPIRED');
       const provider = pending.provider;
       const assertContext = (id: string) => {
         assertCurrent();
@@ -689,13 +717,18 @@ export function createNativeSmartOperation(
           options.smartAccountCancellation
         );
         guard();
-        await reviewPayer(
+        const funding = transactionMetadata?.smartAccountDeploymentPrefund === true;
+        if (payerBudget) {
+          assertSmartAccountPayerFee(quote, payerBudget, {
+            account: account.address, chainId, payer: payerBudget.address, purpose: funding ? 'fund' : 'submit',
+          }, SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED);
+        } else await reviewPayer(
           {
             transaction: quote.transaction,
             maximumFeeUnits: quote.maximumFeeUnits,
             coveredFeeUnits: quote.coveredFeeUnits,
             maximumTotalUnits: quote.maximumTotalUnits,
-            purpose: transactionMetadata?.smartAccountDeploymentPrefund
+            purpose: funding
               ? 'fund-account'
               : 'submit-operation',
           },

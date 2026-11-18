@@ -9,12 +9,12 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { decodeAssetTransfer } from '../../shared/assetTransfer';
 import { createSmartAccountCallsExecutions } from '../../shared/dappCalls';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../shared/smartAccountFeeQuote';
 import { createEoaCallsSequence } from '../../wallet/evmCallsSequence';
-import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import { Button, Icon, Tooltip } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
-import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
+import { SmartAccountPayerFee } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -355,9 +355,11 @@ export const SendCalls = () => {
     : '';
   const hasCurrentFeeQuote =
     !requestSmartAccount.supportsAtomicBatch ||
-    Boolean(feeQuote?.key === feeQuoteKey && !feeQuoteNeedsRefresh);
-  const { forExecution, feeConfirmation } =
-    useSmartAccountFeeConfirmation(feeQuoteKey);
+    Boolean(
+      feeQuote?.payerBudget &&
+        feeQuote.key === feeQuoteKey &&
+        !feeQuoteNeedsRefresh
+    );
   const currentFeeQuoteKeyRef = React.useRef(feeQuoteKey);
   currentFeeQuoteKeyRef.current = feeQuoteKey;
   const assetTransfers = useAssetTransferSummaries(
@@ -421,6 +423,7 @@ export const SendCalls = () => {
         controllerEmitter,
         executions,
         expectedContext: approvedContext,
+        includePayerBudget: true,
       });
       if (!cancelled) {
         const destinations = Object.freeze(
@@ -878,14 +881,6 @@ export const SendCalls = () => {
             executions: approvedQuote.executions,
             expectedContext: approvedContext,
             approvedFeeQuote: approvedQuote,
-            feeConsent: forExecution({
-              account: approvedContext.account.address,
-              smartAccount: approvedContext.account.address,
-              chainId: activeNetwork.chainId,
-              symbol: activeNetwork.currency,
-              label: t('buttons.send'),
-              assertCurrent: assertApprovedQuoteCurrent,
-            }),
             onBeforeAuthentication: assertApprovedQuoteCurrent,
             onPrepared: assertApprovedQuoteCurrent,
             onAssertionResolved: () => {
@@ -1015,6 +1010,8 @@ export const SendCalls = () => {
           const legacyKey = legacyEvmNonceErrorKey(error);
           const errorMessage = unknown
             ? t('send.submissionStatusUnknown')
+            : error?.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+            ? t('send.smartAccountPayerFeeExceeded')
             : legacyKey
             ? t(legacyKey)
             : getSafeSmartAccountCallErrorMessage(
@@ -1391,7 +1388,6 @@ export const SendCalls = () => {
 
   return (
     <div className="h-screen flex flex-col">
-      {feeConfirmation}
       {/* Header */}
       <div className="bg-brand-blue600 p-4">
         <p className="text-sm text-brand-white break-all">{host}</p>
@@ -1691,11 +1687,19 @@ export const SendCalls = () => {
                 ? t('send.feeUnavailable')
                 : t('send.calculating')}
             </p>
-            {hasCurrentFeeQuote && feeQuote && (
-              <SmartAccountFeePayer address={feeQuote.feePayer.address} />
+            {hasCurrentFeeQuote && feeQuote?.payerBudget && (
+              <SmartAccountPayerFee
+                address={feeQuote.feePayer.address}
+                budget={feeQuote.payerBudget}
+                currency={activeNetwork.currency}
+              />
             )}
             <p className="text-xs text-brand-gray200 mt-1">
-              {t('send.smartAccountFeeDetails')}
+              {t(
+                hasCurrentFeeQuote && feeQuote?.payerBudget?.gasTank === false
+                  ? 'send.smartAccountFeeReimbursement'
+                  : 'send.smartAccountFeeDetails'
+              )}
             </p>
             {feeQuoteError && (
               <div role="alert" className="mt-2 text-sm text-brand-red">

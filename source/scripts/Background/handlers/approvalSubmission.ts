@@ -49,7 +49,10 @@ export type DappSmartAccountMethod =
   | 'submitSmartAccountExecution';
 
 type DappSmartAccountReview = TransactionApprovalDocument &
-  Readonly<{ methods: readonly DappSmartAccountMethod[] }>;
+  Readonly<{
+    allowInlinePayerBudget?: true;
+    methods: readonly DappSmartAccountMethod[];
+  }>;
 
 type Watch = {
   attempts: Set<object>;
@@ -375,6 +378,7 @@ export const captureDappSmartAccountSubmission = (
     watch.smart
   );
   return {
+    allowInlinePayerBudget: watch.smart.allowInlinePayerBudget,
     context: watch.evmSend?.context,
     assertCurrent,
     checkDocument,

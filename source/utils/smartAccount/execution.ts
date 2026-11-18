@@ -1,6 +1,7 @@
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard';
 import {
   matchesSmartAccountPayerBudget,
+  type SmartAccountFeeOverrides,
   type SmartAccountFeeQuote,
 } from '../../shared/smartAccountFeeQuote';
 import { signP256WebAuthnActionHash } from '../passkey/authenticator';
@@ -40,7 +41,10 @@ import type { SmartAccountAuthenticatorSignature } from './signature';
 import { canUseReservedSLHDSASignature } from './slhDsaPurpose';
 import type { SmartAccountControllerCallOptions } from '../../shared/smartAccountControllerAuthority';
 
-export type { SmartAccountFeeQuote } from '../../shared/smartAccountFeeQuote';
+export type {
+  SmartAccountFeeOverrides,
+  SmartAccountFeeQuote,
+} from '../../shared/smartAccountFeeQuote';
 
 export {
   SmartAccountExternalSignatureRequired,
@@ -186,12 +190,6 @@ export type SubmitSmartAccountExecutionsParams = {
   trackLocalSubmission?: boolean;
   useCachedMetadata?: boolean;
   waitForConfirmation?: boolean;
-};
-
-export type SmartAccountFeeOverrides = {
-  gasPrice?: string;
-  maxFeePerGas?: string;
-  maxPriorityFeePerGas?: string;
 };
 
 // This is a wallet-internal read-only preparation, not a provider method or

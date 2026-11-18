@@ -25,11 +25,10 @@ import {
   type EvmDappFeeChoiceFields,
   type EvmDappFeeComparison,
 } from '../../shared/evmDappFeePolicy';
-import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../shared/smartAccountFeeQuote';
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
-import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
@@ -151,9 +150,6 @@ export const SendTransaction = () => {
   const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
-  const { forExecution, feeConfirmation } = useSmartAccountFeeConfirmation(
-    JSON.stringify([currentApprovalWalletContextKey, host, eventName])
-  );
   const [approvedContext] = useState<IEvmTransactionContext>(() => {
     const current = store.getState();
     return (
@@ -725,7 +721,7 @@ export const SendTransaction = () => {
   currentSmartAccountQuoteKeyRef.current = smartAccountQuoteKey;
   const hasCurrentSmartAccountFeeQuote =
     !isSmartAccountApproval ||
-    (Boolean(fee?.smartAccountFeeQuote) &&
+    (Boolean(fee?.smartAccountFeeQuote?.payerBudget) &&
       feeQuoteKeyRef.current === smartAccountQuoteKey &&
       !feeQuoteNeedsRefresh);
   // Reverse cache name->address
@@ -978,59 +974,6 @@ export const SendTransaction = () => {
         const isPasskeyAccount = Boolean(
           activeAccount.isSmartAccount && activeAccount.smartAccount
         );
-        const getSmartAccountFeeOverrides = ():
-          | SmartAccountFeeOverrides
-          | undefined => {
-          if (!fee) return undefined;
-          if (isLegacyTransaction) {
-            if (!customFee.isCustom && txToSend.gasPrice !== undefined)
-              return { gasPrice: BigNumber.from(txToSend.gasPrice).toString() };
-            const gasPrice =
-              customFee.isCustom && customFee.gasPrice >= 0
-                ? customFee.gasPrice
-                : fee.gasPrice;
-            if (
-              gasPrice === undefined ||
-              !Number.isFinite(gasPrice) ||
-              gasPrice < 0
-            )
-              throw new Error('Invalid smart account legacy fee override');
-            return {
-              gasPrice: parseUnits(safeToFixed(gasPrice), 9).toString(),
-            };
-          }
-
-          const maxPriorityFeePerGas =
-            customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
-              ? customFee.maxPriorityFeePerGas
-              : fee.maxPriorityFeePerGas;
-          const maxFeePerGas =
-            customFee.isCustom && customFee.maxFeePerGas >= 0
-              ? customFee.maxFeePerGas
-              : fee.maxFeePerGas;
-
-          if (
-            maxPriorityFeePerGas === null ||
-            maxPriorityFeePerGas === undefined ||
-            maxPriorityFeePerGas < 0 ||
-            !maxFeePerGas ||
-            maxFeePerGas <= 0
-          ) {
-            throw new Error('Invalid smart account fee override');
-          }
-
-          return {
-            maxFeePerGas:
-              !customFee.isCustom && txToSend.maxFeePerGas !== undefined
-                ? BigNumber.from(txToSend.maxFeePerGas).toString()
-                : parseUnits(safeToFixed(maxFeePerGas), 9).toString(),
-            maxPriorityFeePerGas:
-              !customFee.isCustom && txToSend.maxPriorityFeePerGas !== undefined
-                ? BigNumber.from(txToSend.maxPriorityFeePerGas).toString()
-                : parseUnits(safeToFixed(maxPriorityFeePerGas), 9).toString(),
-          };
-        };
-
         if (isPasskeyAccount) {
           const approvedQuoteKey = smartAccountQuoteKey;
           const assertApprovedQuoteCurrent = () => {
@@ -1093,16 +1036,8 @@ export const SendTransaction = () => {
                 data: validateTransactionDataValue(txToSend.data),
               },
             ],
-            feeOverrides: getSmartAccountFeeOverrides(),
+            feeOverrides: fee!.smartAccountFeeOverrides,
             approvedFeeQuote: fee!.smartAccountFeeQuote!,
-            feeConsent: forExecution({
-              account: approvedContext.account.address,
-              smartAccount: activeAccount.address,
-              chainId: activeNetwork.chainId,
-              symbol: activeNetwork.currency,
-              label: t('buttons.send'),
-              assertCurrent: assertApprovedQuoteCurrent,
-            }),
             onBeforeAuthentication: assertApprovedQuoteCurrent,
             expectedContext: approvedContext,
             onPrepared: assertApprovedQuoteCurrent,
@@ -1228,7 +1163,9 @@ export const SendTransaction = () => {
         logError('error', 'Transaction', error);
         alert.error(
           t(
-            error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
+            error?.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+              ? 'send.smartAccountPayerFeeExceeded'
+              : error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
               ? 'transactions.psbtSigningContextChanged'
               : 'send.cantCompleteTxs'
           )
@@ -1869,7 +1806,6 @@ export const SendTransaction = () => {
 
   return (
     <>
-      {feeConfirmation}
       <EditPriorityModal
         showModal={isOpen}
         setIsOpen={updateFeeEditorOpen}
@@ -2331,13 +2267,6 @@ export const SendTransaction = () => {
                     {activeNetwork.currency}
                   </p>
                 </div>
-              )}
-            {isSmartAccountApproval &&
-              hasCurrentSmartAccountFeeQuote &&
-              fee?.smartAccountFeeQuote && (
-                <SmartAccountFeePayer
-                  address={fee.smartAccountFeeQuote.feePayer.address}
-                />
               )}
             {feeQuoteNeedsRefresh && (
               <div className="text-center text-warning-info text-xs mb-2">

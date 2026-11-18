@@ -1,6 +1,12 @@
 export const SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED =
   'PALI_SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED';
 
+export type SmartAccountFeeOverrides = {
+  gasPrice?: string;
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
+};
+
 export type SmartAccountPayerBudget = Readonly<{
   gasTank: boolean;
   maximumFeeWei: string;

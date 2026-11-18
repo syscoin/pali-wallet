@@ -1,7 +1,7 @@
-import { selectEvmDappGasLimit } from '../../shared/evmDappFeePolicy';
-import { EVM_NATIVE_INTRINSIC_GAS } from '../../shared/evmTransferCost';
+import { selectEvmDappGasLimit } from '../../shared/evmDappFeePolicy.ts';
+import { EVM_NATIVE_INTRINSIC_GAS } from '../../shared/evmTransferCost.ts';
 
-import { getPaliEntryPointAddress } from './contracts';
+import { getPaliEntryPointAddress } from './contracts.ts';
 import type { SmartAccountControllerFeeReview } from '../../shared/smartAccountControllerAuthority';
 import type { SmartAccountPayerBudget } from '../../shared/smartAccountFeeQuote';
 
@@ -41,7 +41,10 @@ export function getSmartAccountPayerBudget({
 
 /** Admit a controller-issued exact quote under the reviewed payer limits. */
 export function assertSmartAccountPayerFee(
-  review: SmartAccountControllerFeeReview,
+  review: Pick<
+    SmartAccountControllerFeeReview,
+    'transaction' | 'maximumFeeUnits' | 'coveredFeeUnits'
+  >,
   budget: SmartAccountPayerBudget,
   intent: {
     account: string;

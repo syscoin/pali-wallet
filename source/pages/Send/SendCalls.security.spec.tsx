@@ -64,6 +64,12 @@ jest.mock('utils/smartAccount', () => ({
     feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
     gasUnits: '860000',
     maximumFeeWei: '4300000',
+    payerBudget: {
+      gasTank: false,
+      maximumFeeWei: '1100000000000000',
+      maximumPrefundWei: '0',
+      maximumPrefundFeeWei: '0',
+    },
   }),
   SMART_ACCOUNT_FEE_QUOTE_CHANGED: 'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED',
   isSmartAccountFeeQuoteChanged: (error: any) =>

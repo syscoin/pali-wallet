@@ -68,11 +68,18 @@ const quote = (maximumFeeWei = '4300000000000000') => ({
   feePayer,
   gasUnits: '860000',
   maximumFeeWei,
+  payerBudget: {
+    gasTank: false,
+    maximumFeeWei: '1100000000000000',
+    maximumPrefundWei: '0',
+    maximumPrefundFeeWei: '0',
+  },
 });
 const ready = () => waitFor(() => expect(sign().disabled).toBe(false));
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'error').mockImplementation();
+  jest.spyOn(window, 'close').mockImplementation(() => undefined);
   mockState = {
     vault: {
       activeNetwork: { chainId: 57057, url: 'rpc-a', currency: 'TSYS' },
@@ -113,11 +120,16 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-it('shows full EntryPoint maximum and binds exact batch at signing', async () => {
+it('reviews both fee limits on one screen and binds the exact batch at signing', async () => {
   render(<SendCalls />);
   await ready();
   expect(screen.getByText('0.0043 TSYS')).toBeTruthy();
-  expect(screen.getByText('send.smartAccountFeeDetails')).toBeTruthy();
+  expect(screen.getByText('transactions.replay.maximumFee')).toBeTruthy();
+  expect(screen.getByText('0.0011 TSYS')).toBeTruthy();
+  expect(mockQuote).toHaveBeenCalledWith(
+    expect.objectContaining({ includePayerBudget: true })
+  );
+  expect(mockSubmit).not.toHaveBeenCalled();
   fireEvent.click(sign());
   await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
   expect(mockSubmit.mock.calls[0][0]).toMatchObject({
@@ -131,6 +143,23 @@ it('shows full EntryPoint maximum and binds exact batch at signing', async () =>
     }),
     expectedContext: mockQuery.approvedContext,
   });
+  expect(mockSubmit.mock.calls[0][0].feeConsent).toBeUndefined();
+});
+
+it('rejects a quoted Smart Account batch before signing or starting submission', async () => {
+  render(<SendCalls />);
+  await ready();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.reject' }));
+  await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
+  expect(mockSubmit).not.toHaveBeenCalled();
+  expect(
+    mockEmitter.mock.calls.some(
+      ([methods, args]) =>
+        methods.includes('submitSmartAccountExecution') ||
+        (methods.includes('recordSendCallsBundle') &&
+          args[2].submissionStarted === true)
+    )
+  ).toBe(false);
 });
 
 it('blocks approval until preparation succeeds and accepts genuine tank zero', async () => {
@@ -224,14 +253,14 @@ it('surfaces a preparation failure without signing and permits explicit retry', 
   expect(screen.queryByText('send.feeUnavailable')).not.toBeInTheDocument();
 });
 
-it('requires a fresh quoted context after a definite payer-fee decline, without automatically signing again', async () => {
+it('requires a fresh quoted context after definite payer-signing cancellation, without automatically signing again', async () => {
   mockQuote.mockResolvedValueOnce({
     ...quote(),
     executionContextId: 'consumed',
   });
   mockSubmit.mockImplementationOnce(async (params) => {
     await params.onBeforeSubmit({ executionContextId: 'consumed' });
-    throw Object.assign(new Error('Transaction fee approval was cancelled'), {
+    throw Object.assign(new Error('Payer signing was cancelled'), {
       code: 4001,
       transactionNotBroadcast: true,
     });

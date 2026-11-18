@@ -444,6 +444,7 @@ export const fetchGasAndDecodeFunction = async (
       data: formTx.data || '0x',
       value: rpcHex(formTx.value),
     };
+    feeDetails.smartAccountFeeOverrides = feeOverrides;
     feeDetails.smartAccountFeeQuote = await prepareSmartAccountFeeQuote({
       accountAddress: expectedContext.account.address,
       accountId: vault.activeAccount.id,
@@ -452,6 +453,7 @@ export const fetchGasAndDecodeFunction = async (
       expectedContext,
       feeOverrides,
       maximumGasUnits: blockGasLimit.toString(),
+      includePayerBudget: true,
     });
     assertCurrentContext();
   }

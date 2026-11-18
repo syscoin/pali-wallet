@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 import { TransactionDetailsComponent } from './TransactionDetails';
+import type { SmartAccountFeeQuote } from '../../../shared/smartAccountFeeQuote';
 
 const mockEmitter = jest.fn(async () => ({ isBlacklisted: false }));
 const mockSetCustomNonce = jest.fn();
@@ -34,7 +35,10 @@ jest.mock('components/Tooltip', () => ({
 jest.mock('antd', () => ({ Input: (props: any) => <input {...props} /> }));
 
 const show = (
-  quote?: { gasUnits: string; maximumFeeWei: string },
+  quote?: Pick<
+    SmartAccountFeeQuote,
+    'gasUnits' | 'maximumFeeWei' | 'payerBudget'
+  >,
   legacy = false,
   editingDisabled = false,
   customNonce?: number
@@ -97,6 +101,24 @@ it.each([false, true])(
     expect(screen.queryByText('0.0012699 TSYS')).toBeNull();
   }
 );
+
+it('shows both reviewed maximums together without adding the payer maximum to the Smart Account total', () => {
+  show({
+    gasUnits: '863456',
+    maximumFeeWei: '43172800000000000',
+    payerBudget: {
+      gasTank: false,
+      maximumFeeWei: '1100000000000000',
+      maximumPrefundWei: '0',
+      maximumPrefundFeeWei: '0',
+    },
+  });
+  expect(screen.getByText('send.smartAccountMaxFee')).toBeTruthy();
+  expect(screen.getByText('0.0431728 TSYS')).toBeTruthy();
+  expect(screen.getByText('transactions.replay.maximumFee')).toBeTruthy();
+  expect(screen.getByText('0.0011 TSYS')).toBeTruthy();
+  expect(screen.getByText('0.043172800000000001 TSYS')).toBeTruthy();
+});
 
 it('does not double-count the separate outer gas payer in verified tank mode', () => {
   show({ gasUnits: '863456', maximumFeeWei: '0' });

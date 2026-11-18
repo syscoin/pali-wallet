@@ -90,10 +90,21 @@ jest.mock('utils/fetchGasAndDecodeFunction', () => ({
       ].isSmartAccount &&
       result.feeDetails.smartAccountFeeQuote === undefined
     ) {
+      result.feeDetails.smartAccountFeeOverrides =
+        args[3] ??
+        (result.formTx.gasPrice === undefined
+          ? undefined
+          : { gasPrice: BigNumber.from(result.formTx.gasPrice).toString() });
       result.feeDetails.smartAccountFeeQuote = {
         feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
         gasUnits: '863456',
         maximumFeeWei: '43172800000000000',
+        payerBudget: {
+          gasTank: false,
+          maximumFeeWei: '1100000000000000',
+          maximumPrefundWei: '0',
+          maximumPrefundFeeWei: '0',
+        },
       };
     }
     return result;
@@ -945,6 +956,20 @@ it('requires a fresh quote and explicit confirmation after an initial EOA quote 
   expect(submitted[0][1][4].genericReviewId).toBe('lifetime-fee-1');
 });
 
+it('cancels the initial Smart Account review without signing or submitting', async () => {
+  mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+  mockState.vault.accounts.HDAccount[0].smartAccount = {};
+  await prepare();
+  await act(async () => mockButtonHandlers['buttons.cancel']());
+  expect(mockClose).toHaveBeenCalledTimes(1);
+  expect(mockSmartSubmit).not.toHaveBeenCalled();
+  expect(
+    mockEmitter.mock.calls.some(([path]) =>
+      path.includes('submitSmartAccountExecution')
+    )
+  ).toBe(false);
+});
+
 it('requires an explicit refreshed quote after a fresh AA preparation exceeds the approved maximum', async () => {
   mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
   mockState.vault.accounts.HDAccount[0].smartAccount = {};
@@ -959,6 +984,12 @@ it('requires an explicit refreshed quote after a fresh AA preparation exceeds th
     expect.objectContaining({
       approvedFeeQuote: expect.objectContaining({
         maximumFeeWei: '43172800000000000',
+        payerBudget: {
+          gasTank: false,
+          maximumFeeWei: '1100000000000000',
+          maximumPrefundWei: '0',
+          maximumPrefundFeeWei: '0',
+        },
         feePayer: expect.objectContaining({ id: 2 }),
       }),
     })
