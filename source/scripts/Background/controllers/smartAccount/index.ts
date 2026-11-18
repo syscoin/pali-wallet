@@ -2053,6 +2053,7 @@ class SmartAccountController {
         maxPriorityFeePerGas?: string;
       };
       includePayerBudget?: true;
+      nativeMaximum?: true;
       useCachedMetadata?: boolean;
     } = {},
     cancellation?: SmartAccountCancellation
@@ -2060,6 +2061,7 @@ class SmartAccountController {
     if (cancellation) assertSmartAccountCancellation(cancellation);
     const includePayerBudget =
       !cancellation && options.includePayerBudget === true;
+    const nativeMaximum = !cancellation && options.nativeMaximum === true;
     if (options.expectedContext)
       this.assertExpectedExecutionContext(options.expectedContext, accountId);
     const feeOverrides = { ...options.feeOverrides };
@@ -2208,6 +2210,7 @@ class SmartAccountController {
             ? cancellationPayer.feeOverrides
             : feeOverrides,
           knownDeployed: useDeployedMetadata,
+          ...(nativeMaximum ? { nativeMaximum: true } : {}),
           provider,
           pending,
           assertCurrent: assertContext,
@@ -2426,11 +2429,13 @@ class SmartAccountController {
       userOperation: Object.freeze({ ...userOperation }),
       prepared,
       executionIntent: JSON.stringify({
-        executions: params.map(({ target, data, value }) => ({
-          target: getAddress(target),
-          data: data || '0x',
-          value: BigInt(value).toString(),
-        })),
+        executions: (nativeMaximum ? prepared.executions : params).map(
+          ({ target, data, value }) => ({
+            target: getAddress(target),
+            data: data || '0x',
+            value: BigInt(value).toString(),
+          })
+        ),
         feeOverrides,
         expectedErc20Transfers,
       }),

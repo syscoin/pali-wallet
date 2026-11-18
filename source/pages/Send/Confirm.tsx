@@ -83,7 +83,6 @@ import {
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { buildSmartAccountErc20Transfer } from 'utils/smartAccount/erc20Transfer';
 import { isSmartAccountPayerPendingError } from 'utils/smartAccount/executionSimulationError';
-import { prepareSmartAccountNativeMaximum } from 'utils/smartAccount/nativeMaximum';
 import { buildSmartAccountNftTransfer } from 'utils/smartAccount/nftTransfer';
 import { isSmartAccountPendingReviewError } from 'utils/smartAccountErrors';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
@@ -892,11 +891,14 @@ export const SendConfirm = () => {
       const transactionType =
         basicTxValues.transactionType || TransactionType.NATIVE_ETH;
       let execution = { target, data: '0x', value: '0x0' };
+      const nativeMaximum =
+        transactionType === TransactionType.NATIVE_ETH && basicTxValues.isMax;
       if (transactionType === TransactionType.NATIVE_ETH) {
-        execution.value = parseUnits(
-          String(removeScientificNotation(basicTxValues.amount || '0')),
-          18
-        ).toHexString();
+        if (!nativeMaximum)
+          execution.value = parseUnits(
+            String(removeScientificNotation(basicTxValues.amount || '0')),
+            18
+          ).toHexString();
       } else {
         if (
           ![
@@ -941,58 +943,36 @@ export const SendConfirm = () => {
         if (cancelled || !submission.isActive())
           throw new Error('Smart account confirmation is no longer active');
       };
-      const quoteExecution = (candidate: typeof execution) => {
-        assertQuoteCurrent();
-        return prepareSmartAccountFeeQuote({
-          accountAddress: activeAccount.address,
-          accountId: activeAccountMeta.id,
-          controllerEmitter,
-          executions: [candidate],
-          ...(transactionType === TransactionType.ERC20
-            ? {
-                expectedErc20Transfers: [
-                  {
-                    contractAddress: basicTxValues.token.contractAddress,
-                    recipient: target,
-                    amountUnits: reviewedErc20Units!,
-                    decimals: basicTxValues.token.decimals,
-                  },
-                ],
-              }
-            : {}),
-          feeOverrides: overrides,
-          includePayerBudget: true,
-        });
-      };
-      let quote;
-      if (
-        transactionType === TransactionType.NATIVE_ETH &&
-        basicTxValues.isMax
-      ) {
-        const maximum = await prepareSmartAccountNativeMaximum({
-          target,
-          assertCurrent: assertQuoteCurrent,
-          async readBalance() {
-            const balance = (await controllerEmitter(
-              ['wallet', 'refreshActiveAccountBalances'],
-              [{ includeAssets: false }]
-            )) as { nativeBalance: string };
-            return parseUnits(
-              String(removeScientificNotation(balance.nativeBalance)),
-              18
-            ).toString();
-          },
-          async quote(candidate) {
-            const candidateQuote = await quoteExecution(candidate);
-            return {
-              quote: candidateQuote,
-              maximumFeeUnits: candidateQuote.maximumFeeWei,
-            };
-          },
-        });
-        execution = { ...maximum.execution };
-        quote = maximum.quote;
-      } else quote = await quoteExecution(execution);
+      assertQuoteCurrent();
+      const quote = await prepareSmartAccountFeeQuote({
+        accountAddress: activeAccount.address,
+        accountId: activeAccountMeta.id,
+        controllerEmitter,
+        executions: [execution],
+        ...(transactionType === TransactionType.ERC20
+          ? {
+              expectedErc20Transfers: [
+                {
+                  contractAddress: basicTxValues.token.contractAddress,
+                  recipient: target,
+                  amountUnits: reviewedErc20Units!,
+                  decimals: basicTxValues.token.decimals,
+                },
+              ],
+            }
+          : {}),
+        feeOverrides: overrides,
+        includePayerBudget: true,
+        ...(nativeMaximum ? { nativeMaximum: true } : {}),
+      });
+      if (nativeMaximum) {
+        if (!quote.nativeAmountWei)
+          throw new Error('Smart account maximum amount unavailable');
+        execution = {
+          ...execution,
+          value: BigNumber.from(quote.nativeAmountWei).toHexString(),
+        };
+      }
       if (!quote.payerBudget)
         throw new Error('Smart account payer fee quote unavailable');
       if (!cancelled && submission.isActive())

@@ -244,16 +244,23 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockHandleTransactionError.mockReturnValue(false);
   (prepareSmartAccountFeeQuote as jest.Mock).mockImplementation(
-    async ({ feeOverrides }: any) => ({
-      feePayer,
-      payerBudget,
-      gasUnits: '650000',
-      maximumFeeWei: BigNumber.from(
+    async ({ feeOverrides, nativeMaximum }: any) => {
+      const maximumFee = BigNumber.from(
         feeOverrides?.gasPrice ?? feeOverrides?.maxFeePerGas ?? '1000000000'
-      )
-        .mul(650000)
-        .toString(),
-    })
+      ).mul(650000);
+      return {
+        feePayer,
+        payerBudget,
+        gasUnits: '650000',
+        maximumFeeWei: maximumFee.toString(),
+        ...(nativeMaximum && {
+          nativeAmountWei: BigNumber.from('100000000000000000000')
+            .sub(maximumFee)
+            .sub('1000000000000')
+            .toString(),
+        }),
+      };
+    }
   );
   mockPublishedAuth = undefined;
   mockEip1559Compatible = false;
@@ -892,13 +899,27 @@ it('quotes and displays the exact native MAX net before signing, without a submi
     payerBudget,
     gasUnits: '863456',
     maximumFeeWei: '43172800000000000',
+    nativeAmountWei: '99956826200000000000',
   });
   render(<SendConfirm />);
   await waitFor(() => expect(screen.getByText('99.9568262 TSYS')).toBeTruthy());
-  const quote = (prepareSmartAccountFeeQuote as jest.Mock).mock.calls.at(-1)[0];
-  expect(BigNumber.from(quote.executions[0].value).toString()).toBe(
-    '99956826200000000000'
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(1);
+  const requestedExecution = {
+    target: mockLocation.state.tx.receivingAddress,
+    data: '0x',
+    value: '0x0',
+  };
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledWith(
+    expect.objectContaining({
+      nativeMaximum: true,
+      executions: [requestedExecution],
+    })
   );
+  expect(
+    mockControllerEmitter.mock.calls.some(
+      ([path]) => path.at(-1) === 'refreshActiveAccountBalances'
+    )
+  ).toBe(false);
   const reads = mockControllerEmitter.mock.calls.length;
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   await waitFor(() =>
@@ -907,7 +928,13 @@ it('quotes and displays the exact native MAX net before signing, without a submi
   expect(
     (signAndSubmitSmartAccountExecutions as jest.Mock).mock.calls[0][0]
       .executions
-  ).toEqual(quote.executions);
+  ).toEqual([
+    {
+      ...requestedExecution,
+      value: BigNumber.from('99956826200000000000').toHexString(),
+    },
+  ]);
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(1);
   expect(
     mockControllerEmitter.mock.calls
       .slice(reads)
@@ -1031,6 +1058,7 @@ it('uses trusted zero account-charge tank mode for native MAX without subtractin
     payerBudget: { ...payerBudget, gasTank: true },
     gasUnits: '863456',
     maximumFeeWei: '0',
+    nativeAmountWei: '99999999000000000000',
   });
   render(<SendConfirm />);
   await waitFor(() =>
@@ -1240,17 +1268,7 @@ it('keeps Smart account fee and total unavailable until a fresh retry succeeds',
       payerBudget,
       gasUnits: '650000',
       maximumFeeWei: '650000000000000',
-    })
-  );
-  await waitFor(() =>
-    expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(3)
-  );
-  await act(async () =>
-    resolveQuote({
-      feePayer,
-      payerBudget,
-      gasUnits: '650000',
-      maximumFeeWei: '650000000000000',
+      nativeAmountWei: '99999349000000000000',
     })
   );
   await waitFor(() =>
@@ -1258,6 +1276,7 @@ it('keeps Smart account fee and total unavailable until a fresh retry succeeds',
       screen.getByRole('button', { name: 'buttons.confirm' })
     ).toBeEnabled()
   );
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(2);
   expect(total).toHaveTextContent('99.999999 TSYS');
   expect(screen.queryAllByText('send.feeUnavailable')).toHaveLength(0);
   expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
@@ -1291,34 +1310,27 @@ it('shows an unavailable Smart token fee without an amount-only total', async ()
   expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
 });
 
-it('bounds MAX refinement and refuses to display or sign a nonconverging fee quote', async () => {
+it('refuses to sign when the backend rejects bounded MAX refinement', async () => {
   prepareSmartAccountConfirmation(true);
-  let quote = 0;
-  (prepareSmartAccountFeeQuote as jest.Mock).mockImplementation(async () => ({
-    feePayer,
-    payerBudget,
-    gasUnits: '650000',
-    maximumFeeWei: String(++quote * 1000000000000),
-  }));
+  (prepareSmartAccountFeeQuote as jest.Mock).mockRejectedValue(
+    new Error('Smart account maximum amount did not stabilize')
+  );
   render(<SendConfirm />);
   await waitFor(() =>
     expect(screen.getByText('send.unableToCalculateFees')).toBeTruthy()
   );
-  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(3);
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(1);
   expect(
     screen.getByRole('button', { name: 'buttons.confirm' })
   ).toBeDisabled();
   expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
 });
 
-it('refuses MAX when the full account charge exceeds the refreshed balance', async () => {
+it('refuses MAX when the backend reports insufficient balance', async () => {
   prepareSmartAccountConfirmation(true);
-  (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
-    feePayer,
-    payerBudget,
-    gasUnits: '650000',
-    maximumFeeWei: '100000000000000000000',
-  });
+  (prepareSmartAccountFeeQuote as jest.Mock).mockRejectedValue(
+    new Error('Insufficient funds for smart account fee')
+  );
   render(<SendConfirm />);
   await waitFor(() =>
     expect(screen.getByText('send.unableToCalculateFees')).toBeTruthy()
@@ -1497,6 +1509,7 @@ it.each(['network', 'fee'])(
         payerBudget,
         gasUnits: '650000',
         maximumFeeWei: '650000000000000',
+        nativeAmountWei: '99999349000000000000',
       })
     );
     expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();

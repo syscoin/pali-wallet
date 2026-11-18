@@ -22,7 +22,6 @@ import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonc
 import type { SmartAccountActivityIdentity } from '../../../../source/wallet/smartAccountActivity.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import { buildSmartAccountErc20Transfer, snapshotSmartAccountExpectedErc20Transfers } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
-import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
 import { assertSmartAccountSpendability } from '../../../../source/utils/smartAccount/assetSpendability.ts';
 import { getSmartAccountUserOpRequiredPrefund, SMART_ACCOUNT_ZERO_GAS_FEES } from '../../../../source/utils/smartAccount/account.ts';
 import { getZkSysGasTankAddress } from '../../../../source/utils/smartAccount/deploymentMetadata.ts';
@@ -411,7 +410,8 @@ export function createNativeSmartOperation(
           );
         cancellationPayer = cancellation ? await inspectSmartAccountCancellationPayer(cancellation,provider,assertCurrent) : undefined;
         const prepare = (
-          executions: { target: string; data: string; value: string }[]
+          executions: { target: string; data: string; value: string }[],
+          nativeMaximum?: true
         ) =>
           prepareSmartAccountOperation({
             account: { ...account, smartAccount: metadata },
@@ -425,6 +425,7 @@ export function createNativeSmartOperation(
               hasUsableSmartAccountAuthMetadata(metadata),
             executions,
             expectedErc20Transfers,
+            nativeMaximum,
             ...(cancellationPayer?.replaceOuter ? {feeOverrides:cancellationPayer.feeOverrides} : feeOverrides ? { feeOverrides } : intent.kind === 'dapp-call'
               ? {
                   // Match extension Smart submissions. EOA gas/gasLimit fields
@@ -475,24 +476,14 @@ export function createNativeSmartOperation(
             },
           });
         if (intent.kind === 'native-max') {
-          const maximum = await prepareSmartAccountNativeMaximum({
-            target: intent.recipient,
-            assertCurrent,
-            async readBalance() {
-              return (await provider.getBalance(account.address)).toString();
-            },
-            async quote(execution) {
-              const quote = await prepare([{ ...execution }]);
-              return {
-                quote,
-                maximumFeeUnits: getSmartAccountUserOpRequiredPrefund(
-                  quote.userOperation
-                ).toString(),
-              };
-            },
-          });
-          issued = maximum.quote;
+          issued = await prepare(
+            [{ target: intent.recipient, data: '0x', value: '0x0' }],
+            true
+          );
           assertCurrent();
+          const maximumAmount = issued.execution?.value;
+          if (!maximumAmount)
+            throw new Error('Smart account maximum amount unavailable');
           await captureObservation(issued);
           return {
             kind: 'authorization',
@@ -501,7 +492,7 @@ export function createNativeSmartOperation(
             intent: {
               kind: 'native-transfer',
               recipient: intent.recipient,
-              amountUnits: BigInt(maximum.execution.value).toString(),
+              amountUnits: BigInt(maximumAmount).toString(),
               ...(intent.feeChoice ? { feeChoice: intent.feeChoice } : {}),
             },
           };

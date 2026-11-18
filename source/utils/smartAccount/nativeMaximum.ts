@@ -3,6 +3,8 @@ import { toBeHex } from 'ethers/utils';
 
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 
+import { SmartAccountNativeSpendabilityError } from './nativeSpendability.ts';
+
 export type SmartAccountNativeExecution = Readonly<{
   data: '0x';
   target: string;
@@ -11,6 +13,7 @@ export type SmartAccountNativeExecution = Readonly<{
 
 // Existing extension policy. This reserve belongs to the Smart account, separate from its EOA payer.
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = BigInt('1000000000000');
+const MAX_QUOTE_ATTEMPTS = 4;
 const unsignedUnits = (value: string): bigint => {
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(value))
     throw new Error('Invalid smart account amount');
@@ -37,24 +40,38 @@ export async function prepareSmartAccountNativeMaximum<Quote>(
     assertCurrent = options.assertCurrent;
   const check = () => assertSynchronousEvmFeeGuard(assertCurrent);
   check();
-  const balance = unsignedUnits(await readBalance());
+  let balance = unsignedUnits(await readBalance());
   check();
   let execution: SmartAccountNativeExecution = Object.freeze({
     target,
     data: '0x',
     value: '0x1',
   });
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < MAX_QUOTE_ATTEMPTS; attempt++) {
     check();
-    const quoted = await quoteExecution(execution);
+    let quoted: Awaited<ReturnType<typeof quoteExecution>> | undefined;
+    let fee: bigint;
+    try {
+      quoted = await quoteExecution(execution);
+      fee = unsignedUnits(quoted.maximumFeeUnits);
+    } catch (error) {
+      if (!(error instanceof SmartAccountNativeSpendabilityError)) throw error;
+      // A larger amount can increase its own calldata gas. Use the fee from
+      // admission to lower the candidate even though no quote was issued.
+      balance = unsignedUnits(error.balance);
+      fee = unsignedUnits(error.requiredPrefund);
+    }
     check();
-    const net =
-      balance -
-      unsignedUnits(quoted.maximumFeeUnits) -
-      SMART_ACCOUNT_MAX_SEND_BUFFER_WEI;
+    const net = balance - fee - SMART_ACCOUNT_MAX_SEND_BUFFER_WEI;
     if (net <= BigInt(0))
       throw new Error('Insufficient funds for smart account fee');
-    if (net === BigInt(execution.value))
+    const amount = BigInt(execution.value);
+    // At the limit, an exact admitted quote that leaves extra headroom is
+    // still safe to review.
+    if (
+      quoted &&
+      (net === amount || (attempt === MAX_QUOTE_ATTEMPTS - 1 && net > amount))
+    )
       return Object.freeze({ execution, quote: quoted.quote });
     execution = Object.freeze({ ...execution, value: toBeHex(net) });
   }

@@ -145,6 +145,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let smartGuardianMetadata: { address: string; owners: string[]; threshold: number; compositeThreshold?: number; deployed: boolean } | undefined;
   const estimatedSenders: string[] = [];
   let innerGasEstimate = '0x186a0';
+  let quoteInnerGas: ((data: string) => bigint) | undefined;
   let composite: { threshold: number; ecdsaFirst: boolean; children?: string[] } | undefined;
   const customValidators = new Map<string, { installed: boolean; compatible: boolean }>();
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
@@ -258,7 +259,13 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           }
           const funding = (call.data === '0x' || !call.data) && runtime.catalogue.getSnapshot()?.accounts.some(
             account => account.type === 'SmartAccount' && account.address.toLowerCase() === call.to?.toLowerCase());
-          result = inner ? innerGasEstimate : funding ? '0x5208' : payerGasEstimate;
+          if (inner) {
+            result = quoteInnerGas
+              ? '0x' + quoteInnerGas(call.data).toString(16)
+              : innerGasEstimate;
+          } else {
+            result = funding ? '0x5208' : payerGasEstimate;
+          }
         }
         else if (request.method === 'eth_simulateV1') {
           if (request.params[0].blockStateCalls[0].calls.length === 0) return Response.json({jsonrpc:'2.0', id:request.id, result:[{calls:[], transactions:[]}]});
@@ -602,6 +609,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; },
     transferRpc: new NativeTransferRpc({ registration: getNativeNetwork('ethereum'), fetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init) }),
     get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
+    estimateInnerGas(quote: (data: string) => bigint) { quoteInnerGas = quote; },
     increaseInnerGas() { innerGasEstimate = '0x493e0'; },
     failInnerExecution() { innerGasEstimate = '0xffffffff'; },
     get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, typedSigningRequests, payerSignatures, possessionViews, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
@@ -2384,6 +2392,77 @@ for (const sponsored of [false, true]) test(`Smart native MAX uses the shared re
   } finally { operation?.dispose(); await f.close(); }
 });
 
+
+test('Smart native MAX refines when amount calldata raises the required prefund', async () => {
+  const f = await fixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.selectNetwork('zksys-testnet');
+    await f.change({ kind: 'create-smart', label: 'MAX sender' });
+    const balance = 75_295_480_000_000_000n;
+    const reserve = 1_000_000_000_000n;
+    const maxFeePerGas = 55_000_000_000n;
+    const feeChoice = {
+      kind: 'custom' as const,
+      type: 2 as const,
+      maxFeePerGas: maxFeePerGas.toString(),
+      maxPriorityFeePerGas: '1',
+    };
+    f.smartBalance(balance);
+    f.deployed();
+
+    const estimates: { amount: bigint; gas: bigint }[] = [];
+    f.estimateInnerGas((data) => {
+      const [, execution] = paliSmartAccountInterface.decodeFunctionData(
+        'execute', data
+      );
+      const bytes = getBytes('0x' + execution.slice(42, 106));
+      // This chain keeps the transaction estimate, including calldata costs.
+      const gas = 25_000n + BigInt(bytes.filter((byte) => byte !== 0).length) * 12n;
+      estimates.push({ amount: BigInt(hexlify(bytes)), gas });
+      return gas;
+    });
+    const recipient = '0x2222222222222222222222222222222222222222';
+    operation = await f.runtime.openSmartAccountSend(
+      recipient,
+      { kind: 'exact', amount: '0.001', feeChoice },
+      () => undefined,
+      null
+    );
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    await operation.dispose();
+    operation = undefined;
+
+    estimates.length = 0;
+    operation = await f.runtime.openSmartAccountSend(
+      recipient,
+      { kind: 'maximum', feeChoice },
+      () => undefined,
+      null
+    );
+    await operation.prepare();
+    const ready = operation.getSnapshot();
+    assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
+    if (ready.intent.kind !== 'native-transfer')
+      assert.fail('MAX did not resolve to an exact transfer');
+    assert(ready.maximumPrefundUnits);
+    const finalAmount = BigInt(ready.intent.amountUnits);
+    assert.equal(
+      finalAmount + BigInt(ready.maximumPrefundUnits) + reserve,
+      balance
+    );
+    const first = estimates[0]!;
+    const final = estimates.at(-1)!;
+    assert.equal(first.amount, 1n);
+    assert.equal(final.amount, finalAmount);
+    assert((final.gas - first.gas) * maxFeePerGas > reserve);
+    assert.equal(f.submitted.length, 0);
+  } finally {
+    await operation?.dispose();
+    await f.close();
+  }
+});
 
 test('native Smart preparation batches all eleven infrastructure reads', async () => {
   const f = await fixture();

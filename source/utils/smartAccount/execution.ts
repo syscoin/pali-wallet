@@ -204,6 +204,7 @@ export const prepareSmartAccountFeeQuote = async ({
   feeOverrides,
   includePayerBudget,
   maximumGasUnits,
+  nativeMaximum,
 }: {
   accountAddress: string;
   accountId?: number;
@@ -214,7 +215,8 @@ export const prepareSmartAccountFeeQuote = async ({
   feeOverrides?: SmartAccountFeeOverrides;
   includePayerBudget?: true;
   maximumGasUnits?: string;
-}): Promise<SmartAccountFeeQuote> => {
+  nativeMaximum?: true;
+}): Promise<SmartAccountFeeQuote & { nativeAmountWei?: string }> => {
   const quantity = (value: unknown) => {
     if (
       value !== null &&
@@ -239,6 +241,10 @@ export const prepareSmartAccountFeeQuote = async ({
   };
   if (
     !executions.length ||
+    (nativeMaximum &&
+      (executions.length !== 1 ||
+        (executions[0].data && executions[0].data !== '0x') ||
+        executions[0].value !== '0x0')) ||
     (expectedContext &&
       expectedContext.account.address.toLowerCase() !==
         accountAddress.toLowerCase())
@@ -252,6 +258,7 @@ export const prepareSmartAccountFeeQuote = async ({
       {
         ...(expectedContext ? { expectedContext } : {}),
         ...(includePayerBudget ? { includePayerBudget } : {}),
+        ...(nativeMaximum ? { nativeMaximum } : {}),
         feeOverrides,
         expectedErc20Transfers: snapshotSmartAccountExpectedErc20Transfers(
           expectedErc20Transfers
@@ -273,7 +280,9 @@ export const prepareSmartAccountFeeQuote = async ({
         quoted?.target?.toLowerCase() !== execution.target.toLowerCase() ||
         String(quoted?.data || '0x').toLowerCase() !==
           (execution.data || '0x').toLowerCase() ||
-        !quantity(quoted?.value).eq(quantity(execution.value))
+        (nativeMaximum
+          ? quantity(quoted?.value).isZero()
+          : !quantity(quoted?.value).eq(quantity(execution.value)))
       );
     }) ||
     userOp?.sender?.toLowerCase() !== accountAddress.toLowerCase() ||
@@ -320,6 +329,9 @@ export const prepareSmartAccountFeeQuote = async ({
     },
     gasUnits: gasUnits.toString(),
     maximumFeeWei: getSmartAccountUserOpRequiredPrefund(userOp).toString(),
+    ...(nativeMaximum && {
+      nativeAmountWei: quantity(prepared.executions[0].value).toString(),
+    }),
     ...(includePayerBudget && {
       payerBudget: Object.freeze({ ...payerBudget }),
     }),
