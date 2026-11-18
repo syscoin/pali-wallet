@@ -1,13 +1,11 @@
 /** @jest-environment jsdom */
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
-
-import { decodeAssetTransfer } from '../../shared/assetTransfer';
 
 import { RetainedTransactionReplay } from './RetainedTransactionReplay';
 
-const HASH = `0x${'11'.repeat(32)}`;
 const PREVIOUS = `0x${'22'.repeat(32)}`;
+const HASH = `0x${'11'.repeat(32)}`;
 let mockScope = { account: 'account-a', network: 'network-a' };
 let mockRevision = 0;
 let mockAccountType = 'HDAccount';
@@ -100,26 +98,6 @@ const deferred = <T,>() => {
   });
   return { promise, resolve };
 };
-const review = (id = 'review-1', hash = HASH) => ({
-  status: 'review',
-  review: {
-    id,
-    hash,
-    validForMs: 90000,
-    chainId: '57057',
-    from: `0x${'33'.repeat(20)}`,
-    to: null,
-    value: '1000000000000000001',
-    nonce: '4',
-    maximumFee: '1234567890000000',
-    dataBytes: 10000,
-    selector: '0x12345678',
-    accessListEntries: 2,
-    operation: 'send',
-    predecessors: [],
-    predecessorCount: 0,
-  },
-});
 const flush = async () => {
   await act(async () => {
     await Promise.resolve();
@@ -137,61 +115,10 @@ beforeEach(() => {
   mockAccountType = 'HDAccount';
   mockSmartAccountAvailable = false;
   mockRevision++;
-  mockEmitter.mockReset();
+  mockEmitter.mockReset().mockResolvedValue(undefined);
   Object.values(mockAlert).forEach((method) => method.mockClear());
-  mockEmitter.mockImplementation(([, method]: string[], args: any[]) => {
-    if (method === 'getSavedEvmTransaction')
-      return Promise.resolve({ hash: HASH });
-    if (method === 'prepareEvmSignedReplay')
-      return Promise.resolve(review('review-1', args[0]));
-    if (method === 'confirmEvmSignedReplay')
-      return Promise.resolve({ status: 'submitted', hash: HASH });
-    return Promise.resolve();
-  });
 });
-afterEach(() => {
-  jest.useRealTimers();
-});
-
-test.each([
-  ['rpc-insufficient-funds', true],
-  [undefined, false],
-  ['remote untrusted details', false],
-])(
-  'unknown replay alerts with only its bounded funding diagnostic: %s',
-  async (reason, diagnostic) => {
-    mockAccountType = 'SmartAccount';
-    render(<RetainedTransactionReplay hash={HASH} />);
-    await flush();
-    fireEvent.click(screen.getByRole('button', { name: 'Review resend' }));
-    await flush();
-    mockEmitter.mockResolvedValueOnce({
-      status: 'unknown',
-      hash: HASH,
-      reason,
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Resend' }));
-    await flush();
-    expect(mockAlert.warning).toHaveBeenCalledTimes(1);
-    const [message] = mockAlert.warning.mock.calls[0];
-    expect(message).toContain(
-      diagnostic
-        ? `The RPC reported insufficient funds for the original fee payer (${
-            review().review.from
-          }). Submission remains unconfirmed.`
-        : 'Submission could not be confirmed.'
-    );
-    expect(message).not.toContain('remote untrusted details');
-    expect(mockAlert.success).not.toHaveBeenCalled();
-    expect(screen.queryByRole('status')).toBeNull();
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(
-      mockEmitter.mock.calls.filter(
-        ([route]) => route[1] === 'confirmEvmSignedReplay'
-      )
-    ).toHaveLength(1);
-  }
-);
+afterEach(() => jest.useRealTimers());
 
 const savedCancellationQuote = {
   id: 'cancel-1',
@@ -220,7 +147,7 @@ test('an explicit saved Cancel review sends only its opaque one-use approval', a
   mockEmitter
     .mockResolvedValueOnce(savedCancellationQuote)
     .mockImplementationOnce(() => pending.promise);
-  fireEvent.click(screen.getByRole('button', { name: 'Review cancellation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel Transaction' }));
   await flush();
   expect(mockEmitter).toHaveBeenLastCalledWith(
     ['wallet', 'prepareRetainedEvmCancellation'],
@@ -252,7 +179,7 @@ test('an explicit saved Cancel review sends only its opaque one-use approval', a
   );
   expect(mockAlert.success.mock.calls[0][0]).toContain(PREVIOUS);
   expect(
-    screen.queryByRole('button', { name: 'Review cancellation' })
+    screen.queryByRole('button', { name: 'Cancel Transaction' })
   ).toBeNull();
 });
 
@@ -263,7 +190,7 @@ test('saved cancellation reports a verified fee shortfall before signing', async
   mockEmitter.mockRejectedValueOnce(
     new Error('Insufficient funds for reviewed EVM transfer')
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Review cancellation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel Transaction' }));
   await flush();
   expect(mockAlert.error).toHaveBeenCalledWith(
     messages.send.insufficientFundsForGas
@@ -282,7 +209,7 @@ test('an old account cannot use an arriving saved Cancel quote', async () => {
   render(<RetainedTransactionReplay hash={HASH} />);
   await flush();
   mockEmitter.mockImplementationOnce(() => pending.promise);
-  fireEvent.click(screen.getByRole('button', { name: 'Review cancellation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel Transaction' }));
   changeScope('account-b');
   pending.resolve(savedCancellationQuote);
   await flush();
@@ -303,58 +230,13 @@ test.each(['Ledger', 'Trezor', 'SmartAccount', 'Imported'])(
     render(<RetainedTransactionReplay hash={HASH} />);
     await flush();
     expect(
-      screen.queryByRole('button', { name: 'Review cancellation' })
+      screen.queryByRole('button', { name: 'Cancel Transaction' })
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'Review resend' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Review resend' })).toBeNull();
   }
 );
 
-test.each([false, true])(
-  'saved Smart handleOps keeps resend and offers a new cancellation only for the original (cancellation=%s)',
-  async (cancellation) => {
-    mockAccountType = 'SmartAccount';
-    mockSmartAccountAvailable = true;
-    const smartAccount = {
-      account: `0x${'66'.repeat(20)}`,
-      ...(cancellation ? { cancellation: true } : {}),
-    };
-    const result = review();
-    mockEmitter
-      .mockResolvedValueOnce({
-        hash: HASH,
-        operation: 'send',
-        phase: 'signed',
-        type: 0,
-        smartAccount,
-      })
-      .mockResolvedValueOnce({
-        ...result,
-        review: { ...result.review, smartAccount },
-      });
-    render(<RetainedTransactionReplay hash={HASH} />);
-    await flush();
-    expect(
-      Boolean(screen.queryByRole('button', { name: 'Review cancellation' }))
-    ).toBe(!cancellation);
-    fireEvent.click(screen.getByRole('button', { name: 'Review resend' }));
-    await flush();
-    expect(
-      within(screen.getByRole('dialog')).getByText(
-        cancellation ? 'Cancellation' : 'Send'
-      )
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Resend' }));
-    await flush();
-    expect(mockEmitter).toHaveBeenLastCalledWith(
-      ['wallet', 'confirmEvmSignedReplay'],
-      ['review-1'],
-      30000,
-      false
-    );
-  }
-);
-
-test('shows saved collectible intent without preparing or changing generic replay', async () => {
+test('shows saved collectible intent without enabling ordinary replay', async () => {
   const amountUnits = ((BigInt(1) << BigInt(256)) - BigInt(1)).toString();
   const recipient = `0x${'22'.repeat(20)}`;
   const contractAddress = `0x${'33'.repeat(20)}`;
@@ -382,7 +264,7 @@ test('shows saved collectible intent without preparing or changing generic repla
   expect(mockEmitter.mock.calls.map((call) => call[0][1])).toEqual([
     'getSavedEvmTransaction',
   ]);
-  expect(screen.getByText('Review resend')).toBeTruthy();
+  expect(screen.queryByText('Review resend')).toBeNull();
   mockEmitter.mockImplementationOnce(() =>
     Promise.resolve({
       hash: HASH,
@@ -393,568 +275,5 @@ test('shows saved collectible intent without preparing or changing generic repla
   expect(screen.queryByText(amountUnits)).toBeNull();
   await flush();
   expect(screen.queryByText(amountUnits)).toBeNull();
-  expect(screen.getByText('Review resend')).toBeTruthy();
-});
-
-test('review shows exact amount, fee, contract creation and calldata before a single nonretrying confirm', async () => {
-  const confirmation = deferred<any>();
-  mockEmitter.mockImplementationOnce(() => Promise.resolve({ hash: HASH }));
-  render(<RetainedTransactionReplay hash={HASH} />);
-  await flush();
-  expect(
-    screen.queryByText(messages.transactions.replay.sameNonceWarning)
-  ).toBeNull();
-  fireEvent.click(screen.getByText('Review resend'));
-  await flush();
-  expect(
-    screen.getByText(
-      `${messages.transactions.replay.description} ${messages.transactions.replay.sameNonceWarning}`
-    )
-  ).toBeTruthy();
-  expect(screen.getByText('1.000000000000000001 SYS')).toBeTruthy();
-  expect(screen.getByText('0.00123456789 SYS')).toBeTruthy();
-  expect(screen.getByText('Contract creation')).toBeTruthy();
-  expect(screen.getByText('10000 bytes · 0x12345678')).toBeTruthy();
-  expect(
-    mockEmitter.mock.calls.some(
-      (call) => call[0][1] === 'confirmEvmSignedReplay'
-    )
-  ).toBe(false);
-  mockEmitter.mockImplementation(([, method]: string[]) =>
-    method === 'confirmEvmSignedReplay'
-      ? confirmation.promise
-      : Promise.resolve()
-  );
-  fireEvent.click(screen.getByText('Resend'));
-  fireEvent.click(screen.getByText('Resend'));
-  expect(
-    mockEmitter.mock.calls.filter(
-      (call) => call[0][1] === 'confirmEvmSignedReplay'
-    )
-  ).toEqual([
-    [['wallet', 'confirmEvmSignedReplay'], ['review-1'], 30000, false],
-  ]);
-  await act(async () =>
-    confirmation.resolve({ status: 'submitted', hash: HASH })
-  );
-  expect(screen.queryByRole('dialog')).toBeNull();
-  expect(mockAlert.success).toHaveBeenCalledTimes(1);
-  expect(mockAlert.success).toHaveBeenCalledWith(
-    messages.transactions.replay.submitted,
-    undefined,
-    expect.any(Function)
-  );
-  expect(mockAlert.warning).not.toHaveBeenCalled();
-  expect(screen.queryByRole('status')).toBeNull();
-});
-
-test('expiry clears old consent and a fresh review uses a different ID', async () => {
-  let next = 0;
-  mockEmitter.mockImplementation(([, method]: string[]) =>
-    method === 'prepareEvmSignedReplay'
-      ? Promise.resolve(review(`review-${++next}`))
-      : Promise.resolve({ hash: HASH })
-  );
-  render(<RetainedTransactionReplay hash={HASH} />);
-  await flush();
-  fireEvent.click(screen.getByText('Review resend'));
-  await flush();
-  act(() => {
-    jest.advanceTimersByTime(90000);
-  });
-  expect(screen.queryByRole('dialog')).toBeNull();
-  expect(mockAlert.warning).toHaveBeenCalledWith(
-    messages.transactions.replay.expired
-  );
-  expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'cancelEvmSignedReplay'],
-    ['review-1'],
-    10000,
-    false
-  );
-  expect(
-    mockEmitter.mock.calls.some(
-      (call) => call[0][1] === 'confirmEvmSignedReplay'
-    )
-  ).toBe(false);
-  fireEvent.click(screen.getByText('Review resend'));
-  await flush();
-  fireEvent.click(screen.getByText('Resend'));
-  await flush();
-  expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'confirmEvmSignedReplay'],
-    ['review-2'],
-    30000,
-    false
-  );
-});
-
-test('a late review after an account A-B-A change only cancels its own ID', async () => {
-  const pending = deferred<any>();
-  mockEmitter.mockImplementation(([, method]: string[]) =>
-    method === 'prepareEvmSignedReplay'
-      ? pending.promise
-      : Promise.resolve({ hash: HASH })
-  );
-  render(<RetainedTransactionReplay hash={HASH} />);
-  await flush();
-  fireEvent.click(screen.getByText('Review resend'));
-  changeScope('account-b');
-  changeScope('account-a');
-  await flush();
-  await act(async () => pending.resolve(review('stale-review')));
-  expect(screen.queryByRole('dialog')).toBeNull();
-  expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'cancelEvmSignedReplay'],
-    ['stale-review'],
-    10000,
-    false
-  );
-});
-
-test('selecting a retained predecessor requires its own fresh review and does not submit automatically', async () => {
-  mockEmitter.mockImplementation(([, method]: string[], args: any[]) => {
-    if (method !== 'prepareEvmSignedReplay')
-      return Promise.resolve({ hash: HASH });
-    const result = review(
-      args[0] === HASH ? 'current-review' : 'previous-review',
-      args[0]
-    );
-    if (args[0] === HASH)
-      Object.assign(result.review, {
-        missingNonce: '3',
-        predecessors: [{ hash: PREVIOUS, operation: 'cancel', nonce: 3 }],
-      });
-    return Promise.resolve(result);
-  });
-  render(<RetainedTransactionReplay hash={HASH} />);
-  await flush();
-  fireEvent.click(screen.getByText('Review resend'));
-  await flush();
-  fireEvent.click(screen.getByText(/Review previous transaction/));
-  await flush();
-  expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'prepareEvmSignedReplay'],
-    [PREVIOUS],
-    15000,
-    false
-  );
-  expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'cancelEvmSignedReplay'],
-    ['current-review'],
-    10000,
-    false
-  );
-  expect(
-    mockEmitter.mock.calls.some(
-      (call) => call[0][1] === 'confirmEvmSignedReplay'
-    )
-  ).toBe(false);
-});
-
-test('a missing saved record leaves the existing details uncluttered', async () => {
-  mockEmitter.mockResolvedValue(null);
-  render(<RetainedTransactionReplay hash={HASH} />);
-  await flush();
-  expect(screen.queryByRole('button')).toBeNull();
-});
-
-test('lost confirm response directs the user to Activity without another dispatch', async () => {
-  render(<RetainedTransactionReplay hash={HASH} />);
-  await flush();
-  fireEvent.click(screen.getByText('Review resend'));
-  await flush();
-  mockEmitter.mockRejectedValue(new Error('Network request timed out'));
-  fireEvent.click(screen.getByText('Resend'));
-  await flush();
-  expect(mockAlert.warning).toHaveBeenCalledWith(
-    messages.transactions.replay.checkActivity
-  );
-  expect(
-    mockEmitter.mock.calls.filter(
-      (call) => call[0][1] === 'confirmEvmSignedReplay'
-    )
-  ).toHaveLength(1);
-});
-
-test.each(['submitted', 'unknown'])(
-  'a late %s result from an old account does not show an alert',
-  async (status) => {
-    const pending = deferred<{ hash: string; status: string }>();
-    render(<RetainedTransactionReplay hash={HASH} />);
-    await flush();
-    fireEvent.click(screen.getByText('Review resend'));
-    await flush();
-    mockEmitter.mockReturnValueOnce(pending.promise);
-    fireEvent.click(screen.getByText('Resend'));
-    changeScope('account-b');
-    changeScope('account-a');
-    await act(async () => pending.resolve({ status, hash: HASH }));
-    expect(mockAlert.success).not.toHaveBeenCalled();
-    expect(mockAlert.warning).not.toHaveBeenCalled();
-    expect(mockAlert.error).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).toBeNull();
-  }
-);
-
-test.each([81, 255])(
-  'reviews a one-unit token with %i decimals using the shared exact formatter',
-  async (decimals) => {
-    mockEmitter.mockImplementation(([, method]: string[]) => {
-      if (method !== 'prepareEvmSignedReplay')
-        return Promise.resolve({ hash: HASH });
-      const result = review();
-      Object.assign(result.review, {
-        tokenTransfer: {
-          recipient: 'public-token-recipient',
-          amountUnits: '1',
-          token: { decimals, symbol: 'TKN' },
-        },
-      });
-      return Promise.resolve(result);
-    });
-    render(<RetainedTransactionReplay hash={HASH} />);
-    await flush();
-    fireEvent.click(screen.getByText('Review resend'));
-    await flush();
-    expect(screen.getByText(`0.${'0'.repeat(decimals - 1)}1 TKN`)).toBeTruthy();
-    expect(screen.getByText('public-token-recipient')).toBeTruthy();
-    expect(
-      mockEmitter.mock.calls.some(
-        (call) => call[0][1] === 'confirmEvmSignedReplay'
-      )
-    ).toBe(false);
-  }
-);
-
-test.each(['ERC-721', 'ERC-1155'] as const)(
-  'reviews the exact current %s intent, including after choosing a predecessor',
-  async (tokenStandard) => {
-    const original = {
-      kind: 'nft-transfer',
-      chainId: '57057',
-      from: `0x${'33'.repeat(20)}`,
-      contractAddress: `0x${'44'.repeat(20)}`,
-      recipient: `0x${'55'.repeat(20)}`,
-      tokenStandard,
-      tokenId: '17',
-      amountUnits: tokenStandard === 'ERC-721' ? '1' : '9007199254740993',
-    };
-    const predecessor = {
-      ...original,
-      contractAddress: `0x${'66'.repeat(20)}`,
-      recipient: `0x${'77'.repeat(20)}`,
-      tokenId: '29',
-      amountUnits: tokenStandard === 'ERC-721' ? '1' : '9007199254740995',
-    };
-    mockEmitter.mockImplementation(([, method]: string[], args: any[]) => {
-      if (method === 'getSavedEvmTransaction')
-        return Promise.resolve({ hash: HASH, collectibleTransfer: original });
-      if (method === 'prepareEvmSignedReplay') {
-        const isOriginal = args[0] === HASH;
-        const intent = isOriginal ? original : predecessor;
-        const result = review(
-          isOriginal ? 'original-review' : 'predecessor-review',
-          args[0]
-        );
-        Object.assign(result.review, {
-          operation: tokenStandard === 'ERC-721' ? 'erc721' : 'erc1155',
-          to: intent.contractAddress,
-          value: '0',
-          collectibleTransfer: intent,
-          ...(isOriginal
-            ? {
-                missingNonce: '3',
-                predecessors: [
-                  { hash: PREVIOUS, operation: 'erc721', nonce: 3 },
-                ],
-              }
-            : {}),
-        });
-        return Promise.resolve(result);
-      }
-      return Promise.resolve({ status: 'submitted', hash: PREVIOUS });
-    });
-    render(<RetainedTransactionReplay hash={HASH} />);
-    await flush();
-    fireEvent.click(screen.getByText('Review resend'));
-    await flush();
-    let dialog = within(screen.getByRole('dialog'));
-    expect(dialog.getByText(original.recipient)).toBeTruthy();
-    expect(dialog.getByText(original.tokenId)).toBeTruthy();
-    expect(dialog.getByText(original.amountUnits)).toBeTruthy();
-    expect(dialog.getByText(tokenStandard)).toBeTruthy();
-    fireEvent.click(dialog.getByText(/Review previous transaction/));
-    await flush();
-    dialog = within(screen.getByRole('dialog'));
-    expect(dialog.queryByText(original.recipient)).toBeNull();
-    expect(dialog.queryByText(original.tokenId)).toBeNull();
-    expect(dialog.getByText(predecessor.recipient)).toBeTruthy();
-    expect(dialog.getByText(predecessor.tokenId)).toBeTruthy();
-    expect(dialog.getByText(predecessor.amountUnits)).toBeTruthy();
-    expect(dialog.getAllByText(predecessor.contractAddress)).toHaveLength(2);
-    fireEvent.click(dialog.getByText('Resend'));
-    await flush();
-    expect(mockEmitter).toHaveBeenCalledWith(
-      ['wallet', 'confirmEvmSignedReplay'],
-      ['predecessor-review'],
-      30000,
-      false
-    );
-  }
-);
-
-test.each(['native', 'erc20'])(
-  'does not carry NFT fields into a %s predecessor review',
-  async (kind) => {
-    const recipient = `0x${'88'.repeat(20)}`;
-    const collectibleTransfer = {
-      kind: 'nft-transfer',
-      chainId: '57057',
-      from: `0x${'33'.repeat(20)}`,
-      contractAddress: `0x${'44'.repeat(20)}`,
-      recipient,
-      tokenStandard: 'ERC-721',
-      tokenId: '71',
-      amountUnits: '1',
-    };
-    mockEmitter.mockImplementation(([, method]: string[], args: any[]) => {
-      if (method !== 'prepareEvmSignedReplay')
-        return Promise.resolve({ hash: HASH, collectibleTransfer });
-      const result = review(
-        args[0] === HASH ? 'nft-review' : 'plain-review',
-        args[0]
-      );
-      if (args[0] === HASH) {
-        Object.assign(result.review, {
-          operation: 'erc721',
-          collectibleTransfer,
-          missingNonce: '3',
-          predecessors: [
-            {
-              hash: PREVIOUS,
-              operation: kind === 'native' ? 'send' : 'erc20',
-              nonce: 3,
-            },
-          ],
-        });
-      } else if (kind === 'erc20') {
-        Object.assign(result.review, {
-          operation: 'erc20',
-          tokenTransfer: {
-            recipient: 'current-token-recipient',
-            amountUnits: '6000000',
-            token: { decimals: 6, symbol: 'TOK' },
-          },
-        });
-      }
-      return Promise.resolve(result);
-    });
-    render(<RetainedTransactionReplay hash={HASH} />);
-    await flush();
-    fireEvent.click(screen.getByText('Review resend'));
-    await flush();
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByText(
-        /Review previous transaction/
-      )
-    );
-    await flush();
-    const dialog = within(screen.getByRole('dialog'));
-    expect(dialog.queryByText(recipient)).toBeNull();
-    expect(dialog.queryByText('71')).toBeNull();
-    expect(dialog.queryByText('ERC-721')).toBeNull();
-    expect(dialog.getByText('1.000000000000000001 SYS')).toBeTruthy();
-    if (kind === 'erc20') {
-      expect(dialog.getByText('6.0 TOK')).toBeTruthy();
-      expect(dialog.getByText('current-token-recipient')).toBeTruthy();
-    } else {
-      expect(dialog.queryByText('Token amount')).toBeNull();
-    }
-  }
-);
-
-it('alerts on a failed predecessor page and keeps Load More available', async () => {
-  const result: any = review();
-  result.review.missingNonce = '0';
-  result.review.predecessorCount = 2;
-  result.review.predecessors = [
-    { hash: PREVIOUS, nonce: 0, operation: 'send' },
-  ];
-  mockEmitter.mockImplementation(([, method]: string[]) => {
-    if (method === 'getSavedEvmTransaction')
-      return Promise.resolve({ hash: HASH });
-    if (method === 'prepareEvmSignedReplay') return Promise.resolve(result);
-    if (method === 'getSavedEvmTransactions')
-      return Promise.reject(new Error('page unavailable'));
-    return Promise.resolve();
-  });
-  render(<RetainedTransactionReplay hash={HASH} />);
-  await flush();
-  fireEvent.click(
-    screen.getByRole('button', { name: mockT('transactions.replay.review') })
-  );
-  await flush();
-  const more = screen.getByRole('button', { name: mockT('buttons.loadMore') });
-  fireEvent.click(more);
-  await flush();
-  expect(mockAlert.error).toHaveBeenCalledWith(
-    mockT('transactions.replay.unavailable')
-  );
-  expect((more as HTMLButtonElement).disabled).toBe(false);
-  expect(
-    screen.queryByText(mockT('transactions.replay.unavailable'))
-  ).toBeNull();
-});
-
-it('reviews the inner Smart transfer and the recorded outer payer, then opens a bound predecessor', async () => {
-  mockAccountType = 'SmartAccount';
-  const parent: any = review();
-  parent.review.smartAccount = {
-    account: `0x${'44'.repeat(20)}`,
-    operationHash: HASH,
-    operationNonce: '0',
-    operationCount: 1,
-    replayable: true,
-    callData: '0x',
-    executions: [
-      {
-        target: `0x${'55'.repeat(20)}`,
-        value: '2000000000000000001',
-        data: '0x',
-      },
-    ],
-  };
-  parent.review.missingNonce = '0';
-  parent.review.predecessorCount = 2;
-  parent.review.predecessors = [
-    { hash: PREVIOUS, nonce: 0, operation: 'send' },
-  ];
-  mockEmitter.mockImplementation(([, method]: string[], args: any[]) => {
-    if (method === 'getSavedEvmTransaction')
-      return Promise.resolve({ hash: HASH });
-    if (method === 'prepareEvmSignedReplay') return Promise.resolve(parent);
-    if (method === 'prepareSmartAccountPredecessor')
-      return Promise.resolve(review('prior-review', args[1]));
-    return Promise.resolve();
-  });
-  render(<RetainedTransactionReplay hash={HASH} />);
-  await flush();
-  fireEvent.click(
-    screen.getByRole('button', { name: mockT('transactions.replay.review') })
-  );
-  await flush();
-  const dialog = screen.getByRole('dialog');
-  expect(within(dialog).getByText(mockT('transactions.feePayer'))).toBeTruthy();
-  expect(within(dialog).getByText(parent.review.from)).toBeTruthy();
-  expect(
-    within(dialog).getByText(parent.review.smartAccount.account)
-  ).toBeTruthy();
-  expect(within(dialog).getByText('2.000000000000000001 SYS')).toBeTruthy();
-  expect(
-    within(dialog).getByText(parent.review.smartAccount.executions[0].target)
-  ).toBeTruthy();
-  fireEvent.click(
-    within(dialog).getByRole('button', { name: new RegExp(PREVIOUS) })
-  );
-  await flush();
-  expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'prepareSmartAccountPredecessor'],
-    ['review-1', PREVIOUS],
-    15000,
-    false
-  );
-  expect(
-    mockEmitter.mock.calls.some(
-      ([, args]) => args?.[0] === 'review-1' && args?.[1] === undefined
-    )
-  ).toBe(false);
-  expect(screen.getByRole('dialog')).toBeTruthy();
-});
-
-it('shows every recipient and native amount in a saved Smart batch', async () => {
-  mockAccountType = 'SmartAccount';
-  const parent: any = review();
-  parent.review.value = '0';
-  parent.review.smartAccount = {
-    account: `0x${'44'.repeat(20)}`,
-    operationHash: HASH,
-    operationNonce: '0',
-    operationCount: 1,
-    replayable: true,
-    callData: '0x',
-    executions: [
-      {
-        target: `0x${'55'.repeat(20)}`,
-        value: '2000000000000000001',
-        data: '0x',
-      },
-      {
-        target: `0x${'66'.repeat(20)}`,
-        value: '3000000000000000001',
-        data: '0x',
-      },
-    ],
-  };
-  mockEmitter.mockImplementation(([, method]: string[]) =>
-    Promise.resolve(
-      method === 'getSavedEvmTransaction' ? { hash: HASH } : parent
-    )
-  );
-  render(<RetainedTransactionReplay hash={HASH} />);
-  await flush();
-  fireEvent.click(
-    screen.getByRole('button', { name: mockT('transactions.replay.review') })
-  );
-  await flush();
-  const dialog = screen.getByRole('dialog');
-  for (const call of parent.review.smartAccount.executions)
-    expect(within(dialog).getByText(call.target)).toBeTruthy();
-  expect(within(dialog).getByText('2.000000000000000001 SYS')).toBeTruthy();
-  expect(within(dialog).getByText('3.000000000000000001 SYS')).toBeTruthy();
-  expect(within(dialog).queryByText('0.0 SYS')).toBeNull();
-});
-
-it('keeps payable transfer-call asset arguments and native value visible together', async () => {
-  mockAccountType = 'SmartAccount';
-  const recipient = `0x${'55'.repeat(20)}`,
-    token = `0x${'66'.repeat(20)}`;
-  const data =
-    '0xa9059cbb' + recipient.slice(2).padStart(64, '0') + '7'.padStart(64, '0');
-  const parent: any = review();
-  parent.review.smartAccount = {
-    account: `0x${'44'.repeat(20)}`,
-    operationHash: HASH,
-    operationNonce: '0',
-    operationCount: 1,
-    replayable: true,
-    callData: '0x',
-    executions: [
-      {
-        target: token,
-        value: '1000000000000000000',
-        data,
-        assetTransfer: decodeAssetTransfer(data, token),
-      },
-      { target: `0x${'77'.repeat(20)}`, value: '0', data: '0x' },
-    ],
-  };
-  mockEmitter.mockImplementation(([, method]: string[]) =>
-    Promise.resolve(
-      method === 'getSavedEvmTransaction' ? { hash: HASH } : parent
-    )
-  );
-  render(<RetainedTransactionReplay hash={HASH} />);
-  await flush();
-  fireEvent.click(
-    screen.getByRole('button', { name: mockT('transactions.replay.review') })
-  );
-  await flush();
-  const dialog = screen.getByRole('dialog');
-  expect(within(dialog).getByText('7')).toBeTruthy();
-  expect(within(dialog).getByText(recipient)).toBeTruthy();
-  expect(within(dialog).getByText(token)).toBeTruthy();
-  expect(
-    within(dialog).getByText('Native currency sent: 1.0 SYS')
-  ).toBeTruthy();
+  expect(screen.queryByText('Review resend')).toBeNull();
 });

@@ -49,16 +49,15 @@ import { parseSLHDSAStateStorageKey } from '../../../../source/wallet/slhDsaStat
 import { assertSmartAccountValidatorSwitchApplied, buildSmartAccountValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
 import { NativePrivateWithdrawal } from './privateWithdrawal.ts';
 import { createPrivacyWithdrawalsController, PRIVACY_WITHDRAWAL_GAS } from '../../../../source/wallet/privacyWithdrawals.ts';
-import { capturePrivateWithdrawalAttempt, privateWithdrawalUnsignedBytes, readPrivateWithdrawalAttempt } from '../../../../source/utils/privacy/withdrawalMetadata.ts';
+import { capturePrivateWithdrawalAttempt, privateWithdrawalUnsignedBytes } from '../../../../source/utils/privacy/withdrawalMetadata.ts';
 import type { IPrivacyWithdrawalsHost } from '../../../../source/utils/privacy/withdrawTypes.ts';
 import type { EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
 import { openOwnedPrivatePool } from './ownedPrivatePool.ts';
 import { NativePrivateDeposit, type NativePrivateDepositView } from './privateDeposit.ts';
 import { createPrivacyTransactionsController } from '../../../../source/wallet/privacyTransactions.ts';
-import { capturePrivateDepositAttempt, privateDepositUnsignedBytes, readPrivateDepositAttempt } from '../../../../source/utils/privacy/depositMetadata.ts';
+import { capturePrivateDepositAttempt, privateDepositUnsignedBytes } from '../../../../source/utils/privacy/depositMetadata.ts';
 import type { IPrivacyDepositAttempt, IPrivacyDepositSession } from '../../../../source/utils/privacy/transactionTypes.ts';
 import type { IPrivacyWithdrawalAttempt } from '../../../../source/utils/privacy/withdrawalTransactionTypes.ts';
-import { authorizePrivateNoteReplay } from '../../../../source/wallet/privateNoteReplay.ts';
 import { Contract } from '../../../../source/utils/ethersV6Compat.ts';
 import { hexlify, toUtf8Bytes } from 'ethers/utils';
 import { sha256 } from 'ethers/crypto';
@@ -157,8 +156,7 @@ import type { NativeNetworkRegistration } from './networkContext.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
 import { EvmSignedRecords, createEvmSignedRecordLifecycle, assertEvmVerifiedSmartAccountReplacement, isEvmVerifiedSmartAccountReplacement, type EvmVerifiedSmartAccountReplacement, type EvmVerifiedReplacementBinding, type EvmSignedRetirementReadMethod, type EvmSignedRetirementReadForChain } from '../../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
-import { EvmSignedReplay, observeRetainedEvmTransaction, projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
-import { createSmartAccountSignedReplay } from '../../../../source/wallet/smartAccountSignedReplay.ts';
+import { observeRetainedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { observeSmartAccountActivity, observeSmartAccountOperations } from '../../../../source/wallet/smartAccountActivity.ts';
 import { getObservedEvmTerminalPhase } from '../../../../source/shared/evmTransactionObservation.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
@@ -1750,10 +1748,6 @@ export function createKeyringRuntimeFactory(
         };
         // This validates the caller's consent intent only. It is never OS proof;
         // every software signing/reveal path still performs its protected read.
-        const authenticateOperation = async (credential: NativeOperationCredential, assertCurrent: () => void, signal: AbortSignal): Promise<void> => {
-          assertDeviceConsent(credential, assertCurrent);
-          await requestCredential('transaction', signal, assertCurrent);
-        };
         const authorizeOperation = async (credential: NativeOperationCredential, assertCurrent: () => void, target: string): Promise<NativeOperationAuthorization> => {
           const captured = generation, ring = keyring, snapshot = catalogueSnapshot;
           const detached: NativeOperationCredential = Object.freeze({ method: 'device' });
@@ -3712,6 +3706,11 @@ export function createKeyringRuntimeFactory(
           const journal = createNativeSignedRecordView(signedRecords, { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, scope.walletFingerprint, { index, type, address: scope.address }, scope.network, supportsRetainedSpeedUpIntent(keyring.ethereumTransaction));
           const recent = await journal.activities(); guard();
           const saved = await activityHistory.load(scope, guard); guard();
+          const smartAuthorizations = type === 'SmartAccount'
+            ? await signedRecords.listSmartAccountAuthorizations({ keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard },
+              scope.network.chainId, scope.address, { maximum: 20 })
+            : undefined;
+          guard();
           let locals = type === 'SmartAccount' ? recent.records.map(local => {
             const archived = saved.archived.find(record => record.hash === local.hash && record.recipient === local.recipient &&
               record.amountUnits === local.amountUnits && record.maximumFeeUnits === local.maximumFeeUnits && record.nonce === local.nonce && record.createdAt === local.createdAt);
@@ -3720,7 +3719,7 @@ export function createKeyringRuntimeFactory(
           if (target) locals = locals.map(local => inspectionOnly(local, true));
           const inventory = await tokens.load({ walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
             address: scope.address, network: scope.network.id, chainId: scope.network.chainId, registrationHash: scope.network.registrationHash }, guard); guard();
-          return { scope, locals, assets: inventory.items.map(item => ({ chainId: Number(scope.network.chainId), ...item })), saved: { ...saved,
+          return { scope, locals, smartAuthorizations, olderRetained: recent.truncated, assets: inventory.items.map(item => ({ chainId: Number(scope.network.chainId), ...item })), saved: { ...saved,
             archived: type === 'SmartAccount' || target ? saved.archived.map(local => inspectionOnly(local, !!target)) : saved.archived,
             truncated: saved.truncated || recent.truncated } };
         };
@@ -3728,6 +3727,57 @@ export function createKeyringRuntimeFactory(
           const context = await activityContext(assertCurrent);
           if (context.scope.key !== scope.key || context.scope.sourceId !== scope.sourceId) throw new KeyringRuntimeError('CANCELLED');
           return context;
+        };
+        const activitySmartAuthorizationOwner = async (
+          previous: EvmActivityReadScope, assertOwner: () => void, target?: NativeTokenPortfolioScope
+        ) => {
+          const snapshot = catalogueSnapshot, ring = keyring;
+          const context = await activityContext(() => {
+            checkGuard(assertOwner);
+            if (catalogueSnapshot !== snapshot || keyring !== ring) throw new KeyringRuntimeError('CANCELLED');
+          }, target);
+          const { scope, guard } = context;
+          if (context.type !== 'SmartAccount' || scope.key !== previous.key || scope.sourceId !== previous.sourceId)
+            throw new KeyringRuntimeError('CANCELLED');
+          return { account: { address: scope.address }, network: scope.network, check: guard,
+            session: { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard } };
+        };
+        const loadActivitySmartAuthorizations = async (
+          scope: EvmActivityReadScope, beforeHash: string, assertOwner: () => void, target?: NativeTokenPortfolioScope
+        ) => {
+          const owner = await activitySmartAuthorizationOwner(scope, assertOwner, target);
+          const result = await signedRecords.listSmartAccountAuthorizations(owner.session, scope.network.chainId,
+            scope.address, { maximum: 20, beforeHash });
+          owner.check();
+          return result;
+        };
+        const loadActivityTarget = async (
+          previous: EvmActivityReadScope, hash: string, assertOwner: () => void, target?: NativeTokenPortfolioScope
+        ) => {
+          if (!/^0x[0-9a-f]{64}$/.test(hash)) throw new KeyringRuntimeError('INVALID_INPUT');
+          const { scope, guard, index, type } = await activityContext(assertOwner, target);
+          if (scope.key !== previous.key || scope.sourceId !== previous.sourceId) throw new KeyringRuntimeError('CANCELLED');
+          const session = { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard };
+          const journal = createNativeSignedRecordView(signedRecords, session, scope.walletFingerprint,
+            { index, type, address: scope.address }, scope.network, supportsRetainedSpeedUpIntent(keyring.ethereumTransaction));
+          const local = await journal.activityByHash(hash);
+          guard();
+          if (local) return { local: target ? inspectionOnly(local, true) : local };
+          if (type !== 'SmartAccount') return null;
+          const stored = await signedRecords.readSmartAccountAuthorizationExact(session, scope.network.chainId, scope.address, hash);
+          guard();
+          if (!stored) return null;
+          const { userOperation: _operation, signatureDigest: _digest, ...authorization } = stored;
+          return { authorization };
+        };
+        const observeActivitySmartAuthorization = async (
+          scope: EvmActivityReadScope, hash: string, assertOwner: () => void, signal: AbortSignal, target?: NativeTokenPortfolioScope
+        ) => {
+          const owner = await activitySmartAuthorizationOwner(scope, () => {
+            if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
+            checkGuard(assertOwner);
+          }, target);
+          return observeSavedSmartAuthorization(hash, signal, owner);
         };
         const tokenOperation = <T>(
           assertCurrent: () => void,
@@ -6076,23 +6126,11 @@ export function createKeyringRuntimeFactory(
           const check=()=>{current(captured);checkGuard(assertOwner);if(signal.aborted||keyring!==ring||!ring.hasPublicSession()||catalogueSnapshot!==snapshot||selectedAccount()!==selected||state.accounts.SmartAccount[selected.index]!==account)throw new KeyringRuntimeError('CANCELLED');};
           check();return{account,network,check,session:{keyring:transactionRecordKeyring(ring,check),assertCurrent:check}};
         };
-        return {
-          async openSmartAccountCancellation(reference,assertOwner,authentication){
-            const value=readEvmOwnData(reference,['originalHash',...(reference&&Object.hasOwn(reference,'operationHash')?['operationHash']:[])]);
-            const action=snapshotNativeSmartLocalAction({kind:'operation',intent:{kind:'cancel-operation',reference:value as SmartAccountCancellationRequest}});
-            if(action.kind!=='operation')throw new KeyringRuntimeError('INVALID_INPUT');
-            return openSmartAccountOperation(action.intent,assertOwner,{kind:'local-new',action},authentication);
-          },
-          async listSmartAccountAuthorizations(options,signal,assertOwner){
-            const value=readEvmOwnData(options,['maximum',...(options&&Object.hasOwn(options,'beforeHash')?['beforeHash']:[])]);
-            const owner=smartAuthorizationReadOwner(signal,assertOwner);
-            const result=await signedRecords.listSmartAccountAuthorizations(owner.session,owner.network.chainId,owner.account.address,
-              {maximum:value.maximum as number,...(value.beforeHash===undefined?{}:{beforeHash:typeof value.beforeHash==='string'?value.beforeHash.toLowerCase():value.beforeHash as string})});
-            owner.check();return result;
-          },
-          async readSmartAccountAuthorizationStatus(operationHash,signal,assertOwner){
-            if(typeof operationHash!=='string'||!/^0x[0-9a-f]{64}$/i.test(operationHash))throw new KeyringRuntimeError('INVALID_INPUT');
-            const owner=smartAuthorizationReadOwner(signal,assertOwner);
+        const observeSavedSmartAuthorization = async (
+          operationHash: string, signal: AbortSignal,
+          owner: Omit<ReturnType<typeof smartAuthorizationReadOwner>, 'account'> & { account: { address: string } }
+        ) => {
+          if(typeof operationHash!=='string'||!/^0x[0-9a-f]{64}$/i.test(operationHash))throw new KeyringRuntimeError('INVALID_INPUT');
             const record=await signedRecords.readSmartAccountAuthorizationExact(owner.session,owner.network.chainId,owner.account.address,operationHash.toLowerCase());
             owner.check();if(!record)throw new KeyringRuntimeError('NOT_READY');
             const {userOperation:_operation,...summary}=record;void _operation;
@@ -6112,6 +6150,23 @@ export function createKeyringRuntimeFactory(
               }catch{owner.check(); /* Unavailable finalized evidence preserves all retained instructions. */}
             }
             owner.check();return observation;
+        };
+        return {
+          async openSmartAccountCancellation(reference,assertOwner,authentication){
+            const value=readEvmOwnData(reference,['originalHash',...(reference&&Object.hasOwn(reference,'operationHash')?['operationHash']:[])]);
+            const action=snapshotNativeSmartLocalAction({kind:'operation',intent:{kind:'cancel-operation',reference:value as SmartAccountCancellationRequest}});
+            if(action.kind!=='operation')throw new KeyringRuntimeError('INVALID_INPUT');
+            return openSmartAccountOperation(action.intent,assertOwner,{kind:'local-new',action},authentication);
+          },
+          async listSmartAccountAuthorizations(options,signal,assertOwner){
+            const value=readEvmOwnData(options,['maximum',...(options&&Object.hasOwn(options,'beforeHash')?['beforeHash']:[])]);
+            const owner=smartAuthorizationReadOwner(signal,assertOwner);
+            const result=await signedRecords.listSmartAccountAuthorizations(owner.session,owner.network.chainId,owner.account.address,
+              {maximum:value.maximum as number,...(value.beforeHash===undefined?{}:{beforeHash:typeof value.beforeHash==='string'?value.beforeHash.toLowerCase():value.beforeHash as string})});
+            owner.check();return result;
+          },
+          readSmartAccountAuthorizationStatus(operationHash,signal,assertOwner){
+            return observeSavedSmartAuthorization(operationHash, signal, smartAuthorizationReadOwner(signal, assertOwner));
           },
           async resumeSmartAccountOperation(id,signal,assertOwner,authentication){
             if(signal.aborted)throw new KeyringRuntimeError('CANCELLED');
@@ -7701,7 +7756,6 @@ export function createKeyringRuntimeFactory(
             return Object.freeze<NativeUtxoSend>({ ...opened,
               cancel: () => opened.cancel(),
               list: () => opened.list(),
-              refreshSaved: () => opened.refreshSaved(),
               check: txid => opened.check(txid),
               feeRecommendations: signal => opened.feeRecommendations(signal),
               availableReplacements: (txid, assertCurrent) => opened.availableReplacements(txid, assertCurrent),
@@ -7745,6 +7799,9 @@ export function createKeyringRuntimeFactory(
           } } : {}),
           activity: {
             load: assertCurrent => loadActivity(assertCurrent),
+            loadTarget: loadActivityTarget,
+            loadSmartAuthorizations: loadActivitySmartAuthorizations,
+            observeSmartAuthorization: observeActivitySmartAuthorization,
             forScope(input, assertOwner) {
               const target = Object.freeze({ accountId: input.accountId, address: input.address,
                 networkId: input.networkId, registrationHash: input.registrationHash });
@@ -7755,6 +7812,9 @@ export function createKeyringRuntimeFactory(
                   scopedActivityLoad = result;
                   return result;
                 },
+                loadTarget: (scope, hash, check) => loadActivityTarget(scope, hash, checked(check), target),
+                loadSmartAuthorizations: (scope, beforeHash, check) => loadActivitySmartAuthorizations(scope, beforeHash, checked(check), target),
+                observeSmartAuthorization: (scope, hash, check, signal) => observeActivitySmartAuthorization(scope, hash, checked(check), signal, target),
                 async loadSavedPending(previousScope, beforeHash, assertCurrent) {
                   const { scope, guard, index, type } = await activityContext(checked(assertCurrent), target);
                   if (previousScope.key !== scope.key || previousScope.sourceId !== scope.sourceId) throw new KeyringRuntimeError('CANCELLED');
@@ -7858,7 +7918,6 @@ export function createKeyringRuntimeFactory(
             isAuthenticationRefusal: error => !!error && typeof error === 'object' && operationAuthenticationRefusals.has(error),
             authorizeOperation: (credential, transaction, guard) => authorizeOperation(credential, guard, `evm:${unsignedTransferBytes(transaction)}`),
             releaseOperationAuthorization,
-            authenticateOperation,
             async replacementOriginal(hash, mode, assertCurrent, signal) {
               if (active || reserved || closed || !keyring.hasPublicSession()) return null;
               const captured = generation, selected = selectedAccount(), snapshot = catalogueSnapshot!, epoch = replacementEpoch;
@@ -7902,12 +7961,13 @@ export function createKeyringRuntimeFactory(
               const unsigned = retained.original.rawTransaction === undefined;
               let executionOperation: typeof retained.original.operation | undefined;
               if (unsigned) {
-                if (mode !== 'speed-up' || selected.type === 'SmartAccount' || !supportsRetainedSpeedUpIntent(keyring.ethereumTransaction)) return null;
+                if (selected.type === 'SmartAccount' || !supportsRetainedSpeedUpIntent(keyring.ethereumTransaction)) return null;
                 const intent = await signedRecords.readEoaSpeedUpIntent(session, network.chainId, payer.address, hash);
                 check();
-                if (!intent || intent.original.signer.id !== payer.index || intent.original.signer.type !== payer.type) return null;
+                if (!intent || intent.original.signer.id !== payer.index || intent.original.signer.type !== payer.type ||
+                    intent.binding.expectedTipHash !== retained.binding?.expectedTipHash) return null;
                 executionOperation = intent.executionOperation;
-                retained = intent;
+                if (mode === 'speed-up') retained = intent;
               }
               const { original, binding, rates } = retained;
               if (!binding) return null;
@@ -7917,14 +7977,14 @@ export function createKeyringRuntimeFactory(
                 ? snapshotErc20TransferIntent(original.metadata.intent) : undefined;
               const collectible = mode === 'speed-up' ? decodeRetainedNftTransfer(
                 unsigned ? { ...original, unsignedTransaction: original.unsignedTransaction } : { ...original, rawTransaction: raw! }, transaction) : undefined;
-              if (unsigned && !(
+              if (unsigned && mode === 'speed-up' && !(
                 executionOperation === 'send' && !intent && !collectible ||
                 executionOperation === 'erc20' && intent && !collectible ||
                 executionOperation === 'erc721' && !intent && collectible?.tokenStandard === 'ERC-721' ||
                 executionOperation === 'erc1155' && !intent && collectible?.tokenStandard === 'ERC-1155'
               )) return null;
               const expiresAt = Date.now() + EVM_FEE_APPROVAL_LIFETIME_MS;
-              const owner: ReplacementOwner = Object.freeze({ payer, selected, metadata: original.metadata,
+              const owner: ReplacementOwner = Object.freeze({ payer, selected, metadata: mode === 'cancel' && unsigned ? undefined : original.metadata,
                 ...(unsigned ? { unsignedExecution: original.unsignedTransaction, assetIntent: intent ?? collectible } : {}), assertCurrent() {
                 current(captured);
                 if (replacementEpoch !== epoch || Date.now() >= expiresAt || catalogueSnapshot !== snapshot || selectedAccount() !== selected ||
@@ -7938,297 +7998,6 @@ export function createKeyringRuntimeFactory(
                 : { rawTransaction: raw! };
               return Object.freeze({ ...execution, binding, rates, ...(intent ? { intent } : {}),
                 ...(collectible ? { collectible } : {}), ...(selected.type === 'SmartAccount' ? { smartAccount: selected.address } : {}) });
-            },
-            replay(assertCurrent, transport, options) {
-              if (active || reserved || closed || !keyring.hasPublicSession() || (!canSign() && selectedAccount().type !== 'SmartAccount')) throw new KeyringRuntimeError('NOT_READY');
-              const captured = generation,
-                selected = selectedAccount(), snapshot = catalogueSnapshot!;
-              const network = getNativeNetwork(
-                catalogueSnapshot!.active.networkId,
-                catalogueSnapshot!.networks
-              );
-              const context: EvmSubmissionContext = {
-                account: { id: selected.index, type: selected.type, address: selected.address },
-                network: {
-                  kind: 'ethereum',
-                  chainId: Number(network.chainId),
-                  slip44: 60,
-                  url: network.rpcUrl,
-                },
-                operation: 'send',
-              };
-              const check = () => {
-                current(captured);
-                checkGuard(assertCurrent);
-                const live = selectedAccount();
-                const currentNetwork = getNativeNetwork(
-                  catalogueSnapshot!.active.networkId,
-                  catalogueSnapshot!.networks
-                );
-                if (
-                  live !== selected ||
-                  catalogueSnapshot !== snapshot ||
-                  currentNetwork.chainId !== network.chainId ||
-                  currentNetwork.rpcUrl !== network.rpcUrl
-                )
-                  throw new KeyringRuntimeError('CANCELLED');
-              };
-              if (selected.type === 'SmartAccount') {
-                let lifetime = new AbortController();
-                const rpc = new EvmTransferReadRpc(network, { infrastructureReader, capabilities: transferReadCapabilities.get(network.registrationHash, network.rpcUrl), fetch: transferFetch });
-                const replay = createSmartAccountSignedReplay(signedRecords, () => {
-                  const ownedLifetime = lifetime;
-                  const current = () => { check(); if (ownedLifetime.signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
-                  current();
-                  return {
-                    account: { id: selected.index, address: selected.address }, chainId: network.chainId,
-                    recordSession: { keyring: transactionRecordKeyring(keyring, current), assertCurrent: current },
-                    assertCurrent: current,
-                    runReadPhase: (guard, work) => rpc.smartAccountReadPhase(ownedLifetime.signal, guard, phase =>
-                      work(createNativeSmartAccountProvider(network, rpc, ownedLifetime.signal, guard, phase))),
-                    read: (method, params, guard) => rpc.retirementRead(method, params, ownedLifetime.signal, guard),
-                    capturePayer(entry) {
-                      current();
-                      const payer = findRetainedSignerAccount(snapshot.accounts, entry);
-                      if (!payer) throw new KeyringRuntimeError('NOT_READY');
-                      const record = state.accounts[payer.type]?.[payer.index];
-                      if (!record || record.address.toLowerCase() !== payer.address.toLowerCase()) throw new KeyringRuntimeError('NOT_READY');
-                      const identity = { address: record.address, xpub: record.xpub };
-                      const guard = () => {
-                        current();
-                        if (state.accounts[payer.type]?.[payer.index] !== record || record.address !== identity.address || record.xpub !== identity.xpub)
-                          throw new KeyringRuntimeError('CANCELLED');
-                      };
-                      return {
-                        context: { ...context, account: { id: payer.index, type: payer.type, address: payer.address } },
-                        recordSession: { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard },
-                        assertCurrent: guard, ...transport,
-                        authorizeReplay: saved => authorizePrivateNoteReplay(saved, guard,
-                          async () => { throw new KeyringRuntimeError('NOT_READY'); },
-                          async () => { throw new KeyringRuntimeError('NOT_READY'); }),
-                      };
-                    },
-                  };
-                }, options.now, options.randomBytes);
-                return {
-                  async prepare(hash, mode) {
-                    if (mode !== 'inspect' && mode !== 'resend') throw new KeyringRuntimeError('INVALID_INPUT');
-                    replay.cancel(); lifetime.abort(); lifetime = new AbortController();
-                    const result = await replay.prepare(hash);
-                    if (mode === 'inspect' && result.status === 'review') {
-                      const transaction = await replay.get(hash); check();
-                      replay.cancel(result.review.id);
-                      if (!transaction) throw new KeyringRuntimeError('NOT_READY');
-                      return Object.freeze({ status: 'unknown' as const, hash, transaction });
-                    }
-                    return result;
-                  },
-                  list: replay.list,
-                  listPredecessors: replay.listPredecessors,
-                  preparePredecessor: replay.preparePredecessor,
-                  cancel(id) { const cancelled = replay.cancel(id); if (cancelled) lifetime.abort(); return cancelled; },
-                  confirm(id) {
-                    const work = replay.confirm(id);
-                    const pending = work.finally(() => { pendingSubmissions.delete(pending); });
-                    pendingSubmissions.add(pending); return pending;
-                  },
-                };
-              }
-              type PrivateReplayOwner = {
-                lifetime: AbortController;
-                pool?: Awaited<ReturnType<typeof openOwnedPrivatePool>>;
-                action?: PrivateRecordAction;
-                session?: IPrivateVaultSession;
-                hash: string;
-                attempt?: string;
-                confirming?: boolean;
-              };
-              let privateOwner: PrivateReplayOwner | undefined;
-              let reviewedId: string | undefined;
-              const closePrivatePool = async (owner: PrivateReplayOwner | undefined) => {
-                // Shared replay revokes dispatch immediately. An admitted
-                // response still owns its original wallet's receipt codec.
-                if (owner?.confirming) return;
-                try {
-                  owner?.lifetime.abort();
-                  if (owner?.action) { owner.action.closed = true; owner.action.access?.dispose(); }
-                  await owner?.pool?.dispose();
-                } finally { await finalizePrivateDomain(); }
-              };
-              const authorizePrivate = async (
-                input:
-                  | { kind: 'deposit'; attempt: IPrivacyDepositAttempt }
-                  | {
-                      kind: 'withdrawal';
-                      attempt: Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>;
-                    },
-              ) => {
-                const owner = privateOwner;
-                if (!owner || owner.attempt !== JSON.stringify(input)) throw new KeyringRuntimeError('CANCELLED');
-                const checkPool = () => {
-                  check();
-                  if (privateOwner !== owner || owner.lifetime.signal.aborted)
-                    throw new KeyringRuntimeError('CANCELLED');
-                };
-                if (!noteBackups) await openNotes(checkPool, () => undefined, null);
-                checkPool();
-                const openPool = openPrivacyPool;
-                if (!openPool) throw new KeyringRuntimeError('NOT_READY');
-                if (owner.pool && owner.pool.poolId !== input.attempt.poolId)
-                  throw new KeyringRuntimeError('CANCELLED');
-                owner.pool ??= await openOwnedPrivatePool(
-                  input.attempt.poolId,
-                  (id, signal) => openPool(network, id, signal, checkPool),
-                  owner.lifetime.signal,
-                  checkPool,
-                );
-                checkPool();
-                let lease: Awaited<ReturnType<NoteRuntime['authorizeDepositReplay']>>;
-                try {
-                  const session = owner.session;
-                  if (!session || !owner.action?.access) throw new KeyringRuntimeError('NOT_READY');
-                  lease =
-                    input.kind === 'deposit'
-                      ? await noteBackups!.authorizeDepositReplay(
-                          session,
-                          input.attempt,
-                          owner.pool.readNote,
-                        )
-                      : await noteBackups!.authorizeWithdrawalReplay(
-                          session,
-                          input.attempt,
-                          owner.pool.readNote,
-                        );
-                } catch (error) {
-                  try {
-                    await closePrivatePool(owner);
-                  } catch {
-                    /* Preserve the authorization failure. */
-                  }
-                  throw error;
-                }
-                checkPool();
-                return Object.freeze({
-                  assertCurrent: lease.assertCurrent,
-                  withAdmission: lease.withAdmission,
-                  async onAcknowledged(hash: string) {
-                    try {
-                      await lease.onAcknowledged(hash);
-                    } finally {
-                      await closePrivatePool(owner);
-                    }
-                  },
-                });
-              };
-              const replay = new EvmSignedReplay(
-                signedRecords,
-                () => ({
-                  context,
-                  recordSession: { keyring: transactionRecordKeyring(keyring, check), assertCurrent: check },
-                  assertCurrent: check,
-                  ...transport,
-                  authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, check,
-                    (attempt) => authorizePrivate({kind:'deposit',attempt}),
-                    (attempt) => authorizePrivate({kind:'withdrawal',attempt})),
-                }),
-                options.now,
-                options.randomBytes
-              );
-              return {
-                async prepare(hash, mode) {
-                  if (mode !== 'inspect' && mode !== 'resend') throw new KeyringRuntimeError('INVALID_INPUT');
-                  replay.cancel();
-                  reviewedId = undefined;
-                  const previous = privateOwner;
-                  const owner: PrivateReplayOwner = { lifetime: new AbortController(), hash };
-                  privateOwner = owner;
-                  await closePrivatePool(previous);
-                  if (privateOwner !== owner) throw new KeyringRuntimeError('CANCELLED');
-                  try {
-                    if (mode === 'inspect') {
-                      const observed = await observeRetainedEvmTransaction(signedRecords,
-                        { keyring: transactionRecordKeyring(keyring, check), assertCurrent: check },
-                        network.chainId, selected.address, hash, transport.observe, check);
-                      check();
-                      return Object.freeze({ status: observed.terminalPhase ?? 'unknown', hash,
-                        transaction: projectSavedEvmTransaction(observed.entry) });
-                    }
-                    const entry = await signedRecords.readExact({ keyring: transactionRecordKeyring(keyring, check), assertCurrent: check },
-                      network.chainId, selected.address, hash);
-                    check();
-                    if (entry?.metadata && (Object.hasOwn(entry.metadata, 'privateDeposit') || Object.hasOwn(entry.metadata, 'privateWithdrawal'))) {
-                      if (entry.payloadKind === 'unsigned-eoa') throw new KeyringRuntimeError('INVALID_INPUT');
-                      const deposit = readPrivateDepositAttempt(entry), withdrawal = readPrivateWithdrawalAttempt(entry);
-                      if (!!deposit === !!withdrawal) throw new KeyringRuntimeError('INVALID_INPUT');
-                      owner.attempt = JSON.stringify(deposit ? { kind: 'deposit', attempt: deposit } : { kind: 'withdrawal', attempt: withdrawal });
-                      const ring = keyring, identity = verifiedIdentity;
-                      const walletGuard = ring.capturePublicSessionGuard();
-                      const walletCurrent = () => {
-                        current(generation); checkGuard(walletGuard);
-                        if (owner.lifetime.signal.aborted || !identity || verifiedIdentity !== identity || keyring !== ring)
-                          throw new KeyringRuntimeError('CANCELLED');
-                      };
-                      const guard = () => { check(); walletCurrent(); if (privateOwner !== owner || owner.hash !== entry.hash) throw new KeyringRuntimeError('CANCELLED'); };
-                      const access = await run(async admitted => {
-                        const checkAdmitted = () => { current(admitted); guard(); };
-                        return withSoftwareSecret('private-reconciliation', owner.lifetime.signal, checkAdmitted,
-                          () => ring.createPrivateRecordAccess(privateNoteRecordDomains, { transferable: false }), null, null);
-                      });
-                      try {
-                        guard();
-                        owner.action = { policy: 'acknowledgement', generation: captured, ring, verified: true, closed: false,
-                          signal: owner.lifetime, tail: Promise.resolve(), access };
-                        owner.session = createPrivateVaultSession({ generation: captured,
-                          keyring: privateRecordKeyring(ring, walletCurrent, owner.action), assertCurrent: walletCurrent });
-                      } catch (error) { access.dispose(); throw error; }
-                    }
-                    owner.confirming = true;
-                    const prepared = await replay.prepare(hash);
-                    if (prepared.status === 'review') { owner.confirming = false; reviewedId = prepared.review.id; }
-                    else {
-                      const settled = replay.waitForReconciliation().finally(async () => {
-                        owner.confirming = false;
-                        if (privateOwner === owner) privateOwner = undefined;
-                        try { await closePrivatePool(owner); }
-                        finally { pendingSubmissions.delete(settled); }
-                      });
-                      pendingSubmissions.add(settled); void settled.catch(() => undefined);
-                    }
-                    return prepared;
-                  } catch (error) {
-                    owner.confirming = false;
-                    if (privateOwner === owner) privateOwner = undefined;
-                    await closePrivatePool(owner);
-                    throw error;
-                  }
-                },
-                cancel(id) {
-                  const cancelled = replay.cancel(id);
-                  if (cancelled || (id === undefined && privateOwner)) {
-                    reviewedId = undefined;
-                    const owner = privateOwner;
-                    privateOwner = undefined;
-                    void closePrivatePool(owner).catch(() => undefined);
-                    return true;
-                  }
-                  return false;
-                },
-                list: replay.list.bind(replay),
-                confirm(id) {
-                  if (id !== reviewedId) return replay.confirm(id);
-                  reviewedId = undefined;
-                  const owner = privateOwner;
-                  if (owner) owner.confirming = true;
-                  const work = replay.confirm(id);
-                  const pending = work.finally(async () => {
-                    if (owner) owner.confirming = false;
-                    try { await closePrivatePool(owner); }
-                    finally { pendingSubmissions.delete(pending); }
-                  });
-                  pendingSubmissions.add(pending);
-                  return pending;
-                },
-              };
             },
             async token(contractAddress, assertCurrent) {
               const contract = normalizeErc20Address(contractAddress);
@@ -8343,27 +8112,34 @@ export function createKeyringRuntimeFactory(
                   value: tx.value.toString(), data: tx.data,
                 }, intent);
                 try {
-                  if (replacement?.mode === 'speed-up') {
+                  if (replacement && (replacement.mode === 'speed-up' || replacement.original.retainedUnsigned)) {
                     const retained = await signedRecords.readExact({ keyring: transactionRecordKeyring(keyring, check), assertCurrent: check }, tx.chainId.toString(), context.account.address, replacement.original.hash);
-                    if (!retained || (retained.payloadKind === 'unsigned-eoa') !== (replacement.original.unsignedSpeedUp === true)) throw new NativeTransferError('EXPIRED');
+                    if (!retained || (retained.payloadKind === 'unsigned-eoa') !== (replacement.original.retainedUnsigned === true)) throw new NativeTransferError('EXPIRED');
                     if (retained.payloadKind === 'unsigned-eoa' && (
                       !supportsRetainedSpeedUpIntent(keyring.ethereumTransaction) || retained.signer.id !== context.account.id ||
                       retained.signer.type !== context.account.type ||
                       replacementOwner(replacement).selected.type === 'SmartAccount')) throw new NativeTransferError('EXPIRED');
                     const original = Transaction.from(retained.payloadKind === 'unsigned-eoa' ? retained.unsignedTransaction : retained.rawTransaction);
-                    const savedIntent = retained.metadata?.intent === undefined ? undefined : snapshotErc20TransferIntent(retained.metadata.intent);
-                    if (retained.payloadKind === 'unsigned-eoa') {
-                      const nft = decodeRetainedNftTransfer(retained, original);
-                      if (JSON.stringify(savedIntent ?? nft) !== JSON.stringify(intent) || tx.gasLimit !== original.gasLimit)
+                    if (replacement.mode === 'cancel') {
+                      const reviewed = replacementOwner(replacement).unsignedExecution;
+                      if (!reviewed || original.unsignedSerialized !== reviewed || original.nonce !== tx.nonce ||
+                          original.type !== tx.type || original.chainId !== tx.chainId || replacement.source !== 'pending')
                         throw new NativeTransferError('EXPIRED');
-                    } else if (intent?.kind === 'nft-transfer' || !equalTransferIntent(savedIntent, intent))
-                      throw new NativeTransferError('EXPIRED');
-                    if (!tx.from) throw new NativeTransferError('EXPIRED');
-                    assertSpeedUpEnvelope({ ...replacement.original, from: original.from ?? getAddress(retained.from), to: original.to,
-                      valueUnits: original.value.toString(), data: original.data, nonce: original.nonce, type: original.type as 0 | 2,
-                      accessList: snapshotEvmAccessList(original.accessList ?? []) }, {
-                      from: tx.from, to: tx.to, value: tx.value.toString(), data: tx.data, nonce: String(tx.nonce), type: tx.type!, accessList: tx.accessList,
-                    });
+                    } else {
+                      const savedIntent = retained.metadata?.intent === undefined ? undefined : snapshotErc20TransferIntent(retained.metadata.intent);
+                      if (retained.payloadKind === 'unsigned-eoa') {
+                        const nft = decodeRetainedNftTransfer(retained, original);
+                        if (JSON.stringify(savedIntent ?? nft) !== JSON.stringify(intent) || tx.gasLimit !== original.gasLimit)
+                          throw new NativeTransferError('EXPIRED');
+                      } else if (intent?.kind === 'nft-transfer' || !equalTransferIntent(savedIntent, intent))
+                        throw new NativeTransferError('EXPIRED');
+                      if (!tx.from) throw new NativeTransferError('EXPIRED');
+                      assertSpeedUpEnvelope({ ...replacement.original, from: original.from ?? getAddress(retained.from), to: original.to,
+                        valueUnits: original.value.toString(), data: original.data, nonce: original.nonce, type: original.type as 0 | 2,
+                        accessList: snapshotEvmAccessList(original.accessList ?? []) }, {
+                        from: tx.from, to: tx.to, value: tx.value.toString(), data: tx.data, nonce: String(tx.nonce), type: tx.type!, accessList: tx.accessList,
+                      });
+                    }
                   }
                   if (context.account.type === 'Ledger' || context.account.type === 'Trezor') {
                     await sdk.submitSignedHardwareEvmTransaction(rawTransaction, broadcast, boundary, undefined, expectedUnsigned,
@@ -8382,15 +8158,6 @@ export function createKeyringRuntimeFactory(
               const pending = work.finally(() => { pendingSubmissions.delete(pending); });
               pendingSubmissions.add(pending);
               return pending;
-            },
-            assertUnlocked: (assertCurrent) => {
-              const captured = generation;
-              current(captured); checkGuard(assertCurrent); current(captured);
-              if (active || reserved) throw new KeyringRuntimeError('BUSY');
-              // This guard is used only before exact-byte replay. The replay
-              // adapter independently binds a Smart account to its saved payer.
-              if (!keyring.hasPublicSession() || (!canSign() && !activeReplacement && selectedAccount().type !== 'SmartAccount')) throw new KeyringRuntimeError('NOT_READY');
-              activeReplacement?.assertCurrent();
             },
             sign: (transaction, authority, inputIntent, replacement) => {
               const admittedTrezorEpoch = trezorEpoch;
@@ -8443,15 +8210,22 @@ export function createKeyringRuntimeFactory(
                 const selected = ownedReplacement?.payer ?? selectedContext;
                 if (ownedReplacement?.unsignedExecution && replacement) {
                   const retained = Transaction.from(ownedReplacement.unsignedExecution);
-                  if (!replacement.original.unsignedSpeedUp || replacement.mode !== 'speed-up' ||
-                      JSON.stringify(intent) !== JSON.stringify(ownedReplacement.assetIntent) ||
+                  if (!replacement.original.retainedUnsigned ||
                       replacement.original.hash !== replacement.binding.originalHash ||
                       !supportsRetainedSpeedUpIntent(keyring.ethereumTransaction) ||
-                      BigInt(prepared.gasLimit) !== retained.gasLimit)
+                      retained.nonce !== Number(prepared.nonce) || retained.type !== prepared.type ||
+                      retained.chainId.toString() !== prepared.chainId)
                     throw new KeyringRuntimeError('INVALID_INPUT');
-                  assertSpeedUpEnvelope({ ...replacement.original, from: getAddress(selected.address), to: retained.to,
-                    valueUnits: retained.value.toString(), data: retained.data, nonce: retained.nonce, type: retained.type as 0 | 2,
-                    accessList: snapshotEvmAccessList(retained.accessList ?? []) }, prepared);
+                  if (replacement.mode === 'cancel') {
+                    if (replacement.source !== 'pending' || intent) throw new KeyringRuntimeError('INVALID_INPUT');
+                  } else {
+                    if (JSON.stringify(intent) !== JSON.stringify(ownedReplacement.assetIntent) ||
+                        BigInt(prepared.gasLimit) !== retained.gasLimit)
+                      throw new KeyringRuntimeError('INVALID_INPUT');
+                    assertSpeedUpEnvelope({ ...replacement.original, from: getAddress(selected.address), to: retained.to,
+                      valueUnits: retained.value.toString(), data: retained.data, nonce: retained.nonce, type: retained.type as 0 | 2,
+                      accessList: snapshotEvmAccessList(retained.accessList ?? []) }, prepared);
+                  }
                 }
                 if (
                   prepared.from.toLowerCase() !== selected.address.toLowerCase()

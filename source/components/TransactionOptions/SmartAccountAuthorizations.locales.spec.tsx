@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { createInstance } from 'i18next';
 import React from 'react';
 import { I18nextProvider } from 'react-i18next';
@@ -78,7 +78,7 @@ it.each(['en', 'es', 'pt', 'fr', 'de', 'zh', 'ja', 'ko', 'ru'])(
     );
     expect(
       screen.getByRole('button', {
-        name: resource.transactions.smartAuthorizations.cancelInstruction,
+        name: resource.buttons.cancel,
       })
     ).toBeTruthy();
     expect(
@@ -92,13 +92,10 @@ it.each(['en', 'es', 'pt', 'fr', 'de', 'zh', 'ja', 'ko', 'ru'])(
       kind: 'observed',
       success: true,
     });
-    await act(async () =>
-      fireEvent.click(
-        screen.getByRole('button', {
-          name: resource.transactions.smartAuthorizations.checkStatus,
-        })
-      )
-    );
+    const details = screen
+      .getByText(resource.transactions.technicalDetails)
+      .closest('details')!;
+    details.open = true;
     await screen.findByText(
       resource.transactions.smartAuthorizations.observedSuccess
     );

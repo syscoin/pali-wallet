@@ -13,7 +13,7 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
-test('a saved send with no RPC details can be cancelled explicitly at 320px', async ({}, info) => {
+test('an unconfirmed send can be sped up from Activity at 320px', async ({}, info) => {
   test.setTimeout(90_000);
   const previous = { ...E2E_CONFIG };
   const server = await startUtxoFixtureServer();
@@ -22,13 +22,13 @@ test('a saved send with no RPC details can be cancelled explicitly at 320px', as
   const posts: Transaction[] = [];
   Object.assign(E2E_CONFIG, {
     seedPhrase: UTXO_FIXTURE_SEED,
-    password: 'SavedCancellationSynthetic!2026',
+    password: 'ActivitySpeedUpSynthetic!2026',
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
   let status: 'passed' | 'failed' = 'failed';
   try {
-    wallet = await PaliWallet.launch('saved-cancellation-320', {
+    wallet = await PaliWallet.launch('activity-speed-up-320', {
       offlineHttpProxy: server.url,
       viewport: { width: 320, height: 620 },
       recordVideo: false,
@@ -96,66 +96,60 @@ test('a saved send with no RPC details can be cancelled explicitly at 320px', as
       }
     );
     await wallet.step(
-      'open the saved Activity row and inspect its separate cancellation review',
+      'review and sign a fee replacement from the Activity menu',
       async () => {
         await wallet!.ensureOnHome();
         await page.locator('#activity-btn').click();
-        await page
+        const transaction = page
           .locator('#activity-panel-list')
-          .getByRole('button', { name: en.notifications.clickToView })
-          .click();
-        await page
-          .getByRole('button', {
-            name: en.transactions.replay.reviewCancellation,
-          })
-          .click();
-        const dialog = page.getByRole('dialog', { name: en.header.cancelTx });
+          .locator(`[data-transaction-hash="${posts[0]!.hash}"]`);
+        const openActions = () =>
+          transaction
+            .locator('#transaction-options')
+            .getByRole('button')
+            .click();
+        const speedUp = page.getByRole('menuitem', {
+          name: en.header.speedUp,
+          exact: true,
+        });
+        await openActions();
         await expect(
-          dialog.getByText(posts[0]!.hash!, { exact: true })
-        ).toBeVisible();
+          page.getByRole('menuitem', { name: /resend/i })
+        ).toHaveCount(0);
+        await speedUp.click();
+        const dialog = page.getByRole('dialog', { name: en.header.speedTx });
+        const confirm = dialog.getByRole('button', {
+          name: en.buttons.confirm,
+          exact: true,
+        });
         await expect(
-          dialog.getByText(
-            en.transactions.replay.cancellationDescription
-              .replace('{{fee}}', '0.0001764')
-              .replace('{{currency}}', 'TSYS'),
-            { exact: true }
-          )
+          dialog.getByText(/maximum network fee of [\d.]+ TSYS/)
         ).toBeVisible();
+        await expect(confirm).toBeEnabled();
         expect(posts).toHaveLength(1);
-        await info.attach('Saved cancellation review at 320px', {
+        await info.attach('Activity Speed Up review at 320px', {
           body: await page.screenshot({ animations: 'disabled' }),
           contentType: 'image/png',
         });
         await page.keyboard.press('Escape');
         await expect(dialog).toBeHidden();
         expect(posts).toHaveLength(1);
-        await page
-          .getByRole('button', {
-            name: en.transactions.replay.reviewCancellation,
-          })
-          .click();
-        await dialog
-          .getByRole('button', { name: en.buttons.confirm, exact: true })
-          .click();
-        await expect(
-          page
-            .getByRole('status')
-            .getByText(en.transactions.transactionCancelSubmitted)
-        ).toBeVisible();
-        expect(posts).toHaveLength(2);
-        expect(posts[1]?.nonce).toBe(posts[0]?.nonce);
-        expect(posts[1]?.to).toBe(payer);
-        expect(posts[1]?.value.toString()).toBe('0');
-        await page
-          .getByRole('button', {
-            name: en.transactions.replay.review,
-            exact: true,
-          })
-          .click();
-        await expect(
-          page.getByText(en.transactions.replay.unavailable, { exact: true })
-        ).toBeVisible();
-        expect(posts).toHaveLength(2);
+        await openActions();
+        await speedUp.click();
+        await expect(confirm).toBeEnabled();
+        await confirm.click();
+        await expect.poll(() => posts.length).toBe(2);
+        const [original, replacement] = posts;
+        expect(replacement.hash).not.toBe(original.hash);
+        expect(replacement.nonce).toBe(original.nonce);
+        expect(replacement.to).toBe(original.to);
+        expect(replacement.data).toBe(original.data);
+        expect(replacement.value).toBe(original.value);
+        expect(
+          replacement.maxFeePerGas ?? replacement.gasPrice
+        ).toBeGreaterThan(
+          original.maxFeePerGas ?? original.gasPrice ?? BigInt(0)
+        );
       }
     );
     expect(routes.deniedWrites).toEqual([]);

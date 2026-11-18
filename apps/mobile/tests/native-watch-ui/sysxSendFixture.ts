@@ -107,10 +107,6 @@ export const sysxSendFixture = {
         check();
         return [];
       },
-      async refreshSaved() {
-        check();
-        return [];
-      },
       async prepare(input) {
         check();
         const owned = revision;

@@ -81,8 +81,11 @@ const observation = (
   ...(kind === 'observed' && { success }),
 });
 const emit = controllerEmitter as jest.Mock;
-const checkStatus = 'transactions.smartAuthorizations.checkStatus';
-const cancelInstruction = 'transactions.smartAuthorizations.cancelInstruction';
+const openStatus = (row: HTMLElement) => {
+  const details = row.querySelector('details')!;
+  details.open = true;
+};
+const cancelInstruction = 'buttons.cancel';
 function ActivityRows() {
   const { groups, scope, load, cursor, failed } =
     useSmartAccountAuthorizations(true);
@@ -106,7 +109,7 @@ beforeEach(() => {
   mockRequest.mockReset();
 });
 
-it('loads local Activity history on mount and requests status only by explicit action', async () => {
+it('loads local Activity history on mount and refreshes status when the row is expanded', async () => {
   emit.mockImplementation(async ([, method]) =>
     method === 'getSmartAccountAuthorizations'
       ? { entries: [entry], nextCursor: null }
@@ -118,21 +121,18 @@ it('loads local Activity history on mount and requests status only by explicit a
   expect(screen.queryByRole('link')).toBeNull();
   fireEvent.click(
     screen.getByRole('button', {
-      name: 'transactions.smartAuthorizations.cancelInstruction',
+      name: 'buttons.cancel',
     })
   );
   expect(mockRequest).toHaveBeenCalledWith(hash, hash);
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: 'transactions.smartAuthorizations.checkStatus',
-    })
-  );
+  fireEvent.click(screen.getByText('transactions.technicalDetails'));
+  openStatus(screen.getByRole('listitem'));
   await screen.findByText(
     'transactions.smartAuthorizations.nonceConsumedUnknown'
   );
   expect(
     screen.queryByRole('button', {
-      name: 'transactions.smartAuthorizations.cancelInstruction',
+      name: 'buttons.cancel',
     })
   ).toBeNull();
   expect(emit).toHaveBeenCalledTimes(2);
@@ -199,7 +199,6 @@ it('hydrates an orphan group on load more and reconciles its original and linked
   ).toBeNull();
   const details = row.querySelector('details')!;
   expect(details.open).toBe(false);
-  details.open = true;
   expect(within(details).getByText(cancellation.operationHash)).toBeTruthy();
   expect(
     within(details).getByText(otherCancellation.operationHash)
@@ -208,7 +207,7 @@ it('hydrates an orphan group on load more and reconciles its original and linked
   fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
   await within(row).findByRole('button', { name: cancelInstruction });
   expect(screen.getAllByRole('listitem')).toEqual([row]);
-  expect(details.open).toBe(true);
+  expect(details.open).toBe(false);
 
   emit.mockImplementation(async (_, [operationHash]) =>
     observation(
@@ -218,7 +217,7 @@ it('hydrates an orphan group on load more and reconciles its original and linked
         : 'nonce-consumed'
     )
   );
-  fireEvent.click(within(row).getByRole('button', { name: checkStatus }));
+  openStatus(row);
   await within(row).findByText(
     'transactions.smartAuthorizations.cancellationConfirmed'
   );
@@ -250,7 +249,7 @@ it.each([
     if (second) emit.mockResolvedValueOnce(second);
     else emit.mockRejectedValueOnce(Error('offline'));
     render(<ActivityRows />);
-    fireEvent.click(await screen.findByRole('button', { name: checkStatus }));
+    openStatus(await screen.findByRole('listitem'));
     const row = screen.getByRole('listitem');
     await within(row).findByText(
       'transactions.smartAuthorizations.outcomeUnknown'
@@ -274,7 +273,7 @@ it('limits status reads while retaining all local attempts', async () => {
     observation(operationHash, 'nonce-consumed')
   );
   render(<ActivityRows />);
-  fireEvent.click(await screen.findByRole('button', { name: checkStatus }));
+  openStatus(await screen.findByRole('listitem'));
   await screen.findByText('transactions.smartAuthorizations.outcomeUnknown');
   expect(emit).toHaveBeenCalledTimes(9);
   expect(screen.getByText(attempts.at(-1)!.operationHash)).toBeTruthy();

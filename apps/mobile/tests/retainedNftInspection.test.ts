@@ -1,4 +1,3 @@
-import { authorizePrivateNoteReplay } from '../../../source/wallet/privateNoteReplay.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Interface } from 'ethers/abi';
@@ -9,7 +8,6 @@ import {
   type EvmRetainedSignedRecord,
 } from '../../../source/wallet/evmSignedRecords.ts';
 import {
-  EvmSignedReplay,
   projectSavedEvmTransaction,
 } from '../../../source/wallet/evmSignedReplay.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
@@ -93,7 +91,7 @@ const expected = (
   amountUnits: amount.toString(),
 });
 
-test('both detail adapters inspect authenticated NFT records without stored metadata or a replay admission', async () => {
+test('both detail adapters inspect authenticated NFT records without stored metadata', async () => {
   let stored: string | undefined;
   const records = new EvmSignedRecords(
     {
@@ -119,18 +117,10 @@ test('both detail adapters inspect authenticated NFT records without stored meta
       context: { ...context, operation: entry.operation },
     });
   }
-  const replay = new EvmSignedReplay(records, () => ({
-    authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, session.assertCurrent, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),
-    recordSession: session,
-    context,
-    assertCurrent: session.assertCurrent,
-    async observe() {
-      throw Error('Inspection must not observe');
-    },
-    async dispatch() {
-      throw Error('Inspection must not dispatch');
-    },
-  }));
+  const inspect = async (hash: string) => {
+    const entry = await records.readExact(session, '1', wallet.address, hash);
+    return entry ? projectSavedEvmTransaction(entry) : null;
+  };
   const native = createNativeSignedRecordView(
     records,
     session,
@@ -143,7 +133,7 @@ test('both detail adapters inspect authenticated NFT records without stored meta
     [legacy, expected('ERC-721', 0n, 1n)],
     [feeMarket, expected('ERC-1155', max, max)],
   ] as const) {
-    const inspected = await replay.get(entry.hash);
+    const inspected = await inspect(entry.hash);
     assert.deepEqual(inspected?.collectibleTransfer, intent);
     assert.equal(inspected?.to, contractAddress);
     assert.equal(inspected?.value, '0');
@@ -161,7 +151,7 @@ test('both detail adapters inspect authenticated NFT records without stored meta
   );
   // The authenticated manifest covers the typed operation, not only the bytes.
   stored = stored!.replace('"operation":"erc721"', '"operation":"erc20"');
-  await assert.rejects(replay.get(legacy.hash), {
+  await assert.rejects(inspect(legacy.hash), {
     message: 'EVM_SIGNED_RECORD_CORRUPT',
   });
 });
@@ -200,7 +190,7 @@ test('NFT semantics refuse other operations, mismatched context, and malformed s
   }
 });
 
-test('retained replay review projects only exact signed collectible semantics under the authenticated operation', async () => {
+test('retained Activity projection displays exact signed collectible semantics under the authenticated operation', async () => {
   let stored: string | undefined;
   const records = new EvmSignedRecords(
     {
@@ -233,23 +223,6 @@ test('retained replay review projects only exact signed collectible semantics un
       { intent: forgedMetadata }
     );
   }
-  const posted: string[] = [];
-  const replay = new EvmSignedReplay(records, () => ({
-    authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, session.assertCurrent, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),
-    recordSession: session,
-    context,
-    assertCurrent: session.assertCurrent,
-    async observe(expected) {
-      return { status: 'missing', latestNonce: expected.nonce };
-    },
-    async dispatch(raw, admit, retained) {
-      assert.equal(retained.operation, 'erc1155');
-      return admit(() => {
-        posted.push(raw);
-        return Promise.resolve(retained.hash);
-      }, async () => undefined);
-    },
-  }));
   const before = stored;
   for (const [entry, intent] of [
     [legacy, expected('ERC-721', 0n, 1n)],
@@ -257,9 +230,9 @@ test('retained replay review projects only exact signed collectible semantics un
     [generic, undefined],
     [feeMarket, expected('ERC-1155', max, max)],
   ] as const) {
-    const prepared = await replay.prepare(entry.hash);
-    assert.equal(prepared.status, 'review');
-    const review = prepared.review;
+    const saved = await records.readExact(session, entry.chainId, entry.from, entry.hash);
+    assert(saved);
+    const review = projectSavedEvmTransaction(saved);
     assert.equal(review.operation, entry.operation);
     assert.equal(review.hash, entry.hash);
     assert.equal(review.to, contractAddress);
@@ -272,23 +245,6 @@ test('retained replay review projects only exact signed collectible semantics un
     );
     assert.deepEqual(review.collectibleTransfer, intent);
     if (intent) assert(Object.isFrozen(review.collectibleTransfer));
-    assert.deepEqual(posted, []);
     assert.equal(stored, before);
-    if (entry === feeMarket) {
-      const confirmed = await replay.confirm(review.id);
-      assert.deepEqual(confirmed, { status: 'submitted', hash: entry.hash });
-      assert.deepEqual(posted, [entry.rawTransaction]);
-      assert.equal(
-        (
-          await records.readExact(
-            session,
-            entry.chainId,
-            entry.from,
-            entry.hash
-          )
-        )?.phase,
-        'submitted'
-      );
-    }
   }
 });

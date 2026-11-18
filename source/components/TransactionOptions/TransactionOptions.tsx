@@ -54,6 +54,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   chainId,
   setIsOpenModal,
   setModalData,
+  suppressCancellation = false,
 }) => {
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
@@ -68,6 +69,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   const scope = useSelector(() => getWalletNavigationScope());
   const smartCancellation = useSmartAccountCancellation(transaction.hash);
   const cancellationUnavailable =
+    suppressCancellation ||
     (transaction as { cancellationUnavailable?: unknown })
       .cancellationUnavailable === true ||
     ('historySource' in transaction &&
@@ -359,6 +361,7 @@ export const TransactionOptions = React.memo(
     const nextTx: any = next.transaction as any;
     return (
       prev.chainId === next.chainId &&
+      prev.suppressCancellation === next.suppressCancellation &&
       prev.alert === next.alert &&
       prevTx?.hash === nextTx?.hash &&
       prevTx?.from === nextTx?.from &&

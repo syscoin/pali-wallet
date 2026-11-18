@@ -13,6 +13,7 @@ import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
+import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -63,7 +64,7 @@ type Case = ReturnType<typeof collectibleFixture>;
 
 async function withController(
   asset: Case,
-  mode: 'success' | 'hold-preflight' | 'hold-adapter' | 'lost-ack' | 'hold-replay' | 'legacy-cancellation',
+  mode: 'success' | 'hold-preflight' | 'hold-adapter' | 'lost-ack' | 'legacy-cancellation',
   exercise: (fixture: {
     transfers: NativeTransfers;
     calls: Call[];
@@ -91,7 +92,7 @@ async function withController(
     }>;
     reorg(): void;
     replaceSaved(): Promise<void>;
-    advanceClock(milliseconds: number): void;
+    observeSaved(hash: string): ReturnType<NativeTransferRpc['observation']>;
     removeHolding(): void;
   }) => Promise<void>
 ) {
@@ -107,8 +108,15 @@ async function withController(
   let runtime!: KeyringRuntime;
   const committed = Promise.withResolvers<void>();
   const acknowledge = Promise.withResolvers<void>();
-  const legacyReplay = ['hold-preflight', 'lost-ack', 'hold-replay', 'legacy-cancellation'].includes(mode);
+  const legacyReplay = ['hold-preflight', 'lost-ack', 'legacy-cancellation'].includes(mode);
   const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+    async observeActivity(_network, expected, signal, guard) {
+      guard();
+      const { hash, from, to, nonce } = expected;
+      const result = await rpc.observation({ hash, from, to, nonce }, signal);
+      guard();
+      return result;
+    },
     async ensureCryptoReady() { assert.ok(globalThis.crypto.subtle); },
     async loadSdk() {
       const sdk = await loadNativeKeyringSdk();
@@ -153,7 +161,6 @@ async function withController(
   const adapterRelease = Promise.withResolvers<void>();
   const calls: Call[] = [];
   const posted: string[] = [];
-  let clockOffset = 0;
   let hasHolding = true;
   let confirmed: Transaction | undefined;
   let pendingNonce: string | undefined;
@@ -172,8 +179,8 @@ async function withController(
     return signedRecords.flatMap(({ value }) => JSON.parse(value).entries) as
       Readonly<{ operation: string; phase: string; hash: string }>[];
   };
-  const openTransfers = (): NativeTransfers => new NativeTransfers(authority, () => runtime?.transfers, {
-    now: () => performance.now() + clockOffset,
+  const rpc = new NativeTransferRpc({
+    networkId: 'ethereum',
     fetch: async function fetchFixture(url, init): Promise<Response> {
       const request = JSON.parse(String(init.body));
       if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetchFixture(url, { ...init, body: JSON.stringify(row) })).json())));
@@ -187,8 +194,7 @@ async function withController(
       let result: unknown;
       switch (call.method) {
         case 'eth_chainId':
-          if (transfers.getSnapshot().phase === 'submitting' && (mode === 'hold-preflight' ||
-              mode === 'hold-replay' && transfers.getSnapshot().review?.retry)) {
+          if (transfers.getSnapshot().phase === 'submitting' && mode === 'hold-preflight') {
             preflight.resolve();
             await release.promise;
           }
@@ -336,7 +342,7 @@ async function withController(
             if (aborted) throw Error('Synthetic adapter aborted before physical send');
           }
           posted.push(raw as string);
-          if (mode === 'lost-ack' || mode === 'hold-replay') throw Error('Synthetic loss after POST');
+          if (mode === 'lost-ack') throw Error('Synthetic loss after POST');
           result = signed.hash;
           break;
         }
@@ -346,7 +352,16 @@ async function withController(
       return Response.json({ jsonrpc: '2.0', id: call.id, result });
     },
   });
+  const openTransfers = (): NativeTransfers =>
+    new NativeTransfers(authority, () => runtime.transfers, { rpc });
   let transfers = openTransfers();
+  const observeSaved = async (hash: string) => {
+    const activity = runtime.activity!;
+    const { locals } = await activity.load(current);
+    const row = locals.find(entry => entry.hash === hash);
+    assert(row);
+    return activity.observeLocal!(row, current, new AbortController().signal);
+  };
   try {
     await authority.initialize();
     await authority.importPhrase(phrase);
@@ -361,7 +376,7 @@ async function withController(
       revision = (await registry.addCollectible(removed.revision, asset.collectible, current)).revision;
     };
     await exercise({
-      transfers, calls, posted, retained, replaceSaved, advanceClock: (milliseconds) => { clockOffset += milliseconds; },
+      transfers, calls, posted, retained, replaceSaved, observeSaved,
       async retainedBytes(hash) {
         return (await (await runtime.transfers!.journal(current)).load(hash))?.rawTransaction;
       },
@@ -384,9 +399,7 @@ async function withController(
         const started = Promise.withResolvers<void>();
         heldBlock = { hash, started: started.resolve, wait: releaseHeldBlock.promise };
         return { started: started.promise, release: releaseHeldBlock.resolve, async observe() {
-          const concurrent = openTransfers();
-          try { await concurrent.recover(false, hash); }
-          finally { concurrent.dispose(); }
+          await observeSaved(hash);
         } };
       },
       reorg() { confirmed = undefined; invalidObservation = undefined; omitTransaction = false; },
@@ -564,16 +577,8 @@ test('remove and re-add while NFT broadcast preflight waits preserves the signed
     assert.deepEqual(await retained(), [saved]);
     assert.equal(posted.length, 0);
     assert.equal(calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
-    await transfers.recover(true, saved?.hash);
-    const retry = transfers.getSnapshot().review;
-    assert.equal(retry?.collectible?.tokenStandard, 'ERC-721');
-    assert.equal(retry?.replay?.hash, saved?.hash);
-    assert.equal(posted.length, 0);
-    await transfers.confirm(retry!.id, { method: 'device' });
-    assert.equal(transfers.getSnapshot().phase, 'pending');
-    assert.equal(posted.length, 1);
-    assert.equal(Transaction.from(posted[0]!).hash, saved?.hash);
   });
+
 });
 
 test('inventory retirement after NFT POST invocation preserves the exact acknowledgement', async () => {
@@ -626,35 +631,6 @@ test('NFT POST with a lost acknowledgement stays unknown and has no automatic re
     const [saved] = await retained();
     assert.equal(saved?.phase, 'signed');
     assert.equal(saved?.hash, outcome.hash);
-    await transfers.recover(true, outcome.hash!);
-    const retry = transfers.getSnapshot().review;
-    assert.equal(transfers.getSnapshot().phase, 'review');
-    assert.equal(retry?.collectible?.tokenStandard, 'ERC-1155');
-    assert.equal(posted.length, 1);
-    await transfers.confirm(retry!.id, { method: 'device' });
-    assert.equal(transfers.getSnapshot().phase, 'unknown');
-    assert.deepEqual(posted, [posted[0], posted[0]]);
-  });
-});
-
-test('an explicitly approved NFT retry cannot dispatch after a held preflight expires', { timeout: 5_000 }, async () => {
-  const asset = collectibleFixture('ERC-721');
-  await withController(asset, 'hold-replay', async ({ transfers, calls, posted, retained, advanceClock, preflight, releasePreflight }) => {
-    await transfers.confirm(await reviewCollectible(transfers, asset), { method: 'device' });
-    const first = transfers.getSnapshot().hash!;
-    assert.equal(posted.length, 1);
-    await transfers.recover(true, first);
-    const review = transfers.getSnapshot().review!;
-    assert.equal(review.replay?.hash, first);
-    const pending = transfers.confirm(review.id, { method: 'device' });
-    await Promise.race([preflight, pending.then(() => assert.fail('Retry did not enter preflight'))]);
-    advanceClock(review.replay!.validForMs);
-    releasePreflight();
-    await pending;
-    assert.equal(calls.filter((call) => call.method === 'eth_sendRawTransaction').length, 1);
-    assert.equal(transfers.getSnapshot().hash, first);
-    assert.equal(transfers.getSnapshot().phase, 'unknown');
-    assert.equal((await retained())[0]?.hash, first);
   });
 });
 
@@ -662,7 +638,7 @@ test('a legacy saved NFT that loses ownership can be explicitly cancelled after 
   const asset = collectibleFixture('ERC-721');
   await withController(asset, 'legacy-cancellation', async ({
     transfers, calls, posted, retained, retainedBytes, reopen, confirmOnChain,
-    invalidateCancellationObservation, holdOriginalObservation, reorg, removeHolding, signedCommit, acknowledgeCommit,
+    invalidateCancellationObservation, holdOriginalObservation, reorg, removeHolding, signedCommit, acknowledgeCommit, observeSaved,
   }) => {
     const pending = transfers.confirm(await reviewCollectible(transfers, asset), { method: 'device' });
     await Promise.race([signedCommit, pending.then(() => assert.fail('Send did not commit a signed record'))]);
@@ -679,13 +655,6 @@ test('a legacy saved NFT that loses ownership can be explicitly cancelled after 
     const reopened = await reopen();
     assert.equal(await retainedBytes(hash), original);
     await assert.rejects(reopened.prepare(recipient, '0.000000000000000001'), { code: 'PENDING_TRANSFER' });
-    await reopened.recover(true, hash);
-    const retry = reopened.getSnapshot().review;
-    assert.equal(retry?.collectible?.tokenId, asset.tokenId);
-    await reopened.confirm(retry!.id, { method: 'device' });
-    assert.match(reopened.getSnapshot().message ?? '', /no longer has enough/);
-    assert.equal(reopened.getSnapshot().hash, hash);
-    assert.deepEqual(await retained(), [saved]);
     assert.deepEqual(posted, []);
     assert.equal(calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
 
@@ -710,7 +679,6 @@ test('a legacy saved NFT that loses ownership can be explicitly cancelled after 
     assert.equal(cancel.gasLimit, EVM_CANCELLATION_GAS_LIMIT);
     assert.ok(cancel.maxFeePerGas! > Transaction.from(original).maxFeePerGas!);
     assert.equal(await retainedBytes(hash), original);
-    await assert.rejects(reopened.recover(true, hash), { code: 'EXPIRED' });
     assert.equal(posted.length, 1);
 
     const cancellationHash = cancel.hash!;
@@ -722,7 +690,7 @@ test('a legacy saved NFT that loses ownership can be explicitly cancelled after 
     for (const [fault, readNumber] of faults) {
       confirmOnChain(posted[0]!);
       invalidateCancellationObservation(fault, readNumber);
-      await assert.rejects(reopened.recover(false, cancellationHash), { code: 'EXPIRED' });
+      await assert.rejects(observeSaved(cancellationHash));
       const after = await retained();
       assert.equal(after.find((entry) => entry.hash === hash)?.phase, 'signed');
       assert.equal(after.find((entry) => entry.hash === cancellationHash)?.phase, 'submitted');
@@ -733,21 +701,19 @@ test('a legacy saved NFT that loses ownership can be explicitly cancelled after 
     // Fork A mined the original, then fork B mined its competing cancellation.
     reorg();
     confirmOnChain(original);
-    await reopened.recover(false, hash);
-    assert.equal(reopened.getSnapshot().phase, 'confirmed');
+    assert.equal((await observeSaved(hash)).status, 'mined');
     assert.equal((await retained()).find((entry) => entry.hash === hash)?.phase, 'confirmed');
     const held = holdOriginalObservation(hash);
-    const oldObservation = assert.rejects(held.observe(), { code: 'EXPIRED' });
+    const oldObservation = assert.rejects(held.observe());
     await held.started;
     confirmOnChain(posted[0]!);
-    try { await reopened.recover(false, cancellationHash); }
+    try { assert.equal((await observeSaved(cancellationHash)).status, 'mined'); }
     finally { held.release(); }
     await oldObservation;
-    assert.equal(reopened.getSnapshot().phase, 'confirmed');
     assert.equal((await retained()).find((entry) => entry.hash === hash)?.phase, 'nonce-consumed');
     assert.equal(await retainedBytes(hash), original);
 
-    // Reopening observed phases after a reorg never revives spending replay.
+    // Reopening observed phases after a reorg keeps the cancellation fence.
     reorg();
     const beforeFence = await retained();
     await reopened.prepare(recipient, '0.000000000000000001');
@@ -760,20 +726,14 @@ test('a legacy saved NFT that loses ownership can be explicitly cancelled after 
     assert.equal(reopened.getSnapshot().review, null);
     assert.equal(reopened.getSnapshot().hash, cancellationHash);
     assert.match(reopened.getSnapshot().message ?? '', /saved cancellation/i);
-    await reopened.recover(true, cancellationHash);
-    const retryCancellation = reopened.getSnapshot().review;
-    assert.equal(retryCancellation?.replay?.hash, cancellationHash);
-    assert.equal(retryCancellation?.replay?.operation, 'cancel');
     assert.equal(await retainedBytes(cancellationHash), posted[0]);
-    assert.equal(posted.length, 1);
-    await reopened.recover(false, cancellationHash);
+    await observeSaved(cancellationHash);
     assert.equal((await retained()).find((entry) => entry.hash === cancellationHash)?.phase, 'submitted');
-    await assert.rejects(reopened.recover(true, hash), { code: 'EXPIRED' });
     assert.equal(await retainedBytes(hash), original);
     assert.equal(posted.length, 1);
 
     confirmOnChain(posted[0]!);
-    await reopened.recover(false, cancellationHash);
+    await observeSaved(cancellationHash);
     await reopened.prepare(recipient, '0.000000000000000001');
     const next = reopened.getSnapshot().review!;
     assert.equal(next.nonce, '1');

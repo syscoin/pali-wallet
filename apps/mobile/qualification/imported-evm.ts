@@ -104,11 +104,9 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     const wrapped: NativeTransferRuntime = {
     isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
     releaseReplacement: () => transfer.releaseReplacement(),
-    authenticateOperation: (...args) => transfer.authenticateOperation(...args),
     async authorizeOperation(...args) { authorizations++; return transfer.authorizeOperation(...args); },
     replacementOriginal: (...args) => { expect(transfer.replacementOriginal); return transfer.replacementOriginal(...args); },
     releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
-    replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
       journal: (assertCurrent) => transfer.journal(assertCurrent),
       async sign(...args) {
@@ -116,7 +114,6 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
         signatures++;
         return transfer.sign(...args);
       },
-      assertUnlocked: (...args) => transfer.assertUnlocked(...args),
     };
     const rpc = new NativeTransferRpc({ networkId: network, fetch: async (url, init) => {
       guard(); expect(url === registration.rpcUrl && init.method === 'POST' && init.credentials === 'omit' && init.redirect === 'error');
@@ -188,7 +185,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
           await controller.prepareSpeedUp(originalHash);
         }
         guard(); const review = controller.getSnapshot().review;
-        expect(review && !review.retry && review.context.chainId === registration.chainId &&
+        expect(review && review.context.chainId === registration.chainId &&
           review.from === ADDRESS && review.recipient === hd1.address && review.nonce === '0' &&
           review.amountUnits === String(111 * (i + 1)));
         if (phase === 'restart') expect(review.replacement?.mode === 'speed-up' &&

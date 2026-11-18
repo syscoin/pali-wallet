@@ -685,7 +685,7 @@ it('offers the existing menu for a locally tracked payment eligible for Speed Up
   expect(screen.getByText(`Options:${local.hash}`)).toBeTruthy();
 });
 
-it('keeps existing activity rows and renders signed controls only when no visible authenticated outer represents the group', async () => {
+it('attaches signed controls to one authenticated outer and preserves missing-outer rows', async () => {
   const instruction = {
     account: ACCOUNT,
     payer: TARGET,
@@ -733,18 +733,21 @@ it('keeps existing activity rows and renders signed controls only when no visibl
   expect(
     screen.queryByText('transactions.smartAuthorizations.title')
   ).toBeNull();
-  const fallbacks = () =>
+  const instructionRows = () =>
     view.container.querySelectorAll('[data-operation-hash]');
   const ordinaryRows = () =>
     Array.from(
       view.container.querySelectorAll('[data-transaction-hash]'),
       (row) => row.getAttribute('data-transaction-hash')
     );
-  expect(fallbacks()).toHaveLength(0);
-  expect(ordinaryRows()).toEqual(mockRows.map((tx) => tx.hash));
+  expect(instructionRows()).toHaveLength(1);
   expect(
-    screen.queryByText('transactions.smartAuthorizations.checkStatus')
-  ).toBeNull();
+    instructionRows()[0]
+      .closest('[data-activity-outer]')
+      ?.getAttribute('data-activity-outer')
+  ).toBe(originalOuter.hash);
+  expect(ordinaryRows()).toEqual(mockRows.map((tx) => tx.hash));
+  expect(screen.getByText('transactions.technicalDetails')).toBeTruthy();
   const details = await screen.findAllByRole('button', { name: 'Details' });
   fireEvent.click(details[0]);
   expect(mockNavigate.mock.lastCall[1].state.hash).toBe(originalOuter.hash);
@@ -754,26 +757,37 @@ it('keeps existing activity rows and renders signed controls only when no visibl
   // Network status wins for the same outer. Only the retained bytes identify its inner instruction.
   mockRows = [transaction('a'), unrelated];
   view.rerender(ui([originalOuter]));
-  expect(fallbacks()).toHaveLength(0);
+  expect(instructionRows()).toHaveLength(1);
+  expect(
+    instructionRows()[0]
+      .closest('[data-activity-outer]')
+      ?.getAttribute('data-activity-outer')
+  ).toBe(originalOuter.hash);
   expect(screen.getByText(`Options:${originalOuter.hash}`)).toBeTruthy();
   mockRows = [cancelledOuter, unrelated];
   view.rerender(ui([cancelledOuter]));
-  expect(fallbacks()).toHaveLength(0);
+  expect(instructionRows()).toHaveLength(1);
+  expect(
+    instructionRows()[0]
+      .closest('[data-activity-outer]')
+      ?.getAttribute('data-activity-outer')
+  ).toBe(cancelledOuter.hash);
 
   // Equal nonce and an unauthenticated lookalike from the network do not hide local activity.
   mockRows = [unrelated];
   view.rerender(ui([originalOuter]));
-  expect(fallbacks()).toHaveLength(1);
+  expect(instructionRows()).toHaveLength(1);
   expect(ordinaryRows()).toEqual([unrelated.hash]);
-  const row = within(fallbacks()[0] as HTMLElement);
+  expect(instructionRows()[0].closest('[data-activity-outer]')).toBeNull();
+  const row = within(instructionRows()[0] as HTMLElement);
   expect(
-    row.getByRole('button', {
+    row.queryByRole('button', {
       name: 'transactions.smartAuthorizations.checkStatus',
     })
-  ).toBeTruthy();
+  ).toBeNull();
   expect(
     row.getByRole('button', {
-      name: 'transactions.smartAuthorizations.cancelInstruction',
+      name: 'buttons.cancel',
     })
   ).toBeTruthy();
 });

@@ -17,7 +17,6 @@ import { NativePsbtReview } from './NativePsbtReview';
 import { NativeSmartAccountSend } from './NativeSmartAccountSend';
 import { NativeSmartTransactionReviewScreen } from './NativeSmartTransactionReview';
 import { NativeSmartAccountOperationRoute } from './NativeSmartAccountOperation';
-import { NativeSmartAccountAuthorizations } from './NativeSmartAccountAuthorizations';
 import { NativeSmartAccountAuthenticator } from './NativeSmartAccountAuthenticator';
 import { findUtxoNetwork, supportsUtxoSoftwareCustody } from '../core/utxoNetworks';
 import { findWifAddressType, UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses';
@@ -114,7 +113,7 @@ let savedRecoveryOutcome: RecoveryOutcome | null = null;
 type RootOrigin = Readonly<{ tab: RealTab; stage: Stage; context: string; identity: string; epoch: number; publicDraft?: PublicSendContext }>;
 type SendTarget = Readonly<
   { kind: 'native' } | { kind: 'utxo-replacement'; replacement: NativeUtxoReplacement } | { kind: 'spt'; asset: NativeUtxoAsset; maximumAmount: string } | { kind: 'utxo'; asset?: NativeUtxoAsset } | { kind: 'token'; token: Erc20Metadata } |
-  { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'saved' | 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
+  { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
 >;
 type PublicSendTarget = Extract<SendTarget, { kind: 'native' | 'spt' | 'utxo' | 'token' | 'collectible' }>;
 const isPublicSendTarget = (target: SendTarget): target is PublicSendTarget =>
@@ -216,7 +215,6 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
   const [openSmartSend, setOpenSmartSend] = useState<Controllers['openSmartAccountSend'] | null>(null);
   const [openSmartCancellation, setOpenSmartCancellation] = useState<Controllers['openSmartAccountCancellation'] | null>(null);
-  const [instructionPanel, setInstructionPanel] = useState<{ local: Controllers; context: string; epoch: number } | null>(null);
   const [canSignSmart, setCanSignSmart] = useState(false);
   const [canManageSlh, setCanManageSlh] = useState(false);
   const [canManageModules, setCanManageModules] = useState(false);
@@ -381,7 +379,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setSentryScope(null);
     importRequest.current.active = false; setImportActiveToken(null); setImportScope(null);
     controllersRef.current?.authentication?.cancel();
-    setRecoveryActivity(null); setResumeGuardianScope(null); setTransactionActivity(null); setInstructionPanel(null);
+    setRecoveryActivity(null); setResumeGuardianScope(null); setTransactionActivity(null);
     controllersRef.current?.keyExport.cancel(); controllersRef.current?.backup.cancel(); controllersRef.current?.authority.lock();
     Keyboard.dismiss(); clearSecrets(); setSendDraft(null); setSmartResumeId(null); setInfrastructureResumeId(null); setInfrastructureReviewNext(false); if (!recoveryRef.current && !retainRemoval) setStage('choose'); setError('');
   }, [clearSecrets, lockNoteRestore, controllersRef, permissionReturn]);
@@ -646,7 +644,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (next === 'send') {
       if (!sendTarget || (sendTarget.kind === 'spt' ? !canSendSpt :
         sendTarget.kind === 'utxo-replacement' ? !canSendUtxo : !canSign && !(canSendUtxo && sendTarget.kind === 'native' || canSendSmart && (sendTarget.kind === 'native' || sendTarget.kind === 'token' || sendTarget.kind === 'collectible') ||
-          canReplaceSelectedSmart && (sendTarget.kind === 'saved' || sendTarget.kind === 'speed-up' || sendTarget.kind === 'cancel' || sendTarget.kind === 'cancel-saved')))) return;
+          canReplaceSelectedSmart && (sendTarget.kind === 'speed-up' || sendTarget.kind === 'cancel' || sendTarget.kind === 'cancel-saved')))) return;
       const sender = owner?.account?.address.toLowerCase();
       const recipientPicker = sendTarget.kind === 'native' && canSign && local && sender &&
         capturedCatalogue?.accounts.some(({ address }) => address.toLowerCase() !== sender)
@@ -790,10 +788,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (!choice) { assertView(); shell.select('activity'); return; }
     await navigateAccount(choice, assertView, context => restoreRoot('activity', context.identity));
   };
-  const openAccountActivityAction = (entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertView: () => void) => {
+  const openAccountActivityAction = (entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertView: () => void, operationHash?: string) => {
+    if (operationHash && (action !== 'cancel' || !entry.row.smartAuthorizations?.some(value => value.instruction.operationHash === operationHash)))
+      return Promise.reject(Error('CANCELLED'));
     if (!/^0x[0-9a-f]{64}$/i.test(hash) || entry.row.hash !== hash) return Promise.reject(Error('CANCELLED'));
     return navigateAccount(entry.choice, assertView, (_context, check, _local, release) => {
-      setPortfolioSend({ choice: entry.choice, target: { kind: action, hash }, epoch: epoch.current, assertCurrent: check, release }); return 'queued';
+      setPortfolioSend({ choice: entry.choice, target: { kind: action, hash: operationHash ?? hash }, epoch: epoch.current, assertCurrent: check, release }); return 'queued';
     });
   };
   useEffect(() => {
@@ -1001,20 +1001,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const sendTarget = stage === 'send' && sendDraft &&
     sendDraft.origin.context === (sendDraft.origin.publicDraft ? publicSendContext(snapshot, catalogue) : custodyContext(snapshot, catalogue))?.context
     ? sendDraft.target : undefined;
-  const canReplaceSmart = selectedAccountType === 'SmartAccount' && (sendTarget?.kind === 'saved' || sendTarget?.kind === 'speed-up' || sendTarget?.kind === 'cancel' || sendTarget?.kind === 'cancel-saved');
+  const canReplaceSmart = selectedAccountType === 'SmartAccount' && (sendTarget?.kind === 'speed-up' || sendTarget?.kind === 'cancel' || sendTarget?.kind === 'cancel-saved');
   const openSelectedSmartCancellation = useCallback((assertCurrent: () => void, signal: AbortSignal, authentication: NativePrivateAuthenticationScope) => {
     if (!openSmartCancellation || !sendTarget || sendTarget.kind !== 'cancel' && sendTarget.kind !== 'cancel-saved') throw Error('CANCELLED');
     return openSmartCancellation({ originalHash: sendTarget.hash }, assertCurrent, signal, authentication);
   }, [openSmartCancellation, sendTarget]);
-  const showSignedInstructions = () => {
-    const local = controllersRef.current, current = readyContext();
-    if (!local || !current || local !== controllerOwner || current.context !== guardianContext || epoch.current !== guardianEpoch ||
-        stage !== 'choose' || selectedAccountType !== 'SmartAccount' || AppState.currentState !== 'active') return;
-    setInstructionPanel({ local, context: current.context, epoch: epoch.current });
-  };
-  const visibleInstructionPanel = instructionPanel && instructionPanel.local === controllerOwner &&
-    instructionPanel.context === guardianContext && instructionPanel.epoch === guardianEpoch && selectedAccountType === 'SmartAccount'
-    ? instructionPanel : null;
   const completedOrigin = rootOrigin.current;
   const viewCompletedTransaction = (hash: string) => {
     const context = readyContext();
@@ -1043,7 +1034,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setCanSignSmart(false); setCanManageSlh(false); setOpenSlhDsaManagement(null); setCanManageModules(false); setOpenSmartAccountModules(null); setOpenSmartInfrastructure(null);
     setCanUseWalletAuthenticator(false); setOpenWalletAuthenticator(null); setSmartResumeId(null); setInfrastructureResumeId(null); setInfrastructureReviewNext(false);
     setPublicSource(null); setBalanceReader(null); setRecipientResolver(undefined); setReadGuardianRecovery(null); setOpenGuardianPolicy(null); setInspectGuardianRemoval(null); setGuardianRecoveryController(null); setRecoveryActivity(null); setResumeGuardianScope(null); setAccountView(null); setTrezorView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
-    setOpenNoteCapacity(null); setReadNoteInventory(null); setOpenPrivateDeposit(null); setTransactionActivity(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setOpenSmartSend(null); setOpenSmartCancellation(null); setInstructionPanel(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
+    setOpenNoteCapacity(null); setReadNoteInventory(null); setOpenPrivateDeposit(null); setTransactionActivity(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setOpenSmartSend(null); setOpenSmartCancellation(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore, controllersRef]);
   const attach = useCallback((local: Controllers) => {
@@ -2058,7 +2049,6 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     recipientPicker={sendDraft?.recipientPicker}
     token={sendTarget.kind === 'token' ? sendTarget.token : undefined}
     collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined}
-    savedHash={sendTarget.kind === 'saved' ? sendTarget.hash : undefined}
     replacement={sendTarget.kind === 'cancel' || sendTarget.kind === 'cancel-saved' || sendTarget.kind === 'speed-up' ? { hash: sendTarget.hash, mode: sendTarget.kind } : undefined}
     onChangeNetwork={networkView && !utxo && (!accountPortfolio || accountPortfolio.getSnapshot().filter === 'all') ? openSendNetwork : undefined}
     onViewTransaction={activityView ? viewCompletedTransaction : undefined}
@@ -2100,19 +2090,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     onActivity={(utxo ? utxoActivityView : activityView) ? () => shell.select('activity') : undefined}
     navigation={shell.navigation}
   />;
-    else if (shell.tab === 'activity') content = visibleInstructionPanel
-      ? <NativeSmartAccountAuthorizations key={visibleInstructionPanel.context} accountLabel={accountLabel}
-          source={{ list: visibleInstructionPanel.local.listSmartAccountAuthorizations, status: visibleInstructionPanel.local.readSmartAccountAuthorizationStatus }}
-          onBack={() => setInstructionPanel(null)} onCancel={canReplaceSelectedSmart ? operationHash => {
-            if (visibleInstructionPanel.local !== controllersRef.current || visibleInstructionPanel.epoch !== epoch.current ||
-                visibleInstructionPanel.context !== readyContext()?.context || AppState.currentState !== 'active') return;
-            setInstructionPanel(null); openStage('send', { kind: 'cancel', hash: operationHash });
-          } : undefined} onViewTransaction={hash => {
-            if (visibleInstructionPanel.local !== controllersRef.current || visibleInstructionPanel.epoch !== epoch.current ||
-                visibleInstructionPanel.context !== readyContext()?.context || AppState.currentState !== 'active') return;
-            setInstructionPanel(null); setTransactionActivity({ context: visibleInstructionPanel.context, hash });
-          }} />
-      : utxo && utxoActivityView
+    else if (shell.tab === 'activity') content = utxo && utxoActivityView
       ? <UtxoActivityScreen authority={utxoActivityView} selectedNetwork={utxo} accountLabel={accountLabel}
           availableReplacements={canSendUtxo ? checkUtxoReplacement : undefined}
           onReplace={canSendUtxo ? replacement => {
@@ -2125,16 +2103,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
           onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : accountActivity && !utxo
       ? <AllNetworksActivity controller={accountActivity} accountLabel={accountLabel} navigation={shell.navigation}
-          onSignedInstructions={selectedAccountType === 'SmartAccount' ? showSignedInstructions : undefined}
           initialTarget={transactionActivity && transactionActivity.context === guardianContext ? { networkId: snapshot.account!.network, hash: transactionActivity.hash }
             : recoveryActivity && recoveryActivity.context === guardianContext ? { networkId: snapshot.account!.network, hash: recoveryActivity.hash } : undefined}
           onAction={canSign || canReplaceSelectedSmart ? openAccountActivityAction : undefined} />
       : activityView && !utxo
       ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel}
-          onSignedInstructions={selectedAccountType === 'SmartAccount' ? showSignedInstructions : undefined}
           initialHash={transactionActivity && transactionActivity.context === guardianContext ? transactionActivity.hash : recoveryActivity && recoveryActivity.context === guardianContext ? recoveryActivity.hash : undefined}
-          onReplay={canSign || canReplaceSelectedSmart ? (hash) => openStage('send', { kind: 'saved', hash }) : undefined}
-          onCancelPending={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'cancel', hash }) : undefined}
+          onCancelPending={canSign || canReplaceSelectedSmart ? (hash, operationHash) => openStage('send', { kind: 'cancel', hash: operationHash ?? hash }) : undefined}
           onCancelSaved={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'cancel-saved', hash }) : undefined}
           onSpeedUpPending={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'speed-up', hash }) : undefined}
           onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />

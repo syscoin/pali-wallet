@@ -228,12 +228,6 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
         readStatus: (noteId: string) => ports.run(() => operational.readNoteStatus(noteId, session)),
       });
     },
-    authorizeDepositReplay(session: IPrivateVaultSession, attempt: IPrivacyDepositAttempt, readNote: IPrivacyNoteReader) {
-      return createVault(readNote, null).authorizeDepositReplay(attempt, session);
-    },
-    authorizeWithdrawalReplay(session: IPrivateVaultSession, attempt: Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>, readNote: IPrivacyNoteReader) {
-      return createVault(readNote, null).authorizeWithdrawalReplay(attempt, session);
-    },
     invalidate() { resumeInventory?.(); invalidate?.(); },
     dispose() { resumeInventory?.(); service.dispose(); },
     importNote(session: IPrivateVaultSession, note: string, readNote: IPrivacyNoteReader, assertCurrent: () => void) {

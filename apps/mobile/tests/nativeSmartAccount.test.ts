@@ -1336,9 +1336,6 @@ test('real SDK smart account creation, selection and cold unlock retain the orig
     assert.equal(smart.smartAccount!.chainId, 1);
     assert.equal(smart.smartAccount!.isDeployed, false);
     assert.equal(f.owner.getSnapshot().account!.address, smart.address);
-    // Public-session readiness also admits exact-byte Smart replay; signing
-    // still requires its separate operation and payer authorization.
-    assert.doesNotThrow(() => f.runtime.transfers!.assertUnlocked(() => undefined));
     assert.equal(f.submitted.length, 0);
     const connection = await f.runtime.openConnectionHost();
     assert.equal(connection.context().accounts.some(account => account.id === smart.id), true);
@@ -2058,11 +2055,14 @@ for(const path of ['standalone','pending-outer','consumed-outer','pending-counte
   if(path==='pending-counterfactual')f.undeployed();
   if(path==='consumed-outer')f.consumePayerNonce(1);
   const prompts=f.credentialReads,lease=f.secretLeases;
-  const page=await f.runtime.listSmartAccountAuthorizations({maximum:20},signal.signal,()=>undefined);
+  const activity = f.runtime.activity!;
+  const { scope, smartAuthorizations: page } = await activity.load(() => undefined);
+  assert(page);
   assert.equal(page.entries.length,1);assert.equal(page.entries[0]!.operationHash,first.userOperationHash);
-  assert.equal((await f.runtime.readSmartAccountAuthorizationStatus(first.userOperationHash!,signal.signal,()=>undefined)).kind,'pending');
+  assert.equal(page.entries[0]!.operationNonce, first.authorization!.nonce);
+  assert.equal((await activity.observeSmartAuthorization!(scope, first.userOperationHash!, () => undefined, signal.signal)).kind,'pending');
   assert(!JSON.stringify(page).includes('signature'));assert(!JSON.stringify(page).includes(first.authorization!.callData));
-  // The standalone list knows only the operation hash, even when an outer exists.
+  // An Activity row uses the authenticated operation hash, even when an outer exists.
   const reference={originalHash:first.userOperationHash!,operationHash:first.userOperationHash!};
   cancel=await f.runtime.openSmartAccountCancellation(reference,()=>undefined,null);await cancel.prepare();
   assert.equal(cancel.getSnapshot().phase,'authorize',JSON.stringify(cancel.getSnapshot()));

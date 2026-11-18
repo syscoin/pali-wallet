@@ -56,7 +56,7 @@ type ReviewedTransferSummary = Readonly<{
 
 type Outcome = Readonly<{
   txid: string;
-  phase: 'submitted' | 'seen' | 'confirmed' | 'unknown';
+  phase: 'submitted' | 'unknown';
   summary?: ReviewedTransferSummary;
 }>;
 
@@ -152,10 +152,6 @@ export function NativeUtxoSendScreen({
   const busy = working || closingHardware;
   const [review, setReview] = useState<NativeUtxoReview | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [saved, setSaved] = useState<
-    readonly Readonly<{ txid: string; accepted: boolean }>[]
-  >([]);
-  const [savedLimit, setSavedLimit] = useState(6);
   const [error, setError] = useState('');
   const currentReview = useRef<NativeUtxoReview | null>(null);
   useLayoutEffect(() => {
@@ -187,17 +183,13 @@ export function NativeUtxoSendScreen({
       if (lifetime.revision !== revision) throw new Error('CANCELLED');
     };
     void open(check)
-      .then(async (opened) => {
+      .then((opened) => {
         local = opened;
         if (lifetime.revision !== revision) {
           opened.cancel();
           return;
         }
         setSend(opened);
-        if (replacement) return;
-        const records = await opened.refreshSaved();
-        check();
-        setSaved([...records].reverse());
       })
       .catch((cause) => {
         if (lifetime.revision === revision) setError(describe(cause));
@@ -336,14 +328,6 @@ export function NativeUtxoSendScreen({
   const feeButton = <Button title={`${t('send.networkFee')} · ${t(feeChoice.kind === 'custom' ? 'mobile.feeChoice.custom' : feeChoice.kind === 'automatic' ? 'mobile.sendAssetViews.evm.automatic' : `send.${feeChoice.kind}`)}`}
     variant="secondary" size="compact" icon="settings" disabled={busy || !send} onPress={() => { closeScanner(); setFeeDialog({ open, network }); }} />;
   const subtitle = `${accountLabel} · ${network.name}${network.testnet ? ` · ${t('mobile.common.testNetwork')}` : ''}`;
-  const checkStatus = (txid: string) =>
-    run(async (current) => {
-      const phase = await send!.check(txid);
-      if (!current()) return;
-      setOutcome(previous => ({ txid, phase, ...(previous?.txid === txid && previous.summary ? { summary: previous.summary } : {}) }));
-      const records = await send!.list();
-      if (current()) setSaved([...records].reverse());
-    });
   const confirmAuthenticated = (credential: NativeOperationCredential) => {
     if (!review || !send || currentReview.current !== review) return;
     const approved = review;
@@ -356,7 +340,6 @@ export function NativeUtxoSendScreen({
         const code = cause instanceof Error ? cause.message : '';
         if (current() && !['INVALID_CREDENTIAL', 'DEVICE_UNLOCK_UNAVAILABLE', 'AUTH_THROTTLED'].includes(code)) {
           setReview(null);
-          void send.list().then(records => { if (current()) setSaved([...records].reverse()); }).catch(() => undefined);
         }
         throw cause;
       }
@@ -375,11 +358,11 @@ export function NativeUtxoSendScreen({
   );
   const footer = outcome ? (
     <View style={s.card}>
-      {onViewTransaction && outcome.phase !== 'unknown' && <Button title={t('mobile.sendAssetViews.evm.viewTransaction')} disabled={busy} onPress={() => {
+      {onViewTransaction && <Button title={t('mobile.sendAssetViews.evm.viewTransaction')} disabled={busy} onPress={() => {
         if (!screenActive.current || inFlight.current || currentOutcome.current !== outcome || currentNetwork.current.network !== network) return;
         onViewTransaction(outcome.txid);
       }} />}
-      <Button title={t('privacy.deposit.done')} variant={onViewTransaction && outcome.phase !== 'unknown' ? 'secondary' : 'primary'} onPress={close} />
+      <Button title={t('privacy.deposit.done')} variant={onViewTransaction ? 'secondary' : 'primary'} onPress={close} />
     </View>
   ) : review ? confirm : (
     <Button
@@ -454,18 +437,17 @@ export function NativeUtxoSendScreen({
               {outcome.summary && amountHero(outcome.summary, true)}
               <Notice
                 title={
-                  outcome.phase === 'confirmed'
-                    ? t('send.confirmed')
-                    : outcome.phase === 'unknown'
+                  outcome.phase === 'unknown'
                     ? t('mobile.connections.psbt.submissionTitle')
                     : replacement?.mode === 'cancel'
                     ? t('mobile.sendAssetViews.evm.cancellationSubmitted')
                     : replacement ? t('transactions.utxoReplacement.submitted')
                     : t('mobile.sendAssetViews.utxo.submitted')
                 }
-                body={replacement && outcome.phase === 'unknown' ? t('transactions.utxoReplacement.unknown')
-                  : replacement?.mode === 'cancel' && outcome.phase === 'submitted' ? t('transactions.transactionCancelSubmitted')
-                  : t('mobile.sendAssetViews.utxo.youCanCheckTheLatestNetworkStatusHere')}
+                body={outcome.phase === 'unknown'
+                  ? t(replacement ? 'transactions.utxoReplacement.unknown' : 'mobile.sendAssetViews.evm.thisTransactionMayAlreadyHaveBeenSentCheckActivityBefore')
+                  : replacement?.mode === 'cancel' ? t('transactions.transactionCancelSubmitted')
+                  : onViewTransaction ? t('mobile.sendAssetViews.evm.viewThisTransactionInActivityToTrackConfirmation') : undefined}
                 tone={outcome.phase === 'unknown' ? 'amber' : undefined}
               />
               <Card>
@@ -488,12 +470,6 @@ export function NativeUtxoSendScreen({
                   {outcome.txid}
                 </Text>
               </Card>
-              <Button
-                title={t('settings.smartAccountInfrastructureCheckStatus')}
-                variant="secondary"
-                disabled={busy}
-                onPress={() => checkStatus(outcome.txid)}
-              />
             </>
           ) : review ? (
             <>
@@ -632,30 +608,6 @@ export function NativeUtxoSendScreen({
                   ? t('mobile.sendAssetViews.utxo.enableZDAGForFasterAssetTransfersAvoidUsingItFor')
                   : t('mobile.sendAssetViews.utxo.replacebyfeeAllowsThisTransactionToBeReplacedWithAHigher')}</Text>
               </Card>}
-              {saved.length > 0 && (
-                <Card style={s.insetCard}>
-                  <Text style={styles.muted}>{t('send.savedUtxo.title')}</Text>
-                  {saved.slice(0, savedLimit).map(({ txid, accepted }) => (
-                    <Button
-                      key={txid}
-                      title={`${
-                        accepted ? t('mobile.sendAssetViews.utxo.submitted') : t('send.savedUtxo.check')
-                      } ${txid.slice(0, 8)}…`}
-                      variant="secondary" size="compact"
-                      disabled={busy}
-                      onPress={() => checkStatus(txid)}
-                    />
-                  ))}
-                  {saved.length > savedLimit && (
-                    <Button
-                      title={t('mobile.sendAssetViews.utxo.showMore')}
-                      variant="secondary" size="compact"
-                      disabled={busy}
-                      onPress={() => setSavedLimit(savedLimit + 6)}
-                    />
-                  )}
-                </Card>
-              )}
             </>
           )}
         </Screen>

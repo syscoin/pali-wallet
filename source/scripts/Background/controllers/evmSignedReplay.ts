@@ -1,20 +1,8 @@
 import { Transaction } from 'ethers/transaction';
 
-import {
-  assertEvmCancellationPayerReady,
-  assertRetainedEvmCancellationReady,
-  isEvmProtectedEmptySelfCall,
-} from '../../../shared/evmCancellationPayer.ts';
-import {
-  assertEvmSpeedUpExecutable,
-  EvmFeeBalanceError,
-} from '../../../shared/evmFeeApproval.ts';
-import { observeEvmTransaction } from '../../../shared/evmTransactionObservation.ts';
-import {
-  EvmReplayError,
-  EvmSignedReplay,
-  type EvmReplaySession,
-} from '../../../wallet/evmSignedReplay.ts';
+import { assertRetainedEvmCancellationReady } from '../../../shared/evmCancellationPayer.ts';
+import { EvmFeeBalanceError } from '../../../shared/evmFeeApproval.ts';
+import { EvmReplayError } from '../../../wallet/evmSignedReplay.ts';
 
 import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords.ts';
 import type {
@@ -23,11 +11,7 @@ import type {
   KeyringManager,
 } from '@sidhujag/sysweb3-keyring';
 
-type Captured = Omit<EvmReplaySession, 'observe' | 'dispatch'> &
-  Readonly<{
-    provider: Pick<CustomJsonRpcProvider, 'send' | 'readMany'>;
-  }>;
-
+type Provider = Pick<CustomJsonRpcProvider, 'send' | 'readMany'>;
 export async function readLiveEvmChainId(
   provider: Pick<CustomJsonRpcProvider, 'readMany'>,
   assertCurrent: () => void
@@ -63,7 +47,7 @@ export async function assertLiveEvmReplacementChain(
 }
 
 export async function assertExtensionRetainedCancellationReady(
-  provider: Captured['provider'],
+  provider: Provider,
   rawTransaction: string,
   assertCurrent: () => void
 ): Promise<void> {
@@ -109,91 +93,6 @@ export async function assertExtensionRetainedCancellationFunds(
   if (BigInt(balance) < maximumFee) throw new EvmFeeBalanceError();
 }
 
-/** The extension contributes its existing captured provider, never a new RPC client. */
-export function createExtensionEvmReplay(
-  records: EvmSignedRecords,
-  capture: () => Captured
-): EvmSignedReplay {
-  return new EvmSignedReplay(records, () =>
-    createExtensionEvmReplaySession(capture())
-  );
-}
-
-/** Reuse the same owned transport and authorization for a recorded local payer. */
-export function createExtensionEvmReplaySession(
-  captured: Captured
-): EvmReplaySession {
-  captured.assertCurrent();
-  const send = captured.provider.send.bind(captured.provider);
-  return Object.freeze({
-    context: captured.context,
-    recordSession: captured.recordSession,
-    assertCurrent: captured.assertCurrent,
-    authorizeReplay: captured.authorizeReplay,
-    observe: (expected) =>
-      observeEvmTransaction(
-        expected,
-        (method, params) =>
-          method === 'eth_chainId'
-            ? readLiveEvmChainId(captured.provider, captured.assertCurrent)
-            : send(method, [...params]),
-        captured.assertCurrent
-      ),
-    dispatch: (raw, admit, context) => {
-      const broadcast = () => send('eth_sendRawTransaction', [raw]);
-      const requiresPayerCheck =
-        context.operation === 'cancel' || context.requiresPayerCheck;
-      const speedUp =
-        context.operation === 'speed-up' && !requiresPayerCheck
-          ? Transaction.from(raw)
-          : undefined;
-      if (requiresPayerCheck) {
-        const tx = Transaction.from(raw);
-        if (
-          tx.from?.toLowerCase() !== context.from.toLowerCase() ||
-          !isEvmProtectedEmptySelfCall(tx, context.operation)
-        )
-          throw new EvmReplayError('INVALID_RESPONSE');
-      }
-      return admit(broadcast, async () => {
-        await assertLiveEvmReplacementChain(
-          captured.provider,
-          context.chainId,
-          captured.assertCurrent
-        );
-        if (speedUp) {
-          const reads = [
-            {
-              method: 'eth_getTransactionCount',
-              params: [context.from, 'latest'],
-            },
-            { method: 'eth_getBlockByNumber', params: ['latest', false] },
-          ];
-          const results = await captured.provider.readMany(reads);
-          const [nonce, block] = results.map((result) => {
-            if (result.status === 'rejected') throw result.reason;
-            return result.value;
-          });
-          captured.assertCurrent();
-          assertEvmSpeedUpExecutable(speedUp, nonce, block);
-          await assertLiveEvmReplacementChain(
-            captured.provider,
-            context.chainId,
-            captured.assertCurrent
-          );
-        }
-        if (!requiresPayerCheck) return;
-        await assertEvmCancellationPayerReady(
-          context.from,
-          context.nonce,
-          (method, address, tag) => send(method, [address, tag]),
-          captured.assertCurrent
-        );
-      });
-    },
-  });
-}
-
 const RETAINED_CANCEL_REVIEW_MS = 90_000;
 export type RetainedEvmCancellationReview = Readonly<{
   chainId: number;
@@ -204,17 +103,18 @@ export type RetainedEvmCancellationReview = Readonly<{
   nonce: number;
   validForMs: number;
 }>;
-type RetainedCancellationOutcome = Readonly<
+export type RetainedCancellationOutcome = Readonly<
   | { hash: string; status: 'submitted' | 'unknown' }
   | { status: 'not-dispatched' }
 >;
-type RetainedCancellationOwner = Pick<Captured, 'provider' | 'recordSession'> &
-  Readonly<{
-    account: Captured['context']['account'];
-    cancelTransaction: KeyringManager['ethereumTransaction']['cancelSentTransaction'];
-    chainId: number;
-    records: EvmSignedRecords;
-  }>;
+type RetainedCancellationOwner = Readonly<{
+  account: Readonly<{ address: string; id: number; type: string }>;
+  cancelTransaction: KeyringManager['ethereumTransaction']['cancelSentTransaction'];
+  chainId: number;
+  provider: Provider;
+  recordSession: import('../../../wallet/evmSignedRecords.ts').EvmSignedRecordSession;
+  records: EvmSignedRecords;
+}>;
 
 /** Review authorization is private to the captured wallet and consumed before any signing. */
 export function createExtensionRetainedCancellation(

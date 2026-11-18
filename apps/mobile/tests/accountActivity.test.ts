@@ -12,7 +12,7 @@ const hash = '0x' + 'a'.repeat(64);
 const networks = [getNativeNetwork('ethereum'), getNativeNetwork('rollux')];
 const tick = async () => { for (let i = 0; i < 8; i++) await new Promise<void>(resolve => setImmediate(resolve)); };
 
-function fixture(initialFilter: string | Promise<string> | (() => Promise<string>) = 'all', direction: 'received' | 'self' = 'received') {
+function fixture(initialFilter: string | Promise<string> | (() => Promise<string>) = 'all', direction: 'received' | 'self' = 'received', olderRetained = false) {
   let currentId = 'hd:60:0', revision = 1;
   const listeners = new Set<(snapshot: any) => void>();
   const calls: { id: string; account: string; signal: AbortSignal }[] = [], loads: string[] = [], savedLoads: string[] = [];
@@ -36,7 +36,7 @@ function fixture(initialFilter: string | Promise<string> | (() => Promise<string
       async load(check) {
         guard(); check(); loads.push(scope.accountId + ':' + scope.network.id);
         return { scope: createActivityScope('b'.repeat(64), scope.accountId, scope.accountAddress, scope.network as typeof networks[number]),
-          saved: { archived: [], candidates: [], truncated: false, view: DEFAULT_ACTIVITY_VIEW }, locals: [] };
+          saved: { archived: [], candidates: [], truncated: false, view: DEFAULT_ACTIVITY_VIEW }, locals: [], olderRetained };
       },
       async saveCache(_scope, _rows, check) { guard(); check(); },
       async saveView(_scope, _view, check) { guard(); check(); },
@@ -158,25 +158,25 @@ test('self transfers remain in both Sent and Received across all networks', asyn
   } finally { stop(); }
 });
 
-test('saved inventory opens only an existing visible account/network child and includes older journal rows', async () => {
-  const f = fixture('ethereum'), stop = f.model.connect(); await tick();
+test('ordinary Activity pagination includes earlier journal rows only for visible account and network scopes', async () => {
+  const f = fixture('ethereum', 'received', true), stop = f.model.connect(); await tick();
   assert.equal(f.model.getNetwork('rollux'), undefined);
   assert.equal(f.model.getNetwork('missing'), undefined);
   const ethereum = f.model.getNetwork('ethereum')!;
-  assert(ethereum.controller.getSnapshot().canViewSavedPending);
+  assert(ethereum.controller.getSnapshot().hasMore);
   assert(!f.model.getSnapshot().rows.some(row => row.row.hash === '0x' + 'c'.repeat(64)));
-  await ethereum.controller.loadSavedPending();
+  await ethereum.controller.loadMore();
   assert.deepEqual(f.savedLoads, ['hd:60:0:ethereum']);
-  assert.equal(ethereum.controller.getSnapshot().savedPending?.rows[0]?.hash, '0x' + 'c'.repeat(64));
+  assert.equal(ethereum.controller.getSnapshot().rows.find(row => row.hash === '0x' + 'c'.repeat(64))?.hash, '0x' + 'c'.repeat(64));
   await f.model.selectFilter('all'); await tick();
   const other = f.model.getNetwork('rollux')!;
-  await other.controller.loadSavedPending();
+  await other.controller.loadMore();
   assert.deepEqual(f.savedLoads, ['hd:60:0:ethereum', 'hd:60:0:rollux']);
-  assert.equal(other.controller.getSnapshot().savedPending?.rows[0]?.local?.networkId, 'rollux');
+  assert.equal(other.controller.getSnapshot().rows.find(row => row.hash === '0x' + 'c'.repeat(64))?.local?.networkId, 'rollux');
   assert.notEqual(other.controller, ethereum.controller);
   f.changeAccount('hd:60:1'); await tick();
   assert.equal(f.model.getNetwork('rollux')?.choice.scope.accountId, 'hd:60:1');
-  assert.equal(ethereum.controller.getSnapshot().savedPending, undefined);
+  assert.equal(ethereum.controller.getSnapshot().rows.length, 0);
   stop(); assert.equal(f.model.getNetwork('ethereum'), undefined);
 });
 

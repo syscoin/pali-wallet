@@ -248,10 +248,8 @@ export async function qualifyNativeZksysTransfer(
   const wrapped: NativeTransferRuntime = {
     isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
     releaseReplacement: () => transfer.releaseReplacement(),
-    authenticateOperation: (...args) => transfer.authenticateOperation(...args),
     authorizeOperation: (...args) => transfer.authorizeOperation(...args),
     releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
-    replay: (...args) => transfer.replay(...args),
     replacementOriginal: transfer.replacementOriginal?.bind(transfer),
       submit: (...args) => transfer.submit(...args),
     journal: (checkCurrent) => transfer.journal(checkCurrent),
@@ -259,9 +257,6 @@ export async function qualifyNativeZksysTransfer(
       expect(++signatures === 1 && intent === undefined &&
         (phase === 'create' ? replacement === undefined : replacement?.original.hash === originalHash));
       return transfer.sign(transaction, checkCurrent, intent, replacement);
-    },
-    assertUnlocked() {
-      throw Error('QUALIFICATION_ZKSYS_EXACT_REPLAY_FORBIDDEN');
     },
   };
   const rpc = new NativeTransferRpc({
@@ -425,7 +420,6 @@ export async function qualifyNativeZksysTransfer(
           const review = controller.getSnapshot().review;
           expect(
             review &&
-              !review.retry &&
               review.context.chainId === '57057' &&
               review.totalUnits === '900789'
           );
@@ -448,7 +442,7 @@ export async function qualifyNativeZksysTransfer(
           await controller.prepareSpeedUp(originalHash);
           guard();
           const review = controller.getSnapshot().review;
-          expect(review?.replacement?.originalHash === originalHash && !review.retry &&
+          expect(review?.replacement?.originalHash === originalHash &&
             review.context.chainId === '57057' && review.gasLimit === '36000' &&
             review.recipient === recipient && review.amountUnits === '789' &&
             BigInt(review.maximumFeeUnits) > 900000n && signatures === 0 && broadcasts === 0);

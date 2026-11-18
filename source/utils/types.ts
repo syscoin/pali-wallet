@@ -32,5 +32,6 @@ export interface ITransactionOptions {
       title: string;
     }>
   >;
+  suppressCancellation?: boolean;
   transaction: IEvmTransaction;
 }

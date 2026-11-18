@@ -2,7 +2,7 @@ import { WalletModal as Modal } from '../ui/WalletModal';
 import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { AccountActivityController, AccountActivityNetwork, AccountActivityRow } from '../activity/accountActivity';
+import type { AccountActivityController, AccountActivityRow } from '../activity/accountActivity';
 import { useBalancePrivacy } from '../platform/balancePrivacy';
 import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, Coin, colors, Header, Icon, IconButton, Notice, SegmentedControl, styles, Text } from '../ui';
@@ -13,22 +13,20 @@ import { NetworkSourceSheet } from './NetworkSourceSheet';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { activityAssetIcon } from '../activity/assetIcon';
 
-export type AccountActivityAction = 'saved' | 'cancel' | 'cancel-saved' | 'speed-up';
-export function AllNetworksActivity({ controller, accountLabel, navigation, onAction, initialTarget, onSignedInstructions }: {
+export type AccountActivityAction = 'cancel' | 'cancel-saved' | 'speed-up';
+export function AllNetworksActivity({ controller, accountLabel, navigation, onAction, initialTarget }: {
   controller: AccountActivityController;
   accountLabel: string;
   navigation?: ShellLeafNavigation;
-  onAction?(entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertCurrent: () => void): Promise<void>;
+  onAction?(entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertCurrent: () => void, operationHash?: string): Promise<void>;
   initialTarget?: Readonly<{ networkId: string; hash: string }>;
-  onSignedInstructions?(): void;
 }) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const { hidden } = useBalancePrivacy(), { t } = useNativeTranslation();
   const [selection, setSelection] = useState<AccountActivityRow | null>(null);
-  const [savedNetwork, setSavedNetwork] = useState<AccountActivityNetwork | null>(null);
-  const [sheet, setSheet] = useState<'filter' | 'options' | 'saved-networks' | null>(null);
+  const [sheet, setSheet] = useState<'filter' | 'options' | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const openSheet = (next: 'filter' | 'options' | 'saved-networks') => { setError(''); setSheet(next); };
+  const openSheet = (next: 'filter' | 'options') => { setError(''); setSheet(next); };
   const lifetime = useRef({ alive: true, generation: 0, busy: false });
   const arrival = useRef('');
   const list = useRef<FlatList<AccountActivityRow>>(null);
@@ -49,9 +47,9 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   useLayoutEffect(() => controller.connect(), [controller]);
   useLayoutEffect(() => { const owner = lifetime.current; owner.alive = true; return () => { owner.alive = false; owner.generation++; }; }, []);
   const currentSelection = selection && controller.findRow(selection.choice.scope.network.id, selection.row.hash);
-  const selected = currentSelection?.controller === selection?.controller ? currentSelection : undefined;
-  const currentSavedNetwork = savedNetwork && controller.getNetwork(savedNetwork.choice.scope.network.id);
-  const inventory = currentSavedNetwork?.controller === savedNetwork?.controller ? currentSavedNetwork : undefined;
+  const selectedNetwork = selection && controller.getNetwork(selection.choice.scope.network.id);
+  const selected = currentSelection?.controller === selection?.controller ? currentSelection :
+    selectedNetwork?.controller === selection?.controller ? selection ?? undefined : undefined;
   const targetNetworkId = initialTarget?.networkId, targetHash = initialTarget?.hash;
   const targetKey = JSON.stringify([snapshot.accountId, targetNetworkId, targetHash]);
   useEffect(() => {
@@ -75,7 +73,21 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
         return;
       }
       const row = controller.findRow(targetNetworkId, targetHash);
-      if (row) { arrival.current = key; scrollPosition.current.restore = true; scrollPosition.current.height = 0; setSelection(row); }
+      if (row) {
+        arrival.current = key; scrollPosition.current.restore = true; scrollPosition.current.height = 0; setSelection(row);
+        return;
+      }
+      const child = controller.getNetwork(targetNetworkId)?.controller;
+      if (child?.getSnapshot().status === 'ready' && arrival.current !== `locating:${key}` && arrival.current !== `failed:${key}`) {
+        arrival.current = `locating:${key}`;
+        void child.loadTarget(targetHash).then(() => {
+          if (!live || arrival.current !== `locating:${key}`) return;
+          if (!controller.findRow(targetNetworkId, targetHash)) arrival.current = `failed:${key}`;
+          else update();
+        }).catch(() => {
+          if (live && arrival.current === `locating:${key}`) arrival.current = `failed:${key}`;
+        });
+      }
     };
     const unsubscribe = controller.subscribe(update);
     queueMicrotask(update);
@@ -83,11 +95,10 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   }, [controller, targetNetworkId, targetHash, targetKey, snapshot.accountId, t]);
   const closeSheet = () => { lifetime.current.generation++; lifetime.current.busy = false; setBusy(false); setSheet(null); };
   const closeDetail = () => { lifetime.current.generation++; lifetime.current.busy = false; setBusy(false); setSelection(null); };
-  const closeInventory = () => { lifetime.current.generation++; lifetime.current.busy = false; savedNetwork?.controller.closeSavedPending(); setBusy(false); setSavedNetwork(null); };
   useLayoutEffect(() => {
-    if (selected || inventory) return;
+    if (selected) return;
     return navigation?.registerBack(() => { if (sheet) { closeSheet(); return true; } return false; });
-  }, [navigation, selected, inventory, sheet]);
+  }, [navigation, selected, sheet]);
   const run = async (operation: (check: () => void) => Promise<void>) => {
     const owner = lifetime.current;
     if (!owner.alive || owner.busy || AppState.currentState !== 'active') return;
@@ -101,30 +112,22 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   const present = (entry: AccountActivityRow) => nativeActivityRowPresentation(entry.row, {
     accountAddress: entry.choice.scope.accountAddress, nativeSymbol: entry.choice.symbol, networkName: entry.choice.networkName, hideBalances: hidden,
   });
-  const detailSource = selected ?? inventory;
-  const showingInventory = !selected && !!inventory;
+  const detailSource = selected;
   if (detailSource) {
-    const action = onAction ? (kind: AccountActivityAction, hash: string) => { void run(async check => {
+    const action = onAction ? (kind: AccountActivityAction, hash: string, operationHash?: string) => { void run(async check => {
       const current = controller.getNetwork(detailSource.choice.scope.network.id);
       const child = detailSource.controller.getSnapshot();
-      const row = child.savedPending?.rows.find(value => value.hash === hash) ?? child.rows.find(value => value.hash === hash);
+      const row = child.rows.find(value => value.hash === hash);
       if (current?.controller !== detailSource.controller || !row || JSON.stringify(current.choice.scope) !== JSON.stringify(detailSource.choice.scope)) throw Error('Activity scope changed');
-      await onAction({ ...detailSource, key: `${JSON.stringify(detailSource.choice.scope)}:${hash}`, row }, kind, hash, check);
+      await onAction({ ...detailSource, key: `${JSON.stringify(detailSource.choice.scope)}:${hash}`, row }, kind, hash, check, operationHash);
     }); } : undefined;
     return <View style={s.root}><NativeActivityScreen key={selected?.key ?? JSON.stringify(detailSource.choice.scope)} controller={detailSource.controller} accountLabel={accountLabel}
-      externallyConnected detailOnly={!!selected} savedPendingOnly={showingInventory} initialHash={selected?.row.hash} navigation={navigation}
-      onBack={showingInventory ? closeInventory : closeDetail} onNavigateToReview={action} />
+      externallyConnected detailOnly initialHash={selected?.row.hash} navigation={navigation}
+      onBack={closeDetail} onNavigateToReview={action} />
       {busy && <Text accessibilityLiveRegion="polite" style={s.actionFeedback}>{t('mobile.activityViews.allNetworksActivity.openingTransfer')}</Text>}
       {!!error && <Notice title={t('mobile.activityViews.allNetworksActivity.couldNotOpenTransfer')} body={error} tone="amber" />}
     </View>;
   }
-  const savedNetworks = snapshot.choices.filter(choice => controller.getNetwork(choice.scope.network.id)?.controller.getSnapshot().canViewSavedPending);
-  const openSavedPending = (networkId: string) => {
-    if (!lifetime.current.alive || AppState.currentState !== 'active') return;
-    const current = controller.getNetwork(networkId);
-    if (!current?.controller.getSnapshot().canViewSavedPending) return;
-    rememberScroll(); setError(''); setSavedNetwork(current); setSheet(null);
-  };
   const filterChoice = snapshot.choices.find(choice => choice.scope.network.id === snapshot.filter);
   const filterName = snapshot.filter === 'all' ? t('mobile.accountPortfolio.allNetworks') : filterChoice?.networkName ?? t('mobile.accountPortfolio.unavailableNetwork');
   const unavailableNetworks = snapshot.choices.filter(choice => {
@@ -134,7 +137,6 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   }).map(choice => choice.networkName);
   return <SafeAreaView edges={navigation ? ['top'] : ['top', 'bottom']} style={s.root}>
     <View style={s.header}><Header title={t('buttons.activity')} subtitle={accountLabel} right={<View style={s.toolbar}>
-      {onSignedInstructions && <IconButton label={t('transactions.smartAuthorizations.title')} icon="clock" onPress={onSignedInstructions} />}
       <IconButton label={t('mobile.activityViews.nativeActivity.refreshActivity')} icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status === 'loading'} onPress={() => void run(async check => {
         check();
         // Retry a failed notification target only on this deliberate refresh.
@@ -182,23 +184,17 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
       ListFooterComponent={<View style={s.section}>{snapshot.hasMore && !snapshot.refreshing && <Button title={snapshot.loadingMore ? t('mobile.activityViews.nativeActivity.loadingOlderActivity') : snapshot.partial ? t('mobile.activityViews.allNetworksActivity.retryActivity') : t('mobile.activityViews.nativeActivity.loadOlderActivity')} variant="secondary" size="compact"
         disabled={busy || snapshot.loadingMore} onPress={() => void run(async () => { await controller.loadMore(); })} />}</View>} />
     <Modal visible={sheet !== null} transparent animationType="slide" onRequestClose={closeSheet}>
-      {sheet === 'filter' || sheet === 'saved-networks' ? <NetworkSourceSheet purpose="filter" overContent busy={busy} selectedId={sheet === 'filter' ? snapshot.filter ?? '' : ''}
+      {sheet === 'filter' ? <NetworkSourceSheet purpose="filter" overContent busy={busy} selectedId={snapshot.filter ?? ''}
         error={error ? t('mobile.accountPortfolio.error') : undefined}
-        title={sheet === 'saved-networks' ? t('mobile.activityViews.nativeActivity.savedPending') : undefined}
-        options={sheet === 'saved-networks' ? savedNetworks.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol,
-          chainId: 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' ? choice.scope.network.chainId : undefined }))
-          : [{ id: 'all', name: t('mobile.accountPortfolio.allNetworks'), symbol: '' }, ...snapshot.choices.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol,
-            chainId: 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' ? choice.scope.network.chainId : undefined }))]}
-        onSelect={id => { if (sheet === 'saved-networks') openSavedPending(id); else void run(async check => {
+        options={[{ id: 'all', name: t('mobile.accountPortfolio.allNetworks'), symbol: '' }, ...snapshot.choices.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol,
+          chainId: 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' ? choice.scope.network.chainId : undefined }))]}
+        onSelect={id => { void run(async check => {
           check();
           // An explicit filter choice supersedes the notification arrival.
           arrival.current = targetKey;
           await controller.selectFilter(id); check(); setSheet(null);
         }); }} onClose={closeSheet} />
         : <View style={s.modal}><Card style={s.options}><Text style={s.emptyTitle}>{t('mobile.activityViews.nativeActivity.activityOptions')}</Text>
-          {savedNetworks.length > 0 && <Button title={t('mobile.activityViews.nativeActivity.savedPending')} icon="clock" variant="secondary" onPress={() => {
-            if (snapshot.filter && snapshot.filter !== 'all') openSavedPending(snapshot.filter); else openSheet('saved-networks');
-          }} />}
           <Button title={snapshot.view.showZero ? t('mobile.activityViews.nativeActivity.hideZerovalueTokenActivity') : t('mobile.activityViews.nativeActivity.showZerovalueTokenActivity')} variant="secondary" onPress={() => { void controller.setView({ showZero: !snapshot.view.showZero }); setSheet(null); }} />
           <Button title={t('buttons.close')} variant="quiet" onPress={closeSheet} />
         </Card></View>}

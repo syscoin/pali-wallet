@@ -102,6 +102,7 @@ const EvmTransactionItem = React.memo(
     currency,
     getFiatAmount,
     isFiatAvailable,
+    hasInstruction,
     txId,
     getTxOptions,
     t,
@@ -118,6 +119,7 @@ const EvmTransactionItem = React.memo(
     getTxOptions: any;
     getTxStatusIcons: any;
     getTxType: any;
+    hasInstruction: boolean;
     isFiatAvailable: boolean;
     onDetailsClick: (transaction: ITransactionInfoEvm, idField: string) => void;
     settlement: EvmSettlementStatus;
@@ -683,7 +685,7 @@ const EvmTransactionItem = React.memo(
                   />
                 </Tooltip>
               ) : (
-                getTxOptions(false, isConfirmed, tx)
+                getTxOptions(false, isConfirmed, tx, hasInstruction)
               )}
             </div>
           </div>
@@ -717,6 +719,7 @@ const EvmTransactionItem = React.memo(
     prevProps.getFiatAmount === nextProps.getFiatAmount &&
     prevProps.isFiatAvailable === nextProps.isFiatAvailable &&
     prevProps.getTxOptions === nextProps.getTxOptions &&
+    prevProps.hasInstruction === nextProps.hasInstruction &&
     prevProps.tokenMeta?.decimals === nextProps.tokenMeta?.decimals &&
     prevProps.tokenMeta?.isNft === nextProps.tokenMeta?.isNft &&
     prevProps.currentAccount?.address === nextProps.currentAccount?.address &&
@@ -878,7 +881,12 @@ export const EvmTransactionsList = ({
   );
 
   const getTxOptions = useCallback(
-    (isCanceled: boolean, isConfirmed: boolean, tx: ITransactionInfoEvm) => {
+    (
+      isCanceled: boolean,
+      isConfirmed: boolean,
+      tx: ITransactionInfoEvm,
+      hasInstruction: boolean
+    ) => {
       if (!isConfirmed) {
         return (
           <TransactionOptions
@@ -886,6 +894,7 @@ export const EvmTransactionsList = ({
             alert={alert}
             chainId={chainId}
             transaction={tx as any}
+            suppressCancellation={hasInstruction}
             setIsOpenModal={setIsOpenModal}
             setModalData={setModalData}
           />
@@ -925,48 +934,59 @@ export const EvmTransactionsList = ({
   );
 
   const groupedTransactions = useMemo(() => {
+    type TransactionRow = {
+      groups: InstructionGroup[];
+      timestamp: number;
+      tx: ITransactionInfoEvm;
+    };
     type ActivityRow =
-      | { timestamp: number; tx: ITransactionInfoEvm }
+      | TransactionRow
       | { group: InstructionGroup; timestamp: number };
     const visible = filteredTransactions.slice(
       0,
       visibleCount
     ) as ITransactionInfoEvm[];
-    const sourceList: ActivityRow[] = visible.map((tx) => ({
+    const transactionRows: TransactionRow[] = visible.map((tx) => ({
+      groups: [],
       tx,
       timestamp: tx.timestamp,
     }));
+    const sourceList: ActivityRow[] = [...transactionRows];
     if (authorizations?.groups.length) {
-      // Only an authenticated saved envelope links a visible transaction to a signed instruction.
-      const visibleHashes = new Set(
-        visible.map((tx) => tx.hash?.toLowerCase())
+      // Link only from authenticated saved envelopes in this account and chain.
+      const authenticated = new Map(
+        (savedTransactions ?? [])
+          .filter(
+            (tx) =>
+              tx.chainId === chainId &&
+              tx.smartAccount?.account.toLowerCase() ===
+                currentAccount?.address?.toLowerCase()
+          )
+          .map((tx) => [tx.hash.toLowerCase(), tx.smartAccount])
       );
-      const operations = new Set<string>();
-      for (const tx of savedTransactions ?? []) {
-        const intent = tx.smartAccount;
-        if (
-          intent &&
-          tx.chainId === chainId &&
-          visibleHashes.has(tx.hash.toLowerCase()) &&
-          intent.account.toLowerCase() ===
-            currentAccount?.address?.toLowerCase()
-        )
-          for (const operation of intent.operations)
-            operations.add(operation.operationHash);
+      const rowsByOperation = new Map<string, TransactionRow>();
+      for (const row of transactionRows) {
+        const intent = authenticated.get(row.tx.hash?.toLowerCase());
+        for (const operation of intent?.operations ?? []) {
+          if (!rowsByOperation.has(operation.operationHash))
+            rowsByOperation.set(operation.operationHash, row);
+        }
       }
       for (const group of authorizations.groups) {
-        if (
-          operations.has(group.hash) ||
-          group.cancellations.some((attempt) =>
-            operations.has(attempt.operationHash)
-          )
-        )
-          continue;
-        const newest = Math.max(
-          group.original?.createdAt ?? 0,
-          ...group.cancellations.map((attempt) => attempt.createdAt)
-        );
-        sourceList.push({ group, timestamp: Math.floor(newest / 1000) });
+        const owner =
+          rowsByOperation.get(group.hash) ??
+          group.cancellations
+            .map((entry) => rowsByOperation.get(entry.operationHash))
+            .find(Boolean);
+        if (owner) {
+          owner.groups.push(group);
+        } else {
+          const newest = Math.max(
+            group.original?.createdAt ?? 0,
+            ...group.cancellations.map((attempt) => attempt.createdAt)
+          );
+          sourceList.push({ group, timestamp: Math.floor(newest / 1000) });
+        }
       }
       sourceList.sort((a, b) => b.timestamp - a.timestamp);
     }
@@ -1055,9 +1075,10 @@ export const EvmTransactionsList = ({
                 ? tokenMetaByAddress.get(String(metaTarget).toLowerCase())
                 : undefined;
 
-              return (
+              const item = (
                 <EvmTransactionItem
                   key={txKey}
+                  hasInstruction={row.groups.length > 0}
                   tx={tx}
                   chainId={chainId}
                   currentAccount={currentAccount}
@@ -1084,6 +1105,22 @@ export const EvmTransactionsList = ({
                   tokenMeta={tokenMetaForTx}
                   ensCache={ensCache}
                 />
+              );
+              if (!authorizations || !row.groups.length) return item;
+              return (
+                <div key={txKey} data-activity-outer={tx.hash}>
+                  {item}
+                  <ul className="pl-3">
+                    {row.groups.map((group) => (
+                      <Instruction
+                        key={group.hash}
+                        group={group}
+                        scope={authorizations.scope}
+                        attached
+                      />
+                    ))}
+                  </ul>
+                </div>
               );
             })}
           </div>

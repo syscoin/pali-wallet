@@ -153,6 +153,16 @@ export function createNativeSignedRecordView(
         return Object.freeze({records:Object.freeze(projected),truncated:recent.total>projected.length});
       });
     },
+    activityByHash(hash: string) {
+      return checked(async () => {
+        if (account.type === 'SmartAccount') {
+          const retained = await records.readSmartAccountReplayExact(session, network.chainId, account.address, hash);
+          return retained ? smartActivity(retained) : null;
+        }
+        const retained = await records.readExact(session, network.chainId, account.address, hash);
+        return retained ? activity(retained) : null;
+      });
+    },
     pendingActivities(beforeHash?: string) {
       return checked(async () => {
         if (account.type === 'SmartAccount') {

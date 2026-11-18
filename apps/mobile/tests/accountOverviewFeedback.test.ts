@@ -51,7 +51,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     AppState: { currentState: 'active' }, StyleSheet: { create: (value: unknown) => value } };
   const controller = { subscribe: () => () => undefined, getSnapshot: () => snapshot, connect: () => () => undefined,
     setCurrency() {}, cachedBalances: () => [], findRow: () => undefined,
-    getNetwork: () => savedNetworks ? { controller: { getSnapshot: () => ({ status: 'ready', canViewSavedPending: true }) } } : undefined,
+    getNetwork: () => undefined,
     async selectFilter(value: string) { writes++; await selectionGate; if (rejectSelection) throw Error('Storage unavailable'); snapshot.filter = value; },
     async refresh() { throw Error('Activity unavailable'); },
   };
@@ -115,11 +115,6 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     openFilter() { const label = screen === 'wallet' ? 'Choose network filter, All networks' : 'Activity network: All networks';
       nodes(render()).find(node => node.props.accessibilityLabel === label)!.props.onPress(); },
     openSource(title: 'Send' | 'Receive') { nodes(render()).find(node => node.type === 'Button' && node.props.title === title)!.props.onPress(); },
-    openSavedNetworks() {
-      savedNetworks = true;
-      nodes(render()).find(node => node.props.label === 'Activity options')!.props.onPress();
-      nodes(render()).find(node => node.type === 'Button' && node.props.title === 'Saved pending')!.props.onPress();
-    },
     failEarlierAction() { const tree = nodes(render());
       const action = screen === 'wallet' ? tree.find(node => String(node.props.accessibilityLabel).startsWith('ETH, Ethereum, '))
         : tree.find(node => node.props.label === 'Refresh activity');
@@ -131,13 +126,12 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
   };
 }
 
-for (const [screen, purpose] of [['wallet', 'filter'], ['wallet', 'Send'], ['wallet', 'Receive'], ['activity', 'filter'], ['activity', 'saved']] as const)
+for (const [screen, purpose] of [['wallet', 'filter'], ['wallet', 'Send'], ['wallet', 'Receive'], ['activity', 'filter']] as const)
   test(`${screen} ${purpose} chooser preserves chain identity for identically named networks`, () => {
     const f = fixture(screen);
     try {
       f.duplicateNetworks();
       if (purpose === 'filter') f.openFilter();
-      else if (purpose === 'saved') f.openSavedNetworks();
       else f.openSource(purpose);
       const nodes = f.nodes(f.modal());
       const choices = nodes.filter(node => node.props.accessibilityRole === 'radio' && String(node.props.accessibilityLabel).startsWith('Shared network, ABC'));

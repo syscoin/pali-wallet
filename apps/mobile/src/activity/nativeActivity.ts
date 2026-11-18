@@ -34,8 +34,24 @@ import {
   type EvmSettlementStatus,
 } from '../../../../source/utils/evmReplacement.ts';
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
+import type { SmartAccountAuthorizationSummary } from '../../../../source/wallet/smartAccountAuthorization.ts';
+import type { SmartAccountAuthorizationObservation } from '../../../../source/utils/smartAccount/authorizationStatus.ts';
 import type { NativeTokenPortfolioScope } from '../portfolio/tokenRegistry.ts';
 import { nativeLocalReplacementStatuses, nativeLocalReplacementWinnersToObserve } from './localReplacementStatus.ts';
+
+type SmartAuthorizationPage = Readonly<{
+  entries: readonly SmartAccountAuthorizationSummary[];
+  nextCursor: string | null;
+}>;
+type ActivityAuthorization = Readonly<{
+  instruction: SmartAccountAuthorizationSummary;
+  observation?: SmartAccountAuthorizationObservation;
+  checking: boolean;
+  unavailable: boolean;
+}>;
+export const activityRowTimestamp = (row: ActivityRow) =>
+  row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt ??
+  row.smartAuthorizations?.[0]?.instruction.createdAt ?? 0;
 
 export interface NativeActivityRuntime {
   /** Selected-account public reads on an explicit saved network. */
@@ -48,7 +64,15 @@ export interface NativeActivityRuntime {
     saved: ActivityHistorySnapshot;
     locals: readonly LocalActivityRecord[];
     assets?: readonly EvmDisplayTokenMetadata[];
+    smartAuthorizations?: SmartAuthorizationPage;
+    olderRetained?: boolean;
   }>;
+  loadSmartAuthorizations?(scope: EvmActivityReadScope, beforeHash: string, guard: () => void): Promise<SmartAuthorizationPage>;
+  observeSmartAuthorization?(scope: EvmActivityReadScope, operationHash: string, guard: () => void, signal: AbortSignal): Promise<SmartAccountAuthorizationObservation>;
+  loadTarget?(scope: EvmActivityReadScope, hash: string, guard: () => void): Promise<Readonly<{
+    local?: LocalActivityRecord;
+    authorization?: SmartAccountAuthorizationSummary;
+  }> | null>;
   loadSavedPending?(
     scope: EvmActivityReadScope,
     beforeHash: string | undefined,
@@ -76,6 +100,7 @@ export interface NativeActivityRuntime {
 }
 export type ActivityRow = Readonly<{
   hash: string;
+  smartAuthorizations?: readonly ActivityAuthorization[];
   local?: LocalActivityRecord;
   candidate?: ActivityCandidate;
   observation?: ActivityTransactionObservation;
@@ -106,12 +131,6 @@ export type NativeActivitySnapshot = Readonly<{
   coverage: 'network-transfers' | 'explorer-transfers' | 'discovery-unavailable';
   truncated: boolean;
   discoveryAvailable?: boolean;
-  canViewSavedPending?: boolean;
-  savedPending?: Readonly<{
-    rows: readonly ActivityRow[];
-    status: 'loading' | 'ready' | 'unavailable';
-    hasMore: boolean;
-  }>;
 }>;
 export type ActivityLifecycleSnapshot = Readonly<{
   phase: string;
@@ -134,13 +153,7 @@ type FeedState = {
   fingerprint: string | null;
   error: boolean;
 };
-type SavedPendingPage = {
-  lifetime: AbortController;
-  records: Map<string, LocalActivityRecord>;
-  cursor: string | null | undefined;
-  status: NonNullable<NativeActivitySnapshot['savedPending']>['status'];
-};
-type ActivityDetailRequest = Readonly<{ hash: string; page?: SavedPendingPage }>;
+type ActivityDetailRequest = Readonly<{ hash: string }>;
 type RetainedObservationWork = {
   lifetime: AbortController;
   queue: LocalActivityRecord[];
@@ -164,8 +177,6 @@ const initial = (): NativeActivitySnapshot =>
     error: null,
     coverage: 'network-transfers',
     truncated: false,
-    canViewSavedPending: false,
-    savedPending: undefined,
   });
 
 /** Account-bound read model. Neither network results nor this controller can sign. */
@@ -190,8 +201,12 @@ export class NativeActivity {
   private cachedFallback = false;
   private candidates = new Map<string, ActivityCandidate>();
   private freshCandidates = new Set<string>();
+  private smartAuthorizations = new Map<string, ActivityAuthorization>();
+  private authorizationCursor: string | null = null;
+  private journalLifetime = new AbortController();
   private locals = new Map<string, LocalActivityRecord>();
-  private savedPending?: SavedPendingPage;
+  private pendingCursor: string | null | undefined;
+  private pagedLocals = new Set<string>();
   private observations = new Map<string, ActivityTransactionObservation>();
   private unavailable = new Set<string>();
   private checking = new Map<string, ActivityDetailRequest>();
@@ -261,12 +276,14 @@ export class NativeActivity {
     this.activityError = null;
     this.viewSaveFailed = false;
     this.request?.abort();
+    this.journalLifetime.abort();
+    this.journalLifetime = new AbortController();
     this.request = null;
     this.scope = null;
     this.scopeRevision = null;
     this.refreshingRows = null;
-    this.savedPending?.lifetime.abort();
-    this.savedPending = undefined;
+    this.pendingCursor = undefined;
+    this.pagedLocals.clear();
     this.retainedWork?.lifetime.abort();
     this.retainedWork = undefined;
     this.hydration = [];
@@ -290,6 +307,8 @@ export class NativeActivity {
     this.candidates.clear();
     this.freshCandidates.clear();
     this.locals.clear();
+    this.smartAuthorizations.clear();
+    this.authorizationCursor = null;
     this.observations.clear();
     this.unavailable.clear();
     this.visible = 20;
@@ -318,12 +337,15 @@ export class NativeActivity {
     const signal = this.request.signal;
     const guard = () => this.guard(generation, revision);
     this.publish({ ...(previous ?? initial()),
-      rows: previous?.rows.map(row => row.replacementStatus ? { ...row, replacementStatus: undefined } : row) ?? [],
-      status: 'loading', loadingMore: false, error: null, savedPending: undefined });
+      rows: previous?.rows.filter(row => row.local || !row.smartAuthorizations).map(row => {
+        if (!row.smartAuthorizations && !row.replacementStatus) return row;
+        return { ...row, smartAuthorizations: undefined, replacementStatus: undefined };
+      }) ?? [],
+      status: 'loading', loadingMore: false, error: null });
     try {
       const runtime = this.runtime();
       if (!runtime) throw new ActivityError('UNAVAILABLE');
-      const { scope, saved, locals, assets } = await runtime.load(
+      const { scope, saved, locals, assets, smartAuthorizations, olderRetained } = await runtime.load(
         guard,
         signal
       );
@@ -332,8 +354,10 @@ export class NativeActivity {
           previousScope.network.registrationHash !== scope.network.registrationHash)
         this.refreshingRows = null;
       this.scope = scope;
+      this.pendingCursor = olderRetained && runtime.loadSavedPending ? undefined : null;
       this.scopeRevision = revision;
       this.assets = assets ?? [];
+      if (smartAuthorizations) this.applySmartAuthorizationPage(smartAuthorizations);
       for (const record of saved.archived) this.locals.set(record.hash, record);
       for (const local of locals) this.locals.set(local.hash, local);
       for (const record of saved.candidates)
@@ -351,7 +375,7 @@ export class NativeActivity {
         explorerUrl: scope.explorerUrl,
         truncated: saved.truncated,
         discoveryAvailable: !!scope.apiUrl,
-        canViewSavedPending: !!runtime.loadSavedPending,
+
       });
       this.renderRows(true);
       this.observeRetained();
@@ -526,77 +550,131 @@ export class NativeActivity {
     this.renderRows();
   }
   async loadMore(): Promise<void> {
-    if (
-      this.snapshot.loadingMore ||
-      !this.scope ||
-      !this.request ||
-      (this.visible >= 200 && this.orderedCandidates().length >= this.visible)
-    )
-      return;
-    if (this.request.signal.aborted) {
-      await this.refresh();
-      return;
-    }
-    // Retries and duplicate event pages continue the current target. They do
-    // not consume capacity that is reserved for distinct transactions.
-    if (this.orderedCandidates().length >= this.visible)
-      this.visible = Math.min(200, this.visible + 20);
-    const generation = this.generation,
-      revision = this.source.getSnapshot().revision;
-    const guard = () => this.guard(generation, revision);
-    for (const feed of Object.values(this.feeds)) feed.error = false;
-    try {
-      await this.fill(guard, this.request.signal);
-      guard();
-      await this.runtime()?.saveCache(
-        this.scope,
-        this.orderedCandidates().slice(0, 24).map(activityCandidateSummary),
-        guard
-      );
-    } catch {
-      if (generation === this.generation)
-        this.publish({
-          loadingMore: false,
-          error: 'older-unavailable',
-        });
-    }
-  }
-  /** Pages the authenticated journal; needed terminal siblings reuse the bounded observer. */
-  async loadSavedPending(): Promise<void> {
-    const runtime = this.runtime(), scope = this.scope;
-    if (!scope || !runtime?.loadSavedPending) return;
-    if (this.savedPending?.status === 'loading' || this.savedPending?.cursor === null) return;
-    // An explorer timeout only retires explorer work. The journal still
-    // belongs to this wallet revision and the currently open saved page.
-    const page = this.savedPending ??= { lifetime: new AbortController(), records: new Map(), cursor: undefined, status: 'ready' };
+    const scope = this.scope, request = this.request, runtime = this.runtime();
+    if (this.snapshot.loadingMore || !scope || !request) return;
     const generation = this.generation, revision = this.source.getSnapshot().revision;
-    const guard = () => {
-      this.guard(generation, revision, page.lifetime.signal);
-      if (this.savedPending !== page || this.runtime() !== runtime) throw new ActivityError('CANCELLED');
+    const journalSignal = this.journalLifetime.signal;
+    const journalGuard = () => {
+      this.guard(generation, revision, journalSignal);
+      if (this.scope !== scope || this.runtime() !== runtime) throw new ActivityError('CANCELLED');
     };
-    page.status = 'loading';
+    try {
+      if (this.authorizationCursor && runtime?.loadSmartAuthorizations) {
+        this.publish({ loadingMore: true });
+        const page = await runtime.loadSmartAuthorizations(scope, this.authorizationCursor, journalGuard);
+        journalGuard();
+        this.applySmartAuthorizationPage(page);
+        this.renderRows();
+        return;
+      }
+      if (this.pendingCursor !== null && runtime?.loadSavedPending) {
+        this.publish({ loadingMore: true });
+        let added = 0;
+        // The recent local window already covers the first two pending pages.
+        // Skip overlapping pages until this request reveals another row.
+        for (let attempt = 0; attempt < 3 && this.pendingCursor !== null && !added; attempt++) {
+          const cursor: string | undefined = this.pendingCursor;
+          const page = await runtime.loadSavedPending(scope, cursor, journalGuard);
+          journalGuard();
+          if (page.nextCursor !== null && page.nextCursor === cursor) throw new ActivityError('INVALID');
+          this.pendingCursor = page.nextCursor;
+          for (const local of page.records) {
+            if (this.locals.has(local.hash)) continue;
+            this.locals.set(local.hash, local);
+            this.pagedLocals.add(local.hash);
+            added++;
+          }
+        }
+        this.renderRows();
+        this.observeRetained();
+        if (added || this.pendingCursor !== null) return;
+      }
+      if (this.visible >= 200 && this.orderedCandidates().length >= this.visible) return;
+      if (request.signal.aborted) { await this.refresh(); return; }
+      if (this.orderedCandidates().length >= this.visible)
+        this.visible = Math.min(200, this.visible + 20);
+      const guard = () => this.guard(generation, revision);
+      for (const feed of Object.values(this.feeds)) feed.error = false;
+      await this.fill(guard, request.signal);
+      guard();
+      await runtime?.saveCache(scope, this.orderedCandidates().slice(0, 24).map(activityCandidateSummary), guard);
+    } catch {
+      if (generation === this.generation) this.publish({ error: 'older-unavailable' });
+    } finally {
+      if (generation === this.generation) this.publish({ loadingMore: false });
+    }
+  }
+  async loadTarget(hash: string): Promise<void> {
+    const scope = this.scope, runtime = this.runtime();
+    if (!scope || !runtime?.loadTarget) return;
+    const generation = this.generation, revision = this.source.getSnapshot().revision;
+    const signal = this.journalLifetime.signal;
+    const guard = () => {
+      this.guard(generation, revision, signal);
+      if (this.scope !== scope || this.runtime() !== runtime) throw new ActivityError('CANCELLED');
+    };
+    const target = await runtime.loadTarget(scope, hash, guard);
+    guard();
+    if (!target) return;
+    if (target.local && target.local.hash !== hash || target.authorization && target.authorization.operationHash !== hash)
+      throw new ActivityError('INVALID');
+    if (target.local && !this.locals.has(hash)) {
+      this.locals.set(hash, target.local);
+      this.pagedLocals.add(hash);
+    }
+    if (target.authorization && !this.smartAuthorizations.has(hash))
+      this.smartAuthorizations.set(hash, { instruction: target.authorization, checking: false, unavailable: false });
     this.renderRows();
+    this.observeRetained();
+  }
+  private applySmartAuthorizationPage(page: SmartAuthorizationPage) {
+    for (const instruction of page.entries) {
+      if (!this.smartAuthorizations.has(instruction.operationHash))
+        this.smartAuthorizations.set(instruction.operationHash, { instruction, checking: false, unavailable: false });
+    }
+    this.authorizationCursor = page.nextCursor;
+  }
+  async inspectSmartAuthorization(hash: string, assertView: () => void, viewSignal: AbortSignal) {
+    const scope = this.scope, runtime = this.runtime(), existing = this.smartAuthorizations.get(hash);
+    if (!scope || !runtime?.observeSmartAuthorization || !existing || existing.checking) return;
+    const generation = this.generation, revision = this.source.getSnapshot().revision;
+    const lifetime = this.journalLifetime;
+    const request = new AbortController(), abort = () => request.abort();
+    if (viewSignal.aborted || lifetime.signal.aborted) return;
+    lifetime.signal.addEventListener('abort', abort, { once: true });
+    viewSignal.addEventListener('abort', abort, { once: true });
+    const guard = () => {
+      this.guard(generation, revision, request.signal);
+      if (this.scope !== scope || this.runtime() !== runtime) throw new ActivityError('CANCELLED');
+      assertView();
+    };
+    const checking = { ...existing, checking: true };
     try {
       guard();
-      const result = await runtime.loadSavedPending(scope, page.cursor ?? undefined, guard);
+      this.smartAuthorizations.set(hash, checking);
+      this.renderRows();
+      const observation = await runtime.observeSmartAuthorization(scope, hash, guard, request.signal);
       guard();
-      for (const row of result.records) page.records.set(row.hash, row);
-      page.cursor = result.nextCursor;
-      page.status = 'ready';
+      if (observation.operationHash !== hash) throw new ActivityError('INVALID');
+      this.smartAuthorizations.set(hash, { ...existing, observation, unavailable: false });
     } catch {
-      try { guard(); } catch { return; }
-      page.status = 'unavailable';
+      try {
+        guard();
+        this.smartAuthorizations.set(hash, { ...existing, unavailable: true });
+      } catch { /* Revoked views publish no status. */ }
+    } finally {
+      request.abort();
+      lifetime.signal.removeEventListener('abort', abort);
+      viewSignal.removeEventListener('abort', abort);
+      if (generation === this.generation && this.smartAuthorizations.get(hash) === checking)
+        this.smartAuthorizations.set(hash, existing);
+      if (generation === this.generation) this.renderRows();
     }
-    this.renderRows();
-    if (page.status === 'ready') this.observeRetained();
-  }
-  closeSavedPending(): void {
-    this.savedPending?.lifetime.abort();
-    this.savedPending = undefined;
-    this.publish({ savedPending: undefined });
   }
   private renderRows(includeCached = this.cachedFallback) {
-    const records = new Map<string, ActivityRow>(this.refreshingRows);
+    const records = new Map<string, ActivityRow>([...(this.refreshingRows ?? [])]
+      .filter(([, row]) => row.local || !row.smartAuthorizations)
+      .map(([hash, row]) => [hash, { ...row, smartAuthorizations: undefined }]));
     const candidates = this.orderedCandidates(includeCached);
     for (const local of this.locals.values())
       records.set(local.hash, {
@@ -624,9 +702,9 @@ export class NativeActivity {
       if (previous && !this.freshCandidates.has(row.hash) && !this.observations.has(row.hash) &&
           !this.retainedObservations.has(row.hash) && !this.unavailable.has(row.hash) &&
           JSON.stringify(row.local) === JSON.stringify(previous.local))
-        return { ...previous, checking: this.checking.has(row.hash) };
+        return { ...previous, ...(previous.smartAuthorizations ? { smartAuthorizations: undefined } : {}), checking: this.checking.has(row.hash) };
       // An indexer describes the outer payer transaction; this row represents its verified inner operation.
-      if (row.local?.smartAccount) includeIndex = false;
+      if (row.local?.smartAccount || this.pagedLocals.has(row.hash)) includeIndex = false;
       const indexed = includeIndex ? this.indexed.get(row.hash) : undefined;
       const display = includeIndex ? this.displays.get(row.hash) : undefined;
       return {
@@ -648,14 +726,10 @@ export class NativeActivity {
       };
     };
     const observedRows = [...records.values()].map((row) => observeRow(row));
-    const pending = this.savedPending;
-    const pendingRows = pending ? [...pending.records.values()].map(local => observeRow({
-      hash: local.hash, local, checking: false, unavailable: false,
-    }, false)) : [];
     // Previous rows may preserve a display during refresh, but cannot supply
     // fresh sibling proof. Use only observations owned by this generation.
     const replacements = this.scope ? nativeLocalReplacementStatuses(
-      [...observedRows, ...pendingRows].map(row => ({ ...row,
+      observedRows.map(row => ({ ...row,
         observation: this.observations.get(row.hash),
         retainedObservation: this.retainedObservations.get(row.hash),
       })), this.scope) : new Map<string, 'replaced'>();
@@ -691,28 +765,31 @@ export class NativeActivity {
     // local replacement history after choosing the fetched representative.
     const retained = new Map(representatives.map((row) => [row.hash, row]));
     for (const row of observedRows) if (row.local) retained.set(row.hash, row);
-    const rows = [...retained.values()].map(withReplacement).sort(
-      (a, b) =>
-        (b.observation?.timestamp ??
-          b.candidate?.timestamp ??
-          b.local?.createdAt ??
-          0) -
-        (a.observation?.timestamp ??
-          a.candidate?.timestamp ??
-          a.local?.createdAt ??
-          0)
-    );
+    const outerRows = new Map<string, ActivityRow>();
+    for (const row of retained.values()) {
+      for (const operation of row.local?.smartAccount?.operations ?? []) {
+        const previous = outerRows.get(operation.operationHash);
+        if (!previous || activityRowTimestamp(row) > activityRowTimestamp(previous))
+          outerRows.set(operation.operationHash, row);
+      }
+    }
+    for (const [hash, authorization] of this.smartAuthorizations) {
+      const outer = outerRows.get(hash);
+      const observed = authorization.observation?.kind === 'observed' ? retained.get(authorization.observation.transactionHash) : undefined;
+      const row = outer ?? observed;
+      const key = row?.hash ?? hash;
+      const current = retained.get(key);
+      retained.set(key, { ...current, hash: key, checking: current?.checking ?? false,
+        unavailable: current?.unavailable ?? false, smartAuthorizations: [...(current?.smartAuthorizations ?? []), authorization] });
+    }
+    const rows = [...retained.values()].map(withReplacement)
+      .sort((a, b) => activityRowTimestamp(b) - activityRowTimestamp(a));
     const moreToLoad = Object.values(this.feeds).some((f) => !f.done);
     const atDisplayLimit = this.visible >= 200 && candidates.length >= 200;
     this.publish({
       rows,
-      savedPending: pending ? Object.freeze({
-        rows: Object.freeze(pendingRows.map(withReplacement)),
-        status: pending.status,
-        hasMore: pending.cursor !== null,
-      }) : undefined,
       hasMore:
-        !atDisplayLimit && (candidates.length > this.visible || moreToLoad),
+        !!this.authorizationCursor || this.pendingCursor !== null && !!this.runtime()?.loadSavedPending || !atDisplayLimit && (candidates.length > this.visible || moreToLoad),
       truncated:
         this.snapshot.truncated ||
         (atDisplayLimit && (candidates.length > this.visible || moreToLoad)),
@@ -728,10 +805,9 @@ export class NativeActivity {
     return this.receipts.observe ? (request: EvmObservationRequest) => this.receipts.observe!(
       request, signal, guard, scope.network, this.receiptScope(scope, generation)) : undefined;
   }
-  private hydrate(hash?: string, page?: SavedPendingPage) {
-    if (hash && (!this.checking.has(hash) || this.checking.get(hash)?.page !== page) &&
-        !this.hydration.some((request) => request.hash === hash && request.page === page))
-      this.hydration.push({ hash, page });
+  private hydrate(hash?: string) {
+    if (hash && !this.checking.has(hash) && !this.hydration.some(request => request.hash === hash))
+      this.hydration.push({ hash });
     while (
       this.workers < 2 &&
       this.hydration.length &&
@@ -739,26 +815,24 @@ export class NativeActivity {
       this.request
     ) {
       const detail = this.hydration.shift()!;
-      const { hash, page } = detail;
-      if (page && page !== this.savedPending) continue;
+      const { hash } = detail;
       const scope = this.scope,
-        signal = page?.lifetime.signal ?? this.request.signal,
+        signal = this.pagedLocals.has(hash) ? this.journalLifetime.signal : this.request.signal,
         runtime = this.runtime(),
         generation = this.generation,
         revision = this.source.getSnapshot().revision;
       if (signal.aborted) continue;
       const guard = () => {
         this.guard(generation, revision, signal);
-        if (this.checking.get(hash) !== detail ||
-            (page && (this.savedPending !== page || this.runtime() !== runtime)))
+        if (this.checking.get(hash) !== detail || this.scope !== scope || this.runtime() !== runtime)
           throw new ActivityError('CANCELLED');
       };
       this.workers++;
       this.checking.set(hash, detail);
       const readDetail = async () => {
         guard();
-        const local = page?.records.get(hash) ?? this.locals.get(hash);
-        if (local && (local.smartAccount || !this.locals.has(hash))) {
+        const local = this.locals.get(hash);
+        if (local && (local.smartAccount || this.pagedLocals.has(hash))) {
           if (!runtime?.observeLocal) throw new ActivityError('UNAVAILABLE');
           // The signed record already supplies the envelope. Use one owned
           // observation for status, without fetching the same receipt again.
@@ -766,7 +840,9 @@ export class NativeActivity {
           guard();
           this.retainedObservations.set(hash, observation);
           this.unavailable.delete(hash);
-          return;
+          if (local.smartAccount || observation.status !== 'missing' ||
+              BigInt(observation.latestNonce) > BigInt(local.nonce) ||
+              local.transactionType !== 0 && local.transactionType !== 2) return;
         }
         const observation = await this.receipts.read(hash, scope.address, signal, guard, scope.network, this.receiptScope(scope, generation));
         guard();
@@ -779,7 +855,7 @@ export class NativeActivity {
             })),
           });
           this.unavailable.delete(hash);
-        } else this.unavailable.add(hash);
+        } else if (!this.pagedLocals.has(hash) || !this.retainedObservations.has(hash)) this.unavailable.add(hash);
       };
       void readDetail()
         .catch(() => {
@@ -797,13 +873,12 @@ export class NativeActivity {
     }
   }
   inspect(hash: string) {
-    const page = this.savedPending?.records.has(hash) ? this.savedPending : undefined;
-    if (page || this.snapshot.rows.some((row) => row.hash === hash)) {
+    if (this.snapshot.rows.some((row) => row.hash === hash && (row.local || !row.smartAuthorizations))) {
       this.observations.delete(hash);
       this.unavailable.delete(hash);
-      if ((page && !this.locals.has(hash)) || this.locals.get(hash)?.smartAccount) this.retainedObservations.delete(hash);
-      this.hydrate(hash, page);
-      if (page) this.renderRows();
+      if (this.pagedLocals.has(hash) || this.locals.get(hash)?.smartAccount) this.retainedObservations.delete(hash);
+      this.hydrate(hash);
+      this.renderRows();
     }
   }
   private observeRetained() {
@@ -822,11 +897,10 @@ export class NativeActivity {
     // A completed local sibling needs fresh proof only while its nonce still
     // has an unresolved row. Ordinary completed history never starts a read.
     const locals = [...this.locals.values()];
-    const candidates = locals.filter((local) =>
+    const candidates = locals.filter((local) => !this.pagedLocals.has(local.hash) &&
       ['signed', 'attempted', 'submitted'].includes(local.phase)
     );
-    candidates.push(...nativeLocalReplacementWinnersToObserve(locals,
-      [...(this.savedPending?.records.values() ?? [])], scope));
+    candidates.push(...nativeLocalReplacementWinnersToObserve(locals, scope));
     for (const local of candidates) if (!work.seen.has(local.hash)) {
       work.seen.add(local.hash); work.queue.push(local);
     }

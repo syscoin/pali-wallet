@@ -1,35 +1,41 @@
-// Public synthetic instructions only; no custody, signing or RPC adapter.
+// Public synthetic Activity data only. The fixture has no custody or RPC adapter.
 import React, { useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import {
-  NativeSmartAccountAuthorizations,
-  type NativeSmartAuthorizationSource,
-} from '../../src/screens/NativeSmartAccountAuthorizations';
+import { NativeActivity, type NativeActivityRuntime } from '../../src/activity/nativeActivity';
+import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../../src/activity/types';
+import { NativeActivityScreen } from '../../src/screens/NativeActivity';
 import { Notice } from '../../src/ui';
 
 const hash = (value: string) => `0x${value.repeat(64)}`;
+const address = `0x${'11'.repeat(20)}`;
 const nonce = ((BigInt(1) << BigInt(256)) - BigInt(2)).toString();
 const anchor = { number: '100', hash: hash('a') };
-const source: NativeSmartAuthorizationSource = {
-  async list(_options, _signal, guard) {
+const operationHash = hash('1');
+const scope = { ...createActivityScope('a'.repeat(64), 'smart:60:0', address, 'ethereum'), apiUrl: '' };
+const runtime: NativeActivityRuntime = {
+  async load(guard) {
     guard();
-    return { entries: [{
-      account: `0x${'11'.repeat(20)}`, chainId: '1', createdAt: 1700000000000,
-      operationHash: hash('1'), operationNonce: nonce,
-      payer: `0x${'22'.repeat(20)}`, observedAt: anchor,
-    }], nextCursor: null };
+    return { scope, locals: [], saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false },
+      smartAuthorizations: { entries: [{
+        account: address, chainId: '1', createdAt: 1700000000000,
+        operationHash, operationNonce: nonce, payer: `0x${'22'.repeat(20)}`, observedAt: anchor,
+      }], nextCursor: null } };
   },
-  async status(operationHash, _signal, guard) {
+  async observeSmartAuthorization(_scope, operationHash, guard) {
     guard();
-    return { kind: 'nonce-consumed', operationHash,
-      currentNonce: (BigInt(nonce) + BigInt(1)).toString(), anchor };
+    return { kind: 'nonce-consumed', operationHash, currentNonce: (BigInt(nonce) + BigInt(1)).toString(), anchor };
   },
+  async saveCache() {},
+  async saveView() {},
 };
 export function SmartAuthorizationsFixture() {
   const [result, setResult] = useState('');
+  const [controller] = useState(() => new NativeActivity({
+    getSnapshot: () => ({ phase: 'ready', revision: 0 }),
+    subscribe: () => () => undefined,
+  }, () => runtime));
   return <SafeAreaProvider>{result ? <Notice title={result} /> : (
-    <NativeSmartAccountAuthorizations source={source} accountLabel="Smart Account 1 · Ethereum"
-      onBack={() => setResult('Activity')}
-      onCancel={() => setResult('Cancellation review requested')} />
+    <NativeActivityScreen controller={controller} accountLabel="Smart Account 1"
+      onBack={() => setResult('Activity')} onCancelPending={() => setResult('Cancellation review requested')} />
   )}</SafeAreaProvider>;
 }

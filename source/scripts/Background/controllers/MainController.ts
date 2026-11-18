@@ -157,10 +157,12 @@ import {
   retainedEvmAssetPreflightConflict,
   type EvmSignedRecords,
   retainedEvmTransaction,
-  type EvmRetainedSignedRecord,
   type EvmSignedRetirementReadForChain,
 } from '../../../wallet/evmSignedRecords';
-import { observeRetainedEvmTransaction } from '../../../wallet/evmSignedReplay';
+import {
+  observeRetainedEvmTransaction,
+  projectSavedEvmTransaction,
+} from '../../../wallet/evmSignedReplay';
 import {
   assertImportedRecoveryAccount,
   importAccountWithRecovery,
@@ -175,7 +177,6 @@ import {
   localPasskeyError,
   type LocalPasskeyController,
 } from '../../../wallet/localPasskeyTypes';
-import { authorizePrivateNoteReplay } from '../../../wallet/privateNoteReplay.ts';
 import { createPrivateVaultSession } from '../../../wallet/privateVaultInspection';
 import {
   signVerifiedPsbt,
@@ -184,7 +185,6 @@ import {
 } from '../../../wallet/psbtApprovals';
 import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
 import {
-  decodeRetainedSmartAccountOperations,
   decodeSmartAccountOperations,
   observeSmartAccountOperations,
 } from '../../../wallet/smartAccountActivity';
@@ -195,7 +195,7 @@ import {
   smartAccountCancellationMetadata,
   type SmartAccountCancellationDispatch,
 } from '../../../wallet/smartAccountCancellation';
-import { createSmartAccountSignedReplay } from '../../../wallet/smartAccountSignedReplay';
+import { projectSmartAccountSavedTransaction } from '../../../wallet/smartAccountSignedReplay';
 import { signTrezorReplacementPsbt } from '../../../wallet/trezorReplacementSigner';
 import {
   createOwnedUtxoBlockbookRead,
@@ -510,8 +510,6 @@ import {
 import {
   assertExtensionRetainedCancellationFunds,
   assertExtensionRetainedCancellationReady,
-  createExtensionEvmReplay,
-  createExtensionEvmReplaySession,
   createExtensionRetainedCancellation,
   readLiveEvmChainId,
 } from './evmSignedReplay';
@@ -598,7 +596,6 @@ import type { GuardianRecoveryIntent } from '../../../utils/smartAccount/guardia
 import type { GuardianRecoveryTransactionRecords } from '../../../utils/smartAccount/guardianRecoveryLifecycle';
 import type { SmartAccountOwnerSigningIntent } from '../../../utils/smartAccount/ownerSigningIntent.ts';
 import type { EoaCallsStopped } from '../../../wallet/evmCallsSequence.ts';
-import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
 import type { SentryRequestLifetime } from '../../../wallet/sentryApprovalTypes';
 import type {
   EvmReplacementFeeApproval,
@@ -1371,10 +1368,6 @@ class MainController {
   // Initialize a keyring for a specific slip44
   private retainedEvmRecords?: EvmSignedRecords;
   private clearingActivity = false;
-  private retainedEvmReplay?: EvmSignedReplay;
-  private retainedSmartAccountReplay?: ReturnType<
-    typeof createSmartAccountSignedReplay
-  >;
 
   private async captureGuardianRecoveryTransactions(
     chainId: number,
@@ -1904,338 +1897,56 @@ class MainController {
     }
   }
 
-  private async recordAcknowledgedEvmReplay(
-    entry: EvmRetainedSignedRecord,
-    assertCurrent: () => void
-  ): Promise<void> {
-    assertCurrent();
-    const tx = Transaction.from(entry.rawTransaction);
-    const { vault } = store.getState();
-    const affected = new Set(
-      decodeRetainedSmartAccountOperations(entry).map((operation) =>
-        operation.account.toLowerCase()
-      )
-    );
-    const groups = new Map<
-      string,
-      {
-        address?: string;
-        owners: Array<{
-          address: string;
-          id: number;
-          type: KeyringAccountType;
-        }>;
-      }
-    >();
-    for (const [id, account] of Object.entries(
-      vault.accounts[KeyringAccountType.SmartAccount] ?? {}
-    )) {
-      if (!account?.address || !affected.has(account.address.toLowerCase()))
-        continue;
-      const key = account.address.toLowerCase();
-      let group = groups.get(key);
-      if (!group) {
-        group = { address: account.address, owners: [] };
-        groups.set(key, group);
-      }
-      group.owners.push({
-        id: Number(id),
-        type: KeyringAccountType.SmartAccount,
-        address: account.address,
-      });
-    }
-    const payer = {
-      id: entry.signer.id,
-      type: entry.signer.type as KeyringAccountType,
-      address: entry.from,
-    };
-    if (!groups.size) groups.set('payer', { owners: [] });
-    groups.values().next().value!.owners.push(payer);
-    const isCurrentContext = () => {
-      try {
-        assertCurrent();
-        return true;
-      } catch {
-        return false;
-      }
-    };
-    const missing = [...groups.values()]
-      .map((group) => ({
-        ...group,
-        owners: group.owners.filter(
-          (owner) =>
-            !vault.accountTransactions?.[owner.type]?.[owner.id]?.ethereum?.[
-              Number(tx.chainId)
-            ]?.some(
-              (candidate) =>
-                candidate.hash?.toLowerCase() === entry.hash.toLowerCase()
-            )
-        ),
-      }))
-      .filter((group) => group.owners.length);
-    if (!missing.length) {
-      this.startRapidTransactionPolling(
-        entry.hash,
-        Number(tx.chainId),
-        false,
-        { id: payer.id, type: payer.type },
-        isCurrentContext
-      );
-      return;
-    }
-    // Re-enter the normal public history/receipt path after a lost initial ACK.
-    // No receipt is inferred from acceptance, and private journal metadata stays private.
-    for (let index = 0; index < missing.length; index++) {
-      const group = missing[index];
-      const check = () => {
-        assertCurrent();
-        for (const owner of group.owners) {
-          if (
-            store
-              .getState()
-              .vault.accounts[owner.type]?.[
-                owner.id
-              ]?.address?.toLowerCase() !== owner.address.toLowerCase()
-          )
-            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-        }
-      };
-      check();
-      await this.sendAndSaveTransaction(
-        {
-          hash: entry.hash,
-          from: tx.from!,
-          to: tx.to,
-          chainId: Number(tx.chainId),
-          nonce: tx.nonce,
-          type: tx.type,
-          data: tx.data,
-          input: tx.data,
-          value: tx.value.toString(),
-          gasLimit: tx.gasLimit.toString(),
-          gasPrice: tx.gasPrice?.toString(),
-          maxFeePerGas: tx.maxFeePerGas?.toString(),
-          maxPriorityFeePerGas: tx.maxPriorityFeePerGas?.toString(),
-          ...(entry.operation === 'cancel' ? { isCancel: true } : {}),
-          ...(entry.operation === 'speed-up' ? { isSpeedUp: true } : {}),
-          ...(entry.originalHash ? { replacesHash: entry.originalHash } : {}),
-          ...(group.address
-            ? {
-                smartAccountExecution: true,
-                smartAccountExecutionFrom: group.address,
-              }
-            : {}),
-        } as unknown as IEvmTransactionResponse,
-        { id: group.owners[0].id, type: group.owners[0].type },
-        {
-          clearNavigation: false,
-          isCurrentContext: () => {
-            try {
-              check();
-              return true;
-            } catch {
-              return false;
-            }
-          },
-          transactionAccounts: group.owners.map(({ id, type }) => ({
-            id,
-            type,
-          })),
-          persist: index === missing.length - 1,
-          skipRapidPolling: index !== missing.length - 1,
-        }
-      );
-      check();
-    }
-  }
-
-  private captureRetainedEvmReplaySession(
-    reference: { id: number; type: KeyringAccountType },
-    assertOwner: () => void = () => undefined
-  ) {
-    assertOwner();
+  private captureSavedEvmActivity() {
     this.assertWalletReadyForSigning();
-    const keyring = this.getActiveKeyring();
     const { vault } = store.getState();
+    const reference = { ...vault.activeAccount };
+    const network = { ...vault.activeNetwork };
     const account = vault.accounts[reference.type]?.[reference.id];
-    // The existing extension represents a view-only import without xprv.
     if (
       !account?.address ||
       vault.isBitcoinBased ||
       (reference.type === KeyringAccountType.Imported && !account.xprv)
     )
-      throw new Error('Replay requires a signing account');
-    const context = {
-      account: {
-        id: reference.id,
-        type: reference.type,
-        address: account.address,
-      },
-      network: {
-        kind: vault.activeNetwork.kind,
-        chainId: vault.activeNetwork.chainId,
-        slip44: vault.activeNetwork.slip44,
-        url: vault.activeNetwork.url,
-      },
-      operation: 'send' as const,
-    };
-    const provider = this.ethereumTransaction.web3Provider;
-    const lifecycle = this.captureEvmSignedSubmission(keyring, context);
+      throw new Error('Saved activity requires a signing account');
+    const address = account.address;
+    const keyring = this.getActiveKeyring();
+    const scope = getWalletNavigationScope();
+    const generation = this.walletSessionGeneration;
+    const stateGeneration = this.walletStateGeneration;
+    const networkRequest = this.networkRequestGeneration;
     const assertCurrent = () => {
-      assertOwner();
-      lifecycle.assertCurrent();
-      const current =
-        store.getState().vault.accounts[reference.type]?.[reference.id];
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation, keyring);
+      const current = store.getState().vault;
+      const currentScope = getWalletNavigationScope();
+      const selected = current.accounts[reference.type]?.[reference.id];
       if (
-        this.ethereumTransaction.web3Provider !== provider ||
-        (reference.type === KeyringAccountType.Imported && !current?.xprv)
+        stateGeneration !== this.walletStateGeneration ||
+        networkRequest !== this.networkRequestGeneration ||
+        scope.account !== currentScope.account ||
+        scope.network !== currentScope.network ||
+        current.isBitcoinBased ||
+        current.activeNetwork.chainId !== network.chainId ||
+        current.activeAccount.id !== reference.id ||
+        current.activeAccount.type !== reference.type ||
+        selected?.address?.toLowerCase() !== address.toLowerCase() ||
+        (reference.type === KeyringAccountType.Imported && !selected?.xprv)
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertCurrent();
     return {
-      context,
-      provider,
+      account,
+      address,
+      chainId: String(network.chainId),
+      isSmart: reference.type === KeyringAccountType.SmartAccount,
+      session: { keyring, assertCurrent },
+      records: this.getRetainedEvmRecords(),
       assertCurrent,
-      recordSession: { keyring, assertCurrent },
-      authorizeReplay: async (entry) => {
-        const authorization = await authorizePrivateNoteReplay(
-          entry,
-          assertCurrent,
-          async (attempt) => {
-            const privateSession =
-              this.capturePrivateVaultAcknowledgementSession(
-                this.capturePrivateVaultSession()
-              );
-            assertCurrent();
-            const privateVault = await this.getPrivateVaultController();
-            assertCurrent();
-            return privateVault.authorizeDepositReplay(attempt, privateSession);
-          },
-          async (attempt) => {
-            const privateSession =
-              this.capturePrivateVaultAcknowledgementSession(
-                this.capturePrivateVaultSession()
-              );
-            assertCurrent();
-            const privateVault = await this.getPrivateVaultController();
-            assertCurrent();
-            return privateVault.authorizeWithdrawalReplay(
-              attempt,
-              privateSession
-            );
-          }
-        );
-        assertCurrent();
-        return Object.freeze({
-          ...authorization,
-          onAcknowledged: async (hash: string) => {
-            await authorization.onAcknowledged(hash);
-            assertCurrent();
-            if (hash.toLowerCase() !== entry.hash.toLowerCase())
-              throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-            await this.recordAcknowledgedEvmReplay(entry, assertCurrent);
-          },
-        });
-      },
     };
   }
 
-  private getRetainedEvmReplay(): EvmSignedReplay {
-    this.retainedEvmReplay ??= createExtensionEvmReplay(
-      this.getRetainedEvmRecords(),
-      () =>
-        this.captureRetainedEvmReplaySession(
-          store.getState().vault.activeAccount
-        )
-    );
-    return this.retainedEvmReplay;
-  }
-
-  private getRetainedSmartAccountReplay() {
-    this.retainedSmartAccountReplay ??= createSmartAccountSignedReplay(
-      this.getRetainedEvmRecords(),
-      () => {
-        this.assertWalletReadyForSigning();
-        const { vault } = store.getState();
-        const reference = { ...vault.activeAccount };
-        const account = vault.accounts[reference.type]?.[reference.id];
-        if (
-          reference.type !== KeyringAccountType.SmartAccount ||
-          !account?.address ||
-          vault.isBitcoinBased
-        )
-          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-        const read = this.captureFreshEvmRead(getWalletNavigationScope());
-        const address = account.address;
-        const assertCurrent = () => {
-          read.assertCurrent();
-          const current = store.getState().vault;
-          if (
-            current.activeAccount.id !== reference.id ||
-            current.activeAccount.type !== reference.type ||
-            current.accounts[reference.type]?.[
-              reference.id
-            ]?.address?.toLowerCase() !== address.toLowerCase()
-          )
-            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-        };
-        assertCurrent();
-        return {
-          account: { id: reference.id, address },
-          chainId: String(read.network.chainId),
-          recordSession: { keyring: read.keyring, assertCurrent },
-          assertCurrent,
-          runReadPhase: (check, work) =>
-            read.run((provider) => withEvmReadPhase(provider, check, work)),
-          read: (method, params, assertReplayCurrent) =>
-            read.run(async (provider) => {
-              assertCurrent();
-              assertReplayCurrent();
-              const result =
-                method === 'eth_chainId'
-                  ? await readLiveEvmChainId(provider, assertReplayCurrent)
-                  : await provider.send(method, [...params]);
-              assertReplayCurrent();
-              assertCurrent();
-              return result;
-            }),
-          capturePayer: (entry) => {
-            assertCurrent();
-            const payerReference = {
-              id: entry.signer.id,
-              type: entry.signer.type as KeyringAccountType,
-            };
-            const payer =
-              store.getState().vault.accounts[payerReference.type]?.[
-                payerReference.id
-              ];
-            if (
-              !payer?.address ||
-              payer.address.toLowerCase() !== entry.from.toLowerCase() ||
-              payerReference.type === KeyringAccountType.SmartAccount ||
-              payer.isSmartAccount
-            )
-              throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-            return createExtensionEvmReplaySession(
-              this.captureRetainedEvmReplaySession(
-                payerReference,
-                assertCurrent
-              )
-            );
-          },
-        };
-      }
-    );
-    return this.retainedSmartAccountReplay;
-  }
-
-  private isSmartAccountReplay() {
-    return (
-      store.getState().vault.activeAccount.type ===
-      KeyringAccountType.SmartAccount
-    );
-  }
   public async clearEvmActivityAndNonce(
     expectedScope: IWalletNavigationScope,
     confirmation: 'clear-activity-and-nonce-data'
@@ -2426,75 +2137,72 @@ class MainController {
       .finally(finishResetStatus);
   }
 
-  public prepareEvmSignedReplay(hash: string) {
-    return this.isSmartAccountReplay()
-      ? this.getRetainedSmartAccountReplay().prepare(hash)
-      : this.getRetainedEvmReplay().prepare(hash);
-  }
-  public prepareSmartAccountPredecessor(parentReviewId: string, hash: string) {
-    if (!this.isSmartAccountReplay())
-      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-    return this.getRetainedSmartAccountReplay().preparePredecessor(
-      parentReviewId,
-      hash
-    );
-  }
-  public getSmartAccountPredecessors(
-    parentReviewId: string,
-    beforeHash?: string,
-    limit = 30
-  ) {
-    if (!this.isSmartAccountReplay())
-      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-    return this.getRetainedSmartAccountReplay().listPredecessors(
-      parentReviewId,
-      { beforeHash, maximum: limit }
-    );
-  }
-  public confirmEvmSignedReplay(id: string) {
-    return this.isSmartAccountReplay()
-      ? this.getRetainedSmartAccountReplay().confirm(id)
-      : this.getRetainedEvmReplay().confirm(id);
-  }
-  public cancelEvmSignedReplay(id: string) {
-    if (typeof id === 'string') {
-      this.retainedEvmReplay?.cancel(id);
-      this.retainedSmartAccountReplay?.cancel(id);
+  public async getSavedEvmTransaction(hash: string) {
+    if (typeof hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(hash))
+      throw new Error('Invalid transaction hash');
+    const { address, chainId, isSmart, records, session, assertCurrent } =
+      this.captureSavedEvmActivity();
+    const normalized = hash.toLowerCase();
+    if (isSmart) {
+      const record = await records.readSmartAccountReplayExact(
+        session,
+        chainId,
+        address,
+        normalized
+      );
+      assertCurrent();
+      return record
+        ? projectSmartAccountSavedTransaction(record, address)
+        : null;
     }
+    const record = await records.readExact(
+      session,
+      chainId,
+      address,
+      normalized
+    );
+    assertCurrent();
+    return record ? projectSavedEvmTransaction(record) : null;
   }
-  public getSavedEvmTransaction(hash: string) {
-    return this.isSmartAccountReplay()
-      ? this.getRetainedSmartAccountReplay().get(hash)
-      : this.getRetainedEvmReplay().get(hash);
-  }
-  public getSavedEvmTransactions(
-    beforeHash?: string,
-    limit = 30,
-    nonce?: number
-  ) {
-    if (this.isSmartAccountReplay()) {
-      const { activeAccount, accounts, activeNetwork } = store.getState().vault;
-      const after =
-        accounts[activeAccount.type]?.[activeAccount.id]
-          ?.evmActivityClearedAtByChainId?.[activeNetwork.chainId];
-      return this.getRetainedSmartAccountReplay()
-        .list({ after, beforeHash, maximum: limit })
-        .then((page) =>
-          nonce === undefined
-            ? page
-            : {
-                ...page,
-                transactions: page.transactions.filter(
-                  (entry) => entry.nonce === nonce
-                ),
-              }
-        );
+
+  public async getSavedEvmTransactions(beforeHash?: string, limit = 30) {
+    const {
+      account,
+      address,
+      chainId,
+      isSmart,
+      records,
+      session,
+      assertCurrent,
+    } = this.captureSavedEvmActivity();
+    if (isSmart) {
+      const page = await records.readSmartAccountReplayPage(
+        session,
+        chainId,
+        address,
+        {
+          after: account.evmActivityClearedAtByChainId?.[Number(chainId)],
+          beforeHash,
+          maximum: limit,
+        }
+      );
+      assertCurrent();
+      return {
+        nextCursor: page.nextCursor,
+        transactions: page.entries.map((record) =>
+          projectSmartAccountSavedTransaction(record, address)
+        ),
+      };
     }
-    return this.getRetainedEvmReplay().list({
+    const page = await records.readPage(session, chainId, address, {
       beforeHash,
       maximum: limit,
-      nonce,
     });
+    assertCurrent();
+    return {
+      nextCursor: page.nextCursor,
+      transactions: page.entries.map(projectSavedEvmTransaction),
+    };
   }
 
   public prepareRetainedEvmCancellation(hash: string) {
@@ -4340,10 +4048,6 @@ class MainController {
     this.activeUtxoReads?.forEach((operation) => operation.abort());
     this.utxoFeeCache = undefined;
     // A new authenticated session must re-read and authenticate retained bytes.
-    this.retainedEvmReplay?.cancel();
-    this.retainedEvmReplay = undefined;
-    this.retainedSmartAccountReplay?.cancel();
-    this.retainedSmartAccountReplay = undefined;
     retainedCancellationReviewsByWallet.get(this)?.cancel();
     retainedCancellationReviewsByWallet.delete(this);
     this.retainedEvmRecords = undefined;

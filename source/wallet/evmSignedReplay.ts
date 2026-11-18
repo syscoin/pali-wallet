@@ -1,13 +1,10 @@
 import { getAddress } from 'ethers/address';
-import { Transaction } from 'ethers/transaction';
 
 import {
   createErc20Policy,
   decodeErc20Transfer,
   type Erc20Metadata,
 } from '../shared/erc20.ts';
-import { isEvmEmptySelfCall } from '../shared/evmCancellationPayer.ts';
-import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
 import {
   getObservedEvmTerminalPhase,
   type EvmObservationRequest,
@@ -15,26 +12,22 @@ import {
 } from '../shared/evmTransactionObservation.ts';
 import {
   decodeRetainedNftTransfer,
-  isRetainedNftReplayEnvelope,
   type NftTransferIntent,
 } from '../shared/nftTransfer.ts';
 
 import {
-  EvmSignedRecords,
   retainedEvmTransaction,
+  type EvmSignedRecords,
   type EvmRetainedRecord,
   type EvmSignedRecordSession,
-  type EvmRetainedSignedRecord,
   type EvmSignedRecordSummary,
 } from './evmSignedRecords.ts';
-import type { EvmAutoNonceSnapshot } from '../shared/evmAutoNonce.ts';
-import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
+import type { Transaction } from 'ethers/transaction';
 
-export type EvmReplayCandidate = Pick<
+export type EvmSavedTransaction = Pick<
   EvmSignedRecordSummary,
   'hash' | 'nonce' | 'operation' | 'originalHash'
->;
-export type EvmSavedTransaction = EvmReplayCandidate &
+> &
   Readonly<{
     cancellationUnavailable?: true;
     chainId: string;
@@ -58,145 +51,13 @@ export type EvmSavedTransaction = EvmReplayCandidate &
     value: string;
   }>;
 
-export type EvmReplayReview = Readonly<{
-  accessListEntries: number;
-  chainId: string;
-  collectibleTransfer?: NftTransferIntent;
-  dataBytes: number;
-  feePerGas: string;
-  from: string;
-  gasLimit: string;
-  hash: string;
-  id: string;
-  maximumFee: string;
-  missingNonce?: string;
-  nonce: string;
-  operation: EvmSignedRecordSummary['operation'];
-  originalHash?: string;
-  predecessorCount: number;
-  predecessors: readonly EvmReplayCandidate[];
-  priorityFeePerGas: string | null;
-  selector: string | null;
-  to: string | null;
-  tokenTransfer?: EvmSavedTransaction['tokenTransfer'];
-  validForMs: number;
-  value: string;
-}>;
-export type EvmReplayPreparation = Readonly<
-  | { review: EvmReplayReview; status: 'review' }
-  | {
-      reason: 'fresh-signature-required';
-      status: 'inspect-only';
-      transaction: EvmSavedTransaction;
-    }
-  | {
-      hash: string;
-      status: 'confirmed' | 'reverted' | 'nonce-consumed';
-      transaction: EvmSavedTransaction;
-    }
->;
-export type EvmReplaySubmissionResult = Readonly<{
-  hash: string;
-  /** Display only: never proves non-broadcast or releases the retained nonce. */
-  reason?: 'rpc-insufficient-funds';
-  status: 'submitted' | 'unknown';
-}>;
-
-function replaySubmissionDiagnostic(
-  error: unknown,
-  rawTransaction: string
-): EvmReplaySubmissionResult['reason'] {
-  // Do not traverse arbitrary error graphs, accessors, or serialized bodies.
-  const own = (value: unknown, key: string): unknown => {
-    if (!value || typeof value !== 'object') return undefined;
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    return descriptor && 'value' in descriptor ? descriptor.value : undefined;
-  };
-  const rpcInsufficientFunds = (value: unknown): boolean => {
-    const code = own(value, 'code');
-    const message = own(value, 'message');
-    return (
-      typeof code === 'number' &&
-      Number.isInteger(code) &&
-      code >= -32099 &&
-      code <= -32000 &&
-      typeof message === 'string' &&
-      message.length <= 1024 &&
-      /^(?:insufficient funds for gas\b|insufficient gas funds\b)/i.test(
-        message
-      )
-    );
-  };
-  try {
-    if (rpcInsufficientFunds(error)) return 'rpc-insufficient-funds';
-    // Ethers attaches the submitted envelope and the underlying RPC error.
-    if (
-      own(error, 'code') === 'INSUFFICIENT_FUNDS' &&
-      own(error, 'transaction') === rawTransaction &&
-      rpcInsufficientFunds(own(own(error, 'info'), 'error'))
-    )
-      return 'rpc-insufficient-funds';
-  } catch {
-    // A malformed diagnostic must never replace the original unknown result.
-  }
-  return undefined;
-}
-export type EvmReplayDispatchAdmission = (
-  send: () => Promise<string>,
-  preflight: (snapshot?: EvmAutoNonceSnapshot) => Promise<void>
-) => Promise<string>;
-export type EvmReplayDispatchContext = Pick<
-  EvmSignedRecordSummary,
-  'operation' | 'originalHash' | 'chainId' | 'from' | 'nonce' | 'hash'
-> &
-  Readonly<{ requiresPayerCheck?: true }>;
-export type EvmReplayAuthorization = Readonly<{
-  assertCurrent(): void;
-  onAcknowledged(hash: string): Promise<void>;
-  withAdmission<T>(
-    admit: () => Promise<Readonly<{ result: T }>>
-  ): Promise<Readonly<{ result: T }> | null>;
-}>;
-export type EvmReplaySession = Readonly<{
-  assertCurrent(): void;
-  authorizeReplay(
-    entry: EvmRetainedSignedRecord
-  ): Promise<EvmReplayAuthorization>;
-  context: Pick<EvmSubmissionContext, 'account' | 'network'>;
-  /** Replay supplies its bounded host preflight to admission. `send`
-   * synchronously initiates transport and returns its acknowledgment promise. */
-  dispatch(
-    rawTransaction: string,
-    admit: EvmReplayDispatchAdmission,
-    context: EvmReplayDispatchContext
-  ): Promise<string>;
-  observe(expected: EvmObservationRequest): Promise<EvmTransactionObservation>;
-  recordSession: EvmSignedRecordSession;
-}>;
 export class EvmReplayError extends Error {
-  readonly code:
-    | 'NOT_FOUND'
-    | 'EXPIRED'
-    | 'CONTEXT_CHANGED'
-    | 'INVALID_RESPONSE';
+  readonly code: 'NOT_FOUND' | 'CONTEXT_CHANGED' | 'INVALID_RESPONSE';
   constructor(code: EvmReplayError['code']) {
     super(code);
     this.code = code;
     this.name = 'EvmReplayError';
   }
-}
-type Pending = {
-  entry: EvmRetainedSignedRecord;
-  expires: number;
-  generation: number;
-  review: EvmReplayReview;
-  session: EvmReplaySession;
-};
-const REPLAY_PREFLIGHT_MS = 12000;
-function selectedHash(value: unknown): string {
-  if (typeof value !== 'string' || !/^0x[0-9a-f]{64}$/i.test(value))
-    throw new EvmReplayError('NOT_FOUND');
-  return value.toLowerCase();
 }
 const request = (entry: EvmRetainedRecord): EvmObservationRequest => {
   const tx = retainedEvmTransaction(entry);
@@ -276,16 +137,16 @@ export function projectSavedEvmTransaction(
   });
 }
 
-/** Ephemeral explicit consent over existing retained bytes, never a signer or nonce allocator. */
-/** Shared retained-record observation. It does not create a replay review or dispatch.
- * The caller owns the selected authority; every await retains that captured guard. */
+/** Observe and reconcile a retained record under the caller’s captured wallet guard. */
 export async function observeRetainedEvmTransaction(
   records: EvmSignedRecords,
   recordSession: EvmSignedRecordSession,
   chainId: string,
   from: string,
   hash: string,
-  observe: EvmReplaySession['observe'],
+  observe: (
+    request: EvmObservationRequest
+  ) => Promise<EvmTransactionObservation>,
   assertCurrent: () => void
 ): Promise<
   Readonly<{
@@ -342,413 +203,4 @@ export async function observeRetainedEvmTransaction(
     observation,
     terminalPhase,
   });
-}
-
-export class EvmSignedReplay {
-  private pending: Pending | null = null;
-  private ownerId: string | null = null;
-  private generation = 0;
-  private reconciliation: Promise<void> | null = null;
-  private readonly records: EvmSignedRecords;
-  private readonly capture: () => EvmReplaySession;
-  private readonly now: () => number;
-  private readonly randomBytes: (length: number) => Uint8Array;
-  constructor(
-    records: EvmSignedRecords,
-    capture: () => EvmReplaySession,
-    now: () => number = () => performance.now(),
-    randomBytes: (length: number) => Uint8Array = (length) =>
-      globalThis.crypto.getRandomValues(new Uint8Array(length))
-  ) {
-    this.records = records;
-    this.capture = capture;
-    this.now = now;
-    this.randomBytes = randomBytes;
-  }
-  cancel(id?: string): boolean {
-    if (id !== undefined && this.ownerId !== id) return false;
-    this.generation++;
-    this.pending = null;
-    this.ownerId = null;
-    return true;
-  }
-  /** Join only the status inspection's existing private receipt reconciliation. */
-  waitForReconciliation(): Promise<void> {
-    return this.reconciliation ?? Promise.resolve();
-  }
-  private time(): number {
-    const value = this.now();
-    if (!Number.isFinite(value) || value < 0)
-      throw new EvmReplayError('EXPIRED');
-    return value;
-  }
-  async get(hash: string): Promise<EvmSavedTransaction | null> {
-    hash = selectedHash(hash);
-    const session = this.capture();
-    session.assertCurrent();
-    const entry = await this.records.readExact(
-      session.recordSession,
-      String(session.context.network.chainId),
-      session.context.account.address,
-      hash
-    );
-    session.assertCurrent();
-    return entry ? projectSavedEvmTransaction(entry) : null;
-  }
-  async list(
-    options: Readonly<{
-      beforeHash?: string;
-      maximum?: number;
-      nonce?: number;
-    }> = {}
-  ): Promise<
-    Readonly<{
-      nextCursor: string | null;
-      transactions: readonly EvmSavedTransaction[];
-    }>
-  > {
-    const session = this.capture();
-    session.assertCurrent();
-    const result = await this.records.readPage(
-      session.recordSession,
-      String(session.context.network.chainId),
-      session.context.account.address,
-      {
-        ...options,
-        maximum: options.maximum ?? 30,
-        replayCandidatesOnly: options.nonce !== undefined,
-      }
-    );
-    session.assertCurrent();
-    return Object.freeze({
-      nextCursor: result.nextCursor,
-      transactions: Object.freeze(
-        result.entries.map(projectSavedEvmTransaction)
-      ),
-    });
-  }
-  private check(
-    pending: Pick<Pending, 'generation' | 'session' | 'expires'>
-  ): void {
-    if (pending.generation !== this.generation)
-      throw new EvmReplayError('CONTEXT_CHANGED');
-    pending.session.assertCurrent();
-    pending.session.recordSession.assertCurrent();
-    if (this.time() >= pending.expires) throw new EvmReplayError('EXPIRED');
-  }
-  private async waitReplayPreflight(
-    expires: number,
-    assertCurrent: () => void,
-    preflight: () => Promise<void>
-  ): Promise<number> {
-    assertCurrent();
-    const started = this.time();
-    const cutoff = Math.min(expires, started + REPLAY_PREFLIGHT_MS);
-    const timeoutMs = Math.ceil(cutoff - started);
-    if (timeoutMs <= 0) throw new EvmReplayError('EXPIRED');
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const deadline = new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(
-          () => reject(new EvmReplayError('EXPIRED')),
-          timeoutMs
-        );
-      });
-      // This bounds the queue wait. The host still owns transport cancellation.
-      const result = await Promise.race([preflight(), deadline]);
-      if (this.time() >= cutoff) throw new EvmReplayError('EXPIRED');
-      if (result !== undefined) throw new EvmReplayError('CONTEXT_CHANGED');
-      return cutoff;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  async prepare(hash: string): Promise<EvmReplayPreparation> {
-    hash = selectedHash(hash);
-    this.cancel();
-    const captured = this.capture();
-    captured.assertCurrent();
-    // Capture references before any read; the account/network cannot be swapped
-    // while a provider or durable record is being awaited.
-    const context = Object.freeze({
-      account: Object.freeze({ ...captured.context.account }),
-      network: Object.freeze({ ...captured.context.network }),
-    });
-    const session: EvmReplaySession = Object.freeze({
-      recordSession: captured.recordSession,
-      context,
-      assertCurrent: captured.assertCurrent,
-      observe: captured.observe,
-      dispatch: captured.dispatch,
-      authorizeReplay: captured.authorizeReplay,
-    });
-    const state = {
-      session,
-      generation: this.generation,
-      expires: this.time() + 90000,
-    };
-    this.check(state);
-    const {
-      entry,
-      observation,
-      terminalPhase: phase,
-    } = await observeRetainedEvmTransaction(
-      this.records,
-      session.recordSession,
-      String(context.network.chainId),
-      context.account.address,
-      hash,
-      session.observe,
-      () => this.check(state)
-    );
-    this.check(state);
-    if (phase) {
-      if (
-        phase === 'confirmed' &&
-        entry.payloadKind !== 'unsigned-eoa' &&
-        this.reconciliation === null
-      ) {
-        // Explicit status inspection may reconcile a missed private ACK. One
-        // bounded task never holds the public terminal result behind storage.
-        const task = Promise.resolve()
-          .then(async () => {
-            this.check(state);
-            const authorization = await session.authorizeReplay(entry);
-            this.check(state);
-            assertSynchronousEvmFeeGuard(authorization.assertCurrent);
-            await authorization.onAcknowledged(entry.hash);
-          })
-          .catch(() => undefined)
-          .finally(() => {
-            if (this.reconciliation === task) this.reconciliation = null;
-          });
-        this.reconciliation = task;
-      }
-      return Object.freeze({
-        status: phase,
-        hash: entry.hash,
-        transaction: projectSavedEvmTransaction(entry),
-      });
-    }
-    if (entry.payloadKind === 'unsigned-eoa')
-      return Object.freeze({
-        status: 'inspect-only',
-        reason: 'fresh-signature-required',
-        transaction: projectSavedEvmTransaction(entry),
-      });
-    const authorization = await session.authorizeReplay(entry);
-    this.check(state);
-    assertSynchronousEvmFeeGuard(authorization.assertCurrent);
-    const missingNonce =
-      observation.status === 'missing' &&
-      BigInt(observation.latestNonce) < BigInt(entry.nonce)
-        ? observation.latestNonce
-        : undefined;
-    const eligible = await this.records.withReplayAdmission(
-      session.recordSession,
-      { ...entry, metadata: entry.metadata },
-      async (candidates) => ({ result: candidates }),
-      missingNonce === undefined ? undefined : Number(missingNonce)
-    );
-    this.check(state);
-    if (!eligible) throw new EvmReplayError('CONTEXT_CHANGED');
-    const candidates = eligible.result;
-    const predecessors = candidates
-      .slice(-20)
-      .reverse()
-      .map(({ hash: candidateHash, nonce, operation, originalHash }) =>
-        Object.freeze({
-          hash: candidateHash,
-          nonce,
-          operation,
-          ...(originalHash ? { originalHash } : {}),
-        })
-      );
-    this.check(state);
-    const tx = Transaction.from(entry.rawTransaction),
-      fee = tx.maxFeePerGas ?? tx.gasPrice;
-    if (fee === null) throw new EvmReplayError('INVALID_RESPONSE');
-    const collectible = isRetainedNftReplayEnvelope(tx)
-      ? decodeRetainedNftTransfer(entry, tx)
-      : undefined;
-    const entropy = this.randomBytes(16);
-    if (!(entropy instanceof Uint8Array) || entropy.length !== 16)
-      throw new EvmReplayError('INVALID_RESPONSE');
-    const id = `${Array.from(entropy, (byte) =>
-      byte.toString(16).padStart(2, '0')
-    ).join('')}-${state.generation}`;
-    entropy.fill(0);
-    const review: EvmReplayReview = Object.freeze({
-      id,
-      hash: entry.hash,
-      chainId: entry.chainId,
-      from: entry.from,
-      to: tx.to,
-      nonce: String(entry.nonce),
-      value: tx.value.toString(),
-      gasLimit: tx.gasLimit.toString(),
-      feePerGas: fee.toString(),
-      priorityFeePerGas: tx.maxPriorityFeePerGas?.toString() ?? null,
-      maximumFee: (tx.gasLimit * fee).toString(),
-      dataBytes: (tx.data.length - 2) / 2,
-      selector: tx.data.length >= 10 ? tx.data.slice(0, 10) : null,
-      accessListEntries: tx.accessList?.length ?? 0,
-      operation: entry.operation,
-      ...(collectible ? { collectibleTransfer: collectible } : {}),
-      ...(entry.originalHash ? { originalHash: entry.originalHash } : {}),
-      ...(missingNonce === undefined ? {} : { missingNonce }),
-      predecessors: Object.freeze(predecessors),
-      predecessorCount: candidates.length,
-      validForMs: Math.max(0, Math.floor(state.expires - this.time())),
-      ...(tokenTransfer(entry, tx)
-        ? { tokenTransfer: tokenTransfer(entry, tx) }
-        : {}),
-    });
-    this.ownerId = id;
-    this.pending = { ...state, entry, review };
-    return Object.freeze({ status: 'review', review });
-  }
-  async confirm(id: string): Promise<EvmReplaySubmissionResult> {
-    const pending = this.pending;
-    if (!pending || pending.review.id !== id)
-      throw new EvmReplayError('EXPIRED');
-    this.pending = null; // Consume before the first await, including double clicks.
-    const check = () => this.check(pending);
-    check();
-    const { session, entry } = pending;
-    const current = await this.records.readExact(
-      session.recordSession,
-      entry.chainId,
-      entry.from,
-      entry.hash
-    );
-    check();
-    if (
-      !current ||
-      current.payloadKind === 'unsigned-eoa' ||
-      current.rawTransaction !== entry.rawTransaction ||
-      JSON.stringify(current.metadata) !== JSON.stringify(entry.metadata)
-    )
-      throw new EvmReplayError('CONTEXT_CHANGED');
-    const authorization = await session.authorizeReplay(current);
-    check();
-    assertSynchronousEvmFeeGuard(authorization.assertCurrent);
-    const observed = await session.observe(request(entry));
-    check();
-    if (
-      observed.status === 'mined' ||
-      BigInt(observed.latestNonce) > BigInt(entry.nonce)
-    )
-      throw new EvmReplayError('CONTEXT_CHANGED');
-    const {
-      operation,
-      originalHash,
-      chainId,
-      from,
-      nonce,
-      hash: retainedHash,
-    } = entry;
-    const zeroSelfReplacement =
-      operation === 'speed-up' &&
-      isEvmEmptySelfCall(Transaction.from(entry.rawTransaction));
-    const requiresPayerCheck = operation === 'cancel' || zeroSelfReplacement;
-    const dispatchContext: EvmReplayDispatchContext = Object.freeze({
-      operation,
-      ...(zeroSelfReplacement ? { requiresPayerCheck: true as const } : {}),
-      ...(originalHash ? { originalHash } : {}),
-      chainId,
-      from,
-      nonce,
-      hash: retainedHash,
-    });
-    let dispatched = false;
-    let reason: EvmReplaySubmissionResult['reason'];
-    try {
-      // Replay comes only from the authenticated retained record. The network
-      // callback must pass the durable replay admission below before sending.
-      check();
-      let open = true;
-      let requested = false;
-      let hash: string;
-      try {
-        const result = await session.dispatch(
-          current.rawTransaction,
-          async (send, preflight) => {
-            if (!open || requested || typeof preflight !== 'function')
-              throw new EvmReplayError('CONTEXT_CHANGED');
-            requested = true;
-            let preflightExpires = pending.expires;
-            const checkAdmission = () => {
-              if (!open) throw new EvmReplayError('CONTEXT_CHANGED');
-              check();
-              if (this.time() >= preflightExpires)
-                throw new EvmReplayError('EXPIRED');
-            };
-            const admission = await this.records.withReplayAdmission(
-              session.recordSession,
-              { ...current, metadata: current.metadata },
-              async () => {
-                const boxed = await authorization.withAdmission(async () => {
-                  checkAdmission();
-                  assertSynchronousEvmFeeGuard(authorization.assertCurrent);
-                  if (!requiresPayerCheck) dispatched = true;
-                  const response = send().catch((error: unknown) => {
-                    reason = replaySubmissionDiagnostic(
-                      error,
-                      current.rawTransaction
-                    );
-                    throw error;
-                  });
-                  dispatched = true;
-                  // The response can reject before the storage queue yields.
-                  void response.catch(() => undefined);
-                  return { result: response };
-                });
-                if (!boxed) throw new EvmReplayError('CONTEXT_CHANGED');
-                return boxed;
-              },
-              undefined,
-              {
-                assertCurrent: checkAdmission,
-                run: async (_owner, autoNonceSnapshot) => {
-                  preflightExpires = await this.waitReplayPreflight(
-                    pending.expires,
-                    checkAdmission,
-                    () => preflight(autoNonceSnapshot())
-                  );
-                },
-              }
-            );
-            if (!admission) throw new EvmReplayError('CONTEXT_CHANGED');
-            return admission.result;
-          },
-          dispatchContext
-        );
-        if (!dispatched || result.toLowerCase() !== entry.hash)
-          throw new EvmReplayError('INVALID_RESPONSE');
-        hash = result;
-      } finally {
-        open = false;
-      }
-      await authorization.onAcknowledged(hash);
-      check();
-      await this.records.updatePhase(
-        session.recordSession,
-        entry.chainId,
-        entry.from,
-        entry.hash,
-        'submitted'
-      );
-      check();
-      return Object.freeze({ status: 'submitted', hash });
-    } catch (error) {
-      if (!dispatched) throw error;
-      // Retained bytes survive a lost acknowledgement; never dispatch again here.
-      return Object.freeze({
-        status: 'unknown',
-        hash: entry.hash,
-        ...(reason ? { reason } : {}),
-      });
-    }
-  }
 }

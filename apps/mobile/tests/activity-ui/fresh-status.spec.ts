@@ -59,7 +59,7 @@ test('a saved Speed Up leaves reviewed replacement actions on the live pending o
 
   await page.getByRole('button', { name: 'View Speed Up attempt', exact: true }).click();
   await expect(page.getByRole('button', { name: 'View original transaction', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toHaveCount(0);
   await expect(speedUp).toHaveCount(0);
   await expect(cancel).toHaveCount(0);
 });

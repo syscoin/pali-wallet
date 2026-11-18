@@ -117,9 +117,11 @@ async function checkGroup(
 }
 
 export function Instruction({
+  attached,
   group,
   scope,
 }: {
+  attached?: true;
   group: InstructionGroup;
   scope: string;
 }) {
@@ -189,12 +191,21 @@ export function Instruction({
   return (
     <li
       data-operation-hash={group.hash}
-      className="border-b border-dashed border-bkg-deepBlue py-2 text-left"
+      className={
+        attached
+          ? 'pb-2 text-left'
+          : 'border-b border-dashed border-bkg-deepBlue py-2 text-left'
+      }
     >
-      <p role="status" className="text-sm font-medium">
+      <p role="status" className="text-sm font-medium" aria-busy={status?.busy}>
         {t(`transactions.smartAuthorizations.${label}`)}
       </p>
-      <details className="mb-3 text-xs">
+      <details
+        className="mb-3 text-xs"
+        onToggle={(event) => {
+          if (event.currentTarget.open) void check();
+        }}
+      >
         <summary className="cursor-pointer text-brand-gray200">
           {t('transactions.technicalDetails')}
         </summary>
@@ -217,16 +228,6 @@ export function Instruction({
         </dl>
       </details>
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={button}
-          disabled={status?.busy || cancellation.busy}
-          onClick={() => void check()}
-        >
-          {status?.busy
-            ? t('buttons.loading')
-            : t('transactions.smartAuthorizations.checkStatus')}
-        </button>
         {canCancel && (
           <button
             type="button"
@@ -234,7 +235,7 @@ export function Instruction({
             disabled={status?.busy || cancellation.busy}
             onClick={() => void cancellation.request()}
           >
-            {t('transactions.smartAuthorizations.cancelInstruction')}
+            {t('buttons.cancel')}
           </button>
         )}
       </div>
@@ -243,7 +244,7 @@ export function Instruction({
   );
 }
 
-/** Local authenticated history only; chain status is checked on explicit request. */
+/** Read local authenticated history. Expanded rows refresh their chain status. */
 export function useSmartAccountAuthorizations(autoLoad = false) {
   const { accounts, activeAccount, activeNetwork, isBitcoinBased } =
     useSelector((state: RootState) => state.vault);

@@ -57,6 +57,13 @@ test('an explicit cross-network target is resolved by network and hash even unde
   await expect.poll(() => page.evaluate(() => window.__allActivityFixture.inspections())).toEqual(['base']);
 });
 
+test('an older explicit target loads only the requested network before opening details', async ({ page }) => {
+  await page.goto('/?all-networks=1&filter=ethereum&target=base&older-target=1');
+  await expect(page.getByRole('heading', { name: 'Transaction details' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__allActivityFixture.savedLoads())).toEqual(['base:0']);
+  await expect.poll(() => page.evaluate(() => window.__allActivityFixture.inspections())).toEqual(['base']);
+});
+
 test('an explicit target opens even when the direction filter excludes its row', async ({ page }) => {
   await page.goto('/?all-networks=1&direction=received&target=base');
   await expect(page.getByRole('heading', { name: 'Transaction details' })).toBeVisible();
@@ -66,64 +73,40 @@ test('an explicit target opens even when the direction filter excludes its row',
   await expect(page.getByTestId(`account-activity-row-ethereum-${hash}`)).toBeVisible();
 });
 
-for (const width of [390, 320]) test(`saved pending keeps older inventory and review bound to its chosen network at ${width}px`, async ({ page }, info) => {
+for (const width of [390, 320]) test(`Activity pages older retained hashes for its visible networks at ${width}px`, async ({ page }) => {
   const olderHash = '0x' + 'cc'.repeat(32), nextHash = '0x' + 'dd'.repeat(32);
   await page.setViewportSize({ width, height: width === 390 ? 844 : 740 });
   await page.goto('/?all-networks=1');
   await expect(page.getByTestId(`account-activity-row-base-${olderHash}`)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Activity options', exact: true }).click();
-  await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await expect(page.getByTestId('network-source-sheet')).toBeInViewport({ ratio: 1 });
-  await expect(page.getByRole('radio')).toHaveCount(2);
-  await page.screenshot({ path: info.outputPath(`saved-pending-networks-${width}.png`), animations: 'disabled' });
-  await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Saved pending', exact: true })).toBeVisible();
-  await expect(page.getByText('Public test account · Base', { exact: true })).toBeVisible();
-  await expect(page.getByTestId(`activity-row-${olderHash}`)).toBeVisible();
-  expect(await page.evaluate(() => window.__allActivityFixture.savedLoads())).toEqual(['base:0']);
-  await page.screenshot({ path: info.outputPath(`saved-pending-inventory-${width}.png`), animations: 'disabled' });
-  await page.getByRole('button', { name: 'Load more saved transfers', exact: true }).click();
-  await expect(page.getByTestId(`activity-row-${nextHash}`)).toBeVisible();
-  await page.getByTestId(`activity-row-${olderHash}`).click();
+  await page.getByRole('button', { name: 'Load older activity', exact: true }).click();
+  await expect(page.getByTestId(`account-activity-row-base-${olderHash}`)).toBeVisible();
+  await expect(page.getByTestId(`account-activity-row-ethereum-${olderHash}`)).toBeVisible();
+  expect(await page.evaluate(() => window.__allActivityFixture.savedLoads())).toEqual(['base:0', 'ethereum:0']);
+  await page.getByRole('button', { name: 'Load older activity', exact: true }).click();
+  await expect(page.getByTestId(`account-activity-row-base-${nextHash}`)).toBeVisible();
+  await page.getByTestId(`account-activity-row-base-${olderHash}`).click();
   await expect(page.getByRole('heading', { name: 'Transaction details', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Review resend', exact: true }).click();
-  expect(await page.evaluate(() => window.__allActivityFixture.actions())).toEqual([`base:saved:${olderHash}`]);
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Saved pending', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Activity network: All networks', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Activity options', exact: true }).click();
-  await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await page.getByRole('radio', { name: 'Ethereum, ETH, Chain ID 1', exact: true }).click();
-  await page.getByTestId(`activity-row-${olderHash}`).click();
-  await page.getByRole('button', { name: 'Review resend', exact: true }).click();
-  expect(await page.evaluate(() => window.__allActivityFixture.actions())).toEqual([`base:saved:${olderHash}`, `ethereum:saved:${olderHash}`]);
+  await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toHaveCount(0);
 });
 
-test('a concrete Activity filter opens only its saved inventory without another network choice', async ({ page }) => {
+test('a concrete Activity filter pages only its selected network', async ({ page }) => {
   await page.goto('/?all-networks=1&filter=ethereum');
-  await page.getByRole('button', { name: 'Activity options', exact: true }).click();
-  await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Saved pending', exact: true })).toBeVisible();
-  await expect(page.getByTestId('network-source-sheet')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Load older activity', exact: true }).click();
+  await expect(page.getByTestId(`account-activity-row-ethereum-0x${'cc'.repeat(32)}`)).toBeVisible();
   expect(await page.evaluate(() => window.__allActivityFixture.savedLoads())).toEqual(['ethereum:0']);
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Activity network: Ethereum', exact: true })).toBeVisible();
 });
 
 test('scoped pending actions navigate through the selected network host', async ({ page }) => {
   const olderHash = '0x' + 'cc'.repeat(32);
   await page.goto('/?all-networks=1&pending=1');
-  await page.getByRole('button', { name: 'Activity options', exact: true }).click();
-  await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
-  await page.getByTestId(`activity-row-${olderHash}`).click();
+  await page.getByRole('button', { name: 'Load older activity', exact: true }).click();
+  await page.getByTestId(`account-activity-row-base-${olderHash}`).click();
   await page.getByRole('button', { name: 'Speed Up', exact: true }).click();
-  await page.getByRole('button', { name: 'Review resend', exact: true }).click();
-  expect(await page.evaluate(() => window.__allActivityFixture.actions())).toEqual([`base:speed-up:${olderHash}`, `base:saved:${olderHash}`]);
+  await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__allActivityFixture.actions())).toEqual([`base:speed-up:${olderHash}`]);
 });
 
-test('returning from a detail or saved inventory restores the aggregate scroll position', async ({ page }) => {
+test('returning from a detail restores the aggregate scroll position', async ({ page }) => {
   await page.goto('/?all-networks=1&many=1');
   const list = page.getByTestId('account-activity-list');
   await list.evaluate(element => { element.scrollTop = 300; });
@@ -133,12 +116,6 @@ test('returning from a detail or saved inventory restores the aggregate scroll p
   const offset = await list.evaluate(element => element.scrollTop);
   await row.click();
   await expect(page.getByRole('heading', { name: 'Transaction details', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeCloseTo(offset, 0);
-  await page.getByRole('button', { name: 'Activity options', exact: true }).click();
-  await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Saved pending', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeCloseTo(offset, 0);
 });

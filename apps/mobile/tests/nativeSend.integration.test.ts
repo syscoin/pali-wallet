@@ -57,15 +57,14 @@ function enableLegacyReplaySdk(transactions: object) {
   Object.defineProperty(transactions, 'supportsRetainedSpeedUpIntent', { value: false, configurable: true });
 }
 
-test('shared SDK and SQLite admit a different pending nonce and retain reorg predecessors across restart', async () => {
+test('shared SDK and SQLite admit a different pending nonce and retain both signed entries across restart', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-native-send-'));
   const file = path.join(directory, 'wallet.sqlite');
   const oldFetch = globalThis.fetch;
   let leakedNetwork = 0;
   let loseResponse = true;
   let pendingNonce = '0x0';
-  let latestNonce = '0x0';
-  let mined: string | null = null;
+  const latestNonce = '0x0';
   globalThis.fetch = (async () => {
     leakedNetwork++;
     throw Error('Public network forbidden');
@@ -124,9 +123,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
         else if (b.method === 'eth_estimateGas') result = '0x5208';
         else if (b.method === 'eth_getTransactionByHash') result = null;
         else if (b.method === 'eth_getTransactionReceipt') {
-          const tx = mined === b.params[0] ? Transaction.from(submitted[0]!) : null;
-          result = tx ? { transactionHash: mined, from: tx.from, to: tx.to, status: '0x1',
-            blockNumber: '0x10', blockHash: '0x' + 'f'.repeat(64) } : null;
+          result = null;
         }
         else if (b.method === 'eth_getBlockByNumber')
           result = {
@@ -199,35 +196,17 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
     assert.equal(submitted.length, 2);
     assert.deepEqual(submitted.map((raw) => Transaction.from(raw).nonce), [0, 1]);
 
-    mined = firstHash;
-    latestNonce = '0x1';
-    await transfers!.recover(false, firstHash!);
-    assert.equal(transfers!.getSnapshot().phase, 'confirmed');
-    mined = null;
-    latestNonce = '0x0';
     pendingNonce = '0x0';
     transfers!.dispose();
     await authority!.dispose();
     await open();
     await authority!.unlock();
 
-    await transfers!.recover(true, secondHash);
-    const gap = transfers!.getSnapshot().review?.replay;
-    assert.equal(gap?.missingNonce, '0');
-    assert.ok(gap?.predecessors.some((entry) => entry.hash === firstHash));
     await assert.rejects(transfers!.prepare(RECIPIENT, '0.003'), { code: 'PENDING_TRANSFER' });
     assert.equal(transfers!.getSnapshot().hash, firstHash);
     assert.equal(submitted.length, 2);
 
-    await transfers!.recover(true, firstHash!);
-    const retry = transfers!.getSnapshot().review!;
-    assert.equal(retry.retry, true);
-    assert.equal(retry.replay?.hash, firstHash);
-    await transfers!.confirm(retry.id, { method: 'device' });
-    assert.equal(submitted.length, 3);
-    assert.equal(submitted[2], submitted[0]);
-    assert.equal(transfers!.getSnapshot().phase, 'pending');
-    assert.equal(transfers!.getSnapshot().hash, firstHash);
+    assert.equal((await (await runtime!.transfers!.journal(() => undefined)).load(firstHash!))?.rawTransaction, submitted[0]);
     const journal = await runtime!.transfers!.journal(() => undefined);
     assert.equal((await journal.load(secondHash))?.rawTransaction, submitted[1]);
     assert.equal(leakedNetwork, 0);
@@ -691,6 +670,14 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true, star
         rpc,
       });
     },
+    async observeSaved(hash?: string) {
+      const activity = runtime.activity!;
+      const { locals } = await activity.load(() => undefined);
+      const selected = hash ?? (await (await runtime.transfers!.journal(() => undefined)).load())?.hash;
+      const local = locals.find(row => row.hash === selected);
+      assert(local);
+      return activity.observeLocal!(local, () => undefined, new AbortController().signal);
+    },
     async readJournal() {
       return (
         (await (await runtime.transfers!.journal(() => undefined)).load()) ??
@@ -846,6 +833,57 @@ for (const type of [0, 2] as const) test(`native type ${type} unsigned Speed Up 
     f.setRecovery({ receipt: null, nonce: '0x1', canonicalHash: `0x${'f'.repeat(64)}` });
     await assert.rejects(f.transfers.prepareSpeedUp(replacement.hash!));
     assert.equal(f.broadcasts.length, 2);
+  } finally { await f.close(); }
+});
+
+for (const type of [0, 2] as const) test(`unsigned retained type ${type} cancellation requires a pending original and sends a higher-fee empty self-call`, async () => {
+  const f = await cancellationFixture(type, true, false);
+  try {
+    assert(f.unsignedSpeedUpSupported);
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    const original = Transaction.from(f.broadcasts[0]!);
+    assert.equal((await f.readJournal())?.rawTransaction, undefined);
+    await assert.rejects(f.transfers.prepareCancellation(original.hash!), { code: 'EXPIRED' });
+    await assert.rejects(f.transfers.prepareSavedCancellation(original.hash!), { code: 'EXPIRED' });
+    assert.equal(f.signatures, 1);
+    f.replacement.pending = true;
+    await f.transfers.prepareCancellation(original.hash!);
+    const review = f.transfers.getSnapshot().review!;
+    assert.equal(review.replacement?.originalHash, original.hash);
+    assert.equal(review.nonce, String(original.nonce));
+    assert.equal(review.recipient, original.from);
+    assert.equal(review.amountUnits, '0');
+    assert.equal(review.gasLimit, '42000');
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.broadcasts.length, 2);
+    const cancellation = Transaction.from(f.broadcasts[1]!);
+    assert.deepEqual([cancellation.from, cancellation.to, cancellation.type, cancellation.nonce,
+      cancellation.value, cancellation.data, cancellation.gasLimit],
+    [original.from, original.from, original.type, original.nonce, 0n, '0x', 42000n]);
+    assert((cancellation.maxFeePerGas ?? cancellation.gasPrice!) > (original.maxFeePerGas ?? original.gasPrice!));
+    const journal = JSON.parse((await f.readDurableJournal())!);
+    assert.equal(journal.entries[0].payloadKind, 'unsigned-eoa');
+    assert.equal(journal.entries[1].operation, 'cancel');
+    assert.equal(journal.entries[1].originalHash, original.hash);
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['confirmation', 'broadcast'] as const) test(`unsigned retained cancellation stops when the original disappears at ${boundary}`, async () => {
+  const f = await cancellationFixture(2, true, false);
+  try {
+    assert(f.unsignedSpeedUpSupported);
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    f.replacement.pending = true;
+    const originalHash = f.transfers.getSnapshot().hash!;
+    await f.transfers.prepareCancellation(originalHash);
+    const review = f.transfers.getSnapshot().review!;
+    if (boundary === 'confirmation') f.replacement.pending = false;
+    else f.onSignedInsert(() => { f.replacement.pending = false; });
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'device' }), { code: 'EXPIRED' });
+    assert.equal(f.signatures, boundary === 'confirmation' ? 1 : 2);
+    assert.equal(f.broadcasts.length, 1);
   } finally { await f.close(); }
 });
 
@@ -1095,8 +1133,6 @@ test('a saved Speed Up blocked by a higher base fee can be reviewed again after 
     assert(saved && original);
     assert.equal(saved.phase, 'signed');
     assert.equal((await journal.load())?.hash, savedHash);
-    await f.transfers.recover(true, savedHash);
-    await assert.rejects(f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' }), { code: 'EXPIRED' });
     assert.equal(f.broadcasts.length, 1);
     assert.equal(f.signatures, 2);
 
@@ -1279,7 +1315,7 @@ test('a previously confirmed saved transaction can be canceled after a fresh reo
         status: '0x1', blockNumber: '0xa', blockHash },
       nonce: '0x1', canonicalHash: blockHash,
     });
-    await f.transfers.recover(false, original.hash!);
+    await f.observeSaved(original.hash!);
     assert.equal((await f.readJournal())?.phase, 'confirmed');
 
     f.setRecovery({ receipt: null, nonce: '0x0', canonicalHash: blockHash });
@@ -1343,7 +1379,7 @@ test('wall-clock rollback cannot hide an unresolved signed transfer after a cold
       nonce: '0x1',
       canonicalHash: '0x' + '1'.repeat(64),
     });
-    await f.transfers.recover();
+    await f.observeSaved();
     assert.equal((await f.readJournal())!.phase, 'confirmed');
 
     // Move only the wall-clock presentation timestamp backwards. Consent
@@ -1388,7 +1424,7 @@ test('wall-clock rollback cannot hide an unresolved signed transfer after a cold
     assert.equal(f.signatures, signatures);
     assert.deepEqual(f.broadcasts, broadcasts);
     const beforeRecovery = f.requests.length;
-    await f.transfers.recover();
+    const observation = await f.observeSaved();
     const receiptReads = f.requests
       .slice(beforeRecovery)
       .filter((request) => request.method === 'eth_getTransactionReceipt');
@@ -1396,18 +1432,13 @@ test('wall-clock rollback cannot hide an unresolved signed transfer after a cold
       receiptReads.map((request) => request.params[0]),
       [unresolvedHash]
     );
-    assert.equal(f.transfers.getSnapshot().hash, unresolvedHash);
-    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
-    await f.transfers.recover(true);
-    assert.equal(f.transfers.getSnapshot().hash, unresolvedHash);
-    assert.equal(f.transfers.getSnapshot().review!.retry, true);
-    assert.equal(f.transfers.getSnapshot().review!.nonce, '1');
+    assert.equal(observation.status, 'missing');
     assert.equal(f.signatures, signatures);
     assert.deepEqual(f.broadcasts, broadcasts);
     assert.equal(
       await f.readDurableJournal(),
       retained,
-      'status/retry review preserves both exact signed records'
+      'status observation preserves both exact signed records'
     );
   } finally {
     try {
@@ -1418,62 +1449,51 @@ test('wall-clock rollback cannot hide an unresolved signed transfer after a cold
   }
 });
 
-for (const retry of [false, true]) {
-  for (const cancellation of ['back', 'dispose', 'lock'] as const) {
-    test(`${cancellation} during ${
-      retry ? 'retry storage read' : 'final fee read'
-    } revokes pending confirmation`, async () => {
-      const f = await cancellationFixture();
-      let hold: ReturnType<typeof f.hold> | undefined;
-      let pending: Promise<void> | undefined;
-      try {
-        await f.transfers.prepare(RECIPIENT, '0.001');
-        if (retry) {
-          f.loseResponse();
-          await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
-          await f.transfers.recover(true);
-        }
-        const initialSignatures = f.signatures;
-        const initialBroadcasts = f.broadcasts.length;
-        const credentials = [f.authentications, f.hydrations] as const;
-        const journal = await f.readDurableJournal();
-        hold = f.hold(retry ? 'storage-read' : 'requote');
-        pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
-        const rejected = assert.rejects(pending, { code: 'CANCELLED' });
-        await hold.started;
-        if (cancellation === 'dispose') f.transfers.dispose();
-        else if (cancellation === 'lock') f.authority.lock();
-        else f.transfers.cancel();
-        hold.finish();
-        await rejected;
-        pending = undefined;
-        assert.equal(
-          f.authority.getSnapshot().phase,
-          cancellation === 'lock' ? 'locked' : 'ready'
-        );
-        assert.equal(f.sdkUnlocked, false);
-        assert.equal(f.sdkPublic, cancellation !== 'lock');
-        assert.equal(f.signatures, initialSignatures);
-        assert.equal(f.broadcasts.length, initialBroadcasts);
-        assert.equal(await f.readDurableJournal(), journal);
-        assert.deepEqual([f.authentications, f.hydrations], [credentials[0] + (retry ? 1 : 0), credentials[1]], 'only replay storage authorization precedes this cancellation boundary');
-        if (cancellation === 'lock') await f.authority.unlock();
-        if (cancellation === 'dispose') f.replaceTransfers();
-        await f.transfers.recover(retry);
-        if (!retry) await f.transfers.prepare(RECIPIENT, '0.001');
-        const before = [f.authentications, f.hydrations] as const;
-        await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
-        assert.equal(f.signatures, initialSignatures + (retry ? 0 : 1));
-        assert.equal(f.broadcasts.length, initialBroadcasts + 1);
-        assert.deepEqual([f.authentications, f.hydrations], [before[0] + 1, before[1]]);
-        if (retry) assert.equal(f.broadcasts[0], f.broadcasts[1]);
-      } finally {
-        hold?.finish();
-        await pending?.catch(() => undefined);
-        await f.close();
-      }
-    });
-  }
+for (const cancellation of ['back', 'dispose', 'lock'] as const) {
+  test(`${cancellation} during final fee read revokes pending confirmation`, async () => {
+    const f = await cancellationFixture();
+    let hold: ReturnType<typeof f.hold> | undefined;
+    let pending: Promise<void> | undefined;
+    try {
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      const initialSignatures = f.signatures;
+      const initialBroadcasts = f.broadcasts.length;
+      const credentials = [f.authentications, f.hydrations] as const;
+      const journal = await f.readDurableJournal();
+      hold = f.hold('requote');
+      pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+      const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+      await hold.started;
+      if (cancellation === 'dispose') f.transfers.dispose();
+      else if (cancellation === 'lock') f.authority.lock();
+      else f.transfers.cancel();
+      hold.finish();
+      await rejected;
+      pending = undefined;
+      assert.equal(
+        f.authority.getSnapshot().phase,
+        cancellation === 'lock' ? 'locked' : 'ready'
+      );
+      assert.equal(f.sdkUnlocked, false);
+      assert.equal(f.sdkPublic, cancellation !== 'lock');
+      assert.equal(f.signatures, initialSignatures);
+      assert.equal(f.broadcasts.length, initialBroadcasts);
+      assert.equal(await f.readDurableJournal(), journal);
+      assert.deepEqual([f.authentications, f.hydrations], credentials);
+      if (cancellation === 'lock') await f.authority.unlock();
+      if (cancellation === 'dispose') f.replaceTransfers();
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      const before = [f.authentications, f.hydrations] as const;
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+      assert.equal(f.signatures, initialSignatures + 1);
+      assert.equal(f.broadcasts.length, initialBroadcasts + 1);
+      assert.deepEqual([f.authentications, f.hydrations], [before[0] + 1, before[1]]);
+    } finally {
+      hold?.finish();
+      await pending?.catch(() => undefined);
+      await f.close();
+    }
+  });
 }
 
 test('background lock during final fee check invalidates review without signing or a late unlock', async () => {
@@ -1514,8 +1534,7 @@ for (const repeated of [false, true]) {
       if (repeated) {
         // A prior valid receipt is a real observation; the next independent
         // observation must not turn an oversized body into successful evidence.
-        await f.transfers.recover();
-        assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
+        await f.observeSaved();
       }
       const retained = (await f.readJournal()) as TransferJournalEntry;
       assert(retained);
@@ -1526,9 +1545,8 @@ for (const repeated of [false, true]) {
       for (const consumed of [false, true]) {
         f.recovery.consumed = consumed;
         const before = f.requests.length;
-        await assert.rejects(f.transfers.recover(true), { code: 'FAILED' });
-        assert.equal(f.transfers.getSnapshot().phase, 'unavailable');
-        assert.equal(f.transfers.getSnapshot().review, null);
+        await assert.rejects(f.observeSaved());
+          assert.equal(f.transfers.getSnapshot().review, null);
         assert.deepEqual(await f.readJournal(), retained);
         assert.equal(await f.readDurableJournal(), retainedBytes);
         assert.equal(
@@ -1555,18 +1573,12 @@ for (const repeated of [false, true]) {
         nonce: '0x1',
         canonicalHash: '0x' + '8'.repeat(64),
       });
-      await f.transfers.recover();
-      assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
-      assert.equal(f.transfers.getSnapshot().review, null);
+      await f.observeSaved();
       const after = (await f.readJournal()) as TransferJournalEntry;
       assert.deepEqual(after, { ...retained, phase: 'nonce-consumed' });
       assert.equal(
         inspectEvmSignedBundle((await f.readDurableJournal())!).revision,
         retainedRevision + 1
-      );
-      assert.match(
-        f.transfers.getSnapshot().message!,
-        /result is unavailable/i
       );
       assert.equal(after.rawTransaction, retained.rawTransaction);
       await f.transfers.prepare(RECIPIENT, '0.002');
@@ -1727,8 +1739,7 @@ for (const [status, phase] of [
         nonce: '0x1',
         canonicalHash: '0x' + '2'.repeat(64),
       });
-      await assert.rejects(f.transfers.recover(), { code: 'FAILED' });
-      assert.equal(f.transfers.getSnapshot().phase, 'unavailable');
+      await assert.rejects(f.observeSaved());
       assert.equal(f.authority.getSnapshot().phase, 'ready');
       assert.deepEqual(
         await f.readJournal(),
@@ -1761,8 +1772,7 @@ for (const [status, phase] of [
         nonce: '0x1',
         canonicalHash: '0x' + '1'.repeat(64),
       });
-      await f.transfers.recover();
-      assert.equal(f.transfers.getSnapshot().phase, phase);
+      await f.observeSaved();
       const next = (await f.readJournal()) as TransferJournalEntry;
       assert.equal(next.phase, phase);
       assert.equal(next.rawTransaction, entry.rawTransaction);
@@ -1785,8 +1795,7 @@ test('missing receipt with a consumed nonce records only nonce-consumed', async 
       nonce: '0x1',
       canonicalHash: '0x' + '1'.repeat(64),
     });
-    await f.transfers.recover();
-    assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
+    await f.observeSaved();
     const after = (await f.readJournal()) as TransferJournalEntry;
     assert.equal(after.phase, 'nonce-consumed');
     assert.equal(after.rawTransaction, before.rawTransaction);
@@ -1815,8 +1824,7 @@ test('canonical receipt confirms without an advanced nonce or settlement-tag rea
       canonicalHash: '0x' + '1'.repeat(64),
     });
     const before = f.requests.length;
-    await f.transfers.recover();
-    assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
+    await f.observeSaved();
     const after = (await f.readJournal()) as TransferJournalEntry;
     assert.equal(after.phase, 'confirmed');
     assert.equal(after.rawTransaction, entry.rawTransaction);
@@ -1838,80 +1846,6 @@ test('canonical receipt confirms without an advanced nonce or settlement-tag rea
     );
     assert.equal(f.signatures, 1);
     assert.equal(f.broadcasts.length, 1);
-  } finally {
-    await f.close();
-  }
-});
-
-test('explicit predecessor replay survives a reorg and cold restart without another signature', async () => {
-  const f = await cancellationFixture();
-  try {
-    await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
-    const first = (await f.readJournal())!;
-    const receipt = (entry: TransferJournalEntry) => ({
-      transactionHash: entry.hash,
-      from: Transaction.from(entry.rawTransaction).from,
-      to: RECIPIENT,
-      status: '0x1',
-      blockNumber: '0x10',
-      blockHash: '0x' + '1'.repeat(64),
-    });
-    f.setRecovery({
-      receipt: receipt(first),
-      nonce: '0x1',
-      canonicalHash: '0x' + '1'.repeat(64),
-    });
-    await f.transfers.recover();
-    await f.transfers.prepare(RECIPIENT, '0.002');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
-    const second = (await f.readJournal())!,
-      signatures = f.signatures;
-    assert.equal(second.nonce, 1);
-    f.setRecovery({
-      receipt: null,
-      nonce: '0x0',
-      canonicalHash: '0x' + '1'.repeat(64),
-    });
-    await f.reopen();
-    await f.transfers.recover(true, second.hash);
-    assert.equal(f.transfers.getSnapshot().review!.replay!.missingNonce, '0');
-    assert.deepEqual(
-      f.transfers
-        .getSnapshot()
-        .review!.replay!.predecessors.map((row) => row.hash),
-      [first.hash]
-    );
-    await f.transfers.recover(true, first.hash);
-    const review = f.transfers.getSnapshot().review!;
-    assert.equal(review.replay!.hash, first.hash);
-    await f.transfers.confirm(review.id, { method: 'device' });
-    assert.equal(f.signatures, signatures);
-    assert.equal(f.broadcasts.length, 3);
-    assert.equal(f.broadcasts[2], first.rawTransaction);
-    f.setRecovery({
-      receipt: receipt(first),
-      nonce: '0x1',
-      canonicalHash: '0x' + '1'.repeat(64),
-    });
-    await f.transfers.recover(false, first.hash);
-    assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
-    f.setRecovery({
-      receipt: receipt(second),
-      nonce: '0x2',
-      canonicalHash: '0x' + '1'.repeat(64),
-    });
-    await f.transfers.recover(false, second.hash);
-    assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
-    assert.equal(
-      f.broadcasts.length,
-      3,
-      'observing the later receipt never resends it'
-    );
-    assert.equal(
-      inspectEvmSignedBundle((await f.readDurableJournal())!).transactions,
-      2
-    );
   } finally {
     await f.close();
   }

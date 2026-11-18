@@ -12,13 +12,9 @@ export type {
 import { keccak256 } from 'ethers/crypto';
 import { toUtf8Bytes } from 'ethers/utils';
 
-import {
-  capturePrivateDepositAttempt,
-  normalizePrivateDepositAttempt,
-} from '../utils/privacy/depositMetadata.ts';
+import { normalizePrivateDepositAttempt } from '../utils/privacy/depositMetadata.ts';
 import { getPrivacyPool } from '../utils/privacy/registry.ts';
 import {
-  capturePrivateWithdrawalAttempt,
   captureWithdrawalRootAnchor,
   createPrivateWithdrawalJournal,
 } from '../utils/privacy/withdrawalMetadata.ts';
@@ -107,19 +103,7 @@ import type {
 import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
 const restoreEpochs = new WeakMap<IPrivateVaultMutex, Map<string, object>>();
-export interface IPrivateVaultReplayLease {
-  assertCurrent(): void;
-  onAcknowledged(transactionHash: string): Promise<void>;
-  withAdmission<T>(
-    admit: () => Promise<Readonly<{ result: T }> | null>
-  ): Promise<Readonly<{ result: T }> | null>;
-}
-
 export interface IPrivateVaultDepositController {
-  authorizeDepositReplay: (
-    attempt: IPrivacyDepositAttempt,
-    session: IPrivateVaultSession
-  ) => Promise<IPrivateVaultReplayLease>;
   clearUnbroadcastDepositAttempt: (
     attempt: IPrivacyDepositAttempt,
     session: IPrivateVaultSession
@@ -158,10 +142,6 @@ export type IPrivateVaultWithdrawalJournal = IPrivacyWithdrawalJournal;
 
 /** Background-only custody capabilities. Never project these into the message API. */
 export interface IPrivateVaultWithdrawalController {
-  authorizeWithdrawalReplay: (
-    attempt: IPrivacyWithdrawalAttempt,
-    session: IPrivateVaultSession
-  ) => Promise<IPrivateVaultReplayLease>;
   clearKnownUnbroadcastWithdrawal: (
     noteId: string,
     intentId: string,
@@ -1724,65 +1704,6 @@ export function createPrivateVaultController(
           includeArchiveSummary
         );
       }),
-    authorizeWithdrawalReplay: async (input, session) => {
-      let attempt: Readonly<
-        Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>
-      >;
-      try {
-        attempt = capturePrivateWithdrawalAttempt(input);
-        assertPrivateVaultSession(session, true);
-      } catch (error) {
-        throw publicError(error);
-      }
-      return internal(session, async (context) => {
-        const assertRestoreCurrent = restoreFence(context);
-        const assertCurrent = () => {
-          assertPrivateVaultSession(session, true);
-          assertRestoreCurrent();
-        };
-        const validate = async (current: IContext) => {
-          assertCurrent();
-          if (current.profileId !== context.profileId)
-            throw new Error('privacy_vault_session_changed');
-          const { manifest } = await load(current);
-          assertCurrent();
-          const note = findNote(manifest, attempt.noteId);
-          if (restoredNoteBlocksWithdrawal(note.restoreGuard))
-            throw new Error('privacy_note_restore_required');
-          const withdrawal = matchingWithdrawal(note, attempt);
-          if (withdrawal.recovery)
-            throw new Error('privacy_withdrawal_attempt_invalid');
-          const status = await readStatus(current, identify(note.note));
-          if (status.phase === 'spent') throw new Error('privacy_note_spent');
-          await assertProfile(current);
-          assertCurrent();
-        };
-        await validate(context);
-        return Object.freeze({
-          assertCurrent,
-          withAdmission: async <T>(
-            admit: () => Promise<Readonly<{ result: T }> | null>
-          ) => {
-            assertCurrent();
-            return internal(session, async (current) => {
-              await validate(current);
-              assertCurrent();
-              return admit();
-            });
-          },
-          onAcknowledged: async (transactionHash: string) => {
-            assertPrivateVaultSession(session, true);
-            return internal(session, async (current) => {
-              if (current.profileId !== context.profileId)
-                throw new Error('privacy_vault_session_changed');
-              await recordWithdrawalSubmission(current, attempt, {
-                transactionHash,
-              });
-            });
-          },
-        });
-      });
-    },
     recordWithdrawalSubmission: (attempt, acknowledgement, session) =>
       internal(session, (context) =>
         recordWithdrawalSubmission(context, attempt, acknowledgement)
@@ -1936,65 +1857,6 @@ export function createPrivateVaultController(
       internal(session, (context) =>
         recordDepositBroadcast(context, attempt, transactionHash)
       ),
-    authorizeDepositReplay: async (input, session) => {
-      let attempt: Readonly<IPrivacyDepositAttempt>;
-      try {
-        attempt = capturePrivateDepositAttempt(input);
-        assertPrivateVaultSession(session, true);
-      } catch (error) {
-        throw publicError(error);
-      }
-      return internal(session, async (context) => {
-        const assertRestoreCurrent = restoreFence(context);
-        const assertCurrent = () => {
-          assertPrivateVaultSession(session, true);
-          assertRestoreCurrent();
-        };
-        const validate = async (current: IContext) => {
-          assertCurrent();
-          if (current.profileId !== context.profileId)
-            throw new Error('privacy_vault_session_changed');
-          const { manifest } = await load(current);
-          assertCurrent();
-          const note = findNote(manifest, attempt.noteId);
-          if (note.restoreGuard)
-            throw new Error('privacy_note_restore_required');
-          if (note.origin !== 'generated')
-            throw new Error('privacy_deposit_note_ineligible');
-          if (note.withdrawal)
-            throw new Error('privacy_withdrawal_attempt_exists');
-          matchingAttempt(note, attempt);
-          const status = await readStatus(current, identify(note.note));
-          if (status.phase === 'spent') throw new Error('privacy_note_spent');
-          await assertProfile(current);
-          assertCurrent();
-        };
-        await validate(context);
-        return Object.freeze({
-          assertCurrent,
-          withAdmission: async <T>(
-            admit: () => Promise<Readonly<{ result: T }> | null>
-          ) => {
-            assertCurrent();
-            return internal(session, async (current) => {
-              await validate(current);
-              assertCurrent();
-              // The caller boxes the network promise so admission releases the
-              // note mutex immediately after synchronous dispatch initiation.
-              return admit();
-            });
-          },
-          onAcknowledged: async (transactionHash: string) => {
-            assertPrivateVaultSession(session, true);
-            return internal(session, async (current) => {
-              if (current.profileId !== context.profileId)
-                throw new Error('privacy_vault_session_changed');
-              await recordDepositBroadcast(current, attempt, transactionHash);
-            });
-          },
-        });
-      });
-    },
     clearUnbroadcastDepositAttempt: (attempt, session) =>
       internal(session, async (context) => {
         const { manifest, basis } = await load(context);

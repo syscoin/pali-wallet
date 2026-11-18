@@ -3,8 +3,6 @@ import { AUTOMATIC_FEE, snapshotEvmFeeChoice, type EvmFeeChoice, type EvmFeeRate
 import { Transaction } from 'ethers/transaction';
 import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/shared/evmSignedRecordLimits.ts';
 import { assertSignedEvmTransactionMatches, type EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
-import { EvmReplayError, type EvmReplayPreparation, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay, type EvmSavedTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
-import type { SmartAccountReplayIntent, SmartAccountReplayPreparation } from '../../../../source/wallet/smartAccountSignedReplay.ts';
 import { EvmSignedRecordCancellationFence, EvmSignedRecordNonceConflict, consumeSignedEvmCapacityRefusal, type EvmReplacementRates, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
 import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, assertEvmSpeedUpFeeRefreshApproved, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
@@ -37,7 +35,6 @@ import { snapshotSavedCollectible, type SavedCollectible } from '../portfolio/to
 import { snapshotNftTransferSelection, withNftInventorySignal, type NftTransferSelection } from './nftTransferAdmission.ts';
 import { nativeEvmMaximumReserve } from '../../../../source/shared/evmNativeMaximum.ts';
 
-export const SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE = 'SMART_ACCOUNT_REPLAY_INSPECT_ONLY';
 
 export type NativeTransferReview = Readonly<{
   context: NativeSendContext;
@@ -52,10 +49,8 @@ export type NativeTransferReview = Readonly<{
   priorityFeePerGas: string | null;
   nonce: string;
   nonceOverride?: number;
-  retry: boolean;
   intent?: Erc20TransferIntent;
   collectible?: NftTransferIntent;
-  replay?: EvmReplayReview & { smartAccount?: SmartAccountReplayIntent };
   replacement?: Readonly<{ mode: NativeReplacementMode; originalHash: string; originalMaximumFeeUnits: string }>;
   execution?: Readonly<{ kind: 'transfer' | 'contract-call' | 'contract-creation'; dataBytes: number; accessListEntries: number; smartAccount?: string }>;
 }>;
@@ -78,7 +73,6 @@ export type NativeTransferSnapshot = Readonly<{
   message: string | null;
   intent: Erc20TransferIntent | null;
   collectible?: NftTransferIntent;
-  inspectionOnly?: boolean;
 }>;
 export interface NativeTransferJournalHandle {
   planAutomaticNonce: NativeAutomaticNoncePlanner;
@@ -88,23 +82,12 @@ export interface NativeTransferJournalHandle {
   transition(hash:string,phase:Exclude<TransferJournalEntry['phase'],'signed'>):Promise<TransferJournalEntry>;
 }
 export type NativeTransferDispatchValidation = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void, snapshot?: EvmAutoNonceSnapshot) => Promise<void>;
-export type NativeTransferReplay = Pick<EvmSignedReplay, 'confirm' | 'cancel' | 'list'> & {
-  prepare(hash: string, mode: 'inspect' | 'resend'): Promise<EvmReplayPreparation | SmartAccountReplayPreparation | Readonly<{ status: 'unknown' | 'confirmed' | 'reverted' | 'nonce-consumed'; hash: string; transaction: EvmSavedTransaction }>>;
-  preparePredecessor?(parentReviewId: string, hash: string): Promise<EvmReplayPreparation | SmartAccountReplayPreparation>;
-  listPredecessors?(parentReviewId: string, options: Readonly<{ beforeHash?: string; maximum?: number }>): ReturnType<EvmSignedReplay['list']>;
-};
 export interface NativeTransferRuntime {
   isAuthenticationRefusal(error: unknown): boolean;
-  authenticateOperation(credential: NativeOperationCredential, assertCurrent: () => void, signal: AbortSignal): Promise<void>;
   authorizeOperation(credential: NativeOperationCredential, transaction: EvmUnsignedTransfer, assertCurrent: () => void): Promise<NativeOperationAuthorization>;
   releaseOperationAuthorization(authorization: NativeOperationAuthorization): void;
   evmSubmissionFailure?(error: unknown): Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }> | undefined;
-  replay(assertCurrent: () => void, transport: Pick<EvmReplaySession, 'observe' | 'dispatch'>,
-    options: { now: () => number; randomBytes: (length: number) => Uint8Array }): NativeTransferReplay;
-  token?(
-    contractAddress: string,
-    assertCurrent: () => void
-  ): Promise<Erc20Metadata>;
+  token?(contractAddress: string, assertCurrent: () => void): Promise<Erc20Metadata>;
   collectible?(candidate: SavedCollectible, assertCurrent: () => void): Promise<Readonly<{
     collectible: SavedCollectible;
     assertCurrent: () => void;
@@ -130,7 +113,6 @@ export interface NativeTransferRuntime {
     intent?: NativeAssetTransferIntent,
     replacement?: NativeReplacementApproval
   ): Promise<Readonly<{ rawTransaction: string; hash: string }>>;
-  assertUnlocked(assertCurrent: () => void): void;
 }
 type NativeReplacementSource = Readonly<{
   binding: EvmVerifiedReplacementBinding;
@@ -203,8 +185,6 @@ export type NativeTransferView = Readonly<
     | 'prepareToken'
     | 'prepareCollectible'
     | 'confirm'
-    | 'recover'
-    | 'loadMorePredecessors'
   >
 >;
 
@@ -219,12 +199,9 @@ type PrivateReview = {
   transaction?: EvmUnsignedTransfer;
   expires: number;
   feeApproval?: EvmFeeApproval;
-  replay?: NativeTransferReplay;
   replacement?: NativeReplacementApproval;
   collectible?: CollectibleReview;
 };
-const isCollectibleRecord = (operation: string) =>
-  operation === 'erc721' || operation === 'erc1155';
 function parseNonceOverride(input: string | undefined): number | undefined {
   if (input === undefined) return undefined;
   if (typeof input !== 'string' || !/^(?:0|[1-9][0-9]{0,15})$/.test(input))
@@ -262,22 +239,12 @@ export class NativeTransfers {
     prepareCollectible: (saved: SavedCollectible, recipient: string, tokenId: string, amountUnits: string, nonce?: string, feeChoice?: EvmFeeChoice) =>
       this.prepareCollectible(saved, recipient, tokenId, amountUnits, nonce, feeChoice),
     confirm: (id: string, credential: NativeOperationCredential) => this.confirm(id, credential),
-    recover: (offerRetry?: boolean, hash?: string) => this.recover(offerRetry, hash),
-    loadMorePredecessors: () => this.loadMorePredecessors(),
   });
   private snapshot: NativeTransferSnapshot = initial();
   private listeners = new Set<(snapshot: NativeTransferSnapshot) => void>();
   private review: PrivateReview | null = null;
-  private replay: NativeTransferReplay | null = null;
-  private replayAbort: AbortController | null = null;
   private active = false;
   private activeWork: Promise<void> | null = null;
-  private queuedRecovery: {
-    generation: number;
-    retry: boolean;
-    hash?: string;
-    promise: Promise<void>;
-  } | null = null;
   private generation = 0;
   private disposed = false;
   private secretOperation: object | null = null;
@@ -346,7 +313,6 @@ export class NativeTransfers {
     if (this.disposed) return;
     this.runtime()?.releaseReplacement();
     this.generation++;
-    this.replay?.cancel(); this.replay = null; this.replayAbort?.abort(); this.replayAbort = null;
     this.revokeSecretOperation();
     this.controller?.abort();
     this.review = null;
@@ -364,7 +330,6 @@ export class NativeTransfers {
     this.runtime()?.releaseReplacement();
     this.disposed = true;
     this.generation++;
-    this.replay?.cancel(); this.replay = null; this.replayAbort?.abort(); this.replayAbort = null;
     this.revokeSecretOperation();
     this.controller?.abort();
     this.review = null;
@@ -514,7 +479,6 @@ export class NativeTransfers {
           this.publish({
             phase: 'unknown', hash: error.recoveryHash, review: null,
             intent: null, collectible: undefined,
-            inspectionOnly: isCollectibleRecord(error.operation),
             message: 'Check the saved transaction before sending this payment.',
           });
           throw new NativeTransferError('PENDING_TRANSFER');
@@ -523,9 +487,9 @@ export class NativeTransfers {
           const hash = error.recoveryHash;
           this.publish({
             phase: hash ? 'unknown' : 'unavailable',
-            hash, review: null, intent: null, collectible: undefined, inspectionOnly: false,
+            hash, review: null, intent: null, collectible: undefined,
             message: hash
-              ? 'A saved cancellation uses this nonce. Check its status or review a retry before sending again.'
+              ? 'A saved cancellation uses this nonce. Check Activity before sending again.'
               : 'A saved cancellation uses this nonce. Check Activity before sending again.',
           });
           return;
@@ -619,10 +583,6 @@ export class NativeTransfers {
             });
           throw new NativeTransferError('EXPIRED');
         }
-        if (error instanceof EvmReplayError && ['EXPIRED', 'CONTEXT_CHANGED', 'NOT_FOUND'].includes(error.code)) {
-          this.publish({ phase: 'idle', review: null, message: 'This review expired or changed. Review the saved transaction again.' });
-          throw new NativeTransferError('EXPIRED');
-        }
         if (error && typeof error === 'object' && nativeCapacityRefusals.has(error)) {
           nativeCapacityRefusals.delete(error);
           this.publish({ phase: this.snapshot.hash ? 'unknown' : 'idle', review: null, message: this.snapshot.hash ? SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE : SIGNED_STORAGE_FULL_MESSAGE });
@@ -697,7 +657,6 @@ export class NativeTransfers {
         transaction.type === 2 ? transaction.maxPriorityFeePerGas : null,
       nonce: transaction.nonce,
       ...(nonceOverride === undefined ? {} : { nonceOverride }),
-      retry: false,
       ...(intent ? { intent } : {}),
       ...(asset ? { collectible: asset } : {}),
       ...(replacement ? { replacement: Object.freeze({ mode: replacement.mode, originalHash: replacement.original.hash,
@@ -722,7 +681,6 @@ export class NativeTransfers {
       review: publicReview,
       intent: intent ?? null,
       collectible: asset,
-      inspectionOnly: false,
       hash: null,
       message: null,
     });
@@ -744,14 +702,12 @@ export class NativeTransfers {
       if (!runtime.replacementOriginal) throw new NativeTransferError('NOT_READY');
       this.review = null;
       this.publish({ phase: 'preparing', context, review: null, hash: null, message: null, intent: null,
-        collectible: undefined, inspectionOnly: false });
+        collectible: undefined });
       const original = await runtime.replacementOriginal(hash, mode, assertCurrent, signal);
       if (!original) throw new NativeTransferError('EXPIRED');
       if (mode === 'cancel') {
-        if (!original.rawTransaction) throw new NativeTransferError('EXPIRED');
         const source = action === 'cancel-saved' ? 'saved' : 'pending';
-        const prepare = source === 'saved' ? 'prepareSavedCancellation' : 'prepareCancellation';
-        const quote = await rpc[prepare](hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, assertCurrent, original.rates);
+        const quote = await this.quoteCancellation(rpc, hash, original, source, signal, assertCurrent);
         assertCurrent();
         this.showReview(quote.transaction, undefined, context,
           { replacement: Object.freeze({ mode, source, original: quote.original, feePlan: quote.feePlan, binding: original.binding }) });
@@ -762,6 +718,15 @@ export class NativeTransfers {
           replacementCollectible: original.collectible, smartAccount: original.smartAccount });
       }
     });
+  }
+  private quoteCancellation(rpc: NativeTransferRpc, hash: string, original: NativeReplacementSource,
+    source: 'pending' | 'saved', signal: AbortSignal, check: () => void, approved?: EvmUnsignedTransfer) {
+    if (original.unsignedTransaction !== undefined) {
+      if (source !== 'pending') throw new NativeTransferError('EXPIRED');
+      return rpc.prepareUnsignedCancellation(hash, original.unsignedTransaction, original.from, signal, check, original.rates, approved);
+    }
+    const prepare = source === 'saved' ? 'prepareSavedCancellation' : 'prepareCancellation';
+    return rpc[prepare](hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, check, original.rates, approved);
   }
   private quoteSpeedUp(rpc: NativeTransferRpc, hash: string, original: NativeReplacementSource, signal: AbortSignal, check: () => void) {
     return original.unsignedTransaction !== undefined
@@ -829,7 +794,6 @@ export class NativeTransfers {
         message: null,
         intent: null,
         collectible: undefined,
-        inspectionOnly: false,
       });
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
@@ -859,7 +823,7 @@ export class NativeTransfers {
         !['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(selected.type)) throw new NativeTransferError('NOT_READY');
       const reserve = nativeEvmMaximumReserve(selected.type === 'Ledger' || selected.type === 'Trezor' ? 'hardware' : 'software');
       this.review = null;
-      this.publish({ phase: 'preparing', context, review: null, hash: null, message: null, intent: null, collectible: undefined, inspectionOnly: false });
+      this.publish({ phase: 'preparing', context, review: null, hash: null, message: null, intent: null, collectible: undefined });
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
       const quote = await rpc.prepareMaximum(address, to, reserve, signal, nonceOverride, journal.planAutomaticNonce, feeChoice)
@@ -901,7 +865,6 @@ export class NativeTransfers {
         message: null,
         intent: null,
         collectible: undefined,
-        inspectionOnly: false,
       });
       if (!runtime.token) throw new NativeTransferError('NOT_READY');
       const journal = await runtime.journal(assertCurrent);
@@ -951,7 +914,7 @@ export class NativeTransfers {
       try { snapshotNftTransferSelection({ network, owner: address, saved }, request, network); }
       catch { throw new NativeTransferError('INVALID_INPUT'); }
       this.review = null;
-      this.publish({ phase: 'preparing', context, review: null, hash: null, message: null, intent: null, inspectionOnly: false, collectible: undefined });
+      this.publish({ phase: 'preparing', context, review: null, hash: null, message: null, intent: null, collectible: undefined });
       assertCurrent();
       const inventory = await runtime.collectible(saved, assertCurrent).catch((error: unknown) => {
         if (error && typeof error === 'object' && 'code' in error) {
@@ -1011,7 +974,7 @@ export class NativeTransfers {
       if (this.expiry !== null) clearTimeout(this.expiry);
       this.expiry = null;
     };
-    const authenticate = async (runtime: NativeTransferRuntime, assertCurrent: () => void, context: NativeSendContext, signing: boolean, signal: AbortSignal) => {
+    const authenticate = async (runtime: NativeTransferRuntime, assertCurrent: () => void, context: NativeSendContext) => {
       let accepted = false;
       const check = () => {
         assertCurrent();
@@ -1026,8 +989,8 @@ export class NativeTransfers {
       if (!entered) throw new NativeTransferError('INVALID_CREDENTIAL');
       const refusal = await this.runSecretOperation(async () => {
         try {
-          if (signing) { authorization = await runtime.authorizeOperation(entered, approved.transaction!, check); authorizationRuntime = runtime; }
-          else await runtime.authenticateOperation(entered, check, signal);
+          authorization = await runtime.authorizeOperation(entered, approved.transaction!, check);
+          authorizationRuntime = runtime;
           return null;
         } catch (cause) {
           const code = cause instanceof Error ? cause.message : '';
@@ -1040,35 +1003,14 @@ export class NativeTransfers {
       check();
       if (refusal) throw refusal;
       accepted = true;
-      if (!signing) consume();
     };
-    if (approved.replay) return this.perform(async ({ assertCurrent, context, runtime, signal }) => {
-      await authenticate(runtime, assertCurrent, context, false, signal);
-      assertCurrent();
-      runtime.assertUnlocked(assertCurrent);
-      this.publish({ phase: 'submitting', review: approved.public, hash: approved.public.replay!.hash, message: null });
-      let result: Awaited<ReturnType<EvmSignedReplay['confirm']>>;
-      try { result = await approved.replay!.confirm(reviewId); }
-      catch (error) {
-        assertCurrent();
-        if (!approved.public.collectible || !(error instanceof NativeTransferRpcError || error instanceof EvmReplayError)) throw error;
-        this.publish({ phase: 'unknown', review: null, message:
-          error instanceof NativeTransferRpcError && error.code === 'INSUFFICIENT_NFT_BALANCE'
-            ? 'This account no longer has enough of this collectible to retry.'
-            : 'The retry checks failed. Check this saved transfer again before sending.' });
-        return;
-      }
-      assertCurrent();
-      this.publish({ phase: result.status === 'submitted' ? 'pending' : 'unknown', review: null, hash: result.hash,
-        message: result.status === 'submitted' ? 'Submitted. Waiting for network confirmation.' : 'Submission could not be confirmed. Check this transaction before sending again.' });
-    }).finally(releaseAuthorization);
     return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
-      await authenticate(runtime, assertCurrent, context, true, signal);
+      await authenticate(runtime, assertCurrent, context);
       assertCurrent();
       let startedSubmission = false;
       const collectible = approved.collectible;
       const intent = collectible?.quote.intent ?? approved.public.intent ??
-        (approved.replacement?.original.unsignedSpeedUp ? approved.public.collectible : undefined);
+        (approved.replacement?.mode === 'speed-up' && approved.replacement.original.retainedUnsigned ? approved.public.collectible : undefined);
       let freshCollectible: EvmNftPreparedQuote | undefined;
       const guard = () => {
         assertCurrent();
@@ -1096,17 +1038,12 @@ export class NativeTransfers {
         if (replacement) {
           const { original, mode } = replacement;
           const retained = await runtime.replacementOriginal?.(original.hash, mode, guard, signal);
-          if (!retained || retained.binding.expectedTipHash !== replacement.binding.expectedTipHash)
+          if (!retained || retained.binding.expectedTipHash !== replacement.binding.expectedTipHash ||
+              (retained.unsignedTransaction !== undefined) !== (original.retainedUnsigned === true))
             throw new NativeTransferError('EXPIRED');
-          if (mode === 'cancel') {
-            if (!retained.rawTransaction) throw new NativeTransferError('EXPIRED');
-            latest = await rpc[replacement.source === 'saved' ? 'prepareSavedCancellation' : 'prepareCancellation'](
-              original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, approved.transaction!);
-          } else {
-            if ((retained.unsignedTransaction !== undefined) !== (original.unsignedSpeedUp === true))
-              throw new NativeTransferError('EXPIRED');
-            latest = await this.quoteSpeedUp(rpc, original.hash, retained, signal, guard);
-          }
+          latest = mode === 'cancel'
+            ? await this.quoteCancellation(rpc, original.hash, retained, replacement.source, signal, guard, approved.transaction)
+            : await this.quoteSpeedUp(rpc, original.hash, retained, signal, guard);
         } else if (collectible) {
           freshCollectible = await withNftInventorySignal(signal, collectible.inventorySignal, (owned) =>
             rpc.requoteNft(collectible.selection, collectible.quote, owned, guard, planner))
@@ -1175,7 +1112,7 @@ export class NativeTransfers {
         const check = () => { guard(); assertAdmission(); };
         if (approved.replacement) {
           if (!snapshot) throw new NativeTransferError('EXPIRED');
-          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible, approved.replacement.mode, rawTransaction, approved.replacement.original.unsignedSpeedUp === true);
+          await rpc.verifyReplacementForDispatch(approved.transaction!, signal, check, snapshot, approved.public.intent, approved.public.collectible, approved.replacement.mode, rawTransaction, approved.replacement.mode === 'speed-up' && approved.replacement.original.retainedUnsigned === true);
           check();
           dispatchVerified = true;
           return;
@@ -1330,153 +1267,5 @@ export class NativeTransfers {
     }
     if (tx.hash !== signed.hash)
       throw new Error('Signed transfer differs from review');
-  }
-  private terminalMessage(phase: string, intent?: Erc20TransferIntent, _context?: NativeSendContext): string {
-    if (phase === 'confirmed')
-      return intent
-        ? 'Transaction confirmed. Check the token balance for the received amount; token contracts may deduct fees or apply other rules.'
-        : 'Transfer confirmed.';
-    if (phase === 'reverted')
-      return 'Transfer reverted. Network fees may still apply.';
-    return 'The account nonce has advanced, but this transfer’s result is unavailable. Refresh its status before retrying.';
-  }
-  loadMorePredecessors(): Promise<void> {
-    const current = this.review;
-    const saved = current?.public.replay;
-    if (!current?.replay || !saved?.missingNonce || saved.predecessors.length >= saved.predecessorCount)
-      return Promise.resolve();
-    return this.perform(async ({ assertCurrent }) => {
-      this.publish({phase:'preparing'});
-      const options = { maximum: 20, beforeHash: saved.predecessors[saved.predecessors.length - 1]?.hash };
-      const page = current.replay!.listPredecessors
-        ? await current.replay!.listPredecessors(saved.id, options)
-        : await current.replay!.list({ ...options, nonce: Number(saved.missingNonce) });
-      assertCurrent();
-      if (this.review !== current) throw new NativeTransferError('CANCELLED');
-      const known = new Set(saved.predecessors.map(candidate => candidate.hash));
-      const extra = page.transactions.filter(candidate => !known.has(candidate.hash)).map(({hash,nonce,operation,originalHash}) =>
-        Object.freeze({hash,nonce,operation,...(originalHash ? {originalHash} : {})}));
-      const replay = Object.freeze({...saved,predecessors:Object.freeze([...saved.predecessors,...extra])});
-      const review = Object.freeze({...current.public,replay});
-      this.review = {...current,public:review};
-      this.publish({review,phase:'review'});
-    });
-  }
-  recover(offerRetry = false, hash?: string): Promise<void> {
-    if (this.disposed)
-      return Promise.reject(new NativeTransferError('CANCELLED'));
-    if (this.activeWork) {
-      const generation = this.generation;
-      if (
-        this.queuedRecovery?.generation === generation &&
-        this.queuedRecovery.retry === offerRetry &&
-        this.queuedRecovery.hash === hash
-      )
-        return this.queuedRecovery.promise;
-      let queued: Promise<void>;
-      queued = this.activeWork
-        .catch(() => undefined)
-        .then(() => {
-          if (this.disposed || generation !== this.generation)
-            throw new NativeTransferError('CANCELLED');
-          return this.recover(offerRetry, hash);
-        })
-        .finally(() => {
-          if (this.queuedRecovery?.promise === queued)
-            this.queuedRecovery = null;
-        });
-      this.queuedRecovery = { generation, retry: offerRetry, hash, promise: queued };
-      return queued;
-    }
-    const parent = this.review;
-    const predecessor = offerRetry && hash && parent?.replay?.preparePredecessor && parent.public.replay?.predecessors.some(entry => entry.hash === hash)
-      ? { replay: parent.replay, parentId: parent.public.replay.id, hash } : undefined;
-    return this.perform(async ({ assertCurrent, runtime, context, rpc }) => {
-      this.review = null;
-      this.publish({ phase: 'preparing', context, review: null, hash: null, message: null,
-        intent: null, collectible: undefined, inspectionOnly: false });
-      assertCurrent();
-      let selected = hash;
-      if (!selected) { const entry = await (await runtime.journal(assertCurrent)).load(); assertCurrent(); selected = entry?.hash; }
-      if (!selected) { this.publish(initial()); return; }
-      let replay: NativeTransferReplay;
-      let result: Awaited<ReturnType<NativeTransferReplay['prepare']>>;
-      if (predecessor) {
-        if (this.replay !== predecessor.replay) throw new NativeTransferError('CANCELLED');
-        replay = predecessor.replay;
-        result = await replay.preparePredecessor!(predecessor.parentId, predecessor.hash);
-      } else {
-        this.replay?.cancel(); this.replayAbort?.abort();
-        const abort = new AbortController(); this.replayAbort = abort;
-        const generation = this.generation, identity = this.sourceIdentity;
-        const current = () => {
-          if (this.disposed || generation !== this.generation || identity !== this.sourceIdentity || this.runtime() !== runtime || abort.signal.aborted)
-            throw new NativeTransferError('CANCELLED');
-        };
-        replay = runtime.replay(current, {
-        observe: ({ hash, from, to, nonce }) => {
-          // Replay calls this only after the selected record is authenticated for
-          // the current wallet and network. Keep its identity if the RPC read fails.
-          current();
-          if (this.snapshot.hash !== hash) this.publish({ hash });
-          current();
-          return rpc.observation({ hash, from, to, nonce }, abort.signal);
-        },
-        dispatch: (raw, admit, context) => rpc.broadcast(raw, context.hash, abort.signal, { mode: 'replay', admit, context }),
-        }, { now: this.now, randomBytes: this.randomBytes });
-        this.replay = replay;
-        result = await replay.prepare(selected, offerRetry ? 'resend' : 'inspect');
-      }
-      assertCurrent();
-      if (result.status === 'inspect-only') {
-        this.publish({ phase: 'unknown', hash: result.transaction.hash, review: null, intent: null, inspectionOnly: true,
-          message: 'reason' in result && result.reason === 'fresh-signature-required'
-            ? 'The saved transaction has no signature. Check its status before sending again.'
-            : SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE });
-        return;
-      }
-      if (result.status !== 'review') {
-        const smart = 'smartAccount' in result.transaction ? result.transaction.smartAccount as SmartAccountReplayIntent : undefined;
-        const transfer = smart?.transfer?.token ? { ...smart.transfer, token: smart.transfer.token } : result.transaction.tokenTransfer, token = transfer?.token;
-        const intent: Erc20TransferIntent | undefined = token ? Object.freeze({kind:'erc20-transfer',chainId:result.transaction.chainId,token,recipient:transfer!.recipient,amountUnits:transfer!.amountUnits}) : undefined;
-        this.publish({ phase: result.status, hash: result.hash, review: null, intent: intent ?? null,
-          collectible: smart?.transfer?.collectibleTransfer ?? result.transaction.collectibleTransfer,
-          message: result.status === 'unknown' ? 'No current receipt was found. The saved transaction remains available; check its status before sending again.'
-            : result.status === 'confirmed' && result.transaction.collectibleTransfer
-            ? 'Transaction confirmed.' : this.terminalMessage(result.status, intent, context) }); return;
-      }
-      const approved = result.review;
-      const smart = 'smartAccount' in approved ? approved.smartAccount as SmartAccountReplayIntent : undefined;
-      const collectible = smart?.transfer?.collectibleTransfer ?? approved.collectibleTransfer;
-      if (isCollectibleRecord(approved.operation) && !collectible) {
-        replay.cancel(approved.id);
-        this.publish({ phase: 'unknown', hash: approved.hash, review: null, intent: null, inspectionOnly: true,
-          message: 'View the saved collectible transfer in Activity.' });
-        return;
-      }
-      if (!offerRetry) {
-        replay.cancel(approved.id);
-        this.publish({ phase: 'unknown', hash: approved.hash, review: null, collectible,
-          message: 'No current receipt was found. The saved transaction remains available; check its status before sending again.' });
-        assertCurrent();
-        return;
-      }
-      const transfer = smart?.transfer?.token ? { ...smart.transfer, token: smart.transfer.token } : approved.tokenTransfer;
-      const token = transfer?.token;
-      const intent: Erc20TransferIntent | undefined = token ? Object.freeze({kind:'erc20-transfer',chainId:approved.chainId,token,recipient:transfer!.recipient,amountUnits:transfer!.amountUnits}) : undefined;
-      const single = smart?.executions?.length === 1 ? smart.executions[0] : undefined;
-      const publicReview: NativeTransferReview = Object.freeze({ id:approved.id,context,from:smart?.account ?? approved.from,
-        recipient:collectible?.recipient ?? intent?.recipient ?? smart?.transfer?.recipient ?? single?.target ?? smart?.account ?? approved.to ?? 'Contract creation',
-        amountUnits:collectible?.amountUnits ?? intent?.amountUnits ?? smart?.transfer?.amountUnits ?? single?.value ?? approved.value,
-        maximumFeeUnits:approved.maximumFee,totalUnits:(BigInt(approved.value)+BigInt(approved.maximumFee)).toString(),
-        gasLimit:approved.gasLimit,maximumFeePerGas:approved.feePerGas,priorityFeePerGas:approved.priorityFeePerGas,nonce:approved.nonce,retry:true,replay:approved,...(intent?{intent}:{}),...(collectible?{collectible}:{}),
-        ...(smart ? { execution: { kind: smart.transfer && !smart.transfer.contractInteraction ? 'transfer' as const : 'contract-call' as const,
-          dataBytes: (smart.callData.length - 2) / 2, accessListEntries: approved.accessListEntries, smartAccount: smart.account } } : {}) });
-      this.review = { public:publicReview,expires:this.now()+approved.validForMs,replay };
-      if (this.expiry !== null) clearTimeout(this.expiry);
-      this.expiry=setTimeout(()=>{if(this.review?.public.id===approved.id&&!this.active)this.cancel();},approved.validForMs);
-      this.publish({phase:'review',hash:approved.hash,review:publicReview,intent:intent??null,collectible,message:'Resend the saved signed transaction.'});
-      assertCurrent();
-    });
   }
 }

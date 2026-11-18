@@ -83,7 +83,12 @@ function deferred<T>() {
 }
 function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; archived?: TerminalActivityRecord[];
   locals?: readonly LocalActivityRecord[]; local?: LocalActivityRecord | null; cached?: ActivityCandidate[]; view?: ActivityViewState; observeLocal?: (local: LocalActivityRecord) => Promise<EvmTransactionObservation>;
-  loadSavedPending?: NativeActivityRuntime['loadSavedPending'] } = {}) {
+  loadSavedPending?: NativeActivityRuntime['loadSavedPending'];
+  loadTarget?: NativeActivityRuntime['loadTarget'];
+  smartAuthorizations?: Awaited<ReturnType<NativeActivityRuntime['load']>>['smartAuthorizations'];
+  loadSmartAuthorizations?: NativeActivityRuntime['loadSmartAuthorizations'];
+  observeSmartAuthorization?: NativeActivityRuntime['observeSmartAuthorization'];
+} = {}) {
   const state = source();
   let cached = (options.cached ?? []).map(cachedCandidate);
   const localReads: LocalActivityRecord[] = [];
@@ -92,10 +97,13 @@ function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; ar
   const viewWrites: { scope: ActivityScope; view: ActivityViewState }[] = [];
   const runtime: NativeActivityRuntime = {
     loadSavedPending: options.loadSavedPending,
+    loadTarget: options.loadTarget,
+    loadSmartAuthorizations: options.loadSmartAuthorizations,
+    observeSmartAuthorization: options.observeSmartAuthorization,
     async load(check) {
       check(); const address = state.getSnapshot().account?.address ?? OWNER;
       const scope = createActivityScope(FP, address === OWNER ? 'hd:60:0' : 'hd:60:1', address, 'ethereum');
-      return { scope, saved: { archived: options.archived ?? [], candidates: address === cachedOwner ? cached : [], view: options.view ?? DEFAULT_ACTIVITY_VIEW, truncated: false }, locals: options.locals ?? (options.local ? [options.local] : []) };
+      return { scope, olderRetained: !!options.loadSavedPending, smartAuthorizations: options.smartAuthorizations, saved: { archived: options.archived ?? [], candidates: address === cachedOwner ? cached : [], view: options.view ?? DEFAULT_ACTIVITY_VIEW, truncated: false }, locals: options.locals ?? (options.local ? [options.local] : []) };
     },
     async observeLocal(local, check) { check(); localReads.push(local); return options.observeLocal ? options.observeLocal(local) : { status: 'missing', latestNonce: String(local.nonce) }; },
     async saveCache(scope, rows, check) { check(); cacheWrites.push({ scope, rows }); cached = [...rows]; cachedOwner = scope.address; },
@@ -232,7 +240,7 @@ test('scope changes and lock discard displayed refresh rows before delayed reads
   }
 });
 
-test('saved pending pages reach older hashes without polling them, and Back retires an in-flight page', async () => {
+test('ordinary pagination reaches older hashes without polling them, and lock retires a held page', async () => {
   const base = fixture();
   const recent = base.local(3, 'submitted'), older = base.local(1, 'attempted');
   const held = deferred<{ records: readonly LocalActivityRecord[]; nextCursor: null }>();
@@ -245,27 +253,27 @@ test('saved pending pages reach older hashes without polling them, and Back reti
   } });
   await f.controller.refresh();
   const explorerReads = f.explorer.pages.length;
-  await f.controller.loadSavedPending();
-  await f.controller.loadSavedPending();
+  await f.controller.loadMore();
+  await f.controller.loadMore();
   assert.deepEqual(cursors, [undefined, recent.hash]);
-  assert.deepEqual(f.controller.getSnapshot().savedPending?.rows.map((row) => row.hash), [recent.hash, older.hash]);
-  assert.equal(f.controller.getSnapshot().savedPending?.hasMore, false);
+  assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash), [recent.hash, older.hash]);
+  assert.equal(f.controller.getSnapshot().hasMore, false);
   assert.equal(f.explorer.pages.length, explorerReads);
   assert.equal(f.receipts.calls.length, 0);
   assert.equal(f.localReads.length, 0);
 
   f.controller.inspect(older.hash);
-  await until(() => !!f.controller.getSnapshot().savedPending?.rows.find((row) => row.hash === older.hash)?.retainedObservation);
+  await until(() => !!f.controller.getSnapshot().rows.find((row) => row.hash === older.hash)?.retainedObservation);
   assert.deepEqual(f.receipts.calls, []);
   assert.deepEqual(f.localReads.map((row) => row.hash), [older.hash]);
 
-  f.controller.closeSavedPending();
-  const late = f.controller.loadSavedPending();
-  assert.equal(f.controller.getSnapshot().savedPending?.status, 'loading');
-  f.controller.closeSavedPending();
+  await f.controller.refresh();
+  const late = f.controller.loadMore();
+  assert.equal(f.controller.getSnapshot().loadingMore, true);
+  f.controller.invalidate();
   held.resolve({ records: [older], nextCursor: null });
   await late;
-  assert.equal(f.controller.getSnapshot().savedPending, undefined);
+  assert.equal(f.controller.getSnapshot().rows.length, 0);
 });
 
 test('older saved detail uses one owned observation even when explorer history still says confirmed', async () => {
@@ -290,15 +298,15 @@ test('older saved detail uses one owned observation even when explorer history s
     }, () => undefined),
   });
   await f.controller.refresh();
-  await f.controller.loadSavedPending();
   assert.equal(f.controller.getSnapshot().rows[0]?.indexedStatus, 'confirmed');
-  assert.equal(f.controller.getSnapshot().savedPending?.rows[0]?.indexed, undefined);
+  await f.controller.loadMore();
+  assert.equal(f.controller.getSnapshot().rows[0]?.indexed, undefined);
   assert.deepEqual(methods, []);
   f.controller.inspect(older.hash);
-  await until(() => f.controller.getSnapshot().savedPending?.rows[0]?.retainedObservation?.status === 'missing');
+  await until(() => f.controller.getSnapshot().rows[0]?.retainedObservation?.status === 'missing');
   assert.deepEqual(f.receipts.calls, []);
   assert.deepEqual(methods, ['eth_chainId', 'eth_getTransactionReceipt', 'eth_getTransactionCount', 'eth_chainId']);
-  assert.deepEqual(f.controller.getSnapshot().savedPending?.rows[0]?.retainedObservation, { status: 'missing', latestNonce: '2' });
+  assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, { status: 'missing', latestNonce: '2' });
 });
 
 test('an old saved-detail read cannot overwrite a new page for the same hash', async () => {
@@ -311,16 +319,16 @@ test('an old saved-detail read cannot overwrite a new page for the same hash', a
     observeLocal: async () => ++reads === 1 ? old.promise : { status: 'missing', latestNonce: '2' },
   });
   await f.controller.refresh();
-  await f.controller.loadSavedPending();
+  await f.controller.loadMore();
   f.controller.inspect(older.hash);
   await until(() => reads === 1);
-  f.controller.closeSavedPending();
-  await f.controller.loadSavedPending();
+  await f.controller.refresh();
+  await f.controller.loadMore();
   f.controller.inspect(older.hash);
   await until(() => reads === 2);
   old.resolve({ status: 'mined', outcome: 'confirmed', block: { number: '2', hash: hash(2) } });
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.deepEqual(f.controller.getSnapshot().savedPending?.rows[0]?.retainedObservation, { status: 'missing', latestNonce: '2' });
+  assert.deepEqual(f.controller.getSnapshot().rows[0]?.retainedObservation, { status: 'missing', latestNonce: '2' });
   assert.deepEqual(f.receipts.calls, []);
 });
 
@@ -370,8 +378,8 @@ for (const operation of ['speed-up', 'cancel'] as const)
         : { status: 'missing', latestNonce: '8' } });
     await f.controller.refresh();
     await until(() => f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus === 'replaced');
-    await f.controller.loadSavedPending();
-    assert.equal(f.controller.getSnapshot().savedPending?.rows.find(row => row.hash === original.hash)?.replacementStatus, 'replaced');
+    await f.controller.loadMore();
+    assert.equal(f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus, 'replaced');
     assert.equal(f.controller.getSnapshot().rows.find(row => row.hash === replacement.hash)?.replacementStatus, undefined);
     assert.equal(f.receipts.calls.length, 0, 'projection does not add reads');
     assert.equal(original.phase, 'submitted', 'projection does not mutate retained journals');
@@ -387,12 +395,12 @@ test('a saved-only original uses a verified winner in ordinary rows without copy
       block: { number: '42', hash: hash(42) }, transactionIndex: 0 }) });
   await f.controller.refresh();
   await until(() => f.controller.getSnapshot().rows[0]?.retainedObservation?.status === 'mined');
-  await f.controller.loadSavedPending();
-  const saved = f.controller.getSnapshot().savedPending?.rows[0];
+  await f.controller.loadMore();
+  const saved = f.controller.getSnapshot().rows.find(row => row.hash === original.hash);
   assert.equal(saved?.hash, original.hash);
   assert.equal(saved?.indexed, undefined);
   assert.equal(saved?.replacementStatus, 'replaced');
-  assert.equal(f.controller.getSnapshot().rows.some(row => row.hash === original.hash), false);
+  assert.equal(f.controller.getSnapshot().rows.some(row => row.hash === original.hash), true);
   assert.equal(f.receipts.calls.length, 0);
 });
 
@@ -417,8 +425,8 @@ for (const phase of ['confirmed', 'reverted'] as const)
         await until(() => f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus === 'replaced');
         assert.deepEqual(f.localReads.map(row => row.hash).sort(),
           (originalPhase === 'submitted' ? [original.hash, replacement.hash] : [replacement.hash]).sort());
-        await f.controller.loadSavedPending();
-        assert.equal(f.controller.getSnapshot().savedPending?.rows[0]?.replacementStatus, 'replaced');
+        await f.controller.loadMore();
+        assert.equal(f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus, 'replaced');
       }
     });
 
@@ -438,10 +446,10 @@ test('a late saved-only sibling queues its terminal winner under the same two-re
     } });
   await f.controller.refresh();
   assert.equal(f.localReads.length, 2);
-  await f.controller.loadSavedPending();
+  await f.controller.loadMore();
   assert.equal(f.localReads.length, 2, 'late winner waits for the current readers');
   gate.resolve();
-  await until(() => f.controller.getSnapshot().savedPending?.rows[0]?.replacementStatus === 'replaced');
+  await until(() => f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus === 'replaced');
   assert.equal(f.localReads.length, 3);
   assert.equal(maximum, 2);
   assert.equal(f.localReads.some(row => row.hash === original.hash), false, 'paging does not poll every saved row');
@@ -591,8 +599,8 @@ test('a needed terminal sibling remains observable after only explorer work time
   await expireExplorerResponses(t); await refresh; t.mock.timers.reset();
   assert.equal(signals.length, 2); assert(signals.every(signal => signal.aborted));
   assert.equal(f.localReads.length, 0);
-  await f.controller.loadSavedPending();
-  await until(() => f.controller.getSnapshot().savedPending?.rows[0]?.replacementStatus === 'replaced');
+  await f.controller.loadMore();
+  await until(() => f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus === 'replaced');
   assert.deepEqual(f.localReads.map(row => row.hash), [winner.hash]);
 });
 
@@ -608,11 +616,11 @@ test('refresh and fresh missing winner reads retire prior replacement proof in o
       : { status: 'missing', latestNonce: '7' } });
   await f.controller.refresh();
   await until(() => f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus === 'replaced');
-  await f.controller.loadSavedPending();
+  await f.controller.loadMore();
   f.controller.inspect(replacement.hash);
   await until(() => f.controller.getSnapshot().rows.find(row => row.hash === replacement.hash)?.unavailable === true);
   assert.equal(f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus, undefined);
-  assert.equal(f.controller.getSnapshot().savedPending?.rows.find(row => row.hash === original.hash)?.replacementStatus, undefined);
+  assert.equal(f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus, undefined);
   // Restore the proof, then hold the next load to inspect the refresh boundary.
   await f.controller.refresh();
   await until(() => f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus === 'replaced');
@@ -743,15 +751,15 @@ test('Saved pending still pages and inspects after explorer timeout, then retire
     assert.equal(signals.length, 2); assert(signals.every(signal => signal.aborted));
     t.mock.timers.reset();
 
-    await f.controller.loadSavedPending();
-    await f.controller.loadSavedPending();
+    await f.controller.loadMore();
+    await f.controller.loadMore();
     assert.deepEqual(cursors, [undefined, first.hash]);
-    assert.deepEqual(f.controller.getSnapshot().savedPending?.rows.map((row) => row.hash), [first.hash, older.hash]);
+    assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash), [first.hash, older.hash]);
     assert.equal(f.localReads.length, 0);
     assert.equal(f.receipts.calls.length, 0);
 
     f.controller.inspect(older.hash);
-    await until(() => f.controller.getSnapshot().savedPending?.rows[1]?.retainedObservation?.status === 'missing');
+    await until(() => f.controller.getSnapshot().rows[1]?.retainedObservation?.status === 'missing');
     assert.equal(detailSignal?.aborted, false);
     assert.notEqual(detailSignal, explorer.pages[0]?.signal);
     assert.equal(explorer.pages.length, 2);
@@ -761,11 +769,10 @@ test('Saved pending still pages and inspects after explorer timeout, then retire
     await until(() => f.localReads.length === 2);
     f.source.change({ phase: 'locked', account: null });
     assert.equal(detailSignal?.aborted, true);
-    assert.equal(f.controller.getSnapshot().canViewSavedPending, false);
-    assert.equal(f.controller.getSnapshot().savedPending, undefined);
+    assert.equal(f.controller.getSnapshot().rows.length, 0);
     held.resolve({ status: 'missing', latestNonce: '9' });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(f.controller.getSnapshot().savedPending, undefined);
+    assert.equal(f.controller.getSnapshot().rows.length, 0);
     assert.equal(f.controller.getSnapshot().status, 'locked');
   } finally {
     disconnect();
@@ -1353,4 +1360,86 @@ test('Activity save recovery does not restore a feed warning whose own retry alr
   f.runtime.saveView = async (_scope, _view, check) => { check(); };
   await f.controller.setView({ filter: 'received' });
   assert.equal(f.controller.getSnapshot().error, null);
+});
+
+const smartInstruction = (index: number) => ({
+  account: OWNER, chainId: '1', createdAt: 1700000000000 + index,
+  operationHash: hash(index), operationNonce: (2n ** 190n + BigInt(index)).toString(),
+  payer: OTHER, observedAt: { hash: hash(90), number: '90' },
+});
+
+test('Activity attaches an authenticated instruction to its outer row and pages missing outers without duplicate hashes', async () => {
+  const first = smartInstruction(41), second = smartInstruction(42);
+  const outer = { ...fixture().local(50), smartAccount: {
+    payer: OTHER, operations: [{ operationHash: first.operationHash, operationNonce: first.operationNonce }],
+  } };
+  const cursors: string[] = [];
+  const f = fixture({
+    locals: [outer], smartAuthorizations: { entries: [first], nextCursor: first.operationHash },
+    async loadSmartAuthorizations(_scope, cursor) {
+      cursors.push(cursor);
+      return { entries: [first, second], nextCursor: null };
+    },
+  });
+  await f.controller.refresh();
+  assert.deepEqual(f.controller.getSnapshot().rows.map(row => row.hash), [outer.hash]);
+  assert.equal(f.controller.getSnapshot().rows[0]!.smartAuthorizations?.[0]?.instruction.operationNonce, first.operationNonce);
+  await f.controller.loadMore();
+  assert.deepEqual(cursors, [first.operationHash]);
+  assert.deepEqual(f.controller.getSnapshot().rows.map(row => row.hash), [second.operationHash, outer.hash]);
+  assert.equal(f.controller.getSnapshot().rows[1]!.smartAuthorizations?.length, 1);
+  f.controller.inspect(second.operationHash);
+  assert.equal(f.receipts.calls.length, 0, 'An operation hash is never queried as a transaction hash');
+});
+
+test('Activity discards a Smart authorization status when the details are retired, then accepts fresh operation proof', async () => {
+  const instruction = smartInstruction(43);
+  const delayed = deferred<Awaited<ReturnType<NonNullable<NativeActivityRuntime['observeSmartAuthorization']>>>>();
+  let signal: AbortSignal | undefined, reads = 0;
+  const observed = { kind: 'nonce-consumed' as const, operationHash: instruction.operationHash,
+    currentNonce: (BigInt(instruction.operationNonce) + 1n).toString(), anchor: instruction.observedAt };
+  const f = fixture({
+    smartAuthorizations: { entries: [instruction], nextCursor: null },
+    async observeSmartAuthorization(_scope, hash, guard, nextSignal) {
+      guard();
+      assert.equal(hash, instruction.operationHash);
+      signal = nextSignal;
+      return ++reads === 1 ? delayed.promise : observed;
+    },
+  });
+  await f.controller.refresh();
+  const view = new AbortController();
+  const pending = f.controller.inspectSmartAuthorization(instruction.operationHash, () => {}, view.signal);
+  assert.equal(f.controller.getSnapshot().rows[0]!.smartAuthorizations?.[0]?.checking, true);
+  view.abort();
+  assert.equal(signal?.aborted, true);
+  delayed.resolve(observed);
+  await pending;
+  assert.equal(f.controller.getSnapshot().rows[0]!.smartAuthorizations?.[0]?.observation, undefined);
+  await f.controller.inspectSmartAuthorization(instruction.operationHash, () => {}, new AbortController().signal);
+  assert.deepEqual(f.controller.getSnapshot().rows[0]!.smartAuthorizations?.[0]?.observation, observed);
+});
+
+test('an exact older Activity target enters ordinary rows and cannot publish across a scope change', async () => {
+  const older = fixture().local(80, 'attempted');
+  const held = deferred<{ local: LocalActivityRecord }>();
+  const seen: string[] = [];
+  const f = fixture({ async loadTarget(scope, target, guard) {
+    assert.equal(scope.address, OWNER);
+    guard();
+    seen.push(target);
+    return seen.length === 1 ? { local: older } : held.promise;
+  } });
+  const close = f.controller.connect();
+  try {
+    await until(() => f.controller.getSnapshot().status === 'ready');
+    await f.controller.loadTarget(older.hash);
+    assert.equal(f.controller.getSnapshot().rows[0]?.local, older);
+    const late = f.controller.loadTarget(hash(81));
+    assert.deepEqual(seen, [older.hash, hash(81)]);
+    f.source.change({ phase: 'locked', account: null });
+    held.resolve({ local: { ...older, hash: hash(81) } });
+    await assert.rejects(late, /CANCELLED/);
+    assert.deepEqual(f.controller.getSnapshot().rows, []);
+  } finally { close(); }
 });

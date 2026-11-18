@@ -287,13 +287,11 @@ export async function qualifyNativeErc20Transfer(
   const wrapped: NativeTransferRuntime = {
     isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
     releaseReplacement: () => transfer.releaseReplacement(),
-    authenticateOperation() { throw Error('QUALIFICATION_ERC20_REPLAY_FORBIDDEN'); },
     authorizeOperation(...args) {
       expect(++authorizations === 1 && args[0].method === 'device');
       return transfer.authorizeOperation(...args);
     },
     releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
-    replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
     token: (contract, assertCurrent) => {
       tokenLookups++;
@@ -319,14 +317,13 @@ export async function qualifyNativeErc20Transfer(
           equalTransferIntent(intent, expectedIntent) &&
           (replacing
             ? replacement?.mode === 'speed-up' && replacement.original.hash === originalHash &&
-              replacement.original.unsignedSpeedUp === true
+              replacement.original.retainedUnsigned === true
             : replacement === undefined)
       );
       signed = await transfer.sign(transaction, assertCurrent, intent, replacement);
       verifyEnvelope(signed.rawTransaction, signed.hash);
       return signed;
     },
-    assertUnlocked() { throw Error('QUALIFICATION_ERC20_REPLAY_FORBIDDEN'); },
   };
   const rpc = new NativeTransferRpc({ networkId: 'ethereum',
     fetch: async (url, init) => {
@@ -501,7 +498,6 @@ export async function qualifyNativeErc20Transfer(
           const review = controller.getSnapshot().review;
           expect(
             review &&
-              !review.retry &&
               review.recipient === recipient &&
               review.amountUnits === amountUnits &&
               review.totalUnits === maximumFee &&
@@ -532,7 +528,7 @@ export async function qualifyNativeErc20Transfer(
           guard();
           const review = controller.getSnapshot().review;
           expect(
-            review && !review.retry &&
+            review &&
               review.replacement?.mode === 'speed-up' &&
               review.replacement.originalHash === originalHash &&
               review.replacement.originalMaximumFeeUnits === '180000' &&

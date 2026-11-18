@@ -77,11 +77,8 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
   const openedTransactions: string[] = [];
   const networkDrafts: unknown[] = [];
   const reviews: NativeUtxoReview[] = [];
-  let saved: { accepted: boolean; txid: string }[] = [], listReads = 0, refreshReads = 0;
   const service = {
-    cancel() { cancels++; }, async list() { listReads++; return saved; },
-    async refreshSaved() { refreshReads++; return service.list(); },
-    async check() { saved = []; return 'confirmed' as const; },
+    cancel() { cancels++; },
     async prepare(input: any): Promise<NativeUtxoReview> {
       requests.push(structuredClone(input));
       if (gate) await gate; // Deliberately deliver a late result after cancellation.
@@ -111,7 +108,6 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     hardware() { assert(hardware); return hardware(); }, backs: () => backs,
     opens: () => opens,
     seedDraft(draft: NonNullable<typeof initialDraft>) { initialDraft = draft; },
-    seedSaved(records: typeof saved) { saved = records; }, listReads: () => listReads, refreshReads: () => refreshReads,
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     failSubmissionUnknown() { confirmationFailure = Object.assign(new Error('UTXO_SUBMISSION_UNKNOWN'), { code: 'UTXO_SUBMISSION_UNKNOWN', txid: 'ab'.repeat(32) }); },
@@ -122,20 +118,6 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     release() { release?.(); gate = undefined; },
     close() { cells.forEach((value) => value.cleanup?.()); } };
 }
-
-test('explicit saved status check reloads the filtered recovery list', async () => {
-  const f = fixture();
-  f.seedSaved([{ accepted: true, txid: 'ab'.repeat(32) }]);
-  f.render(); await tick();
-  assert.equal(f.listReads(), 1);
-  assert.equal(f.refreshReads(), 1);
-  f.press('Submitted abababab…'); await tick();
-  assert.equal(f.listReads(), 2);
-  assert.equal(f.refreshReads(), 1, 'Explicit status reload must not observe the network again');
-  assert.equal(all(f.render()).some(node => node.props.title === 'Submitted abababab…'), false);
-  assert.equal(f.counts().confirmations, 0);
-  f.close();
-});
 
 test('device refusal keeps the exact UTXO review available for retry', async () => {
   const f = fixture(); f.render(); await tick();
@@ -388,7 +370,7 @@ test('successful native UTXO outcome retains the exact reviewed amount, recipien
   } finally { f.close(); }
 });
 
-test('unknown SPT submission retains its exact public summary through a status check', async () => {
+test('unknown SPT submission retains its exact public summary and opens Activity', async () => {
   const asset = { assetGuid: '987654321', decimals: 3, symbol: 'SPT' };
   const f = fixture(asset);
   try {
@@ -409,14 +391,14 @@ test('unknown SPT submission retains its exact public summary through a status c
       assert(!shown.some(node => node.type === 'TransactionAuthentication'));
     };
     assertSummary('Submission unverified');
-    f.press('Check status'); await tick();
-    assertSummary('Confirmed');
+    f.press('View transaction');
+    assert.deepEqual(f.openedTransactions, ['ab'.repeat(32)]);
     assert.equal(f.counts().confirmations, 1);
     assert.equal(f.requests.length, 1);
   } finally { f.close(); }
 });
 
-test('saved UTXO outcome offers status checks without another submission', async () => {
+test('unknown UTXO outcome opens Activity without another submission', async () => {
   const f = fixture();
   try {
     f.render(); await tick();
@@ -425,7 +407,9 @@ test('saved UTXO outcome offers status checks without another submission', async
     f.press('Confirm and send'); await tick();
     const shown = all(f.render());
     assert(!shown.some(node => ['Review saved transfer', 'Resend saved transfer'].includes(String(node.props.title))));
-    f.press('Check status'); await tick();
+    assert(!shown.some(node => node.props.title === 'Check status'));
+    f.press('View transaction');
+    assert.deepEqual(f.openedTransactions, ['ab'.repeat(32)]);
     assert.equal(f.counts().confirmations, 1);
   } finally { f.close(); }
 });

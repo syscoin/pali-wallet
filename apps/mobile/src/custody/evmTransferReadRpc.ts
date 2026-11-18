@@ -619,16 +619,17 @@ export class EvmTransferReadRpc {
   }
 
   prepareCancellation(original: Transaction, rates: EvmReplacementRates, source: 'pending' | 'saved',
-    signal: AbortSignal, guard: () => void, approved?: EvmUnsignedTransfer): Promise<EvmCancellationQuote> {
-    const { from, to, hash, nonce, chainId } = original;
-    if (!from || !hash || rates.type !== original.type || chainId.toString() !== this.network.chainId)
+    signal: AbortSignal, guard: () => void, approved?: EvmUnsignedTransfer, retainedPayer?: string): Promise<EvmCancellationQuote> {
+    const { to, hash, nonce, chainId } = original;
+    const from = original.from ?? retainedPayer;
+    if (!from || (!hash && (source !== 'pending' || !retainedPayer)) || rates.type !== original.type || chainId.toString() !== this.network.chainId)
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     if (approved) approved = snapshotReplacementTransfer(approved, this.network);
     return this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const verifyPayer = source === 'saved'
-        ? assertRetainedEvmCancellationReady({ from, to, hash, nonce: String(nonce), chainId: this.network.chainId }, read, read.assertCurrent)
+        ? assertRetainedEvmCancellationReady({ from, to, hash: hash!, nonce: String(nonce), chainId: this.network.chainId }, read, read.assertCurrent)
         : assertEvmCancellationPayerReady(from, nonce, (method, address, tag) =>
           read(method, [address, tag]), read.assertCurrent);
       const [rawBalance, fees] = await Promise.all([

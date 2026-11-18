@@ -88,7 +88,7 @@ for (const network of ['bitcoin', 'syscoin'] as const) test(`unconfirmed ${netwo
     // signing is exercised by utxoSend.integration.test.ts.
     await expect(page.getByRole('alert')).toHaveText('Pali could not complete this request. Try again or check your saved transfers.');
     expect((await page.evaluate(() => window.__watchFixture.audit())).utxoOpens).toBe(1);
-    expect((await page.evaluate(() => window.__watchFixture.audit())).utxoSavedReads).toBe(1);
+    expect((await page.evaluate(() => window.__watchFixture.audit())).utxoSavedReads).toBe(0);
     await expect(heading(page, 'Wallet Backup')).toHaveCount(0);
   }
   await noSpending(page); await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);

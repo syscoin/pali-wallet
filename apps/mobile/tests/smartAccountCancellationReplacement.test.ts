@@ -460,12 +460,6 @@ test('retained revocation suppresses old raw replay globally without releasing i
     snapshot.readSignedTransaction!(f.original.hash),
     /CANCELLATION_FENCE/
   );
-  const page = await f.store.readPage(f.session(), '1', owner.address, {
-    maximum: 10,
-    replayCandidatesOnly: true,
-    nonce: 5,
-  });
-  assert.equal(page.entries.length, 0);
   let wires = 0;
   assert.equal(
     await f.store.withReplayAdmission(
@@ -610,20 +604,9 @@ test('a fresh-outer revocation remains replayable while its old instruction stay
   };
   await f.store.append(f.session(), replacement, metadata);
   const restarted = new EvmSignedRecords(f.port);
-  assert.equal(
-    (
-      await restarted.readPage(f.session(), '1', owner.address, {
-        maximum: 10,
-        nonce: 5,
-        replayCandidatesOnly: true,
-      })
-    ).entries.length,
-    0
-  );
   const page = await restarted.readPage(f.session(), '1', owner.address, {
     maximum: 10,
     nonce: 6,
-    replayCandidatesOnly: true,
   });
   assert.deepEqual(
     page.entries.map((row) => row.hash),

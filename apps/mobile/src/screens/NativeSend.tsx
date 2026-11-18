@@ -1,7 +1,6 @@
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { WalletModal as Modal } from '../ui/WalletModal';
-import { createAssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
 import { AUTOMATIC_FEE, snapshotEvmFeeChoice, type EvmFeeChoice } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
@@ -48,7 +47,7 @@ import {
   type EvmRecipientChoice,
 } from '../../../../source/shared/evmRecipientChoices';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
-import { SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE, ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE,
+import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE,
   type NativeTransferReview, type NativeTransferView } from '../custody/transfers';
 import type { NativeReplacementMode } from '../custody/transferRpc';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
@@ -72,7 +71,6 @@ const t = nativeI18n.t.bind(nativeI18n);
 const savedTransferMessages = [ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE];
 const displayTransferMessage = (message: string | null) => {
   switch (message) {
-    case SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE: return t('transactions.replay.unavailable');
     case ASSET_STATE_SAVED_MESSAGE: return t('mobile.sendAssetViews.evm.asset_state_saved_message');
     case ASSET_STATE_WAIT_MESSAGE: return t('mobile.sendAssetViews.evm.asset_state_wait_message');
     case SIGNED_STORAGE_FULL_MESSAGE: return t('send.signedStorageFull');
@@ -217,7 +215,6 @@ export function NativeSend({
   tokenView,
   collectible,
   context,
-  savedHash,
   replacement,
   recipientPicker,
   ledgerConnection,
@@ -249,7 +246,6 @@ export function NativeSend({
   tokenView?: Pick<NativeTokenView, 'subscribe' | 'getSnapshot' | 'connect'>;
   collectible?: SavedCollectible;
   context: NativeSendContext;
-  savedHash?: string;
   recipientPicker?: NativeRecipientPicker;
   replacement?: Readonly<{ hash: string; mode: NativeReplacementMode | 'cancel-saved' }>;
 }) {
@@ -296,7 +292,7 @@ export function NativeSend({
     () => ledgerConnection?.isConnected() ?? true,
     () => false,
   );
-  const draftCollectible = savedHash || token ? undefined : collectible;
+  const draftCollectible = token ? undefined : collectible;
   const initialAmount = draftCollectible?.tokenStandard === 'ERC-1155' ? '1' : '';
   const [recipientDraft, setRecipientDraft] = useState<{
     value: string;
@@ -377,7 +373,6 @@ export function NativeSend({
     current.phase === 'submitting' && current.review === leavePrompt.review &&
     (leavePrompt.review !== null || current === leavePrompt.fallback);
   const review = snapshot.review;
-  const smartReplay = review?.replay?.smartAccount;
   useLayoutEffect(() => {
     // A quote owns its lookup only until that exact review is retired. Release
     // the ticket without cancelling any successor work in the controller.
@@ -486,7 +481,7 @@ export function NativeSend({
       setLeavePrompt({ review: current.review, fallback: current.review === null ? current : null });
       return;
     }
-    if (current.phase === 'review' && current.review && !current.review.retry && !current.review.replacement) {
+    if (current.phase === 'review' && current.review && !current.review.replacement) {
       authenticationOwner.current = null;
       setAuthenticationBusy(false);
       setError('');
@@ -572,13 +567,12 @@ export function NativeSend({
       });
       return;
     }
-    if (savedHash) void controller.recover(true, savedHash).catch(() => undefined);
-  }, [controller, savedHash, replacementHash, replacementMode, prepareReplacement]);
+  }, [controller, replacementHash, replacementMode, prepareReplacement]);
   const submit = () => {
     if (!review || controller.getSnapshot().review !== review || busy || authenticationOwner.current?.submitted ||
-        !review.retry && ledgerConnection && !ledgerConnection.isConnected()) return;
+        ledgerConnection && !ledgerConnection.isConnected()) return;
     const held = resolution.current;
-    if (held?.ticket && !review.retry) {
+    if (held?.ticket) {
       try {
         held.ticket.assertCurrent();
         if (recipient.trim() !== held.ticket.input ||
@@ -607,7 +601,7 @@ export function NativeSend({
   const confirmAuthentication = async (held: AuthenticationReview, credential: NativeOperationCredential) => {
     if (!authenticationCurrent(held) || held.submitted || busy) return;
     const resolved = resolution.current;
-    if (resolved?.ticket && !held.review.retry) {
+    if (resolved?.ticket) {
       try { resolved.ticket.assertCurrent(); resolved.authorized = true; }
       catch { retireResolution(); authenticationOwner.current = null;
         setError(t('mobile.smartSendViews.theRecipientLookupExpiredOrChangedReviewTheTransferAgain')); return; }
@@ -736,17 +730,18 @@ export function NativeSend({
     : `${t(token && (activeTokenSnapshot?.status === 'loading' || selectedToken?.status === 'loading') ? 'mobile.activityViews.nativeSptAssets.loadingBalance' : 'mobile.accountPortfolio.balanceUnavailable')} · ${availableBalanceSymbol}`;
   const footer = review ? <>
               <Button
-                title={reviewCancellation ? t('mobile.sendAssetViews.evm.submitCancellation') : review.replacement ? t('mobile.sendAssetViews.evm.submitSpeedUp') : review.retry ? t('mobile.sendAssetViews.evm.resendSignedTransaction') : t('mobile.sendAssetViews.evm.confirmAndSend')}
-                disabled={busy || !review.retry && !ledgerReady}
+                title={reviewCancellation ? t('mobile.sendAssetViews.evm.submitCancellation') : review.replacement ? t('mobile.sendAssetViews.evm.submitSpeedUp') : t('mobile.sendAssetViews.evm.confirmAndSend')}
+                disabled={busy || !ledgerReady}
                 onPress={() => submit()}
                 testID="native-send-confirm"
               />
-  </> : hasOutcome && knownOutcome ? <>
+  </> : hasOutcome ? <>
     {onViewTransaction && <Button title={t('mobile.sendAssetViews.evm.viewTransaction')} onPress={() => {
       if (lifetime.current.alive && snapshot.hash && controller.getSnapshot().hash === snapshot.hash) onViewTransaction(snapshot.hash);
     }} />}
-    <Button title={t('privacy.deposit.done')} variant={onViewTransaction ? 'secondary' : 'primary'} onPress={close} />
-  </> : hasOutcome ? <Button title={replacementHash ? t('mobile.sendAssetViews.evm.backToActivity') : t('mobile.sendAssetViews.evm.backToWallet')} variant="secondary" onPress={close} /> : !replacementHash ? (
+    <Button title={t(knownOutcome ? 'privacy.deposit.done' : replacementHash ? 'mobile.sendAssetViews.evm.backToActivity' : 'mobile.sendAssetViews.evm.backToWallet')}
+      variant={onViewTransaction ? 'secondary' : 'primary'} onPress={close} />
+  </> : !replacementHash ? (
     <Button title={t('mobile.smartSendViews.reviewTransfer')} disabled={busy || !recipient.trim() ||
       (draftCollectible?.tokenStandard === 'ERC-721' ? !tokenId.trim() : !amount && !maximum)}
       onPress={prepare} testID="native-send-review" />
@@ -778,7 +773,7 @@ export function NativeSend({
                 : replacementHash
                 ? hasOutcome ? t('mobile.sendAssetViews.evm.speedUpStatus') : t('mobile.sendAssetViews.evm.reviewSpeedUp')
                 : review
-                ? (review.retry ? t('transactions.replay.review') : reviewedCollectible ? t('mobile.sendAssetViews.evm.reviewCollectible') : t('mobile.smartSendViews.reviewTransfer'))
+                ? (reviewedCollectible ? t('mobile.sendAssetViews.evm.reviewCollectible') : t('mobile.smartSendViews.reviewTransfer'))
                 : hasOutcome
                 ? t('mobile.sendAssetViews.evm.transferStatus')
                 : draftCollectible
@@ -825,10 +820,7 @@ export function NativeSend({
           )}
           {review ? (
             <>
-              {smartReplay ? <Card style={s.summary}>
-                <Text style={s.label}>{t('receive.smartAccount')}</Text>
-                <Text selectable style={s.address}>{smartReplay.account}</Text>
-              </Card> : reviewedCollectible ? collectibleIdentity(reviewedCollectible) : (
+              {reviewedCollectible ? collectibleIdentity(reviewedCollectible) : (
                 <View style={s.hero}>
                   <Coin
                     id={reviewedToken ? 'custom-token' : capturedContext.networkId}
@@ -849,36 +841,8 @@ export function NativeSend({
                   </Text>
                 </View>
               )}
-              {smartReplay?.executions?.map((call, index) => {
-                const transfer = call.assetTransfer ? createAssetTransferDisplay(call.assetTransfer) : null;
-                return <Card key={index} style={s.summary}>
-                  <Text style={s.label}>{transfer ? t(`assetTransfer.${transfer.heading}`) : call.data === '0x' ? t('transactions.methodNames.transfer') : t('mobile.dappConsent.transactionReview.contractInteraction')}</Text>
-                  {transfer ? <>
-                    {transfer.items.map((item, itemIndex) => <View key={itemIndex}>
-                      <Text style={s.amount}>{item.tokenId === null ? item.value : `#${item.tokenId}`}</Text>
-                      <Text>{item.symbol ?? (item.tokenId === null ? t('assetTransfer.rawUnits') : `${item.units} ${t('assetTransfer.units')}`)}</Text>
-                    </View>)}
-                    {call.value !== '0' && <><Text style={s.label}>{t('assetTransfer.nativeValue')}</Text><Text>{formatBaseUnits(call.value, 18)} {capturedContext.symbol}</Text></>}
-                    <Text style={s.label}>{t('assetTransfer.recipient')}</Text><Text selectable style={s.address}>{transfer.recipient}</Text>
-                    <Text style={s.label}>{t('assetTransfer.contract')}</Text><Text selectable style={s.address}>{transfer.contract}</Text>
-                  </> : <>
-                    <Text>{formatBaseUnits(call.value, 18)} {capturedContext.symbol}</Text>
-                    <Text style={s.label}>{t('send.to')}</Text><Text selectable style={s.address}>{call.target}</Text>
-                  </>}
-                </Card>;
-              })}
-              {review.replay?.missingNonce !== undefined && <Card style={s.summary}>
-                <Text style={s.label}>{t('mobile.sendAssetViews.evm.pREVIOUSTRANSACTIONNONCE')}{' '}{review.replay.missingNonce}</Text>
-                <Text style={s.hint}>{t('mobile.sendAssetViews.evm.thisTransactionIsWaitingForAnEarlierNonce')}</Text>
-                {!review.replay.predecessorCount && <Text style={s.hint}>{t('mobile.sendAssetViews.evm.noEarlierTransactionIsAvailableToRetryOnThisDevice')}</Text>}
-                {review.replay.predecessors.map(candidate => <Button key={candidate.hash} variant="secondary"
-                  title={`${candidate.operation === 'cancel' ? t('transactions.cancellation') : candidate.operation === 'speed-up' ? t('mobile.sendAssetViews.evm.replacement') : t('notifications.transaction')} ${candidate.hash.slice(0, 10)}…`}
-                  onPress={() => void run(() => controller.recover(true, candidate.hash))} />)}
-                {review.replay.predecessors.length < review.replay.predecessorCount && <Button title={t('mobile.sendAssetViews.evm.loadMoreSavedTransactions')} variant="secondary" size="compact" disabled={busy}
-                  onPress={() => void run(() => controller.loadMorePredecessors())} />}
-              </Card>}
               <Card style={s.summary}>
-                {resolvedRecipient && !review.retry && !review.replacement && <>
+                {resolvedRecipient && !review.replacement && <>
                   <Text style={s.label}>{t('mobile.sendAssetViews.evm.eNSNAME')}</Text>
                   <Text selectable style={s.address}>{resolvedRecipient.input}</Text>
                   <Text style={s.label}>{t('mobile.sendAssetViews.evm.rESOLVEDADDRESS')}</Text>
@@ -903,7 +867,7 @@ export function NativeSend({
                   {formatBaseUnits(review.maximumFeeUnits, 18)}{' '}
                   {capturedContext.symbol}
                 </Text>
-                {!smartReplay && !reviewedToken && !reviewedCollectible && !reviewCancellation && (
+                {!reviewedToken && !reviewedCollectible && !reviewCancellation && (
                   <>
                     <View style={s.separator} />
                     <Text style={s.label}>{t('mobile.sendAssetViews.evm.aMOUNTEXECUTIONFEELIMIT')}</Text>
@@ -943,26 +907,9 @@ export function NativeSend({
                   ? t('mobile.sendAssetViews.evm.thisSendsZeroToYourOwnAddressWithAHigher')
                   : t('mobile.sendAssetViews.evm.onlyTheNetworkFeeChangesTheOriginalRecipientValueAnd')}</Text>
               </Card>}
-              {review.replay && <Card style={s.summary}>
-                {smartReplay && <>
-                  <Text style={s.label}>{t('transactions.feePayer')}</Text>
-                  <Text selectable style={s.address}>{review.replay.from}</Text>
-                  <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.userOperationNonce')}</Text>
-                  <Text>{smartReplay.operationNonce}</Text>
-                </>}
-                <Text style={s.label}>{t('mobile.sendAssetViews.evm.sAVEDTRANSACTIONNONCE')}{' '}{review.nonce}</Text>
-                <Text selectable style={s.address}>{review.replay.hash}</Text>
-                <Text style={s.hint}>{t('mobile.sendAssetViews.evm.connection')}{' '}{new URL(capturedContext.rpcUrl).host}</Text>
-                <Text>{review.replay.operation === 'cancel' ? t('transactions.cancellation') : review.replay.operation === 'speed-up' ? t('mobile.sendAssetViews.evm.feeReplacement') : review.replay.to === null ? t('transactions.replay.creation') : review.replay.dataBytes ? t('mobile.dappConsent.transactionReview.contractInteraction') : t('transactions.methodNames.transfer')}</Text>
-                {review.replay.dataBytes > 0 && <Text style={s.hint}>{review.replay.selector ?? t('mobile.sendAssetViews.evm.contractData')} · {review.replay.dataBytes} {t('transactions.replay.bytes')}</Text>}
-                {!!review.replay.accessListEntries && <Text style={s.hint}>{review.replay.accessListEntries} {t('mobile.sendAssetViews.evm.accesslistEntries')}</Text>}
-                {review.replay.tokenTransfer && !reviewedToken && <Text>{t('mobile.sendAssetViews.evm.tokenBaseUnits')}{' '}{review.replay.tokenTransfer.amountUnits}</Text>}
-                <Text style={s.hint} testID="native-replay-same-nonce-warning">
-                  {t('transactions.replay.sameNonceWarning')}</Text>
-              </Card>}
               {!review.replacement && <Text style={s.hint}>
                 {t('mobile.sendAssetViews.evm.confirmTheFullAddressAndNetworkBeforeSendingCompletedTransfers')}</Text>}
-              {ledgerConnection && !review.retry && !ledgerReady && <Button
+              {ledgerConnection && !ledgerReady && <Button
                 title={t('mobile.accounts.connectLedger')} disabled={busy}
                 onPress={() => { Keyboard.dismiss(); setLedgerPicker(ledgerConnection); }}
               />}
@@ -1036,20 +983,6 @@ export function NativeSend({
                   {snapshot.hash}
                 </Text>
               </Card>
-              {!knownOutcome && <Button
-                title={t('settings.smartAccountInfrastructureCheckStatus')}
-                variant="primary"
-                disabled={busy}
-                onPress={() => void run(() => controller.recover(false, snapshot.hash ?? undefined))}
-              />}
-              {snapshot.phase === 'unknown' && !snapshot.inspectionOnly && (
-                <Button
-                  title={t('mobile.sendAssetViews.evm.reviewRetry')}
-                  variant="secondary"
-                  disabled={busy}
-                  onPress={() => void run(() => controller.recover(true, snapshot.hash ?? undefined))}
-                />
-              )}
             </>
           ) : replacementHash ? (
             !busy && <Button title={t('mobile.sendAssetViews.evm.checkAgain')} variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
@@ -1084,7 +1017,7 @@ export function NativeSend({
                   scannerOwner.current = next; setScanner(next);
                 }} />}
               />
-              {recipientPicker && !savedHash && !replacementHash && !token && !draftCollectible && (
+              {recipientPicker && !replacementHash && !token && !draftCollectible && (
                 <>
                   <Button
                     title={picker ? t('mobile.settings.hide') : t('mobile.sendAssetViews.evm.chooseAccount')}

@@ -32,6 +32,7 @@ export function assertWalletControllerRoute(
   if (controller !== 'wallet') return;
   if (
     member === 'captureReplacementSigning' ||
+    member === 'captureSavedEvmActivity' ||
     member === 'observeCapturedRetainedUtxo' ||
     member === 'readUtxoReplacementCandidate' ||
     member === 'signReviewedSyscoinPsbt'

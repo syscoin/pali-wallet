@@ -206,7 +206,11 @@ it('restores the saved-only Smart amount after hash-only reopen without duplicat
       '10000000000000000'
     )
   );
-  await screen.findByRole('button', { name: 'transactions.replay.review' });
+  expect(
+    screen.queryByRole('button', {
+      name: /resend|transactions\.replay\.review/i,
+    })
+  ).toBeNull();
   expect(savedReads()).toHaveLength(1);
   activityOpen.unmount();
   mockLocation = {
@@ -220,7 +224,11 @@ it('restores the saved-only Smart amount after hash-only reopen without duplicat
       '10000000000000000'
     )
   );
-  await screen.findByRole('button', { name: 'transactions.replay.review' });
+  expect(
+    screen.queryByRole('button', {
+      name: /resend|transactions\.replay\.review/i,
+    })
+  ).toBeNull();
   expect(
     screen.queryByText('transactions.transactionNotFoundOrPending')
   ).toBeNull();
@@ -303,7 +311,11 @@ it.each(['hash', 'chain'])(
         : Promise.resolve(null)
     );
     render(<DetailsView />);
-    await screen.findByRole('button', { name: 'transactions.replay.review' });
+    expect(
+      screen.queryByRole('button', {
+        name: /resend|transactions\.replay\.review/i,
+      })
+    ).toBeNull();
     await screen.findByText('transactions.transactionNotFoundOrPending');
     expect(screen.queryByTestId('transaction-amount')).toBeNull();
   }
@@ -326,13 +338,19 @@ it('keeps a fresh mined provider result ahead of retained local intent', async (
     });
   });
   render(<DetailsView />);
-  await screen.findByRole('button', { name: 'transactions.replay.review' });
+  expect(
+    screen.queryByRole('button', {
+      name: /resend|transactions\.replay\.review/i,
+    })
+  ).toBeNull();
   await waitFor(() =>
     expect(screen.getByTestId('transaction-status').textContent).toBe(
       'send.confirmed'
     )
   );
-  expect(screen.getByTestId('transaction-amount').textContent).toBe('9');
+  await waitFor(() =>
+    expect(screen.getByTestId('transaction-amount').textContent).toBe('9')
+  );
   expect(savedReads()).toHaveLength(1);
 });
 it('keeps an observed pending provider result ahead of the saved-only label', async () => {
@@ -355,11 +373,17 @@ it('keeps an observed pending provider result ahead of the saved-only label', as
     });
   });
   render(<DetailsView />);
-  await screen.findByRole('button', { name: 'transactions.replay.review' });
+  expect(
+    screen.queryByRole('button', {
+      name: /resend|transactions\.replay\.review/i,
+    })
+  ).toBeNull();
   await waitFor(() =>
     expect(screen.getByTestId('transaction-status').textContent).toBe(
       'send.pending'
     )
   );
-  expect(screen.getByTestId('transaction-amount').textContent).toBe('9');
+  await waitFor(() =>
+    expect(screen.getByTestId('transaction-amount').textContent).toBe('9')
+  );
 });

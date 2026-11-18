@@ -257,20 +257,6 @@ export async function runSmartAccountCancellationJourney(options: Options) {
     await expect(networkFeeReview()).toHaveCount(0);
     return { modal, entryPointFee, maximumNetworkFee };
   };
-  const openActivityCancellation = async () => {
-    await wallet.gotoRoute('#/home');
-    await wallet.ensureOnHome();
-    await page.getByText('Activity', { exact: true }).click();
-    await page
-      .locator('#transaction-options')
-      .first()
-      .getByRole('button')
-      .click();
-    await page
-      .getByRole('menuitem')
-      .filter({ hasText: /^Cancel$/ })
-      .click();
-  };
   const approveCancellation = async (
     original: SmartAccountPackedUserOperation
   ) => {
@@ -296,13 +282,13 @@ export async function runSmartAccountCancellationJourney(options: Options) {
     await page.getByText('Activity', { exact: true }).click();
     const activity = page.locator('#activity-panel-list');
     await expect(activity).toBeVisible();
-    await expect(
-      activity.getByText(en.transactions.smartAuthorizations.title, {
-        exact: true,
-      })
-    ).toHaveCount(0);
     return activity;
   };
+  const cancelFromActivity = (operationHash: string) =>
+    page
+      .locator(`#activity-panel-list [data-operation-hash="${operationHash}"]`)
+      .getByRole('button', { name: en.buttons.cancel, exact: true })
+      .click();
   const originalReplayFails = async (
     value: SmartAccountPackedUserOperation
   ) => {
@@ -360,24 +346,19 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         const originalRow = saved.locator(
           `[data-transaction-hash="${original.hash}"]`
         );
-        const fallback = saved.locator(
+        const instruction = saved.locator(
           `[data-operation-hash="${originalOperationHash}"]`
         );
         await expect(originalRow).toHaveCount(1);
-        await expect(fallback).toHaveCount(0);
-        const cancelFromActivity = async () => {
-          await originalRow
-            .locator('#transaction-options')
-            .getByRole('button')
-            .click();
-          await page
-            .getByRole('menuitem')
-            .filter({ hasText: /^Cancel$/ })
-            .click();
-        };
+        await expect(instruction).toHaveCount(1);
+        await expect(
+          saved
+            .locator(`[data-activity-outer="${original.hash}"]`)
+            .locator(`[data-operation-hash="${originalOperationHash}"]`)
+        ).toHaveCount(1);
         const before = deliveries.length;
         const beforeEstimates = signedEstimates;
-        await cancelFromActivity();
+        await cancelFromActivity(originalOperationHash);
         const { modal } = await reviewCancellation(original.operation);
         await modal
           .getByRole('button', { name: en.buttons.cancel, exact: true })
@@ -388,7 +369,7 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         expect(await canonicalNonce(original.operation)).toBe(
           BigInt(original.operation.nonce)
         );
-        await cancelFromActivity();
+        await cancelFromActivity(originalOperationHash);
         const cancelled = await approveCancellation(original.operation);
         expect(cancelled.operation.nonce).toBe(original.operation.nonce);
         const cancellationOperationHash = getSmartAccountUserOpHash(
@@ -444,7 +425,12 @@ export async function runSmartAccountCancellationJourney(options: Options) {
           await rpc('eth_getBalance', [recipient, 'latest'])
         );
         const original = await beginSend('original-wins');
-        await openActivityCancellation();
+        const hash = getSmartAccountUserOpHash(
+          original.operation,
+          chain.chainId
+        ).toLowerCase();
+        await openActivity();
+        await cancelFromActivity(hash);
         const { modal } = await reviewCancellation(original.operation);
         await rpc('evm_mine');
         await mined(original.hash);
@@ -473,10 +459,6 @@ export async function runSmartAccountCancellationJourney(options: Options) {
           })
         ).toHaveCount(0);
         expect(deliveries).toHaveLength(before);
-        const hash = getSmartAccountUserOpHash(
-          original.operation,
-          chain.chainId
-        ).toLowerCase();
         const activity = await openActivity();
         await expect(
           activity.locator(`[data-transaction-hash="${original.hash}"]`)
@@ -542,21 +524,12 @@ export async function runSmartAccountCancellationJourney(options: Options) {
         expect(await page.locator('body').innerText()).not.toContain(
           abandoned.signature
         );
-        await row
-          .getByRole('button', {
-            name: en.transactions.smartAuthorizations.checkStatus,
-          })
-          .click();
         await expect(
           row.getByText(en.transactions.smartAuthorizations.mayExecute, {
             exact: true,
           })
         ).toBeVisible();
-        await row
-          .getByRole('button', {
-            name: en.transactions.smartAuthorizations.cancelInstruction,
-          })
-          .click();
+        await cancelFromActivity(hash);
         const cancelled = await approveCancellation(abandoned);
         expect(cancelled.operation.nonce).toBe(abandoned.nonce);
         await rpc('evm_mine');

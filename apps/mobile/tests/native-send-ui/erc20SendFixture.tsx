@@ -1,12 +1,10 @@
 import { unsignedTransferBytes } from '../../src/custody/evmFeeContracts.ts';
 import { createTestOperationAuthorizer } from '../fixtures/operationAuthorization.ts';
-import { authorizePrivateNoteReplay } from '../../../../source/wallet/privateNoteReplay.ts';
 import { getNativeSendContext, getNativeNetwork } from '../../src/custody/networkContext';
 // Synthetic public wallet only. Production never imports this fixture.
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
-import { Interface } from 'ethers/abi';
 import { keccak256 } from 'ethers/crypto';
 import type { EvmUnsignedTransfer } from '../../src/custody/evmFeeContracts';
 import type { CustodySnapshot } from '../../src/custody/types';
@@ -15,10 +13,9 @@ import {
   type NativeTransferRuntime,
 } from '../../src/custody/transfers';
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
-import { EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay';
 import { EvmSignedRecords } from '../../../../source/wallet/evmSignedRecords';
 import { createNativeSignedRecordView } from '../../src/custody/sharedSignedRecords';
-import { historicalSignedBundle, signedRecordTestSession, submitFixtureEvmTransaction } from '../signedRecordTestSession';
+import { signedRecordTestSession, submitFixtureEvmTransaction } from '../signedRecordTestSession';
 import { assertTransferIntentEnvelope } from '../../src/custody/transferIntent';
 import { NativeSend } from '../../src/screens/NativeSend';
 import { FixtureDeviceAuthorization, fixtureDeviceAuthorization } from './fixtureDeviceAuthorization';
@@ -81,9 +78,7 @@ const signedRecords = new EvmSignedRecords({
 const broadcasts: string[] = [];
 const rpcMethods: string[] = [];
 let signatures = 0;
-let unlockChecks = 0;
 let finalized = false;
-let observationUnavailable = new URLSearchParams(window.location.search).has('observation-unavailable');
 let loseResponse = true;
 let pendingNonce = '0x0';
 let pendingAfterSigning = false;
@@ -103,8 +98,6 @@ const rpc = new NativeTransferRpc({
     const request = JSON.parse(String(init.body));
     if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fixtureFetch(_url, { ...init, body: JSON.stringify(row) })).json())));
     rpcMethods.push(request.method);
-    if (observationUnavailable && request.method === 'eth_getTransactionReceipt')
-      throw Error('Synthetic observation outage');
     if (request.method === 'eth_gasPrice' && heldQuote) await heldQuote;
     let result: unknown;
     if (request.method === 'eth_chainId') result = '0x1';
@@ -167,14 +160,11 @@ const rpc = new NativeTransferRpc({
     );
   },
 });
-const operationAuthorization = createTestOperationAuthorizer((credential, check) => runtime.authenticateOperation(credential, check, new AbortController().signal), unsignedTransferBytes);
-const authenticationRefusals = new WeakSet<object>();
-const runtime: NativeTransferRuntime = {
-  isAuthenticationRefusal: error => !!error && typeof error === 'object' && authenticationRefusals.has(error),
-    releaseReplacement() {},
-    authorizeOperation: operationAuthorization.authorizeOperation,
-    releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
-  async authenticateOperation(credential, check, signal) {
+async function authenticateOperation(
+  credential: Parameters<NativeTransferRuntime['authorizeOperation']>[0],
+  check: () => void,
+  signal: AbortSignal
+) {
     check();
     if (credential.method !== 'device') {
       const error = Error('INVALID_CREDENTIAL'); authenticationRefusals.add(error); throw error;
@@ -184,11 +174,14 @@ const runtime: NativeTransferRuntime = {
     try { await fixtureDeviceAuthorization.request('transaction', owner.signal, check); check(); }
     catch (error) { if (error && typeof error === 'object') authenticationRefusals.add(error); throw error; }
     finally { signal.removeEventListener('abort', abort); if (deviceOwner === owner) deviceOwner = undefined; }
-  },
-  replay(guard, transport, options) {
-    return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
-      context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
-  },
+}
+const operationAuthorization = createTestOperationAuthorizer((credential, check) => authenticateOperation(credential, check, new AbortController().signal), unsignedTransferBytes);
+const authenticationRefusals = new WeakSet<object>();
+const runtime: NativeTransferRuntime = {
+  isAuthenticationRefusal: error => !!error && typeof error === 'object' && authenticationRefusals.has(error),
+    releaseReplacement() {},
+    authorizeOperation: operationAuthorization.authorizeOperation,
+    releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
   submit: submitFixtureEvmTransaction(signedRecords),
   async token(contract, guard) {
     guard();
@@ -199,10 +192,6 @@ const runtime: NativeTransferRuntime = {
     guard();
     return createNativeSignedRecordView(signedRecords, signedRecordTestSession(guard), 'f'.repeat(64),
       { index: 0, type: 'HDAccount', address: wallet.address }, getNativeNetwork('ethereum'));
-  },
-  assertUnlocked(guard) {
-    guard();
-    unlockChecks++;
   },
   async sign(transaction: EvmUnsignedTransfer, authority, intent) {
     const guard = authority.assertCurrent;
@@ -237,12 +226,10 @@ declare global {
   interface Window {
     __erc20SendFixture: {
       signatures(): number;
-      unlockChecks(): number;
       broadcasts(): readonly string[];
       rpcMethods(): readonly string[];
       journal(): unknown;
       finalized(): void;
-      restoreObservation(): void;
       revise(): void;
       setRuntimePrecision(value: number): void;
       acceptBroadcasts(): void;
@@ -253,53 +240,16 @@ declare global {
       raceAfterSigning(): void;
       lock(): void;
       unlock(): void;
-      seedPredecessor(count?: number, collectible?: boolean): Promise<{ first: string; second: string }>;
     };
   }
 }
 window.__erc20SendFixture = {
-  async seedPredecessor(count = 1, collectible = false) {
-    const session = signedRecordTestSession();
-    const nftAbi = new Interface(['function transferFrom(address,address,uint256)']);
-    const sign = async (nonce: number, value = 1, operation: 'send' | 'erc721' = 'send') => {
-      const context = {account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl},operation};
-      const nft = operation === 'erc721';
-      const data = nft
-        ? nftAbi.encodeFunctionData('transferFrom', [wallet.address, wallet.address, 0])
-        : nonce === 0 ? '0x' : '0x6000';
-      const rawTransaction = await wallet.signTransaction({type:nonce===0?2:1,chainId:1,nonce,
-        to:nft?token.contractAddress:nonce===0?wallet.address:null,value,gasLimit:100000,
-        ...(nonce===0?{maxFeePerGas:3,maxPriorityFeePerGas:1}:{gasPrice:3,accessList:[{address:wallet.address,storageKeys:[]}]}),data});
-      const tx=Transaction.from(rawTransaction);
-      return { rawTransaction, hash: tx.hash!, from: wallet.address, chainId: '1', nonce, type: tx.type, context };
-    };
-    const earliest = count > 0 ? await sign(0, collectible ? 0 : 1, collectible ? 'erc721' : 'send') : null;
-    const first = earliest?.hash ?? '';
-    if (earliest && collectible) {
-      await signedRecords.append(session, earliest);
-      await signedRecords.updatePhase(session, '1', wallet.address, first, 'confirmed');
-    } else if (earliest) {
-      // Old ordinary same-nonce variants remain readable after new admission tightens.
-      const alternatives = await Promise.all(Array.from({ length: Math.min(count, 30) - 1 }, (_, i) => sign(0, i + 2)));
-      localStorage.setItem(key('signed-records'), await historicalSignedBundle(session,
-        [earliest, ...alternatives].map(({ rawTransaction }) => rawTransaction)));
-    }
-    const later = await sign(1);
-    const second = later.hash;
-    await signedRecords.append(session, later);
-    await signedRecords.updatePhase(session, '1', wallet.address, second, 'submitted');
-    loseResponse=false;await controller.recover(true,second);return {first,second};
-  },
   signatures: () => signatures,
-  unlockChecks: () => unlockChecks,
   broadcasts: () => [...broadcasts],
   rpcMethods: () => [...rpcMethods],
   journal: () => localStorage.getItem(key('signed-records')),
   finalized: () => {
     finalized = true;
-  },
-  restoreObservation: () => {
-    observationUnavailable = false;
   },
   revise() {
     state = Object.freeze({ ...state, revision: state.revision + 1 });
@@ -364,24 +314,16 @@ export function Erc20SendFixture() {
     source.getSnapshot
   );
   const query = new URLSearchParams(window.location.search);
-  const inspection = query.get('inspect');
-  useEffect(() => {
-    if (inspection && /^0x[0-9a-f]{64}$/i.test(inspection)) void controller.view.recover(false, inspection);
-  }, [inspection]);
   const multi = query.has('multiple-pending');
-  const [route, setRoute] = useState<{ revision: number; open: boolean; hash?: string }>(() => ({
+  const [route, setRoute] = useState<{ revision: number; open: boolean; activityHash?: string }>(() => ({
     revision: snapshot.revision,
     open: true,
-    hash: query.get('saved') ?? undefined,
   }));
   const open = route.open && (!multi || route.revision === snapshot.revision);
   if (snapshot.phase !== 'ready') return <Text>Wallet closed</Text>;
+  if (route.activityHash) return <Text>{route.activityHash}</Text>;
   if (!open) return multi ? <>
     <Button title="Send token" onPress={() => setRoute({ revision: snapshot.revision, open: true })} />
-    <Button title="Open first saved transfer" onPress={() => {
-      const first = broadcasts[0];
-      if (first) setRoute({ revision: snapshot.revision, open: true, hash: keccak256(first) });
-    }} />
   </> : <Text>Wallet closed</Text>;
   return <><NativeSend
     account={{ address: wallet.address, network: 'ethereum', revision: state.revision }}
@@ -390,7 +332,7 @@ export function Erc20SendFixture() {
     context={getNativeSendContext('ethereum')}
     token={token}
     tokenView={tokenView}
-    savedHash={route.hash}
+    onViewTransaction={activityHash => setRoute({ revision: snapshot.revision, open: false, activityHash })}
     onBack={() => setRoute({ revision: snapshot.revision, open: false })}
   /><FixtureDeviceAuthorization /></>;
 }

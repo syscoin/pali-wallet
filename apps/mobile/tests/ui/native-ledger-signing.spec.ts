@@ -166,32 +166,11 @@ test('UTXO reconnect keeps the existing review and its expiry', async ({
   ).toBe(0);
 });
 
-test('saved EVM signed bytes replay without connecting Ledger', async ({
-  page,
-}) => {
-  await page.goto('/?ledger-send=1&ledger-replay=1');
-  await expect(
-    page.getByRole('button', { name: 'Resend signed transaction', exact: true })
-  ).toBeEnabled();
-  await expect(
-    page.getByRole('button', { name: 'Connect Ledger', exact: true })
-  ).toHaveCount(0);
-  await page.getByTestId('native-send-confirm').click();
-  await authenticateNativeOperation(page);
-  expect(
-    await page.evaluate(() => window.__nativeSendFixture.confirmations())
-  ).toHaveLength(1);
-  expect(
-    await page.evaluate(() => window.__nativeLedgerSigningFixture.calls())
-  ).toEqual([]);
-});
-
-test('saved UTXO status can be checked without connecting Ledger', async ({ page }) => {
+test('UTXO composer opens without reading saved transfers or connecting Ledger', async ({ page }) => {
   await page.goto('/?utxo-send=1&ledger-send=1');
-  await page.getByRole('button', { name: 'Check transfer aaaaaaaa…', exact: true }).click();
-  await expect(page.getByText('Submission unverified')).toBeVisible();
+  await expect(page.getByLabel('Recipient address', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved transfers', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Connect Ledger', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Check status', exact: true }).click();
   expect(await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())).toBe(0);
   expect(await page.evaluate(() => window.__nativeLedgerSigningFixture.calls())).toEqual([]);
 });

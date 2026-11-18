@@ -666,7 +666,6 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     assert(bitcoin.Transaction.fromHex(published!).ins.every(({ sequence }: { sequence: number }) => sequence >= 0xfffffffe));
     assert.equal(txid, ackId);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 1);
-    assert.deepEqual(await send.refreshSaved(), []);
     assert.equal(await send.check(txid), 'confirmed');
     const afterStatus = calls.length;
     showSavedTransfer = false;
@@ -1506,10 +1505,11 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     const beforeStatusPosts = posts.length;
     const oldRaw = posts.at(-1);
     missingSavedTransfer = true;
-    await restored.refreshSaved();
+    const previousTxid = bitcoin.Transaction.fromHex(oldRaw!).getId();
+    assert.equal(await restored.check(previousTxid), 'unknown');
     const [previousSend] = await restored.list();
     assert(previousSend);
-    assert.equal(previousSend.txid, bitcoin.Transaction.fromHex(oldRaw!).getId());
+    assert.equal(previousSend.txid, previousTxid);
     missingSavedTransfer = false;
     assert.equal(await restored.check(previousSend.txid), 'seen');
     assert.equal(posts.length, beforeStatusPosts);

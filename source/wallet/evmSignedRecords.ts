@@ -3910,7 +3910,6 @@ export class EvmSignedRecords {
       maximum: number;
       nonce?: number;
       pendingOnly?: boolean;
-      replayCandidatesOnly?: boolean;
     }>
   ): Promise<
     Readonly<{
@@ -3920,14 +3919,11 @@ export class EvmSignedRecords {
     }>
   > {
     const from = getAddress(address).toLowerCase();
-    const { maximum, beforeHash, nonce, replayCandidatesOnly, pendingOnly } =
-      options;
+    const { maximum, beforeHash, nonce, pendingOnly } = options;
     if (
       !Number.isSafeInteger(maximum) ||
       maximum < 1 ||
       maximum > 30 ||
-      (replayCandidatesOnly && nonce === undefined) ||
-      (pendingOnly && replayCandidatesOnly) ||
       (beforeHash !== undefined && !HASH.test(beforeHash)) ||
       (nonce !== undefined && (!Number.isSafeInteger(nonce) || nonce < 0))
     )
@@ -3942,27 +3938,16 @@ export class EvmSignedRecords {
           entry.from === from &&
           (nonce === undefined || entry.nonce === nonce)
       );
-      const matching = replayCandidatesOnly
-        ? await this.replayableVariants(
-            session,
-            await this.withoutRevokedSmartAccountOperations(
-              session,
-              scoped,
-              bundle?.entries ?? [],
-              bundle?.authorizations ?? []
-            )
-          )
-        : scoped;
       const end =
         beforeHash === undefined
-          ? matching.length
-          : matching.findIndex((entry) => entry.hash === beforeHash);
+          ? scoped.length
+          : scoped.findIndex((entry) => entry.hash === beforeHash);
       if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
       // Locate the anchor in append order before filtering. Its phase may
       // have changed while the preceding page was visible.
       const visible = pendingOnly
-        ? matching.slice(0, end).filter((entry) => isPendingPhase(entry.phase))
-        : matching;
+        ? scoped.slice(0, end).filter((entry) => isPendingPhase(entry.phase))
+        : scoped;
       const pageEnd = pendingOnly ? visible.length : end;
       const start = Math.max(0, pageEnd - maximum),
         entries: EvmRetainedRecord[] = [];
@@ -3972,8 +3957,8 @@ export class EvmSignedRecords {
       return Object.freeze({
         entries: Object.freeze(entries),
         total: pendingOnly
-          ? matching.filter((entry) => isPendingPhase(entry.phase)).length
-          : matching.length,
+          ? scoped.filter((entry) => isPendingPhase(entry.phase)).length
+          : scoped.length,
         nextCursor: start > 0 ? visible[start]!.hash : null,
       });
     });
