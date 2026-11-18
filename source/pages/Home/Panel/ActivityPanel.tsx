@@ -325,25 +325,33 @@ export const TransactionsPanel = () => {
     hasHistoryStatus &&
     historyState !== 'ready' &&
     (historyState !== 'pending' || isRetrying);
+  const historyRetry = showHistoryRetry && (
+    <div className="mt-4 text-center text-sm text-brand-gray200">
+      <p role="status" className="min-h-[1.25rem]">
+        {isRetrying
+          ? t('networkConnection.loadingTransactions')
+          : historyUnavailable
+          ? t('send.unableToLoad')
+          : null}
+      </p>
+      <button
+        type="button"
+        className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
+        disabled={historyState === 'pending' || isRetrying}
+        onClick={retryHistory}
+      >
+        {t('receive.retry')}
+      </button>
+    </div>
+  );
 
   return (
     <>
       {(isLoading || savedActivityLoading) &&
         !hasTransactions &&
+        !isRetrying &&
         TransactionSkeleton}
-      {showHistoryRetry && (
-        <div className="mt-8 text-center text-sm text-brand-gray200">
-          {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
-          <button
-            type="button"
-            className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
-            disabled={historyState === 'pending' || isRetrying}
-            onClick={retryHistory}
-          >
-            {t('receive.retry')}
-          </button>
-        </div>
-      )}
+      {!hasTransactions && historyRetry}
       {savedActivityUnavailable && (
         <div className="mt-4 text-center text-sm text-brand-gray200">
           <p role="status">{t('home.savedActivityUnavailable')}</p>
@@ -391,6 +399,7 @@ export const TransactionsPanel = () => {
               loadMoreSaved={saved.loadMore}
             />
           )}
+          {historyRetry}
           {OpenTransactionExplorer}
         </div>
       )}

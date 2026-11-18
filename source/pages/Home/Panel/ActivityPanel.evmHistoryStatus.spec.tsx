@@ -404,42 +404,58 @@ it('keeps an initial configured read pending past the balance-settle timer', asy
   );
 });
 
-it('retries the current failed explorer read from its normal button and coalesces duplicate clicks', async () => {
-  mode = 'failed';
-  await expect(fetchInitial()).rejects.toThrow('Transaction API error');
-  await renderAfterSettleTime();
-  jest.useRealTimers();
-  const pending = deferred();
-  mode = 'empty';
-  hold = pending.promise;
-  let retry!: Promise<void>;
-  await act(async () => {
+it.each([false, true])(
+  'keeps the retry notice in place with cached rows=%s and coalesces clicks',
+  async (cached) => {
+    if (cached) setRows([transaction]);
+    mode = 'failed';
+    await expect(fetchInitial()).rejects.toThrow('Transaction API error');
+    await renderAfterSettleTime();
     const button = screen.getByRole('button', { name: 'receive.retry' });
-    fireEvent.click(button);
-    fireEvent.click(button);
-    retry = mockWallet.historyRetry.promise;
-    expect(
-      mockWallet.refreshTransactionHistory(getWalletNavigationScope())
-    ).toBe(retry);
-  });
-  expect(reads).toEqual([
-    'txlist',
-    'pendingtxlist',
-    'tokentx',
-    'txlist',
-    'pendingtxlist',
-    'tokentx',
-  ]);
-  expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
-  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeDisabled();
-  await act(async () => {
-    pending.resolve();
-    await retry;
-  });
-  expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
-  expect(mockWallet.historyRetry).toBeUndefined();
-});
+    const message = screen.getByText('send.unableToLoad');
+    const row = screen.queryByText(HASH);
+    if (cached)
+      expect(
+        row!.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    jest.useRealTimers();
+    const pending = deferred();
+    mode = 'empty';
+    hold = pending.promise;
+    let retry!: Promise<void>;
+    await act(async () => {
+      fireEvent.click(button);
+      fireEvent.click(button);
+      retry = mockWallet.historyRetry.promise;
+      expect(
+        mockWallet.refreshTransactionHistory(getWalletNavigationScope())
+      ).toBe(retry);
+    });
+    expect(reads).toEqual([
+      'txlist',
+      'pendingtxlist',
+      'tokentx',
+      'txlist',
+      'pendingtxlist',
+      'tokentx',
+    ]);
+    expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
+    expect(screen.getByRole('button', { name: 'receive.retry' })).toBe(button);
+    expect(button).toBeDisabled();
+    expect(screen.getByText('networkConnection.loadingTransactions')).toBe(
+      message
+    );
+    expect(screen.queryByText(HASH)).toBe(row);
+    await act(async () => {
+      pending.resolve();
+      await retry;
+    });
+    if (cached) expect(screen.getByText(HASH)).toBe(row);
+    else expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+    expect(mockWallet.historyRetry).toBeUndefined();
+  }
+);
 
 it('rejects stale-scope, locked, switching and no-API EVM retries before any read', () => {
   const scope = getWalletNavigationScope();
