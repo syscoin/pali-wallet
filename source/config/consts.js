@@ -74,9 +74,9 @@ const MV2_OPTIONS = {
   },
 };
 
-// The Canary Web Store public key gives unpacked builds the same ID.
+// Non-production public key used to keep canary extension IDs stable.
 const CANARY_EXTENSION_KEY =
-  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyU7zdXw/fGdv7K7NqC1BpZA7SJujqU08HO+rcmzlLe2dcVKM03uB/yO7KdfBLnb/53t/ivMiVsNiQ8P6JAnHmYEZu7awi0FDHzY2kHhVXZzHrextUbfHuU8H9YPLTSsSTl/UfwqQp69fI8t5KP1ZYvvEzftqD8wq+y0tGbf2HcNCDckN/ZOY1DgwK23CFYvhGF91IJQdadQ2xpDssbeV5CiZtrLXTyAXZNUDpVezs8SFzASvkMWKKnEz6X2dX4S950VBylO/He6p0SMhpEtrPe26ZvxqR0ORPV995r1Z/r2olmv+9g7GuBvqZ2nE9hYpdlL+JHM67TTe6z3ImbGMoQIDAQAB';
+  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArYLCXWBGnwp1giU5pIbXuqrbzJDzkGgPXXefSLdhpOrZc5rdTcpq8hcJJqRSJBESoLpuCrqvd/HPwtwo6h0hjWvB+pOPIJmPwWlYs+zKAKOUZIZcSqJmJCkv9FztuCcbQqlOWJ/2PvEyDvPKcc54aH6IAYlhnth9tWuiYVmzHQqornSKNWBQeukzWvxTuYhqz2RDFeUdiCh1Y9Bf8/3BrOJjI7FESTRd5iHDqd6LrIs91a6hUuWgCF5//57lG9Zr2KRLkl+3ibEQBGQMTWYRfBbdnZYXPDdspoaEaUi179R/7iFd3laA9EhMcGhnwH3x/FQxNMH6z+FS+ojAEkCLyQIDAQAB';
 
 const MV3_OPTIONS = {
   manifest_version: 3,

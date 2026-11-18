@@ -1,5 +1,5 @@
 import {
-  LEGACY_UNPACKED_CANARY_ID,
+  CANARY_EXTENSION_ID,
   CANARY_STORE_EXTENSION_ID,
   CANARY_EXTENSION_STORE_URL,
   CHROME_STORE_UPDATE_URL,
@@ -321,7 +321,7 @@ it.each([
   { info: { updateUrl: 'https://untrusted.example/update' } },
   { info: { id: 'a'.repeat(32) } },
   { id: 'a'.repeat(32) },
-  { id: LEGACY_UNPACKED_CANARY_ID },
+  { id: CANARY_EXTENSION_ID },
 ])(
   'does not advertise or check store updates for an unadmitted installation %p',
   async (options) => {
@@ -418,7 +418,7 @@ it('refuses an identity change while installation information is pending', async
   const f = fixture('5.0.0', { delayed: true });
   try {
     const pending = f.store.check();
-    f.runtime.id = LEGACY_UNPACKED_CANARY_ID;
+    f.runtime.id = CANARY_EXTENSION_ID;
     f.identify();
     await pending;
     expect(f.store.getSnapshot().installation).toBe('unavailable');

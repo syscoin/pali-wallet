@@ -1,7 +1,7 @@
 /** Public build and installation identities; release metadata cannot replace these. */
 export const STABLE_EXTENSION_ID = 'mgffkfbidihjpoaomajlbgchddlicgpn';
-// Older unpacked builds used a different public key.
-export const LEGACY_UNPACKED_CANARY_ID = 'eaapkkbcdfhchkhgkmgimhihepifmehi';
+// The local packaging key identifies Canary, but does not establish a store listing.
+export const CANARY_EXTENSION_ID = 'eaapkkbcdfhchkhgkmgimhihepifmehi';
 export const CANARY_STORE_EXTENSION_ID = 'ogkamgifjlkfkjekifikgpmlkkmcabpk';
 export const CHROME_STORE_UPDATE_URL =
   'https://clients2.google.com/service/update2/crx';

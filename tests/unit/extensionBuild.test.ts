@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { CANARY_STORE_EXTENSION_ID } from '../../source/shared/extensionReleaseChannel';
+import { CANARY_EXTENSION_ID } from '../../source/shared/extensionReleaseChannel';
 
 const {
   buildExtension,
@@ -329,7 +329,7 @@ test.each([
         .replace(/./g, (digit) =>
           String.fromCharCode(97 + parseInt(digit, 16))
         );
-      expect(id).toBe(CANARY_STORE_EXTENSION_ID);
+      expect(id).toBe(CANARY_EXTENSION_ID);
     }
     expect(readFileSync(resolve('manifest.json')).equals(tracked)).toBe(true);
   }

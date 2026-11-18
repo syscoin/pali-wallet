@@ -1,6 +1,6 @@
 import {
   admitExtensionReleaseTarget,
-  LEGACY_UNPACKED_CANARY_ID,
+  CANARY_EXTENSION_ID,
   CANARY_EXTENSION_FEED_URL,
   CANARY_EXTENSION_STORE_URL,
   CANARY_STORE_EXTENSION_ID,
@@ -23,7 +23,7 @@ const info = {
 };
 
 it('keeps fixed build, feed and store identities distinct', () => {
-  expect(STABLE_EXTENSION_ID).not.toBe(LEGACY_UNPACKED_CANARY_ID);
+  expect(STABLE_EXTENSION_ID).not.toBe(CANARY_EXTENSION_ID);
   expect(STABLE_EXTENSION_FEED_URL).not.toBe(CANARY_EXTENSION_FEED_URL);
   expect(getExtensionReleaseTarget(STABLE_EXTENSION_ID)).toEqual({
     channel: 'stable',
@@ -36,7 +36,7 @@ it('keeps fixed build, feed and store identities distinct', () => {
     feedUrl: CANARY_EXTENSION_FEED_URL,
     storeUrl: CANARY_EXTENSION_STORE_URL,
   });
-  expect(getExtensionReleaseTarget(LEGACY_UNPACKED_CANARY_ID)).toBeNull();
+  expect(getExtensionReleaseTarget(CANARY_EXTENSION_ID)).toBeNull();
 });
 
 it('admits the assigned Canary store item without admitting its unpacked build', () => {
@@ -69,7 +69,7 @@ it('requires a verified installation rather than a copied manifest key or update
     { installType: 'admin' },
     { enabled: false },
     { type: 'theme' },
-    { id: LEGACY_UNPACKED_CANARY_ID },
+    { id: CANARY_EXTENSION_ID },
     { version: '5.0.1' },
     { updateUrl: undefined },
     { updateUrl: CHROME_STORE_UPDATE_URL + '?x=1' },
@@ -89,9 +89,9 @@ it('requires a verified installation rather than a copied manifest key or update
     )
   ).toBeNull();
   expect(
-    admitExtensionReleaseTarget(LEGACY_UNPACKED_CANARY_ID, manifest, {
+    admitExtensionReleaseTarget(CANARY_EXTENSION_ID, manifest, {
       ...info,
-      id: LEGACY_UNPACKED_CANARY_ID,
+      id: CANARY_EXTENSION_ID,
     })
   ).toBeNull();
   expect(admitExtensionReleaseTarget('unknown', manifest, info)).toBeNull();
