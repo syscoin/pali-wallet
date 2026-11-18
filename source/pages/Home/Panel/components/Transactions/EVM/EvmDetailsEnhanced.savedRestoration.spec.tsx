@@ -159,7 +159,6 @@ const SAVED = {
     operationHash: '0x' + '55'.repeat(32),
     operationNonce: '0',
     operationCount: 1,
-    replayable: true,
     callData: '0x',
     executions: [{ target: TARGET, value: '10000000000000000', data: '0x' }],
   },

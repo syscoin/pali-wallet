@@ -17,7 +17,6 @@ import {
 } from '../shared/nftTransfer.ts';
 import {
   ERC7579_MODE_SINGLE_DEFAULT,
-  getSmartAccountUserOpRequiredPrefund,
   type SmartAccountPackedUserOperation,
 } from '../utils/smartAccount/account.ts';
 import {
@@ -88,7 +87,6 @@ export type RetainedSmartAccountTransfer = Readonly<{
   collectibleTransfer?: NftTransferIntent;
   contractInteraction?: true;
   entry: EvmRetainedSignedRecord;
-  maximumAccountCharge: string;
   operationHash: string;
   operationNonce: string;
   recipient: string;
@@ -420,8 +418,6 @@ export function decodeRetainedSmartAccountTransfer(
       ...(token ? { token } : {}),
       ...(collectibleTransfer ? { collectibleTransfer } : {}),
       ...(contractInteraction ? { contractInteraction: true as const } : {}),
-      maximumAccountCharge:
-        getSmartAccountUserOpRequiredPrefund(operation).toString(),
     });
   } catch {
     return null;

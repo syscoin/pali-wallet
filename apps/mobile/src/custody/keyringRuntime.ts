@@ -7204,13 +7204,15 @@ export function createKeyringRuntimeFactory(
               }
               const profileId = await recordKeyring.getPrivateRecordProfileId(); guard();
               const session = signedRecords.captureSession({ keyring: recordKeyring, assertCurrent: guard });
+              // Keep pending nonce protection intact if the public history update
+              // fails. A retry can repeat the history clear before clearing it.
+              await activityHistory.clearScope(createActivityScope(fingerprint, selected.id, selected.address, network), guard,
+                selected.type === 'SmartAccount' ? Date.now() : undefined);
+              guard();
               await signedRecords.clearScope(session, {
                 profileId, chainId: network.chainId, from: selected.address,
                 ...(selected.type === 'SmartAccount' ? { smartAccount: true } : {}),
               });
-              guard();
-              await activityHistory.clearScope(createActivityScope(fingerprint, selected.id, selected.address, network), guard,
-                selected.type === 'SmartAccount' ? Date.now() : undefined);
               guard();
             }).catch(async (error: unknown) => {
               if (requiresReopen()) {

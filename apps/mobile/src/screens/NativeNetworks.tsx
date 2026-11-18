@@ -129,7 +129,9 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
   const [catalogueQuery, setCatalogueQuery] = useState('');
   const [form, setForm] = useState<{ id?: string; utxo?: true; catalogueRevision?: number; contextRevision?: number;
     name: string; chainId: string; rpcUrl: string; symbol: string; testnet: boolean } | null>(null);
-  const [ui, setUi] = useState({ owner: controller, busy: false, error: '' });
+  const [ui, setUi] = useState<{ owner: NativeNetworkView<Id>; busy: boolean; error: string; switched?: NativeNetworkSelectionReceipt }>({
+    owner: controller, busy: false, error: '',
+  });
   // Reset during a controller replacement before committing its rendered children.
   // Object equality alone is insufficient when a retired controller returns later.
   if (ui.owner !== controller) {
@@ -145,6 +147,9 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
   useLayoutEffect(() => { latestBack.current = onBack; }, [onBack]);
   const subscribe = useCallback((listener: () => void) => controller.subscribe(listener), [controller]);
   const snapshot = useSyncExternalStore(subscribe, controller.getSnapshot, controller.getSnapshot);
+  const switched = ui.owner === controller && ui.switched &&
+    ui.switched.catalogueRevision === snapshot?.revision &&
+    ui.switched.contextRevision === controller.getContextRevision() ? ui.switched.target.name : null;
   const discardForm = useCallback(() => {
     lifetime.current.epoch++;
     const cancel = working.current !== null;
@@ -222,9 +227,10 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
     setUi({ owner: controller, busy: true, error: '' }); Keyboard.dismiss();
     try {
       const receipt = await controller.select(id, contextRevision, catalogueRevision, () => {});
-      if (selection && working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch) {
+      if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch) {
         receipt.assertCurrent();
-        selection.onSelected(receipt);
+        if (selection) selection.onSelected(receipt);
+        else setUi({ owner: controller, busy: false, error: '', switched: receipt });
       }
     }
     catch (cause) {
@@ -339,7 +345,17 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
         {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         <Button title={form.utxo && form.id ? busy ? t('mobile.networks.saving') : t('mobile.networks.saveChanges') : busy ? t('mobile.networks.checking') : t('mobile.networks.save')} disabled={busy} onPress={() => { void save(); }} />
         <Button title={t('buttons.cancel')} variant="secondary" disabled={busy} onPress={discardForm} />
-      </> : undefined}>
+      </> : error ? (
+        <View accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <Notice title={error} tone="red" />
+        </View>
+      ) : busy || switched ? (
+        <View accessibilityLiveRegion="polite">
+          {busy
+            ? <Notice title={t('mobile.networks.switching')} body={t('mobile.networks.updating')} />
+            : <Notice title={t('notifications.switchedTo', { network: switched })} />}
+        </View>
+      ) : undefined}>
         <Header title={form ? form.utxo ? (form.id ? t('mobile.networks.editUtxo') : t('mobile.networks.addUtxo')) : form.id ? t('mobile.networks.edit') : t('mobile.networks.add') : t('mobile.networks.title')} subtitle={form ? undefined : t('mobile.networks.choose')} onBack={form ? discardForm : close} />
         {form ? <>
           {!form.utxo && !form.id && snapshot && controller.loadCatalogue && (
@@ -364,7 +380,6 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
         <IdleTextInput accessibilityLabel={t('mobile.networks.search')} placeholder={t('mobile.networks.search')} placeholderTextColor={colors.muted}
           value={query} onChangeText={setQuery} maxLength={80} editable={!busy} autoCapitalize="none" autoCorrect={false}
           spellCheck={false} autoComplete="off" style={s.search} />
-        {busy && <Notice title={t('mobile.networks.switching')} body={t('mobile.networks.updating')} />}
         {!snapshot && !busy ? <Notice title={t('mobile.accounts.locked')} body={t('mobile.networks.unlock')} /> :
           !matches.length && !busy ? <Notice title={t('mobile.networks.noMatches')} body={t('mobile.networks.tryName')} /> :
           [false, true].map((testnet) => {
@@ -386,7 +401,6 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
             setForm({ utxo: true, name: '', rpcUrl: 'https://', chainId: '', symbol: '', testnet: false });
           }} />}
         </>}
-        {!form && !!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.buildLabel}>{t('mobile.common.development')}</Text>}
       </Screen>
     </KeyboardAvoidingView>

@@ -143,9 +143,18 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
   };
   const showError = review.error && review.error !== 'SITE_MISMATCH' &&
     !(review.error === 'BLOCKED_SITE' && review.verification.isScam);
+  const progress = !review.busy || batch?.phase === 'unknown' ? null
+    : review.dispatched || batch?.phase === 'complete' ? t('mobile.dappConsent.transactionReview.returningResult')
+    : review.broadcastHash || batch?.phase === 'submitting' ? t('mobile.dappConsent.transactionReview.sendingTransaction')
+    : !transaction || batch?.phase === 'preparing' ? t('mobile.dappConsent.transactionReview.preparingTransaction')
+    : t('mobile.dappConsent.messageReview.pleaseWait');
   const amount = (units: string) => `${formatBaseUnits(units, review.decimals)} ${review.symbol}`;
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.container}><KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen scrollResetKey={`${review.id}:${submitted ? 'result' : editingApproval ? 'edit' : 'review'}`} footer={<>
+    {progress && <View style={s.progress}>
+      <ActivityIndicator color={colors.blue} accessible={false} />
+      <Text accessibilityLiveRegion="polite">{progress}</Text>
+    </View>}
     {ledger.showConnect && !submitted && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}
     <View style={s.actions}>
     <Button title={submitted || review.broadcastHash ? t('buttons.close') : t('buttons.reject')} variant="secondary" onPress={close} style={s.action} />
@@ -162,6 +171,21 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
       {!siteWarning && <DappSiteStatus verification={review.verification} />}</View>
     </Card>
     {siteWarning && <DappSiteStatus verification={review.verification} />}
+    {showError && review.error && batch?.phase !== 'unknown' && (
+      <View accessibilityRole="alert" accessibilityLiveRegion="polite">
+        <Notice title={submitted ? t('mobile.dappConsent.transactionReview.checkTransactionStatus') : t('mobile.dappConsent.transactionReview.transactionUnavailable')} body={reviewErrors[review.error]} />
+      </View>
+    )}
+    {retry && (
+      <View accessibilityRole="alert" accessibilityLiveRegion="polite">
+        <Notice title={t('mobile.dappConsent.transactionReview.callNotSent')} body={t('mobile.dappConsent.transactionReview.retryPreparesAFreshReviewForThe')} />
+      </View>
+    )}
+    {batch?.phase === 'unknown' && (
+      <View accessibilityRole="alert" accessibilityLiveRegion="polite">
+        <Notice title={t('mobile.dappConsent.transactionReview.checkCallStatus')} body={t('mobile.dappConsent.transactionReview.deliveryIsUncertainCheckActivityBeforeSending')} />
+      </View>
+    )}
     {transaction && <View style={s.hero}>
       {transfer && <View style={{ alignItems: 'center' }}><Coin id="token" asset={{ kind: 'evm', chainId: review.chainId, contractAddress: transfer.contract, decimals: transfer.decimals }} registrationHash={review.registrationHash} fallbackSymbol={transfer.items[0]?.symbol ?? undefined} size={44} /></View>}
       {batch && <Text accessibilityRole="header" style={s.sectionTitle}>{t('mobile.dappConsent.transactionReview.callOf', { index: batch.index + 1, count: batch.calls.length })}</Text>}
@@ -182,7 +206,7 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
       edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}
       <Card style={s.facts}>
         {transaction && <View style={s.fact}><Text style={s.factLabel}>{transfer ? t('assetTransfer.recipient') : transaction.to === null ? t('mobile.dappConsent.transactionReview.destination') : t('send.to')}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer?.recipient ?? transaction.to ?? t('mobile.dappConsent.transactionReview.newContract')}</Text></View>}
-        <View style={s.fact}><Text style={s.factLabel}>{t('send.from')}</Text><View style={s.factValue}><Text style={s.factAccount}>{review.accountLabel}</Text><Text selectable style={s.factAddress}>{review.address}</Text></View></View>
+        <View style={s.fact}><Text style={s.factLabel}>{t('send.from')} · {t('transactions.feePayer')}</Text><View style={s.factValue}><Text style={s.factAccount}>{review.accountLabel}</Text><Text selectable style={s.factAddress}>{review.address}</Text></View></View>
         {transfer && <View style={s.fact}><Text style={s.factLabel}>{t('assetTransfer.contract')}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.contract}</Text></View>}
         {transfer?.from && <View style={s.fact}><Text style={s.factLabel}>{t('assetTransfer.owner')}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.from}</Text></View>}
         {transfer && transaction?.value !== '0' && <View style={s.fact}><Text style={s.factLabel}>{t('mobile.dappConsent.transactionReview.alsoSending')}</Text><Text style={[s.factValue, s.factText]}>{amount(transaction!.value)}</Text></View>}
@@ -252,13 +276,8 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
       <Text style={s.label}>{t('send.transactionId')}</Text>
       <Text selectable style={s.address}>{review.broadcastHash}</Text>
     </Card>}
-    {showError && review.error && batch?.phase !== 'unknown' && <Notice title={submitted ? t('mobile.dappConsent.transactionReview.checkTransactionStatus') : t('mobile.dappConsent.transactionReview.transactionUnavailable')} body={reviewErrors[review.error]} />}
-    {retry && <Notice title={t('mobile.dappConsent.transactionReview.callNotSent')} body={t('mobile.dappConsent.transactionReview.retryPreparesAFreshReviewForThe')} />}
-    {batch?.phase === 'unknown' && <Notice title={t('mobile.dappConsent.transactionReview.checkCallStatus')} body={t('mobile.dappConsent.transactionReview.deliveryIsUncertainCheckActivityBeforeSending')} />}
     {review.needsAccountSwitch && !review.error && !submitted &&
       <Text style={s.muted}>{t('mobile.dappConsent.transactionReview.switchToReviewTransaction', { account: review.accountLabel })}</Text>}
-    {review.busy && <View style={s.progress}><ActivityIndicator color={colors.blue} />
-      <Text>{submitted ? t('mobile.dappConsent.transactionReview.sendingTransaction') : transaction ? t('mobile.dappConsent.messageReview.pleaseWait') : t('mobile.dappConsent.transactionReview.preparingTransaction')}</Text></View>}
   </Screen></KeyboardAvoidingView>{ledger.modal}</SafeAreaView>;
 }
 

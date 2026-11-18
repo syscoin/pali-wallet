@@ -110,7 +110,7 @@ export function createNativeSignedRecordView(
     ...(transfer?.collectibleTransfer ? { collectibleTransfer: transfer.collectibleTransfer } : {}),
     ...(!transfer || transfer.contractInteraction ? { contractInteraction: true as const } : {}),
     // The outer transaction's terminal status does not establish the UserOperation outcome.
-    phase: 'submitted', ...(!smart.replayable ? { inspectionOnly: true as const } : {}),
+    phase: 'submitted', ...(smart.operationCount !== 1 ? { inspectionOnly: true as const } : {}),
     operation: cancellation ? 'cancel' : saved.operation, transactionType: saved.type ?? undefined,
     ...(originalHash ? { originalHash } : {}),
     ...(retainedSmartSpeedUp ? { retainedSmartSpeedUp: true as const, speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),

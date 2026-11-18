@@ -211,9 +211,12 @@ it('turns synchronous browser clipboard exceptions into the same observed reject
 
 it('replaces a queued optimistic legacy notice with the actual failure', async () => {
   const events: string[] = [];
-  mockInfo.mockImplementation(() => events.push('legacy success'));
-  mockDismiss.mockImplementation(() => events.push('dismiss'));
-  mockError.mockImplementation(() => events.push('actual failure'));
+  mockInfo.mockImplementationOnce(() => {
+    events.push('legacy success');
+    return 'legacy-copy-notice';
+  });
+  mockDismiss.mockImplementationOnce(() => events.push('dismiss'));
+  mockError.mockImplementationOnce(() => events.push('actual failure'));
   mockWrite.mockRejectedValueOnce(new Error('Synthetic denied clipboard'));
   render(<Fixture />);
   act(() => {
@@ -221,6 +224,7 @@ it('replaces a queued optimistic legacy notice with the actual failure', async (
     current.alert.info('Legacy copied notice');
   });
   await settle();
+  expect(mockDismiss).toHaveBeenCalledWith('legacy-copy-notice');
   expect(events.slice(-2)).toEqual(['dismiss', 'actual failure']);
   expect(screen.getByTestId('copied').textContent).toBe('false');
 });
@@ -322,29 +326,29 @@ it.each(['scope change', 'new copy', 'unmount'] as const)(
   }
 );
 
-it('preserves immediate dismissal and queued insertion for unscoped info while skipping duplicates', async () => {
+it('queues unscoped info and skips duplicates without dismissing other toasts', async () => {
   render(<Fixture />);
   current.alert.info('Unscoped info');
-  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(mockDismiss).not.toHaveBeenCalled();
   expect(mockInfo).not.toHaveBeenCalled();
   await settle();
   expect(mockInfo).toHaveBeenCalledWith('Unscoped info', undefined);
   current.alert.info('Unscoped info');
-  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(mockDismiss).not.toHaveBeenCalled();
   await settle();
   expect(mockInfo).toHaveBeenCalledTimes(1);
 });
 
-it('preserves immediate dismissal and queued insertion for unscoped success while skipping duplicates', async () => {
+it('queues unscoped success and skips duplicates without dismissing other toasts', async () => {
   render(<Fixture />);
   current.alert.success('Unscoped success');
-  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(mockDismiss).not.toHaveBeenCalled();
   expect(mockSuccess).not.toHaveBeenCalled();
   await settle();
   expect(mockSuccess).toHaveBeenCalledWith('Unscoped success', undefined);
   current.alert.success('Unscoped success');
   await settle();
-  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(mockDismiss).not.toHaveBeenCalled();
   expect(mockSuccess).toHaveBeenCalledTimes(1);
 });
 
@@ -360,9 +364,9 @@ it('does not consume success deduplication or dismiss a toast for a retired scop
   current.alert.success('Scoped success', undefined, current.isCurrentCopy);
   await settle();
   expect(mockSuccess).toHaveBeenCalledTimes(1);
-  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(mockDismiss).not.toHaveBeenCalled();
   current.alert.success('Scoped success', undefined, current.isCurrentCopy);
   await settle();
   expect(mockSuccess).toHaveBeenCalledTimes(1);
-  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(mockDismiss).not.toHaveBeenCalled();
 });

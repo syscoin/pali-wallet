@@ -6,6 +6,7 @@ import { formatBaseUnits } from '../src/core/amounts.ts';
 import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { activityRowDirection } from '../src/activity/activityFiltering.ts';
+import { activityRowTimestamp } from '../src/activity/nativeActivity.ts';
 
 function presentationFixture() {
   return screenFixture(
@@ -29,6 +30,7 @@ function presentationFixture() {
         activityDate: () => ({ label: 'Today', time: '' }),
       },
       '../activity/activityFiltering': { activityRowDirection },
+      '../activity/nativeActivity': { activityRowTimestamp },
       './TransactionDetailLayout': {},
       'expo-clipboard': {},
       '../activity/assetIcon': {},

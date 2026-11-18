@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 
 import { useSafeNavigate } from './useSafeNavigate';
+import type { Id } from 'react-toastify';
 
 // Track last shown messages to prevent duplicates
 const lastShownMessages = new Map<string, number>();
@@ -31,6 +32,29 @@ const shouldShowMessage = (message: string, type: string): boolean => {
 
 export const useUtils = () => {
   const navigate = useSafeNavigate();
+  const feedbackToast = useRef<Id>();
+  const dismissFeedback = useCallback(() => {
+    if (feedbackToast.current !== undefined)
+      toast.dismiss(feedbackToast.current);
+    feedbackToast.current = undefined;
+  }, []);
+
+  const showAlert = (
+    message: string,
+    type: string,
+    show: () => Id,
+    isCurrent?: () => boolean
+  ) => {
+    if (isCurrent ? !isCurrent() : !shouldShowMessage(message, type)) return;
+    setTimeout(() => {
+      if (isCurrent && (!isCurrent() || !shouldShowMessage(message, type)))
+        return;
+      if (type === 'info' || type === 'success') {
+        dismissFeedback();
+        feedbackToast.current = show();
+      } else show();
+    }, 0);
+  };
 
   const useCopyClipboard = (
     timeout = 1000,
@@ -95,13 +119,13 @@ export const useUtils = () => {
             if (!shouldShowMessage(message, 'error')) return;
             // Replace an optimistic legacy notice only after queued notices
             // have been inserted. Never log or include clipboard contents.
-            toast.dismiss();
+            dismissFeedback();
             toast.error(message);
           }, 0);
         });
         return result;
       },
-      [timeout, scopeRevision]
+      [timeout, scopeRevision, dismissFeedback]
     );
 
     const isCurrentCopy = () =>
@@ -112,49 +136,26 @@ export const useUtils = () => {
   return {
     useCopyClipboard,
     alert: {
-      show: (message: string, options?: any) => {
-        if (!shouldShowMessage(message, 'default')) return;
-        toast.dismiss();
-        setTimeout(() => toast(message, options), 0);
-      },
-      success: (message: string, options?: any, isCurrent?: () => boolean) => {
-        if (isCurrent && !isCurrent()) return;
-        if (!isCurrent && !shouldShowMessage(message, 'success')) return;
-        if (!isCurrent) toast.dismiss();
-        setTimeout(() => {
-          if (
-            isCurrent &&
-            (!isCurrent() || !shouldShowMessage(message, 'success'))
-          )
-            return;
-          if (isCurrent) toast.dismiss();
-          toast.success(message, options);
-        }, 0);
-      },
-      error: (message: string, options?: any) => {
-        if (!shouldShowMessage(message, 'error')) return;
-        toast.dismiss();
-        setTimeout(() => toast.error(message, options), 0);
-      },
-      info: (message: string, options?: any, isCurrent?: () => boolean) => {
-        if (isCurrent && !isCurrent()) return;
-        if (!isCurrent && !shouldShowMessage(message, 'info')) return;
-        if (!isCurrent) toast.dismiss();
-        setTimeout(() => {
-          if (
-            isCurrent &&
-            (!isCurrent() || !shouldShowMessage(message, 'info'))
-          )
-            return;
-          if (isCurrent) toast.dismiss();
-          toast.info(message, options);
-        }, 0);
-      },
-      warning: (message: string, options?: any) => {
-        if (!shouldShowMessage(message, 'warning')) return;
-        toast.dismiss();
-        setTimeout(() => toast.warn(message, options), 0);
-      },
+      show: (message: string, options?: any) =>
+        showAlert(message, 'default', () => toast(message, options)),
+      success: (message: string, options?: any, isCurrent?: () => boolean) =>
+        showAlert(
+          message,
+          'success',
+          () => toast.success(message, options),
+          isCurrent
+        ),
+      error: (message: string, options?: any) =>
+        showAlert(message, 'error', () => toast.error(message, options)),
+      info: (message: string, options?: any, isCurrent?: () => boolean) =>
+        showAlert(
+          message,
+          'info',
+          () => toast.info(message, options),
+          isCurrent
+        ),
+      warning: (message: string, options?: any) =>
+        showAlert(message, 'warning', () => toast.warn(message, options)),
     },
     navigate,
   };

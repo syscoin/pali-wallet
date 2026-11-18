@@ -1460,6 +1460,25 @@ test('activity reset retires saved handles and clears only the selected account 
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
+test('a failed Activity history clear preserves the pending transaction for a retry', async () => {
+  const f = await readyAccounts();
+  try {
+    const signed = await signTestTransfer(f.runtime.transfers!, { type: 2, accessList: [], from: ADDRESS, to: ADDRESS,
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' },
+      { assertCurrent: () => undefined, signal: new AbortController().signal });
+    await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
+    const before = f.disk.signedValue();
+    f.disk.onRecord(async (kind, key) => {
+      if (kind === 'get' && key === 'native-activity-v1') throw Error('Activity read failed');
+    });
+    await assert.rejects(f.runtime.resetActivity(() => undefined, () => undefined), /Activity read failed/);
+    assert.equal(f.disk.signedValue(), before);
+    f.disk.onRecord();
+    await f.runtime.resetActivity(() => undefined, () => undefined);
+    assert.equal(await (await f.runtime.transfers!.journal(() => undefined)).load(), null);
+  } finally { f.disk.onRecord(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
 test('activity reset inside signing revokes the result without locking the current owner', async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   let reset: Promise<void> | undefined;

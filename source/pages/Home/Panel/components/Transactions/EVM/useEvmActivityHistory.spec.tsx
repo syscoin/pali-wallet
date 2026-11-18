@@ -71,7 +71,6 @@ test('saved smart-account history uses authenticated inner transfer facts and ke
       operationHash: hash('4'),
       operationNonce: '0',
       operationCount: 1,
-      replayable: true,
       callData: '0x1234',
       executions: [
         { target: recipient, value: '1000000000000000001', data: '0x' },
@@ -102,7 +101,6 @@ test('saved Smart handleOps cancellation projects its local cancellation intent'
     operationNonce: '7',
     operations: [{ operationHash, operationNonce: '7' }],
     operationCount: 1,
-    replayable: true,
     callData: '0x1234',
     executions: [{ target: account, value: '0', data: '0x' }],
   };

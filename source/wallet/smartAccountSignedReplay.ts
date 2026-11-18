@@ -37,7 +37,6 @@ export type SmartAccountReplayIntent = Readonly<{
     'operationHash' | 'operationNonce'
   >[];
   pendingCancellationOf?: string;
-  replayable: boolean;
   transfer?: Pick<
     RetainedSmartAccountTransfer,
     | 'recipient'
@@ -116,7 +115,6 @@ export function projectSmartAccountSavedTransaction(
           })
         )
     ),
-    replayable: record.operations.length === 1,
     callData,
     ...(calls ? { executions: Object.freeze(calls) } : {}),
     ...(transfer

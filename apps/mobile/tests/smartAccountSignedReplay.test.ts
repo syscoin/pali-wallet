@@ -277,7 +277,7 @@ test('inner batch calls retain separate execution intent and raw token arguments
     });
   const item = await f.get(entry.hash);
   assert(item);
-  assert.equal(item.smartAccount.replayable, true);
+  assert.equal(item.smartAccount.operationCount, 1);
   assert.equal(item.smartAccount.executions?.length, 2);
   assert.equal(
     item.smartAccount.executions?.[1]?.assetTransfer?.recipient,

@@ -1451,38 +1451,11 @@ class MainController {
     return records;
   }
 
-  public async listRetainedUtxoTransfers() {
-    const signing = this.captureUtxoSigningContext();
-    return this.listCapturedRetainedUtxoTransfers(signing);
-  }
-
-  public async refreshRetainedUtxoTransfers() {
-    const signing = this.captureUtxoSigningContext();
-    await this.reconcileRetainedUtxoTransfers(signing);
-    return this.listCapturedRetainedUtxoTransfers(signing);
-  }
-
-  private listCapturedRetainedUtxoTransfers(
-    signing: ReturnType<MainController['captureUtxoSigningContext']>
-  ) {
-    const network = store.getState().vault.activeNetwork;
-    signing.assertWalletReviewCurrent();
-    return this.getRetainedUtxoRecords().list(
-      {
-        keyring: signing.keyring,
-        assertCurrent: signing.assertWalletReviewCurrent,
-      },
-      this.utxoRecordOwner(network, signing.context.account)
-    );
-  }
-
-  private async reconcileRetainedUtxoTransfers(
-    captured?: ReturnType<MainController['captureUtxoSigningContext']>
-  ): Promise<void> {
+  private async reconcileRetainedUtxoTransfers(): Promise<void> {
     // Public history polling also runs while locked. It must never open the
     // encrypted journal or acquire a private-record session in that state.
     if (!this.isUnlocked()) return;
-    const signing = captured ?? this.captureUtxoSigningContext();
+    const signing = this.captureUtxoSigningContext();
     const assertCurrent = signing.assertWalletReviewCurrent;
     assertCurrent();
     const { vault, vaultGlobal } = store.getState();
