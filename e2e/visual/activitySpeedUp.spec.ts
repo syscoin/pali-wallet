@@ -6,6 +6,7 @@ import { E2E_CONFIG } from '../harness/config';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
+  isolatedVaultEvmResult,
 } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
 import {
@@ -62,13 +63,15 @@ test('an unconfirmed send can be sped up from Activity at 320px', async ({}, inf
         ['eth_getTransactionByHash', null],
         ['eth_estimateGas', '0x5208'],
       ]);
-      if (!calls.every((call) => responses.has(call.method)))
-        return route.fallback();
       const replies = calls.map((call) => ({
         jsonrpc: '2.0',
         id: call.id,
-        result: responses.get(call.method),
+        result: responses.has(call.method)
+          ? responses.get(call.method)
+          : isolatedVaultEvmResult(call.method),
       }));
+      if (replies.some((reply) => reply.result === undefined))
+        return route.fallback();
       return route.fulfill({
         json: Array.isArray(payload) ? replies : replies[0],
       });
@@ -108,10 +111,9 @@ test('an unconfirmed send can be sped up from Activity at 320px', async ({}, inf
             .locator('#transaction-options')
             .getByRole('button')
             .click();
-        const speedUp = page.getByRole('menuitem', {
-          name: en.header.speedUp,
-          exact: true,
-        });
+        const speedUp = page
+          .getByRole('menuitem')
+          .filter({ hasText: en.header.speedUp });
         await openActions();
         await expect(
           page.getByRole('menuitem', { name: /resend/i })
