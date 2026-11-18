@@ -3349,6 +3349,45 @@ for (const reason of ['EVM fee approval changed', 'REVIEW_REQUIRED']) {
   });
 }
 
+test('a certified unsent WalletConnect transaction can prepare a fresh quote after the old quote expires', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 5_000_000 });
+  const f = await connectedFixture();
+  try {
+    const requestDeadline = Date.now() + 300000;
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ data: '0x6000' }]);
+    assert.ok(review?.kind === 'transaction');
+    assert.ok(review.expiresAt < requestDeadline);
+
+    const error = new Error('REVIEW_REQUIRED');
+    recordNativeConnectionSubmissionFailure(error, 'retryable');
+    f.failTransactionSubmission(error);
+    await f.view.approveRequest(review.id, review.revision, false);
+
+    t.mock.timers.tick(review.expiresAt - Date.now() + 1);
+    await settle();
+    const retry = f.view.getSnapshot().signingReview;
+    assert.ok(retry?.kind === 'transaction');
+    assert.equal(retry.retryPreparation, true);
+    assert.equal(retry.expiresAt, requestDeadline);
+    assert.equal(f.responses.length, 0);
+
+    f.clearTransactionSubmissionFailure();
+    await f.view.approveRequest(retry.id, retry.revision, false);
+    const fresh = f.view.getSnapshot().signingReview;
+    assert.ok(fresh?.kind === 'transaction');
+    assert.equal(fresh.id, review.id);
+    assert.equal(fresh.retryPreparation, false);
+    assert.ok(fresh.expiresAt > Date.now() && fresh.expiresAt < requestDeadline);
+    assert.equal(f.transactions.length, 0);
+    assert.equal(f.responses.length, 0);
+
+    await assert.rejects(f.view.approveRequest(retry.id, retry.revision, false));
+    await f.view.approveRequest(fresh.id, f.view.getSnapshot().revision, false);
+    assert.equal(f.transactions.length, 1);
+    assert.deepEqual(f.responses, [{ id: 10, result: { result: '0x' + '34'.repeat(32) } }]);
+  } finally { await f.controller.dispose(); }
+});
+
 test('WalletConnect transaction device authentication cancellation keeps the rejection outcome', async () => {
   const f = await connectedFixture();
   try {

@@ -3635,7 +3635,14 @@ export class NativeConnectionsController {
           !message.handoff.isSuspended() && approval.isCurrent() && this.requestConnectionCurrent(message)) {
         message.prepared = undefined;
         message.busy = false;
-        message.review = Object.freeze({ ...message.review, retryPreparation: true });
+        if (!retryPreparation) {
+          // The discarded quote no longer limits preparation of a fresh review.
+          clearTimeout(message.timer);
+          message.timer = setTimeout(() => {
+            void this.retireRequest(message);
+          }, Math.max(0, message.requestExpiresAt - Date.now()));
+        }
+        message.review = Object.freeze({ ...message.review, retryPreparation: true, expiresAt: message.requestExpiresAt });
         this.publish();
         return;
       }

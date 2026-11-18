@@ -11,6 +11,8 @@ import { startNotificationLifecycle } from './lifecycle.ts';
 import { requestNativeNotificationPermission } from './permission.native.ts';
 export { isNotificationPermissionPromptActive } from './permission.native.ts';
 
+const activityNotificationId = /^pali-alert-[0-9a-f]{32}$/;
+
 function randomId() {
   return 'pali-alert-' + Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
@@ -49,19 +51,19 @@ const delivery: NotificationDelivery = {
     const retained = new Set(keep);
     const [queued, shown] = await Promise.all([Notifications.getAllScheduledNotificationsAsync(), Notifications.getPresentedNotificationsAsync()]);
     const ids = new Set([...queued.map((item) => item.identifier), ...shown.map((item) => item.request.identifier)]);
-    await Promise.all([...ids].filter((id) => /^pali-alert-[0-9a-f]{32}$/.test(id) && !retained.has(id)).map(delivery.remove));
+    await Promise.all([...ids].filter((id) => activityNotificationId.test(id) && !retained.has(id)).map(delivery.remove));
   },
 };
 export const nativeActivityNotifications = new NativeNotificationCoordinator({ store: createNativeNotificationStore(), delivery,
   normalize: normalizeNotificationScope, factScope: notificationFactScope, read: createNotificationReader(), randomId });
 
-// Notifications contain an opaque lookup ID only. Never interpret an OS payload as a route.
-let responseRevision = 0;
+// Undefined means the cold-start cache is unread. Null means it has been handled or superseded.
+let coldResponse: Notifications.NotificationResponse | null | undefined;
 function receiveResponse(response: Notifications.NotificationResponse | null) {
   if (!response || response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
   const request = response.notification.request;
-  if (request.identifier !== request.content.data?.eventId) return;
-  responseRevision++;
+  if (!activityNotificationId.test(request.identifier) || request.identifier !== request.content.data?.eventId) return;
+  coldResponse = null;
   nativeActivityNotifications.recordTap(request.identifier);
 }
 Notifications.setNotificationHandler({
@@ -80,12 +82,13 @@ Notifications.setNotificationHandler({
 Notifications.addNotificationResponseReceivedListener(receiveResponse);
 const load = nativeActivityNotifications.load.bind(nativeActivityNotifications);
 nativeActivityNotifications.load = async () => {
-  const revision = responseRevision;
+  // Capture the launch response before hydration. The listener supersedes it
+  // on a live tap, and later loads leave the native cache alone.
+  if (coldResponse === undefined) coldResponse = Notifications.getLastNotificationResponse();
   await load();
-  // A historical getter cannot replace a tap received after loading began.
-  if (revision !== responseRevision) return;
-  receiveResponse(Notifications.getLastNotificationResponse());
-  Notifications.clearLastNotificationResponse();
+  const response = coldResponse;
+  coldResponse = null;
+  if (response) receiveResponse(response);
 };
 
 export async function runNotificationBackgroundTask(signal: AbortSignal): Promise<void> {
