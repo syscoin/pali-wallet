@@ -524,14 +524,14 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const canSendUtxo = hasSigningAccount && !!openUtxoSend && !!utxo && supportsUtxoSoftwareCustody(utxo);
   const canSendSpt = canSendUtxo && !!utxo && supportsSptUtxoChain(utxo.chainId);
   const checkUtxoReplacement = useCallback(async (txid: string, assertCurrent: () => void) => {
-    if (!canSendUtxo || !openUtxoSend) return [];
+    if (!openUtxoSend) return [];
     const send = await openUtxoSend(assertCurrent);
     try {
       return await send.availableReplacements(txid, assertCurrent);
     } finally {
       send.cancel();
     }
-  }, [canSendUtxo, openUtxoSend]);
+  }, [openUtxoSend]);
   const canDeposit = !!openPrivateDeposit && !!snapshot.account && !utxo &&
     (selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported') &&
     Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId) === PRIVACY_CHAIN_ID;
