@@ -33,6 +33,7 @@ function fixture(platform: 'ios' | 'android' = 'ios') {
   const opened: WatchOnlyAuthority[] = [];
   const record = { writes: 0, opens: 0, reads: 0, credentials: 0, balances: 0, notificationReads: 0 };
   let notification = { pendingEventId: null as string | null, tapRevision: 0 };
+  let heldNotificationOwner: ReturnType<typeof deferred> | undefined;
   const repository = {
     assertNetworkCurrent() {},
     async load() { record.reads++; return saved; },
@@ -87,7 +88,12 @@ function fixture(platform: 'ios' | 'android' = 'ios') {
       subscribe: () => () => {}, getSnapshot: () => notification, disableOwner: async () => {},
       getPendingOwner: async () => {
         record.notificationReads++;
-        return notification.pendingEventId ? { accountId: first.id, accountType: 'watch' } : null;
+        const owner = notification.pendingEventId ? { accountId: first.id, accountType: 'watch' } : null;
+        await heldNotificationOwner?.promise;
+        return owner;
+      },
+      consumeTap(id: string, revision: number) {
+        if (notification.pendingEventId === id && notification.tapRevision === revision) notification = { ...notification, pendingEventId: null };
       },
     }, isNotificationPermissionPromptActive: () => false },
     './src/notifications/choices': { watchNotificationChoices: () => [] },
@@ -114,6 +120,8 @@ function fixture(platform: 'ios' | 'android' = 'ios') {
   return { record, opened, render, chooser, accountProps, button, showAccounts,
     async start() { await tick(); render(); await tick(); render(); },
     tapSameAlert() { notification = { pendingEventId: 'pali-alert-' + 'ab'.repeat(16), tapRevision: notification.tapRevision + 1 }; },
+    holdNotificationOwner() { heldNotificationOwner = deferred(); return heldNotificationOwner; },
+    pendingNotification: () => notification.pendingEventId,
     add: () => accountProps().onAdd({ name: 'Second', address: SECOND, network: 'evm' }),
     recover() { failOpen = false; }, failOpen() { failOpen = true; }, failWrite() { failWrite = true; },
     waitForOpen() { openStarted = deferred(); return openStarted.promise; }, holdOpen() { heldOpen = deferred(); return heldOpen; },
@@ -127,7 +135,8 @@ function fixture(platform: 'ios' | 'android' = 'ios') {
     saved: () => saved, close() { accounts.close(); app.close(); },
   };
 }
-const secondRow = (tree: ScreenElement[]) => { const row = tree.find(element => element.type === 'Pressable' && String(element.props.accessibilityLabel).includes(SECOND)); assert(row); return row; };
+const watchRow = (tree: ScreenElement[], address: string) => { const row = tree.find(element => element.type === 'Pressable' && String(element.props.accessibilityLabel).includes(address)); assert(row); return row; };
+const secondRow = (tree: ScreenElement[]) => watchRow(tree, SECOND);
 const reopen = 'Reopen watch accounts';
 async function started() {
   const f = fixture(); await f.start();
@@ -146,6 +155,64 @@ test('leaving an alert destination only opens it again after a deliberate new ta
     f.tapSameAlert(); f.render(); await f.start();
     assert(f.render().some(element => element.type === 'WatchSession'));
   } finally { f.close(); }
+});
+
+for (const action of ['Accounts Back', 'Choosing a different account']) test(`${action} retires the watch alert being looked up`, async () => {
+  const f = await started();
+  const selected = () => f.render().find(element => element.type === 'WatchSession')?.props.authority.getSnapshot().selectedAccountId;
+  const held = f.holdNotificationOwner();
+  try {
+    await f.add(); await f.start();
+    f.showAccounts();
+    if (action !== 'Accounts Back') {
+      watchRow(f.chooser(), FIRST).props.onPress();
+      await f.start();
+      assert.equal(selected(), f.saved().accounts[0]!.id);
+      f.showAccounts();
+    }
+    f.tapSameAlert(); f.render(); await tick();
+    assert.equal(f.record.notificationReads, 1);
+    if (action === 'Accounts Back') f.chooser().find(node => node.type === 'Header')!.props.onBack();
+    else secondRow(f.chooser()).props.onPress();
+    f.render();
+    held.resolve(); await f.start();
+    assert.equal(selected(), f.saved().accounts[1]!.id);
+    assert.equal(f.pendingNotification(), null);
+    assert.equal(f.record.notificationReads, 1);
+
+    f.tapSameAlert(); f.render(); await f.start();
+    assert.equal(selected(), f.saved().accounts[0]!.id);
+    assert.equal(f.record.notificationReads, 2);
+  } finally { held.resolve(); f.close(); }
+});
+
+for (const timing of ['before the tap', 'during the lookup']) test(`a native navigation owner acquired ${timing} defers a parent watch alert`, async () => {
+  const f = await started();
+  const held = f.holdNotificationOwner();
+  let blocked = timing === 'before the tap';
+  let publish = () => {};
+  let unregister = () => {};
+  try {
+    f.button(f.chooser(), 'Open wallet').props.onPress();
+    const wallet = () => f.render().find(node => node.type === 'NativeWalletScreen');
+    unregister = wallet()!.props.registerNotificationNavigationGuard?.(() => blocked, (listener: () => void) => {
+      publish = listener;
+      return () => { publish = () => {}; };
+    }) ?? unregister;
+    f.tapSameAlert(); f.render(); await tick();
+    if (timing === 'during the lookup') assert.equal(f.record.notificationReads, 1);
+
+    blocked = true; publish();
+    held.resolve(); await f.start();
+    assert(wallet());
+    assert.ok(f.pendingNotification());
+    if (timing === 'before the tap') assert.equal(f.record.notificationReads, 0);
+
+    blocked = false; publish();
+    await f.start();
+    assert.equal(wallet(), undefined);
+    assert.equal(f.render().find(element => element.type === 'WatchSession')?.props.authority.getSnapshot().selectedAccountId, f.saved().accounts[0]!.id);
+  } finally { unregister(); held.resolve(); f.close(); }
 });
 
 for (const platform of ['ios', 'android'] as const) test(`a held alert tap routes once the ${platform} app can foreground it`, async () => {

@@ -152,14 +152,22 @@ function message(error: unknown, initialImport = false): string {
 
 export type NativeWalletProps = { onExit(): void; accounts?: WatchWalletBridge; initialAccountId?: string; initialSetup?: 'create' | 'import'; onSelectedNative?(id: string): void; onWalletRemoved?(): void;
   incomingPairing?: NativePairingEntry | null; onPairingHandled?(id: string): void;
+  onExplicitAccountNavigation?(): void;
+  registerNotificationNavigationGuard?(isBlocked: () => boolean, subscribe: (listener: () => void) => () => void): () => void;
 };
 
-export function NativeWalletScreen({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled }: NativeWalletProps) {
-  const controllerRef = useRef<Controllers | null>(null);
-  return <NativeWalletContent {...{ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef }} />;
+function connectionsBlockNotificationNavigation(connections: NativeConnectionsSnapshot) {
+  return (connections.status !== 'ready' && connections.status !== 'unavailable') || connections.proposals.length > 0 ||
+    !!connections.accountChangeReview || !!connections.preparationReview || !!connections.controlReview ||
+    !!connections.sentryReview || !!connections.psbtReview || !!connections.signingReview || !!connections.callsStatus;
 }
 
-export function NativeWalletContent({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef: controllersRef }: NativeWalletProps & { controllerRef: React.MutableRefObject<Controllers | null> }) {
+export function NativeWalletScreen(props: NativeWalletProps) {
+  const controllerRef = useRef<Controllers | null>(null);
+  return <NativeWalletContent {...props} controllerRef={controllerRef} />;
+}
+
+export function NativeWalletContent({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, onExplicitAccountNavigation, registerNotificationNavigationGuard, controllerRef: controllersRef }: NativeWalletProps & { controllerRef: React.MutableRefObject<Controllers | null> }) {
   useNativeTranslation();
   const viewLock = useSyncExternalStore(publicViewLock.subscribe, publicViewLock.getSnapshot, publicViewLock.getSnapshot);
   useEffect(() => { void publicViewLock.load().catch(() => undefined); }, []);
@@ -887,12 +895,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const attemptKey = `${eventId}:${tapRevision}:${capturedEpoch}:${snapshot.revision}`;
     if (!eventId || tapRevision === undefined || !local || !protectedScreen || snapshot.phase !== 'ready' || stage !== 'choose' || busy || shell.immersive ||
         rootOrigin.current || notificationTransition.current || lastNotificationAttempt.current === attemptKey || AppState.currentState !== 'active') return;
-    const connectionsBlockNavigation = () => {
-      const connections = local.connections.getSnapshot();
-      return (connections.status !== 'ready' && connections.status !== 'unavailable') || connections.proposals.length > 0 ||
-        !!connections.accountChangeReview || !!connections.preparationReview || !!connections.controlReview ||
-        !!connections.sentryReview || !!connections.psbtReview || !!connections.signingReview || !!connections.callsStatus;
-    };
+    const connectionsBlockNavigation = () => connectionsBlockNotificationNavigation(local.connections.getSnapshot());
     if (connectionsBlockNavigation()) return;
     let deferredForReview = false;
     const token = { eventId, tapRevision };
@@ -1253,10 +1256,17 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     };
     const unsubscribeMessages = local.connections.subscribe(updateMessage);
     updateMessage();
+    const unregisterNotificationNavigationGuard = registerNotificationNavigationGuard?.(
+      () => {
+        const connections = local.connections.getSnapshot();
+        return connections.status !== 'locked' && connectionsBlockNotificationNavigation(connections);
+      },
+      listener => local.connections.subscribe(listener),
+    );
     const clear = local.backup.onClear(() => { backupCopyOwner.current = null; setPresentation(null); });
-    detachSubscriptions.current = () => { unsubscribe(); unsubscribeMessages(); clear(); };
+    detachSubscriptions.current = () => { unregisterNotificationNavigationGuard?.(); unsubscribe(); unsubscribeMessages(); clear(); };
     setProtectedScreen(true);
-  }, [clearSecrets, readyContext, controllersRef]);
+  }, [clearSecrets, readyContext, controllersRef, registerNotificationNavigationGuard]);
   const install = useCallback(async () => {
     // Android blur leaves AppState active. Controllers must capture an active
     // idle owner, so focus restores it before any replacement is created.
@@ -1834,13 +1844,14 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     }} onContinue={(outcome) => finishRemoval(removalScope, outcome)} />;
   if (stage === 'accounts' && accounts && snapshot.phase !== 'authenticating')
     return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? nativeAccountSelection(catalogue.active.accountId) : null}
-      onBack={closeStage} onSelect={async (selection) => {
+      onBack={() => { onExplicitAccountNavigation?.(); closeStage(); }} onSelect={async (selection) => {
         if (selection.kind === 'watch') { selectWatch(selection); return; }
         const origin = rootOrigin.current, local = controllersRef.current, captured = epoch.current;
         const ownsReturn = () => mounted.current && controllersRef.current === local && !!local &&
           epoch.current === captured && rootOrigin.current === origin &&
           notificationView.current.stage === 'accounts' && AppState.currentState === 'active';
         if (!ownsReturn()) return;
+        onExplicitAccountNavigation?.();
         if (snapshot.phase === 'ready' && accountView && catalogue && selection.id !== catalogue.active.accountId)
           await accountView.execute({ kind: 'select', id: selection.id }, accountView.getContextRevision(), catalogue.revision);
         if (ownsReturn()) clearStage();

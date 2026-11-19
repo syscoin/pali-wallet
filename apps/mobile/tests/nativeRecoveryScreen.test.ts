@@ -391,7 +391,9 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   const notificationRoutes: { tab: string; identity: string }[] = [];
   let connectionState = { status: 'ready' as NativeConnectionsSnapshot['status'], signingReview: null as { id: string; kind: string } | null,
     callsStatus: null as NativeConnectionsSnapshot['callsStatus'], proposals: [] };
-  let connectionObserver = () => {};
+  const connectionObservers = new Set<() => void>();
+  let notificationNavigationBlocked: (() => boolean) | undefined;
+  let notificationNavigationChanges = 0;
   const enrollments: { enabled: boolean; password?: string }[] = [];
   const configurations: { enabled: boolean; signal: AbortSignal; authentication: NativePrivateAuthenticationScope }[] = [];
   let biometricsEnabled = deviceUnlock && (setting?.enabled ?? !empty);
@@ -476,7 +478,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       publish({ phase: 'ready', revision: state.revision + 1, account: { address: selected.address, network: networkId } });
     } }, balanceReader: {}, transfers: { cancel() {} }, tokens: {}, activity: {},
     trezor: trezorLifecycle(), connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => connectionState,
-      subscribe(listener: () => void) { connectionObserver = listener; return () => { connectionObserver = () => {}; }; }, cancel() {} },
+      subscribe(listener: () => void) { connectionObservers.add(listener); return () => { connectionObservers.delete(listener); }; }, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     async saveIdlePreference() { assert.fail('Navigation must not change auto-lock preferences'); },
     keyExport: { cancel() {}, dispose() {} }, backup: {
@@ -567,6 +569,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './AutoLockSettings': { AutoLockSettings: 'AutoLockSettings' }, './RealSettings': { RealSettings: 'RealSettings' },
     './RealTools': { RealTools: 'RealTools' }, './RealAppShell': { RealAppShell: 'RealAppShell' },
     './NativeConnections': { NativeConnections: 'NativeConnections', NativeCallsStatus: 'NativeCallsStatus' },
+    './NativeTransactionReview': { NativeTransactionReviewScreen: 'NativeTransactionReviewScreen' },
     './NativePrivateDeposit': { NativePrivateDeposit: 'NativePrivateDeposit' },
     './NativeNoteExport': { NativeNoteExport: 'NativeNoteExport', NativeNoteFilesMenu: 'NativeNoteFilesMenu' },
     '../../../../source/utils/privacy/registry': { PRIVACY_CHAIN_ID: 1 },
@@ -609,7 +612,13 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     });
   }
   const Root = evaluate(source, dependencies).NativeWalletContent as (props: object) => Element;
-  const props = { controllerRef: { current: null }, initialAccountId: publicNavigation?.initialAccountId, onExit() { exits++; } };
+  const props = { controllerRef: { current: null }, initialAccountId: publicNavigation?.initialAccountId, onExit() { exits++; },
+    registerNotificationNavigationGuard(isBlocked: () => boolean, subscribe: (listener: () => void) => () => void) {
+      notificationNavigationBlocked = isBlocked;
+      const unsubscribe = subscribe(() => { notificationNavigationChanges++; });
+      return () => { unsubscribe(); notificationNavigationBlocked = undefined; };
+    },
+  };
   const render = () => root.renderOwner(Root, props);
   render(); await new Promise((resolve) => setImmediate(resolve));
   if (realAuthority) { await realAuthority.unlock(); render(); renderTransition = render; }
@@ -621,7 +630,9 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     return render();
   };
   return { render, unlock, publish, noteRestore, notificationRoutes,
-    setConnectionState(patch: Partial<typeof connectionState>) { connectionState = { ...connectionState, ...patch }; connectionObserver(); }, publicViewLock: root.idle.security.publicViewLock,
+    setConnectionState(patch: Partial<typeof connectionState>) { connectionState = { ...connectionState, ...patch }; connectionObservers.forEach(listener => listener()); },
+    notificationNavigationBlocked: () => notificationNavigationBlocked?.(), notificationNavigationChanges: () => notificationNavigationChanges,
+    publicViewLock: root.idle.security.publicViewLock,
     exits: () => exits, state: () => state, setExit(action: () => void) { props.onExit = action; }, listeners: root.listeners,
     holdSetup(operation: () => Promise<void>) { setupOperation = operation; },
     prompt(operation: () => Promise<void>) { return authentication.run(null, operation); },
@@ -1847,22 +1858,28 @@ test(`a ${name} arriving during an alert lookup keeps the active network until i
   try {
     f.render(); await settle();
     assert.equal(tap.resolutions(), 1);
+    assert.equal(f.notificationNavigationBlocked(), false);
     f.setConnectionState(field === 'signingReview'
       ? { signingReview: { id: 'incoming-request', kind: 'transaction' } }
       : { callsStatus: { id: 'calls-status', origin: 'https://example.com',
         status: { atomic: true, chainId: '0x1', id: '0xab', status: 100, version: '2.0.0' } } });
+    assert.equal(f.notificationNavigationBlocked(), true);
+    assert.equal(f.notificationNavigationChanges(), 1);
     const tree = f.render();
-    if (field === 'callsStatus') assert.ok(all(tree).some(node => node.type === 'NativeCallsStatus'));
+    assert.equal(tree.type, field === 'callsStatus' ? 'NativeCallsStatus' : 'NativeTransactionReviewScreen');
     held.resolve(); await settle(); f.render(); await settle();
     assert.equal(f.selectedNetwork(), 'ethereum');
     assert.ok(tap.port.getSnapshot().pendingEventId);
     assert.deepEqual(f.notificationRoutes, []);
     assert.equal(tap.resolutions(), 1);
-    f.setConnectionState({ [field]: null }); f.render(); await settle();
+    f.setConnectionState({ [field]: null });
+    assert.equal(f.notificationNavigationBlocked(), false);
+    assert.equal(f.notificationNavigationChanges(), 2);
+    f.render(); await settle();
     assert.equal(f.selectedNetwork(), 'syscoin-nevm');
     assert.equal(tap.port.getSnapshot().pendingEventId, null);
     assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
-  } finally { held.resolve(); f.dispose(); }
+  } finally { held.resolve(); f.dispose(); assert.equal(f.notificationNavigationBlocked(), undefined); }
 });
 
 test('native alert routing waits for Connections startup and proceeds if Connections becomes unavailable', async () => {
@@ -1871,6 +1888,7 @@ test('native alert routing waits for Connections startup and proceeds if Connect
   const settle = () => new Promise<void>(resolve => setImmediate(resolve));
   try {
     f.setConnectionState({ status: 'locked' }); f.render(); await settle();
+    assert.equal(f.notificationNavigationBlocked(), false, 'a locked controller owns no review in the parent');
     assert.equal(f.selectedNetwork(), 'ethereum');
     assert.deepEqual(f.notificationRoutes, []);
     assert.ok(tap.port.getSnapshot().pendingEventId);
