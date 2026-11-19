@@ -55,11 +55,12 @@ export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, o
     <Header title={t('mobile.tools.title')} subtitle={`${accountLabel} · ${networkLabel}`} />
     <Card><Row title={t('mobile.accounts.title')} subtitle={watchOnly ? t('mobile.tools.watchAccounts') : t('mobile.tools.walletAccounts')} icon="wallet" onPress={onAccounts} />
       {onNetworks && <Row title={t('mobile.tools.network')} subtitle={t('mobile.tools.chooseNetwork')} icon="globe" onPress={onNetworks} />}
-      {connections && <Row title={t('mobile.tools.connections')} subtitle={t('mobile.tools.connectionsBody')} icon="globe" onPress={() => setPane({ kind: 'connections' })} />}
-      <Row title={t('mobile.tools.checkSite')} subtitle={t('mobile.tools.checkSiteBody')} icon="shield" onPress={() => setPane({ kind: 'lookup' })} last={!onPrivateNotes && !guardianRecovery && watchOnly} />
-      {guardianRecovery && <Row title={t('mobile.tools.guardian')} subtitle={t('mobile.tools.guardianBody')} icon="shield" onPress={() =>
-        setPane({ kind: 'guardian', scope: guardianRecovery.scope, lifetime: new AbortController() })
-      } last={!onPrivateNotes && watchOnly} />}
+      {connections && <Row title={t('mobile.tools.connections')} subtitle={t('mobile.tools.connectionsBody')} icon="globe" onPress={() => { navigation.beginNavigation(); setPane({ kind: 'connections' }); }} />}
+      <Row title={t('mobile.tools.checkSite')} subtitle={t('mobile.tools.checkSiteBody')} icon="shield" onPress={() => { navigation.beginNavigation(); setPane({ kind: 'lookup' }); }} last={!onPrivateNotes && !guardianRecovery && watchOnly} />
+      {guardianRecovery && <Row title={t('mobile.tools.guardian')} subtitle={t('mobile.tools.guardianBody')} icon="shield" onPress={() => {
+        navigation.beginNavigation();
+        setPane({ kind: 'guardian', scope: guardianRecovery.scope, lifetime: new AbortController() });
+      }} last={!onPrivateNotes && watchOnly} />}
       {onPrivateNotes && <Row title={t('mobile.tools.notes')} subtitle={t('mobile.tools.notesBody')} icon="lock" onPress={onPrivateNotes} last={watchOnly} /> }
       {!watchOnly && <Row title={t('mobile.tools.sentry')} subtitle={onSentryKeys ? t('mobile.tools.sentryBody') : t('mobile.tools.sentryUnavailable')} icon="shield" onPress={onSentryKeys} last />}</Card>
     {watchOnly && <Notice title={t('mobile.tools.publicTitle')} body={t('mobile.tools.publicBody')} />}

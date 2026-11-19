@@ -33,6 +33,7 @@ function fixture(platform: 'ios' | 'android' = 'ios') {
   const opened: WatchOnlyAuthority[] = [];
   const record = { writes: 0, opens: 0, reads: 0, credentials: 0, balances: 0, notificationReads: 0 };
   let notification = { pendingEventId: null as string | null, tapRevision: 0 };
+  let notificationAccountType: 'native' | 'watch' = 'watch';
   let heldNotificationOwner: ReturnType<typeof deferred> | undefined;
   const repository = {
     assertNetworkCurrent() {},
@@ -88,7 +89,7 @@ function fixture(platform: 'ios' | 'android' = 'ios') {
       subscribe: () => () => {}, getSnapshot: () => notification, disableOwner: async () => {},
       getPendingOwner: async () => {
         record.notificationReads++;
-        const owner = notification.pendingEventId ? { accountId: first.id, accountType: 'watch' } : null;
+        const owner = notification.pendingEventId ? { accountId: first.id, accountType: notificationAccountType } : null;
         await heldNotificationOwner?.promise;
         return owner;
       },
@@ -119,7 +120,10 @@ function fixture(platform: 'ios' | 'android' = 'ios') {
   }; render();
   return { record, opened, render, chooser, accountProps, button, showAccounts,
     async start() { await tick(); render(); await tick(); render(); },
-    tapSameAlert() { notification = { pendingEventId: 'pali-alert-' + 'ab'.repeat(16), tapRevision: notification.tapRevision + 1 }; },
+    tapSameAlert(accountType: 'native' | 'watch' = 'watch') {
+      notificationAccountType = accountType;
+      notification = { pendingEventId: 'pali-alert-' + 'ab'.repeat(16), tapRevision: notification.tapRevision + 1 };
+    },
     holdNotificationOwner() { heldNotificationOwner = deferred(); return heldNotificationOwner; },
     pendingNotification: () => notification.pendingEventId,
     add: () => accountProps().onAdd({ name: 'Second', address: SECOND, network: 'evm' }),
@@ -297,6 +301,45 @@ test('healthy committed Add reopens the actual records and selects the new watch
   try { await f.add(); await tick(); assert.equal(f.record.writes, 1); assert.equal(f.record.opens, 2);
     assert.equal(f.render().find(element => element.type === 'WatchSession')?.props.authority.getSnapshot().selectedAccountId, f.saved().accounts[1]!.id); assert.equal(f.record.credentials, 0);
   } finally { f.close(); }
+});
+test('adding a watch account retires an older alert without consuming a new tap during the save', async () => {
+  const f = await started();
+  const owner = f.holdNotificationOwner();
+  const saved = f.holdWrite();
+  const selected = () => f.render().find(element => element.type === 'WatchSession')?.props.authority.getSnapshot().selectedAccountId;
+  try {
+    f.tapSameAlert(); f.render(); await tick();
+    assert.equal(f.record.notificationReads, 1);
+    const writeStarted = f.waitForWrite();
+    const add = f.add(); await writeStarted;
+    assert.equal(f.pendingNotification(), null);
+
+    f.tapSameAlert();
+    assert.ok(f.pendingNotification());
+    saved.resolve(); await add; await tick();
+    assert.equal(selected(), f.saved().accounts[1]!.id);
+    assert.ok(f.pendingNotification(), 'The new tap is still pending');
+    owner.resolve(); await f.start();
+    assert.equal(selected(), f.saved().accounts[0]!.id);
+    assert.equal(f.record.writes, 1);
+    assert.equal(f.record.credentials, 0);
+  } finally { saved.resolve(); owner.resolve(); f.close(); }
+});
+test('a fresh native alert waits for the watch account save to finish', async () => {
+  const f = await started();
+  const saved = f.holdWrite();
+  try {
+    const writeStarted = f.waitForWrite();
+    const add = f.add(); await writeStarted;
+    f.tapSameAlert('native'); await f.start();
+    assert.equal(f.record.notificationReads, 0);
+    assert.ok(f.pendingNotification());
+    assert.ok(f.render().some(element => element.type === 'WalletAccounts'));
+    saved.resolve(); await add; await f.start();
+    assert.equal(f.saved().accounts.length, 2);
+    assert.equal(f.record.writes, 1);
+    assert.ok(f.render().some(element => element.type === 'NativeWalletScreen'));
+  } finally { saved.resolve(); f.close(); }
 });
 test('failed list write preserves the previous record and exposes Reopen without reopening', async () => {
   const f = await started();

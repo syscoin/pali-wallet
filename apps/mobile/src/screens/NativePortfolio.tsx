@@ -219,22 +219,23 @@ function NativePortfolioContent({ nativeDetail, openNativeDetail, closeNativeDet
   const pending = snapshot.pendingDeltaUnits;
   const statusText = loading ? t('mobile.portfolioViews.loadingBalance', { network: networkName }) : snapshot.status === 'error' ? t('mobile.accountPortfolio.balanceUnavailable') : t('mobile.sendAssetViews.tokens.balanceNotLoaded');
   const currentFeedback = feedback?.scope === scope ? feedback : null;
-  const requestReceive = () => {
+  const openReceiveView = (explicit: boolean) => {
     if (!account || !canReceive || !lifecycle.current.alive || AppState.currentState !== 'active' || !model.isCurrent(account)) return;
-    navigation?.beginNavigation();
+    if (explicit) navigation?.beginNavigation();
     invalidateActions();
     if (requiresBackup()) {
       const captured = Object.freeze({ model, account, scope: scopeOf(account), epoch: lifecycle.current.epoch });
       receiveWarningOwner.current = captured; setReceiveWarning(captured);
     } else setReceiveScope(scopeOf(account));
   };
+  const requestReceive = () => openReceiveView(true);
   useLayoutEffect(() => {
     if (!openReceive && !initialReceiveScope) { requestedReceive.current = false; return; }
     if (requestedReceive.current || !account || !canReceive || !lifecycle.current.alive || AppState.currentState !== 'active' || !model.isCurrent(account)) return;
     requestedReceive.current = true;
     // A new network continuation has no reusable backup acknowledgement.
     // Open its warning before consuming the one-shot Receive intent.
-    if (!initialReceiveScope || !receiving) requestReceive();
+    if (!initialReceiveScope || !receiving) openReceiveView(false);
     // Receive is a one-shot navigation intent, not a persistent mode to replay on remount.
     onReceiveIntentConsumed?.();
   });

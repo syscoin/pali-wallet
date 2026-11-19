@@ -613,6 +613,10 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   }
   const Root = evaluate(source, dependencies).NativeWalletContent as (props: object) => Element;
   const props = { controllerRef: { current: null }, initialAccountId: publicNavigation?.initialAccountId, onExit() { exits++; },
+    onExplicitNavigation() {
+      const { pendingEventId, tapRevision } = notificationPort.getSnapshot();
+      if (pendingEventId && tapRevision !== undefined) notificationPort.consumeTap(pendingEventId, tapRevision);
+    },
     registerNotificationNavigationGuard(isBlocked: () => boolean, subscribe: (listener: () => void) => () => void) {
       notificationNavigationBlocked = isBlocked;
       const unsubscribe = subscribe(() => { notificationNavigationChanges++; });
@@ -929,7 +933,8 @@ test('a changed requested native account is selected on the mounted public walle
 });
 
 for (const backup of ['confirmed', 'unconfirmed'] as const) test(`missing device credential opens phrase recovery with ${backup} backup`, async () => {
-  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm');
+  const tap = notificationTapPort('recovery-started', Promise.resolve(), 'watch');
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
   try {
     const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
     (home.props.onSecurity as () => void)(); f.render();
@@ -938,7 +943,11 @@ for (const backup of ['confirmed', 'unconfirmed'] as const) test(`missing device
     await new Promise(resolve => setImmediate(resolve));
     const security = all(f.render()).find(node => node.type === 'NativeSecurity'); assert(security);
     assert.equal(typeof security.props.onRestoreAccess, 'function');
+    tap.tapAgain();
     (security.props.onRestoreAccess as () => void)();
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    tap.tapAgain();
+    assert.equal(f.notificationNavigationBlocked(), true);
     const recovery = f.render(); assert.equal(recovery.type, 'NativeRecovery');
     const flow = recovery.props.flow as NativeRecoveryFlow;
     flow.start(); await new Promise(resolve => setImmediate(resolve));
@@ -1791,6 +1800,46 @@ function notificationTapPort(kind: 'transaction-confirmed' | 'recovery-started',
   };
   return { port, resolutions: () => resolutions, tapAgain() { state = { ...state, pendingEventId: eventId, tapRevision: state.tapRevision + 1 }; } };
 }
+
+test('a source sheet defers in-flight native alert routing and closing it retries the same tap', async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('transaction-confirmed', held.promise);
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio')!;
+    const sourceNavigation = portfolio.props.onSourceNavigationChange as (active: boolean) => void;
+    await settle();
+    assert.equal(tap.resolutions(), 1);
+    sourceNavigation(true);
+    held.resolve(); await settle(); f.render(); await settle();
+    assert.equal(f.notificationNavigationBlocked(), true);
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+    assert.deepEqual(f.notificationRoutes, []);
+    sourceNavigation(false); f.render(); await settle();
+    assert.equal(tap.resolutions(), 2);
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    assert.equal(f.selectedNetwork(), 'syscoin-nevm');
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('manual Send retires the prior watch tap and defers a later tap until the draft closes', async () => {
+  const tap = notificationTapPort('transaction-confirmed', Promise.resolve(), 'watch');
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  try {
+    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio')!;
+    (portfolio.props.onSend as () => void)();
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    assert.equal(f.notificationNavigationBlocked(), true);
+    tap.tapAgain();
+    const send = f.render();
+    assert.equal(send.type, 'NativeSend');
+    assert.equal(f.notificationNavigationBlocked(), true);
+    (send.props.onBack as () => void)();
+    f.render();
+    assert.equal(f.notificationNavigationBlocked(), false);
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+  } finally { f.dispose(); }
+});
 
 for (const kind of ['transaction-confirmed', 'recovery-started'] as const) test(`native ${kind} tap selects its exact network before opening the public destination`, async () => {
   const tap = notificationTapPort(kind);

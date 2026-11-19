@@ -229,7 +229,7 @@ function TokenContent({
       ? { kind: 'collectible', account, ...entry }
       : previous);
   };
-  const returnToCollectibles = () => setRoute({ kind: 'collectibles' });
+  const returnToCollectibles = () => setRouteState({ kind: 'collectibles' });
   const metadata =
     route.kind === 'import' ? snapshot.preview?.metadata : token?.metadata;
   const balance = (item: {
@@ -619,7 +619,7 @@ function TokenContent({
                               )
                           ) {
                             controller.closeDiscovery();
-                            setRoute({ kind: 'detail', contract: selected });
+                            setRouteState({ kind: 'detail', contract: selected });
                           }
                         }
                       );
@@ -673,7 +673,7 @@ function TokenContent({
                                   item.metadata.contractAddress === selected
                               )
                           )
-                            setRoute({ kind: 'list' });
+                            setRouteState({ kind: 'list' });
                         }
                       );
                     }}
