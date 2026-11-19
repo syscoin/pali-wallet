@@ -889,8 +889,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         rootOrigin.current || notificationTransition.current || lastNotificationAttempt.current === attemptKey || AppState.currentState !== 'active') return;
     const connectionsBlockNavigation = () => {
       const connections = local.connections.getSnapshot();
-      return connections.status !== 'ready' || connections.proposals.length > 0 || !!connections.accountChangeReview ||
-        !!connections.preparationReview || !!connections.controlReview || !!connections.sentryReview || !!connections.psbtReview || !!connections.signingReview;
+      return (connections.status !== 'ready' && connections.status !== 'unavailable') || connections.proposals.length > 0 ||
+        !!connections.accountChangeReview || !!connections.preparationReview || !!connections.controlReview ||
+        !!connections.sentryReview || !!connections.psbtReview || !!connections.signingReview || !!connections.callsStatus;
     };
     if (connectionsBlockNavigation()) return;
     let deferredForReview = false;
