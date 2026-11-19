@@ -154,7 +154,6 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
       Button: 'Button',
       Card: 'Card', Coin: 'Coin', IconButton: 'IconButton',
       Header: 'Header',
-      Notice: 'Notice',
       Screen: 'Screen',
       Text: 'Text',
       colors: {},
@@ -378,10 +377,13 @@ for (const message of ['INVALID_INPUT', 'NOT_READY'])
       f.edit('Amount in ETH', '1');
       f.press();
       await tick();
-      const notice = all(f.render()).find((node) => node.type === 'Notice');
-      assert(notice);
+      const alert = all(f.render()).find(
+        (node) => node.type === 'Text' && node.props.accessibilityRole === 'alert',
+      );
+      assert(alert);
+      assert.equal(alert.props.accessibilityLiveRegion, 'polite');
       assert.equal(
-        notice.props.body,
+        alert.children.join(''),
         message === 'INVALID_INPUT'
           ? 'Check recipient and amount'
           : 'This request could not be completed'
@@ -456,7 +458,12 @@ test('invalid NFT identifiers stay in the form with a specific field message', a
     f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
     f.edit('Token ID', '-1'); f.press(); await tick();
     assert.equal(calls, 0);
-    assert.equal(all(f.render()).find(node => node.type === 'Notice')!.props.body, 'Enter a valid token ID.');
+    const alert = all(f.render()).find(
+      (node) => node.type === 'Text' && node.props.accessibilityRole === 'alert',
+    );
+    assert(alert);
+    assert.equal(alert.props.accessibilityLiveRegion, 'polite');
+    assert.equal(alert.children.join(''), 'Enter a valid token ID.');
   } finally { f.close(); }
 });
 
@@ -755,4 +762,51 @@ test('Smart send reuses the parent balance, updates it and refuses stale-scope M
   const staleMax = tree.find(node => node.type === 'Button' && node.props.title === 'MAX selected');
   assert(staleMax?.props.disabled);
   f.close();
+});
+
+for (const [back, outcome] of [
+  ['android', 'complete'],
+  ['screen', 'failed'],
+  ['screen', 'leave'],
+  ['android', 'background'],
+] as const) test(`Smart Send ${back} Back keeps the submitted attempt visible until ${outcome}`, async () => {
+  const transactionHash = `0x${'12'.repeat(32)}`;
+  const snapshot = { phase: 'waiting', revision: 1, transactionHash, userOperationSubmissionStarted: true };
+  let disposed = 0;
+  const operation = { getSnapshot: () => snapshot, subscribe: () => () => {}, dispose() { disposed++; } };
+  const f = fixture(async () => operation);
+  try {
+    f.edit('Recipient address', '0x3333333333333333333333333333333333333333');
+    f.edit('Amount in ETH', '0.25');
+    f.press();
+    await tick();
+    const review = f.render();
+    assert.equal(review.type, 'Operation');
+    const requestBack = back === 'android' ? f.hardware : review.props.onBack;
+    requestBack();
+    const prompt = f.render().props.leavePrompt;
+    assert.equal(prompt.type, 'SubmissionLeavePrompt');
+    assert.equal(disposed, 0);
+    prompt.props.onStay();
+    assert.equal(f.render().props.leavePrompt, false);
+    requestBack();
+    const next = f.render().props.leavePrompt;
+    prompt.props.onLeave();
+    assert.equal(disposed, 0);
+    if (outcome === 'complete' || outcome === 'failed') {
+      snapshot.phase = outcome;
+      if (outcome === 'complete') assert.equal(f.render().props.leavePrompt, false);
+      next.props.onLeave();
+      assert.equal(f.render().props.leavePrompt, false);
+      assert.equal(f.render().props.controller, operation);
+      assert.equal(f.backs(), 0);
+      assert.equal(disposed, 0);
+    } else {
+      if (outcome === 'background') f.background();
+      else next.props.onLeave();
+      await tick();
+      assert.equal(f.backs(), 1);
+      assert.equal(disposed, 1);
+    }
+  } finally { f.close(); }
 });

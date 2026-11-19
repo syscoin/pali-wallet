@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { NativeUtxoReplacement } from '../src/custody/utxoSend.ts';
 import type { UtxoActivityRow, UtxoActivityState } from '../src/core/utxoActivity.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
@@ -8,16 +9,27 @@ import { createUtxoActivityReader } from '../src/core/utxoActivity.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 
-function fixture(row: UtxoActivityRow) {
+function fixture(row: UtxoActivityRow, replacement?: {
+  availableReplacements(txid: string, check: () => void): Promise<readonly NativeUtxoReplacement['mode'][]>;
+  onReplace(replacement: NativeUtxoReplacement): void;
+}) {
   const context = { accountId: 'watch', networkId: 'syscoin' as const, address: 'sys1public', generation: 1 };
   let state: UtxoActivityState = { status: 'ready', context, rows: [row], detail: null,
     firstPage: 1, page: 1, hasMore: false, hasNewer: false, windowed: false };
+  let olderRow: UtxoActivityRow | undefined;
   class Activity {
     subscribe = () => () => {};
     getSnapshot = () => state;
     activate() {}
     isCurrent() { return true; }
-    selectDetail() { state = { ...state, detail: { txid: row.txid, row, from: ['sender'], to: ['recipient'], status: 'ready' } }; }
+    selectDetail(txid: string) {
+      const selected = state.rows.find(entry => entry.txid === txid)!;
+      state = { ...state, detail: { txid, row: selected, from: ['sender'], to: ['recipient'], status: 'ready' } };
+    }
+    loadMore() {
+      assert(olderRow);
+      state = { ...state, rows: [...state.rows, olderRow], page: 2, hasMore: false };
+    }
     clearDetail() { state = { ...state, detail: null }; }
     dispose() {}
     revoke() {}
@@ -39,14 +51,103 @@ function fixture(row: UtxoActivityRow) {
     '../activity/activityAmountLabel': { compactActivityAmountLabel },
     '../activity/assetIcon': { utxoActivityAssetIcon: () => undefined },
   });
-  const props = { authority: {}, selectedNetwork: { id: 'syscoin', name: 'Syscoin', symbol: 'SYS', decimals: 8, chainId: 57 },
-    accountLabel: 'Daily', navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, beginNavigation() {}, setImmersive() {} }, onBack() {} };
+  const props = { initialHash: undefined as string | undefined, onInitialTargetOpened: undefined as (() => void) | undefined,
+    authority: {}, selectedNetwork: { id: 'syscoin', name: 'Syscoin', symbol: 'SYS', decimals: 8, chainId: 57 },
+    ...replacement, accountLabel: 'Daily', navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, beginNavigation() {}, setImmersive() {} }, onBack() {} };
   const render = () => screenElements(host.render(props));
-  return { render, close: host.close, row() {
-    const list = render().find(item => item.type === 'FlatList')!;
-    return screenElements(list.props.renderItem({ item: row, index: 0 })).find(item => item.type === 'ActivityListRow')!;
-  } };
+  return {
+    render, close: host.close,
+    target(hash?: string, opened?: () => void) { props.initialHash = hash; props.onInitialTargetOpened = opened; },
+    setStatus(status: UtxoActivityState['status']) { state = { ...state, status }; },
+    addOlderRow(older: UtxoActivityRow) { olderRow = older; state = { ...state, hasMore: true }; },
+    row() {
+      const list = render().find(item => item.type === 'FlatList')!;
+      return screenElements(list.props.renderItem({ item: row, index: 0 })).find(item => item.type === 'ActivityListRow')!;
+    },
+  };
 }
+
+test('UTXO Activity waits for a successful page and keeps the target details after acknowledgment', async () => {
+  const txid = 'e'.repeat(64);
+  const row: UtxoActivityRow = { txid, block: null, observedConfirmations: 0, receivedUnits: '0', spentUnits: '10000',
+    netUnits: '-10000', transactionFeeUnits: '100', hasAssetData: false, zdag: false, assetAmount: null, nativeTransfer: null };
+  const f = fixture(row);
+  let opened = 0;
+  const acknowledge = () => { opened++; };
+  try {
+    f.setStatus('unavailable');
+    f.target(txid, acknowledge);
+    f.render();
+    await Promise.resolve();
+    assert.equal(opened, 0);
+    f.setStatus('ready');
+    f.render();
+    await Promise.resolve();
+    assert.equal(opened, 1);
+    f.target();
+    assert(f.render().some(item => item.type === 'TransactionDetailLayout'));
+    f.render().find(item => item.type === 'Header')!.props.onBack();
+    assert(!f.render().some(item => item.type === 'TransactionDetailLayout'));
+    f.target(txid, acknowledge);
+    f.render();
+    await Promise.resolve();
+    assert.equal(opened, 2, 'a new deliberate visit can open the same transaction');
+  } finally { f.close(); }
+});
+
+test('a notification outside the loaded UTXO page leaves older activity for the user to open', async () => {
+  const row: UtxoActivityRow = { txid: 'a'.repeat(64), block: null, observedConfirmations: 0,
+    receivedUnits: '0', spentUnits: '10000', netUnits: '-10000', transactionFeeUnits: '100',
+    hasAssetData: false, zdag: false, assetAmount: null, nativeTransfer: null };
+  const older = { ...row, txid: 'b'.repeat(64) };
+  const f = fixture(row);
+  let handled = 0;
+  const list = () => f.render().find(item => item.type === 'FlatList')!;
+  try {
+    f.addOlderRow(older);
+    f.target(older.txid, () => { handled++; });
+    list();
+    await Promise.resolve();
+    assert.equal(handled, 1);
+    f.target();
+    const before = list();
+    assert(screenElements(before.props.ListHeaderComponent).some(item => item.type === 'Notice' && item.props.body === 'Load older activity'));
+    screenElements(before.props.ListFooterComponent).find(item => item.props.title === 'Older activity')!.props.onPress();
+    const after = list();
+    assert.deepEqual(after.props.data.map((entry: UtxoActivityRow) => entry.txid), [row.txid, older.txid]);
+    assert(!screenElements(after.props.ListHeaderComponent).some(item => item.type === 'Notice'));
+    assert(!f.render().some(item => item.type === 'TransactionDetailLayout'));
+    screenElements(after.props.renderItem({ item: older, index: 1 })).find(item => item.type === 'ActivityListRow')!.props.onPress();
+    assert(f.render().some(item => item.type === 'TransactionDetailLayout'));
+    assert.equal(handled, 1);
+  } finally { f.close(); }
+});
+
+test('UTXO Activity exposes only the admitted replacement actions for its current pending detail', async () => {
+  const txid = 'e'.repeat(64);
+  const row: UtxoActivityRow = { txid, block: null, observedConfirmations: 0, receivedUnits: '0', spentUnits: '10000',
+    netUnits: '-10000', transactionFeeUnits: '100', hasAssetData: false, zdag: false, assetAmount: null, nativeTransfer: null };
+  const targets: NativeUtxoReplacement[] = [];
+  const f = fixture(row, {
+    async availableReplacements(hash, check) { check(); assert.equal(hash, txid); return ['cancel']; },
+    onReplace(target) { targets.push(target); },
+  });
+  const action = (title: string) => f.render().find(item => item.type === 'Button' && item.props.title === title);
+  try {
+    f.row().props.onPress();
+    assert.equal(action('Cancel pending transaction'), undefined);
+    await Promise.resolve();
+    assert.equal(action('Speed Up'), undefined);
+    const cancel = action('Cancel pending transaction');
+    assert(cancel);
+    cancel.props.onPress();
+    assert.equal(targets[0]?.txid, txid);
+    assert.equal(targets[0]?.mode, 'cancel');
+    f.render().find(item => item.type === 'Header')!.props.onBack();
+    cancel.props.onPress();
+    assert.equal(targets.length, 1);
+  } finally { f.close(); }
+});
 
 for (const kind of ['zdag', 'pending', 'confirmed'] as const) test(`actual UTXO list and detail render ${kind} without promoting pending to mined`, () => {
   const row: UtxoActivityRow = { txid: 'a'.repeat(64), block: kind === 'confirmed' ? { height: 190, hash: 'b'.repeat(64), timestamp: 1700000000 } : null,

@@ -332,6 +332,19 @@ test('creation initial review displays origin/network/target and requires a trus
   } finally { f.close(); }
 });
 
+test('uncertain Smart Account preparation delivery can close without offering to reject', async () => {
+  const f = reviewScreenFixture();
+  try {
+    f.change({ error: 'DELIVERY_UNCERTAIN', canRetry: false });
+    const buttons = f.render().filter(element => element.type === 'Button');
+    assert(!buttons.some(button => button.props.title === t('buttons.reject')));
+    assert(f.confirm().props.disabled);
+    const close = buttons.find(button => button.props.title === t('buttons.close'));
+    assert(close); close.props.onPress(); await tick();
+    assert.deepEqual(f.actions, [['reject', 'preparation-1']]);
+  } finally { f.close(); }
+});
+
 test('stale revision, replacement request, background and unmount revoke held creation callbacks', async () => {
   for (const boundary of ['revision', 'replacement', 'background', 'unmount'] as const) {
     const f = reviewScreenFixture(); f.checkbox().props.onValueChange(true); const held = f.confirm().props.onPress;

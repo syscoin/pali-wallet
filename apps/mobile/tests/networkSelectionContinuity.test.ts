@@ -109,6 +109,33 @@ test('selection-only picker preserves Back/Cancel and uses the captured shared s
   } finally { f.screen.close(); }
 });
 
+test('manage networks keeps switch progress and outcomes in the fixed footer', async () => {
+  const f = picker();
+  try {
+    const props = { controller: f.props.controller, onBack: f.props.onBack };
+    const render = () => screenElements(f.screen.render(props));
+    const footer = () => screenElements(render().find(node => node.type === 'Screen')?.props.footer);
+    const select = (networkId: string) => {
+      const row = render().find(node => node.props.network?.id === networkId);
+      assert(row);
+      return row.props.onSelect(networkId);
+    };
+
+    let complete!: () => void;
+    f.hold(new Promise<void>(resolve => { complete = resolve; }));
+    const pending = select('syscoin-nevm');
+    assert(footer().some(node => node.props.title === 'Switching networks…'));
+    complete();
+    await pending;
+    assert(footer().some(node => node.props.title === `Switched to ${getNativeNetwork('syscoin-nevm').name}`));
+
+    f.hold(Promise.reject(Error('RPC unavailable')));
+    await select('ethereum');
+    assert(footer().some(node => node.props.accessibilityRole === 'alert'));
+    assert(footer().some(node => node.props.title === 'Pali could not switch networks. Your saved wallet has been preserved.'));
+  } finally { f.screen.close(); }
+});
+
 test('source sheet shows a balance only on its observed network and choosing the current row dismisses without switching', async () => {
   const f = picker();
   try {

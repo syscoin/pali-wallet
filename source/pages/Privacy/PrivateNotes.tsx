@@ -10,7 +10,10 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { InlineFeedback } from 'components/InlineFeedback';
 import { ValidatedPasswordInput } from 'components/Input/ValidatedPasswordInput';
+import { SecretQrDisplay } from 'components/SecretQrDisplay';
+import { SecretQrImport } from 'components/SecretQrImport';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { verifiedNoteBalance } from 'utils/privacy/balance';
@@ -22,7 +25,6 @@ import PrivateNoteBackupDialog from './PrivateNoteBackupDialog';
 import PrivateVaultCapacitySettings from './PrivateVaultCapacitySettings';
 import PrivateVaultClearCompleted from './PrivateVaultClearCompleted';
 import PrivateWithdrawal from './PrivateWithdrawal';
-import PrivateWithdrawalRecovery from './PrivateWithdrawalRecovery';
 import { usePrivateNotes } from './usePrivateNotes';
 
 const PrivateNoteBundleDialog = lazy(
@@ -63,6 +65,8 @@ function NotesView() {
     controllerEmitter,
     loading,
     notes,
+    archiveCount,
+    setArchiveCount,
     refresh,
     remember,
     forget,
@@ -72,6 +76,15 @@ function NotesView() {
   const verificationPending = notes.some(
     ({ phase }) => phase === 'waiting' || phase === 'not-found'
   );
+  const revealNetworkScope = useSelector(({ vault }: RootState) => {
+    const network = vault.activeNetwork;
+    return JSON.stringify([
+      network?.kind,
+      network?.chainId,
+      network?.url,
+      network?.apiUrl,
+    ]);
+  });
   const [form] = Form.useForm();
   const [importing, setImporting] = useState(false);
   const [noteText, setNoteText] = useState('');
@@ -83,23 +96,28 @@ function NotesView() {
   const [capacitySettings, setCapacitySettings] = useState(false);
   const [showSpent, setShowSpent] = useState(false);
   const [archiveRevision, setArchiveRevision] = useState(0);
-  const [archiveCount, setArchiveCount] = useState(0);
+  const [archiveNote, setArchiveNote] = useState<string | null>(null);
   const [backupNoteId, setBackupNoteId] = useState<string | null>(null);
   const [bundleMode, setBundleMode] = useState<'export' | 'import' | null>(
     null
   );
   const [withdrawing, setWithdrawing] = useState<IPrivateNoteView | null>(null);
   const [statusNote, setStatusNote] = useState<string | null>(null);
-  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<{
+    id: string;
+    observationUnavailable?: true;
+  } | null>(null);
   const [reportedStatus, setReportedStatus] = useState<{
     id: string;
     status: string;
   } | null>(null);
   const owner = useRef({ active: true, revision: 0 });
   const importField = useRef<HTMLTextAreaElement>(null);
+  const importRevision = owner.current.revision;
   const statusRevisions = useRef(new Map<string, number>());
   const clear = () => {
     setCapacitySettings(false);
+    setArchiveNote(null);
     owner.current.revision += 1;
     setStatusNote(null);
     setImporting(false);
@@ -122,9 +140,39 @@ function NotesView() {
       owner.current.revision += 1;
     };
   }, []);
+  const revealNetworkScopeRef = useRef(revealNetworkScope);
+  useLayoutEffect(() => {
+    const scopeChanged = revealNetworkScopeRef.current !== revealNetworkScope;
+    revealNetworkScopeRef.current = revealNetworkScope;
+    if (!selected) return;
+    const hideReveal = () => {
+      owner.current.revision += 1;
+      if (!revealed) form.resetFields();
+      setSelected(null);
+      setRevealed('');
+      setError('');
+    };
+    if (scopeChanged) {
+      hideReveal();
+      return;
+    }
+    window.addEventListener('blur', hideReveal);
+    window.addEventListener('hashchange', hideReveal);
+    window.addEventListener('popstate', hideReveal);
+    return () => {
+      window.removeEventListener('blur', hideReveal);
+      window.removeEventListener('hashchange', hideReveal);
+      window.removeEventListener('popstate', hideReveal);
+    };
+  }, [form, revealed, revealNetworkScope, selected]);
   useEffect(() => {
     if (importing) importField.current?.focus();
   }, [importing]);
+
+  const updateNoteDraft = (text: string) => {
+    setNoteText(text);
+    setError('');
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -152,6 +200,9 @@ function NotesView() {
   const content = withdrawing ? (
     <PrivateWithdrawal
       note={withdrawing}
+      previousStatusUnavailable={
+        statusError?.id === withdrawing.id && statusError.observationUnavailable
+      }
       onBack={() => {
         setWithdrawing(null);
         void refresh();
@@ -269,21 +320,33 @@ function NotesView() {
           className="space-y-2"
           autoComplete="off"
         >
-          <label
-            htmlFor="privacy-import-note"
-            className="block text-xs text-white"
-          >
-            {t('privacy.noteLabel')}
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label
+              htmlFor="privacy-import-note"
+              className="block text-xs text-white"
+            >
+              {t('privacy.noteLabel')}
+            </label>
+            <SecretQrImport
+              key={revealNetworkScope}
+              kind="privateNote"
+              disabled={pending}
+              onScan={(text) => {
+                if (
+                  current(importRevision) &&
+                  revealNetworkScopeRef.current === revealNetworkScope &&
+                  !pending
+                )
+                  updateNoteDraft(text);
+              }}
+            />
+          </div>
           <textarea
             ref={importField}
             id="privacy-import-note"
             className={fieldClass}
             value={noteText}
-            onChange={(event) => {
-              setNoteText(event.target.value);
-              setError('');
-            }}
+            onChange={(event) => updateNoteDraft(event.target.value)}
             rows={3}
             maxLength={512}
             autoComplete="off"
@@ -339,7 +402,10 @@ function NotesView() {
               type="button"
               className={actionClass}
               aria-expanded={showSpent}
-              onClick={() => setShowSpent((value) => !value)}
+              onClick={() => {
+                setArchiveNote(null);
+                setShowSpent((value) => !value);
+              }}
             >
               {t('privacy.capacity.reportedSpent', {
                 count: notes.filter((note) => note.phase === 'spent').length,
@@ -347,44 +413,6 @@ function NotesView() {
             </button>
           </div>
         )}
-      {!capacitySettings && !importing && !selected && (
-        <PrivateVaultClearCompleted
-          controllerEmitter={controllerEmitter}
-          noteIds={notes
-            .filter(
-              (note) =>
-                note.phase === 'spent' ||
-                (note.withdrawal?.phase === 'submitted' &&
-                  note.withdrawal.transactionHash)
-            )
-            .map((note) => note.id)}
-          onRemoved={(ids) => {
-            if (!owner.current.active || document.visibilityState === 'hidden')
-              return;
-            for (const id of ids)
-              statusRevisions.current.set(
-                id,
-                (statusRevisions.current.get(id) || 0) + 1
-              );
-            forget(ids);
-            setArchiveCount((value) => value + ids.length);
-            setArchiveRevision((value) => value + 1);
-            setStatusNote((previous) =>
-              previous && ids.includes(previous) ? null : previous
-            );
-            setStatusError((previous) =>
-              previous && ids.includes(previous) ? null : previous
-            );
-            setReportedStatus((previous) =>
-              previous && ids.includes(previous.id) ? null : previous
-            );
-          }}
-          onComplete={() => {
-            if (owner.current.active && document.visibilityState !== 'hidden')
-              void refresh();
-          }}
-        />
-      )}
       <div
         role="status"
         aria-live="polite"
@@ -398,7 +426,7 @@ function NotesView() {
                 ? 'privacy.notesUnsupported'
                 : 'privacy.notesUnavailable'
             )
-          : !notes.length
+          : !notes.length && !archiveCount
           ? t('privacy.noNotes')
           : null}
         {(notes.length > 0 || (!loading && !unavailable)) && (
@@ -440,32 +468,19 @@ function NotesView() {
                   {t('privacy.noteAsOfBlock', { block: note.blockNumber })}
                 </p>
               )}
-              {note.phase !== 'spent' &&
-                note.restoration === 'withdrawal-pending' && (
-                  <p className="text-xs text-brand-gray200">
-                    {t('privacy.restoreReview.pending')}
-                  </p>
-                )}
               {note.withdrawal && (
                 <div className="space-y-2 text-xs text-brand-gray200">
-                  {note.withdrawal.canCheckRecovery && (
-                    <PrivateWithdrawalRecovery
-                      id={note.id}
-                      controllerEmitter={controllerEmitter}
-                      onRecovered={() => void refresh()}
-                    />
-                  )}
-                  {note.phase !== 'spent' && (
-                    <p>
-                      {t(
-                        `privacy.withdrawal.${
-                          note.withdrawal.phase === 'unknown'
-                            ? 'statusUnknown'
-                            : 'statusPending'
-                        }`
-                      )}
-                    </p>
-                  )}
+                  {note.phase !== 'spent' &&
+                    (note.withdrawal.phase === 'unknown' ? (
+                      statusError?.id !== note.id ||
+                      !statusError.observationUnavailable ? (
+                        <InlineFeedback>
+                          {t('privacy.withdrawal.statusUnknown')}
+                        </InlineFeedback>
+                      ) : null
+                    ) : (
+                      <p>{t('privacy.withdrawal.statusPending')}</p>
+                    ))}
                   {note.withdrawal.transactionHash && (
                     <p className="break-all">
                       {t('privacy.deposit.txHash')}:{' '}
@@ -501,10 +516,22 @@ function NotesView() {
                               false
                             );
                             if (statusCurrent()) {
-                              const status = (
-                                result as { claimedStatus?: unknown } | null
-                              )?.claimedStatus;
+                              const observation = result as {
+                                claimedStatus?: unknown;
+                                observationUnavailable?: unknown;
+                              } | null;
+                              const status = observation?.claimedStatus;
                               if (
+                                observation?.observationUnavailable === true
+                              ) {
+                                setReportedStatus((previous) =>
+                                  previous?.id === note.id ? null : previous
+                                );
+                                setStatusError({
+                                  id: note.id,
+                                  observationUnavailable: true,
+                                });
+                              } else if (
                                 [
                                   'QUEUED',
                                   'ACCEPTED',
@@ -524,7 +551,8 @@ function NotesView() {
                               await refresh(true);
                             }
                           } catch {
-                            if (statusCurrent()) setStatusError(note.id);
+                            if (statusCurrent())
+                              setStatusError({ id: note.id });
                           } finally {
                             if (statusCurrent()) setStatusNote(null);
                           }
@@ -533,8 +561,20 @@ function NotesView() {
                         {t('privacy.withdrawal.checkStatus')}
                       </button>
                     )}
-                  {statusError === note.id && (
-                    <p role="alert">{t('privacy.withdrawal.statusFailed')}</p>
+                  {statusError?.id === note.id && (
+                    <InlineFeedback
+                      role="alert"
+                      tone={
+                        statusError.observationUnavailable ? 'warning' : 'error'
+                      }
+                    >
+                      {t(
+                        statusError.observationUnavailable &&
+                          note.phase !== 'spent'
+                          ? 'privacy.withdrawal.previousStatusUnavailable'
+                          : 'privacy.withdrawal.statusFailed'
+                      )}
+                    </InlineFeedback>
                   )}
                   {reportedStatus?.id === note.id && (
                     <p>
@@ -545,10 +585,58 @@ function NotesView() {
                   )}
                 </div>
               )}
+              {!capacitySettings &&
+                !importing &&
+                !selected &&
+                note.archiveEligible && (
+                  <PrivateVaultClearCompleted
+                    confirming={archiveNote === note.id}
+                    controllerEmitter={controllerEmitter}
+                    earlierAttempts={note.archiveEarlierAttempts}
+                    noteId={note.id}
+                    onCancel={() => setArchiveNote(null)}
+                    onSelect={() => setArchiveNote(note.id)}
+                    onRemoved={(id) => {
+                      if (!owner.current.active) return;
+                      statusRevisions.current.set(
+                        id,
+                        (statusRevisions.current.get(id) || 0) + 1
+                      );
+                      forget([id]);
+                      setArchiveCount((value) => value + 1);
+                      setArchiveRevision((value) => value + 1);
+                      setArchiveNote((previous) =>
+                        previous === id ? null : previous
+                      );
+                      setStatusNote((previous) =>
+                        previous === id ? null : previous
+                      );
+                      setStatusError((previous) =>
+                        previous?.id === id ? null : previous
+                      );
+                      setReportedStatus((previous) =>
+                        previous?.id === id ? null : previous
+                      );
+                    }}
+                    onComplete={() => {
+                      if (
+                        owner.current.active &&
+                        document.visibilityState !== 'hidden'
+                      )
+                        void refresh();
+                    }}
+                  />
+                )}
               {note.phase === 'verified' && (
                 <button
                   type="button"
                   className={actionClass}
+                  disabled={note.withdrawalPending}
+                  aria-describedby={
+                    note.withdrawalPending
+                      ? `pending-withdrawal-${note.id}`
+                      : undefined
+                  }
                   onClick={() => {
                     clear();
                     setWithdrawing(note);
@@ -556,6 +644,14 @@ function NotesView() {
                 >
                   {t('privacy.withdrawal.open')}
                 </button>
+              )}
+              {note.phase === 'verified' && note.withdrawalPending && (
+                <p
+                  id={`pending-withdrawal-${note.id}`}
+                  className="text-xs text-brand-gray200"
+                >
+                  {t('privacy.withdrawal.pendingActivity')}
+                </p>
               )}
               {selected !== note.id ? (
                 <button
@@ -575,21 +671,23 @@ function NotesView() {
                 <div className="space-y-2">
                   {revealed ? (
                     <>
-                      <label
-                        htmlFor="privacy-revealed-note"
-                        className="block text-xs text-white"
-                      >
-                        {t('privacy.privateNote')}
-                      </label>
-                      <textarea
-                        id="privacy-revealed-note"
-                        className={fieldClass}
-                        readOnly
-                        rows={3}
-                        value={revealed}
-                        autoComplete="off"
-                        spellCheck={false}
-                      />
+                      <SecretQrDisplay secret={revealed}>
+                        <label
+                          htmlFor="privacy-revealed-note"
+                          className="block text-xs text-white"
+                        >
+                          {t('privacy.privateNote')}
+                        </label>
+                        <textarea
+                          id="privacy-revealed-note"
+                          className={fieldClass}
+                          readOnly
+                          rows={3}
+                          value={revealed}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </SecretQrDisplay>
                       <p className="text-xs text-brand-gray200">
                         {t('privacy.noteSecret')}
                       </p>
@@ -688,6 +786,8 @@ function NotesView() {
               // A dismissed, unconfirmed restore may already be durable.
               // Refresh the public inventory without replaying its commit.
               void refresh();
+              if (bundleMode === 'import')
+                setArchiveRevision((value) => value + 1);
             }}
             onRestored={() => void refresh()}
           />

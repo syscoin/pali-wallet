@@ -55,6 +55,7 @@ async function installRestorePoolRoutes(
   const root =
     '0x220b4b81baca64b1efe6bbf6725960bfc2781f3af4886dccd44f9f0f8aba0dd2';
   const block = 20000000;
+  const checkpoint = block - 8;
   const blockHash = '0x' + '42'.repeat(32);
   const timestamp = toQuantity(Math.floor(Date.now() / 1000) - 900);
   const abi = new Interface([
@@ -119,12 +120,23 @@ async function installRestorePoolRoutes(
             if (
               call.params.length !== 2 ||
               call.params[1] !== false ||
-              !['latest', toQuantity(block)].includes(call.params[0])
+              ![
+                'latest',
+                'finalized',
+                toQuantity(block),
+                toQuantity(checkpoint),
+              ].includes(call.params[0])
             )
               return undefined;
             result = {
-              number: toQuantity(block),
-              hash: blockHash,
+              number:
+                call.params[0] === toQuantity(checkpoint)
+                  ? toQuantity(checkpoint)
+                  : toQuantity(block),
+              hash:
+                call.params[0] === toQuantity(checkpoint)
+                  ? '0x' + '43'.repeat(32)
+                  : blockHash,
               timestamp,
               parentHash: '0x' + '41'.repeat(32),
               nonce: '0x0000000000000000',
@@ -150,7 +162,13 @@ async function installRestorePoolRoutes(
                 return undefined;
               result = abi.encodeFunctionResult(parsed.name, [true]);
             } else {
-              if (call.params[1] !== toQuantity(block)) return undefined;
+              const tag = call.params[1];
+              if (
+                tag !== toQuantity(block) &&
+                (tag !== toQuantity(checkpoint) ||
+                  !['nextIndex', 'getLastRoot'].includes(parsed.name))
+              )
+                return undefined;
               const values: Record<string, unknown> = {
                 nextIndex: 2,
                 getLastRoot: root,
@@ -654,12 +672,6 @@ test('private note files: real download, saved-file verification and fenced rest
           )
         ).toEqual([]);
         expect(await privateStorage(page)).toEqual(unchanged);
-        await expect(
-          page.getByRole('button', {
-            name: en.privacy.restoreReview.action,
-            exact: true,
-          })
-        ).toHaveCount(0);
         await page
           .getByRole('button', { name: en.buttons.back, exact: true })
           .click();
@@ -689,12 +701,6 @@ test('private note files: real download, saved-file verification and fenced rest
             exact: true,
           })
         ).toBeEnabled();
-        await expect(
-          row.getByRole('button', {
-            name: en.privacy.restoreReview.action,
-            exact: true,
-          })
-        ).toHaveCount(0);
         expect(
           await row.evaluate(
             (element) => element.scrollWidth <= element.clientWidth
@@ -925,12 +931,6 @@ test('private note files: real download, saved-file verification and fenced rest
         await confirmRestore(page, DESTINATION_PASSWORD, capture);
         await expect(noteRows(page)).toHaveCount(2);
         // Import keeps history as information; normal withdrawal readiness still needs public pool verification.
-        await expect(
-          noteRows(page).getByRole('button', {
-            name: en.privacy.restoreReview.action,
-            exact: true,
-          })
-        ).toHaveCount(0);
         await expect(
           noteRows(page).getByRole('button', {
             name: en.privacy.withdrawal.open,

@@ -42,14 +42,15 @@ const report = (phase: 'create' | 'restart') => ({
   erc20AccountIndex: 2,
   erc20Address: '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A',
   erc20TransferHash: '0x' + 'c'.repeat(64),
+  erc20ReplacementHash: phase === 'create' ? null : '0x' + '5'.repeat(64),
   erc20IntentHash: '0x' + 'd'.repeat(64),
-  erc20Signatures: phase === 'create' ? 1 : 0,
-  erc20Authorizations: phase === 'create' ? 0 : 1,
+  erc20Signatures: 1,
+  erc20Authorizations: 1,
   erc20InjectedBroadcasts: 1,
   erc20RestoredFromJournal: phase === 'restart',
 });
 
-test('ERC20 qualification reports require complete positive evidence and exact restart identity', () => {
+test('ERC20 qualification reports bind the new replacement to the original restart identity', () => {
   assert(isErc20QualificationReport(report('create')));
   assert(matchesErc20RestartEvidence(report('create'), report('restart')));
   for (const change of [
@@ -59,7 +60,9 @@ test('ERC20 qualification reports require complete positive evidence and exact r
     { erc20Address: report('create').address },
     { erc20TransferHash: report('create').transferHash },
     { erc20TransferHash: '0x123' },
-    { erc20Signatures: 1 },
+    { erc20ReplacementHash: null },
+    { erc20ReplacementHash: report('create').erc20TransferHash },
+    { erc20Signatures: 0 },
     { erc20Authorizations: 0 },
     { erc20InjectedBroadcasts: 2 },
     { erc20RestoredFromJournal: false },
@@ -82,6 +85,7 @@ test('ERC20 qualification reports require complete positive evidence and exact r
     'erc20AccountIndex',
     'erc20Address',
     'erc20TransferHash',
+    'erc20ReplacementHash',
     'erc20IntentHash',
     'erc20Signatures',
     'erc20Authorizations',
@@ -121,7 +125,7 @@ test('ERC20 qualification reports require complete positive evidence and exact r
 
 for (const scenario of ['import', 'generate'] as const)
   test(
-    `native ERC20 ${scenario} helper uses real SDK/SQL storage, preserves HD0/1 and retries HD2 without signing again`,
+    `native ERC20 ${scenario} helper preserves HD0/1 and signs an unsigned HD2 Speed Up after restart`,
     { timeout: 90000 },
     async () => {
       const directory = await mkdtemp(
@@ -232,16 +236,19 @@ for (const scenario of ['import', 'generate'] as const)
           expectedThirdAddress,
           check,
         });
-        assert.equal(restored.erc20Signatures, 0);
+        assert.equal(restored.erc20Signatures, 1);
         assert.equal(restored.erc20Authorizations, 1);
         assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
         const after = await readRows();
         assert.deepEqual(after.slice(0, 2), before.slice(0, 2));
-        assert.equal(
-          JSON.stringify({ ...after[2], phase: before[2]!.phase }),
-          JSON.stringify(before[2])
-        );
-        assert.equal(after[2]!.phase, 'submitted');
+        assert.deepEqual(after[2], before[2]);
+        assert.equal(after[2]!.payloadKind, 'unsigned-eoa');
+        assert.equal(after[3]!.phase, 'submitted');
+        assert.equal(after[3]!.payloadKind, 'unsigned-eoa');
+        assert.equal(after[3]!.operation, 'speed-up');
+        assert.equal(after[3]!.originalHash, created.erc20TransferHash);
+        assert.equal(after[3]!.hash, restored.erc20ReplacementHash);
+        assert.deepEqual(after[3]!.metadata?.intent, before[2]!.metadata?.intent);
         const createdReport = {
           status: 'passed',
           phase: 'create',
@@ -283,7 +290,7 @@ for (const scenario of ['import', 'generate'] as const)
         );
         assert(
           checks.includes(
-            'native ERC20 cold restart intent and exact-byte authorized retry'
+            'native ERC20 cold restart unsigned intent and authorized Speed Up'
           )
         );
       } finally {

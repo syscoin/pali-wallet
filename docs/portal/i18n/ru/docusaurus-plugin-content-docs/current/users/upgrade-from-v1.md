@@ -6,11 +6,11 @@ title: Обновление со старых версий Pali
 
 ## Шаги миграции
 
-1. Откройте старый Pali wallet.
+1. Откройте старую версию Pali.
 2. Откройте General settings.
 3. Выберите Wallet seed phrase.
 4. Введите пароль и скопируйте seed phrase.
-5. Установите или откройте текущий Pali wallet.
+5. Установите или откройте текущую версию Pali.
 6. Выберите Import using wallet seed phrase.
 7. Вставьте seed phrase.
 8. Задайте новый пароль кошелька.

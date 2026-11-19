@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { ExternalLinkSvg } from 'components/Icon/Icon';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useRequestScope } from 'hooks/useRequestScope';
+import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store, { RootState } from 'state/store';
 import {
@@ -12,6 +13,7 @@ import {
   selectVaultCoreData,
 } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
+import { KeyringAccountType } from 'types/network';
 import type {
   ITransactionInfoEvm,
   ITransactionInfoUtxo,
@@ -21,7 +23,7 @@ import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
-import { useSavedEvmTransactions } from './components/Transactions/EVM/useSavedEvmTransactions';
+import { useEvmActivityHistory } from './components/Transactions/EVM/useEvmActivityHistory';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
 
 export const TransactionsPanel = () => {
@@ -38,30 +40,108 @@ export const TransactionsPanel = () => {
   const historyMayBeIncomplete = !isBitcoinBased && !activeNetwork.apiUrl;
 
   const { t } = useTranslation();
+  const { alert } = useUtils();
   const historyStatus = useSelector(
     (state: RootState) => state.vaultGlobal.transactionHistoryStatus
   );
   const scope = useSelector(getWalletNavigationScope);
-  const historyState =
+  const currentHistory =
     historyStatus?.scope.account === scope.account &&
     historyStatus?.scope.network === scope.network
-      ? historyStatus.state
+      ? historyStatus
       : undefined;
-  const scopeKey = `${scope.account}:${scope.network}`;
-  const saved = useSavedEvmTransactions(!isBitcoinBased, scopeKey);
+  const historyState = currentHistory?.state;
+  const clearedAt =
+    activeAccount?.evmActivityClearedAtByChainId?.[activeNetwork.chainId];
+  const scopeKey = JSON.stringify([scope.account, scope.network, clearedAt]);
+  const canReadLocalActivity =
+    !isBitcoinBased &&
+    Boolean(activeAccount?.address) &&
+    (activeAccountType !== KeyringAccountType.Imported ||
+      Boolean(activeAccount?.xprv));
+  const activity = useEvmActivityHistory({
+    includeLocal: canReadLocalActivity,
+    scope,
+    clearedAt,
+    accountAddress: activeAccount?.address,
+    chainId: activeNetwork.chainId,
+    indexedTransactions: accountTransactions[TransactionsType.Ethereum][
+      activeNetwork.chainId
+    ] as unknown as ITransactionInfoEvm[] | undefined,
+  });
+  const networkTransition = useSelector(
+    (state: RootState) =>
+      state.vaultGlobal.networkStatus === 'connecting' ||
+      state.vaultGlobal.networkStatus === 'switching'
+  );
+  const [failedStartScope, setFailedStartScope] = useState<string>();
+  const needsInitialRead =
+    hasHistoryStatus &&
+    !historyState &&
+    !networkTransition &&
+    !isSwitchingAccount;
+  useEffect(() => {
+    setFailedStartScope(undefined);
+    if (!needsInitialRead) return;
+    let current = true;
+    void Promise.resolve().then(async () => {
+      if (!current) return;
+      try {
+        await controllerEmitter(
+          ['wallet', 'refreshTransactionHistory'],
+          [{ account: scope.account, network: scope.network }, true]
+        );
+      } catch {
+        if (current) setFailedStartScope(scopeKey);
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, [needsInitialRead, scopeKey, scope.account, scope.network]);
+  const startFailed = needsInitialRead && failedStartScope === scopeKey;
   const beginRetry = useRequestScope(scopeKey);
   const retryPending = useRef<() => boolean>();
   const [retryScope, setRetryScope] = useState<string>();
   const isRetrying = retryScope === scopeKey && retryPending.current?.();
+  const mayRetryHistory =
+    hasHistoryStatus && (historyState === 'error' || startFailed);
+  const mayRetryLocalActivity =
+    activity.unavailable && !activity.olderRows.loading;
   const retryHistory = async () => {
-    if (retryPending.current?.()) return;
+    if (
+      retryPending.current?.() ||
+      (!mayRetryHistory && !mayRetryLocalActivity)
+    )
+      return;
     const isCurrent = beginRetry();
     retryPending.current = isCurrent;
+    const previousStatus =
+      store.getState().vaultGlobal.transactionHistoryStatus;
     setRetryScope(scopeKey);
+    const retryIndexedHistory = async () => {
+      try {
+        await controllerEmitter(
+          ['wallet', 'refreshTransactionHistory'],
+          [scope]
+        );
+      } catch {
+        const status = store.getState().vaultGlobal.transactionHistoryStatus;
+        if (
+          isCurrent() &&
+          (status?.state !== 'error' ||
+            status.requestId === previousStatus?.requestId ||
+            status.scope.account !== scope.account ||
+            status.scope.network !== scope.network)
+        )
+          alert.error(t('send.unableToLoad'));
+      }
+    };
     try {
-      await controllerEmitter(['wallet', 'refreshTransactionHistory'], [scope]);
-    } catch {
-      // The scoped background status owns the error; keep the retry visible.
+      await Promise.all([
+        mayRetryHistory ? retryIndexedHistory() : undefined,
+        mayRetryLocalActivity ? activity.retry() : undefined,
+      ]);
     } finally {
       if (isCurrent()) {
         retryPending.current = undefined;
@@ -78,32 +158,12 @@ export const TransactionsPanel = () => {
       accountTransactions[TransactionsType.Syscoin][activeNetwork.chainId];
     return (sysTxs || []) as unknown as ITransactionInfoUtxo[];
   }, [accountTransactions, activeNetwork.chainId, isBitcoinBased]);
-  const evmTransactions = useMemo<ITransactionInfoEvm[]>(() => {
-    if (isBitcoinBased) {
-      return [];
-    }
-    const ethTxs =
-      accountTransactions[TransactionsType.Ethereum][activeNetwork.chainId];
-    const byHash = new Map<string, ITransactionInfoEvm>();
-    for (const row of saved.transactions)
-      byHash.set(row.hash.toLowerCase(), row);
-    for (const row of (ethTxs || []) as unknown as ITransactionInfoEvm[]) {
-      const key = row.hash?.toLowerCase();
-      if (key) byHash.set(key, row);
-    }
-    return Array.from(byHash.values());
-  }, [
-    accountTransactions,
-    activeNetwork.chainId,
-    isBitcoinBased,
-    saved.transactions,
-  ]);
-  const transactions = isBitcoinBased ? utxoTransactions : evmTransactions;
-
-  const hasTransactions = useMemo(
-    () => transactions.length > 0,
-    [transactions.length]
-  );
+  const transactions = isBitcoinBased
+    ? utxoTransactions
+    : activity.transactions;
+  const hasTransactions =
+    transactions.length > 0 ||
+    (!isBitcoinBased && activity.signedOperations.length > 0);
 
   // ✅ MEMOIZED: Component definitions to prevent recreation
   const NoTransactionsComponent = useMemo(
@@ -230,11 +290,11 @@ export const TransactionsPanel = () => {
     };
 
     return (
-      <div className="flex mt-5 items-center justify-center gap-2">
+      <div className="flex min-w-0 items-center justify-center gap-2">
         <ExternalLinkSvg />
         <button
           type="button"
-          className="w-max underline text-sm font-normal bg-transparent border-none cursor-pointer"
+          className="min-w-0 break-words text-center text-sm font-normal underline bg-transparent border-none cursor-pointer"
           onClick={openExplorer}
         >
           {t('home.seeAllTxs')}
@@ -289,84 +349,105 @@ export const TransactionsPanel = () => {
     return () => clearTimeout(timeout);
   }, [settleKey, hasSettled]);
 
-  const isLoading = useMemo(
-    () =>
-      isSwitchingAccount ||
-      (!hasTransactions &&
+  const isLoading =
+    isSwitchingAccount ||
+    (!hasTransactions &&
+      (activity.olderRows.loading ||
         (hasHistoryStatus
-          ? historyState !== 'ready' && historyState !== 'error'
-          : !hasSettled)),
-    [
-      isSwitchingAccount,
-      hasSettled,
-      hasTransactions,
-      hasHistoryStatus,
-      historyState,
-    ]
+          ? historyState !== 'ready' && historyState !== 'error' && !startFailed
+          : !hasSettled)));
+  const historyUnavailable = mayRetryHistory || activity.unavailable;
+  const showHistoryRetry =
+    mayRetryHistory || activity.unavailable || isRetrying;
+  const historyRetry = showHistoryRetry && (
+    <div
+      className={
+        hasTransactions
+          ? 'flex min-w-0 items-center justify-center gap-3 text-sm text-brand-gray200'
+          : 'mt-4 text-center text-sm text-brand-gray200'
+      }
+    >
+      <p role="status" className="min-h-[1.25rem] min-w-0 break-words">
+        {isRetrying
+          ? t('networkConnection.loadingTransactions')
+          : historyUnavailable
+          ? t('send.unableToLoad')
+          : null}
+      </p>
+      <button
+        type="button"
+        className={`inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium ${
+          hasTransactions ? '' : 'mt-2'
+        }`}
+        disabled={
+          Boolean(isRetrying) || (!mayRetryHistory && !mayRetryLocalActivity)
+        }
+        onClick={retryHistory}
+      >
+        {t('receive.retry')}
+      </button>
+    </div>
   );
-  const historyUnavailable = hasHistoryStatus && historyState === 'error';
+  const explorerLink =
+    (hasTransactions || !isLoading) && OpenTransactionExplorer;
+  const showFooter =
+    (hasTransactions && (hasHistoryStatus || canReadLocalActivity)) ||
+    explorerLink ||
+    showHistoryRetry;
 
   return (
     <>
-      {(isLoading || saved.loading) && !hasTransactions && TransactionSkeleton}
-      {hasHistoryStatus && historyState !== 'ready' && (
-        <div className="mt-8 text-center text-sm text-brand-gray200">
-          {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
-          <button
-            type="button"
-            className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
-            disabled={historyState === 'pending' || isRetrying}
-            onClick={retryHistory}
-          >
-            {t('receive.retry')}
-          </button>
-        </div>
-      )}
-      {saved.unavailable && (
-        <div className="mt-4 text-center text-sm text-brand-gray200">
-          <p role="status">{t('home.savedActivityUnavailable')}</p>
-          <button
-            type="button"
-            className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-brand-royalbluemedium px-4 text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
-            disabled={saved.loading}
-            onClick={() => void saved.retry()}
-          >
-            {t('home.retrySavedActivity')}
-          </button>
-        </div>
-      )}
-      {!isLoading && !saved.loading && !hasTransactions && (
+      {isLoading && !hasTransactions && !isRetrying && TransactionSkeleton}
+      {(hasTransactions || !isLoading || showHistoryRetry) && (
         <div
-          id="activity-panel-empty"
-          className="w-full mt-8 text-white bg-brand-blue600"
+          id={hasTransactions ? 'activity-panel-list' : 'activity-panel-empty'}
+          className={
+            hasTransactions
+              ? 'p-4 mt-8 w-full mb-9 text-white text-base bg-brand-blue600'
+              : 'w-full mt-8 text-white bg-brand-blue600'
+          }
         >
-          {!historyUnavailable && !saved.unavailable && NoTransactionsComponent}
-          {OpenTransactionExplorer}
-          {/* <Fullscreen /> */}
-        </div>
-      )}
-
-      {hasTransactions && (
-        <div
-          id="activity-panel-list"
-          className="p-4 mt-8 w-full  mb-9 text-white text-base bg-brand-blue600"
-        >
-          {historyMayBeIncomplete && (
-            <p role="status" className="mb-3 text-sm text-brand-gray200">
-              {t('home.historyMayBeIncomplete')}
-            </p>
+          {hasTransactions ? (
+            <>
+              {historyMayBeIncomplete && (
+                <p role="status" className="mb-3 text-sm text-brand-gray200">
+                  {t('home.historyMayBeIncomplete')}
+                </p>
+              )}
+              {isBitcoinBased ? (
+                <UtxoTransactionsList
+                  userTransactions={utxoTransactions}
+                  firstPageHasMore={currentHistory?.explorerHasMore}
+                />
+              ) : (
+                <EvmTransactionsList
+                  explorerHasMore={currentHistory?.explorerHasMore === true}
+                  userTransactions={activity.transactions}
+                  olderRows={activity.olderRows}
+                  smartCancellationHashes={activity.smartCancellationHashes}
+                  smartCancellationRetries={activity.smartCancellationRetries}
+                  pendingSmartCancellationTargets={
+                    activity.pendingSmartCancellationTargets
+                  }
+                  smartSignedOperations={activity.signedOperations}
+                />
+              )}
+            </>
+          ) : !isLoading && !historyUnavailable ? (
+            NoTransactionsComponent
+          ) : null}
+          {showFooter && (
+            <div
+              className={
+                hasTransactions
+                  ? 'mt-5 flex h-11 items-center justify-center gap-4'
+                  : 'mt-5 space-y-3'
+              }
+            >
+              {explorerLink}
+              {historyRetry}
+            </div>
           )}
-          {isBitcoinBased ? (
-            <UtxoTransactionsList userTransactions={utxoTransactions} />
-          ) : (
-            <EvmTransactionsList
-              userTransactions={evmTransactions}
-              savedHasMore={saved.hasMore}
-              savedLoading={saved.loading}
-              loadMoreSaved={saved.loadMore}
-            />
-          )}
-          {OpenTransactionExplorer}
         </div>
       )}
     </>

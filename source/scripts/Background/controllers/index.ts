@@ -381,11 +381,8 @@ const MasterController = (
       getArchivedNotes: () => wallet.getArchivedPrivateVaultNotes(),
       restoreArchivedNote: (id, password) =>
         wallet.restoreArchivedPrivateVaultNote(id, extensionPassword(password)),
-      reviewRestoredNote: (id, password) =>
-        wallet.reviewRestoredPrivateNote(id, extensionPassword(password)),
-      recoverFailedWithdrawal: (id, password) =>
-        wallet.recoverFailedPrivateWithdrawal(id, extensionPassword(password)),
-      clearCompletedNotes: (ids) => wallet.clearPrivateVaultCompletedNotes(ids),
+      clearCompletedNotes: (ids, selection) =>
+        wallet.clearPrivateVaultCompletedNotes(ids, selection),
       createDepositNote: (poolId) =>
         wallet.createPrivateVaultDepositNote(poolId),
       getNotes: () => wallet.getPrivateVaultNotes(),
@@ -403,8 +400,7 @@ const MasterController = (
     privacyWithdrawals: {
       getRelayers: () => wallet.getPrivacyRelayers(),
       prepareWithdrawal: (request) => wallet.preparePrivacyWithdrawal(request),
-      submitWithdrawal: (intentId, approval) =>
-        wallet.submitPrivacyWithdrawal(intentId, approval),
+      submitWithdrawal: (intentId) => wallet.submitPrivacyWithdrawal(intentId),
       discardWithdrawal: (intentId) =>
         wallet.discardPrivacyWithdrawal(intentId),
       cancelPreparation: () => wallet.cancelPrivacyWithdrawalPreparation(),

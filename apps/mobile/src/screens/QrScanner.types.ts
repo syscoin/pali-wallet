@@ -5,6 +5,7 @@ export type QrScannerCopy = Readonly<{
 export type QrScannerProps<T> = Readonly<{
   parse(value: string): T | null;
   copy: QrScannerCopy;
+  showSigningNotice?: boolean;
   onScan(value: T): void;
   onClose(): void;
 }>;

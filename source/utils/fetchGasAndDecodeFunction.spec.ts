@@ -25,6 +25,12 @@ const FEE_PAYER = {
   id: 1,
   type: KeyringAccountType.HDAccount,
 };
+const PAYER_BUDGET = {
+  gasTank: false,
+  maximumFeeWei: '1100000000000000',
+  maximumPrefundWei: '0',
+  maximumPrefundFeeWei: '0',
+};
 const network = { chainId: 1, url: 'https://rpc.example' } as INetwork;
 const approvedContext: IEvmTransactionContext = {
   account: { address: FROM, id: 0, type: KeyringAccountType.HDAccount },
@@ -76,6 +82,10 @@ beforeEach(() => {
         return (
           smartQuote || {
             executionContextId: 'read-only-fee-context',
+            entryPointFeeQuote: {
+              executionContextId: 'read-only-fee-context',
+              payerBudget: PAYER_BUDGET,
+            },
             executions: args[0],
             gasPayer: FEE_PAYER,
             userOperation: {
@@ -165,6 +175,7 @@ describe('dapp transaction fee preparation', () => {
         maximumFeeWei: BigNumber.from(863456)
           .mul(legacy ? '4000000000' : '5000000000')
           .toString(),
+        payerBudget: PAYER_BUDGET,
       });
       expect(callsFor('wallet.prepareSmartAccountExecutions')).toHaveLength(1);
       expect(callsFor('wallet.prepareSmartAccountExecutions')[0][1]).toEqual([
@@ -175,6 +186,7 @@ describe('dapp transaction fee preparation', () => {
             account: expect.objectContaining({ address: FROM }),
             chainId: 1,
           }),
+          includePayerBudget: true,
           feeOverrides: legacy
             ? { gasPrice: '4000000000' }
             : {
@@ -190,6 +202,10 @@ describe('dapp transaction fee preparation', () => {
     state.vault.accounts.HDAccount[0].isSmartAccount = true;
     smartQuote = {
       executionContextId: 'tank',
+      entryPointFeeQuote: {
+        executionContextId: 'tank',
+        payerBudget: { ...PAYER_BUDGET, gasTank: true },
+      },
       executions: [{ target: TO, data: '0x', value: '0x0' }],
       gasPayer: FEE_PAYER,
       userOperation: {
@@ -207,6 +223,7 @@ describe('dapp transaction fee preparation', () => {
       feePayer: FEE_PAYER,
       gasUnits: '863456',
       maximumFeeWei: '0',
+      payerBudget: { ...PAYER_BUDGET, gasTank: true },
     });
   });
 
@@ -221,6 +238,10 @@ describe('dapp transaction fee preparation', () => {
     state.vault.accounts.HDAccount[0].isSmartAccount = true;
     smartQuote = {
       executionContextId: 'quote',
+      entryPointFeeQuote: {
+        executionContextId: 'quote',
+        payerBudget: PAYER_BUDGET,
+      },
       executions: [{ target: TO, data: '0x', value: '0x0' }],
       gasPayer: FEE_PAYER,
       userOperation: {

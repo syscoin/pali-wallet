@@ -105,6 +105,11 @@ export class SharedSentryOperationApprovals {
     this.assertCurrent(scope, lifetime);
     if (settings.network !== this.host.network(scope))
       throw new Error('Sentry network changed. Start the operation again.');
+    if (
+      request.chain.genesisHash !==
+      SENTRY_NETWORKS[settings.network].genesisHash
+    )
+      throw new Error('Switch to the requested Syscoin network.');
     if (!settings.serviceUrl)
       throw new Error(
         'Configure a trusted Sentry data service in wallet settings first'

@@ -97,6 +97,7 @@ function fixture(
     index?: (count: number) => Handle;
     release?: (kind: string, count: number) => Promise<void>;
     serviceOrigin?: string;
+    proof?: { snapshot: PrivacySnapshot; known?: boolean };
   } = {}
 ) {
   let indexes = 0,
@@ -104,6 +105,8 @@ function fixture(
     occupied = false;
   const requests: string[] = [],
     released: string[] = [];
+  const checkpointRequests: string[] = [];
+  const steps: string[] = [];
   const ids = new Set<number>();
   const wrap = (kind: string, handle: Handle, signal: AbortSignal): Handle => {
     assert.equal(occupied, false, 'one native slot');
@@ -115,7 +118,9 @@ function fixture(
         check();
         assert.equal(started, false);
         started = true;
-        requests.push(kind);
+        steps.push(kind);
+        if (kind.startsWith('proof:')) checkpointRequests.push(kind);
+        else requests.push(kind);
         return handle.start(check);
       },
       async pull(check) {
@@ -126,7 +131,7 @@ function fixture(
         assert.equal(occupied, true);
         await options.release?.(kind, requests.length);
         await handle.release();
-        released.push(kind);
+        if (!kind.startsWith('proof:')) released.push(kind);
         occupied = false;
       },
     };
@@ -139,6 +144,28 @@ function fixture(
         options.serviceOrigin ?? DEFAULT_PRIVACY_SERVICE_ORIGIN
       );
       return wrap('snapshot', options.index?.(++indexes) ?? json(data), signal);
+    },
+    prepareProofCheckpoint(binding, read, id, signal) {
+      const selected = options.proof?.snapshot ?? data;
+      assert.equal(binding.rpcUrl, rpcUrl);
+      assert.equal(binding.poolAddress, pool.address);
+      assert.equal(ids.has(id), false);
+      ids.add(id);
+      const header = {
+        ...block,
+        number: toQuantity(selected.asOfBlockNumber),
+        hash: selected.asOfBlockHash,
+      };
+      const known = options.proof?.known ?? true;
+      const values = { nextIndex: selected.leafCount, getLastRoot: selected.root, isKnownRoot: known };
+      const result = read === 'chainId' ? '0x1' : read === 'finalized'
+        ? { ...header, number: toQuantity(selected.asOfBlockNumber + 5) }
+        : read === 'block' ? header
+        : PRIVACY_POOL_ABI.encodeFunctionResult(read, [values[read]]);
+      if (read === 'block' || read === 'nextIndex' || read === 'getLastRoot')
+        assert.equal(binding.blockNumber, selected.asOfBlockNumber);
+      if (read === 'isKnownRoot') assert.equal(binding.root, selected.root);
+      return wrap('proof:' + read, json({ jsonrpc: '2.0', id, result }), signal);
     },
     prepareAnchor(binding, read, id, signal) {
       assert.deepEqual(binding, {
@@ -165,7 +192,7 @@ function fixture(
       return wrap(read, json({ jsonrpc: '2.0', id, result }), signal);
     },
   };
-  return { requests, released, transport };
+  return { requests, released, checkpointRequests, steps, transport };
 }
 function create(
   transport: OwnedPrivacyPullTransport,
@@ -756,6 +783,81 @@ test('deadline retires held start without letting a replacement reserve before r
   await sync.dispose();
 });
 
+for (const stage of ['start', 'pull', 'release'] as const) {
+  test(`overall deadline cancels final checkpoint ${stage} and preserves the physical drain`, async (context) => {
+    const timers = context.mock.method(globalThis, 'setTimeout');
+    const entered = Promise.withResolvers<void>();
+    const lateResponse = Promise.withResolvers<void>();
+    const drain = Promise.withResolvers<void>();
+    const provider = fixture();
+    let heldSignal: AbortSignal | undefined;
+    let releases = 0;
+    const { sync } = create({
+      ...provider.transport,
+      prepareProofCheckpoint(binding, read, id, signal) {
+        const handle = provider.transport.prepareProofCheckpoint!(binding, read, id, signal);
+        if (heldSignal || read !== 'chainId' || !provider.requests.includes('snapshot'))
+          return handle;
+        heldSignal = signal;
+        return {
+          async start(check) {
+            const metadata = await handle.start(check);
+            if (stage === 'start') {
+              entered.resolve();
+              await lateResponse.promise;
+            }
+            return metadata;
+          },
+          async pull(check) {
+            const chunk = await handle.pull(check);
+            if (stage === 'pull') {
+              entered.resolve();
+              await lateResponse.promise;
+            }
+            return chunk;
+          },
+          async release() {
+            releases++;
+            if (stage === 'release') entered.resolve();
+            await drain.promise;
+            await handle.release();
+          },
+        };
+      },
+    });
+    try {
+      const refresh = sync.refresh();
+      let settled = false;
+      const cancelled = assert.rejects(refresh, { message: 'privacy_cancelled' })
+        .then(() => { settled = true; });
+      await entered.promise;
+      const requestCount = provider.steps.length;
+      const deadline = timers.mock.calls.find(({ arguments: args }) => args[1] === 45_000);
+      assert.ok(deadline);
+      deadline.arguments[0]();
+      assert.equal(heldSignal?.aborted, true);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(settled, true, 'refresh settles before the request timeout or drain');
+      await cancelled;
+      assert.equal(releases, 1);
+      assert.equal(sync.getStatus().phase, 'idle');
+      await assert.rejects(sync.refresh(), { message: 'privacy_verification_pending' });
+      lateResponse.resolve();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(provider.steps.length, requestCount);
+      drain.resolve();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal((await sync.refresh()).phase, 'ready');
+      assert.equal((await sync.readNote(note)).phase, 'spent');
+      assert.equal(releases, 1);
+    } finally {
+      lateResponse.resolve();
+      drain.resolve();
+      await sync.dispose();
+    }
+  });
+}
+
 test('a failed exact release does not admit another snapshot or any anchor', async () => {
   let reservations = 0;
   const { sync } = create(
@@ -827,4 +929,41 @@ test('native public-data pause waits for a held physical drain and clear invalid
     const cleared = provider.requests.length; assert.equal((await sync.getStatus()).phase, 'idle');
     assert.equal(provider.requests.length, cleared, 'clear does not start another sync');
   } finally { release.resolve(); await sync.dispose(); }
+});
+
+
+test('native exposes only an independently selected finalized deposit prefix as its proof snapshot', async () => {
+  const data = snapshot(270);
+  const anchored = {
+    ...snapshot(260),
+    asOfBlockNumber: data.asOfBlockNumber - 8,
+    asOfBlockHash: word(101),
+    withdrawnNullifiers: [],
+  };
+  const provider = fixture(data, { proof: { snapshot: anchored } });
+  const { sync } = create(provider.transport);
+  try {
+    assert.equal((await sync.refresh()).phase, 'ready');
+    assert(provider.steps.indexOf('proof:finalized') < provider.steps.indexOf('snapshot'));
+    assert.deepEqual(await sync.readNote(note), { phase: 'spent', blockNumber: data.asOfBlockNumber });
+    const lease = await sync.readSnapshot(poolId);
+    assert.deepEqual(lease.snapshot, { ...anchored, withdrawnNullifiers: data.withdrawnNullifiers });
+    await lease.getPath(259);
+    await assert.rejects(lease.getPath(260), /privacy_verification_pending/);
+  } finally {
+    await sync.dispose();
+  }
+});
+
+test('native spent note view survives loss of known-root eligibility without using the service root', async () => {
+  const data = snapshot();
+  const provider = fixture(data, { proof: { snapshot: data, known: false } });
+  const { sync } = create(provider.transport);
+  try {
+    assert.equal((await sync.refresh()).phase, 'ready');
+    assert.equal((await sync.readNote(note)).phase, 'spent');
+    await assert.rejects(sync.readSnapshot(poolId), /privacy_verification_pending/);
+  } finally {
+    await sync.dispose();
+  }
 });

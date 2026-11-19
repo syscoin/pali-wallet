@@ -7,14 +7,25 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { createInstance } from 'i18next';
 import React from 'react';
+
+import { projectLocale } from '../../config/loaders/localeProjection';
 
 import PrivateArchivedNotes from './PrivateArchivedNotes';
 import PrivateVaultClearCompleted from './PrivateVaultClearCompleted';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+let mockTranslate: (key: string, options?: any) => string = (key) => key;
+const mockClearError = jest.fn();
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: mockClearError } }),
 }));
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: mockTranslate }),
+}));
+beforeEach(() => {
+  mockTranslate = (key: string) => key;
+});
 jest.mock('antd', () => {
   const Form = ({ children }: any) => <div>{children}</div>;
   Form.useForm = () => [{ resetFields: jest.fn() }];
@@ -86,6 +97,58 @@ function fixture(initial = notes) {
   return { emit, props, view, open };
 }
 
+it.each(['en', 'es', 'pt', 'fr', 'de', 'zh', 'ja', 'ko', 'ru'])(
+  '%s translates archive amount and pagination from base plus lazy Privacy resources',
+  async (language) => {
+    const resource = jest.requireActual(
+      `../../assets/locales/${language}.json`
+    );
+    const base = projectLocale(resource, 'base');
+    const privacy = projectLocale(resource, 'privacy');
+    const instance = createInstance();
+    await instance.init({
+      lng: language,
+      fallbackLng: false,
+      initImmediate: false,
+      resources: {
+        [language]: {
+          translation: {
+            ...base,
+            privacy: { ...base.privacy, ...privacy.privacy },
+          },
+        },
+      },
+    });
+    mockTranslate = (key, options) => String(instance.t(key, options));
+    const f = fixture();
+    fireEvent.click(
+      screen.getByRole('button', { name: resource.privacy.archive.title })
+    );
+    await waitFor(() => expect(f.props.onCount).toHaveBeenCalledWith(41));
+    const expectedAmount =
+      resource.mobile.noteFlows.inventory.poolAmount.replace('{{amount}}', '1');
+    expect(
+      screen.getAllByText(
+        (_, element) =>
+          element?.tagName === 'P' &&
+          element.textContent?.startsWith(expectedAmount) === true
+      )
+    ).toHaveLength(20);
+    const previous = screen.getByRole('button', {
+      name: resource.mobile.noteFlows.inventory.previous,
+    });
+    expect(previous).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole('button', { name: resource.buttons.next })
+    );
+    expect(previous).not.toBeDisabled();
+    expect(f.view.container.textContent).not.toMatch(
+      /(?:mobile|privacy|buttons)\./
+    );
+    expect(f.emit).toHaveBeenCalledTimes(1);
+  }
+);
+
 it('keeps archive separate, pages a local bounded list, and reuses reveal/export without spending or status reads', async () => {
   const f = fixture();
   await f.open();
@@ -111,6 +174,100 @@ it('keeps archive separate, pages a local bounded list, and reuses reveal/export
     [],
     10000,
     false
+  );
+});
+
+it('waits for an archive refresh before opening restore and then accepts the refreshed row', async () => {
+  const rows = notes.slice(0, 2);
+  const f = fixture(rows);
+  await f.open();
+  let finish!: (value: ReturnType<typeof inventory>) => void;
+  const pending = new Promise<ReturnType<typeof inventory>>((resolve) => {
+    finish = resolve;
+  });
+  f.emit.mockImplementationOnce(() => pending);
+  fireEvent.click(screen.getByRole('button', { name: 'privacy.refresh' }));
+  const restore = () =>
+    screen.getAllByRole('button', { name: 'privacy.archive.restore' });
+  expect(restore()[0]).toBeDisabled();
+  fireEvent.click(restore()[0]);
+  expect(screen.queryByRole('button', { name: 'Authorize' })).toBeNull();
+  await act(async () => {
+    finish(inventory(rows.slice(1)));
+    await pending;
+  });
+  expect(restore()).toHaveLength(1);
+  fireEvent.click(restore()[0]);
+  fireEvent.click(screen.getByRole('button', { name: 'Authorize' }));
+  await waitFor(() => expect(f.props.onRestored).toHaveBeenCalledTimes(1));
+  expect(f.emit).toHaveBeenCalledWith(
+    ['privateVault', 'restoreArchivedNote'],
+    ['note-1', 'existing-wallet-password'],
+    30000,
+    false
+  );
+});
+
+it('keeps a revision-triggered archive read live when the confirmation is cancelled', async () => {
+  const rows = notes.slice(0, 2);
+  const f = fixture(rows);
+  await f.open();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'privacy.archive.clear' })
+  );
+  let finish!: (value: ReturnType<typeof inventory>) => void;
+  f.emit.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  f.view.rerender(<PrivateArchivedNotes {...f.props} revision={1} />);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  await act(async () => {
+    finish(inventory(rows.slice(1)));
+  });
+  expect(f.props.onCount).toHaveBeenLastCalledWith(1);
+  expect(screen.getByRole('button', { name: 'privacy.refresh' })).toBeEnabled();
+  expect(
+    screen.getByRole('button', { name: 'privacy.archive.restore' })
+  ).toBeEnabled();
+});
+
+it('keeps an authorized restore live when the parent requests another inventory read', async () => {
+  const rows = notes.slice(0, 1);
+  const f = fixture(rows);
+  await f.open();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'privacy.archive.restore' })
+  );
+  let finishRestore!: () => void;
+  f.emit.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishRestore = () => resolve(undefined);
+      })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Authorize' }));
+  let finishRead!: (value: ReturnType<typeof inventory>) => void;
+  f.emit.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishRead = resolve;
+      })
+  );
+  f.view.rerender(<PrivateArchivedNotes {...f.props} revision={1} />);
+  f.emit.mockResolvedValueOnce(inventory([]));
+  await act(async () => {
+    finishRestore();
+  });
+  expect(f.props.onRestored).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    finishRead(inventory(rows));
+  });
+  expect(f.props.onCount).toHaveBeenLastCalledWith(0);
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'privacy.archive.restored'
   );
 });
 
@@ -219,21 +376,22 @@ it('normal completed-note cleanup reports separate archive capacity instead of s
   });
   render(
     <PrivateVaultClearCompleted
+      confirming
       controllerEmitter={emit}
-      noteIds={['id']}
+      noteId="id"
+      onCancel={jest.fn()}
       onComplete={jest.fn()}
       onRemoved={removed}
+      onSelect={jest.fn()}
     />
-  );
-  fireEvent.click(
-    screen.getByRole('button', { name: 'privacy.capacity.clear' })
   );
   fireEvent.click(
     screen.getByRole('button', { name: 'privacy.capacity.confirmClear' })
   );
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'privacy.archive.full'
+  await waitFor(() =>
+    expect(mockClearError).toHaveBeenCalledWith('privacy.archive.full')
   );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   expect(removed).not.toHaveBeenCalled();
 });
 

@@ -645,6 +645,14 @@ export function createNativeWalletControllers() {
   };
   const resetActivity = async (assertOwner: () => void): Promise<void> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    if (utxoActivity.getUtxoActivityContext()) {
+      await observeFailure(() => selected.resetActivity(assertCurrent, utxoActivity.releaseUtxoActivity));
+      assertCurrent();
+      // A failed backend refresh does not roll back the committed local reset.
+      try { await observeFailure(() => utxoActivity.reset(assertCurrent)); }
+      catch { assertCurrent(); }
+      return;
+    }
     await observeFailure(() => selected.resetActivity(assertCurrent, () => {
       transfers.cancelForActivityReset();
       activity.invalidate();
@@ -824,8 +832,7 @@ export function createNativeWalletControllers() {
     return Object.freeze({
       dispose: value.dispose,
       getNotes: guard => observeFailure(() => value.getNotes(guard)),
-      clearCompletedNotes: (ids, guard, progress, reload) => observeFailure(() => value.clearCompletedNotes(ids, guard, progress, reload)),
-      recoverFailedWithdrawal: (id, guard, reload) => observeFailure(() => value.recoverFailedWithdrawal(id, guard, reload)),
+      clearCompletedNotes: (ids, guard, progress, reload, selection) => observeFailure(() => value.clearCompletedNotes(ids, guard, progress, reload, selection)),
     });
   };
   const openPrivacyControls = async (signal: AbortSignal, assertOwner: () => void): Promise<NativePrivacyControls> => {

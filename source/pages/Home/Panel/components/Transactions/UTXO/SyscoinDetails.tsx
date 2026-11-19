@@ -60,6 +60,7 @@ import {
 } from 'utils/transactionDisplay';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
+import { UtxoReplacementActions } from './UtxoReplacementActions';
 import {
   getUtxoSummaryObservation,
   watchUtxoTransactionDetails,
@@ -78,6 +79,7 @@ CopyIcon.displayName = 'CopyIcon';
 
 interface ISyscoinTransactionDetailsProps {
   hash: string;
+  ownedReplacementTarget?: true;
   routeSummaryObservation?: UtxoSummaryStatus;
   tx?: ISysTransaction;
 }
@@ -85,6 +87,7 @@ interface ISyscoinTransactionDetailsProps {
 export const SyscoinTransactionDetails = ({
   hash,
   tx,
+  ownedReplacementTarget,
   routeSummaryObservation,
 }: ISyscoinTransactionDetailsProps) => {
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
@@ -569,6 +572,19 @@ export const SyscoinTransactionDetails = ({
           })()}
         </div>
       )}
+
+      {!isConfirmed &&
+        !isTxCanceled &&
+        !hasTokenInfo &&
+        (ownedReplacementTarget ||
+          isTxSent ||
+          nativeAccountChange?.startsWith('-')) && (
+          <UtxoReplacementActions
+            key={scope}
+            currency={currency ?? ''}
+            txid={normalizedHash}
+          />
+        )}
 
       {tokenGuids.map((guid: string, index: number) => (
         <div

@@ -21,13 +21,14 @@ import {
   refineNativeEvmMaximum,
 } from '../../shared/evmNativeMaximum';
 import { getEvmTransferCost } from '../../shared/evmTransferCost';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../shared/smartAccountFeeQuote';
+import { UTXO_REVIEW_FUNDING_CHANGED } from '../../shared/utxoSendErrors';
 import {
   ICustomFeeParams,
   IFeeState,
   ITxState,
   TransactionType,
 } from '../../types/transactions';
-import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import {
   Button,
   Icon,
@@ -37,7 +38,7 @@ import {
 } from 'components/index';
 import { PqSigningOverlay } from 'components/Loading';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
-import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
+import { SmartAccountPayerFee } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useEIP1559 } from 'hooks/useEIP1559';
@@ -82,7 +83,6 @@ import {
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { buildSmartAccountErc20Transfer } from 'utils/smartAccount/erc20Transfer';
 import { isSmartAccountPayerPendingError } from 'utils/smartAccount/executionSimulationError';
-import { prepareSmartAccountNativeMaximum } from 'utils/smartAccount/nativeMaximum';
 import { buildSmartAccountNftTransfer } from 'utils/smartAccount/nftTransfer';
 import { isSmartAccountPendingReviewError } from 'utils/smartAccountErrors';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
@@ -178,15 +178,6 @@ export const SendConfirm = () => {
     connectionUnavailable,
   });
   const { state } = submission;
-  const { forExecution, feeConfirmation } = useSmartAccountFeeConfirmation(
-    JSON.stringify([
-      activeAccountMeta,
-      activeNetwork.chainId,
-      activeNetwork.url,
-      submission.reviewScope,
-      state?.walletScope,
-    ])
-  );
   const tokenReviewPort = useRef<ReturnType<typeof openWalletTokenReview>>();
   useEffect(() => {
     const retireOnDeparture = () => {
@@ -647,8 +638,10 @@ export const SendConfirm = () => {
         smartAccountFeeOverrides,
       ])
     : '';
+  const smartPayerBudget = smartAccountQuote?.payerBudget;
   const smartAccountQuoteReady = Boolean(
     smartAccountQuote?.key === smartAccountQuoteKey &&
+      smartPayerBudget &&
       smartAccountFeeOverrides &&
       !smartAccountQuoteError &&
       !smartAccountQuoteNeedsRefresh
@@ -775,6 +768,9 @@ export const SendConfirm = () => {
     };
   })();
   const nativeReviewKey = nativeReviewRequest?.key;
+  const [nativeReviewRetryKey, setNativeReviewRetryKey] = useState<string>();
+  const nativeFeeNeedsRefresh =
+    !!nativeReviewKey && nativeReviewRetryKey === nativeReviewKey;
   const [nativeFeeApproval, setNativeFeeApproval] = useState<{
     id: string;
     key: string;
@@ -788,7 +784,11 @@ export const SendConfirm = () => {
   };
   useEffect(() => {
     setNativeFeeApproval(null);
-    if (!nativeReviewRequest) return;
+    if (
+      !nativeReviewRequest ||
+      nativeReviewRequest.key === nativeReviewRetryKey
+    )
+      return;
     const request = nativeReviewRequest;
     let cancelled = false;
     let id: string | undefined;
@@ -862,7 +862,7 @@ export const SendConfirm = () => {
         nativeFeeExpiry.current = undefined;
       discard();
     };
-  }, [nativeReviewKey]);
+  }, [nativeReviewKey, nativeReviewRetryKey]);
   const confirmationFeeReady =
     feeEstimateReady &&
     (!isOrdinaryNativeSend ||
@@ -891,11 +891,14 @@ export const SendConfirm = () => {
       const transactionType =
         basicTxValues.transactionType || TransactionType.NATIVE_ETH;
       let execution = { target, data: '0x', value: '0x0' };
+      const nativeMaximum =
+        transactionType === TransactionType.NATIVE_ETH && basicTxValues.isMax;
       if (transactionType === TransactionType.NATIVE_ETH) {
-        execution.value = parseUnits(
-          String(removeScientificNotation(basicTxValues.amount || '0')),
-          18
-        ).toHexString();
+        if (!nativeMaximum)
+          execution.value = parseUnits(
+            String(removeScientificNotation(basicTxValues.amount || '0')),
+            18
+          ).toHexString();
       } else {
         if (
           ![
@@ -940,57 +943,38 @@ export const SendConfirm = () => {
         if (cancelled || !submission.isActive())
           throw new Error('Smart account confirmation is no longer active');
       };
-      const quoteExecution = (candidate: typeof execution) => {
-        assertQuoteCurrent();
-        return prepareSmartAccountFeeQuote({
-          accountAddress: activeAccount.address,
-          accountId: activeAccountMeta.id,
-          controllerEmitter,
-          executions: [candidate],
-          ...(transactionType === TransactionType.ERC20
-            ? {
-                expectedErc20Transfers: [
-                  {
-                    contractAddress: basicTxValues.token.contractAddress,
-                    recipient: target,
-                    amountUnits: reviewedErc20Units!,
-                    decimals: basicTxValues.token.decimals,
-                  },
-                ],
-              }
-            : {}),
-          feeOverrides: overrides,
-        });
-      };
-      let quote;
-      if (
-        transactionType === TransactionType.NATIVE_ETH &&
-        basicTxValues.isMax
-      ) {
-        const maximum = await prepareSmartAccountNativeMaximum({
-          target,
-          assertCurrent: assertQuoteCurrent,
-          async readBalance() {
-            const balance = (await controllerEmitter(
-              ['wallet', 'refreshActiveAccountBalances'],
-              [{ includeAssets: false }]
-            )) as { nativeBalance: string };
-            return parseUnits(
-              String(removeScientificNotation(balance.nativeBalance)),
-              18
-            ).toString();
-          },
-          async quote(candidate) {
-            const candidateQuote = await quoteExecution(candidate);
-            return {
-              quote: candidateQuote,
-              maximumFeeUnits: candidateQuote.maximumFeeWei,
-            };
-          },
-        });
-        execution = { ...maximum.execution };
-        quote = maximum.quote;
-      } else quote = await quoteExecution(execution);
+      assertQuoteCurrent();
+      const quote = await prepareSmartAccountFeeQuote({
+        accountAddress: activeAccount.address,
+        accountId: activeAccountMeta.id,
+        controllerEmitter,
+        executions: [execution],
+        ...(transactionType === TransactionType.ERC20
+          ? {
+              expectedErc20Transfers: [
+                {
+                  contractAddress: basicTxValues.token.contractAddress,
+                  recipient: target,
+                  amountUnits: reviewedErc20Units!,
+                  decimals: basicTxValues.token.decimals,
+                },
+              ],
+            }
+          : {}),
+        feeOverrides: overrides,
+        includePayerBudget: true,
+        ...(nativeMaximum ? { nativeMaximum: true } : {}),
+      });
+      if (nativeMaximum) {
+        if (!quote.nativeAmountWei)
+          throw new Error('Smart account maximum amount unavailable');
+        execution = {
+          ...execution,
+          value: BigNumber.from(quote.nativeAmountWei).toHexString(),
+        };
+      }
+      if (!quote.payerBudget)
+        throw new Error('Smart account payer fee quote unavailable');
       if (!cancelled && submission.isActive())
         setSmartAccountQuote({
           ...quote,
@@ -1113,7 +1097,8 @@ export const SendConfirm = () => {
     if (feeCalculationError) {
       return t('buttons.error');
     }
-    if (smartAccountFeeUnavailable) return t('send.feeUnavailable');
+    if (smartAccountFeeUnavailable || nativeFeeNeedsRefresh)
+      return t('send.feeUnavailable');
     if (
       currentFee === undefined ||
       currentFee === null ||
@@ -1201,7 +1186,15 @@ export const SendConfirm = () => {
     stableGetLegacyGasPrice.current = getLegacyGasPrice;
   }, [navigate, alert, t, getLegacyGasPrice]);
 
+  const deferUnconfirmedSubmissionToActivity = (error: unknown) => {
+    if (!submission.hasUnconfirmedSubmission()) return false;
+    logError('error', 'Transaction', error);
+    setLoading(false);
+    return true;
+  };
+
   const handleTokenSendError = (error: any, label: string) => {
+    if (deferUnconfirmedSubmissionToActivity(error)) return true;
     if (
       isOrdinaryTokenSend &&
       !activeAccount?.isLedgerWallet &&
@@ -1352,7 +1345,7 @@ export const SendConfirm = () => {
           assertSmartAccountConfirmationCurrent();
           if (
             !smartAccountQuoteReady ||
-            !smartAccountQuote ||
+            !smartAccountQuote?.payerBudget ||
             smartAccountQuote.executions.length !== 1 ||
             target.toLowerCase() !==
               smartAccountQuote.executions[0].target.toLowerCase() ||
@@ -1388,14 +1381,6 @@ export const SendConfirm = () => {
               : {}),
             feeOverrides,
             approvedFeeQuote: smartAccountQuote,
-            feeConsent: forExecution({
-              account: activeAccount.address,
-              smartAccount: activeAccount.address,
-              chainId: activeNetwork.chainId,
-              symbol: activeNetwork.currency,
-              label: t('buttons.send'),
-              assertCurrent: assertSmartAccountConfirmationCurrent,
-            }),
             onBeforeAuthentication: assertSmartAccountConfirmationCurrent,
             onPrepared: assertSmartAccountConfirmationCurrent,
             onBeforeSubmit: async () => {
@@ -1418,12 +1403,14 @@ export const SendConfirm = () => {
         } catch (error) {
           if (
             publicationRequested &&
-            error?.code === 4001 &&
-            error?.transactionNotBroadcast === true &&
+            error?.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED &&
             submission.isActive()
           ) {
             setSmartAccountQuote(undefined);
-            setSmartAccountQuoteNeedsRefresh(true);
+            setSmartAccountQuoteError({
+              message: t('send.smartAccountPayerFeeExceeded'),
+              pendingReview: true,
+            });
           }
           // A same-text error after the publication boundary is not evidence
           // that refreshing/re-signing is safe, regardless of its marker.
@@ -1507,6 +1494,15 @@ export const SendConfirm = () => {
             setConfirmed(true);
             setLoading(false);
           } catch (error: any) {
+            if (deferUnconfirmedSubmissionToActivity(error)) return;
+            if (error?.code === UTXO_REVIEW_FUNDING_CHANGED) {
+              setLoading(false);
+              if (submission.isActive()) {
+                alert.error(t('send.maxBalanceReviewRequired'));
+                cancelConfirmation();
+              }
+              return;
+            }
             // Handle all errors with centralized handler
             const wasHandledSpecifically = handleTransactionError(
               error,
@@ -1549,6 +1545,7 @@ export const SendConfirm = () => {
               setConfirmed(true);
               setLoading(false);
             } catch (error: any) {
+              if (deferUnconfirmedSubmissionToActivity(error)) return;
               const wasHandledSpecifically = handleTransactionError(
                 error,
                 alert,
@@ -1670,6 +1667,7 @@ export const SendConfirm = () => {
               'A current native transaction fee review is required'
             );
           } catch (error: any) {
+            if (deferUnconfirmedSubmissionToActivity(error)) return;
             if (isOrdinaryNativeSend) {
               retireNativeFeeApproval();
               if (
@@ -1684,12 +1682,16 @@ export const SendConfirm = () => {
               if (
                 error?.transactionNotBroadcast === true &&
                 submission.isActive()
-              )
-                setFeeCalculationError(
-                  isSavedEvmNonceConflict(error)
-                    ? t('send.savedNonceConflict')
-                    : t('send.feeCalculationFailedRetry')
-                );
+              ) {
+                if (isSavedEvmNonceConflict(error)) {
+                  setFeeCalculationError(t('send.savedNonceConflict'));
+                  setLoading(false);
+                  return;
+                }
+                // The consumed approval needs a new review even when the
+                // submit failure happened after fees were calculated.
+                setNativeReviewRetryKey(nativeReviewKey);
+              }
             }
             // Handle specific errors (blacklist, cancellation, etc.) with detailed messages
             const wasHandledSpecifically = handleTransactionError(
@@ -1730,6 +1732,7 @@ export const SendConfirm = () => {
               setConfirmed(true);
               setLoading(false);
             } catch (error: any) {
+              if (deferUnconfirmedSubmissionToActivity(error)) return;
               const wasHandledSpecifically = handleTransactionError(
                 error,
                 alert,
@@ -1887,7 +1890,11 @@ export const SendConfirm = () => {
     return submission
       .run(() => performConfirm(renderedFeeSelection))
       .catch((error) => {
-        if (!submission.isActive()) return;
+        if (
+          !submission.isActive() ||
+          deferUnconfirmedSubmissionToActivity(error)
+        )
+          return;
         logError('error', 'Transaction', error);
         alert.error(t('send.cantCompleteTxs'));
       });
@@ -2260,33 +2267,61 @@ export const SendConfirm = () => {
     alert.info(t('home.addressCopied'));
   }, [copied, alert, t]);
 
+  const navigateAfterConfirmation = useMemo(() => {
+    const owner = submission.draftId;
+    if (!owner) return navigate;
+    return (path: string | number, options?: any) => {
+      if (typeof path === 'number') return navigate(path);
+      navigate(path, {
+        ...options,
+        state: {
+          ...options?.state,
+          preserveSendDraft: true,
+          sendDraftOwner: owner,
+        },
+      });
+    };
+  }, [navigate, submission.draftId]);
+
   // Navigate home with success feedback when the transaction is submitted
   useEffect(() => {
     if (confirmed && submission.isActive()) {
       alert.success(t('send.txSuccessfullMessage'));
-      navigate('/home');
+      navigateAfterConfirmation('/home');
     }
-  }, [confirmed, alert, t, navigate, submission.isActive]);
+  }, [confirmed, alert, t, navigateAfterConfirmation, submission.isActive]);
 
-  // A Confirm page without transaction data is unusable (e.g. stale
-  // restored route): redirect home instead of rendering a blank screen
+  const reportedSubmission = useRef<string>();
   useEffect(() => {
-    if (!submission.hasUsableEntry && !confirmed && submission.ownsRoute()) {
-      navigateBack(navigate, {
+    if (confirmed || !submission.ownsRoute()) return;
+    if (submission.unknown && submission.canOpenActivity) {
+      if (reportedSubmission.current === submission.reviewScope) return;
+      reportedSubmission.current = submission.reviewScope;
+      navigateAfterConfirmation('/home?tab=activity', { replace: true });
+      alert.error(t('transactions.replay.unknown'));
+      return;
+    }
+    if (!submission.hasUsableEntry) {
+      navigateBack(navigateAfterConfirmation, {
         state: { returnContext: submission.returnContext },
       });
     }
   }, [
+    alert,
+    confirmed,
+    navigateAfterConfirmation,
+    submission.canOpenActivity,
     submission.hasUsableEntry,
     submission.ownsRoute,
     submission.returnContext,
-    confirmed,
-    navigate,
+    submission.reviewScope,
+    submission.unknown,
+    t,
   ]);
 
   const cancelConfirmation = () => {
     if (!submission.ownsRoute()) return;
-    navigateBack(navigate, {
+    navigateBack(navigateAfterConfirmation, {
       state: { returnContext: submission.returnContext },
     });
   };
@@ -2411,7 +2446,6 @@ export const SendConfirm = () => {
 
   return (
     <>
-      {feeConfirmation}
       <EditPriorityModal
         showModal={isOpenEditFeeModal}
         setIsOpen={setIsOpenEditFeeModal}
@@ -2663,6 +2697,18 @@ export const SendConfirm = () => {
                     })()}
                   </span>
                 </div>
+                {nativeFeeNeedsRefresh && !feeCalculationError && (
+                  <button
+                    type="button"
+                    className="ml-2 text-xs underline"
+                    onClick={() => {
+                      setNativeReviewRetryKey(undefined);
+                      retryFeeCalculation();
+                    }}
+                  >
+                    {t('send.refreshFeeQuote')}
+                  </button>
+                )}
                 {!isBitcoinBased &&
                   (!feeCalculationError ||
                     (isNativeSoftwareSend && customFee.isCustom)) &&
@@ -2694,12 +2740,21 @@ export const SendConfirm = () => {
             )}
             {isSmartAccountSend && (
               <div className="text-xs text-brand-gray200 mt-2">
-                {smartAccountQuoteReady && (
-                  <SmartAccountFeePayer
+                {smartAccountQuoteReady && smartPayerBudget && (
+                  <SmartAccountPayerFee
                     address={smartAccountQuote!.feePayer.address}
+                    budget={smartPayerBudget}
+                    currency={activeNetwork.currency}
                   />
                 )}
-                <p>{t('send.smartAccountFeeDetails')}</p>
+                <p>
+                  {t(
+                    smartAccountQuoteReady &&
+                      smartPayerBudget?.gasTank === false
+                      ? 'send.smartAccountFeeReimbursement'
+                      : 'send.smartAccountFeeDetails'
+                  )}
+                </p>
                 {(smartAccountQuoteError || smartAccountQuoteNeedsRefresh) && (
                   <>
                     <p role="status">
@@ -2714,7 +2769,9 @@ export const SendConfirm = () => {
                         disabled={loading || submission.pending}
                         onClick={() => {
                           if (submission.isActive())
-                            navigate('/home?tab=activity', { replace: true });
+                            navigateAfterConfirmation('/home?tab=activity', {
+                              replace: true,
+                            });
                         }}
                       >
                         {t('buttons.activity')}
@@ -2742,15 +2799,17 @@ export const SendConfirm = () => {
             <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {!basicTxValues.token?.isNft ? (
                 <>
-                  {t('send.total')} (
-                  {t(
-                    isBitcoinBased
-                      ? 'send.amountAndNetworkFee'
-                      : 'send.amountAndFee'
-                  )}
-                  )
+                  {isSmartAccountSend
+                    ? t('send.smartAccountTotal')
+                    : `${t('send.total')} (${t(
+                        isBitcoinBased
+                          ? 'send.amountAndNetworkFee'
+                          : 'send.amountAndFee'
+                      )})`}
                   <span className="text-white text-xs">
                     {(() => {
+                      if (nativeFeeNeedsRefresh)
+                        return <span>{t('send.feeUnavailable')}</span>;
                       if (isSmartAccountSend && !smartAccountQuoteReady)
                         return (
                           <span>
@@ -3069,32 +3128,34 @@ export const SendConfirm = () => {
               {t('send.tokenVerificationFailed')}
             </p>
           )}
-          {submission.unknown && (
-            <p role="status" className="text-sm text-brand-gray200 text-center">
-              {t('send.submissionStatusUnknown')}
+          {submission.unknown && !submission.canOpenActivity && (
+            <p role="alert" className="text-sm text-warning-info text-center">
+              {t('transactions.replay.unknown')}
             </p>
           )}
         </div>
       ) : null}
-      {!basicTxValues && submission.interrupted && (
-        <div className="text-center">
-          <p role="status" className="text-sm text-brand-gray200">
-            {t(
-              submission.unknown
-                ? 'send.submissionStatusUnknown'
-                : 'send.cantCompleteTxs'
-            )}
-          </p>
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={cancelConfirmation}
-            className="mx-auto mt-4"
-          >
-            {t(submission.unknown ? 'buttons.close' : 'send.backToEdit')}
-          </Button>
-        </div>
-      )}
+      {!basicTxValues &&
+        submission.interrupted &&
+        !(submission.unknown && submission.canOpenActivity) && (
+          <div className="text-center">
+            <p role="alert" className="text-sm text-warning-info">
+              {t(
+                submission.unknown
+                  ? 'transactions.replay.unknown'
+                  : 'send.cantCompleteTxs'
+              )}
+            </p>
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={cancelConfirmation}
+              className="mx-auto mt-4"
+            >
+              {t(submission.unknown ? 'buttons.close' : 'send.backToEdit')}
+            </Button>
+          </div>
+        )}
     </>
   );
 };

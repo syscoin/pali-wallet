@@ -506,7 +506,7 @@ export const createPasskeyCredential = async ({
   challengeHex,
   excludeCredentialIds,
   rpId,
-  rpName = 'Pali Wallet',
+  rpName = 'Pali',
   userDisplayName,
   userId,
 }: PasskeyCredentialRequest): Promise<PasskeyRegistrationResult> => {

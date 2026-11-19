@@ -12,7 +12,6 @@ import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS } from 'utils/constants';
 import { handleTransactionError } from 'utils/errorHandling';
-import { clearTransactionNavigationState } from 'utils/navigationState';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 
 interface ISign {
@@ -174,20 +173,10 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       setLoading(false);
 
       // Close window
-      closeTimeoutRef.current = setTimeout(async () => {
+      closeTimeoutRef.current = setTimeout(() => {
         if (!ownsLifetime(lifetime, 'completed')) return;
         approvalActionRef.current = 'dismissed';
         closeTimeoutRef.current = undefined;
-        try {
-          await clearTransactionNavigationState();
-        } catch (error) {
-          console.error(
-            '[Sign] Failed to clear navigation after signing:',
-            error
-          );
-          return;
-        }
-        if (!ownsLifetime(lifetime, 'dismissed')) return;
         dispatchBackgroundEvent(`${eventName}.${host}`, response);
         window.close();
       }, 2000);
@@ -238,7 +227,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
     }
   };
 
-  const handleDismiss = async () => {
+  const handleDismiss = () => {
     if (
       !mountedRef.current ||
       !['ready', 'outcome-unknown'].includes(approvalActionRef.current)
@@ -247,13 +236,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
     const lifetime = invalidateScheduledClose();
     approvalActionRef.current = 'dismissed';
     setClosing(true);
-    try {
-      await clearTransactionNavigationState();
-    } catch (error) {
-      console.error('[Sign] Failed to clear navigation state on close:', error);
-    } finally {
-      if (ownsLifetime(lifetime, 'dismissed')) window.close();
-    }
+    if (ownsLifetime(lifetime, 'dismissed')) window.close();
   };
 
   return (
@@ -317,9 +300,9 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
             {submissionUnknown && (
               <p
                 role="status"
-                className="text-sm text-brand-gray200 text-center mb-3"
+                className="mb-3 rounded-lg border border-brand-yellowInfo p-3 text-center text-sm text-white"
               >
-                {t('send.submissionStatusUnknown')}
+                {t('transactions.replay.unknown')}
               </p>
             )}
             <div className="flex gap-3 justify-center">

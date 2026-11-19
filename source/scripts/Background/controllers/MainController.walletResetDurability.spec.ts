@@ -210,6 +210,9 @@ describe('wallet reset durable cleanup', () => {
     });
     const keyring = {
       isUnlocked: () => unlocked,
+      getPrivateRecordProfileId: jest
+        .fn()
+        .mockResolvedValue(`0x${'1'.repeat(64)}`),
       getSeed: jest.fn(async (password: string) => {
         if (!unlocked) throw new Error('Unlock wallet first');
         if (password !== 'synthetic password')

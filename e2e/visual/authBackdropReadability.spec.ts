@@ -20,11 +20,11 @@ const geometry = (target: Locator) =>
     const r = node.getBoundingClientRect(),
       s = getComputedStyle(node);
     const glyphs: {
+      height: number;
       text: string;
+      width: number;
       x: number;
       y: number;
-      width: number;
-      height: number;
     }[] = [];
     const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
     let part: Node | null;
@@ -80,6 +80,15 @@ const geometry = (target: Locator) =>
     };
   });
 
+const particleStyle = (particle: Locator) =>
+  particle.evaluate((element) => {
+    const { opacity, scale, transform } = getComputedStyle(element);
+    const { e: x, f: y } = new DOMMatrixReadOnly(
+      transform === 'none' ? undefined : transform
+    );
+    return { opacity: Number(opacity), scale: parseFloat(scale), x, y };
+  });
+
 test('Welcome and Unlock keep readable text over the short-window backdrop', async ({}, info) => {
   test.setTimeout(120_000);
   const previous = { ...E2E_CONFIG };
@@ -105,15 +114,18 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
       server.url
     );
     const page = wallet.page;
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     const inspect = async (state: 'welcome' | 'unlock') => {
       for (const viewport of [
         { width: 400, height: 620 },
         { width: 400, height: 619 },
         { width: 400, height: 600 },
         { width: 400, height: 580 },
+        { width: 400, height: 559 },
         { width: 400, height: 500 },
         { width: 400, height: 499 },
         { width: 400, height: 360 },
+        { width: 360, height: 600 },
         { width: 320, height: 620 },
         { width: 320, height: 500 },
         { width: 320, height: 360 },
@@ -130,10 +142,35 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
               'inert',
               ''
             );
-            await expect(
-              page.getByRole('heading', { name: 'Pali', exact: true })
-            ).toHaveCount(1);
             const backdrop = page.locator('.login-animated-bg');
+            const heading = backdrop.getByRole('heading', {
+              name: 'Pali',
+              exact: true,
+            });
+            await expect(heading).toHaveCount(1);
+            const particle = backdrop.locator('.particle-5');
+            await expect(particle).toBeVisible();
+            if (
+              (viewport.width === 400 && viewport.height === 580) ||
+              (viewport.width === 320 && viewport.height === 500)
+            ) {
+              const initial = await particleStyle(particle);
+              await expect
+                .poll(async () => {
+                  const current = await particleStyle(particle);
+                  return (
+                    Math.hypot(current.x - initial.x, current.y - initial.y) >
+                      1 &&
+                    Math.abs(current.scale - initial.scale) > 0.01 &&
+                    Math.abs(current.opacity - initial.opacity) > 0.01
+                  );
+                })
+                .toBe(true);
+              await page.emulateMedia({ reducedMotion: 'reduce' });
+              await expect(particle).toBeVisible();
+              await expect(particle).toHaveCSS('animation-name', 'none');
+              await page.emulateMedia({ reducedMotion: 'no-preference' });
+            }
             const link = page.locator('#import-wallet-link');
             await expect(link).toHaveText(
               state === 'welcome'
@@ -152,14 +189,15 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
             }));
             expect(renderedViewport.width).toBe(viewport.width);
             expect(renderedViewport.height).toBe(viewport.height);
+            const compact = viewport.height < 620 || viewport.width < 400;
             const hasRoomForArtwork =
               state === 'welcome'
                 ? viewport.height >= 600
-                : viewport.height >= 620 && viewport.width >= 400;
+                : viewport.height >= 560 && viewport.width >= 360;
             if (!hasRoomForArtwork) {
               expect(art).toBe('none');
-              const heading = await captureForegroundContrast(
-                backdrop.getByRole('heading', { name: 'Pali', exact: true }),
+              const headingContrast = await captureForegroundContrast(
+                heading,
                 info,
                 `${state}-heading-${viewport.width}x${viewport.height}`
               );
@@ -172,11 +210,14 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
                 state,
                 viewport,
                 renderedViewport,
-                heading,
+                heading: headingContrast,
                 action,
               });
             } else {
               expect(art).toContain('GET_STARTED2.webp');
+              if (state === 'unlock' && compact) {
+                expect(art).toContain('linear-gradient(');
+              }
               observations.push({ state, viewport, renderedViewport });
             }
             // Assert the actual rendered labels and all live actions, including
@@ -202,15 +243,9 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
               expect(rendered.exposed, selector).toBe(true);
               controls.push(rendered);
             }
-            const headings = [];
-            for (const name of ['Pali', 'Wallet']) {
-              const rendered = await geometry(
-                page.getByRole('heading', { name, exact: true })
-              );
-              expect(rendered.inViewport).toBe(true);
-              expect(rendered.glyphsInViewport).toBe(true);
-              headings.push(rendered);
-            }
+            const renderedHeading = await geometry(heading);
+            expect(renderedHeading.inViewport).toBe(true);
+            expect(renderedHeading.glyphsInViewport).toBe(true);
             // Traverse native focus without assigning document.activeElement.
             const expectedFocusIds =
               state === 'welcome'
@@ -239,7 +274,7 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
               state,
               viewport,
               controls,
-              headings,
+              headings: [renderedHeading],
               keyboard,
             });
             expect(

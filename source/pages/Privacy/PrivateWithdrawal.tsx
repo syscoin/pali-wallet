@@ -4,11 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 
 import { Button } from 'components/Button';
+import { InlineFeedback } from 'components/InlineFeedback';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
 import { PRIVACY_POOLS } from 'utils/privacy/registry';
-import { capturePreviousWithdrawalAttempts } from 'utils/privacy/withdrawTypes';
 import type {
   IPrivacyRelayerChoice,
   IPrivacyWithdrawalReview,
@@ -18,6 +18,7 @@ import type {
 interface IPrivateWithdrawalProps {
   note: IPrivateNoteView;
   onBack: () => void;
+  previousStatusUnavailable?: boolean;
 }
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -117,13 +118,6 @@ function readReview(
     maxNetworkFeeWei: value.maxNetworkFeeWei,
     serviceFeeWei: value.serviceFeeWei,
     receiveWei: value.receiveWei,
-    ...(value.previousWithdrawals !== undefined
-      ? {
-          previousWithdrawals: capturePreviousWithdrawalAttempts(
-            value.previousWithdrawals
-          ),
-        }
-      : {}),
     ...(mode === 'relayed'
       ? {
           relayerId: value.relayerId,
@@ -135,6 +129,7 @@ function readReview(
 }
 function WithdrawalFlow({
   note,
+  previousStatusUnavailable,
   onBack,
   emitter,
   canSign,
@@ -298,21 +293,19 @@ function WithdrawalFlow({
     } catch (failure) {
       if (current(revision)) {
         cancel();
-        const interrupted =
+        const code =
           typeof failure === 'object' &&
           failure !== null &&
-          'message' in failure &&
-          (failure.message === 'privacy_proof_cancelled' ||
-            failure.message === 'privacy_verification_pending');
-        const nonceConflict =
-          typeof failure === 'object' &&
-          failure !== null &&
-          'message' in failure &&
-          failure.message === 'privacy_withdrawal_nonce_conflict';
+          'message' in failure
+            ? failure.message
+            : undefined;
         setError(
-          nonceConflict
+          code === 'privacy_withdrawal_activity_pending'
+            ? 'pendingActivity'
+            : code === 'privacy_withdrawal_nonce_conflict'
             ? 'nonceConflict'
-            : interrupted
+            : code === 'privacy_proof_cancelled' ||
+              code === 'privacy_verification_pending'
             ? 'prepareInterrupted'
             : 'prepareFailed'
         );
@@ -342,7 +335,7 @@ function WithdrawalFlow({
     try {
       const raw = (await call(
         'submitWithdrawal',
-        [review.intentId, { acceptPreviousWithdrawalRisk: true }],
+        [review.intentId],
         120000
       )) as IPrivacyWithdrawalSubmission;
       if (!current(revision)) return;
@@ -377,6 +370,11 @@ function WithdrawalFlow({
     } catch (failure) {
       if (!current(revision)) return;
       if (
+        (failure as { message?: string })?.message ===
+        'privacy_withdrawal_activity_pending'
+      )
+        setError('pendingActivity');
+      else if (
         (failure as { transactionNotBroadcast?: boolean })
           ?.transactionNotBroadcast === true
       )
@@ -395,6 +393,37 @@ function WithdrawalFlow({
     }
   };
   const expired = Boolean(review && clock >= review.expiresAt);
+  const previous = note.withdrawal;
+  const previousWarningId = 'privacy-withdrawal-previous-warning';
+  const previousContext = previous && (
+    <div className="min-w-0 space-y-1">
+      <div id={previousWarningId}>
+        <InlineFeedback>
+          {t(
+            previousStatusUnavailable
+              ? 'privacy.withdrawal.previousStatusUnavailable'
+              : 'privacy.withdrawal.previousMayComplete'
+          )}
+        </InlineFeedback>
+      </div>
+      {previous.jobId && (
+        <p
+          className="truncate text-xs text-brand-gray200"
+          title={previous.jobId}
+        >
+          {t('privacy.withdrawal.jobId')}: {previous.jobId}
+        </p>
+      )}
+      {previous.transactionHash && (
+        <p
+          className="truncate text-xs text-brand-gray200"
+          title={previous.transactionHash}
+        >
+          {t('privacy.deposit.txHash')}: {previous.transactionHash}
+        </p>
+      )}
+    </div>
+  );
   const actionClass =
     'rounded p-1 text-xs text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50';
   const heading = result
@@ -417,6 +446,7 @@ function WithdrawalFlow({
       {!review && (
         <div className="space-y-3 text-sm">
           <p>{note.amount} ETH</p>
+          {previousContext}
           <label htmlFor="privacy-withdrawal-recipient" className="block">
             {t('privacy.withdrawal.recipient')}
           </label>
@@ -483,13 +513,13 @@ function WithdrawalFlow({
               {t('privacy.withdrawal.watchOnlyDirectUnavailable')}
             </p>
           )}
-          <p className="text-xs text-brand-gray200">
+          <InlineFeedback>
             {t(
               `privacy.withdrawal.${
                 mode === 'direct' ? 'directWarning' : 'relayedWarning'
               }`
             )}
-          </p>
+          </InlineFeedback>
           {mode === 'relayed' && (
             <div className="space-y-2">
               {busy === 'directory' ? (
@@ -525,11 +555,14 @@ function WithdrawalFlow({
                       </option>
                     ))}
                   </select>
-                  {directoryLoaded && !relayers.length && (
-                    <p className="text-xs">
-                      {t('privacy.withdrawal.noRelayers')}
-                    </p>
-                  )}
+                  {directoryLoaded &&
+                    !relayers.some(
+                      ({ health }) => health === 'reported-healthy'
+                    ) && (
+                      <InlineFeedback role="status">
+                        {t('privacy.withdrawal.noRelayers')}
+                      </InlineFeedback>
+                    )}
                   <button
                     type="button"
                     className={actionClass}
@@ -626,69 +659,29 @@ function WithdrawalFlow({
               </dd>
             </div>
           </dl>
-          <p className="text-xs text-brand-gray200">
+          <InlineFeedback>
             {t(
               `privacy.withdrawal.${
                 mode === 'direct' ? 'directWarning' : 'relayedWarning'
               }`
             )}
-          </p>
-          <p className="text-xs text-brand-gray200">
-            {t('privacy.withdrawal.pendingProofWarning')}
-          </p>
-          {!!review.previousWithdrawals?.length && (
-            <section
-              className="space-y-2 text-xs"
-              aria-label={t('privacy.withdrawal.previousAttempts')}
-            >
-              <h3>{t('privacy.withdrawal.previousAttempts')}</h3>
-              {review.previousWithdrawals.map((prior, index) => (
-                <dl key={index} className="space-y-1 break-all">
-                  <div>
-                    {t(`privacy.withdrawal.${prior.mode}`)} ·{' '}
-                    {t(
-                      `privacy.withdrawal.${
-                        prior.outcome === 'unknown' ? 'unknown' : 'submitted'
-                      }`
-                    )}
-                  </div>
-                  {prior.recipient && (
-                    <div>
-                      <dt>{t('privacy.withdrawal.recipient')}</dt>
-                      <dd>{prior.recipient}</dd>
-                    </div>
-                  )}
-                  {[
-                    ...new Set([
-                      ...(prior.transactionHashes ?? []),
-                      ...(prior.transactionHash ? [prior.transactionHash] : []),
-                    ]),
-                  ].map((hash) => (
-                    <div key={hash}>
-                      <dt>{t('privacy.deposit.txHash')}</dt>
-                      <dd>{hash}</dd>
-                    </div>
-                  ))}
-                  {prior.jobId && (
-                    <div>
-                      <dt>{t('privacy.withdrawal.jobId')}</dt>
-                      <dd>{prior.jobId}</dd>
-                    </div>
-                  )}
-                </dl>
-              ))}
-            </section>
-          )}
-          {!consumed && (
-            <p role="status" className="text-xs">
-              {t(`privacy.withdrawal.${expired ? 'expired' : 'expires'}`, {
-                seconds: Math.max(
-                  0,
-                  Math.ceil((review.expiresAt - clock) / 1000)
-                ),
-              })}
-            </p>
-          )}
+          </InlineFeedback>
+          {!consumed &&
+            (expired ? (
+              <InlineFeedback role="status">
+                {t('privacy.withdrawal.expired')}
+              </InlineFeedback>
+            ) : (
+              <p className="text-xs">
+                {t('privacy.withdrawal.expires', {
+                  seconds: Math.max(
+                    0,
+                    Math.ceil((review.expiresAt - clock) / 1000)
+                  ),
+                })}
+              </p>
+            ))}
+          {previousContext}
           {(expired || consumed) && busy !== 'submit' ? (
             <Button
               type="button"
@@ -707,16 +700,13 @@ function WithdrawalFlow({
               variant="primary"
               disabled={Boolean(busy)}
               loading={busy === 'submit'}
+              aria-describedby={previous ? previousWarningId : undefined}
               onClick={() => void submit()}
             >
               {t(
-                `privacy.withdrawal.${
-                  busy === 'submit'
-                    ? 'submitting'
-                    : review.previousWithdrawals?.length
-                    ? 'competingConfirm'
-                    : 'confirm'
-                }`
+                busy === 'submit'
+                  ? 'privacy.withdrawal.submitting'
+                  : 'privacy.withdrawal.confirm'
               )}
             </Button>
           )}
@@ -724,17 +714,19 @@ function WithdrawalFlow({
       )}
       {result && (
         <div role="status" className="text-sm space-y-3">
-          <p>
-            {t(
-              `privacy.withdrawal.${
-                result.phase === 'unknown'
-                  ? 'unknownHelp'
-                  : result.jobId && !result.transactionHash
-                  ? 'acceptedHelp'
-                  : 'submittedHelp'
-              }`
-            )}
-          </p>
+          {result.phase === 'unknown' ? (
+            <InlineFeedback>
+              {t('privacy.withdrawal.unknownHelp')}
+            </InlineFeedback>
+          ) : (
+            <p>
+              {t(
+                result.jobId && !result.transactionHash
+                  ? 'privacy.withdrawal.acceptedHelp'
+                  : 'privacy.withdrawal.submittedHelp'
+              )}
+            </p>
+          )}
           {(result.transactionHash || result.signedTransactionHash) && (
             <div className="text-xs">
               <p>{t('privacy.deposit.txHash')}</p>

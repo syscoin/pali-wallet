@@ -243,7 +243,10 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
         ...(registration ? { registration, assertCurrent: assertNetworkCurrent } : {}),
       }), signal, check))) : undefined;
     this.evmActivityReaders = evmActivityReaders ? Object.freeze({
-      explorer: Object.freeze({ page: evmActivityReaders.explorer.page.bind(evmActivityReaders.explorer) }),
+      explorer: Object.freeze({
+        page: evmActivityReaders.explorer.page.bind(evmActivityReaders.explorer),
+        pending: evmActivityReaders.explorer.pending?.bind(evmActivityReaders.explorer),
+      }),
       receipts: Object.freeze({ read: evmActivityReaders.receipts.read.bind(evmActivityReaders.receipts) }),
     }) : undefined;
     this.now = now;
@@ -577,6 +580,11 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
     if (feed !== 'txlist' && feed !== 'tokentx') return Promise.reject(new Error('Account activity unavailable'));
     if (!this.evmActivityReaders) return Promise.reject(new Error('Account activity unavailable'));
     return this.withEvmActivity(scope, signal, guard, (current, currentSignal, check) => this.evmActivityReaders!.explorer.page(current, feed, page, currentSignal, check));
+  }
+  readEvmActivityPending(scope: EvmActivityReadScope, signal: AbortSignal, guard: () => void) {
+    const pending = this.evmActivityReaders?.explorer.pending;
+    if (!pending) return Promise.resolve([]);
+    return this.withEvmActivity(scope, signal, guard, pending);
   }
   readEvmActivityTransaction(scope: EvmActivityReadScope, hash: string, signal: AbortSignal, guard: () => void) {
     if (!this.evmActivityReaders) return Promise.reject(new Error('Account activity unavailable'));

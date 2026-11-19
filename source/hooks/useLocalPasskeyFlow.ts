@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { runLocalPasskeyCeremony } from '../utils/passkey/localUnlockCeremony';
 import {
   localPasskeyError,
+  PasswordCooldownError,
   type LocalPasskeyController,
   type LocalPasskeyStep,
 } from '../wallet/localPasskeyTypes';
@@ -28,7 +29,7 @@ export function useLocalPasskeyFlow(
     source: LocalPasskeyController;
   } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<boolean | PasswordCooldownError>(false);
   const cancel = useCallback(() => {
     const mounted = owner.current;
     if (!mounted || mounted.createController !== createController) return;
@@ -37,8 +38,8 @@ export function useLocalPasskeyFlow(
     active.current = null;
     mounted.sequence++;
     current?.abort.abort();
-    if (current) void current.source.cancel(current.id).catch(() => undefined);
     if (mounted.mounted) setBusy(false);
+    return current?.source.cancel(current.id).catch(() => undefined);
   }, [createController]);
   useEffect(() => {
     const current: Owner = {
@@ -150,14 +151,19 @@ export function useLocalPasskeyFlow(
       check();
       await completed?.(kind);
       return true;
-    } catch {
+    } catch (failure) {
       if (
         mounted.mounted &&
         owner.current === mounted &&
         mounted.sequence === captured &&
         active.current === current
-      )
-        setError(true);
+      ) {
+        setError(
+          kind !== 'unlock' && failure instanceof PasswordCooldownError
+            ? failure
+            : true
+        );
+      }
       return false;
     } finally {
       password = '';

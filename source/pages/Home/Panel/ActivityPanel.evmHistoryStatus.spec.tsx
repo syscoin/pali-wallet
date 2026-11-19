@@ -87,6 +87,9 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 // This EVM-only suite does not parse or sign PSBTs. Avoid the unrelated UTXO
 // dependency's browser-only ESM entry under JSDOM; its controller is not used.
 jest.mock('syscointx-js', () => ({ bufferUtils: {} }));
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: jest.fn() } }),
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -98,8 +101,10 @@ jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
 // The real panel and complete history producer/persistence path are under test.
 // Row formatting has independent suites; display its exact committed hashes.
 jest.mock('pages/Home/Panel/components/Transactions/EVM/EvmList', () => ({
-  EvmTransactionsList: ({ userTransactions }: any) => (
-    <div>{userTransactions.map((tx: any) => tx.hash).join(',')}</div>
+  EvmTransactionsList: ({ explorerHasMore, userTransactions }: any) => (
+    <div data-explorer-has-more={String(explorerHasMore)}>
+      {userTransactions.map((tx: any) => tx.hash).join(',')}
+    </div>
   ),
 }));
 jest.mock('pages/Home/Panel/components/Transactions/UTXO/UtxoList', () => ({
@@ -126,6 +131,7 @@ const transaction = {
 let originalFetch: typeof fetch;
 let manager: ReturnType<typeof TransactionsManager>;
 let mode: 'empty' | 'failed';
+let explorerRows: (typeof transaction)[];
 let reads: string[];
 let provider: any;
 let hold: Promise<void> | undefined;
@@ -136,13 +142,13 @@ const deferred = () => {
   });
   return { promise, resolve };
 };
-const response = (status: number) =>
+const response = (status: number, result: unknown[] = []) =>
   ({
     ok: status === 200,
     status,
     statusText: status === 200 ? 'OK' : 'Synthetic history failure',
     text: async () => 'Synthetic history failure',
-    json: async () => ({ status: '1', message: 'OK', result: [] }),
+    json: async () => ({ status: '1', message: 'OK', result }),
   } as unknown as Response);
 const currentRows = () =>
   mockStore.getState().vault.accountTransactions.HDAccount[0].ethereum[
@@ -177,6 +183,7 @@ const setRows = (rows: any[]) =>
 beforeEach(() => {
   jest.clearAllMocks();
   mode = 'empty';
+  explorerRows = [];
   hold = undefined;
   reads = [];
   const initial = vaultReducer(undefined, { type: 'test/init' });
@@ -306,7 +313,10 @@ beforeEach(() => {
     reads.push(action);
     const responseMode = mode;
     await hold;
-    return response(responseMode === 'failed' ? 500 : 200);
+    return response(
+      responseMode === 'failed' ? 500 : 200,
+      action === 'txlist' ? explorerRows : []
+    );
   });
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -351,6 +361,26 @@ it('preserves cached current-account rows when configured explorer history fails
   expect(currentRows()).toEqual([transaction]);
 });
 
+it.each([1, 30])(
+  'passes the explorer page hint for %s indexed transactions',
+  async (count) => {
+    explorerRows = Array.from({ length: count }, (_, index) => ({
+      ...transaction,
+      hash: '0x' + index.toString(16).padStart(64, '0'),
+      nonce: index,
+    }));
+    await expect(fetchInitial()).resolves.toBeUndefined();
+    await renderAfterSettleTime();
+    const rows = screen.getByText(
+      explorerRows.map(({ hash }) => hash).join(',')
+    );
+    expect(rows).toHaveAttribute(
+      'data-explorer-has-more',
+      String(count === 30)
+    );
+  }
+);
+
 it('shows incomplete history after a no-API RPC fallback returns no rows', async () => {
   mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: undefined }));
   await expect(fetchInitial()).resolves.toBeUndefined();
@@ -387,7 +417,7 @@ it('keeps an initial configured read pending past the balance-settle timer', asy
   expect(
     screen.getByText('networkConnection.loadingTransactions')
   ).toBeVisible();
-  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
   // The timer assertion is complete. Let the real finite RPC fallback's
   // existing inter-batch waits run normally after the held explorer settles.
   jest.useRealTimers();
@@ -401,42 +431,58 @@ it('keeps an initial configured read pending past the balance-settle timer', asy
   );
 });
 
-it('retries the current failed explorer read from its normal button and coalesces duplicate clicks', async () => {
-  mode = 'failed';
-  await expect(fetchInitial()).rejects.toThrow('Transaction API error');
-  await renderAfterSettleTime();
-  jest.useRealTimers();
-  const pending = deferred();
-  mode = 'empty';
-  hold = pending.promise;
-  let retry!: Promise<void>;
-  await act(async () => {
+it.each([false, true])(
+  'keeps the retry notice in place with cached rows=%s and coalesces clicks',
+  async (cached) => {
+    if (cached) setRows([transaction]);
+    mode = 'failed';
+    await expect(fetchInitial()).rejects.toThrow('Transaction API error');
+    await renderAfterSettleTime();
     const button = screen.getByRole('button', { name: 'receive.retry' });
-    fireEvent.click(button);
-    fireEvent.click(button);
-    retry = mockWallet.historyRetry.promise;
-    expect(
-      mockWallet.refreshTransactionHistory(getWalletNavigationScope())
-    ).toBe(retry);
-  });
-  expect(reads).toEqual([
-    'txlist',
-    'pendingtxlist',
-    'tokentx',
-    'txlist',
-    'pendingtxlist',
-    'tokentx',
-  ]);
-  expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
-  expect(screen.getByRole('button', { name: 'receive.retry' })).toBeDisabled();
-  await act(async () => {
-    pending.resolve();
-    await retry;
-  });
-  expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
-  expect(mockWallet.historyRetry).toBeUndefined();
-});
+    const message = screen.getByText('send.unableToLoad');
+    const row = screen.queryByText(HASH);
+    if (cached)
+      expect(
+        row!.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    jest.useRealTimers();
+    const pending = deferred();
+    mode = 'empty';
+    hold = pending.promise;
+    let retry!: Promise<void>;
+    await act(async () => {
+      fireEvent.click(button);
+      fireEvent.click(button);
+      retry = mockWallet.historyRetry.promise;
+      expect(
+        mockWallet.refreshTransactionHistory(getWalletNavigationScope())
+      ).toBe(retry);
+    });
+    expect(reads).toEqual([
+      'txlist',
+      'pendingtxlist',
+      'tokentx',
+      'txlist',
+      'pendingtxlist',
+      'tokentx',
+    ]);
+    expect(screen.queryByText('home.noIndexedActivity')).toBeNull();
+    expect(screen.getByRole('button', { name: 'receive.retry' })).toBe(button);
+    expect(button).toBeDisabled();
+    expect(screen.getByText('networkConnection.loadingTransactions')).toBe(
+      message
+    );
+    expect(screen.queryByText(HASH)).toBe(row);
+    await act(async () => {
+      pending.resolve();
+      await retry;
+    });
+    if (cached) expect(screen.getByText(HASH)).toBe(row);
+    else expect(screen.getByText('home.noIndexedActivity')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+    expect(mockWallet.historyRetry).toBeUndefined();
+  }
+);
 
 it('rejects stale-scope, locked, switching and no-API EVM retries before any read', () => {
   const scope = getWalletNavigationScope();

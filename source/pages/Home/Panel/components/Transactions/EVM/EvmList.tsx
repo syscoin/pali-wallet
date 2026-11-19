@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -8,6 +15,7 @@ import {
   mergeEvmExplorerTransactions,
 } from '../../../../../../shared/evmHistory';
 import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
+import { getPrivacyPoolActivity } from '../../../../../../shared/privacyPoolActivity';
 import {
   filterSmartAccountNativeRecipientOperations,
   projectSmartAccountNativePayment,
@@ -21,8 +29,10 @@ import { DetailArrowSvg } from 'components/Icon/Icon';
 import { ConfirmationModal } from 'components/Modal';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
-import { TransactionOptions } from 'components/TransactionOptions';
-import { SmartAccountAuthorizations } from 'components/TransactionOptions/SmartAccountAuthorizations';
+import {
+  SmartAccountSignedOperationOptions,
+  TransactionOptions,
+} from 'components/TransactionOptions';
 import { useContextualState } from 'hooks/useContextualState';
 import { usePrice } from 'hooks/usePrice';
 import { useRequestScope } from 'hooks/useRequestScope';
@@ -64,6 +74,10 @@ import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import { getReplacementWinner } from './replacementWinner';
 import { getTransactionDisplayCacheKey } from './transactionDisplayCache';
+import type { EvmActivityOlderRows } from './useEvmActivityHistory';
+import type { SmartAccountSignedActivity } from '../../../../../../wallet/evmActivityRow';
+import type { SmartAccountCancellationRequest } from '../../../../../../wallet/smartAccountCancellation';
+import type { SmartAccountReplayIntent } from '../../../../../../wallet/smartAccountSignedReplay';
 
 type EvmPageResponse = {
   error?: string;
@@ -96,6 +110,8 @@ const EvmTransactionItem = React.memo(
     currency,
     getFiatAmount,
     isFiatAvailable,
+    canCancelSmart,
+    cancellationRetry,
     txId,
     getTxOptions,
     t,
@@ -103,7 +119,9 @@ const EvmTransactionItem = React.memo(
     ensCache,
     onDetailsClick,
   }: {
+    canCancelSmart: boolean;
     cancellationIntent: boolean;
+    cancellationRetry?: Required<SmartAccountCancellationRequest>;
     chainId: number;
     currency: string;
     currentAccount: any;
@@ -125,7 +143,7 @@ const EvmTransactionItem = React.memo(
     };
     txId: string;
   }) => {
-    const isCancel = cancellationIntent;
+    const isCancel = cancellationIntent || Boolean(cancellationRetry);
     const isReplaced = settlement === 'replaced';
     const isSpeedUp = tx?.isSpeedUp === true;
     const incomingPayment = useMemo(() => {
@@ -168,6 +186,10 @@ const EvmTransactionItem = React.memo(
       : getSmartAccountDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
     const currentAddress = currentAccount?.address?.toLowerCase();
+    const canCancelSmartOrRetry = canCancelSmart || Boolean(cancellationRetry);
+    const ownsReplacement =
+      canCancelSmartOrRetry ||
+      (Boolean(currentAddress) && tx.from?.toLowerCase?.() === currentAddress);
     const txFrom = displayTx?.from?.toLowerCase?.();
     const txTo = displayTx?.to?.toLowerCase?.();
     const txDirection = (displayTx as any)?.direction;
@@ -181,10 +203,33 @@ const EvmTransactionItem = React.memo(
     // Check transaction status from API
     // txreceipt_status: '0' = failed, '1' = success, null/undefined = pending
     const isFailed = settlement === 'failed';
+    const privacyActivity =
+      !smartBatch && !isCancel
+        ? getPrivacyPoolActivity(
+            tx.chainId ?? chainId,
+            tx.to,
+            tx.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+              (!tx.input || tx.input === '0x') &&
+              tx.methodSelector
+              ? tx.methodSelector
+              : tx.input || ('data' in tx && tx.data)
+          )
+        : undefined;
+    const poolBadge = privacyActivity && (
+      <span className="max-w-full rounded-full border border-brand-blue/20 bg-brand-blue/10 px-1.5 py-0.5 text-[10px] leading-tight text-brand-blue">
+        {t('privacy.poolAmount', { amount: privacyActivity.amount })}
+      </span>
+    );
     const transactionLabel = smartBatch
       ? t('send.batchTransaction')
       : isCancel
       ? t('transactions.cancellation')
+      : privacyActivity
+      ? t(
+          privacyActivity.kind === 'deposit'
+            ? 'privacy.activity.deposit'
+            : 'privacy.activity.withdrawal'
+        )
       : getTransactionTypeDisplayLabel(
           'historySource' in tx &&
             tx.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
@@ -478,13 +523,17 @@ const EvmTransactionItem = React.memo(
     // If transaction is replaced, show it with a different style
     if (isReplaced) {
       return (
-        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue">
+        <div
+          data-transaction-hash={tx.hash}
+          className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue"
+        >
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
-            <div className="flex flex-col">
+            <div className="flex min-w-0 flex-col items-start">
               <div className="text-brand-gray200 text-xs font-normal line-through">
                 {transactionLabel}
               </div>
+              {poolBadge}
               <div className="text-warning-error text-xs">
                 {t('transactions.replaced')}
               </div>
@@ -510,13 +559,17 @@ const EvmTransactionItem = React.memo(
 
     if (isFailed) {
       return (
-        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue">
+        <div
+          data-transaction-hash={tx.hash}
+          className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue"
+        >
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
-            <div className="flex flex-col">
+            <div className="flex min-w-0 flex-col items-start">
               <div className="text-brand-gray200 text-xs font-normal line-through">
                 {transactionLabel}
               </div>
+              {poolBadge}
               <div className="text-warning-error text-xs">
                 {t('send.failed')}
               </div>
@@ -527,13 +580,18 @@ const EvmTransactionItem = React.memo(
               {renderValueDisplay()}
             </div>
             <div className="m-auto">
-              <Tooltip content={t('notifications.clickToView')}>
-                <DetailArrowSvg
-                  ariaLabel={t('notifications.clickToView')}
-                  className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
-                  onClick={handleGoTxDetails}
-                />
-              </Tooltip>
+              {cancellationRetry ||
+              (canCancelSmart && !isCancel && !tx.cancellationUnavailable) ? (
+                getTxOptions(tx, true, cancellationRetry)
+              ) : (
+                <Tooltip content={t('notifications.clickToView')}>
+                  <DetailArrowSvg
+                    ariaLabel={t('notifications.clickToView')}
+                    className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
+                    onClick={handleGoTxDetails}
+                  />
+                </Tooltip>
+              )}
             </div>
           </div>
         </div>
@@ -541,7 +599,10 @@ const EvmTransactionItem = React.memo(
     }
 
     return (
-      <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
+      <div
+        data-transaction-hash={tx.hash}
+        className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue"
+      >
         <div className="flex justify-between py-2 w-full">
           <div className="flex min-w-0 flex-1 items-start gap-2">
             <div className="flex-shrink-0 pt-0.5">
@@ -552,48 +613,52 @@ const EvmTransactionItem = React.memo(
                 <span className="min-w-0 break-words text-white text-xs font-normal">
                   {transactionLabel}
                 </span>
-                {!smartBatch && isContractCall && displayTx?.to && (
-                  <Tooltip
-                    content={
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs font-medium text-white">
-                          {t('settings.contractAddress')}
-                        </span>
-                        <span className="text-xs font-mono text-brand-gray300">
-                          {/* For smart-account executions, show the decoded
+                {poolBadge}
+                {!privacyActivity &&
+                  !smartBatch &&
+                  isContractCall &&
+                  displayTx?.to && (
+                    <Tooltip
+                      content={
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium text-white">
+                            {t('settings.contractAddress')}
+                          </span>
+                          <span className="text-xs font-mono text-brand-gray300">
+                            {/* For smart-account executions, show the decoded
                               inner target, not the outer EntryPoint */}
-                          {displayTx.to}
+                            {displayTx.to}
+                          </span>
+                        </div>
+                      }
+                    >
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-blue/10 border border-brand-blue/20 cursor-default transition-all duration-200 hover:bg-brand-blue/20 hover:border-brand-blue/30 hover:scale-105 whitespace-nowrap">
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="text-brand-blue"
+                        >
+                          <path
+                            d="M2 4.5A2.5 2.5 0 014.5 2h7A2.5 2.5 0 0114 4.5v7a2.5 2.5 0 01-2.5 2.5h-7A2.5 2.5 0 012 11.5v-7z"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                          />
+                          <path
+                            d="M5 7h6M5 9h4"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <span className="text-brand-blue text-[10px] font-medium">
+                          {t('transactions.contract')}
                         </span>
-                      </div>
-                    }
-                  >
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-blue/10 border border-brand-blue/20 cursor-default transition-all duration-200 hover:bg-brand-blue/20 hover:border-brand-blue/30 hover:scale-105 whitespace-nowrap">
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="text-brand-blue"
-                      >
-                        <path
-                          d="M2 4.5A2.5 2.5 0 014.5 2h7A2.5 2.5 0 0114 4.5v7a2.5 2.5 0 01-2.5 2.5h-7A2.5 2.5 0 012 11.5v-7z"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                        <path
-                          d="M5 7h6M5 9h4"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <span className="text-brand-blue text-[10px] font-medium">
-                        {t('transactions.contract')}
                       </span>
-                    </span>
-                  </Tooltip>
-                )}
+                    </Tooltip>
+                  )}
                 {isSpeedUp && (
                   <span className="text-green-400 ml-1 text-xs">
                     ({t('header.speedUp')})
@@ -615,7 +680,7 @@ const EvmTransactionItem = React.memo(
                     settlement === 'pending' &&
                       tx.historySource ===
                         EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned
-                      ? 'transactions.savedUnconfirmed'
+                      ? 'transactions.unconfirmed'
                       : evmSettlementLabel(settlement)
                   )}
                 </p>
@@ -625,11 +690,13 @@ const EvmTransactionItem = React.memo(
           <div className="flex max-w-[50%] shrink-0 items-center gap-4 min-w-0">
             {renderValueDisplay()}
             <div className="m-auto">
-              {isConfirmed ||
+              {!ownsReplacement ||
+              isConfirmed ||
               isReplaced ||
-              ('historySource' in tx &&
-                tx.historySource ===
-                  EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned) ||
+              (tx.historySource ===
+                EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+                !tx.speedUpAvailable &&
+                !canCancelSmartOrRetry) ||
               settlement === 'replacementPending' ? (
                 <Tooltip content={t('notifications.clickToView')}>
                   <DetailArrowSvg
@@ -639,7 +706,15 @@ const EvmTransactionItem = React.memo(
                   />
                 </Tooltip>
               ) : (
-                getTxOptions(false, isConfirmed, tx)
+                getTxOptions(
+                  privacyActivity?.kind === 'withdrawal' &&
+                    !(tx as any).smartAccountExecutionFrom &&
+                    !tx.cancellationUnavailable
+                    ? { ...tx, cancellationUnavailable: true }
+                    : tx,
+                  canCancelSmartOrRetry,
+                  cancellationRetry
+                )
               )}
             </div>
           </div>
@@ -673,6 +748,8 @@ const EvmTransactionItem = React.memo(
     prevProps.getFiatAmount === nextProps.getFiatAmount &&
     prevProps.isFiatAvailable === nextProps.isFiatAvailable &&
     prevProps.getTxOptions === nextProps.getTxOptions &&
+    prevProps.canCancelSmart === nextProps.canCancelSmart &&
+    prevProps.cancellationRetry === nextProps.cancellationRetry &&
     prevProps.tokenMeta?.decimals === nextProps.tokenMeta?.decimals &&
     prevProps.tokenMeta?.isNft === nextProps.tokenMeta?.isNft &&
     prevProps.currentAccount?.address === nextProps.currentAccount?.address &&
@@ -692,15 +769,79 @@ const EvmTransactionItem = React.memo(
 
 EvmTransactionItem.displayName = 'EvmTransactionItem';
 
+const SmartAccountSignedOperationItem = ({
+  operation,
+}: {
+  operation: SmartAccountSignedActivity;
+}) => {
+  const { t, i18n } = useTranslation();
+  const hashLabelId = useId();
+  const { operationHash } = operation;
+  const createdAt = new Date(operation.createdAt);
+  const locale = i18n?.resolvedLanguage || i18n?.language || 'en-US';
+  return (
+    <div
+      role="group"
+      aria-labelledby={hashLabelId}
+      className="flex w-full items-center justify-between gap-2 border-b border-dashed border-bkg-deepBlue py-2"
+    >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="break-words text-xs text-white">
+          {t(
+            operation.replacesOperationHash
+              ? 'transactions.cancellation'
+              : 'transactions.smartAuthorizations.signedOperation'
+          )}
+        </span>
+        <span className="text-xs text-brand-gray200">
+          {t(
+            operation.status === 'unavailable'
+              ? 'transactions.smartAuthorizations.statusUnavailable'
+              : 'transactions.smartAuthorizations.noTransactionRecorded'
+          )}
+        </span>
+        <div className="flex flex-wrap items-center gap-x-2 text-xs text-brand-gray200">
+          <span id={hashLabelId}>
+            {t('transactions.smartAuthorizations.operationHash')}{' '}
+            <bdi className="font-mono" title={operationHash}>
+              <span aria-hidden="true">
+                {operationHash.slice(0, 10)}…{operationHash.slice(-8)}
+              </span>
+              <span className="sr-only">{operationHash}</span>
+            </bdi>
+          </span>
+          {Number.isFinite(createdAt.getTime()) && (
+            <time dateTime={createdAt.toISOString()}>
+              {createdAt.toLocaleTimeString(locale)}
+            </time>
+          )}
+        </div>
+      </div>
+      <SmartAccountSignedOperationOptions
+        operationHash={operation.replacesOperationHash ?? operationHash}
+      />
+    </div>
+  );
+};
+
 export const EvmTransactionsList = ({
   userTransactions,
-  savedHasMore = false,
-  savedLoading = false,
-  loadMoreSaved,
+  olderRows,
+  smartCancellationHashes,
+  smartCancellationRetries,
+  pendingSmartCancellationTargets,
+  smartSignedOperations,
+  explorerHasMore,
 }: {
-  loadMoreSaved?: () => Promise<void>;
-  savedHasMore?: boolean;
-  savedLoading?: boolean;
+  explorerHasMore?: boolean;
+  olderRows?: EvmActivityOlderRows;
+  pendingSmartCancellationTargets?: ReadonlyMap<string, string>;
+  smartCancellationHashes?: ReadonlySet<string>;
+  smartCancellationRetries?: ReadonlyMap<
+    string,
+    Required<SmartAccountCancellationRequest>
+  >;
+  smartSignedOperations?: readonly SmartAccountSignedActivity[];
   userTransactions: ITransactionInfoEvm[];
 }) => {
   const { t } = useTranslation();
@@ -721,10 +862,15 @@ export const EvmTransactionsList = ({
   );
 
   const { chainId, currency, apiUrl } = activeNetwork as any;
-  const paginationContext = getHomeBrowsingScope(
+  const browsingContext = getHomeBrowsingScope(
     { ...currentAccount, ...activeAccountRef },
     activeNetwork
   );
+  const clearedAt = currentAccount?.evmActivityClearedAtByChainId?.[chainId];
+  const paginationContext =
+    clearedAt === undefined
+      ? browsingContext
+      : `${browsingContext}:${clearedAt}`;
   const beginPageRequest = useRequestScope(paginationContext);
 
   const fetchPageResponse = useCallback(
@@ -779,7 +925,7 @@ export const EvmTransactionsList = ({
     isRestoringPages,
   } = useHistoryBrowsingState<ITransactionInfoEvm>(
     paginationContext,
-    true,
+    undefined,
     apiUrl ? fetchHistoryPage : undefined
   );
   const combinedTransactions = useMemo(
@@ -823,21 +969,22 @@ export const EvmTransactionsList = ({
   );
 
   const getTxOptions = useCallback(
-    (isCanceled: boolean, isConfirmed: boolean, tx: ITransactionInfoEvm) => {
-      if (!isConfirmed) {
-        return (
-          <TransactionOptions
-            handleUpdateTransaction={handleUpdateTransaction}
-            alert={alert}
-            chainId={chainId}
-            transaction={tx as any}
-            setIsOpenModal={setIsOpenModal}
-            setModalData={setModalData}
-          />
-        );
-      }
-      return null;
-    },
+    (
+      tx: ITransactionInfoEvm,
+      canCancelSmart: boolean,
+      cancellationRetry?: Required<SmartAccountCancellationRequest>
+    ) => (
+      <TransactionOptions
+        handleUpdateTransaction={handleUpdateTransaction}
+        alert={alert}
+        chainId={chainId}
+        transaction={tx as any}
+        canCancelSmart={canCancelSmart}
+        cancellationRetry={cancellationRetry}
+        setIsOpenModal={setIsOpenModal}
+        setModalData={setModalData}
+      />
+    ),
     [alert, chainId]
   );
 
@@ -869,19 +1016,92 @@ export const EvmTransactionsList = ({
     [navigate, location.state, filteredTransactions, chainId, minedNonceIndex]
   );
 
-  const groupedTransactions = useMemo(() => {
-    const grouped: { [date: string]: ITransactionInfoEvm[] } = {};
-    const sourceList = filteredTransactions.slice(0, visibleCount);
-    sourceList.forEach((tx) => {
-      const formattedDate = formatTimeStamp(tx?.timestamp);
-      if (!grouped[formattedDate]) {
-        grouped[formattedDate] = [];
+  const groupedActivity = useMemo(() => {
+    type Row =
+      | { timestamp: number; transaction: ITransactionInfoEvm }
+      | { operation: SmartAccountSignedActivity; timestamp: number };
+    const grouped: Record<string, Row[]> = {};
+    const visible = filteredTransactions.slice(
+      0,
+      visibleCount
+    ) as ITransactionInfoEvm[];
+    const rows: Row[] = visible.map((transaction) => ({
+      transaction,
+      timestamp: transaction.timestamp,
+    }));
+    if (smartSignedOperations?.length) {
+      const carriedOperations = new Set<string>();
+      for (const transaction of filteredTransactions as (ITransactionInfoEvm & {
+        smartAccount?: SmartAccountReplayIntent;
+        smartAccountExecutionFrom?: string;
+      })[]) {
+        const smart = transaction.smartAccount;
+        if (smart?.operations) {
+          for (const { operationHash } of smart.operations)
+            carriedOperations.add(operationHash.toLowerCase());
+        } else if (
+          transaction.smartAccountExecutionFrom?.toLowerCase() ===
+            currentAccount?.address?.toLowerCase() &&
+          typeof transaction.input === 'string'
+        ) {
+          for (const operation of decodeSmartAccountOperations({
+            chainId: String(chainId),
+            data: transaction.input,
+            hash: transaction.hash,
+            nonce: parseEvmInteger(transaction.nonce) ?? -1,
+            payer: transaction.from,
+            to: transaction.to,
+            value: String(transaction.value),
+          }))
+            if (
+              operation.account.toLowerCase() ===
+              currentAccount?.address?.toLowerCase()
+            )
+              carriedOperations.add(operation.operationHash);
+        }
       }
-      grouped[formattedDate].push(tx);
-    });
-
+      // A retry can change the UserOperation hash while revoking the same
+      // original. Keep the fallback visible when the outer has failed or is absent.
+      const pendingCancellations = new Set<string>();
+      for (const tx of visible) {
+        const target = pendingSmartCancellationTargets?.get(
+          tx.hash.toLowerCase()
+        );
+        if (
+          target &&
+          getEvmSettlementStatus(tx, chainId, minedNonceIndex) === 'pending'
+        )
+          pendingCancellations.add(target);
+      }
+      for (const operation of smartSignedOperations)
+        if (
+          !carriedOperations.has(operation.operationHash.toLowerCase()) &&
+          !(
+            operation.replacesOperationHash &&
+            pendingCancellations.has(
+              operation.replacesOperationHash.toLowerCase()
+            )
+          )
+        )
+          rows.push({
+            operation,
+            timestamp: Math.floor(operation.createdAt / 1000),
+          });
+      rows.sort((a, b) => b.timestamp - a.timestamp);
+    }
+    for (const row of rows)
+      (grouped[formatTimeStamp(row.timestamp)] ??= []).push(row);
     return grouped;
-  }, [filteredTransactions, formatTimeStamp, visibleCount, apiUrl]);
+  }, [
+    filteredTransactions,
+    formatTimeStamp,
+    visibleCount,
+    smartSignedOperations,
+    pendingSmartCancellationTargets,
+    currentAccount?.address,
+    chainId,
+    minedNonceIndex,
+  ]);
 
   // Build a quick lookup map for imported ERC-20 token metadata
   const tokenMetaByAddress = useMemo(() => {
@@ -920,143 +1140,129 @@ export const EvmTransactionsList = ({
     txDisplayInfoCache.clear();
   }, [currentAccount?.address]);
 
+  const pagePending = useRef<() => boolean>();
+  const canRevealRows = filteredTransactions.length > visibleCount;
+  const canLoadIndexedRows =
+    apiUrl && (hasMoreServer ?? explorerHasMore !== false);
+  const canLoadMore = canRevealRows || olderRows?.hasMore || canLoadIndexedRows;
+  const loadingMore = isLoadingMore || isRestoringPages || olderRows?.loading;
+  const loadMore = async () => {
+    if (loadingMore || pagePending.current?.()) return;
+    const isCurrentRequest = beginPageRequest();
+    pagePending.current = isCurrentRequest;
+    try {
+      if (olderRows?.hasMore) {
+        await olderRows.loadMore();
+        if (isCurrentRequest())
+          setVisibleCount((count) => count + (canRevealRows ? 50 : 30));
+      } else if (canRevealRows) {
+        setVisibleCount((count) => count + 50);
+      } else if (canLoadIndexedRows) {
+        setIsLoadingMore(true);
+        const response = await fetchPageResponse(nextPage);
+        if (!isCurrentRequest()) return;
+        if (response?.error) {
+          alert.warning(response.error);
+          return;
+        }
+        const rows = response?.transactions;
+        if (!Array.isArray(rows) || rows.length === 0) {
+          setHasMoreServer(false);
+          return;
+        }
+        setExtraTransactions((previous) => [...previous, ...rows]);
+        setVisibleCount((count) => count + rows.length);
+        setNextPage((page) => page + 1);
+        setHasMoreServer(response.hasMore !== false);
+      }
+    } catch (error: any) {
+      if (isCurrentRequest()) alert.error(String(error?.message || error));
+    } finally {
+      if (isCurrentRequest()) {
+        pagePending.current = undefined;
+        setIsLoadingMore(false);
+      }
+    }
+  };
+
   return (
     <>
       <ConfirmationModal show={isOpenModal} {...modalData} />
-      <div className="mb-3">
-        <SmartAccountAuthorizations />
-      </div>
-      {Object?.entries(groupedTransactions)?.map(
-        ([date, transactions]: any) => (
-          <div key={date} className="relative mb-[20px]">
-            <div className="text-xs text-white font-normal">{date}</div>
-            {transactions?.map((tx, index) => {
-              // Create a unique key that handles replacements properly
-              // Use nonce if available (EVM), otherwise use hash/txid
-              const txKey =
-                tx.nonce !== undefined
-                  ? `nonce-${tx.nonce}-${tx?.hash || `unknown-${index}`}`
-                  : `${tx?.hash || tx?.txid || `unknown-${index}`}-${index}`;
-              const metaTarget =
-                (tx?.hash &&
-                  innerTargetByHash.get(String(tx.hash).toLowerCase())) ||
-                tx?.to;
-              const tokenMetaForTx = metaTarget
-                ? tokenMetaByAddress.get(String(metaTarget).toLowerCase())
-                : undefined;
-
+      {Object.entries(groupedActivity).map(([date, rows]) => (
+        <div key={date} className="relative mb-[20px]">
+          <div className="text-xs text-white font-normal">{date}</div>
+          {rows.map((row, index) => {
+            if ('operation' in row)
               return (
-                <EvmTransactionItem
-                  key={txKey}
-                  tx={tx}
-                  chainId={chainId}
-                  currentAccount={currentAccount}
-                  getTxStatusIcons={getTxStatusIcons}
-                  getTxType={getTxType}
-                  settlement={getEvmSettlementStatus(
-                    tx,
-                    chainId,
-                    minedNonceIndex
-                  )}
-                  cancellationIntent={hasEvmCancellationIntent(
+                <SmartAccountSignedOperationItem
+                  key={`operation:${row.operation.operationHash}`}
+                  operation={row.operation}
+                />
+              );
+            const tx = row.transaction;
+            const txKey = tx.hash || `unknown-${index}`;
+            const metaTarget =
+              (tx?.hash &&
+                innerTargetByHash.get(String(tx.hash).toLowerCase())) ||
+              tx?.to;
+            const tokenMetaForTx = metaTarget
+              ? tokenMetaByAddress.get(String(metaTarget).toLowerCase())
+              : undefined;
+
+            return (
+              <EvmTransactionItem
+                key={txKey}
+                canCancelSmart={
+                  smartCancellationHashes?.has(txKey.toLowerCase()) ?? false
+                }
+                cancellationRetry={smartCancellationRetries?.get(
+                  txKey.toLowerCase()
+                )}
+                tx={tx}
+                chainId={chainId}
+                currentAccount={currentAccount}
+                getTxStatusIcons={getTxStatusIcons}
+                getTxType={getTxType}
+                settlement={getEvmSettlementStatus(
+                  tx,
+                  chainId,
+                  minedNonceIndex
+                )}
+                cancellationIntent={
+                  pendingSmartCancellationTargets?.has(txKey.toLowerCase()) ||
+                  hasEvmCancellationIntent(
                     tx,
                     filteredTransactions,
                     chainId,
                     replacementLookup
-                  )}
-                  currency={currency}
-                  getFiatAmount={getFiatAmount}
-                  isFiatAvailable={isFiatAvailable}
-                  onDetailsClick={onDetailsClick}
-                  txId={txId}
-                  getTxOptions={getTxOptions}
-                  t={t}
-                  tokenMeta={tokenMetaForTx}
-                  ensCache={ensCache}
-                />
-              );
-            })}
-          </div>
-        )
+                  )
+                }
+                currency={currency}
+                getFiatAmount={getFiatAmount}
+                isFiatAvailable={isFiatAvailable}
+                onDetailsClick={onDetailsClick}
+                txId={txId}
+                getTxOptions={getTxOptions}
+                t={t}
+                tokenMeta={tokenMetaForTx}
+                ensCache={ensCache}
+              />
+            );
+          })}
+        </div>
+      ))}
+      {canLoadMore && (
+        <div className="flex justify-center py-3">
+          <button
+            type="button"
+            disabled={loadingMore}
+            onClick={() => void loadMore()}
+            className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
+          >
+            {loadingMore ? t('buttons.loading') : t('buttons.loadMore')}
+          </button>
+        </div>
       )}
-      {/* Load more: API-backed if apiUrl exists; else local slicing fallback */}
-      {apiUrl
-        ? (savedHasMore ||
-            hasMoreServer ||
-            filteredTransactions.length > visibleCount) && (
-            <div className="flex justify-center py-3">
-              <button
-                type="button"
-                disabled={isLoadingMore || isRestoringPages || savedLoading}
-                onClick={async () => {
-                  if (filteredTransactions.length > visibleCount) {
-                    if (savedHasMore) {
-                      const isCurrentRequest = beginPageRequest();
-                      await loadMoreSaved?.();
-                      if (!isCurrentRequest()) return;
-                    }
-                    setVisibleCount((count) => count + 50);
-                    return;
-                  }
-                  if (savedHasMore) {
-                    const isCurrentRequest = beginPageRequest();
-                    await loadMoreSaved?.();
-                    if (!isCurrentRequest()) return;
-                    setVisibleCount((count) => count + 30);
-                    return;
-                  }
-                  const isCurrentRequest = beginPageRequest();
-                  try {
-                    setIsLoadingMore(true);
-                    const res = await fetchPageResponse(nextPage);
-                    if (!isCurrentRequest()) return;
-                    if (res?.error) {
-                      alert.warning(res.error);
-                    } else if (Array.isArray(res?.transactions)) {
-                      const newTxs = res.transactions as ITransactionInfoEvm[];
-                      if (newTxs.length > 0) {
-                        setExtraTransactions((prev) => [...prev, ...newTxs]);
-                        setVisibleCount((count) => count + newTxs.length);
-                        setNextPage((p) => p + 1);
-                        if (res?.hasMore === false) setHasMoreServer(false);
-                      } else {
-                        setHasMoreServer(false);
-                      }
-                    } else {
-                      setHasMoreServer(false);
-                    }
-                  } catch (e: any) {
-                    if (isCurrentRequest())
-                      alert.error(String(e?.message || e));
-                  } finally {
-                    if (isCurrentRequest()) setIsLoadingMore(false);
-                  }
-                }}
-                className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
-              >
-                {isLoadingMore || isRestoringPages || savedLoading
-                  ? t('buttons.loading')
-                  : t('buttons.loadMore')}
-              </button>
-            </div>
-          )
-        : (savedHasMore || filteredTransactions.length > visibleCount) && (
-            <div className="flex justify-center py-3">
-              <button
-                type="button"
-                disabled={savedLoading}
-                onClick={async () => {
-                  const isCurrentRequest = beginPageRequest();
-                  if (savedHasMore) await loadMoreSaved?.();
-                  if (!isCurrentRequest()) return;
-                  setVisibleCount((c) => c + 50);
-                }}
-                className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors"
-              >
-                {savedLoading ? t('buttons.loading') : t('buttons.loadMore')}
-              </button>
-            </div>
-          )}
     </>
   );
 };

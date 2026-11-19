@@ -150,7 +150,8 @@ const TransactionsManager = (): ITransactionsManager => {
           result = await SysTransactionController().pollingSysTransactions(
             currentAccount.xpub,
             activeNetworkUrl,
-            isRapidPolling && !forceRefresh
+            isRapidPolling && !forceRefresh,
+            signal
           );
         } else {
           // Always pull the latest provider at call time (prevents stale references across network switches)

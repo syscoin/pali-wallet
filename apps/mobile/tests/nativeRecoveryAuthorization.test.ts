@@ -1,6 +1,7 @@
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import * as recoveryPhrase from '../../../source/shared/recoveryPhrase.ts';
 import { NativeRecoveryFlow, type RecoveryOutcome } from '../src/custody/recoveryFlow.ts';
 import { credentialPromptActivityState } from '../src/platform/credentialPort.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
@@ -53,6 +54,7 @@ function fixture(platform = 'android') {
   const current = owner({ state: () => normalized(state), subscribe: listener => listen('prompt', listener) }, () => normalized(state) !== 'background');
   let flow = current.flow;
   const host = screenFixture(new URL('../src/screens/NativeRecovery.tsx', import.meta.url), 'NativeRecovery', {
+    '../../../../source/shared/recoveryPhrase': recoveryPhrase,
     '../platform/localization': nativeTranslationFixture,
     'react-native': {
       View: 'View', Text: 'NativeText', ActivityIndicator: 'ActivityIndicator', KeyboardAvoidingView: 'KeyboardAvoidingView',

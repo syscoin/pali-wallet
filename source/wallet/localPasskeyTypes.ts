@@ -51,6 +51,17 @@ export type LocalPasskeyCeremonyPort = Readonly<{
   ): Promise<LocalPasskeyResponse>;
 }>;
 
+export class PasswordCooldownError extends Error {
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super(
+      `Too many failed attempts. Please wait ${retryAfterSeconds} seconds before trying again.`
+    );
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 export const localPasskeyError = () => new Error('LOCAL_PASSKEY_UNAVAILABLE');
 export function checkLocalPasskeyOwner(check: () => void): void {
   const result: unknown = check();

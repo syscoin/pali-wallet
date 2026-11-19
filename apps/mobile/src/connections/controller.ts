@@ -4,6 +4,7 @@ import { NativeAccountChangeRequests } from './accountChangeRequests.ts';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope, type NativePrivateAuthentication } from '../custody/privateAuthentication.ts';
 import { NativeSmartPreparationRequests } from './smartPreparationRequests.ts';
 import { getRequestedSmartAccountAuthenticator, type SmartAccountPreparationRequest } from '../../../../source/shared/smartAccountPreparation.ts';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../../../source/shared/smartAccountFeeQuote.ts';
 import type { NativeSmartCreationAllocation } from '../smartAccount/preparation.ts';
 import { SmartAccountModulesProjectionError } from '../../../../source/shared/smartAccountModules.ts';
 import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, isSmartAccountModuleRequestMethod, normalizeSmartAccountModuleRequest, SmartAccountModuleRequestError, type SmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
@@ -35,7 +36,7 @@ import {
 } from '../../../../source/shared/dappCalls.ts';
 import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
-import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
+import { nativeConnectionSubmissionFailure, type NativePreparedConnectionTransaction } from './transactionRuntime.ts';
 import { createNativeEoaCalls, createNativeEoaCallsContinuation, isNativeEoaCallsContinuation, type NativeEoaCalls } from './eoaCalls.ts';
 import { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
 import {
@@ -208,6 +209,7 @@ type PendingSigning = {
   eoa?: NativeEoaCalls;
   unsubscribeEoa?: () => void;
   broadcastHash?: string;
+  submissionUncertain?: boolean;
   requestExpiresAt: number;
   sourceRevision: number;
   timer: ReturnType<typeof setTimeout>;
@@ -333,7 +335,7 @@ export class NativeConnectionsController {
       changed: () => { this.publish(); void this.controls?.prepare(); void this.sentry?.prepare(); void this.psbt?.prepare(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
       commit: (wire, account, signal, check) => this.commitAccountChange(wire, account, signal, check),
-      reject: wire => this.transport!.respond(wire.session.binding, wire.id, { error: { code: 4001, message: 'User rejected account selection' } }, () => this.check(), () => {}),
+      reject: (wire, check) => this.transport!.respond(wire.session.binding, wire.id, { error: { code: 4001, message: 'User rejected account selection' } }, check, () => {}),
     });
     this.controls = new NativeDappControlRequests({
       host: () => this.host!.controls,
@@ -455,7 +457,7 @@ export class NativeConnectionsController {
         await this.controls.approve(id);
       },
       rejectControl: id => this.controls.reject(id),
-      returnToDapp: async (id, revision) => {
+      returnToDapp: async (id, revision, assertCurrent) => {
         this.check();
         const connection = [...this.connections.values()].find(value => value.id === id);
         if (revision !== this.revision || this.disposed || this.options.source.getSnapshot().phase !== 'ready' || !connection?.engine.isConnected(connection.session.binding.origin)) return failure('REQUEST_EXPIRED');
@@ -465,6 +467,7 @@ export class NativeConnectionsController {
         this.check();
         if (site.isBlacklisted) return failure('BLOCKED_SITE');
         if (revision !== this.revision || this.options.source.getSnapshot().phase !== 'ready' || this.connections.get(sessionKey(connection.session)) !== connection || !connection.engine.isConnected(target.origin)) return failure('CONTEXT_CHANGED');
+        assertCurrent?.();
         await this.options.openExternalUrl(target.url);
       },
       callsStatusShown: async (id) => {
@@ -509,7 +512,8 @@ export class NativeConnectionsController {
       approve: (id, accountId, networkId, revision) =>
         this.perform(() => this.approve(id, accountId, networkId, revision)),
       reject: (id) => this.perform(() => this.reject(id)),
-      disconnect: (id) => this.perform(() => this.disconnect(id)),
+      disconnect: (id, options) =>
+        this.perform(() => this.disconnect(id), undefined, options?.reportError),
       setConnectionsEnabled: enabled => this.changeConnectionSettings(enabled),
       disconnectAll: () => this.changeConnectionSettings(undefined),
       previewEncryption: (id, revision) => this.previewEncryption(id, revision),
@@ -1159,7 +1163,8 @@ export class NativeConnectionsController {
   }
   private async perform(
     operation: () => Promise<void>,
-    messageScope?: Readonly<{ owner: PendingSigning | undefined }>
+    messageScope?: Readonly<{ owner: PendingSigning | undefined }>,
+    reportError = true
   ): Promise<void> {
     let epoch = this.actionEpoch;
     try {
@@ -1175,10 +1180,12 @@ export class NativeConnectionsController {
           (messageScope.owner !== undefined &&
             this.requests.get(messageScope.owner.id) === messageScope.owner))
       ) {
-        this.error =
-          error instanceof ConnectionActionError
-            ? error.code
-            : 'CONNECTION_UNAVAILABLE';
+        if (reportError) {
+          this.error =
+            error instanceof ConnectionActionError
+              ? error.code
+              : 'CONNECTION_UNAVAILABLE';
+        }
         this.publish();
       }
       throw error;
@@ -2424,9 +2431,10 @@ export class NativeConnectionsController {
       throw error;
     }
   }
-  private captureSigningHandoff(message: PendingSigning, scope: SigningResumeScope, resume: SigningHandoffDescriptor | null): NativeSigningHandoff {
+  private captureSigningHandoff(message: PendingSigning, scope: SigningResumeScope, resume: SigningHandoffDescriptor | null,
+    expiresAt = message.review.expiresAt): NativeSigningHandoff {
     if (message.handoff) retireNativeSigningHandoff(message.handoff);
-    const entry = { id: message.resumeId, wire: message.wire, scope, expiresAt: message.review.expiresAt, order: message.queueOrder,
+    const entry = { id: message.resumeId, wire: message.wire, scope, expiresAt, order: message.queueOrder,
       assertCurrent: () => { const approval = message.approval; if (!approval) return failure('REQUEST_EXPIRED'); approval.assertCurrent(); if (this.requests.get(message.id) !== message || !this.requestConnectionCurrent(message)) failure('CONTEXT_CHANGED'); },
       eligible: () => message.busy && !message.dispatched && !message.resultReady &&
         (message.eoa ? message.eoa.isAwaitingSignature() : !message.broadcastHash),
@@ -2473,6 +2481,9 @@ export class NativeConnectionsController {
     const respondToRequest = !(
       !respond ||
       message.dispatched ||
+      message.submissionUncertain ||
+      message.review.error === 'TRANSACTION_NOT_SENT' ||
+      message.smart?.getSnapshot().userOperationSubmissionStarted ||
       (message.broadcastHash && !message.eoa) ||
       this.disposed ||
       !this.transport
@@ -3189,6 +3200,7 @@ export class NativeConnectionsController {
     message.prepared = prepared;
     message.review = Object.freeze({
       ...message.review,
+      retryPreparation: false,
       transaction: prepared.transaction,
       feeComparison: prepared.feeComparison,
       feeChoice: null,
@@ -3414,6 +3426,32 @@ export class NativeConnectionsController {
     });
     await this.retireRequest(message, false);
   }
+  private async reportUnsentTransaction(
+    message: PendingSigning,
+    approval: MessageApproval,
+    stoppedAfterFunding: boolean
+  ): Promise<void> {
+    message.review = Object.freeze({ ...message.review, error: 'TRANSACTION_NOT_SENT' });
+    this.publish();
+    try {
+      await this.transport!.respond(
+        message.session.binding,
+        message.wire.id,
+        { error: {
+          code: -32603,
+          message: stoppedAfterFunding
+            ? 'Account funding confirmed. The requested operation was not submitted.'
+            : 'The transaction was not submitted',
+        } },
+        approval.assertCurrent,
+        () => { message.dispatched = true; }
+      );
+    } catch { /* A failed reply cannot turn the transaction failure into a rejection. */ }
+    if (this.requests.get(message.id) === message) {
+      message.busy = false;
+      this.publish();
+    }
+  }
   private retrySmartMetadata(id: string, revision: number): Promise<void> {
     const message = this.requests.get(id);
     const work = this.performRetrySmartMetadata(id, revision);
@@ -3463,11 +3501,12 @@ export class NativeConnectionsController {
       return failure('REQUEST_EXPIRED');
     if (message.dispatched) return failure('REQUEST_EXPIRED');
     if (message.busy || this.action) return failure('BUSY');
+    const retryPreparation = message.review.kind === 'transaction' && message.review.retryPreparation === true;
     if (
       typeof acknowledgeWarning !== 'boolean' ||
       message.review.error ||
       (message.review.requiresWarningAcknowledgement && !acknowledgeWarning &&
-        !(message.review.kind === 'transaction' && message.review.batch?.phase === 'failed')) ||
+        !retryPreparation && !(message.review.kind === 'transaction' && message.review.batch?.phase === 'failed')) ||
       (isModuleRequest(message.request) && message.request.action === 'install' && !acknowledgeWarning) ||
       this.host!.context().activeAccountId !== message.accountId
     )
@@ -3479,6 +3518,15 @@ export class NativeConnectionsController {
     message.busy = true;
     this.publish();
     try {
+      if (retryPreparation) {
+        const scope = this.signingResumeScope(message.session.binding, 'selected');
+        if (!scope) return failure('REQUEST_EXPIRED');
+        message.handoff = this.captureSigningHandoff(message, scope, null, message.handoff.expiresAt);
+        await this.prepareTransactionReview(message);
+        message.busy = false;
+        this.publish();
+        return;
+      }
       let result: unknown;
       if (isEncryptionRequest(message.request)) {
         await this.encryptionApproval(message).approve();
@@ -3551,7 +3599,23 @@ export class NativeConnectionsController {
       }
       await this.deliverSigningResult(message, result);
     } catch (error) {
-      if (message.dispatched || message.broadcastHash) {
+      const operation = message.smart?.getSnapshot();
+      const feeReviewFailed = operation
+        ? operation.error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED || operation.payerQuoteUnavailable === true
+        : error instanceof Error && ['REVIEW_REQUIRED', 'EVM fee approval changed'].includes(error.message);
+      const singleTransaction = message.request.method === 'eth_sendTransaction';
+      const submissionFailure = singleTransaction && message.review.kind === 'transaction'
+        ? nativeConnectionSubmissionFailure(error) : undefined;
+      const atomicCalls = message.request.method === 'wallet_sendCalls' && !!operation;
+      const operationSubmissionStarted = operation?.userOperationSubmissionStarted === true;
+      const canReportUnsent = (submissionFailure === 'not-sent' ||
+        submissionFailure === undefined && !retryPreparation && (singleTransaction || atomicCalls) && feeReviewFailed) &&
+        !operationSubmissionStarted && approval.isCurrent();
+      // Execution fee review follows a successful funding receipt. A funding
+      // hash cannot stand in for dispatch of the requested operation.
+      const stoppedAfterFunding = canReportUnsent && !!operation?.transactionHash;
+      if (submissionFailure === 'uncertain') message.submissionUncertain = true;
+      if (message.dispatched || message.submissionUncertain || operationSubmissionStarted || (message.broadcastHash && !stoppedAfterFunding)) {
         approval.dispose();
         if (this.requests.get(message.id) === message) {
           message.busy = false;
@@ -3563,6 +3627,25 @@ export class NativeConnectionsController {
         }
         return failure('DELIVERY_UNCERTAIN');
       }
+      if (canReportUnsent) {
+        await this.reportUnsentTransaction(message, approval, stoppedAfterFunding);
+        return;
+      }
+      if ((retryPreparation || submissionFailure === 'retryable') && message.review.kind === 'transaction' &&
+          !message.handoff.isSuspended() && approval.isCurrent() && this.requestConnectionCurrent(message)) {
+        message.prepared = undefined;
+        message.busy = false;
+        if (!retryPreparation) {
+          // The discarded quote no longer limits preparation of a fresh review.
+          clearTimeout(message.timer);
+          message.timer = setTimeout(() => {
+            void this.retireRequest(message);
+          }, Math.max(0, message.requestExpiresAt - Date.now()));
+        }
+        message.review = Object.freeze({ ...message.review, retryPreparation: true, expiresAt: message.requestExpiresAt });
+        this.publish();
+        return;
+      }
       if (isEncryptionRequest(message.request) && this.requestConnectionCurrent(message) && approval.isCurrent()) {
         message.busy = false;
         this.publish();
@@ -3573,6 +3656,7 @@ export class NativeConnectionsController {
   private rejectRequest(id: string): Promise<void> {
     const message = this.requests.get(id);
     if (!message) return Promise.resolve();
+    if (message.review.error === 'TRANSACTION_NOT_SENT' && message.busy) return Promise.resolve();
     if (message.dispatched && this.error === 'DELIVERY_UNCERTAIN')
       this.error = null;
     return this.retireRequest(message);

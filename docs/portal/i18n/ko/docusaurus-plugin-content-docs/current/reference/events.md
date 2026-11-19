@@ -14,7 +14,7 @@ provider를 선택한 뒤 event를 subscribe하세요.
 | `chainChanged` | `window.ethereum` | EVM chain이 변경되었습니다. |
 | `message` | `window.ethereum` | Provider message입니다. |
 
-## Pali wallet notification
+## Pali 알림 {#pali-wallet-notification}
 
 | Event | 의미 |
 | --- | --- |

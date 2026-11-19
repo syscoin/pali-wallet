@@ -37,7 +37,7 @@ const MV2_OPTIONS = {
       48: 'assets/all_assets/favicon-32.png',
       128: 'assets/all_assets/favicon-32.png',
     },
-    default_title: 'Pali Wallet',
+    default_title: 'Pali',
     chrome_style: false,
   },
   background: {
@@ -120,7 +120,7 @@ const MV3_OPTIONS = {
       48: 'assets/all_assets/favicon-32.png',
       128: 'assets/all_assets/favicon-32.png',
     },
-    default_title: 'Pali Wallet',
+    default_title: 'Pali',
   },
   background: {
     service_worker: 'js/background.bundle.js',

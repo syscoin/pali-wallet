@@ -18,7 +18,7 @@
     "message": "モジュール式アカウントを作成し、バリデータを選択し、guardian recoveryとモジュールを管理し、atomic batchを送信できます。"
   },
   "homepage.hero.eyebrow": {
-    "message": "Pali Wallet ドキュメント"
+    "message": "Pali ドキュメント"
   },
   "homepage.hero.title": {
     "message": "EVM、Syscoin UTXO、Bitcoinスタイルアプリ、スマートアカウントのための1つのウォレット画面。"
@@ -33,10 +33,10 @@
     "message": "ユーザーガイド"
   },
   "homepage.layout.title": {
-    "message": "Pali Wallet Docs"
+    "message": "Pali Docs"
   },
   "homepage.layout.description": {
-    "message": "Pali Wallet の開発者、ユーザー、機関向けドキュメント。"
+    "message": "Pali の開発者、ユーザー、機関向けドキュメント。"
   },
   "homepage.flow.title": {
     "message": "適切な連携パスを選ぶ"

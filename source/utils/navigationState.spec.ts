@@ -596,9 +596,70 @@ it.each(['external', 'account', 'network', 'invalid context'])(
     if (reason === 'invalid context')
       state.returnContext = { returnRoute: '//other.test/home' } as any;
     await saveConfirmationReturnState(state);
+    expect(mockStored.currentPath).toBe('/home');
+  }
+);
+
+it.each(['/send/eth', '/send/sys'])(
+  'keeps a newer %s draft through another document’s old review and return',
+  async (path) => {
+    sharedLockManager();
+    const popup = separateDocument();
+    const drafted = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const newer = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const review = reviewState();
+    review.returnContext.returnRoute = path;
+    const state = {
+      ...review,
+      sendDraftId: drafted,
+      returnContext: {
+        ...review.returnContext,
+        state: { ...review.returnContext.state, sendDraftId: drafted },
+      },
+    };
+    await saveConfirmationReturnState(state);
+    expect(mockStored.state.sendDraftId).toBe(drafted);
+    await popup.saveNavigationState(path, undefined, {
+      sendDraftId: newer,
+      formValues: { receiver: 'newer-recipient', amount: '3' },
+    });
+    const saved = JSON.stringify(mockStored);
+    await saveConfirmationReturnState(state);
+    await clearTransactionNavigationState({
+      draftId: drafted,
+      requireDiscard: true,
+      assertCurrent: () => true,
+    });
+    await saveConfirmationReturnState({ ...state, submissionStarted: true });
+    await clearTransactionNavigationState();
+    await saveNavigationState('/home', undefined, {}, undefined, undefined, {
+      draftIds: [],
+    });
+    expect(JSON.stringify(mockStored)).toBe(saved);
+    await clearTransactionNavigationState({
+      draftId: newer,
+      requireDiscard: true,
+      assertCurrent: () => true,
+    });
     expect(mockStored).toBeUndefined();
   }
 );
+
+it('resumes an idle review from its own public fallback after pre-dispatch failure', async () => {
+  const draftId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const state = { ...reviewState(), sendDraftId: draftId };
+  state.returnContext.state.sendDraftId = draftId;
+  await saveConfirmationReturnState(state);
+  await clearTransactionNavigationState({
+    draftId,
+    requireDiscard: true,
+    assertCurrent: () => true,
+  });
+  expect(mockStored.currentPath).toContain('/settings/');
+  await saveConfirmationReturnState(state);
+  expect(mockStored.currentPath).toBe('/send/eth');
+  expect(mockStored.state.sendDraftId).toBe(draftId);
+});
 
 it('transaction cleanup preserves public Policy as-is without refreshing TTL or writing', async () => {
   const caller = publicCaller();

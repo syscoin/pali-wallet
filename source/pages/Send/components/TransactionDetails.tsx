@@ -7,6 +7,7 @@ import { useSelector as useReduxSelector } from 'react-redux';
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
+import { SmartAccountPayerFee } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
@@ -236,12 +237,6 @@ export const TransactionDetailsComponent = (
         )}
       </div>
 
-      {fee.smartAccountFeeQuote && (
-        <p className="pt-2 text-brand-gray200 text-xs">
-          {t('send.smartAccountFeeDetails')}
-        </p>
-      )}
-
       <div className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
         {t(feeLabelKey)}
         <div className="flex text-white text-xs">
@@ -263,6 +258,25 @@ export const TransactionDetailsComponent = (
           </button>
         </div>
       </div>
+
+      {fee.smartAccountFeeQuote && (
+        <>
+          {fee.smartAccountFeeQuote.payerBudget && (
+            <SmartAccountPayerFee
+              address={fee.smartAccountFeeQuote.feePayer.address}
+              budget={fee.smartAccountFeeQuote.payerBudget}
+              currency={activeNetwork.currency}
+            />
+          )}
+          <p className="pt-2 text-brand-gray200 text-xs">
+            {t(
+              fee.smartAccountFeeQuote.payerBudget?.gasTank === false
+                ? 'send.smartAccountFeeReimbursement'
+                : 'send.smartAccountFeeDetails'
+            )}
+          </p>
+        </>
+      )}
 
       <div className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
         {t('send.customNonce')}

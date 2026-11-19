@@ -12,6 +12,7 @@ import {
   createVisualFixture,
   visualFixtureRead,
   VISUAL_FIXTURE_CHAIN_ID,
+  VISUAL_FIXTURE_EXPLORER,
   VISUAL_FIXTURE_RPC,
   VISUAL_FIXTURE_SEED,
 } from '../harness/visualFixture';
@@ -72,8 +73,23 @@ test('ordinary Load more retains readable replaced Activity with its mined winne
     transactionIndex: '0',
     timeStamp: String(timestamp + 1),
   };
+  // A full first explorer page and older history expose ordinary pagination.
+  const explorerPageSize = 30;
+  const olderRows = Array.from({ length: explorerPageSize }, (_, index) => ({
+    ...healthy,
+    hash: `0x${(index + 1).toString(16).padStart(64, '0')}`,
+    from: healthy.to,
+    to: healthy.from,
+    value: '3000000000000000000',
+    nonce: String(explorerPageSize - index - 1),
+    blockNumber: '41',
+    blockHash: `0x${'75'.repeat(32)}`,
+    confirmations: '2',
+    transactionIndex: String(explorerPageSize - index - 1),
+    timeStamp: String(timestamp - 120),
+  }));
   let phase: 'pending' | 'mined' = 'pending';
-  fixture.transactions = [healthy];
+  fixture.transactions = [healthy, ...olderRows];
   const rpcTransaction = (row: any) => ({
     ...row,
     value: `0x${BigInt(row.value).toString(16)}`,
@@ -191,7 +207,7 @@ test('ordinary Load more retains readable replaced Activity with its mined winne
       );
       const originalDetailRead =
         request.method() === 'GET' &&
-        url.origin === 'https://explorer-zk.tanenbaum.io' &&
+        url.origin === VISUAL_FIXTURE_EXPLORER &&
         url.pathname === '/api' &&
         url.searchParams.get('action') === 'gettxinfo' &&
         url.searchParams.get('txhash') === original.hash;
@@ -250,13 +266,11 @@ test('ordinary Load more retains readable replaced Activity with its mined winne
             const rows = fixture.transactions.filter(
               (row) => Number(row.blockNumber) === height
             );
+            const block = rows[0] ?? healthy;
             Object.assign(replies[index].result, {
               number: `0x${height.toString(16)}`,
-              hash: height === 43 ? winner.blockHash : healthy.blockHash,
-              timestamp: `0x${(height === 43
-                ? timestamp + 1
-                : timestamp - 60
-              ).toString(16)}`,
+              hash: block.blockHash,
+              timestamp: `0x${Number(block.timeStamp).toString(16)}`,
               transactions: rows.map((row) =>
                 call.params?.[1] ? rpcTransaction(row) : row.hash
               ),
@@ -286,6 +300,26 @@ test('ordinary Load more retains readable replaced Activity with its mined winne
       const action = url.searchParams.get('action');
       if (action === 'eth_block_number')
         body = { ...body, result: phase === 'pending' ? '0x2a' : '0x2b' };
+      if (
+        action === 'txlist' &&
+        url.searchParams.get('address')?.toLowerCase() ===
+          fixture.address.toLowerCase()
+      ) {
+        const page = Number(url.searchParams.get('page') ?? '1');
+        const offset = Number(
+          url.searchParams.get('offset') ?? explorerPageSize
+        );
+        const rows = fixture.transactions.slice(
+          (page - 1) * offset,
+          page * offset
+        );
+        body = {
+          ...body,
+          status: rows.length ? '1' : '0',
+          message: rows.length ? 'OK' : 'No transactions found',
+          result: rows,
+        };
+      }
       if (action === 'pendingtxlist') {
         const rows = phase === 'pending' ? [original] : [];
         body = {
@@ -373,9 +407,11 @@ test('ordinary Load more retains readable replaced Activity with its mined winne
           chainId: VISUAL_FIXTURE_CHAIN_ID,
           url: VISUAL_FIXTURE_RPC,
         });
-        expect(scope.rows.map((row: any) => row.hash).sort()).toEqual(
-          [original.hash, healthy.hash].sort()
+        const hashes = scope.rows.map((row: any) => row.hash);
+        expect(hashes).toEqual(
+          expect.arrayContaining([original.hash, healthy.hash])
         );
+        expect(hashes).not.toContain(olderRows[olderRows.length - 1].hash);
         const pending = scope.rows.find(
           (row: any) => row.hash === original.hash
         );
@@ -406,20 +442,28 @@ test('ordinary Load more retains readable replaced Activity with its mined winne
         await expect(loadMore).toBeVisible({ timeout: 5000 });
         await expect(loadMore).toBeEnabled({ timeout: 5000 });
         phase = 'mined';
-        fixture.transactions = [winner, healthy];
+        fixture.transactions = [winner, healthy, ...olderRows];
         await loadMore.click();
         await expect
           .poll(() =>
-            [1, 2].every((n) =>
-              audit.pages.some(
-                (read) =>
-                  read.phase === 'mined' &&
-                  read.action === 'txlist' &&
-                  Number(read.page) === n
-              )
+            audit.pages.filter(
+              (read) => read.phase === 'mined' && read.action === 'txlist'
             )
           )
-          .toBe(true);
+          .toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                page: '1',
+                hashes: expect.arrayContaining([winner.hash, healthy.hash]),
+              }),
+              expect.objectContaining({
+                page: '2',
+                hashes: olderRows
+                  .slice(explorerPageSize - 2)
+                  .map((row) => row.hash),
+              }),
+            ])
+          );
         await expect(
           page
             .locator('#activity-panel-list')
@@ -429,12 +473,7 @@ test('ordinary Load more retains readable replaced Activity with its mined winne
         // Pagination extras coexist with the genuine older pending base; they
         // have not been fabricated in Redux. A full refresh winning this race
         // must fail this admission test rather than being hidden by a fixture.
-        expect(scope.rows.map((row: any) => row.hash).sort()).toEqual(
-          [original.hash, healthy.hash].sort()
-        );
-        expect(scope.rows.some((row: any) => row.hash === winner.hash)).toBe(
-          false
-        );
+        expect(scope.rows).toEqual((evidence.admitted as typeof scope).rows);
         evidence.paged = scope;
       }
     );

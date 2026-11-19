@@ -28,7 +28,7 @@ Review the checks and findings for the exact candidate commit. Complete the brow
 
 Promote the tested artifact and retain its source revision and build receipt. Store submission, approval and rollout are separate from creating a GitHub release. Canary and production use separate store items; do not upload a Canary build to the production item.
 
-The Canary item is `ogkamgifjlkfkjekifikgpmlkkmcabpk`; production is `mgffkfbidihjpoaomajlbgchddlicgpn`. Canary packages have an amber C icon, a Canary label in the wallet, and a separate dapp-wallet identity. Update checks use the matching store item and release feed. Unpacked builds do not receive Store update notices.
+Unpacked Canary builds use `eaapkkbcdfhchkhgkmgimhihepifmehi` so Chrome preserves the wallet storage for that ID across builds. The Chrome Web Store Canary item is `ogkamgifjlkfkjekifikgpmlkkmcabpk`, and the production item is `mgffkfbidihjpoaomajlbgchddlicgpn`. Store upload ZIPs omit the manifest key. Canary packages have an amber C icon, a Canary label in the wallet, and a separate dapp-wallet identity. Store installations use the matching store item and release feed for updates.
 
 ## Other browser targets
 

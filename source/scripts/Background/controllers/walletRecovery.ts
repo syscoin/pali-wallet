@@ -233,7 +233,7 @@ const identity = (context: WalletRecoveryContext): RecoveryIdentity => {
   };
 };
 
-const assertMatchingSeed = (phrase: string, expected: RecoveryIdentity) => {
+const seedMatchesIdentity = (phrase: string, expected: RecoveryIdentity) => {
   if (expected.network.kind === 'ethereum') {
     const seed = mnemonicToSeedSync(phrase);
     try {
@@ -248,15 +248,13 @@ const assertMatchingSeed = (phrase: string, expected: RecoveryIdentity) => {
       const address = getAddress(
         dataSlice(keccak256(dataSlice(publicKey, 1)), 12)
       );
-      if (
-        address.toLowerCase() !== expected.account.address.toLowerCase() ||
-        publicKey.toLowerCase() !== expected.account.xpub.toLowerCase()
-      )
-        throw new Error('Recovery phrase does not match this wallet');
+      return (
+        address.toLowerCase() === expected.account.address.toLowerCase() &&
+        publicKey.toLowerCase() === expected.account.xpub.toLowerCase()
+      );
     } finally {
       seed.fill(0);
     }
-    return;
   }
   if (expected.network.kind !== 'syscoin')
     throw new Error('Saved HD account network is unavailable for recovery');
@@ -278,8 +276,7 @@ const assertMatchingSeed = (phrase: string, expected: RecoveryIdentity) => {
     },
   });
   hd.createAccountAtIndex(expected.account.id, 84);
-  if (hd.getAccountXpub() !== expected.account.xpub)
-    throw new Error('Recovery phrase does not match this wallet');
+  return hd.getAccountXpub() === expected.account.xpub;
 };
 
 const assertLocked = (wallet: RecoveryHost, reset = false) => {
@@ -734,12 +731,14 @@ export const runWalletSetup = async (
       );
     if (typeof phrase !== 'string' || !wallet.isSeedValid(phrase))
       throw new Error('Invalid recovery phrase');
+    let matches: boolean;
     try {
-      assertMatchingSeed(phrase, ticket.identity);
+      matches = seedMatchesIdentity(phrase, ticket.identity);
     } catch {
       // Vendor validation errors can include their input; never return/log it.
-      throw new Error('Recovery phrase does not match this wallet');
+      throw new Error('Saved wallet identity could not be verified');
     }
+    if (!matches) throw new Error('Recovery phrase does not match this wallet');
     if (JSON.stringify(identity(context)) !== JSON.stringify(ticket.identity))
       throw new Error('Wallet account changed before recovery');
 

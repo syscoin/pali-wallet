@@ -12,6 +12,7 @@ import {
   type KeyringRuntime,
 } from '../src/custody/keyringRuntime.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -36,7 +37,7 @@ const TOKEN = {
 const word = (value: bigint | number) =>
   `0x${BigInt(value).toString(16).padStart(64, '0')}`;
 
-test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry identical bytes after cold restart', async () => {
+test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retain the token intent after cold restart', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-erc20-send-'));
   const file = path.join(directory, 'wallet.sqlite');
   const originalFetch = globalThis.fetch;
@@ -49,6 +50,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
   let runtime: KeyringRuntime | undefined;
   let authority: NativeCustodyAuthority | undefined;
   let transfers: NativeTransfers | undefined;
+  let rpc: NativeTransferRpc;
   const sent: string[] = [];
   const values = {
     tokens: 10000n,
@@ -63,6 +65,23 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     finalized: false,
   };
   const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+    async loadSdk() {
+      const sdk = await loadNativeKeyringSdk();
+      class LegacySignedRecordKeyring extends sdk.HostKeyring {
+        constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
+          super(...args);
+          Object.defineProperty(this.ethereumTransaction, 'supportsRetainedSpeedUpIntent', { value: false });
+        }
+      }
+      return { ...sdk, HostKeyring: LegacySignedRecordKeyring };
+    },
+    async observeActivity(_network, expected, signal, assertCurrent) {
+      assertCurrent();
+      const { hash, from, to, nonce } = expected;
+      const observation = await rpc.observation({ hash, from, to, nonce }, signal);
+      assertCurrent();
+      return observation;
+    },
     async ensureCryptoReady() {
       assert.ok(globalThis.crypto.subtle);
     },
@@ -85,7 +104,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
       },
     });
     await authority.initialize();
-    const rpc = new NativeTransferRpc({ networkId: 'ethereum',
+    rpc = new NativeTransferRpc({ networkId: 'ethereum',
       fetch: async function fetchFixture(_url, init): Promise<Response> {
         const request = JSON.parse(String(init.body));
         if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetchFixture(_url, { ...init, body: JSON.stringify(row) })).json())));
@@ -225,6 +244,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     await transfers!.prepareToken(CONTRACT, RECIPIENT, '1.23');
     await transfers!.confirm(transfers!.getSnapshot().review!.id, { method: 'device' });
     assert.equal(transfers!.getSnapshot().phase, 'unknown');
+    assert.equal(sent.length, 1, JSON.stringify(transfers!.getSnapshot()));
     const raw = sent[0]!;
     const hash = keccak256(raw);
     assert.equal(Transaction.from(raw).to, CONTRACT);
@@ -261,9 +281,10 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     await authority!.dispose();
     await open();
     await authority!.unlock();
-    await transfers!.recover(true);
-    assert.equal(transfers!.getSnapshot().review!.intent!.token.decimals, 2);
-    assert.equal(transfers!.getSnapshot().review!.intent!.amountUnits, '123');
+    const activity = runtime!.activity!;
+    const retained = (await activity.load(() => undefined)).locals.find(row => row.hash === hash);
+    assert.equal(retained?.token?.decimals, 2);
+    assert.equal(retained?.amountUnits, '123');
     const identity = await storage!.recovery!.readIdentity();
     const profile = identity!.root!.profileId;
     const saved = (await storage!.signedRecords.read(profile))!;
@@ -271,18 +292,12 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     tampered.entries[0].metadata.intent.token.decimals = 3;
     const changed = JSON.stringify(tampered);
     assert.equal(await storage!.signedRecords.compareAndSet(profile,saved,changed,()=>undefined),true);
-    await assert.rejects(transfers!.confirm(transfers!.getSnapshot().review!.id, { method: 'device' }));
+    await assert.rejects(activity.load(() => undefined));
     assert.equal(sent.length, 1);
     assert.equal(await storage!.signedRecords.read(profile),changed);
     assert.equal(await storage!.signedRecords.compareAndSet(profile,changed,saved,()=>undefined),true);
     if(authority!.getSnapshot().phase!=='ready')await authority!.unlock();
-    await transfers!.recover(true);
     values.loseResponse = false;
-    await transfers!.confirm(transfers!.getSnapshot().review!.id, { method: 'device' });
-    assert.equal(sent.length, 2);
-    assert.equal(sent[1], raw);
-    assert.equal(transfers!.getSnapshot().hash, hash);
-    assert.equal(transfers!.getSnapshot().phase, 'pending');
     await transfers!.prepareSpeedUp(hash);
     let replacement = transfers!.getSnapshot().review!;
     assert.equal(replacement.replacement?.mode, 'speed-up');
@@ -290,13 +305,13 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     assert.equal(replacement.intent!.token.decimals, 2);
     values.tokens = 122n;
     await assert.rejects(transfers!.confirm(replacement.id, { method: 'device' }), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
-    assert.equal(sent.length, 2);
+    assert.equal(sent.length, 1);
     values.tokens = 10000n;
     await transfers!.prepareSpeedUp(hash);
     replacement = transfers!.getSnapshot().review!;
     await transfers!.confirm(replacement.id, { method: 'device' });
-    assert.equal(sent.length, 3);
-    const bumped = Transaction.from(sent[2]!);
+    assert.equal(sent.length, 2);
+    const bumped = Transaction.from(sent[1]!);
     assert.equal(bumped.data, Transaction.from(raw).data);
     assert.equal(bumped.nonce, Transaction.from(raw).nonce);
     assert.equal(bumped.to, CONTRACT);
@@ -304,11 +319,12 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     const records = JSON.parse((await storage!.signedRecords.read(profile))!).entries;
     assert.equal(records[1].originalHash, hash);
     assert.equal(records[1].operation, 'speed-up');
+    const replacementRow = (await activity.load(() => undefined)).locals.find(row => row.hash === bumped.hash);
+    assert(replacementRow);
     values.finalized = true;
-    await transfers!.recover();
-    assert.equal(transfers!.getSnapshot().phase, 'confirmed');
-    assert.match(transfers!.getSnapshot().message!, /Transaction confirmed/);
-    assert.match(transfers!.getSnapshot().message!, /Check the token balance/);
+    const observation = await activity.observeLocal!(replacementRow, () => undefined, new AbortController().signal);
+    assert.equal(observation.status === 'mined' && observation.outcome, 'confirmed');
+    assert.equal((await activity.load(() => undefined)).locals.find(row => row.hash === bumped.hash)?.phase, 'confirmed');
     assert.equal(networkLeaks, 0);
   } finally {
     transfers?.dispose();

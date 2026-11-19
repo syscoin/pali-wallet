@@ -4,6 +4,7 @@ import { getSLHDSAKeyId } from '../../../../source/utils/slhDsa/constants.ts';
 import { normalizeSLHDSAPublicKeyField } from '../../../../source/utils/slhDsa/hex.ts';
 import { decodeStorageValue } from '../storage/json.ts';
 import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
+import { supportsRetainedSpeedUpIntent } from './sharedSignedRecords.ts';
 import { createNativeCredentialVault, settleNativeCredentialRemoval, snapshotAfterNativeCredentialCleanup, type NativeCredentialPort, type NativeCredentialReference } from './credentialVault.ts';
 import { createNativePublicSessionRecord, type NativePublicSessionRecord } from './publicSession.ts';
 import { readNativeSlhPublicStates } from '../smartAccount/slhDsaRuntime.ts';
@@ -253,6 +254,7 @@ export class NativeRecoveryCoordinator {
                 try { await reader.validate({ keyring, assertCurrent: check }); check(); }
                 catch { check(); return fail('INVALID_SAVED_DATA'); }
               }
+              let hasUnsignedRecords = false;
               if (before.signedRecords.length) {
                 const row = before.signedRecords[0]!;
                 if (before.signedRecords.length !== 1 || row.profileId !== profileId ||
@@ -266,8 +268,13 @@ export class NativeRecoveryCoordinator {
                   read: async (profile: string) => { check(); return profile === profileId ? captured : fail('INVALID_SAVED_DATA'); },
                   compareAndSet: async () => fail('INVALID_SAVED_DATA'),
                 };
-                try { await new EvmSignedRecords(snapshot).validate({ keyring, assertCurrent: check }); check(); }
-                catch { check(); return fail('INVALID_SAVED_DATA'); }
+                try {
+                  await new EvmSignedRecords(snapshot).validate({ keyring, assertCurrent: check }); check();
+                  // The authenticated bundle, rather than the public checkpoint being replaced,
+                  // determines which retained encryption domains must survive recovery.
+                  const bundle = JSON.parse(captured) as { entries: readonly { payloadKind?: string }[] };
+                  hasUnsignedRecords = bundle.entries.some(entry => entry.payloadKind === 'unsigned-eoa');
+                } catch { check(); return fail('INVALID_SAVED_DATA'); }
               }
         if (before.notes.length) {
                 const { readPrivateVaultBundle } = await import('../../../../source/wallet/privateVaultInspection.ts'); check();
@@ -283,7 +290,7 @@ export class NativeRecoveryCoordinator {
                 .map(row => ({ key: row.key, value: decodeStorageValue(row.value) })), keyring, check);
               publicSession = await createNativePublicSessionRecord(keyring, nextRecords, {
                 ...before.identity!, pairFingerprint, root: { address: expectedRoot.address, publicKey: expectedRoot.xpub.toLowerCase(), profileId },
-              }, publicStates, publicKey!, check);
+              }, publicStates, publicKey!, check, hasUnsignedRecords || supportsRetainedSpeedUpIntent(keyring.ethereumTransaction) ? 2 : 1);
               check();
             },
           }

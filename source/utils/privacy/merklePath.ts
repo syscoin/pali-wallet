@@ -1,4 +1,6 @@
 import {
+  advanceMerkleWork,
+  createMerkleWork,
   FIELD_SIZE,
   getMerkleZero,
   hashPair,
@@ -60,6 +62,31 @@ export function recordMerkleSubtree(
   )
     throw unavailable();
   index.levels[level - MERKLE_PATH_CACHE_LEVEL]![nodeIndex] = root;
+}
+
+/**
+ * Rebuild a completed prefix from verified subtrees and its bounded right edge.
+ * Callers still compare the returned root to the independently chosen anchor.
+ */
+export function getMerklePrefixWork(
+  index: MerklePathIndex,
+  prefix: string[]
+): MerkleWork {
+  checkIndex(index);
+  const work = createMerkleWork();
+  work.nextIndex = Math.floor(prefix.length / BLOCK_LEAVES) * BLOCK_LEAVES;
+  for (let level = MERKLE_PATH_CACHE_LEVEL; level <= TREE_DEPTH; level++) {
+    const count = Math.floor(work.nextIndex / 2 ** level);
+    if (count % 2) {
+      const node = index.levels[level - MERKLE_PATH_CACHE_LEVEL]![count - 1];
+      if (!word(node)) throw unavailable();
+      work.frontier[level] = node;
+    }
+  }
+  do {
+    advanceMerkleWork(work, prefix);
+  } while (!work.complete);
+  return work;
 }
 
 /**

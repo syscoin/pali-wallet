@@ -1,5 +1,6 @@
 import { deviceAuthorizationPrompt } from './operationAuthentication';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import en from '../../../../source/assets/locales/en.json';
 
 const baseURL = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179';
 const recipient = `0x${'11'.repeat(20)}`;
@@ -309,8 +310,8 @@ test('unknown result offers status without a duplicate confirmation', async ({
   ).toBeVisible();
   await page.getByRole('button', { name: /1 ETH pool/ }).click();
   await expect(
-    page.getByRole('button', { name: 'View withdrawal status', exact: true })
-  ).toBeVisible();
+    page.getByRole('button', { name: 'Withdraw', exact: true })
+  ).toBeDisabled();
 });
 
 for (const [observation, heading] of [
@@ -422,7 +423,6 @@ test('restored provenance uses only the ordinary withdrawal review and confirmat
   await expect(page.getByRole('button',{name:'Review restored note',exact:true})).toHaveCount(0);
   await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   await prepare(page);
-  await expect(page.getByText('Any earlier withdrawal may still complete. Continuing does not cancel it, and a competing transaction may fail and cost fees.')).toBeVisible();
   expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(0);
   await page.getByRole('button',{name:'Confirm withdrawal',exact:true}).click();
   expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(1);
@@ -528,7 +528,7 @@ test('proven-unsent failure needs a fresh review before another confirmation', a
   ).toHaveLength(1);
 });
 
-test('saved withdrawal history remains visible and fresh verified pool status allows a competing review', async ({
+test('saved withdrawal status remains visible and a fresh pool check enables the normal confirmation', async ({
   page,
 }) => {
   await page.goto('/?private-withdrawal&history');
@@ -551,11 +551,42 @@ test('saved withdrawal history remains visible and fresh verified pool status al
     await page.evaluate(() => window.__privateWithdrawalFixture.events())
   ).not.toContain('note:status');
   await page.getByRole('button',{name:'Check status',exact:true}).click();
+  await expect(page.getByText('Relayer reports FAILED. This does not confirm that the note is spent.')).toBeVisible();
   await prepare(page);
-  await expect(page.getByText('Previous withdrawals',{exact:true})).toBeVisible();
+  await expect(page.getByText('Previous withdrawals', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Submit competing withdrawal', exact: true })).toHaveCount(0);
   expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(0);
-  await page.getByRole('button',{name:'Submit competing withdrawal',exact:true}).click();
+  await page.getByRole('button',{name:'Confirm withdrawal',exact:true}).click();
   expect((await page.evaluate(()=>window.__privateWithdrawalFixture.events())).filter(event=>event.startsWith('confirm:'))).toHaveLength(1);
+});
+
+test('a relayer outage keeps the earlier submission and inline notice during review', async ({
+  page,
+}) => {
+  await page.goto('/?private-withdrawal&history&relayer-outage');
+  await page.getByRole('button', { name: /1 ETH pool/ }).click();
+  await page
+    .getByRole('button', { name: 'View withdrawal status', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Check status', exact: true }).click();
+
+  const notice = page.getByText(en.privacy.withdrawal.previousStatusUnavailable, {
+    exact: true,
+  });
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveCSS('color', 'rgb(237, 197, 140)');
+  await prepare(page);
+
+  await expect(
+    page.getByRole('button', { name: 'Confirm withdrawal', exact: true })
+  ).toBeEnabled();
+  await expect(notice).toBeInViewport();
+  await expect(page.getByText('saved-relayer-job', { exact: true })).toBeVisible();
+  await expect(page.getByText(`0x${'ab'.repeat(32)}`, { exact: true })).toBeVisible();
+  expect(
+    (await page.evaluate(() => window.__privateWithdrawalFixture.events()))
+      .filter((event) => event.startsWith('confirm:'))
+  ).toHaveLength(0);
 });
 
 test('a spent saved note retains status and does not offer a withdrawal', async ({
@@ -570,4 +601,16 @@ test('a spent saved note retains status and does not offer a withdrawal', async 
   await expect(
     page.getByRole('button', { name: 'Withdraw', exact: true })
   ).toHaveCount(0);
+});
+
+
+test('pending local withdrawal Activity keeps ordinary Withdraw disabled after a fresh pool check', async ({ page }) => {
+  await page.goto('/?private-withdrawal&pending-history');
+  await page.getByRole('button', { name: /1 ETH pool/ }).click();
+  await expect(page.getByText(en.privacy.withdrawal.pendingActivity, { exact: true })).toBeVisible();
+  const withdraw = page.getByRole('button', { name: 'Withdraw', exact: true });
+  await expect(withdraw).toBeDisabled();
+  await page.getByRole('button', { name: 'Check pool status', exact: true }).click();
+  await expect(withdraw).toBeDisabled();
+  expect(await page.evaluate(() => window.__privateWithdrawalFixture.events())).toContain('note:status');
 });

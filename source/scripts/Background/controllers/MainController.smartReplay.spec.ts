@@ -41,8 +41,8 @@ import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
 import { notificationManager } from '..';
+import { EVM_ACTIVITY_CURSOR_STALE } from '../../../shared/evmHistory';
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
-import * as privateReplay from '../../../wallet/privateNoteReplay';
 import {
   decodeRetainedSmartAccountOperations,
   decodeSmartAccountOperations,
@@ -55,6 +55,7 @@ import {
 } from 'utils/smartAccount/contracts';
 import { getSmartAccountUserOpHash } from 'utils/smartAccount/userOperationHash';
 
+import { ReceiptBalanceRefresh } from './balances/ReceiptBalanceRefresh';
 import MainController from './MainController';
 import { CancellablePromises } from './promises/cancellablesPromises';
 import SmartAccountController from './smartAccount';
@@ -309,26 +310,316 @@ async function fixture(
     rawTransaction,
     hash: tx.hash!,
     predecessor,
+    operation,
   };
 }
 
-it('finds metadata-free Smart operations and replays exact bytes through the recorded local payer', async () => {
+it('identifies missing transaction and authorization page anchors without classifying journal reads as corrupt', async () => {
   const f = await fixture();
-  const page = await f.wallet.getSavedEvmTransactions();
-  expect(page.transactions).toHaveLength(1);
-  expect(page.transactions[0].smartAccount.account.toLowerCase()).toBe(smart);
-  const saved = await f.wallet.getSavedEvmTransaction(f.hash);
-  expect(saved.smartAccount.transfer).toMatchObject({
-    recipient,
-    amountUnits: '9',
-  });
-  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-  expect(prepared.status).toBe('review');
-  expect(prepared.review.from.toLowerCase()).toBe(payer.address.toLowerCase());
+  const options = { beforeHash: blockHash, maximum: 20 };
   await expect(
-    f.wallet.confirmEvmSignedReplay(prepared.review.id)
-  ).resolves.toMatchObject({ status: 'submitted', hash: f.hash });
-  expect(f.broadcasts).toEqual([f.rawTransaction]);
+    f.records.readPage(f.session, '1', payer.address, options)
+  ).rejects.toThrow(EVM_ACTIVITY_CURSOR_STALE);
+  await expect(
+    f.records.readSmartAccountReplayPage(f.session, '1', smart, options)
+  ).rejects.toThrow(EVM_ACTIVITY_CURSOR_STALE);
+  await expect(
+    f.records.listSmartAccountAuthorizations(f.session, '1', smart, options)
+  ).rejects.toThrow(EVM_ACTIVITY_CURSOR_STALE);
+});
+
+it('only offers cancellation while the authenticated inner nonce is current and unrevoked', async () => {
+  const f = await fixture();
+  const scope = { account: '1', network: mockState.vault.activeNetwork.url };
+  const canCancel = () =>
+    f.wallet.canCancelSavedSmartAccountTransaction(f.hash, scope);
+  let liveNonce = 7;
+  const send = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method !== 'eth_call') return send(method, params);
+    const [address, key] = paliEntryPointInterface.decodeFunctionData(
+      'getNonce',
+      (params[0] as { data: string }).data
+    );
+    expect(address.toLowerCase()).toBe(smart);
+    expect(key).toBe(BigInt(0));
+    expect(params[1]).toBe('latest');
+    return '0x' + liveNonce.toString(16).padStart(64, '0');
+  });
+  await expect(canCancel()).resolves.toBe(true);
+  liveNonce = 8;
+  await expect(canCancel()).resolves.toBe(false);
+  liveNonce = 6;
+  await expect(canCancel()).resolves.toBe(false);
+  liveNonce = 7;
+  const revocation = encodeERC7579Executions([{ target: smart, value: '0' }]);
+  const originalOperationHash = getSmartAccountUserOpHash(
+    f.operation as any,
+    1
+  );
+  const userOperation = {
+    ...f.operation,
+    callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+      revocation.mode,
+      revocation.executionCalldata,
+    ]),
+    nonce: '7',
+    preVerificationGas: String(f.operation.preVerificationGas),
+  };
+  const { operationHash } = await f.records.retainSmartAccountAuthorization(
+    f.session,
+    {
+      chainId: 1,
+      payer: payer.address,
+      observedAt: { number: '16', hash: blockHash },
+      replacesOperationHash: originalOperationHash,
+      userOperation,
+    }
+  );
+  await expect(canCancel()).resolves.toBe(false);
+
+  const entryPoint = getPaliEntryPointAddress(1);
+  const rawTransaction = await payer.signTransaction({
+    chainId: 1,
+    nonce: 1,
+    type: 0,
+    gasPrice: 2,
+    gasLimit: 300000,
+    to: entryPoint,
+    data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+      [userOperation],
+      payer.address,
+    ]),
+  });
+  const hash = Transaction.from(rawTransaction).hash!;
+  await f.records.append(
+    f.session,
+    {
+      rawTransaction,
+      hash,
+      from: payer.address,
+      chainId: '1',
+      nonce: 1,
+      type: 0,
+      context: {
+        account: { id: 0, type: 'HDAccount', address: payer.address },
+        network: mockState.vault.activeNetwork,
+        operation: 'send',
+      },
+    },
+    {
+      smartAccountExecution: true,
+      smartAccountExecutionFrom: smart,
+      smartAccountOperationCancellation: {
+        account: smart,
+        chainId: '1',
+        originalHash: f.hash,
+        originalKind: 'transaction',
+        originalOperationHash,
+        operationHash,
+        operationNonce: '7',
+      },
+    }
+  );
+  const canRetry = () =>
+    f.wallet.canCancelSavedSmartAccountTransaction(hash, scope, true);
+  expect((await f.wallet.getSavedEvmTransactions()).transactions).toMatchObject(
+    [
+      {
+        hash,
+        smartAccount: {
+          cancellationRetry: {
+            originalHash: f.hash,
+            operationHash: originalOperationHash,
+          },
+        },
+      },
+    ]
+  );
+  await expect(canRetry()).resolves.toBe(false);
+  const withNonce = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation((method, params) =>
+    method === 'eth_getTransactionReceipt'
+      ? (Promise.resolve({
+          transactionHash: hash,
+          from: payer.address,
+          to: entryPoint,
+          blockNumber: '0x10',
+          blockHash,
+          status: '0x0',
+        }) as any)
+      : withNonce(method, params)
+  );
+  await expect(canRetry()).resolves.toBe(true);
+  await expect(canCancel()).resolves.toBe(false);
+  liveNonce = 8;
+  await expect(canRetry()).resolves.toBe(false);
+  liveNonce = 6;
+  await expect(canRetry()).resolves.toBe(false);
+  expect(f.broadcasts).toEqual([]);
+});
+
+it('projects only the unresolved Smart Account authorization without an outer transaction', async () => {
+  const f = await fixture();
+  const retain = (nonce: number) =>
+    f.records.retainSmartAccountAuthorization(f.session, {
+      chainId: 1,
+      payer: payer.address,
+      observedAt: { number: '16', hash: blockHash },
+      userOperation: {
+        ...f.operation,
+        nonce: String(nonce),
+        preVerificationGas: String(f.operation.preVerificationGas),
+      },
+    });
+  await retain(7); // The existing signed outer already contains this operation.
+  const pending = await retain(9);
+  const consumed = await retain(8);
+  const revocation = encodeERC7579Executions([{ target: smart, value: '0' }]);
+  await f.records.retainSmartAccountAuthorization(f.session, {
+    chainId: 1,
+    payer: payer.address,
+    observedAt: { number: '16', hash: blockHash },
+    replacesOperationHash: pending.operationHash,
+    userOperation: {
+      ...f.operation,
+      callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+        revocation.mode,
+        revocation.executionCalldata,
+      ]),
+      nonce: '9',
+      preVerificationGas: String(f.operation.preVerificationGas),
+    },
+  });
+  let chainNonce = 9;
+  const send = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_call') {
+      expect(params[1]).toBe('latest');
+      return '0x' + chainNonce.toString(16).padStart(64, '0');
+    }
+    return send(method, params);
+  });
+
+  const page = await f.wallet.getSavedEvmTransactions();
+  expect(page.transactions.map((tx: { hash: string }) => tx.hash)).toEqual([
+    f.hash,
+  ]);
+  expect(page.signedOperations).toEqual([
+    {
+      account: smart,
+      chainId: '1',
+      createdAt: 1000,
+      operationHash: pending.operationHash,
+      status: 'unresolved',
+    },
+  ]);
+  expect(page.signedOperations[0]).not.toHaveProperty('hash');
+  expect(pending.operationHash).not.toBe(consumed.operationHash);
+  const nonceReads = () =>
+    f.provider.send.mock.calls.filter(([method]) => method === 'eth_call');
+  expect(nonceReads()).toHaveLength(1);
+  expect(f.broadcasts).toEqual([]);
+
+  chainNonce = 10;
+  await expect(f.wallet.getSavedEvmTransactions()).resolves.not.toHaveProperty(
+    'signedOperations'
+  );
+  expect(nonceReads()).toHaveLength(2);
+
+  mockState.vault.accounts.SmartAccount[1].evmActivityClearedAtByChainId = {
+    1: 1000,
+  };
+  await expect(f.wallet.getSavedEvmTransactions()).resolves.toEqual({
+    transactions: [],
+    nextCursor: null,
+  });
+  expect(nonceReads()).toHaveLength(2);
+});
+
+it('shows an older unresolved operation behind a full page of consumed authorizations', async () => {
+  const f = await fixture();
+  const retain = (nonce: bigint) =>
+    f.records.retainSmartAccountAuthorization(f.session, {
+      chainId: 1,
+      payer: payer.address,
+      observedAt: { number: '16', hash: blockHash },
+      userOperation: {
+        ...f.operation,
+        nonce: nonce.toString(),
+        preVerificationGas: String(f.operation.preVerificationGas),
+      },
+    });
+  const olderNonce = (BigInt(1) << BigInt(64)) + BigInt(9);
+  const older = await retain(olderNonce);
+  for (let sequence = 10; sequence < 45; sequence++)
+    await retain(BigInt(sequence));
+  const send = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method !== 'eth_call') return send(method, params);
+    const [, key] = paliEntryPointInterface.decodeFunctionData(
+      'getNonce',
+      (params[0] as { data: string }).data
+    );
+    const nonce = BigInt(key) === BigInt(1) ? olderNonce : BigInt(45);
+    return '0x' + nonce.toString(16).padStart(64, '0');
+  });
+
+  const page = await f.wallet.getSavedEvmTransactions();
+  expect(page.signedOperations).toEqual([
+    expect.objectContaining({
+      operationHash: older.operationHash,
+      status: 'unresolved',
+    }),
+  ]);
+  expect(
+    f.provider.send.mock.calls.filter(([method]) => method === 'eth_call')
+  ).toHaveLength(2);
+});
+
+it('keeps payer records while honoring the selected Smart Account activity reset', async () => {
+  const f = await fixture();
+  const { activeAccount, accounts } = mockState.vault;
+  const account = accounts[activeAccount.type][activeAccount.id];
+  const retained = await f.records.readExact(
+    f.session,
+    '1',
+    payer.address,
+    f.hash
+  );
+  expect(retained).not.toBeNull();
+  account.evmActivityClearedAtByChainId = { 1: retained!.createdAt - 1 };
+  const scope = {
+    account: String(activeAccount.id),
+    network: mockState.vault.activeNetwork.url,
+  };
+  await expect(
+    f.wallet.getSavedEvmTransactions(null, 30, {
+      ...scope,
+      account: 'another-account',
+    })
+  ).rejects.toThrow();
+  await expect(
+    f.wallet.getSavedEvmTransaction(f.hash, {
+      ...scope,
+      network: 'another-endpoint',
+    })
+  ).rejects.toThrow();
+  expect(
+    (await f.wallet.getSavedEvmTransactions(null, 30, scope)).transactions
+  ).toHaveLength(1);
+  expect(await f.wallet.getSavedEvmTransaction(f.hash)).toMatchObject({
+    hash: f.hash,
+  });
+  account.evmActivityClearedAtByChainId[1] = retained!.createdAt;
+  expect(await f.wallet.getSavedEvmTransaction(f.hash)).toBeNull();
+  expect(await f.wallet.getSavedEvmTransactions()).toEqual({
+    transactions: [],
+    nextCursor: null,
+  });
+  expect(
+    await f.records.readExact(f.session, '1', payer.address, f.hash)
+  ).toEqual(retained);
 });
 
 async function settleReplay(
@@ -618,6 +909,76 @@ it('does not give a native recipient the outcome of an unrelated originating ope
   ).toBe('0');
 });
 
+it('settles the local Smart Account Activity row and balance when explorer history rejects', async () => {
+  const f = await fixture();
+  const { vault } = mockState;
+  vault.activeNetwork.apiUrl = 'https://explorer.invalid';
+  vault.accounts.SmartAccount[1].balances = { ethereum: '0.07429548' };
+  vault.accountAssets = {};
+  await saveNativeRecipientCopies(f, 'HDAccount');
+  await settleReplay(f, 'confirmed');
+
+  const historyError = new Error('Explorer unavailable');
+  const receiptProvider = {
+    send: async (method: string) => {
+      expect(method).toBe('eth_blockNumber');
+      return '0xc';
+    },
+    getBalance: jest.fn(async () => BigInt('15226800000000000')),
+  };
+  const receiptBalanceRefresh = new ReceiptBalanceRefresh();
+  delete f.wallet.refreshBalancesAfterReceipt;
+  Object.assign(f.wallet, {
+    transactionUpdateRequestId: 0,
+    transactionUpdateCommitId: 0,
+    cancellablePromises: new CancellablePromises(),
+    transactionsManager: {
+      utils: {
+        updateTransactionsFromCurrentAccount: jest.fn(async () => {
+          throw historyError;
+        }),
+      },
+    },
+    receiptBalanceRefresh,
+    targetedBalanceVersions: new Map(),
+    targetedBalanceEvictions: 0,
+    withReceiptReadProvider: async (
+      _signal: AbortSignal,
+      _network: unknown,
+      read: (provider: typeof receiptProvider) => Promise<void>
+    ) => read(receiptProvider),
+  });
+  const senderRow = () =>
+    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
+  expect(senderRow().blockNumber).toBeFalsy();
+
+  jest.useFakeTimers();
+  try {
+    await expect(
+      f.wallet.updateUserTransactionsState({
+        isBitcoinBased: false,
+        activeNetwork: mockState.vault.activeNetwork,
+        isPolling: true,
+      })
+    ).rejects.toBe(historyError);
+    expect(senderRow()).toMatchObject({
+      blockNumber: 12,
+      blockHash,
+      status: 'success',
+      success: true,
+    });
+    await jest.advanceTimersByTimeAsync(100);
+    expect(receiptProvider.getBalance).toHaveBeenCalledWith(smart, 12);
+    expect(mockState.vault.accounts.SmartAccount[1].balances.ethereum).toBe(
+      '0.0152268'
+    );
+    expect(f.broadcasts).toEqual([]);
+  } finally {
+    receiptBalanceRefresh.cancel();
+    jest.useRealTimers();
+  }
+});
+
 it.each(['forceRefresh', 'bypassCompletedCache'] as const)(
   'rechecks a recipient after logs recover on explicit %s while routine polling respects cooldown',
   async (refreshOption) => {
@@ -696,85 +1057,59 @@ it.each(['endpoint', 'account'] as const)(
   }
 );
 
-it.each([
-  'confirmed',
-  'reverted',
-  'missing',
-  'wrong-operation',
-  'duplicate',
-  'missing-calldata',
-  'empty-calldata',
-  'contradictory-calldata',
-] as const)(
-  'uses the exact canonical inner outcome (%s) when ordinary receipt reconciliation resumes after replay',
-  async (outcome) => {
-    const f = await fixture();
-    expect(mockState.vault.accountTransactions.SmartAccount[1]).toBeUndefined();
-    const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-    await f.wallet.confirmEvmSignedReplay(prepared.review.id);
-    const pending =
-      mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
-    expect(pending).toMatchObject({
-      hash: f.hash,
-      from: payer.address,
-      input: Transaction.from(f.rawTransaction).data,
-      smartAccountExecutionFrom: smart,
-    });
-    expect(pending.blockNumber).toBeUndefined();
-    expect(f.wallet.startRapidTransactionPolling).toHaveBeenCalledWith(
+it('settles a late mined Smart Account send on the fourth rapid check after a transient failure', async () => {
+  const f = await fixture();
+  await saveNativeRecipientCopies(f, 'HDAccount');
+  await settleReplay(f, 'confirmed');
+  const account = { id: 1, type: 'SmartAccount' };
+  const savedRow = () =>
+    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
+  const lookup = jest
+    .spyOn(f.wallet, 'getEvmTransactionFromProvider')
+    .mockRejectedValueOnce(new Error('Transient RPC error'))
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce(null);
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  jest.useFakeTimers();
+  try {
+    f.wallet.activeRapidPolls = new Map();
+    MainController.prototype['startRapidTransactionPolling'].call(
+      f.wallet,
       f.hash,
       1,
       false,
-      { id: 1, type: 'SmartAccount' }
+      account
     );
-    expect(f.wallet.saveWalletState).toHaveBeenCalled();
-    mockState = structuredClone(mockState);
-    await settleReplay(f, outcome);
-    jest.mocked(notificationManager.notifyTransaction).mockClear();
-    await f.wallet.reconcileLocalPendingEvmSmartAccountTransactions(
-      { id: 1, type: 'SmartAccount' },
-      1
-    );
-    if (
-      ['missing-calldata', 'empty-calldata', 'contradictory-calldata'].includes(
-        outcome
-      )
-    ) {
-      expect(
-        mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0]
-          .blockNumber
-      ).toBeNull();
-      // The next ordinary reconciliation must still recognize the known
-      // handleOps envelope when the RPC again omits its calldata.
-      f.wallet.pendingEvmReceiptChecks.clear();
-      await f.wallet.reconcileLocalPendingEvmSmartAccountTransactions(
-        { id: 1, type: 'SmartAccount' },
-        1
-      );
+    for (const [index, delay] of [4000, 4000, 12000, 28000].entries()) {
+      await jest.advanceTimersByTimeAsync(delay - 1);
+      expect(lookup).toHaveBeenCalledTimes(index);
+      expect(savedRow().blockNumber).toBeFalsy();
+      expect(f.wallet.refreshBalancesAfterReceipt).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      expect(lookup).toHaveBeenCalledTimes(index + 1);
     }
-    const smartRow =
-      mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
-    const payerRow =
-      mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0];
-    const known = outcome === 'confirmed' || outcome === 'reverted';
-    expect(smartRow.blockNumber).toBe(known ? 12 : null);
-    expect(smartRow.txreceipt_status).toBe(
-      known ? (outcome === 'confirmed' ? '1' : '0') : null
+
+    expect(mockState.vault.activeAccount).toEqual(account);
+    expect(savedRow()).toMatchObject({
+      blockNumber: 12,
+      blockHash,
+      status: 'success',
+      success: true,
+    });
+    expect(f.wallet.refreshBalancesAfterReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hash: f.hash,
+        blockNumber: 12,
+        smartAccountExecutionFrom: smart,
+      })
     );
-    expect(smartRow.confirmations).toBe(known ? 1 : 0);
-    expect(payerRow.txreceipt_status).toBe('1');
-    expect(payerRow.confirmations).toBe(1);
-    const smartNotices = jest
-      .mocked(notificationManager.notifyTransaction)
-      .mock.calls.map(([notice]) => notice)
-      .filter((notice) => notice.account.address.toLowerCase() === smart);
-    expect(smartNotices).toHaveLength(known ? 1 : 0);
-    if (known)
-      expect(smartNotices[0].type).toBe(
-        outcome === 'confirmed' ? 'confirmed' : 'failed'
-      );
+    expect(f.wallet.activeRapidPolls.size).toBe(0);
+    await jest.advanceTimersByTimeAsync(60000);
+    expect(lookup).toHaveBeenCalledTimes(4);
+  } finally {
+    jest.useRealTimers();
   }
-);
+});
 
 it('keeps mined outer-only cancellation rows terminal without requiring a UserOperation event', async () => {
   const f = await fixture();
@@ -816,276 +1151,12 @@ it('keeps mined outer-only cancellation rows terminal without requiring a UserOp
   expect(f.provider.readMany).not.toHaveBeenCalled();
 });
 
-it('does not replace a newer receipt with a delayed unknown inner result', async () => {
-  const f = await fixture();
-  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-  await f.wallet.confirmEvmSignedReplay(prepared.review.id);
-  await settleReplay(f, 'missing');
-  const outer = await f.wallet.getEvmTransactionFromProvider(f.hash);
-  const base = f.provider.send.getMockImplementation()!;
-  let release!: () => void;
-  let entered!: () => void;
-  const observing = new Promise<void>((resolve) => {
-    entered = resolve;
-  });
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  f.provider.send.mockImplementation(async (method, params) => {
-    if (method === 'eth_getTransactionReceipt') {
-      entered();
-      await held;
-    }
-    return base(method, params);
-  });
-  const update = f.wallet.updateTrackedEvmTransactionCopies(f.hash, 1, outer);
-  await observing;
-  const newer = {
-    blockNumber: 13,
-    blockHash: '0x' + '99'.repeat(32),
-    confirmations: 1,
-    // eslint-disable-next-line camelcase
-    txreceipt_status: '0',
-  };
-  for (const [type, id] of [
-    ['SmartAccount', 1],
-    ['HDAccount', 0],
-  ] as const) {
-    const rows = mockState.vault.accountTransactions[type][id].ethereum[1];
-    rows[0] = { ...rows[0], ...newer };
-  }
-  release();
-  await update;
-  expect(
-    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0]
-  ).toMatchObject(newer);
-  expect(
-    mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0]
-  ).toMatchObject(newer);
-});
-
-it('keeps the existing rapid poll active while the canonical inner outcome is unavailable', async () => {
-  const f = await fixture();
-  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-  await f.wallet.confirmEvmSignedReplay(prepared.review.id);
-  await settleReplay(f, 'missing');
-  f.wallet.activeRapidPolls = new Map();
-  f.wallet.startRapidTransactionPolling =
-    MainController.prototype['startRapidTransactionPolling'];
-  jest.useFakeTimers();
-  try {
-    f.wallet.startRapidTransactionPolling(f.hash, 1, false, {
-      id: 1,
-      type: 'SmartAccount',
-    });
-    await jest.advanceTimersByTimeAsync(4000);
-    expect(f.wallet.activeRapidPolls.size).toBe(1);
-    expect(
-      mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0]
-        .blockNumber
-    ).toBeNull();
-    expect(
-      mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0]
-        .blockNumber
-    ).toBe(12);
-  } finally {
-    for (const timer of f.wallet.activeRapidPolls.values()) clearTimeout(timer);
-    jest.useRealTimers();
-  }
-});
-
-it('tracks the Smart account actually named by earlier payer bytes, not the currently selected parent', async () => {
-  const f = await fixture();
-  const entry = await f.records.readExact(
-    f.session,
-    '1',
-    payer.address,
-    f.hash
-  );
-  mockState.vault.accounts.SmartAccount[2] = {
-    address: recipient,
-    isSmartAccount: true,
-  };
-  mockState.vault.activeAccount = { id: 2, type: 'SmartAccount' };
-  await f.wallet.recordAcknowledgedEvmReplay(entry, () => undefined);
-  expect(
-    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0]
-  ).toMatchObject({ hash: f.hash, smartAccountExecutionFrom: smart });
-  expect(mockState.vault.accountTransactions.SmartAccount[2]).toBeUndefined();
-  expect(
-    mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0].hash
-  ).toBe(f.hash);
-});
-
-it.each(['cancel', 'speed-up'] as const)(
-  'preserves the authenticated %s intent in public tracking',
-  async (operation) => {
-    const f = await fixture();
-    const entry = await f.records.readExact(
-      f.session,
-      '1',
-      payer.address,
-      f.hash
-    );
-    const originalHash = '0x' + '77'.repeat(32);
-    await f.wallet.recordAcknowledgedEvmReplay(
-      { ...entry, operation, originalHash },
-      () => undefined
-    );
-    const row = mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0];
-    expect(row.replacesHash).toBe(originalHash);
-    expect(operation === 'cancel' ? row.isCancel : row.isSpeedUp).toBe(true);
-  }
-);
-
-it('runs the private-note acknowledgement before tracking and does not expose private metadata', async () => {
-  const f = await fixture();
-  let acknowledged = false;
-  jest.spyOn(privateReplay, 'authorizePrivateNoteReplay').mockResolvedValue({
-    assertCurrent: () => undefined,
-    withAdmission: async (admit) => admit(),
-    onAcknowledged: async () => {
-      acknowledged = true;
-    },
-  });
-  f.wallet.saveWalletState.mockImplementation(async () => {
-    expect(acknowledged).toBe(true);
-  });
-  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-  await f.wallet.confirmEvmSignedReplay(prepared.review.id);
-  expect(acknowledged).toBe(true);
-  const row =
-    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
-  expect(row).not.toHaveProperty('privateDeposit');
-  expect(row).not.toHaveProperty('privateWithdrawal');
-});
-
-it('does not publish into another account when selection changes while acknowledging replay', async () => {
-  const f = await fixture();
-  jest.spyOn(privateReplay, 'authorizePrivateNoteReplay').mockResolvedValue({
-    assertCurrent: () => undefined,
-    withAdmission: async (admit) => admit(),
-    onAcknowledged: async () => {
-      mockState.vault.activeAccount = { id: 0, type: 'HDAccount' };
-    },
-  });
-  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-  await expect(
-    f.wallet.confirmEvmSignedReplay(prepared.review.id)
-  ).resolves.toMatchObject({ status: 'unknown', hash: f.hash });
-  expect(mockState.vault.accountTransactions.SmartAccount[1]).toBeUndefined();
-  expect(mockState.vault.accountTransactions.HDAccount[0]).toBeUndefined();
-  expect(f.broadcasts).toEqual([f.rawTransaction]);
-});
-
-it('retains an accepted replay as unknown if public history tracking fails', async () => {
-  const f = await fixture();
-  f.wallet.sendAndSaveTransaction = jest.fn(async () => {
-    throw new Error('storage failed');
-  });
-  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-  await expect(
-    f.wallet.confirmEvmSignedReplay(prepared.review.id)
-  ).resolves.toMatchObject({ status: 'unknown', hash: f.hash });
-  expect(f.broadcasts).toEqual([f.rawTransaction]);
-  expect(
-    (await f.records.readExact(f.session, '1', payer.address, f.hash))
-      ?.rawTransaction
-  ).toBe(f.rawTransaction);
-});
-
-it.each(['selected', 'payer', 'network', 'session'] as const)(
-  'refuses %s drift after Smart replay review',
-  async (change) => {
-    const f = await fixture();
-    const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-    expect(prepared.status).toBe('review');
-    if (change === 'selected')
-      mockState.vault.accounts.SmartAccount[1] = { address: recipient };
-    if (change === 'payer')
-      mockState.vault.accounts.HDAccount[0] = { address: recipient };
-    if (change === 'network')
-      mockState.vault.activeNetwork.url = 'https://other.invalid';
-    if (change === 'session') f.wallet.walletSessionGeneration += 1;
-    await expect(
-      f.wallet.confirmEvmSignedReplay(prepared.review.id)
-    ).rejects.toThrow();
-    expect(f.broadcasts).toEqual([]);
-    expect(
-      (await f.records.readExact(f.session, '1', payer.address, f.hash))
-        ?.rawTransaction
-    ).toBe(f.rawTransaction);
-  }
-);
-
 it('uses ordinary payer history when that EOA is selected', async () => {
   const f = await fixture();
   mockState.vault.activeAccount = { id: 0, type: 'HDAccount' };
   const saved = await f.wallet.getSavedEvmTransaction(f.hash);
   expect(saved.from.toLowerCase()).toBe(payer.address.toLowerCase());
   expect(saved).not.toHaveProperty('smartAccount');
-});
-
-it('also tracks the affected Smart account when its recorded EOA payer is selected', async () => {
-  const f = await fixture();
-  mockState.vault.activeAccount = { id: 0, type: 'HDAccount' };
-  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-  await f.wallet.confirmEvmSignedReplay(prepared.review.id);
-  expect(
-    mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0].hash
-  ).toBe(f.hash);
-  expect(f.wallet.startRapidTransactionPolling).toHaveBeenCalledWith(
-    f.hash,
-    1,
-    false,
-    { id: 1, type: 'SmartAccount' }
-  );
-});
-
-it('does not duplicate pending notifications when replayed bytes already have public tracking', async () => {
-  const f = await fixture();
-  jest.mocked(notificationManager.notifyTransaction).mockClear();
-  const first = await f.wallet.prepareEvmSignedReplay(f.hash);
-  await f.wallet.confirmEvmSignedReplay(first.review.id);
-  const second = await f.wallet.prepareEvmSignedReplay(f.hash);
-  await f.wallet.confirmEvmSignedReplay(second.review.id);
-  expect(notificationManager.notifyTransaction).toHaveBeenCalledTimes(1);
-  expect(
-    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1]
-  ).toHaveLength(1);
-  expect(f.wallet.startRapidTransactionPolling).toHaveBeenCalledTimes(2);
-});
-
-it('opens an earlier EOA payer transaction only through its current Smart parent review', async () => {
-  const f = await fixture(1);
-  const predecessor = Transaction.from(f.predecessor!);
-  expect(await f.wallet.getSavedEvmTransaction(predecessor.hash)).toBeNull();
-  const parent = await f.wallet.prepareEvmSignedReplay(f.hash);
-  expect(parent.status).toBe('review');
-  const page = await f.wallet.getSmartAccountPredecessors(parent.review.id);
-  expect(page.transactions.map((entry: any) => entry.hash)).toContain(
-    predecessor.hash
-  );
-  const prior = await f.wallet.prepareSmartAccountPredecessor(
-    parent.review.id,
-    predecessor.hash
-  );
-  expect(prior.status).toBe('review');
-  expect(prior.review).not.toHaveProperty('smartAccount');
-  expect(prior.review.to.toLowerCase()).toBe(recipient);
-  expect(prior.review.value).toBe('1');
-  await expect(
-    f.wallet.confirmEvmSignedReplay(prior.review.id)
-  ).resolves.toMatchObject({ status: 'submitted', hash: predecessor.hash });
-  expect(f.broadcasts).toEqual([f.predecessor]);
-});
-
-it('cancels Smart replay without broadcasting or changing saved bytes', async () => {
-  const f = await fixture();
-  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-  f.wallet.cancelEvmSignedReplay(prepared.review.id);
-  expect(() => f.wallet.confirmEvmSignedReplay(prepared.review.id)).toThrow();
-  expect(f.broadcasts).toEqual([]);
 });
 
 it('checks later pending Smart rows while earlier rows cool down, without exceeding five reads', async () => {

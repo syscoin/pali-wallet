@@ -58,6 +58,7 @@ export type ButtonVariant =
 export type ButtonSize = 'icon' | 'md' | 'sm';
 
 export interface IButtonProps {
+  'aria-describedby'?: string;
   'aria-label'?: string;
   children?: React.ReactNode;
   /** Extra classes appended after the variant classes. */
@@ -127,6 +128,7 @@ const variantClasses: Record<
 export const Button = React.forwardRef<HTMLButtonElement, IButtonProps>(
   (
     {
+      'aria-describedby': ariaDescribedBy,
       'aria-label': ariaLabel,
       children,
       className = '',
@@ -154,6 +156,7 @@ export const Button = React.forwardRef<HTMLButtonElement, IButtonProps>(
       return (
         <button
           ref={ref}
+          aria-describedby={ariaDescribedBy}
           aria-label={accessibleLabel}
           aria-busy={loading || undefined}
           className={`${className} ${
@@ -195,6 +198,7 @@ export const Button = React.forwardRef<HTMLButtonElement, IButtonProps>(
     return (
       <button
         ref={ref}
+        aria-describedby={ariaDescribedBy}
         aria-label={accessibleLabel}
         aria-busy={loading || undefined}
         className={`${baseStyled} ${sizeClasses[size]} ${widthClass} ${

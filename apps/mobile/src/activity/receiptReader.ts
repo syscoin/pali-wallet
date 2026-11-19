@@ -1,6 +1,7 @@
+import { getPrivacyPoolActivity, type PrivacyPoolActivity } from '../../../../source/shared/privacyPoolActivity.ts';
 import { JsonRpcReadClient, RpcReadCapabilities } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
 import { getAddress } from 'ethers/address';
-import { observeEvmTransaction, readEvmReceiptFeeUnits, type EvmObservationRequest, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
+import { observeEvmTransaction, readEvmReceiptFeeUnits, readHistoricalEvmReceiptRoot, type EvmObservationRequest, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { boundedResponseText, cancelResponseBody, parseRpcQuantity, utf8ByteLength } from '../platformRpc.ts';
 import { createBoundedRpcFetch } from '../custody/boundedRpcFetch.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
@@ -28,6 +29,7 @@ export type ActivityTransactionObservation = Readonly<{
   from: string;
   to: string | null;
   valueUnits: string;
+  privacyActivity?: PrivacyPoolActivity;
   nonce: string;
   timestamp: number | null;
   block: Readonly<{ hash: string; number: string }> | null;
@@ -73,6 +75,7 @@ type Transaction = Readonly<{
   from: string;
   to: string | null;
   valueUnits: string;
+  privacyActivity?: PrivacyPoolActivity;
   nonce: string;
   block: Readonly<{
     hash: string;
@@ -165,7 +168,7 @@ function readBlock(value: unknown): Block {
   }
   return Object.freeze({ number, hash: hash(raw.hash), timestamp });
 }
-function readTransaction(value: unknown, expectedHash: string): Transaction {
+function readTransaction(value: unknown, expectedHash: string, chainId?: string): Transaction {
   const raw = object(value);
   if (hash(raw.hash) !== expectedHash) return fail('INVALID_RESPONSE');
   const noBlock =
@@ -179,10 +182,13 @@ function readTransaction(value: unknown, expectedHash: string): Transaction {
         number: quantity(raw.blockNumber).toString(),
         transactionIndex: quantity(raw.transactionIndex).toString(),
       });
+  const to = raw.to === null ? null : address(raw.to);
+  const privacyActivity = chainId && getPrivacyPoolActivity(chainId, to, raw.input);
   return Object.freeze({
     hash: expectedHash,
     from: address(raw.from),
-    to: raw.to === null ? null : address(raw.to),
+    to,
+    ...(privacyActivity ? { privacyActivity } : {}),
     valueUnits: quantity(raw.value).toString(),
     nonce: quantity(raw.nonce).toString(),
     block,
@@ -208,9 +214,11 @@ function readReceipt(
   });
   const status = raw.status === undefined || raw.status === null ? null : quantity(raw.status);
   // Pre-EIP-658 receipts expose a post-state root, not an execution outcome.
-  const stateRoot = status === null ? hash(raw.root) : undefined;
-  if (status === null && raw.type !== undefined && quantity(raw.type) !== 0n)
-    return fail('INVALID_RESPONSE');
+  let stateRoot: string | undefined;
+  if (status === null) {
+    try { stateRoot = readHistoricalEvmReceiptRoot(raw, chainId); }
+    catch { return fail('INVALID_RESPONSE'); }
+  }
   if (status !== null && status !== 0n && status !== 1n) return fail('INVALID_RESPONSE');
   if (!Array.isArray(raw.logs) || raw.logs.length > MAX_LOGS)
     return fail('INVALID_RESPONSE');
@@ -810,7 +818,7 @@ export class ActivityReceiptReader {
             await checkChain();
             return null;
           }
-          let transaction = readTransaction(rawTransaction, expectedHash);
+          let transaction = readTransaction(rawTransaction, expectedHash, registration.chainId);
           if (rawReceipt === null) {
             if (transaction.from !== owner && transaction.to !== owner)
               return fail('IRRELEVANT');
@@ -832,7 +840,7 @@ export class ActivityReceiptReader {
               expectedHash,
             ]);
             if (rawTransaction === null) return fail('CONTEXT_CHANGED');
-            transaction = readTransaction(rawTransaction, expectedHash);
+            transaction = readTransaction(rawTransaction, expectedHash, registration.chainId);
           }
           assertPair(transaction, receipt);
           if (
@@ -849,6 +857,7 @@ export class ActivityReceiptReader {
             from: transaction.from,
             to: transaction.to,
             valueUnits: transaction.valueUnits,
+            ...(transaction.privacyActivity ? { privacyActivity: transaction.privacyActivity } : {}),
             nonce: transaction.nonce,
             timestamp: included.timestamp,
             block: Object.freeze({

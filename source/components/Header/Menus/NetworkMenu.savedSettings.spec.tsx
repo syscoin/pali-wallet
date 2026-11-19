@@ -5,6 +5,7 @@ import React from 'react';
 
 import vaultGlobalReducer, { setNetwork } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import { NetworkMenu } from './NetworkMenu';
 
@@ -48,6 +49,7 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockState,
+    subscribe: () => () => undefined,
     dispatch: (...args: any[]) => mockDispatch(...args),
   },
 }));
@@ -102,7 +104,7 @@ const expectActivation = (updated: INetwork) => {
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'setActiveNetwork'],
-    [updated]
+    [updated, false, networkRegistrationFingerprint(updated)]
   );
 };
 

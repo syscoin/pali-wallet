@@ -131,7 +131,6 @@ function setup() {
     withNote: jest.fn(async (_id, _session, use) =>
       use(NOTE, 'eth-1', {
         binding: 'fixture-history',
-        previousWithdrawals: [],
       })
     ),
     getSnapshot: jest.fn(async () => ({
@@ -277,51 +276,52 @@ it('prepares direct proof without submission and reviews no secret-derived ident
   run.controller.close();
 });
 
-it.each([
-  undefined,
-  {},
-  { acceptPreviousWithdrawalRisk: false },
-  { acceptPreviousWithdrawalRisk: 'true' },
-  { acceptPreviousWithdrawalRisk: true, allFutureAttempts: true },
-])(
-  'requires explicit per-intent risk approval before reservation (%j)',
-  async (approval) => {
-    const run = setup();
-    const review = await run.controller.prepareWithdrawal(direct());
-    await expect(
-      Reflect.apply(run.controller.submitWithdrawal, run.controller, [
-        review.intentId,
-        approval,
-      ])
-    ).rejects.toThrow('privacy_withdrawal_risk_not_accepted');
-    expect(run.host.beforeSubmission).not.toHaveBeenCalled();
-    expect(run.host.sendTransaction).not.toHaveBeenCalled();
-    expect(run.fetcher).not.toHaveBeenCalled();
-    expect(
-      await run.controller.submitWithdrawal(review.intentId, {
-        acceptPreviousWithdrawalRisk: true,
-      })
-    ).toMatchObject({ intentId: review.intentId, phase: 'submitted' });
-    expect(run.host.beforeSubmission).toHaveBeenCalledTimes(1);
-    const accepted = jest.mocked(run.host.beforeSubmission).mock.calls[0][1];
-    expect(accepted).toEqual({
-      acceptPreviousWithdrawalRisk: true,
-      historyBinding: 'fixture-history',
-    });
-    expect(Object.isFrozen(accepted)).toBe(true);
-    expect(jest.mocked(run.host.beforeDispatch).mock.calls[0][1]).toBe(
-      accepted
-    );
-    const next = await run.controller.prepareWithdrawal(direct());
-    await expect(
-      Reflect.apply(run.controller.submitWithdrawal, run.controller, [
-        next.intentId,
-      ])
-    ).rejects.toThrow('privacy_withdrawal_risk_not_accepted');
-    expect(run.host.beforeSubmission).toHaveBeenCalledTimes(1);
-    run.controller.close();
-  }
-);
+it('uses the local pending withdrawal to pause review until Activity is cleared', async () => {
+  const run = setup();
+  run.host.hasPendingWithdrawal = jest
+    .fn()
+    .mockResolvedValueOnce(true)
+    .mockResolvedValue(false);
+  await expect(run.controller.prepareWithdrawal(direct())).rejects.toThrow(
+    'privacy_withdrawal_activity_pending'
+  );
+  expect(run.host.withNote).not.toHaveBeenCalled();
+  expect(await run.controller.prepareWithdrawal(direct())).toMatchObject({
+    noteId: NOTE_ID,
+  });
+  run.controller.close();
+});
+
+it('rechecks Activity before submitting an already opened withdrawal review', async () => {
+  const run = setup();
+  const review = await run.controller.prepareWithdrawal(direct());
+  run.host.hasPendingWithdrawal = jest.fn().mockResolvedValue(true);
+  await expect(
+    run.controller.submitWithdrawal(review.intentId)
+  ).rejects.toThrow('privacy_withdrawal_activity_pending');
+  expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+  expect(run.host.sendTransaction).not.toHaveBeenCalled();
+  run.controller.close();
+});
+
+it('consumes the reviewed withdrawal once', async () => {
+  const run = setup();
+  const review = await run.controller.prepareWithdrawal(direct());
+  expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+  expect(run.host.sendTransaction).not.toHaveBeenCalled();
+  await expect(
+    run.controller.submitWithdrawal('invalid-review')
+  ).rejects.toThrow('privacy_withdrawal_intent_expired');
+  await expect(
+    run.controller.submitWithdrawal(review.intentId)
+  ).resolves.toMatchObject({ phase: 'submitted' });
+  await expect(
+    run.controller.submitWithdrawal(review.intentId)
+  ).rejects.toThrow('privacy_withdrawal_intent_expired');
+  expect(run.host.beforeSubmission).toHaveBeenCalledTimes(1);
+  expect(run.host.sendTransaction).toHaveBeenCalledTimes(1);
+  run.controller.close();
+});
 
 it.each(['direct', 'relayed'] as const)(
   'keeps the same per-intent approval through %s final dispatch',
@@ -331,9 +331,7 @@ it.each(['direct', 'relayed'] as const)(
     const review = await run.controller.prepareWithdrawal(
       mode === 'direct' ? direct() : relayed()
     );
-    await run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    });
+    await run.controller.submitWithdrawal(review.intentId);
     expect(jest.mocked(run.host.beforeDispatch).mock.calls[0][1]).toBe(
       jest.mocked(run.host.beforeSubmission).mock.calls[0][1]
     );
@@ -341,52 +339,24 @@ it.each(['direct', 'relayed'] as const)(
   }
 );
 
-it('captures public previous-attempt details and private history binding from the same preparation read', async () => {
+it('keeps the history binding private and captures it before approval', async () => {
   const run = setup();
-  const previous = {
-    mode: 'relayed' as const,
-    outcome: 'submitted' as const,
-    recipient: RELAYER,
-    transactionHash: HASH,
-    jobId: 'portable_job-1',
-    endpoint: 'https://private-endpoint.example',
-    proof: 'not-public',
-  };
-  const history = {
-    binding: 'captured-history',
-    previousWithdrawals: [previous],
-  };
+  const history = { binding: 'captured-history' };
   jest
     .mocked(run.host.withNote)
     .mockImplementationOnce(async (_id, _session, use) =>
       use(NOTE, 'eth-1', history)
     );
   const review = await run.controller.prepareWithdrawal(direct());
-  expect(review.previousWithdrawals).toEqual([
-    {
-      mode: 'relayed',
-      outcome: 'submitted',
-      recipient: RELAYER,
-      transactionHash: HASH,
-      jobId: 'portable_job-1',
-    },
-  ]);
-  expect(JSON.stringify(review)).not.toMatch(
-    /captured-history|private-endpoint|not-public/
-  );
-  expect(Object.isFrozen(review.previousWithdrawals)).toBe(true);
-  previous.recipient = fixture.input.recipient;
+  expect(review).not.toHaveProperty('historyBinding');
+  expect(JSON.stringify(review)).not.toContain(history.binding);
   history.binding = 'mutated-history';
   expect(run.host.beforeSubmission).not.toHaveBeenCalled();
   expect(run.host.sendTransaction).not.toHaveBeenCalled();
-  await run.controller.submitWithdrawal(review.intentId, {
-    acceptPreviousWithdrawalRisk: true,
-  });
+  await run.controller.submitWithdrawal(review.intentId);
   expect(jest.mocked(run.host.beforeSubmission).mock.calls[0][1]).toEqual({
-    acceptPreviousWithdrawalRisk: true,
     historyBinding: 'captured-history',
   });
-  expect(review.previousWithdrawals![0].recipient).toBe(RELAYER);
   run.controller.close();
 });
 
@@ -394,9 +364,7 @@ it('binds direct calldata/fees and journals before dispatch and acknowledgement'
   jest.useFakeTimers();
   const run = setup();
   const review = await run.controller.prepareWithdrawal(direct());
-  const result = await run.controller.submitWithdrawal(review.intentId, {
-    acceptPreviousWithdrawalRisk: true,
-  });
+  const result = await run.controller.submitWithdrawal(review.intentId);
   expect(result).toEqual({
     intentId: review.intentId,
     noteId: NOTE_ID,
@@ -431,9 +399,7 @@ it('binds direct calldata/fees and journals before dispatch and acknowledgement'
     transactionHash: HASH,
   });
   await expect(
-    run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
+    run.controller.submitWithdrawal(review.intentId)
   ).rejects.toThrow('privacy_withdrawal_intent_expired');
 });
 
@@ -455,9 +421,7 @@ it('relayed mode fixes selected reward/fee before proof and sends exactly the pi
     fee: review.feeWei,
   });
   expect(run.fetcher).not.toHaveBeenCalled();
-  const result = await run.controller.submitWithdrawal(review.intentId, {
-    acceptPreviousWithdrawalRisk: true,
-  });
+  const result = await run.controller.submitWithdrawal(review.intentId);
   expect(result).toMatchObject({ phase: 'submitted', jobId: JOB_ID });
   const retained = jest.mocked(run.host.beforeSubmission).mock.calls[0][0];
   expect(retained.mode).toBe('relayed');
@@ -533,9 +497,7 @@ it.each(['direct', 'relayed'] as const)(
       );
       run.invalidate();
       await expect(
-        run.controller.submitWithdrawal(review.intentId, {
-          acceptPreviousWithdrawalRisk: true,
-        })
+        run.controller.submitWithdrawal(review.intentId)
       ).rejects.toMatchObject({
         message: 'privacy_verification_pending',
         transactionNotBroadcast: true,
@@ -544,9 +506,7 @@ it.each(['direct', 'relayed'] as const)(
       expect(run.host.sendTransaction).not.toHaveBeenCalled();
       expect(run.fetcher).not.toHaveBeenCalled();
       await expect(
-        run.controller.submitWithdrawal(review.intentId, {
-          acceptPreviousWithdrawalRisk: true,
-        })
+        run.controller.submitWithdrawal(review.intentId)
       ).rejects.toThrow('privacy_withdrawal_intent_expired');
     } finally {
       run.controller.close();
@@ -565,9 +525,7 @@ it('reports a stale relayer selection as not broadcast before submission', async
         throw new Error('privacy_relayer_stale');
       });
     await expect(
-      run.controller.submitWithdrawal(review.intentId, {
-        acceptPreviousWithdrawalRisk: true,
-      })
+      run.controller.submitWithdrawal(review.intentId)
     ).rejects.toMatchObject({
       message: 'privacy_relayer_stale',
       transactionNotBroadcast: true,
@@ -605,9 +563,7 @@ it('allows only one active proof and TTL begins after completion, not before', a
   );
   await jest.advanceTimersByTimeAsync(PRIVACY_WITHDRAWAL_INTENT_TTL_MS);
   await expect(
-    run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
+    run.controller.submitWithdrawal(review.intentId)
   ).rejects.toThrow('privacy_withdrawal_intent_expired');
 });
 
@@ -764,9 +720,7 @@ it.each(['context', 'snapshot'] as const)(
       return () => undefined;
     });
     await expect(
-      run.controller.submitWithdrawal(review.intentId, {
-        acceptPreviousWithdrawalRisk: true,
-      })
+      run.controller.submitWithdrawal(review.intentId)
     ).rejects.toThrow(/^privacy_/);
     expect(run.host.sendTransaction).not.toHaveBeenCalled();
     expect(run.host.recordNotBroadcast).toHaveBeenCalled();
@@ -799,12 +753,10 @@ it.each(['healthy', 'context', 'snapshot', 'expiry'] as const)(
           return { hash: HASH };
         }
       );
-    const pending = run.controller
-      .submitWithdrawal(review.intentId, { acceptPreviousWithdrawalRisk: true })
-      .then(
-        (value) => ({ value, error: undefined }),
-        (error: unknown) => ({ value: undefined, error })
-      );
+    const pending = run.controller.submitWithdrawal(review.intentId).then(
+      (value) => ({ value, error: undefined }),
+      (error: unknown) => ({ value: undefined, error })
+    );
     await entered.promise;
     if (condition === 'context') run.change();
     if (condition === 'snapshot') run.invalidate();
@@ -844,9 +796,7 @@ it('keeps a successful acknowledgement when the review expires after signing and
       }
     );
   await expect(
-    run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
+    run.controller.submitWithdrawal(review.intentId)
   ).resolves.toMatchObject({ phase: 'submitted', transactionHash: HASH });
   expect(run.host.recordSubmission).toHaveBeenCalledTimes(1);
   expect(run.host.recordNotBroadcast).not.toHaveBeenCalled();
@@ -861,9 +811,7 @@ it('revalidates selected endpoint before reservation and never falls back to dir
     .mocked(run.host.relayers.checkRelayer)
     .mockRejectedValueOnce(new Error('privacy_relayer_changed'));
   await expect(
-    run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
+    run.controller.submitWithdrawal(review.intentId)
   ).rejects.toThrow('privacy_relayer_changed');
   expect(run.fetcher).not.toHaveBeenCalled();
   expect(run.host.sendTransaction).not.toHaveBeenCalled();
@@ -898,16 +846,12 @@ it.each(['network', 'bad-json', 'oversized', 'bad-id'] as const)(
         })
       );
     expect(
-      await run.controller.submitWithdrawal(review.intentId, {
-        acceptPreviousWithdrawalRisk: true,
-      })
+      await run.controller.submitWithdrawal(review.intentId)
     ).toMatchObject({ phase: 'unknown' });
     expect(run.host.recordNotBroadcast).not.toHaveBeenCalled();
     expect(run.fetcher).toHaveBeenCalledTimes(1);
     await expect(
-      run.controller.submitWithdrawal(review.intentId, {
-        acceptPreviousWithdrawalRisk: true,
-      })
+      run.controller.submitWithdrawal(review.intentId)
     ).rejects.toThrow('privacy_withdrawal_intent_expired');
   }
 );
@@ -923,11 +867,7 @@ it('acknowledgement persists against original attempt despite post-send session 
       await ack({ hash: HASH });
       throw new Error('changed after broadcast');
     });
-  expect(
-    await run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
-  ).toMatchObject({
+  expect(await run.controller.submitWithdrawal(review.intentId)).toMatchObject({
     phase: 'submitted',
     transactionHash: HASH,
   });
@@ -944,11 +884,7 @@ it('failed durable acknowledgement returns known hash as unknown rather than cle
   jest
     .mocked(run.host.recordSubmission)
     .mockRejectedValueOnce(new Error('storage unavailable'));
-  expect(
-    await run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
-  ).toMatchObject({
+  expect(await run.controller.submitWithdrawal(review.intentId)).toMatchObject({
     phase: 'unknown',
     transactionHash: HASH,
   });
@@ -965,11 +901,7 @@ it('conflicting transaction acknowledgements cannot report submitted success', a
       await ack({ hash: HASH });
       return { hash: `0x${'cd'.repeat(32)}` };
     });
-  expect(
-    await run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
-  ).toMatchObject({
+  expect(await run.controller.submitWithdrawal(review.intentId)).toMatchObject({
     phase: 'unknown',
     transactionHash: HASH,
   });
@@ -1076,9 +1008,7 @@ it('no send occurs if durable reservation fails and sender failure only clears p
     .mocked(run.host.beforeSubmission)
     .mockRejectedValueOnce(new Error('storage failed'));
   await expect(
-    run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
+    run.controller.submitWithdrawal(review.intentId)
   ).rejects.toThrow('privacy_withdrawal_failed');
   expect(run.host.sendTransaction).not.toHaveBeenCalled();
   expect(run.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
@@ -1090,9 +1020,7 @@ it('no send occurs if durable reservation fails and sender failure only clears p
       second.failBeforeBroadcast(new Error('send rejected'))
     );
   await expect(
-    second.controller.submitWithdrawal(next.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
+    second.controller.submitWithdrawal(next.intentId)
   ).rejects.toThrow('privacy_withdrawal_failed');
   expect(second.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
 });
@@ -1103,9 +1031,7 @@ it('a consumed relay request times out as unknown and cannot be repeated', async
   await run.controller.getRelayers();
   const review = await run.controller.prepareWithdrawal(relayed());
   run.fetcher.mockImplementationOnce(() => new Promise(() => undefined));
-  const submission = run.controller.submitWithdrawal(review.intentId, {
-    acceptPreviousWithdrawalRisk: true,
-  });
+  const submission = run.controller.submitWithdrawal(review.intentId);
   await jest.advanceTimersByTimeAsync(15000);
   expect(await submission).toMatchObject({ phase: 'unknown' });
   expect(run.fetcher).toHaveBeenCalledTimes(1);
@@ -1116,9 +1042,7 @@ it('a consumed relay request times out as unknown and cannot be repeated', async
 async function recordedRelay(run: ReturnType<typeof setup>) {
   await run.controller.getRelayers();
   const review = await run.controller.prepareWithdrawal(relayed());
-  await run.controller.submitWithdrawal(review.intentId, {
-    acceptPreviousWithdrawalRisk: true,
-  });
+  await run.controller.submitWithdrawal(review.intentId);
   const attempt = jest.mocked(run.host.beforeSubmission).mock.calls[0][0];
   if (attempt.mode !== 'relayed') throw new Error();
   const args = [
@@ -1162,10 +1086,27 @@ async function recordedRelay(run: ReturnType<typeof setup>) {
   return { record, job };
 }
 
-it('manual job status matches durable hashes and stores only a bound acknowledgement', async () => {
+it('keeps relay history local until an explicit status check stores a bound acknowledgement', async () => {
   jest.useFakeTimers();
   const run = setup();
   const { record, job } = await recordedRelay(run);
+  const localHash = `0x${'bc'.repeat(32)}`;
+  jest.mocked(run.host.getWithdrawalAttempt).mockResolvedValue({
+    ...record,
+    transactionHash: localHash,
+  });
+  await expect(
+    run.controller.statusByNote(NOTE_ID, { observeRelayer: false })
+  ).resolves.toEqual({
+    noteId: NOTE_ID,
+    phase: 'submitted',
+    mode: 'relayed',
+    jobId: JOB_ID,
+    transactionHash: localHash,
+  });
+  expect(run.fetcher).toHaveBeenCalledTimes(1); // only the previous submission
+  expect(run.host.recordJobStatus).not.toHaveBeenCalled();
+
   run.fetcher.mockResolvedValueOnce(
     new Response(JSON.stringify(job), {
       headers: { 'content-type': 'application/json' },
@@ -1193,6 +1134,48 @@ it('manual job status matches durable hashes and stores only a bound acknowledge
     expect.objectContaining({ method: 'GET' })
   );
   expect(run.fetcher).toHaveBeenCalledTimes(2); // one explicit submit, one explicit status read
+});
+
+it('preserves a validated local relay status during a typed transport outage', async () => {
+  jest.useFakeTimers();
+  const run = setup();
+  const { record } = await recordedRelay(run);
+  jest.mocked(run.host.getWithdrawalAttempt).mockResolvedValue({
+    ...record,
+    transactionHash: HASH,
+  });
+  run.fetcher
+    .mockRejectedValueOnce(new TypeError('network unavailable'))
+    .mockResolvedValueOnce(new Response(null, { status: 503 }));
+  const expected = {
+    noteId: NOTE_ID,
+    mode: 'relayed',
+    phase: 'submitted',
+    jobId: JOB_ID,
+    transactionHash: HASH,
+    observationUnavailable: true,
+  };
+  await expect(run.controller.statusByNote(NOTE_ID)).resolves.toEqual(expected);
+  await expect(run.controller.statusByNote(NOTE_ID)).resolves.toEqual(expected);
+  expect(run.host.recordJobStatus).not.toHaveBeenCalled();
+
+  run.fetcher.mockResolvedValueOnce(
+    new Response('invalid JSON', {
+      headers: { 'content-type': 'application/json' },
+    })
+  );
+  await expect(run.controller.statusByNote(NOTE_ID)).rejects.toThrow(
+    'privacy_relayer_job_unavailable'
+  );
+
+  run.fetcher.mockImplementationOnce(async () => {
+    run.change();
+    return new Response(null, { status: 503 });
+  });
+  await expect(run.controller.statusByNote(NOTE_ID)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(run.host.recordJobStatus).not.toHaveBeenCalled();
 });
 
 it('rejects changed proof inputs, but retains a bound same-job replacement hash as a candidate', async () => {
@@ -1302,11 +1285,7 @@ it('never treats provider error fields as an acknowledgement or owned prebroadca
       transactionNotBroadcast: true,
     })
   );
-  expect(
-    await run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
-  ).toMatchObject({
+  expect(await run.controller.submitWithdrawal(review.intentId)).toMatchObject({
     phase: 'unknown',
   });
   expect(run.host.recordSubmission).not.toHaveBeenCalled();
@@ -1321,9 +1300,7 @@ it('projects only account identity fields from the captured host context', async
   (run.context as any).unrelatedSecret = 'must-not-enter-review-or-attempt';
   const review = await run.controller.prepareWithdrawal(direct());
   expect(JSON.stringify(review)).not.toContain('unrelatedSecret');
-  await run.controller.submitWithdrawal(review.intentId, {
-    acceptPreviousWithdrawalRisk: true,
-  });
+  await run.controller.submitWithdrawal(review.intentId);
   const attempt = jest.mocked(run.host.beforeSubmission).mock.calls[0][0];
   expect(JSON.stringify(attempt.context)).not.toContain('unrelatedSecret');
 });
@@ -1565,9 +1542,7 @@ it('checks the reservation fence immediately before relay POST and retains known
     });
   jest.mocked(run.host.beforeSubmission).mockResolvedValueOnce(fence);
   await expect(
-    run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
+    run.controller.submitWithdrawal(review.intentId)
   ).rejects.toMatchObject({
     message: 'privacy_note_restore_required',
     transactionNotBroadcast: true,
@@ -1586,9 +1561,7 @@ it('retains a signed but unbroadcast withdrawal and exposes only its recovery ha
       run.failBeforeBroadcast(new Error('preflight refused'), HASH)
     );
   await expect(
-    run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
+    run.controller.submitWithdrawal(review.intentId)
   ).resolves.toMatchObject({
     phase: 'unknown',
     signedTransactionHash: HASH,
@@ -1611,9 +1584,7 @@ it('does not classify failures after a durable acknowledgement', async () => {
       throw new Error('later error');
     });
   await expect(
-    run.controller.submitWithdrawal(review.intentId, {
-      acceptPreviousWithdrawalRisk: true,
-    })
+    run.controller.submitWithdrawal(review.intentId)
   ).resolves.toMatchObject({ phase: 'submitted', transactionHash: HASH });
   expect(run.host.classifySubmissionFailure).not.toHaveBeenCalled();
   run.controller.close();
@@ -1662,9 +1633,7 @@ it.each(['async', 'value'] as const)(
         (kind === 'async' ? async () => undefined : () => 1) as () => void
       );
     await expect(
-      run.controller.submitWithdrawal(review.intentId, {
-        acceptPreviousWithdrawalRisk: true,
-      })
+      run.controller.submitWithdrawal(review.intentId)
     ).rejects.toThrow(/^privacy_/);
     expect(run.host.sendTransaction).not.toHaveBeenCalled();
     expect(run.host.recordNotBroadcast).toHaveBeenCalledTimes(1);

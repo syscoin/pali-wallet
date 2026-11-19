@@ -35,6 +35,9 @@ export function NativePrivateWithdrawalFixture() {
       const note = Object.freeze({
         amount: '1',
         createdAt: 1762000000000,
+        ...(query.has('pending-history') || (query.has('unknown') && events.some(event => event.startsWith('confirm:')))
+          ? { withdrawalPending: true as const } : {}),
+        ...(query.has('history') ? { withdrawalStatusAvailable: true as const } : {}),
         ...(query.has('restored') ? {reconciliation:'restored-note' as const} : query.has('history') ||
         events.some((event) => event.startsWith('confirm:'))
           ? { reconciliation: 'withdrawal-history' as const }
@@ -69,7 +72,7 @@ export function NativePrivateWithdrawalFixture() {
               ? {
                   phase: 'unknown',
                   noteId,
-                  mode: 'direct',
+                  mode: 'relayed',
                   transactionHash: hash,
                 }
               : null,
@@ -161,7 +164,6 @@ export function NativePrivateWithdrawalFixture() {
                     (pool) => pool.id === 'eth-1'
                   )!.address,
                   mode: request.mode,
-                  ...(query.has('history') ? {previousWithdrawals:[{mode:'direct' as const,outcome:'unknown' as const,transactionHash:hash}]} : {}),
                   recipient: request.recipient,
                   account: {
                     id: 0,
@@ -228,6 +230,18 @@ export function NativePrivateWithdrawalFixture() {
                         noteId,
                         mode: 'direct' as const,
                         transactionHash: `0x${'cd'.repeat(32)}`,
+                      },
+                    }
+                  : query.has('history')
+                  ? {
+                      status: {
+                        ...snapshot.status!,
+                        ...(query.has('relayer-outage')
+                          ? {
+                              jobId: 'saved-relayer-job',
+                              observationUnavailable: true as const,
+                            }
+                          : { claimedStatus: 'FAILED' as const }),
                       },
                     }
                   : {}),

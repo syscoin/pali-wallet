@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Transaction, Wallet } from 'ethers';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
-import { createSmartAccountSignedReplay } from '../../../source/wallet/smartAccountSignedReplay.ts';
+import { projectSmartAccountSavedTransaction } from '../../../source/wallet/smartAccountSignedReplay.ts';
 import { observeSmartAccountOperations } from '../../../source/wallet/smartAccountActivity.ts';
-import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
+import { captureSmartAccountCancellation, smartAccountCancellationMetadata } from '../../../source/wallet/smartAccountCancellation.ts';
+import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
 import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
-import { captureSmartAccountCallsIdentity } from '../../../source/shared/dappCallsStatus.ts';
 import { encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
 import {
   getPaliEntryPointAddress,
@@ -22,28 +22,12 @@ const recipient = '0x2222222222222222222222222222222222222222';
 const payer = new Wallet('0x' + '33'.repeat(32));
 const blockHash = '0x' + '44'.repeat(32);
 async function fixture() {
-  let disk: string | undefined,
-    epoch = 0,
-    selected = account,
-    clock = 10;
-  let payerChanged = false,
-    wrongPayer = false,
-    rpcFailed = false,
-    receipt: any = null;
-  let simulationSuccess = true,
-    pendingNonce = 0,
-    canonicalHash = blockHash,
-    reorgDuringSimulation = false;
-  const accepted = new Map<string, Transaction>();
-  const simulations: any[][] = [];
-  let beforeRead: (() => Promise<void>) | undefined;
-  let beforeSimulation: (() => Promise<void>) | undefined;
-  const dispatched: string[] = [],
-    calls: string[] = [];
+  let disk: string | undefined;
+  let receipt: unknown = null;
+  const calls: string[] = [];
   const session = signedRecordTestSession();
   const storage = {
     async read() {
-      await beforeRead?.();
       return disk;
     },
     async compareAndSet(
@@ -68,137 +52,23 @@ async function fixture() {
       url: 'https://offline.invalid',
     },
   };
-  const read = async (method: string, params: readonly unknown[] = []) => {
+  const read = async (method: string, _params: readonly unknown[] = []) => {
     calls.push(method);
-    if (rpcFailed) throw new Error('RPC unavailable');
     if (method === 'eth_chainId') return '0x1';
-    if (method === 'eth_getTransactionCount')
-      return params[1] === 'pending' ? `0x${pendingNonce.toString(16)}` : '0x0';
+    if (method === 'eth_getTransactionCount') return '0x0';
     if (method === 'eth_getTransactionReceipt') return receipt;
     if (method === 'eth_getBlockByNumber')
-      return { number: '0x10', hash: canonicalHash, gasLimit: '0x100000' };
-    if (method === 'eth_getTransactionByHash') {
-      const tx = accepted.get(String(params[0]));
-      return tx
-        ? {
-            hash: tx.hash,
-            blockHash: null,
-            blockNumber: null,
-            from: tx.from,
-            to: tx.to,
-            input: tx.data,
-            chainId: `0x${tx.chainId.toString(16)}`,
-            gas: `0x${tx.gasLimit.toString(16)}`,
-            gasPrice: `0x${tx.gasPrice!.toString(16)}`,
-            nonce: `0x${tx.nonce.toString(16)}`,
-            type: '0x0',
-            value: `0x${tx.value.toString(16)}`,
-          }
-        : null;
-    }
-    if (method === 'eth_simulateV1') {
-      await beforeSimulation?.();
-      const transactions = (params[0] as any).blockStateCalls[0].calls;
-      simulations.push(transactions);
-      const last = transactions[transactions.length - 1];
-      const operation = paliEntryPointInterface.decodeFunctionData(
-        'handleOps',
-        last.data
-      )[0][0];
-      const identity = captureSmartAccountCallsIdentity(operation, 1);
-      const event = paliEntryPointInterface.encodeEventLog(
-        paliEntryPointInterface.getEvent('UserOperationEvent')!,
-        [
-          identity.userOpHash,
-          operation.sender,
-          '0x' + '00'.repeat(20),
-          operation.nonce,
-          simulationSuccess,
-          1,
-          1,
-        ]
-      );
-      const parent = canonicalHash;
-      if (reorgDuringSimulation) canonicalHash = '0x' + '55'.repeat(32);
-      return [
-        {
-          number: '0x11',
-          parentHash: parent,
-          transactions: transactions.map((tx: any) => ({
-            ...tx,
-            input: tx.data,
-          })),
-          calls: transactions.map((_: unknown, index: number) => ({
-            status: '0x1',
-            gasUsed: '0x100',
-            logs:
-              index === transactions.length - 1
-                ? [{ ...event, address: last.to }]
-                : [],
-          })),
-        },
-      ];
-    }
+      return { number: '0x10', hash: blockHash, gasLimit: '0x100000' };
     throw new Error(method);
   };
-  const replay = createSmartAccountSignedReplay(
-    records,
-    () => {
-      const captured = epoch,
-        address = selected;
-      const check = () => {
-        if (captured !== epoch || selected !== address)
-          throw new Error('Owner changed');
-      };
-      return {
-        account: { id: 0, address },
-        chainId: '1',
-        recordSession: { ...session, assertCurrent: check },
-        assertCurrent: check,
-        read: async (method, params, current) => {
-          current();
-          return read(method, params);
-        },
-        runReadPhase: async (current, work) => {
-          current();
-          const result = await work({ send: read });
-          current();
-          return result;
-        },
-        capturePayer: () => ({
-          context: wrongPayer
-            ? { ...context, account: { ...context.account, id: 1 } }
-            : context,
-          recordSession: session,
-          assertCurrent() {
-            check();
-            if (payerChanged) throw new Error('Payer changed');
-          },
-          observe: (expected) => observeEvmTransaction(expected, read, check),
-          async authorizeReplay() {
-            return {
-              assertCurrent: check,
-              onAcknowledged: async () => undefined,
-              withAdmission: async (admit) => admit(),
-            };
-          },
-          async dispatch(bytes, admit) {
-            return admit(
-              async () => {
-                dispatched.push(bytes);
-                return Transaction.from(bytes).hash!;
-              },
-              async () => {
-                check();
-              }
-            );
-          },
-        }),
-      };
-    },
-    () => clock,
-    (size) => new Uint8Array(size).fill(7)
-  );
+  const get = async (hash: string) => {
+    const record = await records.readSmartAccountReplayExact(session, '1', account, hash);
+    return record ? projectSmartAccountSavedTransaction(record, account) : null;
+  };
+  const list = async (options: { maximum: number; beforeHash?: string }) => {
+    const page = await records.readSmartAccountReplayPage(session, '1', account, options);
+    return { nextCursor: page.nextCursor, transactions: page.entries.map(record => projectSmartAccountSavedTransaction(record, account)) };
+  };
   async function append(
     options: {
       nonce?: number;
@@ -265,85 +135,108 @@ async function fixture() {
       },
       options.metadata
     );
-    accepted.set(entry.hash, tx);
     return { entry, operation };
   }
   return {
-    replay,
+    get,
+    context,
+    list,
     read,
     records,
     session,
     append,
-    dispatched,
     calls,
-    simulations,
-    failExecution() {
-      simulationSuccess = false;
-    },
-    reorgDuringSimulation() {
-      reorgDuringSimulation = true;
-    },
-    pendingNonce(value: number) {
-      pendingNonce = value;
-    },
-    wrongPayer() {
-      wrongPayer = true;
-    },
-    payerChanged() {
-      payerChanged = true;
-    },
-    rpcFailed() {
-      rpcFailed = true;
-    },
-    expire() {
-      clock += 90001;
-    },
-    switchAwayAndBack() {
-      selected = recipient;
-      epoch++;
-      selected = account;
-      epoch++;
-    },
-    beforeRead(callback: () => Promise<void>) {
-      beforeRead = callback;
-    },
-    beforeSimulation(callback: () => Promise<void>) {
-      beforeSimulation = callback;
-    },
     mined(value: any) {
       receipt = value;
     },
   };
 }
 
-test('missing receipt exposes inner intent and resends only the exact retained outer bytes', async () => {
-  const f = await fixture(),
-    { entry } = await f.append();
-  const page = await f.replay.list();
-  assert.equal(page.transactions.length, 1);
-  const saved = page.transactions[0]!;
-  assert.equal(saved.from.toLowerCase(), payer.address.toLowerCase());
-  assert.equal(saved.to, getPaliEntryPointAddress(1));
-  assert.equal(saved.value, '0');
-  assert.equal(saved.smartAccount.transfer?.recipient, recipient);
-  assert.equal(saved.smartAccount.transfer?.amountUnits, '9');
-  assert.equal(saved.smartAccount.operationNonce, '7');
-  assert.equal(saved.nonce, 0);
-  const prepared = await f.replay.prepare(entry.hash);
-  assert.equal(prepared.status, 'review');
-  if (prepared.status !== 'review') assert.fail();
-  assert.equal(prepared.review.smartAccount.account, account);
-  assert.equal(prepared.review.to, getPaliEntryPointAddress(1));
-  assert.deepEqual(await f.replay.confirm(prepared.review.id), {
-    hash: entry.hash,
-    status: 'submitted',
+for (const replaceOuter of [false, true])
+  test(`saved Smart cancellation projects its own signed handleOps (replace outer: ${replaceOuter})`, async () => {
+    const f = await fixture();
+    const { entry: original, operation } = await f.append();
+    const cancellation = captureSmartAccountCancellation({
+      account,
+      chainId: 1,
+      referenceHash: original.hash,
+      outer: original,
+      observedAt: { number: '16', hash: blockHash },
+    });
+    const noop = encodeERC7579Executions([{ target: account, value: '0' }]);
+    const userOperation = {
+      ...operation,
+      nonce: operation.nonce.toString(),
+      preVerificationGas: operation.preVerificationGas.toString(),
+      callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+        noop.mode,
+        noop.executionCalldata,
+      ]),
+    };
+    const operationHash = getSmartAccountUserOpHash(userOperation, 1);
+    const binding = replaceOuter
+      ? await f.records.captureSmartAccountCancellationReplacement(f.session, {
+          chainId: 1,
+          newUserOperation: userOperation,
+          originalHash: original.hash,
+          payer: payer.address,
+        })
+      : undefined;
+    const nonce = replaceOuter ? original.nonce : original.nonce + 1;
+    const rawTransaction = await payer.signTransaction({
+      chainId: 1,
+      nonce,
+      type: 0,
+      gasPrice: 4,
+      gasLimit: 300000,
+      to: getPaliEntryPointAddress(1),
+      data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+        [userOperation],
+        payer.address,
+      ]),
+    });
+    const hash = Transaction.from(rawTransaction).hash!;
+    await f.records.append(
+      f.session,
+      {
+        rawTransaction,
+        hash,
+        from: payer.address,
+        chainId: '1',
+        nonce,
+        type: 0,
+        context: { ...f.context, operation: 'send' },
+      },
+      {
+        smartAccountOperationCancellation: smartAccountCancellationMetadata(
+          cancellation,
+          operationHash
+        ),
+      },
+      binding
+    );
+    const transaction = await f.get(hash);
+    assert(transaction);
+    assert.equal(transaction.operation, 'send');
+    assert.equal(transaction.originalHash, replaceOuter ? original.hash : undefined);
+    assert.equal(transaction.smartAccount.cancellation, true);
+    assert.equal(transaction.smartAccount.operationHash, operationHash);
+    assert.deepEqual(transaction.smartAccount.executions, [
+      { target: account, value: '0', data: '0x' },
+    ]);
+    assert.equal(transaction.smartAccount.transfer, undefined);
+    assert.deepEqual((await f.list({ maximum: 20 })).transactions, [transaction]);
+
+    assert.equal(transaction.nonce, nonce);
+    assert.equal(transaction.smartAccount.operationNonce, operation.nonce.toString());
   });
-  assert.deepEqual(f.dispatched, [entry.rawTransaction]);
-  assert.equal(
-    (await f.records.readExact(f.session, '1', payer.address, entry.hash))
-      ?.rawTransaction,
-    entry.rawTransaction
-  );
+
+test('an ordinary saved Smart zero-value self-call has no cancellation intent', async () => {
+  const f = await fixture();
+  const { entry } = await f.append({
+    calls: [{ target: account, value: '0' }],
+  });
+  assert.equal((await f.get(entry.hash))?.smartAccount.cancellation, undefined);
 });
 
 test('general signed handleOps lookup does not depend on metadata or transfer-shaped calls', async () => {
@@ -355,11 +248,10 @@ test('general signed handleOps lookup does not depend on metadata or transfer-sh
       smartAccountExecutionFrom: recipient,
     },
   });
-  const item = await f.replay.get(entry.hash);
+  const item = await f.get(entry.hash);
   assert(item);
   assert.equal(item.smartAccount.executions?.[0]?.data, '0x12345678');
   assert.equal(item.smartAccount.transfer?.contractInteraction, true);
-  assert.equal((await f.replay.prepare(entry.hash)).status, 'review');
   assert.equal(
     await f.records.readSmartAccountReplayExact(
       f.session,
@@ -383,9 +275,9 @@ test('inner batch calls retain separate execution intent and raw token arguments
         },
       ],
     });
-  const item = await f.replay.get(entry.hash);
+  const item = await f.get(entry.hash);
   assert(item);
-  assert.equal(item.smartAccount.replayable, true);
+  assert.equal(item.smartAccount.operationCount, 1);
   assert.equal(item.smartAccount.executions?.length, 2);
   assert.equal(
     item.smartAccount.executions?.[1]?.assetTransfer?.recipient,
@@ -396,26 +288,13 @@ test('inner batch calls retain separate execution intent and raw token arguments
     '12'
   );
   assert.equal(item.smartAccount.transfer, undefined);
-  assert.equal((await f.replay.prepare(entry.hash)).status, 'review');
-});
-
-test('multiple outer UserOperations remain inspect-only', async () => {
-  const f = await fixture(),
-    { entry } = await f.append({ multi: true });
-  const prepared = await f.replay.prepare(entry.hash);
-  assert.equal(prepared.status, 'inspect-only');
-  if (prepared.status !== 'inspect-only') assert.fail();
-  assert.equal(prepared.transaction.smartAccount.operationCount, 2);
-  assert.throws(() => f.replay.confirm('none'), { code: 'EXPIRED' });
-  assert.equal(f.dispatched.length, 0);
 });
 
 for (const mode of ['all-true', 'second-false', 'second-missing', 'second-wrong', 'duplicate'] as const)
   test(`native same-account multi-operation observation requires every event: ${mode}`, async () => {
     const f = await fixture(), { entry } = await f.append({ multi: 'same' });
-    const saved = await f.replay.get(entry.hash); assert(saved);
+    const saved = await f.get(entry.hash); assert(saved);
     assert.equal(saved.smartAccount.operations.length, 2);
-    assert.equal((await f.replay.prepare(entry.hash)).status, 'inspect-only');
     const view = createNativeSignedRecordView(f.records, f.session, '66'.repeat(32),
       { index: 0, type: 'SmartAccount', address: account }, getNativeNetwork('ethereum'));
     const row = await view.smartActivity(entry.hash); assert(row?.smartAccount);
@@ -444,7 +323,7 @@ for (const mode of ['all-true', 'second-false', 'second-missing', 'second-wrong'
 
 test('aggregate Smart observation refuses duplicate or unbounded identities before any read', async () => {
   const f = await fixture(), { entry } = await f.append();
-  const saved = await f.replay.get(entry.hash); assert(saved);
+  const saved = await f.get(entry.hash); assert(saved);
   const identity = saved.smartAccount.operations[0]!;
   for (const operations of [[identity, identity], Array.from({ length: 513 }, () => identity)]) {
     f.calls.length = 0;
@@ -454,51 +333,16 @@ test('aggregate Smart observation refuses duplicate or unbounded identities befo
   }
 });
 
-test('wrong recorded payer, expired consent, and changed selected owner prevent replay', async () => {
-  for (const mode of ['payer', 'changed', 'expired', 'aba']) {
-    const f = await fixture(),
-      { entry } = await f.append();
-    if (mode === 'payer') {
-      f.wrongPayer();
-      await assert.rejects(f.replay.prepare(entry.hash));
-    } else {
-      const prepared = await f.replay.prepare(entry.hash);
-      if (prepared.status !== 'review') assert.fail();
-      if (mode === 'changed') f.payerChanged();
-      else if (mode === 'expired') f.expire();
-      else f.switchAwayAndBack();
-      await assert.rejects(f.replay.confirm(prepared.review.id));
-    }
-    assert.equal(f.dispatched.length, 0);
-  }
-});
-
-test('RPC failure retains recoverable bytes and does not dispatch', async () => {
-  const f = await fixture(),
-    { entry } = await f.append();
-  f.rpcFailed();
-  await assert.rejects(f.replay.prepare(entry.hash));
-  assert.equal(f.dispatched.length, 0);
-  assert.equal(
-    (await f.records.readExact(f.session, '1', payer.address, entry.hash))
-      ?.rawTransaction,
-    entry.rawTransaction
-  );
-});
-
 test('wrong Smart Account records are excluded and pagination follows matching signed operations', async () => {
   const f = await fixture(),
     first = await f.append();
   const foreign = await f.append({ nonce: 1, owner: recipient });
   const last = await f.append({ nonce: 2 });
-  assert.equal(await f.replay.get(foreign.entry.hash), null);
-  await assert.rejects(f.replay.prepare(foreign.entry.hash), {
-    code: 'NOT_FOUND',
-  });
-  const page = await f.replay.list({ maximum: 1 });
+  assert.equal(await f.get(foreign.entry.hash), null);
+  const page = await f.list({ maximum: 1 });
   assert.equal(page.transactions[0]?.hash, last.entry.hash);
   assert.equal(page.nextCursor, last.entry.hash);
-  const older = await f.replay.list({
+  const older = await f.list({
     maximum: 1,
     beforeHash: page.nextCursor!,
   });
@@ -605,388 +449,6 @@ test('native Activity retains an authenticated Smart cancellation through its or
   const page = await view.pendingActivities();
   assert.equal(page.records[0]!.hash, tx.hash);
   assert.equal(page.records[0]!.smartAccount?.cancellation, true);
-  const saved = await f.replay.get(tx.hash!);
+  const saved = await f.get(tx.hash!);
   assert.equal(saved?.smartAccount.cancellation, true);
-  const prepared = await f.replay.prepare(tx.hash!);
-  assert.equal(prepared.status, 'review');
-  if (prepared.status !== 'review') assert.fail();
-  assert.equal(prepared.review.to, payer.address);
 });
-
-test('owner change while the encrypted record is loading rejects the late result', async () => {
-  const f = await fixture(),
-    { entry } = await f.append();
-  let entered!: () => void, release!: () => void;
-  const started = new Promise<void>((resolve) => {
-    entered = resolve;
-  });
-  const paused = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  f.beforeRead(async () => {
-    entered();
-    await paused;
-  });
-  const pending = f.replay.prepare(entry.hash);
-  const rejected = assert.rejects(pending);
-  await started;
-  f.switchAwayAndBack();
-  release();
-  await rejected;
-  assert.equal(f.dispatched.length, 0);
-});
-
-test('the existing replay engine consumes confirmation once', async () => {
-  const f = await fixture(),
-    { entry } = await f.append();
-  const prepared = await f.replay.prepare(entry.hash);
-  if (prepared.status !== 'review') assert.fail();
-  const first = f.replay.confirm(prepared.review.id);
-  await assert.rejects(f.replay.confirm(prepared.review.id), {
-    code: 'EXPIRED',
-  });
-  await first;
-  assert.deepEqual(f.dispatched, [entry.rawTransaction]);
-  assert.equal(f.simulations.length, 1);
-});
-
-test('a retained Smart resend rechecks frozen execution before dispatch', async () => {
-  const f = await fixture(),
-    { entry } = await f.append();
-  const review = await f.replay.prepare(entry.hash);
-  if (review.status !== 'review') assert.fail();
-  f.failExecution();
-  await assert.rejects(
-    f.replay.confirm(review.review.id),
-    /Unable to verify smart account execution/
-  );
-  assert.equal(f.simulations.length, 1);
-  assert.equal(f.dispatched.length, 0);
-});
-
-test('a retained Smart resend rejects a reorg during final simulation', async () => {
-  const f = await fixture(),
-    { entry } = await f.append();
-  const review = await f.replay.prepare(entry.hash);
-  if (review.status !== 'review') assert.fail();
-  f.reorgDuringSimulation();
-  await assert.rejects(
-    f.replay.confirm(review.review.id),
-    /Unable to verify smart account execution/
-  );
-  assert.equal(f.dispatched.length, 0);
-});
-
-test('a queued Smart resend obtains its exact predecessor from the admission snapshot', async () => {
-  const f = await fixture(),
-    { entry } = await f.append({ nonce: 1 });
-  f.pendingNonce(1);
-  const review = await f.replay.prepare(entry.hash);
-  if (review.status !== 'review') assert.fail();
-  const prior = await f.append({ plain: true });
-  await f.replay.confirm(review.review.id);
-  assert.equal(f.simulations[0]?.length, 2);
-  assert.equal(f.simulations[0]?.[0].to.toLowerCase(), recipient.toLowerCase());
-  assert.equal(f.simulations[0]?.[0].nonce, '0x0');
-  assert.deepEqual(f.dispatched, [entry.rawTransaction]);
-  assert.notEqual(prior.entry.hash, entry.hash);
-});
-
-test('revoking a Smart resend while simulation is held prevents dispatch', async () => {
-  const f = await fixture(),
-    { entry } = await f.append();
-  const review = await f.replay.prepare(entry.hash);
-  if (review.status !== 'review') assert.fail();
-  let started!: () => void;
-  const waiting = new Promise<void>((resolve) => {
-    started = resolve;
-  });
-  let resume!: () => void;
-  const held = new Promise<void>((resolve) => {
-    resume = resolve;
-  });
-  f.beforeSimulation(async () => {
-    started();
-    await held;
-  });
-  const confirmation = f.replay.confirm(review.review.id);
-  await waiting;
-  f.replay.cancel();
-  resume();
-  await assert.rejects(confirmation, /Owner changed|CONTEXT_CHANGED/);
-  assert.equal(f.dispatched.length, 0);
-});
-
-test('an explicit missing-nonce predecessor keeps selected Smart authority and replays its original payer bytes', async () => {
-  const f = await fixture(),
-    first = await f.append({ plain: true }),
-    second = await f.append({ nonce: 1 });
-  const parent = await f.replay.prepare(second.entry.hash);
-  assert.equal(parent.status, 'review');
-  if (parent.status !== 'review') assert.fail();
-  assert.equal(parent.review.missingNonce, '0');
-  assert.equal(parent.review.predecessors[0]?.hash, first.entry.hash);
-  const page = await f.replay.listPredecessors(parent.review.id, {
-    maximum: 1,
-  });
-  assert.equal(page.transactions[0]?.hash, first.entry.hash);
-  await assert.rejects(
-    f.replay.preparePredecessor(parent.review.id, second.entry.hash),
-    /NOT_FOUND/
-  );
-  const prior = await f.replay.preparePredecessor(
-    parent.review.id,
-    first.entry.hash
-  );
-  assert.equal(prior.status, 'review');
-  if (prior.status !== 'review') assert.fail();
-  assert.equal(prior.review.to, recipient);
-  assert.equal('smartAccount' in prior.review, false);
-  await assert.rejects(
-    f.replay.preparePredecessor(parent.review.id, first.entry.hash),
-    /EXPIRED/
-  );
-  await f.replay.confirm(prior.review.id);
-  assert.deepEqual(f.dispatched, [first.entry.rawTransaction]);
-});
-
-test('expired or changed Smart authority cannot open a previously offered payer predecessor', async () => {
-  for (const revoke of ['expire', 'switchAwayAndBack'] as const) {
-    const f = await fixture(),
-      first = await f.append({ plain: true }),
-      second = await f.append({ nonce: 1 });
-    const parent = await f.replay.prepare(second.entry.hash);
-    if (parent.status !== 'review') assert.fail();
-    f[revoke]();
-    await assert.rejects(
-      f.replay.preparePredecessor(parent.review.id, first.entry.hash)
-    );
-    assert.equal(f.dispatched.length, 0);
-  }
-});
-
-test('a multiple-UserOperation predecessor remains inspect-only after its parent offers nonce recovery', async () => {
-  const f = await fixture(),
-    first = await f.append({ multi: true }),
-    second = await f.append({ nonce: 1 });
-  const parent = await f.replay.prepare(second.entry.hash);
-  if (parent.status !== 'review') assert.fail();
-  const prior = await f.replay.preparePredecessor(
-    parent.review.id,
-    first.entry.hash
-  );
-  assert.equal(prior.status, 'inspect-only');
-  if (prior.status !== 'inspect-only') assert.fail();
-  assert.equal(prior.transaction.smartAccount.operationCount, 2);
-  assert.equal(prior.transaction.smartAccount.replayable, false);
-  await assert.rejects(f.replay.confirm(parent.review.id), { code: 'EXPIRED' });
-  assert.equal(f.dispatched.length, 0);
-});
-
-test('known EntryPoint handleOps predecessors cannot bypass classification with trailing or malformed data', async () => {
-  for (const malformed of [
-    { outerDataSuffix: '00' },
-    { outerData: paliEntryPointInterface.getFunction('handleOps')!.selector },
-  ]) {
-    const f = await fixture(),
-      first = await f.append({ multi: true, ...malformed }),
-      second = await f.append({ nonce: 1 });
-    const parent = await f.replay.prepare(second.entry.hash);
-    if (parent.status !== 'review') assert.fail();
-    await assert.rejects(
-      f.replay.preparePredecessor(parent.review.id, first.entry.hash),
-      { code: 'INVALID_RESPONSE' }
-    );
-    assert.equal(
-      (
-        await f.records.readExact(
-          f.session,
-          '1',
-          payer.address,
-          first.entry.hash
-        )
-      )?.rawTransaction,
-      first.entry.rawTransaction
-    );
-    assert.equal(f.dispatched.length, 0);
-  }
-});
-
-test('a matching selector at an unrelated contract retains ordinary predecessor review', async () => {
-  const f = await fixture(),
-    first = await f.append({
-      outerTo: recipient,
-      outerData: paliEntryPointInterface.getFunction('handleOps')!.selector,
-    }),
-    second = await f.append({ nonce: 1 });
-  const parent = await f.replay.prepare(second.entry.hash);
-  if (parent.status !== 'review') assert.fail();
-  const prior = await f.replay.preparePredecessor(
-    parent.review.id,
-    first.entry.hash
-  );
-  if (prior.status !== 'review') assert.fail();
-  assert.equal('smartAccount' in prior.review, false);
-  assert.equal(prior.review.to, recipient);
-  await f.replay.confirm(prior.review.id);
-  assert.deepEqual(f.dispatched, [first.entry.rawTransaction]);
-});
-
-test('a different Smart predecessor exposes its inner batch and native value alongside asset calldata', async () => {
-  const f = await fixture(),
-    otherAccount = '0x5555555555555555555555555555555555555555';
-  const first = await f.append({
-      owner: otherAccount,
-      calls: [
-        { target: recipient, value: '2' },
-        {
-          target: account,
-          value: '3',
-          data: encodeErc20Transfer(recipient, '11'),
-        },
-      ],
-    }),
-    second = await f.append({ nonce: 1 });
-  const parent = await f.replay.prepare(second.entry.hash);
-  if (parent.status !== 'review') assert.fail();
-  const prior = await f.replay.preparePredecessor(
-    parent.review.id,
-    first.entry.hash
-  );
-  if (prior.status !== 'review' || !('smartAccount' in prior.review))
-    assert.fail();
-  assert.equal(prior.review.smartAccount.account, otherAccount);
-  assert.equal(prior.review.smartAccount.executions?.length, 2);
-  const payable = prior.review.smartAccount.executions![1]!;
-  assert.equal(payable.value, '3');
-  assert.equal(payable.assetTransfer?.recipient, recipient);
-  assert.equal(payable.assetTransfer?.items[0]?.units, '11');
-  assert.equal(payable.assetTransfer?.standardVerified, false);
-  assert.equal(prior.review.from.toLowerCase(), payer.address.toLowerCase());
-  assert.equal(prior.review.to, getPaliEntryPointAddress(1));
-  await f.replay.confirm(prior.review.id);
-  assert.deepEqual(f.dispatched, [first.entry.rawTransaction]);
-});
-
-test('a Smart predecessor uses its inner receipt outcome while retaining the original selected-owner guard', async () => {
-  for (const outcome of ['reverted', 'owner-changed'] as const) {
-    const f = await fixture(),
-      otherAccount = '0x5555555555555555555555555555555555555555';
-    const first = await f.append({ owner: otherAccount }),
-      second = await f.append({ nonce: 1 });
-    const parent = await f.replay.prepare(second.entry.hash);
-    if (parent.status !== 'review') assert.fail();
-    if (outcome === 'reverted') {
-      const decoded = await f.records.readSmartAccountReplayExact(
-        f.session,
-        '1',
-        otherAccount,
-        first.entry.hash
-      );
-      assert(decoded);
-      const event = paliEntryPointInterface.encodeEventLog(
-        paliEntryPointInterface.getEvent('UserOperationEvent')!,
-        [
-          decoded.operations[0]!.operationHash,
-          otherAccount,
-          '0x' + '00'.repeat(20),
-          7,
-          false,
-          100,
-          50,
-        ]
-      );
-      f.mined({
-        transactionHash: first.entry.hash,
-        from: payer.address,
-        to: getPaliEntryPointAddress(1),
-        status: '0x1',
-        blockNumber: '0x10',
-        blockHash,
-        logs: [
-          {
-            ...event,
-            address: getPaliEntryPointAddress(1),
-            transactionHash: first.entry.hash,
-            blockHash,
-            blockNumber: '0x10',
-          },
-        ],
-      });
-      assert.equal(
-        (await f.replay.preparePredecessor(parent.review.id, first.entry.hash))
-          .status,
-        'reverted'
-      );
-    } else {
-      const prior = await f.replay.preparePredecessor(
-        parent.review.id,
-        first.entry.hash
-      );
-      if (prior.status !== 'review') assert.fail();
-      f.switchAwayAndBack();
-      await assert.rejects(f.replay.confirm(prior.review.id));
-    }
-    assert.equal(f.dispatched.length, 0);
-  }
-});
-
-test('canonical outer revert is terminal without requiring a UserOperation success event', async () => {
-  const f = await fixture(),
-    { entry } = await f.append();
-  f.mined({
-    transactionHash: entry.hash,
-    from: payer.address,
-    to: getPaliEntryPointAddress(1),
-    status: '0x0',
-    blockNumber: '0x10',
-    blockHash,
-    logs: [],
-  });
-  assert.equal((await f.replay.prepare(entry.hash)).status, 'reverted');
-  assert.equal(f.dispatched.length, 0);
-});
-
-for (const success of [true, false])
-  test(`canonical inner outcome is ${
-    success ? 'confirmed' : 'reverted'
-  }`, async () => {
-    const f = await fixture(),
-      { entry } = await f.append(),
-      saved = await f.replay.get(entry.hash);
-    assert(saved);
-    const event = paliEntryPointInterface.encodeEventLog(
-      paliEntryPointInterface.getEvent('UserOperationEvent')!,
-      [
-        saved.smartAccount.operationHash,
-        account,
-        '0x' + '00'.repeat(20),
-        7,
-        success,
-        100,
-        50,
-      ]
-    );
-    f.mined({
-      transactionHash: entry.hash,
-      from: payer.address,
-      to: getPaliEntryPointAddress(1),
-      status: '0x1',
-      blockNumber: '0x10',
-      blockHash,
-      logs: [
-        {
-          ...event,
-          address: getPaliEntryPointAddress(1),
-          transactionHash: entry.hash,
-          blockHash,
-          blockNumber: '0x10',
-        },
-      ],
-    });
-    assert.equal(
-      (await f.replay.prepare(entry.hash)).status,
-      success ? 'confirmed' : 'reverted'
-    );
-    assert.equal(f.dispatched.length, 0);
-  });

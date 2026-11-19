@@ -63,7 +63,7 @@ const mockObserve = jest.mocked(observeRetainedUtxo);
 const originalFetch = globalThis.fetch;
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 let wallet: any;
-let records: { list: jest.Mock };
+const records = {};
 let signing: any;
 
 beforeEach(() => {
@@ -99,7 +99,6 @@ beforeEach(() => {
         throw new Error('Wallet owner changed');
     }),
   };
-  records = { list: jest.fn().mockResolvedValue([]) };
   Object.assign(wallet, {
     walletSessionGeneration: 0,
     networkRequestGeneration: 0,
@@ -131,45 +130,19 @@ const refresh = (isRapidPolling = false) =>
     isRapidPolling,
   });
 
-it('reconciles the captured saved-list owner before returning the refreshed list', async () => {
-  let release!: () => void;
-  mockReconcile.mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        release = resolve;
-      })
-  );
-  const result = wallet.refreshRetainedUtxoTransfers();
-  await flush();
-  expect(records.list).not.toHaveBeenCalled();
-  expect(mockReconcile).toHaveBeenCalledWith(
-    expect.objectContaining({
-      records,
-      owner,
-      backendChain: 'main',
-      session: expect.objectContaining({ keyring: signing.keyring }),
-    })
-  );
-  release();
-  await expect(result).resolves.toEqual([]);
-  expect(wallet.captureUtxoSigningContext).toHaveBeenCalledTimes(1);
-  expect(records.list).toHaveBeenCalledWith(
-    expect.objectContaining({ keyring: signing.keyring }),
-    owner
-  );
-});
-
 it('uses only the existing guarded GET transport and retires its read owner', async () => {
+  const url = 'https://original.invalid/api/v2/tx/' + 'a'.repeat(64);
   mockReconcile.mockImplementation(async (request) => {
-    const url = 'https://original.invalid/api/v2/tx/' + 'a'.repeat(64);
     await request.fetch(url, { method: 'GET', signal: request.signal });
     await expect(request.fetch(url, { method: 'POST' })).rejects.toThrow(
       'Invalid saved UTXO status request'
     );
-    expect(mockBackend).toHaveBeenCalledWith(url, expect.any(Function));
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
-  await wallet.refreshRetainedUtxoTransfers();
+  await refresh();
+  await expect(mockReconcile.mock.results[0].value).resolves.toBeUndefined();
+  await flush();
+  expect(mockBackend).toHaveBeenCalledWith(url, expect.any(Function));
+  expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   const request = mockReconcile.mock.calls[0][0];
   expect(request.signal.aborted).toBe(true);
   expect(wallet.activeUtxoReads.size).toBe(0);
@@ -214,14 +187,12 @@ it('does not delay or fail valid history when retained-record reconciliation fai
   );
 });
 
-it('reloads the stored list after an explicit check without a second status probe', async () => {
+it('checks the selected transfer without reconciling the full journal', async () => {
   await expect(wallet.checkRetainedUtxoTransfer('a'.repeat(64))).resolves.toBe(
     'confirmed'
   );
-  await expect(wallet.listRetainedUtxoTransfers()).resolves.toEqual([]);
   expect(mockObserve).toHaveBeenCalledTimes(1);
   expect(mockReconcile).not.toHaveBeenCalled();
-  expect(records.list).toHaveBeenCalledTimes(1);
   expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 

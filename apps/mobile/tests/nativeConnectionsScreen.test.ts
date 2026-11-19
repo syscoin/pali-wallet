@@ -170,6 +170,38 @@ test('proposal expiry disables approval, and account selection changes the discl
   f.close();
 });
 
+test('a fresh proposal starts with the active account while updates keep the current proposal choice', async () => {
+  const f = fixture();
+  const savings = { id: 'hd:60:1', label: 'Savings', address: `0x${'34'.repeat(20)}` };
+  const radio = (label: string) => {
+    const option = f.render().find(element => element.type === 'Pressable' && element.props.accessibilityLabel?.startsWith(label + ','));
+    assert(option, label);
+    return option;
+  };
+  try {
+    f.proposal();
+    const first = f.controller.getSnapshot().proposals[0]!;
+    const methodsByAccount = [
+      ...first.methodsByAccount,
+      { accountId: savings.id, methods: ['eth_accounts', 'personal_sign'], canApprove: true },
+    ];
+    f.update({ accounts: [account, savings], proposals: [{ ...first, methodsByAccount }] });
+    click(radio(savings.label));
+    f.update({ revision: 8, proposals: [{ ...first, methodsByAccount: [...methodsByAccount] }] });
+    assert.equal(radio(savings.label).props.accessibilityState.checked, true);
+    await click(f.button('Reject'));
+    assert.deepEqual(f.calls.at(-1), { method: 'reject', args: [first.id] });
+
+    f.update({ revision: 9, proposals: [] });
+    f.render();
+    f.update({ revision: 10, proposals: [{ ...first, id: 43, origin: 'https://second.invalid', methodsByAccount }] });
+    assert.equal(radio(account.label).props.accessibilityState.checked, true);
+    assert.equal(radio(savings.label).props.accessibilityState.checked, false);
+    await click(f.button('Connect'));
+    assert.deepEqual(f.calls.at(-1), { method: 'approve', args: [43, account.id, 'ethereum', 10] });
+  } finally { f.close(); }
+});
+
 test('required calls cannot connect through an incompatible selected Ledger account', () => {
   const f = fixture();
   try {
@@ -280,6 +312,27 @@ test('session action failures use a localized generic fallback for unknown error
   } finally { f.close(); }
 });
 
+test('the list disconnect shortcut shows a visible failure and permits retry', async () => {
+  const f = fixture(), session = f.session();
+  const disconnect = () => f.render().find(element =>
+    element.type === 'IconButton' && element.props.label === 'Disconnect Example app')!;
+  try {
+    f.update({ sessions: [session] });
+    f.setSessionAction(async () => {
+      f.update({ revision: 8, sessions: [{ ...session }] });
+      throw Error('Private failure details');
+    });
+    click(disconnect()); await settled();
+    const footer = f.render().find(element => element.type === 'Screen')!.props.footer;
+    assert.equal(footer.props.accessibilityRole, 'alert');
+    assert.equal(footer.children[0].props.body, 'The connection service is unavailable. Try again.');
+    f.setSessionAction(async () => f.update({ sessions: [] }));
+    click(disconnect()); await settled();
+    assert.equal(f.calls.filter(call => call.method === 'disconnect').length, 2);
+    assert.equal(f.render().find(element => element.type === 'Screen')!.props.footer, undefined);
+  } finally { f.close(); }
+});
+
 test('session actions exclude synchronous duplicates and retry after a current failure', async () => {
   const f = fixture(), pending = Promise.withResolvers<void>();
   try {
@@ -306,12 +359,16 @@ test('Back and reopening the same session retire old results without clearing a 
     f.update({ sessions: [f.session(true)] }); openSession(f);
     f.setSessionAction(() => old.promise);
     const stale = f.button('Open website'); click(stale);
+    const assertOldView = f.calls.at(-1)!.args[2] as () => void;
+    assert.doesNotThrow(assertOldView);
     f.render().find(element => element.type === 'Header')!.props.onBack();
     openSession(f);
+    assert.throws(assertOldView, { message: 'CONTEXT_CHANGED' });
     f.setSessionAction(() => next.promise);
     click(stale);
     assert.equal(f.calls.filter(call => call.method === 'return').length, 1, 'Old callbacks cannot act after reopening');
     click(f.button('Open website'));
+    assert.doesNotThrow(f.calls.at(-1)!.args[2] as () => void);
     old.reject(Object.assign(new Error('Old error'), { code: 'BLOCKED_SITE' })); await settled();
     assert.equal(f.button('Open website').props.disabled, true, 'Old completion cannot clear the new pending action');
     assert.equal(f.render().filter(element => element.type === 'Notice').length, 0);

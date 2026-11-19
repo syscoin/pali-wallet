@@ -36,7 +36,7 @@ function fixture({ allowed = false, empty = false, exported = 'WalletUpdatePanel
       subscribeAppUpdates(listener: (state: AppUpdateState) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     },
     '../updates/service': { mobileUpdates: service },
-    '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Icon: 'Icon', Notice: 'Notice', Screen: 'Screen', Text: 'Text', colors: {} },
+    '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Icon: 'Icon', Notice: 'Notice', Screen: 'Screen', Text: 'Text', colors: {}, styles: { warningText: {} } },
   };
   const createScreen = (name: string) => screenFixture(new URL('../src/screens/WalletUpdatePanel.tsx', import.meta.url), name, imports, { AbortController });
   const screen = createScreen(exported);

@@ -119,20 +119,22 @@ export const CreatePhrase = () => {
             {t('buttons.generate')}
           </Button>
         </div>
-        <SeedPhraseDisplay
-          seedPhrase={seed}
-          isEnabled={true}
-          showEyeToggle={true}
-          displayMode="words"
-          className="w-[17.5rem] max-w-[17.5rem]"
-        />
+        {hasCurrentSeed && (
+          <SeedPhraseDisplay
+            seedPhrase={seed}
+            isEnabled={true}
+            showEyeToggle={true}
+            displayMode="words"
+            className="w-[17.5rem] max-w-[17.5rem]"
+          />
+        )}
         {isGenerating && (
           <p role="status" className="text-brand-gray200">
             {t('buttons.loading')}
           </p>
         )}
         {generationFailed && (
-          <p role="alert" className="text-brand-gray200">
+          <p role="alert" className="text-warning-error">
             {t('createPhrase.generationFailed')}
           </p>
         )}

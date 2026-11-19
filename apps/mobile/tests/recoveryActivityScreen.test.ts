@@ -10,11 +10,11 @@ import { AbiCoder, id } from 'ethers';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
-import { NativeActivity, type NativeActivityRuntime } from '../src/activity/nativeActivity.ts';
+import { activityRowKey, activityRowTimestamp, findActivityRow, NativeActivity, type NativeActivityRuntime } from '../src/activity/nativeActivity.ts';
 import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
 import { activityAssetIcon } from '../src/activity/assetIcon.ts';
 import { getEvmTransactionDisplayInfo, type EvmDisplayTokenMetadata } from '../../../source/shared/evmTransactionDisplay.ts';
-import { mapEvmExplorerTokenTransfer, mapEvmExplorerTransaction } from '../../../source/shared/evmHistory.ts';
+import { EVM_TRANSACTION_HISTORY_SOURCE, mapEvmExplorerTokenTransfer, mapEvmExplorerTransaction } from '../../../source/shared/evmHistory.ts';
 import { activityRowDirection, matchesActivityView, zeroOnlyActivity } from '../src/activity/activityFiltering.ts';
 import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
 
@@ -91,14 +91,13 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     error: null,
     coverage: 'explorer-transfers',
     truncated: false,
-    canViewSavedPending: true,
   };
   let loaded = 0,
     replays = 0,
     backs = 0,
-    closedPending = 0,
     release!: () => void;
   const inspected: string[] = [];
+  const inspectedOperations: string[] = [];
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
@@ -106,22 +105,21 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
     connect: () => () => {},
-    async loadSavedPending() {
+    async loadTarget() {
       loaded++;
       if (held) await gate;
       snapshot = {
         ...snapshot,
-        savedPending: {
-          rows: [{ hash, checking: false, unavailable: false }],
-          status: 'ready',
-          hasMore: false,
-        },
+        rows: [{ hash, checking: false, unavailable: false }],
       };
     },
     inspect(value: string) {
       inspected.push(value);
     },
-    closeSavedPending() { closedPending++; snapshot = { ...snapshot, savedPending: undefined }; },
+    async inspectSmartAuthorization(operationHash: string, guard: () => void) {
+      guard();
+      inspectedOperations.push(operationHash);
+    },
     async setView(update: object) { snapshot = { ...snapshot, view: { ...snapshot.view, ...update } }; },
   };
   const ui = Object.fromEntries(
@@ -141,6 +139,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
       BackHandler: { addEventListener: (_name: string, handler: () => boolean) => { hardwareBack = handler; return { remove() { if (hardwareBack === handler) hardwareBack = undefined; } }; } },
       StyleSheet: { create: (value: unknown) => value },
       Linking: {},
+      AppState: { currentState: 'active' },
     },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-clipboard': { setStringAsync: clipboard },
@@ -150,8 +149,10 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     '../activity/activityAmountLabel': { compactActivityAmountLabel },
     './ActivityListRow': { ActivityListRow: 'ActivityListRow', activityDate: () => ({ key: 'today', label: 'Today', time: '10:00' }) },
     './TransactionDetailLayout': { TransactionDetailLayout: 'TransactionDetailLayout' },
+    '../activity/nativeActivity': { activityRowKey, activityRowTimestamp, findActivityRow },
     '../activity/assetIcon': { activityAssetIcon },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '0' },
+    '../../../../source/shared/evmHistory': { EVM_TRANSACTION_HISTORY_SOURCE },
     '../activity/activityFiltering': {
       activityRowDirection, matchesActivityView, zeroOnlyActivity,
     },
@@ -178,6 +179,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     exports: module.exports,
     setTimeout,
     clearTimeout,
+    AbortController,
     require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
       assert(Object.hasOwn(dependencies, name), name);
       return dependencies[name];
@@ -212,9 +214,9 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     snapshot: () => snapshot,
     loaded: () => loaded,
     inspected: () => inspected,
+    inspectedOperations: () => inspectedOperations,
     replays: () => replays,
     backs: () => backs,
-    closedPending: () => closedPending,
     release,
     lock() {
       snapshot = { ...snapshot, status: 'locked', scopeKey: null };
@@ -308,7 +310,7 @@ test('an already loaded indexed transaction opens without waiting for saved inve
   const held = new Promise<never>(() => {});
   const runtime: NativeActivityRuntime = {
     async load(check) { check(); return { scope, locals: [], saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false } }; },
-    async loadSavedPending() { savedReads++; return held; },
+    async loadTarget() { savedReads++; return held; },
     async saveCache(_scope, _rows, check) { check(); },
     async saveView(_scope, _view, check) { check(); },
   };
@@ -327,8 +329,53 @@ test('an already loaded indexed transaction opens without waiting for saved inve
   } finally { f.dispose(); }
 });
 
+test('a pending Activity arrival cannot replace manually opened details', async () => {
+  const recent = { hash: '0x' + 'bb'.repeat(32), checking: false, unavailable: false };
+  let acknowledged = 0;
+  const f = fixture(hash, true, { onInitialTargetOpened: () => { acknowledged++; } });
+  try {
+    f.rows([recent]);
+    const list = all(f.render()).find(node => node.type === 'FlatList')!;
+    assert.equal(f.loaded(), 1);
+    list.props.renderItem({ item: recent, index: 0 }).props.onPress();
+    await settle();
+    assert.equal(acknowledged, 1);
+    f.release();
+    await settle();
+    assert.deepEqual(f.inspected(), [recent.hash]);
+  } finally { f.dispose(); }
+});
+
+test('a watch notification opens when its transaction arrives on the first explorer page', async () => {
+  const owner = '0x' + '22'.repeat(20);
+  const scope = createActivityScope('a'.repeat(64), 'hd:60:0', owner, 'ethereum');
+  const indexed = mapEvmExplorerTransaction({ hash, from: '0x' + '33'.repeat(20), to: owner, value: '1',
+    blockNumber: '123', timeStamp: '1700000000', nonce: '0', isError: '0', input: '0x' }, 1);
+  const entered = Promise.withResolvers<void>(), page = Promise.withResolvers<void>();
+  const runtime: NativeActivityRuntime = {
+    async load() { return { scope, locals: [], saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false } }; },
+    async saveCache() {}, async saveView() {},
+  };
+  let opened = 0, detailReads = 0;
+  const controller = new NativeActivity({ getSnapshot: () => ({ phase: 'ready', revision: 1 }), subscribe: () => () => {} }, () => runtime,
+    { async page(_scope, feed) {
+      entered.resolve(); await page.promise;
+      return feed === 'txlist' ? [{ hash, blockNumber: '123', timestamp: 1700000000000, tokenHint: false, indexed }] : [];
+    } }, { async read() { detailReads++; return null; } });
+  const f = fixture(hash, false, { controller, externallyConnected: true, onInitialTargetOpened: () => { opened++; } });
+  try {
+    const refresh = controller.refresh(); await entered.promise;
+    f.render(); await settle(); assert.equal(opened, 0);
+    page.resolve(); await refresh;
+    f.render(); await settle();
+    assert(all(f.render()).some(node => node.type === 'TransactionDetailLayout'));
+    assert.equal(opened, 1); assert.equal(detailReads, 1);
+  } finally { page.resolve(); f.dispose(); }
+});
+
 test('actual Activity opens the saved record once and never replays it', async () => {
-  const f = fixture(hash);
+  let opened = 0;
+  const f = fixture(hash, false, { onInitialTargetOpened: () => { opened++; } });
   try {
     f.render();
     await settle();
@@ -345,9 +392,24 @@ test('actual Activity opens the saved record once and never replays it', async (
     await settle();
     assert.equal(f.loaded(), 1);
     assert.equal(f.replays(), 0);
+    assert.equal(opened, 1);
   } finally {
     f.dispose();
   }
+});
+test('two visits to the same unresolved hash share its read and acknowledge the current visit', async () => {
+  const opened: string[] = [];
+  const props = { onInitialTargetOpened: () => { opened.push('first'); } };
+  const f = fixture(hash, true, props);
+  try {
+    f.render();
+    props.onInitialTargetOpened = () => { opened.push('second'); };
+    f.render();
+    assert.equal(f.loaded(), 1);
+    f.release(); await settle();
+    assert.deepEqual(opened, ['second']);
+    assert.deepEqual(f.inspected(), [hash]);
+  } finally { f.dispose(); }
 });
 test('ordinary Activity does not open saved pending or select a transaction', async () => {
   const f = fixture();
@@ -585,6 +647,47 @@ test('Smart Activity details show the observed outer network fee and its actual 
   }
 });
 
+test('unsigned native Activity offers only a fresh Speed Up review for a missing unconsumed transaction', async () => {
+  for (const scoped of [false, true]) {
+    const calls: unknown[] = [];
+    const f = fixture(undefined, false, {
+      onSpeedUpPending: (id: string) => calls.push(id),
+      ...(scoped ? { onNavigateToReview: (action: string, id: string) => calls.push([action, id]) } : {}),
+    });
+    const base = pendingScopedRow({ speedUp: true });
+    const row = { ...base, local: { ...base.local, unsignedSpeedUp: true, cancellationUnavailable: true }, observation: undefined };
+    try {
+      let tree = await openFixtureRow(f, { ...row, retainedObservation: { status: 'missing', latestNonce: '0' } });
+      const findAction = (title: string) => all(tree).find(node => node.type === 'Button' && node.props.title === title);
+      const speed = findAction('Speed Up'); assert(speed);
+      assert.equal(findAction('Review resend'), undefined);
+      assert.equal(findAction('Cancel pending transaction'), undefined);
+      speed.props.onPress(); await settle();
+      assert.deepEqual(calls, [scoped ? ['speed-up', hash] : hash]);
+      f.rows([{ ...row, retainedObservation: { status: 'missing', latestNonce: '1' } }]);
+      tree = f.render();
+      assert.equal(findAction('Speed Up'), undefined);
+    } finally { f.dispose(); }
+  }
+});
+
+test('scoped Smart Activity offers Speed Up only while its missing payer nonce remains available', async () => {
+  const navigation: [string, string][] = [];
+  const f = fixture(undefined, false, { onNavigateToReview: (action: string, id: string) => navigation.push([action, id]) });
+  const base = pendingScopedRow({ speedUp: true });
+  const row = { ...base, observation: undefined, local: { ...base.local, retainedSmartSpeedUp: true,
+    smartAccount: { payer: '0x' + '55'.repeat(20), operations: [{ operationHash: hash, operationNonce: '0' }] } } };
+  const findSpeedUp = (tree: unknown) => all(tree).find(node => node.type === 'Button' && node.props.title === 'Speed Up');
+  try {
+    const tree = await openFixtureRow(f, { ...row, retainedObservation: { status: 'missing', latestNonce: '0' } });
+    const speed = findSpeedUp(tree); assert(speed);
+    speed.props.onPress(); await settle();
+    assert.deepEqual(navigation, [['speed-up', hash]]);
+    f.rows([{ ...row, retainedObservation: { status: 'missing', latestNonce: '1' } }]);
+    assert.equal(findSpeedUp(f.render()), undefined);
+  } finally { f.dispose(); }
+});
+
 test('scoped retained actions navigate to a host review without invoking direct action callbacks', async () => {
   const navigation: [string, string][] = [];
   const direct = () => { throw Error('A read-only projection cannot invoke a direct action'); };
@@ -592,16 +695,17 @@ test('scoped retained actions navigate to a host review without invoking direct 
     onReplay: direct, onSpeedUpPending: direct, onCancelPending: direct, onCancelSaved: direct });
   try {
     const tree = await openFixtureRow(f, pendingScopedRow({ speedUp: true }));
-    for (const title of ['Speed Up', 'Cancel pending transaction', 'Review resend']) {
+    for (const title of ['Speed Up', 'Cancel pending transaction']) {
       const button = all(tree).find(node => node.type === 'Button' && node.props.title === title); assert(button, title);
       button.props.onPress(); await settle();
     }
-    assert.deepEqual(navigation, [['speed-up', hash], ['cancel', hash], ['saved', hash]]);
+    assert.deepEqual(navigation, [['speed-up', hash], ['cancel', hash]]);
+    assert(!all(tree).some(node => node.type === 'Button' && node.props.title === 'Review resend'));
   } finally { f.dispose(); }
 });
 
 for (const outcome of ['confirmed', 'reverted'] as const)
-  test(`a ${outcome} saved transaction offers resend only after a new pending observation`, async () => {
+  test(`a ${outcome} saved transaction never offers resend after a new pending observation`, async () => {
     const f = fixture();
     const pending = pendingScopedRow();
     const local = { ...pending.local, inspectionOnly: false };
@@ -613,13 +717,13 @@ for (const outcome of ['confirmed', 'reverted'] as const)
       });
       assert.equal(hasResend(tree), false);
       f.rows([{ ...pending, local }]);
-      assert.equal(hasResend(f.render()), true, 'a reorg can make the saved transaction pending again');
+      assert.equal(hasResend(f.render()), false, 'a reorg does not restore a manual resend action');
     } finally { f.dispose(); }
   });
 
-for (const savedPending of [false, true]) {
+{
   for (const pendingObservation of [false, true]) {
-    for (const operation of ['speed-up', 'cancel'] as const) test(`${savedPending ? 'saved-pending' : 'ordinary'} Activity keeps a replaced original distinct from its confirmed ${operation} with ${pendingObservation ? 'an older pending observation' : 'unavailable own details'}`, async () => {
+    for (const operation of ['speed-up', 'cancel'] as const) test(`Activity keeps a replaced original distinct from its confirmed ${operation} with ${pendingObservation ? 'an older pending observation' : 'unavailable own details'}`, async () => {
       const pending = pendingScopedRow({ speedUp: true });
       const winnerHash = '0x' + '77'.repeat(32);
       const original = { ...pending, replacementStatus: 'replaced',
@@ -634,15 +738,10 @@ for (const savedPending of [false, true]) {
       const rows = [original, winner];
       const navigations: unknown[] = [];
       const forbidden = (...args: unknown[]) => { navigations.push(args); };
-      const f = fixture(undefined, false, { savedPendingOnly: savedPending,
-        onNavigateToReview: forbidden, onReplay: forbidden, onSpeedUpPending: forbidden,
+      const f = fixture(undefined, false, { onNavigateToReview: forbidden, onReplay: forbidden, onSpeedUpPending: forbidden,
         onCancelPending: forbidden, onCancelSaved: forbidden });
       try {
         f.rows(rows);
-        if (savedPending) {
-          f.render(); await settle();
-          f.state({ savedPending: { rows, status: 'ready', hasMore: false } });
-        }
         const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
         const preview = list.props.renderItem({ item: original, index: 0 });
         assert(preview.props.subtitle.includes(englishI18n.t('transactions.replaced')));
@@ -652,7 +751,7 @@ for (const savedPending of [false, true]) {
         assert.equal(detail.props.status, englishI18n.t('transactions.replaced'));
         assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.networkFee')).value,
           englishI18n.t('mobile.activityViews.nativeActivity.actualFeeNotVerified'));
-        for (const title of ['Review resend', 'Speed Up', 'Cancel pending transaction', 'Cancel saved transaction'])
+        for (const title of ['Review resend', 'Speed Up', 'Cancel pending transaction', 'Cancel transaction'])
           assert(!tree.some(node => node.type === 'Button' && node.props.title === title), title);
         const winnerAction = operation === 'cancel' ? 'View cancellation attempt' : 'View Speed Up attempt';
         const navigate = tree.find(node => node.type === 'Button' && node.props.title === winnerAction); assert(navigate);
@@ -670,19 +769,15 @@ for (const savedPending of [false, true]) {
 
   for (const outcome of ['confirmed', 'reverted'] as const) {
     for (const retained of [false, true]) {
-      test(`${savedPending ? 'saved-pending' : 'ordinary'} Activity prefers its own ${retained ? 'retained' : 'direct'} ${outcome} receipt over replacement status`, async () => {
+      test(`Activity prefers its own ${retained ? 'retained' : 'direct'} ${outcome} receipt over replacement status`, async () => {
         const pending = pendingScopedRow({ speedUp: true });
         const block = { number: '7', hash: '0x' + '88'.repeat(32) };
         const original = { ...pending, replacementStatus: 'replaced',
           observation: retained ? undefined : { ...pending.observation, status: outcome, block, feeUnits: '21000' },
           ...(retained ? { retainedObservation: { status: 'mined', outcome, block, feeUnits: '21000' } } : {}) };
-        const f = fixture(undefined, false, { savedPendingOnly: savedPending });
+        const f = fixture();
         try {
           f.rows([original]);
-          if (savedPending) {
-            f.render(); await settle();
-            f.state({ savedPending: { rows: [original], status: 'ready', hasMore: false } });
-          }
           const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
           const preview = list.props.renderItem({ item: original, index: 0 });
           assert(preview.props.subtitle.includes(englishI18n.t(`send.${outcome}`)));
@@ -710,26 +805,7 @@ for (const host of [false, true]) test(`read-only actions stay hidden without ${
   } finally { f.dispose(); }
 });
 
-test('a network saved-pending entry never falls back to ordinary history and Back returns through the host', async () => {
-  const f = fixture(undefined, false, { savedPendingOnly: true });
-  try {
-    f.rows([pendingScopedRow({ speedUp: true })]);
-    let tree = f.render();
-    assert(all(tree).some(node => node.type === 'Header' && node.props.title === 'Saved pending'));
-    assert.equal(all(tree).find(node => node.type === 'FlatList')?.props.data.length, 0);
-    await settle(); tree = f.render();
-    assert.equal(f.loaded(), 1);
-    const list = all(tree).find(node => node.type === 'FlatList'); assert(list);
-    await list.props.renderItem({ item: list.props.data[0], index: 0 }).props.onPress();
-    tree = f.render();
-    all(tree).find(node => node.type === 'Header')!.props.onBack();
-    tree = f.render();
-    assert(all(tree).some(node => node.type === 'Header' && node.props.title === 'Saved pending'));
-    assert.equal(f.backs(), 0);
-    all(tree).find(node => node.type === 'Header')!.props.onBack();
-    assert.equal(f.backs(), 1); assert.equal(f.closedPending(), 1);
-  } finally { f.dispose(); }
-});
+
 
 
 test('localized transaction status preserves semantic tones and exact amounts', async () => {
@@ -1035,9 +1111,9 @@ test(`Activity ${status} generic Cancel respects retained private-withdrawal aut
       ...(privateWithdrawal ? { cancellationUnavailable: true } : {}) },
       ...(status === 'missing' ? { observation: undefined, retainedObservation: { status: 'missing', latestNonce: '0' } } : {}) };
     const tree = all(await openFixtureRow(f, row));
-    const title = status === 'pending' ? 'Cancel pending transaction' : 'Cancel saved transaction';
+    const title = status === 'pending' ? 'Cancel pending transaction' : 'Cancel transaction';
     assert.equal(tree.some(node => node.type === 'Button' && node.props.title === title), !privateWithdrawal);
-    assert(tree.some(node => node.type === 'Button' && node.props.title === 'Review resend'), 'existing retained bytes remain reviewable');
+    assert(!tree.some(node => node.type === 'Button' && node.props.title === 'Review resend'));
   } finally { f.dispose(); }
 });
 
@@ -1050,7 +1126,105 @@ for(const blocked of ['none','private-withdrawal','cancellation','multiple'] as 
       operations:Array.from({length:blocked==='multiple'?2:1},(_,i)=>({operationHash:'0x'+(i?'cd':'ab').repeat(32),operationNonce:'0'})),
       ...(blocked==='cancellation'?{cancellation:true}:{})}}};
   const tree=all(await openFixtureRow(f,row));const action=tree.find(node=>node.type==='Button'&&node.props.title==='Cancel instruction');
-  assert.equal(!!action,blocked==='none');assert(!tree.some(node=>node.type==='Button'&&['Cancel pending transaction','Cancel saved transaction'].includes(node.props.title)));
+  assert.equal(!!action,blocked==='none');assert(!tree.some(node=>node.type==='Button'&&['Cancel pending transaction','Cancel transaction'].includes(node.props.title)));
   if(action){action.props.onPress();await settle();assert.deepEqual(navigation,[['cancel',hash]]);}
  }finally{f.dispose();}
+});
+
+test('Smart transaction details observe the matching operation and open one cancellation review for its transaction', async () => {
+  const action: unknown[][] = [];
+  const f = fixture(undefined, false, { onNavigateToReview: (...input: unknown[]) => action.push(input) });
+  try {
+    const base = pendingScopedRow();
+    const operationHash = '0x' + 'ef'.repeat(32);
+    const instruction = { operationHash, operationNonce: (2n ** 190n).toString(), account: base.local.address,
+      chainId: '1', createdAt: 1700000000000, payer: base.local.address, observedAt: { number: '1', hash } };
+    const row = { hash, checking: false, unavailable: false,
+      local: { ...base.local, smartAccount: { payer: base.local.address, operations: [instruction] } },
+      smartAuthorizations: [{ instruction, checking: false, unavailable: false }],
+    };
+    const view = all(await openFixtureRow(f, row));
+    const button = (nodes: Element[], title: string) => nodes.find(node => node.type === 'Button' && node.props.title === title);
+    assert.deepEqual(f.inspectedOperations(), [operationHash]);
+    assert(!button(view, 'Check status'));
+    assert(!button(view, 'Review resend'));
+    const cancel = button(view, 'Cancel instruction');
+    assert(cancel);
+    assert.equal(view.filter(node => node.type === 'Button' && node.props.title === 'Cancel instruction').length, 1);
+    cancel.props.onPress();
+    await settle();
+    assert.deepEqual(action, [['cancel', row.hash]]);
+    f.rows([{ ...row, smartAuthorizations: [{ ...row.smartAuthorizations[0],
+      observation: { kind: 'nonce-consumed', currentNonce: '1', operationHash, anchor: instruction.observedAt },
+    }] }]);
+    assert(!button(all(f.render()), 'Cancel instruction'));
+  } finally { f.dispose(); }
+});
+
+test('a mined failed cancellation can retry its original instruction only while its exact inner nonce is current', async () => {
+  const actions: unknown[][] = [];
+  const f = fixture(undefined, false, { onNavigateToReview: (...input: unknown[]) => actions.push(input) });
+  try {
+    const base = pendingScopedRow();
+    const reference = { originalHash: '0x' + 'ae'.repeat(32), operationHash: '0x' + 'af'.repeat(32) };
+    const operationHash = '0x' + 'ef'.repeat(32), nonce = 2n ** 190n;
+    const instruction = { operationHash, operationNonce: nonce.toString(), account: base.local.address,
+      chainId: '1', createdAt: 1700000000000, payer: base.local.address, observedAt: { number: '1', hash },
+      replacesOperationHash: reference.operationHash };
+    const row = { hash, checking: false, unavailable: false,
+      local: { ...base.local, phase: 'reverted', operation: 'cancel', cancellationRetry: reference,
+        smartAccount: { payer: base.local.address, operations: [instruction] } },
+      retainedObservation: { status: 'mined', outcome: 'reverted', block: instruction.observedAt },
+      smartAuthorizations: [{ instruction, checking: false, unavailable: false,
+        observation: { kind: 'pending', currentNonce: nonce.toString(), operationHash, anchor: instruction.observedAt } }],
+    };
+    const button = (tree: unknown, title: string) => all(tree).find(node => node.type === 'Button' && node.props.title === title);
+    const tree = await openFixtureRow(f, row);
+    const retry = button(tree, 'Retry cancellation');
+    assert(retry);
+    assert(!button(tree, 'Speed Up'));
+    assert(!button(tree, 'Cancel instruction'));
+    assert.deepEqual(f.inspectedOperations(), [operationHash]);
+
+    for (const [kind, currentNonce] of [['pending', nonce - 1n], ['nonce-consumed', nonce + 1n]] as const) {
+      f.rows([{ ...row, smartAuthorizations: [{ ...row.smartAuthorizations[0],
+        observation: { ...row.smartAuthorizations[0]!.observation, kind, currentNonce: currentNonce.toString() },
+      }] }]);
+      assert(!button(f.render(), 'Retry cancellation'));
+      retry.props.onPress();
+      await settle();
+      assert.deepEqual(actions, []);
+    }
+    f.rows([{ ...row, retainedObservation: undefined }]);
+    assert(!button(f.render(), 'Retry cancellation'));
+    f.rows([row]);
+    const current = button(f.render(), 'Retry cancellation');
+    assert(current);
+    current.props.onPress();
+    await settle();
+    assert.deepEqual(actions, [['cancel', hash, reference]]);
+  } finally { f.dispose(); }
+});
+
+test('Activity offers unsigned cancellation only after it observes the original pending', async () => {
+  const actions: unknown[][] = [];
+  const f = fixture(undefined, false, { onCancelPending: (hash: string) => actions.push(['pending', hash]),
+    onCancelSaved: (hash: string) => actions.push(['saved', hash]) });
+  try {
+    const pending = pendingScopedRow({ speedUp: true });
+    const row = { ...pending, local: { ...pending.local, unsignedSpeedUp: true, cancellationUnavailable: true } };
+    const has = (tree: unknown, title: string) => all(tree).find(node => node.type === 'Button' && node.props.title === title);
+    const unknown = { ...row, observation: undefined, retainedObservation: { status: 'missing', latestNonce: '0' } };
+    const missing = await openFixtureRow(f, unknown);
+    assert(!has(missing, 'Cancel transaction'));
+    assert(!has(missing, 'Cancel pending transaction'));
+    f.rows([row]);
+    const known = f.render();
+    assert(!has(known, 'Cancel transaction'));
+    const button = has(known, 'Cancel pending transaction');
+    assert(button);
+    button.props.onPress();
+    await settle();
+    assert.deepEqual(actions, [['pending', hash]]);
+  } finally { f.dispose(); }
 });

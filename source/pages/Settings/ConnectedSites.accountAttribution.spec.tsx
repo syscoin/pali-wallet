@@ -6,6 +6,7 @@ import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
+import { dappGrantIdentity } from '../../shared/dappTypes';
 import en from 'assets/locales/en.json';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
@@ -340,8 +341,9 @@ it.each(['Daily', 'A'.repeat(64), 'Ordinary multi word account label'])(
   }
 );
 
-it('keeps the selected account attribution and disconnects the exact host', async () => {
+it('keeps the selected account attribution and disconnects the reviewed grant', async () => {
   const user = userEvent.setup();
+  const expectedGrant = dappGrantIdentity(connection());
   mockEmitter.mockImplementationOnce(async () => {
     mockState.dapp.dapps = {};
   });
@@ -359,7 +361,7 @@ it('keeps the selected account attribution and disconnects the exact host', asyn
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['dapp', 'revoke'],
-    [host, { allowAlreadyDisconnected: true }]
+    [host, { allowAlreadyDisconnected: true, expectedGrant }]
   );
   expect(screen.queryByRole('alert')).toBeNull();
 });
@@ -390,7 +392,7 @@ it('shows a newly approved connection after disconnecting the same host without 
   expect(screen.getByRole('button', { name: editName() })).toBeEnabled();
 });
 
-it('keeps an open connection review attributed to the live connected account', async () => {
+it('requires opening a new review for a replacement connection', async () => {
   const user = userEvent.setup();
   const view = mount();
   await user.click(screen.getByRole('button', { name: editName() }));
@@ -402,6 +404,9 @@ it('keeps an open connection review attributed to the live connected account', a
     },
   };
   rerenderPage(view);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(mockEmitter).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: editName() }));
   const dialog = screen.getByRole('dialog', { name: 'Edit connection' });
   expect(within(dialog).getByText('Ledger signer')).toBeVisible();
   expect(within(dialog).getByText('ledger-address')).toBeVisible();
@@ -424,6 +429,7 @@ it('closes an externally removed connection review and does not reopen it on rec
 
 it('restores access after a rejected disconnect without hiding the still-connected host', async () => {
   const user = userEvent.setup();
+  const expectedGrant = dappGrantIdentity(connection());
   let reject!: (error: Error) => void;
   mockEmitter.mockReturnValueOnce(new Promise((_, fail) => (reject = fail)));
   const errors = jest.spyOn(console, 'error').mockImplementation();
@@ -452,7 +458,7 @@ it('restores access after a rejected disconnect without hiding the still-connect
     expect(mockEmitter).toHaveBeenCalledTimes(2);
     expect(mockEmitter).toHaveBeenLastCalledWith(
       ['dapp', 'revoke'],
-      [host, { allowAlreadyDisconnected: true }]
+      [host, { allowAlreadyDisconnected: true, expectedGrant }]
     );
   } finally {
     errors.mockRestore();

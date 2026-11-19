@@ -236,6 +236,57 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
     expect(jest.isMockFunction(sdk.cancelSentTransaction)).toBe(false);
   });
 
+  it.each(['provider', 'cached'] as const)(
+    'refuses a pool withdrawal from the authenticated %s envelope after Activity clear',
+    async (source) => {
+      // Reuse the fixture signature with a different unsigned message. Its
+      // recovered synthetic sender has no private key in this test.
+      const { r, s, v } = SIGNED.signature!;
+      const withdrawal = Transaction.from({
+        ...SIGNED.toJSON(),
+        chainId: 1,
+        to: '0x12d66f87a04a9e220743712ce6d9bb1b5616b8fc',
+        data: '0x21a0adb6',
+        signature: { r, s, v },
+      });
+      const from = withdrawal.from!;
+      const hash = withdrawal.hash!;
+      const vault = mockState.vault;
+      vault.activeNetwork.chainId = 1;
+      vault.accounts.HDAccount[0].address = from;
+      const pending = original({
+        ...withdrawal.toJSON(),
+        from,
+        hash,
+        chainId: 1,
+        signature: withdrawal.signature,
+      });
+      vault.accountTransactions.HDAccount[0].ethereum = {
+        1: [
+          source === 'cached'
+            ? { ...pending, raw: withdrawal.serialized }
+            : pending,
+        ],
+      };
+      provider.getTransaction.mockResolvedValue(
+        source === 'provider' ? pending : null
+      );
+
+      await expect(
+        wallet.cancelEvmTransaction(
+          hash,
+          true,
+          NONCE,
+          from,
+          { chainId: 1, walletScope: getWalletNavigationScope() },
+          { previewOnly: true }
+        )
+      ).rejects.toThrow('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
+      expect(syntheticCredential).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+    }
+  );
+
   it('does not promote unbranded signer error fields into unsent evidence', async () => {
     jest.mocked(sendLocalEvmTransaction).mockRejectedValueOnce(
       Object.assign(new Error('untrusted signer error'), {

@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import { FiExternalLink as ExternalLinkIcon } from 'components/Icon/Icon';
 import { Card, CopyCard, ValidatedPasswordInput } from 'components/index';
 import { SecretCopyButton } from 'components/SecretCopyButton';
+import { SecretQrDisplay } from 'components/SecretQrDisplay';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useSecretDisclosure } from 'hooks/useSecretDisclosure';
@@ -45,7 +46,6 @@ const PrivateKeyView = () => {
 
   const { useCopyClipboard, alert } = useUtils();
 
-  const [copied, copyText] = useCopyClipboard();
   const [isPrivateKeyVisible, setIsPrivateKeyVisible] =
     useState<boolean>(false);
   const [form] = Form.useForm();
@@ -57,6 +57,7 @@ const PrivateKeyView = () => {
     activeAccount?.address,
     activeAccount?.xpub,
   ]);
+  const [copied, copyText, isCurrentCopy] = useCopyClipboard(1000, keyContext);
   const disclosure = useSecretDisclosure(keyContext, () => {
     setIsPrivateKeyVisible(false);
     form.resetFields();
@@ -76,8 +77,8 @@ const PrivateKeyView = () => {
   useEffect(() => {
     if (!copied) return;
 
-    alert.info(t('settings.successfullyCopied'));
-  }, [copied, alert, t]);
+    alert.info(t('settings.successfullyCopied'), undefined, isCurrentCopy);
+  }, [copied, alert, t, isCurrentCopy]);
 
   // Password validation function for ValidatedPasswordInput
   const validatePassword = async (password: string) =>
@@ -102,13 +103,8 @@ const PrivateKeyView = () => {
   const property = isBitcoinBased && !isPublicAddress ? 'xpub' : 'address';
   const value =
     property === 'xpub' ? activeAccount?.xpub : activeAccount?.address;
-  const copyPublicIdentifier = async () => {
-    if (!value) return;
-    try {
-      await copyText(String(value));
-    } catch {
-      alert.error(t('transactions.copyFailed'));
-    }
+  const copyPublicIdentifier = () => {
+    if (value) void copyText(String(value));
   };
 
   const explorerLink = isBitcoinBased
@@ -205,31 +201,28 @@ const PrivateKeyView = () => {
                 </button>
               )}
             </div>
-            <div
-              className={`${
-                isCurrentKeyValid && currentXprv && !isPrivateKeyVisible
-                  ? 'select-none filter blur-sm'
-                  : ''
-              }`}
-            >
+            {currentXprv && isPrivateKeyVisible ? (
+              <>
+                <SecretQrDisplay
+                  secret={currentXprv}
+                  isCurrent={disclosure.isCurrent}
+                >
+                  <p className="font-mono break-all">{currentXprv}</p>
+                </SecretQrDisplay>
+                <SecretCopyButton
+                  secret={currentXprv}
+                  isCurrent={disclosure.isCurrent}
+                  label={t('secretClipboard.copyKey')}
+                />
+              </>
+            ) : (
               <p
-                className={`${
-                  isCurrentKeyValid && currentXprv && isPrivateKeyVisible
-                    ? 'font-mono break-all'
-                    : ''
-                }`}
+                className={
+                  isCurrentKeyValid ? 'select-none filter blur-sm' : ''
+                }
               >
-                {isCurrentKeyValid && currentXprv && isPrivateKeyVisible
-                  ? currentXprv
-                  : '********...************'}
+                ********...************
               </p>
-            </div>
-            {isCurrentKeyValid && currentXprv && isPrivateKeyVisible && (
-              <SecretCopyButton
-                secret={currentXprv}
-                isCurrent={disclosure.isCurrent}
-                label={t('secretClipboard.copyKey')}
-              />
             )}
           </div>
         </>

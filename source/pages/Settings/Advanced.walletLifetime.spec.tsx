@@ -62,6 +62,9 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
   useLocation: () => mockLocation,
 }));
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: jest.fn() } }),
+}));
 jest.mock('hooks/useController', () => ({
   useController: () => ({
     controllerEmitter: mockEmitter,

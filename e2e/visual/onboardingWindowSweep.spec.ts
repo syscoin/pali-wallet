@@ -82,9 +82,19 @@ const capture = async (
   await info.attach(name, { path: output, contentType: 'image/png' });
 };
 
-const inspectImportReveal = async (page: Page, info: any, state: string) => {
+const inspectImportReveal = async (
+  page: Page,
+  info: any,
+  state: string,
+  labels: Pick<typeof en.import, 'showSeedPhrase' | 'hideSeedPhrase'>
+) => {
   const field = page.locator('#import-wallet-input');
-  const reveal = field.locator('..').getByRole('button');
+  const controls = field.locator('..');
+  const reveal = controls
+    .getByRole('button', { name: labels.showSeedPhrase, exact: true })
+    .or(
+      controls.getByRole('button', { name: labels.hideSeedPhrase, exact: true })
+    );
   await wheelTo(page, field);
   await wheelTo(page, reveal);
   expect(await exposed(field), `${state}: complete field exposed`).toBe(true);
@@ -139,7 +149,7 @@ test('welcome, import and password setup stay reachable in small windows', async
     const page =
       launched.context.pages()[0] || (await launched.context.newPage());
     const base = `chrome-extension://${launched.extensionId}/app.html`;
-    for (const language of ['en', 'de']) {
+    for (const [language, messages] of Object.entries({ en, de })) {
       await page.goto(`${base}#/`);
       await page.evaluate(
         (locale) =>
@@ -205,12 +215,13 @@ test('welcome, import and password setup stay reachable in small windows', async
           if (screen.route === '/import') {
             await expect(page.locator('#import-wallet-input')).toHaveAttribute(
               'aria-label',
-              (language === 'de' ? de : en).import.pasteYourWalletSeed
+              messages.import.pasteYourWalletSeed
             );
             await inspectImportReveal(
               page,
               info,
-              `import-empty-field-${suffix}`
+              `import-empty-field-${suffix}`,
+              messages.import
             );
             // Public synthetic mnemonics only: exercise native textarea scrolling
             // after focus/Home has settled, with the same control at both sizes.
@@ -477,7 +488,8 @@ test('welcome, import and password setup stay reachable in small windows', async
             await inspectImportReveal(
               page,
               info,
-              `import-error-field-${suffix}`
+              `import-error-field-${suffix}`,
+              messages.import
             );
           }
         }

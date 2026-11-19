@@ -11,7 +11,7 @@ Les applications UTXO doivent construire les transactions soigneusement, demande
     <div className="pali-capture-card__copy">
       <div className="pali-capture-card__brand">
         <img className="pali-capture-card__icon" src="/img/logo.svg" alt="" aria-hidden="true" />
-        <span>Pali Wallet</span>
+        <span>Pali</span>
       </div>
       <p className="pali-capture-card__chip">UTXO • Syscoin</p>
       <p className="pali-capture-card__title">Vérification de signature PSBT</p>

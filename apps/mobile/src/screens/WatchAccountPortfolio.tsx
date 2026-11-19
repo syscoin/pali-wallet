@@ -106,7 +106,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
         <Button title={t('transactions.copyAddress')} icon="copy" size="compact" disabled={busy || !address} onPress={() => void publicAction('copy')} style={actionStyle} />
         <Button title={t('mobile.activityViews.watchAccountPortfolio.shareAddress')} icon="share" size="compact" variant="secondary" disabled={busy || !address} onPress={() => void publicAction('share')} style={actionStyle} />
       </View> : undefined}>
-      <Header title={mode === 'receive' ? t('mobile.activityViews.watchAccountPortfolio.receiveAsset', { symbol: network.symbol }) : mode === 'networks' ? t('mobile.activityViews.watchAccountPortfolio.chooseNetwork') : mode === 'asset' ? network.name : tokenTitle ?? 'Pali Wallet'}
+      <Header title={mode === 'receive' ? t('mobile.activityViews.watchAccountPortfolio.receiveAsset', { symbol: network.symbol }) : mode === 'networks' ? t('mobile.activityViews.watchAccountPortfolio.chooseNetwork') : mode === 'asset' ? network.name : tokenTitle ?? 'Pali'}
         subtitle={`${account?.name ?? t('mobile.activityViews.watchAccountPortfolio.watchAccount')} · ${t('settings.watchOnly')}`} onBack={mode !== 'home' || !!tokenTitle ? back : undefined} brand={mode === 'home' && !tokenTitle}
         right={(mode === 'home' || mode === 'asset') && !tokenTitle ? <View style={s.toolbar}>
           <IconButton label={loading ? t('mobile.activityViews.nativeSptAssets.refreshing') : t('mobile.infrastructure.refresh')} icon="refresh" disabled={loading} onPress={() => void authority.refresh()} />

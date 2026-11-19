@@ -41,6 +41,7 @@ export type NativeDappControlReview = Readonly<{
   chainId: string;
   expiresAt: number;
   busy: boolean;
+  committing: boolean;
   error: 'BLOCKED_SITE' | 'SITE_MISMATCH' | 'CONTROL_UNAVAILABLE' | null;
   details: NativeDappControlDetails | null;
 }>;
@@ -98,6 +99,7 @@ type Pending = {
   busy: boolean;
   committing: boolean;
   networkCommitted: boolean;
+  rejected: boolean;
   prepared?: NativePreparedDappControl;
   committed?: NativeDappControlCommit;
   error: NativeDappControlReview['error'];
@@ -185,6 +187,7 @@ export class NativeDappControlRequests {
       busy: false,
       committing: false,
       networkCommitted: false,
+      rejected: false,
       error: wire.verification.isScam
         ? 'BLOCKED_SITE'
         : wire.verification.validation === 'INVALID'
@@ -211,6 +214,7 @@ export class NativeDappControlRequests {
       chainId: entry.owner.chainId,
       expiresAt: entry.expiresAt,
       busy: entry.busy,
+      committing: entry.committing,
       error: entry.error,
       details: entry.prepared?.details ?? null,
     });
@@ -259,6 +263,8 @@ export class NativeDappControlRequests {
       entry.prepared = prepared;
       if ('kind' in entry.request && !requiresDappModeSwitch(entry.request, entry.owner.networkFamily)) {
         entry.committing = true;
+        this.options.changed();
+        this.check(entry);
         entry.committed = await prepared.commit(() => this.check(entry), () => { entry.networkCommitted = true; });
         this.check(entry); entry.committed.assertCurrent();
         await this.options.respond(entry.wire, { result: entry.committed.result }, () => { this.check(entry); entry.committed!.assertCurrent(); });
@@ -317,6 +323,8 @@ export class NativeDappControlRequests {
       entry.prepared.assertCurrent();
       if (site.isBlacklisted) throw new Error('BLOCKED_SITE');
       entry.committing = true;
+      this.options.changed();
+      this.check(entry);
       entry.committed = await entry.prepared.commit(() => this.check(entry), () => { entry.networkCommitted = true; });
       this.check(entry);
       entry.committed.assertCurrent();
@@ -330,6 +338,7 @@ export class NativeDappControlRequests {
       );
       await this.retire(entry, false);
     } catch (cause) {
+      if (entry.rejected) return;
       await this.retire(entry, !entry.committed && !entry.networkCommitted);
       throw cause;
     } finally {
@@ -339,7 +348,10 @@ export class NativeDappControlRequests {
   }
   async reject(id: string) {
     const entry = this.pending.get(id);
-    if (entry && !entry.committing) await this.retire(entry, true);
+    if (entry && !entry.committing) {
+      entry.rejected = true;
+      await this.retire(entry, true);
+    }
   }
   revalidate() {
     for (const entry of this.pending.values()) {

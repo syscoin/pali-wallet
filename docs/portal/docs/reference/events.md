@@ -14,7 +14,7 @@ Subscribe to events after selecting the provider.
 | `chainChanged` | `window.ethereum` | EVM chain changed. |
 | `message` | `window.ethereum` | Provider message. |
 
-## Pali wallet notifications
+## Pali notifications {#pali-wallet-notifications}
 
 | Event | Meaning |
 | --- | --- |

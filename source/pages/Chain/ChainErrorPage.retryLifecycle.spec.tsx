@@ -26,6 +26,7 @@ import {
   switchNetworkSuccess,
 } from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
@@ -355,7 +356,7 @@ it('uses the edited registered RPC and accepts that legitimate activation', asyn
   fireEvent.click(screen.getByRole('button', { name: 'buttons.retryConnect' }));
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'setActiveNetwork'],
-    [edited, true]
+    [edited, true, networkRegistrationFingerprint(edited)]
   );
   await act(async () => {
     resolveA({ network: edited });
@@ -363,6 +364,18 @@ it('uses the edited registered RPC and accepts that legitimate activation', asyn
   await screen.findByText('Wallet home route');
   expect(store.getState().vault.activeNetwork.url).toBe(edited.url);
   expect(mockSuccess).toHaveBeenCalledTimes(1);
+});
+
+it('still retries an unregistered target during reconnect', async () => {
+  const reconnect = { ...B, chainId: 66101 };
+  store.dispatch(startSwitchNetwork(reconnect));
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.retryConnect' }));
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'setActiveNetwork'],
+    [reconnect, true]
+  );
+  await screen.findByText('Wallet home route');
 });
 
 it('accepts its own successful switch when account compatibility selects the fallback', async () => {

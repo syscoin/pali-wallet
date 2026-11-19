@@ -44,6 +44,8 @@ export function NativeSmartTransactionReviewScreen({
     return () => subscription.remove();
   }, [controller, review.id]);
   const intent = review.operation.intent;
+  const stoppedAfterFunding = review.operation.transactionHash &&
+    !review.operation.userOperationSubmissionStarted;
   const warningsAccepted =
     !review.requiresWarningAcknowledgement || acknowledged === intent;
   return (
@@ -170,12 +172,16 @@ export function NativeSmartTransactionReviewScreen({
               }}
             />
           )}
-          {review.error && (
+          {review.error && !(review.error === 'TRANSACTION_NOT_SENT' && review.operation.payerQuoteUnavailable) && (
             <Notice
               title={t('mobile.dappConsent.transactionReview.transactionUnavailable')}
               body={
                 review.error === 'DELIVERY_UNCERTAIN'
                   ? t('mobile.dappConsent.transactionReview.theResultCouldNotBeConfirmedCheck')
+                  : review.error === 'TRANSACTION_NOT_SENT'
+                  ? stoppedAfterFunding
+                    ? t('mobile.dappConsent.smartTransactionReview.fundedOperationNotSent')
+                    : t('mobile.dappConsent.transactionReview.transactionNotSent')
                   : t('mobile.dappConsent.smartTransactionReview.thisRequestIsNoLongerAvailableRequest')
               }
             />

@@ -1,26 +1,24 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const showDetails = (page: Page) => page.getByRole('button', { name: 'Details', exact: true }).click();
-test('Saved pending pages exact hashes and opens the selected retry at 320px', async ({ page }) => {
+test('Activity pages older journal records and opens transaction details at 320px', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?saved-pending');
-  await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await expect(page.getByRole('button', { name: /Submitted · waiting for confirmation.*View transaction details/ })).toBeVisible();
-  const older = page.getByRole('button', { name: /Submission unconfirmed.*View transaction details/ });
+  await expect(page.getByRole('button', { name: 'Saved pending', exact: true })).toHaveCount(0);
+  const older = page.getByTestId(`activity-row-0x${(90).toString(16).padStart(64, '0')}`);
   await expect(older).toHaveCount(0);
-  await page.getByRole('button', { name: 'Load more saved transfers' }).click();
+  await page.getByRole('button', { name: 'Load older activity', exact: true }).click();
   await older.click();
   await expect(page.getByText('Transaction details', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Review resend', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Open Activity' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toHaveCount(0);
 });
 
 test('older saved detail uses current nonce status over stale indexed confirmation at 320px', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?saved-pending=indexed');
   await page.waitForFunction(() => window.__activityFixture?.rowState().some(row => row.indexedStatus === 'confirmed'));
-  await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await page.getByRole('button', { name: 'Load more saved transfers' }).click();
+  await expect(page.getByRole('button', { name: 'Saved pending', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Load older activity', exact: true }).click();
   await page.getByRole('button', { name: /Submission unconfirmed.*View transaction details/ }).click();
   await expect(page.getByText('Transaction details', { exact: true })).toBeVisible();
   await expect(page.getByText('Nonce consumed · outcome unavailable', { exact: true }).last()).toBeVisible();

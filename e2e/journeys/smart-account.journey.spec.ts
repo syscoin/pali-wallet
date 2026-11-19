@@ -157,10 +157,10 @@ test('smart account: infra deploy, account creation, policy, activity', async ()
         .first()
         .isVisible();
       if (deployed) {
-        // Hydration resolves the active validator label (Pali wallet for the
+        // Hydration resolves the active validator label (Pali for the
         // default ECDSA anchor).
         await expect(
-          wallet.page.getByText(/pali wallet|passkey/i).first()
+          wallet.page.getByText(/^pali$|passkey/i).first()
         ).toBeVisible({ timeout: 60_000 });
       }
     });

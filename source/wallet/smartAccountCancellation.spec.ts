@@ -90,6 +90,28 @@ it('captures an authorization without inventing an outer transaction and preserv
   ).toThrow();
 });
 
+it('can retry from a retired original outer only with the exact retained original authorization', () => {
+  const retiredHash = '0x' + '55'.repeat(32);
+  const retry = captureSmartAccountCancellation({
+    ...input,
+    referenceHash: retiredHash,
+    operationHash: authorization.operationHash,
+  });
+  expect(retry.originalKind).toBe('authorization');
+  expect(retry.originalHash).toBe(authorization.operationHash);
+  expect(retry.referenceHash).toBe(retiredHash);
+  expect(() =>
+    captureSmartAccountCancellation({ ...input, referenceHash: retiredHash })
+  ).toThrow();
+  expect(() =>
+    captureSmartAccountCancellation({
+      ...input,
+      referenceHash: retiredHash,
+      operationHash: retiredHash,
+    })
+  ).toThrow();
+});
+
 it('isolates only the exact account, chain and full nonce in all pending views', async () => {
   const cap = captureSmartAccountCancellation(input);
   const own = {
@@ -129,7 +151,7 @@ it('isolates only the exact account, chain and full nonce in all pending views',
 });
 
 it.each([0, 2])(
-  'targets only the ready original outer nonce and uses fee floors, type%s',
+  'targets the ready retained outer nonce without an RPC transaction body, type%s',
   async (type) => {
     const raw = await payer.signTransaction({
       chainId,
@@ -165,8 +187,25 @@ it.each([0, 2])(
       outer,
     });
     let latest = '0x5';
+    let reportedChainId = '0x1';
+    let receipt: unknown = null;
     const provider = {
-      send: jest.fn(async () => latest),
+      send: jest.fn(async (method: string, params: unknown[]) => {
+        if (method === 'eth_chainId') return reportedChainId;
+        if (method === 'eth_getTransactionReceipt') {
+          expect(params).toEqual([outer.hash]);
+          return receipt;
+        }
+        if (method === 'eth_getTransactionCount') {
+          expect(params).toEqual([payer.address, 'latest']);
+          return latest;
+        }
+        if (method === 'eth_getBlockByNumber') {
+          expect(params).toEqual(['0xc', false]);
+          return { hash: observedAt.hash, number: '0xc', gasLimit: '0xabcdef' };
+        }
+        throw new Error(`Unexpected RPC method ${method}`);
+      }),
       getFeeData: jest.fn(async () => ({
         gasPrice: 8,
         maxFeePerGas: 8,
@@ -177,6 +216,10 @@ it.each([0, 2])(
       cap,
       provider,
       () => undefined
+    );
+    expect(provider.send).not.toHaveBeenCalledWith(
+      'eth_getTransactionByHash',
+      expect.anything()
     );
     expect(choice.replaceOuter).toBe(true);
     if (!choice.replaceOuter) throw Error('Missing replacement');
@@ -193,6 +236,31 @@ it.each([0, 2])(
     await expect(
       inspectSmartAccountCancellationPayer(cap, provider, () => undefined)
     ).rejects.toThrow();
+    latest = '0x5';
+    reportedChainId = '0x2';
+    await expect(
+      inspectSmartAccountCancellationPayer(cap, provider, () => undefined)
+    ).rejects.toThrow('CONTEXT_CHANGED');
+    reportedChainId = '0x1';
+    receipt = {};
+    await expect(
+      inspectSmartAccountCancellationPayer(cap, provider, () => undefined)
+    ).rejects.toThrow('INVALID_RESPONSE');
+    receipt = {
+      transactionHash: outer.hash,
+      from: payer.address,
+      to: tx.to,
+      status: '0x0',
+      blockHash: observedAt.hash,
+      blockNumber: '0xc',
+    };
+    await expect(
+      inspectSmartAccountCancellationPayer(cap, provider, () => undefined)
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    latest = '0x6';
+    expect(
+      await inspectSmartAccountCancellationPayer(cap, provider, () => undefined)
+    ).toEqual({ replaceOuter: false });
     expect(() =>
       captureSmartAccountCancellation({
         ...input,

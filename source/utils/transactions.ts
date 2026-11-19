@@ -6,9 +6,11 @@ import {
   isTokenTransfer,
   type EvmTransactionDisplayInfo,
 } from '../shared/evmTransactionDisplay';
+import { SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT } from '../shared/smartAccountControllerAuthority';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import store from 'state/store';
+import { KeyringAccountType } from 'types/network';
 import { ITokenDetails } from 'types/tokens';
 import { ITransactionParams, ITxState } from 'types/transactions';
 import { id } from 'utils/ethersV6Compat';
@@ -307,6 +309,26 @@ export enum UpdateTxAction {
   SpeedUp = 'speedUp',
 }
 
+const reportUnconfirmedReplacement = (
+  result: { transactionNotBroadcast?: boolean } | undefined,
+  chainId: number,
+  scope: IWalletNavigationScope,
+  alert: { error(message: string): void },
+  t: (key: string) => string
+) => {
+  if (result?.transactionNotBroadcast !== false) return false;
+  const current = getWalletNavigationScope();
+  const { activeNetwork, isBitcoinBased } = store.getState().vault;
+  if (
+    !isBitcoinBased &&
+    Number(activeNetwork?.chainId) === chainId &&
+    current.account === scope.account &&
+    current.network === scope.network
+  )
+    alert.error(t('transactions.replay.unknown'));
+  return true;
+};
+
 const cancelTransaction = async (
   txHash: string,
   isLegacy: boolean,
@@ -358,6 +380,10 @@ const cancelTransaction = async (
     };
 
     if (!isCanceled && error) {
+      if (
+        reportUnconfirmedReplacement(response, chainId, walletScope, alert, t)
+      )
+        return;
       alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
       return;
     }
@@ -396,7 +422,8 @@ const cancelTransaction = async (
     }
   } catch (error) {
     console.error('Error cancelling transaction:', error);
-
+    if (reportUnconfirmedReplacement(error, chainId, walletScope, alert, t))
+      return;
     alert.error(t('transactions.transactionCancelFailed'));
   }
 };
@@ -480,6 +507,10 @@ export const previewSpeedUpTransaction = async (
     store.getState().vault.isBitcoinBased
   )
     throw new Error('Transaction context changed');
+  if (response?.code === 'INSUFFICIENT_BALANCE')
+    throw Object.assign(new Error('Insufficient funds'), {
+      code: response.code,
+    });
   if (response?.code === 'REPLACEMENT_VALUE_WOULD_CHANGE')
     throw Object.assign(new Error('Replacement would change the amount'), {
       code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
@@ -505,13 +536,13 @@ const speedUpTransaction = async (
   approvedMaximumFee: string | undefined,
   walletScope: IWalletNavigationScope
 ) => {
-  // Safety check: this function is only for EVM networks
-  const { isBitcoinBased } = store.getState().vault;
+  const { isBitcoinBased, activeAccount } = store.getState().vault;
   if (isBitcoinBased) {
     alert.error(t('transactions.speedUpNotAvailableUtxo'));
     return;
   }
 
+  let requested = false;
   try {
     const current = getWalletNavigationScope();
     if (
@@ -526,6 +557,7 @@ const speedUpTransaction = async (
       !/^(0|[1-9][0-9]{0,77})$/.test(approvedMaximumFee)
     )
       throw new Error('Replacement fee approval required');
+    requested = true;
     const response = await requestSpeedUp(
       txHash,
       isLegacy,
@@ -562,6 +594,10 @@ const speedUpTransaction = async (
       return;
     }
     if (!isSpeedUp && error) {
+      if (
+        reportUnconfirmedReplacement(response, chainId, walletScope, alert, t)
+      )
+        return;
       alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
       return;
     }
@@ -600,8 +636,24 @@ const speedUpTransaction = async (
     }
   } catch (error) {
     console.error('Error speeding up transaction:', error);
-
+    if (reportUnconfirmedReplacement(error, chainId, walletScope, alert, t))
+      return;
     alert.error(t('transactions.transactionSpeedUpFailed'));
+  } finally {
+    if (
+      requested &&
+      activeAccount?.type === KeyringAccountType.SmartAccount &&
+      typeof window !== 'undefined'
+    ) {
+      const current = getWalletNavigationScope();
+      if (
+        current.account === walletScope.account &&
+        current.network === walletScope.network
+      )
+        window.dispatchEvent(
+          new Event(SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT)
+        );
+    }
   }
 };
 

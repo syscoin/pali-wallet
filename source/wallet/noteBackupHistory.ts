@@ -4,11 +4,12 @@ import {
 } from '../utils/privacy/withdrawalMetadata.ts';
 import {
   MAX_PRIVACY_RELAY_TRANSACTIONS,
+  MAX_PRIVACY_WITHDRAWAL_ATTEMPTS,
   type IPrivacyWithdrawalPublicInputs,
   type IPrivacyWithdrawalRootAnchor,
 } from '../utils/privacy/withdrawalTransactionTypes.ts';
 
-export const NOTE_BACKUP_MAX_HISTORY_HINTS = 16;
+export const NOTE_BACKUP_MAX_HISTORY_HINTS = MAX_PRIVACY_WITHDRAWAL_ATTEMPTS;
 const HASH = /^0x[0-9a-f]{64}$/;
 const ADDRESS = /^0x[0-9a-f]{40}$/;
 const NONCE = /^(?:0|[1-9][0-9]{0,19})$/;

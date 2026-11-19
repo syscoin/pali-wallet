@@ -32,7 +32,7 @@ const smartAccount = await window.ethereum.request({
   method: 'wallet_prepareSmartAccount',
   params: [
     {
-      label: 'Pali Wallet Passkey',
+      label: 'Pali Passkey',
       authenticator: { id: 'p256-webauthn' },
     },
   ],
@@ -107,4 +107,4 @@ const smartAccount = await window.ethereum.request({
   <figcaption>Для восстановления и выполнения требуется WebAuthn assertion от соответствующих учётных данных passkey.</figcaption>
 </figure>
 
-Браузер определяет фактический RP ID для WebAuthn в источнике расширения, если процесс кошелька не задаёт RP ID. Pali обозначает общие учётные данные по умолчанию как `Pali Wallet Passkey` и использует запрошенную метку аккаунта для отображаемой пользователю связи с аккаунтом.
+Браузер определяет фактический RP ID для WebAuthn в источнике расширения, если процесс кошелька не задаёт RP ID. Pali использует запрошенную метку аккаунта как имя и отображаемое имя учётных данных WebAuthn.

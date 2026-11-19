@@ -74,6 +74,7 @@ function press(tree: Element, title: string) { const node = all(tree).find((e) =
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 test('actual Help uses mobile metadata and starts no I/O', () => {
   const f = setup(), tree = f.render(); assert.match(text(tree), /Version\s+5\.0\.0/); assert.doesNotMatch(text(tree), /Development build/);
+  assert.ok(all(tree).some((node) => node.props.accessibilityRole === 'header' && node.children.includes('Pali')));
   assert.match(text(tree), /https:\/\/discord.com\/invite\/syscoin/); assert.equal(f.actions.length, 0);
   assert.ok(all(tree).find((e) => e.type === 'Screen')?.props.footer); press(tree, 'Done'); assert.equal(f.backs(), 1); f.dispose();
 });

@@ -19,6 +19,48 @@ function fixture(now: () => number = () => 1000) {
   return { store:new EvmSignedRecords(port,now),session,value:()=>stored,replace(value:string|undefined){stored=value;},writes:()=>writes,revoke(){revision++;},port };
 }
 
+test('privacy nonce resets are durable and scoped to Ethereum mainnet payers', async () => {
+  const f = fixture();
+  const input = await signed(0, 2, '0x', 'HDAccount', 1);
+  const payer = signer.address;
+  const other = new Wallet(`0x${'22'.repeat(32)}`).address;
+  const untouched = new Wallet(`0x${'33'.repeat(32)}`).address;
+  const profileId = await f.session().keyring.getPrivateRecordProfileId();
+  const clear = (chainId: string, from: string) =>
+    f.store.clearScope(f.session(), { chainId, from, profileId });
+  const read = (from: string, store = f.store) =>
+    store.readPrivateNonceResetGeneration(f.session(), from);
+
+  assert.equal(await read(payer), 0, 'empty legacy journal');
+  await f.store.append(f.session(), input);
+  assert.equal(await read(payer), 0, 'legacy root without markers');
+  await clear('8453', payer);
+  assert.equal(await read(payer), 0);
+
+  await clear('1', payer);
+  assert.equal(await read(payer.toLowerCase()), 2, 'normalized payer');
+  await clear('1', other);
+  assert.equal(await read(other), 3, 'clear records a marker for an empty scope');
+  assert.equal(await read(untouched), 0);
+
+  const reopened = new EvmSignedRecords(f.port);
+  assert.equal(await read(payer, reopened), 2);
+  assert.equal(await read(other, reopened), 3);
+  await reopened.append(f.session(), input);
+  await reopened.updatePhase(f.session(), input.chainId, input.from, input.hash, 'submitted');
+  await clear('8453', payer);
+  assert.equal(await read(payer, reopened), 2);
+  assert.equal(await read(other, reopened), 3);
+  assert.equal((await reopened.readExact(f.session(), input.chainId, payer, input.hash))?.phase, 'submitted');
+
+  await clear('1', payer);
+  const final = new EvmSignedRecords(f.port);
+  assert.equal(await read(payer, final), 5);
+  assert.equal(await read(other, final), 3);
+  assert.equal(await read(untouched, final), 0);
+  assert.equal(await final.readExact(f.session(), input.chainId, payer, input.hash), null);
+});
+
 async function callsAdmissionFixture() {
   const f = fixture(), input = await signed();
   let data: CallsBundleStore = {}, refuseBundle = false;
@@ -163,12 +205,12 @@ test('calls association rejects a changed reservation, submission, account, or c
   }) }, c.origin, c.id);
   assert.equal(pending.status, 100, 'associated signed bytes alone never prove delivery');
 });
-async function signed(nonce=0,type=2,data='0x',alias='HDAccount') {
-  const rawTransaction=await signer.signTransaction({ type,chainId:7654321,nonce,to:signer.address,value:123,gasLimit:42000,
+async function signed(nonce=0,type=2,data='0x',alias='HDAccount',chainId=7654321) {
+  const rawTransaction=await signer.signTransaction({ type,chainId,nonce,to:signer.address,value:123,gasLimit:42000,
     ...(type===2?{maxFeePerGas:3,maxPriorityFeePerGas:1}:{gasPrice:2}),data,
     ...(type===1?{accessList:[{address:signer.address,storageKeys:[`0x${'22'.repeat(32)}`]}]}:{}) });
-  return { rawTransaction,hash:Transaction.from(rawTransaction).hash!,from:signer.address,chainId:'7654321',nonce,type,
-    context:{account:{type:alias,id:alias==='Imported'?9:0,address:signer.address},network:{kind:'ethereum',chainId:7654321,slip44:60,url:'https://offline.invalid'},operation:'send' as const} };
+  return { rawTransaction,hash:Transaction.from(rawTransaction).hash!,from:signer.address,chainId:String(chainId),nonce,type,
+    context:{account:{type:alias,id:alias==='Imported'?9:0,address:signer.address},network:{kind:'ethereum',chainId,slip44:60,url:'https://offline.invalid'},operation:'send' as const} };
 }
 test('actual SDK encryption retains aliases and type0/1/2 predecessor bytes after restart',async()=>{
  const f=fixture(),inputs=[]; for(const type of [0,1,2]){const input=await signed(type,type,'0x',type===1?'Imported':'HDAccount');inputs.push(input);await f.store.append(f.session(),input);}
@@ -274,6 +316,108 @@ test('a replacement rechecks its pending predecessor after a concurrent journal 
   assert.equal(await f.store.readExact(f.session(), '7654321', signer.address, candidate.hash), null);
   assert.equal((await f.store.readExact(f.session(), '7654321', signer.address, original.hash))?.phase, 'confirmed');
 });
+test('ordinary native dispatch persists only unsigned bytes and keeps the signed hash after restart', async () => {
+  const f = fixture(), input = await signed(), session = f.session();
+  const unsigned = Transaction.from(input.rawTransaction).unsignedSerialized;
+  const boundary = captureEvmSubmission(input.context, session.assertCurrent,
+    () => createEvmSignedRecordLifecycle(f.store, session, { retainUnsignedNative: true, retirementReadForChain: null }));
+  let sent: string | undefined;
+  await submitSignedEvmTransaction(input.rawTransaction, ({ rawTransaction, admit }) => admit(async () => {
+    sent = rawTransaction;
+    return input.hash;
+  }), boundary, undefined, unsigned);
+  assert.equal(sent, input.rawTransaction);
+  const reopened = new EvmSignedRecords(f.port);
+  const recovered = await reopened.readExact(session, input.chainId, input.from, input.hash);
+  assert.equal(recovered?.payloadKind, 'unsigned-eoa');
+  assert.equal(recovered?.unsignedTransaction, unsigned);
+  assert.equal(recovered?.rawTransaction, undefined);
+  assert.equal(recovered?.hash, input.hash);
+  assert.equal(recovered?.phase, 'signed');
+  const row = JSON.parse(f.value()!).entries[0];
+  const pieces = await Promise.all(row.chunks.map((envelope: any, i: number) => session.keyring.decryptPrivateRecord({
+    domain: envelope.domain, recordId: input.hash + '/' + i, envelope
+  })));
+  assert.equal('0x' + Buffer.concat(pieces).toString('hex'), unsigned);
+  const snapshot = await reopened.captureAutoNonceSnapshot(session, input.chainId, input.from);
+  assert.equal(await snapshot.readMaximumCost(input.hash), 126123n);
+  await assert.rejects(snapshot.readSignedTransaction!(input.hash), /REQUIRES_NEW_SIGNATURE/);
+  const speedUp = await reopened.readEoaSpeedUpIntent(session, input.chainId, input.from, input.hash);
+  assert.equal(speedUp?.original.unsignedTransaction, unsigned);
+  assert.equal(await reopened.migrateUnsignedNative(session), 0);
+});
+
+test('native Activity exposes unsigned saved records for inspection without replay actions', async () => {
+  const { createNativeSignedRecordView } = await import('../src/custody/sharedSignedRecords.ts');
+  const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const f = fixture(), input = await signed(), session = f.session();
+  await f.store.append(session, input, undefined, undefined, true);
+  const network = createNativeNetwork({ id: 'custom:7654321', name: 'Fixture', kind: 'evm', chainId: input.chainId, slip44: 60,
+    rpcUrl: 'https://fixture.invalid', symbol: 'TEST', decimals: 18, testnet: true });
+  const view = createNativeSignedRecordView(f.store, session, '1'.repeat(64), { type: 'HDAccount', index: 0, address: signer.address }, network);
+  const entry = await view.load(input.hash);
+  assert.equal(entry?.hash, input.hash);
+  assert.equal(entry?.inspectionOnly, true);
+  assert.equal(entry?.rawTransaction, undefined);
+  const [row] = (await view.activities()).records;
+  assert.equal(row?.hash, input.hash);
+  assert.equal(row?.inspectionOnly, true);
+  assert.equal(row?.speedUpEligible, undefined);
+  assert.equal(row?.cancellationUnavailable, true);
+});
+
+test('legacy native migration rechecks CAS and preserves protected rows and phase', async () => {
+  const f = fixture(), session = f.session(), ordinary = await signed(), tagged = await signed(1);
+  await f.store.append(session, ordinary);
+  await f.store.append(session, tagged, { privateDeposit: true });
+  await f.store.updatePhase(session, ordinary.chainId, ordinary.from, ordinary.hash, 'attempted');
+  const previous = f.port.compareAndSet;
+  let refuse = true;
+  f.port.compareAndSet = async (...args) => {
+    if (refuse) { refuse = false; return false; }
+    return previous(...args);
+  };
+  assert.equal(await f.store.migrateUnsignedNative(session), 1);
+  const entry = await f.store.readExact(session, ordinary.chainId, ordinary.from, ordinary.hash);
+  assert.equal(entry?.payloadKind, 'unsigned-eoa');
+  assert.equal(entry?.phase, 'attempted');
+  assert.equal(entry?.rawTransaction, undefined);
+  assert.equal((await f.store.readExact(session, tagged.chainId, tagged.from, tagged.hash))?.rawTransaction, tagged.rawTransaction);
+  assert.equal(await f.store.migrateUnsignedNative(session), 0);
+});
+
+test('EOA Speed Up returns only unsigned intent for the current actionable hash', async () => {
+  const f = fixture(), original = await signed(), session = f.session();
+  const read = (hash: string) => f.store.readEoaSpeedUpIntent(session, original.chainId, signer.address, hash);
+  await f.store.append(session, original, undefined, undefined, true);
+  const recovered = await read(original.hash);
+  assert.ok(recovered);
+  assert.equal(recovered.original.unsignedTransaction, Transaction.from(original.rawTransaction).unsignedSerialized);
+  assert.equal('rawTransaction' in recovered.original, false);
+  const tx = Transaction.from(original.rawTransaction);
+  tx.signature = null;
+  tx.maxFeePerGas = 6n;
+  const rawTransaction = await signer.signTransaction(tx);
+  const hash = Transaction.from(rawTransaction).hash!;
+  await f.store.append(session, { ...original, hash, rawTransaction, context: {
+    ...original.context, operation: 'speed-up', originalHash: original.hash
+  } }, undefined, recovered.binding);
+  assert.equal(await read(original.hash), null);
+  assert.equal((await read(hash))?.binding.expectedTipHash, hash);
+  assert.equal((await f.store.readExact(session, original.chainId, signer.address, hash))?.payloadKind, 'unsigned-eoa');
+  await f.store.updatePhase(session, original.chainId, signer.address, hash, 'confirmed');
+  assert.equal(await read(hash), null);
+});
+
+test('EOA Speed Up excludes private, smart-account, and dapp recovery records', async () => {
+  const original = await signed();
+  for (const marker of ['privateDeposit', 'privateWithdrawal', 'smartAccountExecution', 'eoaCalls']) {
+    const f = fixture(), session = f.session();
+    await f.store.append(session, original, { [marker]: true });
+    assert.equal(await f.store.readEoaSpeedUpIntent(session, original.chainId, signer.address, original.hash), null);
+  }
+});
+
 test('a copied binding, changed tip or intervening cancellation blocks a retained replacement', async () => {
   const f = fixture(), original = await signed();
   const session = f.session();
@@ -793,7 +937,7 @@ test('unreadable storage and exhausted revision are not local append capacity re
   await assertUnbranded(exhausted);
 });
 
-test('Smart activity is a bounded authenticated projection and preserves the outer payer owner', async () => {
+test('Exact Smart activity preserves the outer payer owner', async () => {
   const { paliEntryPointInterface, paliSmartAccountInterface, getPaliEntryPointAddress } = await import('../../../source/utils/smartAccount/contracts.ts');
   const { ERC7579_MODE_SINGLE_DEFAULT } = await import('../../../source/utils/smartAccount/account.ts');
   const f = fixture();
@@ -811,19 +955,10 @@ test('Smart activity is a bounded authenticated projection and preserves the out
     await f.store.append(session, input, { smartAccountExecution: true, smartAccountExecutionFrom: address });
     inputs.push(input);
   }
-  const options = { maximum: 1 };
-  const reading = f.store.readSmartAccountActivity(session, '7654321', address, options);
-  options.maximum = 48;
-  const newest = await reading;
-  assert.equal(newest.total, 3);
-  assert.deepEqual(newest.transfers.map(transfer => transfer.entry.hash), [inputs[2]!.hash]);
-  const transfer = newest.transfers[0]!;
-  assert(!('cancellation' in transfer));
+  const transfer = await f.store.readSmartAccountActivityExact(session, '7654321', address, inputs[2]!.hash);
+  assert(transfer && !('cancellation' in transfer));
   assert.equal(transfer.recipient, recipient);
   assert.equal(transfer.amountUnits, '9');
-  await f.store.updatePhase(session, '7654321', signer.address, inputs[1]!.hash, 'confirmed');
-  const older = await f.store.readSmartAccountActivity(session, '7654321', address, { maximum: 1, beforeHash: newest.nextCursor! });
-  assert.deepEqual(older.transfers.map(transfer => transfer.entry.hash), [inputs[1]!.hash]);
   assert.equal((await f.store.readRecent(session, '7654321', address, 10)).entries.length, 0);
   assert.equal((await f.store.readRecent(session, '7654321', signer.address, 10)).entries.length, 3);
   assert.equal(await f.store.readSmartAccountActivityExact(session, '7654321', recipient, inputs[0]!.hash), null);

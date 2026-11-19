@@ -162,7 +162,7 @@ async function sqliteDisk() {
 
 for (const scenario of ['import', 'generate'] as const) {
   test(
-    `NEVM ${scenario} qualifier signs the same HD3 nonce on two chains and cold-restores exact bytes`,
+    `NEVM ${scenario} qualifier signs the same HD3 nonce on two chains and cold-restores unsigned intent`,
     { timeout: 90000 },
     async () => {
       const disk = await sqliteDisk();
@@ -280,13 +280,14 @@ for (const scenario of ['import', 'generate'] as const) {
           assert.equal(entry.chainId, getNativeNetwork(network).chainId);
           assert.equal(entry.phase, 'attempted'); assert.equal(entry.nonce, 0);
           const saved = await (await disk.runtime.transfers!.journal(() => undefined)).load();
-          assert.equal(saved!.hash, entry.hash); signedBytes.push(saved!.rawTransaction);
-          const signed = Transaction.from(saved!.rawTransaction);
+          assert(saved?.rawTransaction);
+          assert.equal(saved.hash, entry.hash); signedBytes.push(saved.rawTransaction);
+          const signed = Transaction.from(saved.rawTransaction);
           assert(signed.isSigned()); assert.equal(signed.from, created.nevmAddress);
           assert.equal(signed.chainId, network === 'ethereum' ? 1n : 5700n);
           assert.equal(signed.value, value); assert.equal(signed.nonce, 0); assert.equal(signed.gasLimit, 21000n);
           assert.equal(signed.maxFeePerGas, 3n); assert.equal(signed.maxPriorityFeePerGas, 1n);
-          assert(!bundle.raw!.includes(saved!.rawTransaction));
+          assert(!bundle.raw!.includes(saved.rawTransaction));
         }
         await authority.selectNetwork('ethereum', authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
         await authority.manageAccounts({ kind: 'select', id: 'hd:60:1' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
@@ -319,7 +320,7 @@ for (const scenario of ['import', 'generate'] as const) {
             async sign() {
               throw Error('RESTART_MUST_NOT_SIGN');
             },
-            assertUnlocked() {
+            async authorizeOperation() {
               throw Error('RESTART_MUST_NOT_AUTHORIZE');
             },
           },
@@ -344,7 +345,13 @@ for (const scenario of ['import', 'generate'] as const) {
             ...restored,
           })
         );
-        assert.equal((await readSignedRecordEvidence(disk.storage)).raw, bundle.raw);
+        const migrated = await readSignedRecordEvidence(disk.storage);
+        const migratedRecords = migrated.entries.filter(entry => entry.from === created.nevmAddress.toLowerCase());
+        const identity = ({ hash, chainId, from, nonce, phase, signer, operation }: typeof container[number]) =>
+          ({ hash, chainId, from, nonce, phase, signer, operation });
+        assert.deepEqual(migratedRecords.map(identity), container.map(identity));
+        assert(migratedRecords.every(entry => entry.payloadKind === 'unsigned-eoa'));
+        assert(signedBytes.every(raw => !migrated.raw?.includes(raw)));
         assert.deepEqual(await rows(), older);
         assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
         assert.equal(authority.getSnapshot().account?.network, 'ethereum');
@@ -368,11 +375,11 @@ for (const scenario of ['import', 'generate'] as const) {
               authority.getCatalogue()!.revision
             );
           };
-          const original = JSON.parse(bundle.raw!);
+          const original = JSON.parse(migrated.raw!);
           const target = original.entries.findIndex((entry: { hash: string }) => entry.hash === container[1]!.hash);
           const corruptions = [
             { ...original, entries: original.entries.filter((_: unknown, index: number) => index !== target) },
-            { ...original, entries: original.entries.map((entry: unknown, index: number) => index === target ? { ...container[1], chunks: original.entries[target].chunks, chainId: '999' } : entry) },
+            { ...original, entries: original.entries.map((entry: unknown, index: number) => index === target ? { ...original.entries[target], chainId: '999' } : entry) },
             { ...original, entries: original.entries.map((entry: unknown, index: number) => index === target ? { ...original.entries[target], chunks: original.entries[0].chunks } : entry) },
           ];
           const profile = (await disk.storage.recovery!.readIdentity())!.root!.profileId;
@@ -389,7 +396,7 @@ for (const scenario of ['import', 'generate'] as const) {
                 check,
               })
             );
-            await disk.replaceSigned(profile, bundle.raw!);
+            await disk.replaceSigned(profile, migrated.raw!);
             await restoreSelection();
             assert.deepEqual(await rows(), older);
           }

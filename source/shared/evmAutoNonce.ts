@@ -32,6 +32,7 @@ export type EvmAutoNonceSnapshot = Readonly<{
     chainId: string,
     address: string
   ): Promise<readonly RetainedSmartAccountOperation[]>;
+  readUnsignedNativeTransaction?(hash: string): Promise<string | null>;
   retained: readonly RetainedNonce[];
 }>;
 
@@ -379,12 +380,17 @@ export class EvmAutoNonceAcceptance {
     };
   }
 
-  retireNonce(owner: string, entry: NonceIdentity) {
+  retireNonce(
+    owner: string,
+    entry: NonceIdentity,
+    match: 'nonce' | 'hash' = 'nonce'
+  ) {
     for (const [key, hint] of this.acknowledgements) {
       if (
         hint.owner === owner &&
         sameSender(hint.identity, entry.chainId, entry.from.toLowerCase()) &&
-        hint.identity.nonce === entry.nonce
+        hint.identity.nonce === entry.nonce &&
+        (match === 'nonce' || hint.identity.hash === entry.hash)
       )
         this.acknowledgements.delete(key);
     }

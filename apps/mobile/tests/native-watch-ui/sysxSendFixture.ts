@@ -97,17 +97,12 @@ export const sysxSendFixture = {
     };
     return {
       feeRecommendations: async () => '7',
+      availableReplacements: async () => [],
+      prepareReplacement: unused,
+      isReviewCurrent: () => false,
     cancel() {
         revision++;
         counts.cancellations++;
-      },
-      async list() {
-        check();
-        return [];
-      },
-      async refreshSaved() {
-        check();
-        return [];
       },
       async prepare(input) {
         check();
@@ -140,8 +135,6 @@ export const sysxSendFixture = {
         counts.confirmations++;
         return unused();
       },
-      prepareRetry: unused,
-      check: unused,
     };
   },
 };

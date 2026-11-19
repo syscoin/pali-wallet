@@ -336,7 +336,7 @@ const cardHtml = ({ caption, chip, imageData, kind, subtitle, title }) => {
   <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
   <div class="panel">
     <div class="copy">
-      <div class="brandrow">${LOGO_SVG}<span class="wordmark">Pali Wallet</span></div>
+      <div class="brandrow">${LOGO_SVG}<span class="wordmark">Pali</span></div>
       <div class="chip">${chip}</div>
       <h1>${titleHtml}</h1>
       <div class="subtitle">${subtitle}</div>

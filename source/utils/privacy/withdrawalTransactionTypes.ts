@@ -8,6 +8,7 @@ import type { IEvmTransactionContext } from '../evmTransactionContext';
 export type IPrivacyWithdrawalSession = IPrivacyDepositSession;
 export type IPrivacyWithdrawalTransaction = PrivacyDepositTransaction;
 export const MAX_PRIVACY_RELAY_TRANSACTIONS = 16;
+export const MAX_PRIVACY_WITHDRAWAL_ATTEMPTS = 16;
 /** Public proof inputs retained only in encrypted custody and explicit backups. */
 export interface IPrivacyWithdrawalPublicInputs {
   fee: string;
@@ -97,6 +98,7 @@ interface IPrivacyWithdrawalJournalFields {
   jobId?: string;
   mode: 'direct' | 'relayed';
   nonce?: string;
+  nonceResetGeneration?: number;
   phase: 'unknown' | 'submitted';
   proofHash: string;
   publicInputs?: IPrivacyWithdrawalPublicInputs;
@@ -123,4 +125,45 @@ export interface IPrivacyWithdrawalStatusRecord
   extends Omit<IPrivacyWithdrawalJournal, 'unsigned'> {
   noteId: string;
   poolId: PrivacyPoolId;
+}
+
+export function hasSubmittedWithdrawalHash(
+  withdrawal: IPrivacyRetiredWithdrawal
+): withdrawal is IPrivacyRetiredWithdrawal & {
+  phase: 'submitted';
+  transactionHash: string;
+} {
+  return (
+    withdrawal.phase === 'submitted' &&
+    typeof withdrawal.transactionHash === 'string' &&
+    /^0x[0-9a-fA-F]{64}$/.test(withdrawal.transactionHash)
+  );
+}
+
+/** A hash covered by the newest submitted attempt belongs to its check only. */
+export function submittedWithdrawalAttempts(
+  journal: IPrivacyWithdrawalJournal
+) {
+  const [newest, ...older] = [
+    journal,
+    ...(journal.retired ?? []).slice().reverse(),
+  ]
+    .filter(hasSubmittedWithdrawalHash)
+    .map((entry) => ({
+      entry,
+      hashes: (entry.mode === 'relayed' && entry.transactionHashes) || [
+        entry.transactionHash,
+      ],
+    }));
+  if (!newest) return [];
+  const newestHashes = new Set(newest.hashes.map((hash) => hash.toLowerCase()));
+  return [
+    newest,
+    ...older
+      .map(({ entry, hashes }) => ({
+        entry,
+        hashes: hashes.filter((hash) => !newestHashes.has(hash.toLowerCase())),
+      }))
+      .filter(({ hashes }) => hashes.length),
+  ];
 }

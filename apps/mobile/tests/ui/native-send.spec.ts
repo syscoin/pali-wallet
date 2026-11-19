@@ -492,7 +492,7 @@ test('saved expired review keeps its accessible error alert', async ({ page }) =
   await prepare(page);
   await page.getByTestId('native-send-confirm').click();
   await authenticateNativeOperation(page);
-  const message = 'Your signed transaction is saved. Check it before sending again.';
+  const message = 'Check this transaction in Activity before sending again.';
   const alert = page.getByRole('alert');
   await expect(alert).toHaveCount(1);
   await expect(alert).toHaveText(message);
@@ -515,6 +515,8 @@ test('storage limit distinguishes a failed replacement from its earlier saved tr
   await page.getByRole('button', { name: 'Submit Speed Up' }).click();
   await authenticateNativeOperation(page);
   await expect(page.getByText('Check earlier transaction', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('native-send-receipt-amount')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'View transaction' })).toBeVisible();
   const alert = page.getByRole('alert');
   await expect(alert).toHaveCount(1);
   await expect(alert.getByText('Keep this transaction', { exact: true })).toBeVisible();

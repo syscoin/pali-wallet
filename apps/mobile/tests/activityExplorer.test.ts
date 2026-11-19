@@ -141,3 +141,13 @@ test('custody read-scope extraction preserves established cache identity bytes',
   assert.equal(scope.sourceId, '0xd22f24f7c73d6e0964ff2a142009cdba7fe0008df0b3fe6beacc784709ac3a7c');
   assert.deepEqual(Object.keys(scope), ['walletFingerprint', 'accountId', 'address', 'network', 'key', 'sourceId', 'apiUrl', 'explorerUrl']);
 });
+
+test('native explorer labels only matching privacy pool transactions', () => {
+  const pool = '0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936';
+  const deposit = row({ from: OWNER, to: pool, input: '0xb214faa5' + '42'.repeat(32) });
+  const [matched] = decodeActivityPage(envelope([deposit]), 'txlist', OWNER, 1);
+  assert.deepEqual(matched?.indexed.privacyActivity, { kind: 'deposit', amount: '1' });
+  assert.equal(decodeActivityPage(envelope([deposit]), 'txlist', OWNER, 5700)[0]?.indexed.privacyActivity, undefined);
+  assert.equal(decodeActivityPage(envelope([{ ...deposit, to: OTHER }]), 'txlist', OWNER, 1)[0]?.indexed.privacyActivity, undefined);
+  assert.equal(decodeActivityPage(envelope([deposit]), 'tokentx', OWNER, 1)[0]?.indexed.privacyActivity, undefined);
+});

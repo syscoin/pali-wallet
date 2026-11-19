@@ -20,6 +20,7 @@ import dappReducer from 'state/dapp';
 import vaultReducer, { setActiveNetwork, setIsBitcoinBased } from 'state/vault';
 import vaultGlobalReducer, { setNetworks } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import { ChainIcon } from './ChainIcon';
 import { NetworkMenu } from './Header/Menus/NetworkMenu';
@@ -47,6 +48,7 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockStore.getState(),
+    subscribe: (listener: () => void) => mockStore.subscribe(listener),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
 }));
@@ -201,7 +203,7 @@ const choose = async (current: INetwork, next: INetwork) => {
   await waitFor(() => expect(header(next.label)).toBeVisible());
   expect(mockController).toHaveBeenLastCalledWith(
     ['wallet', 'setActiveNetwork'],
-    [next]
+    [next, false, networkRegistrationFingerprint(next)]
   );
 };
 

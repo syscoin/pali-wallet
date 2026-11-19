@@ -42,6 +42,7 @@ type AnchorOwner = Readonly<{
 
 const cancelled = () => new Error('privacy_cancelled');
 let ownedRequestId = 0;
+export const nextOwnedPrivacyRequestId = () => ++ownedRequestId;
 
 /** Owns the before-work and after-work checks for one validated public snapshot. */
 export function createOwnedSnapshotAnchor(
@@ -120,7 +121,7 @@ export function createOwnedSnapshotAnchor(
     // The first complete pass verifies these scalar results against the frozen
     // snapshot and its canonical hash. Chain, block and root membership stay fresh.
     if (passes === 1 && historical.has(kind)) return historical.get(kind);
-    const id = ++ownedRequestId;
+    const id = nextOwnedPrivacyRequestId();
     const handle = prepare(binding, kind, id, ownerAbort.signal);
     const release = handle.release.bind(handle);
     let draining: Promise<void> | undefined;

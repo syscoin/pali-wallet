@@ -26,6 +26,7 @@ export function NativeMessageReviewScreen({ review, controller, ledgerConnection
     SITE_MISMATCH: t('mobile.dappConsent.messageReview.theRequestingWebsiteDoesNotMatchThe'),
     DELIVERY_UNCERTAIN: t('mobile.dappConsent.messageReview.theSignatureWasHandedToWalletconnectDelivery'),
     INVALID_TRANSACTION: t('mobile.dappConsent.messageReview.theAppSentAnInvalidRequest'),
+    TRANSACTION_NOT_SENT: t('mobile.dappConsent.transactionReview.transactionNotSent'),
     TRANSACTION_UNAVAILABLE: t('mobile.dappConsent.messageReview.thisRequestCouldNotBePrepared'),
   } as const;
 

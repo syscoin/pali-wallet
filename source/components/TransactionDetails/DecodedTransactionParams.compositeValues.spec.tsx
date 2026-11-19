@@ -328,7 +328,9 @@ it('preserves empty arrays through the real enhanced details/controller path', a
   await screen.findByText(/Method:SafeBatchTransferFrom/);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'getSavedEvmTransaction'],
-    [tx.hash]
+    [tx.hash, { account: ACCOUNT, network: 'composite-native' }],
+    10000,
+    false
   );
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'decodeEvmTransactionData'],

@@ -17,7 +17,9 @@ jest.mock('state/store', () => ({
 
 import { getSyscoinNativeTransferAmount } from 'utils/syscoinTransactionUtils';
 
-import SysTransactionController from './syscoin';
+import SysTransactionController, {
+  getBlockbookHistoryHasMore,
+} from './syscoin';
 
 const CHAIN_ID = 57;
 const URL = 'https://blockbook.test/';
@@ -84,6 +86,29 @@ describe('SysTransactionController rapid polling', () => {
       true
     );
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
+  });
+
+  it('retains the exact last-page observation through an unchanged rapid probe', async () => {
+    const xpub = 'zpub-full-final-page';
+    const response = txsResponse({
+      page: 1,
+      totalPages: 1,
+      txs: 30,
+      transactions: Array.from({ length: 30 }, (_, index) => ({
+        txid: String(index),
+        confirmations: 1,
+        blockTime: 1700000000,
+      })),
+    });
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(response);
+    const controller = SysTransactionController();
+    const rows = await controller.pollingSysTransactions(xpub, URL, false);
+    vaultState = buildVaultState(rows);
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(response);
+    const unchanged = await controller.pollingSysTransactions(xpub, URL, true);
+    expect(unchanged).toHaveLength(30);
+    expect(getBlockbookHistoryHasMore(unchanged)).toBe(false);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(2);
   });
 
   it('marks accepted responses once, through normalization and partial history merging', async () => {
@@ -574,7 +599,8 @@ describe('SysTransactionController rapid polling', () => {
       URL,
       xpub,
       'details=basic&pageSize=0',
-      true
+      true,
+      undefined
     );
     // Local state is returned untouched
     expect(result).toEqual(localTxs);
@@ -619,7 +645,8 @@ describe('SysTransactionController rapid polling', () => {
       URL,
       xpub,
       'details=basic&pageSize=0',
-      true
+      true,
+      undefined
     );
     expect(result).toEqual(localTxs);
   });
@@ -664,7 +691,8 @@ describe('SysTransactionController rapid polling', () => {
       URL,
       xpub,
       'details=basic&pageSize=0',
-      true
+      true,
+      undefined
     );
     expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
       2,
@@ -802,7 +830,8 @@ describe('SysTransactionController validated history responses', () => {
       networkUrl,
       xpub,
       'details=basic&pageSize=0',
-      true
+      true,
+      undefined
     );
   });
 

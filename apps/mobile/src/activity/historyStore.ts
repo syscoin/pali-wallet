@@ -23,6 +23,7 @@ import {
 
 export const ACTIVITY_STORAGE_KEY = 'native-activity-v1';
 const BYTE_LIMIT = 60 * 1024;
+const CLEAR_SCOPE_LIMIT = 256;
 const queues = new WeakMap<KeyringStoragePort, Promise<unknown>>();
 type Cached = Readonly<{
   sourceId: string;
@@ -30,6 +31,11 @@ type Cached = Readonly<{
   candidates: readonly ActivityCandidate[];
 }>;
 type SavedView = Readonly<{ sourceId: string; view: ActivityViewState }>;
+type ClearCutoff = Readonly<{
+  address: string;
+  chainId: string;
+  clearedAt: number;
+}>;
 type Document = Readonly<{
   version: 1;
   walletFingerprint: string;
@@ -38,9 +44,11 @@ type Document = Readonly<{
   archived: readonly ArchivedActivityRecord[];
   cached: readonly Cached[];
   views: readonly SavedView[];
+  clearedScopes?: readonly ClearCutoff[];
 }>;
 export type ActivityHistorySnapshot = Readonly<{
   archived: readonly ArchivedActivityRecord[];
+  clearedAt?: number;
   candidates: readonly ActivityCandidate[];
   view: ActivityViewState;
   truncated: boolean;
@@ -188,6 +196,10 @@ export function validateArchivedActivity(
   }
   return Object.freeze(data as unknown as ArchivedActivityRecord);
 }
+/** Scope the local reset to the transaction owner across endpoint registrations. */
+const matchesClearScope = (cutoff: ClearCutoff, scope: ActivityScope) =>
+  cutoff.chainId === scope.network.chainId && cutoff.address === scope.address;
+
 function decode(value: unknown, fingerprint: string): Document {
   const data = exact(copy(value), [
     'version',
@@ -197,6 +209,11 @@ function decode(value: unknown, fingerprint: string): Document {
     'archived',
     'cached',
     'views',
+    ...(value &&
+    typeof value === 'object' &&
+    Object.hasOwn(value, 'clearedScopes')
+      ? ['clearedScopes']
+      : []),
   ]);
   if (
     data.version !== 1 ||
@@ -250,6 +267,35 @@ function decode(value: unknown, fingerprint: string): Document {
   });
   if (new Set(views.map((v) => v.sourceId)).size !== views.length)
     return invalid();
+  let clearedScopes: ClearCutoff[] | undefined;
+  if (data.clearedScopes !== undefined) {
+    if (
+      !Array.isArray(data.clearedScopes) ||
+      data.clearedScopes.length > CLEAR_SCOPE_LIMIT
+    )
+      return invalid();
+    clearedScopes = data.clearedScopes.map((entry) => {
+      const { address, chainId, clearedAt } = exact(entry, [
+        'address',
+        'chainId',
+        'clearedAt',
+      ]);
+      if (
+        typeof address !== 'string' ||
+        getAddress(address) !== address ||
+        typeof chainId !== 'string' ||
+        !/^[1-9][0-9]{0,77}$/.test(chainId) ||
+        BigInt(chainId) >= (1n << 256n) ||
+        typeof clearedAt !== 'number' ||
+        !Number.isSafeInteger(clearedAt) ||
+        clearedAt < 0
+      )
+        return invalid();
+      return { address, chainId, clearedAt };
+    });
+    const keys = clearedScopes.map(({ chainId, address }) => `${chainId}:${address}`);
+    if (new Set(keys).size !== clearedScopes.length) return invalid();
+  }
   return {
     version: 1,
     walletFingerprint: fingerprint,
@@ -258,6 +304,7 @@ function decode(value: unknown, fingerprint: string): Document {
     archived,
     cached,
     views,
+    ...(clearedScopes ? { clearedScopes } : {}),
   };
 }
 function fresh(fingerprint: string): Document {
@@ -463,25 +510,53 @@ export class NativeActivityHistory {
       id
     );
   }
-  clearScope(scope: ActivityScope, guard: () => void): Promise<void> {
-    return this.mutate(scope.walletFingerprint, guard, (data) => ({
-      ...data,
-      archived: data.archived.filter(
-        (record) =>
-          record.chainId !== scope.network.chainId ||
-          record.address !== scope.address
-      ),
-      // These disposable indexes also cover aliases removed from the catalogue.
-      cached: [],
-      views: [],
-    }));
+  clearScope(
+    scope: ActivityScope,
+    guard: () => void,
+    clearedAt?: number
+  ): Promise<void> {
+    return this.mutate(scope.walletFingerprint, guard, (data) => {
+      let clearedScopes = data.clearedScopes;
+      if (clearedAt !== undefined) {
+        if (!Number.isSafeInteger(clearedAt) || clearedAt < 0) return invalid();
+        const previous = clearedScopes?.find((cutoff) =>
+          matchesClearScope(cutoff, scope)
+        );
+        clearedScopes = [
+          ...(clearedScopes ?? []).filter((cutoff) => cutoff !== previous),
+          {
+            address: scope.address,
+            chainId: scope.network.chainId,
+            clearedAt: Math.max(clearedAt, previous?.clearedAt ?? 0),
+          },
+        ];
+        // Dropping an older cutoff would restore transactions the user cleared.
+        if (clearedScopes.length > CLEAR_SCOPE_LIMIT) return invalid();
+      }
+      return {
+        ...data,
+        ...(clearedScopes ? { clearedScopes } : {}),
+        archived: data.archived.filter(
+          (record) =>
+            record.chainId !== scope.network.chainId ||
+            record.address !== scope.address
+        ),
+        // These disposable indexes also cover aliases removed from the catalogue.
+        cached: [],
+        views: [],
+      };
+    });
   }
   async load(
     scope: ActivityScope,
     guard: () => void
   ): Promise<ActivityHistorySnapshot> {
     const { data } = await this.read(scope.walletFingerprint, guard);
+    const cutoff = data.clearedScopes?.find((entry) =>
+      matchesClearScope(entry, scope)
+    );
     return Object.freeze({
+      ...(cutoff ? { clearedAt: cutoff.clearedAt } : {}),
       archived: Object.freeze(
         data.archived.filter((r) => localScopeKey(r) === scope.key)
       ),

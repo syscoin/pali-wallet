@@ -3,11 +3,6 @@ import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
-// Replay has separate actual consent tests; isolate unrelated detail decoding here.
-jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
-  RetainedTransactionReplay: () => null,
-}));
-
 import en from 'assets/locales/en.json';
 import EvmTransactionsController from 'scripts/Background/controllers/transactions/evm';
 
@@ -197,6 +192,10 @@ beforeEach(() => {
       sendMessage: (request: any, callback: (value: any) => void) => {
         const [, method] = request.data.methods;
         const params = request.data.params;
+        if (method === 'getSavedEvmTransaction') {
+          callback(null);
+          return;
+        }
         requests.push({ method, params });
         let result: Promise<any>;
         if (method === 'getEvmTransactionFromAPI') {

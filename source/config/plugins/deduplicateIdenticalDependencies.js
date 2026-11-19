@@ -5,6 +5,15 @@ const { NormalModuleReplacementPlugin } = require('webpack');
 
 const dependencies = [
   {
+    name: 'readable-stream',
+    version: '3.6.2',
+    anchor: 'stream-browserify',
+    packageJsonEntry: true,
+    file: 'readable-browser.js',
+    match: /[\\/]node_modules[\\/]readable-stream[\\/]readable-browser\.js$/,
+    compareDependencies: 'streams',
+  },
+  {
     name: 'bn.js',
     version: '4.12.4',
     anchor: 'asn1.js',
@@ -101,6 +110,41 @@ function canonicalResource(dependency) {
 // Only canonicalize these modules when their dependencies remain equivalent.
 function equivalentDependencies(original, target, dependency) {
   try {
+    if (dependency.compareDependencies === 'streams') {
+      // The browser entry imports the package's internal stream classes. Keep
+      // different implementations or different browser dependency trees apart.
+      const files = (root) =>
+        fs
+          .readdirSync(root, { recursive: true })
+          .filter(
+            (file) => file.endsWith('.js') && !file.startsWith('node_modules')
+          )
+          .sort();
+      const originalFiles = files(original.root);
+      const targetFiles = files(target.root);
+      return (
+        originalFiles.length === targetFiles.length &&
+        originalFiles.every(
+          (file, index) =>
+            file === targetFiles[index] &&
+            fs
+              .readFileSync(path.join(original.root, file))
+              .equals(fs.readFileSync(path.join(target.root, file)))
+        ) &&
+        [
+          'buffer/',
+          'events/',
+          'inherits',
+          'process/browser',
+          'string_decoder/',
+          'util-deprecate',
+        ].every(
+          (name) =>
+            require.resolve(name, { paths: [original.root] }) ===
+            require.resolve(name, { paths: [target.root] })
+        )
+      );
+    }
     if (dependency.compareDependencies === 'buffer') {
       return (
         require.resolve('buffer/', { paths: [original.root] }) ===
@@ -144,7 +188,7 @@ function equivalentDependencies(original, target, dependency) {
   }
 }
 
-/** Share only these pinned, identical single-file implementations in a build. */
+/** Share only these pinned, identical implementations in a build. */
 function createIdenticalDependencyDedupPlugins() {
   return dependencies.flatMap((dependency) => {
     const canonical = canonicalResource(dependency);

@@ -6,11 +6,11 @@ title: 이전 Pali 버전에서 업그레이드
 
 ## Migration 단계
 
-1. 기존 Pali wallet을 엽니다.
+1. 기존 버전의 Pali를 엽니다.
 2. General settings를 엽니다.
 3. Wallet seed phrase를 선택합니다.
 4. password를 입력하고 seed phrase를 복사합니다.
-5. 현재 Pali wallet을 설치하거나 엽니다.
+5. 현재 버전의 Pali를 설치하거나 엽니다.
 6. Import using wallet seed phrase를 선택합니다.
 7. seed phrase를 붙여넣습니다.
 8. 새 wallet password를 설정합니다.

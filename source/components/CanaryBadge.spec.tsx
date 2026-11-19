@@ -23,8 +23,6 @@ it.each(['stable', 'development', undefined])(
 it('labels Canary without adding an interactive control', () => {
   process.env.PALI_EXTENSION_CHANNEL = 'canary';
   render(<CanaryBadge />);
-  expect(screen.getByLabelText('Pali Wallet Canary').textContent).toBe(
-    'Canary'
-  );
+  expect(screen.getByLabelText('Pali Canary').textContent).toBe('Canary');
   expect(screen.queryByRole('button')).toBeNull();
 });

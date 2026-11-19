@@ -3510,10 +3510,12 @@ const SmartAccountPolicy = () => {
             {t(
               'settings.smartAccountGuardianRecoveryDisableConfirmDescription'
             )}
-            {guardianDisableConfirmation.retryUnknown
-              ? ` ${t('settings.smartAccountGuardianRecoveryRetryWarning')}`
-              : ''}
           </p>
+          {guardianDisableConfirmation.retryUnknown && (
+            <p className="mt-1 text-xs leading-4 text-warning-info">
+              {t('settings.smartAccountGuardianRecoveryRetryWarning')}
+            </p>
+          )}
         </>
       )}
     </ConfirmationModal>
@@ -3530,7 +3532,9 @@ const SmartAccountPolicy = () => {
         </p>
         <p
           role={failed ? 'alert' : 'status'}
-          className="text-sm text-brand-graylight"
+          className={`text-sm ${
+            failed ? 'text-warning-error' : 'text-brand-graylight'
+          }`}
         >
           {t(
             failed

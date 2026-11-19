@@ -20,27 +20,28 @@ import { useNativeTranslation } from '../platform/localization';
 
 export type NativeAccountDetail = Readonly<{ accountId: string; networkId: string; receive?: boolean; token?: string }>;
 type AccountNavigation = {
+  onSourceNavigationChange?(active: boolean): void;
   detail?: NativeAccountDetail;
   closeDetail?(): void;
   navigateDetail?(choice: NotificationChoice, receive: boolean, token: string | undefined, assertCurrent: () => void): Promise<void>;
   navigateActivity?(choice: NotificationChoice | undefined, assertCurrent: () => void): Promise<void>;
 };
 
-export function NativePortfolioRoute({ overview, selectNetwork, sendFrom, cancelSelection, detail, closeDetail, navigateDetail, navigateActivity, ...portfolio }: NativePortfolioProps & AccountNavigation & {
+export function NativePortfolioRoute({ overview, selectNetwork, sendFrom, cancelSelection, onSourceNavigationChange, detail, closeDetail, navigateDetail, navigateActivity, ...portfolio }: NativePortfolioProps & AccountNavigation & {
   overview?: AccountPortfolioController | null;
   selectNetwork(choice: NotificationChoice, assertCurrent: () => void): Promise<void>;
-  sendFrom(choice: NotificationChoice, token: Erc20Metadata | undefined, assertCurrent: () => void): Promise<void>;
+  sendFrom(choice: NotificationChoice, token: Erc20Metadata | undefined, assertCurrent: () => void, fromSourceSheet?: boolean): Promise<void>;
   cancelSelection?(): void;
 }) {
   return overview ? <NativeAccountOverview controller={overview} portfolio={portfolio} selectNetwork={selectNetwork} send={sendFrom} cancelSelection={cancelSelection}
-    detail={detail} closeDetail={closeDetail} navigateDetail={navigateDetail} navigateActivity={navigateActivity} /> : <NativePortfolio {...portfolio} />;
+    onSourceNavigationChange={onSourceNavigationChange} detail={detail} closeDetail={closeDetail} navigateDetail={navigateDetail} navigateActivity={navigateActivity} /> : <NativePortfolio {...portfolio} />;
 }
 
-export function NativeAccountOverview({ controller, portfolio, selectNetwork, send, cancelSelection, detail: externalDetail, closeDetail: closeExternalDetail, navigateDetail, navigateActivity }: AccountNavigation & {
+export function NativeAccountOverview({ controller, portfolio, selectNetwork, send, cancelSelection, onSourceNavigationChange, detail: externalDetail, closeDetail: closeExternalDetail, navigateDetail, navigateActivity }: AccountNavigation & {
   controller: AccountPortfolioController;
   portfolio: NativePortfolioProps;
   selectNetwork(choice: NotificationChoice, assertCurrent: () => void): Promise<void>;
-  send(choice: NotificationChoice, token: Erc20Metadata | undefined, assertCurrent: () => void): Promise<void>;
+  send(choice: NotificationChoice, token: Erc20Metadata | undefined, assertCurrent: () => void, fromSourceSheet?: boolean): Promise<void>;
   cancelSelection?(): void;
 }) {
   const { t, i18n } = useNativeTranslation();
@@ -62,6 +63,12 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     release?.();
   });
   const [busy, setBusy] = useState(false);
+  const sourceNavigationActive = sheet !== null || busy;
+  useLayoutEffect(() => {
+    if (!sourceNavigationActive) return;
+    onSourceNavigationChange?.(true);
+    return () => onSourceNavigationChange?.(false);
+  }, [sourceNavigationActive, onSourceNavigationChange]);
   const [error, setError] = useState(false);
   const openSheet = (next: 'filter' | 'send' | 'receive') => { portfolio.navigation?.beginNavigation(); setError(false); setSheet(next); };
   const lifetime = useRef({ alive: true, generation: 0, busy: false });
@@ -101,7 +108,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     catch { if (owner.alive && generation === owner.generation) setError(true); }
     finally { if (owner.alive && generation === owner.generation) { owner.busy = false; setBusy(false); } }
   };
-  const openDetail = (choice: NotificationChoice, receive = false, token?: string) => { portfolio.navigation?.beginNavigation(); return run(async check => {
+  const openDetail = (choice: NotificationChoice, receive = false, token?: string) => { if (sheet !== 'receive') portfolio.navigation?.beginNavigation(); return run(async check => {
     if (navigateDetail) {
       const retireReceive = receive && sheet === 'receive';
       try {
@@ -158,11 +165,11 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   const selectSource = (id: string) => {
     if (sheet === 'filter') { void run(async check => { await controller.selectFilter(id); check(); setSheet(null); }); return; }
     const source = sources.find(entry => entry.id === id); if (!source) return;
-    if (sheet === 'send') void run(async check => { await send(source.row.choice, undefined, check); check(); setSheet(null); });
+    if (sheet === 'send') void run(async check => { await send(source.row.choice, undefined, check, true); check(); setSheet(null); });
     else void openDetail(source.row.choice, true);
   };
   return <SafeAreaView edges={['top']} style={s.safe}><Screen gap={18}>
-    <Header title="Pali Wallet" brand right={<IconButton label={t('mobile.accountPortfolio.refresh')} icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status === 'loading'} onPress={() => { void portfolio.onRefreshSmartAccount?.(); void controller.refresh(); }} />} />
+    <Header title="Pali" brand right={<IconButton label={t('mobile.accountPortfolio.refresh')} icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status === 'loading'} onPress={() => { void portfolio.onRefreshSmartAccount?.(); void controller.refresh(); }} />} />
     {portfolio.onManageAccounts ? <IdlePressable accessibilityRole="button" accessibilityLabel={t('mobile.accountPortfolio.chooseAccount', { account: portfolio.accountLabel ?? 'Account 1' })} onPress={portfolio.onManageAccounts} style={s.account}>
       <Icon name="wallet" size={18} color={colors.blue} /><Text style={s.accountName}>{portfolio.accountLabel ?? 'Account 1'}</Text><Icon name="chevron-down" size={17} color={colors.muted} />
     </IdlePressable> : <View style={s.account}>

@@ -7,6 +7,7 @@ export function activityRowDirection(row: ActivityRow, owner: string) {
   if (collectible) return getEvmHistoryDirection({ from: collectible.from, to: collectible.recipient }, owner);
   if (row.indexed) return getEvmHistoryDirection(row.indexed, owner);
   if (row.local) return getEvmHistoryDirection({ from: owner, to: row.local.recipient }, owner);
+  if (row.smartAuthorizations?.length) return 'sent';
   return row.observation ? getEvmHistoryDirection(row.observation, owner, row.observation.events) : 'unknown';
 }
 

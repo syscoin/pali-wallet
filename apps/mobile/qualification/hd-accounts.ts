@@ -1,4 +1,4 @@
-import { signQualificationTransfer } from './authorized-transfer.ts';
+import { inspectQualificationEoaEnvelope, signQualificationTransfer } from './authorized-transfer.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeAccountRequest } from '../src/custody/accounts.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -55,7 +55,6 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
     typeof options.expectedSecondAddress === 'string' && /^0x[0-9a-fA-F]{40}$/.test(options.expectedSecondAddress)
   );
   const { CustodyOperationError } = await import('../src/custody/authority.ts');
-  const { Transaction } = await import('ethers/transaction');
   const transfer = runtime.transfers;
   requireEvidence(transfer && authority.supportsAccountManagement());
   const catalogue = () => {
@@ -90,13 +89,12 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
     const journal = await transfer.journal(guard);
     const stored = await journal.load();
     requireEvidence(stored?.phase === 'attempted');
-    const signed = Transaction.from(stored.rawTransaction);
-    requireEvidence(signed.isSigned() && signed.from === address && signed.hash === stored.hash &&
-      signed.chainId === 1n && signed.nonce === 0 && signed.value === 123n &&
-      signed.gasLimit === 21000n && signed.to === '0x1111111111111111111111111111111111111111' &&
-      signed.data === '0x' && signed.maxFeePerGas === 3n && signed.maxPriorityFeePerGas === 1n);
-    // Inspect the canonical encrypted profile bundle as well as the authenticated
-    // exact-byte view. Historical records for other senders remain in the bundle.
+    const raw = stored.rawTransaction;
+    const transaction = await inspectQualificationEoaEnvelope(transfer, stored, address, guard);
+    requireEvidence(transaction.chainId === 1n && transaction.nonce === 0 && transaction.value === 123n &&
+      transaction.gasLimit === 21000n && transaction.to === '0x1111111111111111111111111111111111111111' &&
+      transaction.data === '0x' && transaction.maxFeePerGas === 3n && transaction.maxPriorityFeePerGas === 1n);
+    // Compare the authenticated transaction view with its encrypted journal entry.
     const identity = await storage.recovery?.readIdentity();
     const row = await readSignedRecordEvidence(storage);
     const fingerprint = await storage.getWalletFingerprint();
@@ -105,7 +103,9 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
     requireEvidence(row.version === 1 && row.entries.length >= 1 &&
       identity?.pairFingerprint === fingerprint && identity.walletBindingId === stored.scope.walletFingerprint &&
       entry?.phase === 'attempted' && entry.chainId === '1' && entry.from === address.toLowerCase() && entry.nonce === 0 &&
-      entry.signer.id === index && entry.signer.type === 'HDAccount' && !row.raw?.includes(stored.rawTransaction));
+      entry.signer.id === index && entry.signer.type === 'HDAccount' &&
+      (raw ? entry.payloadKind !== 'unsigned-eoa' && !row.raw?.includes(raw) :
+        entry.payloadKind === 'unsigned-eoa' && !row.raw?.includes(transaction.unsignedSerialized)));
     return stored.hash;
   };
   const sign = async (address: string, index: number) => {

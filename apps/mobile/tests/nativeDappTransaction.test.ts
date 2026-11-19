@@ -7,7 +7,7 @@ import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
 import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
-import { prepareNativeConnectionTransaction } from '../src/connections/transactionRuntime.ts';
+import { nativeConnectionSubmissionFailure, prepareNativeConnectionTransaction } from '../src/connections/transactionRuntime.ts';
 import { EvmTransferReadRpc, type NativeAutomaticNoncePlanner } from '../src/custody/evmTransferReadRpc.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
@@ -131,10 +131,31 @@ test('expired or revoked review cannot sign or broadcast', async () => {
 });
 
 test('fresh gas growth preserves the review envelope and requires a new review', async () => {
-  const f = fixture(), review = await f.prepare({ from: wallet.address, to: recipient });
+  const f = fixture(), input = { from: wallet.address, to: recipient };
+  const review = await f.prepare(input);
   f.increaseEstimate();
-  await assert.rejects(review.submit(f.guard, () => {}, { kind: 'transaction' }), /REVIEW_REQUIRED/);
+  await assert.rejects(review.submit(f.guard, () => {}, { kind: 'transaction' }), error => {
+    assert.match((error as Error).message, /REVIEW_REQUIRED/);
+    assert.equal(nativeConnectionSubmissionFailure(error), 'retryable');
+    return true;
+  });
   assert.equal(f.signs, 0); assert.equal(f.broadcasts, 0);
+  const fresh = await f.prepare(input);
+  assert.notEqual(fresh.transaction.gasLimit, review.transaction.gasLimit);
+  assert.equal(f.signs, 0); assert.equal(f.broadcasts, 0);
+  await fresh.submit(f.guard, () => {}, { kind: 'transaction' });
+  assert.equal(f.signs, 1); assert.equal(f.broadcasts, 1);
+});
+
+test('gas growth during signing requires submission evidence before allowing a new review', async () => {
+  const f = fixture(), review = await f.prepare({ from: wallet.address, to: recipient });
+  f.onSign(f.increaseEstimate);
+  await assert.rejects(review.submit(f.guard, () => {}, { kind: 'transaction' }), error => {
+    assert.match((error as Error).message, /REVIEW_REQUIRED/);
+    assert.equal(nativeConnectionSubmissionFailure(error), undefined);
+    return true;
+  });
+  assert.equal(f.signs, 1); assert.equal(f.broadcasts, 0);
 });
 
 test('revocation inside signing prevents the submission path', async () => {

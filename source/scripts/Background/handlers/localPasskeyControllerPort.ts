@@ -1,13 +1,17 @@
 import {
   captureLocalPasskeyCommand,
   LOCAL_PASSKEY_DEADLINE_MS,
+  LOCAL_PASSKEY_PASSWORD_COOLDOWN,
   LOCAL_PASSKEY_PORT,
 } from '../../../shared/localPasskeyTransport';
 import { isExternalWalletUrl } from '../../../utils/extensionContexts';
 import { assertJsonWorkBudget } from '../../../utils/requestPayloadBudget';
+import {
+  PasswordCooldownError,
+  type LocalPasskeyController,
+} from '../../../wallet/localPasskeyTypes';
 
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
-import type { LocalPasskeyController } from '../../../wallet/localPasskeyTypes';
 
 type Authority = Readonly<{ assertCurrent(): void; signal: AbortSignal }>;
 
@@ -16,7 +20,7 @@ export function installLocalPasskeyControllerPorts(
   create: (authority: Authority) => LocalPasskeyController,
   runtime: Pick<
     typeof chrome.runtime,
-    'onConnect' | 'getURL' | 'id'
+    'onConnect' | 'getContexts' | 'getURL' | 'id'
   > = chrome.runtime
 ): () => void {
   const owners = new Set<() => void>();
@@ -24,26 +28,33 @@ export function installLocalPasskeyControllerPorts(
   const connect = (port: chrome.runtime.Port) => {
     if (port.name !== LOCAL_PASSKEY_PORT) return;
     const sender = port.sender;
-    let walletDocument = false;
+    const senderUrl = sender?.url ?? '';
+    const documentId = sender?.documentId;
+    let walletAppDocument = false;
     try {
-      walletDocument =
-        new URL(sender?.url ?? '').pathname === '/app.html' ||
-        isExternalWalletUrl(sender?.url ?? '');
+      walletAppDocument = new URL(senderUrl).pathname === '/app.html';
     } catch {
       /* Refuse malformed sender URLs. */
     }
+    const toolbarPopup =
+      walletAppDocument &&
+      sender?.tab === undefined &&
+      sender?.frameId === undefined &&
+      typeof runtime.getContexts === 'function';
     if (
       closed ||
       owners.size >= 4 ||
-      !walletDocument ||
+      (!walletAppDocument && !isExternalWalletUrl(senderUrl)) ||
       !isTrustedExtensionPageSender(sender!, runtime) ||
-      typeof sender?.documentId !== 'string' ||
-      !sender.documentId ||
-      sender.frameId !== 0
+      (!toolbarPopup &&
+        (sender?.frameId !== 0 ||
+          typeof documentId !== 'string' ||
+          !documentId))
     ) {
       port.disconnect();
       return;
     }
+    let verified = !toolbarPopup;
     const lifetime = new AbortController();
     let controller: LocalPasskeyController | undefined;
     let busy = false,
@@ -72,6 +83,7 @@ export function installLocalPasskeyControllerPorts(
     });
     const receive = (raw: unknown) => {
       let id = 0;
+      let passwordAction = false;
       void (async () => {
         authority.assertCurrent();
         assertJsonWorkBudget(raw);
@@ -86,7 +98,32 @@ export function installLocalPasskeyControllerPorts(
           throw new Error('LOCAL_PASSKEY_UNAVAILABLE');
         busy = true;
         lastId = id;
+        if (!verified) {
+          // A toolbar popup's sender URL can precede a same-document route
+          // change. Match the document URL without its routing fragment.
+          const [documentUrl] = senderUrl.split('#', 1);
+          const contexts = (
+            await runtime.getContexts({
+              tabIds: [-1],
+              ...(documentId ? { documentIds: [documentId] } : {}),
+            })
+          ).filter(
+            (candidate) =>
+              candidate.documentUrl?.split('#', 1)[0] === documentUrl
+          );
+          authority.assertCurrent();
+          const [context] = contexts;
+          if (
+            contexts.length !== 1 ||
+            context?.contextType !== 'POPUP' ||
+            context.frameId !== 0
+          )
+            throw new Error('LOCAL_PASSKEY_UNAVAILABLE');
+          verified = true;
+        }
         controller ??= create(authority);
+        passwordAction =
+          command.method === 'beginEnrollment' || command.method === 'disable';
         let result: unknown;
         switch (command.method) {
           case 'status':
@@ -120,10 +157,18 @@ export function installLocalPasskeyControllerPorts(
             result.kind === 'complete')
         )
           retire();
-      })().catch(() => {
+      })().catch((error) => {
         if (!lifetime.signal.aborted) {
           try {
-            port.postMessage({ id, error: 'LOCAL_PASSKEY_UNAVAILABLE' });
+            port.postMessage(
+              passwordAction && error instanceof PasswordCooldownError
+                ? {
+                    id,
+                    error: LOCAL_PASSKEY_PASSWORD_COOLDOWN,
+                    retryAfterSeconds: error.retryAfterSeconds,
+                  }
+                : { id, error: 'LOCAL_PASSKEY_UNAVAILABLE' }
+            );
           } catch {
             /* Retire regardless. */
           }

@@ -51,13 +51,12 @@ const groupKey = (local: LocalActivityRecord) => JSON.stringify([
 /** Refresh completed siblings only when their nonce still has an unresolved local row. */
 export function nativeLocalReplacementWinnersToObserve(
   locals: readonly LocalActivityRecord[],
-  savedPending: readonly LocalActivityRecord[],
   scope: EvmActivityReadScope
 ): readonly LocalActivityRecord[] {
   const eligible = (local: LocalActivityRecord) => admittedLocal({
     hash: local.hash, local, checking: false, unavailable: false,
   }, scope);
-  const unresolved = new Set([...locals, ...savedPending].filter(local =>
+  const unresolved = new Set(locals.filter(local =>
     eligible(local) && ['signed', 'attempted', 'submitted', 'nonce-consumed'].includes(local.phase)
   ).map(groupKey));
   return locals.filter(local => eligible(local) &&

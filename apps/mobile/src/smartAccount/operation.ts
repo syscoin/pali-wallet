@@ -29,6 +29,13 @@ import {
 } from '../../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
 import { ExecutionSimulationUnsupportedError, SmartAccountPayerPendingError } from '../../../../source/utils/smartAccount/executionSimulationError.ts';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED, type SmartAccountPayerBudget } from '../../../../source/shared/smartAccountFeeQuote.ts';
+
+export class SmartAccountPayerQuoteUnavailable extends Error {
+  constructor() {
+    super('Smart Account payer quote unavailable');
+  }
+}
 
 export type NativeSmartAccountResolvedIntent = (
   | Readonly<{ kind: 'deploy' }>
@@ -98,7 +105,10 @@ export type SmartAccountOperationPreparation =
       kind: 'authorization';
       intent: NativeSmartAccountResolvedIntent;
       operation: PreparedSmartAccountOperation;
+      payerBudget?: NativeSmartAccountPayerBudget;
     }>;
+
+type NativeSmartAccountPayerBudget = SmartAccountPayerBudget & Readonly<{ address: string }>;
 
 export type SmartAccountPayerReview = Readonly<{
   id: number;
@@ -122,6 +132,7 @@ export type NativeSmartAccountOperationSnapshot = Readonly<{
   account: string;
   network: NativeNetworkRegistration;
   maximumPrefundUnits: string | null;
+  payerBudget?: NativeSmartAccountPayerBudget;
   userOperationHash: string | null;
   authorization: Readonly<{
     entryPoint: string;
@@ -132,6 +143,7 @@ export type NativeSmartAccountOperationSnapshot = Readonly<{
   payerReview: SmartAccountPayerReview | null;
   transactionHash: string | null;
   userOperationSubmissionStarted: boolean;
+  payerQuoteUnavailable?: true;
   metadataRefresh?: 'refreshing' | 'failed' | 'complete';
   error: string | null;
   preparationFailure?: 'INSUFFICIENT_ASSET';
@@ -169,7 +181,7 @@ export type NativeSmartAccountOperationHost = Readonly<{
   ): Promise<string>;
 }>;
 
-/** Presentation owns two explicit authorizations. The shared engine owns every transaction. */
+/** Presentation owns consent. The shared engine owns every transaction. */
 export class NativeSmartAccountOperation {
   /** Presentation deadline; signing retains the existing monotonic controller deadline. */
   readonly authorizationExpiresAt: number;
@@ -449,6 +461,7 @@ export class NativeSmartAccountOperation {
         maximumPrefundUnits: getSmartAccountUserOpRequiredPrefund(
           prepared.userOperation
         ).toString(),
+        payerBudget: result.payerBudget,
         userOperationHash: prepared.actionHash,
         authorization: Object.freeze({
           entryPoint: getPaliEntryPointAddress(
@@ -546,6 +559,7 @@ export class NativeSmartAccountOperation {
         this.publish({
           phase: 'preparing',
           authorization: null,
+          payerBudget: undefined,
           payerReview: null,
         });
         await this.prepare();
@@ -636,6 +650,10 @@ export class NativeSmartAccountOperation {
     if (cause instanceof ExecutionSimulationUnsupportedError || cause instanceof SmartAccountPayerPendingError) {
       try { this.check(); simulationMessage = cause.message; } catch { /* Preserve lifecycle failure. */ }
     }
+    // The shared submit path can wrap the quote error after confirmed prefund.
+    const payerQuoteUnavailable = !this.snapshot.userOperationSubmissionStarted &&
+      (cause instanceof SmartAccountPayerQuoteUnavailable ||
+        (cause instanceof Error && cause.cause instanceof SmartAccountPayerQuoteUnavailable));
     this.prepared = null;
     this.pendingPayer?.reject(new Error('SMART_OPERATION_EXPIRED'));
     this.pendingPayer = null;
@@ -644,8 +662,11 @@ export class NativeSmartAccountOperation {
     this.publish({
       phase: 'failed',
       payerReview: null,
+      ...(payerQuoteUnavailable ? { payerQuoteUnavailable: true } : {}),
       preparationFailure: this.signingStarted ? undefined : preparationFailure,
-      error: simulationMessage
+      error: cause instanceof Error && cause.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+        ? SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+        : simulationMessage
         ? simulationMessage + (this.signingStarted ? ' Check the account and Activity before starting again.' : '')
         : this.signingStarted
         ? 'Authorization ended. Check the account and Activity before starting again.'

@@ -31,7 +31,10 @@ jest.mock('react-i18next', () => ({
 jest.mock('components/index', () => ({
   Button: jest.requireActual('components/Button/Button').Button,
 }));
-jest.mock('components/Icon/Icon', () => ({ LoadingSvg: () => <svg /> }));
+jest.mock('components/Icon/Icon', () => ({
+  LoadingSvg: () => <svg />,
+  QrcodeOutlined: () => null,
+}));
 jest.mock('components/Layout/OnboardingLayout', () => ({
   OnboardingLayout: ({ children }: any) => <section>{children}</section>,
 }));
@@ -99,10 +102,12 @@ beforeEach(() => {
       return undefined;
     }
   } as any;
-  mockEmitter.mockImplementation(async (path: string[], [phrase]: string[]) => {
-    expect(path).toEqual(['wallet', 'isSeedValid']);
-    return Mnemonic.isValidMnemonic(phrase);
-  });
+  mockEmitter.mockImplementation(
+    async (path: string[], [candidate]: string[]) => {
+      expect(path).toEqual(['wallet', 'isSeedValid']);
+      return Mnemonic.isValidMnemonic(candidate);
+    }
+  );
   expect(Mnemonic.isValidMnemonic(phrase)).toBe(true);
 });
 
@@ -149,6 +154,10 @@ describe.each([false, true])(
           await user.tab();
           expect(
             screen.getByRole('button', { name: 'import.hideSeedPhrase' })
+          ).toHaveFocus();
+          await user.tab();
+          expect(
+            screen.getByRole('button', { name: 'secretQr.scan' })
           ).toHaveFocus();
           await user.tab();
           expect(submit).toHaveFocus();

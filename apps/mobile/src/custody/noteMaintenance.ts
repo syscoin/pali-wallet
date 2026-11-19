@@ -1,23 +1,18 @@
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import { getPrivacyPool, PRIVACY_CHAIN_ID } from '../../../../source/utils/privacy/registry.ts';
-import { prepareSpentCompletion, type SpentCompletionRequest } from '../../../../source/utils/privacy/spentCompletion.ts';
-import { prepareWithdrawalRecovery } from '../../../../source/utils/privacy/withdrawalRecovery.ts';
-import { readPrivacyRelayerJobPublicInputs, type PrivacyRelayerJobFetch } from '../../../../source/utils/privacy/relayJobs.ts';
+import { prepareSpentCompletion, spentCompletionWithdrawals } from '../../../../source/utils/privacy/spentCompletion.ts';
 import type { IPrivateVaultHost } from '../../../../source/wallet/privateVault.ts';
 import type { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
 
-export type NativeNoteMaintenanceProofs = Readonly<Required<Pick<IPrivateVaultHost,
-  'prepareCompletionProof' | 'prepareWithdrawalRecovery'>>>;
+export type NativeNoteMaintenanceProofs = Readonly<Required<Pick<IPrivateVaultHost, 'prepareCompletionProof'>>>;
 
-/** Native transport/lifetime adapter. The extension's shared verifiers own every eligibility rule. */
+/** Native transport/lifetime adapter. The shared completion verifier owns eligibility. */
 export function createNativeNoteMaintenanceProofs(options: Readonly<{
   network: NativeNetworkRegistration;
   signal: AbortSignal;
   assertCurrent(): void;
   rpc: Pick<EvmTransferReadRpc, 'noteMaintenanceRead'>;
-  relayerFetch?: PrivacyRelayerJobFetch;
-  readOriginalRawTransaction?(from: string, hash: string, assertCurrent: () => void): Promise<string | null>;
 }>): NativeNoteMaintenanceProofs {
   const network = snapshotNativeNetwork(options.network);
   if (network.chainId !== String(PRIVACY_CHAIN_ID) ||
@@ -47,39 +42,12 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
     }
   };
   return Object.freeze<NativeNoteMaintenanceProofs>({
-    async prepareCompletionProof(identity, withdrawal, deposit, session) {
+    async prepareCompletionProof(identity, withdrawal, session, selection) {
       const guard = () => { check(); assertSynchronousEvmFeeGuard(session.assertCurrent); };
       guard();
-      if (!['direct', 'relayed'].includes(withdrawal.mode) || withdrawal.phase !== 'submitted' || !withdrawal.transactionHash ||
-          withdrawal.mode === 'direct' && (typeof withdrawal.from !== 'string' || typeof withdrawal.nonce !== 'string') ||
-          deposit && (deposit.phase !== 'submitted' || !deposit.transactionHash))
-        throw new Error('privacy_spent_proof_unavailable');
-      const submitted: SpentCompletionRequest['withdrawal'] = withdrawal.mode === 'direct'
-        ? { phase: 'submitted', mode: 'direct', transactionHash: withdrawal.transactionHash,
-            from: withdrawal.from!, nonce: withdrawal.nonce! }
-        : { phase: 'submitted', mode: 'relayed', transactionHash: withdrawal.transactionHash,
-            ...(withdrawal.transactionHashes ? { transactionHashes: withdrawal.transactionHashes } : {}) };
       return prepareSpentCompletion({ poolAddress: getPrivacyPool(identity.poolId).address,
-        nullifierHash: identity.nullifierHash, withdrawal: submitted,
-        ...(deposit ? { deposit: { phase: 'submitted', transactionHash: deposit.transactionHash!, from: deposit.from, nonce: deposit.nonce } } : {}),
+        nullifierHash: identity.nullifierHash, ...spentCompletionWithdrawals(withdrawal, selection),
         assertCurrent: guard, rpc: read(guard) });
-    },
-    async prepareWithdrawalRecovery(identity, withdrawal, session) {
-      const guard = () => { check(); assertSynchronousEvmFeeGuard(session.assertCurrent); };
-      guard();
-      return prepareWithdrawalRecovery({ poolAddress: getPrivacyPool(identity.poolId).address,
-        nullifierHash: identity.nullifierHash, withdrawal, assertCurrent: guard, rpc: read(guard),
-        ...(withdrawal.mode === 'relayed' && withdrawal.jobId && withdrawal.endpoint ? {
-          readRelayedPublicInputs: (signal: AbortSignal) => readPrivacyRelayerJobPublicInputs({
-            endpoint: withdrawal.endpoint!, jobId: withdrawal.jobId!, poolId: identity.poolId,
-            inputHash: withdrawal.inputHash, proofHash: withdrawal.proofHash,
-          }, { assertCurrent: guard, signal, fetcher: options.relayerFetch }),
-        } : {}),
-        ...(options.readOriginalRawTransaction ? { readOriginalRawTransaction: async () => {
-          guard();
-          const raw = await options.readOriginalRawTransaction!(withdrawal.from!, withdrawal.transactionHash!, guard);
-          guard(); return raw;
-        } } : {}) });
     },
   });
 }

@@ -27,6 +27,7 @@ function fixture(canSign = true) {
     discarded = 0,
     reads = 0;
   let failure: unknown;
+  let statusFailure: Error | undefined;
   let retired = false;
   let afterSubmit: (() => void) | undefined;
   let delay: Promise<void> | undefined;
@@ -36,7 +37,7 @@ function fixture(canSign = true) {
   };
   let noteStatus:IPrivateNoteStatus={phase:'verified'};
   const requests: unknown[] = [];
-  const approvals: unknown[] = [];
+  const submittedArguments: string[][] = [];
   const model = new NativePrivateWithdrawal(
     {
       canSign,
@@ -62,8 +63,9 @@ function fixture(canSign = true) {
             if (failure) throw failure;
             return { ...review, intentId: `review-${prepares}` };
           },
-          async submitWithdrawal(intentId, approval) {
-            approvals.push({ intentId, approval });
+          async submitWithdrawal(...args) {
+            submittedArguments.push(args);
+            const [intentId] = args;
             submits++;
             afterSubmit?.();
             if (failure) throw failure;
@@ -75,6 +77,7 @@ function fixture(canSign = true) {
             };
           },
           async statusByNote() {
+            if (statusFailure) throw statusFailure;
             return status;
           },
           async getRelayers() {
@@ -108,7 +111,7 @@ function fixture(canSign = true) {
     model,
     owner,
     requests,
-    approvals,
+    submittedArguments,
     counts: () => ({ prepares, submits, disposals, discarded, reads }),
     retireAfterSubmit() {
       afterSubmit = () => {
@@ -125,6 +128,9 @@ function fixture(canSign = true) {
     status(next: IPrivacyWithdrawalStatus) {
       status = next;
     },
+    failJobCheck() {
+      statusFailure = new Error('offline relayer');
+    },
   };
 }
 
@@ -138,7 +144,7 @@ test('withdrawal model binds its note and requires one matching explicit confirm
   assert.equal(f.counts().submits, 0);
   await Promise.all([f.model.confirm('review-1'), f.model.confirm('review-1')]);
   assert.equal(f.counts().submits, 1);
-  assert.deepEqual(f.approvals, [{intentId:'review-1', approval:{acceptPreviousWithdrawalRisk:true}}]);
+  assert.deepEqual(f.submittedArguments, [['review-1']]);
   assert.equal(f.model.getSnapshot().phase, 'submitted');
 });
 
@@ -187,6 +193,50 @@ test('an unclassified submit failure stays unknown and exposes no provider messa
   assert.equal(f.model.getSnapshot().phase, 'unknown');
   assert.equal(f.model.getSnapshot().result?.noteId, 'owned-note');
   assert.equal(JSON.stringify(f.model.getSnapshot()).includes('secret'), false);
+});
+
+test('a typed relayer outage keeps the saved submission through a fresh review', async () => {
+  const f = fixture();
+  const saved: IPrivacyWithdrawalStatus = {
+    noteId: 'owned-note',
+    mode: 'relayed',
+    phase: 'submitted',
+    jobId: 'saved-job',
+    transactionHash: '0x' + 'ab'.repeat(32),
+    observationUnavailable: true,
+  };
+  f.status(saved);
+  await f.model.refresh();
+  assert.deepEqual(f.model.getSnapshot().noteStatus, { phase: 'verified' });
+  assert.deepEqual(f.model.getSnapshot().status, saved);
+
+  await f.model.prepare({ recipient: 'recipient', mode: 'direct' });
+  const reviewState = f.model.getSnapshot();
+  assert.equal(reviewState.phase, 'review');
+  assert.deepEqual(reviewState.status, saved);
+  assert.equal(reviewState.error, null);
+  assert.equal(reviewState.result, null);
+  assert.equal(f.counts().submits, 0);
+
+  f.poolStatus({ phase: 'spent', blockNumber: 50 });
+  await f.model.refresh();
+  assert.deepEqual(f.model.getSnapshot().noteStatus, { phase: 'spent', blockNumber: 50 });
+  await f.model.prepare({ recipient: 'recipient', mode: 'direct' });
+  assert.equal(f.counts().prepares, 1);
+  assert.equal(f.counts().submits, 0);
+});
+
+test('a rejected status read does not reuse an earlier status as a validated fallback', async () => {
+  const f = fixture();
+  f.status({ noteId: 'owned-note', mode: 'relayed', phase: 'submitted', jobId: 'saved-job' });
+  await f.model.refresh();
+  assert.equal(f.model.getSnapshot().status?.jobId, 'saved-job');
+
+  f.failJobCheck();
+  await f.model.refresh();
+  assert.equal(f.model.getSnapshot().noteStatus?.phase, 'verified');
+  assert.equal(f.model.getSnapshot().status, null);
+  assert.equal(f.model.getSnapshot().error, 'status-unavailable');
 });
 
 test('proven unsigned expiry is a failed review requiring a new preparation', async () => {
@@ -252,7 +302,7 @@ test('a saved prior attempt remains visible while a new owned intent prepares an
   assert.equal(f.model.getSnapshot().result,null);
   assert.equal(f.counts().submits,0);
   await f.model.confirm('review-1');
-  assert.deepEqual(f.approvals,[{intentId:'review-1',approval:{acceptPreviousWithdrawalRisk:true}}]);
+  assert.deepEqual(f.submittedArguments, [['review-1']]);
   assert.equal(f.model.getSnapshot().result?.transactionHash,'0x'+'ab'.repeat(32));
   assert.equal(f.model.getSnapshot().status,null,'Confirm retires the old observed attempt');
   const refreshed={noteId:'owned-note',phase:'submitted' as const,transactionHash:'0x'+'de'.repeat(32)};

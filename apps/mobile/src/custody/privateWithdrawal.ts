@@ -32,7 +32,9 @@ export type NativePrivateWithdrawalSnapshot = Readonly<{
   error:
     | 'expired'
     | 'pending'
+    | 'pending-activity'
     | 'verification'
+    | 'status-unavailable'
     | 'unavailable'
     | 'failed'
     | null;
@@ -54,6 +56,7 @@ type Host = Readonly<{
 function failureCode(error: unknown): NativePrivateWithdrawalSnapshot['error'] {
   const message = error instanceof Error ? error.message : '';
   if (message === 'privacy_withdrawal_intent_expired') return 'expired';
+  if (message === 'privacy_withdrawal_activity_pending') return 'pending-activity';
   if (
     message === 'privacy_withdrawal_attempt_exists' ||
     message === 'privacy_withdrawal_note_busy'
@@ -198,9 +201,7 @@ export class NativePrivateWithdrawal {
     let result: IPrivacyWithdrawalSubmission | undefined;
     try {
       this.check();
-      result = await this.withdrawals.submitWithdrawal(intentId, {
-        acceptPreviousWithdrawalRisk: true,
-      });
+      result = await this.withdrawals.submitWithdrawal(intentId);
       this.check();
       this.publish({ phase: result.phase, result });
     } catch (error) {
@@ -228,7 +229,7 @@ export class NativePrivateWithdrawal {
     }
   }
 
-  async refresh(): Promise<void> {
+  async refresh(options?: Readonly<{ observeRelayer: false }>): Promise<void> {
     if (this.busy || this.disposed) return;
     this.check();
     this.busy = true;
@@ -241,13 +242,20 @@ export class NativePrivateWithdrawal {
         this.check();
         this.publish({ phase: 'idle', review: null, progress: null });
       }
-      const status = await this.withdrawals.statusByNote(this.host.noteId);
+      let status: IPrivacyWithdrawalStatus | undefined;
+      try {
+        status = await this.withdrawals.statusByNote(this.host.noteId, options);
+      } catch {
+        // A missing relayer response says nothing about the public pool.
+      }
       this.check();
-      this.publish({ status: Object.freeze({ ...status }) });
+      if (status) this.publish({ status: Object.freeze({ ...status }) });
+      else this.publish({ status: null, error: 'status-unavailable' });
       const noteStatus = await this.host.readNoteStatus();
       this.check();
       this.publish({ noteStatus: Object.freeze({ ...noteStatus }) });
     } catch (error) {
+      if (this.snapshot.noteStatus?.phase !== 'spent') this.publish({ noteStatus: null });
       this.reportFailure(error);
     } finally {
       this.busy = false;

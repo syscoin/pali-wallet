@@ -1,5 +1,5 @@
 import { Input } from 'antd';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button, PageActionFooter } from '../../components';
@@ -9,8 +9,10 @@ import {
   localPasskeySupport,
   type LocalPasskeySupport,
 } from '../../utils/passkey/localUnlockCeremony';
-
-import type { LocalPasskeyController } from '../../wallet/localPasskeyTypes';
+import {
+  PasswordCooldownError,
+  type LocalPasskeyController,
+} from '../../wallet/localPasskeyTypes';
 
 /** Local installation preference; independent of Smart-account passkeys. */
 export function LocalPasskeySettings({
@@ -18,31 +20,43 @@ export function LocalPasskeySettings({
 }: {
   createController?: () => LocalPasskeyController;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [support, setSupport] = useState<LocalPasskeySupport | null>(null);
   const [password, setPassword] = useState('');
   const [readError, setReadError] = useState(false);
+  const [requestedEnabled, setRequestedEnabled] = useState<boolean | null>(
+    null
+  );
+  const [expiredCooldown, setExpiredCooldown] =
+    useState<PasswordCooldownError>();
   const version = useRef(0);
   const submitting = useRef(false);
-  const flow = useLocalPasskeyFlow(createController, (action) => {
-    setEnabled(action !== 'disable');
-  });
+  const cancellation = useRef<Promise<void>>();
+  const flow = useLocalPasskeyFlow(createController);
+  const readStatus = useCallback(
+    async (captured: number) => {
+      if (version.current !== captured) return;
+      setEnabled(null);
+      setReadError(false);
+      try {
+        const status = await flow.status();
+        if (version.current === captured) setEnabled(status.enabled);
+      } catch {
+        if (version.current === captured) setReadError(true);
+      }
+    },
+    [flow.status]
+  );
   useEffect(() => {
     let current = true;
     const captured = ++version.current;
-    setEnabled(null);
+    submitting.current = false;
+    cancellation.current = undefined;
     setSupport(null);
-    setReadError(false);
     setPassword('');
-    void flow
-      .status()
-      .then((status) => {
-        if (current && version.current === captured) setEnabled(status.enabled);
-      })
-      .catch(() => {
-        if (current && version.current === captured) setReadError(true);
-      });
+    setRequestedEnabled(null);
+    void readStatus(captured);
     void localPasskeySupport().then((value) => {
       if (current) setSupport(value);
     });
@@ -50,7 +64,17 @@ export function LocalPasskeySettings({
       current = false;
       version.current++;
     };
-  }, [flow.status]);
+  }, [readStatus]);
+  const cooldown =
+    flow.error instanceof PasswordCooldownError ? flow.error : undefined;
+  useEffect(() => {
+    if (!cooldown) return;
+    const timer = setTimeout(
+      () => setExpiredCooldown(cooldown),
+      cooldown.retryAfterSeconds * 1000
+    );
+    return () => clearTimeout(timer);
+  }, [cooldown]);
   const canEdit =
     enabled !== null &&
     (enabled || (support !== null && support !== 'unsupported'));
@@ -60,14 +84,43 @@ export function LocalPasskeySettings({
     submitting.current = true;
     const captured = ++version.current;
     const entered = password;
+    const requested = !enabled;
     setPassword('');
+    setRequestedEnabled(requested);
     try {
-      if (enabled) await flow.disable(entered);
-      else await flow.enroll(entered);
+      const completed = await (requested
+        ? flow.enroll(entered)
+        : flow.disable(entered));
+      if (version.current !== captured) return;
+      // Cancellation can retire the reply after the durable change committed.
+      await cancellation.current;
+      if (version.current !== captured) return;
+      if (completed) setEnabled(requested);
+      else await readStatus(captured);
     } finally {
-      if (version.current === captured) submitting.current = false;
+      if (version.current === captured) {
+        submitting.current = false;
+        cancellation.current = undefined;
+      }
     }
   };
+  let error: string | undefined;
+  if (cooldown) {
+    if (cooldown !== expiredCooldown) {
+      const retryTime = new Intl.RelativeTimeFormat(i18n.language).format(
+        cooldown.retryAfterSeconds,
+        'second'
+      );
+      error = t('start.unlockRateLimited', { retryTime });
+    }
+  } else if (flow.error && enabled !== null && enabled !== requestedEnabled) {
+    error = t(
+      requestedEnabled
+        ? 'localPasskey.enrollFailed'
+        : 'localPasskey.disableFailed'
+    );
+  }
+
   return (
     <form
       onSubmit={(event) => void submit(event)}
@@ -117,44 +170,35 @@ export function LocalPasskeySettings({
       <p className="text-xs leading-relaxed text-brand-graylight">
         {t('localPasskey.localOnly')}
       </p>
-      {canEdit && (
-        <PageActionFooter
-          includeInFlow
-          error={
-            flow.error
-              ? t(
-                  enabled
-                    ? 'localPasskey.disableFailed'
-                    : 'localPasskey.enrollFailed'
-                )
-              : undefined
-          }
-        >
-          <div className="space-y-3">
-            <Button
-              type="submit"
-              variant={enabled ? 'neutral' : 'primary'}
-              fullWidth
-              loading={flow.busy}
-              disabled={!password}
-            >
-              {t(enabled ? 'localPasskey.turnOff' : 'localPasskey.setUp')}
-            </Button>
-            {flow.busy && (
+      {(canEdit || error) && (
+        <PageActionFooter includeInFlow error={error}>
+          {canEdit && (
+            <div className="space-y-3">
               <Button
-                type="button"
-                variant="ghost"
+                type="submit"
+                variant={enabled ? 'neutral' : 'primary'}
                 fullWidth
-                onClick={() => {
-                  version.current++;
-                  submitting.current = false;
-                  flow.cancel();
-                }}
+                loading={flow.busy}
+                disabled={!password}
               >
-                {t('buttons.cancel')}
+                {t(enabled ? 'localPasskey.turnOff' : 'localPasskey.setUp')}
               </Button>
-            )}
-          </div>
+              {flow.busy && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  fullWidth
+                  onClick={() => {
+                    if (!submitting.current || cancellation.current) return;
+                    cancellation.current = flow.cancel();
+                    setEnabled(null);
+                  }}
+                >
+                  {t('buttons.cancel')}
+                </Button>
+              )}
+            </div>
+          )}
         </PageActionFooter>
       )}
     </form>

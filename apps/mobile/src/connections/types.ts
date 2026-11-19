@@ -35,6 +35,7 @@ export type NativeMessageReviewError =
   | 'SITE_MISMATCH'
   | 'DELIVERY_UNCERTAIN'
   | 'INVALID_TRANSACTION'
+  | 'TRANSACTION_NOT_SENT'
   | 'TRANSACTION_UNAVAILABLE';
 
 type NativeSigningReviewBase = Readonly<{
@@ -91,6 +92,7 @@ export type NativeTransactionReview = NativeSigningReviewBase &
     symbol: string;
     decimals: number;
     broadcastHash: string | null;
+    retryPreparation?: boolean;
     approval: ApprovalSummary | null;
     assetTransfer?: AssetTransferCall | null;
     batch?: Readonly<{
@@ -192,7 +194,7 @@ export type NativeConnectionsView = Readonly<{
   rejectSentry(id: string): Promise<void>;
   approveControl(id: string, revision: number): Promise<void>;
   rejectControl(id: string): Promise<void>;
-  returnToDapp(id: string, revision: number): Promise<void>;
+  returnToDapp(id: string, revision: number, assertCurrent?: () => void): Promise<void>;
   callsStatusShown(id: string): Promise<void>;
   refreshCallsStatus(id: string): Promise<void>;
   dismissCallsStatus(id: string): void;
@@ -206,7 +208,8 @@ export type NativeConnectionsView = Readonly<{
     revision: number
   ): Promise<void>;
   reject(proposalId: number): Promise<void>;
-  disconnect(connectionId: string): Promise<void>;
+  /** A caller with its own scoped feedback can opt out of the shared error banner. */
+  disconnect(connectionId: string, options?: Readonly<{ reportError?: boolean }>): Promise<void>;
   setConnectionsEnabled(enabled: boolean): Promise<void>;
   disconnectAll(): Promise<void>;
   previewEncryption(id: string, revision: number): Promise<string>;

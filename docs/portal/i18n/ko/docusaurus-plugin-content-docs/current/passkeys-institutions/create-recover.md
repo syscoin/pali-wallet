@@ -32,7 +32,7 @@ const smartAccount = await window.ethereum.request({
   method: 'wallet_prepareSmartAccount',
   params: [
     {
-      label: 'Pali Wallet Passkey',
+      label: 'Pali Passkey',
       authenticator: { id: 'p256-webauthn' },
     },
   ],
@@ -107,4 +107,4 @@ Pali 복구는 자체 관리형입니다. 서버 백도어가 아니며, 계정�
   <figcaption>복구와 실행에는 해당 패스키 자격 증명의 WebAuthn 어서션이 필요합니다.</figcaption>
 </figure>
 
-확장 프로그램 출처의 WebAuthn에서 사용할 실제 RP ID는 지갑 흐름이 따로 지정하지 않는 한 브라우저가 결정합니다. Pali는 기본 공유 자격 증명에 `Pali Wallet Passkey`라는 이름을 붙이고, 요청된 계정 이름을 사용자에게 보여 주는 계정 연결 정보에 사용합니다.
+확장 프로그램 출처의 WebAuthn에서 사용할 실제 RP ID는 지갑 흐름이 따로 지정하지 않는 한 브라우저가 결정합니다. Pali는 요청된 계정 이름을 WebAuthn 자격 증명의 이름과 표시 이름으로 사용합니다.

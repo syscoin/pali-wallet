@@ -14,6 +14,9 @@ const owner = `0x${'11'.repeat(20)}`, external = `0x${'22'.repeat(20)}`;
 const hash = `0x${'aa'.repeat(32)}`;
 const query = new URLSearchParams(window.location.search);
 const inspections: string[] = [], savedLoads: string[] = [], actions: string[] = [], listeners = new Set<() => void>();
+let acknowledged = 0;
+let releaseTarget!: () => void;
+const delayedTarget = new Promise<void>(resolve => { releaseTarget = resolve; });
 const make = (networkId: string, incoming: boolean, timestamp: number, valueUnits: string): AccountActivityRow => {
   const network = getNativeNetwork(networkId);
   const choice: NotificationChoice = { label: 'Public test account', networkName: network.name, symbol: network.symbol,
@@ -27,14 +30,15 @@ const make = (networkId: string, incoming: boolean, timestamp: number, valueUnit
     observation: { ...row.observation!, hash: '0x' + (index + 1).toString(16).padStart(64, '0'), timestamp: timestamp - (index + 1) * 120000 } }))] : [row];
   let snapshot: NativeActivitySnapshot = { status: 'ready', rows: recentRows, view: DEFAULT_ACTIVITY_VIEW, accountAddress: owner,
     scopeKey: choice.scope.id, chainId: network.chainId, networkName: network.name, nativeSymbol: network.symbol,
-    explorerUrl: null, loadingMore: false, hasMore: false, error: null, coverage: 'explorer-transfers', truncated: false, canViewSavedPending: true };
+    explorerUrl: null, loadingMore: false, hasMore: true, error: null, coverage: 'explorer-transfers', truncated: false,
+    discoveryAvailable: !(networkId === 'base' && query.has('no-discovery')) };
   const childListeners = new Set<() => void>();
   const publish = () => { for (const listener of childListeners) listener(); update(); };
   let savedPage = 0;
   const child = { getSnapshot: () => snapshot, subscribe: (listener: () => void) => { childListeners.add(listener); return () => { childListeners.delete(listener); }; },
     connect() { throw Error('The aggregate owns child lifetimes'); },
-    async loadSavedPending() {
-      if (snapshot.savedPending && !snapshot.savedPending.hasMore) return;
+    async loadMore() {
+      if (!snapshot.hasMore) return;
       savedLoads.push(`${network.id}:${savedPage}`);
       const oldHash = '0x' + (savedPage === 0 ? 'cc' : 'dd').repeat(32);
       let retained: ActivityRow = { hash: oldHash, checking: false, unavailable: false,
@@ -49,10 +53,14 @@ const make = (networkId: string, incoming: boolean, timestamp: number, valueUnit
           local: { ...retained.local!, reviewNavigation: { speedUp: true } } };
       }
       savedPage++;
-      snapshot = { ...snapshot, savedPending: { status: 'ready', rows: [...snapshot.savedPending?.rows ?? [], retained], hasMore: savedPage === 1 } }; publish();
+      snapshot = { ...snapshot, rows: [...snapshot.rows, retained], hasMore: savedPage === 1 }; publish();
     },
-    closeSavedPending() { savedPage = 0; snapshot = { ...snapshot, savedPending: undefined }; publish(); },
-    inspect(value: string) { if (!snapshot.rows.some(row => row.hash === value) && !snapshot.savedPending?.rows.some(row => row.hash === value)) throw Error('Unexpected hash'); inspections.push(network.id); }, setView: async () => undefined,
+    async loadTarget(value: string) {
+      if (query.has('delay-target')) await delayedTarget;
+      if (query.has('miss-target')) return;
+      if (value === '0x' + 'cc'.repeat(32) && savedPage === 0) await child.loadMore();
+    },
+    inspect(value: string) { if (!snapshot.rows.some(row => row.hash === value)) throw Error('Unexpected hash'); inspections.push(network.id); }, setView: async () => undefined,
   } as unknown as NativeActivity;
   return { key: `${choice.scope.id}:${hash}`, choice, row, controller: child };
 };
@@ -61,25 +69,27 @@ let state: AccountActivitySnapshot = { status: 'ready', accountId: 'hd:60:0', fi
   rows: [], view: { ...DEFAULT_ACTIVITY_VIEW, filter: query.get('direction') === 'received' ? 'received' : 'all' },
   refreshing: false, loadingMore: false, hasMore: false, partial: false, error: null };
 const update = () => {
-  state = { ...state, rows: entries.flatMap(entry => entry.controller.getSnapshot().rows.map(row => ({ ...entry, key: `${entry.choice.scope.id}:${row.hash}`, row }))).filter(entry => (state.filter === 'all' || entry.choice.scope.network.id === state.filter) &&
-    (state.view.filter === 'all' || (state.view.filter === 'sent') === (entry.row.observation?.from === owner))) };
+  state = { ...state, hasMore: entries.some(entry => (state.filter === 'all' || state.filter === entry.choice.scope.network.id) && entry.controller.getSnapshot().hasMore), rows: entries.flatMap(entry => entry.controller.getSnapshot().rows.map(row => ({ ...entry, key: `${entry.choice.scope.id}:${row.hash}`, row }))).filter(entry => (state.filter === 'all' || entry.choice.scope.network.id === state.filter) &&
+    (state.view.filter === 'all' || (state.view.filter === 'sent') === (entry.row.observation?.from === owner))),
+    partial: query.has('no-discovery'), error: query.has('no-discovery') ? 'Some network activity is unavailable.' : null };
   for (const listener of listeners) listener();
 };
 update();
 const controller = { getSnapshot: () => state, subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-  connect: () => () => undefined, refresh: async () => update(), loadMore: async () => undefined,
+  connect: () => () => undefined, refresh: async () => update(), loadMore: async () => { for (const entry of entries) if (state.filter === 'all' || state.filter === entry.choice.scope.network.id) await entry.controller.loadMore(); },
   findRow: (networkId: string, rowHash: string) => { const entry = entries.find(entry => entry.choice.scope.network.id === networkId), row = entry?.controller.getSnapshot().rows.find(row => row.hash === rowHash); return entry && row ? { ...entry, row, key: `${entry.choice.scope.id}:${row.hash}` } : undefined; },
   getNetwork: (networkId: string) => (state.filter === 'all' || state.filter === networkId) ? entries.find(entry => entry.choice.scope.network.id === networkId) : undefined,
   selectFilter: async (filter: string) => { state = { ...state, filter }; update(); },
   setView: async (view: Partial<typeof DEFAULT_ACTIVITY_VIEW>) => { state = { ...state, view: { ...state.view, ...view } }; update(); },
 } as unknown as AccountActivityController;
-declare global { interface Window { __allActivityFixture: { inspections(): string[]; savedLoads(): string[]; actions(): string[]; hideBalances(value: boolean): Promise<void> } } }
-window.__allActivityFixture = { inspections: () => [...inspections], savedLoads: () => [...savedLoads], actions: () => [...actions], async hideBalances(value) { await saveBalancePrivacy(value, new AbortController().signal, () => undefined); } };
+declare global { interface Window { __allActivityFixture: { inspections(): string[]; savedLoads(): string[]; actions(): string[]; acknowledged(): number; releaseTarget(): void; hideBalances(value: boolean): Promise<void> } } }
+window.__allActivityFixture = { inspections: () => [...inspections], savedLoads: () => [...savedLoads], actions: () => [...actions], acknowledged: () => acknowledged, releaseTarget, async hideBalances(value) { await saveBalancePrivacy(value, new AbortController().signal, () => undefined); } };
 export function AllNetworksActivityFixture() {
   const shell = useRealShell('activity-fixture', () => 'activity-fixture', () => {});
+  const [target, setTarget] = React.useState(() => query.get('target') ? { networkId: query.get('target')!, hash: query.has('older-target') ? '0x' + 'cc'.repeat(32) : hash } : undefined);
   return <SafeAreaProvider><RealAppShell tab="activity" onTab={() => {}} immersive={shell.immersive}>
     <AllNetworksActivity controller={controller} accountLabel="Public test account" navigation={shell.navigation}
       onAction={async (entry, action, hash, check) => { check(); actions.push(`${entry.choice.scope.network.id}:${action}:${hash}`); }}
-      initialTarget={query.get('target') ? { networkId: query.get('target')!, hash } : undefined} />
+      initialTarget={target} onInitialTargetOpened={() => { acknowledged++; setTarget(undefined); }} />
   </RealAppShell></SafeAreaProvider>;
 }

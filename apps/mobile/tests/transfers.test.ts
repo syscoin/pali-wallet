@@ -1,6 +1,5 @@
 import { unsignedTransferBytes } from '../src/custody/evmFeeContracts.ts';
 import { createTestOperationAuthorizer } from './fixtures/operationAuthorization.ts';
-import { authorizePrivateNoteReplay } from '../../../source/wallet/privateNoteReplay.ts';
 import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -11,10 +10,9 @@ import { keccak256 } from 'ethers/crypto';
 import type { EvmUnsignedTransfer } from '../src/custody/evmFeeContracts.ts';
 import type { CustodySnapshot, NativeOperationCredential } from '../src/custody/types.ts';
 import { NativeTransfers, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
-import { EvmSignedReplay } from '../../../source/wallet/evmSignedReplay.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
-import { signedRecordTestSession, historicalSignedBundle, submitFixtureEvmTransaction } from './signedRecordTestSession.ts';
+import { signedRecordTestSession, submitFixtureEvmTransaction } from './signedRecordTestSession.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { NativeTransferRpc, NativeTransferRpcError } from '../src/custody/transferRpc.ts';
 const wallet = Wallet.fromPhrase(
@@ -107,30 +105,26 @@ function fixture(maximumAccountType?: 'HDAccount' | 'Imported' | 'Ledger' | 'Tre
       records[profile] = value; return true;
     },
   });
-  const operationAuthorization = createTestOperationAuthorizer((credential, check): Promise<void> => runtime.authenticateOperation(credential, check), unsignedTransferBytes);
-  const runtime = {
-    releaseReplacement() {},
-    authorizeOperation: operationAuthorization.authorizeOperation,
-    releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
-    isAuthenticationRefusal(error: unknown) { return !!error && typeof error === 'object' && authenticationRefusals.has(error); },
-    async authenticateOperation(credential: NativeOperationCredential, guard: () => void) {
+  const operationAuthorization = createTestOperationAuthorizer((credential, check): Promise<void> => authenticateOperation(credential, check), unsignedTransferBytes);
+  async function authenticateOperation(credential: NativeOperationCredential, guard: () => void) {
       guard(); authentications++;
       if (!credential || credential.method !== 'device')
         throw refusal('INVALID_CREDENTIAL');
       if (authenticationGate) await authenticationGate;
       guard();
       if (authenticationError) throw authenticationRefusal ? refusal(authenticationError) : Error(authenticationError);
-    },
+  }
+  const runtime = {
+    releaseReplacement() {},
+    authorizeOperation: operationAuthorization.authorizeOperation,
+    releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
+    isAuthenticationRefusal(error: unknown) { return !!error && typeof error === 'object' && authenticationRefusals.has(error); },
     evmSubmissionFailure,
     async replacementOriginal(hash: string, mode: 'cancel' | 'speed-up', guard: () => void) {
       const retained = await signedRecords.readReplacement(signedRecordTestSession(guard), '1', wallet.address, hash, mode);
       guard();
-      if (!retained?.binding) return null;
+      if (!retained?.binding || typeof retained.original.rawTransaction !== 'string') return null;
       return { rawTransaction: retained.original.rawTransaction, binding: retained.binding, rates: retained.rates };
-    },
-    replay(guard: () => void, transport: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[1], options: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[2]) {
-      return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
-        context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
     },
     submit: submitFixtureEvmTransaction(signedRecords),
     async token(contractAddress: string, guard: () => void) {
@@ -144,7 +138,6 @@ function fixture(maximumAccountType?: 'HDAccount' | 'Imported' | 'Ledger' | 'Tre
       return { ...createNativeSignedRecordView(signedRecords, signedRecordTestSession(guard), '1'.repeat(64),
         { index: 0, type: 'HDAccount', address: wallet.address }, getNativeNetwork('ethereum')) };
     },
-    assertUnlocked(guard: () => void) { guard(); assert.equal(state.phase, 'ready'); },
     async sign(
       transaction: EvmUnsignedTransfer,
       authority: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['sign']>[1]
@@ -754,7 +747,7 @@ test('asset state changes after signing retain recovery guidance without broadca
     const snapshot = f.transfers.getSnapshot();
     assert.equal(saved?.hash, snapshot.hash);
     assert.equal(snapshot.phase, 'unknown');
-    assert.match(snapshot.message ?? '', /signed transaction is saved/);
+    assert.match(snapshot.message ?? '', /signed but not submitted/);
   } finally { f.close(); }
 });
 
@@ -1003,7 +996,7 @@ test('storage failure after signing never reaches the network', async () => {
     f.close();
   }
 });
-test('lost acknowledgement retries the same bytes with fresh consent, without a new signature', async () => {
+test('lost acknowledgement preserves the signed bytes and blocks a new transaction', async () => {
   const f = fixture();
   try {
     const approved = await review(f);
@@ -1013,90 +1006,12 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
     await assert.rejects(f.transfers.prepare(to, '0.002'), {
       code: 'PENDING_TRANSFER',
     });
-    await f.transfers.recover(true);
-    const retry = f.transfers.getSnapshot().review;
-    assert(retry?.retry);
-    f.refuseAuthentication('INVALID_CREDENTIAL');
-    await assert.rejects(f.transfers.confirm(retry.id, OPERATION_CREDENTIAL), { code: 'INVALID_CREDENTIAL' });
-    assert.equal(f.broadcasts.length, 1);
-    f.failAuthentication(null);
-    await f.transfers.confirm(retry.id, OPERATION_CREDENTIAL);
-    assert.equal(f.authentications(), 3);
-    assert.equal(f.signatures(), 1);
-    assert.equal(f.broadcasts.length, 2);
-    assert.equal(f.broadcasts[0], f.broadcasts[1]);
-  } finally {
-    f.close();
-  }
-});
-test('a saved transaction stays visible when status observation is unavailable', async () => {
-  const f = fixture();
-  try {
-    const approved = await review(f);
-    f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
-    const hash = f.transfers.getSnapshot().hash!;
-    assert(hash);
-    const retained = JSON.stringify(f.records);
-    f.transfers.cancel(); // Activity opens a fresh recovery screen.
-    f.setObservationUnavailable(true);
-    await assert.rejects(f.transfers.recover(true, hash), { code: 'FAILED' });
-    const unavailable = f.transfers.getSnapshot();
-    assert.equal(unavailable.phase, 'unavailable');
-    assert.equal(unavailable.hash, hash);
-    assert.equal(unavailable.review, null);
-    assert(!JSON.stringify(unavailable).includes(f.broadcasts[0]!));
-    assert.equal(JSON.stringify(f.records), retained);
+    const retained = await (await f.runtime.journal(() => undefined)).load();
+    assert.equal(retained?.hash, f.transfers.getSnapshot().hash);
+    assert.equal(retained?.rawTransaction, f.broadcasts[0]);
+    assert.equal(f.authentications(), 1);
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 1);
-
-    f.setObservationUnavailable(false);
-    await f.transfers.recover(false, hash);
-    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
-    assert.equal(f.transfers.getSnapshot().hash, hash);
-    await f.transfers.recover(true, hash);
-    assert.equal(f.transfers.getSnapshot().review?.replay?.hash, hash);
-    assert.equal(f.signatures(), 1);
-    assert.equal(f.broadcasts.length, 1);
-  } finally {
-    f.close();
-  }
-});
-test('a reentrant lock cannot bring back a cancelled saved-transaction review', async () => {
-  const f = fixture();
-  try {
-    const approved = await review(f);
-    f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
-    const hash = f.transfers.getSnapshot().hash;
-    assert(hash);
-    f.transfers.cancel();
-    f.transfers.subscribe((state) => {
-      if (state.hash === hash) f.source.lock();
-    });
-
-    await assert.rejects(f.transfers.recover(true, hash), { code: 'CANCELLED' });
-    assert.equal(f.transfers.getSnapshot().phase, 'idle');
-    assert.equal(f.transfers.getSnapshot().hash, null);
-    assert.equal(f.transfers.getSnapshot().review, null);
-    assert.equal(f.signatures(), 1);
-    assert.equal(f.broadcasts.length, 1);
-  } finally {
-    f.close();
-  }
-});
-test('finalized receipt releases the journal and records the result', async () => {
-  const f = fixture();
-  try {
-    const approved = await review(f);
-    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
-    f.finalize();
-    await f.transfers.recover();
-    assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
-    assert.equal(
-      (JSON.parse(Object.values(f.records)[0] as string) as { entries: { phase: string }[] }).entries[0]!.phase,
-      'confirmed'
-    );
   } finally {
     f.close();
   }
@@ -1119,38 +1034,6 @@ test('a reentrant observer can lock before submission without leaking signed byt
   }
 });
 
-test('effect replay recovers the pending journal after cancellation drains', async () => {
-  const f = fixture();
-  try {
-    const approved = await review(f);
-    f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
-    const hash = f.transfers.getSnapshot().hash;
-    const first = f.transfers.recover().catch((error) => error.code);
-    f.transfers.cancel();
-    const replay = f.transfers.recover();
-    assert.equal(await first, 'CANCELLED');
-    await replay;
-    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
-    assert.equal(f.transfers.getSnapshot().hash, hash);
-  } finally {
-    f.close();
-  }
-});
-test('cancelling a queued recovery prevents it from reviving an abandoned screen', async () => {
-  const f = fixture();
-  try {
-    const first = f.transfers.recover().catch((error) => error.code);
-    f.transfers.cancel();
-    const queued = f.transfers.recover().catch((error) => error.code);
-    f.transfers.cancel();
-    assert.equal(await first, 'CANCELLED');
-    assert.equal(await queued, 'CANCELLED');
-    assert.equal(f.transfers.getSnapshot().phase, 'idle');
-  } finally {
-    f.close();
-  }
-});
 test('disposal is terminal before a subscriber can reenter it', async () => {
   const f = fixture();
   let publications = 0;
@@ -1162,29 +1045,7 @@ test('disposal is terminal before a subscriber can reenter it', async () => {
   f.transfers.dispose();
   assert.equal(publications, 1);
   assert.equal(f.transfers.getSnapshot().review, null);
-  await assert.rejects(f.transfers.recover(), { code: 'CANCELLED' });
-  await assert.rejects(f.transfers.prepare(to, '1'), { code: 'CANCELLED' });
-});
-test('a finalized nonce without the original receipt retires obsolete retries without claiming failure', async () => {
-  const f = fixture();
-  try {
-    const approved = await review(f);
-    f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
-    f.consumeElsewhere();
-    await f.transfers.recover(true);
-    assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
-    assert.equal(f.transfers.getSnapshot().review, null);
-    assert.match(
-      f.transfers.getSnapshot().message ?? '',
-      /result is unavailable/
-    );
-    f.nextNonce();
-    await f.transfers.prepare(to, '0.002');
-    assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
-  } finally {
-    f.close();
-  }
+  await assert.rejects(f.transfers.prepare(to, '0.001'), { code: 'CANCELLED' });
 });
 
 test('insufficient funds is reported without inventing a pending transaction', async () => {
@@ -1261,33 +1122,10 @@ test('a definite no-POST from the dispatch callback retains only the already sav
     const outcome = f.transfers.getSnapshot();
     assert.equal(outcome.phase, 'unknown');
     assert.equal(outcome.hash, saved.hash);
-    assert.match(outcome.message ?? '', /saved/i);
+    assert.equal(outcome.message, 'Check this transaction in Activity before sending again.');
     assert.doesNotMatch(outcome.message ?? '', /submission may have completed/i);
   } finally { f.close(); }
 });
-
-test('unexpected recovery journal failure does not claim an existing submitted transaction was never sent', async () => {
-  const f = fixture();
-  try {
-    const approved = await review(f);
-    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
-    const before = structuredClone(f.records);
-    f.finalize();
-    const updateObservedPhase = f.signedRecords.updateObservedPhase.bind(f.signedRecords);
-    f.signedRecords.updateObservedPhase = async (session, entry, revision, phase) => {
-      if (phase === 'confirmed') throw Error('Unexpected storage failure during recovery');
-      return updateObservedPhase(session, entry, revision, phase);
-    };
-    await assert.rejects(f.transfers.recover(), { code: 'FAILED' });
-    assert.equal(f.source.getSnapshot().phase, 'locked');
-    assert.equal(f.transfers.getSnapshot().hash, null);
-    assert.match(f.transfers.getSnapshot().message ?? '', /check Activity for an existing transaction/);
-    assert.doesNotMatch(f.transfers.getSnapshot().message ?? '', /not sent|no new transaction|pending transaction.*preserved/i);
-    assert.deepEqual(f.records, before);
-    assert.equal(f.broadcasts.length, 1);
-  } finally { f.close(); }
-});
-
 
 test('expiry after a durable signed record preserves its recovery identity without broadcasting', async () => {
   const f = fixture();
@@ -1323,7 +1161,7 @@ test('a final chain probe that outlives the review retains the exact signed reco
     await expired;
     assert.deepEqual(f.broadcasts, []);
     const saved = await (await f.runtime.journal(() => undefined)).load();
-    assert(saved);
+    assert(saved?.rawTransaction);
     assert.equal(saved.hash, durable.hash);
     assert.equal(saved.phase, 'signed');
     assert.equal(saved.hash, keccak256(saved.rawTransaction));
@@ -1331,7 +1169,7 @@ test('a final chain probe that outlives the review retains the exact signed reco
     const outcome = f.transfers.getSnapshot();
     assert.equal(outcome.phase, 'unknown');
     assert.equal(outcome.hash, saved.hash);
-    assert.equal(outcome.message, 'Your signed transaction is saved. Check it before sending again.');
+    assert.equal(outcome.message, 'Check this transaction in Activity before sending again.');
   } finally {
     release();
     f.close();
@@ -1381,38 +1219,34 @@ test('rechecks the original approved maximum cost when fees and balance decrease
   } finally { f.close(); }
 });
 
-test('cancelling read-only preparation or recovery does not lock custody', async () => {
-  for (const recover of [false, true]) {
-    for (const dispose of [false, true]) {
-      const f = fixture();
-      const journal = f.runtime.journal;
-      let entered!: () => void;
-      let release!: () => void;
-      const started = new Promise<void>((resolve) => { entered = resolve; });
-      const gate = new Promise<void>((resolve) => { release = resolve; });
-      f.runtime.journal = async (guard) => {
-        entered();
-        await gate;
-        return journal(guard);
-      };
-      try {
-        const pending = recover
-          ? f.transfers.recover()
-          : f.transfers.prepare(to, '0.001');
-        const rejected = assert.rejects(pending, { code: 'CANCELLED' });
-        await started;
-        if (dispose) f.transfers.dispose();
-        else f.transfers.cancel();
-        assert.equal(f.source.getSnapshot().phase, 'ready');
-        release();
-        await rejected;
-        assert.equal(f.source.getSnapshot().phase, 'ready');
-        assert.equal(f.signatures(), 0);
-        assert.equal(f.broadcasts.length, 0);
-      } finally {
-        release();
-        f.close();
-      }
+test('cancelling read-only preparation does not lock custody', async () => {
+  for (const dispose of [false, true]) {
+    const f = fixture();
+    const journal = f.runtime.journal;
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    f.runtime.journal = async (guard) => {
+      entered();
+      await gate;
+      return journal(guard);
+    };
+    try {
+      const pending = f.transfers.prepare(to, '0.001');
+      const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+      await started;
+      if (dispose) f.transfers.dispose();
+      else f.transfers.cancel();
+      assert.equal(f.source.getSnapshot().phase, 'ready');
+      release();
+      await rejected;
+      assert.equal(f.source.getSnapshot().phase, 'ready');
+      assert.equal(f.signatures(), 0);
+      assert.equal(f.broadcasts.length, 0);
+    } finally {
+      release();
+      f.close();
     }
   }
 });
@@ -1445,44 +1279,6 @@ test('a rejected secret operation revokes custody before a queued cancellation c
 });
 
 
-for (const type of [0, 2] as const) test(`current-format type ${type} terminal bytes above today's gas cap still reconcile`, async () => {
-  const f = fixture();
-  try {
-    const signed = await wallet.signTransaction({ type, chainId: 1, nonce: 0, to, value: 1n, gasLimit: 17000000n,
-      ...(type === 0 ? { gasPrice: 2n } : { maxFeePerGas: 2n, maxPriorityFeePerGas: 1n }) });
-    const session = signedRecordTestSession();
-    f.records[await session.keyring.getPrivateRecordProfileId()] = await historicalSignedBundle(session, signed);
-    const before = JSON.stringify(f.records);
-    f.finalize(); await f.transfers.recover();
-    assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
-    assert.equal(f.transfers.getSnapshot().hash, keccak256(signed));
-    assert.equal(JSON.stringify(f.records), before);
-    assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0);
-    assert(!JSON.stringify(f.transfers.getSnapshot()).includes(signed));
-  } finally { f.close(); }
-});
-
-test('predecessor choices page locally without changing consent or making more RPC reads',async()=>{
- const f=fixture();
- try {
-  const raws = await Promise.all(Array.from({ length: 23 }, (_, index) =>
-    wallet.signTransaction({ type: 2, chainId: 1, nonce: index === 22 ? 1 : 0, to, value: index + 1,
-      gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 })));
-  const session = signedRecordTestSession();
-  f.records[await session.keyring.getPrivateRecordProfileId()] = await historicalSignedBundle(session, raws, 'signed');
-  await f.transfers.recover(true);
-  const before=f.transfers.getSnapshot().review!;
-  assert.equal(before.replay!.predecessorCount,22);assert.equal(before.replay!.predecessors.length,20);
-  const requests=f.rpcMethods.length;
-  await f.transfers.loadMorePredecessors();
-  const after=f.transfers.getSnapshot().review!;
-  assert.equal(after.id,before.id);assert.equal(after.replay!.predecessors.length,22);
-  assert.equal(new Set(after.replay!.predecessors.map(row=>row.hash)).size,22);
-  assert.equal(f.rpcMethods.length,requests);assert.equal(f.broadcasts.length,0);assert.equal(f.signatures(),0);
- } finally {f.close();}
-});
-
-
 test('real SDK and NativeTransfers report a genuine journal capacity refusal without POST', async () => {
   let capturedCapacity:unknown;
   const f=fixture();try {
@@ -1511,6 +1307,7 @@ test('real SDK and NativeTransfers report a genuine journal capacity refusal wit
 test('capacity refusal of a saved cancellation preserves the original exact record and sends no replacement', async () => {
   const f=fixture();try {
     const initial=await review(f);await f.transfers.confirm(initial.id, OPERATION_CREDENTIAL);const original=f.transfers.getSnapshot().hash!;
+    assert.equal(f.transfers.getSnapshot().receiptReview, initial);
     const saved=await (await f.runtime.journal(()=>undefined)).load(original);assert(saved);
     f.setPayerEoa();
     await f.transfers.prepareSavedCancellation(original);const replacement=f.transfers.getSnapshot().review!;assert(replacement.replacement);
@@ -1520,6 +1317,7 @@ test('capacity refusal of a saved cancellation preserves the original exact reco
     const retained=await (await f.runtime.journal(()=>undefined)).load(original);assert(retained?.rawTransaction===saved.rawTransaction);
     assert.equal(f.transfers.getSnapshot().phase,'unknown');assert.equal(f.transfers.getSnapshot().hash,original);
     assert.equal(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE);
+    assert.equal(f.transfers.getSnapshot().receiptReview, undefined);
   } finally {f.close();}
 });
 

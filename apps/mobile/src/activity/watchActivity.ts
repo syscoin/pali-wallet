@@ -124,6 +124,8 @@ export function createWatchEvmActivity(
     {
       page: (scope, feed, page, signal, guard) =>
         authority.readEvmActivityPage(scope, feed, page, signal, guard),
+      pending: (scope, signal, guard) =>
+        authority.readEvmActivityPending(scope, signal, guard),
     },
     receipts
   );

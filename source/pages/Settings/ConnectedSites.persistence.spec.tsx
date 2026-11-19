@@ -174,7 +174,7 @@ beforeEach(async () => {
   mockEmitter.mockImplementation((methods: string[], params: any[]) => {
     expect(methods).toEqual(['dapp', 'revoke']);
     return controller.revoke(
-      ...(params as [string, { allowAlreadyDisconnected: boolean }])
+      ...(params as Parameters<typeof controller.revoke>)
     );
   });
 });
@@ -253,6 +253,64 @@ it('durably removes a connected site through Settings and keeps it removed on st
   expect(records.state.dapp.dapps[HOST]).toBeUndefined();
   expect((await restorePersistedPermissions()).isConnected(HOST)).toBe(false);
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it.each(['replacement', 'already disconnected'] as const)(
+  'honors only the reviewed grant when Settings IPC arrives after %s',
+  async (outcome) => {
+    const dispatch = mockEmitter.getMockImplementation()!;
+    let deliver!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      deliver = resolve;
+    });
+    mockEmitter.mockImplementationOnce((...args) =>
+      delivery.then(() => dispatch(...args))
+    );
+    mount();
+    await removeFromSettings(false);
+    await act(async () => {
+      if (outcome === 'replacement') await reconnect();
+      else await controller.revoke(HOST, { allowAlreadyDisconnected: true });
+      const writes = stateWrites.length;
+      deliver();
+      const result = mockEmitter.mock.results[0].value;
+      if (outcome === 'replacement') await expect(result).rejects.toThrow();
+      else await expect(result).resolves.toBeUndefined();
+      expect(stateWrites).toHaveLength(writes);
+    });
+
+    if (outcome === 'replacement') {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'settings.connectionReviewChanged'
+      );
+      expect(controller.get(HOST)?.accountId).toBe(1);
+      expect(records.state.dapp.dapps[HOST].accountId).toBe(1);
+    } else {
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(controller.isConnected(HOST)).toBe(false);
+      expect(records.state.dapp.dapps[HOST]).toBeUndefined();
+    }
+  }
+);
+
+it('does not cancel a replacement grant pending in storage when Settings still shows the old grant', async () => {
+  mount();
+  const held = holdNextStateWrite();
+  const replacing = reconnect();
+  await held.started;
+  try {
+    await removeFromSettings(false);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'settings.connectionReviewChanged'
+    );
+  } finally {
+    await act(async () => {
+      held.release();
+      await replacing;
+    });
+  }
+  expect(controller.get(HOST)?.accountId).toBe(1);
+  expect(records.state.dapp.dapps[HOST].accountId).toBe(1);
 });
 
 it('reports a failed Settings disconnect and keeps the permission reviewable for a durable retry', async () => {

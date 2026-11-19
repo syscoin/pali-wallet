@@ -6,7 +6,7 @@ import { decodeSentryPayoutAddress } from '../src/screens/sentryPayoutAddress.ts
 
 function fixture(kind: 'control' | 'sentry') {
   let clock = 100, serial = 0, back: (() => boolean) | undefined, app: ((state: string) => void) | undefined;
-  const timers = new Map<number, () => void>(), approvals: unknown[][] = [], rejections: string[] = [];
+  const timers = new Map<number, () => void>(), approvals: unknown[][] = [], rejections: string[] = [], approvalFailures: string[] = [];
   const native = { Platform: { OS: 'ios' }, KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: { currentState: 'active', addEventListener(_event: string, handler: (state: string) => void) { app = handler; return { remove() { app = undefined; } }; } },
     BackHandler: { addEventListener(_event: string, handler: () => boolean) { back = handler; return { remove() { back = undefined; } }; } },
     Keyboard: { dismiss() {} }, StyleSheet: { create: (v: unknown) => v }, View: 'View' };
@@ -29,10 +29,10 @@ function fixture(kind: 'control' | 'sentry') {
       './sentryPayoutAddress': { decodeSentryPayoutAddress },
     }, { Date: class extends Date { static now() { return clock; } },
       setTimeout(callback: () => void) { timers.set(++serial, callback); return serial; }, clearTimeout(id: number) { timers.delete(id); } });
-  const render = () => screenElements(f.render({ review, controller }));
+  const render = () => screenElements(f.render({ review, controller, onApprovalFailure: () => approvalFailures.push(review.id) }));
   const button = () => screenElements(render().find(e => e.type === 'Screen')!.props.footer).find(e => e.type === 'Button' && e.props.title !== 'Reject')!;
   const tick = async () => { await Promise.resolve(); await Promise.resolve(); };
-  return { get review() { return review; }, replaceReview(update: Record<string, unknown>) { review = Object.freeze({ ...review, ...update }); }, controller, render, button, approvals, rejections, tick,
+  return { get review() { return review; }, replaceReview(update: Record<string, unknown>) { review = Object.freeze({ ...review, ...update }); }, controller, render, button, approvals, rejections, approvalFailures, tick,
     expire() { clock = 1001; [...timers.values()].forEach(run => run()); },
     background() { native.AppState.currentState = 'background'; app?.('background'); },
     back: () => back?.(), close: f.close };
@@ -54,6 +54,33 @@ test('expired control cannot become a new asset consent without a new current re
   f.review.id = 'request-2'; f.review.expiresAt = 2000; f.render(); assert(!f.button().props.disabled); f.close();
 });
 
+test('control review consumes physical Back and disables rejection once the change is committing', () => {
+  const f = fixture('control');
+  try {
+    f.replaceReview({ busy: true, committing: false });
+    f.render(); assert.equal(f.back(), true);
+    assert.deepEqual(f.rejections, ['request-1']);
+    f.replaceReview({ committing: true });
+    const elements = f.render();
+    assert.equal(elements.find(node => node.type === 'Header')!.props.onBack, undefined);
+    assert.equal(elements.find(node => node.type === 'Button' && node.props.title === 'Reject')!.props.disabled, true);
+    assert.equal(f.back(), true);
+    assert.deepEqual(f.rejections, ['request-1']);
+  } finally { f.close(); }
+});
+
+test('a failed control approval reports to the wallet shell even when the review closes', async () => {
+  const f = fixture('control'), approval = Promise.withResolvers<void>();
+  try {
+    f.controller.approveControl = () => approval.promise;
+    f.button().props.onPress();
+    f.close();
+    approval.reject(new Error('Unconfirmed app response'));
+    await f.tick();
+    assert.deepEqual(f.approvalFailures, ['request-1']);
+  } finally { f.close(); }
+});
+
 test('Sentry signature requests shared authorization for the displayed role/slot only once', async () => {
   const f = fixture('sentry'); f.render(); f.render().find(e => e.type === 'Row' && e.props.title.startsWith('New owner'))!.props.onPress();
   const held = Promise.withResolvers<void>();
@@ -63,6 +90,22 @@ test('Sentry signature requests shared authorization for the displayed role/slot
   submit(); submit(); await f.tick();
   assert.deepEqual(f.approvals, [['request-1', 1, { kind: 'operation', keyId: 'new', authorizationId: 'newOwner' }]]);
   assert(f.button().props.disabled); held.resolve(); await f.tick(); f.close();
+});
+
+test('Sentry offers Close after handoff while waiting for acknowledgement and after delivery becomes uncertain', () => {
+  const f = fixture('sentry');
+  try {
+    const secondary = () => f.render().find(node => node.type === 'Button' && node.props.variant === 'secondary' && ['Reject', 'Close'].includes(node.props.title))!;
+    assert.equal(secondary().props.title, 'Reject');
+    f.replaceReview({ busy: true, handedOff: true });
+    assert.equal(secondary().props.title, 'Close');
+    f.replaceReview({ busy: false, error: 'DELIVERY_UNCERTAIN' });
+    const close = secondary();
+    assert.equal(close.props.title, 'Close');
+    close.props.onPress();
+    assert.deepEqual(f.rejections, ['request-1']);
+    assert.deepEqual(f.approvals, []);
+  } finally { f.close(); }
 });
 
 test('immutable Sentry busy/error snapshots settle pending feedback without re-enabling terminal errors', async () => {

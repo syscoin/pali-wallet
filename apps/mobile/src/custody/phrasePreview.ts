@@ -1,4 +1,5 @@
 import type { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import { isRecoveryPhraseWordCount } from '../../../../source/shared/recoveryPhrase.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { getUtxoSdkNetwork, resolveUtxoNetwork, supportsUtxoSoftwareCustody, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { normalizeUtxoAddress } from '../core/utxoAddresses.ts';
@@ -24,7 +25,7 @@ export async function previewNativePhraseAddresses(
   check();
   if (typeof canonicalPhrase !== 'string' || !canonicalPhrase.isWellFormed() || canonicalPhrase.length > 4096 ||
       canonicalPhrase !== canonicalPhrase.normalize('NFKD').trim().replace(/\s+/gu, ' ') ||
-      ![12, 24].includes(canonicalPhrase.split(' ').length)) throw new Error('INVALID_INPUT');
+      !isRecoveryPhraseWordCount(canonicalPhrase.split(' ').length)) throw new Error('INVALID_INPUT');
   let valid: boolean;
   try { valid = keyring.isSeedValid(canonicalPhrase) === true; }
   catch { check(); throw new Error('INVALID_INPUT'); }

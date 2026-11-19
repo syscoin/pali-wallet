@@ -12,6 +12,7 @@ import {
   PageActionFooter,
 } from 'components/index';
 import { useController } from 'hooks/useController';
+import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 
@@ -22,6 +23,7 @@ const Advanced = () => {
     (state: RootState) => state.vaultGlobal
   );
   const { t } = useTranslation();
+  const { alert } = useUtils();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [enabledProperties, setEnabledProperties] = useState<{
     [k: string]: boolean | number | undefined;
@@ -45,6 +47,11 @@ const Advanced = () => {
   const { isBitcoinBased, activeAccount, accounts, activeNetwork } =
     useSelector((state: RootState) => state.vault);
   const account = accounts[activeAccount.type]?.[activeAccount.id];
+  const clearTitle = t(
+    isBitcoinBased
+      ? 'settings.clearUtxoActivity'
+      : 'settings.clearActivityAndNonce'
+  );
   const submitting = useRef(false);
   const mounted = useRef(true);
   const submissionId = useRef(0);
@@ -170,12 +177,24 @@ const Advanced = () => {
     setClearResult(null);
     try {
       await controllerEmitter(
-        ['wallet', 'clearEvmActivityAndNonce'],
-        [scope, 'clear-activity-and-nonce-data']
+        [
+          'wallet',
+          isBitcoinBased ? 'clearUtxoActivity' : 'clearEvmActivityAndNonce',
+        ],
+        [
+          scope,
+          isBitcoinBased
+            ? 'clear-utxo-activity'
+            : 'clear-activity-and-nonce-data',
+        ]
       );
       if (isCurrent()) setClearResult('success');
     } catch {
-      if (isCurrent()) setClearResult('error');
+      if (isCurrent()) {
+        if (isBitcoinBased)
+          alert.error(t('settings.clearActivityAndNonceFailed'));
+        else setClearResult('error');
+      }
     } finally {
       if (isCurrent()) {
         submitting.current = false;
@@ -253,11 +272,16 @@ const Advanced = () => {
       />
 
       <ConfirmationModal
-        title={t('settings.clearActivityAndNonce')}
-        description={t('settings.clearActivityAndNonceWarning', {
-          account: account?.label || account?.address,
-          network: activeNetwork.label || activeNetwork.currency,
-        })}
+        title={clearTitle}
+        description={t(
+          isBitcoinBased
+            ? 'settings.clearUtxoActivityWarning'
+            : 'settings.clearActivityAndNonceWarning',
+          {
+            account: account?.label || account?.address,
+            network: activeNetwork.label || activeNetwork.currency,
+          }
+        )}
         show={clearScope !== null}
         onClose={() => setClearScope(null)}
         onClick={clearActivity}
@@ -390,35 +414,35 @@ const Advanced = () => {
           </Form.Item>
         ))}
 
-        {!isBitcoinBased && (
-          <section className="w-full border-t border-white/10 pt-6">
-            <Button
-              type="button"
-              variant="neutral"
-              className="text-brand-royalblue"
-              fullWidth
-              disabled={loading || clearing}
-              onClick={() => {
-                setClearResult(null);
-                setClearScope(getWalletNavigationScope());
-              }}
+        <section className="w-full border-t border-white/10 pt-6">
+          <Button
+            type="button"
+            variant="neutral"
+            className="text-brand-royalblue"
+            fullWidth
+            disabled={loading || clearing}
+            onClick={() => {
+              setClearResult(null);
+              setClearScope(getWalletNavigationScope());
+            }}
+          >
+            {clearTitle}
+          </Button>
+          {clearResult && (
+            <p
+              role={clearResult === 'error' ? 'alert' : 'status'}
+              className="mt-3 text-sm"
             >
-              {t('settings.clearActivityAndNonce')}
-            </Button>
-            {clearResult && (
-              <p
-                role={clearResult === 'error' ? 'alert' : 'status'}
-                className="mt-3 text-sm"
-              >
-                {t(
-                  clearResult === 'success'
-                    ? 'settings.clearActivityAndNonceSuccess'
-                    : 'settings.clearActivityAndNonceFailed'
-                )}
-              </p>
-            )}
-          </section>
-        )}
+              {t(
+                clearResult === 'success'
+                  ? isBitcoinBased
+                    ? 'settings.clearUtxoActivitySuccess'
+                    : 'settings.clearActivityAndNonceSuccess'
+                  : 'settings.clearActivityAndNonceFailed'
+              )}
+            </p>
+          )}
+        </section>
 
         <PageActionFooter
           className="advanced-settings-footer"

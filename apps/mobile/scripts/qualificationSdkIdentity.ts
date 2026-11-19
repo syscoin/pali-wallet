@@ -4,9 +4,10 @@ const exactVersion = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[A-Z
 
 export function composeQualificationSdkIdentity(version: unknown, quickCrypto?: unknown): string {
   if (typeof version !== 'string' || (/\s/.test(version) || !exactVersion.test(version))) throw Error('Expected an exact shared keyring pin');
-  if (quickCrypto !== undefined && (typeof quickCrypto !== 'string' || quickCrypto.length > 512 || /\s/.test(quickCrypto) || !/^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(quickCrypto)))
+  if (quickCrypto === undefined) return version;
+  if (typeof quickCrypto !== 'string' || quickCrypto.length > 512 || !/^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(quickCrypto))
     throw Error('Invalid qualification candidate identity');
-  return [version, quickCrypto].filter(value => value !== undefined).join('.');
+  return `${version}.${quickCrypto}`;
 }
 
 export function assertQualificationSdkIdentity(actual: unknown, version: unknown, quickCrypto?: unknown): void {

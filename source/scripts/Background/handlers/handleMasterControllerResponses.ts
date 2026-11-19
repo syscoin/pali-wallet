@@ -7,6 +7,7 @@ import {
   isOwnedSmartAccountControllerCall,
   type SmartAccountControllerAuthority,
 } from '../../../shared/smartAccountControllerAuthority';
+import { UTXO_REVIEW_FUNDING_CHANGED } from '../../../shared/utxoSendErrors';
 import { walletTokenReviewError } from '../../../shared/walletTokenReview';
 import { createDappApprovalLifetime } from '../../../utils/dappApprovalLifetime';
 import {
@@ -22,7 +23,12 @@ import {
   captureStartedEoaSendCallsAttempt,
   getStoredSendCallsBundle,
 } from '../controllers/message-handler/sendCallsBundles';
+import { isOwnedUtxoReplacementCall } from '../controllers/utxoReplacementReview';
 import { IMasterController } from 'scripts/Background/controllers';
+import {
+  TRANSACTION_APPROVAL_EXPIRED,
+  TRANSACTION_APPROVAL_LOADING,
+} from 'utils/approvalClient';
 import {
   EVM_ASSET_REVIEW_REQUIRED,
   EVM_SIGNED_STORAGE_FULL,
@@ -171,6 +177,12 @@ export const controllerErrorResponse = (
   )
     submission.code = error.code;
   if (
+    (error?.code === TRANSACTION_APPROVAL_EXPIRED ||
+      error?.code === TRANSACTION_APPROVAL_LOADING) &&
+    submission.transactionNotBroadcast === true
+  )
+    submission.code = error.code;
+  if (
     error?.code === EVM_ASSET_REVIEW_REQUIRED &&
     submission.transactionNotBroadcast === true
   )
@@ -192,6 +204,11 @@ export const controllerErrorResponse = (
     !trustedBatchHash
   )
     submission.code = error.code;
+  if (
+    error?.code === UTXO_REVIEW_FUNDING_CHANGED &&
+    submission.transactionNotBroadcast === true
+  )
+    submission.code = UTXO_REVIEW_FUNDING_CHANGED;
   if (
     (error?.code === 'UTXO_SUBMISSION_NOT_DISPATCHED' &&
       error.transactionNotBroadcast === true) ||
@@ -271,9 +288,11 @@ export const handleMasterControllerResponses = (
       }
 
       const { methods, params } = data;
+      const ownedUtxoReplacement = isOwnedUtxoReplacementCall(methods);
       if (
-        isOwnedSmartAccountControllerCall(methods) &&
-        sourceAuthority === null
+        ((isOwnedSmartAccountControllerCall(methods) || ownedUtxoReplacement) &&
+          !sourceAuthority) ||
+        (ownedUtxoReplacement && isExternalWalletUrl(sender.url))
       )
         throw transactionApprovalExpired();
       sourceAuthority?.assertCurrent();
@@ -339,7 +358,7 @@ export const handleMasterControllerResponses = (
         targetMethod = () => runBoundEncryptionApproval(sender, params[0]);
       } else if (manualNonceRoute) {
         targetMethod = async (nonce: unknown) => {
-          const approval = captureDappEvmSubmission(sender);
+          const approval = captureDappEvmSubmission(sender, true);
           if (!approval) throw transactionApprovalExpired();
           await approval.checkDocument();
           approval.approveManualNonce(nonce);
@@ -397,7 +416,7 @@ export const handleMasterControllerResponses = (
             );
             const dappApproval =
               sendsEvm || reviewsEvm || stopsEoaCalls
-                ? captureDappEvmSubmission(sender)
+                ? captureDappEvmSubmission(sender, reviewsEvm)
                 : undefined;
             let submission: EvmDappSubmission = { kind: 'transaction' };
             if (sendsEvm && dappApproval?.batch) {
@@ -577,6 +596,10 @@ export const handleMasterControllerResponses = (
                 owned.dispose();
               };
               const controllerAuthority: SmartAccountControllerAuthority = {
+                ...((!smartApproval ||
+                  smartApproval.allowInlinePayerBudget === true) && {
+                  allowInlinePayerBudget: true,
+                }),
                 kind: 'document',
                 signal: owned.signal,
                 assertCurrent() {
@@ -612,6 +635,16 @@ export const handleMasterControllerResponses = (
               argumentsForCall = [utxoApproval.input, utxoApproval.authority];
             } else if (utxoMethod) {
               argumentsForCall = [params[0]];
+            } else if (ownedUtxoReplacement) {
+              argumentsForCall = [
+                params[0],
+                {
+                  assertCurrent: sourceAuthority!.assertCurrent,
+                  signal: sourceAuthority!.signal,
+                  ...(Number.isSafeInteger(sender.tab?.id) &&
+                    sender.tab!.id >= 0 && { attachedTab: true }),
+                },
+              ];
             }
             // Always execute the method; never attempt to send functions over messaging
             dappApproval?.assertCurrent();
@@ -888,7 +921,8 @@ export const handleMasterControllerResponses = (
         if (
           used ||
           request.type !== 'CONTROLLER_ACTION' ||
-          !isOwnedSmartAccountControllerCall(request.data?.methods) ||
+          (!isOwnedSmartAccountControllerCall(request.data?.methods) &&
+            !isOwnedUtxoReplacementCall(request.data?.methods)) ||
           !Array.isArray(request.data?.params) ||
           request.data.params.length !==
             ([

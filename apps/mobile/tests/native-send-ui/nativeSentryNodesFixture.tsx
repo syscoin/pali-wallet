@@ -66,13 +66,13 @@ const open = async (
           releaseLookup = resolve;
         });
       check();
-      if (options.has('error') || request.version !== 1 || request.proTxHash !== node.proTxHash || request.genesisHash !== SENTRY_NETWORKS.mainnet.genesisHash || origin !== 'Pali Wallet')
+      if (options.has('error') || request.version !== 1 || request.proTxHash !== node.proTxHash || request.genesisHash !== SENTRY_NETWORKS.mainnet.genesisHash || origin !== 'Pali')
         throw new Error('Fixture lookup failed');
       return (review = Object.freeze({
         id: 'public-review',
         network: 'mainnet',
         node,
-        origin: 'Pali Wallet',
+        origin: 'Pali',
         serviceUrl: 'https://sentry.example',
       }));
     },

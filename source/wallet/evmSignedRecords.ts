@@ -3,19 +3,26 @@ import {
   assertEvmGasLimit,
 } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { getAddress } from 'ethers/address';
-import { sha256 } from 'ethers/crypto';
+import { keccak256, sha256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { concat, getBytes } from 'ethers/utils';
 
-import { decodeErc20Transfer } from '../shared/erc20.ts';
+import { createErc20Policy, decodeErc20Transfer } from '../shared/erc20.ts';
 import { snapshotEvmTransferAsset } from '../shared/evmAssetState.ts';
 import { EvmAutoNonceAcceptance } from '../shared/evmAutoNonce.ts';
 import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
+import { EVM_ACTIVITY_CURSOR_STALE } from '../shared/evmHistory.ts';
 import { EVM_SIGNED_RECORD_LIMITS } from '../shared/evmSignedRecordLimits.ts';
 import { observeEvmTransaction } from '../shared/evmTransactionObservation.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
+import { getPrivacyPoolActivity } from '../shared/privacyPoolActivity.ts';
+import { decodeSmartAccountExecutions } from '../shared/smartAccountExecutions.ts';
+import {
+  EVM_ASSET_REVIEW_MESSAGE,
+  EVM_ASSET_REVIEW_REQUIRED,
+} from '../utils/evmTransactionContext.ts';
 import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
@@ -23,10 +30,12 @@ import {
 import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHash.ts';
 
 import {
+  canSpeedUpSmartAccountOuter,
   decodeRetainedSmartAccountTransfer,
   decodeRetainedSmartAccountCancellation,
   isSmartAccountActivityCandidate,
   decodeRetainedSmartAccountOperations,
+  decodeSmartAccountOperations,
   type RetainedSmartAccountOperation,
   type RetainedSmartAccountActivity,
   type RetainedSmartAccountCancellation,
@@ -60,6 +69,7 @@ export { EVM_SIGNED_RECORD_LIMITS } from '../shared/evmSignedRecordLimits.ts';
 export const EVM_SIGNED_RECORD_PREFIX = 'pali-evm-signed-v1:';
 const encoder = new TextEncoder();
 const ROOT_DOMAIN = 'org.syscoin.pali.evm.signed.root.v1';
+const UNSIGNED_CHUNK_DOMAIN = 'org.syscoin.pali.evm.unsigned.chunk.v1';
 const CHUNK_DOMAIN = 'org.syscoin.pali.evm.signed.chunk.v1';
 const PROFILE = /^0x[0-9a-f]{64}$/;
 const HASH = /^0x[0-9a-f]{64}$/;
@@ -236,6 +246,10 @@ function sameUnsignedSmartAccountOperation(
   );
 }
 const mutationSerials = new WeakMap<EvmSignedRecordStorage, number>();
+// A handoff need not change the journal revision. Track it separately so a
+// failed initial submission cannot remove a record another admission may use.
+const dispatchSerials = new WeakMap<EvmSignedRecordStorage, number>();
+const discardUndispatched = Symbol('discardUndispatched');
 
 export type EvmSignedRecordSession = {
   assertCurrent(): void;
@@ -266,7 +280,99 @@ export type EvmSignedRecordSummary = Readonly<{
   signer: Readonly<{ id: number; type: string }>;
 }>;
 export type EvmRetainedSignedRecord = EvmSignedRecordSummary &
-  Readonly<{ rawTransaction: string }>;
+  Readonly<{
+    payloadKind?: 'signed';
+    rawTransaction: string;
+    unsignedTransaction?: never;
+  }>;
+export type EvmRetainedUnsignedRecord = EvmSignedRecordSummary &
+  Readonly<{
+    payloadKind: 'unsigned-eoa';
+    rawTransaction?: never;
+    unsignedTransaction: string;
+  }>;
+export type EvmRetainedRecord =
+  | EvmRetainedSignedRecord
+  | EvmRetainedUnsignedRecord;
+export function retainedEvmTransaction(entry: EvmRetainedRecord): Transaction {
+  return Transaction.from(
+    entry.payloadKind === 'unsigned-eoa'
+      ? entry.unsignedTransaction
+      : entry.rawTransaction
+  );
+}
+function isReconstructableEoa(
+  tx: Transaction,
+  entry: Pick<
+    EvmSignedRecordSummary,
+    'operation' | 'metadata' | 'signer' | 'from' | 'hash' | 'nonce' | 'chainId'
+  >
+): boolean {
+  if (
+    !tx.to ||
+    (tx.type !== 0 && tx.type !== 2) ||
+    !['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(entry.signer.type)
+  )
+    return false;
+  const { operation, metadata } = entry;
+  if (
+    Object.keys(metadata ?? {}).some(
+      (key) => key !== 'intent' && key !== 'nftTransfer'
+    )
+  )
+    return false;
+  if (
+    tx.to.toLowerCase() ===
+      getPaliEntryPointAddress(Number(tx.chainId)).toLowerCase() ||
+    getPrivacyPoolActivity(tx.chainId.toString(), tx.to, tx.data.slice(0, 10))
+  )
+    return false;
+  if (operation === 'send') return metadata === undefined;
+  if (operation === 'speed-up' && !metadata?.intent && !metadata?.nftTransfer)
+    return true;
+  if (tx.value !== BigInt(0) || tx.accessList?.length) return false;
+  try {
+    if (
+      operation === 'erc20' ||
+      (operation === 'speed-up' && metadata?.intent)
+    ) {
+      const decoded = decodeErc20Transfer(tx.data);
+      if (metadata?.nftTransfer) return false;
+      if (!metadata?.intent) return true;
+      const intent = metadata.intent as Record<string, unknown>;
+      const token = createErc20Policy(getAddress).parseMetadata(intent.token);
+      return (
+        intent.kind === 'erc20-transfer' &&
+        intent.chainId === entry.chainId &&
+        getAddress(token.contractAddress) === tx.to &&
+        getAddress(String(intent.recipient)).toLowerCase() ===
+          decoded.recipient &&
+        intent.amountUnits === decoded.amountUnits
+      );
+    }
+    return !!decodeRetainedNftTransfer(
+      {
+        ...entry,
+        ...(tx.isSigned()
+          ? { rawTransaction: tx.serialized }
+          : { unsignedTransaction: tx.unsignedSerialized }),
+      },
+      tx
+    );
+  } catch {
+    return false;
+  }
+}
+function sameEoaExecution(a: Transaction, b: Transaction): boolean {
+  return (
+    a.to === b.to &&
+    a.data === b.data &&
+    a.value === b.value &&
+    a.gasLimit === b.gasLimit &&
+    a.type === b.type &&
+    JSON.stringify(a.accessList ?? []) === JSON.stringify(b.accessList ?? [])
+  );
+}
 export type EvmRetainedSmartAccountRecord = Readonly<{
   cancellation?: RetainedSmartAccountCancellation;
   entry: EvmRetainedSignedRecord;
@@ -378,7 +484,10 @@ function repricesCancellation(tx: Transaction, original: Transaction): boolean {
 }
 
 type Entry = EvmSignedRecordSummary &
-  Readonly<{ chunks: readonly IEncryptedPrivateRecord[] }>;
+  Readonly<{
+    chunks: readonly IEncryptedPrivateRecord[];
+    payloadKind?: 'unsigned-eoa';
+  }>;
 type AuthorizationEntry = SmartAccountAuthorizationSummary &
   Readonly<{ chunks: readonly IEncryptedPrivateRecord[] }>;
 type MinedObservation = Extract<EvmTransactionObservation, { status: 'mined' }>;
@@ -391,9 +500,16 @@ function completedNonceGroups(entries: readonly Entry[]): readonly Entry[][] {
     group.push(entry);
     groups.set(key, group);
   }
+  // Automatic cleanup must not reveal a private deposit or withdrawal hash,
+  // including when a different transaction in that nonce group won.
   return [...groups.values()].filter(
     (group) =>
-      group.every((entry) => !isPendingPhase(entry.phase)) &&
+      group.every(
+        (entry) =>
+          !isPendingPhase(entry.phase) &&
+          !Object.hasOwn(entry.metadata ?? {}, 'privateDeposit') &&
+          !Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal')
+      ) &&
       group.some(
         (entry) => entry.phase === 'confirmed' || entry.phase === 'reverted'
       )
@@ -421,7 +537,7 @@ function retainedReplacementLineage(
 
 function replacementMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined,
-  original: EvmRetainedSignedRecord | null | undefined,
+  original: EvmRetainedRecord | null | undefined,
   operation: 'cancel' | 'speed-up'
 ) {
   const fields = { ...metadata };
@@ -431,11 +547,10 @@ function replacementMetadata(
   const nftTransfer =
     operation === 'speed-up' &&
     original &&
-    decodeRetainedNftTransfer(
-      original,
-      Transaction.from(original.rawTransaction)
-    );
+    decodeRetainedNftTransfer(original, retainedEvmTransaction(original));
   if (nftTransfer) fields.nftTransfer = nftTransfer;
+  if (operation === 'speed-up' && original?.metadata?.intent !== undefined)
+    fields.intent = original.metadata.intent;
   return Object.keys(fields).length ? snapshotMetadata(fields) : undefined;
 }
 
@@ -454,6 +569,11 @@ export type EvmSignedRetirementReadForChain = (
   assertCurrent: () => void
 ) => EvmSignedRetirementRead | null;
 type NonceFloor = Readonly<{ chainId: string; from: string; nonce: number }>;
+type PrivateNonceReset = readonly [payer: string, generation: number];
+type NonceResetState = Readonly<{
+  privateNonceResets: readonly PrivateNonceReset[];
+  resetGeneration: number;
+}>;
 const ROOT_PLAINTEXT_LIMIT = 64 * 1024;
 const FINALITY_TIMEOUT_MS = 12_000;
 const floorKey = ({ chainId, from }: Pick<NonceFloor, 'chainId' | 'from'>) =>
@@ -485,6 +605,33 @@ function nonceFloors(value: unknown): readonly NonceFloor[] {
     })
   );
 }
+function parsePrivateNonceResets(
+  value: unknown,
+  resetGeneration: number
+): readonly PrivateNonceReset[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > EVM_SIGNED_RECORD_LIMITS.transactions
+  )
+    return invalid();
+  let previous = '';
+  const resets = value.map((item): PrivateNonceReset => {
+    if (!Array.isArray(item) || item.length !== 2) return invalid();
+    const [payer, generation] = item;
+    if (
+      typeof payer !== 'string' ||
+      !/^0x[0-9a-f]{40}$/.test(payer) ||
+      payer <= previous ||
+      !Number.isSafeInteger(generation) ||
+      generation < 1 ||
+      generation > resetGeneration
+    )
+      return invalid();
+    previous = payer;
+    return Object.freeze([payer, generation] as const);
+  });
+  return Object.freeze(resets);
+}
 function minimumNonce(
   bundle: Bundle | null,
   scope: Pick<NonceFloor, 'chainId' | 'from'>
@@ -510,10 +657,8 @@ type ParsedBundle = Readonly<{
   version: 1;
 }>;
 type Bundle = ParsedBundle &
-  Readonly<{
-    nonceFloors: readonly NonceFloor[];
-    resetGeneration: number;
-  }>;
+  NonceResetState &
+  Readonly<{ nonceFloors: readonly NonceFloor[] }>;
 const queues = new WeakMap<EvmSignedRecordStorage, Promise<unknown>>();
 // Reset invalidates work immediately, including work waiting on the storage queue.
 const resetSerials = new WeakMap<EvmSignedRecordStorage, number>();
@@ -721,10 +866,16 @@ function parse(raw: string, expectedProfile?: string): ParsedBundle {
       'signer',
       'operation',
       'chunks',
+      ...(keys.includes('payloadKind') ? ['payloadKind'] : []),
       ...(keys.includes('originalHash') ? ['originalHash'] : []),
       ...(keys.includes('metadata') ? ['metadata'] : []),
     ]);
     if (
+      (keys.includes('payloadKind') &&
+        (data.payloadKind !== 'unsigned-eoa' ||
+          !['send', 'speed-up', 'erc20', 'erc721', 'erc1155'].includes(
+            data.operation
+          ))) ||
       !HASH.test(data.hash) ||
       hashes.has(data.hash) ||
       typeof data.chainId !== 'string' ||
@@ -767,7 +918,12 @@ function parse(raw: string, expectedProfile?: string): ParsedBundle {
       signer: Object.freeze({ ...data.signer }),
       chunks: Object.freeze(
         data.chunks.map((chunk: unknown, i: number) =>
-          envelope(chunk, value.profileId, CHUNK_DOMAIN, `${data.hash}/${i}`)
+          envelope(
+            chunk,
+            value.profileId,
+            data.payloadKind ? UNSIGNED_CHUNK_DOMAIN : CHUNK_DOMAIN,
+            `${data.hash}/${i}`
+          )
         )
       ),
     }) as Entry;
@@ -858,7 +1014,8 @@ async function profile(session: EvmSignedRecordSession): Promise<string> {
   return id;
 }
 function summary(entry: Entry): EvmSignedRecordSummary {
-  const { chunks: _chunks, ...value } = entry;
+  const { chunks: _chunks, payloadKind: _payloadKind, ...value } = entry;
+  void _payloadKind;
   void _chunks;
   return Object.freeze(value);
 }
@@ -875,6 +1032,10 @@ async function entriesHash(entries: readonly unknown[]): Promise<string> {
 export class EvmSignedRecords {
   readonly autoNonceAcceptance = new EvmAutoNonceAcceptance();
   private readonly storage: EvmSignedRecordStorage;
+  private readonly freshAppends = new WeakMap<
+    EvmRetainedSignedRecord,
+    { dispatchSerial: number; profileId: string; revision: number }
+  >();
   private readonly now: () => number;
   private readonly onUnavailable: () => void;
   private unavailable = false;
@@ -984,6 +1145,7 @@ export class EvmSignedRecords {
     });
     let floors: readonly NonceFloor[];
     let resetGeneration: number;
+    let privateNonceResets: readonly PrivateNonceReset[];
     try {
       guard(session);
       if (plaintext.length > ROOT_PLAINTEXT_LIMIT) return invalid();
@@ -998,6 +1160,10 @@ export class EvmSignedRecords {
         !!value &&
         typeof value === 'object' &&
         Object.hasOwn(value, 'resetGeneration');
+      const hasPrivateNonceResets =
+        !!value &&
+        typeof value === 'object' &&
+        Object.hasOwn(value, 'privateNonceResets');
       const hasAuthorizationCount =
         !!value &&
         typeof value === 'object' &&
@@ -1019,6 +1185,7 @@ export class EvmSignedRecords {
         'entriesHash',
         ...(hasFloors ? ['nonceFloors'] : []),
         ...(hasResetGeneration ? ['resetGeneration'] : []),
+        ...(hasPrivateNonceResets ? ['privateNonceResets'] : []),
         ...(hasAuthorizationCount
           ? ['authorizations', 'authorizationsHash']
           : []),
@@ -1038,6 +1205,10 @@ export class EvmSignedRecords {
       resetGeneration = hasResetGeneration ? root.resetGeneration : 0;
       if (!Number.isSafeInteger(resetGeneration) || resetGeneration < 0)
         return invalid();
+      privateNonceResets = parsePrivateNonceResets(
+        hasPrivateNonceResets ? root.privateNonceResets : [],
+        resetGeneration
+      );
       this.bindGeneration(session, resetGeneration);
     } finally {
       plaintext.fill(0);
@@ -1046,6 +1217,7 @@ export class EvmSignedRecords {
       ...parsed,
       nonceFloors: floors,
       resetGeneration,
+      privateNonceResets,
     });
     const byScope = new Map(
       floors.map((floor) => [floorKey(floor), floor.nonce])
@@ -1064,7 +1236,7 @@ export class EvmSignedRecords {
     authorizations: readonly AuthorizationEntry[],
     floors: readonly NonceFloor[],
     reserveStatusGrowth: boolean,
-    resetGeneration: number,
+    reset: NonceResetState | null,
     verifyBeforeCommit?: () => Promise<() => void>
   ): Promise<boolean> {
     if (!Number.isSafeInteger(revision)) return limit();
@@ -1073,6 +1245,7 @@ export class EvmSignedRecords {
       EVM_SIGNED_RECORD_LIMITS.transactions
     )
       return reserveStatusGrowth ? appendLimit() : limit();
+    const { resetGeneration = 0, privateNonceResets = [] } = reset ?? {};
     const digest = await entriesHash(entries);
     guard(session);
     const bytes = encoder.encode(
@@ -1089,6 +1262,7 @@ export class EvmSignedRecords {
           : {}),
         nonceFloors: nonceFloors(floors),
         ...(resetGeneration ? { resetGeneration } : {}),
+        ...(privateNonceResets.length ? { privateNonceResets } : {}),
       })
     );
     let root: IEncryptedPrivateRecord;
@@ -1166,12 +1340,22 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     entry: Entry
   ): Promise<EvmRetainedSignedRecord> {
+    const record = await this.materializeRecord(session, entry);
+    if (record.payloadKind === 'unsigned-eoa')
+      throw new Error('EVM_SIGNED_RECORD_REQUIRES_NEW_SIGNATURE');
+    return record;
+  }
+
+  private async materializeRecord(
+    session: EvmSignedRecordSession,
+    entry: Entry
+  ): Promise<EvmRetainedRecord> {
     const pieces: Uint8Array[] = [];
     try {
       for (let i = 0; i < entry.chunks.length; i++) {
         guard(session);
         const bytes = await session.keyring.decryptPrivateRecord({
-          domain: CHUNK_DOMAIN,
+          domain: entry.payloadKind ? UNSIGNED_CHUNK_DOMAIN : CHUNK_DOMAIN,
           recordId: `${entry.hash}/${i}`,
           envelope: entry.chunks[i]!,
         });
@@ -1182,6 +1366,21 @@ export class EvmSignedRecords {
       }
       const rawTransaction = concat(pieces);
       const tx = Transaction.from(rawTransaction);
+      if (entry.payloadKind === 'unsigned-eoa') {
+        if (
+          tx.isSigned() ||
+          tx.unsignedSerialized !== rawTransaction ||
+          !isReconstructableEoa(tx, entry) ||
+          tx.chainId.toString() !== entry.chainId ||
+          tx.nonce !== entry.nonce
+        )
+          return invalid();
+        return Object.freeze({
+          ...summary(entry),
+          payloadKind: 'unsigned-eoa',
+          unsignedTransaction: rawTransaction,
+        });
+      }
       if (
         !tx.isSigned() ||
         tx.serialized !== rawTransaction ||
@@ -1252,7 +1451,41 @@ export class EvmSignedRecords {
       for (const part of pieces) part.fill(0);
     }
   }
-  /** Commit the usable inner signature before any estimate, simulation or delivery can disclose it. */
+  private async encryptAuthorization(
+    session: EvmSignedRecordSession,
+    id: string,
+    record: RetainedSmartAccountAuthorization,
+    payload: Uint8Array
+  ): Promise<AuthorizationEntry> {
+    const chunks: IEncryptedPrivateRecord[] = [];
+    for (
+      let offset = 0;
+      offset < payload.length;
+      offset += EVM_SIGNED_RECORD_LIMITS.chunkBytes
+    ) {
+      const part = payload.slice(
+        offset,
+        offset + EVM_SIGNED_RECORD_LIMITS.chunkBytes
+      );
+      try {
+        const recordId = `authorization/${record.operationHash}/${chunks.length}`;
+        const encrypted = await session.keyring.encryptPrivateRecord({
+          domain: CHUNK_DOMAIN,
+          recordId,
+          plaintext: part,
+        });
+        guard(session);
+        chunks.push(envelope(encrypted, id, CHUNK_DOMAIN, recordId));
+      } finally {
+        part.fill(0);
+      }
+    }
+    return Object.freeze({
+      ...smartAccountAuthorizationSummary(record),
+      chunks: Object.freeze(chunks),
+    });
+  }
+  /** Reserve the inner operation nonce before an estimate, simulation or delivery can disclose its proof. */
   retainSmartAccountAuthorization(
     session: EvmSignedRecordSession,
     input: Readonly<{
@@ -1286,15 +1519,20 @@ export class EvmSignedRecords {
               retained.userOperation,
               record.userOperation
             ) ||
-            (retained.userOperation.signature !==
-              record.userOperation.signature &&
+            ((retained.signatureDigest ??
+              keccak256(retained.userOperation.signature)) !==
+              keccak256(record.userOperation.signature) &&
               (!record.replacesOperationHash ||
                 !isSmartAccountRevocationOperation(record.userOperation))) ||
             retained.payer !== record.payer ||
             retained.replacesOperationHash !== record.replacesOperationHash
           )
             throw new Error('SMART_ACCOUNT_AUTHORIZATION_CONFLICT');
-          return this.authorizationReceipt(session, id, retained);
+          return this.authorizationReceipt(
+            session,
+            id,
+            retained.signatureDigest ? record : retained
+          );
         }
         const conflicts = new Map<string, string>();
         const priorRevocations = new Set<string>();
@@ -1319,7 +1557,11 @@ export class EvmSignedRecords {
         // Historical signed outer records also disclose an independently live
         // instruction, even when that payer transaction reverted or was cancelled.
         for (const entry of previous.bundle?.entries ?? []) {
-          if (entry.chainId !== record.chainId) continue;
+          if (
+            entry.chainId !== record.chainId ||
+            entry.payloadKind === 'unsigned-eoa'
+          )
+            continue;
           const outer = await this.materialize(session, entry);
           const cancellation =
             record.replacesOperationHash &&
@@ -1366,33 +1608,12 @@ export class EvmSignedRecords {
             EVM_SIGNED_RECORD_LIMITS.bytes
         )
           return appendLimit();
-        const chunks: IEncryptedPrivateRecord[] = [];
-        for (
-          let offset = 0;
-          offset < payload.length;
-          offset += EVM_SIGNED_RECORD_LIMITS.chunkBytes
-        ) {
-          const part = payload.slice(
-            offset,
-            offset + EVM_SIGNED_RECORD_LIMITS.chunkBytes
-          );
-          try {
-            const recordId = `authorization/${record.operationHash}/${chunks.length}`;
-            const encrypted = await session.keyring.encryptPrivateRecord({
-              domain: CHUNK_DOMAIN,
-              recordId,
-              plaintext: part,
-            });
-            guard(session);
-            chunks.push(envelope(encrypted, id, CHUNK_DOMAIN, recordId));
-          } finally {
-            part.fill(0);
-          }
-        }
-        const added = Object.freeze({
-          ...smartAccountAuthorizationSummary(record),
-          chunks: Object.freeze(chunks),
-        });
+        const added = await this.encryptAuthorization(
+          session,
+          id,
+          record,
+          payload
+        );
         if (
           await this.write(
             session,
@@ -1403,7 +1624,7 @@ export class EvmSignedRecords {
             [...(previous.bundle?.authorizations ?? []), added],
             previous.bundle?.nonceFloors ?? [],
             true,
-            previous.bundle?.resetGeneration ?? 0
+            previous.bundle
           )
         )
           return this.authorizationReceipt(session, id, record);
@@ -1462,7 +1683,7 @@ export class EvmSignedRecords {
             remaining,
             bundle.nonceFloors,
             false,
-            bundle.resetGeneration,
+            bundle,
             async () => {
               await proof.revalidate();
               guard(session);
@@ -1502,11 +1723,18 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     chainId: string,
     account: string,
-    options: Readonly<{ beforeHash?: string; maximum: number }>
+    options: Readonly<{
+      after?: number;
+      beforeHash?: string;
+      includeOuterPresence?: true;
+      maximum: number;
+      withoutOuter?: boolean;
+    }>
   ): Promise<
     Readonly<{
       entries: readonly SmartAccountAuthorizationSummary[];
       nextCursor: string | null;
+      withOuterOperationHashes?: readonly string[];
     }>
   > {
     session = this.captureSession(session);
@@ -1514,35 +1742,84 @@ export class EvmSignedRecords {
     if (
       !Number.isSafeInteger(options.maximum) ||
       options.maximum < 1 ||
-      options.maximum > 100 ||
+      options.maximum >
+        (options.withoutOuter ? EVM_SIGNED_RECORD_LIMITS.transactions : 100) ||
       (options.beforeHash !== undefined && !HASH.test(options.beforeHash))
     )
       throw new Error('SMART_ACCOUNT_AUTHORIZATION_CORRUPT');
     return this.exclusive(async () => {
       const id = await profile(session),
         { bundle } = await this.load(session, id);
-      const matching = (bundle?.authorizations ?? []).filter(
-        (entry) => entry.chainId === chainId && entry.account === account
+      let matching = (bundle?.authorizations ?? []).filter(
+        (entry) =>
+          entry.chainId === chainId &&
+          entry.account === account &&
+          (options.after === undefined || entry.createdAt > options.after)
       );
+      const findWithoutOuter = async (
+        entries: readonly AuthorizationEntry[],
+        includeLegacyPayers = false
+      ) => {
+        const unmatched = new Set(entries.map((entry) => entry.operationHash));
+        const payers = includeLegacyPayers
+          ? new Set(entries.map((entry) => entry.payer.toLowerCase()))
+          : undefined;
+        for (const outer of bundle?.entries ?? []) {
+          if (!unmatched.size) break;
+          const hint = outer.metadata?.smartAccountOperationHash;
+          if (
+            outer.chainId !== chainId ||
+            outer.payloadKind === 'unsigned-eoa' ||
+            (!isSmartAccountActivityCandidate(outer, account) &&
+              !payers?.has(outer.from)) ||
+            (typeof hint === 'string' && !unmatched.has(hint.toLowerCase()))
+          )
+            continue;
+          const entry = await this.materialize(session, outer);
+          for (const operation of decodeRetainedSmartAccountOperations(entry))
+            if (operation.account === account)
+              unmatched.delete(operation.operationHash.toLowerCase());
+        }
+        return unmatched;
+      };
+      if (options.withoutOuter && matching.length) {
+        const unmatched = await findWithoutOuter(matching, true);
+        matching = matching.filter((entry) =>
+          unmatched.has(entry.operationHash)
+        );
+      }
       const end =
         options.beforeHash === undefined
           ? matching.length
           : matching.findIndex(
               (entry) => entry.operationHash === options.beforeHash
             );
-      if (end < 0) throw new Error('SMART_ACCOUNT_AUTHORIZATION_CORRUPT');
+      if (end < 0) throw new Error(EVM_ACTIVITY_CURSOR_STALE);
       const start = Math.max(0, end - options.maximum);
-      const entries = matching
-        .slice(start, end)
-        .reverse()
-        .map((entry) => {
-          const { chunks: _chunks, ...header } = entry;
-          void _chunks;
-          return Object.freeze(header);
-        });
+      const page = matching.slice(start, end).reverse();
+      // Presence annotations are scoped to the returned page and to the Smart
+      // account records that mobile's Activity can project.
+      const unmatched =
+        options.includeOuterPresence && !options.withoutOuter
+          ? await findWithoutOuter(page)
+          : undefined;
+      const entries = page.map((entry) => {
+        const { chunks: _chunks, ...header } = entry;
+        void _chunks;
+        return Object.freeze(header);
+      });
+      const withOuterOperationHashes =
+        unmatched &&
+        Object.freeze(
+          entries
+            .map(({ operationHash }) => operationHash)
+            .filter((hash) => !unmatched.has(hash))
+        );
+      guard(session);
       return Object.freeze({
         entries: Object.freeze(entries),
         nextCursor: start > 0 ? entries.at(-1)!.operationHash : null,
+        ...(withOuterOperationHashes ? { withOuterOperationHashes } : {}),
       });
     });
   }
@@ -1576,8 +1853,8 @@ export class EvmSignedRecords {
         !(entry.operation === 'speed-up' && parent)
       )
         continue;
-      const tx = Transaction.from(
-        (await this.materialize(session, entry)).rawTransaction
+      const tx = retainedEvmTransaction(
+        await this.materializeRecord(session, entry)
       );
       if (
         smart.has(entry.hash) ||
@@ -1642,6 +1919,10 @@ export class EvmSignedRecords {
     if (!revoked.size) return entries;
     const retained: Entry[] = [];
     for (const entry of entries) {
+      if (entry.payloadKind === 'unsigned-eoa') {
+        retained.push(entry);
+        continue;
+      }
       const operations = decodeRetainedSmartAccountOperations(
         await this.materialize(session, entry)
       );
@@ -1801,8 +2082,8 @@ export class EvmSignedRecords {
     );
     if (!lineage) throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
     for (const entry of lineage.slice(1)) {
-      const variant = Transaction.from(
-        (await this.materialize(session, entry)).rawTransaction
+      const variant = retainedEvmTransaction(
+        await this.materializeRecord(session, entry)
       );
       if (
         variant.type !== decoded.tx.type ||
@@ -1953,14 +2234,23 @@ export class EvmSignedRecords {
     );
     if (
       tracked &&
-      tracked.metadata &&
-      (Object.hasOwn(tracked.metadata, 'privateWithdrawal') ||
+      (Object.hasOwn(tracked.metadata ?? {}, 'privateWithdrawal') ||
         (original.operation === 'speed-up' &&
-          Object.hasOwn(tracked.metadata, 'privateDeposit')))
+          Object.hasOwn(tracked.metadata ?? {}, 'privateDeposit')))
     )
       throw new Error('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
     if (tracked && !matchesNonce(tracked, original))
       throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    if (tracked) {
+      const tx = retainedEvmTransaction(
+        await this.materializeRecord(session, tracked)
+      );
+      if (
+        getPrivacyPoolActivity(tx.chainId.toString(), tx.to, tx.data)?.kind ===
+        'withdrawal'
+      )
+        throw new Error('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
+    }
     if (await this.cancellationFence(session, entries, original)) {
       const tip = (await this.replayableVariants(session, sameNonce)).at(-1);
       if (
@@ -1971,9 +2261,7 @@ export class EvmSignedRecords {
           replacement &&
           !repricesCancellation(
             replacement,
-            Transaction.from(
-              (await this.materialize(session, tip)).rawTransaction
-            )
+            retainedEvmTransaction(await this.materializeRecord(session, tip))
           ))
       )
         throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
@@ -1991,13 +2279,51 @@ export class EvmSignedRecords {
     return sameNonce.at(-1)?.hash ?? null;
   }
 
+  private async encryptTransactionBody(
+    session: EvmSignedRecordSession,
+    id: string,
+    hash: string,
+    body: string,
+    domain: string
+  ) {
+    const allBytes = getBytes(body);
+    const chunks: IEncryptedPrivateRecord[] = [];
+    try {
+      for (
+        let offset = 0;
+        offset < allBytes.length;
+        offset += EVM_SIGNED_RECORD_LIMITS.chunkBytes
+      ) {
+        const bytes = allBytes.slice(
+          offset,
+          offset + EVM_SIGNED_RECORD_LIMITS.chunkBytes
+        );
+        try {
+          const chunk = await session.keyring.encryptPrivateRecord({
+            domain,
+            recordId: `${hash}/${chunks.length}`,
+            plaintext: bytes,
+          });
+          guard(session);
+          chunks.push(envelope(chunk, id, domain, `${hash}/${chunks.length}`));
+        } finally {
+          bytes.fill(0);
+        }
+      }
+    } finally {
+      allBytes.fill(0);
+    }
+    return Object.freeze(chunks);
+  }
   append(
     session: EvmSignedRecordSession,
     signed: EvmSignedSubmission,
     metadata?: Readonly<Record<string, unknown>>,
     replacement?:
       | EvmVerifiedReplacementBinding
-      | EvmVerifiedSmartAccountReplacement
+      | EvmVerifiedSmartAccountReplacement,
+    retainUnsignedNative = false,
+    trackDappCleanup = false
   ): Promise<EvmRetainedSignedRecord> {
     guard(session);
     const raw = signed.rawTransaction,
@@ -2152,7 +2478,7 @@ export class EvmSignedRecords {
               (entry) => entry.hash === ordinary.originalHash
             );
             const original = originalEntry
-              ? await this.materialize(session, originalEntry)
+              ? await this.materializeRecord(session, originalEntry)
               : undefined;
             retainedMetadata = replacementMetadata(
               metadataSnapshot,
@@ -2178,9 +2504,14 @@ export class EvmSignedRecords {
           (entry) => entry.hash === hash
         );
         if (duplicate) {
-          const existing = await this.materialize(session, duplicate);
-          if (existing.rawTransaction !== raw) return invalid();
-          return existing;
+          const existing = await this.materializeRecord(session, duplicate);
+          if (
+            existing.payloadKind === 'unsigned-eoa'
+              ? existing.unsignedTransaction !== tx.unsignedSerialized
+              : existing.rawTransaction !== raw
+          )
+            return invalid();
+          return Object.freeze({ ...summary(duplicate), rawTransaction: raw });
         }
         if (
           (previous.bundle?.entries.length ?? 0) +
@@ -2196,35 +2527,46 @@ export class EvmSignedRecords {
           EVM_SIGNED_RECORD_LIMITS.bytes
         )
           return appendLimit();
-        const allBytes = getBytes(raw);
-        const chunks: IEncryptedPrivateRecord[] = [];
-        try {
-          for (
-            let offset = 0;
-            offset < allBytes.length;
-            offset += EVM_SIGNED_RECORD_LIMITS.chunkBytes
-          ) {
-            const bytes = allBytes.slice(
-              offset,
-              offset + EVM_SIGNED_RECORD_LIMITS.chunkBytes
-            );
-            try {
-              const chunk = await session.keyring.encryptPrivateRecord({
-                domain: CHUNK_DOMAIN,
-                recordId: `${hash}/${chunks.length}`,
-                plaintext: bytes,
-              });
-              guard(session);
-              chunks.push(
-                envelope(chunk, id, CHUNK_DOMAIN, `${hash}/${chunks.length}`)
-              );
-            } finally {
-              bytes.fill(0);
-            }
-          }
-        } finally {
-          allBytes.fill(0);
-        }
+        const parent =
+          context.operation === 'speed-up' && replacement
+            ? previous.bundle?.entries.find(
+                (entry) => entry.hash === replacement.originalHash
+              )
+            : undefined;
+        const inheritedUnsigned = parent?.payloadKind === 'unsigned-eoa';
+        const reconstructable = isReconstructableEoa(tx, {
+          ...signedNonce,
+          hash,
+          operation: context.operation,
+          signer: context.account,
+          metadata: retainedMetadata,
+        });
+        if (
+          inheritedUnsigned &&
+          (!reconstructable ||
+            !sameEoaExecution(
+              tx,
+              retainedEvmTransaction(
+                await this.materializeRecord(session, parent)
+              )
+            ) ||
+            parent.signer.id !== context.account.id ||
+            parent.signer.type !== context.account.type)
+        )
+          throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+        const unsigned =
+          (retainUnsignedNative &&
+            !isReplacement &&
+            !smartReplacement &&
+            reconstructable) ||
+          inheritedUnsigned;
+        const chunks = await this.encryptTransactionBody(
+          session,
+          id,
+          hash,
+          unsigned ? tx.unsignedSerialized : raw,
+          unsigned ? UNSIGNED_CHUNK_DOMAIN : CHUNK_DOMAIN
+        );
         const createdAt = this.now();
         if (!Number.isSafeInteger(createdAt) || createdAt < 0) return invalid();
         const entry: Entry = Object.freeze({
@@ -2243,7 +2585,8 @@ export class EvmSignedRecords {
             ? { originalHash: context.originalHash }
             : {}),
           ...(retainedMetadata ? { metadata: retainedMetadata } : {}),
-          chunks: Object.freeze(chunks),
+          ...(unsigned ? { payloadKind: 'unsigned-eoa' as const } : {}),
+          chunks,
         });
         const entries = [...(previous.bundle?.entries ?? []), entry];
         if (
@@ -2256,7 +2599,7 @@ export class EvmSignedRecords {
             previous.bundle?.authorizations ?? [],
             previous.bundle?.nonceFloors ?? [],
             true,
-            previous.bundle?.resetGeneration ?? 0,
+            previous.bundle,
             smartReplacement
               ? async () => {
                   const permit =
@@ -2266,21 +2609,80 @@ export class EvmSignedRecords {
                 }
               : undefined
           )
-        )
-          return Object.freeze({ ...summary(entry), rawTransaction: raw });
+        ) {
+          const result = Object.freeze({
+            ...summary(entry),
+            rawTransaction: raw,
+          });
+          if (
+            reconstructable ||
+            (context.operation === 'cancel' && !retainedMetadata) ||
+            (trackDappCleanup &&
+              context.operation === 'send' &&
+              !replacement &&
+              !source.origin &&
+              !retainedMetadata)
+          ) {
+            this.freshAppends.set(result, {
+              profileId: id,
+              revision: (previous.bundle?.revision ?? -1) + 1,
+              dispatchSerial: dispatchSerials.get(this.storage) ?? 0,
+            });
+          }
+          return result;
+        }
       }
       throw new Error('EVM_SIGNED_RECORD_CONFLICT');
     });
   }
+  /** A failed first submission can retire only its own untouched new entry. */
+  [discardUndispatched](
+    session: EvmSignedRecordSession,
+    fresh: EvmRetainedSignedRecord
+  ): Promise<boolean> {
+    const append = this.freshAppends.get(fresh);
+    if (!append) return Promise.resolve(false);
+    this.freshAppends.delete(fresh);
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      if (
+        id !== append.profileId ||
+        (dispatchSerials.get(this.storage) ?? 0) !== append.dispatchSerial
+      )
+        return false;
+      const { raw, bundle } = await this.load(session, id);
+      if (!bundle || bundle.revision !== append.revision) return false;
+      const entry = bundle.entries.find(
+        (candidate) => candidate.hash === fresh.hash
+      );
+      if (!entry || entry.phase !== 'signed') return false;
+      return this.write(
+        session,
+        id,
+        raw,
+        bundle.revision + 1,
+        bundle.entries.filter((candidate) => candidate !== entry),
+        bundle.authorizations ?? [],
+        bundle.nonceFloors ?? [],
+        false,
+        bundle
+      );
+    });
+  }
+
   readReplacement(
     session: EvmSignedRecordSession,
     chainId: string,
     address: string,
     hash: string,
-    operation: VerifiedPendingOriginal['operation']
+    operation: VerifiedPendingOriginal['operation'],
+    eoaSpeedUpOnly = false
   ): Promise<Readonly<{
     binding: EvmVerifiedReplacementBinding | null;
-    original: EvmRetainedSignedRecord;
+    executionOperation?: EvmSignedRecordSummary['operation'];
+    original: EvmSignedRecordSummary &
+      Readonly<{ rawTransaction?: string }> &
+      Readonly<{ unsignedTransaction: string }>;
     rates: EvmReplacementRates;
   }> | null> {
     const from = getAddress(address).toLowerCase();
@@ -2307,21 +2709,60 @@ export class EvmSignedRecords {
       const tip = lineage?.at(-1);
       if (!lineage || !tip) return null;
 
-      const original = await this.materialize(session, selected);
+      const original = await this.materializeRecord(session, selected);
+      const base = retainedEvmTransaction(original);
       if (
-        original.metadata &&
-        (Object.hasOwn(original.metadata, 'privateWithdrawal') ||
-          (operation === 'speed-up' &&
-            Object.hasOwn(original.metadata, 'privateDeposit')))
+        Object.hasOwn(original.metadata ?? {}, 'privateWithdrawal') ||
+        (operation === 'speed-up' &&
+          Object.hasOwn(original.metadata ?? {}, 'privateDeposit')) ||
+        getPrivacyPoolActivity(base.chainId.toString(), base.to, base.data)
+          ?.kind === 'withdrawal'
       )
         return null;
-      const base = Transaction.from(original.rawTransaction);
       if (base.type !== 0 && base.type !== 2) return null;
+      let executionOperation: EvmSignedRecordSummary['operation'] | undefined;
+      if (eoaSpeedUpOnly) {
+        if (
+          operation !== 'speed-up' ||
+          !isPendingPhase(selected.phase) ||
+          tip.hash !== hash ||
+          !isReconstructableEoa(base, selected) ||
+          sameNonce.some((entry) =>
+            Object.keys(entry.metadata ?? {}).some(
+              (key) => key !== 'intent' && key !== 'nftTransfer'
+            )
+          )
+        )
+          return null;
+        let ancestor = selected;
+        while (ancestor.operation === 'speed-up') {
+          const index = sameNonce.indexOf(ancestor);
+          const parent = sameNonce
+            .slice(0, index)
+            .find((entry) => entry.hash === ancestor.originalHash);
+          if (
+            !parent ||
+            parent.signer.id !== selected.signer.id ||
+            parent.signer.type !== selected.signer.type
+          )
+            return null;
+          const transaction = retainedEvmTransaction(
+            await this.materializeRecord(session, parent)
+          );
+          if (
+            !isReconstructableEoa(transaction, parent) ||
+            !sameEoaExecution(base, transaction)
+          )
+            return null;
+          ancestor = parent;
+        }
+        executionOperation = ancestor.operation;
+      }
       let cap = base.maxFeePerGas ?? base.gasPrice ?? BigInt(0);
       let tipRate = base.maxPriorityFeePerGas ?? BigInt(0);
       for (const entry of lineage.slice(1)) {
-        const variant = Transaction.from(
-          (await this.materialize(session, entry)).rawTransaction
+        const variant = retainedEvmTransaction(
+          await this.materializeRecord(session, entry)
         );
         if (
           variant.type !== base.type ||
@@ -2348,8 +2789,12 @@ export class EvmSignedRecords {
             });
       guard(session);
       return Object.freeze({
-        original,
+        original: Object.freeze({
+          ...original,
+          unsignedTransaction: base.unsignedSerialized,
+        }),
         rates,
+        executionOperation,
         binding: isPendingPhase(selected.phase)
           ? bindVerifiedReplacement(
               {
@@ -2367,26 +2812,270 @@ export class EvmSignedRecords {
       });
     });
   }
+  async readEoaSpeedUpIntent(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string,
+    hash: string
+  ) {
+    const retained = await this.readReplacement(
+      session,
+      chainId,
+      address,
+      hash,
+      'speed-up',
+      true
+    );
+    if (
+      !retained?.executionOperation ||
+      retained.binding?.expectedTipHash !== hash
+    )
+      return null;
+    const { rawTransaction, ...original } = retained.original;
+    void rawTransaction;
+    return Object.freeze({
+      original: Object.freeze(original),
+      rates: retained.rates,
+      executionOperation: retained.executionOperation,
+      binding: retained.binding,
+    });
+  }
+  async readSmartAccountSpeedUpIntent(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    account: string,
+    hash: string
+  ) {
+    const record = await this.readSmartAccountReplayExact(
+      session,
+      chainId,
+      account,
+      hash
+    );
+    if (!record || !canSpeedUpSmartAccountOuter(record, account)) return null;
+    const retained = await this.readReplacement(
+      session,
+      chainId,
+      record.entry.from,
+      hash,
+      'speed-up'
+    );
+    if (retained?.binding?.expectedTipHash !== hash) return null;
+    const { rawTransaction, ...original } = retained.original;
+    void rawTransaction;
+    return Object.freeze({
+      original: Object.freeze(original),
+      binding: retained.binding,
+    });
+  }
+
+  /** Compact eligible EOA sends, fee-only descendants and standalone ordinary Smart Account proofs atomically. */
+  migrateUnsignedNative(
+    session: EvmSignedRecordSession,
+    {
+      nativeEoa = true,
+      allowUnboundErc20 = true,
+    }: { allowUnboundErc20?: boolean; nativeEoa?: boolean } = {}
+  ): Promise<number> {
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const previous = await this.load(session, id);
+        if (!previous.bundle) return 0;
+        const bundle = previous.bundle;
+        const entries: Entry[] = [];
+        const converted = new Map<string, { entry: Entry; tx: Transaction }>();
+        let changed = 0;
+        for (const entry of bundle.entries) {
+          if (
+            !nativeEoa ||
+            (!allowUnboundErc20 &&
+              entry.operation === 'erc20' &&
+              !entry.metadata?.intent) ||
+            entry.operation === 'cancel' ||
+            (entry.operation === 'speed-up' &&
+              !converted.has(entry.originalHash ?? ''))
+          ) {
+            entries.push(entry);
+            continue;
+          }
+          const tx = retainedEvmTransaction(
+            await this.materializeRecord(session, entry)
+          );
+          const parent = converted.get(entry.originalHash ?? '');
+          if (
+            !isReconstructableEoa(tx, entry) ||
+            (entry.operation === 'speed-up' &&
+              (!parent ||
+                !matchesNonce(entry, parent.entry) ||
+                entry.signer.type !== parent.entry.signer.type ||
+                entry.signer.id !== parent.entry.signer.id ||
+                !sameEoaExecution(tx, parent.tx)))
+          ) {
+            entries.push(entry);
+            continue;
+          }
+          converted.set(entry.hash, { entry, tx });
+          if (entry.payloadKind === 'unsigned-eoa') {
+            entries.push(entry);
+            continue;
+          }
+          const chunks = await this.encryptTransactionBody(
+            session,
+            id,
+            entry.hash,
+            tx.unsignedSerialized,
+            UNSIGNED_CHUNK_DOMAIN
+          );
+          entries.push(
+            Object.freeze({ ...entry, payloadKind: 'unsigned-eoa', chunks })
+          );
+          changed++;
+        }
+        const authorizations: AuthorizationEntry[] = [];
+        for (const entry of bundle.authorizations) {
+          const record = await this.materializeAuthorization(session, entry);
+          if (record.signatureDigest || record.replacesOperationHash) {
+            authorizations.push(entry);
+            continue;
+          }
+          const payload = encodeSmartAccountAuthorization(record);
+          try {
+            authorizations.push(
+              await this.encryptAuthorization(session, id, record, payload)
+            );
+          } finally {
+            payload.fill(0);
+          }
+          changed++;
+        }
+        if (!changed) return 0;
+        if (
+          await this.write(
+            session,
+            id,
+            previous.raw,
+            bundle.revision + 1,
+            entries,
+            authorizations,
+            bundle.nonceFloors,
+            false,
+            bundle
+          )
+        )
+          return changed;
+      }
+      throw new Error('EVM_SIGNED_RECORD_CONFLICT');
+    });
+  }
+
   validate(session: EvmSignedRecordSession): Promise<number> {
     session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
+      for (const authorization of bundle?.authorizations ?? []) {
+        await this.materializeAuthorization(session, authorization);
+      }
       return (
         (bundle?.entries.length ?? 0) + (bundle?.authorizations.length ?? 0)
       );
     });
   }
+
+  private async smartAccountPayerEntries(
+    session: EvmSignedRecordSession,
+    entries: readonly Entry[],
+    chainId: string,
+    account: string
+  ): Promise<ReadonlyMap<string, Entry>> {
+    const matched = new Map<string, Entry>();
+    const from = account.toLowerCase();
+    for (const entry of entries) {
+      if (
+        entry.chainId !== chainId ||
+        entry.from === from ||
+        entry.payloadKind === 'unsigned-eoa'
+      )
+        continue;
+      const parent = entry.originalHash && matched.get(entry.originalHash);
+      if (entry.operation === 'cancel' && !parent) continue;
+      const tx = retainedEvmTransaction(await this.materialize(session, entry));
+      const operations = decodeSmartAccountOperations({
+        chainId,
+        data: tx.data,
+        hash: entry.hash,
+        nonce: entry.nonce,
+        payer: entry.from,
+        to: tx.to,
+        value: tx.value.toString(),
+      });
+      if (operations.length) {
+        // A shared outer envelope cannot be removed without losing the other
+        // account's retained instructions and payer-side nonce evidence.
+        if (operations.every((operation) => operation.account === account))
+          matched.set(entry.hash, entry);
+        continue;
+      }
+      const matchesPrefund =
+        entry.metadata?.smartAccountDeploymentPrefund === true &&
+        typeof entry.metadata.smartAccountAddress === 'string' &&
+        entry.metadata.smartAccountAddress.toLowerCase() === from &&
+        tx.to === account &&
+        tx.data === '0x' &&
+        tx.value > BigInt(0);
+      if (
+        matchesPrefund ||
+        (parent &&
+          matchesNonce(entry, parent) &&
+          (entry.operation === 'cancel'
+            ? isCancellationEnvelope(tx)
+            : entry.operation === 'speed-up' &&
+              sameEoaExecution(
+                tx,
+                retainedEvmTransaction(await this.materialize(session, parent))
+              )))
+      )
+        matched.set(entry.hash, entry);
+    }
+    return matched;
+  }
+
+  /** The privacy pools use Ethereum mainnet payer nonces. Legacy scopes start at zero. */
+  readPrivateNonceResetGeneration(
+    session: EvmSignedRecordSession,
+    payer: string
+  ): Promise<number> {
+    const from = getAddress(payer).toLowerCase();
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      guard(session);
+      return (
+        bundle?.privateNonceResets.find(([address]) => address === from)?.[1] ??
+        0
+      );
+    });
+  }
+
   /** Explicitly forget local tracking for one account and chain. Network-held
    * transactions can still execute. The host must revoke its signing/review and
    * history-publication authorities before calling this method. */
   clearScope(
     session: EvmSignedRecordSession,
-    input: Readonly<{ chainId: string; from: string; profileId: string }>
+    input: Readonly<{
+      chainId: string;
+      from: string;
+      profileId: string;
+      smartAccount?: true;
+    }>
   ): Promise<number> {
     guard(session);
-    const from = getAddress(input.from).toLowerCase();
-    const { chainId, profileId } = input;
+    const account = getAddress(input.from);
+    const from = account.toLowerCase();
+    const { chainId, profileId, smartAccount } = input;
     if (
       !PROFILE.test(profileId) ||
       !/^[1-9][0-9]{0,77}$/.test(chainId) ||
@@ -2406,9 +3095,26 @@ export class EvmSignedRecords {
         throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
       for (let attempt = 0; attempt < 3; attempt++) {
         const previous = await this.load(resetSession, profileId);
-        const entries = (previous.bundle?.entries ?? []).filter(
-          (entry) => entry.chainId !== chainId || entry.from !== from
-        );
+        const recorded = previous.bundle?.entries ?? [];
+        const payerEntries =
+          smartAccount === true
+            ? await this.smartAccountPayerEntries(
+                resetSession,
+                recorded,
+                chainId,
+                account
+              )
+            : undefined;
+        const entries: Entry[] = [],
+          removed: Entry[] = [];
+        for (const entry of recorded) {
+          if (
+            (entry.chainId === chainId && entry.from === from) ||
+            payerEntries?.has(entry.hash)
+          )
+            removed.push(entry);
+          else entries.push(entry);
+        }
         const floors = (previous.bundle?.nonceFloors ?? []).filter(
           (entry) => entry.chainId !== chainId || entry.from !== from
         );
@@ -2418,6 +3124,17 @@ export class EvmSignedRecords {
         );
         const resetGeneration = (previous.bundle?.resetGeneration ?? 0) + 1;
         if (!Number.isSafeInteger(resetGeneration)) return limit();
+        let privateNonceResets = previous.bundle?.privateNonceResets ?? [];
+        if (chainId === '1') {
+          const byPayer = new Map(privateNonceResets);
+          byPayer.set(from, resetGeneration);
+          if (byPayer.size > EVM_SIGNED_RECORD_LIMITS.transactions)
+            return limit();
+          privateNonceResets = [...byPayer].sort(([left], [right]) =>
+            left < right ? -1 : left > right ? 1 : 0
+          );
+        }
+        const reset = { resetGeneration, privateNonceResets };
         if (
           await this.write(
             resetSession,
@@ -2428,16 +3145,18 @@ export class EvmSignedRecords {
             authorizations,
             floors,
             false,
-            resetGeneration
+            reset
           )
         ) {
           this.retirementGroupCursors.delete(`${profileId}:${chainId}:${from}`);
-          for (const entry of previous.bundle?.entries ?? [])
-            if (entry.chainId === chainId && entry.from === from)
-              this.autoNonceAcceptance.retireNonce(profileId, entry);
+          for (const entry of removed)
+            this.autoNonceAcceptance.retireNonce(
+              profileId,
+              entry,
+              entry.from === from ? 'nonce' : 'hash'
+            );
           return (
-            (previous.bundle?.entries.length ?? 0) -
-            entries.length +
+            removed.length +
             (previous.bundle?.authorizations.length ?? 0) -
             authorizations.length
           );
@@ -2529,9 +3248,44 @@ export class EvmSignedRecords {
         };
         // A timed-out group yields to its successor on the next attempt.
         progress.onTimeout = advanceGroup;
-        const tx = Transaction.from(
-          (await this.materialize(session, winner)).rawTransaction
+        const tx = retainedEvmTransaction(
+          await this.materializeRecord(session, winner)
         );
+        if (chainId === '1') {
+          // Generic dapp and Smart Account sends may lack note metadata.
+          // Inspect every local envelope, including a replaced private call.
+          const callsPrivacyPool = (entry: Entry, transaction: Transaction) =>
+            Boolean(
+              getPrivacyPoolActivity(chainId, transaction.to, transaction.data)
+            ) ||
+            decodeSmartAccountOperations({
+              chainId,
+              data: transaction.data,
+              hash: entry.hash,
+              nonce: entry.nonce,
+              payer: entry.from,
+              to: transaction.to,
+              value: transaction.value.toString(),
+            }).some(({ callData }) =>
+              decodeSmartAccountExecutions(callData)?.some(({ target, data }) =>
+                getPrivacyPoolActivity(chainId, target, data)
+              )
+            );
+          let privateGroup = callsPrivacyPool(winner, tx);
+          for (const entry of group) {
+            if (privateGroup) break;
+            if (entry === winner) continue;
+            assertFresh();
+            const sibling = retainedEvmTransaction(
+              await this.materializeRecord(session, entry)
+            );
+            privateGroup = callsPrivacyPool(entry, sibling);
+          }
+          if (privateGroup) {
+            advanceGroup();
+            continue;
+          }
+        }
         const observe = async () => {
           const observed = await observeEvmTransaction(
             {
@@ -2627,7 +3381,7 @@ export class EvmSignedRecords {
                 previous.bundle!.authorizations,
                 previous.bundle!.nonceFloors,
                 false,
-                previous.bundle!.resetGeneration,
+                previous.bundle!,
                 async () => {
                   const fresh = await observe();
                   if (
@@ -2813,8 +3567,8 @@ export class EvmSignedRecords {
       if (cached) return cached;
       const entry = byHash.get(hash);
       if (!entry) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
-      const tx = Transaction.from(
-        (await this.materialize(session, entry)).rawTransaction
+      const tx = retainedEvmTransaction(
+        await this.materializeRecord(session, entry)
       );
       const feePerGas = tx.maxFeePerGas ?? tx.gasPrice;
       // These envelope types each consume exactly one sender nonce.
@@ -2847,7 +3601,7 @@ export class EvmSignedRecords {
         result = (async () => {
           const operations: RetainedSmartAccountOperation[] = [];
           for (const entry of authenticatedEntries) {
-            if (entry.chainId !== chainId) continue;
+            if (entry.chainId !== chainId || entry.payloadKind) continue;
             const materialized = await this.materialize(session, entry);
             operations.push(
               ...decodeRetainedSmartAccountOperations(materialized).filter(
@@ -2908,6 +3662,11 @@ export class EvmSignedRecords {
           Object.freeze({ chainId, from, hash, nonce, phase })
         )
       ),
+      readUnsignedNativeTransaction: async (hash: string) => {
+        guard(session);
+        if (byHash.get(hash)?.payloadKind !== 'unsigned-eoa') return null;
+        return (await readBudget(hash)).transaction.unsignedSerialized;
+      },
       readSignedTransaction: async (hash: string) => {
         revoked ??= this.revokedSmartAccountOperations(
           session,
@@ -2916,10 +3675,12 @@ export class EvmSignedRecords {
         );
         const suppressed = await revoked;
         const transaction = (await readBudget(hash)).transaction;
+        if (!transaction.isSigned())
+          throw new Error('EVM_SIGNED_RECORD_REQUIRES_NEW_SIGNATURE');
         if (
           suppressed.size &&
           decodeRetainedSmartAccountOperations({
-            ...byHash.get(hash)!,
+            ...summary(byHash.get(hash)!),
             rawTransaction: transaction.serialized,
           }).some((operation) =>
             suppressed.has(operation.operationHash.toLowerCase())
@@ -2951,9 +3712,11 @@ export class EvmSignedRecords {
         }
         const transfer = decodeRetainedNftTransfer(
           {
-            ...entry,
+            ...summary(entry),
             operation: asset.standard === 'ERC721' ? 'erc721' : 'erc1155',
-            rawTransaction: tx.serialized,
+            ...(tx.isSigned()
+              ? { rawTransaction: tx.serialized }
+              : { unsignedTransaction: tx.unsignedSerialized }),
           },
           tx
         );
@@ -3036,7 +3799,7 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     chainId: string,
     address: string
-  ): Promise<EvmRetainedSignedRecord | null> {
+  ): Promise<EvmRetainedRecord | null> {
     const from = getAddress(address).toLowerCase();
     session = this.captureSession(session);
     return this.exclusive(async () => {
@@ -3051,16 +3814,47 @@ export class EvmSignedRecords {
           unresolved = entry;
       }
       const entry = unresolved ?? latest;
-      return entry ? this.materialize(session, entry) : null;
+      return entry ? this.materializeRecord(session, entry) : null;
     });
   }
+  pendingPrivacyWithdrawalNotes(
+    session: EvmSignedRecordSession,
+    payer: string
+  ): Promise<ReadonlySet<string>> {
+    const from = getAddress(payer).toLowerCase();
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      const notes = new Set<string>();
+      for (const entry of bundle?.entries ?? []) {
+        if (
+          entry.from !== from ||
+          entry.chainId !== '1' ||
+          !isPendingPhase(entry.phase)
+        )
+          continue;
+        const withdrawal = entry.metadata?.privateWithdrawal;
+        if (
+          withdrawal &&
+          typeof withdrawal === 'object' &&
+          'noteId' in withdrawal &&
+          typeof withdrawal.noteId === 'string'
+        )
+          notes.add(withdrawal.noteId);
+      }
+      guard(session);
+      return notes;
+    });
+  }
+
   readRecent(
     session: EvmSignedRecordSession,
     chainId: string,
     address: string,
     maximum: number
   ): Promise<
-    Readonly<{ entries: readonly EvmRetainedSignedRecord[]; total: number }>
+    Readonly<{ entries: readonly EvmRetainedRecord[]; total: number }>
   > {
     const from = getAddress(address).toLowerCase();
     if (
@@ -3076,9 +3870,9 @@ export class EvmSignedRecords {
       const matching = (bundle?.entries ?? []).filter(
         (entry) => entry.chainId === chainId && entry.from === from
       );
-      const entries: EvmRetainedSignedRecord[] = [];
+      const entries: EvmRetainedRecord[] = [];
       for (const entry of matching.slice(-maximum))
-        entries.push(await this.materialize(session, entry));
+        entries.push(await this.materializeRecord(session, entry));
       guard(session);
       return Object.freeze({
         entries: Object.freeze(entries),
@@ -3132,7 +3926,8 @@ export class EvmSignedRecords {
           );
         }
         for (const entry of bundle?.entries ?? []) {
-          if (entry.chainId !== chainId) continue;
+          if (entry.chainId !== chainId || entry.payloadKind === 'unsigned-eoa')
+            continue;
           const materialized = await this.materialize(session, entry);
           for (const operation of decodeRetainedSmartAccountOperations(
             materialized
@@ -3260,7 +4055,8 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     chainId: string,
     address: string,
-    hash: string
+    hash: string,
+    options?: Readonly<{ excludeRevoked?: true }>
   ): Promise<EvmRetainedSmartAccountRecord | null> {
     const owner = getAddress(address);
     if (!HASH.test(hash)) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
@@ -3271,16 +4067,26 @@ export class EvmSignedRecords {
       const saved = bundle?.entries.find(
         (entry) => entry.chainId === chainId && entry.hash === hash
       );
-      if (!saved) return null;
+      if (!saved || saved.payloadKind === 'unsigned-eoa') return null;
       const entry = await this.materialize(session, saved);
       const operations = decodeRetainedSmartAccountOperations(entry);
+      if (options?.excludeRevoked) {
+        const revoked = await this.revokedSmartAccountOperations(
+          session,
+          bundle?.entries ?? [],
+          bundle?.authorizations ?? []
+        );
+        if (operations.some(({ operationHash }) => revoked.has(operationHash)))
+          return null;
+      }
       const original =
         entry.operation === 'cancel' && entry.originalHash
           ? bundle?.entries.find((value) => value.hash === entry.originalHash)
           : undefined;
-      const materializedOriginal = original
-        ? await this.materialize(session, original)
-        : undefined;
+      const materializedOriginal =
+        original && !original.payloadKind
+          ? await this.materialize(session, original)
+          : undefined;
       const cancellation = materializedOriginal
         ? decodeRetainedSmartAccountCancellation(
             entry,
@@ -3353,7 +4159,7 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     chainId: string,
     address: string,
-    options: Readonly<{ beforeHash?: string; maximum: number }>
+    options: Readonly<{ after?: number; beforeHash?: string; maximum: number }>
   ): Promise<
     Readonly<{
       entries: readonly EvmRetainedSmartAccountRecord[];
@@ -3361,7 +4167,7 @@ export class EvmSignedRecords {
     }>
   > {
     const owner = getAddress(address),
-      { beforeHash, maximum } = options;
+      { after, beforeHash, maximum } = options;
     if (
       !Number.isSafeInteger(maximum) ||
       maximum < 1 ||
@@ -3375,7 +4181,11 @@ export class EvmSignedRecords {
         { bundle } = await this.load(session, id);
       const candidates = await this.withoutRevokedSmartAccountOperations(
         session,
-        (bundle?.entries ?? []).filter((entry) => entry.chainId === chainId),
+        (bundle?.entries ?? []).filter(
+          (entry) =>
+            entry.chainId === chainId &&
+            (after === undefined || entry.createdAt > after)
+        ),
         bundle?.entries ?? [],
         bundle?.authorizations ?? []
       );
@@ -3383,13 +4193,14 @@ export class EvmSignedRecords {
         beforeHash === undefined
           ? candidates.length
           : candidates.findIndex((entry) => entry.hash === beforeHash);
-      if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+      if (end < 0) throw new Error(EVM_ACTIVITY_CURSOR_STALE);
       const entries: EvmRetainedSmartAccountRecord[] = [];
       for (
         let index = end - 1;
         index >= 0 && entries.length <= maximum;
         index--
       ) {
+        if (candidates[index]!.payloadKind === 'unsigned-eoa') continue;
         const entry = await this.materialize(session, candidates[index]!);
         const operations = decodeRetainedSmartAccountOperations(entry);
         if (operations.some((operation) => operation.account === owner))
@@ -3398,9 +4209,10 @@ export class EvmSignedRecords {
           const original = bundle?.entries.find(
             (value) => value.hash === entry.originalHash
           );
-          const materializedOriginal = original
-            ? await this.materialize(session, original)
-            : undefined;
+          const materializedOriginal =
+            original && !original.payloadKind
+              ? await this.materialize(session, original)
+              : undefined;
           const cancellation = materializedOriginal
             ? decodeRetainedSmartAccountCancellation(
                 entry,
@@ -3430,71 +4242,6 @@ export class EvmSignedRecords {
     });
   }
 
-  readSmartAccountActivity(
-    session: EvmSignedRecordSession,
-    chainId: string,
-    address: string,
-    options: Readonly<{
-      beforeHash?: string;
-      maximum: number;
-    }>
-  ): Promise<
-    Readonly<{
-      nextCursor: string | null;
-      total: number;
-      transfers: readonly RetainedSmartAccountActivity[];
-    }>
-  > {
-    const owner = getAddress(address);
-    const { maximum, beforeHash } = options;
-    if (
-      !Number.isSafeInteger(maximum) ||
-      maximum < 1 ||
-      maximum > 48 ||
-      (beforeHash !== undefined && !HASH.test(beforeHash))
-    )
-      throw new Error('EVM_SIGNED_RECORD_CAPACITY');
-    session = this.captureSession(session);
-    return this.exclusive(async () => {
-      const id = await profile(session),
-        { bundle } = await this.load(session, id);
-      const candidates = (bundle?.entries ?? []).filter(
-        (entry) =>
-          entry.chainId === chainId &&
-          isSmartAccountActivityCandidate(entry, owner)
-      );
-      const end =
-        beforeHash === undefined
-          ? candidates.length
-          : candidates.findIndex((entry) => entry.hash === beforeHash);
-      if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
-      const visible = candidates.slice(0, end);
-      const start = Math.max(0, visible.length - maximum),
-        transfers: RetainedSmartAccountActivity[] = [];
-      for (const entry of visible.slice(start).reverse()) {
-        const materialized = await this.materialize(session, entry);
-        const original =
-          entry.operation === 'cancel' && entry.originalHash
-            ? bundle?.entries.find((value) => value.hash === entry.originalHash)
-            : undefined;
-        const decoded = original
-          ? decodeRetainedSmartAccountCancellation(
-              materialized,
-              await this.materialize(session, original),
-              owner
-            )
-          : decodeRetainedSmartAccountTransfer(materialized, owner);
-        if (decoded) transfers.push(decoded);
-      }
-      guard(session);
-      return Object.freeze({
-        transfers: Object.freeze(transfers),
-        total: candidates.length,
-        nextCursor: start > 0 ? visible[start]!.hash : null,
-      });
-    });
-  }
-
   readSmartAccountActivityExact(
     session: EvmSignedRecordSession,
     chainId: string,
@@ -3519,7 +4266,7 @@ export class EvmSignedRecords {
         entry.operation === 'cancel' && entry.originalHash
           ? bundle?.entries.find((value) => value.hash === entry.originalHash)
           : undefined;
-      return original
+      return original && !original.payloadKind
         ? decodeRetainedSmartAccountCancellation(
             materialized,
             await this.materialize(session, original),
@@ -3538,24 +4285,20 @@ export class EvmSignedRecords {
       maximum: number;
       nonce?: number;
       pendingOnly?: boolean;
-      replayCandidatesOnly?: boolean;
     }>
   ): Promise<
     Readonly<{
-      entries: readonly EvmRetainedSignedRecord[];
+      entries: readonly EvmRetainedRecord[];
       nextCursor: string | null;
       total: number;
     }>
   > {
     const from = getAddress(address).toLowerCase();
-    const { maximum, beforeHash, nonce, replayCandidatesOnly, pendingOnly } =
-      options;
+    const { maximum, beforeHash, nonce, pendingOnly } = options;
     if (
       !Number.isSafeInteger(maximum) ||
       maximum < 1 ||
       maximum > 30 ||
-      (replayCandidatesOnly && nonce === undefined) ||
-      (pendingOnly && replayCandidatesOnly) ||
       (beforeHash !== undefined && !HASH.test(beforeHash)) ||
       (nonce !== undefined && (!Number.isSafeInteger(nonce) || nonce < 0))
     )
@@ -3570,38 +4313,27 @@ export class EvmSignedRecords {
           entry.from === from &&
           (nonce === undefined || entry.nonce === nonce)
       );
-      const matching = replayCandidatesOnly
-        ? await this.replayableVariants(
-            session,
-            await this.withoutRevokedSmartAccountOperations(
-              session,
-              scoped,
-              bundle?.entries ?? [],
-              bundle?.authorizations ?? []
-            )
-          )
-        : scoped;
       const end =
         beforeHash === undefined
-          ? matching.length
-          : matching.findIndex((entry) => entry.hash === beforeHash);
-      if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+          ? scoped.length
+          : scoped.findIndex((entry) => entry.hash === beforeHash);
+      if (end < 0) throw new Error(EVM_ACTIVITY_CURSOR_STALE);
       // Locate the anchor in append order before filtering. Its phase may
       // have changed while the preceding page was visible.
       const visible = pendingOnly
-        ? matching.slice(0, end).filter((entry) => isPendingPhase(entry.phase))
-        : matching;
+        ? scoped.slice(0, end).filter((entry) => isPendingPhase(entry.phase))
+        : scoped;
       const pageEnd = pendingOnly ? visible.length : end;
       const start = Math.max(0, pageEnd - maximum),
-        entries: EvmRetainedSignedRecord[] = [];
+        entries: EvmRetainedRecord[] = [];
       for (const entry of visible.slice(start, pageEnd).reverse())
-        entries.push(await this.materialize(session, entry));
+        entries.push(await this.materializeRecord(session, entry));
       guard(session);
       return Object.freeze({
         entries: Object.freeze(entries),
         total: pendingOnly
-          ? matching.filter((entry) => isPendingPhase(entry.phase)).length
-          : matching.length,
+          ? scoped.filter((entry) => isPendingPhase(entry.phase)).length
+          : scoped.length,
         nextCursor: start > 0 ? visible[start]!.hash : null,
       });
     });
@@ -3689,6 +4421,10 @@ export class EvmSignedRecords {
         );
         guard(session);
       }
+      dispatchSerials.set(
+        this.storage,
+        (dispatchSerials.get(this.storage) ?? 0) + 1
+      );
       return await admit(predecessors);
     });
   }
@@ -3697,7 +4433,7 @@ export class EvmSignedRecords {
     chainId: string,
     address: string,
     hash: string
-  ): Promise<EvmRetainedSignedRecord | null> {
+  ): Promise<EvmRetainedRecord | null> {
     return (
       (await this.readForObservation(session, chainId, address, hash))?.entry ??
       null
@@ -3710,7 +4446,7 @@ export class EvmSignedRecords {
     address: string,
     hash: string
   ): Promise<Readonly<{
-    entry: EvmRetainedSignedRecord;
+    entry: EvmRetainedRecord;
     revision: number;
   }> | null> {
     const from = getAddress(address).toLowerCase();
@@ -3726,7 +4462,7 @@ export class EvmSignedRecords {
       );
       return entry && bundle
         ? Object.freeze({
-            entry: await this.materialize(session, entry),
+            entry: await this.materializeRecord(session, entry),
             revision: bundle.revision,
           })
         : null;
@@ -3892,7 +4628,7 @@ export class EvmSignedRecords {
             previous.bundle.authorizations,
             previous.bundle.nonceFloors,
             false,
-            previous.bundle.resetGeneration,
+            previous.bundle,
             reconcile?.verify
           )
         )
@@ -3910,6 +4646,7 @@ export function createEvmSignedRecordLifecycle(
   options: Readonly<{
     automaticNonceEndpoint?: string;
     metadata?: Readonly<Record<string, unknown>>;
+    onUnsentDappDiscarded?: () => void;
     preflight?: (
       record: EvmSignedSubmission,
       assertCurrent: () => void,
@@ -3923,7 +4660,9 @@ export function createEvmSignedRecordLifecycle(
         >;
     // Opt in only when the host can recheck the original token approval.
     retainAssetPreflightFailure?: boolean;
+    retainUnsignedNative?: boolean;
     retirementReadForChain: EvmSignedRetirementReadForChain | null;
+    walletSendCleanupSession?: EvmSignedRecordSession;
   }>
 ) {
   session = records.captureSession(session);
@@ -3934,11 +4673,15 @@ export function createEvmSignedRecordLifecycle(
   )
     throw new Error('EVM_SIGNED_RECORD_RETIREMENT_CONTEXT_REQUIRED');
   const retirementReadForChain = options.retirementReadForChain;
+  const cleanupSession =
+    options.walletSendCleanupSession &&
+    records.captureSession(options.walletSendCleanupSession);
   let metadata =
     options.metadata === undefined
       ? undefined
       : snapshotMetadata(options.metadata);
   let smartReplacementOriginalHash: string | undefined;
+  let freshWalletSend: EvmRetainedSignedRecord | undefined;
   // Starting another lifecycle invalidates any unconsumed earlier refusal.
   // Concurrent sends may fall back to generic guidance, never stale guidance.
   currentPersistToken = undefined;
@@ -3974,8 +4717,18 @@ export function createEvmSignedRecordLifecycle(
           session,
           signed,
           metadata,
-          replacement
+          replacement,
+          options.retainUnsignedNative,
+          cleanupSession !== undefined &&
+            options.onUnsentDappDiscarded !== undefined
         );
+        if (
+          cleanupSession &&
+          !signed.context.origin &&
+          !isEvmVerifiedSmartAccountReplacement(replacement)
+        ) {
+          freshWalletSend = retained;
+        }
         if (isEvmVerifiedSmartAccountReplacement(replacement)) {
           smartReplacementOriginalHash = retained.originalHash;
           metadata = retained.metadata;
@@ -4130,8 +4883,22 @@ export function createEvmSignedRecordLifecycle(
             },
           }
         );
+        if (!admitted) throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
       } catch (error) {
         const operation = record.context.operation;
+        if (
+          !wireStarted &&
+          cleanupSession &&
+          freshWalletSend?.hash === record.hash &&
+          (await records[discardUndispatched](cleanupSession, freshWalletSend))
+        ) {
+          if (options.retainAssetPreflightFailure)
+            throw Object.assign(new Error(EVM_ASSET_REVIEW_MESSAGE), {
+              code: EVM_ASSET_REVIEW_REQUIRED,
+            });
+          options.onUnsentDappDiscarded?.();
+          throw error;
+        }
         if (
           options?.retainAssetPreflightFailure &&
           retainedAuthenticated &&
@@ -4151,7 +4918,6 @@ export function createEvmSignedRecordLifecycle(
         }
         throw error;
       }
-      if (!admitted) throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
       return admitted.result;
     },
   });

@@ -1,3 +1,4 @@
+import { isRecoveryPhraseWordCount } from '../../../../source/shared/recoveryPhrase.ts';
 import type { RecoveryInventory } from './recoveryInventory.ts';
 import type { NativeRecoveryCoordinator, RecoveryProof } from './recovery.ts';
 import { isOperationAuthenticationCancellation } from '../core/operationAuthentication.ts';
@@ -67,7 +68,7 @@ export class NativeRecoveryFlow {
     if (this.ended || this.working || this.state.phase !== 'entry') return false;
     const fieldErrors: { phrase?: 'INVALID_WORD_COUNT' } = {};
     const phrase = typeof input.phrase === 'string' && input.phrase.isWellFormed() ? input.phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ') : '';
-    if (!phrase || input.phrase.length > 4096 || ![12, 24].includes(phrase.split(' ').length)) fieldErrors.phrase = 'INVALID_WORD_COUNT';
+    if (!phrase || input.phrase.length > 4096 || !isRecoveryPhraseWordCount(phrase.split(' ').length)) fieldErrors.phrase = 'INVALID_WORD_COUNT';
     if (Object.keys(fieldErrors).length) { this.publish({ fieldErrors: Object.freeze(fieldErrors), error: '' }); return false; }
     this.working = true; const request = ++this.request;
     try {

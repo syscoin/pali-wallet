@@ -117,7 +117,10 @@ test('language changes preserve exact Open website session and review revision',
   screen.render().find(element => element.type === 'Pressable' && element.props.accessibilityLabel?.startsWith('App,'))!.props.onPress();
   const open = screen.render().find(element => element.type === 'Button' && element.props.title === f.engine.t('mobile.connections.openWebsite'));
   assert(open); open.props.onPress(); await Promise.resolve();
-  assert.deepEqual(f.returned, [['exact-session', 7]]); screen.close();
+  assert.equal(f.returned.length, 1);
+  assert.deepEqual(f.returned[0]!.slice(0, 2), ['exact-session', 7]);
+  assert.equal(typeof f.returned[0]![2], 'function');
+  screen.close();
 });
 
 test('translated account creation sends only the name and catalogue scope to shared authentication', async () => {

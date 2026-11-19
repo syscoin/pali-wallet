@@ -9,15 +9,18 @@ import * as privateAuthentication from '../src/custody/privateAuthentication.ts'
 import * as idlePolicy from '../../../source/shared/idleLockPolicy.ts';
 
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
-async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locked = false, failFirstOwner = false) {
+async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locked = false, failFirstOwner = false, differentOwner = false) {
   const privacy = createTestPublicViewLock(); await privacy.ready;
   const address = '0x' + '22'.repeat(20), network = getNativeNetwork('base');
   let state = { status: locked ? 'locked' : 'ready', generation: 1, selectedAccountId: 'watch-1', selectedNetworkId: 'ethereum',
-    accounts: [{ id: 'watch-1', name: 'First', addresses: { ethereum: '0x' + '11'.repeat(20) } },
+    accounts: [{ id: 'watch-1', name: 'First', addresses: { ethereum: '0x' + '11'.repeat(20), base: address } },
       { id: 'watch-2', name: 'Second', addresses: { base: address } }] };
-  const scope = { id: 'watch:watch-2:base', accountId: 'watch-2', accountType: 'watch', accountAddress: address, network, guardian: true };
-  let choices = [{ scope, label: 'Second', networkName: 'Base', symbol: 'ETH' }];
-  let tab = 'wallet', resolutions = 0, ownerLookups = 0;
+  const accountId = differentOwner ? 'watch-2' : 'watch-1';
+  const scope = { id: `watch:${accountId}:base`, accountId, accountType: 'watch', accountAddress: address, network, guardian: true };
+  let choices = [{ scope, label: 'Watch account', networkName: 'Base', symbol: 'ETH' }];
+  let tab = 'wallet', resolutions = 0, ownerLookups = 0, immersive = false;
+  let guard: (() => boolean) | undefined;
+  const guardChanges: boolean[] = [];
   let pending: Promise<void> | undefined;
   let ownerPending: Promise<void> | undefined;
   const selections: string[] = [];
@@ -27,13 +30,15 @@ async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locke
     async getPendingOwner() {
       ownerLookups++; await ownerPending;
       if (failFirstOwner && ownerLookups === 1) throw Error('Monitoring metadata temporarily unavailable');
-      return { accountId: 'watch-2', accountType: 'watch' };
+      return { accountId, accountType: 'watch' };
     },
-    async resolveTapAfterUnlock(_id: string, validate: (value: typeof scope) => boolean) {
+    async readTapAfterUnlock(_id: string, _revision: number, validate: (value: typeof scope) => boolean) {
       resolutions++; await pending;
       if (!validate(scope)) return null;
-      notification.pendingEventId = null;
       return { scopeId: scope.id, accountId: scope.accountId, accountType: 'watch', networkId: 'base', kind, transactionHash: '0x' + 'ab'.repeat(32) };
+    },
+    consumeTap(id: string, revision: number) {
+      if (notification.pendingEventId === id && notification.tapRevision === revision) notification.pendingEventId = null;
     },
   };
   const authority = {
@@ -54,11 +59,27 @@ async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locke
     './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen' }, '../activity/watchActivity': { createWatchEvmActivity: () => ({}) },
     '../platform/http': {}, '../notifications/service': { nativeActivityNotifications: service },
     '../notifications/choices': { watchNotificationChoices: () => choices },
-    './useRealShell': { useRealShell: () => ({ tab, immersive: false, navigation: {}, goBack() {}, select() {},
-      restoreRoot(next: string) { tab = next; } }) },
+    './useRealShell': { useRealShell: (_identity: unknown, _current: unknown, _exit: unknown, onNavigation: (explicit: boolean) => void) => {
+      const select = (next: string) => { onNavigation(true); tab = next; };
+      return { tab, immersive, navigation: {}, goBack() { select('wallet'); }, select,
+        restoreRoot(next: string) { tab = next; } };
+    } },
   });
-  const render = () => screenElements(screen.render({ authority, onAccounts() {}, onExit() {} }));
+  const registerNotificationNavigationGuard = (isBlocked: () => boolean, subscribe: (listener: () => void) => () => void) => {
+    guard = isBlocked;
+    let blocked = isBlocked();
+    const unsubscribe = subscribe(() => {
+      const next = isBlocked();
+      if (blocked !== next) { guardChanges.push(next); blocked = next; }
+    });
+    return () => { unsubscribe(); guard = undefined; };
+  };
+  const render = () => screenElements(screen.render({ authority, onAccounts() {}, onExit() {}, registerNotificationNavigationGuard }));
   return { render, close: screen.close, selections, tab: () => tab, resolutions: () => resolutions, ownerLookups: () => ownerLookups,
+    pendingEvent: () => notification.pendingEventId,
+    selectTab(next: string) { tab = next; },
+    setImmersive(value: boolean) { immersive = value; },
+    blocked: () => guard?.(), guardChanges,
     tap(id = `pali-alert-${'ab'.repeat(16)}`) { notification.pendingEventId = id; notification.tapRevision++; },
     newGeneration() { state = { ...state, generation: state.generation + 1 }; },
     holdOwner(value: Promise<void>) { ownerPending = value; },
@@ -99,12 +120,21 @@ for (const next of ['event', 'generation'] as const) test(`a new ${next} can rou
   } finally { f.close(); }
 });
 
-test('watch transaction tap selects its saved account/network before showing Activity', async () => {
+test('watch transaction tap selects its saved network before showing Activity', async () => {
   const f = await fixture('transaction-confirmed');
   try {
     f.render(); await settle();
-    assert.deepEqual(f.selections, ['account:watch-2']); assert.equal(f.tab(), 'activity');
-    assert.equal(f.render().find(node => node.type === 'NativeActivityScreen')?.props.initialHash, '0x' + 'ab'.repeat(32));
+    assert.deepEqual(f.selections, ['network:base']); assert.equal(f.tab(), 'activity');
+    assert.equal(f.pendingEvent(), null);
+    const activity = () => f.render().find(node => node.type === 'NativeActivityScreen')!;
+    const first = activity();
+    assert.equal(first.props.initialHash, '0x' + 'ab'.repeat(32));
+    f.tap(); f.render(); await settle();
+    first.props.onInitialTargetOpened();
+    assert.equal(activity().props.initialHash, first.props.initialHash, 'a stale acknowledgment cannot consume a newer tap on the same hash');
+    activity().props.onInitialTargetOpened();
+    f.selectTab('wallet'); f.render(); f.selectTab('activity');
+    assert.equal(activity().props.initialHash, undefined);
   } finally { f.close(); }
 });
 
@@ -113,7 +143,7 @@ test('watch guardian tap resumes the existing recovery tool for that exact scope
   try {
     f.render(); await settle(); assert.equal(f.tab(), 'tools');
     const tools = f.render().find(node => node.type === 'RealTools');
-    assert.equal(tools?.props.initialGuardianScope, '2:watch-2:base');
+    assert.equal(tools?.props.initialGuardianScope, '2:watch-1:base');
   } finally { f.close(); }
 });
 
@@ -125,8 +155,92 @@ test('watch catalogue changes retire pending tap resolution', async () => {
   } finally { f.close(); }
 });
 
+test('a watch alert interrupted by an immersive view retries when the view releases navigation', async () => {
+  const f = await fixture('transaction-confirmed'), held = Promise.withResolvers<void>();
+  f.hold(held.promise);
+  try {
+    f.render(); await settle();
+    assert.equal(f.resolutions(), 1);
+    assert.equal(f.blocked(), false);
+
+    f.setImmersive(true); f.render();
+    assert.equal(f.blocked(), true);
+    held.resolve(); await settle();
+    assert.ok(f.pendingEvent());
+    assert.equal(f.tab(), 'wallet');
+
+    f.setImmersive(false); f.render(); await settle();
+    assert.equal(f.blocked(), false);
+    assert.deepEqual(f.guardChanges, [true, false]);
+    assert.equal(f.resolutions(), 2);
+    assert.equal(f.pendingEvent(), null);
+    assert.equal(f.tab(), 'activity');
+  } finally { held.resolve(); f.close(); }
+});
+
+test('explicit watch tab navigation retires a pending alert after its failed lookup has settled', async () => {
+  const f = await fixture('transaction-confirmed', false, true);
+  try {
+    const shell = f.render().find(node => node.type === 'RealAppShell')!;
+    await settle();
+    assert.equal(f.ownerLookups(), 1);
+    assert.ok(f.pendingEvent());
+
+    shell.props.onTab('settings');
+    assert.equal(f.pendingEvent(), null);
+    f.newGeneration(); f.render(); await settle();
+    assert.equal(f.ownerLookups(), 1);
+    assert.equal(f.tab(), 'settings');
+  } finally { f.close(); }
+});
+
+test('Back from watch Settings declines the held alert until a new tap', async () => {
+  const f = await fixture('transaction-confirmed'), held = Promise.withResolvers<void>();
+  f.hold(held.promise);
+  f.selectTab('settings');
+  try {
+    const settings = f.render().find(node => node.type === 'RealSettings')!;
+    await settle();
+    assert.equal(f.resolutions(), 1);
+    settings.props.onBack(); f.render();
+    held.resolve(); await settle(); f.render(); f.newGeneration(); f.render(); await settle();
+    assert.equal(f.pendingEvent(), null);
+    assert.deepEqual(f.selections, []);
+    assert.equal(f.tab(), 'wallet');
+    f.tap(); f.render(); await settle(); f.render();
+    assert.equal(f.resolutions(), 2);
+    assert.deepEqual(f.selections, ['network:base']);
+    assert.equal(f.tab(), 'activity');
+  } finally { held.resolve(); f.close(); }
+});
+
+test('a newer same-ID tap retires an older watch route during its lookup', async () => {
+  const f = await fixture('recovery-started'), held = Promise.withResolvers<void>();
+  f.hold(held.promise);
+  try {
+    f.render(); await settle();
+    assert.equal(f.resolutions(), 1);
+    f.tap(); f.render(); held.resolve(); await settle();
+    assert.deepEqual(f.selections, []);
+    assert.equal(f.tab(), 'wallet');
+    f.render(); await settle();
+    assert.equal(f.resolutions(), 2);
+    assert.equal(f.tab(), 'tools');
+  } finally { held.resolve(); f.close(); }
+});
+
 test('privacy-locked watch sessions leave a pending tap unresolved', async () => {
   const f = await fixture('transaction-confirmed', true);
   try { f.render(); await settle(); assert.equal(f.resolutions(), 0); assert.deepEqual(f.selections, []); }
   finally { f.close(); }
+});
+
+test('a watch session leaves another account’s tap for App to select its owning session', async () => {
+  const f = await fixture('transaction-confirmed', false, false, true);
+  try {
+    f.render(); await settle();
+    assert.equal(f.resolutions(), 0);
+    assert.deepEqual(f.selections, []);
+    assert.ok(f.pendingEvent());
+  } finally { f.close(); }
 });

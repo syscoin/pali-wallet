@@ -9,6 +9,7 @@ import {
 import { assertJsonWorkBudget } from '../../../utils/requestPayloadBudget';
 
 import type { IMasterController } from '.';
+import { isOwnedUtxoReplacementCall } from './utxoReplacementReview';
 
 type Methods<T> = {
   [K in keyof T]: T[K] extends (...args: any[]) => any
@@ -166,7 +167,10 @@ export async function controllerEmitter<
   retryConnection = true,
   options?: SmartAccountControllerCallOptions
 ) {
-  if (isOwnedSmartAccountControllerCall(methods))
+  if (
+    isOwnedSmartAccountControllerCall(methods) ||
+    isOwnedUtxoReplacementCall(methods)
+  )
     return ownedControllerCall(
       methods as readonly string[],
       params || [],

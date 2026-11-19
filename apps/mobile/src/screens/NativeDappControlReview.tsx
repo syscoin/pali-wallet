@@ -8,16 +8,23 @@ import type { NativeConnectionsView } from '../connections/types';
 import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { DappSiteStatus } from './DappSiteStatus';
 
-export function NativeDappControlReview({ review, controller }: { review: Review; controller: Pick<NativeConnectionsView, 'approveControl' | 'rejectControl'> }) {
+export function NativeDappControlReview({ review, controller, onApprovalFailure }: {
+  review: Review;
+  controller: Pick<NativeConnectionsView, 'approveControl' | 'rejectControl'>;
+  onApprovalFailure?: () => void;
+}) {
   const { t } = useNativeTranslation();
   const identity = `${review.id}:${review.expiresAt}`;
   const [expiredReview, setExpiredReview] = useState<string | null>(null);
   const expired = expiredReview === identity;
   useEffect(() => {
     const timer = setTimeout(() => setExpiredReview(identity), Math.max(0, review.expiresAt - Date.now()));
-    const back = BackHandler.addEventListener('hardwareBackPress', () => { void controller.rejectControl(review.id).catch(() => undefined); return true; });
+    const back = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!review.committing) void controller.rejectControl(review.id).catch(() => undefined);
+      return true;
+    });
     return () => { clearTimeout(timer); back.remove(); };
-  }, [controller, review.id, review.expiresAt, identity]);
+  }, [controller, review.id, review.expiresAt, review.committing, identity]);
   const details = review.details;
   const asset = details?.kind === 'watch-asset' ? details : null;
   const network = details?.kind === 'network-add' || details?.kind === 'network-switch' ? details : null;
@@ -25,10 +32,10 @@ export function NativeDappControlReview({ review, controller }: { review: Review
   const blocked = expired || !!review.error || !details || review.busy;
   const reject = () => { void controller.rejectControl(review.id).catch(() => undefined); };
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}><Screen key={review.id} footer={<>
-    <Button title={review.busy ? t('mobile.dappConsent.dappControlReview.applying') : title} icon={network?.kind === 'network-switch' ? 'globe' : 'plus'} disabled={blocked} onPress={() => { if (!blocked && Date.now() < review.expiresAt) void controller.approveControl(review.id, review.revision).catch(() => undefined); }} />
-    <Button title={t('buttons.reject')} icon="close" variant="secondary" onPress={reject} />
+    <Button title={review.busy ? t('mobile.dappConsent.dappControlReview.applying') : title} icon={network?.kind === 'network-switch' ? 'globe' : 'plus'} disabled={blocked} onPress={() => { if (!blocked && Date.now() < review.expiresAt) void controller.approveControl(review.id, review.revision).catch(() => onApprovalFailure?.()); }} />
+    <Button title={t('buttons.reject')} icon="close" variant="secondary" disabled={review.committing} onPress={reject} />
   </>}>
-    <Header title={title} onBack={reject} />
+    <Header title={title} onBack={review.committing ? undefined : reject} />
     <Card style={s.card}>
       <View style={s.identity}><View style={s.appIcon}><Icon name="link" size={23} color={colors.blue} /></View>
         <Text style={[s.title, s.identityLabel]}>{review.appName}</Text></View>

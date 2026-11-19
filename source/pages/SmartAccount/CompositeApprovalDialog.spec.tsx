@@ -214,7 +214,7 @@ it('exposes title, descriptions, keyboard focus and trapped Tab navigation with 
   expect(description?.textContent).toBeTruthy();
   const boxes = screen.getAllByRole('checkbox');
   expect(boxes).toHaveLength(3);
-  expect(screen.getByRole('checkbox', { name: 'Pali wallet' })).toBe(boxes[0]);
+  expect(screen.getByRole('checkbox', { name: 'Pali' })).toBe(boxes[0]);
   expect(screen.getByRole('checkbox', { name: 'Passkey' })).toBe(boxes[1]);
   expect(screen.getByRole('checkbox', { name: 'Post-quantum SLH-DSA' })).toBe(
     boxes[2]

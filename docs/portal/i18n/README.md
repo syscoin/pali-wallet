@@ -1,6 +1,6 @@
 # Translation Workflow
 
-The docs portal is prepared to use the same locale set as Pali Wallet:
+The docs portal is prepared to use the same locale set as Pali:
 
 - `en` - English
 - `es` - Spanish

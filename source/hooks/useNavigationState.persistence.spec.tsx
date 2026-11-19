@@ -111,7 +111,8 @@ const nativeEntry = (
     `/app.html#${path}`
   );
 };
-const confirmation = () => ({
+const confirmation = (sendDraftId?: string) => ({
+  sendDraftId,
   external: false,
   submissionStarted: false,
   tx: { signed: 'prepared-payload', nonce: 19, password: 'secret-input' },
@@ -120,6 +121,7 @@ const confirmation = () => ({
     ...createBrowsingNavigationContext({
       pathname: '/send/eth',
       state: {
+        sendDraftId,
         formValues: {
           receiver: 'synthetic-recipient',
           amount: '0.000000000000000001',
@@ -209,10 +211,12 @@ it('idle confirmation closes and reopens into the unsigned caller with its Setti
 it.each([true, 'unknown'])(
   'native submission marker %p precedes React and prevents draft revival',
   async (marker) => {
-    const idle = confirmation();
+    const draftId = '00000000-0000-4000-8000-000000000001';
+    const idle = confirmation(draftId);
     nativeEntry('/send/confirm', idle);
     mount();
     await waitFor(() => expect(mockStored?.currentPath).toBe('/send/eth'));
+    expect(mockStored.state.sendDraftId).toBe(draftId);
     nativeEntry(
       '/send/confirm',
       { ...idle, submissionStarted: marker },

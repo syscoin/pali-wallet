@@ -104,7 +104,9 @@ test('offline wallet lifecycle: lock, backup reauthentication and seed recovery'
         await lock();
         await unlock('WrongSyntheticOnly!2026');
         await expect(
-          page.locator('#login').getByText('Invalid password', { exact: true })
+          page
+            .locator('#login')
+            .getByText(en.start.wrongPassword, { exact: true })
         ).toBeVisible();
         await locked();
         await page.reload();
@@ -244,7 +246,9 @@ test('offline wallet lifecycle: lock, backup reauthentication and seed recovery'
         await lock();
         await unlock(originalPassword);
         await expect(
-          page.locator('#login').getByText('Invalid password', { exact: true })
+          page
+            .locator('#login')
+            .getByText(en.start.wrongPassword, { exact: true })
         ).toBeVisible();
         await locked();
         await unlock(recoveredPassword);

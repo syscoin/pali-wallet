@@ -5,6 +5,8 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
+import { dispatchBackgroundEvent } from 'utils/browser';
+
 import ExternalAddRPC from './ExternalAddRPC';
 
 const mockEmitter = jest.fn();
@@ -110,6 +112,7 @@ beforeEach(() => {
     .mockImplementation(async ([, method], [params] = []) => {
       if (method === 'getRpc') return { ...network, url: params.url };
       if (method === 'testExplorerApi') return { success: true };
+      if (method === 'addCustomRpc') return { ...params, default: false };
       return undefined;
     });
 });
@@ -119,22 +122,42 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-const expectDelayedClose = async () => {
+const expectCommittedApproval = async () => {
   await waitFor(() =>
     expect(mockAlert.success).toHaveBeenCalledWith(
       'settings.rpcSuccessfullyAdded'
     )
   );
-  expect(window.close).not.toHaveBeenCalled();
-  await act(async () => {
-    await jest.advanceTimersByTimeAsync(1999);
-  });
-  expect(window.close).not.toHaveBeenCalled();
-  await act(async () => {
-    await jest.advanceTimersByTimeAsync(1);
-  });
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    'wallet_addEthereumChain.https://requesting-dapp.invalid',
+    null
+  );
   expect(window.close).toHaveBeenCalledTimes(1);
+  expect(
+    jest.mocked(dispatchBackgroundEvent).mock.invocationCallOrder[0]
+  ).toBeLessThan(jest.mocked(window.close).mock.invocationCallOrder[0]);
 };
+
+it('disables Cancel until the switch commits, then signals success before closing', async () => {
+  const commit = deferred<void>();
+  const normal = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path, args) =>
+    path[1] === 'setActiveNetwork' ? commit.promise : normal(path, args)
+  );
+  mount();
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+  await user.click(screen.getByRole('button', { name: 'buttons.addNetwork' }));
+  await waitFor(() => expect(calls('setActiveNetwork')).toHaveLength(1));
+
+  const cancel = screen.getByRole('button', { name: 'buttons.cancel' });
+  expect(cancel).toBeDisabled();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+
+  await act(async () => commit.resolve());
+  await expectCommittedApproval();
+  expect(cancel).toBeDisabled();
+});
 
 it('freezes the reviewed fields during submission and preserves their submitted values', async () => {
   const pending = deferred<any>();
@@ -153,7 +176,7 @@ it('freezes the reviewed fields during submission and preserves their submitted 
   expect(calls('addCustomRpc')[0][1][0].url).toBe(rpcA);
   expect(input).toHaveValue(calls('addCustomRpc')[0][1][0].url);
   expect(input).toBeDisabled();
-  await expectDelayedClose();
+  await expectCommittedApproval();
 });
 
 const urlInput = (field: 'url' | 'explorer' | 'apiUrl') =>
@@ -212,7 +235,7 @@ it.each(['', '   ', '\u00a0\u00a0'])(
     expect(urlInput('explorer')).toHaveValue(value);
     expect(urlInput('apiUrl')).toHaveValue(value);
     expect(screen.queryByText('settings.validUrlRequired')).toBeNull();
-    await expectDelayedClose();
+    await expectCommittedApproval();
   }
 );
 
@@ -263,7 +286,7 @@ it('accepts padded valid URLs and preserves the existing submission callbacks', 
   for (const field of ['url', 'explorer', 'apiUrl'] as const)
     expect(urlInput(field)).toHaveValue(values[field]);
   expect(screen.queryByText('settings.validUrlRequired')).toBeNull();
-  await expectDelayedClose();
+  await expectCommittedApproval();
 });
 
 it('keeps RPC and API blur probes without adding or switching a network', async () => {
@@ -317,7 +340,7 @@ it('unlocks fields after a rejected submission and saves the corrected retry', a
   await user.click(screen.getByRole('button', { name: 'buttons.addNetwork' }));
   await waitFor(() => expect(calls('addCustomRpc')).toHaveLength(1));
   expect(calls('addCustomRpc')[0][1][0].url).toBe(rpcA + '/changed');
-  await expectDelayedClose();
+  await expectCommittedApproval();
 });
 
 it('keeps a deliberately entered same-RPC explorer available', async () => {

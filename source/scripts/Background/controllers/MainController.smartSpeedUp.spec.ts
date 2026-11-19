@@ -4,7 +4,6 @@ import {
   privateKeyToAccount,
   sendLocalEvmTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer';
-import { Interface } from 'ethers/abi';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { webcrypto } from 'node:crypto';
@@ -14,11 +13,20 @@ import {
   createTestKeyringManager,
 } from '../../../../tests/fixtures/extensionKeyring';
 import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
+import { encodeErc20Transfer } from '../../../shared/erc20';
+import { encodeNftTransferData } from '../../../shared/nftTransfer';
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import vaultReducer from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { encodeERC7579Executions } from 'utils/smartAccount/account';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from 'utils/smartAccount/contracts';
+import { getSmartAccountUserOpHash } from 'utils/smartAccount/userOperationHash';
 import {
   handleUpdateTransaction,
   previewSpeedUpTransaction,
@@ -259,6 +267,17 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         .fn()
         .mockResolvedValue({ gasLimit: BigNumber.from(30_000_000) }),
       verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
+      send: jest.fn(async (method: string) => {
+        if (method === 'eth_getBlockByNumber')
+          return {
+            number: '0x64',
+            hash: `0x${'71'.repeat(32)}`,
+            gasLimit: '0x1c9c380',
+          };
+        if (method === 'eth_getTransactionCount') return '0x8';
+        if (method === 'eth_getBalance') return '0x3b9aca00';
+        throw new Error(`Unexpected review read: ${method}`);
+      }),
       sendTransaction: jest.fn().mockResolvedValue(response),
     };
     currentProvider = provider;
@@ -287,6 +306,14 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     wallet.walletSessionGeneration = 5;
     wallet.isResettingWallet = false;
     wallet.getActiveKeyring = jest.fn(() => keyring);
+    wallet.getRetainedEvmRecords = () => ({
+      captureAutoNonceSnapshot: async () => ({
+        owner: 'speed-up-review-fixture',
+        minimumNonce: 0,
+        retained: [],
+      }),
+      readPendingCancellation: async () => null,
+    });
     wallet.startRapidTransactionPolling = jest.fn();
     mockPersist.mockImplementation(async (_include, _skip, current) => {
       if (!current()) throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
@@ -433,6 +460,9 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     let pendingBalance: bigint | undefined;
     let baseFee = 150;
     let blockGasLimit = 30_000_000;
+    let confirmedNonce = 8;
+    let assetState: 'erc20' | 'erc721' | undefined;
+    let smartOperation: any;
     const reads: string[] = [];
     const fixtureFetch = async (url, init): Promise<Response> => {
       expect(url).toBe('https://offline.example');
@@ -454,7 +484,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       reads.push(method);
       let result: unknown;
       if (method === 'eth_chainId') result = `0x${CHAIN.toString(16)}`;
-      else if (method === 'eth_getTransactionCount') result = '0x8';
+      else if (method === 'eth_getTransactionCount')
+        result = `0x${confirmedNonce.toString(16)}`;
       else if (method === 'eth_getBalance')
         result = `0x${(params[1] === 'pending'
           ? pendingBalance ?? balance
@@ -467,8 +498,66 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           gasLimit: `0x${blockGasLimit.toString(16)}`,
           baseFeePerGas: `0x${baseFee.toString(16)}`,
         };
-      else if (method === 'eth_getCode') result = '0x';
-      else if (method === 'eth_sendRawTransaction') {
+      else if (method === 'eth_getCode') result = assetState ? '0x01' : '0x';
+      else if (method === 'eth_estimateGas') result = '0x61a8';
+      else if (method === 'eth_getTransactionReceipt' && smartOperation)
+        result = null;
+      else if (method === 'eth_simulateV1' && smartOperation) {
+        const calls = params[0].blockStateCalls[0].calls;
+        expect(calls).toHaveLength(1);
+        result = [
+          {
+            number: '0x65',
+            parentHash: `0x${'71'.repeat(32)}`,
+            transactions: calls.map((call) => ({ ...call, input: call.data })),
+            calls: [
+              {
+                status: '0x1',
+                gasUsed: '0x186a0',
+                logs: [
+                  {
+                    address: getPaliEntryPointAddress(CHAIN),
+                    ...paliEntryPointInterface.encodeEventLog(
+                      paliEntryPointInterface.getEvent('UserOperationEvent')!,
+                      [
+                        getSmartAccountUserOpHash(smartOperation, CHAIN),
+                        smartOperation.sender,
+                        '0x' + '00'.repeat(20),
+                        smartOperation.nonce,
+                        true,
+                        1,
+                        1,
+                      ]
+                    ),
+                  },
+                ],
+              },
+            ],
+          },
+        ];
+      } else if (method === 'eth_call' && assetState) {
+        const data = params[0].data;
+        const selector = data.slice(0, 10);
+        if (selector === '0x70a08231') result = '0x' + '11'.padStart(64, '0');
+        else if (selector === '0x6352211e') {
+          if (BigInt('0x' + data.slice(10)) !== BigInt(1)) {
+            return new Response(
+              JSON.stringify({
+                jsonrpc,
+                id,
+                error: { code: 3, message: 'execution reverted', data: '0x' },
+              }),
+              {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+              }
+            );
+          }
+          result = '0x' + PAYER.slice(2).toLowerCase().padStart(64, '0');
+        } else
+          result =
+            assetState === 'erc721' ? '0x' : '0x' + '1'.padStart(64, '0');
+      } else if (method === 'eth_sendRawTransaction') {
         const signed = Transaction.from(params[0]);
         posts.push(signed);
         if (posts.length === 1 && firstPost) await firstPost(signed);
@@ -510,9 +599,63 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       setBlockGasLimit(value: number) {
         blockGasLimit = value;
       },
+      setSmartOperation(operation: typeof smartOperation) {
+        smartOperation = operation;
+      },
+      setAssetState(value: typeof assetState) {
+        assetState = value;
+      },
+      setConfirmedNonce(value: number) {
+        confirmedNonce = value;
+      },
       dispose: () => rpc.destroy(),
     };
   };
+
+  it.each(['EOA', 'Smart outer'])(
+    'rejects an existing pending debit before displaying a %s Speed Up review',
+    async (kind) => {
+      const fixture = await setupDurableReplacement();
+      try {
+        if (kind === 'Smart outer') {
+          mockState.vault.activeAccount = owner;
+          mockState.vault.accountTransactions.SmartAccount[7].ethereum[CHAIN] =
+            [
+              {
+                ...rawOriginal(),
+                value: '7',
+                input: '0x1234',
+                smartAccountExecutionFrom: SMART,
+              },
+            ];
+        }
+        const walletScope = getWalletNavigationScope();
+        const preview = () =>
+          wallet.speedUpEvmTransaction(ORIGINAL, true, CHAIN, PAYER, {
+            previewOnly: true,
+            walletScope,
+          });
+        fixture.setPendingBalance(BigInt(1));
+        await expect(preview()).resolves.toMatchObject({
+          error: true,
+          code: 'INSUFFICIENT_BALANCE',
+          transactionNotBroadcast: true,
+        });
+        await expect(
+          previewSpeedUpTransaction(ORIGINAL, true, CHAIN, PAYER, walletScope)
+        ).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
+        expect(fixture.posts).toHaveLength(0);
+        fixture.setPendingBalance(BigInt('1000000000'));
+        await expect(preview()).resolves.toMatchObject({
+          isSpeedUp: false,
+          maximumFee: expect.any(String),
+        });
+        expect(fixture.posts).toHaveLength(0);
+      } finally {
+        fixture.dispose();
+      }
+    }
+  );
 
   it.each(
     [true, false].flatMap((legacy) =>
@@ -566,7 +709,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         } else {
           expect(result).toMatchObject({ isSpeedUp: false });
           expect(posts).toHaveLength(0);
-          expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+          expect(entries).toHaveLength(0);
         }
         if (boundary !== 'before-confirm') {
           expect(
@@ -647,7 +790,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           PAYER
         );
         expect(posts).toHaveLength(boundary === 'healthy' ? 1 : 0);
-        expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+        expect(entries).toHaveLength(boundary === 'healthy' ? 1 : 0);
         expect(result.isSpeedUp).toBe(boundary === 'healthy');
       } finally {
         dispose();
@@ -694,7 +837,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           String(CHAIN),
           PAYER
         );
-        expect(entries).toHaveLength(boundary === 'before-confirm' ? 0 : 1);
+        expect(entries).toHaveLength(boundary === 'healthy' ? 1 : 0);
         expect(posts).toHaveLength(boundary === 'healthy' ? 1 : 0);
       } finally {
         dispose();
@@ -1022,250 +1165,106 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     };
   }
 
-  it.each([
-    'acknowledged',
-    'lost',
-    'stale-nonce',
-    'mined',
-    'session',
-    'low-preview',
-    'low-confirm',
-    'low-at-wire',
-    'expired-at-write',
-  ] as const)(
-    'cancels an authenticated saved NFT with no history after restart (%s)',
-    async (outcome) => {
-      Object.defineProperty(globalThis, 'crypto', {
-        configurable: true,
-        value: webcrypto,
-      });
-      selectOrdinaryPayer();
-      useActualLifecycle = true;
-      mockState.vault.accountTransactions = {};
-      const payer = { ...mockState.vault.activeAccount, address: PAYER };
-      const retained = Transaction.from({
+  it.each([false, true])(
+    'speeds up an authenticated local Smart Account transaction with no RPC body (nonce already consumed: %s)',
+    async (consumed) => {
+      const {
+        journal,
+        journalSession,
+        posts,
+        reads,
+        setBaseFee,
+        setSmartOperation,
+        setConfirmedNonce,
+      } = await setupDurableReplacement();
+      mockState.vault.activeAccount = owner;
+      transactions().length = 0;
+      const call = encodeERC7579Executions([{ target: PAYER, value: '7' }]);
+      const operation = {
+        sender: SMART,
+        nonce: '4',
+        initCode: '0x',
+        callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+          call.mode,
+          call.executionCalldata,
+        ]),
+        accountGasLimits: '0x' + '000000000000000000000000000186a0'.repeat(2),
+        preVerificationGas: '21000',
+        gasFees: '0x' + '000000000000000000000000000000c8'.repeat(2),
+        paymasterAndData: '0x',
+        signature: '0x1234',
+      };
+      setSmartOperation(operation);
+      const data = paliEntryPointInterface.encodeFunctionData('handleOps', [
+        [operation],
+        PAYER,
+      ]);
+      const nonce = original.nonce;
+      const raw = await testWallet.signTransaction({
         type: 0,
         chainId: CHAIN,
-        nonce: 0,
-        to: TARGET,
-        value: BigInt(0),
-        gasLimit: BigInt(90_000),
-        gasPrice: BigInt(200),
-        data: new Interface([
-          'function transferFrom(address,address,uint256)',
-        ]).encodeFunctionData('transferFrom', [PAYER, SMART, 0]),
+        nonce,
+        gasPrice: 200,
+        gasLimit: 300_000,
+        to: getPaliEntryPointAddress(CHAIN),
+        data,
       });
-      retained.signature = testWallet.signingKey.sign(retained.unsignedHash);
-      const hash = retained.hash!;
-      let expireAtWrite = false;
-      const reopen = await encryptedJournalFixture(() => {
-        if (expireAtWrite)
-          jest.spyOn(performance, 'now').mockImplementation(() => 1e9);
-      });
-      const recordSession = { keyring, assertCurrent: () => undefined };
-      await reopen().append(recordSession, {
-        context: {
-          account: payer,
-          network: mockState.vault.activeNetwork,
-          operation: 'erc721',
-        },
-        chainId: String(CHAIN),
+      ORIGINAL = Transaction.from(raw).hash!;
+      await journal.append(journalSession, {
+        rawTransaction: raw,
+        hash: ORIGINAL,
         from: PAYER,
-        hash,
-        nonce: 0,
+        chainId: String(CHAIN),
+        nonce,
         type: 0,
-        rawTransaction: retained.serialized,
+        context: {
+          account: {
+            ...mockState.vault.accounts.HDAccount[3],
+            type: KeyringAccountType.HDAccount,
+          },
+          network: mockState.vault.activeNetwork,
+          operation: 'send',
+        },
       });
-      const journal = reopen();
-      wallet.getRetainedEvmRecords = () => journal;
-
       provider.getTransaction.mockResolvedValue(null);
-      provider.getGasPrice = jest.fn(async () => BigNumber.from(100));
-      provider.getNetwork = jest.fn(async () => ({ chainId: BigInt(CHAIN) }));
-      provider.readMany = jest.fn(async (requests) =>
-        Promise.allSettled(
-          requests.map(({ method, params }) =>
-            method === 'eth_chainId'
-              ? `0x${CHAIN.toString(16)}`
-              : provider.send(method, params)
-          )
-        )
+      setBaseFee(100);
+      const maximumFee = await previewSpeedUpTransaction(
+        ORIGINAL,
+        true,
+        CHAIN,
+        PAYER,
+        getWalletNavigationScope()
       );
-      let movedNonce = false;
-      let mined = false;
-      let balance = outcome === 'low-preview' ? '0x0' : '0xffffff';
-      const blockHash = `0x${'aa'.repeat(32)}`;
-      provider.send = jest.fn(async (method: string, params: unknown[]) => {
-        if (method === 'eth_getBalance') {
-          expect(params).toEqual([PAYER, 'latest']);
-          return balance;
-        }
-        if (method === 'eth_getTransactionReceipt')
-          return mined
-            ? {
-                transactionHash: hash,
-                from: PAYER,
-                to: TARGET,
-                blockHash,
-                blockNumber: '0x10',
-                status: '0x1',
-              }
-            : null;
-        if (method === 'eth_getBlockByNumber')
-          return { hash: blockHash, number: '0x10' };
-        if (method === 'eth_getTransactionCount')
-          return movedNonce ? '0x1' : '0x0';
-        if (method === 'eth_getCode') return '0x';
-        throw new Error(`unexpected ${method}`);
-      });
-      const actualSigner = jest.requireActual(
-        '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer'
-      );
-      jest
-        .mocked(sendLocalEvmTransaction)
-        .mockImplementation((rpc, _key, ...args) =>
-          actualSigner.sendLocalEvmTransaction(
-            rpc,
-            testWallet.privateKey,
-            ...args
-          )
-        );
-      let cancellationHash: string | undefined;
-      const posted = deferred<void>();
-      const acknowledge = deferred<void>();
-      provider.sendTransaction.mockImplementation(async (raw: string) => {
-        const signed = Transaction.from(raw);
-        cancellationHash = signed.hash!;
-        expect(signed.nonce).toBe(0);
-        expect(signed.to?.toLowerCase()).toBe(PAYER);
-        expect(signed.data).toBe('0x');
-        expect(signed.value).toBe(BigInt(0));
-        expect(signed.gasLimit).toBe(BigInt(42000));
-        expect(signed.gasPrice).toBeGreaterThan(BigInt(200));
-        expect(
-          (
-            await journal.readExact(
-              recordSession,
-              String(CHAIN),
-              PAYER,
-              cancellationHash
-            )
-          )?.rawTransaction
-        ).toBe(raw);
-        const payment = await journal.readExact(
-          recordSession,
-          String(CHAIN),
-          PAYER,
-          hash
-        );
-        expect(payment?.rawTransaction).toBe(retained.serialized);
-        expect(
-          await journal.withReplayAdmission(
-            recordSession,
-            { ...payment!, metadata: payment!.metadata },
-            async () => ({ result: true })
-          )
-        ).toBeNull();
-        posted.resolve();
-        await acknowledge.promise;
-        if (outcome === 'lost')
-          throw new Error('Lost local relay acknowledgement');
-        return { hash: cancellationHash };
-      });
-
-      if (outcome === 'low-preview') {
-        await expect(
-          wallet.prepareRetainedEvmCancellation(hash)
-        ).rejects.toThrow('Insufficient funds for reviewed EVM transfer');
-        expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
-        expect(provider.sendTransaction).not.toHaveBeenCalled();
+      if (consumed) setConfirmedNonce(nonce + 1);
+      await run(true, PAYER, maximumFee);
+      expect(posts).toHaveLength(consumed ? 0 : 1);
+      if (consumed) {
+        expect(alert.error).toHaveBeenCalled();
         return;
       }
-      const review = await wallet.prepareRetainedEvmCancellation(hash);
-      expect(review).toMatchObject({
-        hash,
-        from: PAYER,
-        chainId: CHAIN,
-        nonce: 0,
-      });
-      expect(review).not.toHaveProperty('rawTransaction');
-      expect(BigInt(review.maximumFee)).toBeGreaterThan(BigInt(42000 * 200));
-      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
-      expect(provider.getTransaction).not.toHaveBeenCalled();
-      const append = journal.append.bind(journal);
-      const shouldBlock =
-        outcome === 'stale-nonce' ||
-        outcome === 'mined' ||
-        outcome === 'session' ||
-        outcome === 'low-at-wire';
-      if (shouldBlock)
-        jest.spyOn(journal, 'append').mockImplementation(async (...args) => {
-          const saved = await append(...args);
-          if (saved.operation === 'cancel') {
-            movedNonce = outcome === 'stale-nonce';
-            mined = outcome === 'mined';
-            if (outcome === 'session') wallet.advanceWalletSession();
-            if (outcome === 'low-at-wire') balance = '0x0';
-          }
-          return saved;
-        });
-
-      if (outcome === 'low-confirm') balance = '0x0';
-      expireAtWrite = outcome === 'expired-at-write';
-      const confirmation = wallet.confirmRetainedEvmCancellation(review.id);
-      void confirmation.catch(() => undefined);
-      await expect(
-        wallet.confirmRetainedEvmCancellation(review.id)
-      ).rejects.toThrow();
-      try {
-        if (outcome === 'low-confirm') {
-          await expect(confirmation).rejects.toThrow(
-            'Insufficient funds for reviewed EVM transfer'
-          );
-          expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
-          expect(provider.sendTransaction).not.toHaveBeenCalled();
-          return;
-        }
-        if (shouldBlock || outcome === 'expired-at-write') {
-          await expect(confirmation).resolves.toEqual({
-            status: 'not-dispatched',
-          });
-          expect(provider.sendTransaction).not.toHaveBeenCalled();
-          if (outcome === 'expired-at-write') {
-            const entries = await journal.listSender(
-              recordSession,
-              String(CHAIN),
-              PAYER
-            );
-            expect(entries.map((entry) => entry.hash)).toEqual([hash]);
-            expect(
-              await journal.withReplayAdmission(
-                recordSession,
-                { ...entries[0]!, metadata: entries[0]!.metadata },
-                async () => ({ result: true })
-              )
-            ).toEqual({ result: true });
-          }
-          return;
-        }
-        await Promise.race([
-          posted.promise,
-          confirmation.then(() => {
-            throw new Error('Cancellation did not enter POST');
+      expect(alert.error).not.toHaveBeenCalled();
+      expect(posts[0].data).toBe(data);
+      expect(posts[0].nonce).toBe(nonce);
+      expect(posts[0].gasLimit).toBe(BigInt(300_000));
+      expect(posts[0].gasPrice).toBeGreaterThan(BigInt(200));
+      expect(reads).toContain('eth_simulateV1');
+      expect(transactions()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            hash: posts[0].hash,
+            replacesHash: ORIGINAL,
+            smartAccountExecutionFrom: SMART,
           }),
-        ]);
-        // Expiry after POST cannot turn a known acknowledgement into a failure.
-        jest.spyOn(performance, 'now').mockImplementation(() => 1e9);
-        acknowledge.resolve();
-        await expect(confirmation).resolves.toEqual({
-          status: outcome === 'acknowledged' ? 'submitted' : 'unknown',
-          hash: cancellationHash,
-        });
-        expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
-        expect(provider.getTransaction).not.toHaveBeenCalled();
-      } finally {
-        acknowledge.resolve();
-      }
+        ])
+      );
+      expect(
+        await journal.readSmartAccountSpeedUpIntent(
+          journalSession,
+          String(CHAIN),
+          SMART,
+          ORIGINAL
+        )
+      ).toBeNull();
     }
   );
 
@@ -1289,6 +1288,207 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     expect(alert.success).toHaveBeenCalled();
     expect(replaceGetter).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { legacy: false, kind: 'native' },
+    { legacy: true, kind: 'native' },
+    { legacy: false, kind: 'contract' },
+    { legacy: false, kind: 'erc20' },
+    { legacy: false, kind: 'erc721' },
+  ] as const)(
+    'uses authenticated replacement for a missing $kind transaction (legacy=$legacy)',
+    async ({ legacy, kind }) => {
+      const {
+        journal,
+        journalSession,
+        posts,
+        reads,
+        setConfirmedNonce,
+        setAssetState,
+        dispose,
+      } = await setupDurableReplacement(undefined, legacy);
+      const asset = kind === 'erc20' || kind === 'erc721';
+      if (asset) setAssetState(kind);
+      try {
+        const original = Transaction.from({
+          type: legacy ? 0 : 2,
+          chainId: CHAIN,
+          to: TARGET,
+          value: BigInt(asset ? 0 : 7),
+          data:
+            kind === 'contract'
+              ? '0x1234'
+              : kind === 'erc20'
+              ? encodeErc20Transfer(PAYER, '7')
+              : kind === 'erc721'
+              ? encodeNftTransferData({
+                  chainId: String(CHAIN),
+                  kind: 'nft-transfer',
+                  from: PAYER,
+                  contractAddress: TARGET,
+                  recipient: PAYER,
+                  tokenStandard: 'ERC-721',
+                  tokenId: '1',
+                  amountUnits: '1',
+                })
+              : '0x',
+          nonce: 8,
+          gasLimit: BigInt(25_000),
+          ...(legacy
+            ? { gasPrice: BigInt(100) }
+            : { maxFeePerGas: BigInt(200), maxPriorityFeePerGas: BigInt(10) }),
+        });
+        original.signature = testWallet.signingKey.sign(original.unsignedHash);
+        const hash = original.hash!;
+        mockState.vault.accountTransactions.HDAccount[3].ethereum[CHAIN] = [];
+        expect(keyring.ethereumTransaction.supportsRetainedSpeedUpIntent).toBe(
+          true
+        );
+        await journal.append(
+          journalSession,
+          {
+            context: {
+              account: { ...mockState.vault.activeAccount, address: PAYER },
+              network: mockState.vault.activeNetwork,
+              operation: asset ? kind : 'send',
+            },
+            chainId: String(CHAIN),
+            from: PAYER,
+            hash,
+            nonce: original.nonce,
+            type: original.type!,
+            rawTransaction: original.serialized,
+          },
+          undefined,
+          undefined,
+          true
+        );
+        const savedOriginal = await journal.readExact(
+          journalSession,
+          String(CHAIN),
+          PAYER,
+          hash
+        );
+        expect(savedOriginal).toMatchObject({
+          payloadKind: 'unsigned-eoa',
+          unsignedTransaction: original.unsignedSerialized,
+        });
+        expect(savedOriginal).not.toHaveProperty('rawTransaction');
+        provider.getTransaction.mockResolvedValue(null);
+        const activity = await wallet.getSavedEvmTransaction(hash);
+        expect(activity).toMatchObject({
+          hash,
+          from: PAYER,
+          to: TARGET,
+          value: original.value.toString(),
+          ...(kind === 'erc20' && { tokenTransfer: { amountUnits: '7' } }),
+          ...(kind === 'erc721' && { collectibleTransfer: { tokenId: '1' } }),
+          nonce: original.nonce,
+          gasLimit: original.gasLimit.toString(),
+          speedUpAvailable: true,
+          cancellationUnavailable: true,
+        });
+        expect(activity).not.toHaveProperty('rawTransaction');
+        expect(activity).not.toHaveProperty('unsignedTransaction');
+        await expect(wallet.getSavedEvmTransactions()).resolves.toMatchObject({
+          transactions: [activity],
+        });
+        const walletScope = getWalletNavigationScope();
+        const maximumFee = await previewSpeedUpTransaction(
+          hash,
+          legacy,
+          CHAIN,
+          PAYER,
+          walletScope
+        );
+        expect(aes.decrypt).not.toHaveBeenCalled();
+        expect(posts).toHaveLength(0);
+
+        setConfirmedNonce(9);
+        await expect(
+          wallet.speedUpEvmTransaction(hash, legacy, CHAIN, PAYER, {
+            approvedMaximumFee: maximumFee,
+            walletScope,
+          })
+        ).rejects.toThrow('Original transaction nonce was already used');
+        expect(aes.decrypt).not.toHaveBeenCalled();
+        expect(posts).toHaveLength(0);
+
+        setConfirmedNonce(8);
+        await expect(
+          wallet.speedUpEvmTransaction(hash, legacy, CHAIN, PAYER, {
+            approvedMaximumFee: (BigInt(maximumFee) - BigInt(1)).toString(),
+            walletScope,
+          })
+        ).rejects.toMatchObject({
+          message: 'Replacement fee exceeds approval',
+          transactionNotBroadcast: true,
+        });
+        expect(aes.decrypt).not.toHaveBeenCalled();
+        expect(posts).toHaveLength(0);
+
+        await handleUpdateTransaction({
+          t: (key) => key,
+          updateData: {
+            alert,
+            approvedMaximumFee: maximumFee,
+            chainId: CHAIN,
+            isLegacy: legacy,
+            signerAddress: PAYER,
+            txHash: hash,
+            updateType: UpdateTxAction.SpeedUp,
+            walletScope,
+          },
+        });
+        expect(console.error).not.toHaveBeenCalled();
+        expect(posts).toHaveLength(1);
+        if (kind === 'contract') expect(reads).toContain('eth_estimateGas');
+        if (asset) expect(reads).toContain('eth_call');
+        expect(posts[0]).toMatchObject({
+          accessList: original.accessList,
+          chainId: original.chainId,
+          data: original.data,
+          from: original.from,
+          gasLimit: original.gasLimit,
+          nonce: original.nonce,
+          to: original.to,
+          type: original.type,
+          value: original.value,
+        });
+        expect(posts[0].hash).not.toBe(hash);
+        const savedReplacement = await journal.readExact(
+          journalSession,
+          String(CHAIN),
+          PAYER,
+          posts[0].hash!
+        );
+        expect(savedReplacement).toMatchObject({
+          payloadKind: 'unsigned-eoa',
+          unsignedTransaction: posts[0].unsignedSerialized,
+        });
+        expect(savedReplacement).not.toHaveProperty('rawTransaction');
+        expect(posts[0].maxFeePerGas ?? posts[0].gasPrice).toBeGreaterThan(
+          original.maxFeePerGas ?? original.gasPrice!
+        );
+        expect(alert.success).toHaveBeenCalledWith(
+          'transactions.transactionAcceleratedSuccessfully'
+        );
+        expect(
+          mockState.vault.accountTransactions.HDAccount[3].ethereum[CHAIN]
+        ).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ hash, isReplaced: true }),
+            expect.objectContaining({
+              hash: posts[0].hash,
+              replacesHash: hash,
+            }),
+          ])
+        );
+      } finally {
+        dispose();
+      }
+    }
+  );
 
   it('rejects a stale ordinary account scope before requesting the original transaction', async () => {
     selectOrdinaryPayer();

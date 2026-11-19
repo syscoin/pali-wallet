@@ -325,6 +325,7 @@ describe('seed recovery unlock throttle', () => {
       [RATE_LIMIT]: clone(CLEARED_RATE_LIMIT),
     };
     keyring = {
+      getPrivateRecordProfileId: async () => `0x${'00'.repeat(32)}`,
       isUnlocked: () => unlocked,
       isSeedValid: (phrase: string) => phrase === PHRASE,
       lockWallet: jest.fn(async () => {

@@ -409,7 +409,9 @@ test('pending Unlock excludes recovery until the genuine failure is delivered', 
           (window as any).__unlockRecoveryReply.release()
         );
         await expect(
-          page.locator('#login').getByText('Invalid password', { exact: true })
+          page
+            .locator('#login')
+            .getByText(en.start.wrongPassword, { exact: true })
         ).toBeVisible();
         await locked();
         expect(await snapshotDelivery()).toMatchObject({

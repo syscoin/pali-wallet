@@ -419,15 +419,12 @@ export function createNativeWalletControllers() {
     releaseReplacement() {},
     authorizeOperation: operationAuthorization.authorizeOperation,
     releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
-    authenticateOperation,
-    replay() { throw Error("Fixture has no retained signed transactions"); },
     async submit(_raw, _hash, guard) { guard(); throw Error('Fixture does not submit signatures'); },
     async journal(guard) { guard(); return {
       async planAutomaticNonce({ latest, pending }) { guard(); return { kind: 'ready', nonce: Math.max(latest, pending), balanceState: 'pending', nativeReservations: { canonical: 0n, pending: 0n } }; },
       async assertSpendingNonce() { guard(); }, async load() { guard(); return null; },
       async saveSigned() { throw Error('Fixture does not submit signatures'); },
       async transition() { throw Error('Fixture does not submit signatures'); } }; },
-    assertUnlocked(guard) { guard(); },
     async sign(_transaction, authority) { operationAuthorization.consume(authority.authorization, _transaction, authority.assertCurrent); audit.signs++; events.push('sign:start'); await signGate(); authority.assertCurrent(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
   };
   const transfers = new NativeTransfers(authority, () => transferRuntime, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fixtureFetch }) });
@@ -622,7 +619,7 @@ export function createNativeWalletControllers() {
       audit.utxoOpens++;
       check();
       const unused = async () => { throw Error('Synthetic route fixture does not sign'); };
-      return { cancel() {}, async list() { return []; }, async refreshSaved() { audit.utxoSavedReads++; return []; }, prepare: unused, prepareRetry: unused, confirm: unused, check: unused };
+      return { cancel() {}, async list() { audit.utxoSavedReads++; return []; }, prepare: unused, confirm: unused, check: unused };
     } } : {}),
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose(),
     async disposeConnections() { await connections.dispose(); events.push('connections:dispose'); } };

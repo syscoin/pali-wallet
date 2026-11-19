@@ -1,3 +1,4 @@
+import { inspectQualificationEoaEnvelope } from './authorized-transfer.ts';
 import { sameJsonRpcParameters } from './rpc-parameters.ts';
 import { readSignedRecordEvidence, retainedSignedEntries } from './signed-record-evidence.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
@@ -14,6 +15,7 @@ const REPORT_FIELDS = Object.freeze([
   'zksysAccountIndex',
   'zksysAddress',
   'zksysTransferHash',
+  'zksysReplacementHash',
   'zksysChainId',
   'zksysJournalContainerVersion',
   'zksysSignatures',
@@ -28,6 +30,7 @@ export type ZksysQualificationEvidence = Readonly<{
   zksysAccountIndex: 4;
   zksysAddress: string;
   zksysTransferHash: string;
+  zksysReplacementHash?: string;
   zksysChainId: '57057';
   zksysJournalContainerVersion: 1;
   zksysSignatures: number;
@@ -73,10 +76,18 @@ export function isZksysQualificationReport(
     new Set(hashes).size === hashes.length &&
     report.zksysChainId === '57057' &&
     report.zksysJournalContainerVersion === 1 &&
-    report.zksysSignatures === (report.phase === 'create' ? 1 : 0) &&
-    report.zksysAuthorizations === (report.phase === 'create' ? 0 : 1) &&
+    (Object.hasOwn(report, 'zksysReplacementHash')
+      ? report.phase === 'restart' &&
+        typeof report.zksysReplacementHash === 'string' &&
+        /^0x[0-9a-f]{64}$/.test(report.zksysReplacementHash) &&
+        !hashes.includes(report.zksysReplacementHash) &&
+        report.zksysSignatures === 1 &&
+        report.zksysAuthorizations === 0 &&
+        report.zksysFeeEstimates === 3
+      : report.zksysSignatures === (report.phase === 'create' ? 1 : 0) &&
+        report.zksysAuthorizations === (report.phase === 'create' ? 0 : 1) &&
+        report.zksysFeeEstimates === (report.phase === 'create' ? 3 : 0)) &&
     report.zksysInjectedBroadcasts === 1 &&
-    report.zksysFeeEstimates === (report.phase === 'create' ? 3 : 0) &&
     report.zksysRestoredFromJournal === (report.phase === 'restart')
   );
 }
@@ -211,64 +222,41 @@ export async function qualifyNativeZksysTransfer(
   guard();
   const registration = getNativeNetwork('zksys-testnet');
   const recipient = '0x1111111111111111111111111111111111111111';
-  const readSaved = async (expectedPhase: 'signed' | 'submitted') => {
-    const entry = await (await transfer.journal(guard)).load();
-    guard();
-    expect(
-      entry?.phase === expectedPhase &&
-        entry.intent === undefined &&
-        entry.scope.chainId === '57057' &&
-        entry.scope.walletFingerprint === fingerprint
-    );
-    const tx = Transaction.from(entry.rawTransaction);
-    expect(
-      tx.isSigned() &&
-        tx.type === 2 &&
-        tx.from === address &&
-        tx.to === recipient &&
-        tx.chainId === 57057n &&
-        tx.nonce === 0 &&
-        tx.value === 789n &&
-        tx.data === '0x' &&
-        tx.gasLimit === 36000n &&
-        tx.maxFeePerGas === 25n &&
-        tx.maxPriorityFeePerGas === 0n &&
-        tx.hash === entry.hash &&
-        tx.serialized === entry.rawTransaction
-    );
+  const verifyEnvelope = (tx: InstanceType<typeof Transaction>, replacement: boolean) => {
+    expect(tx.type === 2 && tx.to === recipient && tx.chainId === 57057n &&
+      tx.nonce === 0 && tx.value === 789n && tx.data === '0x' &&
+      tx.accessList?.length === 0 && tx.gasLimit === 36000n);
+    expect(replacement
+      ? tx.maxFeePerGas === 30n && tx.maxPriorityFeePerGas === 1n
+      : tx.maxFeePerGas === 25n && tx.maxPriorityFeePerGas === 0n);
+  };
+  const readSaved = async (hash: string, expectedPhase: 'signed' | 'submitted', raw?: string) => {
     const row = await readSignedRecordEvidence(storage); guard();
-    const retained = row.entries.filter(item => item.from === address.toLowerCase());
-    expect(row.version === 1 && retained.length === 1 && retained[0]?.hash === entry.hash &&
-      retained[0].phase === expectedPhase && retained[0].chainId === '57057' &&
-      retained[0].signer.type === 'HDAccount' && retained[0].signer.id === 4 &&
-      retained[0].metadata?.intent === undefined && !row.raw?.includes(entry.rawTransaction));
+    const retained = row.entries.find(item => item.from === address.toLowerCase() && item.hash === hash);
+    expect(row.version === 1 && retained?.phase === expectedPhase && retained.chainId === '57057' &&
+      retained.signer.type === 'HDAccount' && retained.signer.id === 4 &&
+      retained.metadata?.intent === undefined && retained.payloadKind === 'unsigned-eoa' &&
+      (!raw || !row.raw?.includes(raw)));
     expect((await storage.getWalletFingerprint()) === fingerprint);
     guard();
-    return entry;
   };
   let signatures = 0,
-    authorizations = 0,
     broadcasts = 0,
     estimates = 0,
     requests = 0;
-  let expectedRaw: string | undefined, expectedHash: string | undefined;
+  let originalHash: string | undefined, replacementHash: string | undefined;
   const wrapped: NativeTransferRuntime = {
     isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
     releaseReplacement: () => transfer.releaseReplacement(),
-    authenticateOperation: (...args) => transfer.authenticateOperation(...args),
     authorizeOperation: (...args) => transfer.authorizeOperation(...args),
     releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
-    replay: (...args) => transfer.replay(...args),
+    replacementOriginal: transfer.replacementOriginal?.bind(transfer),
       submit: (...args) => transfer.submit(...args),
     journal: (checkCurrent) => transfer.journal(checkCurrent),
-    async sign(transaction, checkCurrent, intent) {
-      expect(phase === 'create' && ++signatures === 1 && intent === undefined);
-      return transfer.sign(transaction, checkCurrent, intent);
-    },
-    // Retain the report field: this counts unlocked-session admission, not a password check.
-    assertUnlocked(checkCurrent) {
-      expect(phase === 'restart' && ++authorizations === 1);
-      return transfer.assertUnlocked(checkCurrent);
+    async sign(transaction, checkCurrent, intent, replacement) {
+      expect(++signatures === 1 && intent === undefined &&
+        (phase === 'create' ? replacement === undefined : replacement?.original.hash === originalHash));
+      return transfer.sign(transaction, checkCurrent, intent, replacement);
     },
   };
   const rpc = new NativeTransferRpc({
@@ -285,7 +273,7 @@ export async function qualifyNativeZksysTransfer(
         typeof init.body === 'string' &&
           init.body.length < 5000 &&
           !init.body.includes('Pali#1:') &&
-          ++requests <= 64
+          ++requests <= 100
       );
       const payload: unknown = JSON.parse(init.body);
       const respond = async (body: {
@@ -335,22 +323,19 @@ export async function qualifyNativeZksysTransfer(
         );
         result = '0x0';
       } else if (body.method === 'eth_getBalance') {
-        expect(phase === 'create');
         expect(params.length === 2 && params[0] === address &&
-          ['pending', '0x64'].includes(params[1] as string));
+          ['pending', 'latest', '0x64'].includes(params[1] as string));
         result = '0xde0b6b3a7640000';
       } else if (body.method === 'eth_gasPrice') { same([]); result = '0xa';
       } else if (body.method === 'eth_feeHistory') {
-        expect(phase === 'create');
         same(['0x1', 'latest', []]);
         result = { oldestBlock: '0x64', baseFeePerGas: ['0xa', '0xa'] };
       } else if (body.method === 'eth_maxPriorityFeePerGas') {
-        expect(phase === 'create');
         same([]);
-        result = estimates === 0 ? '0x0' : '0x9';
+        result = phase === 'restart' || estimates === 0 ? '0x0' : '0x9';
       } else if (body.method === 'eth_estimateGas') {
         // Review, pre-sign refresh, and post-storage admission each estimate exact bytes.
-        expect(phase === 'create' && ++estimates <= 3);
+        expect(++estimates <= 3);
         same([
           {
             from: address,
@@ -361,28 +346,30 @@ export async function qualifyNativeZksysTransfer(
             chainId: '0xdee1',
             nonce: '0x0',
             accessList: [],
-            maxFeePerGas: '0x19',
-            maxPriorityFeePerGas: '0x0',
+            maxFeePerGas: phase === 'create' ? '0x19' : '0x1e',
+            maxPriorityFeePerGas: phase === 'create' ? '0x0' : '0x1',
           },
-          'pending',
+          phase === 'create' ? 'pending' : '0x64',
         ]);
         result = '0x7530';
-      } else if (body.method === 'eth_getTransactionReceipt') {
-        same([expectedHash]);
+      } else if (body.method === 'eth_getTransactionReceipt' || body.method === 'eth_getTransactionByHash') {
+        expect(phase === 'restart' && originalHash);
+        same([originalHash]);
         result = null;
       } else if (body.method === 'eth_sendRawTransaction') {
-        const entry = await readSaved('signed');
-        same([entry.rawTransaction]);
-        expect(++broadcasts === 1);
-        if (expectedRaw)
-          expect(
-            entry.rawTransaction === expectedRaw && entry.hash === expectedHash
-          );
-        expectedRaw = entry.rawTransaction;
-        expectedHash = entry.hash;
-        if (phase === 'create')
+        const [raw] = params;
+        expect(params.length === 1 && typeof raw === 'string' && ++broadcasts === 1);
+        const tx = Transaction.from(raw);
+        expect(tx.from === address && tx.hash && tx.isSigned() && tx.serialized === raw);
+        verifyEnvelope(tx, phase === 'restart');
+        await readSaved(tx.hash, 'signed', raw);
+        if (phase === 'create') {
+          originalHash = tx.hash;
           throw Error('QUALIFICATION_ZKSYS_LOST_RESPONSE');
-        result = entry.hash;
+        }
+        expect(originalHash && tx.hash !== originalHash);
+        replacementHash = tx.hash;
+        result = tx.hash;
       } else throw Error('QUALIFICATION_ZKSYS_RPC_FORBIDDEN');
       const text = JSON.stringify({ jsonrpc: '2.0', id: body.id, result });
       expect(text.length < 4096);
@@ -433,7 +420,6 @@ export async function qualifyNativeZksysTransfer(
           const review = controller.getSnapshot().review;
           expect(
             review &&
-              !review.retry &&
               review.context.chainId === '57057' &&
               review.totalUnits === '900789'
           );
@@ -444,33 +430,33 @@ export async function qualifyNativeZksysTransfer(
       );
     else
       await check(
-        'native zkSYS exact-byte retry after cold restart',
+        'native zkSYS reviewed Speed Up after cold restart',
         async () => {
-          const entry = await readSaved('signed');
-          expectedRaw = entry.rawTransaction;
-          expectedHash = entry.hash;
-          await controller.recover(true);
+          const entry = await (await transfer.journal(guard)).load();
+          expect(entry?.phase === 'signed' && entry.inspectionOnly &&
+            entry.rawTransaction === undefined && entry.scope.chainId === '57057' &&
+            entry.scope.walletFingerprint === fingerprint);
+          originalHash = entry.hash;
+          await readSaved(originalHash, 'signed');
+          verifyEnvelope(await inspectQualificationEoaEnvelope(transfer, entry, address, guard), false);
+          await controller.prepareSpeedUp(originalHash);
           guard();
           const review = controller.getSnapshot().review;
-          expect(
-            review?.retry &&
-              review.context.chainId === '57057' &&
-              controller.getSnapshot().hash === entry.hash
-          );
+          expect(review?.replacement?.originalHash === originalHash &&
+            review.context.chainId === '57057' && review.gasLimit === '36000' &&
+            review.recipient === recipient && review.amountUnits === '789' &&
+            BigInt(review.maximumFeeUnits) > 900000n && signatures === 0 && broadcasts === 0);
           await controller.confirm(review.id, { method: 'device' });
           guard();
-          expect(controller.getSnapshot().phase === 'pending');
+          expect(controller.getSnapshot().phase === 'pending' && controller.getSnapshot().hash === replacementHash);
         }
       );
-    const saved = await readSaved(
-      phase === 'create' ? 'signed' : 'submitted'
-    );
-    expect(
-      signatures === (phase === 'create' ? 1 : 0) &&
-        authorizations === (phase === 'create' ? 0 : 1) &&
-        broadcasts === 1 &&
-        estimates === (phase === 'create' ? 3 : 0)
-    );
+    expect(originalHash && signatures === 1 && broadcasts === 1 && estimates === 3);
+    await readSaved(originalHash, 'signed');
+    if (phase === 'restart') {
+      expect(replacementHash);
+      await readSaved(replacementHash, 'submitted');
+    }
     expect(retainedSignedEntries((await readSignedRecordEvidence(storage)).entries, olderAddresses) === olderRows);
     expect((await storage.getWalletFingerprint()) === fingerprint);
     guard();
@@ -479,11 +465,12 @@ export async function qualifyNativeZksysTransfer(
       zksysAccountId: 'hd:60:4',
       zksysAccountIndex: 4,
       zksysAddress: address,
-      zksysTransferHash: saved.hash,
+      zksysTransferHash: originalHash,
+      ...(replacementHash ? { zksysReplacementHash: replacementHash } : {}),
       zksysChainId: '57057',
       zksysJournalContainerVersion: 1,
       zksysSignatures: signatures,
-      zksysAuthorizations: authorizations,
+      zksysAuthorizations: 0,
       zksysInjectedBroadcasts: 1,
       zksysFeeEstimates: estimates,
       zksysRestoredFromJournal: phase === 'restart',

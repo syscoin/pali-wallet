@@ -1,6 +1,12 @@
 import { Interface } from 'ethers';
 
-import { MAX_PRIVACY_RELAY_TRANSACTIONS } from './withdrawalTransactionTypes.ts';
+import type { PrivateVaultArchiveSelection } from './privateVaultTypes.ts';
+import {
+  submittedWithdrawalAttempts,
+  MAX_PRIVACY_RELAY_TRANSACTIONS,
+  MAX_PRIVACY_WITHDRAWAL_ATTEMPTS,
+  type IPrivacyWithdrawalJournal,
+} from './withdrawalTransactionTypes.ts';
 
 // The caller must bind the journal and identity to a freshly re-read encrypted
 // note under the persistence mutex and revalidate immediately before storage.
@@ -30,17 +36,11 @@ type SubmittedWithdrawal = { phase: 'submitted'; transactionHash: string } & (
       transactionHashes?: readonly string[];
     }
 );
-interface ISubmittedDeposit {
-  from: string;
-  nonce: string;
-  phase: 'submitted';
-  transactionHash: string;
-}
 interface ISpentCompletionRequest {
   assertCurrent: () => void;
-  deposit?: ISubmittedDeposit;
   nullifierHash: string; // Kept local; never put into RPC arguments.
   poolAddress: string;
+  retainedWithdrawals?: readonly SubmittedWithdrawal[];
   rpc: Rpc;
   withdrawal: SubmittedWithdrawal;
 }
@@ -56,20 +56,113 @@ const quantity = (x: unknown): bigint => {
     throw new Error('invalid');
   return BigInt(x);
 };
-const expectedAccount = (from: unknown, nonce: unknown) => {
-  if (
-    !ADDRESS.test(lower(from)) ||
-    typeof nonce !== 'string' ||
-    !DECIMAL.test(nonce) ||
-    BigInt(nonce) >= BigInt(1) << BigInt(64)
-  )
-    throw new Error('invalid');
+const validAccount = (from: unknown, nonce: unknown): boolean =>
+  ADDRESS.test(lower(from)) &&
+  typeof nonce === 'string' &&
+  DECIMAL.test(nonce) &&
+  BigInt(nonce) < BigInt(1) << BigInt(64);
+
+/** Project only submitted transaction evidence from the selected encrypted note. */
+export function spentCompletionWithdrawals(
+  journal: IPrivacyWithdrawalJournal,
+  selection?: PrivateVaultArchiveSelection
+): Pick<SpentCompletionRequest, 'withdrawal' | 'retainedWithdrawals'> {
+  if (selection !== undefined && selection !== 'earlier')
+    throw new Error('privacy_spent_proof_unavailable');
+  const candidates = submittedWithdrawalAttempts(journal);
+  const scoped =
+    selection === 'earlier' ? candidates.slice(1) : candidates.slice(0, 1);
+  const attempts = scoped.map(({ entry, hashes }): SubmittedWithdrawal => {
+    const { mode, phase } = entry;
+    const transactionHash = hashes[0]!;
+    if (mode === 'direct' && validAccount(entry.from, entry.nonce))
+      return {
+        mode,
+        phase,
+        transactionHash,
+        from: entry.from!,
+        nonce: entry.nonce!,
+      };
+    if (
+      mode === 'relayed' &&
+      entry.from === undefined &&
+      entry.nonce === undefined
+    )
+      return {
+        mode,
+        phase,
+        transactionHash,
+        ...(entry.transactionHashes ? { transactionHashes: hashes } : {}),
+      };
+    throw new Error('privacy_spent_proof_unavailable');
+  });
+  const [withdrawal, ...retainedWithdrawals] = attempts;
+  if (!withdrawal) throw new Error('privacy_spent_proof_unavailable');
+  return {
+    withdrawal,
+    ...(retainedWithdrawals.length ? { retainedWithdrawals } : {}),
+  };
+}
+
+type CompletionCandidate = {
+  account?: { from: string; nonce: string };
+  hash: string;
 };
+
+function completionCandidates(req: SpentCompletionRequest) {
+  const retained = req.retainedWithdrawals ?? [];
+  if (
+    !Array.isArray(retained) ||
+    retained.length >= MAX_PRIVACY_WITHDRAWAL_ATTEMPTS
+  )
+    throw new Error('privacy_spent_proof_unavailable');
+  const attempts = [req.withdrawal, ...retained].map((entry) => {
+    if (
+      !entry ||
+      entry.phase !== 'submitted' ||
+      !HASH.test(lower(entry.transactionHash))
+    )
+      throw new Error('privacy_spent_proof_unavailable');
+    const hash = lower(entry.transactionHash);
+    if (entry.mode === 'direct' && validAccount(entry.from, entry.nonce))
+      return {
+        account: { from: lower(entry.from), nonce: entry.nonce },
+        hashes: [hash],
+      };
+    if (
+      entry.mode !== 'relayed' ||
+      entry.from !== undefined ||
+      entry.nonce !== undefined
+    )
+      throw new Error('privacy_spent_proof_unavailable');
+    const hashes = entry.transactionHashes ?? [hash];
+    if (
+      !Array.isArray(hashes) ||
+      !hashes.length ||
+      hashes.length > MAX_PRIVACY_RELAY_TRANSACTIONS ||
+      hashes[0] !== hash ||
+      !hashes.every((candidate) => HASH.test(candidate)) ||
+      new Set(hashes).size !== hashes.length
+    )
+      throw new Error('privacy_spent_proof_unavailable');
+    return { hashes };
+  });
+  // Check every known primary hash before walking a relay's replacement hints.
+  const candidates = new Map<string, CompletionCandidate>();
+  for (let index = 0; index < MAX_PRIVACY_RELAY_TRANSACTIONS; index++) {
+    for (const { account, hashes } of attempts) {
+      const hash = hashes[index];
+      if (hash && (!candidates.has(hash) || account))
+        candidates.set(hash, { account, hash });
+    }
+  }
+  return candidates;
+}
 
 /**
  * Proves receipt-level finality against the configured RPC, not the privacy
  * service. Tx-hash-specific requests still disclose that public transaction to
- * the RPC; checking a related deposit hash can also link deposit to withdrawal.
+ * the RPC. This function requests only withdrawal transaction hashes.
  * The caller must obtain user consent before invoking this function.
  * No note preimage or nullifier is sent to the RPC. The RPC and Ethereum
  * finality are trust assumptions; this is not a cryptographic receipt proof.
@@ -83,49 +176,10 @@ export async function prepareSpentCompletion(
     assertCurrent = req.assertCurrent;
   if (typeof rpc !== 'function' || typeof assertCurrent !== 'function')
     throw new Error('privacy_spent_proof_unavailable');
-  if (
-    !ADDRESS.test(pool) ||
-    !HASH.test(nullifier) ||
-    !req.withdrawal ||
-    req.withdrawal.phase !== 'submitted' ||
-    !HASH.test(lower(req.withdrawal.transactionHash)) ||
-    !['direct', 'relayed'].includes(req.withdrawal.mode)
-  )
+  if (!ADDRESS.test(pool) || !HASH.test(nullifier))
     throw new Error('privacy_spent_proof_unavailable');
-  const w = {
-    ...req.withdrawal,
-    transactionHash: lower(req.withdrawal.transactionHash),
-    from: lower(req.withdrawal.from),
-  };
-  if (w.mode === 'direct') expectedAccount(w.from, w.nonce);
-  else if (
-    req.withdrawal.from !== undefined ||
-    req.withdrawal.nonce !== undefined
-  )
-    throw new Error('privacy_spent_proof_unavailable');
-  const d = req.deposit
-    ? {
-        ...req.deposit,
-        transactionHash: lower(req.deposit.transactionHash),
-        from: lower(req.deposit.from),
-      }
-    : undefined;
-  if (d && (d.phase !== 'submitted' || !HASH.test(d.transactionHash)))
-    throw new Error('privacy_spent_proof_unavailable');
-  if (d) expectedAccount(d.from, d.nonce);
-  const candidates =
-    req.withdrawal.mode === 'relayed' &&
-    req.withdrawal.transactionHashes !== undefined
-      ? [...req.withdrawal.transactionHashes]
-      : [w.transactionHash];
-  if (
-    !candidates.length ||
-    candidates.length > MAX_PRIVACY_RELAY_TRANSACTIONS ||
-    candidates[0] !== w.transactionHash ||
-    candidates.some((hash) => !HASH.test(hash)) ||
-    new Set(candidates).size !== candidates.length
-  )
-    throw new Error('privacy_spent_proof_unavailable');
+  const candidatesByHash = completionCandidates(req);
+  const candidates = [...candidatesByHash.values()];
   type Evidence = {
     anchor: { hash: string; number: string };
     blockHash: string;
@@ -197,9 +251,7 @@ export async function prepareSpentCompletion(
 
     const blocks = new Map<string, Promise<Record<string, any>>>();
     const verify = async (
-      hash: string,
-      account?: { from?: string; nonce?: string },
-      requireEvent = false,
+      { account, hash }: CompletionCandidate,
       candidate = false
     ) => {
       const value = await read('eth_getTransactionReceipt', [hash], candidate);
@@ -212,10 +264,7 @@ export async function prepareSpentCompletion(
       )
         throw new Error('invalid');
       const blockNumber = quantity(receipt.blockNumber);
-      if (
-        blockNumber > quantity(anchor.number) ||
-        (requireEvent && receipt.status !== '0x1')
-      ) {
+      if (blockNumber > quantity(anchor.number) || receipt.status !== '0x1') {
         if (candidate) return null;
         throw new Error('invalid');
       }
@@ -235,57 +284,56 @@ export async function prepareSpentCompletion(
       )
         throw new Error('invalid');
       if (account) {
-        const tx = obj(await read('eth_getTransactionByHash', [hash]));
+        const tx = obj(
+          await read('eth_getTransactionByHash', [hash], candidate)
+        );
         if (
           lower(tx.hash) !== hash ||
           lower(tx.from) !== account.from ||
-          quantity(tx.nonce) !== BigInt(account.nonce!) ||
+          quantity(tx.nonce) !== BigInt(account.nonce) ||
           lower(tx.blockHash) !== lower(receipt.blockHash) ||
           quantity(tx.blockNumber) !== blockNumber
         )
           throw new Error('invalid');
       }
-      let event = '';
-      if (requireEvent) {
-        if (
-          !Array.isArray(receipt.logs) ||
-          receipt.logs.length > MAX_RECEIPT_LOGS
-        )
-          throw new Error('invalid');
-        const matching = receipt.logs.filter((item: unknown) => {
-          try {
-            const log = obj(item);
-            if (
-              lower(log.address) !== pool ||
-              lower(log.transactionHash) !== hash ||
-              lower(log.blockHash) !== lower(receipt.blockHash) ||
-              quantity(log.blockNumber) !== blockNumber ||
-              (log.removed !== undefined && log.removed !== false) ||
-              !Array.isArray(log.topics) ||
-              log.topics.length !== 2 ||
-              !log.topics.every((topic: unknown) => HASH.test(lower(topic))) ||
-              typeof log.data !== 'string' ||
-              !/^0x[0-9a-fA-F]{192}$/.test(log.data)
-            )
-              return false;
-            const parsed = ABI.parseLog({ topics: log.topics, data: log.data });
-            return (
-              parsed?.name === 'Withdrawal' &&
-              lower(parsed.args.nullifierHash) === nullifier
-            );
-          } catch {
+      if (
+        !Array.isArray(receipt.logs) ||
+        receipt.logs.length > MAX_RECEIPT_LOGS
+      )
+        throw new Error('invalid');
+      const matching = receipt.logs.filter((item: unknown) => {
+        try {
+          const log = obj(item);
+          if (
+            lower(log.address) !== pool ||
+            lower(log.transactionHash) !== hash ||
+            lower(log.blockHash) !== lower(receipt.blockHash) ||
+            quantity(log.blockNumber) !== blockNumber ||
+            (log.removed !== undefined && log.removed !== false) ||
+            !Array.isArray(log.topics) ||
+            log.topics.length !== 2 ||
+            !log.topics.every((topic: unknown) => HASH.test(lower(topic))) ||
+            typeof log.data !== 'string' ||
+            !/^0x[0-9a-fA-F]{192}$/.test(log.data)
+          )
             return false;
-          }
-        });
-        if (matching.length !== 1) {
-          if (candidate) return null;
-          throw new Error('invalid');
+          const parsed = ABI.parseLog({ topics: log.topics, data: log.data });
+          return (
+            parsed?.name === 'Withdrawal' &&
+            lower(parsed.args.nullifierHash) === nullifier
+          );
+        } catch {
+          return false;
         }
-        event = JSON.stringify([
-          lower(matching[0].data),
-          matching[0].topics.map(lower),
-        ]);
+      });
+      if (matching.length !== 1) {
+        if (candidate) return null;
+        throw new Error('invalid');
       }
+      const event = JSON.stringify([
+        lower(matching[0].data),
+        matching[0].topics.map(lower),
+      ]);
       return {
         anchor,
         hash,
@@ -297,9 +345,7 @@ export async function prepareSpentCompletion(
     let selected: Evidence | null = null;
     if (evidence || candidates.length === 1) {
       selected = await verify(
-        evidence?.hash ?? w.transactionHash,
-        w.mode === 'direct' ? w : undefined,
-        true
+        evidence ? candidatesByHash.get(evidence.hash)! : candidates[0]!
       );
     } else {
       // Four bounded workers share block reads and the operation deadline.
@@ -310,12 +356,7 @@ export async function prepareSpentCompletion(
             while (!selected && next < candidates.length) {
               const index = next++;
               try {
-                const value = await verify(
-                  candidates[index]!,
-                  undefined,
-                  true,
-                  true
-                );
+                const value = await verify(candidates[index]!, true);
                 if (value && !selected) {
                   selected = value;
                   // A verified replacement ends hint exploration. Peers cannot
@@ -341,7 +382,6 @@ export async function prepareSpentCompletion(
       (evidence && JSON.stringify(selected) !== JSON.stringify(evidence))
     )
       throw new Error('invalid');
-    if (d) await verify(d.transactionHash, d);
     // Check that the exact finalized anchor has not changed during the reads.
     const after = obj(
       await read('eth_getBlockByNumber', [anchor.number, false])

@@ -107,7 +107,11 @@ export class UtxoActivityRows {
     for (const row of window.rows.keys()) if (!keep.has(row)) this.forget(window, row);
   };
 
-  readUtxoActivityPage = async (input: Readonly<{ page: number }>, external: AbortSignal): Promise<UtxoActivityPage> => {
+  readUtxoActivityPage = async (
+    input: Readonly<{ page: number }>,
+    external: AbortSignal,
+    assertCurrent?: () => void,
+  ): Promise<UtxoActivityPage> => {
     const page = input.page, window = this.window, owner = this.getContext();
     if (!owner || !Number.isSafeInteger(page) || page < 1) throw unavailable();
     const request = new AbortController(), stop = followAbort(external, request);
@@ -115,6 +119,7 @@ export class UtxoActivityRows {
     const current = () => {
       if (request.signal.aborted) throw cancelled();
       this.assertWindow(window, owner);
+      assertCurrent?.();
     };
     let result: UtxoActivityPage | undefined;
     const admitted: UtxoActivityRow[] = [];

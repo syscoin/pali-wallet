@@ -58,7 +58,7 @@ private val ANCHOR_WIRE = listOf(
   "eth_call" to """[{"to":"$ANCHOR_POOL","data":"0xba70f757"},"0x8b1fa9"]""",
   "eth_call" to """[{"to":"$ANCHOR_POOL","data":"0x4ecf518b"},"0x8b1fa9"]""",
   "eth_call" to """[{"to":"$ANCHOR_POOL","data":"0x8bca6d16"},"0x8b1fa9"]""",
-  "eth_getBlockByNumber" to """["0x8b1fa9",false]""",
+  "eth_getBlockByNumber" to """["finalized",false]""",
   "eth_call" to """[{"to":"$ANCHOR_POOL","data":"0x6d9833e3${"ab".repeat(32)}"},"latest"]"""
 )
 
@@ -248,7 +248,7 @@ class PaliPublicSnapshotDownloadTest {
       assertEquals(PaliPublicSnapshotError.CANCELLED, errorCode(await(cancelled)))
 
       val reads = listOf(AnchorRead.CHAIN_ID, AnchorRead.BLOCK, AnchorRead.NEXT_INDEX, AnchorRead.LAST_ROOT,
-        AnchorRead.LEVELS, AnchorRead.DENOMINATION, AnchorRead.BLOCK, AnchorRead.KNOWN_ROOT)
+        AnchorRead.LEVELS, AnchorRead.DENOMINATION, AnchorRead.FINALIZED, AnchorRead.KNOWN_ROOT)
       for ((index, read) in (reads + reads).withIndex()) {
         val id = index + 1
         val (handle, pending) = prepare(ANCHOR_PATH, read, id.toLong())
@@ -259,7 +259,7 @@ class PaliPublicSnapshotDownloadTest {
           PaliPublicSnapshotDownloader.prepare("eth-1", "https://snapshot.example") { error("GET competed with retained anchor") }
         }
         val prefix = anchorReply(id)
-        checkBody(handle, if (id == 1) 202 else 200, if (read == AnchorRead.BLOCK) BLOCK_CAP else SCALAR_CAP) {
+        checkBody(handle, if (id == 1) 202 else 200, if (read == AnchorRead.BLOCK || read == AnchorRead.FINALIZED) BLOCK_CAP else SCALAR_CAP) {
           prefix.getOrElse(it) { 32.toByte() }
         }
       }

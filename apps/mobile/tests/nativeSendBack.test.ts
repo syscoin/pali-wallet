@@ -1,4 +1,5 @@
 import { walletUiFixture } from './walletUiFixture.ts';
+import { screenFixture } from './screenFixture.ts';
 import { AUTOMATIC_FEE, snapshotEvmFeeChoice } from '../../../source/shared/transactionFeeChoice.ts';
 import { createAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import { parseErc20Units, encodeErc20Transfer } from '../../../source/shared/erc20.ts';
@@ -21,7 +22,7 @@ import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import type { NativeOperationCredential } from '../src/custody/types.ts';
 import { formatBaseUnits, parseDecimalAmount } from '../src/core/amounts.ts';
 import { normalizeDecimalInput } from '../../../source/shared/decimalInput.ts';
-import { SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE, ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
+import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
@@ -34,7 +35,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
-    createElement(type: unknown, props: Record<string, unknown> | null, ...children: unknown[]): Element { return { type, props: props ?? {}, children }; },
+    createElement(type: unknown, props: Record<string, unknown> | null, ...children: unknown[]): Element { return type === prompt.render ? prompt.render(props) : { type, props: props ?? {}, children }; },
     useState(initial: unknown) { const c=cell(); if (!Object.hasOwn(c,'value')) c.value=typeof initial==='function'?(initial as () => unknown)():initial;
       c.setter ??= (next: unknown)=>{c.value=typeof next==='function'?(next as (old: unknown)=>unknown)(c.value):next;}; return [c.value,c.setter]; },
     useRef(initial: unknown) { const c=cell(); c.value ??= {current: initial}; return c.value; },
@@ -67,10 +68,12 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     '../../../../source/shared/erc20':{formatTokenUnits:()=>'',parseErc20Units},
     '../../../../source/shared/evmRecipientChoices':{findLocalEvmRecipientChoices:()=>[]},
     '../../../../source/utils/nftTokenId':{normalizeNftTokenId:()=>''},
-    '../custody/transfers':{SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE, ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE},
+    '../custody/transfers':{ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE},
   };
   const source=readFileSync(new NodeURL('../src/screens/NativeSend.tsx',import.meta.url),'utf8');
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText;
+  const prompt = screenFixture(new NodeURL('../src/screens/SubmissionLeavePrompt.tsx', import.meta.url), 'SubmissionLeavePrompt', deps);
+  deps['./SubmissionLeavePrompt'] = { SubmissionLeavePrompt: prompt.render };
   const module={exports:{} as Record<string,any>};
   runInNewContext(code,{module,exports:module.exports,Error,URL,AbortController,Keyboard:native.Keyboard,require(name:string){ const walletUi = walletUiFixture(name, deps); if (walletUi) return walletUi;assert.ok(Object.hasOwn(deps,name),`Unexpected import ${name}`);return deps[name];}});
   let snapshot: any={phase:'submitting',review:null,hash:null,message:null,intent:null,collectible:undefined};
@@ -80,7 +83,6 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const confirmed: string[] = [];
   const credentials: NativeOperationCredential[] = [];
   let confirmationFailure: Error | undefined;
-  let recoveryFailure: Error | undefined;
   let collectibleBalance: bigint | undefined;
   let collectiblePreparationGate: Promise<void> | undefined;
   let confirmationGate: Promise<void> | undefined, signatures = 0;
@@ -123,12 +125,12 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
       snapshot = { ...snapshot, phase: 'review', message: null, review: {
         id: 'collectible-review', context, from: account.address, recipient, amountUnits: '0',
         maximumFeeUnits: '21000', totalUnits: '21000', gasLimit: '21000', maximumFeePerGas: '1',
-        priorityFeePerGas: '0', nonce: '0', retry: false,
+        priorityFeePerGas: '0', nonce: '0',
         collectible: { ...selected, kind: 'nft-transfer', chainId: String(context.chainId),
           from: account.address, recipient, tokenId, amountUnits },
       } };
     },
-    async recover() { if (recoveryFailure) throw recoveryFailure; }};
+  };
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
   const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,replacement,ledgerConnection,beforeClose,tokenView,recipientResolver,account,availableAmount,onChangeNetwork,onChangeAsset,assetChoices,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
@@ -137,7 +139,6 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     clearCachedAssets() { assetChoices = undefined; },
     seedDraft(draft: NativeSendInitialDraft, saved?: SavedCollectible) { initialDraft = draft; collectible = saved; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
-    failRecovery(message: string) { recoveryFailure = new Error(message); },
     setCollectibleBalance(value: string) { collectibleBalance = BigInt(value); },
     holdCollectiblePreparation(wait: Promise<void>) { collectiblePreparationGate = wait; },
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
@@ -169,12 +170,34 @@ for (const failure of ['DEVICE_UNLOCK_UNAVAILABLE', 'CANCELLED']) test(`${failur
   button(f.render(), 'Confirm and send').props.onPress(); await settle();
   assert.strictEqual(f.snapshot.review, review);
   assert.equal(f.signatures(), 0); assert.equal(f.confirmed.length, 1);
-  assert(all(f.render()).some(node => node.props.accessibilityRole === 'alert'));
+  const alert = one(f.render(), 'Text', node => node.props.accessibilityRole === 'alert');
+  if (failure === 'CANCELLED') assert.equal(alert.children[0], 'Request cancelled. You can try again.');
   assert.equal(one(f.render(), 'Screen').props.scrollResetKey, reviewKey);
   button(f.render(), 'Confirm and send').props.onPress(); await settle();
   assert.deepEqual(f.credentials.map(value => value.method), ['device', 'device']);
   assert.equal(one(f.render(), 'Screen').props.scrollResetKey, reviewKey);
   assert.equal(f.signatures(), 1); f.dispose();
+});
+
+test('losing the reviewed transaction during confirmation keeps the wallet lock guidance', async () => {
+  const f = setup();
+  f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  editSend(f, 'Amount in ETH', '1');
+  reviewSend(f);
+  await settle();
+
+  let finish!: () => void;
+  f.holdConfirmation(new Promise<void>(resolve => { finish = resolve; }));
+  button(f.render(), 'Confirm and send').props.onPress();
+  f.setSnapshot({ ...f.snapshot, phase: 'idle', review: null });
+  finish();
+  await settle();
+
+  const alert = one(f.render(), 'Text', node => node.props.accessibilityRole === 'alert');
+  assert.equal(alert.children[0], 'Your wallet was locked. Unlock to continue.');
+  assert.equal(f.signatures(), 0);
+  f.dispose();
 });
 
 test('submitted transfer shows a checkmark and exact Activity action without manual refresh', () => {
@@ -189,10 +212,15 @@ test('submitted transfer shows a checkmark and exact Activity action without man
   button(tree, 'Done').props.onPress(); assert.equal(f.counts().backs, 1); f.dispose();
 });
 
-test('uncertain submission retains explicit status and retry recovery controls', () => {
-  const f = setup(); f.setSnapshot({ ...f.snapshot, phase: 'unknown', review: null, hash: '0xunknown' });
-  const tree = f.render(); assert(button(tree, 'Check status')); assert(button(tree, 'Review retry'));
-  assert.equal(all(tree).some(node => node.props.title === 'Done'), false); f.dispose();
+test('uncertain submission links the exact transaction to Activity', () => {
+  const viewed: string[] = [];
+  const f = setup(undefined, undefined, undefined, undefined, hash => viewed.push(hash));
+  f.setSnapshot({ ...f.snapshot, phase: 'unknown', review: null, hash: '0xunknown' });
+  const tree = f.render();
+  button(tree, 'View transaction').props.onPress();
+  assert.deepEqual(viewed, ['0xunknown']);
+  assert.equal(all(tree).some(node => ['Check status', 'Review retry', 'Done'].includes(node.props.title)), false);
+  f.dispose();
 });
 
 test('French saved-state and capacity notices keep raw controller identity and suppress duplicate errors', async () => {
@@ -201,22 +229,19 @@ test('French saved-state and capacity notices keep raw controller identity and s
     resources: { fr: { translation: languageMessages('fr') }, en: { translation: languageMessages('en') } },
     interpolation: { escapeValue: false } });
   const localization = { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) };
-  for (const [message, failure, titleKey, bodyKey] of [
-    [ASSET_STATE_SAVED_MESSAGE, 'EXPIRED', 'savedNotSubmitted', 'asset_state_saved_message'],
-    [SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE, 'SIGNED_STORAGE_FULL', 'checkEarlierTransaction', 'signed_storage_full_previous_message'],
+  for (const [message, titleKey, bodyKey] of [
+    [ASSET_STATE_SAVED_MESSAGE, 'savedNotSubmitted', 'asset_state_saved_message'],
+    [SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE, 'checkEarlierTransaction', 'signed_storage_full_previous_message'],
   ] as const) {
     const f = setup(undefined, undefined, undefined, undefined, undefined, undefined, undefined, localization);
     try {
       f.setSnapshot({ ...f.snapshot, phase: 'unknown', hash: '0xsaved', message });
       const translated = i18n.t(`mobile.sendAssetViews.evm.${bodyKey}`);
       assert.notEqual(translated, message);
-      let tree = f.render();
+      const tree = f.render();
       assert(all(tree).some(node => node.children.includes(i18n.t(`mobile.sendAssetViews.evm.${titleKey}`))));
       assert(one(tree, 'View', node => node.props.accessibilityRole === 'alert'));
       assert.equal(one(tree, 'Notice').props.body, translated);
-      f.failRecovery(failure);
-      button(tree, i18n.t('settings.smartAccountInfrastructureCheckStatus')).props.onPress(); await settle();
-      tree = f.render();
       assert.equal(f.snapshot.message, message, 'translation must not change model identity');
       assert.equal(one(tree, 'Notice').props.body, translated);
       assert.equal(all(tree).filter(node => node.type === 'Text' && node.props.accessibilityRole === 'alert').length, 0,
@@ -820,7 +845,7 @@ for (const kind of ['native', 'erc20', 'nft'] as const) test(`Trezor ${kind} ret
     data: intent?.kind === 'erc20-transfer' ? encodeErc20Transfer(recipient, intent.amountUnits)
       : intent ? encodeNftTransferData(intent) : '0x' }).unsignedSerialized;
   const resumed = trezorResumeDraft({ id: 'resume', kind: 'evm', accountId: 'trezor:60:0', networkId: 'ethereum', unsignedTransaction, ...(intent ? { intent } : {}) });
-  if (resumed.kind === 'utxo') throw Error('Unexpected UTXO draft');
+  if (resumed.kind === 'utxo' || resumed.kind === 'utxo-replacement') throw Error('Unexpected UTXO draft');
   const f = setup(kind === 'erc20' ? token : undefined);
   try {
     f.seedDraft(resumed.draft, resumed.kind === 'collectible' ? resumed.collectible : undefined);

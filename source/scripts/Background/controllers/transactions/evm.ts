@@ -7,7 +7,9 @@ import {
   mapEvmExplorerTokenTransfer as mapTokenTransfer,
   mergeEvmExplorerTransactions,
   explorerApiError,
+  belongsToEvmHistoryAccount,
   markEvmHistoryIncomplete,
+  markEvmExplorerHasMore,
   isEvmHistoryIncomplete,
 } from '../../../../shared/evmHistory';
 import { assertEvmReceiptCoherence } from '../../../../shared/evmTransactionObservation';
@@ -169,6 +171,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   ): Promise<{
     error?: string;
     hasMore?: boolean;
+    pendingHashes?: ReadonlySet<string>;
     transactions: IEvmTransactionResponse[] | null;
   }> => {
     const owner = new AbortController();
@@ -405,6 +408,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         allTransactions = transactions;
       }
 
+      let pendingHashes: ReadonlySet<string> | undefined;
       // Process pending transactions if they were fetched
       if (
         fetchPending &&
@@ -438,6 +442,28 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
             // Combine pending with confirmed transactions
             allTransactions = [...pendingTxs, ...allTransactions];
+            if (
+              !explorerApiError(
+                pendingData,
+                pendingResponse.status,
+                'txlist'
+              ) &&
+              pendingTxs.every(
+                (tx: IEvmTransactionResponse) =>
+                  /^0x[0-9a-f]{64}$/i.test(tx.hash) &&
+                  belongsToEvmHistoryAccount(tx, address.toLowerCase())
+              )
+            )
+              pendingHashes = new Set(
+                pendingTxs.map((tx: IEvmTransactionResponse) =>
+                  tx.hash.toLowerCase()
+                )
+              );
+          } else if (
+            !explorerApiError(pendingData, pendingResponse.status, 'txlist')
+          ) {
+            // Recognize the explorer's explicit empty-result envelope.
+            pendingHashes = new Set();
           }
         } catch (pendingError) {
           // Not all APIs support pending transactions, so this is not a critical error
@@ -478,7 +504,18 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       return {
         transactions: finalTransactions, // Return the array (even if empty) - empty array is valid
         error: tokenError,
-        hasMore: finalTransactions.length >= 30, // heuristic for initial load
+        ...(pendingHashes !== undefined && { pendingHashes }),
+        // Either feed can have another page independently. The wallet also
+        // trims the combined first page to 30, even if both feeds fit.
+        hasMore:
+          baseTxCount >= 30 ||
+          tokenEventResults.length >= 30 ||
+          (allTransactions.length > 30 &&
+            allTransactions.filter(
+              (tx) =>
+                tx.historySource !==
+                EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending
+            ).length > 30),
       };
     } finally {
       clearTimeout(timer);
@@ -615,6 +652,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     let rawTransactions: IEvmTransactionResponse[] = [];
     const isSmartAccount = Boolean((currentAccount as any).isSmartAccount);
     let apiSucceeded = false;
+    let explorerHasMore: boolean | undefined;
+    let pendingHashes: ReadonlySet<string> | undefined;
     let incompleteHistory = false;
 
     // Try to fetch from external API first (more efficient)
@@ -639,6 +678,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         );
         rawTransactions = apiResult.transactions;
         apiSucceeded = true;
+        explorerHasMore = apiResult.hasMore;
+        pendingHashes = apiResult.pendingHashes;
         incompleteHistory = Boolean(apiResult.error);
       } else if (apiResult.error) {
         // Always throw when API is configured but fails
@@ -881,13 +922,15 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
     // Process all transactions consistently, regardless of source (API or RPC)
     check();
-    const processedTransactions =
-      validateAndManageUserTransactions(rawTransactions);
+    const processedTransactions = validateAndManageUserTransactions(
+      rawTransactions,
+      incompleteHistory ? undefined : pendingHashes
+    ) as IEvmTransactionResponse[];
+    if (explorerHasMore !== undefined)
+      markEvmExplorerHasMore(processedTransactions, explorerHasMore);
     return incompleteHistory
-      ? markEvmHistoryIncomplete(
-          processedTransactions as IEvmTransactionResponse[]
-        )
-      : (processedTransactions as IEvmTransactionResponse[]);
+      ? markEvmHistoryIncomplete(processedTransactions)
+      : processedTransactions;
   };
 
   return {

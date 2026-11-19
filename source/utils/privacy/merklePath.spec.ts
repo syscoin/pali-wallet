@@ -3,6 +3,7 @@ import {
   copyMerklePathIndex,
   createMerklePathIndex,
   getMerklePath,
+  getMerklePrefixWork,
   recordMerkleSubtree,
 } from './merklePath';
 
@@ -57,6 +58,17 @@ it.each([1, 2, 255, 256, 257, 511, 512, 513, 700, 1024])(
       ).toEqual(fullPath(t.leaves, leafIndex));
   }
 );
+
+it('derives the checkpoint root and paths from both cached subtrees and a partial right edge', async () => {
+  const t = tree(800);
+  const expected = tree(770);
+  const prefix = t.leaves.slice(0, 770);
+  const work = getMerklePrefixWork(t.index, prefix);
+  expect(work).toEqual(expected.work);
+  await expect(
+    getMerklePath(t.index, prefix, 769, work, options())
+  ).resolves.toEqual(fullPath(prefix, 769));
+});
 
 it('copy-on-write preserves a published prefix while an append records new completed subtrees', async () => {
   const t = tree(300),

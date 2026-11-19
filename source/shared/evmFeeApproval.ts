@@ -385,7 +385,7 @@ export function assertEvmFeeEstimateApproved(
     invalid('Reviewed EVM maximum fee is below the current base fee');
 }
 
-/** Initial and exact replay admission share live fee, gas and nonce checks. */
+/** Validate the nonce and block fee conditions for a fee replacement. */
 export function assertEvmSpeedUpExecutable(
   transaction: Pick<
     Transaction,

@@ -1,6 +1,9 @@
 import { configureStore } from '@reduxjs/toolkit';
 
-import { isEvmHistoryIncomplete } from '../../../../shared/evmHistory';
+import {
+  EVM_TRANSACTION_HISTORY_SOURCE,
+  isEvmHistoryIncomplete,
+} from '../../../../shared/evmHistory';
 import MainController from 'scripts/Background/controllers/MainController';
 import { CancellablePromises } from 'scripts/Background/controllers/promises/cancellablesPromises';
 import vaultReducer from 'state/vault';
@@ -48,6 +51,10 @@ const OLD_HASH = `0x${'cd'.repeat(32)}`;
 const network = ROLLUX_DEFAULT_NETWORK.network;
 type Mode =
   | 'empty'
+  | 'pending'
+  | 'pendingEmpty'
+  | 'pendingUnsupported'
+  | 'pendingMalformed'
   | 'tokens'
   | 'base500-tokenHealthy'
   | 'base500-tokenEmpty'
@@ -238,6 +245,46 @@ beforeEach(() => {
           throw new SyntaxError('Synthetic malformed token JSON');
         },
       };
+    if (action === 'pendingtxlist') {
+      switch (mode) {
+        case 'pending':
+          return response(200, [
+            {
+              ...tokenRow,
+              hash: `0x${'bc'.repeat(32)}`,
+              nonce: '2',
+              blockNumber: undefined,
+              blockHash: undefined,
+            },
+          ]);
+        case 'pendingEmpty':
+          return {
+            ...response(200, []),
+            json: async () => ({
+              status: '0',
+              message: 'No transactions found',
+              result: [],
+            }),
+          } as Response;
+        case 'pendingUnsupported':
+          return {
+            ...response(200, []),
+            json: async () => ({
+              status: '0',
+              message: 'NOTOK',
+              result: [],
+            }),
+          } as Response;
+        case 'pendingMalformed':
+          return response(200, [{ hash: 'not a hash' }]);
+        case 'empty':
+        case 'tokens':
+        case 'base500-tokenHealthy':
+        case 'base500-tokenEmpty':
+        case 'optionalPendingFailure':
+          break;
+      }
+    }
     return response(
       200,
       action === 'tokentx' &&
@@ -540,3 +587,63 @@ it('preserves current MainController rows on failure and adds recovered rows on 
     finalReads: 6,
   });
 });
+
+it.each([false, true])(
+  'expires explorer pending rows after a successful snapshot while preserving local and mined history (mixed=%s)',
+  async (mixed) => {
+    const refresh = () =>
+      mockWallet.updateUserTransactionsState({
+        isBitcoinBased: false,
+        activeNetwork: network,
+        isPolling: true,
+        bypassCompletedCache: true,
+      });
+    mode = 'pending';
+    await refresh();
+    expect(rows()).toHaveLength(1);
+    const [pending] = rows();
+    expect(pending.historySource).toBe(
+      EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending
+    );
+    const legacyLocal = {
+      ...pending,
+      hash: `0x${'aa'.repeat(32)}`,
+      from: OWNER,
+      to: OTHER,
+      nonce: 4,
+      data: '0x',
+      gasLimit: '21000',
+    };
+    const mined = {
+      ...oldRow,
+      historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending,
+    };
+    if (mixed)
+      mockStore.dispatch({
+        type: 'vault/setAccountTransactions',
+        payload: {
+          chainId: network.chainId,
+          networkType: 'ethereum',
+          transactions: [legacyLocal, mined, pending],
+        },
+      });
+
+    for (const failed of ['pendingUnsupported', 'pendingMalformed'] as const) {
+      mode = failed;
+      await refresh();
+      expect(rows().some(({ hash }: any) => hash === pending.hash)).toBe(true);
+    }
+    reads.length = 0;
+    mode = 'pendingEmpty';
+    await refresh();
+    expect(
+      rows()
+        .map(({ hash }: any) => hash)
+        .sort()
+    ).toEqual(mixed ? [legacyLocal.hash, mined.hash].sort() : []);
+    expect(
+      mockStore.getState().vaultGlobal.transactionHistoryStatus.state
+    ).toBe('ready');
+    expect(reads).toEqual(['txlist', 'pendingtxlist', 'tokentx']);
+  }
+);

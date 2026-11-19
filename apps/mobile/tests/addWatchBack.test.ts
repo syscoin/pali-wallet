@@ -4,6 +4,7 @@ import { watchNotificationChoices } from '../src/notifications/choices.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import * as activityFiltering from '../src/activity/activityFiltering.ts';
 import * as syscoinAssetIds from '../../../source/shared/syscoinAssetIds.ts';
+import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../../source/shared/evmHistory.ts';
 import * as sptInventory from '../../../source/shared/sptInventory.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
@@ -21,7 +22,7 @@ import { UTXO_NETWORKS, findUtxoNetwork, getUtxoNetwork, isCustomUtxoNetworkId }
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
-import type { NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
+import { activityRowTimestamp, type NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
 import { activityAssetIcon } from '../src/activity/assetIcon.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
@@ -149,9 +150,11 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         './ActivityListRow': activityListRow,
         './TransactionDetailLayout': { TransactionDetailLayout: 'TransactionDetailLayout' },
         '../activity/activityAmountLabel': { compactActivityAmountLabel },
+        '../activity/nativeActivity': { activityRowTimestamp },
         '../activity/assetIcon': { activityAssetIcon },
         '../../../../source/shared/erc20': {},
         '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
+        '../../../../source/shared/evmHistory': { EVM_TRANSACTION_HISTORY_SOURCE },
         '../../../../source/shared/sptInventory': sptInventory,
         './NativeSptAssets': { NativeSptAssets: 'NativeSptAssets' },
       };
@@ -186,7 +189,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum!, view: { filter: 'all', showZero: false, anchor: null, offset: 0 },
           scopeKey: 'public-back-fixture', chainId: '1', networkName: 'Ethereum', nativeSymbol: 'ETH', explorerUrl: null,
           loadingMore: false, hasMore: false, error: null, coverage: 'network-transfers',
-          truncated: false, canViewSavedPending: false, savedPending: undefined } satisfies NativeActivitySnapshot,
+          truncated: false } satisfies NativeActivitySnapshot,
         accountLabel: 'Public account', onBack: () => shell.finishLeave('wallet'), navigation: shell.navigation,
       } : { authority, onAccounts() {}, onExit() { exits++; }, onLock() {}, navigation: shell.navigation };
       owner = 'child'; let tree = render.render(child, leaf, props()); render.flush(child);

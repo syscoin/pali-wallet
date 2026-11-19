@@ -129,7 +129,9 @@ it('cancel aborts a held ceremony and prevents a late completion from reaching t
     await Promise.resolve();
   });
   const signal = jest.mocked(runLocalPasskeyCeremony).mock.calls[0][1];
-  act(() => hook.result.current.cancel());
+  act(() => {
+    void hook.result.current.cancel();
+  });
   expect(signal.aborted).toBe(true);
   await act(async () => {
     ceremony.resolve({ kind: 'get', rawId: 'raw', clientDataJSON: 'client' });

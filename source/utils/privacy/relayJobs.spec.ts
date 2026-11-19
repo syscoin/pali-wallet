@@ -1,10 +1,7 @@
 import { AbiCoder, keccak256 } from 'ethers';
 
 import { PRIVACY_POOLS } from './registry';
-import {
-  readPrivacyRelayerJob,
-  readPrivacyRelayerJobPublicInputs,
-} from './relayJobs';
+import { readPrivacyRelayerJob } from './relayJobs';
 
 const JOB = '00000000-0000-4000-8000-000000001234';
 const proof = `0x${'01'.repeat(256)}`;
@@ -68,30 +65,6 @@ it('reads only the immutable job URL and returns bound claimed status without re
   });
   expect(Object.isFrozen(result)).toBe(true);
   expect(guard.mock.calls.length).toBeGreaterThan(1);
-});
-
-it('keeps hash-bound recovery inputs in the background-only projection', async () => {
-  const result = await readPrivacyRelayerJobPublicInputs(reference(), {
-    fetcher: async () => response(job()),
-    assertCurrent: () => undefined,
-  });
-  expect(result).toEqual({
-    root: args[0],
-    nullifierHash: args[1],
-    recipient: args[2],
-    relayer: args[3],
-    fee: '1',
-    refund: '0',
-  });
-  const status = await readPrivacyRelayerJob(reference(), {
-    fetcher: async () => response(job()),
-    assertCurrent: () => undefined,
-  });
-  expect(Object.keys(status).sort()).toEqual([
-    'claimedStatus',
-    'jobId',
-    'transactionHash',
-  ]);
 });
 
 it.each([

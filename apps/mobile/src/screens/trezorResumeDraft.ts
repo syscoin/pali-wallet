@@ -12,6 +12,12 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
   if (value.kind === 'infrastructure') throw Error('Infrastructure resume requires its original setup review');
   if (value.kind === 'smart-operation') throw Error('Smart account resume requires a fresh operation review');
   if (value.kind === 'external-psbt' || value.kind === 'external-signing') throw Error('External signing resume requires its original pending request');
+  if (value.kind === 'utxo-replacement') {
+    const { txid, mode } = value.replacement;
+    if (!/^[a-f0-9]{64}$/.test(txid) || (mode !== 'speed-up' && mode !== 'cancel') || value.feeChoice === undefined)
+      throw Error('Invalid Trezor UTXO replacement resume');
+    return { kind: 'utxo-replacement' as const, replacement: Object.freeze({ txid, mode }), feeChoice: snapshotUtxoFeeChoice(value.feeChoice) };
+  }
   if (value.kind === 'utxo') {
     if (value.feeChoice === undefined) throw Error('Invalid Trezor resume fees');
     return {

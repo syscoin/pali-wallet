@@ -229,7 +229,7 @@ function TokenContent({
       ? { kind: 'collectible', account, ...entry }
       : previous);
   };
-  const returnToCollectibles = () => setRoute({ kind: 'collectibles' });
+  const returnToCollectibles = () => setRouteState({ kind: 'collectibles' });
   const metadata =
     route.kind === 'import' ? snapshot.preview?.metadata : token?.metadata;
   const balance = (item: {
@@ -619,7 +619,7 @@ function TokenContent({
                               )
                           ) {
                             controller.closeDiscovery();
-                            setRoute({ kind: 'detail', contract: selected });
+                            setRouteState({ kind: 'detail', contract: selected });
                           }
                         }
                       );
@@ -673,7 +673,7 @@ function TokenContent({
                                   item.metadata.contractAddress === selected
                               )
                           )
-                            setRoute({ kind: 'list' });
+                            setRouteState({ kind: 'list' });
                         }
                       );
                     }}
@@ -999,13 +999,13 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, sa
           accessibilityLabel={hideBalances ? t('mobile.sendAssetViews.tokens.collectionBalanceHidden') : collectionBalance}>
           {collectionBalance}
         </Text>}
-        {enumeration.method === 'manual' ? <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.tokenIDLookupIsUnavailableEnterATokenIDManually')}</Text>
+        {enumeration.method === 'manual' ? <Text style={styles.warningText}>{t('mobile.sendAssetViews.tokens.tokenIDLookupIsUnavailableEnterATokenIDManually')}</Text>
           : !enumeration.tokenIds.length ? <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.noTokenIDsFoundForThisAccountYouCanStill')}</Text>
           : <>
             <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.chooseATokenIDToCheckOwnership')}</Text>
             {enumeration.tokenIds.map(tokenId => <Button key={tokenId} title={t('mobile.sendAssetViews.tokens.tokenId', { id: tokenId })} variant="secondary" size="compact"
               icon={draft.tokenId === tokenId ? 'check' : undefined} disabled={actionsDisabled || result.kind === 'loading'} onPress={() => selectTokenId(enumeration, tokenId)} />)}
-            {enumeration.partial ? <Text style={styles.muted}>{t('send.errorLoadingNfts')}</Text>
+            {enumeration.partial ? <Text style={styles.warningText}>{t('send.errorLoadingNfts')}</Text>
               : enumeration.hasMore && <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.showingTheFirst10TokenIDsEnterAnotherTokenID')}</Text>}
           </>}
       </Card>}

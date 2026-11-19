@@ -70,6 +70,7 @@ function fixture(
       ...(typeFour === 'unrelated' ? { from: '0x' + '44'.repeat(20) } : {}),
     });
   let remoteChain = '0x1';
+  let receiptFields: Record<string, unknown> = {};
   const header = {
     number: '0x2a',
     hash: BLOCK,
@@ -113,6 +114,7 @@ function fixture(
               effectiveGasPrice: '0x1',
               logs: [],
               logsBloom: `0x${'00'.repeat(256)}`,
+              ...receiptFields,
             };
           else throw new Error(`Unexpected ${row.method}`);
           return { jsonrpc: '2.0', id: row.id, result };
@@ -141,6 +143,9 @@ function fixture(
     provider,
     wallet,
     methods,
+    setReceipt: (fields: Record<string, unknown>) => {
+      receiptFields = fields;
+    },
     setChain: (value: string) => {
       remoteChain = value;
     },
@@ -177,6 +182,28 @@ test.each([
     }
   }
 );
+
+test('RPC details retain historical placement and fee while tracking still requires a binary receipt status', async () => {
+  const f = fixture(undefined, '0x1b');
+  f.setReceipt({ status: undefined, root: `0x${'dd'.repeat(32)}` });
+  try {
+    const detail = await f.wallet.getEvmTransactionFromProvider(HASH, true);
+    expect(detail).toMatchObject({
+      blockNumber: 42,
+      blockHash: BLOCK,
+      transactionIndex: 0,
+      status: 'unknown',
+      success: null,
+      txreceipt_status: null,
+      isError: null,
+      gasUsed: '21000',
+      effectiveGasPrice: '1',
+    });
+    expect(await f.wallet.getEvmTransactionFromProvider(HASH)).toBeNull();
+  } finally {
+    f.provider.destroy();
+  }
+});
 
 test('refuses a wrong endpoint before details disclose a hash and rejects protected signature mismatch', async () => {
   const wrong = fixture(undefined, '0x1b');

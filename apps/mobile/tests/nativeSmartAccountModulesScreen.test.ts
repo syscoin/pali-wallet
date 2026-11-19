@@ -378,7 +378,7 @@ test('Add Passkey to Combined preserves its explicit purpose through possession 
   } finally { f.close(); }
 });
 
-test('Add Pali Wallet to Combined enters one owned operation and disappears once ECDSA is installed', async () => {
+test('Add Pali to Combined enters one owned operation and disappears once ECDSA is installed', async () => {
   const observed = metadata(); observed.installedModules = observed.installedModules!.filter(module => module.id !== 'ecdsa');
   const f = fixture(false, observed); f.render(); await tick();
   try {

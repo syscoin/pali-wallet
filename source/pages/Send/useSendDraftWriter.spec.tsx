@@ -70,12 +70,17 @@ describe('live send draft persistence', () => {
         nftTokenId: '0',
       };
       await act(async () => {
-        await hook.result.current(typed);
+        await hook.result.current.save(typed);
       });
       expect(mockSave).toHaveBeenLastCalledWith(
         path + '?view=draft#form',
         undefined,
-        { formValues: typed, RBF: true, isMaxSend: false },
+        {
+          sendDraftId: hook.result.current.draftId,
+          formValues: typed,
+          RBF: true,
+          isMaxSend: false,
+        },
         opts.location.state.returnContext
       );
       expect(mockNavigate).toHaveBeenLastCalledWith(
@@ -103,10 +108,65 @@ describe('live send draft persistence', () => {
         expect.objectContaining({
           formValues: { receiver: 'programmatic-recipient', amount: '3' },
         }),
-        opts.location.state.returnContext
+        opts.location.state.returnContext,
+        undefined,
+        { draftIds: [hook.result.current.draftId], requireOwnedDraft: true }
       );
     }
   );
+
+  it('guards automatic writes when returning to a reviewed draft but gives the new form its own identity', () => {
+    const opts = options('/send/eth');
+    const reviewed = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const hook = renderHook(() =>
+      useSendDraftWriter({
+        ...opts,
+        location: {
+          ...opts.location,
+          state: { ...opts.location.state, sendDraftId: reviewed },
+        },
+      })
+    );
+    const current = hook.result.current.draftId;
+    expect(current).not.toBe(reviewed);
+    expect(mockSave).toHaveBeenLastCalledWith(
+      '/send/eth?view=draft#form',
+      undefined,
+      expect.objectContaining({ sendDraftId: current }),
+      opts.location.state.returnContext,
+      undefined,
+      { draftIds: [current, reviewed], requireOwnedDraft: true }
+    );
+  });
+
+  it('keeps an explicit edit queued even if an automatic flush runs first', async () => {
+    const opts = options('/send/eth');
+    const hook = renderHook((props) => useSendDraftWriter(props), {
+      initialProps: opts,
+    });
+    await act(async () => {});
+    mockSave.mockClear();
+    let finish!: () => void;
+    mockSave.mockImplementationOnce(
+      () =>
+        new Promise<void>((done) => {
+          finish = done;
+        })
+    );
+    act(() => {
+      void hook.result.current.save({ amount: '4' });
+    });
+    const mirrored = mockNavigate.mock.calls.at(-1)![1].state;
+    hook.rerender({ ...opts, location: { ...opts.location, state: mirrored } });
+    act(() => window.dispatchEvent(new Event('pagehide')));
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+    expect(mockSave).toHaveBeenCalledTimes(2);
+    expect(mockSave.mock.calls[1][5]).toEqual({
+      draftIds: [hook.result.current.draftId],
+      requireOwnedDraft: true,
+    });
+  });
 
   it('does not mirror the same sanitized snapshot repeatedly after replace navigation', () => {
     const opts = options('/send/eth');
@@ -122,6 +182,7 @@ describe('live send draft persistence', () => {
   it('flushes hidden visibility without replacing the router entry', async () => {
     const opts = options('/send/sys');
     renderHook(() => useSendDraftWriter(opts));
+    await act(async () => {});
     mockSave.mockClear();
     mockNavigate.mockClear();
     jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
@@ -140,7 +201,7 @@ describe('live send draft persistence', () => {
       mockNavigate.mockClear();
       mockScope = { ...mockScope, [part]: 'changed' };
       await act(async () => {
-        await hook.result.current({ receiver: 'old', amount: '9' });
+        await hook.result.current.save({ receiver: 'old', amount: '9' });
         window.dispatchEvent(new Event('pagehide'));
       });
       expect(mockSave).not.toHaveBeenCalled();
@@ -158,7 +219,7 @@ describe('live send draft persistence', () => {
       else if (reason === 'loading') mockStatus.isLoading = true;
       else mockStatus.connectionUnavailable = true;
       await act(async () => {
-        await hook.result.current({ receiver: 'old' });
+        await hook.result.current.save({ receiver: 'old' });
         window.dispatchEvent(new Event('pagehide'));
       });
       expect(mockSave).not.toHaveBeenCalled();
@@ -168,7 +229,7 @@ describe('live send draft persistence', () => {
 
   it('ignores a stale callback after unmount and a departed HashRouter URL before unmount', async () => {
     const hook = renderHook(() => useSendDraftWriter(options('/send/eth')));
-    const stale = hook.result.current;
+    const stale = hook.result.current.save;
     mockSave.mockClear();
     window.history.replaceState(null, '', '/#/send/confirm');
     await act(async () => {
@@ -197,7 +258,7 @@ describe('live send draft persistence', () => {
     };
     const hook = renderHook(() => useSendDraftWriter(opts));
     await act(async () => {
-      await hook.result.current({
+      await hook.result.current.save({
         nftTokenId: '0',
         amount: '1',
         privateKey: 'secret',
@@ -205,6 +266,7 @@ describe('live send draft persistence', () => {
       });
     });
     expect(mockSave.mock.calls.at(-1)![2]).toEqual({
+      sendDraftId: hook.result.current.draftId,
       formValues: { nftTokenId: '0', amount: '1' },
       selectedAsset: { isNft: true, contractAddress: '0xcontract' },
       selectedNftTokenId: '0',

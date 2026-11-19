@@ -32,8 +32,8 @@ export function isImportedQualificationReport(report: Record<string, unknown>): 
     report.importedJournalContainerVersion === 1 && report.importedKeyRevealVerified === true &&
     Array.isArray(chains) && chains.length === 3 && [0, 1, 2].every((i) => chains[i] === CHAINS[i]) &&
     Array.isArray(hashes) && hashes.length === 3 && [0, 1, 2].every((i) => typeof hashes[i] === 'string' && /^0x[0-9a-f]{64}$/.test(hashes[i])) &&
-    new Set(hashes).size === 3 && hashes.every((hash) => !otherHashes.includes(hash)) && report.importedSignatures === (report.phase === 'create' ? 3 : 0) &&
-    report.importedAuthorizations === (report.phase === 'create' ? 0 : 3) && report.importedInjectedBroadcasts === 3 &&
+    new Set(hashes).size === 3 && hashes.every((hash) => !otherHashes.includes(hash)) && report.importedSignatures === 3 &&
+    report.importedAuthorizations === 3 && report.importedInjectedBroadcasts === 3 &&
     report.importedRestoredFromJournal === (report.phase === 'restart');
 }
 export function matchesImportedRestartEvidence(created: Record<string, unknown>, restored: Record<string, unknown>): boolean {
@@ -100,19 +100,20 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     const guard = () => expect(state().phase === 'ready' && state().revision === revision && state().account?.address === ADDRESS &&
       state().account?.network === network && catalogue().active.accountId === imported.id);
     const registration = getNativeNetwork(network);
-    let expectedRaw: string | undefined, requests = 0;
+    let originalHash: string | undefined, submissionHash: string | undefined, feeLimit: string | undefined, requests = 0;
     const wrapped: NativeTransferRuntime = {
     isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
     releaseReplacement: () => transfer.releaseReplacement(),
-    authenticateOperation: (...args) => transfer.authenticateOperation(...args),
-    authorizeOperation: (...args) => transfer.authorizeOperation(...args),
+    async authorizeOperation(...args) { authorizations++; return transfer.authorizeOperation(...args); },
+    replacementOriginal: (...args) => { expect(transfer.replacementOriginal); return transfer.replacementOriginal(...args); },
     releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
-    replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
       journal: (assertCurrent) => transfer.journal(assertCurrent),
-      async sign(...args) { expect(phase === 'create'); signatures++; return transfer.sign(...args); },
-      // The report counts the replay admission check separately from fresh operation authentication.
-      assertUnlocked(...args) { expect(phase === 'restart'); authorizations++; return transfer.assertUnlocked(...args); },
+      async sign(...args) {
+        expect(args[3]?.mode === (phase === 'create' ? undefined : 'speed-up'));
+        signatures++;
+        return transfer.sign(...args);
+      },
     };
     const rpc = new NativeTransferRpc({ networkId: network, fetch: async (url, init) => {
       guard(); expect(url === registration.rpcUrl && init.method === 'POST' && init.credentials === 'omit' && init.redirect === 'error');
@@ -127,22 +128,27 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
         const number = p[0] === 'latest' ? '0x64' : p[0] === 'finalized' ? '0x5a' : p[0];
         result = { number, hash: '0x' + (number === '0x64' ? 'a' : 'b').repeat(64), baseFeePerGas: '0xa', gasLimit: '0x1000000' };
       } else if (body.method === 'eth_getTransactionCount') { expect(p[0] === ADDRESS); result = '0x0'; }
-      else if (body.method === 'eth_getBalance') { expect(phase === 'create' && p[0] === ADDRESS); result = '0xde0b6b3a7640000'; }
+      else if (body.method === 'eth_getBalance') { expect(p[0] === ADDRESS); result = '0xde0b6b3a7640000'; }
       else if (body.method === 'eth_gasPrice') { result = '0xb'; }
       else if (body.method === 'eth_feeHistory') { expect(phase === 'create'); result = { oldestBlock: '0x64', baseFeePerGas: ['0xa', '0xa'] }; }
       else if (body.method === 'eth_maxPriorityFeePerGas') { expect(phase === 'create'); result = '0x1'; }
-      else if (body.method === 'eth_estimateGas') { expect(phase === 'create'); result = network === 'zksys-testnet' ? '0x7530' : '0x5208'; }
-      else if (body.method === 'eth_getTransactionReceipt') result = null;
-      else if (body.method === 'eth_sendRawTransaction') {
-        const saved = await (await transfer.journal(guard)).load(); guard();
-        expect(saved?.phase === 'signed' && p.length === 1 && p[0] === saved.rawTransaction);
-        const tx = Transaction.from(saved.rawTransaction);
-        expect(tx.from === ADDRESS && tx.chainId.toString() === CHAINS[i] && tx.to === hd1.address && tx.nonce === 0 &&
-          tx.value === BigInt(111 * (i + 1)) && tx.type === 2 && tx.data === '0x');
-        if (expectedRaw) expect(expectedRaw === saved.rawTransaction);
-        expectedRaw = saved.rawTransaction; broadcasts++;
+      else if (body.method === 'eth_estimateGas') { result = network === 'zksys-testnet' ? '0x7530' : '0x5208'; }
+      else if (body.method === 'eth_getTransactionReceipt' || body.method === 'eth_getTransactionByHash') {
+        expect(p.length === 1 && /^[0-9a-f]{64}$/.test(String(p[0]).slice(2)) &&
+          (p[0] === originalHash || p[0] === submissionHash));
+        result = null;
+      } else if (body.method === 'eth_sendRawTransaction') {
+        expect(p.length === 1 && typeof p[0] === 'string');
+        const tx = Transaction.from(p[0]);
+        expect(tx.hash && tx.from === ADDRESS && tx.chainId.toString() === CHAINS[i] && tx.to === hd1.address && tx.nonce === 0 &&
+          tx.value === BigInt(111 * (i + 1)) && tx.type === 2 && tx.data === '0x' && tx.accessList?.length === 0 &&
+          feeLimit && tx.gasLimit * tx.maxFeePerGas! === BigInt(feeLimit));
+        const saved = await (await transfer.journal(guard)).load(tx.hash); guard();
+        expect(saved?.phase === 'signed' && saved.inspectionOnly === true && saved.rawTransaction === undefined &&
+          (originalHash === undefined || tx.hash !== originalHash));
+        submissionHash = tx.hash; broadcasts++;
         if (phase === 'create') throw Error('QUALIFICATION_IMPORTED_LOST_RESPONSE');
-        result = saved.hash;
+        result = tx.hash;
       } else throw Error('QUALIFICATION_IMPORTED_RPC_FORBIDDEN');
       const text = JSON.stringify({ jsonrpc: '2.0', id: body.id, result }); expect(text.length < 4096); guard();
       return { ok: true, status: 200, headers: { get: (name: string) => name === 'content-type' ? 'application/json' :
@@ -170,19 +176,28 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     } });
     const controller = new NativeTransfers(authority, () => wrapped, { rpc });
     try {
-      await check(`native imported ${registration.chainId} ${phase === 'create' ? 'sign and persist' : 'exact-byte restart retry'}`, async () => {
+      await check(`native imported ${registration.chainId} ${phase === 'create' ? 'sign and persist intent' : 'review Speed Up after restart'}`, async () => {
         if (phase === 'create') await controller.prepare(hd1.address, `0.000000000000000${111 * (i + 1)}`);
         else {
-          const saved = await (await transfer.journal(guard)).load(); expect(saved?.phase === 'signed'); expectedRaw = saved.rawTransaction;
-          await controller.recover(true);
+          const saved = await (await transfer.journal(guard)).load();
+          expect(saved?.phase === 'signed' && saved.inspectionOnly === true && saved.rawTransaction === undefined);
+          originalHash = saved.hash;
+          await controller.prepareSpeedUp(originalHash);
         }
         guard(); const review = controller.getSnapshot().review;
-        expect(review && review.retry === (phase === 'restart') && review.context.chainId === registration.chainId);
+        expect(review && review.context.chainId === registration.chainId &&
+          review.from === ADDRESS && review.recipient === hd1.address && review.nonce === '0' &&
+          review.amountUnits === String(111 * (i + 1)));
+        if (phase === 'restart') expect(review.replacement?.mode === 'speed-up' &&
+          review.replacement.originalHash === originalHash &&
+          BigInt(review.maximumFeeUnits) > BigInt(review.replacement.originalMaximumFeeUnits));
+        feeLimit = review.maximumFeeUnits;
         await controller.confirm(review.id, { method: 'device' }); guard();
-        expect(controller.getSnapshot().phase === (phase === 'create' ? 'unknown' : 'pending'));
-        const saved = await (await transfer.journal(guard)).load(); guard();
-        expect(saved && saved.rawTransaction === expectedRaw && saved.phase === (phase === 'create' ? 'signed' : 'submitted'));
-        hashes.push(saved.hash);
+        expect(controller.getSnapshot().phase === (phase === 'create' ? 'unknown' : 'pending') && submissionHash);
+        const saved = await (await transfer.journal(guard)).load(submissionHash); guard();
+        expect(saved?.inspectionOnly === true && saved.rawTransaction === undefined &&
+          saved.phase === (phase === 'create' ? 'signed' : 'submitted'));
+        hashes.push(originalHash ?? saved.hash);
       });
     } finally { controller.dispose(); }
   }
@@ -204,14 +219,18 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
   const container = await readSignedRecordEvidence(storage);
   expect(retainedSignedEntries(container.entries, olderAddresses) === older);
   const retained = container.entries.filter(entry => entry.from === ADDRESS.toLowerCase());
-  expect(container.version === 1 && retained.length === 3 && retained.every((entry, i) =>
-    entry.signer.type === 'Imported' && entry.signer.id === imported.index && entry.chainId === CHAINS[i] &&
-    entry.hash === hashes[i] && entry.phase === (phase === 'create' ? 'signed' : 'submitted')));
+  expect(container.version === 1 && retained.length === (phase === 'create' ? 3 : 6));
+  for (const [i, chain] of CHAINS.entries()) {
+    const records = retained.filter(entry => entry.chainId === chain);
+    expect(records.every(entry => entry.signer.type === 'Imported' && entry.signer.id === imported.index));
+    expect(records[0]?.hash === hashes[i] && records[0]?.phase === 'signed');
+    if (phase === 'restart') expect(records[1]?.phase === 'submitted' && records[1]?.hash !== hashes[i]);
+  }
   expect(await storage.getWalletFingerprint() === fingerprint &&
     JSON.stringify([await storage.keyringStorage.get('vault'), await storage.keyringStorage.get('vault-keys')]) === pair);
   await authority.selectNetwork('ethereum', state().revision, catalogue().revision, () => {}); await manage(hd1.id);
   expect(state().account?.address === hd1.address && catalogue().active.accountId === hd1.id);
-  expect(signatures === (phase === 'create' ? 3 : 0) && authorizations === (phase === 'create' ? 0 : 3) && broadcasts === 3);
+  expect(signatures === 3 && authorizations === 3 && broadcasts === 3);
   return Object.freeze({ nativeImportedVerified: true, importedAccountId: imported.id, importedAccountIndex: imported.index, importedAddress: ADDRESS,
     importedChainIds: CHAINS, importedTransferHashes: Object.freeze(hashes), importedJournalContainerVersion: 1,
     importedSignatures: signatures, importedAuthorizations: authorizations, importedInjectedBroadcasts: 3,

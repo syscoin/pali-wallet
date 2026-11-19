@@ -138,6 +138,7 @@ const iconPaths: Record<string, string[]> = {
     'M12 3a17 17 0 0 1 0 18 17 17 0 0 1 0-18',
   ],
   info: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', 'M12 11v6', 'M12 7h.01'],
+  qr: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h3v3h4v4h-4', 'M14 20v1'],
   scan: ['M8 3H3v5', 'M16 3h5v5', 'M21 16v5h-5', 'M3 16v5h5', 'M7 8h10v8H7z'],
   help: [
     'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
@@ -394,7 +395,7 @@ export function SegmentedControl<T extends string>({
 }: {
   label: string;
   value: T;
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; displayLabel?: string }[];
   onChange(value: T): void;
 }) {
   return <View accessibilityRole="tablist" accessibilityLabel={label} style={styles.segments}>
@@ -402,7 +403,7 @@ export function SegmentedControl<T extends string>({
       accessibilityLabel={option.label} accessibilityState={{ selected: value === option.value }}
       aria-selected={value === option.value} onPress={() => onChange(option.value)}
       style={({ pressed }) => [styles.segment, value === option.value && styles.segmentSelected, pressed && { opacity: 0.75 }]}>
-      <Text style={[styles.segmentLabel, value === option.value && { color: colors.bg }]}>{option.label}</Text>
+      <Text style={[styles.segmentLabel, value === option.value && { color: colors.bg }]}>{option.displayLabel ?? option.label}</Text>
     </IdlePressable>)}
   </View>;
 }
@@ -598,11 +599,13 @@ export function Notice({
   body,
   tone = 'blue',
   compact = false,
+  announce = false,
 }: {
   title: string;
   body?: string;
   tone?: 'blue' | 'amber' | 'red';
   compact?: boolean;
+  announce?: boolean;
 }) {
   const accent = colors[tone];
   return (
@@ -627,6 +630,7 @@ export function Notice({
       />
       <View style={{ flex: 1, gap: 5 }}>
         <Text
+          accessibilityLiveRegion={announce ? 'polite' : undefined}
           style={{
             color: accent,
             fontSize: 13,
@@ -748,5 +752,7 @@ export const styles = StyleSheet.create({
     gap: 12,
   },
   muted: { color: colors.muted },
+  warningText: { color: colors.amber },
+  errorText: { color: colors.red },
   h1: { fontSize: 32, lineHeight: 40, fontWeight: '700', letterSpacing: -1.1 },
 });

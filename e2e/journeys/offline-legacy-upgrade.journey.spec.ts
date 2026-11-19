@@ -621,7 +621,7 @@ test('published legacy wallet upgrades in-place without reimporting its vault', 
     await page.locator('#password').fill('WrongUpgradePassword!2026');
     await page.locator('#unlock-btn').click();
     await expect(
-      page.getByText('Invalid password', { exact: true })
+      page.getByText(en.start.wrongPassword, { exact: true })
     ).toBeVisible();
     await page.locator('#password').fill(PASSWORD);
     await page.locator('#unlock-btn').click();

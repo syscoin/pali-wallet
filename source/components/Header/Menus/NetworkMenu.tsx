@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -26,12 +27,15 @@ import Spinner from 'components/Spinner/Spinner';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
-import { switchNetworkError } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
 import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 
 const GlobeIcon = memo(() => (
   <Icon
@@ -75,12 +79,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const { controllerEmitter } = useController();
   const { t, i18n } = useTranslation();
   const { language } = i18n;
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
   const groupId = useId();
   const [openNetworkGroups, setOpenNetworkGroups] = useState({
     [INetworkType.Syscoin]: false,
     [INetworkType.Ethereum]: false,
   });
+  const retireSwitchRequest = useRef<() => void>();
+  useLayoutEffect(() => () => retireSwitchRequest.current?.(), []);
   const typeaheadInProgress = useRef(false);
   const typeaheadTimeout = useRef<ReturnType<typeof setTimeout>>();
   const resetSearchOnOpen = useRef(false);
@@ -146,31 +152,71 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         return;
       }
 
-      try {
-        // Close menu immediately after starting the switch
-        if (closeMenu) {
-          closeMenu();
-        }
-
-        // Then perform the actual network switch in the background
-        controllerEmitter(['wallet', 'setActiveNetwork'], [network])
-          .then(() => {
-            // Success is already handled by the controller via setNetworkChange
-          })
-          .catch((error) => {
-            console.error('[NetworkMenu] Network switch failed:', error);
-            store.dispatch(switchNetworkError());
-          });
-      } catch (networkError) {
-        // Log any synchronous errors from controllerEmitter
-        console.error(
-          '[NetworkMenu] Error initiating network switch:',
-          networkError
+      retireSwitchRequest.current?.();
+      const initial = store.getState();
+      const startingNetwork = networkRegistrationFingerprint(
+        initial.vault.activeNetwork
+      );
+      const initialStatus = initial.vaultGlobal.networkStatus;
+      const target = networkRegistrationFingerprint(network);
+      let retired = false;
+      const isCurrent = () => {
+        const { vault, vaultGlobal } = store.getState();
+        return (
+          !retired &&
+          networkRegistrationFingerprint(vault.activeNetwork) ===
+            startingNetwork &&
+          vaultGlobal.networkStatus !== 'connecting' &&
+          vaultGlobal.networkStatus !== 'switching' &&
+          (vaultGlobal.networkStatus !== 'error' || initialStatus === 'error')
         );
-        store.dispatch(switchNetworkError());
+      };
+      // Once the worker exposes a switch, it owns the connection status even
+      // when another document requested the same target. Latch retirement so
+      // a return to the original network cannot revive a queued callback.
+      const unsubscribe = store.subscribe(() => {
+        if (!isCurrent()) retire();
+      });
+      const retire = () => {
+        retired = true;
+        unsubscribe();
+      };
+      retireSwitchRequest.current = retire;
+      const reportFailure = (error: unknown, message: string) => {
+        const reason =
+          (error as { message?: unknown } | undefined)?.message ?? error;
+        if (reason === 'Network change cancelled' || !isCurrent()) {
+          retire();
+          return;
+        }
+        if (reason === NETWORK_SWITCH_REVIEW_CHANGED) {
+          alert.error(t('settings.unknownNetwork'), undefined, isCurrent);
+          return;
+        }
+        console.error(message, error);
+        alert.error(t('switchNetworkPage.changeFailed'), undefined, isCurrent);
+      };
+
+      closeMenu?.();
+      try {
+        controllerEmitter(
+          ['wallet', 'setActiveNetwork'],
+          [network, false, target]
+        ).then(retire, (error) =>
+          reportFailure(error, '[NetworkMenu] Network switch failed:')
+        );
+      } catch (error) {
+        reportFailure(error, '[NetworkMenu] Error initiating network switch:');
       }
     },
-    [activeNetworkValidator, disabled, isNetworkChanging]
+    [
+      activeNetworkValidator,
+      alert,
+      controllerEmitter,
+      disabled,
+      isNetworkChanging,
+      t,
+    ]
   );
 
   // ✅ MEMOIZED: Navigation handlers

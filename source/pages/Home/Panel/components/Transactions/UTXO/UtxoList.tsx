@@ -405,7 +405,9 @@ export const UtxoTransactionsListComponent = React.memo(
 
 export const UtxoTransactionsList = ({
   userTransactions,
+  firstPageHasMore,
 }: {
+  firstPageHasMore?: boolean;
   userTransactions: ITransactionInfoUtxo[];
 }) => {
   const { t } = useTranslation();
@@ -425,10 +427,15 @@ export const UtxoTransactionsList = ({
     activeNetwork,
     true
   );
-  const paginationContext = confirmationContext;
+  const reset = currentAccountTransactions?.utxoActivityReset?.[chainId];
+  const paginationContext = reset
+    ? `${confirmationContext}:${reset.revision}`
+    : confirmationContext;
   const headKey = JSON.stringify(
     userTransactions.map((transaction) => transaction.txid)
   );
+  const headHasMore =
+    firstPageHasMore ?? userTransactions.length >= SERVER_PAGE_SIZE;
   const beginPageRequest = useRequestScope(paginationContext);
 
   const fetchHistoryPage = useCallback(
@@ -437,10 +444,18 @@ export const UtxoTransactionsList = ({
       if (!accountKey) throw new Error('Missing account identifier');
       const response = (await controllerEmitter(
         ['wallet', 'getSysTransactionsPage'],
-        [accountKey, networkUrl, page, SERVER_PAGE_SIZE]
-      )) as ITransactionInfoUtxo[];
-      const rows = Array.isArray(response) ? response : [];
-      return { rows, hasMore: rows.length >= SERVER_PAGE_SIZE };
+        [accountKey, networkUrl, page, SERVER_PAGE_SIZE, true]
+      )) as
+        | ITransactionInfoUtxo[]
+        | { hasMore: boolean; rows: ITransactionInfoUtxo[] };
+      if (Array.isArray(response))
+        return { rows: response, hasMore: response.length >= SERVER_PAGE_SIZE };
+      if (
+        !Array.isArray(response?.rows) ||
+        typeof response.hasMore !== 'boolean'
+      )
+        throw new Error('Invalid transaction history page');
+      return response;
     },
     [paginationContext]
   );
@@ -458,7 +473,7 @@ export const UtxoTransactionsList = ({
     isRestoringPages,
   } = useHistoryBrowsingState<ITransactionInfoUtxo>(
     paginationContext,
-    userTransactions.length >= SERVER_PAGE_SIZE,
+    undefined,
     networkUrl ? fetchHistoryPage : undefined
   );
   const combined = useMemo(
@@ -495,12 +510,14 @@ export const UtxoTransactionsList = ({
   const latest = useRef({
     context: paginationContext,
     head: headKey,
+    headHasMore,
     rows: userTransactions,
     extra: extraTransactions,
   });
   latest.current = {
     context: paginationContext,
     head: headKey,
+    headHasMore,
     rows: userTransactions,
     extra: extraTransactions,
   };
@@ -535,7 +552,7 @@ export const UtxoTransactionsList = ({
       (row) => !oldIds.has(row.txid)
     ).length;
     setVisibleCount((count) => Math.min(count, oldRows.length) + incoming);
-    if (userTransactions.length >= SERVER_PAGE_SIZE) setHasMoreServer(true);
+    if (headHasMore) setHasMoreServer(true);
     if (
       extraTransactions.length ||
       nextPage > 2 ||
@@ -579,7 +596,7 @@ export const UtxoTransactionsList = ({
       try {
         const rows: ITransactionInfoUtxo[] = [];
         let page = 1;
-        let hasMore = snapshot.rows.length >= SERVER_PAGE_SIZE;
+        let hasMore = snapshot.headHasMore;
         while (
           hasMore &&
           (page < lastPage ||
@@ -620,13 +637,15 @@ export const UtxoTransactionsList = ({
     };
   }, [paginationContext, reconciliation, isLoadingMore, isRestoringPages]);
 
+  const canLoadPage =
+    firstPageHasMore !== false && (hasMoreServer ?? headHasMore);
   return (
     <>
       {array.slice(0, visibleCount).map((tx) => (
         <UtxoTransactionsListComponent key={tx.txid} tx={tx} />
       ))}
       {networkUrl
-        ? (reconciliation || hasMoreServer || array.length > visibleCount) && (
+        ? (reconciliation || canLoadPage || array.length > visibleCount) && (
             <div className="flex justify-center py-3">
               <button
                 type="button"
@@ -643,17 +662,10 @@ export const UtxoTransactionsList = ({
                   const isCurrentRequest = beginPageRequest();
                   try {
                     setIsLoadingMore(true);
-                    const accountKey =
-                      (currentAccount as any)?.xpub ||
-                      (currentAccount as any)?.address;
-                    if (!accountKey)
-                      throw new Error('Missing account identifier');
-                    const res = (await controllerEmitter(
-                      ['wallet', 'getSysTransactionsPage'],
-                      [accountKey, networkUrl, nextPage, SERVER_PAGE_SIZE]
-                    )) as any[];
+                    const { rows: newTxs, hasMore } = await fetchHistoryPage(
+                      nextPage
+                    );
                     if (!isCurrentRequest()) return;
-                    const newTxs = Array.isArray(res) ? res : [];
                     const knownTxids = new Set(
                       [...latest.current.rows, ...latest.current.extra]
                         .map((tx) => tx.txid)
@@ -670,8 +682,7 @@ export const UtxoTransactionsList = ({
                       setVisibleCount((count) => count + uniqueNewTxs.length);
                     }
                     setNextPage((p) => p + 1);
-                    if (newTxs.length < SERVER_PAGE_SIZE)
-                      setHasMoreServer(false);
+                    setHasMoreServer(hasMore);
                   } catch (e: any) {
                     if (isCurrentRequest())
                       alert.error(String(e?.message || e));

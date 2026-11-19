@@ -10,7 +10,7 @@ import type {
   IPrivacyProofResult,
 } from './proverTypes.ts';
 import { getPrivacyPool } from './registry.ts';
-import { validateSnapshot } from './snapshotValidation.ts';
+import { validateProofSnapshot } from './snapshotValidation.ts';
 import type { PrivacySnapshot } from './types.ts';
 
 export interface IPrivacyWithdrawalRequest {
@@ -151,8 +151,8 @@ export async function preparePrivacyWithdrawal(
     );
     let validated: PrivacySnapshot;
     try {
-      const current = validateSnapshot(identity.poolId, request.snapshot);
-      validated = validateSnapshot(identity.poolId, {
+      const current = validateProofSnapshot(identity.poolId, request.snapshot);
+      validated = validateProofSnapshot(identity.poolId, {
         ...current,
         leaves: Array.from(current.leaves),
         withdrawnNullifiers: Array.from(current.withdrawnNullifiers),

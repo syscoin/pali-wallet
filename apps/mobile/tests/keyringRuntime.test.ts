@@ -1,5 +1,5 @@
 import { testHdKeyExportRuntime } from './fixtures/hdKeyExport.ts';
-import { NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
+import { captureNativePublicSessionRecord, nativePublicRecordDomains, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
 import { createTestPrivateAuthentication, bindTestRequestAuthentication } from './fixtures/privateAuthentication.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { createTestCredentialPort } from './fixtures/credential.ts';
@@ -13,9 +13,7 @@ import { createKeyringRuntimeFactory, KeyringRuntimeError, type KeyringRuntime, 
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { deriveDefaultSmartAccount } from '../../../source/utils/smartAccount/bootstrap.ts';
-import { paliSmartAccountFactoryInterface, paliSmartAccountInterface, paliEntryPointInterface, getPaliEntryPointAddress } from '../../../source/utils/smartAccount/contracts.ts';
-import { encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
-import { historicalSignedBundle } from './signedRecordTestSession.ts';
+import { paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import { AbiCoder, Interface } from 'ethers/abi';
@@ -41,7 +39,6 @@ import { sameRecoverySnapshot } from '../src/storage/recoverySnapshot.ts';
 import { NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
 import type { DappGrant } from '../../../source/shared/dappTypes.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
-import { captureSmartAccountCallsIdentity } from '../../../source/shared/dappCallsStatus.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../source/wallet/utxoSignedRecords.ts';
 import { encrypt, recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
@@ -82,6 +79,17 @@ const ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
+
+async function loadLegacyReplaySdk() {
+  const sdk = await loadNativeKeyringSdk();
+  class LegacyReplayKeyring extends sdk.HostKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
+      super(...args);
+      Object.defineProperty(this.ethereumTransaction, 'supportsRetainedSpeedUpIntent', { value: false });
+    }
+  }
+  return { ...sdk, HostKeyring: LegacyReplayKeyring };
+}
 
 function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void, connectionFetch?: KeyringRuntimeDependencies['connectionFetch'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], utxoFetch?: typeof fetch, prepareSmartAccount?: KeyringRuntimeDependencies['prepareSmartAccount'], beforeCredential?: (owner: NativeCredentialOwner) => Promise<void>) {
   let credential: NativeCredentialReference | null = null;
@@ -664,17 +672,17 @@ test('native transfers require fresh one-use device authorization and preserve s
     assert.equal((await journal.transition(signed.hash, 'attempted')).phase, 'attempted');
     const reads = disk.credentialPort.secretReads;
     assert.equal((await signTestTransfer(transfers, transaction, { assertCurrent: () => undefined, signal: new AbortController().signal })).hash, signed.hash);
-    transfers.assertUnlocked(() => undefined);
     assert.equal(disk.credentialPort.secretReads, reads + 1);
     await runtime.session.lock();
     await assert.rejects(signTestTransfer(transfers, transaction, { assertCurrent: () => undefined, signal: new AbortController().signal }), /CANCELLED/);
-    assert.throws(() => transfers.assertUnlocked(() => undefined), /NOT_READY/);
     assert.equal((await runtime.session.unlock()).authenticated, true);
     const afterUnlock = disk.credentialPort.secretReads;
-    transfers.assertUnlocked(() => undefined);
     await signTestTransfer(transfers, transaction, { assertCurrent: () => undefined, signal: new AbortController().signal });
     assert.equal(disk.credentialPort.secretReads, afterUnlock + 1);
-    assert.equal((await (await transfers.journal(() => undefined)).load())?.rawTransaction, signed.rawTransaction);
+    const retained = await (await transfers.journal(() => undefined)).load();
+    assert.equal(retained?.hash, signed.hash);
+    assert.equal(retained?.inspectionOnly, true);
+    assert.equal(retained?.rawTransaction, undefined);
   } finally { await runtime.storage.close(); disk.restoreNetwork(); }
 });
 
@@ -817,86 +825,6 @@ async function readySmartCreationAuthority(beforeAddress: () => Promise<void> = 
     request: { networkId: 'ethereum', label: 'Owned dapp creation', target: { id: 'ecdsa' as const, config: undefined }, externalOwnersAcknowledged: false },
     async close() { await authority.dispose(); disk.restoreNetwork(); } };
 }
-
-test('native Smart saved replay uses its recorded payer and displays the inner transfer without reopening signing keys', async () => {
-  const broadcasts: string[] = [];
-  const blockHash = '0x' + '44'.repeat(32);
-  let signedRaw: string;
-  let simulations = 0;
-  const fetcher = async (_url: string, init: RequestInit) => {
-    const payload = JSON.parse(String(init.body));
-    const reply = (request: { id: unknown; method: string; params: unknown[] }) => {
-      let result: unknown;
-      if (request.method === 'eth_chainId') result = '0x1';
-      else if (request.method === 'eth_getTransactionCount') {
-        assert.equal(String(request.params[0]).toLowerCase(), ADDRESS.toLowerCase());
-        assert(['latest', 'pending', '0x10'].includes(String(request.params[1])));
-        result = '0x0';
-      } else if (request.method === 'eth_getTransactionReceipt') result = null;
-      else if (request.method === 'eth_getBlockByNumber') {
-        assert(['latest', '0x10'].includes(String(request.params[0])));
-        assert.equal(request.params[1], false);
-        result = { number: '0x10', hash: blockHash, gasLimit: '0x100000' };
-      } else if (request.method === 'eth_simulateV1') {
-        const tx = Transaction.from(signedRaw);
-        const expected = { from: ADDRESS, to: getPaliEntryPointAddress(1), data: tx.data, chainId: '0x1',
-          gas: '0x493e0', nonce: '0x0', value: '0x0', type: '0x0', gasPrice: '0x2' };
-        assert.deepEqual(request.params, [{ blockStateCalls: [{ calls: [expected] }], validation: true,
-          returnFullTransactions: true, traceTransfers: false }, '0x10']);
-        const operation = paliEntryPointInterface.decodeFunctionData('handleOps', tx.data)[0][0];
-        const identity = captureSmartAccountCallsIdentity(operation, 1);
-        const event = paliEntryPointInterface.encodeEventLog(paliEntryPointInterface.getEvent('UserOperationEvent')!,
-          [identity.userOpHash, operation.sender, '0x' + '00'.repeat(20), operation.nonce, true, 1, 1]);
-        simulations++;
-        result = [{ number: '0x11', parentHash: blockHash, transactions: [{ ...expected, input: expected.data }],
-          calls: [{ status: '0x1', gasUsed: '0x100', logs: [{ ...event, address: expected.to }] }] }];
-      } else if (request.method === 'eth_sendRawTransaction') {
-        assert.equal(request.params[0], signedRaw);
-        assert.equal(simulations, 1, 'exact execution admission must precede broadcast');
-        broadcasts.push(signedRaw); result = Transaction.from(signedRaw).hash;
-      } else throw Error(`Unexpected replay RPC: ${request.method}`);
-      return { jsonrpc: '2.0', id: request.id, result };
-    };
-    return new Response(JSON.stringify(Array.isArray(payload) ? payload.map(reply) : reply(payload)),
-      { status: 200, headers: { 'content-type': 'application/json' } });
-  };
-  const f = await readySmartCreationAuthority(undefined, fetcher);
-  const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fetcher }) });
-  try {
-    const allocation = await f.authority.allocateConnectionSmartAccount(f.request, new AbortController().signal, () => undefined, () => undefined, createTestPrivateAuthentication(() => undefined));
-    const execution = encodeERC7579Executions([{ target: '0x2222222222222222222222222222222222222222', value: '9' }]);
-    const operation = { sender: allocation.account.address, nonce: 7n, initCode: '0x',
-      callData: paliSmartAccountInterface.encodeFunctionData('execute', [execution.mode, execution.executionCalldata]),
-      accountGasLimits: '0x' + '00'.repeat(12) + '000186a0' + '00'.repeat(12) + '000186a0',
-      preVerificationGas: 21000, gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03', paymasterAndData: '0x', signature: '0x1234' };
-    const raw = await HDNodeWallet.fromPhrase(PHRASE).signTransaction({ chainId: 1, nonce: 0, type: 0, gasPrice: 2, gasLimit: 300000,
-      to: getPaliEntryPointAddress(1), value: 0, data: paliEntryPointInterface.encodeFunctionData('handleOps', [[operation], ADDRESS]) });
-    signedRaw = raw;
-    const access = f.keyring.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1', 'org.syscoin.pali.evm.signed.chunk.v1',
-      'org.syscoin.pali.utxo.signed.root.v1', 'org.syscoin.pali.utxo.signed.chunk.v1']);
-    const profile = await access.getPrivateRecordProfileId();
-    f.disk.signedBundles.set(profile, await historicalSignedBundle({ keyring: access, assertCurrent: () => undefined }, raw, 'signed'));
-    const reads = f.disk.credentialPort.secretReads;
-    await transfers.recover(true, Transaction.from(raw).hash!);
-    const review = transfers.getSnapshot().review!;
-    assert.equal(review.from, allocation.account.address);
-    assert.equal(review.recipient, '0x2222222222222222222222222222222222222222');
-    assert.equal(review.amountUnits, '9');
-    assert.equal(review.replay!.from.toLowerCase(), ADDRESS.toLowerCase());
-    assert.equal(review.replay!.to, getPaliEntryPointAddress(1));
-    assert.equal(review.maximumFeeUnits, '600000');
-    assert.equal(f.disk.credentialPort.secretReads, reads);
-    await transfers.confirm(review.id, { method: 'device' });
-    assert.deepEqual(broadcasts, [raw]);
-    assert.equal(simulations, 1);
-    assert.equal(f.disk.credentialPort.secretReads, reads);
-    await transfers.recover(true, Transaction.from(raw).hash!);
-    const expired = transfers.getSnapshot().review!;
-    await f.authority.selectConnectionAccount('hd:60:0', f.authority.getSnapshot().revision, () => undefined);
-    await assert.rejects(transfers.confirm(expired.id, { method: 'device' }));
-    assert.equal(broadcasts.length, 1);
-  } finally { transfers.dispose(); await f.close(); }
-});
 
 test('account device refusal keeps the public wallet and a fresh explicit retry creates once', async () => {
   const f = await readyAccounts();
@@ -1354,7 +1282,10 @@ test('sender-owned records preserve first and additional accounts across selecti
     assert.equal(f.authority.getCatalogue()!.accounts.length, 2);
     await f.execute({ kind: 'select', id: 'hd:60:1' });
     journal = await f.runtime.transfers!.journal(() => undefined);
-    assert.equal((await journal.load())!.rawTransaction, second.rawTransaction);
+    const retained = (await journal.load())!;
+    assert.equal(retained.hash, second.hash);
+    assert.equal(retained.scope.address, secondAddress);
+    assert.equal(retained.rawTransaction, undefined);
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
@@ -1379,8 +1310,8 @@ const deferredAccount = () => {
   const promise = new Promise<void>((done) => { resolve = done; });
   return { promise, resolve };
 };
-async function raceSdk() {
-  const sdk = await loadNativeKeyringSdk();
+async function raceSdk(legacyReplay = false) {
+  const sdk = await (legacyReplay ? loadLegacyReplaySdk() : loadNativeKeyringSdk());
   let gate: { phase: string; entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
   let signingHook: (() => void) | undefined;
   let exportResult: string | undefined;
@@ -1529,6 +1460,25 @@ test('activity reset retires saved handles and clears only the selected account 
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
+test('a failed Activity history clear preserves the pending transaction for a retry', async () => {
+  const f = await readyAccounts();
+  try {
+    const signed = await signTestTransfer(f.runtime.transfers!, { type: 2, accessList: [], from: ADDRESS, to: ADDRESS,
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' },
+      { assertCurrent: () => undefined, signal: new AbortController().signal });
+    await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
+    const before = f.disk.signedValue();
+    f.disk.onRecord(async (kind, key) => {
+      if (kind === 'get' && key === 'native-activity-v1') throw Error('Activity read failed');
+    });
+    await assert.rejects(f.runtime.resetActivity(() => undefined, () => undefined), /Activity read failed/);
+    assert.equal(f.disk.signedValue(), before);
+    f.disk.onRecord();
+    await f.runtime.resetActivity(() => undefined, () => undefined);
+    assert.equal(await (await f.runtime.transfers!.journal(() => undefined)).load(), null);
+  } finally { f.disk.onRecord(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
 test('activity reset inside signing revokes the result without locking the current owner', async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   let reset: Promise<void> | undefined;
@@ -1579,7 +1529,6 @@ test('activity reset drains an interrupted broadcast before clearing local track
     const cancelled = assert.rejects(confirm, /CANCELLED/);
     await held.entered;
     const reset = f.runtime.resetActivity(() => undefined, () => transfers.cancelForActivityReset());
-    assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), /BUSY/);
     held.release();
     await Promise.all([cancelled, reset]);
     assert.equal(await f.runtime.session.readSelectedAddress(), ADDRESS);
@@ -1590,8 +1539,8 @@ test('activity reset drains an interrupted broadcast before clearing local track
 });
 
 for (const networkId of ['ethereum', 'zksys-testnet'] as const) {
-test(`${networkId} normal confirmation and exact-byte retry each authenticate without rehydrating accounts`, async () => {
-  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
+test(`${networkId} normal confirmation authenticates without rehydrating accounts`, async () => {
+  const sdk = await raceSdk(true), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
     await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
@@ -1599,13 +1548,7 @@ test(`${networkId} normal confirmation and exact-byte retry each authenticate wi
     const observed = () => ({ unlocks: sdk.unlocks, hydrations: sdk.hydrations, reads: f.disk.credentialPort.secretReads, authorizations: f.disk.credentialPort.authorizations });
     await transfers.confirm(await prepareAccountTransfer(transfers), { method: 'device' });
     assert.deepEqual(observed(), { ...before, unlocks: before.unlocks + 1, reads: before.reads + 1 });
-    await transfers.recover(true);
-    const retry = transfers.getSnapshot().review!;
-    assert.equal(retry.retry, true);
-    await transfers.confirm(retry.id, { method: 'device' });
-    assert.deepEqual(observed(), { ...before, unlocks: before.unlocks + 1, reads: before.reads + 1, authorizations: before.authorizations + 1 });
-    assert.equal(network.broadcasts.length, 2);
-    assert.equal(network.broadcasts[0], network.broadcasts[1]);
+    assert.equal(network.broadcasts.length, 1);
     assert.equal(f.authority.getSnapshot().phase, 'ready');
   } finally { transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
@@ -1658,7 +1601,11 @@ for (const phase of ['journal-read', 'journal-write', 'broadcast'] as const) {
       assert.equal(f.authority.getSnapshot().phase, 'ready');
       const old = await (await f.runtime.transfers!.journal(() => undefined)).load();
       assert.equal(old?.phase, phase === 'journal-read' ? undefined : 'signed');
-      if (old) assert.equal(Transaction.from(old.rawTransaction).from, ADDRESS);
+      if (old) {
+        assert.equal(old.scope.address, ADDRESS);
+        assert.equal(old.rawTransaction, undefined);
+        if (phase === 'broadcast') assert.equal(old.hash, keccak256(network.broadcasts[0]!));
+      }
       assert.equal(network.broadcasts.length, phase === 'broadcast' ? 1 : 0);
       assert.equal(transfers.getSnapshot().review, null);
     } finally { release.resolve(); broadcastHold?.release(); f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
@@ -1712,7 +1659,6 @@ test('async host guards never authorize account mutation, journal access or a si
     assert.equal(JSON.stringify(f.disk.records.get(WALLET_CATALOGUE_KEY)), before);
     await f.runtime.session.unlock();
     await assert.rejects(f.runtime.transfers!.journal(asynchronousGuard), /CANCELLED/);
-    assert.throws(() => f.runtime.transfers!.assertUnlocked(asynchronousGuard), /CANCELLED/);
     await assert.rejects(signTestTransfer(f.runtime.transfers!, { type: 2, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: asynchronousGuard, signal: new AbortController().signal }), /CANCELLED/);
     assert.equal(JSON.stringify(f.disk.records.get(WALLET_CATALOGUE_KEY)), before);
     assert.equal(f.disk.records.has('native-evm-transfer-v1'), false);
@@ -1834,18 +1780,23 @@ test('installed SDK retains same-address same-nonce Ethereum, NEVM and zkSYS jou
     assert.equal(reopened.getSnapshot().account?.network, 'zksys-testnet');
     for (const networkId of ['zksys-testnet', 'syscoin-nevm-testnet', 'ethereum'] as const) {
       await reopened.selectNetwork(networkId, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision, () => {});
-      assert.equal((await (await runtime.transfers!.journal(() => undefined)).load())!.rawTransaction, signedByNetwork.get(networkId)!.rawTransaction);
+      const retained = (await (await runtime.transfers!.journal(() => undefined)).load())!;
+      assert.equal(retained.hash, signedByNetwork.get(networkId)!.hash);
+      assert.equal(retained.inspectionOnly, true);
+      assert.equal(retained.rawTransaction, undefined);
     }
     await reopened.manageAccounts({ kind: 'select', id: 'hd:60:0' }, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision);
     await assert.rejects(reopened.manageAccounts({ kind: 'remove', id: 'hd:60:1',}, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision), /PENDING_TRANSFER/);
-    assert.deepEqual(JSON.parse(f.disk.signedValue()!), stored);
+    const compacted = JSON.parse(f.disk.signedValue()!);
+    assert.deepEqual(compacted.entries.map((entry: { hash: string; payloadKind: string }) => [entry.hash, entry.payloadKind]),
+      stored.entries.map((entry: { hash: string }) => [entry.hash, 'unsigned-eoa']));
     await reopened.dispose();
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
 for (const networkId of ['syscoin-nevm-testnet', 'zksys-testnet'] as const) {
-test(`${networkId} native controller retries exact installed-SDK bytes before its ordinary receipt confirmation`, async () => {
-  const f = await readyAccounts(), network = localTransferRpc(networkId);
+test(`${networkId} native controller retains legacy exact bytes after ordinary submission`, async () => {
+  const f = await readyAccounts(loadLegacyReplaySdk), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
     await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
@@ -1855,16 +1806,9 @@ test(`${networkId} native controller retries exact installed-SDK bytes before it
     await transfers.confirm(review, { method: 'device' });
     assert.equal(network.broadcasts.length, 1);
     assert.equal(Transaction.from(network.broadcasts[0]!).chainId, BigInt(getNativeNetwork(networkId).chainId));
-    await transfers.recover(true);
-    assert.equal(transfers.getSnapshot().review!.retry, true);
-    await transfers.confirm(transfers.getSnapshot().review!.id, { method: 'device' });
-    assert.equal(network.broadcasts.length, 2);
-    assert.equal(network.broadcasts[1], network.broadcasts[0]);
-    network.include();
-    await transfers.recover();
-    assert.equal(transfers.getSnapshot().phase, 'confirmed');
-    assert.equal(transfers.getSnapshot().context!.chainId, getNativeNetwork(networkId).chainId);
-    assert.equal((await (await f.runtime.transfers!.journal(() => undefined)).load())!.phase, 'confirmed');
+    const retained = await (await f.runtime.transfers!.journal(() => undefined)).load();
+    assert.equal(retained?.phase, 'submitted');
+    assert.equal(retained?.rawTransaction, network.broadcasts[0]);
   } finally { transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
@@ -1905,8 +1849,8 @@ test(`${networkId} synchronous network reentrancy cannot retarget the current sh
 });
 
 for (const phase of ['journal-write', 'broadcast'] as const) {
-  test(`${networkId} A-B-A during ${phase} preserves the original exact-byte recovery record`, async () => {
-    const f = await readyAccounts(), network = localTransferRpc(networkId);
+  test(`${networkId} A-B-A during ${phase} preserves the original legacy exact-byte recovery record`, async () => {
+    const f = await readyAccounts(loadLegacyReplaySdk), network = localTransferRpc(networkId);
     const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
     const entered = deferredAccount(), release = deferredAccount();
     let broadcastHold: ReturnType<typeof network.holdBroadcast> | undefined;
@@ -1927,10 +1871,6 @@ for (const phase of ['journal-write', 'broadcast'] as const) {
       const entry = await (await f.runtime.transfers!.journal(() => undefined)).load();
       assert.equal(Transaction.from(entry!.rawTransaction).chainId, BigInt(getNativeNetwork(networkId).chainId));
       assert.equal(entry!.phase, 'signed');
-      await transfers.recover(true);
-      assert.equal(transfers.getSnapshot().review!.retry, true);
-      assert.equal(transfers.getSnapshot().hash, entry!.hash);
-      assert.equal(transfers.getSnapshot().review!.context.chainId, getNativeNetwork(networkId).chainId);
     } finally { release.resolve(); broadcastHold?.release(); f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
   });
 }
@@ -2040,13 +1980,14 @@ test('network A-B-A cancels held Ethereum journal work without touching its pend
     release.resolve(); await assert.rejects(pending, /CANCELLED/);
     const entry = await (await f.runtime.transfers!.journal(() => undefined)).load();
     assert.equal(entry!.phase, 'signed');
-    assert.equal(Transaction.from(entry!.rawTransaction).from, ADDRESS);
+    assert.equal(entry!.scope.address, ADDRESS);
+    assert.equal(entry!.rawTransaction, undefined);
     assert.equal(network.broadcasts.length, 0);
   } finally { release.resolve(); f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
 
-test('account removal checks every chain and keeps all sender-owned signed bytes', async () => {
+test('account removal checks every chain and keeps all sender-owned transaction identities', async () => {
   const f = await readyAccounts();
   try {
     await f.execute({ kind: 'create', label: 'Savings',});
@@ -2066,9 +2007,9 @@ test('account removal checks every chain and keeps all sender-owned signed bytes
     assert.equal(f.disk.signedValue(),retained); assert.equal(JSON.parse(retained!).entries.length,2);
     await f.execute({kind:'create',label:'Recreated',});
     assert.equal(f.authority.getSnapshot().account!.address,address);
-    assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.rawTransaction,other.rawTransaction);
+    assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.hash,other.hash);
     await f.authority.selectNetwork('ethereum',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision, () => {});
-    assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.rawTransaction,first.rawTransaction);
+    assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.hash,first.hash);
   } finally { await f.authority.dispose().catch(()=>undefined); f.disk.restoreNetwork(); }
 });
 
@@ -2165,7 +2106,6 @@ test('journal quarantine rejects every later secret operation on the same runtim
       () => f.runtime.backup.confirm('1'.repeat(64)),
       () => readTestSelectedKey(f.runtime, exportScope, () => undefined),
       () => signTestTransfer(f.runtime.transfers!, tx, { assertCurrent: () => undefined, signal: new AbortController().signal }),
-      () => Promise.resolve().then(() => f.runtime.transfers!.assertUnlocked(() => undefined)),
     ];
     for (const operation of operations) await assert.rejects(operation(), /CLEANUP_FAILED|CANCELLED/);
     assert.equal(f.disk.authorizationChecks, credentials);
@@ -2500,7 +2440,6 @@ for (const phase of ['password', 'credential-read', 'export-before', 'export-aft
       const pending = flow.begin(); void pending.catch(() => undefined); await hold.entered;
       await assert.rejects(flow.begin(), /BUSY/);
       await assert.rejects(f.runtime.backup.readPhrase({ method: 'device' }), /BUSY/);
-      assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), /BUSY/);
       await assert.rejects(signTestTransfer(f.runtime.transfers!, { type: 2, accessList: [], from: ADDRESS,
         to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1',
         gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal }), /BUSY/);
@@ -2662,7 +2601,10 @@ test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export 
     await reopened.initialize(); await reopened.unlock();
     assert.equal(reopened.getSnapshot().account!.address, importedAddress());
     const recovery = await (await reopenedRuntime.transfers!.journal(() => undefined)).load();
-    assert.equal(recovery!.phase, 'signed'); assert.equal(Transaction.from(recovery!.rawTransaction).chainId, 57057n);
+    assert.equal(recovery!.phase, 'signed');
+    assert.equal(recovery!.scope.chainId, '57057');
+    assert.equal(recovery!.scope.address, importedAddress());
+    assert.equal(recovery!.rawTransaction, undefined);
     assert.equal(reopened.getSnapshot().backup, 'confirmed');
     await reopened.dispose();
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
@@ -2735,7 +2677,6 @@ for (const phase of ['password', 'import-after', 'encrypt-after']) {
       const otherKey = '0x' + '2'.padStart(64, '0');
       await assert.rejects(f.authority.importAccount({ privateKey: otherKey, expectedAddress: importedAddress(otherKey), label: 'Other' }, f.authority.getSnapshot().revision, 0, new AbortController().signal, createTestPrivateAuthentication(() => undefined)), /BUSY/);
       await assert.rejects(f.runtime.backup.readPhrase({ method: 'device' }), /BUSY/);
-      assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), /BUSY/);
       await assert.rejects(f.authority.manageAccounts({ kind: 'select', id: 'hd:60:0' }, f.authority.getSnapshot().revision, 0), /BUSY/);
       f.authority.lock(); hold.release(); await assert.rejects(pending, /CANCELLED/);
       assert.equal(JSON.stringify([...f.disk.records]), before);
@@ -2830,10 +2771,9 @@ test('imported removal checks every chain, archives terminal rows, and never con
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
-test('explicit same-chain RPC edits preserve tokens, exact-byte retries and cold unlock', async () => {
-  const f = await readyAccounts(), originalRpc = localTransferRpc();
+test('explicit same-chain RPC edits preserve tokens, signed records and cold unlock', async () => {
+  const f = await readyAccounts(loadLegacyReplaySdk), originalRpc = localTransferRpc();
   const first = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: originalRpc.rpc });
-  let retry: NativeTransfers | undefined;
   try {
     const token = { contractAddress: '0x3333333333333333333333333333333333333333', name: 'Token', symbol: 'TOK', decimals: 6 };
     await f.runtime.tokens!.add(0, token, () => undefined);
@@ -2844,18 +2784,10 @@ test('explicit same-chain RPC edits preserve tokens, exact-byte retries and cold
     await f.authority.manageNetwork({ kind: 'save-network', registration }, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
     assert.equal((await f.runtime.tokens!.load(() => undefined)).items[0]!.contractAddress, token.contractAddress);
     assert.equal((await (await f.runtime.transfers!.journal(() => undefined)).load())!.rawTransaction, original);
-    const nextRpc = localTransferRpc('ethereum', registration);
-    retry = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: nextRpc.rpc });
-    await retry.recover(true);
-    const retryReview = retry.getSnapshot().review!;
-    assert.equal(retryReview.context.rpcUrl, registration.rpcUrl);
-    assert.equal(retryReview.retry, true);
-    await retry.confirm(retryReview.id, { method: 'device' });
-    assert.deepEqual(nextRpc.broadcasts, [original]);
     f.authority.lock(); await f.authority.unlock();
     assert.equal(f.authority.getSnapshot().phase, 'ready');
     assert.equal((await (await f.runtime.transfers!.journal(() => undefined)).load())!.rawTransaction, original);
-  } finally { first.dispose(); retry?.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+  } finally { first.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
 test('shared SDK signing snapshots the approved envelope before queued work', async () => {
@@ -2983,8 +2915,8 @@ for (const id of [0, 1.5, Number.MAX_SAFE_INTEGER + 1]) test(`invalid SDK-alloca
 });
 
 
-test('review expiry during shared signed-record persistence retains exact bytes and prevents dispatch', async () => {
-  const f = await readyAccounts(), network = localTransferRpc();
+test('review expiry during legacy signed-record persistence retains exact bytes and prevents dispatch', async () => {
+  const f = await readyAccounts(loadLegacyReplaySdk), network = localTransferRpc();
   let now = 100;
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc, now: () => now });
   try {
@@ -2999,11 +2931,6 @@ test('review expiry during shared signed-record persistence retains exact bytes 
     assert.equal(saved!.phase, 'signed');
     assert.equal(Transaction.from(saved!.rawTransaction).hash, saved!.hash);
     assert.equal(f.authority.getSnapshot().phase, 'ready');
-    await transfers.recover(true);
-    const retry = transfers.getSnapshot().review!;
-    assert.equal(retry.retry, true);
-    await transfers.confirm(retry.id, { method: 'device' });
-    assert.deepEqual(network.broadcasts, [saved!.rawTransaction]);
   } finally { f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
@@ -3043,8 +2970,7 @@ test('two real submissions remain in local Activity after offline cold reopen', 
   let reopened: NativeCustodyAuthority | undefined;
   try {
     await transfers.confirm(await prepareAccountTransfer(transfers), { method: 'device' });
-    network.include();await transfers.recover();
-    assert.equal(transfers.getSnapshot().phase,'confirmed');
+    network.include();
     await transfers.confirm(await prepareAccountTransfer(transfers), { method: 'device' });
     assert.equal(network.broadcasts.length,2);
     assert.deepEqual(network.broadcasts.map(raw=>Transaction.from(raw).nonce),[0,1]);
@@ -3153,26 +3079,40 @@ test('connection transactions use real SDK signing and durable shared submission
 });
 
 
-for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject', 'lock'] as const) test(`connection account selection publishes real authority context before ${outcome}`, async () => {
+for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject', 'transaction-preflight-retry', 'transaction-response-lost', 'lock'] as const) test(`connection account selection publishes real authority context before ${outcome}`, async () => {
   const submitted: string[] = [];
+  let preflightFailures = 0;
+  let estimate = '0x10000';
+  let retainedEntries = () => 0;
   const connectionFetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async function accountSelectionFixtureFetch(_url, init): Promise<Response> {
     const payload = JSON.parse(String(init?.body));
     if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async request =>
       (await accountSelectionFixtureFetch(_url, { ...init, body: JSON.stringify(request) })).json())));
     const { id, method, params } = JSON.parse(String(init?.body));
     let result: unknown;
-    if (method === 'eth_chainId') result = '0x1';
+    if (method === 'eth_chainId') {
+      result = '0x1';
+      if (outcome === 'transaction-preflight-retry' && preflightFailures === 0 && retainedEntries() === 1) {
+        preflightFailures++;
+        result = '0x2';
+      }
+    }
     else if (method === 'eth_getTransactionCount') result = '0x0';
     else if (method === 'eth_getBalance') result = '0x10000000000000000';
     else if (method === 'eth_getBlockByNumber') result = { number: params[0] === 'latest' ? '0x10' : params[0], hash: `0x${'aa'.repeat(32)}`, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
     else if (method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas') result = '0x2';
-    else if (method === 'eth_estimateGas') result = '0x10000';
+    else if (method === 'eth_estimateGas') result = estimate;
     else if (method === 'eth_getTransactionByHash' || method === 'eth_getTransactionReceipt') result = null;
-    else if (method === 'eth_sendRawTransaction') { submitted.push(params[0]); result = keccak256(params[0]); }
+    else if (method === 'eth_sendRawTransaction') {
+      submitted.push(params[0]);
+      if (outcome === 'transaction-response-lost') throw new Error('Response lost after POST');
+      result = keccak256(params[0]);
+    }
     else throw Error(`Unexpected method ${method}`);
     return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { headers: { 'content-type': 'application/json' } });
   };
   const f = await readyAccounts(undefined, connectionFetch);
+  retainedEntries = () => JSON.parse(f.disk.signedValue() ?? '{"entries":[]}').entries.length;
   const transaction = outcome.startsWith('transaction');
   let controller: NativeConnectionsController | undefined;
   let unsubscribe: () => void = () => undefined;
@@ -3245,8 +3185,49 @@ for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject
     assert.equal(published.at(-1), ADDRESS);
     const switched = controller.view.getSnapshot().signingReview;
     assert(switched && !switched.needsAccountSwitch);
-    if (outcome === 'sign' || outcome === 'transaction-sign') {
+    if (outcome === 'transaction-response-lost') {
+      assert(switched.kind === 'transaction');
+      await assert.rejects(controller.view.approveRequest(switched.id, switched.revision, false), { code: 'DELIVERY_UNCERTAIN' });
+      const uncertain = controller.view.getSnapshot().signingReview;
+      assert(uncertain?.kind === 'transaction');
+      assert.equal(uncertain.error, 'DELIVERY_UNCERTAIN');
+      assert.equal(uncertain.retryPreparation, false);
+      assert.equal(uncertain.broadcastHash, keccak256(submitted[0]!));
+      assert.equal(retainedEntries(), 1);
+      await controller.view.rejectRequest(uncertain.id);
+      assert.equal(responses.length, 0);
+      assert.equal(submitted.length, 1);
+    } else if (outcome === 'sign' || outcome === 'transaction-sign' || outcome === 'transaction-preflight-retry') {
       await controller.view.approveRequest(switched.id, switched.revision, false);
+      if (outcome === 'transaction-preflight-retry') {
+        assert(switched.kind === 'transaction');
+        const failed = controller.view.getSnapshot().signingReview;
+        assert(failed?.kind === 'transaction' && failed.id === switched.id);
+        assert.equal(failed.retryPreparation, true);
+        assert.equal(failed.busy, false);
+        assert.equal(failed.broadcastHash, null);
+        assert.equal(preflightFailures, 1);
+        assert.equal(retainedEntries(), 0, 'the exact signed nonce reservation was removed');
+        assert.equal(submitted.length, 0);
+        assert.equal(responses.length, 0);
+        await assert.rejects(controller.view.approveRequest(switched.id, switched.revision, false), { code: 'REQUEST_EXPIRED' });
+        estimate = '0x20000';
+        const retry = controller.view.getSnapshot().signingReview;
+        assert(retry?.kind === 'transaction' && retry.retryPreparation);
+        await controller.view.approveRequest(retry.id, retry.revision, false);
+        const renewed = controller.view.getSnapshot().signingReview;
+        assert(renewed?.kind === 'transaction' && renewed.id === switched.id);
+        assert.equal(renewed.retryPreparation, false);
+        assert.notEqual(renewed.maximumFeeUnits, switched.maximumFeeUnits);
+        assert.equal(retainedEntries(), 0);
+        assert.equal(submitted.length, 0);
+        assert.equal(responses.length, 0);
+        await controller.view.approveRequest(renewed.id, renewed.revision, false);
+        assert.equal(submitted.length, 1);
+        assert.equal(Transaction.from(submitted[0]!).nonce, 0);
+        assert.equal(retainedEntries(), 1);
+        assert.equal(responses.length, 1);
+      }
       const reply = responses.find(response => 'result' in response);
       assert(reply && 'result' in reply);
       if (transaction) {
@@ -3421,7 +3402,9 @@ test('Trezor runtime uses shared allocation, preserves records on unlock and sig
             broadcasts++;
             const raw = request.params[0];
             const saved = await (await runtime.transfers!.journal(() => undefined)).load(keccak256(raw));
-            assert(saved?.rawTransaction === raw);
+            assert.equal(saved?.hash, keccak256(raw));
+            assert.equal(saved?.inspectionOnly, true);
+            assert.equal(saved?.rawTransaction, undefined);
             return keccak256(raw);
           }
           default: throw new Error('Unexpected test RPC ' + request.method);
@@ -3569,7 +3552,14 @@ test('Trezor runtime cancellation before identity admission never opens a device
 
 for (const failure of ['none', 'retirement', 'cancellation']) test(`Trezor runtime waits for zero-step UTXO retirement with ${failure} failure`, async () => {
   const fixture = trezorFixtureSessions();
-  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions, async () => { throw new Error('No network needed'); });
+  let startRead!: () => void, releaseRead!: () => void;
+  const reading = new Promise<void>(resolve => { startRead = resolve; });
+  const heldRead = new Promise<void>(resolve => { releaseRead = resolve; });
+  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions, async () => {
+    startRead();
+    await heldRead;
+    throw new Error('UTXO read interrupted by fixture');
+  });
   const runtime = await disk.factory.open() as KeyringRuntime;
   const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
   let entered!: () => void, release!: () => void;
@@ -3585,27 +3575,32 @@ for (const failure of ['none', 'retirement', 'cancellation']) test(`Trezor runti
     const calls = fixture.paths.length;
     await runtime.openUtxoSend!(() => undefined);
     await runtime.trezor.cancel();
-    await runtime.openUtxoSend!(() => undefined);
+    const send = await runtime.openUtxoSend!(() => undefined);
     assert.equal(fixture.paths.length, calls);
+    const preparing = send.prepare({ recipient: owner.getSnapshot().account!.address, amount: '0.00001' });
+    void preparing.catch(() => undefined);
+    await Promise.race([reading, preparing.then(() => assert.fail('Prepare completed before the held backend read'))]);
+    assert.equal(fixture.sessions.getSnapshot()?.completedSteps, 0);
     if (failure === 'cancellation') fixture.holdCancellation(async () => { throw new Error('Cancellation refused'); });
     fixture.holdRetirement(async () => { entered(); await held; if (failure === 'retirement') throw new Error('Retirement refused'); });
     const cancelled = runtime.trezor.cancel();
     void cancelled.catch(() => undefined);
-    await started;
+    await Promise.race([started, cancelled.then(() => assert.fail('Cancellation completed before device retirement'))]);
     const cancelledAgain = runtime.trezor.cancel();
     assert.equal(cancelledAgain, cancelled);
     let settled = false;
     const closing = runtime.storage.close().finally(() => { settled = true; });
     void closing.catch(() => undefined);
-    await Promise.resolve(); assert.equal(settled, false); release();
+    await Promise.resolve(); assert.equal(settled, false); release(); releaseRead();
+    await assert.rejects(preparing);
     if (failure !== 'none') {
       await assert.rejects(cancelled);
       await assert.rejects(closing, /CLEANUP_FAILED/);
     } else { await cancelled; await closing; }
-  } finally { release(); await owner.dispose().catch(() => undefined); await fixture.sessions.dispose(); }
+  } finally { release(); releaseRead(); await owner.dispose().catch(() => undefined); await fixture.sessions.dispose(); }
 });
 
-test('Trezor runtime replays saved UTXO bytes without Suite or a new signature', async () => {
+test('Trezor Activity reconciles UTXO status without Suite, signing or broadcast', async () => {
   const [{ UtxoSignedRecords }, { getUtxoNetwork }, { utxoSubmissionUrl }, { utils }, { metadata }] = await Promise.all([
     import('../../../source/wallet/utxoSignedRecords.ts'), import('../src/core/utxoNetworks.ts'),
     import('../../../source/wallet/utxoSignedBinding.ts'), import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
@@ -3616,10 +3611,15 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
   class Host extends sdk.HostKeyring {
     constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) { super(...args); ring = this; }
   }
+  const statusRequested = Promise.withResolvers<void>();
   let broadcasts = 0;
   const network = getUtxoNetwork('bitcoin');
   const disk = memoryDisk(async () => ({ ...sdk, HostKeyring: Host }), undefined, undefined, fixture.sessions,
     async (url, init) => {
+      if (String(url).startsWith(network.endpoint + '/api/v2/tx/')) {
+        statusRequested.resolve();
+        const response = Response.json({}); Object.defineProperty(response, 'url', { value: String(url) }); return response;
+      }
       if (String(url) === network.endpoint + '/api/v2/') {
         const response = Response.json(metadata(network)); Object.defineProperty(response, 'url', { value: String(url) }); return response;
       }
@@ -3653,14 +3653,29 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
         account: { id: 0, type: 'Trezor', xpub: (disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups.find(group => group.activeNetwork.slip44 === 0)!.accounts.Trezor[0]!.xpub } },
     };
     const records = new UtxoSignedRecords(disk.utxoPort, disk.utxoPort);
-    const recordAccess = ring.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1', 'org.syscoin.pali.evm.signed.chunk.v1',
-      'org.syscoin.pali.utxo.signed.root.v1', 'org.syscoin.pali.utxo.signed.chunk.v1']);
-    await records.admit({ keyring: recordAccess, assertCurrent() {} }, record, 'initial', async prepare => { await prepare(); });
+    const checkpoint = captureNativePublicSessionRecord(disk.records.get(NATIVE_PUBLIC_SESSION_KEY));
+    const recordAccess = ring.getPrivateRecordAccess(nativePublicRecordDomains(checkpoint.version));
+    await records.admit({ keyring: recordAccess, assertCurrent() {} }, record, async (prepare, release) => {
+      await prepare();
+      release(); // Simulate a previously dispatched transfer without an ACK.
+    });
     const calls = fixture.paths.length;
-    const send = await runtime.openUtxoSend!(() => undefined);
-    const review = await send.prepareRetry(txid);
-    const result = await send.confirm(review, { method: 'device' });
-    assert.equal(result.txid, txid); assert.equal(broadcasts, 1);
+    const snapshot = owner.getSnapshot(), current = () => undefined;
+    await runtime.withUtxoActivityRead(
+      { accountId: account.id, networkId: network.id, address: account.address, generation: snapshot.revision },
+      new AbortController().signal,
+      current,
+      current,
+      async () => undefined,
+      'page',
+    );
+    const timeout = AbortSignal.timeout(2000);
+    await Promise.race([
+      statusRequested.promise,
+      new Promise<never>((_resolve, reject) => timeout.addEventListener('abort', () => reject(timeout.reason), { once: true })),
+    ]);
+    const send = await runtime.openUtxoSend!(current);
+    assert.equal(broadcasts, 0);
     assert.equal(fixture.paths.length, calls);
     assert.equal(runtime.trezor.getSnapshot().phase, 'idle');
     let entered!: () => void, release!: () => void;
@@ -3677,7 +3692,8 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
   } finally { await owner.dispose(); await fixture.sessions.dispose(); }
 });
 
-for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UTXO ${maximum ? 'MAX' : 'exact'} draft with its custom fee through a fresh review and device signature`, async () => {
+for (const variant of ['exact', 'MAX', 'replacement', 'changed-replacement', 'finish-failure', 'unknown-ack'] as const) test(`Trezor runtime resumes a UTXO ${variant} draft through a fresh review and device signature`, async () => {
+  const maximum = variant === 'MAX';
   const [{ createTrezorSessions }, { getUtxoNetwork }, { getNetworkConfig }, { utils }, { metadata }] = await Promise.all([
     import('../src/hardware/trezorSessions.ts'), import('../src/core/utxoNetworks.ts'), import('@sidhujag/sysweb3-network'),
     import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
@@ -3695,6 +3711,9 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
   const recipient = utils.bitcoinjs.payments.p2wpkh({ hash: Buffer.alloc(20, 8), network: network.addressNetwork }).address!;
   const methods: string[] = [];
   let random = 0, requestId = 0, broadcasts = 0;
+  const submitted = new Map<string, string>();
+  let changeDeviceReply = false;
+  let deferReplacementReply: ((callback: string) => void) | undefined;
   const sessions = createTrezorSessions({
     randomBytes: length => new Uint8Array(length).fill(++random),
     async loadClient() {
@@ -3727,8 +3746,9 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
           return index >= 0x80000000 ? `${index - 0x80000000}'` : String(index);
         }).join('/');
         const psbt = new utils.bitcoinjs.Psbt({ network: network.addressNetwork });
-        psbt.setVersion(params.version); psbt.setLocktime(params.locktime);
+        psbt.setVersion(params.version); psbt.setLocktime(params.locktime + (changeDeviceReply ? 1 : 0));
         for (const input of params.inputs) {
+          if (broadcasts > 0) assert.equal(input.amount, previous.outs[input.prev_index].value.toString());
           const path = pathText(input.address_n);
           const key = hd.getRootNode().derivePath(path);
           psbt.addInput({ hash: input.prev_hash, index: input.prev_index, sequence: input.sequence,
@@ -3747,10 +3767,22 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
       } else throw new Error(`Unexpected device method ${method}`);
       const callback = new URL(url.searchParams.get('callback')!);
       callback.searchParams.set('response', JSON.stringify({ success: true, payload }));
-      assert.equal(sessions.receiveCallback(callback.toString()), true);
+      if (method === 'signTransaction' && deferReplacementReply) deferReplacementReply(callback.toString());
+      else assert.equal(sessions.receiveCallback(callback.toString()), true);
     },
   });
-  const disk = memoryDisk(undefined, undefined, undefined, sessions, async (input, init) => {
+  const runtimeSessions = {
+    ...sessions,
+    resume(request: Parameters<typeof sessions.resume>[0]) {
+      const session = sessions.resume(request);
+      if (variant !== 'finish-failure') return session;
+      return { ...session, async finish() {
+        await session.finish();
+        throw new Error('Trezor retirement failed');
+      } };
+    },
+  };
+  const disk = memoryDisk(undefined, undefined, undefined, runtimeSessions, async (input, init) => {
     const url = String(input), route = url.slice(network.endpoint.length);
     let result: unknown;
     if (route === '/api/v2/') result = metadata(network);
@@ -3759,7 +3791,16 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
     else if (route.startsWith('/api/v2/xpub/')) result = { tokens: [] };
     else if (route.startsWith('/api/v2/utxo/')) result = [{ txid: previous.getId(), vout: 0, value: '100000', address, confirmations: 10, path: "m/84'/0'/0'/0/0" }];
     else if (route === '/api/v2/tx/' + previous.getId()) result = { hex: previous.toHex() };
-    else if (route === '/api/v2/sendtx/' && init?.method === 'POST') { broadcasts++; result = { result: utils.bitcoinjs.Transaction.fromHex(String(init.body)).getId() }; }
+    else if (route === '/api/v2/sendtx/' && init?.method === 'POST') {
+      const transaction = utils.bitcoinjs.Transaction.fromHex(String(init.body));
+      broadcasts++;
+      assert.equal(sessions.getSnapshot(), null, 'the signing job must retire before POST');
+      submitted.set(transaction.getId(), transaction.toHex());
+      result = { result: variant === 'unknown-ack' ? '0'.repeat(64) : transaction.getId() };
+    } else if (route.startsWith('/api/v2/tx/') && submitted.has(route.slice('/api/v2/tx/'.length))) {
+      const txid = route.slice('/api/v2/tx/'.length);
+      result = { txid, hex: submitted.get(txid), confirmations: 0 };
+    }
     else throw new Error('Unexpected UTXO route ' + route);
     const response = Response.json(result); Object.defineProperty(response, 'url', { value: url }); return response;
   });
@@ -3774,6 +3815,64 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
     const callCount = methods.length;
     const first = await runtime.openUtxoSend!(() => undefined);
     const feeChoice = { kind: 'custom' as const, satPerVbyte: '7' };
+    if (variant === 'replacement' || variant === 'changed-replacement') {
+      const credential = { method: 'device' as const };
+      const original = await first.prepare({ recipient, amount: '0.0005', rbf: true });
+      const { txid } = await first.confirm(original, credential);
+      const signingCalls = () => methods.filter(method => method === 'signTransaction').length;
+      const replacement = { txid, mode: 'speed-up' as const };
+      const send = await runtime.openUtxoSend!(() => undefined);
+      assert.deepEqual(await send.availableReplacements(txid, () => undefined), ['speed-up', 'cancel']);
+      const review = await send.prepareReplacement(replacement, feeChoice);
+      assert.equal(signingCalls(), 1);
+      if (variant === 'changed-replacement') {
+        const callback = Promise.withResolvers<string>();
+        deferReplacementReply = callback.resolve;
+        const signing = send.confirm(review, credential);
+        const retired = assert.rejects(signing);
+        const response = await callback.promise;
+        owner.lock(); await owner.unlock();
+        await retired;
+        assert.equal(sessions.receiveCallback(response), true);
+        const intent = await runtime.trezor.resumeSend();
+        assert.equal(intent.kind, 'utxo-replacement');
+        if (intent.kind !== 'utxo-replacement') throw Error('Unexpected replacement draft');
+        const fresh = await runtime.openUtxoSend!(() => undefined);
+        await assert.rejects(fresh.prepareReplacement(intent.replacement, { kind: 'custom', satPerVbyte: '8' }), /Network conditions changed/);
+        assert.equal(signingCalls(), 2);
+        assert.equal(broadcasts, 1);
+        return;
+      }
+      owner.lock(); await owner.unlock();
+      assert.equal(runtime.trezor.getSnapshot().phase, 'resume');
+      await assert.rejects(send.confirm(review, credential), /CANCELLED|NOT_READY/);
+      const intent = await runtime.trezor.resumeSend();
+      assert.equal(intent.kind, 'utxo-replacement');
+      if (intent.kind !== 'utxo-replacement') throw Error('Unexpected replacement draft');
+      assert.deepEqual(intent.replacement, replacement);
+      assert.deepEqual(intent.feeChoice, feeChoice);
+      const fresh = await runtime.openUtxoSend!(() => undefined);
+      const renewed = await fresh.prepareReplacement(intent.replacement, intent.feeChoice);
+      assert.notEqual(renewed, review);
+      assert.deepEqual(renewed.outputs, review.outputs);
+      assert.equal(signingCalls(), 1);
+      const bumped = await fresh.confirm(renewed, credential);
+      assert.equal(broadcasts, 2);
+      const cancel = { txid: bumped.txid, mode: 'cancel' as const };
+      let next = await runtime.openUtxoSend!(() => undefined);
+      let cancellation = await next.prepareReplacement(cancel, feeChoice);
+      changeDeviceReply = true;
+      await assert.rejects(next.confirm(cancellation, credential));
+      assert.equal(broadcasts, 2);
+      changeDeviceReply = false;
+      next = await runtime.openUtxoSend!(() => undefined);
+      cancellation = await next.prepareReplacement(cancel, feeChoice);
+      const cancelled = await next.confirm(cancellation, credential);
+      assert.equal(broadcasts, 3);
+      assert.equal(utils.bitcoinjs.Transaction.fromHex(submitted.get(cancelled.txid)!).outs.length, 1);
+      return;
+    }
+
     const preparing = first.prepare({ recipient, amount: maximum ? '' : '0.0005', max: maximum, rbf: false, feeChoice });
     feeChoice.satPerVbyte = '8';
     const review = await preparing;
@@ -3795,7 +3894,22 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
     assert.notEqual(freshReview, review); assert.equal(methods.length, callCount); assert.equal(broadcasts, 0);
     const beforeAuthentication = methods.filter(method => method === 'signTransaction').length;
     assert.equal(methods.filter(method => method === 'signTransaction').length, beforeAuthentication);
-    await fresh.confirm(freshReview, { method: 'device' });
+    const outcome = fresh.confirm(freshReview, { method: 'device' });
+    if (variant === 'finish-failure') {
+      await assert.rejects(outcome, /Trezor retirement failed/);
+      assert.equal(broadcasts, 0);
+      return;
+    }
+    if (variant === 'unknown-ack') {
+      await assert.rejects(outcome, (error: unknown) => {
+        assert(error instanceof Error && 'code' in error && 'txid' in error);
+        assert.equal(error.code, 'UTXO_SUBMISSION_UNKNOWN');
+        assert.equal(error.txid, [...submitted.keys()][0]);
+        return true;
+      });
+    } else {
+      assert.equal((await outcome).txid, [...submitted.keys()][0]);
+    }
     assert.equal(methods.filter(method => method === 'signTransaction').length, 1);
     assert.equal(broadcasts, 1);
   } finally { await owner.dispose(); await sessions.dispose(); }

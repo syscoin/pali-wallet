@@ -50,5 +50,7 @@ export function createPrivateVaultController(
     // overrode the persisted-record timestamp clock above.
     deadlineNow: dependencies.deadlineNow || (() => Date.now()),
     randomId: dependencies.randomId || (() => crypto.randomUUID()),
+    readPrivateNonceResetGeneration:
+      dependencies.readPrivateNonceResetGeneration,
   });
 }

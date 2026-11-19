@@ -21,12 +21,13 @@ import { DAPP_WALLET_READ_METHODS } from '../../../source/shared/dappWalletReads
 import { EthereumRpcErrorHandler } from '../../../source/helpers/errors/errorClassesHandlers.ts';
 import type { EvmDappFeeComparison } from '../../../source/shared/evmDappFeePolicy.ts';
 import { createSmartAccountCallsExecutions } from '../../../source/shared/dappCalls.ts';
-import { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
+import { NativeSmartAccountOperation, SmartAccountPayerQuoteUnavailable } from '../src/smartAccount/operation.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import axios from 'axios';
 import { NativeConnectionsController } from '../src/connections/controller.ts';
 import type { NativeConnectionHost } from '../src/connections/host.ts';
+import { recordNativeConnectionSubmissionFailure } from '../src/connections/transactionRuntime.ts';
 import type {
   WalletConnectTransportEvent,
   WalletConnectRequest,
@@ -40,11 +41,14 @@ import type { KeyringStoragePort } from '../src/storage/types.ts';
 import type { INetwork, KeyringAccountType } from '../../../source/types/network.ts';
 import { openNativeConnectionRepository } from '../src/connections/storage.ts';
 import { captureEvmFeeApproval } from '../../../source/shared/evmFeeApproval.ts';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../../source/shared/smartAccountFeeQuote.ts';
 import type { NativeSigningReview } from '../src/connections/types.ts';
 import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { Interface } from 'ethers/abi';
 import { summarizeApproval, type ApprovalContractMetadata } from '../../../source/shared/approval.ts';
 import { decodeAssetTransfer } from '../../../source/shared/assetTransfer.ts';
+import { extractPairingUri } from '../src/connections/pairingLinks.ts';
+import { screenElements, screenFixture } from './screenFixture.ts';
 const ROTATED_SYSCOIN_ADDRESS = parseUtxoPublicIdentifier(XPUB, 'syscoin').address;
 const externalPsbt = new syscoinUtils.bitcoinjs.Psbt();
 externalPsbt.addInput({ hash: 'ab'.repeat(32), index: 0 });
@@ -85,6 +89,7 @@ function fixture(
     minimumGasLimit?: string;
     batch?: boolean;
     smart?: boolean;
+    smartPayerBudget?: boolean;
     imported?: boolean;
     smartMessages?: boolean;
     smartTrezor?: boolean;
@@ -150,7 +155,10 @@ function fixture(
   let storageFailure: 'before' | 'after' | undefined;
   let permissionPublished: ((hasGrant: boolean) => void) | undefined;
   let permissionSettlement: (() => Promise<void>) | undefined;
+  let failPermissionWrite = false;
   let preparationError: Error | undefined;
+  let submissionError: Error | undefined;
+  let smartBatchProgressBeforeFailure: { purpose: 'fund-account' | 'submit-operation'; hash: string } | undefined;
   let beforePreparedReturn: (() => void) | undefined;
   let smartDisposals = 0;
   let preparationWait: Promise<void> = Promise.resolve();
@@ -395,15 +403,27 @@ function fixture(
       const intent = { kind: 'dapp-batch' as const, calls: input.calls.calls };
       const transaction = snapshotPreparedEvmTransaction({ from: '0x' + '33'.repeat(20), to: '0x' + '44'.repeat(20),
         chainId: '1', value: '0', data: '0x1234', nonce: '0', gasLimit: '50000', type: 2, accessList: [], maxFeePerGas: '10', maxPriorityFeePerGas: '1' });
+      const payerBudget = options.smartPayerBudget ? {
+        address: transaction.from, gasTank: false, maximumFeeWei: '500000', maximumPrefundFeeWei: '0', maximumPrefundWei: '0',
+      } : undefined;
       const operation = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: Math.min(input.handoff.expiresAt,freshSmartOperationDeadline()),
         account: ADDRESS, intent, network: { id: 'ethereum', chainId: '1', rpcUrl: 'https://rpc.example', registrationHash: '0x' + '55'.repeat(32) } as never,
         assertCurrent: () => { check(); input.approval.assertCurrent(); },
-        async prepare() { return { kind: 'authorization', intent, operation: { executions: createSmartAccountCallsExecutions(intent.calls), actionHash: '0x' + '66'.repeat(32),
+        async prepare() { return { kind: 'authorization', intent, payerBudget, operation: { executions: createSmartAccountCallsExecutions(intent.calls), actionHash: '0x' + '66'.repeat(32),
           userOperation: { nonce: '0', initCode: '0x', callData: '0x', accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1', gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03' } } as never }; },
         async sign(_prepared, guard) { await signWait; guard(); signatures.push(intent); return '0x1234'; },
         async submit(_prepared, _signature, _signal, guard, reviewPayer, onBroadcast) {
-          await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
-          guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
+          if (!payerBudget) await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
+          guard();
+          if (submissionError) {
+            if (smartBatchProgressBeforeFailure) {
+              const { hash, purpose } = smartBatchProgressBeforeFailure;
+              if (purpose === 'submit-operation') transactions.push(intent);
+              onBroadcast(hash, purpose);
+            }
+            throw submissionError;
+          }
+          transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
         },
       });
       return { operation, approval: null, batchApprovals: intent.calls.map(call => summarizeApproval(call.data, call.to!, approvalMetadata)),
@@ -470,10 +490,13 @@ function fixture(
         const intent = { kind: 'dapp-call' as const, recipient: String(value.to), amountUnits: BigInt(value.value as string ?? '0').toString(), data: String(value.data ?? '0x') };
         const transaction = snapshotPreparedEvmTransaction({ from: '0x' + '33'.repeat(20), to: '0x' + '44'.repeat(20),
           chainId: '1', value: '0', data: '0x1234', nonce: '0', gasLimit: '50000', type: 2, accessList: [], maxFeePerGas: '10', maxPriorityFeePerGas: '1' });
+        const payerBudget = options.smartPayerBudget ? {
+          address: transaction.from, gasTank: false, maximumFeeWei: '500000', maximumPrefundFeeWei: '0', maximumPrefundWei: '0',
+        } : undefined;
         const operation = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: Math.min(input.handoff.expiresAt,freshSmartOperationDeadline()),
           account: ADDRESS, intent, network: { id: 'ethereum', chainId: '1', rpcUrl: 'https://rpc.example', registrationHash: '0x' + '55'.repeat(32) } as never,
           assertCurrent: () => { check(); input.approval.assertCurrent(); },
-          async prepare() { return { kind: 'authorization', intent, operation: {
+          async prepare() { return { kind: 'authorization', intent, payerBudget, operation: {
             executions: [{ target: intent.recipient, data: intent.data, value: intent.amountUnits }],
             actionHash: '0x' + '66'.repeat(32), userOperation: { nonce: String(transactions.length), initCode: '0x', callData: '0x',
               accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1',
@@ -481,8 +504,10 @@ function fixture(
           } as never }; },
           async sign(_prepared, guard) { await signWait; guard(); signatures.push(intent); return '0x1234'; },
           async submit(_prepared, _signature, _signal, guard, reviewPayer, onBroadcast) {
-            await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
-            guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
+            if (!payerBudget) await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
+            guard();
+            if (submissionError) throw submissionError;
+            transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
           },
         });
         const dispose = operation.dispose.bind(operation);
@@ -512,6 +537,7 @@ function fixture(
           if (options.hardware) { await signWait; guard(); input.handoff.beforeSignature(); }
           guard();
           input.approval.assertCurrent();
+          if (submissionError) throw submissionError;
           transactions.push(fee.transaction);
           const hash = options.batch ? '0x' + BigInt(transaction.nonce).toString(16).padStart(64, '0') : '0x' + '34'.repeat(32);
           onBroadcast(hash);
@@ -692,6 +718,13 @@ function fixture(
             const result = await port.exclusive(work);
             await settle?.();
             return result;
+          },
+          async write(frame: Parameters<typeof port.write>[0]) {
+            if (failPermissionWrite) {
+              failPermissionWrite = false;
+              throw Error('Permission write failed');
+            }
+            await port.write(frame);
           },
           publish(frame: Parameters<typeof port.publish>[0]) {
           const grant = frame.dapps[ORIGIN];
@@ -879,7 +912,16 @@ function fixture(
     setStorageWait(value: Promise<void>) { storageWait = value; },
     onPermissionPublication(callback: typeof permissionPublished) { permissionPublished = callback; },
     setPermissionSettlement(callback: typeof permissionSettlement) { permissionSettlement = callback; },
+    failNextPermissionWrite() { failPermissionWrite = true; },
     failTransactionPreparation() { preparationError = new Error('Estimate unavailable'); },
+    failTransactionSubmission(error: Error, progress?: typeof smartBatchProgressBeforeFailure) {
+      submissionError = error;
+      smartBatchProgressBeforeFailure = progress;
+    },
+    clearTransactionSubmissionFailure() {
+      submissionError = undefined;
+      smartBatchProgressBeforeFailure = undefined;
+    },
     blockSite() {
       siteBlocked = true;
     },
@@ -1941,6 +1983,7 @@ async function connectedFixture(
     minimumGasLimit?: string;
     batch?: boolean;
     smart?: boolean;
+    smartPayerBudget?: boolean;
     imported?: boolean;
     smartMessages?: boolean;
     smartTrezor?: boolean;
@@ -1966,6 +2009,50 @@ async function connectedFixture(
   );
   return f;
 }
+
+for (const review of ['list', 'details'] as const) test(`a failed disconnect from the ${review} has one notice and a successful retry clears it`, async () => {
+  const f = await connectedFixture();
+  const host = screenFixture(new URL('../src/screens/NativeConnections.tsx', import.meta.url), 'NativeConnections', {
+    '../connections/pairingLinks': { extractPairingUri },
+    'react-native': { ActivityIndicator: 'ActivityIndicator', View: 'View', Switch: 'Switch', StyleSheet: { create: (value: unknown) => value },
+      BackHandler: { addEventListener: () => ({ remove() {} }) } },
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    'expo-clipboard': {},
+    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
+    './IdleActivityBoundary': { IdlePressable: 'Pressable' },
+    './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' },
+    './ConnectionQrScanner': { ConnectionQrScanner: 'Scanner' },
+  });
+  const render = () => screenElements(host.render({ controller: f.view, onBack() {} }));
+  const notices = () => render().filter(element => element.type === 'Notice' && element.props.title === 'Connection unavailable');
+  const disconnect = () => {
+    const action = render().find(element => review === 'details'
+      ? element.type === 'Button' && element.props.title === 'Disconnect'
+      : element.type === 'IconButton' && element.props.label.startsWith('Disconnect '));
+    assert(action);
+    action.props.onPress();
+  };
+  const openDetails = () => {
+    const session = render().find(element => element.type === 'Pressable' && element.props.accessibilityLabel?.includes(ORIGIN));
+    assert(session);
+    session.props.onPress();
+  };
+  try {
+    if (review === 'details') openDetails();
+    f.failNextPermissionWrite();
+    disconnect(); await settle();
+    assert.equal(notices().length, 1);
+    if (review === 'details') {
+      render().find(element => element.type === 'Header')!.props.onBack();
+      assert.equal(notices().length, 0);
+      openDetails();
+    }
+    disconnect(); await settle();
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal(notices().length, 0);
+    assert.equal(f.remoteDisconnects.length, 1);
+  } finally { host.close(); await f.controller.dispose(); }
+});
 
 async function messageRequest(
   f: ReturnType<typeof fixture>,
@@ -2757,6 +2844,27 @@ for (const method of ['wallet_switchEthereumChain', 'wallet_addEthereumChain', '
   } finally { await f.controller.dispose(); }
 });
 
+for (const stage of ['checking', 'committing'] as const) test(`control rejection during ${stage} preserves the announced outcome`, async () => {
+  const f = await connectedFixture();
+  const held = Promise.withResolvers<void>();
+  try {
+    await messageRequest(f, 'wallet_watchAsset', [{ type: 'ERC20', options: { address: `0x${'12'.repeat(20)}` } }], 801);
+    const review = f.view.getSnapshot().controlReview!;
+    if (stage === 'checking') f.setSiteWait(held.promise);
+    else f.setResponseWait(held.promise);
+    const approving = f.view.approveControl(review.id, review.revision);
+    await settle();
+    assert.equal(f.view.getSnapshot().controlReview?.committing, stage === 'committing');
+    await f.view.rejectControl(review.id);
+    held.resolve();
+    await approving;
+    assert.equal(f.view.getSnapshot().controlReview, null);
+    assert.equal(f.controlCommits.length, stage === 'committing' ? 1 : 0);
+    assert.deepEqual(f.responses, [{ id: 801, result: stage === 'committing'
+      ? { result: true } : { error: { code: 4001, message: 'User rejected or request expired' } } }]);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
 test('control requests cannot bypass method, source-chain, origin or blacklist isolation', async () => {
   const f = await connectedFixture();
   try {
@@ -2805,6 +2913,25 @@ test('return-to-dapp is a separate explicit origin-only action and never follows
     f.blockSite(); await assert.rejects(f.view.returnToDapp(session.id, f.view.getSnapshot().revision));
     assert.equal(f.externalUrls.length, 1);
   } finally { await f.controller.dispose(); }
+});
+
+test('return-to-dapp cannot launch after its view retires during site verification', async () => {
+  const f = await connectedFixture();
+  const site = Promise.withResolvers<void>();
+  try {
+    const snapshot = f.view.getSnapshot();
+    const session = snapshot.sessions[0]!;
+    f.setSiteWait(site.promise);
+    let viewOpen = true;
+    const returning = f.view.returnToDapp(session.id, snapshot.revision, () => {
+      if (!viewOpen) throw Error('CONTEXT_CHANGED');
+    });
+    viewOpen = false;
+    site.resolve();
+    await assert.rejects(returning, { message: 'CONTEXT_CHANGED' });
+    assert.equal(f.view.getSnapshot().revision, snapshot.revision);
+    assert.deepEqual(f.externalUrls, []);
+  } finally { site.resolve(); await f.controller.dispose(); }
 });
 
 for (const smart of [false, true])
@@ -3159,6 +3286,118 @@ test('a transaction estimate failure remains visible without authorizing or repo
     await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
     await f.view.rejectRequest(review.id);
     assert.equal(f.responses.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('a WalletConnect transaction fee change after confirmation keeps the unsent outcome and responds once', async () => {
+  const f = await connectedFixture();
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ data: '0x6000' }]);
+    assert.ok(review?.kind === 'transaction');
+    f.failTransactionSubmission(new Error('REVIEW_REQUIRED'));
+    await f.view.approveRequest(review.id, review.revision, false);
+    const failed = f.view.getSnapshot().signingReview;
+    assert.ok(failed?.kind === 'transaction');
+    assert.equal(failed.error, 'TRANSACTION_NOT_SENT');
+    assert.equal(failed.broadcastHash, null);
+    assert.equal(failed.busy, false);
+    assert.deepEqual(f.responses, [{ id: 10, result: { error: { code: -32603, message: 'The transaction was not submitted' } } }]);
+    await assert.rejects(f.view.approveRequest(failed.id, failed.revision, false));
+    await f.view.rejectRequest(failed.id);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.responses.length, 1);
+    assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const reason of ['EVM fee approval changed', 'REVIEW_REQUIRED']) {
+  test(`a WalletConnect ${reason} refusal with exact journal cleanup returns to fee review`, async () => {
+    const f = await connectedFixture();
+    try {
+      const review = await messageRequest(f, 'eth_sendTransaction', [{ data: '0x6000' }]);
+      assert.ok(review?.kind === 'transaction');
+      const error = new Error(reason);
+      recordNativeConnectionSubmissionFailure(error, 'retryable');
+      f.failTransactionSubmission(error);
+      await f.view.approveRequest(review.id, review.revision, false);
+
+      const retry = f.view.getSnapshot().signingReview;
+      assert.ok(retry?.kind === 'transaction');
+      assert.equal(retry.retryPreparation, true);
+      assert.equal(retry.error, null);
+      assert.equal(retry.broadcastHash, null);
+      assert.equal(retry.busy, false);
+      assert.equal(f.responses.length, 0);
+      assert.equal(f.preparedTransactions.length, 1);
+
+      f.clearTransactionSubmissionFailure();
+      await f.view.approveRequest(retry.id, retry.revision, false);
+      const fresh = f.view.getSnapshot().signingReview;
+      assert.ok(fresh?.kind === 'transaction');
+      assert.equal(fresh.id, review.id);
+      assert.equal(fresh.retryPreparation, false);
+      assert.notStrictEqual(fresh.transaction, review.transaction);
+      assert.equal(f.preparedTransactions.length, 2);
+      assert.equal(f.transactions.length, 0);
+      assert.equal(f.responses.length, 0);
+
+      await assert.rejects(f.view.approveRequest(retry.id, retry.revision, false));
+      await f.view.approveRequest(fresh.id, f.view.getSnapshot().revision, false);
+      assert.equal(f.transactions.length, 1);
+      assert.deepEqual(f.responses, [{ id: 10, result: { result: '0x' + '34'.repeat(32) } }]);
+    } finally { await f.controller.dispose(); }
+  });
+}
+
+test('a certified unsent WalletConnect transaction can prepare a fresh quote after the old quote expires', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 5_000_000 });
+  const f = await connectedFixture();
+  try {
+    const requestDeadline = Date.now() + 300000;
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ data: '0x6000' }]);
+    assert.ok(review?.kind === 'transaction');
+    assert.ok(review.expiresAt < requestDeadline);
+
+    const error = new Error('REVIEW_REQUIRED');
+    recordNativeConnectionSubmissionFailure(error, 'retryable');
+    f.failTransactionSubmission(error);
+    await f.view.approveRequest(review.id, review.revision, false);
+
+    t.mock.timers.tick(review.expiresAt - Date.now() + 1);
+    await settle();
+    const retry = f.view.getSnapshot().signingReview;
+    assert.ok(retry?.kind === 'transaction');
+    assert.equal(retry.retryPreparation, true);
+    assert.equal(retry.expiresAt, requestDeadline);
+    assert.equal(f.responses.length, 0);
+
+    f.clearTransactionSubmissionFailure();
+    await f.view.approveRequest(retry.id, retry.revision, false);
+    const fresh = f.view.getSnapshot().signingReview;
+    assert.ok(fresh?.kind === 'transaction');
+    assert.equal(fresh.id, review.id);
+    assert.equal(fresh.retryPreparation, false);
+    assert.ok(fresh.expiresAt > Date.now() && fresh.expiresAt < requestDeadline);
+    assert.equal(f.transactions.length, 0);
+    assert.equal(f.responses.length, 0);
+
+    await assert.rejects(f.view.approveRequest(retry.id, retry.revision, false));
+    await f.view.approveRequest(fresh.id, f.view.getSnapshot().revision, false);
+    assert.equal(f.transactions.length, 1);
+    assert.deepEqual(f.responses, [{ id: 10, result: { result: '0x' + '34'.repeat(32) } }]);
+  } finally { await f.controller.dispose(); }
+});
+
+test('WalletConnect transaction device authentication cancellation keeps the rejection outcome', async () => {
+  const f = await connectedFixture();
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ data: '0x6000' }]);
+    assert.ok(review?.kind === 'transaction');
+    f.failTransactionSubmission(new Error('CANCELLED'));
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false), { message: 'CANCELLED' });
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.deepEqual(f.responses, [{ id: 10, result: { error: { code: 4001, message: 'User rejected or request expired' } } }]);
+    assert.equal(f.transactions.length, 0);
   } finally { await f.controller.dispose(); }
 });
 
@@ -4055,8 +4294,8 @@ for (const method of ['personal_sign', 'eth_signTypedData_v4', 'eth_sendTransact
   });
 }
 
-async function pairedSmart() {
-  const f = fixture({ smart: true }); await settle(); await f.view.pair('wc:fixture');
+async function pairedSmart(smartPayerBudget?: boolean) {
+  const f = fixture({ smart: true, smartPayerBudget }); await settle(); await f.view.pair('wc:fixture');
   f.event({ type: 'proposal', proposal: f.proposal });
   await f.view.approve(3, 'smart:60:0', 'ethereum', f.view.getSnapshot().revision);
   return f;
@@ -4082,6 +4321,25 @@ test('Smart dapp session omits messages and requires separate UserOp and payer a
     await completing;
     assert.equal(f.transactions.length, 1);
     assert.deepEqual(f.responses.at(-1), { id: 700, result: { result: '0x' + '34'.repeat(32) } });
+  } finally { await f.controller.dispose(); }
+});
+
+test('Smart dapp payer fees above the approved budget keep the unsent outcome and respond once', async () => {
+  const f = await pairedSmart(true);
+  try {
+    requestSmart(f); await settle();
+    const review = f.view.getSnapshot().signingReview;
+    assert.ok(review?.kind === 'smart-transaction' && review.operation.payerBudget);
+    f.failTransactionSubmission(new Error(SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED));
+    await f.view.approveRequest(review.id, review.revision, false);
+    const failed = f.view.getSnapshot().signingReview;
+    assert.ok(failed?.kind === 'smart-transaction');
+    assert.equal(failed.error, 'TRANSACTION_NOT_SENT');
+    assert.equal(failed.operation.error, SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED);
+    assert.deepEqual(f.responses, [{ id: 700, result: { error: { code: -32603, message: 'The transaction was not submitted' } } }]);
+    await f.view.rejectRequest(failed.id);
+    assert.equal(f.responses.length, 1);
+    assert.equal(f.transactions.length, 0);
   } finally { await f.controller.dispose(); }
 });
 for (const cancel of ['reject', 'lock', 'chain', 'expiry'] as const) test(`Smart payer review cancels on ${cancel}`, async () => {
@@ -4266,6 +4524,87 @@ test('ordered Smart batch review uses two consents and returns a reserved bundle
     await approving;
     assert.equal(f.transactions.length, 1);
     assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { id: '0x1234', capabilities: {} } } });
+  } finally { await f.controller.dispose(); }
+});
+
+for (const afterFunding of [false, true]) test(`Smart atomic calls keep the unsent outcome ${afterFunding ? 'after funding confirms' : 'when payer fees exceed the reviewed budget'}`, async () => {
+  const f = await connectedFixture({ smart: true, batch: true, smartPayerBudget: true, accountId: 'smart:60:0' });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', from: ADDRESS,
+      atomicRequired: true, calls: [{ to: '0x' + '22'.repeat(20) }, { to: '0x' + '33'.repeat(20) }] }]);
+    assert(review?.kind === 'smart-transaction' && review.operation.payerBudget);
+    f.failTransactionSubmission(
+      Object.assign(new Error(SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED), { transactionNotBroadcast: !afterFunding }),
+      afterFunding ? { purpose: 'fund-account', hash: '0x' + '45'.repeat(32) } : undefined
+    );
+    await f.view.approveRequest(review.id, review.revision, false);
+    const failed = f.view.getSnapshot().signingReview;
+    assert(failed?.kind === 'smart-transaction');
+    assert.equal(failed.error, 'TRANSACTION_NOT_SENT');
+    assert.equal(failed.operation.error, SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED);
+    assert.equal(failed.operation.userOperationSubmissionStarted, false);
+    assert.equal(failed.operation.transactionHash, afterFunding ? '0x' + '45'.repeat(32) : null);
+    const message = afterFunding
+      ? 'Account funding confirmed. The requested operation was not submitted.'
+      : 'The transaction was not submitted';
+    assert.deepEqual(f.responses, [{ id: 10, result: { error: { code: -32603, message } } }]);
+    await assert.rejects(f.view.approveRequest(failed.id, failed.revision, false));
+    await f.view.rejectRequest(failed.id);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.responses.length, 1);
+    assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const hash of ['0x' + '34'.repeat(32), '']) test(`Smart atomic calls keep execution dispatch uncertainty ${hash ? 'with' : 'without'} a hash`, async () => {
+  const f = await connectedFixture({ smart: true, batch: true, smartPayerBudget: true, accountId: 'smart:60:0' });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', from: ADDRESS,
+      atomicRequired: true, calls: [{ to: '0x' + '22'.repeat(20) }, { to: '0x' + '33'.repeat(20) }] }]);
+    assert(review?.kind === 'smart-transaction' && review.operation.payerBudget);
+    f.failTransactionSubmission(new Error(SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED), { purpose: 'submit-operation', hash });
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false), { code: 'DELIVERY_UNCERTAIN' });
+    const failed = f.view.getSnapshot().signingReview;
+    assert(failed?.kind === 'smart-transaction');
+    assert.equal(failed.error, 'DELIVERY_UNCERTAIN');
+    assert.equal(failed.operation.userOperationSubmissionStarted, true);
+    assert.equal(failed.operation.transactionHash, hash);
+    await f.view.rejectRequest(failed.id);
+    assert.equal(f.responses.length, 0);
+    assert.equal(f.transactions.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const progress of ['before funding', 'after funding', 'after execution dispatch'] as const) test(`Smart dapp reports the execution outcome for a payer quote outage ${progress}`, async () => {
+  const f = await connectedFixture({ smart: true, batch: true, smartPayerBudget: true, accountId: 'smart:60:0' });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', from: ADDRESS,
+      atomicRequired: true, calls: [{ to: '0x' + '22'.repeat(20) }, { to: '0x' + '33'.repeat(20) }] }]);
+    assert.ok(review?.kind === 'smart-transaction');
+    const quoteUnavailable = new SmartAccountPayerQuoteUnavailable();
+    const hash = '0x' + '45'.repeat(32);
+    const funded = progress === 'after funding';
+    const dispatched = progress === 'after execution dispatch';
+    f.failTransactionSubmission(
+      funded ? new Error('Smart Account payer quote unavailable', { cause: quoteUnavailable }) : quoteUnavailable,
+      funded || dispatched ? { purpose: funded ? 'fund-account' : 'submit-operation', hash } : undefined
+    );
+    const approving = f.view.approveRequest(review.id, review.revision, false);
+    if (dispatched) await assert.rejects(approving, { code: 'DELIVERY_UNCERTAIN' });
+    else await approving;
+
+    const failed = f.view.getSnapshot().signingReview;
+    assert.ok(failed?.kind === 'smart-transaction');
+    assert.equal(failed.operation.userOperationSubmissionStarted, dispatched);
+    assert.equal(failed.operation.payerQuoteUnavailable, dispatched ? undefined : true);
+    assert.equal(failed.error, dispatched ? 'DELIVERY_UNCERTAIN' : 'TRANSACTION_NOT_SENT');
+    const message = funded
+      ? 'Account funding confirmed. The requested operation was not submitted.'
+      : 'The transaction was not submitted';
+    const responses = dispatched ? [] : [{ id: 10, result: { error: { code: -32603, message } } }];
+    assert.deepEqual(f.responses, responses);
+    await f.view.rejectRequest(failed.id);
+    assert.deepEqual(f.responses, responses);
   } finally { await f.controller.dispose(); }
 });
 
@@ -5930,7 +6269,52 @@ for (const boundary of ['reject', 'lock', 'expiry', 'network'] as const) test(`a
     assert.equal(f.preparedAccountUpdates.length, 0); assert.equal(f.signatures.length, 0);
   } finally { await f.controller.dispose(); }
 });
-for (const failure of ['ack', 'response', 'write-cancel'] as const) test(`account switch ${failure} retires the grant and remote session`, async () => {
+test('rejecting an account change during the site check sends one denial and preserves the current grant', async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true });
+  const held = Promise.withResolvers<void>();
+  try {
+    const review = await accountChangeRequest(f); assert(review);
+    f.view.selectConnectionAccount(review.id, 'hd:60:1', review.revision);
+    const chosen = f.view.getSnapshot().accountChangeReview!;
+    const before = f.view.getSnapshot().sessions;
+    f.setSiteWait(held.promise);
+    const approving = f.view.approveAccountChange(chosen.id, chosen.revision);
+    assert.equal(f.view.getSnapshot().accountChangeReview?.busy, true);
+    await f.view.rejectAccountChange(chosen.id);
+    assert.equal(f.view.getSnapshot().accountChangeReview, null);
+    assert.deepEqual(f.responses, [{ id: 917, result: { error: { code: 4001, message: 'User rejected account selection' } } }]);
+    held.resolve();
+    await approving;
+    assert.equal(f.view.getSnapshot().error, null);
+    assert.deepEqual(f.view.getSnapshot().sessions, before);
+    assert.equal(f.preparedAccountUpdates.length, 0);
+    assert.equal(f.remoteDisconnects.length, 0);
+    assert.equal(f.responses.length, 1);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+test('late rejection during an account switch preserves the session and completes the approved change', async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true });
+  const held = Promise.withResolvers<void>();
+  try {
+    const review = await accountChangeRequest(f); assert(review);
+    f.view.selectConnectionAccount(review.id, 'hd:60:1', review.revision);
+    const chosen = f.view.getSnapshot().accountChangeReview!;
+    f.holdAccountUpdate(held.promise);
+    const approving = f.view.approveAccountChange(chosen.id, chosen.revision);
+    await settle();
+    assert.equal(f.view.getSnapshot().accountChangeReview?.committing, true);
+    await f.view.rejectAccountChange(chosen.id);
+    assert.equal(f.view.getSnapshot().accountChangeReview?.committing, true);
+    held.resolve();
+    await approving;
+    assert.equal(f.view.getSnapshot().sessions[0]?.accountLabel, 'Account 2');
+    assert.deepEqual(f.responses, [{ id: 917, result: { result: null } }]);
+    assert.equal(f.remoteDisconnects.length, 0);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const failure of ['ack', 'response', 'write-lock'] as const) test(`account switch ${failure} retires the grant and remote session`, async () => {
   const f = await connectedFixture({ accountSwitch: true, secondAccount: true }), held = Promise.withResolvers<void>();
   try {
     const review = await accountChangeRequest(f); assert(review);
@@ -5938,13 +6322,13 @@ for (const failure of ['ack', 'response', 'write-cancel'] as const) test(`accoun
     const chosen = f.view.getSnapshot().accountChangeReview!;
     if (failure === 'ack') f.failCreationUpdate();
     if (failure === 'response') f.failBeforeDispatch();
-    if (failure === 'write-cancel') f.beforeCreationGrantWrite(() => f.setStorageWait(held.promise));
+    if (failure === 'write-lock') f.beforeCreationGrantWrite(() => f.setStorageWait(held.promise));
     const approving = f.view.approveAccountChange(chosen.id, chosen.revision), rejected = assert.rejects(approving);
-    if (failure === 'write-cancel') { await settle(); await f.view.rejectAccountChange(chosen.id); held.resolve(); }
+    if (failure === 'write-lock') { await settle(); f.lock(); held.resolve(); }
     await rejected; await settle();
     assert.equal(f.view.getSnapshot().sessions.length, 0);
     assert.equal(f.remoteDisconnects.length, 1);
-    if (failure !== 'write-cancel') assert.equal(f.view.getSnapshot().error, 'CONNECTION_UNAVAILABLE');
+    if (failure !== 'write-lock') assert.equal(f.view.getSnapshot().error, 'CONNECTION_UNAVAILABLE');
     const permissions = (await f.repository).permissions(f.session.binding).read();
     assert.equal(permissions.dapps[ORIGIN], undefined);
     assert.equal(f.signatures.length, 0);

@@ -4,7 +4,6 @@ import { getPrivacyPool } from './registry.ts';
 import { validatePrivacyRelayerEndpoint } from './relayers.ts';
 import type { PrivacyPoolId } from './types.ts';
 import { captureWithdrawalPublicInputs } from './withdrawalMetadata.ts';
-import type { IPrivacyWithdrawalPublicInputs } from './withdrawalTransactionTypes';
 
 export type PrivacyRelayerJobState =
   | 'QUEUED'
@@ -46,24 +45,27 @@ const STATES = new Set<PrivacyRelayerJobState>([
 ]);
 const invalid = () => new Error('privacy_relayer_job_invalid');
 
+export class PrivacyRelayerObservationUnavailable extends Error {
+  constructor(
+    code: 'privacy_relayer_job_unavailable' | 'privacy_relayer_timeout'
+  ) {
+    super(code);
+  }
+}
+
 /**
  * Pinned wire schema: tornadocash/tornado-relayer@2247730603f2c249f90da0b07058325619435387
  * src/router.js, queue.js and constants.js. The endpoint reports these facts;
  * matching the saved proof/input hashes is not proof of on-chain inclusion.
  */
-async function readBoundJob(
+export async function readPrivacyRelayerJob(
   reference: IPrivacyRelayerJobReference,
   options: {
     assertCurrent: () => void;
     fetcher?: PrivacyRelayerJobFetch;
     signal?: AbortSignal;
   }
-): Promise<
-  Readonly<{
-    observation: Readonly<IPrivacyRelayerJobObservation>;
-    publicInputs: Readonly<IPrivacyWithdrawalPublicInputs>;
-  }>
-> {
+): Promise<Readonly<IPrivacyRelayerJobObservation>> {
   const guard = () => {
     if (options.signal?.aborted) throw new Error('privacy_relayer_cancelled');
     try {
@@ -100,28 +102,45 @@ async function readBoundJob(
     remove = () => options.signal?.removeEventListener('abort', cancel);
     timer = setTimeout(() => {
       abort.abort();
-      reject(new Error('privacy_relayer_timeout'));
+      reject(
+        new PrivacyRelayerObservationUnavailable('privacy_relayer_timeout')
+      );
     }, 5000);
   });
   const run = async () => {
-    const response = await (options.fetcher || fetch)(url, {
-      method: 'GET',
-      mode: 'cors',
-      credentials: 'omit',
-      redirect: 'error',
-      cache: 'no-store',
-      referrerPolicy: 'no-referrer',
-      signal: abort.signal,
-    });
+    let response: Response;
+    try {
+      response = await (options.fetcher || fetch)(url, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        redirect: 'error',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        signal: abort.signal,
+      });
+    } catch {
+      guard();
+      throw new PrivacyRelayerObservationUnavailable(
+        'privacy_relayer_job_unavailable'
+      );
+    }
     guard();
     const length = response.headers.get('content-length');
     if (
       abort.signal.aborted ||
-      response.status !== 200 ||
       response.redirected ||
       response.type === 'opaque' ||
       response.type === 'opaqueredirect' ||
-      (response.url && response.url !== url) ||
+      (response.url && response.url !== url)
+    )
+      throw invalid();
+    if (response.status === 429 || response.status >= 500)
+      throw new PrivacyRelayerObservationUnavailable(
+        'privacy_relayer_job_unavailable'
+      );
+    if (
+      response.status !== 200 ||
       !response.body ||
       !/^application\/json(?:\s*;|$)/i.test(
         response.headers.get('content-type') || ''
@@ -135,7 +154,12 @@ async function readBoundJob(
       text = '';
     try {
       for (;;) {
-        const next = await reader.read();
+        const next = await reader.read().catch(() => {
+          guard();
+          throw new PrivacyRelayerObservationUnavailable(
+            'privacy_relayer_job_unavailable'
+          );
+        });
         if (next.done) break;
         guard();
         if (abort.signal.aborted) throw invalid();
@@ -180,14 +204,14 @@ async function readBoundJob(
       (typeof value.txHash !== 'string' || !WORD.test(value.txHash))
     )
       throw invalid();
-    const observation = Object.freeze({
+    const observation = {
       jobId: fixed.jobId,
       claimedStatus: value.status as PrivacyRelayerJobState,
       ...(value.txHash === undefined
         ? {}
         : { transactionHash: value.txHash.toLowerCase() }),
-    });
-    const publicInputs = captureWithdrawalPublicInputs(
+    };
+    captureWithdrawalPublicInputs(
       {
         root: value.args[0].toLowerCase(),
         nullifierHash: value.args[1].toLowerCase(),
@@ -198,19 +222,19 @@ async function readBoundJob(
       },
       fixed.inputHash
     );
-    return Object.freeze({ observation, publicInputs });
+    return Object.freeze(observation);
   };
   try {
     return await Promise.race([run(), interrupted]);
   } catch (error) {
     if (
-      error instanceof Error &&
-      [
-        'privacy_relayer_job_invalid',
-        'privacy_relayer_timeout',
-        'privacy_relayer_cancelled',
-        'privacy_vault_session_changed',
-      ].includes(error.message)
+      error instanceof PrivacyRelayerObservationUnavailable ||
+      (error instanceof Error &&
+        [
+          'privacy_relayer_job_invalid',
+          'privacy_relayer_cancelled',
+          'privacy_vault_session_changed',
+        ].includes(error.message))
     )
       throw error;
     throw new Error('privacy_relayer_job_unavailable');
@@ -218,18 +242,4 @@ async function readBoundJob(
     clearTimeout(timer!);
     remove();
   }
-}
-
-/** UI-safe projection: never add proof inputs to this public status DTO. */
-export async function readPrivacyRelayerJob(
-  ...args: Parameters<typeof readBoundJob>
-): Promise<Readonly<IPrivacyRelayerJobObservation>> {
-  return (await readBoundJob(...args)).observation;
-}
-
-/** Background-only recovery evidence. Status and candidate hashes grant no authority. */
-export async function readPrivacyRelayerJobPublicInputs(
-  ...args: Parameters<typeof readBoundJob>
-): Promise<Readonly<IPrivacyWithdrawalPublicInputs>> {
-  return (await readBoundJob(...args)).publicInputs;
 }

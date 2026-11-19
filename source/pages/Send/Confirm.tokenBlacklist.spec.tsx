@@ -677,6 +677,12 @@ it('keeps the ERC20 recipient separate from its execution target in Smart approv
   account.smartAccount = {};
   prepareSmartAccountFeeQuote.mockResolvedValue({
     executionContextId: 'token-review',
+    payerBudget: {
+      gasTank: false,
+      maximumFeeWei: '2',
+      maximumPrefundWei: '0',
+      maximumPrefundFeeWei: '0',
+    },
     maximumFeeWei: '1',
     gasUnits: '1',
     feePayer: { id: 0, type: 'HDAccount', address: account.address },
@@ -733,9 +739,9 @@ it('preserves the localized pre-send blacklist refusal through the real token po
       'blacklist.tokenRecipientBlocked'
     )
   );
-  expect(
-    screen.queryByText('send.submissionStatusUnknown')
-  ).not.toBeInTheDocument();
+  expect(mockAlertError).not.toHaveBeenCalledWith(
+    'transactions.replay.unknown'
+  );
   expect(mockTokenReplies).toEqual([
     { type: 'reviewed' },
     {
@@ -898,9 +904,7 @@ it('revokes the sole token attempt on disconnect or duplicate submit while signi
     );
     expect(mockSdkSend).toHaveBeenCalledTimes(1);
     await waitFor(() =>
-      expect(
-        screen.getByText('send.submissionStatusUnknown')
-      ).toBeInTheDocument()
+      expect(mockAlertError).toHaveBeenCalledWith('transactions.replay.unknown')
     );
   } finally {
     mockCloseReview();
@@ -1002,14 +1006,14 @@ it.each(['ERC20', 'ERC721', 'ERC1155'])(
   }
 );
 
-it('keeps an ambiguous SDK failure in unknown status', async () => {
+it('reports an unknown outcome for an ambiguous token SDK response', async () => {
   mockSdkSend.mockRejectedValueOnce(new Error('synthetic SDK failure'));
   await readyToken(false);
   await act(async () =>
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
   );
   await waitFor(() =>
-    expect(screen.getByText('send.submissionStatusUnknown')).toBeInTheDocument()
+    expect(mockAlertError).toHaveBeenCalledWith('transactions.replay.unknown')
   );
   expect(mockSdkSend).toHaveBeenCalledTimes(1);
   expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();

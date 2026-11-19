@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 
 import { getControllerStatus } from 'hooks/controllerStatus';
 import {
   captureNavigationScroll,
+  getSendDraftId,
   getWalletNavigationScope,
   saveNavigationState,
   sanitizeBrowsingState,
@@ -63,9 +65,32 @@ export const useSendDraftWriter = (options: ISendDraftWriter) => {
   const latest = useRef(options);
   latest.current = options;
   const mounted = useRef(true);
+  const [draftId] = useState(() => uuidv4());
+  const priorDraftId = useRef(
+    getSendDraftId(options.location.state?.sendDraftId)
+  );
+  const hasSaved = useRef(false);
+  const claimOnSave = useRef(false);
+  const pendingClaim = useRef<symbol>();
+  const queuedMirror = useRef<boolean>();
 
   const save = useCallback(
-    async (formValues?: Record<string, any>, mirror = true) => {
+    async function saveDraft(
+      formValues?: Record<string, any>,
+      {
+        automatic = false,
+        mirror = true,
+        stateOverrides,
+      }: {
+        automatic?: boolean;
+        mirror?: boolean;
+        stateOverrides?: Record<string, any>;
+      } = {}
+    ) {
+      if (automatic && pendingClaim.current && !claimOnSave.current) {
+        queuedMirror.current = mirror;
+        return;
+      }
       const current = latest.current;
       const status = getControllerStatus();
       if (
@@ -94,42 +119,78 @@ export const useSendDraftWriter = (options: ISendDraftWriter) => {
       const values = formValues || current.form.getFieldsValue();
       const state = sanitizeBrowsingState(path, {
         ...current.state,
+        ...stateOverrides,
+        sendDraftId: draftId,
         formValues: values,
         ...(current.state.selectedAsset?.isNft &&
         typeof values.nftTokenId === 'string'
           ? { selectedNftTokenId: values.nftTokenId }
           : {}),
       });
-      if (
-        mirror &&
-        JSON.stringify(state) !==
-          JSON.stringify(sanitizeBrowsingState(path, routeState))
-      ) {
-        current.navigate(path, {
-          replace: true,
-          state: {
-            ...state,
-            returnContext: routeState?.returnContext,
-            walletScope: getWalletNavigationScope(),
-            scrollPosition: window.scrollY || 0,
-            scrollPositions: captureNavigationScroll(),
-          },
-        });
+      const prior = priorDraftId.current;
+      const guard =
+        automatic && !claimOnSave.current && (hasSaved.current || prior)
+          ? {
+              draftIds: prior ? [draftId, prior] : [draftId],
+              requireOwnedDraft: true,
+            }
+          : undefined;
+      claimOnSave.current = false;
+      const claim = guard ? undefined : Symbol();
+      // A queued automatic write must not supersede a deliberate edit waiting
+      // for the shared storage lock.
+      if (claim) pendingClaim.current = claim;
+      hasSaved.current = true;
+      try {
+        if (
+          mirror &&
+          JSON.stringify(state) !==
+            JSON.stringify(sanitizeBrowsingState(path, routeState))
+        ) {
+          current.navigate(path, {
+            replace: true,
+            state: {
+              ...state,
+              returnContext: routeState?.returnContext,
+              walletScope: getWalletNavigationScope(),
+              scrollPosition: window.scrollY || 0,
+              scrollPositions: captureNavigationScroll(),
+            },
+          });
+        }
+        const saved = guard
+          ? await saveNavigationState(
+              path,
+              undefined,
+              state,
+              routeState?.returnContext,
+              undefined,
+              guard
+            )
+          : await saveNavigationState(
+              path,
+              undefined,
+              state,
+              routeState?.returnContext
+            );
+        if (saved) priorDraftId.current = undefined;
+      } finally {
+        if (claim && pendingClaim.current === claim) {
+          pendingClaim.current = undefined;
+          const nextMirror = queuedMirror.current;
+          queuedMirror.current = undefined;
+          if (nextMirror !== undefined)
+            await saveDraft(undefined, { mirror: nextMirror, automatic: true });
+        }
       }
-      await saveNavigationState(
-        path,
-        undefined,
-        state,
-        routeState?.returnContext
-      );
     },
-    []
+    [draftId]
   );
 
   useEffect(() => {
     mounted.current = true;
     const flush = () => {
-      void save(undefined, false);
+      void save(undefined, { mirror: false, automatic: true });
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') flush();
@@ -145,7 +206,14 @@ export const useSendDraftWriter = (options: ISendDraftWriter) => {
 
   // Save the current page even for a blank draft. Values are never read from stale route state.
   useEffect(() => {
-    void save();
+    void save(undefined, { automatic: true });
   }, [save, options.enabled, options.state, options.location]);
-  return save;
+  const saveAutomatically = useCallback(
+    (values?: Record<string, any>) => save(values, { automatic: true }),
+    [save]
+  );
+  const claimDraft = useCallback(() => {
+    claimOnSave.current = true;
+  }, []);
+  return { claimDraft, draftId, save, saveAutomatically };
 };

@@ -6,6 +6,10 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import {
+  DAPP_GRANT_REVIEW_CHANGED,
+  dappGrantIdentity,
+} from '../../shared/dappTypes';
+import {
   CenterPanel,
   DialogActionButton,
   DialogActions,
@@ -49,10 +53,18 @@ const ConnectedSites = () => {
 
   // Show all dapps since they're connected globally (one account per dapp)
   // Redux owns membership: an old optimistic removal must not hide a later
-  // connection to the same host. Review the current permission, not a snapshot.
+  // connection to the same host. Retire the dialog if its grant is replaced.
   const dappsList = Object.values(dapps);
-  const [selectedHost, setSelectedHost] = useState<string>();
-  const selected = dappsList.find((dapp) => dapp.host === selectedHost);
+  const [selectedGrant, setSelectedGrant] = useState<{
+    host: string;
+    identity: string;
+  }>();
+  const candidate =
+    selectedGrant && dappsList.find((dapp) => dapp.host === selectedGrant.host);
+  const selected =
+    candidate && dappGrantIdentity(candidate) === selectedGrant?.identity
+      ? candidate
+      : undefined;
   // Foreign vaults remain removable without borrowing their numeric slot's
   // account label or address from the current vault.
   const accountFor = (dapp: IDApp) =>
@@ -62,29 +74,40 @@ const ConnectedSites = () => {
     t('settings.accountNumber', { number: dapp.accountId + 1 });
   const selectedAccount = selected ? accountFor(selected) : undefined;
   useEffect(() => {
-    if (selectedHost && !selected) setSelectedHost(undefined);
-  }, [selectedHost, selected]);
+    if (selectedGrant && !selected) setSelectedGrant(undefined);
+  }, [selectedGrant, selected]);
 
-  const disconnectHost = async (host: string) => {
+  const disconnectHost = async (grant: IDApp) => {
+    const { host } = grant;
     setDisconnectError('');
     setDisconnectingHost(host);
-    setSelectedHost(undefined);
+    setSelectedGrant(undefined);
 
     try {
       // The controller will dispatch removeDApp action internally
       await controllerEmitter(
         ['dapp', 'revoke'],
-        [host, { allowAlreadyDisconnected: true }]
+        [
+          host,
+          {
+            allowAlreadyDisconnected: true,
+            expectedGrant: dappGrantIdentity(grant),
+          },
+        ]
       );
     } catch (error) {
-      setDisconnectError(error?.message || t('send.failed'));
+      setDisconnectError(
+        error?.message === DAPP_GRANT_REVIEW_CHANGED
+          ? t('settings.connectionReviewChanged')
+          : error?.message || t('send.failed')
+      );
       console.error('Error disconnecting dapp:', error);
     } finally {
       setDisconnectingHost((current) => (current === host ? null : current));
     }
   };
   const disconnectSelected = () => {
-    if (selected) void disconnectHost(selected.host);
+    if (selected) void disconnectHost(selected);
   };
 
   return (
@@ -127,7 +150,12 @@ const ConnectedSites = () => {
                 aria-label={`${t('settings.editConnection')}: ${_dapp.host}`}
                 className={connectionActionClassName}
                 disabled={disconnectingHost === _dapp.host}
-                onClick={() => setSelectedHost(_dapp.host)}
+                onClick={() =>
+                  setSelectedGrant({
+                    host: _dapp.host,
+                    identity: dappGrantIdentity(_dapp),
+                  })
+                }
               >
                 <EditIconSvg className="w-4" />
               </IconButton>
@@ -136,7 +164,7 @@ const ConnectedSites = () => {
         </ul>
 
         {selected && (
-          <DialogPrimitive show onClose={() => setSelectedHost(undefined)}>
+          <DialogPrimitive show onClose={() => setSelectedGrant(undefined)}>
             <CenterPanel
               padded={false}
               scroll={false}
@@ -145,7 +173,7 @@ const ConnectedSites = () => {
               <DialogHeader
                 title={t('settings.editConnection')}
                 icon={<GlobeAltIcon />}
-                onClose={() => setSelectedHost(undefined)}
+                onClose={() => setSelectedGrant(undefined)}
               />
               <DialogBody>
                 <Dialog.Description className="mb-3 text-content-secondary text-sm">
@@ -198,7 +226,7 @@ const ConnectedSites = () => {
                   <DialogActionButton
                     type="button"
                     tone="secondary"
-                    onClick={() => setSelectedHost(undefined)}
+                    onClick={() => setSelectedGrant(undefined)}
                   >
                     {t('buttons.close')}
                   </DialogActionButton>

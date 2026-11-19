@@ -2,6 +2,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import React, { useState } from 'react';
 
+import { SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT } from '../../shared/smartAccountControllerAuthority';
 import { ConfirmationModal } from 'components/Modal/Modal';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import {
@@ -72,6 +73,9 @@ jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
 }));
 jest.mock('hooks/index', () => ({
   useUtils: () => ({ navigate: jest.fn() }),
+}));
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: mockAlert }),
 }));
 jest.mock('components/index', () => ({
   Icon: () => null,
@@ -192,6 +196,55 @@ beforeEach(() => {
 afterEach(() => {
   jest.useRealTimers();
   jest.restoreAllMocks();
+});
+
+it('quotes a local Smart Account replacement from its gas payer in the existing menu', async () => {
+  mockVault.activeAccount = { type: 'SmartAccount', id: 7 };
+  mockVault.accounts.SmartAccount = {
+    7: {
+      address: NEXT_ACCOUNT,
+      isSmartAccount: true,
+      smartAccount: { chainId: 1 },
+    },
+  };
+  mockEmitter
+    .mockResolvedValueOnce(quote())
+    .mockRejectedValueOnce(new Error('Submission could not be confirmed'));
+  const refresh = jest.fn();
+  window.addEventListener(SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT, refresh, {
+    once: true,
+  });
+  render(
+    <Harness
+      tx={{
+        ...transaction,
+        from: NEXT_ACCOUNT,
+        feePayer: ACCOUNT,
+        historySource: 'local-signed',
+        speedUpAvailable: true,
+      }}
+    />
+  );
+  openSpeedUp();
+  await screen.findByText(
+    'Speed up this transaction with a maximum network fee of 0.001234567890123456 ETH?'
+  );
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'speedUpEvmTransaction'],
+    [
+      ORIGINAL,
+      false,
+      1,
+      ACCOUNT,
+      { previewOnly: true, walletScope: getWalletNavigationScope() },
+    ]
+  );
+  expect(refresh).not.toHaveBeenCalled();
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+  });
+  expect(refresh).toHaveBeenCalledTimes(1);
 });
 
 it('quotes without submitting, shows the exact authenticated fee, and forwards that consent once', async () => {
@@ -719,6 +772,20 @@ it('shows the specific amount-preservation guidance when the speed-up preview wo
   expect(mockAlert.error).toHaveBeenCalledWith(
     'Add funds to this account before speeding up this transaction. The original amount will not be changed.'
   );
+  expect(mockUpdate).not.toHaveBeenCalled();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('reports insufficient funds when an existing pending debit prevents a speed-up review', async () => {
+  mockEmitter.mockResolvedValueOnce({
+    isSpeedUp: false,
+    error: true,
+    code: 'INSUFFICIENT_BALANCE',
+  });
+  render(<Harness />);
+  await act(async () => openSpeedUp());
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockAlert.error).toHaveBeenCalledWith('send.insufficientFunds');
   expect(mockUpdate).not.toHaveBeenCalled();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });

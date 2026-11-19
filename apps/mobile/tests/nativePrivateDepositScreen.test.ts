@@ -43,13 +43,17 @@ function mount(file: string, name: string) {
     useSyncExternalStore(_subscribe: unknown, read: () => unknown) { return read(); },
   };
   let active = 'active';
+  let hardwareBack: (() => boolean) | undefined;
   const listeners = new Map<string, Set<(state: string) => void>>();
   const native = {
     AppState: { get currentState() { return active; }, addEventListener(event: string, callback: (state: string) => void) {
       if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event)!.add(callback);
       return { remove() { listeners.get(event)!.delete(callback); } };
     } },
-    BackHandler: { addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'android' },
+    BackHandler: { addEventListener(_event: string, callback: () => boolean) {
+      hardwareBack = callback;
+      return { remove() { if (hardwareBack === callback) hardwareBack = undefined; } };
+    } }, Platform: { OS: 'android' },
     StyleSheet: { create: (style: unknown) => style, hairlineWidth: 1 },
     ActivityIndicator: 'ActivityIndicator', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView', Keyboard: { dismiss() {} },
   };
@@ -91,6 +95,7 @@ function mount(file: string, name: string) {
       throw Error('Unsettled screen');
     },
     background() { active = 'background'; for (const fn of [...listeners.get('change') ?? []]) fn(active); },
+    hardwareBack() { return hardwareBack?.(); },
     close() { owners.forEach(owned => owned.forEach(c => c.cleanup?.())); owners.clear(); },
   };
 }
@@ -183,5 +188,22 @@ test('only a saved or verified backup shows Continue deposit', () => {
     const unknown = screen.render({ ...props, step: { phase: 'unconfirmed' } });
     assert(button(unknown, 'Done'));
     assert(!screenElements(unknown).some(node => node.props.title === 'Continue deposit'));
+  } finally { screen.close(); }
+});
+
+test('backup writer consumes system Back and restores navigation after an unconfirmed save', () => {
+  const screen = mount('NativeNoteExport', 'NativeNoteExport');
+  let backs = 0;
+  const props = { busy: true, error: '', onChoose() {}, onSave() {}, onShowVerify() {}, onVerify() {}, onBack() { backs++; } };
+  try {
+    const header = (tree: ScreenElement) => screenElements(tree).find(node => node.type === 'Header')?.props;
+    assert.equal(header(screen.render({ ...props, step: { phase: 'passwords' } }))?.onBack, props.onBack);
+    assert.equal(header(screen.render({ ...props, step: { phase: 'writing' } }))?.onBack, undefined);
+    assert.equal(screen.hardwareBack(), true);
+    assert.equal(backs, 0);
+    const result = screen.render({ ...props, step: { phase: 'unconfirmed' }, busy: false });
+    assert(screenElements(result).some(node => node.type === 'Notice' && node.props.title === 'Save could not be confirmed'));
+    button(result, 'Done').props.onPress();
+    assert.equal(backs, 1);
   } finally { screen.close(); }
 });

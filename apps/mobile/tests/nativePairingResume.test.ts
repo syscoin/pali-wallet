@@ -816,11 +816,14 @@ test('viewing a completed deployment refreshes Wallet metadata and capabilities 
     const activity = find(f.render(), node => node.type === 'AllNetworksActivity')!;
     assert.equal(activity.props.initialTarget.hash, hash);
     assert.equal(activity.props.initialTarget.networkId, 'ethereum');
+    activity.props.onInitialTargetOpened();
     f.showWallet();
     const refreshed = find(f.render(), node => node.type === 'NativePortfolio')!;
     assert.equal(refreshed.props.smartAccount.isDeployed, true);
     assert.equal(refreshed.props.onDeploySmartAccount, undefined);
     assert.equal(typeof refreshed.props.onManageSmartAccountModules, 'function');
+    f.showActivity();
+    assert.equal(find(f.render(), node => node.type === 'AllNetworksActivity')!.props.initialTarget, undefined);
     assert.equal(typeof refreshed.props.onUseWalletAuthenticator, 'function');
     assert.equal(f.exits(), 0);
   } finally { f.dispose(); }
@@ -1304,42 +1307,25 @@ for (const action of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`Smar
     const activity = find(f.render(), node => node.type === 'AllNetworksActivity'); assert(activity);
     assert.equal(typeof activity.props.onAction, 'function');
     const hash = '0x' + 'ab'.repeat(32), result = '0x' + 'cd'.repeat(32);
-    await activity.props.onAction({ choice: f.activityChoice(), row: { hash } }, action, hash, () => undefined);
+    const entry = { choice: f.activityChoice(), row: { hash } };
+    await activity.props.onAction(entry, action, hash, () => undefined);
     await settle(); f.render(); await settle();
     const review = f.render();
     assert.equal(review.type, 'NativeSend');
     assert.equal(review.props.replacement.mode, action); assert.equal(review.props.replacement.hash, hash);
-    review.props.onViewTransaction(result);
-    const completed = find(f.render(), node => node.type === 'AllNetworksActivity'); assert(completed);
-    assert.equal(completed.props.initialTarget.networkId, 'ethereum'); assert.equal(completed.props.initialTarget.hash, result);
-    review.props.onViewTransaction(hash);
-    assert.equal(find(f.render(), node => node.type === 'AllNetworksActivity')!.props.initialTarget.hash, result);
-  } finally { f.dispose(); }
-});
-
-test('Smart Activity saved opens the exact retained review route without new authorization or broadcast', async () => {
-  const f = await mounted(true, true, false, false);
-  try {
-    f.showActivity();
-    const activity = find(f.render(), node => node.type === 'AllNetworksActivity'); assert(activity);
-    assert.equal(typeof activity.props.onAction, 'function');
-    const hash = '0x' + 'ab'.repeat(32), choice = f.activityChoice();
-    await activity.props.onAction({ choice, row: { hash } }, 'saved', hash, () => undefined);
-    await settle(); f.render(); await settle();
-    const review = f.render();
-    assert.equal(review.type, 'NativeSend');
-    assert.equal(review.props.savedHash, hash);
-    assert.equal(review.props.replacement, undefined);
     assert.equal(review.props.account.address, f.authoritySnapshot().account.address);
     assert.equal(review.props.account.network, 'ethereum');
     assert.deepEqual(f.transferRequests(), []);
     assert.deepEqual(f.resumedSmart(), []);
     assert.deepEqual(f.authenticatorGuards(), []);
     assert.equal(f.viewAuthorizations(), 0);
-    review.props.onBack();
-    assert(find(f.render(), node => node.type === 'AllNetworksActivity'));
+    review.props.onViewTransaction(result);
+    const completed = find(f.render(), node => node.type === 'AllNetworksActivity'); assert(completed);
+    assert.equal(completed.props.initialTarget.networkId, 'ethereum'); assert.equal(completed.props.initialTarget.hash, result);
+    review.props.onViewTransaction(hash);
+    assert.equal(find(f.render(), node => node.type === 'AllNetworksActivity')!.props.initialTarget.hash, result);
     f.background();
-    await assert.rejects(activity.props.onAction({ choice, row: { hash } }, 'saved', hash, () => undefined), /CANCELLED/);
+    await assert.rejects(activity.props.onAction(entry, action, hash, () => undefined), /CANCELLED/);
     assert.deepEqual(f.transferRequests(), []);
   } finally { f.dispose(); }
 });

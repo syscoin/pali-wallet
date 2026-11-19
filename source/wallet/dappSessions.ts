@@ -1,11 +1,14 @@
 import { projectDappPermissions } from '../shared/dappPermissions.ts';
 import {
+  DAPP_GRANT_REVIEW_CHANGED,
+  dappGrantIdentity,
   matchesDappAccountIdentity,
   matchesDappAccountReference,
   MAX_DAPP_ORIGIN_LENGTH,
   type DappGrant as IDApp,
   type DappPermissionFrame,
   type DappPublicAccount,
+  type DappRevocationOptions,
   type DappAccountSelection as IDAppAccountSelectionContext,
 } from '../shared/dappTypes.ts';
 import { getDappOrigin } from '../utils/dappOrigin.ts';
@@ -666,13 +669,26 @@ export function createDappSessions<Account extends DappPublicAccount>(
   const revokeDurably = (
     origin: string,
     allowAlreadyDisconnected: boolean,
-    canceledGrant: boolean
+    canceledGrant: boolean,
+    expectedGrant?: string
   ): Promise<void> => {
+    const previous = get(origin);
+    if (
+      expectedGrant !== undefined &&
+      (pendingGrants.has(origin) ||
+        (previous && dappGrantIdentity(previous) !== expectedGrant))
+    )
+      return Promise.reject(new Error(DAPP_GRANT_REVIEW_CHANGED));
     const pending = pendingRevocations.get(origin);
     if (pending?.inFlight) {
-      if (canceledGrant || sessions[origin] || get(origin)) {
+      if (canceledGrant || sessions[origin] || previous) {
         const revokeCurrent = () =>
-          revokeDurably(origin, allowAlreadyDisconnected, canceledGrant);
+          revokeDurably(
+            origin,
+            allowAlreadyDisconnected,
+            canceledGrant,
+            expectedGrant
+          );
         return pending.inFlight.then(revokeCurrent, revokeCurrent);
       }
       return pending.inFlight;
@@ -681,7 +697,7 @@ export function createDappSessions<Account extends DappPublicAccount>(
       !pending &&
       !canceledGrant &&
       !sessions[origin] &&
-      !get(origin) &&
+      !previous &&
       !permissions.read().pendingOrigins.includes(origin)
     ) {
       if (allowAlreadyDisconnected) {
@@ -695,7 +711,6 @@ export function createDappSessions<Account extends DappPublicAccount>(
         new Error('Too many pending revocations; retry an earlier revocation')
       );
     const entry = pending || {},
-      previous = get(origin),
       session = sessions[origin];
     const generation = host.wallet().generation;
     const account =
@@ -774,18 +789,22 @@ export function createDappSessions<Account extends DappPublicAccount>(
     }
     return entry.inFlight;
   };
-  const revoke = (
-    origin: string,
-    options: Readonly<{ allowAlreadyDisconnected: boolean }>
-  ) => {
+  const revoke = (origin: string, options: DappRevocationOptions) => {
     if (typeof options?.allowAlreadyDisconnected !== 'boolean')
       return Promise.reject(
         new TypeError('Explicit revocation options are required')
       );
+    const { expectedGrant } = options;
+    if (
+      expectedGrant !== undefined &&
+      (typeof expectedGrant !== 'string' || !expectedGrant)
+    )
+      return Promise.reject(new TypeError('Invalid reviewed dapp grant'));
     return revokeDurably(
       origin,
       options.allowAlreadyDisconnected,
-      pendingGrants.delete(origin)
+      expectedGrant === undefined && pendingGrants.delete(origin),
+      expectedGrant
     );
   };
   /** The caller includes this synchronous revocation in its existing durable wallet transaction. */

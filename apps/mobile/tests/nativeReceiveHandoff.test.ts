@@ -14,6 +14,8 @@ function fixture(deferPassiveEffects = false) {
   let rejectNavigation = false;
   let back: (() => boolean) | undefined;
   let sends = 0;
+  let explicitNavigations = 0;
+  const sourceNavigation: boolean[] = [];
   const observations: { visibleAtNavigation: boolean | undefined; receive: boolean }[] = [];
   const modal = () => screenElements(tree).find(node => node.type === 'Modal');
   const sheet = () => screenElements(tree).find(node => node.type === 'NetworkSourceSheet');
@@ -37,9 +39,9 @@ function fixture(deferPassiveEffects = false) {
     './NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' }, './WalletBackupBadge': { WalletBackupBadge: 'WalletBackupBadge' },
     '../activity/activityAmountLabel': { compactActivityAmountLabel: (value: string) => value },
   }, {}, {}, { deferPassiveEffects });
-  const props = { controller, portfolio: { source, onSend() {}, onExit() {}, onLock() {}, onViewRecovery() {},
-      navigation: { beginNavigation() {}, registerBack(callback: () => boolean) { back = callback; return () => {}; } } },
-    selectNetwork: async () => {}, send: async () => { sends++; },
+  const props = { controller, onSourceNavigationChange: (active: boolean) => sourceNavigation.push(active), portfolio: { source, onSend() {}, onExit() {}, onLock() {}, onViewRecovery() {},
+      navigation: { beginNavigation() { explicitNavigations++; }, registerBack(callback: () => boolean) { back = callback; return () => {}; } } },
+    selectNetwork: async () => {}, send: async (_choice: unknown, _token: unknown, _check: unknown, fromSourceSheet?: boolean) => { assert.equal(fromSourceSheet, true); sends++; },
     async navigateDetail(_choice: unknown, receive: boolean, _token: unknown, check: () => void) {
       check(); observations.push({ visibleAtNavigation: modal()?.props.visible, receive });
       if (rejectNavigation) throw new Error('Synthetic navigation failure');
@@ -50,22 +52,26 @@ function fixture(deferPassiveEffects = false) {
     screenElements(tree).find(node => node.type === 'Button' && node.props.title === title)!.props.onPress();
     render(); f.flushPassiveEffects(); assert.equal(modal()?.props.visible, true);
   };
-  return { open, render, close: f.close, observations, modal, sheet, flushPassive: f.flushPassiveEffects,
+  return { open, render, sourceNavigation, close: f.close, observations, modal, sheet, flushPassive: f.flushPassiveEffects,
     select: () => sheet()!.props.onSelect('choice-eth:native'), back: () => back!(),
     rejectNavigation: (value: boolean) => { rejectNavigation = value; }, background: () => { appState.currentState = 'background'; },
     asset: () => screenElements(tree).find(node => node.type === 'Pressable' && node.props.accessibilityLabel?.startsWith('ETH,'))!.props.onPress(),
-    sends: () => sends };
+    sends: () => sends, explicitNavigations: () => explicitNavigations };
 }
 
 test('Receive waits for a committed closed sheet and admits only one busy handoff', async () => {
   const f = fixture(true);
   try {
     f.open(); f.select(); f.select();
+    assert.equal(f.explicitNavigations(), 1);
+    assert.deepEqual(f.sourceNavigation, [true]);
     assert.equal(f.observations.length, 0);
     f.render(); assert.equal(f.modal()?.props.visible, false); assert.equal(f.sheet()?.props.busy, true);
+    assert.deepEqual(f.sourceNavigation, [true]);
     f.flushPassive(); await flush();
     assert.deepEqual(f.observations, [{ visibleAtNavigation: false, receive: true }]);
     f.render(); assert.equal(f.sheet()?.props.busy, false);
+    assert.deepEqual(f.sourceNavigation, [true, false]);
   } finally { f.close(); }
 });
 

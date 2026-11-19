@@ -1,12 +1,15 @@
-import { nativeTranslationFixture } from './localizationFixture.ts';
+import { languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { createInstance } from 'i18next';
 import { getAddress } from 'ethers/address';
 import { createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild, bindNativePrivateAuthentication, bindNativePrivateAuthenticationChild, withNativePrivateAuthentication, type NativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { createNativeNoteRestore } from '../src/custody/nativeNoteRestore.ts';
+import { createNativeNoteExport } from '../src/custody/nativeNoteExport.ts';
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import type { useNativeNoteBackup } from '../src/screens/useNativeNoteBackup.ts';
 import { isOperationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
@@ -202,6 +205,233 @@ test('Back from a pending note check cancels its proof before refreshing the lis
   } finally { f.close(); }
 });
 
+for (const mode of ['restore', 'export'] as const) test(`cancelled ${mode} picker can be reopened from the same screen`, async () => {
+  const vector = JSON.parse(readFileSync(new URL('../../../source/wallet/noteBackup.vectors.json', import.meta.url), 'utf8')).vectors[1];
+  let picks = 0, ownerChecks = 0;
+  const owner = {
+    authority: { getSnapshot: () => ({ phase: 'ready' }) },
+    captureNoteFileOwner: async () => { ownerChecks++; return async () => undefined; },
+    openNoteBackup: () => assert.fail('Choosing a file must not open custody'),
+  };
+  const f = screenFixture(new URL('../src/screens/useNativeNoteBackup.ts', import.meta.url), 'useNativeNoteBackup', {
+    'react-native': { AppState: { currentState: 'active' } },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../custody/nativeNoteRestore': { createNativeNoteRestore },
+    '../custody/nativeNoteExport': { createNativeNoteExport },
+    '../platform/noteBackupPicker': {
+      shouldLockWalletForNotePicker: () => false,
+      pickNoteBackupFile: async () => ++picks === 1 ? null : new Uint8Array(Buffer.from(vector.fileHex, 'hex')),
+      pickNoteBackupDestination: async () => ++picks === 1 ? null : globalThis.crypto.randomUUID(),
+      revokeNoteBackupDestination: async () => undefined,
+    },
+  });
+  const render = () => f.render(() => owner, () => undefined) as unknown as ReturnType<typeof useNativeNoteBackup>;
+  const step = () => mode === 'restore' ? render().step.phase : render().exportStep.phase;
+  try {
+    assert.equal(render().begin(mode), true);
+    await render().choose();
+    assert.equal(step(), 'select');
+    assert.equal(render().busy, false);
+    assert.equal(render().error, '');
+    await render().choose();
+    assert.equal(picks, 2);
+    assert.equal(ownerChecks, 2);
+    assert.equal(step(), mode === 'restore' ? 'password' : 'passwords');
+    render().cancel();
+    await render().choose();
+    assert.equal(picks, 2);
+  } finally { render().cancel(); f.close(); }
+});
+
+test('export Back can cancel preparation but retains a dispatched write through its unconfirmed outcome', async () => {
+  const preparing = Promise.withResolvers<void>();
+  const write = Promise.withResolvers<void>();
+  const ready = { phase: 'ready' };
+  let opens = 0, writes = 0;
+  let leaveFromPasswordScreen: () => boolean;
+  const owner = {
+    authority: { getSnapshot: () => ready },
+    captureNoteFileOwner: async () => async () => undefined,
+    async openNoteBackup() {
+      if (++opens === 1) await preparing.promise;
+      return { begin: () => 'export', cancel() {},
+        exportEncrypted: async () => ({ bytes: new Uint8Array([1, 2]), noteCount: 1, createdAt: 1 }) };
+    },
+  };
+  const f = screenFixture(new URL('../src/screens/useNativeNoteBackup.ts', import.meta.url), 'useNativeNoteBackup', {
+    'react-native': { AppState: { currentState: 'active' } },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../custody/nativeNoteExport': { createNativeNoteExport },
+    '../platform/noteBackupPicker': {
+      shouldLockWalletForNotePicker: () => false,
+      pickNoteBackupDestination: async () => globalThis.crypto.randomUUID(),
+      async writeNoteBackupFile() {
+        writes++;
+        assert.equal(leaveFromPasswordScreen(), false, 'Back can fire before the writing state renders');
+        await write.promise;
+        throw Error('FILE_WRITE_UNCONFIRMED');
+      },
+      revokeNoteBackupDestination: async () => undefined,
+    },
+  });
+  const render = () => f.render(() => owner, () => undefined) as unknown as ReturnType<typeof useNativeNoteBackup>;
+  try {
+    assert.equal(render().begin('export'), true);
+    await render().choose();
+    render().saveExport('Portable test backup password');
+    await tick();
+    assert.equal(opens, 1);
+    assert.equal(render().leaveExport(), true);
+    preparing.resolve();
+    await tick();
+    assert.equal(writes, 0);
+
+    assert.equal(render().begin('export'), true);
+    await render().choose();
+    const passwordScreen = render();
+    assert.equal(passwordScreen.exportStep.phase, 'passwords');
+    leaveFromPasswordScreen = passwordScreen.leaveExport;
+    passwordScreen.saveExport('Portable test backup password');
+    await tick();
+    assert.equal(writes, 1);
+    assert.equal(render().exportStep.phase, 'writing');
+    write.resolve();
+    await tick();
+    assert.equal(render().exportStep.phase, 'unconfirmed');
+    assert.equal(render().leaveExport(), true);
+  } finally { preparing.resolve(); write.resolve(); render().cancel(); f.close(); }
+});
+
+for (const scenario of ['writing', 'saved', 'verified', 'changed account', 'changed wallet'] as const) test(
+  `backgrounded backup export restores only the owning wallet's public outcome (${scenario})`, async () => {
+    const app = { currentState: 'active' };
+    const ready = { phase: 'ready', account: { network: 'ethereum', address: '0x' + '11'.repeat(20) } };
+    let snapshot: typeof ready | { phase: 'locked' } = ready;
+    const write = Promise.withResolvers<void>();
+    const encrypted = new Uint8Array([1, 2]);
+    let revocations = 0, routeEntries = 0;
+    const owner = {
+      authority: { getSnapshot: () => snapshot },
+      captureNoteFileOwner: async () => async () => undefined,
+      openNoteBackup: async () => ({
+        begin: () => 'export', cancel() {},
+        exportEncrypted: async () => ({ bytes: encrypted, noteCount: 1, createdAt: 1 }),
+        verifyExport: async () => ({ noteCount: 1 }),
+      }),
+    };
+    let currentOwner = owner;
+    const f = screenFixture(new URL('../src/screens/useNativeNoteBackup.ts', import.meta.url), 'useNativeNoteBackup', {
+      'react-native': { AppState: app },
+      '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+      './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+      '../custody/nativeNoteExport': { createNativeNoteExport },
+      '../platform/noteBackupPicker': {
+        shouldLockWalletForNotePicker: () => false,
+        pickNoteBackupDestination: async () => globalThis.crypto.randomUUID(),
+        async writeNoteBackupFile(_token: string, bytes: Uint8Array) {
+          const readback = bytes.slice();
+          if (scenario === 'writing') await write.promise;
+          return readback;
+        },
+        revokeNoteBackupDestination: async () => { revocations++; },
+      },
+    });
+    const render = () => f.render(() => currentOwner, () => { routeEntries++; }) as unknown as ReturnType<typeof useNativeNoteBackup>;
+    try {
+      assert.equal(render().begin('export'), true);
+      await render().choose();
+      render().saveExport('Portable test backup password');
+      await tick();
+      assert.equal(render().exportStep.phase, scenario === 'writing' ? 'writing' : 'saved');
+      if (scenario === 'verified') {
+        render().showVerify();
+        await render().verifyExport('Portable test backup password');
+        assert.equal(render().exportStep.phase, 'verified');
+      }
+      const before = routeEntries;
+
+      app.currentState = 'background';
+      render().lock(true);
+      snapshot = { phase: 'locked' };
+      render().lock(true);
+      await tick();
+      assert.equal(revocations, 1);
+      assert.deepEqual(encrypted, new Uint8Array(2));
+      assert.equal(render().resume(), false);
+      assert.equal(render().exportStep.phase, 'select');
+
+      if (scenario === 'changed wallet') currentOwner = { ...owner };
+      snapshot = scenario === 'changed account' ? { ...ready, account: { ...ready.account, address: '0x' + '22'.repeat(20) } } : ready;
+      app.currentState = 'active';
+      const resumes = scenario === 'writing' || scenario === 'saved' || scenario === 'verified';
+      assert.equal(render().resume(), resumes);
+      const outcome = {
+        writing: { phase: 'unconfirmed' },
+        saved: { phase: 'saved', noteCount: 1, canVerify: false },
+        verified: { phase: 'verified', noteCount: 1 },
+        'changed account': { phase: 'select' },
+        'changed wallet': { phase: 'select' },
+      }[scenario];
+      assert.deepEqual({ ...render().exportStep }, outcome);
+      assert.equal(routeEntries, before + Number(resumes));
+      write.resolve();
+      await tick();
+      assert.deepEqual({ ...render().exportStep }, outcome, 'a late provider result cannot replace the shown outcome');
+      assert.equal(render().leaveExport(), true);
+      assert.equal(render().resume(), false);
+    } finally { write.resolve(); render().cancel(); f.close(); }
+  }
+);
+
+test('native backup shows distinct French errors for an invalid file and a saved file that cannot be verified', async () => {
+  const language = languageMessages('fr');
+  const i18n = createInstance();
+  await i18n.init({ lng: 'fr', fallbackLng: false, resources: { fr: { translation: language } } });
+  const ready = { phase: 'ready' };
+  const owner = {
+    authority: { getSnapshot: () => ready },
+    captureNoteFileOwner: async () => async () => undefined,
+    openNoteBackup: async () => ({
+      begin: () => 'export', cancel() {},
+      exportEncrypted: async () => ({ bytes: new Uint8Array([1, 2]), noteCount: 1, createdAt: 1 }),
+      verifyExport: async () => { throw Error('BACKUP_UNAVAILABLE'); },
+    }),
+  };
+  const f = screenFixture(new URL('../src/screens/useNativeNoteBackup.ts', import.meta.url), 'useNativeNoteBackup', {
+    'react-native': { AppState: { currentState: 'active' } },
+    '../platform/localization': { useNativeTranslation: () => ({ t: i18n.t.bind(i18n) }) },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../custody/nativeNoteRestore': { createNativeNoteRestore },
+    '../custody/nativeNoteExport': { createNativeNoteExport },
+    '../platform/noteBackupPicker': {
+      shouldLockWalletForNotePicker: () => false,
+      pickNoteBackupFile: async () => { throw Error('FILE_INVALID'); },
+      pickNoteBackupDestination: async () => globalThis.crypto.randomUUID(),
+      writeNoteBackupFile: async (_token: string, bytes: Uint8Array) => bytes.slice(),
+      revokeNoteBackupDestination: async () => undefined,
+    },
+  });
+  const render = () => f.render(() => owner, () => undefined) as unknown as ReturnType<typeof useNativeNoteBackup>;
+  try {
+    render().begin('restore');
+    await render().choose();
+    assert.equal(render().step.phase, 'select');
+    assert.equal(render().error, language.mobile.noteFlows.restore.invalidBackupFile);
+    render().begin('export');
+    await render().choose();
+    render().saveExport('Portable test backup password');
+    await tick();
+    assert.equal(render().exportStep.phase, 'saved');
+    render().showVerify();
+    await render().verifyExport('Portable test backup password');
+    assert.deepEqual({ ...render().exportStep }, { phase: 'saved', noteCount: 1, canVerify: false });
+    assert.equal(render().error, language.mobile.noteFlows.export.savedFileVerificationUnavailable);
+  } finally { render().cancel(); f.close(); }
+});
+
 for (const scenario of ['owned-proof', 'background', 'picker-handoff'] as const) test(`restore preview preserves only its current scope: ${scenario}`, async () => {
   const background = scenario === 'background';
   let state = 'active';
@@ -259,6 +489,77 @@ for (const scenario of ['owned-proof', 'background', 'picker-handoff'] as const)
     assert.equal(render().step.phase === 'review', !background);
   } finally { held.resolve(); render().cancel(); f.close(); }
 });
+
+for (const scenario of ['writing', 'restored', 'unconfirmed', 'changed account', 'changed wallet', 'preview only'] as const) test(
+  `backgrounded note restore keeps only a dispatched outcome for its owning wallet and account (${scenario})`, async () => {
+    const app = { currentState: 'active' };
+    const ready = { phase: 'ready', account: { network: 'ethereum', address: '0x' + '11'.repeat(20) } };
+    let snapshot: typeof ready | { phase: 'locked' } = ready;
+    const write = Promise.withResolvers<void>();
+    const file = await createNoteBackupCodec({ crypto: globalThis.crypto, assertCurrent: () => undefined }).encrypt({
+      format: 'pali-private-notes', version: 1, createdAt: 1, notes: [{ note: 'tornado-eth-1-1-0x' + '01'.repeat(62), createdAt: 1 }],
+    }, 'Portable test backup password');
+    let commits = 0, cancellations = 0, lockCalls = 0;
+    const entered: string[] = [];
+    const owner = {
+      authority: { getSnapshot: () => snapshot, lock() { lockCalls++; snapshot = { phase: 'locked' }; } },
+      captureNoteFileOwner: async () => async () => undefined,
+      openNoteBackup: async () => ({
+        begin: () => 'restore', cancel() { cancellations++; },
+        prepareImport: async () => ({ id: 'restore', added: 1, duplicates: 0, guarded: 1, expiresAt: performance.now() + 10000 }),
+        async commitImport() {
+          commits++;
+          if (scenario === 'unconfirmed') throw new Error('BACKUP_COMMIT_UNCONFIRMED');
+          if (scenario !== 'restored') await write.promise;
+          return { id: 'restore', confirmed: true, added: 1, duplicates: 0, guarded: 1 };
+        },
+      }),
+    };
+    let currentOwner = owner;
+    const f = screenFixture(new URL('../src/screens/useNativeNoteBackup.ts', import.meta.url), 'useNativeNoteBackup', {
+      'react-native': { AppState: app },
+      '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+      './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+      '../custody/nativeNoteRestore': { createNativeNoteRestore },
+      '../platform/noteBackupPicker': { shouldLockWalletForNotePicker: () => false, pickNoteBackupFile: async () => file.slice() },
+    });
+    const render = () => f.render(() => currentOwner, (mode: string) => { entered.push(mode); }) as unknown as ReturnType<typeof useNativeNoteBackup>;
+    try {
+      assert.equal(render().begin('restore'), true);
+      await render().choose();
+      await render().open('Portable test backup password');
+      assert.equal(render().step.phase, 'review');
+      const pending = scenario === 'preview only' ? undefined : render().restore('restore');
+      if (scenario === 'restored' || scenario === 'unconfirmed') await pending;
+      assert.equal(commits, Number(scenario !== 'preview only'));
+      assert.equal(lockCalls, Number(scenario === 'unconfirmed'));
+      const before = entered.length;
+
+      app.currentState = 'background';
+      render().lock(true);
+      snapshot = { phase: 'locked' };
+      render().lock(true);
+      assert.equal(cancellations, 1);
+      assert.equal(render().resume(), false);
+      assert.equal(render().step.phase, 'select');
+
+      if (scenario === 'changed wallet') currentOwner = { ...owner };
+      snapshot = scenario === 'changed account' ? { ...ready, account: { ...ready.account, address: '0x' + '22'.repeat(20) } } : ready;
+      app.currentState = 'active';
+      const resumes = scenario === 'writing' || scenario === 'restored' || scenario === 'unconfirmed';
+      const outcome = scenario === 'restored' ? { phase: 'restored', added: 1 } : resumes ? { phase: 'unconfirmed' } : { phase: 'select' };
+      assert.equal(render().resume(), resumes);
+      assert.deepEqual(entered.slice(before), resumes ? ['restore'] : []);
+      assert.deepEqual({ ...render().step }, outcome);
+      write.resolve(); await pending;
+      assert.deepEqual({ ...render().step }, outcome);
+      await render().restore('restore');
+      assert.equal(commits, Number(scenario !== 'preview only'));
+      assert.equal(render().leaveRestore(), true);
+      assert.equal(render().resume(), false);
+    } finally { write.resolve(); render().cancel(); f.close(); }
+  }
+);
 
 for (const boundary of ['background', 'back', 'wallet'] as const)
   test(`Inventory never publishes after ${boundary} retires the authentication owner`, async () => {

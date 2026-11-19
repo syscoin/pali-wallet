@@ -76,7 +76,7 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Screen key={review.id} gap={14} footer={<>
       <Button title={review.busy || submitting ? t("mobile.noteFlows.reveal.authorizing") : title} disabled={blocked} onPress={() => void approve()} />
-      <Button title={t("buttons.reject")} variant="secondary" onPress={reject} />
+      <Button title={t(review.handedOff ? "buttons.close" : "buttons.reject")} variant="secondary" onPress={reject} />
     </>}>
     <Header title={title} onBack={reject} />
     <Card style={s.originCard}>

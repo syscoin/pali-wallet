@@ -84,7 +84,7 @@ test('exact SLH target review and uncertain submission preserve public binding a
   await expect(page.getByText(`0x${'33'.repeat(16)}${'00'.repeat(16)}`,{exact:true})).toBeVisible();
   await page.getByText(`0x${'33'.repeat(16)}${'00'.repeat(16)}`,{exact:true}).scrollIntoViewIfNeeded();
   await page.screenshot({path:info.outputPath('slh-review-target-320-large.png'),fullPage:true});
-  await expect(page.getByText(/Pali wallet already configured/)).toHaveCount(0);
+  await expect(page.getByText(/Pali already configured/)).toHaveCount(0);
   const authorize = page.getByRole('button',{name:'Authorize approval change',exact:true}); await reachable(authorize,page);
   await page.screenshot({path:info.outputPath('slh-review-320-large.png'),fullPage:true}); await authorize.click();
   await expect(page.getByText(`0x${'ab'.repeat(32)}`,{exact:true})).toBeVisible();

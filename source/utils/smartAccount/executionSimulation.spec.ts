@@ -259,119 +259,89 @@ it('validates a retained signed payer transaction through one bounded final simu
   ).toHaveLength(1);
 });
 
-it('keeps a queued transaction behind its exact retained predecessor', async () => {
-  const signer = new Wallet(`0x${'11'.repeat(32)}`);
-  const sign = (nonce: number) =>
-    signer.signTransaction({
-      type: 2,
-      chainId: 1,
-      to: identity.entryPoint,
-      nonce,
-      data: transaction.data,
-      gasLimit: transaction.gas,
-      maxFeePerGas: 10,
-      maxPriorityFeePerGas: 1,
+it.each([false, true])(
+  'keeps a queued transaction behind its exact retained predecessor (unsigned storage=%s)',
+  async (storeUnsigned) => {
+    const signer = new Wallet(`0x${'11'.repeat(32)}`);
+    const sign = (nonce: number) =>
+      signer.signTransaction({
+        type: 2,
+        chainId: 1,
+        to: identity.entryPoint,
+        nonce,
+        data: storeUnsigned && nonce === 0 ? '0x' : transaction.data,
+        gasLimit: transaction.gas,
+        maxFeePerGas: 10,
+        maxPriorityFeePerGas: 1,
+      });
+    const first = await sign(0),
+      last = await sign(1);
+    const firstHash = Transaction.from(first).hash!,
+      lastHash = Transaction.from(last).hash!;
+    const previous = Transaction.from(first);
+    const predecessor = recoverExecutionSimulationEnvelope(first, firstHash);
+    const target = recoverExecutionSimulationEnvelope(last, lastHash);
+    const retained = {
+      chainId: '1',
+      from: signer.address,
+      hash: firstHash,
+      nonce: 0,
+      phase: 'submitted' as const,
+    };
+    let current = true;
+    let ambiguous = false;
+    const replacedHash = `0x${'aa'.repeat(32)}`;
+    const send = jest.fn(async (method: string, params?: unknown[]) => {
+      if (method === 'eth_getBlockByNumber')
+        return { number: '0xa', hash: parent.hash };
+      if (method === 'eth_getTransactionCount') return '0x0';
+      if (
+        method === 'eth_getTransactionByHash' &&
+        params?.[0] === replacedHash &&
+        !ambiguous
+      )
+        return null;
+      if (method === 'eth_getTransactionByHash')
+        return {
+          ...predecessor,
+          input: predecessor.data,
+          hash: params?.[0],
+          blockHash: null,
+          blockNumber: null,
+          r: previous.signature!.r,
+          s: previous.signature!.s,
+          v: previous.signature!.yParity ? '0x1' : '0x0',
+        };
+      if (method === 'eth_simulateV1')
+        return [
+          {
+            ...makeBlock(true),
+            transactions: [predecessor, target].map((tx) => ({
+              ...tx,
+              input: tx.data,
+            })),
+            calls: [
+              { status: '0x0', gasUsed: '0x1', logs: [] },
+              ...makeBlock(true).calls,
+            ],
+          },
+        ];
+      throw Error(method);
     });
-  const first = await sign(0),
-    last = await sign(1);
-  const firstHash = Transaction.from(first).hash!,
-    lastHash = Transaction.from(last).hash!;
-  const predecessor = recoverExecutionSimulationEnvelope(first, firstHash);
-  const target = recoverExecutionSimulationEnvelope(last, lastHash);
-  const retained = {
-    chainId: '1',
-    from: signer.address,
-    hash: firstHash,
-    nonce: 0,
-    phase: 'submitted' as const,
-  };
-  let current = true;
-  let ambiguous = false;
-  const replacedHash = `0x${'aa'.repeat(32)}`;
-  const send = jest.fn(async (method: string, params?: unknown[]) => {
-    if (method === 'eth_getBlockByNumber')
-      return { number: '0xa', hash: parent.hash };
-    if (method === 'eth_getTransactionCount') return '0x0';
-    if (
-      method === 'eth_getTransactionByHash' &&
-      params?.[0] === replacedHash &&
-      !ambiguous
-    )
-      return null;
-    if (method === 'eth_getTransactionByHash')
-      return {
-        ...predecessor,
-        input: predecessor.data,
-        hash: params?.[0],
-        blockHash: null,
-        blockNumber: null,
-      };
-    if (method === 'eth_simulateV1')
-      return [
-        {
-          ...makeBlock(true),
-          transactions: [predecessor, target].map((tx) => ({
-            ...tx,
-            input: tx.data,
-          })),
-          calls: [
-            { status: '0x0', gasUsed: '0x1', logs: [] },
-            ...makeBlock(true).calls,
-          ],
-        },
-      ];
-    throw Error(method);
-  });
-  const snapshot = {
-    owner: 'test',
-    minimumNonce: 0,
-    retained: [retained],
-    readMaximumCost: async () => BigInt(0),
-    readAssetDebit: async () => BigInt(0),
-    readSignedTransaction: async () => first,
-  };
-  await assertSignedSmartAccountExecution(
-    { send },
-    last,
-    lastHash,
-    operation,
-    1,
-    snapshot,
-    () => {
-      if (!current) throw Error('cancelled');
-    }
-  );
-  expect(
-    send.mock.calls.filter(([method]) => method === 'eth_simulateV1')
-  ).toHaveLength(1);
-  const alternatives = {
-    ...snapshot,
-    retained: [{ ...retained, hash: replacedHash }, retained],
-  };
-  await assertSignedSmartAccountExecution(
-    { send },
-    last,
-    lastHash,
-    operation,
-    1,
-    alternatives,
-    () => undefined
-  );
-  ambiguous = true;
-  await expect(
-    assertSignedSmartAccountExecution(
-      { send },
-      last,
-      lastHash,
-      operation,
-      1,
-      alternatives,
-      () => undefined
-    )
-  ).rejects.toThrow('Unable to verify smart account execution');
-  current = false;
-  await expect(
-    assertSignedSmartAccountExecution(
+    const snapshot = {
+      owner: 'test',
+      minimumNonce: 0,
+      retained: [retained],
+      readMaximumCost: async () => BigInt(0),
+      readAssetDebit: async () => BigInt(0),
+      readSignedTransaction: async () => {
+        if (storeUnsigned) throw new Error('Retained signature unavailable');
+        return first;
+      },
+      readUnsignedNativeTransaction: async () =>
+        storeUnsigned ? previous.unsignedSerialized : null,
+    };
+    await assertSignedSmartAccountExecution(
       { send },
       last,
       lastHash,
@@ -381,9 +351,51 @@ it('keeps a queued transaction behind its exact retained predecessor', async () 
       () => {
         if (!current) throw Error('cancelled');
       }
-    )
-  ).rejects.toThrow('cancelled');
-});
+    );
+    expect(
+      send.mock.calls.filter(([method]) => method === 'eth_simulateV1')
+    ).toHaveLength(1);
+    const alternatives = {
+      ...snapshot,
+      retained: [{ ...retained, hash: replacedHash }, retained],
+    };
+    await assertSignedSmartAccountExecution(
+      { send },
+      last,
+      lastHash,
+      operation,
+      1,
+      alternatives,
+      () => undefined
+    );
+    ambiguous = true;
+    await expect(
+      assertSignedSmartAccountExecution(
+        { send },
+        last,
+        lastHash,
+        operation,
+        1,
+        alternatives,
+        () => undefined
+      )
+    ).rejects.toThrow('Unable to verify smart account execution');
+    current = false;
+    await expect(
+      assertSignedSmartAccountExecution(
+        { send },
+        last,
+        lastHash,
+        operation,
+        1,
+        snapshot,
+        () => {
+          if (!current) throw Error('cancelled');
+        }
+      )
+    ).rejects.toThrow('cancelled');
+  }
+);
 
 it('rechecks the canonical parent after simulation even when that height was already read', async () => {
   const signer = new Wallet(`0x${'11'.repeat(32)}`);

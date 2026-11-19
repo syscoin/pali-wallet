@@ -1,9 +1,15 @@
 /** @jest-environment jsdom */
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import React from 'react';
 
+import { projectEvmActivityRow } from '../../../../../../wallet/evmActivityRow';
 import { DetailsView } from 'pages/Home/Panel/components/Details';
-import { savedTransactionHistoryRow } from 'pages/Home/Panel/components/Transactions/EVM/useSavedEvmTransactions';
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
 const TARGET = `0x${'22'.repeat(20)}`;
@@ -159,7 +165,6 @@ const SAVED = {
     operationHash: '0x' + '55'.repeat(32),
     operationNonce: '0',
     operationCount: 1,
-    replayable: true,
     callData: '0x',
     executions: [{ target: TARGET, value: '10000000000000000', data: '0x' }],
   },
@@ -167,10 +172,12 @@ const SAVED = {
 
 const deferred = () => {
   let resolve!: (value: any) => void;
-  const promise = new Promise<any>((done) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<any>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 const saved = () => ({ ...SAVED, smartAccount: { ...SAVED.smartAccount } });
 const savedReads = () =>
@@ -198,15 +205,74 @@ beforeEach(() => {
     throw new Error('Unexpected mutation/read: ' + method);
   });
 });
+it('retries a failed saved-only lookup after hash-only reopen without repeating healthy network reads', async () => {
+  const held = deferred();
+  let localAttempts = 0;
+  mockEmitter.mockImplementation(([, method]: string[]) => {
+    if (method === 'getSavedEvmTransaction')
+      return ++localAttempts === 1 ? held.promise : Promise.resolve(saved());
+    return Promise.resolve(null);
+  });
+  render(<DetailsView />);
+  await waitFor(() =>
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'getEvmTransactionFromProvider'
+      )
+    ).toBe(true)
+  );
+  expect(
+    screen.queryByText('transactions.transactionNotFoundOrPending')
+  ).toBeNull();
+  await act(async () =>
+    held.reject(new Error('Saved history temporarily unavailable'))
+  );
+  const retry = await screen.findByRole('button', { name: 'receive.retry' });
+  expect(screen.getByRole('alert').textContent).toBe(
+    'transactions.detailsUnavailable'
+  );
+  fireEvent.click(retry);
+  await waitFor(() =>
+    expect(screen.getByTestId('transaction-amount').textContent).toBe(
+      '10000000000000000'
+    )
+  );
+  expect(savedReads()).toHaveLength(2);
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([path]) => path[1] === 'getEvmTransactionFromProvider'
+    )
+  ).toHaveLength(1);
+});
+
+it('settles an absent watch-only transaction from the network without attempting a local record', async () => {
+  const previous = mockState.vault.activeAccount.type;
+  mockState.vault.activeAccount.type = 'Imported';
+  try {
+    render(<DetailsView />);
+    expect(
+      await screen.findByText('transactions.transactionNotFoundOrPending')
+    ).toBeTruthy();
+    expect(savedReads()).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+  } finally {
+    mockState.vault.activeAccount.type = previous;
+  }
+});
+
 it('restores the saved-only Smart amount after hash-only reopen without duplicate reads or replay dispatch', async () => {
-  mockLocation.state.tx = savedTransactionHistoryRow(saved() as any);
+  mockLocation.state.tx = projectEvmActivityRow(saved() as any);
   const activityOpen = render(<DetailsView />);
   await waitFor(() =>
     expect(screen.getByTestId('transaction-amount').textContent).toBe(
       '10000000000000000'
     )
   );
-  await screen.findByRole('button', { name: 'transactions.replay.review' });
+  expect(
+    screen.queryByRole('button', {
+      name: /resend|transactions\.replay\.review/i,
+    })
+  ).toBeNull();
   expect(savedReads()).toHaveLength(1);
   activityOpen.unmount();
   mockLocation = {
@@ -220,12 +286,16 @@ it('restores the saved-only Smart amount after hash-only reopen without duplicat
       '10000000000000000'
     )
   );
-  await screen.findByRole('button', { name: 'transactions.replay.review' });
+  expect(
+    screen.queryByRole('button', {
+      name: /resend|transactions\.replay\.review/i,
+    })
+  ).toBeNull();
   expect(
     screen.queryByText('transactions.transactionNotFoundOrPending')
   ).toBeNull();
   expect(screen.getByTestId('transaction-status').textContent).toBe(
-    'transactions.savedUnconfirmed'
+    'transactions.unconfirmed'
   );
   expect(savedReads()).toHaveLength(2);
   expect(
@@ -303,7 +373,11 @@ it.each(['hash', 'chain'])(
         : Promise.resolve(null)
     );
     render(<DetailsView />);
-    await screen.findByRole('button', { name: 'transactions.replay.review' });
+    expect(
+      screen.queryByRole('button', {
+        name: /resend|transactions\.replay\.review/i,
+      })
+    ).toBeNull();
     await screen.findByText('transactions.transactionNotFoundOrPending');
     expect(screen.queryByTestId('transaction-amount')).toBeNull();
   }
@@ -326,13 +400,19 @@ it('keeps a fresh mined provider result ahead of retained local intent', async (
     });
   });
   render(<DetailsView />);
-  await screen.findByRole('button', { name: 'transactions.replay.review' });
+  expect(
+    screen.queryByRole('button', {
+      name: /resend|transactions\.replay\.review/i,
+    })
+  ).toBeNull();
   await waitFor(() =>
     expect(screen.getByTestId('transaction-status').textContent).toBe(
       'send.confirmed'
     )
   );
-  expect(screen.getByTestId('transaction-amount').textContent).toBe('9');
+  await waitFor(() =>
+    expect(screen.getByTestId('transaction-amount').textContent).toBe('9')
+  );
   expect(savedReads()).toHaveLength(1);
 });
 it('keeps an observed pending provider result ahead of the saved-only label', async () => {
@@ -355,11 +435,17 @@ it('keeps an observed pending provider result ahead of the saved-only label', as
     });
   });
   render(<DetailsView />);
-  await screen.findByRole('button', { name: 'transactions.replay.review' });
+  expect(
+    screen.queryByRole('button', {
+      name: /resend|transactions\.replay\.review/i,
+    })
+  ).toBeNull();
   await waitFor(() =>
     expect(screen.getByTestId('transaction-status').textContent).toBe(
       'send.pending'
     )
   );
-  expect(screen.getByTestId('transaction-amount').textContent).toBe('9');
+  await waitFor(() =>
+    expect(screen.getByTestId('transaction-amount').textContent).toBe('9')
+  );
 });

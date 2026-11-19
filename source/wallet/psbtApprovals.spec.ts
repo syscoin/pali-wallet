@@ -117,7 +117,7 @@ function fixture(partial = false, asset = false) {
     return reply;
   });
   const records = {
-    admit: jest.fn(async (_session, _record, _intent, submit) => {
+    admit: jest.fn(async (_session, _record, submit) => {
       events.push('journal');
       return submit(
         async () => undefined,

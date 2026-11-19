@@ -15,7 +15,7 @@ type Element = {
   children: unknown[];
 };
 const sample = `tornado-eth-1-1-0x${'01'.repeat(62)}`;
-function fixture(failure?: string) {
+function fixture(failure?: string, cameraPermissionPrompt = false) {
   let index = 0,
     backs = 0,
     imports = 0;
@@ -70,6 +70,7 @@ function fixture(failure?: string) {
   };
   const importsByName: Record<string, unknown> = {
     '../platform/localization': nativeTranslationFixture,
+    '../platform/cameraPermission': { isCameraPermissionPromptActive: () => cameraPermissionPrompt },
     react,
     'react-native': {
       AppState: {
@@ -221,4 +222,21 @@ test('an archived import directs the user to restore it without reporting a save
   ]);
   assert.equal(input(tree).props.value, '');
   assert.equal(nodes(tree).some((node) => node.type === 'Notice'), false);
+});
+
+test('camera permission can interrupt the empty scanner and a scanned private note still needs Import', () => {
+  const f = fixture(undefined, true);
+  input(f.render()).props.onChangeText(sample);
+  nodes(f.render()).find(node => node.type === 'SecretScanButton')!.props.onPress();
+  const scanner = f.render();
+  assert.equal(scanner.type, 'SecretQrScanner');
+  assert.equal(scanner.props.kind, 'privateNote');
+  f.blur();
+  assert.equal(f.backs, 0);
+  scanner.props.onScan(sample);
+  assert.equal(input(f.render()).props.value, sample);
+  assert.equal(f.imports, 0);
+  f.blur();
+  assert.equal(f.backs, 1);
+  assert.equal(input(f.render()).props.value, '');
 });

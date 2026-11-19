@@ -1,9 +1,9 @@
 ---
 title: Privacy policy
-description: How Pali Wallet handles local wallet data and information used by network services.
+description: How Pali handles local wallet data and information used by network services.
 ---
 
-<h1 id="privacy-policy" style={{ scrollMarginTop: '5rem' }}>Pali Wallet privacy policy</h1>
+<h1 id="privacy-policy" style={{ scrollMarginTop: '5rem' }}>Pali privacy policy</h1>
 
 Updated November 12, 2026.
 
@@ -33,7 +33,7 @@ The no-logs and no-analytics practices stated above apply to Pali/Syscoin-operat
 
 The Privacy feature uses four fixed Tornado Classic ETH pools on Ethereum mainnet. The Privacy service supplies public pool data and a relayer directory. It defaults to `https://sysnode.info`, and you may configure another supported service origin. This service is separate from your selected Ethereum RPC and from a selected relayer. Changing the Privacy service clears prepared public pool data, so you must prepare again; saved private notes remain in the wallet.
 
-Pool-data requests do not send your private note or wallet address as a lookup. The service can observe the selected pool, IP address and timing. When you explicitly clear completed notes, your selected Ethereum RPC receives the known withdrawal transaction hash and, where recorded, the related deposit hash; its provider can link them. The check relies on that RPC's responses.
+Pool-data requests do not send your private note or wallet address as a lookup. The service can observe the selected pool, IP address and timing. When you select a note and confirm **Archive note**, Pali asks your selected Ethereum RPC about the latest withdrawal attempt with a recorded hash, including its replacements. If that check cannot verify completion, **Check earlier attempts** is available when the note has older attempts with recorded hashes. The provider can see the queried withdrawal hashes and request timing. Deposit transaction hashes and the note secret stay on your device during these checks. Pali uses the RPC’s responses to verify a matching finalized withdrawal before moving the note into the encrypted archive.
 
 If you choose a relayed withdrawal, the chosen relayer receives the proof and public withdrawal inputs, including the pool, root, nullifier hash, recipient and fee. It does not need the private note or witness. Direct withdrawal instead publicly links the gas-paying account and recipient. Local proof generation may also download a public proving key from its hosting service when it is not already cached. These features do not guarantee anonymity or post-quantum privacy.
 
@@ -51,7 +51,7 @@ You can manage connected sites and revoke their wallet access, select or configu
 
 ## Contact
 
-For questions about the Pali Wallet extension, contact the developer at [pali@syscoin.org](mailto:pali@syscoin.org), the developer email listed on the [Pali Wallet Chrome Web Store listing](https://chromewebstore.google.com/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn). The [Pali Wallet website](https://www.paliwallet.com/) also points users to its community support channel. Never include a recovery phrase, password, private key or private note in a support request.
+For questions about the Pali extension, contact the developer at [pali@syscoin.org](mailto:pali@syscoin.org), the developer email listed on the [Pali Wallet Chrome Web Store listing](https://chromewebstore.google.com/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn). The [Pali website](https://www.paliwallet.com/) also points users to its community support channel. Never include a recovery phrase, password, private key or private note in a support request.
 
 ## Policy updates
 

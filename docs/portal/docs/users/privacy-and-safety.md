@@ -36,9 +36,9 @@ Pali can use its default Privacy service or your own Sysnode service. To run you
 
 The default limit is 128 saved notes (up to 4 MiB). In **Note capacity**, you can choose 256 (up to 8 MiB) or 512 (up to 16 MiB); higher limits can use more local storage and slow vault operations. The limit changes only how many notes can be saved. Storage grows with saved data; no space is reserved in advance, and no notes are removed.
 
-Use **Clear completed notes** to verify and remove completed notes. A known withdrawal must be finalized, as must any recorded related deposit; unverified notes remain saved. The selected Ethereum RPC receives the withdrawal transaction hash and, if present, the related deposit transaction hash, so its provider can link them. The check relies on that RPC's responses.
+To free an active slot, select a note, choose **Archive note**, and confirm. Pali asks your selected Ethereum RPC about the latest withdrawal attempt with a recorded hash, including its replacements. If that check cannot verify completion and the note has older attempts with recorded hashes, you can choose **Check earlier attempts**. The provider can see the queried withdrawal hashes and request timing. Deposit transaction hashes and the note secret stay on your device during these checks. Pali moves the note to the encrypted archive once the RPC responses verify a matching finalized withdrawal.
 
-You cannot lower the limit below the number of saved notes. A note shown as spent may still lack the locally recorded withdrawal and transaction hash required for clearing and will remain saved. Clearing checks notes individually; if it is interrupted, earlier removals may already have completed. Refresh the list after an error before retrying.
+You cannot lower the limit below the number of active notes. A note shown as spent may still lack the locally recorded withdrawal and transaction hash required for archiving. Refresh the list after an error before retrying.
 
 ## Smart-account privacy
 

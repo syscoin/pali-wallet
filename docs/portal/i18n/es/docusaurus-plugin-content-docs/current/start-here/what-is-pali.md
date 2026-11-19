@@ -2,7 +2,7 @@
 title: ¿Qué es Pali?
 ---
 
-Pali Wallet es la extensión de billetera oficial de Syscoin y una billetera web3 de propósito general para cadenas compatibles con EVM. Está diseñada para tres audiencias superpuestas:
+Pali es la extensión de billetera oficial de Syscoin y una billetera web3 de propósito general para cadenas compatibles con EVM. Está diseñada para tres audiencias superpuestas:
 
 - **Usuarios regulares** que quieren una billetera de navegador segura para EVM, Syscoin, Rollux y activos UTXO.
 - **Desarrolladores de dapps** que quieren acceso EVM compatible con MetaMask y acceso UTXO desde la misma extensión.

@@ -105,7 +105,7 @@ export function createNativePasskeyClient(host: Readonly<{
           throw Error('Invalid passkey name');
         const challenge = random(), userId = random();
         const { result, rawId } = await execute('create', { challenge: bytesToBase64Url(challenge),
-          rp: { id: identity.rpId, name: 'Pali Wallet' }, user: { id: bytesToBase64Url(userId), name: request.accountName, displayName: request.accountName },
+          rp: { id: identity.rpId, name: 'Pali' }, user: { id: bytesToBase64Url(userId), name: request.accountName, displayName: request.accountName },
           pubKeyCredParams: [{ type: 'public-key', alg: -7 }], attestation: 'none', timeout: 90_000,
           authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'required' } });
         return normalizePasskeyRegistration({ rawId, attestationObject: bytes(result.attestationObject, 1, 16_384),

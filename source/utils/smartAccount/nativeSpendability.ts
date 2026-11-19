@@ -14,6 +14,18 @@ import {
 } from './contracts.ts';
 import { readSmartAccountNativeBalances } from './payerPolicy.ts';
 
+export class SmartAccountNativeSpendabilityError extends Error {
+  readonly transactionNotBroadcast = true;
+  readonly balance: string;
+  readonly requiredPrefund: string;
+
+  constructor(balance: BigNumber, requiredPrefund: BigNumber) {
+    super('Insufficient funds for smart account amount and fee');
+    this.balance = balance.toString();
+    this.requiredPrefund = requiredPrefund.toString();
+  }
+}
+
 /** Read the signed single execution, never caller-supplied review metadata. */
 export function getSmartAccountNativeValue(
   operation: SmartAccountPackedUserOperation
@@ -78,8 +90,5 @@ export async function assertSmartAccountNativeSpendability({
     ? requiredPrefund.sub(deposit)
     : BigNumber.from(0);
   if (balance!.lt(value.add(missingPrefund)))
-    throw Object.assign(
-      new Error('Insufficient funds for smart account amount and fee'),
-      { transactionNotBroadcast: true }
-    );
+    throw new SmartAccountNativeSpendabilityError(balance!, requiredPrefund);
 }

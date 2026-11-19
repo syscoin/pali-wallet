@@ -29,23 +29,20 @@ unverified notes cannot proceed. The same read captures a hash of the retained
 withdrawal history and bounded public summaries. The existing single-use intent
 binds that history, the note, recipient, fees, mode and session.
 
-Every final withdrawal review warns that an earlier proof may still complete and
-that a competing transaction can fail and cost fees. Known earlier attempts show
-their available public details and use the explicit **Submit competing
-withdrawal** action. Every submit requires literal acknowledgement; the backend
-copies its captured history binding into the reservation and rechecks unchanged
-history before committing admission. This consent is transient, is not a recovery
-receipt, and does not certify proof expiry. Changed history/details require a new
-review. Both attempts remain retained. No additional import approval screen or
-persisted override state is needed.
+Withdrawal uses the ordinary recipient and fee review. The backend copies the
+captured history binding into the reservation and rechecks it before dispatch.
+Changed history requires a new review. A pending direct withdrawal tracked in
+Activity pauses another withdrawal of that note with the same fee payer.
+Clear Activity for that payer releases the pause and older private-operation
+nonce reservations. The encrypted attempts remain available for status checks,
+including relayer job history. Every new withdrawal requires a verified unspent
+note.
 
-All available history, public inputs and root anchors remain portable, including
-an anchor with missing inputs. Export does not wait for transaction finality and
-does not discard provenance. Imported hints never become live jobs or trusted
-recovery receipts. The separate automatic recovery path keeps its exact
-transaction, nonce and canonical proof-expiry checks; user consent never fabricates
-that evidence. A duplicate raw import cannot strip a guard or local journal.
-Restored notes cannot become new deposits.
+Available history and public inputs remain portable. Export stays available
+while a transaction is pending. Imported hints remain historical records.
+A duplicate raw import preserves the existing guard and journals. Restored notes
+cannot become new deposits. The vault can still read receipts written by older
+versions.
 
 Importing new withdrawal evidence or an explicit reconciliation marker revokes
 earlier admission. Recording an outcome remains permitted for its exact retained

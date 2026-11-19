@@ -6,7 +6,10 @@ import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { paliGuardianRecoveryModuleInterface } from './contracts.ts';
 import type { GuardianRecoveryObservation } from './guardianStatus.ts';
 import type { SmartAccountGuardianRecoveryOperation } from './recovery.ts';
-import type { EvmRetainedSignedRecord } from '../../wallet/evmSignedRecords.ts';
+import type {
+  EvmRetainedRecord,
+  EvmRetainedSignedRecord,
+} from '../../wallet/evmSignedRecords.ts';
 
 export type GuardianRecoveryApprovalVerification = Readonly<
   { guardian: string; kind: 'ecdsa' } | { guardian: string; kind: 'contract' }
@@ -17,10 +20,11 @@ export type GuardianRecoveryApprovalVerification = Readonly<
  * only retains an unresolved attempt; it never proves that approval succeeded.
  */
 export function matchesGuardianRecoveryTransaction(
-  entry: EvmRetainedSignedRecord,
+  entry: EvmRetainedRecord,
   operation: SmartAccountGuardianRecoveryOperation,
   approval: GuardianRecoveryApprovalVerification
 ): boolean {
+  if (entry.payloadKind === 'unsigned-eoa') return false;
   try {
     if (approval.kind !== 'ecdsa' && approval.kind !== 'contract') return false;
     const transaction = Transaction.from(entry.rawTransaction);

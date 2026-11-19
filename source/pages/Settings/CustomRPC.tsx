@@ -33,7 +33,11 @@ import {
   UtxoRpcDraft,
 } from 'types/transactions';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
-import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import {
+  NETWORK_REGISTRATION_CHANGED,
+  NETWORK_REGISTRATION_SWITCHING,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 import { translateRpcValidationError } from 'utils/rpcValidationError';
 
 import {
@@ -847,7 +851,13 @@ const CustomRPCView = () => {
       refreshChangedEditor();
       setShowModal(true);
       setLoading(false);
-      setErrorModalMessage(error.message);
+      setErrorModalMessage(
+        error.message === NETWORK_REGISTRATION_CHANGED
+          ? t('settings.networkChangedRetry')
+          : error.message === NETWORK_REGISTRATION_SWITCHING
+          ? t('settings.networkSwitchInProgress')
+          : error.message
+      );
     }
   };
 

@@ -11,7 +11,7 @@ const base = { id: 'consent-fixture', revision: 1, appName: 'Example staking app
   accountLabel: 'Daily wallet', address: 'sys1qexamplepublicaddress', networkLabel: 'Syscoin', chainId: '57',
   expiresAt: Date.now() + 300_000, busy: false, error: null,
   verification: { validation: 'UNKNOWN' as const, isScam: false } };
-const operation: SentryReview = { ...base, details: { kind: 'operation', approval: {
+const operation: SentryReview = { ...base, handedOff: false, details: { kind: 'operation', approval: {
   id: 'operation-fixture', network: 'mainnet', origin: base.origin, serviceUrl: 'https://state.example.test',
   keys: [{ id: 'operator', label: 'My operator key', network: 'mainnet', scheme: 'bls-basic', role: 'operator', publicKey: '11'.repeat(48) }],
   request: { version: 1, operation: 'updateService', chain: { genesisHash: '22'.repeat(32), era: 'legacy-v3' }, transactionHex: '00' },
@@ -21,7 +21,7 @@ const operation: SentryReview = { ...base, details: { kind: 'operation', approva
     feeSatoshis: '1000', inputCount: 1, authorizationHash: '88'.repeat(32),
     outputs: [{ valueSatoshis: '50000', scriptHex: '0014' + '99'.repeat(20), isPayload: false }] },
 } } };
-const control: ControlReview = { ...base, originSource: 'peer-metadata', details: { kind: 'network-add', name: 'Example network',
+const control: ControlReview = { ...base, committing: false, originSource: 'peer-metadata', details: { kind: 'network-add', name: 'Example network',
   chainId: '12345', symbol: 'COIN', rpcUrl: 'https://rpc.example.test' } };
 
 export function NativeDappConsentFixture() {

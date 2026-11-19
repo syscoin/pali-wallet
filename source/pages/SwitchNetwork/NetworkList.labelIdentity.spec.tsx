@@ -15,6 +15,7 @@ import en from 'assets/locales/en.json';
 import fr from 'assets/locales/fr.json';
 import { INetwork, INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import { NetworkList } from './NetworkList';
 
@@ -265,7 +266,7 @@ describe.each(['en', 'fr', 'de'] as const)(
           expect(mockEmitter).toHaveBeenNthCalledWith(
             index + 1,
             ['wallet', 'setActiveNetwork'],
-            [choice, false]
+            [choice, false, networkRegistrationFingerprint(choice)]
           );
           expect(mockEmitter.mock.calls[index][1][0]).toBe(choice);
           await waitFor(() =>

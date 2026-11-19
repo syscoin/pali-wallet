@@ -70,6 +70,7 @@ jest.mock('components/index', () => ({
 }));
 jest.mock('components/Icon/Icon', () => ({
   LoadingSvg: () => <svg aria-hidden="true" />,
+  QrcodeOutlined: () => <svg aria-hidden="true" />,
 }));
 jest.mock('components/Modal/WarningBaseModal', () => ({
   ImportedWalletSuccessfully: ({ show }: any) =>

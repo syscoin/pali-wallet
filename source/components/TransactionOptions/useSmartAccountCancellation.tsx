@@ -2,11 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { useSmartAccountFeeConfirmation } from '../../pages/Settings/SmartAccountFeeConfirmation';
+import { SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT } from '../../shared/smartAccountControllerAuthority';
 import { ConfirmationModal } from 'components/Modal';
+import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
 import { ISmartAccountMetadata, KeyringAccountType } from 'types/network';
+import { formatEther } from 'utils/ethersV6Compat';
 import { IEvmTransactionContext } from 'utils/evmTransactionContext';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import {
@@ -16,10 +18,14 @@ import {
   SmartAccountFeeQuote,
 } from 'utils/smartAccount/execution';
 
+type CancellationFeeQuote = SmartAccountFeeQuote &
+  Required<Pick<SmartAccountFeeQuote, 'cancellationPayerBudget'>> & {
+    executionContextId: string;
+  };
 type PreparedCancellation = {
   accountAddress: string;
   accountId: number;
-  entryPointFeeQuote: SmartAccountFeeQuote & { executionContextId: string };
+  entryPointFeeQuote: CancellationFeeQuote;
   executionContextId: string;
   executions: SmartAccountExecutionIntent[];
   operationCancellation: {
@@ -37,6 +43,55 @@ type Review = {
   scope: string;
 };
 const hashPattern = /^0x[\da-f]{64}$/i;
+const isWeiAmount = (value: unknown): value is string =>
+  typeof value === 'string' && /^(?:0|[1-9]\d{0,77})$/.test(value);
+
+function CancellationFeeReview({
+  quote,
+  symbol,
+}: {
+  quote: CancellationFeeQuote;
+  symbol: string;
+}) {
+  const { t } = useTranslation();
+  const { cancellationPayerBudget, maximumFeeWei } = quote;
+  const showFunding =
+    cancellationPayerBudget.maximumPrefundWei !== '0' ||
+    cancellationPayerBudget.maximumPrefundFeeWei !== '0';
+  const row = (label: string, amount: string) => (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="min-w-0 text-brand-gray200 [overflow-wrap:anywhere]">
+        {label}
+      </dt>
+      <dd className="max-w-[50%] shrink-0 text-right font-medium tabular-nums [overflow-wrap:anywhere]">
+        {formatEther(amount)} {symbol}
+      </dd>
+    </div>
+  );
+  return (
+    <dl className="mt-3 space-y-2 rounded-xl bg-alpha-whiteAlpha100 p-3 text-left text-sm">
+      {row(t('send.smartAccountMaxFee'), maximumFeeWei)}
+      {row(
+        cancellationPayerBudget.gasTank
+          ? t('settings.smartAccountFeeReviewGasTank')
+          : t('transactions.smartAccountCancelMaximumReplacementFee'),
+        cancellationPayerBudget.maximumFeeWei
+      )}
+      {showFunding && (
+        <>
+          {row(
+            t('transactions.smartAccountCancelMaximumDeposit'),
+            cancellationPayerBudget.maximumPrefundWei
+          )}
+          {row(
+            t('transactions.smartAccountCancelMaximumDepositFee'),
+            cancellationPayerBudget.maximumPrefundFeeWei
+          )}
+        </>
+      )}
+    </dl>
+  );
+}
 
 /** The background derives the exact nonce and empty call from authenticated bytes. */
 export function useSmartAccountCancellation(
@@ -44,6 +99,7 @@ export function useSmartAccountCancellation(
   operationHash?: string
 ) {
   const { t } = useTranslation();
+  const { alert } = useUtils();
   const { activeAccount, accounts, activeNetwork, isBitcoinBased } =
     useSelector((state: RootState) => state.vault);
   const slip44 = useSelector(
@@ -85,11 +141,8 @@ export function useSmartAccountCancellation(
   const [review, setReview] = useState<Review>();
   const [view, setView] = useState<{
     busy?: boolean;
-    message?: string;
     scope: string;
   }>();
-  const { forExecution, feeConfirmation } =
-    useSmartAccountFeeConfirmation(scope);
   useEffect(() => {
     const owner = lifetime.current;
     owner.alive = true;
@@ -98,10 +151,10 @@ export function useSmartAccountCancellation(
       owner.generation++;
     };
   }, [scope]);
-  const finish = (message?: string) => {
+  const finish = () => {
     lifetime.current.pending = false;
     setReview(undefined);
-    setView({ scope, message });
+    setView({ scope });
   };
   const request = async () => {
     const owner = lifetime.current;
@@ -159,14 +212,25 @@ export function useSmartAccountCancellation(
       assertCurrent();
       const cancellation = prepared?.operationCancellation;
       const call = prepared?.executions?.[0];
+      const quote = prepared?.entryPointFeeQuote;
+      const budget = quote?.cancellationPayerBudget;
       if (
         prepared?.accountId !== activeAccount.id ||
         prepared?.accountAddress?.toLowerCase() !==
           account!.address.toLowerCase() ||
         prepared?.smartAccount?.chainId !== Number(activeNetwork.chainId) ||
+        typeof prepared.executionContextId !== 'string' ||
         !prepared.executionContextId ||
-        prepared.entryPointFeeQuote?.executionContextId !==
-          prepared.executionContextId ||
+        prepared.executionContextId.length > 160 ||
+        quote?.executionContextId !== prepared.executionContextId ||
+        typeof quote?.feePayer?.address !== 'string' ||
+        !/^0x[\da-f]{40}$/i.test(quote.feePayer.address) ||
+        !isWeiAmount(quote.maximumFeeWei) ||
+        !isWeiAmount(quote.gasUnits) ||
+        typeof budget?.gasTank !== 'boolean' ||
+        !isWeiAmount(budget?.maximumFeeWei) ||
+        !isWeiAmount(budget?.maximumPrefundWei) ||
+        !isWeiAmount(budget?.maximumPrefundFeeWei) ||
         cancellation?.originalHash?.toLowerCase() !== hash.toLowerCase() ||
         !hashPattern.test(cancellation?.operationHash ?? '') ||
         (operationHash &&
@@ -184,7 +248,8 @@ export function useSmartAccountCancellation(
     } catch {
       try {
         assertCurrent();
-        finish(t('transactions.smartAccountCancelUnavailable'));
+        finish();
+        alert.error(t('transactions.smartAccountCancelUnavailable'));
       } catch {
         /* retired owner */
       }
@@ -194,28 +259,15 @@ export function useSmartAccountCancellation(
     if (shown.confirming || view?.busy || review !== shown) return;
     shown.confirming = true;
     let authorized = false;
+    const refreshActivity = () =>
+      window.dispatchEvent(
+        new Event(SMART_ACCOUNT_AUTHORIZATION_UPDATED_EVENT)
+      );
     try {
       shown.assertCurrent();
       setReview(undefined);
       setView({ scope, busy: true });
       const { prepared } = shown;
-      const consent = forExecution({
-        account: shown.expectedContext.account.address,
-        smartAccount: prepared.accountAddress,
-        chainId: shown.expectedContext.chainId,
-        symbol: activeNetwork.currency,
-        label: t('header.cancelTx'),
-        assertCurrent: shown.assertCurrent,
-      });
-      if (
-        (await consent.confirmEntryPoint(prepared.entryPointFeeQuote)) !==
-        prepared.executionContextId
-      ) {
-        shown.assertCurrent();
-        finish();
-        return;
-      }
-      shown.assertCurrent();
       await signAndSubmitSmartAccountExecutions({
         accountAddress: prepared.accountAddress,
         accountId: prepared.accountId,
@@ -227,7 +279,6 @@ export function useSmartAccountCancellation(
         executions: prepared.executions,
         expectedContext: shown.expectedContext,
         approvedFeeQuote: prepared.entryPointFeeQuote,
-        feeConsent: consent,
         smartAccount: prepared.smartAccount,
         onPrepared: shown.assertCurrent,
         onBeforeAuthentication: shown.assertCurrent,
@@ -239,17 +290,19 @@ export function useSmartAccountCancellation(
         waitForConfirmation: false,
       });
       shown.assertCurrent();
-      finish(t('transactions.transactionCancelSubmitted'));
+      finish();
+      alert.success(t('transactions.transactionCancelSubmitted'));
+      refreshActivity();
     } catch (error) {
       try {
         shown.assertCurrent();
-        finish(
-          error?.code === 4001
-            ? authorized
-              ? t('transactions.smartAccountAuthorizationRetained')
-              : undefined
-            : t('transactions.smartAccountCancelUnavailable')
-        );
+        finish();
+        if (authorized) {
+          alert.warning(t('transactions.smartAccountCancelSigned'));
+          refreshActivity();
+        } else if (error?.code !== 4001) {
+          alert.error(t('transactions.smartAccountCancelUnavailable'));
+        }
       } catch {
         /* retired owner */
       }
@@ -260,59 +313,30 @@ export function useSmartAccountCancellation(
     available,
     busy: Boolean((view?.scope === scope && view.busy) || shown),
     request,
-    content: (
-      <>
-        {view?.scope === scope && view.message && (
-          <p role="status" className="mt-2 text-sm text-brand-gray200">
-            {view.message}
-          </p>
-        )}
-        {shown && (
-          <ConfirmationModal
-            show
-            title={t('header.cancelTx')}
-            description={t('transactions.smartAccountCancelDescription')}
-            buttonText={t('buttons.confirm')}
-            onClose={() => {
-              try {
-                shown.assertCurrent();
-              } catch {
-                return;
-              }
-              lifetime.current.generation++;
-              finish();
-            }}
-            onClick={() => void confirm(shown)}
-          >
-            <dl className="mt-4 space-y-3 text-sm">
-              {[
-                [
-                  t('smartAccountHub.accountAddress'),
-                  shown.prepared.accountAddress,
-                ],
-                [
-                  t('transactions.smartAuthorizations.reference'),
-                  shown.prepared.operationCancellation.originalHash,
-                ],
-                [
-                  t('transactions.smartAuthorizations.operationHash'),
-                  shown.prepared.operationCancellation.operationHash,
-                ],
-                [
-                  t('transactions.replay.nonce'),
-                  shown.prepared.operationCancellation.operationNonce,
-                ],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <dt className="text-brand-gray200">{label}</dt>
-                  <dd className="break-all">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </ConfirmationModal>
-        )}
-        {feeConfirmation}
-      </>
+    content: shown && (
+      <ConfirmationModal
+        show
+        compact
+        title={t('header.cancelTx')}
+        description={t('transactions.smartAccountCancelReviewDescription')}
+        buttonText={t('buttons.confirm')}
+        describeDialog
+        onClose={() => {
+          try {
+            shown.assertCurrent();
+          } catch {
+            return;
+          }
+          lifetime.current.generation++;
+          finish();
+        }}
+        onClick={() => void confirm(shown)}
+      >
+        <CancellationFeeReview
+          quote={shown.prepared.entryPointFeeQuote}
+          symbol={activeNetwork.currency.toUpperCase()}
+        />
+      </ConfirmationModal>
     ),
   };
 }

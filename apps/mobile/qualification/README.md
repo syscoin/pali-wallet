@@ -184,7 +184,7 @@ index 0, removes index 1 before it has a journal, and uses SDK account creation
 to reuse index 1 with the independently derived address. Both accounts retain real `attempted` transactions
 in the shared sender-owned signed-record bundle. Pending-journal removal must fail and
 lock custody; no terminal receipt is fabricated. The restarted process must
-already select index 1, recover both senders' records and signatures, and finish on
+already select index 1, verify both senders' retained transaction envelopes, and finish on
 index 1. Reports contain only public identities, hashes and fixed success/version
 fields, never seed words or serialized transaction bytes. Imported fixtures use
 a fixed public expected address; generated wallets derive their own expectation.
@@ -193,18 +193,17 @@ After these existing cases, a separate ERC20 case creates HD index 2 and imports
 a fixed public token descriptor. It uses the real native transfer controller,
 software SDK and SQLCipher journal with a bounded injected Ethereum RPC; no
 network service or real token contract is contacted. The create phase signs the
-fixed zero-ETH-value ERC20 call, verifies its intent and durable bytes before the
+fixed zero-ETH-value ERC20 call, verifies its intent and unsigned journal record before the
 injected submission, and simulates a lost response. The new process selects the
-same HD2 account, checks its retained fingerprint, raw transaction and intent,
-then explicitly confirms retry in the current unlocked session and resends those
-exact signed bytes without a new signature, password check or metadata lookup. Both phases return to HD1 and prove that the
-original HD0/HD1 native journals are unchanged.
+same HD2 account, checks the retained unsigned transaction and intent, then uses
+fresh device authorization to sign one Speed Up. The replacement preserves the
+execution and gas limit and uses the reviewed fee cap. Both phases return to HD1
+and verify the original HD0 and HD1 journals.
 
-Full reports require the ERC20 address, transaction and intent hashes, fixed HD2
-identity, per-phase signature/unlocked-session admission counters and exactly one injected
-submission. Create/restart hashes and the wallet fingerprint must match. These
-checks add native controller/signing/persistence evidence; they do not establish
-live-network token execution or token-delivery behavior.
+Full reports require the ERC20 address, original transaction hash, intent hash,
+fixed HD2 identity, and one signature, device authorization and injected
+submission per phase. The original transaction hash, intent and wallet
+fingerprint must match across phases. The replacement hash is required on restart.
 
 A separate native-coin case creates HD index 3 and signs two transactions with
 the installed SDK: one on Ethereum and one on the fixed Syscoin NEVM testnet
@@ -350,7 +349,7 @@ has been fixed; a new exact-head artifact run remains required.
 `run-physical-ios.cjs` is a separate host runner. It never falls back to
 Simulator, changes production storage policy, or accepts a caller-selected app
 identifier. It runs the same native creation/import, backup, wrong-password,
-HD-account, private-HD-key reveal, offline ERC20 journal/retry and chain-5700/57057 signing/restart checks described above. It does not
+HD-account, private-HD-key reveal, offline ERC20 Speed Up and chain-5700/57057 signing/restart checks described above. It does not
 qualify the normal app's UI, Activity, physical privacy behavior, or live-network
 transactions.
 

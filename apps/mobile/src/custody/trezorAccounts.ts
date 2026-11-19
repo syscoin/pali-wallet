@@ -3,7 +3,7 @@ import type { NativeSmartModuleDraft } from '../smartAccount/modules.ts';
 import type { NativeSmartAccountIntent, NativeGuardianPolicyDraft } from '../smartAccount/operation.ts';
 import type { NativeAssetTransferIntent } from './transferIntent.ts';
 import type { NativeReplacementMode } from './transferRpc.ts';
-import type { NativeUtxoAsset } from './utxoSend.ts';
+import type { NativeUtxoAsset, NativeUtxoReplacement } from './utxoSend.ts';
 import { PALI_INFRASTRUCTURE_METADATA_BY_ID, type PaliInfrastructureContractId } from '../../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
 import type { UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
@@ -54,6 +54,11 @@ export type NativeTrezorResumeIntent = Readonly<{
   | Readonly<{ kind: 'external-signing' }>
   | Readonly<{kind:'smart-operation'}>
   | Readonly<{kind:'infrastructure'}>
+  | Readonly<{
+      kind: 'utxo-replacement';
+      replacement: NativeUtxoReplacement;
+      feeChoice: UtxoFeeChoice;
+    }>
   | Readonly<{
       kind: 'utxo';
       recipient: string;

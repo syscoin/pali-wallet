@@ -1,3 +1,5 @@
+import { isCameraPermissionPromptActive } from '../platform/cameraPermission';
+import { SecretQrScanner, SecretScanButton } from './SecretQr';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
@@ -52,6 +54,9 @@ function importError(error: unknown, t: ReturnType<typeof useNativeTranslation>[
 
 export function NativeNoteImport({ openImport, onBack }: Props) {
   const { t } = useNativeTranslation();
+  const [scanning, setScanning] = useState(false);
+  const scannerOpen = useRef(false);
+  useLayoutEffect(() => { scannerOpen.current = scanning; }, [scanning]);
   const owner = useRef<Owner>({ live: false, authentication: createNativePrivateAuthenticationScope() });
   const close = useRef(onBack);
   useLayoutEffect(() => {
@@ -75,11 +80,11 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
     owner.current = current;
     const hide = back;
     const change = AppState.addEventListener('change', (next) => {
-      if (next !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, next)) hide();
+      if (next !== 'active' && !(next === 'inactive' && scannerOpen.current && isCameraPermissionPromptActive()) && !allowsPrivateAuthenticationInterruption(current.authentication, next)) hide();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) hide(); })
+        ? AppState.addEventListener('blur', () => { if (!(scannerOpen.current && isCameraPermissionPromptActive()) && !allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) hide(); })
         : undefined;
     const hardwareBack = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -141,6 +146,10 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
       }
     }
   };
+  if (scanning) return <SecretQrScanner kind="privateNote" onClose={() => setScanning(false)} onScan={value => {
+    if (owner.current.live && !owner.current.request && AppState.currentState === 'active') setNote(value);
+    setScanning(false);
+  }} />;
   return (
     <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
       <KeyboardAvoidingView
@@ -195,6 +204,7 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
                 placeholderTextColor={colors.muted}
                 style={s.input}
               />
+              <SecretScanButton disabled={state.phase !== 'entry'} onPress={() => { setNote(''); setScanning(true); }} />
               {state.phase === 'entry' && state.error && (
                 <Text accessibilityRole="alert" style={s.error}>
                   {state.error}

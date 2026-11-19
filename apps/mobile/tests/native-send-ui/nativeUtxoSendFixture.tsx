@@ -48,20 +48,12 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
     prepared.set(view, revision);
     return view;
   };
-  let saved = !expireAfterSave;
-  let seen = false;
   const send: NativeUtxoSend = {
     feeRecommendations: async () => '7',
+    availableReplacements: async () => [],
+    isReviewCurrent: view => !expired && view === currentReview && prepared.get(view) === revision,
+    async prepareReplacement() { throw Error('No replaceable transactions in this fixture'); },
     cancel() { revision++; owner?.abort(); },
-    async list() {
-      return saved ? [{ txid, accepted: false }] : [];
-    },
-    async refreshSaved() {
-      return saved ? [{ txid, accepted: false }] : [];
-    },
-    async check() {
-      return seen ? 'seen' : 'unknown';
-    },
     async prepare(input) {
       assertCurrent();
       beginPreparation();
@@ -79,17 +71,6 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
         throw new CustodyRuntimeError('INVALID_INPUT');
       }
     },
-    async prepareRetry() {
-      assertCurrent();
-      beginPreparation();
-      return remember({
-        ...request,
-        ...(options.has('alternate-provider')
-          ? { retryProviderOrigin: 'https://previous-provider.example:8443' }
-          : {}),
-        retryTxid: txid,
-      });
-    },
     async confirm(review, credential) {
       assertCurrent();
       const approvedRevision = revision;
@@ -101,9 +82,7 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
       if (expired) throw new CustodyRuntimeError('CANCELLED');
       currentReview = undefined;
       confirmations++;
-      saved = true;
       if (expireAfterSave) throw new CustodyRuntimeError('CANCELLED');
-      seen = true;
       return { txid };
     },
   };

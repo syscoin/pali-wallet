@@ -58,7 +58,10 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 const route = (message: any) => message.data.methods.join('.');
-const submit = (scope: ReturnType<typeof getWalletNavigationScope>) =>
+const submit = (
+  scope: ReturnType<typeof getWalletNavigationScope>,
+  updateType = UpdateTxAction.SpeedUp
+) =>
   handleUpdateTransaction({
     t,
     updateData: {
@@ -67,7 +70,7 @@ const submit = (scope: ReturnType<typeof getWalletNavigationScope>) =>
       isLegacy: false,
       txHash: ORIGINAL,
       signerAddress: ACCOUNT,
-      updateType: UpdateTxAction.SpeedUp,
+      updateType,
       approvedMaximumFee: FEE,
       walletScope: scope,
     },
@@ -88,6 +91,27 @@ it('routes an ordinary account fee preview through the scoped wallet controller'
     ACCOUNT,
     { previewOnly: true, walletScope: scope },
   ]);
+});
+
+it('preserves the insufficient-balance code through the Chrome preview response', async () => {
+  reply = (message, callback) => {
+    expect(route(message)).toBe(originalRoute);
+    expect(message.data.params[4].previewOnly).toBe(true);
+    callback({
+      isSpeedUp: false,
+      error: true,
+      code: 'INSUFFICIENT_BALANCE',
+      transactionNotBroadcast: true,
+    });
+  };
+
+  await expect(
+    previewSpeedUpTransaction(ORIGINAL, false, 5700, ACCOUNT)
+  ).rejects.toMatchObject({
+    code: 'INSUFFICIENT_BALANCE',
+    transactionNotBroadcast: true,
+  });
+  expect(messages.map(route)).toEqual([originalRoute]);
 });
 
 it('shows amount guidance for an SDK-shaped rejection through the real emitter', async () => {
@@ -184,6 +208,48 @@ it('confirms the real transport preserves the structured rejection object', asyn
     )
   ).rejects.toEqual(rejection);
   expect(messages.map(route)).toEqual([originalRoute]);
+});
+
+it.each([
+  [UpdateTxAction.SpeedUp, originalRoute],
+  [UpdateTxAction.Cancel, 'wallet.cancelEvmTransaction'],
+])(
+  'reports 502 after a %s write as unconfirmed with no retry',
+  async (action, method) => {
+    reply = (_message, callback) =>
+      callback({
+        error: true,
+        code: 'REPLACEMENT_SEND_FAILED',
+        message: 'HTTP error 502 with body: <html>Bad Gateway</html>',
+        signedTransactionHash: REPLACEMENT,
+        transactionNotBroadcast: false,
+      });
+
+    await submit(getWalletNavigationScope(), action);
+    expect(messages.map(route)).toEqual([method]);
+    expect(alert.error).toHaveBeenCalledTimes(1);
+    expect(alert.error).toHaveBeenCalledWith('transactions.replay.unknown');
+    expect(alert.warning).not.toHaveBeenCalled();
+    expect(alert.success).not.toHaveBeenCalled();
+  }
+);
+
+it('drops an unconfirmed replacement notice after the network changes', async () => {
+  let complete!: (value: unknown) => void;
+  reply = (_message, callback) => {
+    complete = callback;
+  };
+  const attempt = submit(getWalletNavigationScope());
+  mockVault.activeNetwork.url = 'https://other-rpc.synthetic.invalid';
+  complete({
+    error: true,
+    code: 'REPLACEMENT_SEND_FAILED',
+    message: 'HTTP error 502',
+    signedTransactionHash: REPLACEMENT,
+    transactionNotBroadcast: false,
+  });
+  await attempt;
+  expect(alert.error).not.toHaveBeenCalled();
 });
 
 it('keeps unrelated transport errors on the existing generic feedback path', async () => {

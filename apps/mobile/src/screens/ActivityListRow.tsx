@@ -20,12 +20,13 @@ export function activityDate(milliseconds: number | null | undefined, now = new 
 }
 
 /** Compact public summary. The full amount and identifiers remain in details. */
-export function ActivityListRow({ title, subtitle, amount, time, direction, heading, first, last, label, onPress, rowRef, testID, disabled = false, networkBadge, networkId, networkSymbol, asset, registrationHash, assetSymbol }: {
+export function ActivityListRow({ title, subtitle, amount, time, direction, heading, first, last, label, onPress, rowRef, testID, disabled = false, networkBadge, poolBadge, networkId, networkSymbol, asset, registrationHash, assetSymbol }: {
   title: string; subtitle: string; amount: string; time: string;
   direction: 'sent' | 'received' | 'self' | 'unknown'; heading?: string;
   first: boolean; last: boolean; label: string; onPress(): void;
   rowRef?: React.ComponentProps<typeof IdlePressable>['ref']; testID: string; disabled?: boolean;
   networkBadge?: string;
+  poolBadge?: string;
   networkId?: string;
   networkSymbol?: string;
   asset?: AssetIconIdentity;
@@ -43,12 +44,19 @@ export function ActivityListRow({ title, subtitle, amount, time, direction, head
           : <Icon name={direction === 'sent' ? 'arrow-up-right' : direction === 'received' ? 'arrow-down-left' : 'activity'} size={18} color={accent} />}
       </View>
       <View style={s.description}><Text style={s.title}>{title}</Text>
-        {networkBadge && <View style={s.badge}>
-          {networkId && <View testID={`activity-network-icon-${networkId}`} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <Coin id={networkId} fallbackSymbol={networkSymbol} size={13} />
-          </View>}
-          <Text style={s.badgeText} numberOfLines={1}>{networkBadge}</Text>
-        </View>}
+        {(networkBadge || poolBadge) && (
+          <View style={s.badges}>
+            {networkBadge && (
+              <View style={s.badge}>
+                {networkId && <View testID={`activity-network-icon-${networkId}`} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                  <Coin id={networkId} fallbackSymbol={networkSymbol} size={13} />
+                </View>}
+                <Text style={s.badgeText} numberOfLines={1}>{networkBadge}</Text>
+              </View>
+            )}
+            {poolBadge && <View style={s.badge}><Text style={s.badgeText} numberOfLines={1}>{poolBadge}</Text></View>}
+          </View>
+        )}
         <Text style={s.subtitle}>{subtitle}</Text></View>
       <View style={s.value}><Text style={[s.amount, direction === 'received' && { color: colors.blue }]} numberOfLines={2}>{amount}</Text><Text style={s.time}>{time}</Text></View>
     </IdlePressable>
@@ -63,6 +71,7 @@ const s = StyleSheet.create({
   pressed: { backgroundColor: colors.raised }, icon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   description: { flex: 1, minWidth: 0, gap: 3 }, title: { fontSize: 14, lineHeight: 20, fontWeight: '600' },
   subtitle: { color: colors.muted, fontSize: 12, lineHeight: 18 }, value: { flexShrink: 1, maxWidth: '48%', minWidth: 0, alignItems: 'flex-end', gap: 3 },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   badge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: '100%', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: colors.raised },
   badgeText: { color: colors.blue, fontSize: 10, lineHeight: 15, fontWeight: '600', flexShrink: 1 },
   amount: { fontSize: 13, lineHeight: 19, fontWeight: '600', textAlign: 'right', maxWidth: '100%' }, time: { color: colors.muted, fontSize: 11, lineHeight: 17 },

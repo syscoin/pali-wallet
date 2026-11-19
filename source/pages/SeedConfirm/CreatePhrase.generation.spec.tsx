@@ -133,6 +133,7 @@ it('cannot confirm a previous twelve-word phrase while the selected twenty-four-
     ['wallet', 'createNewSeed'],
     [24]
   );
+  expect(screen.queryByTestId('displayed-phrase')).toBeNull();
   await act(async () => acknowledgeAndNext());
   expect(screen.queryByTestId('confirm-phrase')).toBeNull();
   expect(
@@ -232,6 +233,7 @@ it.each(['initial', 'manual'])(
     expect(screen.getByRole('alert').textContent).toBe(
       'createPhrase.generationFailed'
     );
+    expect(screen.queryByTestId('displayed-phrase')).toBeNull();
     expect(screen.queryByText(error.message)).toBeNull();
     expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(
       true

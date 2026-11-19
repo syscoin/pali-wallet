@@ -38,7 +38,10 @@ import {
   setNetworks,
 } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
-import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 
 import MainController from './MainController';
 import type { UtxoRecordSession } from '../../../wallet/utxoSignedRecords';
@@ -394,6 +397,94 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       expect(await savedTarget()).toMatchObject(secondEdit);
     });
 
+    if (family === INetworkType.Ethereum) {
+      it('blocks a reviewed switch while the same target edit awaits acknowledgment', async () => {
+        await wallet.addCustomRpc(target);
+        const reviewed = liveTarget();
+        const replacement = {
+          ...reviewed,
+          url: 'https://edited-network.synthetic.invalid',
+        };
+        wallet.networkRequestGeneration = 0;
+        wallet.stopAllRapidPolling = jest.fn();
+        const held = holdNextWrite();
+        const edit = wallet.editCustomRpc(
+          replacement,
+          networkRegistrationFingerprint(reviewed)
+        );
+        await held.started;
+        try {
+          expect(liveTarget()).toEqual(reviewed);
+          await expect(
+            wallet.setActiveNetwork(
+              reviewed,
+              false,
+              networkRegistrationFingerprint(reviewed)
+            )
+          ).rejects.toThrow(NETWORK_SWITCH_REVIEW_CHANGED);
+          expect(wallet.networkRequestGeneration).toBe(0);
+          expect(wallet.stopAllRapidPolling).not.toHaveBeenCalled();
+        } finally {
+          held.release();
+          await edit;
+        }
+        expect(liveTarget()).toEqual(replacement);
+        expect(await savedTarget()).toEqual(replacement);
+        await expect(
+          wallet.setActiveNetwork(
+            reviewed,
+            false,
+            networkRegistrationFingerprint(reviewed)
+          )
+        ).rejects.toThrow(NETWORK_SWITCH_REVIEW_CHANGED);
+      });
+
+      it('refuses an edit of the reviewed target until the admitted switch settles', async () => {
+        await wallet.addCustomRpc(target);
+        const reviewed = liveTarget();
+        const expected = networkRegistrationFingerprint(reviewed);
+        const replacement = {
+          ...reviewed,
+          url: 'https://edited-network.synthetic.invalid',
+        };
+        const entered = Promise.withResolvers<void>();
+        const acknowledge = Promise.withResolvers<void>();
+        wallet.networkRequestGeneration = 0;
+        wallet.stopAllRapidPolling = jest.fn();
+        wallet.cancellablePromises = {};
+        wallet.cancelActiveBalanceUpdate = jest.fn();
+        wallet.setActiveNetworkLogic = jest
+          .fn()
+          .mockImplementation((_network, resolve) => resolve());
+        wallet.handleNetworkChangeSuccess = jest.fn(async () => {
+          entered.resolve();
+          await acknowledge.promise;
+        });
+        const switching = wallet.setActiveNetwork(reviewed, false, expected);
+        try {
+          await Promise.race([entered.promise, switching]);
+          await expect(
+            wallet.editCustomRpc(replacement, expected)
+          ).rejects.toThrow('PALI_NETWORK_REGISTRATION_SWITCHING');
+          expect(await savedTarget()).toEqual(reviewed);
+
+          await expect(
+            wallet.editCustomRpc(
+              { ...source, label: 'Unrelated registry edit' },
+              networkRegistrationFingerprint(source)
+            )
+          ).resolves.toMatchObject({ label: 'Unrelated registry edit' });
+        } finally {
+          acknowledge.resolve();
+          await switching;
+        }
+        await expect(
+          wallet.editCustomRpc(replacement, expected)
+        ).resolves.toEqual(replacement);
+        expect(await savedTarget()).toEqual(replacement);
+      });
+    }
+
     it('repairs a completed stale edit from the latest same-wallet registry', async () => {
       await wallet.addCustomRpc(target);
       writeCount = 0;
@@ -611,7 +702,6 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
           admission = journal.admit(
             { keyring, assertCurrent: guard },
             signedRecord,
-            'initial',
             async (prepare: () => Promise<void>, release: () => void) => {
               entered.resolve();
               await held.promise;
@@ -619,7 +709,7 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
               release();
             }
           );
-          await entered.promise;
+          await Promise.race([entered.promise, admission]);
           const edited = {
             ...target,
             url: 'https://edited-network.synthetic.invalid',
@@ -647,13 +737,20 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
           await admission;
           await rejection;
           expect(await savedTarget()).toMatchObject(target);
-          expect(
-            await journal.readExact(
-              { keyring, assertCurrent: guard },
-              owner,
-              signedRecord.txid
-            )
-          ).toEqual(signedRecord);
+          const retained = await journal.readExact(
+            { keyring, assertCurrent: guard },
+            owner,
+            signedRecord.txid
+          );
+          expect(retained).toMatchObject({
+            owner,
+            txid: signedRecord.txid,
+            url: signedRecord.url,
+            outpoints: signedRecord.outpoints,
+            feeSatoshis: signedRecord.feeSatoshis,
+            virtualSize: signedRecord.virtualSize,
+          });
+          expect(retained).not.toHaveProperty('rawTransaction');
           await expect(
             wallet.editCustomRpc(
               { ...target, label: 'Updated label' },

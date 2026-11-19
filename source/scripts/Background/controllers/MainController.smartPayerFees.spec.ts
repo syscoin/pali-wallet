@@ -59,9 +59,11 @@ import { getSmartAccountUserOpHash } from '../../../utils/smartAccount/userOpera
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import { decodeRetainedSmartAccountOperations } from '../../../wallet/smartAccountActivity';
 import {
-  captureSmartAccountCancellation,
+  inspectSmartAccountCancellationPayer,
   smartAccountCancellationMetadata,
+  type SmartAccountCancellation,
 } from '../../../wallet/smartAccountCancellation';
+import { projectSmartAccountSavedTransaction } from '../../../wallet/smartAccountSignedReplay';
 import { KeyringAccountType } from 'types/network';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 import {
@@ -330,7 +332,7 @@ function fixture(chainId = 57) {
 
 afterEach(() => jest.restoreAllMocks());
 
-async function cancellationFixture() {
+async function cancellationFixture(useSpeedUpTip = false) {
   const f = fixture();
   const cryptoKeyring: any = Object.create(SoftwareKeyring.prototype);
   cryptoKeyring.sessionPassword = { isCleared: () => false };
@@ -385,31 +387,84 @@ async function cancellationFixture() {
     maxFeePerGas: 3,
     maxPriorityFeePerGas: 1,
   });
-  const original = await records.append(session, {
+  const context = {
+    account: { id: 0, type: 'HDAccount' as const, address: signer.address },
+    network: {
+      kind: 'ethereum' as const,
+      chainId: 57,
+      slip44: 60,
+      url: 'https://rpc.invalid',
+    },
+    operation: 'send' as const,
+  };
+  const initial = await records.append(session, {
     rawTransaction,
     hash: Transaction.from(rawTransaction).hash!,
     from: signer.address,
     chainId: '57',
     nonce: 0,
     type: 2,
-    context: {
-      account: { id: 0, type: 'HDAccount', address: signer.address },
-      network: {
-        kind: 'ethereum',
-        chainId: 57,
-        slip44: 60,
-        url: 'https://rpc.invalid',
+    context,
+  });
+  let original = initial;
+  if (useSpeedUpTip) {
+    const binding = await records.captureVerifiedReplacement(session, {
+      chainId: '57',
+      from: signer.address,
+      nonce: 0,
+      originalHash: initial.hash,
+      operation: 'speed-up',
+    });
+    const variant = Transaction.from(
+      Transaction.from(rawTransaction).unsignedSerialized
+    );
+    variant.maxFeePerGas = BigInt(6);
+    variant.maxPriorityFeePerGas = BigInt(2);
+    const signed = await signer.signTransaction(variant);
+    original = await records.append(
+      session,
+      {
+        rawTransaction: signed,
+        hash: Transaction.from(signed).hash!,
+        from: signer.address,
+        chainId: '57',
+        nonce: 0,
+        type: 2,
+        context: {
+          ...context,
+          operation: 'speed-up',
+          originalHash: initial.hash,
+        },
       },
-      operation: 'send',
-    },
-  });
-  const cancellation = captureSmartAccountCancellation({
-    account: smart,
-    chainId: 57,
-    referenceHash: original.hash,
-    outer: original,
-    observedAt: { number: '16', hash: block.hash },
-  });
+      undefined,
+      binding
+    );
+  }
+  mockState.vault.accounts.SmartAccount[2].smartAccount =
+    deployment.account.smartAccount;
+  f.wallet.smartAccount = {
+    assertExpectedExecutionContext: jest.fn(),
+    prepareSmartAccountCancellation: (cancellation: SmartAccountCancellation) =>
+      cancellation,
+  };
+  const cancellation: SmartAccountCancellation =
+    await f.wallet.prepareSmartAccountCancellation(
+      { originalHash: original.hash },
+      2,
+      {
+        expectedContext: {
+          account: {
+            address: smart,
+            id: 2,
+            type: KeyringAccountType.SmartAccount,
+          },
+          chainId: 57,
+          rpcUrl: 'https://rpc.invalid',
+          slip44: 60,
+          sessionGeneration: 1,
+        },
+      }
+    );
   const noop = encodeERC7579Executions([
     { target: smart, value: '0x0', data: '0x' },
   ]);
@@ -430,6 +485,38 @@ async function cancellationFixture() {
       getSmartAccountUserOpHash(userOperation, 57)
     ),
   };
+  const send = f.provider.send.getMockImplementation()!;
+  let latest = 0;
+  let originalReceipt: unknown = null;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_chainId') return '0x39';
+    if (method === 'eth_getTransactionCount') {
+      const nonce = params?.[1] === 'pending' && !useSpeedUpTip ? 1 : latest;
+      return `0x${nonce.toString(16)}`;
+    }
+    if (
+      method === 'eth_getBalance' &&
+      params?.[1] === 'pending' &&
+      latest === 0
+    )
+      return '0x0';
+    if (method === 'eth_getTransactionByHash') return null;
+    if (method === 'eth_getTransactionReceipt')
+      return params?.[0] === original.hash ? originalReceipt : null;
+    return send(method, params);
+  });
+  const payer = await inspectSmartAccountCancellationPayer(
+    cancellation,
+    {
+      send: f.provider.send,
+      getFeeData: async () => ({
+        maxFeePerGas: BigInt(3),
+        maxPriorityFeePerGas: BigInt(1),
+      }),
+    },
+    session.assertCurrent
+  );
+  if (!payer.replaceOuter) throw new Error('Expected the retained payer nonce');
   const request = {
     ...f.request,
     to: getPaliEntryPointAddress(57),
@@ -437,27 +524,8 @@ async function cancellationFixture() {
       [userOperation],
       signer.address,
     ]),
-    maxFeePerGas: '4',
-    maxPriorityFeePerGas: '2',
+    ...payer.feeOverrides,
   };
-  let latest = 0;
-  const send = f.provider.send.getMockImplementation()!;
-  f.provider.send.mockImplementation(async (method, params) => {
-    if (method === 'eth_getTransactionCount')
-      return params?.[1] === 'pending' ? '0x1' : `0x${latest.toString(16)}`;
-    if (
-      method === 'eth_getBalance' &&
-      params?.[1] === 'pending' &&
-      latest === 0
-    )
-      return '0x0';
-    if (
-      method === 'eth_getTransactionByHash' ||
-      method === 'eth_getTransactionReceipt'
-    )
-      return null;
-    return send(method, params);
-  });
   return {
     ...f,
     records,
@@ -467,30 +535,63 @@ async function cancellationFixture() {
     setLatest(value: number) {
       latest = value;
     },
+    confirmOriginal() {
+      originalReceipt = {
+        transactionHash: original.hash,
+        from: signer.address,
+        to: getPaliEntryPointAddress(57),
+        status: '0x1',
+        blockHash: block.hash,
+        blockNumber: block.number,
+      };
+    },
     submit: () => f.submit(NATIVE_EVM_FEE_FUNDING, request, metadata),
   };
 }
 
-it('replaces only the authenticated Smart outer nonce using canonical funds', async () => {
-  const f = await cancellationFixture();
-  const response = await f.submit();
-  expect(f.broadcast).toHaveBeenCalledTimes(1);
-  const raw = f.send.mock.calls[0][0];
-  expect(raw.nonce).toBe('0');
-  const saved = await f.records.readExact(
-    f.session,
-    '57',
-    signer.address,
-    response.hash
-  );
-  expect(saved?.originalHash).toBe(f.original.hash);
-  expect(saved?.metadata?.smartAccountOperationCancellation).toEqual(
-    smartAccountCancellationMetadata(
-      f.descriptor.cancellation,
-      getSmartAccountUserOpHash(f.descriptor.userOperation, 57)
-    )
-  );
-});
+it.each([false, true])(
+  'replaces the authenticated Smart outer nonce without its RPC body (Speed Up tip: %s)',
+  async (useSpeedUpTip) => {
+    const f = await cancellationFixture(useSpeedUpTip);
+    const response = await f.submit();
+    expect(f.broadcast).toHaveBeenCalledTimes(1);
+    const raw = f.send.mock.calls[0][0];
+    expect(raw.nonce).toBe('0');
+    expect(raw.maxFeePerGas).toBe(useSpeedUpTip ? '7' : '4');
+    expect(raw.maxPriorityFeePerGas).toBe(useSpeedUpTip ? '3' : '2');
+    expect(f.provider.send).not.toHaveBeenCalledWith(
+      'eth_getTransactionByHash',
+      [f.original.hash]
+    );
+    const saved = await f.records.readExact(
+      f.session,
+      '57',
+      signer.address,
+      response.hash
+    );
+    expect(saved?.originalHash).toBe(f.original.hash);
+    expect(saved?.metadata?.smartAccountOperationCancellation).toEqual(
+      smartAccountCancellationMetadata(
+        f.descriptor.cancellation,
+        getSmartAccountUserOpHash(f.descriptor.userOperation, 57)
+      )
+    );
+    const record = await f.records.readSmartAccountReplayExact(
+      f.session,
+      '57',
+      smart,
+      response.hash
+    );
+    expect(record).not.toBeNull();
+    expect(
+      projectSmartAccountSavedTransaction(record!, smart).smartAccount
+    ).toMatchObject({
+      cancellation: true,
+      pendingCancellationOf:
+        f.descriptor.cancellation.authorization.operationHash,
+    });
+  }
+);
 
 it.each(['consent', 'signing'] as const)(
   'refuses a consumed Smart outer nonce after %s',
@@ -509,6 +610,16 @@ it.each(['consent', 'signing'] as const)(
     expect(f.send).toHaveBeenCalledTimes(stage === 'consent' ? 0 : 1);
   }
 );
+
+it('refuses a Smart outer receipt after signing despite the old nonce report', async () => {
+  const f = await cancellationFixture();
+  f.onSigned(() => f.confirmOriginal());
+  await expect(f.submit()).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  expect(f.send).toHaveBeenCalledTimes(1);
+  expect(f.broadcast).not.toHaveBeenCalled();
+});
 
 it('retains other payer commitments when replacing a Smart outer transaction', async () => {
   const f = await cancellationFixture();
@@ -583,6 +694,21 @@ it('uses ordinary nonce admission for fresh Smart cancellation delivery', async 
     )
   );
   expect(f.broadcast).toHaveBeenCalledTimes(1);
+});
+
+it('rechecks the original payer before using a fresh Smart cancellation nonce', async () => {
+  const f = await cancellationFixture();
+  f.descriptor.replaceOuter = false;
+  f.setLatest(1);
+  f.options.confirmFee.mockImplementationOnce(async (quote) => {
+    f.setLatest(0);
+    return quote.id;
+  });
+  await expect(f.submit()).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
 });
 
 it('quotes only the exact payer envelope before consent and admits freshly afterward', async () => {

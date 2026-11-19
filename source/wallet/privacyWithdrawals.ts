@@ -7,8 +7,10 @@ import {
   quotePrivacyRelayerFee,
   validatePrivacyRelayerEndpoint,
 } from '../utils/privacy/relayers.ts';
-import { readPrivacyRelayerJob } from '../utils/privacy/relayJobs.ts';
-import { capturePreviousWithdrawalAttempts } from '../utils/privacy/withdrawTypes.ts';
+import {
+  PrivacyRelayerObservationUnavailable,
+  readPrivacyRelayerJob,
+} from '../utils/privacy/relayJobs.ts';
 
 import type {
   IPrivacyRelayerDirectory,
@@ -75,10 +77,10 @@ const PUBLIC_ERRORS = new Set([
   'privacy_withdrawal_snapshot_invalid',
   'privacy_withdrawal_invalid',
   'privacy_withdrawal_attempt_exists',
+  'privacy_withdrawal_activity_pending',
   'privacy_withdrawal_nonce_conflict',
   'privacy_withdrawal_attempt_invalid',
   'privacy_withdrawal_quote_changed',
-  'privacy_withdrawal_risk_not_accepted',
   'privacy_withdrawal_insufficient_funds',
 ]);
 const ABI = new Interface([
@@ -391,7 +393,8 @@ export function createPrivacyWithdrawalsController(
         })
       );
     },
-    statusByNote: async (noteId) => {
+    statusByNote: async (noteId, statusOptions) => {
+      const observeRelayer = statusOptions?.observeRelayer !== false;
       try {
         if (typeof noteId !== 'string' || !UUID.test(noteId))
           throw fail('privacy_withdrawal_request_invalid');
@@ -424,19 +427,28 @@ export function createPrivacyWithdrawalsController(
             ? { transactionHash: record.transactionHash }
             : {}),
         };
-        if (record.mode === 'direct' || !record.jobId) return result;
+        if (!observeRelayer || record.mode === 'direct' || !record.jobId)
+          return result;
         if (!record.endpoint || !record.ensHash || !WORD.test(record.ensHash))
           throw fail('privacy_relayer_job_invalid');
-        const observation = await readPrivacyRelayerJob(
-          {
-            endpoint: record.endpoint,
-            jobId: record.jobId,
-            poolId: record.poolId,
-            inputHash: record.inputHash,
-            proofHash: record.proofHash,
-          },
-          { assertCurrent, fetcher: options.fetcher }
-        );
+        let observation: Awaited<ReturnType<typeof readPrivacyRelayerJob>>;
+        try {
+          observation = await readPrivacyRelayerJob(
+            {
+              endpoint: record.endpoint,
+              jobId: record.jobId,
+              poolId: record.poolId,
+              inputHash: record.inputHash,
+              proofHash: record.proofHash,
+            },
+            { assertCurrent, fetcher: options.fetcher }
+          );
+        } catch (error) {
+          if (!(error instanceof PrivacyRelayerObservationUnavailable))
+            throw error;
+          assertCurrent();
+          return { ...result, observationUnavailable: true };
+        }
         assertCurrent();
         if (
           observation.transactionHash &&
@@ -530,6 +542,9 @@ export function createPrivacyWithdrawalsController(
       const preparationStarted = performance.now();
       let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
       try {
+        if (await host.hasPendingWithdrawal?.(request.noteId, session))
+          throw fail('privacy_withdrawal_activity_pending');
+        current(intent);
         let originalIdentity:
           | ReturnType<typeof identifyClassicNote>
           | undefined;
@@ -566,9 +581,6 @@ export function createPrivacyWithdrawalsController(
                 )
                   throw fail('privacy_withdrawal_note_invalid');
                 intent.historyBinding = history.binding;
-                const previousWithdrawals = capturePreviousWithdrawalAttempts(
-                  history.previousWithdrawals
-                );
                 const access = await host.getSnapshot(poolId);
                 if (typeof access?.getPath !== 'function')
                   throw fail('privacy_verification_pending');
@@ -579,6 +591,7 @@ export function createPrivacyWithdrawalsController(
                   waitForScheduledRefresh: access.waitForScheduledRefresh,
                 });
                 current(intent);
+                access.assertNoteInCheckpoint?.(identity.commitment);
                 let fee = '0',
                   relayer = `0x${'0'.repeat(40)}`,
                   maximum = BigInt(0),
@@ -713,9 +726,6 @@ export function createPrivacyWithdrawalsController(
                   intentId: id,
                   noteId: request.noteId,
                   poolId,
-                  ...(previousWithdrawals.length
-                    ? { previousWithdrawals }
-                    : {}),
                   amount: pool.amount,
                   poolAddress: pool.address,
                   mode: request.mode,
@@ -808,16 +818,7 @@ export function createPrivacyWithdrawalsController(
         }
       }
     },
-    submitWithdrawal: async (id, approval) => {
-      if (
-        !approval ||
-        typeof approval !== 'object' ||
-        Array.isArray(approval) ||
-        Object.keys(approval).length !== 1 ||
-        approval.acceptPreviousWithdrawalRisk !== true
-      )
-        throw fail('privacy_withdrawal_risk_not_accepted');
-
+    submitWithdrawal: async (id) => {
       const intent = intents.get(id);
       if (!intent?.attempt || now() >= intent.expiresAt!) {
         remove(id);
@@ -833,10 +834,7 @@ export function createPrivacyWithdrawalsController(
       }
       const attempt = intent.attempt;
       if (!intent.historyBinding) throw fail('privacy_withdrawal_note_invalid');
-      const accepted = Object.freeze({
-        acceptPreviousWithdrawalRisk: true as const,
-        historyBinding: intent.historyBinding,
-      });
+      const accepted = Object.freeze({ historyBinding: intent.historyBinding });
       if (submitting.has(attempt.noteId))
         throw fail('privacy_withdrawal_note_busy');
       submitting.add(attempt.noteId);
@@ -870,6 +868,9 @@ export function createPrivacyWithdrawalsController(
         await pending;
       };
       try {
+        if (await host.hasPendingWithdrawal?.(attempt.noteId, intent.session))
+          throw fail('privacy_withdrawal_activity_pending');
+        current(intent);
         if (intent.selection) {
           await host.relayers.checkRelayer(
             intent.selection.directory,

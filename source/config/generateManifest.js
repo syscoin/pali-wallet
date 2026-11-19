@@ -54,7 +54,7 @@ function generateManifest() {
     );
     const action = manifestOptions.action || manifestOptions.browser_action;
     action.default_icon = { ...manifestOptions.icons };
-    action.default_title = 'Pali Wallet Canary';
+    action.default_title = 'Pali Canary';
     // Store uploads reject `key`; it only stabilizes unpacked Canary identity.
     if (manifestOptions.manifest_version === 3 && process.env.PALI_EXTENSION_STORE_BUILD !== '1') {
       manifestOptions.key = CANARY_EXTENSION_KEY;

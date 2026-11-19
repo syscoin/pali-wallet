@@ -9,8 +9,12 @@ import { Interface, keccak256, Transaction } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
+import en from '../../source/assets/locales/en.json';
 import { getSmartAccountUserOpRequiredPrefund } from '../../source/utils/smartAccount/account';
-import { paliEntryPointInterface } from '../../source/utils/smartAccount/contracts';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+} from '../../source/utils/smartAccount/contracts';
 import {
   getPaliCanonicalEntryPointAddress,
   getPaliInfrastructureContracts,
@@ -182,6 +186,15 @@ test('RPC budget and receipts for local wallet transfers', async () => {
     chromium.launchPersistentContext = originalLaunch;
     const observations = new Map<Request, any>();
     const bodies: Promise<void>[] = [];
+    const fixtureResponseBytes = new WeakMap<Request, number>();
+    const fulfillRpcResponse = (route: Route, body: string) => {
+      fixtureResponseBytes.set(route.request(), Buffer.byteLength(body));
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body,
+      });
+    };
     wallet.context.on('request', (request) => {
       if (request.url() !== chain.url && request.url() !== chain.url + '/')
         return;
@@ -235,7 +248,19 @@ test('RPC budget and receipts for local wallet transfers', async () => {
                 .map((result) => result.transactionHash.toLowerCase());
             }
           } catch (error) {
-            item.responseFailure = String(error);
+            const fixtureBytes = fixtureResponseBytes.get(response.request());
+            // Chromium can discard a response body after reporting its headers
+            // when the request is canceled. Charge the full fixture body.
+            if (
+              item.responseBytes === undefined &&
+              response.request().failure()?.errorText === 'net::ERR_ABORTED' &&
+              fixtureBytes !== undefined
+            ) {
+              item.responseBytes = fixtureBytes;
+              item.responseBytesFromFixture = true;
+            } else {
+              item.responseFailure = String(error);
+            }
           }
           item.finished = Date.now();
         })()
@@ -267,18 +292,17 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         if (Array.isArray(raw) && process.env.PALI_RPC_REJECT_BATCH === '1') {
           const observation = observations.get(request);
           if (observation) observation.batchCapabilityProbe = true;
-          return route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({
+          return fulfillRpcResponse(
+            route,
+            JSON.stringify({
               jsonrpc: '2.0',
               id: null,
               error: {
                 code: -32600,
                 message: 'Batch requests are not supported',
               },
-            }),
-          });
+            })
+          );
         }
         if (phase.startsWith('public-reads:'))
           await new Promise((resolve) => setTimeout(resolve, 75));
@@ -291,6 +315,27 @@ test('RPC budget and receipts for local wallet transfers', async () => {
                 row.method,
                 row.params || []
               );
+              if (
+                phase === 'cancellation:payer-budget-refused' &&
+                row.method === 'eth_estimateGas' &&
+                row.params?.[0]?.to?.toLowerCase() ===
+                  getPaliEntryPointAddress(chain.chainId).toLowerCase() &&
+                row.params[0].data?.startsWith(
+                  paliEntryPointInterface.getFunction('handleOps')!.selector
+                )
+              ) {
+                const [operations] = paliEntryPointInterface.decodeFunctionData(
+                  'handleOps',
+                  row.params[0].data
+                );
+                if (
+                  operations.length === 1 &&
+                  operations[0].sender.toLowerCase() ===
+                    output.account.toLowerCase() &&
+                  operations[0].signature !== '0x'
+                )
+                  return { jsonrpc: '2.0', id: row.id, result: '0x2dc6c0' };
+              }
               if (row.method === 'eth_simulateV1') {
                 // Anvil executes the supplied state but omits its canonical parent
                 // and returns the parent number. Normalize only these test metadata fields.
@@ -318,11 +363,10 @@ test('RPC budget and receipts for local wallet transfers', async () => {
             }
           })
         );
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(Array.isArray(raw) ? replies : replies[0]),
-        });
+        return fulfillRpcResponse(
+          route,
+          JSON.stringify(Array.isArray(raw) ? replies : replies[0])
+        );
       }
       if (
         url.origin === 'https://blockbook-dev.syscoin.org' ||
@@ -567,6 +611,16 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       await page.locator('#general-settings-button').click();
       await page.locator('[id^="account-SmartAccount"]').first().click();
       await expect(page.locator('#home-balance')).toHaveText('1');
+      if (prefund) {
+        // Registration and the account switch both refresh Home before Send opens.
+        const registration = page.locator(
+          `[data-transaction-hash="${output.prefund.operation.hash}"]`
+        );
+        await expect(
+          registration.getByText('Confirmed', { exact: true })
+        ).toBeVisible({ timeout: 15000 });
+        await waitForReadSettlement(true);
+      }
     });
     const account: string = output.account;
     const send = async (
@@ -615,7 +669,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         await page
           .getByRole('button', { name: 'Confirm', exact: true })
           .click();
-        if (!label.startsWith('eoa-'))
+        if (process.env.PALI_RPC_REFERENCE && !label.startsWith('eoa-'))
           await approveSmartAccountFeeReview(page, {
             kind: 'payer',
             account,
@@ -659,6 +713,12 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           expect(userOperationEvent?.args.success).toBe(true);
         }
         await expect(page).toHaveURL(/#\/home$/, { timeout: 20000 });
+        await expect(
+          page.getByRole('heading', {
+            name: en.settings.smartAccountFeeReviewTitle,
+            exact: true,
+          })
+        ).toHaveCount(0);
         mark(label + ':home');
         await expect(page.getByText('Pending', { exact: true })).toHaveCount(
           0,
@@ -1024,10 +1084,15 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           mark('account-switch');
           await app.close();
           await wallet.gotoRoute('#/home');
-          await page
-            .getByRole('button', { name: 'GENERAL OPTIONS', exact: true })
-            .click();
+          const options = page.getByRole('button', {
+            name: 'GENERAL OPTIONS',
+            exact: true,
+          });
+          await options.click();
           await page.locator('[id^="account-HDAccount"]').first().click();
+          if ((await options.getAttribute('aria-expanded')) === 'true')
+            await page.keyboard.press('Escape');
+          await expect(options).toHaveAttribute('aria-expanded', 'false');
           expect((await wallet.getActiveAccountAddress()).toLowerCase()).toBe(
             payer.toLowerCase()
           );

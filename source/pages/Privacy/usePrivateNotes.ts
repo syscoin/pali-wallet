@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { MAX_ARCHIVED_NOTES } from '../../wallet/privateVaultEnvelope';
 import { useController } from 'hooks/useController';
 import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
 import { PRIVACY_POOLS } from 'utils/privacy/registry';
+import { MAX_PRIVACY_WITHDRAWAL_ATTEMPTS } from 'utils/privacy/withdrawalTransactionTypes';
 
 // Keep only the non-secret projection returned by the background vault.
 export function readPrivateNote(value: unknown): IPrivateNoteView {
@@ -21,6 +23,13 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
     !['prepared', 'verified', 'spent', 'waiting', 'not-found'].includes(
       note.phase
     ) ||
+    (note.archiveEligible !== undefined && note.archiveEligible !== true) ||
+    (note.archiveEarlierAttempts !== undefined &&
+      (!note.archiveEligible ||
+        !Number.isSafeInteger(note.archiveEarlierAttempts) ||
+        note.archiveEarlierAttempts < 1 ||
+        note.archiveEarlierAttempts >= MAX_PRIVACY_WITHDRAWAL_ATTEMPTS)) ||
+    (note.withdrawalPending !== undefined && note.withdrawalPending !== true) ||
     (note.restoration !== undefined &&
       !['review-required', 'reviewed', 'withdrawal-pending'].includes(
         note.restoration
@@ -29,11 +38,6 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
       (!withdrawal ||
         !['direct', 'relayed'].includes(withdrawal.mode) ||
         !['unknown', 'submitted'].includes(withdrawal.phase) ||
-        (withdrawal.canCheckRecovery !== undefined &&
-          (withdrawal.canCheckRecovery !== true ||
-            withdrawal.mode !== 'direct' ||
-            withdrawal.phase !== 'submitted' ||
-            !withdrawal.transactionHash)) ||
         (withdrawal.jobId !== undefined &&
           (withdrawal.mode !== 'relayed' ||
             typeof withdrawal.jobId !== 'string' ||
@@ -52,13 +56,15 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
     amount: pool.amount,
     createdAt: note.createdAt,
     phase: note.phase,
+    ...(note.archiveEligible ? { archiveEligible: true as const } : {}),
+    ...(note.archiveEarlierAttempts
+      ? { archiveEarlierAttempts: note.archiveEarlierAttempts }
+      : {}),
+    ...(note.withdrawalPending ? { withdrawalPending: true as const } : {}),
     ...(note.restoration ? { restoration: note.restoration } : {}),
     ...(withdrawal
       ? {
           withdrawal: {
-            ...(withdrawal.canCheckRecovery
-              ? { canCheckRecovery: true as const }
-              : {}),
             mode: withdrawal.mode,
             phase: withdrawal.phase,
             ...(withdrawal.jobId ? { jobId: withdrawal.jobId } : {}),
@@ -77,6 +83,7 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
 export function usePrivateNotes() {
   const { controllerEmitter } = useController();
   const [notes, setNotes] = useState<IPrivateNoteView[]>([]);
+  const [archiveCount, setArchiveCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
   const [unsupportedFormat, setUnsupportedFormat] = useState(false);
@@ -99,13 +106,27 @@ export function usePrivateNotes() {
           false
         );
         if (!isActive() || owner.current.request !== request) return;
-        const envelope = response as { notes?: unknown } | null;
+        const envelope = response as {
+          archiveSummary?: { noteCount?: number };
+          notes?: unknown;
+        } | null;
         if (!envelope || !Array.isArray(envelope.notes)) {
           throw new Error('privacy_note_response_invalid');
         }
         const next = envelope.notes.map(readPrivateNote);
         if (new Set(next.map(({ id }) => id)).size !== next.length) {
           throw new Error('privacy_note_response_invalid');
+        }
+        if (envelope.archiveSummary !== undefined) {
+          const count = envelope.archiveSummary?.noteCount;
+          if (
+            typeof count !== 'number' ||
+            !Number.isSafeInteger(count) ||
+            count < 0 ||
+            count > MAX_ARCHIVED_NOTES
+          )
+            throw new Error('privacy_note_response_invalid');
+          setArchiveCount(count);
         }
         setNotes(next);
         setUnavailable(false);
@@ -182,6 +203,8 @@ export function usePrivateNotes() {
     controllerEmitter,
     loading,
     notes,
+    archiveCount,
+    setArchiveCount,
     refresh,
     remember,
     forget,

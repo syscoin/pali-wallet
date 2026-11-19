@@ -188,9 +188,9 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
         {step.phase === 'outcome' && <>
           {step.outcome === 'removed' && <Text accessibilityLiveRegion="polite">{t('mobile.recoveryDevices.walletRemoval.paliVerifiedThatTheLocalWalletRecords')}</Text>}
           {step.outcome === 'unchanged' && <Text accessibilityLiveRegion="polite">{t('mobile.recoveryDevices.walletRemoval.removalDidNotCompleteYourWalletRecords')}</Text>}
-          {step.outcome === 'unconfirmed' && <Text accessibilityRole="alert">{t('mobile.recoveryDevices.walletRemoval.paliCouldNotVerifyWhetherRemovalCompleted')}</Text>}
+          {step.outcome === 'unconfirmed' && <Text accessibilityRole="alert" style={styles.errorText}>{t('mobile.recoveryDevices.walletRemoval.paliCouldNotVerifyWhetherRemovalCompleted')}</Text>}
         </>}
-        {step.phase === 'blocked' && <Text accessibilityRole="alert">{t('mobile.recoveryDevices.walletRemoval.closeAndReopenPaliToCheckThis')}</Text>}
+        {step.phase === 'blocked' && <Text accessibilityRole="alert" style={styles.errorText}>{t('mobile.recoveryDevices.walletRemoval.closeAndReopenPaliToCheckThis')}</Text>}
       </Screen>
     </View>
   </SafeAreaView>;

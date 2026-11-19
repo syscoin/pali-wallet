@@ -1,5 +1,6 @@
 import {
   LOCAL_PASSKEY_DEADLINE_MS,
+  LOCAL_PASSKEY_PASSWORD_COOLDOWN,
   LOCAL_PASSKEY_PORT,
   type LocalPasskeyCommand,
 } from '../shared/localPasskeyTransport';
@@ -7,6 +8,7 @@ import {
   localPasskeyError,
   localPasskeyField,
   localPasskeyFields,
+  PasswordCooldownError,
   type LocalPasskeyController,
   type LocalPasskeyStatus,
   type LocalPasskeyStep,
@@ -34,6 +36,7 @@ export function createLocalPasskeyController(): LocalPasskeyController {
     let pending:
       | {
           id: number;
+          method: LocalPasskeyCommand['method'];
           reject(error: Error): void;
           resolve(value: unknown): void;
         }
@@ -56,15 +59,43 @@ export function createLocalPasskeyController(): LocalPasskeyController {
     };
     const receive = (message: unknown) => {
       try {
-        localPasskeyFields(message, ['id', 'result', 'error']);
+        localPasskeyFields(message, [
+          'id',
+          'result',
+          'error',
+          'retryAfterSeconds',
+        ]);
         if (!pending || localPasskeyField(message, 'id') !== pending.id)
+          throw localPasskeyError();
+        const error = localPasskeyField(message, 'error');
+        const result = localPasskeyField(message, 'result');
+        const retryAfterSeconds = localPasskeyField(
+          message,
+          'retryAfterSeconds'
+        );
+        if (
+          error === undefined &&
+          (result === undefined || retryAfterSeconds !== undefined)
+        )
           throw localPasskeyError();
         const waiter = pending;
         pending = undefined;
-        if (localPasskeyField(message, 'error') !== undefined) {
-          waiter.reject(localPasskeyError());
+        if (error !== undefined) {
+          const cooldown =
+            error === LOCAL_PASSKEY_PASSWORD_COOLDOWN &&
+            (waiter.method === 'beginEnrollment' ||
+              waiter.method === 'disable') &&
+            result === undefined &&
+            typeof retryAfterSeconds === 'number' &&
+            Number.isSafeInteger(retryAfterSeconds) &&
+            retryAfterSeconds > 0;
+          waiter.reject(
+            cooldown
+              ? new PasswordCooldownError(retryAfterSeconds)
+              : localPasskeyError()
+          );
           close();
-        } else waiter.resolve(localPasskeyField(message, 'result'));
+        } else waiter.resolve(result);
       } catch {
         close();
       }
@@ -81,7 +112,12 @@ export function createLocalPasskeyController(): LocalPasskeyController {
           return Promise.reject(localPasskeyError());
         return new Promise<T>((resolve, reject) => {
           const id = ++nextId;
-          pending = { id, resolve: (value) => resolve(value as T), reject };
+          pending = {
+            id,
+            method,
+            resolve: (value) => resolve(value as T),
+            reject,
+          };
           try {
             port.postMessage({ id, method, params });
           } catch {

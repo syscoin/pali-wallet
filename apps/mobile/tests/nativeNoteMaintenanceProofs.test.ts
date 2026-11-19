@@ -17,11 +17,9 @@ const abi = new Interface(['event Withdrawal(address to, bytes32 nullifierHash, 
 const proof = '0x' + '12'.repeat(256), zero = '0x' + '00'.repeat(20);
 const input = abi.encodeFunctionData('withdraw', [proof, root, identity.nullifierHash, recipient, zero, 0, 0]);
 const withdrawal = { attemptHash: word(13), createdAt: 10, inputHash: keccak256(AbiCoder.defaultAbiCoder().encode(Array(6).fill('uint256'), [root, identity.nullifierHash, recipient, zero, 0, 0])), intentId: 'public-fixture',
-  mode: 'direct', nonce: '2', phase: 'submitted', proofHash: keccak256(proof), transactionHash: hash, from: account,
-  rootAnchor:{root,blockNumber:'96',blockHash:word(19)} } as const;
-function fixture(reverted = false) {
-  let current = true, spent = false, known = false, canonical = blockHash, chain = '0x1';
-  let originKnown = true, originHash = word(19);
+  mode: 'direct', nonce: '2', phase: 'submitted', proofHash: keccak256(proof), transactionHash: hash, from: account } as const;
+function fixture() {
+  let current = true, canonical = blockHash, chain = '0x1';
   let onRead = (_method: string) => {};
   const signal = new AbortController(), calls: { method: string; params: unknown[] }[] = [];
   const network = createNativeNetwork({ id: 'saved-ethereum', name: 'Saved Ethereum', kind: 'evm', chainId: '1', slip44: 60,
@@ -35,96 +33,53 @@ function fixture(reverted = false) {
     onRead(method);
     let result: unknown;
     if (method === 'eth_chainId') result = chain;
-    else if (method === 'eth_getBlockByNumber') result = params[0] === '0x60'
-      ? { number: '0x60', hash: originHash } : params[0] === '0x70'
+    else if (method === 'eth_getBlockByNumber') result = params[0] === '0x70'
       ? { number: '0x70', hash: canonical } : { number: '0x80', hash: anchor };
     else if (method === 'eth_getTransactionReceipt') result = { transactionHash: hash, blockHash, blockNumber: '0x70',
-      status: reverted ? '0x0' : '0x1', logs: [{ address: pool.address, transactionHash: hash, blockHash, blockNumber: '0x70', removed: false, ...encoded }] };
+      status: '0x1', logs: [{ address: pool.address, transactionHash: hash, blockHash, blockNumber: '0x70', removed: false, ...encoded }] };
     else if (method === 'eth_getTransactionByHash') result = { hash, blockHash, blockNumber: '0x70', from: account, nonce: '0x2',
       to: pool.address, value: '0x0', chainId: '0x1', input };
-    else if (method === 'eth_call') result = (String(params[0].data).includes(identity.nullifierHash.slice(2)) ? spent : params[1] === '0x60' ? originKnown : known) ? word(1) : word(0);
     else throw Error('Unexpected RPC ' + method);
     return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { headers: { 'content-type': 'application/json' } });
   } });
   const ports = createNativeNoteMaintenanceProofs({ network, signal: signal.signal, assertCurrent: check, rpc });
-  return { ports, session, signal, calls, rpc, check, onRead(value: typeof onRead) { onRead = value; }, setChain(value: string) { chain = value; }, setCurrent(value: boolean) { current = value; }, setSpent(value: boolean) { spent = value; }, setKnown(value: boolean) { known = value; }, setOriginKnown(value: boolean) { originKnown = value; }, reorgOrigin() { originHash = word(101); }, reorg() { canonical = word(100); } };
+  return { ports, session, signal, calls, rpc, check, onRead(value: typeof onRead) { onRead = value; }, setChain(value: string) { chain = value; }, setCurrent(value: boolean) { current = value; }, reorg() { canonical = word(100); } };
 }
 test('native completion uses the shared finalized event/nonce verifier and rechecks its original RPC before removal', async () => {
   const f = fixture();
-  const lease = await f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session);
+  const lease = await f.ports.prepareCompletionProof(identity, withdrawal, f.session);
   assert.equal(f.calls.length, 7); assert(!f.calls.some(call => JSON.stringify(call.params).includes(identity.nullifierHash)));
   await lease.revalidate(); assert.equal(f.calls.length, 14);
   assert.equal(f.calls.filter(call => call.method === 'eth_chainId').length, 2);
+  assert.deepEqual(f.calls.filter(call => call.method === 'eth_getTransactionReceipt' ||
+    call.method === 'eth_getTransactionByHash').map(call => call.params), [[hash], [hash], [hash], [hash]]);
   f.reorg(); await assert.rejects(lease.revalidate(), /privacy_spent_proof_unavailable/);
 });
-test('native recovery requires the same failed transaction, evicted original root and unspent nullifier', async () => {
-  const f = fixture(true);
-  const lease = await f.ports.prepareWithdrawalRecovery(identity, withdrawal, f.session);
-  assert.equal(lease.receipt.root, root); assert.equal(f.calls.length, 12);
-  await lease.revalidate(); assert.equal(f.calls.length, 24);
-  f.setKnown(true); await assert.rejects(lease.revalidate(), /privacy_withdrawal_recovery_unavailable/);
-  f.setKnown(false); f.setSpent(true);
-  await assert.rejects(f.ports.prepareWithdrawalRecovery(identity, withdrawal, f.session), /privacy_withdrawal_recovery_unavailable/);
-});
-
-for (const mode of ['missing', 'orphaned', 'never-known'] as const) test(`native direct recovery refuses unproven origin: ${mode}`, async () => {
-  const f = fixture(true);
-  if(mode === 'orphaned') f.reorgOrigin();
-  if(mode === 'never-known') f.setOriginKnown(false);
-  await assert.rejects(f.ports.prepareWithdrawalRecovery(identity, {
-    ...withdrawal,rootAnchor:mode === 'missing' ? undefined : withdrawal.rootAnchor,
-  },f.session),/privacy_withdrawal_recovery_unavailable/);
-  if(mode === 'missing') assert.equal(f.calls.length,0);
-});
-
-for (const phase of ['unknown', 'submitted'] as const) test(`native relayed ${phase} recovery uses the fixed finalized proof inputs without a payer nonce`, async () => {
+test('the newest attempt and its relay replacements are scoped separately from earlier attempts', async () => {
   const f = fixture();
-  const publicInputs = { root, nullifierHash:identity.nullifierHash, recipient, relayer:account, fee:'123', refund:'0' as const };
-  const relayed = { ...withdrawal, mode:'relayed' as const, phase, from:undefined, nonce:undefined, transactionHash:undefined,
-    rootAnchor:{root,blockNumber:'96',blockHash:word(19)},
-    publicInputs, inputHash:keccak256(AbiCoder.defaultAbiCoder().encode(Array(6).fill('uint256'), Object.values(publicInputs).map(BigInt))) };
-  const lease = await f.ports.prepareWithdrawalRecovery(identity, relayed, f.session);
-  assert.equal(lease.receipt.kind,'relayed-proof-expired');
-  assert.deepEqual(lease.publicInputs,publicInputs);
+  const newest = word(30), replacement = word(31);
+  const relay = { ...withdrawal, mode: 'relayed', from: undefined, nonce: undefined,
+    transactionHash: newest, transactionHashes: [newest, replacement] } as const;
+  const journal = { ...relay, retired: [withdrawal, { ...relay, transactionHash: replacement, transactionHashes: [replacement] }] };
+  const receiptHashes = () => f.calls.filter(call => call.method === 'eth_getTransactionReceipt').map(call => call.params[0]);
+  await assert.rejects(f.ports.prepareCompletionProof(identity, journal, f.session), /privacy_spent_proof_unavailable/);
+  assert.deepEqual(receiptHashes(), [newest, replacement]);
+  f.calls.length = 0;
+  const lease = await f.ports.prepareCompletionProof(identity, journal, f.session, 'earlier');
   await lease.revalidate();
-  assert(f.calls.every(call => ['eth_chainId','eth_getBlockByNumber','eth_call'].includes(call.method)));
-  f.setKnown(true); await assert.rejects(lease.revalidate(),/privacy_withdrawal_recovery_unavailable/);
+  assert.deepEqual(receiptHashes(), [hash, hash]);
+  f.calls.length = 0;
+  await assert.rejects(f.ports.prepareCompletionProof(identity, journal, f.session, 'all' as never), /privacy_spent_proof_unavailable/);
+  assert.deepEqual(f.calls, []);
 });
 
-for (const mode of ['missing', 'newer-than-finalized', 'never-known', 'origin-reorg'] as const) test(`native relayed recovery refuses unsafe root provenance: ${mode}`, async () => {
+test('each maintenance run rechecks chain identity before disclosing a transaction', async () => {
   const f = fixture();
-  const publicInputs = { root, nullifierHash:identity.nullifierHash, recipient, relayer:account, fee:'123', refund:'0' as const };
-  const relayed = { ...withdrawal, mode:'relayed' as const, phase:'unknown' as const, from:undefined, nonce:undefined, transactionHash:undefined,
-    rootAnchor: mode === 'missing' ? undefined : {root,blockNumber:mode === 'newer-than-finalized' ? '129' : '96',blockHash:word(19)},
-    publicInputs,inputHash:keccak256(AbiCoder.defaultAbiCoder().encode(Array(6).fill('uint256'), Object.values(publicInputs).map(BigInt))) };
-  if(mode === 'never-known') f.setOriginKnown(false);
-  if(mode === 'origin-reorg') f.reorgOrigin();
-  await assert.rejects(f.ports.prepareWithdrawalRecovery(identity, relayed, f.session),/privacy_withdrawal_recovery_unavailable/);
-  if(mode === 'missing') assert.equal(f.calls.length,0);
-});
-
-test('native relayed prewrite validation rejects a reorged positive origin', async () => {
-  const f = fixture();
-  const publicInputs = { root, nullifierHash:identity.nullifierHash, recipient, relayer:account, fee:'123', refund:'0' as const };
-  const relayed = { ...withdrawal,mode:'relayed' as const,phase:'unknown' as const,from:undefined,nonce:undefined,transactionHash:undefined,
-    rootAnchor:{root,blockNumber:'96',blockHash:word(19)},publicInputs,
-    inputHash:keccak256(AbiCoder.defaultAbiCoder().encode(Array(6).fill('uint256'), Object.values(publicInputs).map(BigInt))) };
-  const lease = await f.ports.prepareWithdrawalRecovery(identity,relayed,f.session);
-  f.reorgOrigin();
-  await assert.rejects(lease.revalidate(),/privacy_withdrawal_recovery_unavailable/);
-});
-
-test('each maintenance run rechecks chain identity before disclosing transaction or nullifier', async () => {
-  for (const recovery of [false, true]) {
-    const f = fixture(recovery);
-    const lease = recovery
-      ? await f.ports.prepareWithdrawalRecovery(identity, withdrawal, f.session)
-      : await f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session);
-    const before = f.calls.length;
-    f.setChain('0x2');
-    await assert.rejects(lease.revalidate());
-    assert.deepEqual(f.calls.slice(before).map(call => call.method), ['eth_chainId']);
-  }
+  const lease = await f.ports.prepareCompletionProof(identity, withdrawal, f.session);
+  const before = f.calls.length;
+  f.setChain('0x2');
+  await assert.rejects(lease.revalidate());
+  assert.deepEqual(f.calls.slice(before).map(call => call.method), ['eth_chainId']);
 });
 
 test('maintenance transport denies unsupported methods and malformed parameters before any RPC', async () => {
@@ -134,11 +89,8 @@ test('maintenance transport denies unsupported methods and malformed parameters 
     ['eth_getBalance', [account, 'latest']],
     ['eth_chainId', ['unexpected']],
     ['eth_getTransactionByHash', ['bad-hash']],
-    ['eth_getTransactionCount', [account, 'latest']],
-    ['eth_getTransactionCount', [account, 'pending']],
-    ['eth_getTransactionCount', [account, '0x010']],
-    ['eth_getTransactionCount', ['bad-address', '0x10']],
-    ['eth_call', [{ to: account, data: 'invalid' }, 'latest']],
+    ['eth_getTransactionCount', [account, '0x10']],
+    ['eth_call', [{ to: account, data: '0x' }, '0x10']],
   ] as const) await assert.rejects(async () => f.rpc.noteMaintenanceRead(method, params, f.signal.signal, f.check));
   assert.equal(f.calls.length, 0);
 });
@@ -151,15 +103,15 @@ test('an aborted or failed maintenance read cannot produce a completion proof', 
       if (failure === 'abort') f.signal.abort();
       else throw new Error('transport failed');
     });
-    await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session));
+    await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, f.session));
     assert(!f.calls.some(call => call.method === 'eth_getTransactionByHash'));
   }
 });
 test('native maintenance refuses unknown attempts, revoked sessions and aborts without additional RPC', async () => {
   const f = fixture();
-  await assert.rejects(f.ports.prepareCompletionProof(identity, { ...withdrawal, phase: 'unknown' }, undefined, f.session));
+  await assert.rejects(f.ports.prepareCompletionProof(identity, { ...withdrawal, phase: 'unknown' }, f.session));
   assert.equal(f.calls.length, 0); f.setCurrent(false);
-  await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session)); assert.equal(f.calls.length, 0);
+  await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, f.session)); assert.equal(f.calls.length, 0);
   f.setCurrent(true); f.signal.abort();
-  await assert.rejects(f.ports.prepareWithdrawalRecovery(identity, withdrawal, f.session)); assert.equal(f.calls.length, 0);
+  await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, f.session)); assert.equal(f.calls.length, 0);
 });

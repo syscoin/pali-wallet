@@ -249,7 +249,7 @@ export function useSmartAccountFeeConfirmation(scope: string) {
         {'transaction' in shown.quote &&
           BigInt(shown.quote.coveredFeeUnits ?? '0') > BigInt(0) &&
           row(
-            t('mobile.recoveryStatusViews.operation.maximumNetworkFeeGasTank'),
+            t('settings.smartAccountFeeReviewGasTank'),
             `${formatEther(shown.quote.coveredFeeUnits!)} ${gasSymbol}`
           )}
         {'transaction' in shown.quote &&
@@ -265,7 +265,7 @@ export function useSmartAccountFeeConfirmation(scope: string) {
       )}
       {expired && (
         <p role="status" className="mt-3 text-sm text-brand-yellowInfo">
-          {t('mobile.infrastructure.reviewExpired')}
+          {t('settings.smartAccountFeeReviewExpired')}
         </p>
       )}
     </ConfirmationModal>

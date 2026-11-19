@@ -21,7 +21,12 @@ import {
   recordSendCallsBundle,
   reserveSendCallsBundle,
 } from '../controllers/message-handler/sendCallsBundles';
-import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
+import {
+  APPROVAL_CLIENT_READY,
+  APPROVAL_REGISTER,
+  TRANSACTION_APPROVAL_EXPIRED,
+  TRANSACTION_APPROVAL_LOADING,
+} from 'utils/approvalClient';
 
 import { handleMasterControllerResponses } from './handleMasterControllerResponses';
 
@@ -471,6 +476,60 @@ describe('transaction approval submission lifetime', () => {
     closeWindow(9);
     await rejected;
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('restarts nonce preparation only for the same enrolled client after navigation', async () => {
+    const { pending } = await begin();
+    const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    const authorize = (sourceSender = sender()) =>
+      submit('authorizeDappManualNonce', sourceSender, [4]);
+    const onNavigation = (
+      chrome.tabs.onUpdated.addListener as jest.Mock
+    ).mock.calls.at(-1)?.[0];
+    const getClient = (self as any).clients.get as jest.Mock;
+    let finishProbe!: (client: ReturnType<typeof source>) => void;
+    try {
+      await expect(authorize()).resolves.toBe(true);
+      getClient.mockImplementationOnce(
+        () => new Promise((resolve) => (finishProbe = resolve))
+      );
+      const inFlight = authorize();
+      await new Promise(setImmediate);
+      onNavigation(19, { status: 'loading', url: source().url });
+      await expect(authorize()).resolves.toMatchObject({
+        error: {
+          code: TRANSACTION_APPROVAL_LOADING,
+          transactionNotBroadcast: true,
+        },
+      });
+      onNavigation(19, { status: 'complete' });
+      await new Promise(setImmediate);
+      finishProbe(source());
+      await expect(inFlight).resolves.toMatchObject({
+        error: {
+          code: TRANSACTION_APPROVAL_LOADING,
+          transactionNotBroadcast: true,
+        },
+      });
+      await expect(authorize()).resolves.toBe(true);
+      await expect(
+        authorize({ ...sender(), documentId: 'replacement-document' })
+      ).resolves.toMatchObject({
+        error: {
+          code: TRANSACTION_APPROVAL_EXPIRED,
+          transactionNotBroadcast: true,
+        },
+      });
+    } finally {
+      closeWindow(9);
+      await rejected;
+    }
+    await expect(authorize()).resolves.toMatchObject({
+      error: {
+        code: TRANSACTION_APPROVAL_EXPIRED,
+        transactionNotBroadcast: true,
+      },
+    });
   });
 
   it('binds the enrolled EVM approval to the captured wallet context and expires it on close', async () => {

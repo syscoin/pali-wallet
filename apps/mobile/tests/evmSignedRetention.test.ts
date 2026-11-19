@@ -2,7 +2,7 @@ import { paliSmartAccountInterface, getPaliModuleAddress, paliEntryPointInterfac
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import test from 'node:test';
-import { getAddress, Wallet, Transaction } from 'ethers';
+import { getAddress, Interface, parseEther, Transaction, Wallet } from 'ethers';
 import {
   captureEvmSubmission,
   evmSubmissionFailure,
@@ -16,6 +16,7 @@ import {
   type EvmSignedRecordStorage,
 } from '../../../source/wallet/evmSignedRecords.ts';
 import { ERC7579_MODE_SINGLE_DEFAULT, encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
+import { getPrivacyPool } from '../../../source/utils/privacy/registry.ts';
 import { signedRecordTestSession } from './signedRecordTestSession.ts';
 
 Object.defineProperty(globalThis, 'crypto', {
@@ -64,7 +65,12 @@ function fixture() {
     },
   };
 }
-async function signed(nonce: number, wallet = signer, network = chainId) {
+async function signed(
+  nonce: number,
+  wallet = signer,
+  network = chainId,
+  call?: { to: string; data: string; value: bigint }
+) {
   const rawTransaction = await wallet.signTransaction({
     type: 2,
     chainId: network,
@@ -74,6 +80,7 @@ async function signed(nonce: number, wallet = signer, network = chainId) {
     gasLimit: 21_000,
     maxFeePerGas: 3,
     maxPriorityFeePerGas: 1,
+    ...call,
   });
   return {
     rawTransaction,
@@ -94,6 +101,43 @@ async function signed(nonce: number, wallet = signer, network = chainId) {
     },
   };
 }
+test('an earlier handoff protects the same fresh entry if the initial preflight subsequently refuses', async () => {
+  const f = fixture();
+  const session = f.session();
+  const record = await signed(0);
+  const lifecycle = createEvmSignedRecordLifecycle(f.records, session, {
+    walletSendCleanupSession: session,
+    retirementReadForChain: null,
+  });
+  await lifecycle.persistSigned(record);
+  const handoff = await f.records.withReplayAdmission(session,
+    { ...record, operation: 'send', metadata: undefined },
+    async () => ({ result: true }));
+  assert.equal(handoff?.result, true);
+  await assert.rejects(lifecycle.dispatchSigned(record,
+    async () => assert.fail('the refused attempt cannot dispatch'),
+    async () => { throw new Error('review expired'); }), /review expired/);
+  assert.equal((await f.records.readExact(session, chainId, signer.address, record.hash))?.hash, record.hash);
+});
+
+test('an uncertain cleanup write quarantines storage and never enters the broadcast callback', async () => {
+  const f = fixture(), session = f.session(), record = await signed(0);
+  const lifecycle = createEvmSignedRecordLifecycle(f.records, session, {
+    walletSendCleanupSession: session,
+    retirementReadForChain: null,
+  });
+  await lifecycle.persistSigned(record);
+  const commit = f.port.compareAndSet.bind(f.port);
+  f.port.compareAndSet = async (...args) => {
+    await commit(...args);
+    throw Object.assign(new Error('cleanup acknowledgement lost'), { code: 'STORAGE_REOPEN_REQUIRED' });
+  };
+  await assert.rejects(lifecycle.dispatchSigned(record,
+    async () => assert.fail('the refused attempt cannot dispatch'),
+    async () => { throw new Error('review expired'); }), { code: 'STORAGE_REOPEN_REQUIRED' });
+  assert.equal(f.records.requiresReopen, true);
+});
+
 async function rootPayload(f: ReturnType<typeof fixture>) {
   const bundle = JSON.parse(f.value()!);
   const bytes = await f.session().keyring.decryptPrivateRecord({
@@ -591,14 +635,17 @@ test('unresolved replacement siblings and a receipt without indexed inclusion pr
   assert.equal(g.value(), before);
 });
 
-function finalizedRead(entries: Awaited<ReturnType<typeof signed>>[]) {
+function finalizedRead(
+  entries: Awaited<ReturnType<typeof signed>>[],
+  network = chainId
+) {
   const included = '0x' + 'ab'.repeat(32);
   const finalized = '0x' + 'cd'.repeat(32);
   return async (
     method: string,
     params: readonly unknown[]
   ): Promise<unknown> => {
-    if (method === 'eth_chainId') return '0x' + BigInt(chainId).toString(16);
+    if (method === 'eth_chainId') return '0x' + BigInt(network).toString(16);
     if (method === 'eth_getTransactionCount') return '0x100';
     if (method === 'eth_getTransactionReceipt') {
       const index = entries.findIndex((entry) => entry.hash === params[0]);
@@ -728,6 +775,127 @@ for (const phase of ['read', 'commit'] as const) {
     assert.equal(await f.records.validate(f.session()), 1);
   });
 }
+
+test('automatic terminal cleanup leaves marked and unmarked privacy transactions untouched', async () => {
+  const f = fixture();
+  const session = f.session();
+  const mainnet = '1';
+  const payerScope = { chainId: mainnet, from: signer.address };
+  const pool = getPrivacyPool('eth-0.1');
+  const abi = new Interface([
+    'function deposit(bytes32 commitment) payable',
+    'function withdraw(bytes proof,bytes32 root,bytes32 nullifierHash,address recipient,address relayer,uint256 fee,uint256 refund) payable',
+  ]);
+  const digest = '0x' + 'ab'.repeat(32);
+  const markedDeposit = await signed(0, signer, mainnet);
+  const markedWithdrawal = await signed(1, signer, mainnet);
+  const unmarkedDeposit = await signed(2, signer, mainnet, {
+    to: pool.address,
+    data: abi.encodeFunctionData('deposit', [digest]),
+    value: parseEther(pool.amount),
+  });
+  const unmarkedWithdrawal = await signed(3, signer, mainnet, {
+    to: pool.address,
+    data: abi.encodeFunctionData('withdraw', [
+      '0x' + '12'.repeat(256),
+      digest,
+      digest,
+      signer.address,
+      otherSigner.address,
+      0,
+      0,
+    ]),
+    value: 0n,
+  });
+  const ordinary = await signed(4, signer, mainnet);
+  const privateRecords = [
+    markedDeposit,
+    markedWithdrawal,
+    unmarkedDeposit,
+    unmarkedWithdrawal,
+  ];
+  await f.records.append(session, markedDeposit, { privateDeposit: true });
+  await f.records.append(session, markedWithdrawal, { privateWithdrawal: true });
+  for (const entry of [unmarkedDeposit, unmarkedWithdrawal, ordinary])
+    await f.records.append(session, entry);
+  const binding = await f.records.captureVerifiedReplacement(session, {
+    ...payerScope,
+    nonce: unmarkedDeposit.nonce,
+    operation: 'cancel',
+    originalHash: unmarkedDeposit.hash,
+  });
+  const cancelRaw = await signer.signTransaction({
+    type: 2,
+    chainId: mainnet,
+    nonce: unmarkedDeposit.nonce,
+    to: signer.address,
+    value: 0,
+    gasLimit: Transaction.from(unmarkedDeposit.rawTransaction).gasLimit,
+    maxFeePerGas: 4,
+    maxPriorityFeePerGas: 2,
+  });
+  const cancellation = {
+    ...unmarkedDeposit,
+    rawTransaction: cancelRaw,
+    hash: Transaction.from(cancelRaw).hash!,
+    context: {
+      ...unmarkedDeposit.context,
+      operation: 'cancel' as const,
+      originalHash: unmarkedDeposit.hash,
+    },
+  };
+  await f.records.append(session, cancellation, undefined, binding);
+  const protectedRecords = [...privateRecords, cancellation];
+  const expectedPhase = (hash: string) =>
+    hash === unmarkedDeposit.hash ? 'nonce-consumed' : 'confirmed';
+  for (const entry of [...protectedRecords, ordinary])
+    await f.records.updatePhase(
+      session,
+      mainnet,
+      signer.address,
+      entry.hash,
+      expectedPhase(entry.hash)
+    );
+
+  const read = finalizedRead([ordinary], mainnet);
+  const calls: { method: string; params: readonly unknown[] }[] = [];
+  const removed = await f.records.retireAvailableFinalized(
+    session,
+    payerScope,
+    (network) => {
+      assert.equal(network, mainnet);
+      return async (method, params) => {
+        calls.push({ method, params });
+        return read(method, params);
+      };
+    }
+  );
+
+  assert.equal(removed, 1);
+  assert.deepEqual(
+    new Set(
+      calls
+        .filter(({ method }) => method === 'eth_getTransactionReceipt')
+        .map(({ params }) => params[0])
+    ),
+    new Set([ordinary.hash])
+  );
+  for (const entry of protectedRecords) {
+    assert(!JSON.stringify(calls).includes(entry.hash));
+    const retained = await f.records.readExact(
+      session,
+      mainnet,
+      signer.address,
+      entry.hash
+    );
+    assert.equal(retained?.phase, expectedPhase(entry.hash));
+    assert.equal(retained.rawTransaction, entry.rawTransaction);
+  }
+  assert.equal(
+    await f.records.readExact(session, mainnet, signer.address, ordinary.hash),
+    null
+  );
+});
 
 test('automatic terminal cleanup shares a 64-read budget across groups', async () => {
   const { f, entries, read } = await terminalFixture(10);
@@ -1374,4 +1542,113 @@ test('admission Smart projection includes other payers from the authenticated fu
   });
   f.revoke();
   await assert.rejects(async () => initial.readSmartAccountOperations!('1', smart), /revoked/);
+});
+
+test('terminal cleanup skips private Smart Account operations and their nonce siblings', async () => {
+  const f = fixture();
+  const session = f.session();
+  const mainnet = '1';
+  const payerScope = { chainId: mainnet, from: signer.address };
+  const entryPoint = getPaliEntryPointAddress(1);
+  const smart = '0x1111111111111111111111111111111111111111';
+  const pool = getPrivacyPool('eth-0.1');
+  const poolAbi = new Interface(['function deposit(bytes32 commitment) payable']);
+  const deposit = {
+    target: pool.address,
+    data: poolAbi.encodeFunctionData('deposit', ['0x' + 'ab'.repeat(32)]),
+    value: parseEther(pool.amount).toString(),
+  };
+  const transfer = { target: otherSigner.address, data: '0x', value: '1' };
+  const wrap = (nonce: number, groups: (typeof transfer)[][]) => {
+    const operations = groups.map((calls, index) => {
+      const execution = encodeERC7579Executions([...calls]);
+      return {
+        sender: smart,
+        nonce: index,
+        initCode: '0x',
+        callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+          execution.mode,
+          execution.executionCalldata,
+        ]),
+        accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01',
+        preVerificationGas: 1,
+        gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03',
+        paymasterAndData: '0x',
+        signature: '0x1234',
+      };
+    });
+    return signed(nonce, signer, mainnet, {
+      to: entryPoint,
+      data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+        operations,
+        signer.address,
+      ]),
+      value: 0n,
+    });
+  };
+  const single = await wrap(0, [[deposit]]);
+  const batch = await wrap(1, [[transfer], [transfer, deposit]]);
+  const ordinary = await wrap(2, [[transfer]]);
+  for (const entry of [single, batch, ordinary])
+    await f.records.append(session, entry);
+
+  const binding = await f.records.captureVerifiedReplacement(session, {
+    ...payerScope,
+    nonce: batch.nonce,
+    operation: 'cancel',
+    originalHash: batch.hash,
+  });
+  const rawTransaction = await signer.signTransaction({
+    type: 2,
+    chainId: mainnet,
+    nonce: batch.nonce,
+    to: signer.address,
+    value: 0,
+    gasLimit: Transaction.from(batch.rawTransaction).gasLimit,
+    maxFeePerGas: 4,
+    maxPriorityFeePerGas: 2,
+  });
+  const cancellation = {
+    ...batch,
+    rawTransaction,
+    hash: Transaction.from(rawTransaction).hash!,
+    context: {
+      ...batch.context,
+      operation: 'cancel' as const,
+      originalHash: batch.hash,
+    },
+  };
+  await f.records.append(session, cancellation, undefined, binding);
+  for (const entry of [single, batch, ordinary, cancellation])
+    await f.records.updatePhase(
+      session,
+      mainnet,
+      signer.address,
+      entry.hash,
+      entry === batch ? 'nonce-consumed' : 'confirmed'
+    );
+
+  const read = finalizedRead([ordinary], mainnet);
+  const calls: { method: string; params: readonly unknown[] }[] = [];
+  const removed = await f.records.retireAvailableFinalized(
+    session,
+    payerScope,
+    () => async (method, params) => {
+      calls.push({ method, params });
+      if (method === 'eth_getTransactionReceipt')
+        return { ...((await read(method, params)) as object), to: entryPoint };
+      return read(method, params);
+    }
+  );
+  assert.equal(removed, 1);
+  assert.deepEqual(
+    new Set(calls.filter(({ method }) => method === 'eth_getTransactionReceipt')
+      .map(({ params }) => params[0])),
+    new Set([ordinary.hash])
+  );
+  for (const entry of [single, batch, cancellation]) {
+    assert(!JSON.stringify(calls).includes(entry.hash));
+    assert(await f.records.readExact(session, mainnet, signer.address, entry.hash));
+  }
+  assert.equal(await f.records.readExact(session, mainnet, signer.address, ordinary.hash), null);
 });

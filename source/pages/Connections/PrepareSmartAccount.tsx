@@ -848,7 +848,7 @@ export const PrepareSmartAccount = () => {
       if (!wasHandled) {
         setError(
           progress.submitting
-            ? t('send.submissionStatusUnknown')
+            ? t('transactions.replay.unknown')
             : isNativeGasRequiredError(err)
             ? t('send.insufficientFundsForGas')
             : err instanceof SmartAccountPreparationError

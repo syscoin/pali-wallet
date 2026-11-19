@@ -16,6 +16,7 @@ import {
   dappSigningApprovalExpired,
 } from '../../handlers/messageSignApproval';
 import { getController } from 'scripts/Background';
+import { KeyringAccountType } from 'types/network';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
@@ -421,6 +422,10 @@ const openApprovalPopup = async (
         ) {
           const document: TransactionApprovalDocument = {
             getSignal: () => transactionDocumentLifetime.signal,
+            isNavigationPending: () =>
+              navigationPending &&
+              !transactionDocumentRetired &&
+              !signal?.aborted,
             assertCurrent: () => {
               if (
                 signal?.aborted ||
@@ -457,7 +462,16 @@ const openApprovalPopup = async (
                 }
               : undefined,
             utxoReview ? { ...document, ...utxoReview } : undefined,
-            smartMethods ? { ...document, methods: smartMethods } : undefined
+            smartMethods
+              ? {
+                  ...document,
+                  methods: smartMethods,
+                  ...(evmContext?.account?.type ===
+                  KeyringAccountType.SmartAccount
+                    ? { allowInlinePayerBudget: true }
+                    : {}),
+                }
+              : undefined
           );
         }
         onClientBound?.();

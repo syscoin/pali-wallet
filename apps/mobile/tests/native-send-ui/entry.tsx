@@ -110,13 +110,6 @@ const controller: NativeTransferView = {
     clearTimeout(expiry);
     publish(idle());
   },
-  async recover() {
-    if (route.has('ledger-replay')) {
-      publishReview(recipient, '1000000000000000');
-      publish({ ...snapshot, review: { ...snapshot.review!, retry: true } });
-    }
-  },
-  async loadMorePredecessors() {},
   async prepareToken() {
     throw Error('Token path uses its dedicated fixture');
   },
@@ -134,7 +127,7 @@ const controller: NativeTransferView = {
         context: sendContext, id: `fixture-review-${++sequence}`, from,
         recipient: saved.contractAddress, amountUnits: '0', maximumFeeUnits: '63000',
         totalUnits: '63000', gasLimit: '21000', maximumFeePerGas: '3',
-        priorityFeePerGas: '1', nonce: '0', retry: false,
+        priorityFeePerGas: '1', nonce: '0',
         collectible: {
           kind: 'nft-transfer', chainId: '1', from, contractAddress: saved.contractAddress,
           recipient: to, tokenId, amountUnits, tokenStandard: saved.tokenStandard,
@@ -179,8 +172,9 @@ const controller: NativeTransferView = {
         ...snapshot,
         phase: 'unknown',
         review: null,
+        receiptReview: review,
         hash: '0x' + '1'.repeat(64),
-        message: 'Your signed transaction is saved. Check it before sending again.',
+        message: 'Check this transaction in Activity before sending again.',
       });
       throw Error('EXPIRED');
     }
@@ -205,6 +199,7 @@ const controller: NativeTransferView = {
     publish({
       context,
       phase: 'pending',
+      receiptReview: review,
       collectible,
       review: null,
       hash: '0x' + '1'.repeat(64),
@@ -235,7 +230,6 @@ function publishReview(to: string, amountUnits: string,
       priorityFeePerGas: '1',
       nonce: nonce ?? '0',
       ...(nonce === undefined ? {} : { nonceOverride: Number(nonce) }),
-      retry: false,
       ...(replacement ? { replacement } : {}),
     }),
   });
@@ -530,7 +524,6 @@ function Fixture() {
             controller.cancel(); setSelectedSendAsset(asset); setAssetDraft({ kind: 'evm', recipient: draft.recipient, amount: '', nonce: '', max: false, advanced: false });
           } : undefined}
           account={{ address: sender, network: sendContext.networkId, revision: 1 }}
-          savedHash={route.has('ledger-replay') ? '0x' + '3'.repeat(64) : undefined}
           controller={controller}
           ledgerConnection={ledgerConnection}
           context={sendContext}

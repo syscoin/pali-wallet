@@ -1,4 +1,5 @@
 import { LOCAL_PASSKEY_PORT } from '../../../shared/localPasskeyTransport';
+import { PasswordCooldownError } from '../../../wallet/localPasskeyTypes';
 
 import { installLocalPasskeyControllerPorts } from './localPasskeyControllerPort';
 import type { LocalPasskeyController } from '../../../wallet/localPasskeyTypes';
@@ -17,17 +18,19 @@ function event() {
 }
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(
-  sender = {
+  sender: chrome.runtime.MessageSender = {
     id: extensionId,
     url: `chrome-extension://${extensionId}/app.html`,
     documentId: 'document-1',
     frameId: 0,
-  }
+  },
+  getContexts?: (filter: chrome.runtime.ContextFilter) => Promise<unknown[]>
 ) {
   const runtime = {
     id: extensionId,
     getURL: (path: string) => `chrome-extension://${extensionId}/${path}`,
     onConnect: event(),
+    getContexts,
   };
   const port = {
     name: LOCAL_PASSKEY_PORT,
@@ -94,6 +97,79 @@ describe('local passkey document Port', () => {
     expect(f.create).not.toHaveBeenCalled();
     f.dispose();
   });
+  const popupSender = {
+    id: extensionId,
+    url: `chrome-extension://${extensionId}/app.html`,
+  };
+
+  const topLevelPopup = {
+    contextType: 'POPUP',
+    documentId: 'popup-document',
+    documentUrl: `${popupSender.url}#/settings/local-passkey`,
+    frameId: 0,
+  };
+
+  it('admits the toolbar popup after a same-document navigation', async () => {
+    const getContexts = jest.fn().mockResolvedValue([
+      topLevelPopup,
+      {
+        contextType: 'OFFSCREEN_DOCUMENT',
+        documentUrl: `chrome-extension://${extensionId}/offscreen.html`,
+        frameId: 0,
+      },
+    ]);
+    const f = fixture(popupSender, getContexts);
+    f.port.onMessage.emit({ id: 1, method: 'status', params: [] });
+    await settle();
+    expect(getContexts).toHaveBeenCalledWith({ tabIds: [-1] });
+    expect(f.controller.status).toHaveBeenCalledTimes(1);
+    expect(f.port.postMessage).toHaveBeenCalledWith({
+      id: 1,
+      result: { enabled: true },
+    });
+    f.dispose();
+  });
+
+  it.each([
+    { contexts: [] },
+    { contexts: [{ ...topLevelPopup, contextType: 'OFFSCREEN_DOCUMENT' }] },
+    { contexts: [{ ...topLevelPopup, frameId: 1 }] },
+    {
+      contexts: [
+        { ...topLevelPopup, documentUrl: 'https://other.invalid/app.html' },
+      ],
+    },
+    { contexts: [topLevelPopup, { ...topLevelPopup, frameId: 1 }] },
+  ])(
+    'refuses an unverified or ambiguous popup sender (%p)',
+    async ({ contexts }) => {
+      const f = fixture(popupSender, jest.fn().mockResolvedValue(contexts));
+      f.port.onMessage.emit({ id: 1, method: 'status', params: [] });
+      await settle();
+      expect(f.create).not.toHaveBeenCalled();
+      expect(f.port.disconnect).toHaveBeenCalledTimes(1);
+      f.dispose();
+    }
+  );
+
+  it('retires a popup that disconnects while its context is being checked', async () => {
+    let confirmPopup!: (contexts: unknown[]) => void;
+    const f = fixture(
+      popupSender,
+      () =>
+        new Promise((resolve) => {
+          confirmPopup = resolve;
+        })
+    );
+    f.port.onMessage.emit({ id: 1, method: 'status', params: [] });
+    f.port.onDisconnect.emit();
+    confirmPopup([topLevelPopup]);
+    await settle();
+    expect(f.create).not.toHaveBeenCalled();
+    expect(f.port.postMessage).not.toHaveBeenCalled();
+    f.dispose();
+  });
+
   it('keeps the same owner through prompts and retires after the final response', async () => {
     const f = fixture();
     const prompt = {
@@ -151,6 +227,54 @@ describe('local passkey document Port', () => {
     expect(f.port.postMessage).not.toHaveBeenCalled();
     f.dispose();
   });
+  it.each(['beginEnrollment', 'disable'] as const)(
+    'returns the cooldown duration to the admitted %s request',
+    async (method) => {
+      const f = fixture();
+      f.controller[method].mockRejectedValue(new PasswordCooldownError(42));
+      f.port.onMessage.emit({ id: 1, method, params: ['wallet-password'] });
+      await settle();
+      expect(f.port.postMessage).toHaveBeenCalledTimes(1);
+      expect(f.port.postMessage).toHaveBeenCalledWith({
+        id: 1,
+        error: 'LOCAL_PASSKEY_PASSWORD_COOLDOWN',
+        retryAfterSeconds: 42,
+      });
+      expect(f.authority().signal.aborted).toBe(true);
+      f.dispose();
+    }
+  );
+
+  it('keeps cooldown details out of unlock replies and unrelated failures', async () => {
+    const unlock = fixture();
+    unlock.controller.beginUnlock.mockRejectedValue(
+      new PasswordCooldownError(42)
+    );
+    unlock.port.onMessage.emit({ id: 1, method: 'beginUnlock', params: [] });
+    await settle();
+    expect(unlock.port.postMessage).toHaveBeenCalledWith({
+      id: 1,
+      error: 'LOCAL_PASSKEY_UNAVAILABLE',
+    });
+    unlock.dispose();
+
+    const settings = fixture();
+    settings.controller.disable.mockRejectedValue(
+      new Error('unclassified password-settings failure')
+    );
+    settings.port.onMessage.emit({
+      id: 1,
+      method: 'disable',
+      params: ['wallet-password'],
+    });
+    await settle();
+    expect(settings.port.postMessage).toHaveBeenCalledWith({
+      id: 1,
+      error: 'LOCAL_PASSKEY_UNAVAILABLE',
+    });
+    settings.dispose();
+  });
+
   it('refuses a concurrent command and retires both pending results', async () => {
     const f = fixture();
     let finish!: (value: unknown) => void;

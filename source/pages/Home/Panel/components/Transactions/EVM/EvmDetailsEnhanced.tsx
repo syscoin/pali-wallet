@@ -1,12 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 
 import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
+import { getPrivacyPoolActivity } from '../../../../../../shared/privacyPoolActivity';
 import {
   filterSmartAccountNativeRecipientOperations,
   projectSmartAccountNativePayment,
 } from '../../../../../../shared/smartAccountExecutions';
+import {
+  projectEvmActivityRow,
+  type EvmActivitySummary,
+} from '../../../../../../wallet/evmActivityRow';
 import {
   decodeSmartAccountOperations,
   getSmartAccountOperationOutcome,
@@ -19,13 +24,10 @@ import {
   DecodedTransactionParams,
 } from 'components/TransactionDetails';
 import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
-import {
-  RetainedTransactionReplay,
-  type SavedTransaction,
-} from 'components/TransactionOptions/RetainedTransactionReplay';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useContextualState } from 'hooks/useContextualState';
 import { useController } from 'hooks/useController';
+import { controllerEmitter as readWallet } from 'scripts/Background/controllers/controllerEmitter';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import {
@@ -33,6 +35,7 @@ import {
   selectActiveAccountTransactions,
   selectValidEnsCache,
 } from 'state/vault/selectors';
+import { KeyringAccountType } from 'types/network';
 import { IDecodedTx } from 'types/transactions';
 import {
   getEvmHistoryAddressCopyRisk,
@@ -72,7 +75,6 @@ import {
   replacementHash,
   ReplacementWinner,
 } from './replacementWinner';
-import { savedTransactionHistoryRow } from './useSavedEvmTransactions';
 
 type LiveObservation = { summary?: string; token: object };
 type DetailsRead = {
@@ -92,6 +94,16 @@ const decodedTxCache = new Map<
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const BLOCK_FIELDS = ['blockNumber', 'blockHash', 'confirmations', 'timestamp'];
 const STATUS_FIELDS = ['status', 'success', 'isError', 'txreceipt_status'];
+const HANDLE_OPS_SELECTOR =
+  paliEntryPointInterface.getFunction('handleOps')!.selector;
+const hasHandleOpsInput = (transaction: any) =>
+  String(transaction?.input || transaction?.data || '')
+    .toLowerCase()
+    .startsWith(HANDLE_OPS_SELECTOR);
+const isEntryPointBundle = (transaction: any, entryPoint: string) =>
+  typeof transaction?.to === 'string' &&
+  transaction.to.toLowerCase() === entryPoint &&
+  hasHandleOpsInput(transaction);
 const settlementSnapshot = (
   summary: any,
   fields = [...BLOCK_FIELDS, ...STATUS_FIELDS]
@@ -185,8 +197,11 @@ export const EvmTransactionDetailsEnhanced = ({
   const { controllerEmitter } = useController();
   // Use valid (non-expired) ENS cache for security
   const ensCache = useSelector(selectValidEnsCache);
-  const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const { activeNetwork, activeAccount } = useSelector(
+    (state: RootState) => state.vault
+  );
   const { chainId, currency, apiUrl } = activeNetwork;
+  const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
 
   // Use proper selectors
   const currentAccount = useSelector(selectActiveAccount);
@@ -195,29 +210,50 @@ export const EvmTransactionDetailsEnhanced = ({
   const scope = `${walletScope.account}:${walletScope.network}:${normalizedHash}`;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
-  // Reuse the replay view's authenticated public read. No transaction body is
-  // persisted in navigation, and local intent supplies no receipt evidence.
-  const [savedTransaction, setSavedTransaction] =
-    useContextualState<SavedTransaction | null>(scope, null);
-  const onRetainedTransaction = useCallback(
-    (transaction: SavedTransaction | null) => {
-      if (scopeRef.current !== scope) return;
-      setSavedTransaction(
-        transaction?.hash?.toLowerCase() === normalizedHash &&
-          parseEvmInteger(transaction.chainId) === chainId
-          ? transaction
-          : null
-      );
-    },
-    [scope, normalizedHash, chainId]
-  );
+  // Local intent enriches the ordinary details view. Status comes from the network.
+  const canReadLocal =
+    Boolean(currentAccount?.address) &&
+    (activeAccount?.type !== KeyringAccountType.Imported ||
+      Boolean(currentAccount?.xprv));
+  const [localRead, setLocalRead] = useContextualState<
+    EvmActivitySummary | 'loading' | 'failed' | null
+  >(scope, 'loading');
+  const [localRetry, setLocalRetry] = useContextualState(scope, 0);
+  const localTransaction =
+    canReadLocal && typeof localRead === 'object' ? localRead : null;
+  useEffect(() => {
+    if (!canReadLocal) return;
+    let active = true;
+    void readWallet(
+      ['wallet', 'getSavedEvmTransaction'],
+      [hash, walletScope],
+      10000,
+      false
+    )
+      .then((result) => {
+        if (!active || scopeRef.current !== scope) return;
+        const summary = result as EvmActivitySummary | null;
+        setLocalRead(
+          summary?.hash?.toLowerCase() === normalizedHash &&
+            parseEvmInteger(summary.chainId) === chainId
+            ? summary
+            : null
+        );
+      })
+      .catch(() => {
+        if (active && scopeRef.current === scope) setLocalRead('failed');
+      });
+    return () => {
+      active = false;
+    };
+  }, [scope, normalizedHash, chainId, canReadLocal, localRetry]);
   const savedSummary = useMemo(
     () =>
-      savedTransaction
-        ? savedTransactionHistoryRow(savedTransaction)
-        : undefined,
-    [savedTransaction]
+      localTransaction ? projectEvmActivityRow(localTransaction) : undefined,
+    [localTransaction]
   );
+  const savedSmartAccountCancellation =
+    localTransaction?.smartAccount?.cancellation === true;
   const copyContextRef = useRef({ active: true, sequence: 0 });
   useEffect(() => {
     copyContextRef.current.active = true;
@@ -384,14 +420,9 @@ export const EvmTransactionDetailsEnhanced = ({
     const input = String(
       mergedTransaction.input || mergedTransaction.data || ''
     );
-    if (
-      !input
-        .toLowerCase()
-        .startsWith(paliEntryPointInterface.getFunction('handleOps')!.selector)
-    ) {
+    if (!hasHandleOpsInput(mergedTransaction)) {
       return { transaction: mergedTransaction, isOperation: false };
     }
-    const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
     const origin =
       (matchingTx as any)?.smartAccountExecutionFrom || currentAccount?.address;
     const accountAddress = origin?.toLowerCase();
@@ -492,6 +523,7 @@ export const EvmTransactionDetailsEnhanced = ({
     enhancedDetails,
     currentAccount?.address,
     chainId,
+    entryPoint,
     normalizedHash,
   ]);
   const displayTransaction = displayContext.transaction;
@@ -637,8 +669,14 @@ export const EvmTransactionDetailsEnhanced = ({
       setLookupFailed(false);
       try {
         let enhancedData = null;
+        // EntryPoint operation outcomes require the scoped RPC receipt.
+        // Blockscout gettxinfo logs omit the transaction and block identity.
         // Routescan's Etherscan API has no Blockscout gettxinfo action.
-        if (apiUrl && !isRoutescanApiUrl(apiUrl, chainId)) {
+        if (
+          apiUrl &&
+          !isRoutescanApiUrl(apiUrl, chainId) &&
+          !isEntryPointBundle(matchingTx, entryPoint)
+        ) {
           try {
             enhancedData = await controllerEmitter(
               ['wallet', 'getEvmTransactionFromAPI'],
@@ -650,7 +688,10 @@ export const EvmTransactionDetailsEnhanced = ({
           }
         }
         if (!isCurrent()) return;
-        if (!usableLookup(enhancedData)) {
+        if (
+          !usableLookup(enhancedData) ||
+          isEntryPointBundle(enhancedData, entryPoint)
+        ) {
           enhancedData = await controllerEmitter(
             ['wallet', 'getEvmTransactionFromProvider'],
             [hash, true]
@@ -868,7 +909,9 @@ export const EvmTransactionDetailsEnhanced = ({
     }
 
     // Use the decoded transaction data for method information
-    if (decodedTxData && decodedTxData.method) {
+    if (savedSmartAccountCancellation) {
+      mergedTx.method = t('transactions.cancellation');
+    } else if (decodedTxData && decodedTxData.method) {
       mergedTx.method = decodedTxData.method;
     } else if (!mergedTx.method) {
       // Fallback for backwards compatibility
@@ -953,10 +996,12 @@ export const EvmTransactionDetailsEnhanced = ({
           : 'N/A';
       } else if (key === 'method' && finalValue) {
         // Apply translation for method names
-        formattedValue.value = translateTransactionType(
-          formatMethodName(String(finalValue), currency.toUpperCase(), t),
-          t
-        );
+        formattedValue.value = savedSmartAccountCancellation
+          ? t('transactions.cancellation')
+          : translateTransactionType(
+              formatMethodName(String(finalValue), currency.toUpperCase(), t),
+              t
+            );
       }
 
       if (String(finalValue).length >= 20 && key !== 'image') {
@@ -1004,6 +1049,31 @@ export const EvmTransactionDetailsEnhanced = ({
       (a, b) => labelsToUse.indexOf(a.label) - labelsToUse.indexOf(b.label)
     );
 
+  const collectible = localTransaction?.collectibleTransfer;
+  if (collectible?.chainId === String(chainId)) {
+    formattedTransactionDetails.push(
+      {
+        label: t('transactions.tokenStandard'),
+        value: collectible.tokenStandard,
+      },
+      { label: t('send.tokenId'), value: collectible.tokenId, canCopy: true },
+      {
+        label: t('transactions.replay.tokenAmount'),
+        value: collectible.amountUnits,
+      },
+      {
+        label: t('settings.contractAddress'),
+        value: collectible.contractAddress,
+        canCopy: true,
+      },
+      {
+        label: t('transactions.replay.tokenRecipient'),
+        value: collectible.recipient,
+        canCopy: true,
+      }
+    );
+  }
+
   // Handle copy actions with appropriate messages
   const handleCopy = async (value: string, label: string) => {
     if (!copyContextRef.current.active || scopeRef.current !== scope) return;
@@ -1038,20 +1108,28 @@ export const EvmTransactionDetailsEnhanced = ({
     }
   };
 
-  if (!transactionTx && !isLoadingDetails) {
+  const awaitingDetails =
+    isLoadingDetails ||
+    (!transactionTx && canReadLocal && localRead === 'loading');
+  const localFailed = canReadLocal && localRead === 'failed';
+  if (!transactionTx && !awaitingDetails) {
     return (
       <>
         <div className="p-8 text-center">
-          {lookupFailed ? (
+          {lookupFailed || localFailed ? (
             <>
-              <p role="alert" className="text-brand-gray200 text-sm mb-4">
+              <p role="alert" className="text-warning-error text-sm mb-4">
                 {t('transactions.detailsUnavailable')}
               </p>
               <button
                 type="button"
                 onClick={() => {
-                  if (scopeRef.current === scope)
-                    setLookupRetry((value) => value + 1);
+                  if (scopeRef.current !== scope) return;
+                  if (localFailed) {
+                    setLocalRead('loading');
+                    setLocalRetry((value) => value + 1);
+                  }
+                  if (lookupFailed) setLookupRetry((value) => value + 1);
                 }}
                 className="w-full rounded-full border border-brand-royalbluemedium px-4 py-3 text-sm text-brand-white hover:bg-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalbluemedium"
               >
@@ -1069,11 +1147,6 @@ export const EvmTransactionDetailsEnhanced = ({
             </>
           )}
         </div>
-        <RetainedTransactionReplay
-          key="retained-replay"
-          hash={hash}
-          onRetainedTransaction={onRetainedTransaction}
-        />
       </>
     );
   }
@@ -1114,16 +1187,37 @@ export const EvmTransactionDetailsEnhanced = ({
     chainId,
     settlementIndex
   );
-  const isCancellation = hasEvmCancellationIntent(
-    transactionTx,
-    history,
-    chainId
-  );
+  const unknownExecution =
+    !displayContext.isOperation &&
+    mergedTransaction?.status === 'unknown' &&
+    isTransactionInBlock(mergedTransaction);
+  const isCancellation =
+    savedSmartAccountCancellation ||
+    hasEvmCancellationIntent(transactionTx, history, chainId);
   const directionLabel = hasAccountDirection
     ? getTxType(displayTransaction || transactionTx, isTxSent)
     : 'Transaction';
+  const detailTransaction = displayTransaction || transactionTx;
+  const privacy = isCancellation
+    ? undefined
+    : getPrivacyPoolActivity(
+        chainId,
+        detailTransaction?.to,
+        detailTransaction?.input || detailTransaction?.data
+      ) ??
+      getPrivacyPoolActivity(
+        chainId,
+        transactionTx?.to,
+        savedSummary?.methodSelector
+      );
   const txType = isCancellation
     ? t('transactions.cancellation')
+    : privacy
+    ? t(
+        privacy.kind === 'deposit'
+          ? 'privacy.activity.deposit'
+          : 'privacy.activity.withdrawal'
+      )
     : directionLabel;
   return (
     <>
@@ -1132,20 +1226,33 @@ export const EvmTransactionDetailsEnhanced = ({
         statusIcon={getTxStatusIcons(directionLabel, true)}
         displayInfo={displayTransaction ? transactionDisplayInfo : null}
         txStatus={
-          <p
-            className={`text-xs font-normal ${evmSettlementClass(settlement)}`}
-          >
-            {t(
-              settlement === 'pending' &&
-                !enhancedDetails &&
-                (transactionTx as any)?.historySource ===
-                  EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned
-                ? 'transactions.savedUnconfirmed'
-                : evmSettlementLabel(settlement)
+          <>
+            <p
+              className={`text-xs font-normal ${
+                unknownExecution
+                  ? 'text-brand-gray200'
+                  : evmSettlementClass(settlement)
+              }`}
+            >
+              {t(
+                unknownExecution
+                  ? 'notifications.activityUnknown'
+                  : settlement === 'pending' &&
+                    !enhancedDetails &&
+                    (transactionTx as any)?.historySource ===
+                      EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned
+                  ? 'transactions.unconfirmed'
+                  : evmSettlementLabel(settlement)
+              )}
+            </p>
+            {privacy && (
+              <span className="inline-flex rounded-full border border-brand-blue/20 bg-brand-blue/10 px-2 py-0.5 text-xs text-brand-blue">
+                {t('privacy.poolAmount', { amount: privacy.amount })}
+              </span>
             )}
-          </p>
+          </>
         }
-        isLoading={isLoadingDetails}
+        isLoading={awaitingDetails}
       />
 
       <TransactionDetailsList
@@ -1157,11 +1264,6 @@ export const EvmTransactionDetailsEnhanced = ({
         typeof mergedTransaction?.from === 'string' && (
           <SmartAccountFeePayer address={mergedTransaction.from} />
         )}
-      <RetainedTransactionReplay
-        key="retained-replay"
-        hash={hash}
-        onRetainedTransaction={onRetainedTransaction}
-      />
 
       {/* Display decoded transaction parameters */}
       <DecodedTransactionParams decodedData={decodedTxData} />

@@ -67,11 +67,18 @@ test('Trezor replacement and UTXO drafts retain the corresponding normal review 
   const retainedOption = trezorResumeDraft({ ...utxo, rbf: false });
   assert.equal(retainedOption.kind, 'utxo');
   if (retainedOption.kind === 'utxo') assert.equal(retainedOption.draft.rbf, false);
+  const utxoReplacement = { txid: 'a'.repeat(64), mode: 'cancel' as const };
+  const input = { ...scope, kind: 'utxo-replacement' as const, replacement: utxoReplacement, feeChoice: AUTOMATIC_FEE };
+  assert.deepEqual(trezorResumeDraft(input), { kind: 'utxo-replacement', replacement: utxoReplacement, feeChoice: AUTOMATIC_FEE });
+  assert.throws(() => trezorResumeDraft({ ...input, replacement: { ...utxoReplacement, txid: 'invalid' } }));
+
 });
 
 test('Trezor legacy gas and UTXO custom fee snapshots remain exact and independent', () => {
   const legacy = trezorResumeDraft({ ...scope, kind: 'evm', unsignedTransaction: wire({ type: 0,
     gasPrice: 7, maxFeePerGas: null, maxPriorityFeePerGas: null, gasLimit: 65000 }) });
+  assert.equal(legacy.kind, 'native');
+  if (legacy.kind !== 'native') throw Error('Unexpected legacy draft');
   assert.deepEqual(legacy.draft.feeChoice, { kind: 'custom', type: 0, gasPrice: '7', gasLimit: '65000' });
   const feeChoice = { kind: 'custom' as const, satPerVbyte: '7' };
   const input = { ...scope, kind: 'utxo' as const, recipient: 'public-utxo-address', amount: '', max: true, rbf: false, feeChoice };

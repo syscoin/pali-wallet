@@ -34,9 +34,8 @@ export type NativeNoteMaintenanceRuntime = Readonly<{
   getNotes(assertCurrent: () => void): ReturnType<IPrivateVaultController['getNotes']>;
   clearCompletedNotes(ids: readonly string[], assertCurrent: () => void,
     onProgress: (progress: Readonly<{ checked: number; total: number }>) => void,
-    onReload: (inventory: Awaited<ReturnType<IPrivateVaultController['getNotes']>>) => void): ReturnType<IPrivateVaultController['clearCompletedNotes']>;
-  recoverFailedWithdrawal(id: string, assertCurrent: () => void,
-    onReload: (inventory: Awaited<ReturnType<IPrivateVaultController['getNotes']>>) => void): Promise<void>;
+    onReload: (inventory: Awaited<ReturnType<IPrivateVaultController['getNotes']>>) => void,
+    selection?: Parameters<IPrivateVaultController['clearCompletedNotes']>[1]): ReturnType<IPrivateVaultController['clearCompletedNotes']>;
 }>;
 export type NativeNoteCapacityRuntime = Readonly<Pick<IPrivateVaultController, 'getCapacity' | 'setCapacity'>>;
 export type NativeSavedNote = Readonly<{
@@ -44,6 +43,8 @@ export type NativeSavedNote = Readonly<{
   archivedAt?: number;
   createdAt: number;
   reconciliation?: 'restored-note' | 'withdrawal-history';
+  withdrawalPending?: true;
+  withdrawalStatusAvailable?: true;
 }>;
 export type NativeNoteInventory = Readonly<{
   archiveSummary?: NonNullable<Awaited<ReturnType<IPrivateVaultController['getNotes']>>['archiveSummary']>;
@@ -73,6 +74,7 @@ type NativeNoteBackupPorts = Readonly<{
   assertAvailable(): void;
   authenticate: IPrivateVaultHost['authenticate'];
   binding(): Promise<Readonly<{ profileId: string; walletBindingId: string }>>;
+  readPrivateNonceResetGeneration?(payer: string, session: IPrivateVaultSession): Promise<number>;
   withdrawalScope(): Readonly<{ context: IPrivacyWithdrawalSession['context']; lifetime: string }> | null;
   notes: NonNullable<OpenWalletStorage['notes']>;
   requireReopen(): void;
@@ -134,6 +136,7 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
   }, {
     identify: identifyClassicNote,
     generate: generateClassicNote,
+    readPrivateNonceResetGeneration: ports.readPrivateNonceResetGeneration,
     mutex,
     now: Date.now,
     deadlineNow: monotonicNow,
@@ -228,12 +231,6 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
         readStatus: (noteId: string) => ports.run(() => operational.readNoteStatus(noteId, session)),
       });
     },
-    authorizeDepositReplay(session: IPrivateVaultSession, attempt: IPrivacyDepositAttempt, readNote: IPrivacyNoteReader) {
-      return createVault(readNote, null).authorizeDepositReplay(attempt, session);
-    },
-    authorizeWithdrawalReplay(session: IPrivateVaultSession, attempt: Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>, readNote: IPrivacyNoteReader) {
-      return createVault(readNote, null).authorizeWithdrawalReplay(attempt, session);
-    },
     invalidate() { resumeInventory?.(); invalidate?.(); },
     dispose() { resumeInventory?.(); service.dispose(); },
     importNote(session: IPrivateVaultSession, note: string, readNote: IPrivacyNoteReader, assertCurrent: () => void) {
@@ -249,18 +246,24 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       openWithdrawal: ((id: string, poolId: PrivacyPoolId, signal: AbortSignal, guard: () => void, authentication: NativePrivateAuthenticationScope) => Promise<NativePrivateWithdrawalView>) | null,
       reveal: (id: string, guard: () => void, authentication: NativePrivateAuthenticationScope) => Promise<string>,
       openArchive: (guard: () => void, authentication: NativePrivateAuthenticationScope) => Promise<NativeNoteArchiveInventory>,
-      parentSession = session): Promise<NativeNoteInventory> {
+      parentSession = session,
+      readPendingWithdrawals?: (guard: () => void) => Promise<ReadonlySet<string>>): Promise<NativeNoteInventory> {
       session.assertCurrent(); parentSession.assertCurrent();
       const scope = ports.withdrawalScope();
       const { notes, archiveSummary } = await withSession(session, () => scope
         ? vault.reconcileUnsignedWithdrawals(scope.context, scope.lifetime, session, true)
         : vault.getNotes(true));
+      const pendingWithdrawals = await readPendingWithdrawals?.(session.assertCurrent);
       session.assertCurrent(); parentSession.assertCurrent();
       const selections = new WeakMap<NativeSavedNote, { id: string; poolId: PrivacyPoolId }>();
       const rows = notes.map((note) => {
         const row = Object.freeze<NativeSavedNote>({
           amount: note.amount,
           createdAt: note.createdAt,
+          ...(pendingWithdrawals?.has(note.id) ? { withdrawalPending: true } : {}),
+          ...(openWithdrawal && (note.withdrawal?.mode === 'relayed' || note.restoration === 'withdrawal-pending')
+            ? { withdrawalStatusAvailable: true }
+            : {}),
           ...(note.withdrawal || note.restoration === 'withdrawal-pending'
             ? { reconciliation: 'withdrawal-history' }
             : note.restoration === 'review-required'
@@ -343,11 +346,10 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
     },
     bindMaintenance(session: IPrivateVaultSession, proofs: NativeNoteMaintenanceProofs): NativeNoteMaintenanceRuntime {
       session.assertCurrent();
-      if (typeof proofs?.prepareCompletionProof !== 'function' || typeof proofs?.prepareWithdrawalRecovery !== 'function')
+      if (typeof proofs?.prepareCompletionProof !== 'function')
         throw new Error('privacy_vault_unavailable');
       const operational = createVault(async () => ({ phase: 'waiting' }), Object.freeze({
         prepareCompletionProof: proofs.prepareCompletionProof.bind(proofs),
-        prepareWithdrawalRecovery: proofs.prepareWithdrawalRecovery.bind(proofs),
       }));
       let closed = false;
       const drain = new NativeOperationDrain();
@@ -387,15 +389,16 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       return Object.freeze({
         dispose: () => drain.close(() => { closed = true; }, []),
         getNotes: (guard) => run(guard, owner => withSession(owner, operational.getNotes)),
-        clearCompletedNotes: (ids, guard, onProgress, onReload) => {
-          if (!Array.isArray(ids) || ids.length !== 1 ||
+        clearCompletedNotes: (ids, guard, onProgress, onReload, selection) => {
+          if ((selection !== undefined && selection !== 'earlier') ||
+              !Array.isArray(ids) || ids.length !== 1 ||
               typeof ids[0] !== 'string' || !UUID.test(ids[0]) ||
               typeof onProgress !== 'function' || typeof onReload !== 'function') throw Error('privacy_vault_unavailable');
           const id = ids[0];
           return runWithReload(guard, onReload, async owner => {
             owner.assertCurrent();
             // One explicitly selected note cannot be starved by earlier unresolved proofs.
-            const value = await withSession(owner, () => operational.clearCompletedNotes([id]));
+            const value = await withSession(owner, () => operational.clearCompletedNotes([id], selection));
             owner.assertCurrent();
             const resultIds = [...value.removed, ...value.unresolved];
             if (resultIds.length !== 1 || resultIds[0] !== id) throw Error('privacy_vault_unavailable');
@@ -404,8 +407,6 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
             return value;
           });
         },
-        recoverFailedWithdrawal: (id, guard, onReload) => runWithReload(guard, onReload,
-          owner => withSession(owner, () => operational.recoverFailedWithdrawal(id, HOST_WALLET_AUTHENTICATION))),
       });
     },
     bindCapacity(session: IPrivateVaultSession): NativeNoteCapacityRuntime {

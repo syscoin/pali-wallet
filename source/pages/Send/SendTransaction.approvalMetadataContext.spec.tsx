@@ -87,6 +87,12 @@ jest.mock('utils/fetchGasAndDecodeFunction', () => ({
         feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
         gasUnits: '863456',
         maximumFeeWei: '43172800000000000',
+        payerBudget: {
+          gasTank: false,
+          maximumFeeWei: '1100000000000000',
+          maximumPrefundWei: '0',
+          maximumPrefundFeeWei: '0',
+        },
       };
     }
     return result;

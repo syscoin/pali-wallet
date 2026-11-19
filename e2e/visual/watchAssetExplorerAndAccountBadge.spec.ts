@@ -540,46 +540,6 @@ test('pending transaction badges follow ordinary account selection and empty-his
         }
       );
       await wallet.step(
-        'badge: a same-account empty response preserves locally known pending history',
-        async () => {
-          const before = audit.history.filter(
-            (read) =>
-              read.address === fixture.evmAddresses[0].toLowerCase() &&
-              read.action === 'pendingtxlist'
-          ).length;
-          audit.pending = false;
-          await page
-            .getByRole('button', { name: en.header.refresh, exact: true })
-            .click();
-          await expect
-            .poll(
-              () =>
-                audit.history.filter(
-                  (read) =>
-                    read.address === fixture.evmAddresses[0].toLowerCase() &&
-                    read.action === 'pendingtxlist'
-                ).length
-            )
-            .toBeGreaterThan(before);
-          await expect
-            .poll(async () => ({
-              state: await publicState(page),
-              badge: await badgeText(wallet),
-            }))
-            .toMatchObject({
-              state: {
-                active: { id: 0 },
-                history: [{ hash: HASH, confirmations: 0 }],
-              },
-              badge: '1',
-            });
-          audit.observations.sameAccountEmpty = {
-            state: await publicState(page),
-            badge: await badgeText(wallet),
-          };
-        }
-      );
-      await wallet.step(
         'badge: create and select an ordinary empty account without inheriting the badge',
         async () => {
           await openGeneralSettings(wallet, en.accountMenu.createNewAccount);
@@ -661,6 +621,46 @@ test('pending transaction badges follow ordinary account selection and empty-his
               .getByText(en.send.pending, { exact: true })
           ).toHaveCount(1);
           audit.observations.returnedPending = {
+            state: await publicState(page),
+            badge: await badgeText(wallet),
+          };
+        }
+      );
+      await wallet.step(
+        'badge: a same-account empty response clears explorer-only pending history',
+        async () => {
+          const before = audit.history.filter(
+            (read) =>
+              read.address === fixture.evmAddresses[0].toLowerCase() &&
+              read.action === 'pendingtxlist'
+          ).length;
+          audit.pending = false;
+          await page
+            .getByRole('button', { name: en.header.refresh, exact: true })
+            .click();
+          await expect
+            .poll(
+              () =>
+                audit.history.filter(
+                  (read) =>
+                    read.address === fixture.evmAddresses[0].toLowerCase() &&
+                    read.action === 'pendingtxlist'
+                ).length
+            )
+            .toBeGreaterThan(before);
+          await expect
+            .poll(async () => ({
+              state: await publicState(page),
+              badge: await badgeText(wallet),
+            }))
+            .toMatchObject({
+              state: {
+                active: { id: 0 },
+                history: [],
+              },
+              badge: '',
+            });
+          audit.observations.sameAccountEmpty = {
             state: await publicState(page),
             badge: await badgeText(wallet),
           };

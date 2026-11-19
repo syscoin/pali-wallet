@@ -12,29 +12,50 @@ const mockTranslate = (key: string, params: any = {}) =>
     key.split('.').reduce((value: any, part: string) => value?.[part], en) ||
       key
   ).replace(/{{(\w+)}}/g, (_, name) => String(params[name]));
+const mockClearError = jest.fn();
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({ alert: { error: mockClearError } }),
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: mockTranslate }),
 }));
 
-it('asks before verification, uses bounded batches, and reports unresolved records', async () => {
-  const ids = Array.from(
-    { length: 17 },
-    (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`
-  );
-  const emit = jest.fn(async (_path, [batch]) =>
-    batch[0] === ids[0]
-      ? { removed: [], unresolved: batch }
-      : { removed: batch, unresolved: [] }
-  );
-  const done = jest.fn();
-  render(
+const NOTE_ID = '00000000-0000-4000-8000-000000000001';
+
+function ArchiveRow({
+  controllerEmitter,
+  earlierAttempts,
+  onComplete = jest.fn(),
+  onRemoved = jest.fn(),
+}: Pick<
+  React.ComponentProps<typeof PrivateVaultClearCompleted>,
+  'controllerEmitter'
+> &
+  Partial<
+    Pick<
+      React.ComponentProps<typeof PrivateVaultClearCompleted>,
+      'earlierAttempts' | 'onComplete' | 'onRemoved'
+    >
+  >) {
+  const [confirming, setConfirming] = React.useState(false);
+  return (
     <PrivateVaultClearCompleted
-      controllerEmitter={emit}
-      noteIds={ids}
-      onComplete={done}
-      onRemoved={jest.fn()}
+      confirming={confirming}
+      controllerEmitter={controllerEmitter}
+      earlierAttempts={earlierAttempts}
+      noteId={NOTE_ID}
+      onCancel={() => setConfirming(false)}
+      onSelect={() => setConfirming(true)}
+      onComplete={onComplete}
+      onRemoved={onRemoved}
     />
   );
+}
+
+it('asks before checking the selected note and reports an unresolved withdrawal', async () => {
+  const emit = jest.fn(async () => ({ removed: [], unresolved: [NOTE_ID] }));
+  const done = jest.fn();
+  render(<ArchiveRow controllerEmitter={emit} onComplete={done} />);
   expect(emit).not.toHaveBeenCalled();
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.clear })
@@ -45,53 +66,59 @@ it('asks before verification, uses bounded batches, and reports unresolved recor
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
   expect(
-    await screen.findByText('Archived: 16. Still active: 1.')
+    await screen.findByText('Archived: 0. Still active: 1.')
   ).toBeVisible();
-  expect(emit).toHaveBeenCalledTimes(17);
-  expect(emit.mock.calls[0][1][0]).toHaveLength(1);
-  expect(emit.mock.calls[1][1][0]).toHaveLength(1);
+  expect(emit).toHaveBeenCalledTimes(1);
+  expect(emit).toHaveBeenCalledWith(
+    ['privateVault', 'clearCompletedNotes'],
+    [[NOTE_ID]],
+    120000,
+    false
+  );
   expect(done).toHaveBeenCalledTimes(1);
 });
 
-it('fails closed on malformed results and refreshes after a partial operation', async () => {
-  const emit = jest.fn(async () => ({ removed: ['unknown'], unresolved: [] }));
-  const done = jest.fn();
+it('checks older attempts only after an explicit action in the same confirmation', async () => {
+  const emit = jest
+    .fn()
+    .mockResolvedValueOnce({ removed: [], unresolved: [NOTE_ID] })
+    .mockResolvedValueOnce({ removed: [NOTE_ID], unresolved: [] });
+  const removed = jest.fn();
   render(
-    <PrivateVaultClearCompleted
+    <ArchiveRow
       controllerEmitter={emit}
-      noteIds={['00000000-0000-4000-8000-000000000001']}
-      onComplete={done}
-      onRemoved={jest.fn()}
+      earlierAttempts={2}
+      onRemoved={removed}
     />
   );
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.clear })
   );
+  expect(screen.getByText('Earlier withdrawal attempts (2)')).toBeVisible();
+  expect(
+    screen.queryByRole('button', { name: en.privacy.capacity.checkEarlier })
+  ).not.toBeInTheDocument();
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    en.privacy.capacity.clearError
-  );
-  await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+  const earlier = await screen.findByRole('button', {
+    name: en.privacy.capacity.checkEarlier,
+  });
+  expect(emit).toHaveBeenCalledTimes(1);
+  expect(emit.mock.calls[0][1]).toEqual([[NOTE_ID]]);
+  fireEvent.click(earlier);
+  await waitFor(() => expect(removed).toHaveBeenCalledWith(NOTE_ID));
+  expect(emit.mock.calls[1][1]).toEqual([[NOTE_ID], 'earlier']);
 });
 
-it('reports a committed in-flight removal after unmount without starting the next record', async () => {
-  const ids = [
-    '00000000-0000-4000-8000-000000000001',
-    '00000000-0000-4000-8000-000000000002',
-  ];
-  let finish!: (value: unknown) => void;
-  const pending = new Promise((resolve) => {
-    finish = resolve;
-  });
-  const emit = jest.fn(() => pending);
+it('rejects a response for a different note and refreshes after the error', async () => {
+  const emit = jest.fn(async () => ({ removed: ['unknown'], unresolved: [] }));
+  const done = jest.fn();
   const removed = jest.fn();
-  const view = render(
-    <PrivateVaultClearCompleted
+  render(
+    <ArchiveRow
       controllerEmitter={emit}
-      noteIds={ids}
-      onComplete={jest.fn()}
+      onComplete={done}
       onRemoved={removed}
     />
   );
@@ -101,9 +128,33 @@ it('reports a committed in-flight removal after unmount without starting the nex
   fireEvent.click(
     screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
   );
+  await waitFor(() =>
+    expect(mockClearError).toHaveBeenCalledWith(en.privacy.capacity.clearError)
+  );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(removed).not.toHaveBeenCalled();
+  await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+});
+
+it('reports a committed in-flight removal after the selected row unmounts', async () => {
+  let finish!: (value: unknown) => void;
+  const pending = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const emit = jest.fn(() => pending);
+  const removed = jest.fn();
+  const view = render(
+    <ArchiveRow controllerEmitter={emit} onRemoved={removed} />
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.clear })
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+  );
   expect(emit).toHaveBeenCalledTimes(1);
   view.unmount();
-  finish({ removed: [ids[0]], unresolved: [] });
-  await waitFor(() => expect(removed).toHaveBeenCalledWith([ids[0]]));
+  finish({ removed: [NOTE_ID], unresolved: [] });
+  await waitFor(() => expect(removed).toHaveBeenCalledWith(NOTE_ID));
   expect(emit).toHaveBeenCalledTimes(1);
 });

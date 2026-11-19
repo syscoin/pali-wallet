@@ -2,7 +2,7 @@
 title: 什么是 Pali？
 ---
 
-Pali Wallet 是官方 Syscoin 钱包扩展，也是面向 EVM 兼容链的通用 web3 钱包。它为三类有交集的受众而设计：
+Pali 是官方 Syscoin 钱包扩展，也是面向 EVM 兼容链的通用 web3 钱包。它为三类有交集的受众而设计：
 
 - **普通用户**，希望获得用于 EVM、Syscoin、Rollux 和 UTXO 资产的安全浏览器钱包。
 - **Dapp 开发者**，希望在同一扩展中同时获得兼容 MetaMask 的 EVM 访问和 UTXO 访问。

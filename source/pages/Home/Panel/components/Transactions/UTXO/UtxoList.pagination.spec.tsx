@@ -109,7 +109,7 @@ it.each([false, true])(
     });
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'getSysTransactionsPage'],
-      ['synthetic-public-xpub', 'https://synthetic.example/', 2, 30]
+      ['synthetic-public-xpub', 'https://synthetic.example/', 2, 30, true]
     );
     const more = screen.getByRole('button', { name: 'buttons.loadMore' });
     await act(async () => {
@@ -117,11 +117,33 @@ it.each([false, true])(
     });
     expect(mockEmitter).toHaveBeenLastCalledWith(
       ['wallet', 'getSysTransactionsPage'],
-      ['synthetic-public-xpub', 'https://synthetic.example/', 3, 30]
+      ['synthetic-public-xpub', 'https://synthetic.example/', 3, 30, true]
     );
     expect(screen.getByText(tx(99).txid)).toBeTruthy();
   }
 );
+
+it('uses Blockbook exhaustion even when the final first or second page contains 30 rows', async () => {
+  const tree = (firstPageHasMore: boolean) => (
+    <MemoryRouter>
+      <UtxoTransactionsList
+        userTransactions={mockBase}
+        firstPageHasMore={firstPageHasMore}
+      />
+    </MemoryRouter>
+  );
+  const view = render(tree(false));
+  expect(screen.queryByRole('button', { name: 'buttons.loadMore' })).toBeNull();
+  view.rerender(tree(true));
+  mockEmitter.mockResolvedValue({
+    rows: Array.from({ length: 30 }, (_, i) => tx(i + 31)),
+    hasMore: false,
+  });
+  await loadMore();
+  expect(screen.getByText(tx(60).txid)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'buttons.loadMore' })).toBeNull();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
 
 it('advances past a partly duplicate full page without duplicating visible rows', async () => {
   const second = mockBase
@@ -495,6 +517,7 @@ it.each(['account', 'network'])(
       mockNetwork.url,
       2,
       30,
+      true,
     ]);
     expect(screen.getByText(tx(259).txid)).toBeVisible();
   }

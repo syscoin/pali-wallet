@@ -3,6 +3,7 @@ import { NotificationPermissionReturn } from '../src/notifications/permissionRet
 import type { NotificationPermissionResult } from '../src/notifications/types.ts';
 import { Transaction } from 'ethers/transaction';
 import { PALI_RECOVERY_ALERTS_URL } from '../../../source/shared/smartAccountLinks.ts';
+import * as recoveryPhrase from '../../../source/shared/recoveryPhrase.ts';
 import { getNativeGuardianRecoveryChoices } from '../src/smartAccount/guardianRecovery.ts';
 import { credentialPromptActivityState } from '../src/platform/credentialPort.ts';
 import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
@@ -40,7 +41,7 @@ import * as networkContext from '../src/custody/networkContext.ts';
 import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../source/wallet/sentryKeyVault.ts';
 import { containsSentryPrivateKey, parseSentryKeyBatch } from '../../../source/utils/sentry/importBatch.ts';
 import { createNativeSentryKeyManagement, type NativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
-import type { NativeConnectionsView } from '../src/connections/types.ts';
+import type { NativeConnectionsSnapshot, NativeConnectionsView } from '../src/connections/types.ts';
 import type { NativeTrezorResumeIntent, NativeTrezorView } from '../src/custody/trezorAccounts.ts';
 import { quietActivityNotifications, type NotificationTestPort } from './notificationFixture.ts';
 import { screenFixture, screenElements } from './screenFixture.ts';
@@ -133,6 +134,7 @@ function setup(phase = 'entry', translation = nativeTranslationFixture) {
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Icon', 'Notice', 'Row', 'Screen', 'Text', 'SegmentedControl'].map((name) => [name, name])), colors: {}, styles: {} };
   const idle = createIdleComponentFixture(hook, native);
   const loaded = evaluate(readFileSync(new NodeURL('../src/screens/NativeRecovery.tsx', import.meta.url), 'utf8'), {
+    '../../../../source/shared/recoveryPhrase': recoveryPhrase,
     '../platform/localization': translation,
     './IdleActivityBoundary': idle.components,
     './recoveryCopy': recoveryCopy,
@@ -195,6 +197,23 @@ test('recovery keeps numbered input bounded with native autofill disabled', () =
     assert.equal(input.props.textContentType, 'none'); assert.equal(input.props.importantForAutofill, 'noExcludeDescendants');
   }
   assert.equal(f.calls.starts, 1); f.dispose();
+});
+
+test('reselecting the current phrase length preserves recovery words and switching clears them', () => {
+  const f = setup();
+  (field(f.render(), 'Recovery word 1').props.onChangeText as (text: string) => void)('abandon');
+  const select = (count: string) => {
+    const selector = all(f.render()).find(node => node.type === 'SegmentedControl');
+    assert.ok(selector);
+    (selector.props.onChange as (value: string) => void)(count);
+  };
+  select('12');
+  assert.equal(field(f.render(), 'Recovery word 1').props.value, 'abandon');
+  select('24');
+  const tree = f.render();
+  assert.equal(field(tree, 'Recovery word 1').props.value, '');
+  assert.equal(all(tree).filter(node => node.type === 'TextInput').length, 24);
+  f.dispose();
 });
 
 test('recovery verifies the phrase before device-protected restoration', () => {
@@ -337,7 +356,7 @@ test('recovery renders controller errors in the chosen language without English 
 });
 
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
-  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }, idleClock?: { minutes: number; time: number }) {
+  networkLifecycle?: { wait?: Promise<void>; onSelectingNetwork?(): Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity' | 'settings'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number; wait: Promise<void> }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId?: string; guardianActivity?: { onSelecting(): Promise<void>; onReady(): Promise<void> } }, idleClock?: { minutes: number; time: number }) {
   const root = setup();
   if (idleClock) {
     await root.idle.ready;
@@ -356,6 +375,12 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let state: { phase: string; revision: number; presence: string; backup: string; account: { address: string; network: string } | null; error: string | null } =
     { phase: setting || depositMode || networkMode || pinChange ? 'ready' : empty ? 'empty' : 'locked', revision: 1, presence: empty ? 'empty' : 'existing', backup: empty ? 'unconfirmed' : 'confirmed', account: setting || depositMode || networkMode || pinChange ? { address, network: networkId } : null, error: null };
   if (publicNavigation) catalogue = { ...catalogue, accounts: [...catalogue.accounts, { ...catalogue.accounts[0]!, id: 'hd:60:1', index: 1, address: '0x' + '22'.repeat(20), label: 'Account 2' }] };
+  const guardianActivity = publicNavigation?.guardianActivity;
+  if (guardianActivity) {
+    const smart = { id: 'smart:60:0', type: 'SmartAccount', index: 0, slip44: 60, address: '0x' + '33'.repeat(20), label: 'Guardian target', smartAccount: { chainId: 1 } };
+    catalogue = { ...catalogue, active: { ...catalogue.active, accountId: smart.id }, accounts: [...catalogue.accounts, smart] };
+    state = { ...state, phase: 'ready', account: { address: smart.address, network: networkId } };
+  }
   const selectedAccounts: string[] = [];
   let observer: (snapshot: typeof state) => void = () => {};
   let nextError: string | null = null;
@@ -367,9 +392,15 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let backupFailure: Error | undefined;
   let backupStart: Promise<void> | undefined;
   let backupCancels = 0, backupShown = false;
-  let shellTab: string = networkLifecycle?.tab ?? (depositMode ? 'tools' : 'wallet');
+  let shellTab: string = networkLifecycle?.tab ?? (depositMode || guardianActivity ? 'tools' : 'wallet');
+  let shellImmersive = !!guardianActivity;
   const lifecycle: string[] = [];
   const notificationRoutes: { tab: string; identity: string }[] = [];
+  let connectionState = { status: 'ready' as NativeConnectionsSnapshot['status'], signingReview: null as { id: string; kind: string } | null,
+    callsStatus: null as NativeConnectionsSnapshot['callsStatus'], proposals: [] };
+  const connectionObservers = new Set<() => void>();
+  let notificationNavigationBlocked: (() => boolean) | undefined;
+  let notificationNavigationChanges = 0;
   const enrollments: { enabled: boolean; password?: string }[] = [];
   const configurations: { enabled: boolean; signal: AbortSignal; authentication: NativePrivateAuthenticationScope }[] = [];
   let biometricsEnabled = deviceUnlock && (setting?.enabled ?? !empty);
@@ -392,6 +423,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement() { throw Error('SLH is outside this fixture'); },
     canUseWalletAuthenticator: () => false,
+    ...(guardianActivity ? { async readGuardianRecovery() { throw Error('Recovery data is outside this fixture'); } } : {}),
     guardianRecovery: { supportsPasskeys: () => false, hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
     ...(deviceUnlock ? { authentication } : {}),
     async configureDeviceUnlock(enabled: boolean, signal: AbortSignal, authentication: NativePrivateAuthenticationScope, check: () => void) {
@@ -450,10 +482,17 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       assert.equal(state.revision, contextRevision); assert.equal(catalogue.revision, catalogueRevision);
       const selected = catalogue.accounts.find(account => account.id === request.id); assert(selected);
       selectedAccounts.push(request.id);
+      if (guardianActivity) {
+        shellImmersive = false;
+        publish({ phase: 'authenticating', revision: contextRevision + 1, account: null });
+        await guardianActivity.onSelecting();
+      }
       catalogue = { ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, accountId: request.id } };
-      publish({ phase: 'ready', revision: state.revision + 1, account: { address: selected.address, network: networkId } });
+      publish({ phase: 'ready', revision: contextRevision + 1, account: { address: selected.address, network: networkId } });
+      if (guardianActivity) await guardianActivity.onReady();
     } }, balanceReader: {}, transfers: { cancel() {} }, tokens: {}, activity: {},
-    trezor: trezorLifecycle(), connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
+    trezor: trezorLifecycle(), connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => connectionState,
+      subscribe(listener: () => void) { connectionObservers.add(listener); return () => { connectionObservers.delete(listener); }; }, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     async saveIdlePreference() { assert.fail('Navigation must not change auto-lock preferences'); },
     keyExport: { cancel() {}, dispose() {} }, backup: {
@@ -487,7 +526,9 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       accounts: { getSnapshot: () => catalogue },
       networks: { getSelectedId: () => catalogue.active.networkId,
         reserve(id: string, revision: number) { return { cancel() {}, async execute(check: () => void) {
-          await networkLifecycle.wait; check();
+          await networkLifecycle.wait;
+          if (networkLifecycle.onSelectingNetwork) await networkLifecycle.onSelectingNetwork();
+          check();
           const target = networkContext.getNativeNetwork(id);
           catalogue = { ...catalogue, revision: revision + 1, active: { ...catalogue.active, networkId: id } };
           return { sourceCatalogueRevision: revision, target, selection: { ...catalogue.active, address },
@@ -507,7 +548,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, resume: () => false, step: { phase: 'select' }, exportStep: { phase: 'select' } as { phase: 'select' | 'saved'; noteCount?: number }, busy: false, error: '',
-    begin(mode: string) { assert(depositMode && mode === 'export'); return true; } };
+    begin(mode: string) { assert(depositMode && mode === 'export'); return true; }, leaveExport: () => true };
   Object.assign(dependencies, {
     ...walletScreenPorts,
     '../notifications/permissionReturn': { NotificationPermissionReturn },
@@ -541,6 +582,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' }, './NativeSecurity': { NativeSecurity: 'NativeSecurity' },
     './AutoLockSettings': { AutoLockSettings: 'AutoLockSettings' }, './RealSettings': { RealSettings: 'RealSettings' },
     './RealTools': { RealTools: 'RealTools' }, './RealAppShell': { RealAppShell: 'RealAppShell' },
+    './NativeConnections': { NativeConnections: 'NativeConnections', NativeCallsStatus: 'NativeCallsStatus' },
+    './NativeTransactionReview': { NativeTransactionReviewScreen: 'NativeTransactionReviewScreen' },
     './NativePrivateDeposit': { NativePrivateDeposit: 'NativePrivateDeposit' },
     './NativeNoteExport': { NativeNoteExport: 'NativeNoteExport', NativeNoteFilesMenu: 'NativeNoteFilesMenu' },
     '../../../../source/utils/privacy/registry': { PRIVACY_CHAIN_ID: 1 },
@@ -548,9 +591,17 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './NativeRecovery': { NativeRecovery: 'NativeRecovery' }, './NativeNoteRestore': { NoteRestoreUnconfirmedNotice: 'NoteRestoreUnconfirmedNotice' },
     '../custody/networkView': { createNativeNetworkView: networkMode ? createNativeNetworkView : () => ({}) },
     './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore },
-    './useRealShell': { useRealShell: () => ({ tab: shellTab, navigation: {}, goBack() {}, select(tab: string) { shellTab = tab; notificationRoutes.push({ tab, identity: 'tab-switch' }); }, restoreRoot(tab: string, identity: string) { shellTab = tab; notificationRoutes.push({ tab, identity }); } }) },
+    './useRealShell': { useRealShell: (_identity: unknown, _current: unknown, _exit: unknown, onNavigation: (explicit: boolean) => void) => {
+      const select = (tab: string) => { onNavigation(true); shellTab = tab; notificationRoutes.push({ tab, identity: 'tab-switch' }); };
+      return { tab: shellTab, immersive: shellImmersive, navigation: {}, goBack() { select('wallet'); }, select, finishLeave: select,
+        restoreRoot(tab: string, identity: string) { shellTab = tab; notificationRoutes.push({ tab, identity }); } };
+    } },
     './AllNetworksActivity': { AllNetworksActivity: 'AllNetworksActivity' },
   });
+  if (idleClock) dependencies['../platform/credential'] = {
+    async authorizePublicView(signal: AbortSignal, check: () => void) { signal.throwIfAborted(); check(); },
+    isNativeCredentialPromptActive: () => false,
+  };
   if (restoreFailure) {
     const file = await createNoteBackupCodec({ crypto: globalThis.crypto, assertCurrent() {} }).encrypt({
       format: 'pali-private-notes', version: 1, createdAt: 1,
@@ -562,7 +613,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         check();
         return { begin: () => 'restore-preview', cancel() {}, async prepareImport() {
           check(); return { id: 'restore-preview', added: 1, duplicates: 0, guarded: 0, expiresAt: performance.now() + 10000 };
-        }, async commitImport() { check(); restoreFailure.commits++; throw Error('BACKUP_COMMIT_UNCONFIRMED'); } };
+        }, async commitImport() { check(); restoreFailure.commits++; await restoreFailure.wait; throw Error('BACKUP_COMMIT_UNCONFIRMED'); } };
       },
     });
     dependencies['./NativeNoteRestore'] = { NativeNoteRestore: 'NativeNoteRestore', NoteRestoreUnconfirmedNotice: 'NoteRestoreUnconfirmedNotice' };
@@ -575,7 +626,17 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     });
   }
   const Root = evaluate(source, dependencies).NativeWalletContent as (props: object) => Element;
-  const props = { controllerRef: { current: null }, initialAccountId: publicNavigation?.initialAccountId, onExit() { exits++; } };
+  const props = { controllerRef: { current: null }, initialAccountId: publicNavigation?.initialAccountId, onExit() { exits++; },
+    onExplicitNavigation() {
+      const { pendingEventId, tapRevision } = notificationPort.getSnapshot();
+      if (pendingEventId && tapRevision !== undefined) notificationPort.consumeTap(pendingEventId, tapRevision);
+    },
+    registerNotificationNavigationGuard(isBlocked: () => boolean, subscribe: (listener: () => void) => () => void) {
+      notificationNavigationBlocked = isBlocked;
+      const unsubscribe = subscribe(() => { notificationNavigationChanges++; });
+      return () => { unsubscribe(); notificationNavigationBlocked = undefined; };
+    },
+  };
   const render = () => root.renderOwner(Root, props);
   render(); await new Promise((resolve) => setImmediate(resolve));
   if (realAuthority) { await realAuthority.unlock(); render(); renderTransition = render; }
@@ -586,7 +647,11 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, noteRestore, notificationRoutes, publicViewLock: root.idle.security.publicViewLock,
+  return { render, unlock, publish, noteRestore, notificationRoutes,
+    setShellImmersive(value: boolean) { shellImmersive = value; },
+    setConnectionState(patch: Partial<typeof connectionState>) { connectionState = { ...connectionState, ...patch }; connectionObservers.forEach(listener => listener()); },
+    notificationNavigationBlocked: () => notificationNavigationBlocked?.(), notificationNavigationChanges: () => notificationNavigationChanges,
+    publicViewLock: root.idle.security.publicViewLock,
     exits: () => exits, state: () => state, setExit(action: () => void) { props.onExit = action; }, listeners: root.listeners,
     holdSetup(operation: () => Promise<void>) { setupOperation = operation; },
     prompt(operation: () => Promise<void>) { return authentication.run(null, operation); },
@@ -616,6 +681,45 @@ for (const route of ['create', 'import'] as const) for (const action of ['header
       }
     } finally { f.dispose(); }
   });
+
+for (const [code, feedback] of [
+  ['CANCELLED', 'Request cancelled. You can try again.'],
+  ['OPERATION_FAILED', 'Wallet setup was not completed'],
+]) test(`first-time import shows ${code} on the cleared phrase entry`, async () => {
+  const f = await walletFeedbackFixture(false, true);
+  const entry = screenFixture(new URL('../src/screens/NativeImportWallet.tsx', import.meta.url), 'NativeImportWallet', {
+    '../../../../source/shared/recoveryPhrase': recoveryPhrase,
+    'react-native': f.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    '../ui': { colors: {}, ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'SegmentedControl', 'Text'].map(name => [name, name])) },
+    './IdleActivityBoundary': { IdleTextInput: 'TextInput' },
+  });
+  const phrase = 'abandon '.repeat(11) + 'about';
+  try {
+    f.holdSetup(async () => {
+      f.publish({ phase: 'authenticating', error: null });
+      f.publish({ phase: 'empty', error: code });
+      throw Error(code);
+    });
+    press(row(f.render(), 'Import existing wallet'));
+    (f.render().props.onConfirmed as (value: string) => void)(phrase);
+    press(button(f.render(), 'Import wallet'));
+    await lifecycleTick();
+    const fallback = f.render();
+    assert.equal(fallback.type, 'NativeImportWallet');
+    assert.equal(f.exits(), 0);
+    entry.render(fallback.props);
+    const form = entry.render(fallback.props);
+    const inputs = all(form).filter(node => node.type === 'TextInput');
+    assert.equal(inputs.length, 12);
+    assert(inputs.every(input => input.props.value === ''));
+    assert.equal(button(form, 'Check phrase').props.disabled, true);
+    assert.deepEqual(all(form).find(node => node.props.accessibilityRole === 'alert')?.children, [feedback]);
+    assert.match(text(form), /Enter each word in order to restore your wallet/);
+    assert.doesNotMatch(text(form), /abandon/);
+    (fallback.props.onConfirmed as (value: string) => void)(phrase);
+    assert.equal(all(f.render()).some(node => node.props.title === 'Wallet setup was not completed'), false);
+  } finally { entry.close(); f.dispose(); }
+});
 
 for (const route of ['create', 'import'] as const) test(`abandoned empty ${route} setup returns through Welcome once after background`, async () => {
   const f = await walletFeedbackFixture(false, true);
@@ -844,7 +948,8 @@ test('a changed requested native account is selected on the mounted public walle
 });
 
 for (const backup of ['confirmed', 'unconfirmed'] as const) test(`missing device credential opens phrase recovery with ${backup} backup`, async () => {
-  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm');
+  const tap = notificationTapPort('recovery-started', Promise.resolve(), 'watch');
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
   try {
     const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
     (home.props.onSecurity as () => void)(); f.render();
@@ -853,7 +958,11 @@ for (const backup of ['confirmed', 'unconfirmed'] as const) test(`missing device
     await new Promise(resolve => setImmediate(resolve));
     const security = all(f.render()).find(node => node.type === 'NativeSecurity'); assert(security);
     assert.equal(typeof security.props.onRestoreAccess, 'function');
+    tap.tapAgain();
     (security.props.onRestoreAccess as () => void)();
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    tap.tapAgain();
+    assert.equal(f.notificationNavigationBlocked(), true);
     const recovery = f.render(); assert.equal(recovery.type, 'NativeRecovery');
     const flow = recovery.props.flow as NativeRecoveryFlow;
     flow.start(); await new Promise(resolve => setImmediate(resolve));
@@ -1419,7 +1528,8 @@ test('Sentry settings handles a synchronous stale-at-open failure without a read
 
 
 test('ambiguous note restore retains its recovery instructions on the public reopen screen', async () => {
-  const failure = { commits: 0 };
+  const acknowledgement = Promise.withResolvers<void>();
+  const failure = { commits: 0, wait: acknowledgement.promise };
   const f = await walletFeedbackFixture(false, false, undefined, undefined, true, undefined, undefined,
     quietActivityNotifications, undefined, undefined, failure);
   try {
@@ -1435,7 +1545,13 @@ test('ambiguous note restore retains its recovery instructions on the public reo
     restore = f.render();
     const step = restore.props.step as { phase: string; preview: { id: string } };
     assert.equal(step.phase, 'review');
-    await (restore.props.onRestore as (id: string) => Promise<void>)(step.preview.id);
+    const commit = (restore.props.onRestore as (id: string) => Promise<void>)(step.preview.id);
+    (restore.props.onBack as () => void)();
+    const committing = f.render();
+    assert.equal(committing.type, 'NativeNoteRestore', 'a Back callback captured before the busy render cannot leave the commit');
+    assert.equal(committing.props.busy, true);
+    acknowledgement.resolve();
+    await commit;
     const locked = f.render();
     assert.equal(button(locked, 'Open wallet').props.disabled, false);
     assert(!all(locked).some(node => node.type === 'PinEntryScreen'));
@@ -1449,7 +1565,43 @@ test('ambiguous note restore retains its recovery instructions on the public reo
     assert.equal(button(retry, 'Open wallet').props.disabled, false);
     assert(all(retry).some(node => node.props.title === 'Restore could not be confirmed'), 'a failed unlock must retain the restore warning');
     assert.equal(failure.commits, 1, 'unlock retry must not repeat the restore');
-  } finally { f.dispose(); }
+  } finally { acknowledgement.resolve(); f.dispose(); }
+});
+
+test('elapsed auto-lock preserves an interrupted restore outcome for the same wallet after unlock', async () => {
+  const acknowledgement = Promise.withResolvers<void>();
+  const restore = { commits: 0, wait: acknowledgement.promise };
+  const clock = { minutes: 5, time: 0 };
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, true, undefined, undefined,
+    quietActivityNotifications, undefined, undefined, restore, undefined, undefined, clock);
+  try {
+    const tools = all(f.render()).find(node => node.type === 'RealTools'); assert(tools);
+    (tools.props.onPrivateNotes as () => void)();
+    (f.render().props.onRestore as () => void)();
+    await (f.render().props.onChoose as () => Promise<void>)();
+    await (f.render().props.onOpen as (password: string) => Promise<void>)('Portable test backup password');
+    const review = f.render();
+    const step = review.props.step as { phase: string; preview: { id: string } };
+    assert.equal(step.phase, 'review');
+    const pending = (review.props.onRestore as (id: string) => Promise<void>)(step.preview.id);
+    assert.equal(restore.commits, 1);
+
+    clock.time = 10000; f.emit('change', 'background'); f.render();
+    clock.time = 310000; f.emit('change', 'active'); await lifecycleTick();
+    const locked = f.render();
+    assert.equal(f.publicViewLock.getSnapshot().phase, 'locked');
+    assert.notEqual(locked.type, 'NativeNoteRestore');
+    press(button(locked, 'Unlock wallet'));
+    await lifecycleTick();
+    assert.equal(f.publicViewLock.getSnapshot().phase, 'unlocked');
+    const outcome = f.render();
+    assert.equal(outcome.type, 'NativeNoteRestore');
+    assert.equal((outcome.props.step as { phase: string }).phase, 'unconfirmed');
+
+    acknowledgement.resolve(); await pending;
+    assert.equal((f.render().props.step as { phase: string }).phase, 'unconfirmed');
+    assert.equal(restore.commits, 1);
+  } finally { acknowledgement.resolve(); f.dispose(); }
 });
 
 test('private deposit backup returns its public task and discards stale export callbacks', async () => {
@@ -1577,6 +1729,24 @@ test('resumed Trezor SPT drafts never label native funds as tokens while native 
   }
 });
 
+test('Trezor replacement resumes into the original transaction route with its fee preference', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'utxo', undefined, quietActivityNotifications, undefined, { nativeUnits: '125000001' });
+  try {
+    const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
+    ((home.props.hardwareRequest as Element).props.onResume as () => void)();
+    const trezor = f.render(); assert.equal(trezor.type, 'NativeTrezor');
+    const resume = {
+      id: 'rbf-resume', accountId: 'hd:60:0', networkId: 'syscoin', kind: 'utxo-replacement',
+      replacement: { txid: 'a'.repeat(64), mode: 'cancel' }, feeChoice: { kind: 'custom', satPerVbyte: '7' },
+    } satisfies NativeTrezorResumeIntent;
+    await (trezor.props.onResumeSend as (intent: NativeTrezorResumeIntent) => Promise<void>)(resume);
+    const send = f.render(); assert.equal(send.type, 'NativeUtxoSendScreen');
+    assert.deepEqual(send.props.replacement, resume.replacement);
+    assert.deepEqual(send.props.initialReplacementFeeChoice, resume.feeChoice);
+    assert.equal(send.props.initialDraft, undefined);
+  } finally { f.dispose(); }
+});
+
 test('same-network asset changes preserve recipient but clear amount, MAX, and advanced draft state', async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm');
   try {
@@ -1629,20 +1799,69 @@ test('Receive network selection returns to the canonical address and does not re
 function notificationTapPort(kind: 'transaction-confirmed' | 'recovery-started', wait = Promise.resolve(), accountType = 'HDAccount') {
   const eventId = `pali-alert-${'ab'.repeat(16)}`, network = networkContext.getNativeNetwork('syscoin-nevm');
   const scope = { id: 'native:hd:60:0:syscoin-nevm', accountId: 'hd:60:0', accountType, accountAddress: '0x' + '11'.repeat(20), network, guardian: false };
-  let state = { ...quietActivityNotifications.getSnapshot(), pendingEventId: eventId as string | null };
+  let state = { ...quietActivityNotifications.getSnapshot(), pendingEventId: eventId as string | null, tapRevision: 1 };
   let resolutions = 0;
   const port: NotificationTestPort = {
     ...quietActivityNotifications, getSnapshot: () => state,
     async getPendingOwner() { return { accountId: scope.accountId, accountType }; },
-    async resolveTapAfterUnlock(_id, validate) {
+    async readTapAfterUnlock(_id, _revision, validate) {
       resolutions++; await wait;
       if (!validate(scope)) return null;
-      state = { ...state, pendingEventId: null };
       return { scopeId: scope.id, accountId: scope.accountId, accountType, networkId: network.id, kind, transactionHash: '0x' + 'ab'.repeat(32) };
     },
+    consumeTap(id, revision) {
+      if (state.pendingEventId === id && state.tapRevision === revision) state = { ...state, pendingEventId: null };
+    },
   };
-  return { port, resolutions: () => resolutions };
+  return { port, resolutions: () => resolutions, tapAgain() { state = { ...state, pendingEventId: eventId, tapRevision: state.tapRevision + 1 }; } };
 }
+
+test('a source sheet and Receive warning each defer a native alert until both close', async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('transaction-confirmed', held.promise);
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio')!;
+    const sourceNavigation = portfolio.props.onSourceNavigationChange as (active: boolean) => void;
+    await settle();
+    assert.equal(tap.resolutions(), 1);
+    sourceNavigation(true);
+    held.resolve(); await settle(); f.render(); await settle();
+    assert.equal(f.notificationNavigationBlocked(), true);
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+    assert.deepEqual(f.notificationRoutes, []);
+    const receiveWarning = portfolio.props.onReceiveWarningChange as (active: boolean) => void;
+    receiveWarning(true);
+    tap.tapAgain();
+    sourceNavigation(false); f.render(); await settle();
+    assert.equal(f.notificationNavigationBlocked(), true);
+    assert.equal(tap.resolutions(), 1);
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+    receiveWarning(false); f.render(); await settle();
+    assert.equal(tap.resolutions(), 2);
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    assert.equal(f.selectedNetwork(), 'syscoin-nevm');
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('manual Send retires the prior watch tap and defers a later tap until the draft closes', async () => {
+  const tap = notificationTapPort('transaction-confirmed', Promise.resolve(), 'watch');
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  try {
+    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio')!;
+    (portfolio.props.onSend as () => void)();
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    assert.equal(f.notificationNavigationBlocked(), true);
+    tap.tapAgain();
+    const send = f.render();
+    assert.equal(send.type, 'NativeSend');
+    assert.equal(f.notificationNavigationBlocked(), true);
+    (send.props.onBack as () => void)();
+    f.render();
+    assert.equal(f.notificationNavigationBlocked(), false);
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+  } finally { f.dispose(); }
+});
 
 for (const kind of ['transaction-confirmed', 'recovery-started'] as const) test(`native ${kind} tap selects its exact network before opening the public destination`, async () => {
   const tap = notificationTapPort(kind);
@@ -1655,6 +1874,187 @@ for (const kind of ['transaction-confirmed', 'recovery-started'] as const) test(
   } finally { f.dispose(); }
 });
 
+for (const repeatDuringLookup of [false, true]) test(`a repeat native tap retries an unavailable owner ${repeatDuringLookup ? 'during' : 'after'} the lookup`, async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('transaction-confirmed');
+  const getOwner = tap.port.getPendingOwner;
+  let lookups = 0;
+  tap.port.getPendingOwner = async () => {
+    if (++lookups === 1) { await held.promise; throw Error('Monitoring metadata temporarily unavailable'); }
+    return getOwner();
+  };
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.render(); await settle();
+    assert.equal(lookups, 1);
+    if (!repeatDuringLookup) { held.resolve(); await settle(); f.render(); await settle(); }
+    assert.equal(lookups, 1);
+    tap.tapAgain(); f.render(); await settle();
+    if (repeatDuringLookup) {
+      assert.equal(lookups, 1, 'the pending lookup owns the transition');
+      held.resolve(); await settle(); f.render(); await settle();
+    }
+    assert.equal(lookups, 2);
+    assert.equal(tap.resolutions(), 1);
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('a failed post-lookup network selection keeps its alert pending without looping', async () => {
+  const tap = notificationTapPort('transaction-confirmed');
+  let attempts = 0;
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port, {
+    async onSelectingNetwork() { if (++attempts === 1) throw Error('Temporary network selection failure'); },
+  });
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.render(); await settle(); f.render(); await settle();
+    assert.equal(attempts, 1);
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+    assert.deepEqual(f.notificationRoutes, []);
+    assert.equal(f.state().phase, 'locked');
+    f.emit('change', 'background'); f.render();
+    f.emit('change', 'active'); await settle(); f.render(); await settle();
+    assert.equal(attempts, 2);
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+  } finally { f.dispose(); }
+});
+
+for (const [field, name] of [['signingReview', 'signing review'], ['callsStatus', 'calls status dialog']] as const)
+test(`a ${name} arriving during an alert lookup keeps the active network until it closes`, async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('transaction-confirmed', held.promise);
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.render(); await settle();
+    assert.equal(tap.resolutions(), 1);
+    assert.equal(f.notificationNavigationBlocked(), false);
+    f.setConnectionState(field === 'signingReview'
+      ? { signingReview: { id: 'incoming-request', kind: 'transaction' } }
+      : { callsStatus: { id: 'calls-status', origin: 'https://example.com',
+        status: { atomic: true, chainId: '0x1', id: '0xab', status: 100, version: '2.0.0' } } });
+    assert.equal(f.notificationNavigationBlocked(), true);
+    assert.equal(f.notificationNavigationChanges(), 1);
+    const tree = f.render();
+    assert.equal(tree.type, field === 'callsStatus' ? 'NativeCallsStatus' : 'NativeTransactionReviewScreen');
+    held.resolve(); await settle(); f.render(); await settle();
+    assert.equal(f.selectedNetwork(), 'ethereum');
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+    assert.deepEqual(f.notificationRoutes, []);
+    assert.equal(tap.resolutions(), 1);
+    f.setConnectionState({ [field]: null });
+    assert.equal(f.notificationNavigationBlocked(), false);
+    assert.equal(f.notificationNavigationChanges(), 2);
+    f.render(); await settle();
+    assert.equal(f.selectedNetwork(), 'syscoin-nevm');
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
+  } finally { held.resolve(); f.dispose(); assert.equal(f.notificationNavigationBlocked(), undefined); }
+});
+
+test('native alert routing waits for Connections startup and proceeds if Connections becomes unavailable', async () => {
+  const tap = notificationTapPort('transaction-confirmed');
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.setConnectionState({ status: 'locked' }); f.render(); await settle();
+    assert.equal(f.notificationNavigationBlocked(), false, 'a locked controller owns no review in the parent');
+    assert.equal(f.selectedNetwork(), 'ethereum');
+    assert.deepEqual(f.notificationRoutes, []);
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+    f.setConnectionState({ status: 'unavailable' }); f.render(); await settle();
+    assert.equal(f.selectedNetwork(), 'syscoin-nevm');
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
+  } finally { f.dispose(); }
+});
+
+test('the parent alert guard stays held while WalletConnect switches the review account', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm');
+  try {
+    const account = f.state().account;
+    const review = { id: 'incoming-request', kind: 'transaction' };
+    f.render();
+    f.setConnectionState({ signingReview: review });
+    assert.equal(f.render().type, 'NativeTransactionReviewScreen');
+    assert.equal(f.notificationNavigationChanges(), 1);
+
+    f.publish({ phase: 'authenticating', account: null });
+    f.setConnectionState({ status: 'locked', signingReview: null });
+    assert.equal(f.notificationNavigationBlocked(), true);
+    f.render();
+    assert.equal(f.notificationNavigationChanges(), 1);
+
+    f.setConnectionState({ status: 'ready', signingReview: review });
+    f.publish({ phase: 'ready', account });
+    assert.equal(f.render().type, 'NativeTransactionReviewScreen');
+    assert.equal(f.notificationNavigationChanges(), 1);
+
+    f.setConnectionState({ signingReview: null });
+    assert.equal(f.notificationNavigationBlocked(), false);
+    assert.equal(f.notificationNavigationChanges(), 2);
+  } finally { f.dispose(); }
+});
+
+for (const invalidateScope of [false, true]) test(`Guardian and Activity retain the alert guard through both account handoffs (${invalidateScope ? 'invalidated scope' : 'committed pane'})`, async () => {
+  const tap = notificationTapPort('transaction-confirmed', Promise.resolve(), 'watch');
+  const toActivity = { selecting: Promise.withResolvers<void>(), ready: Promise.withResolvers<void>() };
+  const toGuardian = { selecting: Promise.withResolvers<void>(), ready: Promise.withResolvers<void>() };
+  let transition = toActivity;
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port,
+    undefined, undefined, undefined, undefined, { guardianActivity: {
+      onSelecting: () => transition.selecting.promise, onReady: () => transition.ready.promise,
+    } });
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    const tools = all(f.render()).find(node => node.type === 'RealTools')!;
+    const recovery = tools.props.guardianRecovery as { recovery: { onActivity(id: string, chainId: number, hash: string): Promise<void> } };
+    const opening = recovery.recovery.onActivity('hd:60:0', 1, '0x' + 'ab'.repeat(32));
+    void opening.catch(() => undefined);
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    tap.tapAgain(); f.render();
+    assert.equal(f.notificationNavigationBlocked(), true);
+
+    toActivity.selecting.resolve(); await settle(); f.render();
+    assert.equal(f.state().phase, 'ready');
+    assert.equal(f.notificationNavigationBlocked(), true);
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+    toActivity.ready.resolve(); await opening;
+    assert.equal(f.notificationNavigationBlocked(), true);
+    const activity = f.render();
+    assert.equal(f.notificationNavigationBlocked(), false);
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:ethereum' }]);
+
+    transition = toGuardian;
+    press(button(activity, 'Return to recovery'));
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    tap.tapAgain(); f.render();
+    assert.equal(f.notificationNavigationBlocked(), true);
+    toGuardian.selecting.resolve(); await settle(); f.render();
+    assert.equal(f.state().phase, 'ready');
+    assert.equal(f.notificationNavigationBlocked(), true);
+
+    toGuardian.ready.resolve(); await settle();
+    const restored = all(f.render()).find(node => node.type === 'RealTools')!;
+    assert.ok(restored.props.initialGuardianScope);
+    assert.equal(f.notificationRoutes.at(-1)?.tab, 'tools');
+    assert.equal(f.notificationNavigationBlocked(), true);
+    if (invalidateScope) {
+      f.publish({ revision: f.state().revision + 1 }); f.render();
+    } else {
+      f.setShellImmersive(true); f.render();
+      assert.equal(f.notificationNavigationBlocked(), true);
+      f.setShellImmersive(false); f.render();
+    }
+    assert.equal(f.notificationNavigationBlocked(), false);
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+  } finally {
+    for (const { selecting, ready } of [toActivity, toGuardian]) { selecting.resolve(); ready.resolve(); }
+    f.dispose();
+  }
+});
+
 test('native tap resolution cannot select a network after background revocation', async () => {
   const held = Promise.withResolvers<void>(), tap = notificationTapPort('transaction-confirmed', held.promise);
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
@@ -1663,6 +2063,40 @@ test('native tap resolution cannot select a network after background revocation'
     f.emit('change', 'background'); held.resolve(); await new Promise(resolve => setImmediate(resolve)); f.render();
     assert.equal(f.selectedNetwork(), 'ethereum'); assert.deepEqual(f.notificationRoutes, []);
   } finally { f.dispose(); }
+});
+
+test('Back from native Settings declines the held alert until a new tap', async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('transaction-confirmed', held.promise);
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port, { tab: 'settings' });
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.render(); await settle();
+    assert.equal(tap.resolutions(), 1);
+    f.hardware(); f.render();
+    held.resolve(); await settle(); f.render();
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    assert.equal(f.selectedNetwork(), 'ethereum');
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'wallet', identity: 'tab-switch' }]);
+    tap.tapAgain(); f.render(); await settle(); f.render();
+    assert.equal(tap.resolutions(), 2);
+    assert.deepEqual(f.notificationRoutes.at(-1), { tab: 'activity', identity: 'hd:60:0:syscoin-nevm' });
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('a newer same-ID guardian tap retires the earlier native route before selecting its network', async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('recovery-started', held.promise);
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.render(); await settle();
+    assert.equal(tap.resolutions(), 1);
+    tap.tapAgain(); f.render(); held.resolve(); await settle();
+    assert.equal(f.selectedNetwork(), 'ethereum');
+    assert.deepEqual(f.notificationRoutes, []);
+    f.render(); await settle();
+    assert.equal(tap.resolutions(), 2);
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'tools', identity: 'hd:60:0:syscoin-nevm' }]);
+  } finally { held.resolve(); f.dispose(); }
 });
 
 type RootNavigationAction = 'native' | 'token' | 'receive' | 'asset' | 'activity' | 'speed-up';
@@ -1930,7 +2364,8 @@ for (const leave of ['header', 'android', 'done', 'complete-android'] as const) 
     else {
       press(button(tree, 'Continue')); tree = f.render(); assert.equal(tree.type, 'BackupVerification');
       // The internal verification Back step still returns to the displayed phrase.
-      (tree.props.onBack as () => void)(); assert.match(text(f.render()), /abandon/);
+      if (leave === 'complete-android') f.hardware(); else (tree.props.onBack as () => void)();
+      assert.match(text(f.render()), /abandon/);
       press(button(f.render(), 'Continue')); tree = f.render();
       (tree.props.onConfirm as (answers: readonly string[]) => void)([...Array(11).fill('abandon'), 'about']);
       await lifecycleTick(); tree = f.render(); assert.match(text(tree), /Backup complete/);

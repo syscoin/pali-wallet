@@ -13,7 +13,7 @@ export const LogoHeader: React.FC = () => {
       <img
         src={paliIcon}
         className="max-w-40 mt-4 mx-auto w-40 h-40"
-        alt="Pali Wallet"
+        alt="Pali"
       />
       <div className="text-center">
         <CanaryBadge />

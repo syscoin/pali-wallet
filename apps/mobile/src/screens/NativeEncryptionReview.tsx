@@ -75,7 +75,7 @@ export function NativeEncryptionReviewScreen({ review, controller }: {
   const plaintext = previewScope === scope ? preview : null;
   return <SafeAreaView edges={['top', 'bottom']} style={s.container}><Screen footer={<>
     {!review.dispatched && <Button title={review.needsAccountSwitch ? t('connections.switchAccount') : t('buttons.confirm')} disabled={review.busy || !!review.error} onPress={() => { void perform('approve'); }} />}
-    <Button title={t('buttons.cancel')} variant="secondary" onPress={reject} />
+    <Button title={t(review.dispatched ? 'buttons.close' : 'buttons.cancel')} variant="secondary" onPress={reject} />
   </>}>
     <Header title={t(decrypt ? 'send.decrypt' : 'send.encryptKey')} onBack={reject} />
     <Card style={s.card}>
@@ -97,7 +97,7 @@ export function NativeEncryptionReviewScreen({ review, controller }: {
         <Button title={t('transactions.copyMessage')} icon="copy" variant="secondary" onPress={() => { void perform('copy'); }} />
       </>}
     </Card>}
-    {(error || review.error) && <Notice title={t(decrypt ? 'send.decrypt' : 'send.encryptKey')} body={error ?? t(review.error === 'BLOCKED_SITE' ? 'mobile.connections.blocked' : review.error === 'SITE_MISMATCH' ? 'mobile.connections.mismatch' : review.error === 'DELIVERY_UNCERTAIN' ? 'mobile.connections.deliveryUncertain' : 'mobile.connections.unavailable')} />}
+    {(error || review.error) && <Notice title={t(decrypt ? 'send.decrypt' : 'send.encryptKey')} body={error ?? t(review.error === 'BLOCKED_SITE' ? 'mobile.connections.blocked' : review.error === 'SITE_MISMATCH' ? 'mobile.connections.mismatch' : review.error === 'DELIVERY_UNCERTAIN' ? 'mobile.connections.psbt.deliveryBody' : 'mobile.connections.unavailable')} />}
 
   </Screen></SafeAreaView>;
 }

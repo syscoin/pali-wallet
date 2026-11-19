@@ -2,7 +2,7 @@
 title: Pali란 무엇인가요?
 ---
 
-Pali Wallet은 공식 Syscoin wallet extension이며 EVM-compatible 체인을 위한 범용 web3 wallet입니다. Pali는 서로 겹치는 세 유형의 사용자를 위해 설계되었습니다.
+Pali은 공식 Syscoin wallet extension이며 EVM-compatible 체인을 위한 범용 web3 wallet입니다. Pali는 서로 겹치는 세 유형의 사용자를 위해 설계되었습니다.
 
 - **일반 사용자**: EVM, Syscoin, Rollux, UTXO asset을 위한 안전한 브라우저 지갑을 원하는 사용자.
 - **Dapp 개발자**: 같은 extension에서 MetaMask-compatible EVM access와 UTXO access를 모두 원하는 개발자.

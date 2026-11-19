@@ -32,6 +32,7 @@ import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex, walletPersistenceMutex } from 'utils/asyncMutex';
 import * as privacyClient from 'utils/privacy/client';
+import { PRIVACY_DEPOSIT_GAS_LIMIT } from 'utils/privacy/depositFees';
 import * as completion from 'utils/privacy/spentCompletion';
 import type { IPrivacyTransactionsHost } from 'utils/privacy/transactionTypes';
 import { chromeStorage } from 'utils/storageAPI';
@@ -456,6 +457,31 @@ it('never retries an ambiguous note-file commit', async () => {
   expect(readCommitReceipt).toHaveBeenCalledTimes(1);
 });
 
+it('overlays only the selected payer’s pending note after vault reconciliation', async () => {
+  const { wallet } = depositFixture();
+  const notes = [{ id: 'note-a' }, { id: 'note-b' }];
+  const reconcile = jest.fn(async () => ({ notes }));
+  wallet.getPrivateVaultController = async () => ({
+    reconcileUnsignedWithdrawals: reconcile,
+  });
+  const lookup = jest.fn(async (session, payer) => {
+    session.assertCurrent();
+    expect(payer).toBe('0x' + '11'.repeat(20));
+    expect(reconcile).toHaveBeenCalled();
+    return new Set(['note-a']);
+  });
+  wallet.getRetainedEvmRecords = () => ({
+    pendingPrivacyWithdrawalNotes: lookup,
+  });
+  expect((await wallet.getPrivateVaultNotes()).notes).toEqual([
+    { id: 'note-a', withdrawalPending: true },
+    { id: 'note-b' },
+  ]);
+  expect(lookup).toHaveBeenCalledTimes(1);
+  lookup.mockResolvedValueOnce(new Set());
+  expect((await wallet.getPrivateVaultNotes()).notes).toEqual(notes);
+});
+
 it('does not transfer an admitted request across a delayed chunk load', async () => {
   const { wallet } = fixture();
   const entered = deferred();
@@ -650,22 +676,22 @@ it('preserves the captured deposit guard identity while cloning the public conte
   });
 });
 
-it('prepares exact deposit gas and maximum fee through the captured provider without signing', async () => {
+it('keeps deposit calldata off RPC during review and estimates the approved envelope on confirm', async () => {
   const { wallet, provider, vault } = depositFixture();
   const review = await wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+  const gasCap = BigInt(PRIVACY_DEPOSIT_GAS_LIMIT);
+  const commitment = '01'.repeat(32);
   expect(review).toMatchObject({
     chainId: 1,
-    gasLimit: '120002',
+    gasLimit: String(gasCap),
     nonce: '7',
-    maxNetworkFeeWei: '720012',
-    maxTotalWei: '1000000000000720012',
+    maxNetworkFeeWei: String(gasCap * BigInt(6)),
+    maxTotalWei: String(BigInt('1000000000000000000') + gasCap * BigInt(6)),
   });
-  expect(provider.estimateGas).toHaveBeenCalledWith(
-    expect.objectContaining({
-      from: review.account.address,
-      value: '0xde0b6b3a7640000',
-    })
-  );
+  expect(provider.estimateGas).not.toHaveBeenCalled();
+  const reviewReads = JSON.stringify(provider.send.mock.calls);
+  expect(reviewReads).not.toContain(commitment);
+  expect(reviewReads).not.toContain('0xb214faa5');
   expect(vault.reserveDepositAttempt).not.toHaveBeenCalled();
   expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   const result = await wallet.submitPrivacyDeposit(review.intentId);
@@ -673,10 +699,21 @@ it('prepares exact deposit gas and maximum fee through the captured provider wit
     phase: 'submitted',
     transactionHash: DEPOSIT_HASH,
   });
+  expect(provider.estimateGas).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: '0xb214faa5' + commitment,
+      from: review.account.address,
+      value: '0xde0b6b3a7640000',
+    })
+  );
   expect(vault.reserveDepositAttempt).toHaveBeenCalledTimes(1);
   expect(vault.recordDepositBroadcast).toHaveBeenCalledTimes(1);
   expect(wallet.sendAndSaveEthTransaction).toHaveBeenCalledWith(
-    expect.objectContaining({ gasLimit: '120002', nonce: '7', type: 2 }),
+    expect.objectContaining({
+      gasLimit: PRIVACY_DEPOSIT_GAS_LIMIT,
+      nonce: '7',
+      type: 2,
+    }),
     false,
     undefined,
     undefined,
@@ -692,11 +729,24 @@ it('prepares exact deposit gas and maximum fee through the captured provider wit
   );
 });
 
+it('discarding a reviewed deposit never emits its calldata or creates a reservation', async () => {
+  const { wallet, provider, vault } = depositFixture();
+  const review = await wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+  await wallet.discardPrivacyDeposit(review.intentId);
+  await expect(wallet.submitPrivacyDeposit(review.intentId)).rejects.toThrow();
+  expect(JSON.stringify(provider.send.mock.calls)).not.toContain('0xb214faa5');
+  expect(provider.estimateGas).not.toHaveBeenCalled();
+  expect(vault.reserveDepositAttempt).not.toHaveBeenCalled();
+  expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+});
+
 it('stops deposit preflight reads after account change and rejects unsupported active accounts', async () => {
   const f = depositFixture();
-  f.provider.estimateGas.mockImplementationOnce(async () => {
+  const send = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementationOnce(async (method, params) => {
+    const result = await send(method, params);
     f.state.vault.activeAccount.id = 1;
-    return BigInt(100000);
+    return result;
   });
   await expect(
     f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' })
@@ -944,7 +994,7 @@ it('retains the shared read-only context for withdrawal callers', () => {
   expect(() => f.wallet.capturePrivacyDepositContext()).not.toThrow();
 });
 
-it('completion proof wiring binds selected RPC and routes only the explicit clear request', async () => {
+it('completion proof wiring binds selected RPC and routes only the explicit clear request for a retained hash', async () => {
   const { wallet, vault } = depositFixture();
   wallet.networkRequestGeneration = 0;
   const expectedResult = {
@@ -953,10 +1003,11 @@ it('completion proof wiring binds selected RPC and routes only the explicit clea
   };
   (vault as any).clearCompletedNotes = jest.fn(async () => expectedResult);
   await expect(
-    wallet.clearPrivateVaultCompletedNotes(expectedResult.removed)
+    wallet.clearPrivateVaultCompletedNotes(expectedResult.removed, 'earlier')
   ).resolves.toEqual(expectedResult);
   expect((vault as any).clearCompletedNotes).toHaveBeenCalledWith(
-    expectedResult.removed
+    expectedResult.removed,
+    'earlier'
   );
   const rpc = jest
     .spyOn(privacyClient, 'readCompletionRpc')
@@ -977,13 +1028,24 @@ it('completion proof wiring binds selected RPC and routes only the explicit clea
       nullifierHash: '0x' + '02'.repeat(32),
     },
     {
-      phase: 'submitted',
-      mode: 'relayed',
-      transactionHash: '0x' + '03'.repeat(32),
-      endpoint: 'https://relay.example',
-      jobId: 'synthetic-job',
+      phase: 'unknown',
+      mode: 'direct',
+      retired: [
+        {
+          phase: 'submitted',
+          mode: 'relayed',
+          transactionHash: '0x' + '03'.repeat(32),
+          endpoint: 'https://relay.example',
+          jobId: 'synthetic-job',
+        },
+        {
+          phase: 'submitted',
+          mode: 'relayed',
+          endpoint: 'https://relay.example',
+          jobId: 'job-without-a-hash',
+        },
+      ],
     },
-    undefined,
     session
   );
   expect(request.withdrawal).toEqual({
@@ -991,6 +1053,8 @@ it('completion proof wiring binds selected RPC and routes only the explicit clea
     mode: 'relayed',
     transactionHash: '0x' + '03'.repeat(32),
   });
+  expect(request).not.toHaveProperty('deposit');
+  expect(request).not.toHaveProperty('retainedWithdrawals');
   const signal = new AbortController().signal;
   await request.rpc('eth_chainId', [], signal);
   expect(rpc).toHaveBeenCalledWith(
@@ -1031,7 +1095,6 @@ it.each([
         mode: 'relayed',
         transactionHash: '0x' + '03'.repeat(32),
       },
-      undefined,
       session
     );
     if (change === 'rpc')
@@ -1045,12 +1108,7 @@ it.each([
   }
 );
 
-it.each([
-  'unknown-withdrawal',
-  'missing-hash',
-  'invalid-direct-nonce',
-  'unknown-deposit',
-])(
+it.each(['unknown-withdrawal', 'missing-hash', 'invalid-direct-nonce'])(
   'completion proof wiring rejects %s before invoking the verifier',
   async (kind) => {
     const { wallet } = depositFixture();
@@ -1062,7 +1120,6 @@ it.each([
       mode: 'relayed',
       transactionHash: '0x' + '03'.repeat(32),
     };
-    let deposit: any;
     if (kind === 'unknown-withdrawal') withdrawal.phase = 'unknown';
     if (kind === 'missing-hash') delete withdrawal.transactionHash;
     if (kind === 'invalid-direct-nonce')
@@ -1071,13 +1128,6 @@ it.each([
         from: '0x' + '11'.repeat(20),
         nonce: 'not-a-nonce',
       });
-    if (kind === 'unknown-deposit')
-      deposit = {
-        phase: 'unknown',
-        transactionHash: '0x' + '04'.repeat(32),
-        from: '0x' + '11'.repeat(20),
-        nonce: '1',
-      };
     await expect(
       wallet.preparePrivateVaultCompletionProof(
         {
@@ -1086,7 +1136,6 @@ it.each([
           nullifierHash: '0x' + '02'.repeat(32),
         },
         withdrawal,
-        deposit,
         session
       )
     ).rejects.toThrow('privacy_spent_proof_unavailable');
@@ -1282,12 +1331,20 @@ it('keeps the durable note restore fence live through the final generic signing 
   expect(f.vault.clearUnbroadcastDepositAttempt).toHaveBeenCalledTimes(1);
 });
 
-it('applies the shared per-transaction gas ceiling to a private deposit quote', async () => {
+it('rejects a deposit that exceeds the approved gas cap before signing', async () => {
   const f = depositFixture();
-  f.provider.estimateGas.mockResolvedValue(BigInt(14000000));
+  f.provider.estimateGas.mockResolvedValue(
+    BigInt(PRIVACY_DEPOSIT_GAS_LIMIT) + BigInt(1)
+  );
   const review = await f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
-  expect(review.gasLimit).toBe('16777216');
+  expect(review.gasLimit).toBe(PRIVACY_DEPOSIT_GAS_LIMIT);
+  expect(f.provider.estimateGas).not.toHaveBeenCalled();
+  await expect(
+    f.wallet.submitPrivacyDeposit(review.intentId)
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  expect(f.provider.estimateGas).toHaveBeenCalledTimes(1);
   expect(f.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  expect(f.vault.clearUnbroadcastDepositAttempt).toHaveBeenCalledTimes(1);
 });
 
 it('requires the captured private session identity before shared fee reads', async () => {

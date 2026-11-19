@@ -4,6 +4,7 @@ import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { AccountActivityController } from '../src/activity/accountActivity.ts';
+import { activityRowKey } from '../src/activity/nativeActivity.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
 import { decodeActivityPage } from '../src/activity/explorerReader.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
@@ -15,7 +16,7 @@ const tick = async () => { for (let n = 0; n < 12; n++) await new Promise<void>(
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 
-function fixture(failures: number) {
+function fixture(failures: number, olderTarget = false, unavailableHistory = false) {
   const networks = ['ethereum', 'rollux'].map(id => getNativeNetwork(id));
   const choices = networks.map(network => ({ label: 'Account 1', networkName: network.name, symbol: network.symbol,
     scope: { id: `hd:60:0:${network.id}`, accountId: 'hd:60:0', accountType: 'HDAccount' as const, accountAddress: address, network, guardian: false } }));
@@ -36,9 +37,11 @@ function fixture(failures: number) {
       async saveCache(_scope, _rows, check) { guard(); check(); },
       async saveView(_scope, _view, check) { guard(); check(); },
     }),
-    explorer: { async page(scope, feed, _page, _signal, guard) { guard(); reads.push(scope.network.id);
-      return feed === 'tokentx' ? [] : decodeActivityPage({ status: '1', result: [{ hash, from: recipient, to: scope.address,
-        value: '1', timeStamp: '1700000000', blockNumber: '10', confirmations: '1', nonce: '0', txreceipt_status: '1' }] }, feed, scope.address, Number(scope.network.chainId));
+    explorer: { async page(scope, feed, page, _signal, guard) { guard(); reads.push(scope.network.id);
+      if (unavailableHistory && scope.network.id === 'rollux' && feed === 'txlist') throw Error('Explorer unavailable');
+      const hashes = olderTarget && page === 1 ? Array.from({ length: 20 }, (_, i) => '0x' + String(i + 1).padStart(64, '0')) : [hash];
+      return feed === 'tokentx' ? [] : decodeActivityPage({ status: '1', result: hashes.map((entry, i) => ({ hash: entry, from: recipient, to: scope.address,
+        value: '1', timeStamp: '1700000000', blockNumber: String(page === 1 ? 100 - i : 50), confirmations: '1', nonce: String(page * 20 + i), txreceipt_status: '1' })) }, feed, scope.address, Number(scope.network.chainId));
     } }, receipts: { async read() { throw Error('No receipt reads expected'); } },
   });
   let cursor = 0, target: { networkId: string; hash: string } | undefined = { networkId: 'rollux', hash };
@@ -68,6 +71,7 @@ function fixture(failures: number) {
     './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen', nativeActivityRowPresentation: () => ({ date: { key: 'today', label: 'Today', time: '' }, direction: 'received', amount: '1', title: 'Received' }) },
     './NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
     '../activity/assetIcon': { activityAssetIcon: () => undefined },
+    '../activity/nativeActivity': { activityRowKey },
   };
   const module = { exports: {} as Record<string, any> };
   const compiled = ts.transpileModule(readFileSync(new URL('../src/screens/AllNetworksActivity.tsx', import.meta.url), 'utf8'), {
@@ -75,13 +79,16 @@ function fixture(failures: number) {
   }).outputText;
   runInNewContext(compiled, { module, exports: module.exports, queueMicrotask, Error,
     require(name: string) { const ui = walletUiFixture(name, imports); if (ui) return ui; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
-  const render = (): Element => { cursor = 0; const tree = module.exports.AllNetworksActivity({ controller, accountLabel: 'Account 1', initialTarget: target }); effects.splice(0).forEach(run => run()); return tree; };
+  let opened = 0;
+  const onInitialTargetOpened = () => { opened++; };
+  const render = (): Element => { cursor = 0; const tree = module.exports.AllNetworksActivity({ controller, accountLabel: 'Account 1', initialTarget: target, onInitialTargetOpened }); effects.splice(0).forEach(run => run()); return tree; };
   const nodes = (value: any): Element[] => {
     if (Array.isArray(value)) return value.flatMap(nodes);
     if (!value || typeof value !== 'object' || !('children' in value)) return [];
-    return [value, ...value.children.flatMap(nodes), ...nodes(value.props.right), ...nodes(value.props.ListHeaderComponent)];
+    return [value, ...value.children.flatMap(nodes), ...nodes(value.props.right), ...nodes(value.props.ListHeaderComponent), ...nodes(value.props.ListFooterComponent)];
   };
-  return { controller, writes, reads, render, nodes,
+  return { controller, writes, reads, render, nodes, opened: () => opened,
+    restoreHistory() { unavailableHistory = false; },
     holdSave(promise: Promise<void>) { heldSave = promise; },
     setTarget(value: typeof target) { target = value; render(); },
     choose(filter: string) {
@@ -100,10 +107,14 @@ test('a deliberate refresh retries the failed exact target after reloading its s
     f.render(); await tick(); f.render(); await tick();
     assert.deepEqual(f.writes, ['rollux']); assert.equal(f.controller.getSnapshot().filter, null); assert(!f.detail());
     await tick(); assert.deepEqual(f.writes, ['rollux'], 'no automatic retry loop');
+    assert.equal(f.opened(), 0);
     f.refresh(); await tick();
     assert.deepEqual(f.writes, ['rollux', 'rollux']);
     assert.equal(f.controller.getSnapshot().filter, 'rollux');
     assert(f.detail());
+    assert.equal(f.opened(), 1);
+    f.setTarget(undefined);
+    assert(f.detail(), 'clearing the route intent keeps the selected detail open');
     assert(f.reads.every(network => network === 'ethereum' || network === 'rollux'));
   } finally { f.close(); }
 });
@@ -138,5 +149,36 @@ test('a deliberate concrete filter choice retires the failed notification target
     assert.deepEqual(f.writes, ['rollux', 'ethereum']);
     assert.equal(f.controller.getSnapshot().filter, 'ethereum');
     assert(!f.detail());
+  } finally { f.close(); }
+});
+
+test('manually loading an older indexed EVM notification leaves the Activity list open', async () => {
+  const f = fixture(0, true);
+  try {
+    f.render(); await tick(); f.render(); await tick();
+    assert.equal(f.opened(), 0);
+    assert(!f.controller.findRow('rollux', hash));
+    const older = f.nodes(f.render()).find(node => node.props.title === 'Load older activity');
+    assert(older && !older.props.disabled); older.props.onPress(); await tick();
+    assert(f.controller.findRow('rollux', hash));
+    assert(!f.detail());
+    assert.equal(f.opened(), 1, 'the host consumes the routing intent');
+    f.setTarget(undefined);
+    f.refresh(); await tick();
+    assert(!f.detail());
+  } finally { f.close(); }
+});
+
+test('retrying unavailable Activity may still open the pending notification', async () => {
+  const f = fixture(0, false, true);
+  try {
+    f.render(); await tick(); f.render(); await tick();
+    assert.equal(f.opened(), 0);
+    assert(!f.controller.findRow('rollux', hash));
+    const retry = f.nodes(f.render()).find(node => node.props.title === 'Retry activity');
+    assert(retry && !retry.props.disabled);
+    f.restoreHistory(); retry.props.onPress(); await tick();
+    assert(f.detail());
+    assert.equal(f.opened(), 1);
   } finally { f.close(); }
 });

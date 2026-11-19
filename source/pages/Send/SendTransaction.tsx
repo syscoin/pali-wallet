@@ -25,11 +25,10 @@ import {
   type EvmDappFeeChoiceFields,
   type EvmDappFeeComparison,
 } from '../../shared/evmDappFeePolicy';
-import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../shared/smartAccountFeeQuote';
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
-import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
@@ -43,6 +42,10 @@ import {
   IApprovedTokenInfos,
   ICustomApprovedAllowanceAmount,
 } from 'types/transactions';
+import {
+  TRANSACTION_APPROVAL_EXPIRED,
+  TRANSACTION_APPROVAL_LOADING,
+} from 'utils/approvalClient';
 import { convertBigNumberToString, isMaxUint256 } from 'utils/bigNumberUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatMethodName } from 'utils/commonMethodSignatures';
@@ -151,9 +154,6 @@ export const SendTransaction = () => {
   const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
-  const { forExecution, feeConfirmation } = useSmartAccountFeeConfirmation(
-    JSON.stringify([currentApprovalWalletContextKey, host, eventName])
-  );
   const [approvedContext] = useState<IEvmTransactionContext>(() => {
     const current = store.getState();
     return (
@@ -287,8 +287,7 @@ export const SendTransaction = () => {
   );
   const [isPqSigning, setIsPqSigning] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
-  const [initialNonceReviewError, setInitialNonceReviewError] =
-    useState<string>();
+  const [initialReviewError, setInitialReviewError] = useState<string>();
   const [tx, setTx] = useState<ITxState>();
   // An untyped request follows its actual quote, including legacy networks.
   const isLegacyTransaction =
@@ -725,7 +724,7 @@ export const SendTransaction = () => {
   currentSmartAccountQuoteKeyRef.current = smartAccountQuoteKey;
   const hasCurrentSmartAccountFeeQuote =
     !isSmartAccountApproval ||
-    (Boolean(fee?.smartAccountFeeQuote) &&
+    (Boolean(fee?.smartAccountFeeQuote?.payerBudget) &&
       feeQuoteKeyRef.current === smartAccountQuoteKey &&
       !feeQuoteNeedsRefresh);
   // Reverse cache name->address
@@ -978,59 +977,6 @@ export const SendTransaction = () => {
         const isPasskeyAccount = Boolean(
           activeAccount.isSmartAccount && activeAccount.smartAccount
         );
-        const getSmartAccountFeeOverrides = ():
-          | SmartAccountFeeOverrides
-          | undefined => {
-          if (!fee) return undefined;
-          if (isLegacyTransaction) {
-            if (!customFee.isCustom && txToSend.gasPrice !== undefined)
-              return { gasPrice: BigNumber.from(txToSend.gasPrice).toString() };
-            const gasPrice =
-              customFee.isCustom && customFee.gasPrice >= 0
-                ? customFee.gasPrice
-                : fee.gasPrice;
-            if (
-              gasPrice === undefined ||
-              !Number.isFinite(gasPrice) ||
-              gasPrice < 0
-            )
-              throw new Error('Invalid smart account legacy fee override');
-            return {
-              gasPrice: parseUnits(safeToFixed(gasPrice), 9).toString(),
-            };
-          }
-
-          const maxPriorityFeePerGas =
-            customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
-              ? customFee.maxPriorityFeePerGas
-              : fee.maxPriorityFeePerGas;
-          const maxFeePerGas =
-            customFee.isCustom && customFee.maxFeePerGas >= 0
-              ? customFee.maxFeePerGas
-              : fee.maxFeePerGas;
-
-          if (
-            maxPriorityFeePerGas === null ||
-            maxPriorityFeePerGas === undefined ||
-            maxPriorityFeePerGas < 0 ||
-            !maxFeePerGas ||
-            maxFeePerGas <= 0
-          ) {
-            throw new Error('Invalid smart account fee override');
-          }
-
-          return {
-            maxFeePerGas:
-              !customFee.isCustom && txToSend.maxFeePerGas !== undefined
-                ? BigNumber.from(txToSend.maxFeePerGas).toString()
-                : parseUnits(safeToFixed(maxFeePerGas), 9).toString(),
-            maxPriorityFeePerGas:
-              !customFee.isCustom && txToSend.maxPriorityFeePerGas !== undefined
-                ? BigNumber.from(txToSend.maxPriorityFeePerGas).toString()
-                : parseUnits(safeToFixed(maxPriorityFeePerGas), 9).toString(),
-          };
-        };
-
         if (isPasskeyAccount) {
           const approvedQuoteKey = smartAccountQuoteKey;
           const assertApprovedQuoteCurrent = () => {
@@ -1093,16 +1039,8 @@ export const SendTransaction = () => {
                 data: validateTransactionDataValue(txToSend.data),
               },
             ],
-            feeOverrides: getSmartAccountFeeOverrides(),
+            feeOverrides: fee!.smartAccountFeeOverrides,
             approvedFeeQuote: fee!.smartAccountFeeQuote!,
-            feeConsent: forExecution({
-              account: approvedContext.account.address,
-              smartAccount: activeAccount.address,
-              chainId: activeNetwork.chainId,
-              symbol: activeNetwork.currency,
-              label: t('buttons.send'),
-              assertCurrent: assertApprovedQuoteCurrent,
-            }),
             onBeforeAuthentication: assertApprovedQuoteCurrent,
             expectedContext: approvedContext,
             onPrepared: assertApprovedQuoteCurrent,
@@ -1177,7 +1115,16 @@ export const SendTransaction = () => {
           setGenericFeeView(undefined);
           setFeeQuoteNeedsRefresh(true);
           setLoading(false);
-          alert.error(t('send.unableToCalculateFees'));
+          if (
+            !handleTransactionError(
+              error,
+              alert,
+              t,
+              activeAccount,
+              activeNetwork
+            )
+          )
+            alert.error(t('send.unableToCalculateFees'));
           if (
             isExternal &&
             dataTx.nonce === undefined &&
@@ -1205,21 +1152,21 @@ export const SendTransaction = () => {
         // A local controller timeout does not cancel the background send.
         // Keep the attempt consumed unless the background explicitly proved
         // that it failed before any broadcast attempt.
-        if (submissionRequested && error?.transactionNotBroadcast !== true) {
+        const outcomeUnknown =
+          submissionRequested && error?.transactionNotBroadcast !== true;
+        if (outcomeUnknown) {
+          if (!mountedRef.current || generation !== closeGenerationRef.current)
+            return error;
           approvalActionRef.current = 'outcome-unknown';
           setSubmissionUnknown(true);
+          setLoading(false);
         }
-        // Handle specific errors (blacklist, cancellation, device issues, etc.)
-        const wasHandledSpecifically = handleTransactionError(
-          error,
-          alert,
-          t,
-          activeAccount,
-          activeNetwork
-        );
-
-        // For errors that were handled specifically, just stop loading
-        if (wasHandledSpecifically) {
+        // An ambiguous response can carry a cancellation-like error message.
+        // Only show specific failure feedback once submission is ruled out.
+        if (
+          !outcomeUnknown &&
+          handleTransactionError(error, alert, t, activeAccount, activeNetwork)
+        ) {
           setLoading(false);
           return;
         }
@@ -1228,7 +1175,11 @@ export const SendTransaction = () => {
         logError('error', 'Transaction', error);
         alert.error(
           t(
-            error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
+            outcomeUnknown
+              ? 'transactions.replay.unknown'
+              : error?.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+              ? 'send.smartAccountPayerFeeExceeded'
+              : error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
               ? 'transactions.psbtSigningContextChanged'
               : 'send.cantCompleteTxs'
           )
@@ -1322,9 +1273,17 @@ export const SendTransaction = () => {
     const abortController = new AbortController();
     let isMounted = true;
     const generation = closeGenerationRef.current;
+    let preparationRetry: ReturnType<typeof setTimeout> | undefined;
+    let didRetryPreparation = false;
     let feeErrorCloseTimeout: ReturnType<typeof setTimeout> | null = null;
+    const preparationIsCurrent = () =>
+      isMounted &&
+      mountedRef.current &&
+      approvalActionRef.current !== 'dismissed' &&
+      approvalActionRef.current !== 'completed';
 
     const getGasAndFunction = async () => {
+      if (!preparationIsCurrent()) return;
       try {
         if (hasInvalidCustomAllowance) {
           if (isMounted) setInitialLoading(false);
@@ -1352,6 +1311,7 @@ export const SendTransaction = () => {
         )
           throw new Error('Invalid smart account fee override');
         if (!isSmartAccountApproval) {
+          if (!preparationIsCurrent()) return;
           setGenericFeeView(undefined);
           const nonce = customNonce ?? dataTx.nonce;
           if (customNonce !== undefined || dataTx.nonce !== undefined)
@@ -1359,6 +1319,7 @@ export const SendTransaction = () => {
               ['wallet', 'authorizeDappManualNonce'],
               [nonce]
             );
+          if (!preparationIsCurrent()) return;
           const custom = customFee.isCustom
             ? {
                 gasLimit:
@@ -1405,7 +1366,10 @@ export const SendTransaction = () => {
             ...quote,
             transaction: snapshotPreparedEvmTransaction(quote.transaction),
           });
-          if (!isMounted || genericFeeKeyRef.current !== genericFeeKey) {
+          if (
+            !preparationIsCurrent() ||
+            genericFeeKeyRef.current !== genericFeeKey
+          ) {
             void controllerEmitter(
               ['wallet', 'discardNativeEvmFeeReview'],
               [prepared.id]
@@ -1496,7 +1460,7 @@ export const SendTransaction = () => {
           setHasGasError(false);
           setHasTxDataError(false);
           setFeeQuoteNeedsRefresh(false);
-          setInitialNonceReviewError(undefined);
+          setInitialReviewError(undefined);
           setInitialLoading(false);
           setNonceRefreshRequired(false);
           setNonceRefreshing(false);
@@ -1545,7 +1509,7 @@ export const SendTransaction = () => {
           setAcceptedDappFeeRequest(false);
           setFeeRecommendationOnly(Boolean(recommendationOnly));
           setTx(formTx);
-          setInitialNonceReviewError(undefined);
+          setInitialReviewError(undefined);
           setInitialLoading(false);
         }
       } catch (e) {
@@ -1555,10 +1519,32 @@ export const SendTransaction = () => {
         }
 
         if (
-          isMounted &&
-          mountedRef.current &&
+          preparationIsCurrent() &&
           generation === closeGenerationRef.current
         ) {
+          if (!isSmartAccountApproval && e?.transactionNotBroadcast === true) {
+            if (e.code === TRANSACTION_APPROVAL_LOADING) {
+              // Start a fresh preparation. The worker independently checks
+              // both document identities and the current operation again.
+              if (!didRetryPreparation) {
+                didRetryPreparation = true;
+                setInitialLoading(true);
+                preparationRetry = setTimeout(
+                  () => void getGasAndFunction(),
+                  250
+                );
+                return;
+              }
+              setInitialReviewError('app.transactionApprovalLoading');
+              setInitialLoading(false);
+              return;
+            }
+            if (e.code === TRANSACTION_APPROVAL_EXPIRED) {
+              setInitialReviewError('app.approvalExpired');
+              setInitialLoading(false);
+              return;
+            }
+          }
           setInitialLoading(false);
           if (nonceRefreshRequired) {
             setNonceRefreshing(false);
@@ -1567,12 +1553,12 @@ export const SendTransaction = () => {
           }
           const legacyKey = legacyEvmNonceErrorKey(e);
           if (legacyKey) {
-            setInitialNonceReviewError(legacyKey);
+            setInitialReviewError(legacyKey);
             alert.error(t(legacyKey));
             return;
           }
           if (!isSmartAccountApproval) {
-            setInitialNonceReviewError('send.unableToCalculateFees');
+            setInitialReviewError('send.unableToCalculateFees');
             return;
           }
           logError('error getting fees', 'Transaction', e);
@@ -1598,6 +1584,7 @@ export const SendTransaction = () => {
     return () => {
       isMounted = false;
       abortController.abort();
+      if (preparationRetry !== undefined) clearTimeout(preparationRetry);
       if (
         feeErrorCloseTimeout !== null &&
         closeTimeoutRef.current === feeErrorCloseTimeout
@@ -1869,7 +1856,6 @@ export const SendTransaction = () => {
 
   return (
     <>
-      {feeConfirmation}
       <EditPriorityModal
         showModal={isOpen}
         setIsOpen={updateFeeEditorOpen}
@@ -1911,23 +1897,29 @@ export const SendTransaction = () => {
         <div className="flex items-center justify-center min-h-[400px]">
           <LoadingComponent />
         </div>
-      ) : initialNonceReviewError ? (
+      ) : initialReviewError ? (
         <div className="text-center">
-          <p>{t(initialNonceReviewError)}</p>
+          <p role="alert">{t(initialReviewError)}</p>
           <Button type="button" disabled={closing} onClick={handleCancel}>
-            {t('buttons.cancel')}
+            {t(
+              initialReviewError === 'app.approvalExpired'
+                ? 'buttons.close'
+                : 'buttons.cancel'
+            )}
           </Button>
-          <Button
-            type="button"
-            disabled={closing}
-            onClick={() => {
-              setInitialNonceReviewError(undefined);
-              setInitialLoading(true);
-              setFeeQuoteRevision((revision) => revision + 1);
-            }}
-          >
-            {t('receive.retry')}
-          </Button>
+          {initialReviewError !== 'app.approvalExpired' && (
+            <Button
+              type="button"
+              disabled={closing}
+              onClick={() => {
+                setInitialReviewError(undefined);
+                setInitialLoading(true);
+                setFeeQuoteRevision((revision) => revision + 1);
+              }}
+            >
+              {t('receive.retry')}
+            </Button>
+          )}
         </div>
       ) : tx?.from ? (
         <div className="flex flex-col w-full h-screen">
@@ -2304,6 +2296,14 @@ export const SendTransaction = () => {
               title={t('settings.slhDsaSigningInProgress')}
               warningSeconds={180}
             />
+            {submissionUnknown && (
+              <p
+                role="status"
+                className="mb-3 rounded-lg border border-brand-yellowInfo p-3 text-center text-sm text-white"
+              >
+                {t('transactions.replay.unknown')}
+              </p>
+            )}
             {hasTxDataError && (
               <p className="text-center text-warning-error text-xs mb-2">
                 {t('send.contractEstimateError')}
@@ -2331,13 +2331,6 @@ export const SendTransaction = () => {
                     {activeNetwork.currency}
                   </p>
                 </div>
-              )}
-            {isSmartAccountApproval &&
-              hasCurrentSmartAccountFeeQuote &&
-              fee?.smartAccountFeeQuote && (
-                <SmartAccountFeePayer
-                  address={fee.smartAccountFeeQuote.feePayer.address}
-                />
               )}
             {feeQuoteNeedsRefresh && (
               <div className="text-center text-warning-info text-xs mb-2">
@@ -2380,7 +2373,7 @@ export const SendTransaction = () => {
                 }
                 onClick={handleCancel}
               >
-                {t('buttons.cancel')}
+                {t(submissionUnknown ? 'buttons.close' : 'buttons.cancel')}
               </Button>
 
               <Button

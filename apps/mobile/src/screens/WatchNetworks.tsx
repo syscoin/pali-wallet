@@ -144,7 +144,7 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
         {saved && <Button title={t('mobile.networks.addUtxo')} variant="secondary" disabled={busy} onPress={() => edit()} />}
       </>}
       {busy && <ActivityIndicator color={colors.pink} accessibilityLabel={t('mobile.shellViews.watchNetworks.checkingNetwork')} />}
-      {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>}
+      {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.errorText}>{error}</Text>}
       {!saved && !busy && <Button title={t('mobile.shellViews.watchNetworks.reloadSavedNetworks')} variant="secondary" onPress={() => run(() => controller.load(), 'reload')} />}
     </Screen>
   </KeyboardAvoidingView>;

@@ -2,6 +2,10 @@ import { UTXO_SUMMARY_OBSERVATION } from '../shared/utxoDetailFreshness';
 import { accountRecordsForPersistence } from '../wallet/accountRecords';
 import { INetwork, INetworkType } from 'types/network';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
+import {
+  getEoaNonceFromHistoryTransaction,
+  parseEvmInteger,
+} from 'utils/evmNonce';
 
 import {
   assertWalletPersistenceAllowed,
@@ -12,11 +16,63 @@ import {
 import store, { saveMainStateWithinPersistenceLock } from './store';
 import { ISlip44State } from './vault/types';
 
+function withoutNativeHistorySignatures(state: ISlip44State): ISlip44State {
+  let snapshot = state;
+  const source = state.accountTransactions;
+  const signatureFields = ['raw', 'signature', 'r', 's', 'v'] as const;
+  for (const type of Object.keys(source) as Array<keyof typeof source>) {
+    const accounts = source[type];
+    for (const [id, history] of Object.entries(accounts ?? {})) {
+      const address = state.accounts?.[type]?.[id]?.address;
+      if (!address || !history?.ethereum) continue;
+      let ethereum = history.ethereum;
+      for (const [chain, rows] of Object.entries(history.ethereum)) {
+        if (!Array.isArray(rows)) continue;
+        let next = rows;
+        rows.forEach((row, index) => {
+          if (!row) return;
+          const transaction = row as typeof row & {
+            input?: string;
+            isCancel?: boolean;
+          };
+          const type = parseEvmInteger(transaction.type);
+          if (
+            !transaction.to ||
+            transaction.isCancel ||
+            (transaction.input ?? transaction.data) !== '0x' ||
+            (type !== 0 && type !== 2) ||
+            getEoaNonceFromHistoryTransaction(transaction, address) ===
+              undefined ||
+            !signatureFields.some((field) => Object.hasOwn(transaction, field))
+          )
+            return;
+          if (next === rows) next = [...rows];
+          const summary = { ...row };
+          for (const field of signatureFields) delete summary[field];
+          next[index] = summary;
+        });
+        if (next === rows) continue;
+        if (ethereum === history.ethereum) ethereum = { ...ethereum };
+        ethereum[chain] = next;
+      }
+      if (ethereum === history.ethereum) continue;
+      if (snapshot === state)
+        snapshot = { ...state, accountTransactions: { ...source } };
+      if (snapshot.accountTransactions[type] === accounts)
+        snapshot.accountTransactions[type] = { ...accounts };
+      snapshot.accountTransactions[type][id] = { ...history, ethereum };
+    }
+  }
+  return snapshot;
+}
+
 function vaultStateForPersistence(state: ISlip44State): ISlip44State {
   let snapshot = state;
   const source = state.accountTransactions;
-  if (state.activeNetwork?.kind !== INetworkType.Syscoin || !source)
-    return snapshot;
+  if (!source) return snapshot;
+  if (state.activeNetwork?.kind === INetworkType.Ethereum)
+    return withoutNativeHistorySignatures(state);
+  if (state.activeNetwork?.kind !== INetworkType.Syscoin) return snapshot;
 
   // Live summary revisions survive IPC and route cloning, but never enter the
   // durable vault. Copy only the buckets containing annotated UTXO rows.

@@ -831,9 +831,13 @@ const VaultState = createSlice({
     },
     clearEvmAccountActivity(
       state: IVaultState,
-      action: PayloadAction<{ address: string; chainId: number }>
+      action: PayloadAction<{
+        address: string;
+        chainId: number;
+        clearedAt?: number;
+      }>
     ) {
-      const { address, chainId } = action.payload;
+      const { address, chainId, clearedAt } = action.payload;
       for (const type of Object.values(KeyringAccountType)) {
         for (const [id, account] of Object.entries(
           state.accounts[type] || {}
@@ -843,9 +847,34 @@ const VaultState = createSlice({
             if (history) delete history.ethereum[chainId];
             if (account.evmTxCountByChainId)
               delete account.evmTxCountByChainId[chainId];
+            if (account.smartAccountUserOpScanByChainId)
+              delete account.smartAccountUserOpScanByChainId[chainId];
+            if (clearedAt !== undefined) {
+              account.evmActivityClearedAtByChainId ??= {};
+              account.evmActivityClearedAtByChainId[chainId] = clearedAt;
+            }
           }
         }
       }
+    },
+    clearUtxoAccountActivity(
+      state: IVaultState,
+      action: PayloadAction<{
+        accountId: number;
+        accountType: KeyringAccountType;
+        chainId: number;
+        clearedAt: number;
+      }>
+    ) {
+      const { accountType, accountId, chainId, clearedAt } = action.payload;
+      const histories = (state.accountTransactions[accountType] ??= {});
+      const history = (histories[accountId] ??= { ethereum: {}, syscoin: {} });
+      const previous = history.utxoActivityReset?.[chainId];
+      history.utxoActivityReset ??= {};
+      history.utxoActivityReset[chainId] = {
+        revision: Math.max(clearedAt, (previous?.revision ?? 0) + 1),
+      };
+      delete history.syscoin[chainId];
     },
     // Simple setter for transactions - no processing, just set the array
     setAccountTransactions(
@@ -1298,6 +1327,7 @@ export const {
   setSingleTransactionToState,
   setAccountTransactions,
   clearEvmAccountActivity,
+  clearUtxoAccountActivity,
   setPasskeyCredentialProfile,
   setTransactionStatusToReplaced,
   setAccounts,

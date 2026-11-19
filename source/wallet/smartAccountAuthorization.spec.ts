@@ -55,7 +55,10 @@ it('retains an exact signed instruction independently of any outer transaction i
       summary,
       encodeSmartAccountAuthorization(captured)
     )
-  ).toEqual(captured);
+  ).toMatchObject({
+    ...captured,
+    userOperation: { ...captured.userOperation, signature: '0x' },
+  });
   input.userOperation.signature = '0x00';
   input.observedAt.number = '101';
   expect(captured.userOperation.signature).not.toBe('0x00');
@@ -160,8 +163,19 @@ it('requires canonical payload bytes and fatal UTF-8 while allowing chunk-sized 
   const captured = captureSmartAccountAuthorization(input),
     summary = smartAccountAuthorizationSummary(captured);
   const payload = encodeSmartAccountAuthorization(captured);
-  expect(payload.length).toBeGreaterThan(EVM_SIGNED_RECORD_LIMITS.chunkBytes);
-  expect(decodeSmartAccountAuthorization(summary, payload)).toEqual(captured);
+  expect(payload.length).toBeLessThan(EVM_SIGNED_RECORD_LIMITS.chunkBytes);
+  expect(new TextDecoder().decode(payload)).not.toContain(
+    input.userOperation.signature
+  );
+  expect(
+    decodeSmartAccountAuthorization(summary, payload).userOperation.signature
+  ).toBe('0x');
+  expect(
+    decodeSmartAccountAuthorization(
+      summary,
+      new TextEncoder().encode(JSON.stringify(captured.userOperation))
+    )
+  ).toEqual(captured);
   expect(() =>
     decodeSmartAccountAuthorization(summary, new Uint8Array([0xff]))
   ).toThrow();

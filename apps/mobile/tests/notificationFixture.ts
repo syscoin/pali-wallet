@@ -5,7 +5,8 @@ export type NotificationTestPort = {
   subscribe(listener: () => void): () => void;
   load(): Promise<void>;
   getPendingOwner(): Promise<Readonly<{ accountId: string; accountType: string }> | null>;
-  resolveTapAfterUnlock(id: string, validate: (scope: NativeNotificationScope) => boolean): Promise<NotificationRoute | null>;
+  readTapAfterUnlock(id: string, revision: number, validate: (scope: NativeNotificationScope) => boolean): Promise<NotificationRoute | null>;
+  consumeTap(id: string, revision: number): void;
   replaceAccountTypes(types: readonly string[], scopes: readonly NativeNotificationScope[], assertCurrent: () => void): Promise<void>;
 };
 
@@ -18,6 +19,7 @@ export const quietActivityNotifications: NotificationTestPort = {
   subscribe: () => () => {},
   load: async () => {},
   getPendingOwner: async () => null,
-  resolveTapAfterUnlock: async () => null,
+  readTapAfterUnlock: async () => null,
+  consumeTap: () => {},
   replaceAccountTypes: async (_types, _scopes, assertCurrent) => { assertCurrent(); },
 };

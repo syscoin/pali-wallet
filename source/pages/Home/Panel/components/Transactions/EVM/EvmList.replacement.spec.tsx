@@ -1,16 +1,20 @@
 /** @jest-environment jsdom */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 // Replay has separate actual consent tests; isolate unrelated detail decoding here.
-jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
-  RetainedTransactionReplay: () => null,
-}));
+
+import { projectEvmActivityRow } from '../../../../../../wallet/evmActivityRow';
 
 import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';
 import { EvmTransactionsList } from './EvmList';
-import { savedTransactionHistoryRow } from './useSavedEvmTransactions';
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
 const TARGET = `0x${'22'.repeat(20)}`;
@@ -35,16 +39,20 @@ const mockEmitter = jest.fn();
 const mockNavigate = jest.fn();
 const mockAlert = { success: jest.fn(), warning: jest.fn(), error: jest.fn() };
 const mockFiat = () => '0 USD';
-const mockT = (key: string) =>
+const mockT = (key: string, values?: { amount?: string }) =>
   ((
     {
+      'privacy.activity.deposit': 'Privacy deposit',
+      'privacy.activity.withdrawal': 'Privacy withdrawal',
+      'privacy.poolAmount': `${values?.amount} ETH pool`,
       'send.confirmed': 'Confirmed',
       'send.pending': 'Pending',
-      'transactions.savedUnconfirmed': 'Saved · unconfirmed',
+      'transactions.unconfirmed': 'Unconfirmed',
       'send.failed': 'Failed',
       'transactions.replaced': 'Replaced',
       'transactions.replacementPending': 'Replacement pending',
       'transactions.cancellation': 'Cancellation',
+      'transactions.smartAuthorizations.operationHash': 'Operation hash',
       'header.speedUp': 'Speed Up',
       'send.sent': 'Sent',
       'notifications.clickToView': 'Details',
@@ -82,14 +90,12 @@ jest.mock('../../../../useHomeBrowsingState', () => ({
   getHomeBrowsingScope: () => 'scope',
 }));
 jest.mock('../useHistoryBrowsingState', () => ({
-  useHistoryBrowsingState: () => {
+  useHistoryBrowsingState: (_scope: string, initialHasMore?: boolean) => {
     const react = jest.requireActual('react');
     const [extraTransactions, setExtraTransactions] = react.useState([]);
     const [visibleCount, setVisibleCount] = react.useState(50);
     const [nextPage, setNextPage] = react.useState(2);
-    const [hasMoreServer, setHasMoreServer] = react.useState(
-      Boolean(mockApiUrl)
-    );
+    const [hasMoreServer, setHasMoreServer] = react.useState(initialHasMore);
     return {
       extraTransactions,
       visibleCount,
@@ -145,8 +151,21 @@ jest.mock('components/Tooltip', () => ({
 }));
 jest.mock('components/TokenIcon', () => ({ TokenIcon: () => null }));
 jest.mock('components/TransactionOptions', () => ({
-  TransactionOptions: ({ transaction: tx }: any) => (
-    <div>Options:{tx.hash}</div>
+  SmartAccountSignedOperationOptions: ({ operationHash }: any) => (
+    <button type="button">Cancel instruction {operationHash}</button>
+  ),
+  TransactionOptions: ({
+    transaction: tx,
+    canCancelSmart,
+    cancellationRetry,
+  }: any) => (
+    <div
+      data-smart-cancel={String(canCancelSmart)}
+      data-cancellation-unavailable={String(!!tx.cancellationUnavailable)}
+      data-retry-cancellation={cancellationRetry?.operationHash}
+    >
+      Options:{tx.hash}
+    </div>
   ),
 }));
 jest.mock('utils/index', () => ({
@@ -178,11 +197,11 @@ it('changes the saved-only label when the same hash arrives in pending network h
   const local = transaction('a', { historySource: 'local-signed' });
   mockRows = [local];
   const view = render(<EvmTransactionsList userTransactions={mockRows} />);
-  expect(await screen.findByText('Saved · unconfirmed')).toBeTruthy();
+  expect(await screen.findByText('Unconfirmed')).toBeTruthy();
   mockRows = [transaction('a', { historySource: 'explorer-txlist' })];
   view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
   expect(await screen.findByText('Pending')).toBeTruthy();
-  expect(screen.queryByText('Saved · unconfirmed')).toBeNull();
+  expect(screen.queryByText('Unconfirmed')).toBeNull();
 });
 
 it.each([
@@ -518,7 +537,7 @@ it.each([
   'promotes a saved local row from an older explorer page to $label without pending actions',
   async ({ receipt, error, label }) => {
     const exactValue = '9007199254740993000000001';
-    const local = savedTransactionHistoryRow({
+    const local = projectEvmActivityRow({
       hash: hash('d'),
       chainId: '1',
       from: ACCOUNT,
@@ -557,17 +576,20 @@ it.each([
       hasMore: false,
     }));
     render(<EvmTransactionsList userTransactions={mockRows} />);
-    expect(await screen.findByText('Saved · unconfirmed')).toBeTruthy();
+    expect(await screen.findByText('Unconfirmed')).toBeTruthy();
     expect(screen.queryByText(`Options:${local.hash}`)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect(mockNavigate).toHaveBeenLastCalledWith('/home/details', {
       state: expect.objectContaining({ hash: local.hash, tx: local }),
     });
-    fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+    const loadMore = screen.getByRole('button', { name: 'buttons.loadMore' });
+    fireEvent.click(loadMore);
+    fireEvent.click(loadMore);
     await waitFor(() => {
-      expect(screen.queryByText('Saved · unconfirmed')).toBeNull();
+      expect(screen.queryByText('Unconfirmed')).toBeNull();
       expect(screen.getByText(label)).toBeTruthy();
     });
+    expect(mockEmitter.mock.calls.map(([, args]) => args[3])).toEqual([1, 2]);
     expect(screen.queryByText(`Options:${local.hash}`)).toBeNull();
     expect(screen.queryByText(`Options:${observed.hash}`)).toBeNull();
     expect(await screen.findAllByText(`${exactValue} ETH`)).toHaveLength(1);
@@ -594,8 +616,23 @@ const confirmedRows = (count: number) =>
     })
   );
 
+it('only offers another explorer page when the initial read found more history', () => {
+  mockApiUrl = 'https://explorer.example/api';
+  mockRows = confirmedRows(1);
+  const view = render(
+    <EvmTransactionsList userTransactions={mockRows} explorerHasMore={false} />
+  );
+  expect(screen.queryByRole('button', { name: 'buttons.loadMore' })).toBeNull();
+
+  view.rerender(
+    <EvmTransactionsList userTransactions={mockRows} explorerHasMore />
+  );
+  expect(screen.getByRole('button', { name: 'buttons.loadMore' })).toBeTruthy();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
 it.each([false, true])(
-  'advances a duplicate-only saved page while revealing cached rows (explorer=%s)',
+  'advances a duplicate-only local page while revealing cached rows (explorer=%s)',
   async (explorer) => {
     mockApiUrl = explorer ? 'https://explorer.example/api' : undefined;
     mockRows = confirmedRows(51);
@@ -606,8 +643,7 @@ it.each([false, true])(
       return (
         <EvmTransactionsList
           userTransactions={mockRows}
-          savedHasMore={hasMore}
-          loadMoreSaved={loadMore}
+          olderRows={{ hasMore, loading: false, loadMore }}
         />
       );
     };
@@ -631,7 +667,7 @@ it.each([false, true])(
   }
 );
 
-it('keeps genuinely unseen saved pages available beyond the cached public window', async () => {
+it('keeps unseen local pages available beyond the cached public window', async () => {
   mockRows = confirmedRows(51);
   const loadMore = jest.fn();
   const Harness = () => {
@@ -644,8 +680,7 @@ it('keeps genuinely unseen saved pages available beyond the cached public window
     return (
       <EvmTransactionsList
         userTransactions={rows}
-        savedHasMore={page < 2}
-        loadMoreSaved={loadMore}
+        olderRows={{ hasMore: page < 2, loading: false, loadMore }}
       />
     );
   };
@@ -663,4 +698,348 @@ it('keeps genuinely unseen saved pages available beyond the cached public window
   expect(loadMore).toHaveBeenCalledTimes(2);
   expect(screen.queryByRole('button', { name: 'buttons.loadMore' })).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('keeps incoming pending transactions details-only and preserves outgoing controls', async () => {
+  const incoming = transaction('a', { from: TARGET, to: ACCOUNT });
+  const outgoing = transaction('b', { from: ACCOUNT.toUpperCase() });
+  mockRows = [incoming, outgoing];
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+
+  expect(await screen.findByText(`Options:${outgoing.hash}`)).toBeTruthy();
+  expect(screen.queryByText(`Options:${incoming.hash}`)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+  expect(mockNavigate).toHaveBeenCalledWith('/home/details', {
+    state: expect.objectContaining({ hash: incoming.hash }),
+  });
+});
+
+it('offers the existing menu for a locally tracked payment eligible for Speed Up', () => {
+  const local = transaction('a', {
+    historySource: 'local-signed',
+    speedUpAvailable: true,
+  });
+  mockRows = [local];
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(screen.getByText('Unconfirmed')).toBeTruthy();
+  expect(screen.getByText(`Options:${local.hash}`)).toBeTruthy();
+});
+
+it('uses one ordinary row and the existing menu for authenticated Smart Account transactions', () => {
+  const saved = transaction('a', {
+    historySource: 'local-signed',
+    smartAccount: { account: ACCOUNT, operationCount: 1 },
+  });
+  const unrelated = transaction('b', { historySource: 'local-signed' });
+  mockRows = [saved, unrelated];
+  const view = render(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      smartCancellationHashes={new Set([saved.hash])}
+    />
+  );
+  expect(
+    screen.getByText(`Options:${saved.hash}`).getAttribute('data-smart-cancel')
+  ).toBe('true');
+  expect(screen.queryByText(`Options:${unrelated.hash}`)).toBeNull();
+  expect(
+    view.container.querySelectorAll('[data-transaction-hash]')
+  ).toHaveLength(2);
+  expect(view.container.querySelectorAll('[data-operation-hash]')).toHaveLength(
+    0
+  );
+
+  mockRows = [unrelated];
+  view.rerender(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      smartCancellationHashes={new Set([saved.hash])}
+    />
+  );
+  expect(
+    view.container.querySelectorAll('[data-transaction-hash]')
+  ).toHaveLength(1);
+  expect(view.container.querySelectorAll('[data-operation-hash]')).toHaveLength(
+    0
+  );
+});
+
+it('shows a signed operation without a transaction identity and replaces its row when the outer appears', () => {
+  const operation = {
+    account: ACCOUNT,
+    chainId: '1',
+    createdAt: Date.now(),
+    operationHash: `0x${'e'.repeat(64)}`,
+    status: 'unresolved' as const,
+  };
+  const view = render(
+    <EvmTransactionsList
+      userTransactions={[]}
+      smartSignedOperations={[operation]}
+    />
+  );
+  expect(
+    screen.getByText('transactions.smartAuthorizations.signedOperation')
+  ).toBeTruthy();
+  expect(
+    screen.getByText('transactions.smartAuthorizations.noTransactionRecorded')
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', {
+      name: `Cancel instruction ${operation.operationHash}`,
+    })
+  ).toBeTruthy();
+  expect(view.container.querySelector('[data-transaction-hash]')).toBeNull();
+  expect(screen.queryByRole('link')).toBeNull();
+
+  const outer = transaction('a', {
+    historySource: 'local-signed',
+    smartAccount: { account: ACCOUNT, operations: [operation] },
+  });
+  view.rerender(
+    <EvmTransactionsList
+      userTransactions={[outer]}
+      smartSignedOperations={[operation]}
+    />
+  );
+  expect(
+    screen.queryByText('transactions.smartAuthorizations.signedOperation')
+  ).toBeNull();
+  expect(
+    view.container.querySelectorAll('[data-transaction-hash]')
+  ).toHaveLength(1);
+});
+
+it('distinguishes signed operations with the same status by hash and recorded time', () => {
+  const operations = [
+    {
+      operationHash: hash('e'),
+      createdAt: new Date('2026-10-10T12:30:00Z'),
+      shortHash: '0xeeeeeeee…eeeeeeee',
+    },
+    {
+      operationHash: `0x${'e'.repeat(56)}${'f'.repeat(8)}`,
+      createdAt: new Date('2026-10-10T12:31:00Z'),
+      shortHash: '0xeeeeeeee…ffffffff',
+    },
+  ];
+  render(
+    <EvmTransactionsList
+      userTransactions={[]}
+      smartSignedOperations={operations.map(({ operationHash, createdAt }) => ({
+        account: ACCOUNT,
+        chainId: '1',
+        createdAt: createdAt.getTime(),
+        operationHash,
+        status: 'unresolved',
+      }))}
+    />
+  );
+
+  for (const { operationHash, createdAt, shortHash } of operations) {
+    const row = screen.getByRole('group', {
+      name: `Operation hash ${operationHash}`,
+    });
+    expect(within(row).getByText(shortHash)).toBeTruthy();
+    expect(row.querySelector('time')?.dateTime).toBe(createdAt.toISOString());
+    expect(row.querySelector('time')?.textContent).toBe(
+      createdAt.toLocaleTimeString('en-US')
+    );
+    expect(
+      within(row).getByRole('button', {
+        name: `Cancel instruction ${operationHash}`,
+      })
+    ).toBeTruthy();
+  }
+});
+
+it('uses the pending cancellation row for retries of the same Smart Account operation', () => {
+  const operation = {
+    account: ACCOUNT,
+    chainId: '1',
+    createdAt: Date.now(),
+    operationHash: hash('e'),
+    replacesOperationHash: hash('c'),
+    status: 'unresolved' as const,
+  };
+  const outer = transaction('a', {
+    historySource: 'explorer-pending',
+    value: '0',
+  });
+  const targets = new Map([[outer.hash, operation.replacesOperationHash]]);
+  const show = (rows: any[]) => (
+    <EvmTransactionsList
+      userTransactions={rows}
+      pendingSmartCancellationTargets={targets}
+      smartSignedOperations={[operation]}
+    />
+  );
+  const fallback = 'transactions.smartAuthorizations.noTransactionRecorded';
+  const view = render(show([outer]));
+  expect(screen.getAllByText('Cancellation')).toHaveLength(1);
+  expect(screen.queryByText(fallback)).toBeNull();
+
+  view.rerender(show([transaction('b')]));
+  expect(screen.getByText(fallback)).toBeTruthy();
+  const cancellation = screen.getByRole('group', {
+    name: `Operation hash ${operation.operationHash}`,
+  });
+  expect(
+    within(cancellation).getByRole('button', {
+      name: `Cancel instruction ${operation.replacesOperationHash}`,
+    })
+  ).toBeTruthy();
+
+  view.rerender(
+    show([{ ...outer, confirmations: 1, blockNumber: 7, isError: '1' }])
+  );
+  expect(screen.getByText('Failed')).toBeTruthy();
+  expect(screen.getByText(fallback)).toBeTruthy();
+});
+
+it.each([
+  {
+    fields: { input: '0xb214faa5' + '00'.repeat(32) },
+    label: 'Privacy deposit',
+    status: 'Pending',
+  },
+  {
+    fields: { input: undefined, data: '0x21a0adb6' + '00'.repeat(32) },
+    label: 'Privacy withdrawal',
+    status: 'Pending',
+  },
+  {
+    fields: {
+      input: '0x',
+      historySource: 'local-signed',
+      methodSelector: '0xb214faa5',
+    },
+    label: 'Privacy deposit',
+    status: 'Unconfirmed',
+  },
+])(
+  'identifies the pool action while preserving its settlement status',
+  async ({ fields, label, status }) => {
+    mockRows = [
+      transaction('a', {
+        to: '0x12d66f87a04a9e220743712ce6d9bb1b5616b8fc',
+        ...fields,
+      }),
+    ];
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    expect(await screen.findByText(label)).toBeTruthy();
+    expect(screen.getByText('0.1 ETH pool')).toBeTruthy();
+    expect(screen.getByText(status)).toBeTruthy();
+    if (status === 'Pending')
+      expect(
+        screen
+          .getByText(`Options:${mockRows[0].hash}`)
+          .getAttribute('data-cancellation-unavailable')
+      ).toBe(String(label === 'Privacy withdrawal'));
+  }
+);
+
+it.each([
+  { to: '0x12d66f87a04a9e220743712ce6d9bb1b5616b8fc', input: '0x' },
+  { to: TARGET, input: '0xb214faa5' },
+  { to: ACCOUNT, input: '0x', value: '0', isCancel: true },
+])(
+  'omits pool labels from ordinary transfers and cancellations',
+  async (fields) => {
+    mockRows = [transaction('a', fields)];
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    expect(await screen.findByText('Pending')).toBeTruthy();
+    expect(screen.queryByText('0.1 ETH pool')).toBeNull();
+    expect(screen.queryByText(/Privacy (deposit|withdrawal)/)).toBeNull();
+  }
+);
+
+it('keeps a failed Smart Account transaction in its ordinary row with the existing menu', async () => {
+  const operationHash = hash('e');
+  const outer = transaction('a', {
+    historySource: 'local-signed',
+    smartAccount: {
+      account: ACCOUNT,
+      operationCount: 1,
+      operations: [{ operationHash }],
+    },
+  });
+  const smartCancellationHashes = new Set([outer.hash]);
+  mockRows = [outer];
+  const view = render(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      smartCancellationHashes={smartCancellationHashes}
+    />
+  );
+  expect(screen.getByText(`Options:${outer.hash}`)).toBeTruthy();
+
+  mockRows = [{ ...outer, blockNumber: 7, confirmations: 1, isError: '1' }];
+  view.rerender(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      smartCancellationHashes={smartCancellationHashes}
+    />
+  );
+  expect(await screen.findByText('Failed')).toBeTruthy();
+  expect(
+    screen.getByText(`Options:${outer.hash}`).getAttribute('data-smart-cancel')
+  ).toBe('true');
+  expect(
+    view.container.querySelectorAll('[data-transaction-hash]')
+  ).toHaveLength(1);
+  expect(view.container.querySelectorAll('[data-operation-hash]')).toHaveLength(
+    0
+  );
+});
+
+it('keeps a failed revocation retry inside its existing failed transaction row', async () => {
+  const failed = transaction('a', {
+    blockNumber: 7,
+    confirmations: 1,
+    isError: '1',
+  });
+  const reference = { originalHash: hash('b'), operationHash: hash('c') };
+  mockRows = [failed];
+  const view = render(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      smartCancellationRetries={new Map([[failed.hash, reference]])}
+    />
+  );
+  expect(await screen.findByText('Failed')).toBeTruthy();
+  expect(
+    screen
+      .getByText(`Options:${failed.hash}`)
+      .getAttribute('data-retry-cancellation')
+  ).toBe(reference.operationHash);
+  expect(
+    view.container.querySelectorAll('[data-transaction-hash]')
+  ).toHaveLength(1);
+  expect(view.container.querySelectorAll('[data-operation-hash]')).toHaveLength(
+    0
+  );
+});
+
+it('passes an unindexed retained revocation to the existing row menu', async () => {
+  const revocation = transaction('a', {
+    from: TARGET,
+    historySource: 'local-signed',
+    isCancel: true,
+  });
+  const reference = { originalHash: hash('b'), operationHash: hash('c') };
+  mockRows = [revocation];
+  render(
+    <EvmTransactionsList
+      userTransactions={mockRows}
+      smartCancellationRetries={new Map([[revocation.hash, reference]])}
+    />
+  );
+  expect(await screen.findByText('Unconfirmed')).toBeTruthy();
+  expect(
+    screen
+      .getByText(`Options:${revocation.hash}`)
+      .getAttribute('data-retry-cancellation')
+  ).toBe(reference.operationHash);
+  expect(screen.queryByRole('group', { name: /Operation hash/ })).toBeNull();
 });

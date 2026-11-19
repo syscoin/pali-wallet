@@ -61,6 +61,23 @@ test('Smart instruction cancellation reviews a no-op reference and both fees wit
   } finally { f.close(); }
 });
 const text = (nodes: ReturnType<ReturnType<typeof fixture>['render']>) => nodes.flatMap(node => node.children.filter(value => typeof value === 'string')).join(' ');
+const payerBudget = { address: owner, gasTank: false, maximumFeeWei: '2000', maximumPrefundFeeWei: '0', maximumPrefundWei: '0' };
+
+test('Smart Send shows the EntryPoint and payer limits before one confirmation', () => {
+  const f = fixture();
+  try {
+    const state = { ...f.state({ kind: 'native-transfer', recipient, amountUnits: '5' }), payerBudget };
+    const nodes = f.render(state), copy = text(nodes);
+    assert(copy.includes(englishI18n.t('send.smartAccountMaxFee')));
+    assert(copy.includes(englishI18n.t('transactions.replay.maximumFee')));
+    assert(copy.includes(formatBaseUnits(state.maximumPrefundUnits!, state.network.decimals)));
+    assert(copy.includes(formatBaseUnits(payerBudget.maximumFeeWei, state.network.decimals)));
+    assert(copy.includes(payerBudget.address));
+    nodes.find(node => node.type === 'Button' && node.props.title === 'Confirm transfer')!.props.onPress();
+    assert.deepEqual(f.calls, [['authorize', false]]);
+    assert(!f.render({ ...state, phase: 'preparing-fee' }).some(node => node.type === 'Button' && node.props.title === 'Confirm transfer'));
+  } finally { f.close(); }
+});
 
 test('unsigned Smart collectible shortfall shows localized amount feedback instead of transfer status', () => {
   const f = fixture();
@@ -72,6 +89,24 @@ test('unsigned Smart collectible shortfall shows localized amount feedback inste
     assert(notices.some(node => node.props.title === 'Insufficient funds' && node.props.body === 'Not enough tokens for this transfer.'));
     assert(!notices.some(node => node.props.title === 'Check transfer status'));
     assert.equal(f.calls.length, 0);
+  } finally { f.close(); }
+});
+
+test('Smart payer quote failure distinguishes a signed instruction from confirmed funding', () => {
+  const f = fixture();
+  try {
+    const failed = {
+      ...f.state({ kind: 'native-transfer', recipient, amountUnits: '5' }),
+      phase: 'failed' as const,
+      payerQuoteUnavailable: true as const,
+      error: 'Authorization ended. Check the account and Activity before starting again.',
+    };
+    for (const transactionHash of [null, '0x' + '45'.repeat(32)]) {
+      const notices = f.render({ ...failed, transactionHash }).filter(node => node.type === 'Notice');
+      assert(notices.some(node => node.props.title === 'Fee unavailable' && node.props.body === (transactionHash
+        ? 'Account funding confirmed. The requested operation was not submitted. Check Activity before trying again.'
+        : 'Pali did not submit the transaction. The signed Smart Account instruction may still execute.')));
+    }
   } finally { f.close(); }
 });
 
@@ -94,15 +129,14 @@ test('Smart dapp token review shows exact token amount and recipient with native
   try {
     const units = (2n ** 255n).toString(), data = encode('transfer(address,uint256)', [recipient, units]);
     const transfer = decodeAssetTransfer(data, contract, { standard: 'ERC-20', token: { contractAddress: contract, name: 'Exact token', symbol: 'TOK', decimals: 255 } });
-    const snapshot = f.state({ kind: 'dapp-call', recipient: contract, amountUnits: '1000000000000000001', data });
+    const snapshot = { ...f.state({ kind: 'dapp-call', recipient: contract, amountUnits: '1000000000000000001', data }), payerBudget };
     const nodes = f.render(snapshot, { assetTransfer: transfer }), copy = text(nodes);
     assert(copy.includes(formatTokenUnits(units, 255))); assert(copy.includes(recipient)); assert(copy.includes(contract));
     assert(copy.includes('Also sending')); assert(copy.includes('1.000000000000000001')); assert(copy.includes('Token metadata is supplied by the contract.'));
     assert(nodes.some(node => node.type === 'Coin' && node.props.asset.chainId === snapshot.network.chainId && node.props.asset.contractAddress === contract && node.props.registrationHash === snapshot.network.registrationHash));
-    nodes.find(node => node.type === 'Button' && node.props.title === 'Authorize transaction')!.props.onPress();
-    const fee = f.render({ ...snapshot, phase: 'review-fee', payerReview: { id: 8, purpose: 'submit-operation', transaction: { from: owner, value: '0' } as never, maximumFeeUnits: '1', coveredFeeUnits: '0', maximumTotalUnits: '1' } }, { assetTransfer: transfer });
-    fee.find(node => node.type === 'Button' && node.props.title === 'Confirm transaction')!.props.onPress();
-    assert.deepEqual(f.calls, [['authorize', false], ['payer', 8]]);
+    assert(copy.includes(englishI18n.t('transactions.replay.maximumFee')));
+    nodes.find(node => node.type === 'Button' && node.props.title === 'Confirm transaction')!.props.onPress();
+    assert.deepEqual(f.calls, [['authorize', false]]);
   } finally { f.close(); }
 });
 
@@ -115,14 +149,15 @@ test('Smart mixed batch shows ordered NFT IDs/quantities, raw unknown units and 
       { to: contract, value: '0x0', data: encode('transferFrom(address,address,uint256)', [owner, recipient, 91]) },
       { to: recipient, value: '0x1', data: '0x' },
     ];
-    const nodes = f.render(f.state({ kind: 'dapp-batch', calls })), copy = text(nodes);
+    const nodes = f.render({ ...f.state({ kind: 'dapp-batch', calls }), payerBudget }), copy = text(nodes);
     assert(copy.includes('#0')); assert(copy.includes(`#${id}`)); assert(copy.includes('2 NFTs')); assert(copy.includes('3 NFTs'));
     assert(copy.includes('91')); assert(copy.includes('Base units / token ID')); assert(copy.includes('Token standard unverified'));
     assert(nodes.some(node => node.children.join('') === 'Call 1 of 3'));
     assert(nodes.some(node => node.children.join('') === 'Call 3 of 3')); assert(copy.includes('Native currency sent'));
     const details = nodes.filter(node => node.type === 'TransactionDetails');
     assert.deepEqual(details.map(node => node.props.transaction.data), calls.map(call => call.data));
-    nodes.find(node => node.type === 'Button' && node.props.title === 'Authorize calls')!.props.onPress();
+    assert(copy.includes(englishI18n.t('transactions.replay.maximumFee')));
+    nodes.find(node => node.type === 'Button' && node.props.title === 'Confirm calls')!.props.onPress();
     assert.deepEqual(f.calls, [['authorize', false]]);
   } finally { f.close(); }
 });

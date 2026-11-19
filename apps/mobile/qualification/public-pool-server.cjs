@@ -5,20 +5,28 @@ const { randomBytes, X509Certificate } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const {
   PUBLIC_POOL_ADDRESS, PUBLIC_POOL_BATCHES, PUBLIC_POOL_BLOCK, PUBLIC_POOL_BLOCK_HASH,
-  PUBLIC_POOL_LEAVES, PUBLIC_POOL_PATH, PUBLIC_POOL_PATH_DIGESTS, PUBLIC_POOL_ROOT, publicPoolAnchorPath,
+  PUBLIC_POOL_LEAVES, PUBLIC_POOL_PATH, PUBLIC_POOL_ROOT, PUBLIC_POOL_PROOF_BLOCK, PUBLIC_POOL_PROOF_BLOCK_HASH,
+  PUBLIC_POOL_PROOF_LEAVES, PUBLIC_POOL_PROOF_PATH_DIGESTS, PUBLIC_POOL_PROOF_ROOT, PUBLIC_POOL_PROOF_SELECTION,
+  publicPoolAnchorPath,
 } = require('./public-pool-contract.ts');
 
 const local = '127.0.0.1';
 const word = (value) => '0x' + BigInt(value).toString(16).padStart(64, '0');
 const tag = '0x' + PUBLIC_POOL_BLOCK.toString(16);
+const proofTag = '0x' + PUBLIC_POOL_PROOF_BLOCK.toString(16);
 const call = (data, at = tag) => ['eth_call', [{ to: PUBLIC_POOL_ADDRESS, data }, at]];
 const forbiddenHeaders = ['cookie', 'authorization', 'referer', 'proxy-authorization', 'transfer-encoding', 'content-encoding'];
 const readCalls = [
+  ['eth_chainId', []], ['eth_getBlockByNumber', ['finalized', false]],
+  ['eth_getBlockByNumber', [proofTag, false]], call('0xfc7e9c6f', proofTag), call('0xba70f757', proofTag),
+  ['eth_getBlockByNumber', [proofTag, false]],
   ['eth_chainId', []], ['eth_getBlockByNumber', [tag, false]], call('0xfc7e9c6f'), call('0xba70f757'),
   call('0x4ecf518b'), call('0x8bca6d16'), ['eth_getBlockByNumber', [tag, false]],
   call('0x6d9833e3' + PUBLIC_POOL_ROOT.slice(2), 'latest'),
   ['eth_chainId', []], ['eth_getBlockByNumber', [tag, false]], ['eth_getBlockByNumber', [tag, false]],
   call('0x6d9833e3' + PUBLIC_POOL_ROOT.slice(2), 'latest'),
+  ['eth_chainId', []], ['eth_getBlockByNumber', [proofTag, false]],
+  call('0x6d9833e3' + PUBLIC_POOL_PROOF_ROOT.slice(2), 'latest'),
 ];
 
 function listen(server) {
@@ -40,7 +48,14 @@ async function createPublicPoolFixture({ key, cert }) {
   if (new X509Certificate(cert).checkIP(local) !== local) throw Error('PUBLIC_POOL_FIXTURE_TLS_SAN');
   const token = randomBytes(16).toString('hex');
   const block = { number: tag, hash: PUBLIC_POOL_BLOCK_HASH, timestamp: '0x' + Math.floor(Date.now() / 1000).toString(16) };
-  const results = ['0x1', block, word(PUBLIC_POOL_LEAVES), PUBLIC_POOL_ROOT, word(20), word(10n ** 18n), block, word(1), '0x1', block, block, word(1)];
+  const proofBlock = { number: proofTag, hash: PUBLIC_POOL_PROOF_BLOCK_HASH,
+    timestamp: '0x' + (Number(block.timestamp) - 96).toString(16) };
+  const results = [
+    '0x1', block, proofBlock, word(PUBLIC_POOL_PROOF_LEAVES), PUBLIC_POOL_PROOF_ROOT, proofBlock,
+    '0x1', block, word(PUBLIC_POOL_LEAVES), PUBLIC_POOL_ROOT, word(20), word(10n ** 18n), block, word(1),
+    '0x1', block, block, word(1),
+    '0x1', proofBlock, word(1),
+  ];
   const snapshotBody = JSON.stringify({ version: 1, chainId: 1, poolAddress: PUBLIC_POOL_ADDRESS, asOfBlockNumber: PUBLIC_POOL_BLOCK,
     asOfBlockHash: PUBLIC_POOL_BLOCK_HASH, leafCount: PUBLIC_POOL_LEAVES, root: PUBLIC_POOL_ROOT,
     leaves: Array.from({ length: PUBLIC_POOL_LEAVES }, (_, index) => word(index + 1)), withdrawnNullifiers: [] });
@@ -60,7 +75,8 @@ async function createPublicPoolFixture({ key, cert }) {
     forbiddenHeaders.every((header) => request.headers[header] === undefined);
   const indexer = http.createServer((request, response) => {
     if (!localRequest(request, snapshotPort) || request.method !== 'GET' || request.url !== PUBLIC_POOL_PATH ||
-        request.headers['content-length'] !== undefined || gets !== 0) { failed(response); return; }
+        request.headers['content-length'] !== undefined || gets !== 0 ||
+        pending || requestIds.length !== PUBLIC_POOL_PROOF_SELECTION.length) { failed(response); return; }
     gets += 1;
     reply(response, snapshotBody);
   });
@@ -69,7 +85,7 @@ async function createPublicPoolFixture({ key, cert }) {
     const offset = requestIds.length;
     if (!localRequest(request, anchorPort) || request.method !== 'POST' || request.url !== publicPoolAnchorPath(token) ||
         request.headers['content-type'] !== 'application/json' || typeof size !== 'string' || !/^[1-9][0-9]{0,2}$/.test(size) ||
-        gets !== 1 || pending || offset >= readCalls.length) { failed(response); return; }
+        gets !== (offset < PUBLIC_POOL_PROOF_SELECTION.length ? 0 : 1) || pending || offset >= readCalls.length) { failed(response); return; }
     pending = true;
     let body = '';
     let count = 0;
@@ -105,7 +121,8 @@ async function createPublicPoolFixture({ key, cert }) {
     assertComplete(value) {
       if (pending || invalid !== 0 || gets !== 1 || requestIds.length !== readCalls.length || !value ||
           !isDeepStrictEqual(value, { root: PUBLIC_POOL_ROOT, block: PUBLIC_POOL_BLOCK, leaves: PUBLIC_POOL_LEAVES,
-            batches: PUBLIC_POOL_BATCHES, pathDigests: PUBLIC_POOL_PATH_DIGESTS, requestIds, gets, anchorPasses: 2 }))
+            proofRoot: PUBLIC_POOL_PROOF_ROOT, proofBlock: PUBLIC_POOL_PROOF_BLOCK, proofLeaves: PUBLIC_POOL_PROOF_LEAVES,
+            batches: PUBLIC_POOL_BATCHES, pathDigests: PUBLIC_POOL_PROOF_PATH_DIGESTS, requestIds, gets, anchorPasses: 2 }))
         throw Error('PUBLIC_POOL_FIXTURE_AUDIT_FAILED');
     },
     close: () => Promise.all([close(indexer), close(anchor)]),

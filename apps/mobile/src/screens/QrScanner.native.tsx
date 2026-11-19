@@ -10,7 +10,7 @@ import type { QrScannerProps } from './QrScanner.types';
 import { requestNativeCameraPermission } from '../platform/cameraPermission';
 
 /** Camera ownership and permission are scoped to this explicitly opened scanner. */
-export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>) {
+export function QrScanner<T>({ parse, copy, onScan, onClose, showSigningNotice = true }: QrScannerProps<T>) {
   const { t } = useNativeTranslation();
   const [permission, setPermission] = useState<PermissionResponse | null>(null);
   const [failure, setFailure] = useState(false);
@@ -107,7 +107,7 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
         {foreground && cameraReady && <Button title={torch ? t('mobile.scanner.torchOff') : t('mobile.scanner.torchOn')} icon="torch" variant="secondary" size="compact" onPress={() => {
           if (isCurrentCamera()) setTorch(value => !value);
         }} />}
-        <Text style={s.caption}>{t('mobile.scanner.safety')}</Text>
+        {showSigningNotice && <Text style={s.caption}>{t('mobile.scanner.safety')}</Text>}
         {invalidCode && <Notice title={copy.invalidTitle} body={copy.invalidBody} />}
       </> : <>
         <Notice title={t('mobile.scanner.accessNeeded')} body={copy.permission} />

@@ -13,15 +13,20 @@ import {
   localPasskeySupport,
   runLocalPasskeyCeremony,
 } from '../../utils/passkey/localUnlockCeremony';
-
-import { LocalPasskeySettings } from './LocalPasskeySettings';
-import type {
-  LocalPasskeyController,
-  LocalPasskeyStep,
+import {
+  PasswordCooldownError,
+  type LocalPasskeyController,
+  type LocalPasskeyStep,
 } from '../../wallet/localPasskeyTypes';
 
+import { LocalPasskeySettings } from './LocalPasskeySettings';
+
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    i18n: { language: 'en' },
+    t: (key: string, options?: { retryTime: string }) =>
+      options ? `${key}: ${options.retryTime}` : key,
+  }),
 }));
 jest.mock('../../utils/localPasskeyController', () => ({
   createLocalPasskeyController: jest.fn(),
@@ -172,4 +177,99 @@ it('cancels before the first enrollment reply and does not launch a late browser
   );
   await waitFor(() => expect(source.cancel).toHaveBeenCalledWith(id));
   expect(runLocalPasskeyCeremony).not.toHaveBeenCalled();
+});
+
+it('rereads a committed passkey change after its cancelled reply and attempt drain', async () => {
+  const source = controller(true);
+  let loseReply!: (error: Error) => void;
+  let finishCancellation!: () => void;
+  source.disable.mockReturnValue(
+    new Promise((_resolve, reject) => {
+      loseReply = reject;
+    })
+  );
+  source.cancel.mockReturnValue(
+    new Promise((resolve) => {
+      finishCancellation = resolve;
+    })
+  );
+  render(<LocalPasskeySettings createController={() => source} />);
+  fireEvent.change(await screen.findByLabelText('localPasskey.password'), {
+    target: { value: 'password' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'localPasskey.turnOff' }));
+
+  // Storage committed before cancellation reached the mutation owner.
+  source.status.mockResolvedValue({ enabled: false });
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'buttons.cancel' })
+  );
+  expect(screen.queryByText('localPasskey.enabled')).toBeNull();
+  expect(source.status).toHaveBeenCalledTimes(1);
+  await act(async () => loseReply(new Error('Reply retired')));
+  expect(source.status).toHaveBeenCalledTimes(1);
+
+  await act(async () => finishCancellation());
+  expect(await screen.findByText('localPasskey.disabled')).toBeTruthy();
+  expect(source.status).toHaveBeenCalledTimes(2);
+  expect(
+    screen.getByRole('button', { name: 'localPasskey.setUp' })
+  ).toBeTruthy();
+});
+
+it.each([false, true])(
+  'explains a password cooldown for passkey settings (enabled=%p)',
+  async (enabled) => {
+    const source = controller(enabled);
+    const changePasskey = enabled ? source.disable : source.beginEnrollment;
+    changePasskey.mockRejectedValueOnce(new PasswordCooldownError(73));
+    render(<LocalPasskeySettings createController={() => source} />);
+
+    fireEvent.change(await screen.findByLabelText('localPasskey.password'), {
+      target: { value: 'wallet-password' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: enabled ? 'localPasskey.turnOff' : 'localPasskey.setUp',
+      })
+    );
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'start.unlockRateLimited: in 73 seconds'
+    );
+    expect(
+      screen.getByText(
+        enabled ? 'localPasskey.enabled' : 'localPasskey.disabled'
+      )
+    ).toBeTruthy();
+    expect(changePasskey).toHaveBeenCalledTimes(1);
+    expect(runLocalPasskeyCeremony).not.toHaveBeenCalled();
+  }
+);
+
+it('clears the settings cooldown guidance when the wait expires', async () => {
+  const source = controller(true);
+  source.disable.mockRejectedValueOnce(new PasswordCooldownError(3));
+  render(<LocalPasskeySettings createController={() => source} />);
+  const password = await screen.findByLabelText('localPasskey.password');
+
+  jest.useFakeTimers();
+  try {
+    await act(async () => {
+      fireEvent.change(password, { target: { value: 'wallet-password' } });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'localPasskey.turnOff' })
+      );
+    });
+    expect(screen.getByRole('alert').textContent).toBe(
+      'start.unlockRateLimited: in 3 seconds'
+    );
+    act(() => jest.advanceTimersByTime(2999));
+    expect(screen.getByRole('alert')).toBeTruthy();
+    act(() => jest.advanceTimersByTime(1));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(source.disable).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
 });

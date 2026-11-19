@@ -8,6 +8,7 @@ import {
   copyMerklePathIndex,
   createMerklePathIndex,
   getMerklePath,
+  getMerklePrefixWork,
   type MerklePathIndex,
   recordMerkleSubtree,
 } from '../utils/privacy/merklePath.ts';
@@ -18,6 +19,7 @@ import {
 } from '../utils/privacy/snapshotValidation.ts';
 
 import type { IPrivacyNoteReader } from '../utils/privacy/privateVaultTypes.ts';
+import type { PrivacyProofCheckpoint } from '../utils/privacy/publicSyncProtocol.ts';
 import type { IPrivacySnapshotReader } from '../utils/privacy/trustedSnapshot.ts';
 import type {
   PrivacyController,
@@ -86,15 +88,20 @@ type Dependencies = {
   ): Promise<PrivacySnapshot | PrivacyIndexProgress>;
   merkleWork?: Readonly<{
     batchSize: number;
-    yieldBetweenBatches: () => Promise<void>;
     execute(
       program: Uint8Array,
       signal: AbortSignal,
       assertCurrent: () => void
     ): Promise<Uint8Array>;
+    yieldBetweenBatches: () => Promise<void>;
   }>;
   now(): number;
   schedule(poolId: PrivacyPoolId, delay: number): void;
+  selectProofCheckpoint?(
+    poolId: PrivacyPoolId,
+    rpcUrl: string,
+    signal: AbortSignal
+  ): Promise<PrivacyProofCheckpoint>;
   /** Arm one request deadline and return its cancellation. */
   startRequestTimeout(callback: () => void, delay: number): () => void;
   stop(poolId: PrivacyPoolId): void;
@@ -104,6 +111,12 @@ type Dependencies = {
     rpcUrl: string,
     signal: AbortSignal
   ): Promise<{ blockTimestamp: number }>;
+  verifyProofCheckpoint?(
+    poolId: PrivacyPoolId,
+    checkpoint: PrivacyProofCheckpoint,
+    rpcUrl: string,
+    signal: AbortSignal
+  ): Promise<boolean>;
 };
 
 // This controller contains only public data and read-only Ethereum RPCs.
@@ -118,6 +131,8 @@ export function createPrivacyPoolSync(
     cache,
     fetchSnapshot,
     verifyAnchor,
+    selectProofCheckpoint,
+    verifyProofCheckpoint,
     now,
     merkleWork,
     schedule,
@@ -142,12 +157,21 @@ export function createPrivacyPoolSync(
       work: MerkleWork;
     }
   >();
+  const checkpoints = new Map<
+    PrivacyPoolId,
+    { checkpoint?: PrivacyProofCheckpoint; generation: number }
+  >();
   const verifiedTrees = new Map<
     PrivacyPoolId,
     {
       blockTimestamp: number;
       generation: number;
       pathIndex: MerklePathIndex;
+      proof?: {
+        blockTimestamp: number;
+        snapshot: PrivacySnapshot;
+        work: MerkleWork;
+      };
       snapshot: PrivacySnapshot;
       work: MerkleWork;
     }
@@ -255,6 +279,21 @@ export function createPrivacyPoolSync(
     const generation = record.generation;
     schedule(poolId, 30000);
     try {
+      if (
+        selectProofCheckpoint &&
+        checkpoints.get(poolId)?.generation !== generation
+      ) {
+        // This choice is made before consuming the index response. Availability
+        // of public note data is independent of the withdrawal checkpoint.
+        const selected: {
+          checkpoint?: PrivacyProofCheckpoint;
+          generation: number;
+        } = { generation };
+        checkpoints.set(poolId, selected);
+        selected.checkpoint = await timed(poolId, generation, (signal) =>
+          selectProofCheckpoint(poolId, record!.rpcUrl!, signal)
+        ).catch(() => undefined);
+      }
       const live = calculations.get(poolId);
       let snapshot =
         live?.generation === generation ? live.snapshot : undefined;
@@ -405,6 +444,50 @@ export function createPrivacyPoolSync(
       const anchor = await timed(poolId, generation, (signal) =>
         verifyAnchor(poolId, snapshot!, record!.rpcUrl!, signal)
       );
+      const selected = checkpoints.get(poolId);
+      const checkpoint =
+        selected?.generation === generation ? selected.checkpoint : undefined;
+      let proof;
+      if (
+        checkpoint &&
+        checkpoint.asOfBlockNumber <= snapshot.asOfBlockNumber &&
+        checkpoint.leafCount <= snapshot.leafCount &&
+        verifyProofCheckpoint
+      ) {
+        try {
+          const fullTree = checkpoint.leafCount === snapshot.leafCount;
+          const leaves = fullTree
+            ? snapshot.leaves
+            : snapshot.leaves.slice(0, checkpoint.leafCount);
+          const work = fullTree
+            ? record.work
+            : getMerklePrefixWork(pathIndex!, leaves);
+          if (
+            work.root === checkpoint.root &&
+            (await timed(poolId, generation, (signal) =>
+              verifyProofCheckpoint(poolId, checkpoint, record!.rpcUrl!, signal)
+            ))
+          ) {
+            proof = {
+              blockTimestamp: checkpoint.blockTimestamp,
+              work,
+              snapshot: Object.freeze({
+                ...snapshot,
+                asOfBlockNumber: checkpoint.asOfBlockNumber,
+                asOfBlockHash: checkpoint.asOfBlockHash,
+                leafCount: checkpoint.leafCount,
+                root: checkpoint.root,
+                // Keep the full snapshot's structurally checked spent
+                // observations while proving membership in the older prefix.
+                leaves: Object.freeze(leaves) as unknown as string[],
+              }),
+            };
+          }
+        } catch {
+          // Keep authentic public pool data available. A missing proof prefix
+          // cannot be leased or substituted with the service-selected root.
+        }
+      }
       const next: PrivacySyncStatus = {
         poolId,
         phase: 'ready',
@@ -419,6 +502,7 @@ export function createPrivacyPoolSync(
           snapshot,
           blockTimestamp: anchor.blockTimestamp,
           work: record.work,
+          proof,
         });
         calculations.delete(poolId);
         await finishScheduling(poolId, generation);
@@ -474,26 +558,27 @@ export function createPrivacyPoolSync(
     })
   ).catch(() => undefined);
 
-  const isFresh = (
-    poolId: PrivacyPoolId,
-    trusted: NonNullable<ReturnType<typeof verifiedTrees.get>>,
-    record: PrivacyRecord | undefined
-  ): record is PrivacyRecord => {
-    const age = now() - trusted.blockTimestamp;
+  const freshTimestamp = (timestamp: number) => {
+    const age = now() - timestamp;
     return (
-      verifiedTrees.get(poolId) === trusted &&
-      !!record &&
-      record.poolId === poolId &&
-      record.status.phase !== 'idle' &&
-      record.status.phase !== 'error' &&
-      record.status.blockNumber === trusted.snapshot.asOfBlockNumber &&
-      Number.isSafeInteger(trusted.blockTimestamp) &&
-      trusted.blockTimestamp > 0 &&
-      Number.isFinite(age) &&
+      Number.isSafeInteger(timestamp) &&
+      timestamp > 0 &&
       age >= -MAX_FUTURE_BLOCK_MS &&
       age <= PRIVACY_NOTE_MAX_BLOCK_AGE_MS
     );
   };
+  const isFresh = (
+    poolId: PrivacyPoolId,
+    trusted: NonNullable<ReturnType<typeof verifiedTrees.get>>,
+    record: PrivacyRecord | undefined
+  ): record is PrivacyRecord =>
+    verifiedTrees.get(poolId) === trusted &&
+    !!record &&
+    record.poolId === poolId &&
+    record.status.phase !== 'idle' &&
+    record.status.phase !== 'error' &&
+    record.status.blockNumber === trusted.snapshot.asOfBlockNumber &&
+    freshTimestamp(trusted.blockTimestamp);
 
   // A lease authenticates this controller's live verified entry, not future
   // arbitrary cache writes. All managed lifecycle transitions revoke it
@@ -511,8 +596,9 @@ export function createPrivacyPoolSync(
       }
       const assertSnapshotCurrent = (snapshot: PrivacySnapshot) => {
         if (
-          !trusted ||
-          snapshot !== trusted.snapshot ||
+          !trusted?.proof ||
+          snapshot !== trusted.proof.snapshot ||
+          !freshTimestamp(trusted.proof.blockTimestamp) ||
           revision(poolId) !== capturedRevision ||
           tasks.has(poolId) ||
           !isFresh(poolId, trusted, record) ||
@@ -523,11 +609,18 @@ export function createPrivacyPoolSync(
         )
           throw new Error('privacy_verification_pending');
       };
-      if (!trusted) throw new Error('privacy_verification_pending');
-      assertSnapshotCurrent(trusted.snapshot);
+      if (!trusted?.proof) throw new Error('privacy_verification_pending');
+      const proof = trusted.proof;
+      assertSnapshotCurrent(proof.snapshot);
       return {
-        snapshot: trusted.snapshot,
+        snapshot: proof.snapshot,
         assertSnapshotCurrent,
+        assertNoteInCheckpoint(commitment) {
+          assertSnapshotCurrent(proof.snapshot);
+          const leaf = trusted.snapshot.leaves.indexOf(commitment);
+          if (leaf >= proof.snapshot.leafCount)
+            throw new Error('privacy_verification_pending');
+        },
         waitForScheduledRefresh: async () => {
           const refresh = scheduledRefreshes.get(poolId);
           if (
@@ -544,7 +637,8 @@ export function createPrivacyPoolSync(
             return (
               scheduledRefreshes.get(poolId) === refresh &&
               revision(poolId) === capturedRevision + 1 &&
-              !!next &&
+              !!next?.proof &&
+              freshTimestamp(next.proof.blockTimestamp) &&
               next !== trusted &&
               isFresh(poolId, next, latest) &&
               !!latest &&
@@ -556,13 +650,13 @@ export function createPrivacyPoolSync(
           });
         },
         getPath: async (leafIndex) => {
-          const assertCurrent = () => assertSnapshotCurrent(trusted.snapshot);
+          const assertCurrent = () => assertSnapshotCurrent(proof.snapshot);
           assertCurrent();
           const path = await getMerklePath(
             trusted.pathIndex,
-            trusted.snapshot.leaves,
+            proof.snapshot.leaves,
             leafIndex,
-            trusted.work,
+            proof.work,
             { assertCurrent }
           );
           assertCurrent();
@@ -665,6 +759,7 @@ export function createPrivacyPoolSync(
         const record = await cache.clear(poolId);
         calculations.delete(poolId);
         verifiedTrees.delete(poolId);
+        checkpoints.delete(poolId);
         aborts.get(poolId)?.abort();
         stop(poolId);
         return record.status;

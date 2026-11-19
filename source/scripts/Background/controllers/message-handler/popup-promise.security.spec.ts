@@ -10,7 +10,9 @@ import { SMART_ACCOUNT_CONTROLLER_PORT } from '../../../../shared/smartAccountCo
 import { beginApprovalSubmission } from '../../handlers/approvalSubmission';
 import { handleMasterControllerResponses } from '../../handlers/handleMasterControllerResponses';
 import { createExternalWalletView } from '../externalWalletCreation';
+import { KeyringAccountType } from 'types/network';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
+import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
 
 import { popupPromise } from './popup-promise';
 import { MethodRoute } from './types';
@@ -113,13 +115,17 @@ describe('approval popup boundary', () => {
     signal?: AbortSignal,
     sender?: chrome.runtime.MessageSender,
     shouldBind = true,
-    route = MethodRoute.Connect
+    route = MethodRoute.Connect,
+    approvedContext?: IEvmTransactionContext
   ) => {
     const pending = popupPromise({
       host: 'https://site.test',
       eventName: POPUP_EVENT,
       route,
-      data: { message: '#keep #all-hashes' },
+      data: {
+        message: '#keep #all-hashes',
+        ...(approvedContext ? { approvedContext } : {}),
+      },
       signal,
       sender,
     });
@@ -170,8 +176,19 @@ describe('approval popup boundary', () => {
     { method: 'signSendAndSaveTransaction', route: MethodRoute.SignTx },
   ];
 
-  it.each(
-    [
+  const smartContext: IEvmTransactionContext = {
+    account: {
+      address: `0x${'1'.repeat(40)}`,
+      id: 7,
+      type: KeyringAccountType.SmartAccount,
+    },
+    chainId: 1,
+    rpcUrl: 'https://rpc.invalid',
+    sessionGeneration: 9,
+    slip44: 60,
+  };
+  it.each([
+    ...[
       MethodRoute.SendEthTx,
       MethodRoute.SendCalls,
       MethodRoute.SmartAccount,
@@ -181,12 +198,40 @@ describe('approval popup boundary', () => {
         'approveSmartAccountExecutionFeeQuote',
         'signSmartAccountCompositeOwner',
         'verifySmartAccountCompositePossession',
-      ].map((method) => ({ route, method }))
-    )
-  )(
+        'submitSmartAccountExecution',
+      ].map((method) => ({
+        route,
+        method,
+        context: smartContext,
+        inlineBudget:
+          route === MethodRoute.SendEthTx || route === MethodRoute.SendCalls
+            ? true
+            : undefined,
+      }))
+    ),
+    {
+      route: MethodRoute.SendEthTx,
+      method: 'approveSmartAccountExecutionFeeQuote',
+      context: {
+        ...smartContext,
+        account: {
+          ...smartContext.account,
+          type: KeyringAccountType.HDAccount,
+        },
+      },
+      inlineBudget: undefined,
+    },
+    {
+      route: MethodRoute.SendCalls,
+      method: 'approveSmartAccountExecutionFeeQuote',
+      context: undefined,
+      inlineBudget: undefined,
+    },
+  ])(
     'enrolls $method through the actual external $route popup and owned Port',
-    async ({ route, method }) => {
-      const operation = jest.fn(async (_id, _value, authority) => {
+    async ({ route, method, context, inlineBudget }) => {
+      const operation = jest.fn(async (...args) => {
+        const authority = args.at(-1);
         authority.assertCurrent();
         return { approved: true };
       });
@@ -226,14 +271,20 @@ describe('approval popup boundary', () => {
             type: 'CONTROLLER_ACTION',
             data: {
               methods: ['wallet', method],
-              params: ['prepared-context', { proof: 'test-only' }],
+              params:
+                method === 'submitSmartAccountExecution'
+                  ? [{ allowInlinePayerBudget: true }]
+                  : [
+                      'prepared-context',
+                      { proof: 'test-only', allowInlinePayerBudget: true },
+                    ],
             },
           })
         );
         return port;
       };
       try {
-        ({ pending } = await begin(undefined, undefined, true, route));
+        ({ pending } = await begin(undefined, undefined, true, route, context));
         (self as any).clients = {
           get: async () => ({ url: source(`external/${route}`).url }),
         };
@@ -250,10 +301,19 @@ describe('approval popup boundary', () => {
         await new Promise(setImmediate);
         expect(operation).toHaveBeenCalledTimes(1);
         expect(owned.postMessage).toHaveBeenCalledWith({ approved: true });
-        const authority = operation.mock.calls[0][2];
+        const args = operation.mock.calls[0];
+        const authority = args.at(-1);
         expect(authority.kind).toBe('document');
         expect(authority.signal.aborted).toBe(true);
-        const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+        expect(authority.allowInlinePayerBudget).toBe(inlineBudget);
+        if (method === 'submitSmartAccountExecution') {
+          expect(args[0].expectedContext).toEqual(
+            inlineBudget ? smartContext : undefined
+          );
+        }
+        const rejected = expect(pending).rejects.toMatchObject({
+          code: method === 'submitSmartAccountExecution' ? -32603 : 4001,
+        });
         windowRemovalListener(9);
         await rejected;
         const retired = connect();

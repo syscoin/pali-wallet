@@ -32,7 +32,7 @@ const smartAccount = await window.ethereum.request({
   method: 'wallet_prepareSmartAccount',
   params: [
     {
-      label: 'Pali Wallet Passkey',
+      label: 'Pali Passkey',
       authenticator: { id: 'p256-webauthn' },
     },
   ],
@@ -107,4 +107,4 @@ Pali 恢复流程是自托管的。它不是服务器后门，也无法绕过账
   <figcaption>恢复和执行操作都需要由相应通行密钥凭据提供 WebAuthn 断言。</figcaption>
 </figure>
 
-对于扩展来源的 WebAuthn，除非钱包流程提供 RP ID，否则实际 RP ID 由浏览器决定。Pali 将默认共享凭据标记为 `Pali Wallet Passkey`，并使用请求的账户标签来向用户展示账户关联。
+对于扩展来源的 WebAuthn，除非钱包流程提供 RP ID，否则实际 RP ID 由浏览器决定。Pali 使用请求的账户标签作为 WebAuthn 凭据的名称和显示名称。

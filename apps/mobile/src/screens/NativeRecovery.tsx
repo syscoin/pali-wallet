@@ -1,3 +1,5 @@
+import { isCameraPermissionPromptActive } from '../platform/cameraPermission';
+import { SecretQrScanner, SecretScanButton } from './SecretQr';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import { recoveryErrorText } from './recoveryCopy';
@@ -6,6 +8,7 @@ import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AccessibilityInfo, ActivityIndicator, AppState, findNodeHandle, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text as NativeText, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { isRecoveryPhraseWordCount, RECOVERY_PHRASE_WORD_COUNTS, type RecoveryPhraseWordCount } from '../../../../source/shared/recoveryPhrase';
 import type { NativeRecoveryFlow } from '../custody/recoveryFlow';
 import type { RecoveryInventory } from '../custody/recoveryInventory';
 import { Button, Card, colors, Icon, Notice, Screen, SegmentedControl, styles, Text } from '../ui';
@@ -17,6 +20,9 @@ const blankWords = (count: number) => Array<string>(count).fill('');
 /** Transient recovery phrase inputs only. The supplied flow owns all recovery authority. */
 export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
   const { t } = useNativeTranslation();
+  const [scanning, setScanning] = useState(false);
+  const scannerOpen = useRef(false);
+  useLayoutEffect(() => { scannerOpen.current = scanning; }, [scanning]);
   const titles: Record<Snapshot['phase'], string> = {
     reading: t('mobile.recoveryDevices.recovery.recoverAccess'), scope: t('mobile.recoveryDevices.recovery.recoverAccess'), entry: t('mobile.recoveryDevices.recovery.recoveryPhrase'),
     verifying: t('mobile.recoveryDevices.recovery.verifyingYourWallet'), review: t('mobile.recoveryDevices.recovery.walletVerified'), committing: t('mobile.recoveryDevices.recovery.restoringAccess'),
@@ -24,12 +30,12 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
   };
   const snapshot = useSyncExternalStore(useCallback(listener => flow.subscribe(listener), [flow]),
     useCallback(() => flow.getSnapshot(), [flow]), useCallback(() => flow.getSnapshot(), [flow]));
-  const [count, setCount] = useState<12 | 24>(12);
+  const [count, setCount] = useState<RecoveryPhraseWordCount>(12);
   const [words, setWords] = useState(() => blankWords(12));
   const [details, setDetails] = useState(false);
   const [entryError, setEntryError] = useState('');
   const [entrySequence, setEntrySequence] = useState(0);
-  const entered = useRef(blankWords(12)), wordCount = useRef<12 | 24>(12);
+  const entered = useRef(blankWords(12)), wordCount = useRef<RecoveryPhraseWordCount>(12);
   const sequence = useRef(0);
   const alive = useRef(false), cancelled = useRef(false), activeFlow = useRef(flow);
   const latestBack = useRef<() => void>(() => undefined);
@@ -48,12 +54,12 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
   useLayoutEffect(() => {
     alive.current = true; cancelled.current = false; activeFlow.current = flow;
     clear();
-    const cancel = () => { cancelled.current = true; clear(); flow.cancel(); };
+    const cancel = () => { cancelled.current = true; setScanning(false); clear(); flow.cancel(); };
     const expectedPrompt = () => flow.getSnapshot().phase === 'committing' && flow.isAuthenticating();
     const change = AppState.addEventListener('change', state => {
-      if (state !== 'active' && !allowsPrivateAuthenticationInterruption({ isAuthenticating: expectedPrompt }, state)) cancel();
+      if (state !== 'active' && !(state === 'inactive' && scannerOpen.current && isCameraPermissionPromptActive()) && !allowsPrivateAuthenticationInterruption({ isAuthenticating: expectedPrompt }, state)) cancel();
     });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!expectedPrompt()) cancel(); }) : null;
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!(scannerOpen.current && isCameraPermissionPromptActive()) && !expectedPrompt()) cancel(); }) : null;
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => { latestBack.current(); return true; });
     if (AppState.currentState === 'active') flow.start(); else cancel();
     return () => {
@@ -78,7 +84,7 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
     if (!current() || sequence.current !== entrySequence || flow.getSnapshot().phase !== 'entry') return;
     const normalized = value.normalize('NFKD').trim().toLowerCase();
     const pasted = index === 0 ? normalized.split(/\s+/u) : [];
-    if (pasted.length === 12 || pasted.length === 24) {
+    if (isRecoveryPhraseWordCount(pasted.length)) {
       wordCount.current = pasted.length; setCount(pasted.length); entered.current = pasted;
     } else entered.current = entered.current.map((word, position) => position === index ? normalized : word);
     setWords([...entered.current]); setEntryError('');
@@ -110,6 +116,10 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
   </> : <Button title={snapshot.phase === 'committing' || snapshot.phase === 'reopening' ? t('mobile.recoveryDevices.recovery.leaveRecovery')
     : snapshot.phase === 'blocked' || snapshot.phase === 'closed' ? t('mobile.recoveryDevices.recovery.backToUnlock') : t('mobile.recoveryDevices.recovery.cancelRecovery')} variant="secondary" onPress={back} />;
 
+  if (scanning && snapshot.phase === 'entry') return <SecretQrScanner kind="recoveryPhrase" onClose={() => setScanning(false)} onScan={value => {
+    editWord(0, value);
+    setScanning(false);
+  }} />;
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen key={snapshot.phase} footer={<View style={s.actions}>{footer}</View>} gap={18}>
@@ -135,11 +145,15 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
         {snapshot.phase === 'entry' && <>
           <Text accessibilityRole="header" style={s.heroTitle}>{t('mobile.recoveryDevices.recovery.enterYourRecoveryPhrase')}</Text>
           <Text style={s.body}>{t('mobile.recoveryDevices.recovery.enterEachWordInItsOriginalOrder')}</Text>
-          <SegmentedControl label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={String(count)} options={[{ value: '12', label: t('mobile.recoveryDevices.common.wordCount', { count: 12 }) }, { value: '24', label: t('mobile.recoveryDevices.common.wordCount', { count: 24 }) }]}
+          <SegmentedControl label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={String(count)}
+            options={RECOVERY_PHRASE_WORD_COUNTS.map(words => ({ value: String(words), displayLabel: String(words), label: t('mobile.recoveryDevices.common.wordCount', { count: words }) }))}
             onChange={value => {
               if (!current() || sequence.current !== entrySequence || flow.getSnapshot().phase !== 'entry') return;
-              wordCount.current = value === '24' ? 24 : 12; setCount(wordCount.current); clear();
+              const next = Number(value);
+              if (next === wordCount.current || !isRecoveryPhraseWordCount(next)) return;
+              wordCount.current = next; setCount(next); clear();
             }} />
+          <SecretScanButton onPress={() => { clear(); setScanning(true); }} />
           <View style={s.grid}>{words.map((word, index) => <View key={index} style={s.word}>
             <Text style={s.number}>{index + 1}</Text>
             <IdleTextInput accessibilityLabel={t('mobile.recoveryDevices.common.recoveryWord', { index: index + 1 })} placeholder={t('mobile.recoveryDevices.common.word', { index: index + 1 })} placeholderTextColor={colors.muted}

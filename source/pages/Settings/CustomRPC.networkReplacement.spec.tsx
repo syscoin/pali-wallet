@@ -489,6 +489,23 @@ it('does not reapply a restored old-registration draft after an account round tr
   });
 });
 
+it('keeps the edited RPC in the form while a reviewed switch finishes', async () => {
+  const normal = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path, args) => {
+    if (path[1] === 'editCustomRpc')
+      throw new Error('PALI_NETWORK_REGISTRATION_SWITCHING');
+    return normal(path, args);
+  });
+  await submitEdit();
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'settings.networkSwitchInProgress'
+  );
+  expect(screen.getByPlaceholderText('settings.rpcUrlPlaceholder')).toHaveValue(
+    proposal.url
+  );
+  expect(mockAlert.success).not.toHaveBeenCalled();
+});
+
 it('rejects an edit delivered to the background after the UI check and refreshes for retry', async () => {
   let deliver!: () => void;
   const delivery = new Promise<void>((resolve) => (deliver = resolve));
@@ -510,7 +527,9 @@ it('rejects an edit delivered to the background after the UI check and refreshes
     )
   );
   await act(async () => deliver());
-  await screen.findByRole('alert');
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'settings.networkChangedRetry'
+  );
   expect(liveTarget()).toEqual(replacement);
   expect((await loadState()).vaultGlobal.networks.ethereum[31337]).toEqual(
     replacement

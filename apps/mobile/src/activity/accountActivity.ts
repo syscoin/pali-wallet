@@ -1,5 +1,5 @@
 import { matchesActivityView } from './activityFiltering.ts';
-import { NativeActivity, type ActivityRow, type NativeActivityRuntime, type ActivityExplorerPort, type ActivityReceiptPort } from './nativeActivity.ts';
+import { activityRowKey, activityRowTimestamp, findActivityRow, NativeActivity, type ActivityRow, type NativeActivityRuntime, type ActivityExplorerPort, type ActivityReceiptPort } from './nativeActivity.ts';
 import { DEFAULT_ACTIVITY_VIEW, type ActivityViewState } from './types.ts';
 import { ActivityReadConcurrency } from './readConcurrency.ts';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio.ts';
@@ -89,8 +89,8 @@ export class AccountActivityController {
     if (!this.connection || this.pendingFilter !== null) return undefined;
     for (const child of this.children.values()) {
       if (child.choice.scope.network.id !== networkId) continue;
-      const row = child.controller.getSnapshot().rows.find(value => value.hash === hash);
-      if (row) return { key: `${scopeKey(child.choice)}:${row.hash}`, choice: child.choice, row, controller: child.controller };
+      const row = findActivityRow(child.controller.getSnapshot().rows, hash);
+      if (row) return { key: `${scopeKey(child.choice)}:${activityRowKey(row)}`, choice: child.choice, row, controller: child.controller };
     }
     return undefined;
   }
@@ -114,10 +114,9 @@ export class AccountActivityController {
     if (!this.connection || this.pendingFilter !== null || this.filterStatus !== 'ready' || this.state.filter === null) return;
     const values = [...this.children.values()];
     const rows = values.flatMap(child => child.controller.getSnapshot().rows.map(row => ({
-      key: `${scopeKey(child.choice)}:${row.hash}`, choice: child.choice, row, controller: child.controller,
+      key: `${scopeKey(child.choice)}:${activityRowKey(row)}`, choice: child.choice, row, controller: child.controller,
     }))).filter(({ row, choice }) => matchesActivityView(row, choice.scope.accountAddress, this.state.view, 'exclude'))
-    .sort((a, b) => (b.row.observation?.timestamp ?? b.row.candidate?.timestamp ?? b.row.local?.createdAt ?? 0) -
-      (a.row.observation?.timestamp ?? a.row.candidate?.timestamp ?? a.row.local?.createdAt ?? 0) || a.key.localeCompare(b.key));
+    .sort((a, b) => activityRowTimestamp(b.row) - activityRowTimestamp(a.row) || a.key.localeCompare(b.key));
     const snapshots = values.map(child => child.controller.getSnapshot());
     const partial = snapshots.some(snapshot => snapshot.status === 'unavailable' ||
       snapshot.status === 'ready' && !snapshot.loadingMore && (!!snapshot.error || snapshot.discoveryAvailable === false));
@@ -160,7 +159,12 @@ export class AccountActivityController {
         runtime = { ...target,
           load: target.load.bind(target), saveCache: target.saveCache.bind(target), saveView: target.saveView.bind(target),
           ...(target.forScope ? { forScope: target.forScope.bind(target) } : {}),
+          ...(target.loadTarget ? { loadTarget: target.loadTarget.bind(target) } : {}),
           ...(target.loadSavedPending ? { loadSavedPending: target.loadSavedPending.bind(target) } : {}),
+          ...(target.observeSmartAuthorization ? { observeSmartAuthorization: (scope, hash, guard, signal) => {
+            const current = guarded(guard);
+            return this.reads.run(signal, current, () => target.observeSmartAuthorization!(scope, hash, current, signal));
+          } } : {}),
           observeLocal: (record, guard, signal, observe) => {
             const current = guarded(guard);
             return this.reads.run(signal, current, () => target.observeLocal!(record, current, signal, observe));
@@ -168,12 +172,17 @@ export class AccountActivityController {
         };
       }
       const { explorer, receipts } = this.ports;
+      const pending = explorer.pending?.bind(explorer);
       const source = { getSnapshot: () => this.ports.source.getSnapshot(), subscribe: () => () => undefined };
       const controller = new NativeActivity(source, () => runtime, {
         page: (scope, feed, page, signal, guard) => {
           const current = guarded(guard);
           return this.reads.run(signal, current, () => explorer.page(scope, feed, page, signal, current));
         },
+        ...(pending ? { pending: (scope, signal, guard) => {
+          const current = guarded(guard);
+          return this.reads.run(signal, current, () => pending(scope, signal, current));
+        } } : {}),
       }, {
         read: (hash, owner, signal, guard, network, sharingScope) => {
           const current = guarded(guard);

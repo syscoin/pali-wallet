@@ -8,6 +8,7 @@ import ts from 'typescript';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
+import { activityRowKey, type NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
 import { formatIndicativeFiat } from '../src/portfolio/fiatDisplay.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 
@@ -28,8 +29,9 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
   const snapshot: any = { status: 'ready', filter: 'all', accountId: 'account-1', choices: [choice], rows: screen === 'wallet' ? [row] : [],
     refreshing: false, knownValue: failed ? null : 1005, partial: failed, currency: 'usd',
     view: { filter: 'all', showZero: false }, hasMore: false };
-  let rejectSelection = true, hidden = false, writes = 0, cursor = 0, savedNetworks = false;
+  let rejectSelection = true, hidden = false, writes = 0, cursor = 0;
   let selectionGate: Promise<void> | undefined;
+  let networkActivity: Pick<NativeActivitySnapshot, 'status' | 'hasMore' | 'error'> | undefined;
   const cells: Cell[] = [], effects: (() => void)[] = [];
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const effect = (run: () => void | (() => void), deps?: readonly unknown[]) => {
@@ -51,7 +53,8 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     AppState: { currentState: 'active' }, StyleSheet: { create: (value: unknown) => value } };
   const controller = { subscribe: () => () => undefined, getSnapshot: () => snapshot, connect: () => () => undefined,
     setCurrency() {}, cachedBalances: () => [], findRow: () => undefined,
-    getNetwork: () => savedNetworks ? { controller: { getSnapshot: () => ({ status: 'ready', canViewSavedPending: true }) } } : undefined,
+    getNetwork: (id: string) => id === choice.scope.network.id && networkActivity
+      ? { choice, controller: { getSnapshot: () => networkActivity } } : undefined,
     async selectFilter(value: string) { writes++; await selectionGate; if (rejectSelection) throw Error('Storage unavailable'); snapshot.filter = value; },
     async refresh() { throw Error('Activity unavailable'); },
   };
@@ -65,6 +68,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     '../custody/networkContext': { nativeSigningEnabled: () => true },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' }, './WalletBackupBadge': { WalletBackupBadge: 'WalletBackupBadge' },
     './ActivityListRow': { ActivityListRow: 'ActivityListRow' }, '../activity/assetIcon': { activityAssetIcon: () => undefined },
+    '../activity/nativeActivity': { activityRowKey },
     './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen', nativeActivityRowPresentation: () => { if (activityPresentation) return activityPresentation; throw Error('No activity rows expected'); } },
     './IdleActivityBoundary': { IdlePressable: 'Pressable', IdleTextInput: 'TextInput' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'SegmentedControl', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
@@ -102,6 +106,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
   const modal = () => nodes(render()).find(node => node.type === 'Modal' && node.props.visible);
   return { render, nodes, modal, row,
     setActivity(value: Partial<typeof snapshot>) { Object.assign(snapshot, value); },
+    setNetworkActivity(value: typeof networkActivity) { networkActivity = value; },
     duplicateNetworks() {
       snapshot.choices = ['31337', '31338'].map(chainId => ({ ...choice, networkName: 'Shared network', symbol: 'ABC',
         scope: { ...choice.scope, id: `account-1:custom:${chainId}`, network: { ...choice.scope.network, id: `custom:${chainId}`, chainId } } }));
@@ -115,11 +120,6 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     openFilter() { const label = screen === 'wallet' ? 'Choose network filter, All networks' : 'Activity network: All networks';
       nodes(render()).find(node => node.props.accessibilityLabel === label)!.props.onPress(); },
     openSource(title: 'Send' | 'Receive') { nodes(render()).find(node => node.type === 'Button' && node.props.title === title)!.props.onPress(); },
-    openSavedNetworks() {
-      savedNetworks = true;
-      nodes(render()).find(node => node.props.label === 'Activity options')!.props.onPress();
-      nodes(render()).find(node => node.type === 'Button' && node.props.title === 'Saved pending')!.props.onPress();
-    },
     failEarlierAction() { const tree = nodes(render());
       const action = screen === 'wallet' ? tree.find(node => String(node.props.accessibilityLabel).startsWith('ETH, Ethereum, '))
         : tree.find(node => node.props.label === 'Refresh activity');
@@ -131,13 +131,12 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
   };
 }
 
-for (const [screen, purpose] of [['wallet', 'filter'], ['wallet', 'Send'], ['wallet', 'Receive'], ['activity', 'filter'], ['activity', 'saved']] as const)
+for (const [screen, purpose] of [['wallet', 'filter'], ['wallet', 'Send'], ['wallet', 'Receive'], ['activity', 'filter']] as const)
   test(`${screen} ${purpose} chooser preserves chain identity for identically named networks`, () => {
     const f = fixture(screen);
     try {
       f.duplicateNetworks();
       if (purpose === 'filter') f.openFilter();
-      else if (purpose === 'saved') f.openSavedNetworks();
       else f.openSource(purpose);
       const nodes = f.nodes(f.modal());
       const choices = nodes.filter(node => node.props.accessibilityRole === 'radio' && String(node.props.accessibilityLabel).startsWith('Shared network, ABC'));
@@ -160,6 +159,7 @@ test('activity pagination waits for refresh and distinguishes an incomplete feed
     f.setActivity({ refreshing: false });
     assert(titles().includes('Load older activity'));
     f.setActivity({ partial: true });
+    f.setNetworkActivity({ status: 'ready', hasMore: true, error: 'feed-unavailable' });
     assert(titles().includes('Retry activity'));
     assert(!titles().includes('Load older activity'));
     f.setActivity({ hasMore: false });

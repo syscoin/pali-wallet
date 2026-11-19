@@ -1,4 +1,5 @@
 import { walletUiFixture } from './walletUiFixture.ts';
+import { screenFixture } from './screenFixture.ts';
 import { AUTOMATIC_FEE, snapshotUtxoFeeChoice } from '../../../source/shared/transactionFeeChoice.ts';
 import { trezorResumeDraft } from '../src/screens/trezorResumeDraft.ts';
 import { languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
@@ -13,6 +14,7 @@ import ts from 'typescript';
 import { formatBaseUnits, parseDecimalAmount } from '../src/core/amounts.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount } from '../../../source/utils/syscoinAssetAmount.ts';
+import * as utxoSendErrors from '../../../source/shared/utxoSendErrors.ts';
 import { snapshotUtxoRbf } from '../../../source/shared/utxoTransactionOptions.ts';
 import { SYSX_ASSET_GUID, SYSX_ASSET_DECIMALS } from '../../../source/shared/syscoinAssetIds.ts';
 import type { NativeUtxoAsset, NativeUtxoReview } from '../src/custody/utxoSend.ts';
@@ -35,7 +37,8 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
     Fragment: 'Fragment',
-    createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]) => ({ type, props: props ?? {}, children }),
+    createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]) =>
+      type === prompt.render ? prompt.render(props) : ({ type, props: props ?? {}, children }),
     useState(initial: unknown) {
       const value = cell(); if (!Object.hasOwn(value, 'value')) value.value = typeof initial === 'function' ? (initial as () => unknown)() : initial;
       value.setter ??= (next: any) => { value.value = typeof next === 'function' ? next(value.value) : next; };
@@ -51,7 +54,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     useSyncExternalStore(_subscribe: unknown, read: () => unknown) { cell(); return read(); },
   };
   let hardware: (() => boolean) | undefined, backs = 0;
-  const native = { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'View'].map((name) => [name, name])),
+  const native = { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'ScrollView', 'View'].map((name) => [name, name])),
     Platform: { OS: 'android' }, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: unknown) => value },
     BackHandler: { addEventListener(_name: string, callback: () => boolean) { hardware = callback; return { remove() { hardware = undefined; } }; } } };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'IconButton', 'Notice', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
@@ -67,26 +70,22 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     './UtxoRecipientQrScanner': { UtxoRecipientQrScanner: 'UtxoRecipientQrScanner' },
     '../../../../source/shared/syscoinAssetIds': { SYSX_ASSET_GUID, SYSX_ASSET_DECIMALS },
     '../../../../source/utils/syscoinAssetAmount': { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount },
+    '../../../../source/shared/utxoSendErrors': utxoSendErrors,
     '../../../../source/shared/utxoTransactionOptions': { snapshotUtxoRbf },
   };
+  const prompt = screenFixture(new URL('../src/screens/SubmissionLeavePrompt.tsx', import.meta.url), 'SubmissionLeavePrompt', imports);
+  imports['./SubmissionLeavePrompt'] = { SubmissionLeavePrompt: prompt.render };
   const module = { exports: {} as any };
   runInNewContext(code, { module, exports: module.exports, Error, require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const requests: any[] = []; let cancels = 0, confirmations = 0, networkChanges = 0, gate: Promise<void> | undefined, release: (() => void) | undefined;
   let confirmationFailure: Error | undefined, confirmationGate: Promise<void> | undefined, signatures = 0;
-  let retryReview: NativeUtxoReview | undefined;
   const authorized: { review: NativeUtxoReview; credential: NativeOperationCredential }[] = [];
   const openedTransactions: string[] = [];
   const networkDrafts: unknown[] = [];
   const reviews: NativeUtxoReview[] = [];
-  let saved: { accepted: boolean; txid: string }[] = [], listReads = 0, refreshReads = 0;
   const service = {
-    cancel() { cancels++; }, async list() { listReads++; return saved; },
-    async refreshSaved() { refreshReads++; return service.list(); },
-    async check() { saved = []; return 'confirmed' as const; },
-    async prepareRetry(txid: string) {
-      assert(retryReview);
-      return { ...retryReview, retryTxid: txid };
-    },
+    cancel() { cancels++; },
+    isReviewCurrent: (view: NativeUtxoReview) => view === reviews.at(-1),
     async prepare(input: any): Promise<NativeUtxoReview> {
       requests.push(structuredClone(input));
       if (gate) await gate; // Deliberately deliver a late result after cancellation.
@@ -98,8 +97,8 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     },
     async confirm(review: NativeUtxoReview, credential: NativeOperationCredential) {
       const cancelAtStart = cancels; confirmations++; authorized.push({ review, credential });
-      if (confirmationFailure) { const failure = confirmationFailure; confirmationFailure = undefined; throw failure; }
       if (confirmationGate) await confirmationGate;
+      if (confirmationFailure) { const failure = confirmationFailure; confirmationFailure = undefined; throw failure; }
       if (cancels !== cancelAtStart) throw Error('CANCELLED');
       signatures++; return { txid: 'ab'.repeat(32) };
     },
@@ -116,11 +115,9 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     hardware() { assert(hardware); return hardware(); }, backs: () => backs,
     opens: () => opens,
     seedDraft(draft: NonNullable<typeof initialDraft>) { initialDraft = draft; },
-    seedSaved(records: typeof saved) { saved = records; }, listReads: () => listReads, refreshReads: () => refreshReads,
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     failSubmissionUnknown() { confirmationFailure = Object.assign(new Error('UTXO_SUBMISSION_UNKNOWN'), { code: 'UTXO_SUBMISSION_UNKNOWN', txid: 'ab'.repeat(32) }); },
-    seedRetryReview(review: NativeUtxoReview) { retryReview = review; },
     changeBalance(value: string) { maximum = value; },
     changeNetwork(id: string) { network = getUtxoNetwork(id); },
     changeAvailable(value: string | undefined) { availableAmount = value; },
@@ -129,25 +126,11 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     close() { cells.forEach((value) => value.cleanup?.()); } };
 }
 
-test('explicit saved status check reloads the filtered recovery list', async () => {
-  const f = fixture();
-  f.seedSaved([{ accepted: true, txid: 'ab'.repeat(32) }]);
-  f.render(); await tick();
-  assert.equal(f.listReads(), 1);
-  assert.equal(f.refreshReads(), 1);
-  f.press('Submitted abababab…'); await tick();
-  assert.equal(f.listReads(), 2);
-  assert.equal(f.refreshReads(), 1, 'Explicit status reload must not observe the network again');
-  assert.equal(all(f.render()).some(node => node.props.title === 'Submitted abababab…'), false);
-  assert.equal(f.counts().confirmations, 0);
-  f.close();
-});
-
-test('device refusal keeps the exact UTXO review available for retry', async () => {
+for (const failure of ['DEVICE_UNLOCK_UNAVAILABLE', 'CANCELLED']) test(`${failure} keeps the exact UTXO review available for retry`, async () => {
   const f = fixture(); f.render(); await tick();
   try {
     f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
-    const reviewed = f.reviews[0]; f.failConfirmation('DEVICE_UNLOCK_UNAVAILABLE');
+    const reviewed = f.reviews[0]; f.failConfirmation(failure);
     f.press('Confirm and send'); await tick();
     assert.equal(f.counts().confirmations, 1); assert.equal(f.signatures(), 0);
     assert(all(f.render()).some(node => node.props.accessibilityRole === 'alert'));
@@ -201,6 +184,33 @@ test('UTXO unmount during device authorization discards the late result', async 
   f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
   f.holdConfirmation(held.promise); f.press('Confirm and send'); assert.equal(f.counts().confirmations, 1);
   f.close(); held.resolve(); await tick(); assert.equal(f.signatures(), 0);
+});
+
+for (const outcome of ['submitted', 'unknown', 'leave'] as const) test(`Back during UTXO submission preserves the user's decision and ${outcome} outcome`, async () => {
+  const f = fixture(), pending = Promise.withResolvers<void>();
+  try {
+    f.render(); await tick();
+    f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
+    f.holdConfirmation(pending.promise); f.press('Confirm and send');
+    const before = f.counts();
+    f.hardware(); f.press('Stay');
+    assert(!all(f.render()).some(node => node.type === 'Modal'));
+    all(f.render()).find(node => node.type === 'Header')!.props.onBack();
+    const leave = all(f.render()).find(node => node.props.title === 'Leave')!;
+    assert(leave); assert.deepEqual(f.counts(), before); assert.equal(f.backs(), 0);
+    if (outcome === 'leave') {
+      leave.props.onPress();
+      assert.equal(f.backs(), 1); assert.equal(f.counts().cancels, before.cancels + 1);
+    } else {
+      if (outcome === 'unknown') f.failSubmissionUnknown();
+      pending.resolve(); await tick();
+      leave.props.onPress();
+      assert.equal(f.backs(), 0); assert(!all(f.render()).some(node => node.type === 'Modal'));
+      if (outcome === 'unknown') assert(all(f.render()).some(node => node.props.title === 'Submission unverified'));
+      f.press('View transaction'); assert.deepEqual(f.openedTransactions, ['ab'.repeat(32)]);
+    }
+    assert.equal(f.counts().confirmations, 1);
+  } finally { pending.resolve(); await tick(); f.close(); }
 });
 
 test('SPT Z-DAG uses the inverse RBF option and MAX fills the selected exact total once', async () => {
@@ -394,7 +404,7 @@ test('successful native UTXO outcome retains the exact reviewed amount, recipien
   } finally { f.close(); }
 });
 
-test('unknown SPT submission retains its exact public summary through a status check', async () => {
+test('unknown SPT submission retains its exact public summary and opens Activity', async () => {
   const asset = { assetGuid: '987654321', decimals: 3, symbol: 'SPT' };
   const f = fixture(asset);
   try {
@@ -415,36 +425,26 @@ test('unknown SPT submission retains its exact public summary through a status c
       assert(!shown.some(node => node.type === 'TransactionAuthentication'));
     };
     assertSummary('Submission unverified');
-    f.press('Check status'); await tick();
-    assertSummary('Confirmed');
+    f.press('View transaction');
+    assert.deepEqual(f.openedTransactions, ['ab'.repeat(32)]);
     assert.equal(f.counts().confirmations, 1);
     assert.equal(f.requests.length, 1);
   } finally { f.close(); }
 });
 
-test('saved UTXO replay outcome keeps Output 1 without identifying it as the recipient', async () => {
+test('unknown UTXO outcome opens Activity without another submission', async () => {
   const f = fixture();
   try {
-    f.seedRetryReview({ transactionOptions: { rbf: true }, feeSatoshis: '100', outputs: [
-      { address: 'bc1qfirstoutput', amountSatoshis: '900001' },
-      { address: 'bc1qotheroutput', amountSatoshis: '12345678' },
-    ] });
     f.render(); await tick();
     f.edit('Recipient address', 'bc1qreviewedrecipient'); f.edit('Amount in BTC', '0.12345678');
     f.review(); await tick(); f.failSubmissionUnknown();
     f.press('Confirm and send'); await tick();
-    f.press('Review saved transfer'); await tick();
-    f.press('Resend saved transfer'); await tick();
-    const assertSummary = () => {
-      const shown = all(f.render());
-      assert(shown.some(node => node.type === 'Text' && node.children.join('') === 'Output 1'));
-      assert(!shown.some(node => node.type === 'Text' && node.children.join('') === 'Recipient'));
-      assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-recipient')?.children.join(''), 'bc1qfirstoutput');
-      assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-amount')?.children.join(''), '0.00900001 BTC');
-    };
-    assertSummary();
-    f.press('Check status'); await tick(); assertSummary();
-    assert.equal(f.counts().confirmations, 2);
+    const shown = all(f.render());
+    assert(!shown.some(node => ['Review saved transfer', 'Resend saved transfer'].includes(String(node.props.title))));
+    assert(!shown.some(node => node.props.title === 'Check status'));
+    f.press('View transaction');
+    assert.deepEqual(f.openedTransactions, ['ab'.repeat(32)]);
+    assert.equal(f.counts().confirmations, 1);
   } finally { f.close(); }
 });
 
@@ -491,30 +491,5 @@ test('Trezor UTXO resume keeps custom seven sat/vB, MAX and RBF in the actual fo
     assert.deepEqual(f.requests[0], { recipient: 'bc1qfixture', amount: '', max: true, asset: undefined, rbf: false,
       feeChoice: { kind: 'custom', satPerVbyte: '7' } });
     assert.equal(f.signatures(), 0);
-  } finally { f.close(); }
-});
-
-
-test('saved UTXO review identifies raw data and script outputs and keeps the exact hex after resend', async () => {
-  const f = fixture();
-  try {
-    f.seedRetryReview({ transactionOptions: { rbf: true }, feeSatoshis: '100', outputs: [
-      { script: { kind: 'data', hex: '6a0161' }, amountSatoshis: '0' },
-      { script: { kind: 'script', hex: '51' }, amountSatoshis: '1000' },
-    ] });
-    f.render(); await tick();
-    f.edit('Recipient address', 'bc1qreviewedrecipient'); f.edit('Amount in BTC', '0.12345678');
-    f.review(); await tick(); f.failSubmissionUnknown();
-    f.press('Confirm and send'); await tick();
-    f.press('Review saved transfer'); await tick();
-    const review = all(f.render()).filter(node => node.type === 'Text').map(node => node.children.join(''));
-    assert(review.includes('6a0161'));
-    assert(review.includes('51'));
-    assert(review.includes('OP_RETURN (Data)'));
-    assert(review.includes('Output script'));
-    f.press('Resend saved transfer'); await tick();
-    const outcome = all(f.render());
-    assert(outcome.some(node => node.type === 'Text' && node.children.join('') === 'OP_RETURN (Data)'));
-    assert.equal(outcome.find(node => node.props.testID === 'native-utxo-outcome-recipient')?.children.join(''), '6a0161');
   } finally { f.close(); }
 });

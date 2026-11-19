@@ -157,7 +157,9 @@ test('revocation during an outstanding public read prevents posting and old taps
   const poll = h.coordinator.runForeground(); await waiting;
   await h.coordinator.disableScope(scope().id); release(); await poll;
   assert.equal(h.posted.length, 0); assert.equal(h.registered, false);
-  assert.equal(await h.coordinator.resolveTapAfterUnlock('pali-alert-' + '1'.padStart(32, '0'), () => true), null);
+  const oldId = 'pali-alert-' + '1'.padStart(32, '0');
+  h.coordinator.recordTap(oldId);
+  assert.equal(await h.coordinator.readTapAfterUnlock(oldId, 1, () => true), null);
 });
 
 test('a revoked later account in an already captured batch is never read', async () => {
@@ -184,22 +186,26 @@ test('taps use local enrolled metadata and are rejected after account removal or
   const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true }); h.rows([transfer()]); await h.coordinator.runForeground();
   const id = h.posted[0]!; h.coordinator.recordTap(id);
   assert.equal(h.coordinator.getSnapshot().pendingEventId, id);
-  assert.equal(await h.coordinator.resolveTapAfterUnlock(id, () => false), null);
+  assert.equal(await h.coordinator.readTapAfterUnlock(id, 1, () => false), null);
   assert.equal(h.coordinator.getSnapshot().pendingEventId, id);
   assert.deepEqual(await h.coordinator.getPendingOwner(), { accountId: scope().accountId, accountType: 'watch' });
-  assert.equal((await h.coordinator.resolveTapAfterUnlock(id, () => true))?.accountId, scope().accountId);
+  assert.equal((await h.coordinator.readTapAfterUnlock(id, 1, () => true))?.accountId, scope().accountId);
+  assert.equal(h.coordinator.getSnapshot().pendingEventId, id, 'reading does not consume the tap');
   await h.coordinator.disableOwner('watch', scope().accountId);
-  assert.ok(h.removed.includes(id)); assert.equal(await h.coordinator.resolveTapAfterUnlock(id, () => true), null);
+  assert.ok(h.removed.includes(id)); assert.equal(await h.coordinator.readTapAfterUnlock(id, 1, () => true), null);
 });
 
-test('resolving one notification does not consume a newer tap', async () => {
+for (const sameAlert of [true, false]) test(`resolving a notification preserves a newer tap of ${sameAlert ? 'the same alert' : 'another alert'}`, async () => {
   const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true });
   h.rows([transfer('a')]); await h.coordinator.runForeground();
   h.rows([transfer('a'), transfer('b')]); await h.coordinator.runForeground();
   const [first, second] = h.posted; assert.ok(first && second);
+  const next = sameAlert ? first : second;
   h.coordinator.recordTap(first);
-  assert.ok(await h.coordinator.resolveTapAfterUnlock(first, () => { h.coordinator.recordTap(second); return true; }));
-  assert.equal(h.coordinator.getSnapshot().pendingEventId, second);
+  assert.equal(await h.coordinator.readTapAfterUnlock(first, 1, () => { h.coordinator.recordTap(next); return true; }), null);
+  h.coordinator.consumeTap(first, 1);
+  assert.equal(h.coordinator.getSnapshot().pendingEventId, next);
+  assert.equal(h.coordinator.getSnapshot().tapRevision, 2);
   await h.coordinator.disableAll(); assert.equal(await h.coordinator.getPendingOwner(), null);
 });
 

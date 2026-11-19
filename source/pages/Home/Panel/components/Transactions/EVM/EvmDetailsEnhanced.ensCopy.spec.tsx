@@ -10,9 +10,6 @@ import {
 import React from 'react';
 
 // Replay has separate actual consent tests; isolate unrelated detail decoding here.
-jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
-  RetainedTransactionReplay: () => null,
-}));
 
 import { TransactionDetailsList } from 'components/TransactionDetails';
 
@@ -232,3 +229,7 @@ it('keeps address-poisoning checks on the original address behind a long ENS ali
     'send.addressPoisoningHistoryCopyBlocked'
   );
 });
+
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: jest.fn().mockResolvedValue(null),
+}));

@@ -60,6 +60,7 @@ jest.mock('components/index', () => ({
 }));
 jest.mock('components/Icon/Icon', () => ({
   LoadingSvg: () => null,
+  QrcodeOutlined: () => null,
   QuestionCircleOutlined: () => null,
 }));
 // Only the unrelated modal presentation is isolated. Its supplied translated
@@ -323,7 +324,7 @@ describe('recovery phrase validation localization', () => {
     const { user } = await mount('de');
     await enter(user, `  ${VALID12.toUpperCase().replace(/ /g, '  ')}  `);
     await waitFor(() => expect(button('de')).toBeEnabled());
-    // AntD normalizes its form value, not the nested uncontrolled textarea.
+    // The visible draft retains the original input during normalization.
     // Check the actual argument admitted to MainController/SDK, no phrase echo.
     expect(mockEmitter.mock.calls.some(([, args]) => args[0] === VALID12)).toBe(
       true

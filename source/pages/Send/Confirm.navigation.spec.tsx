@@ -7,7 +7,6 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -229,6 +228,12 @@ jest.mock('utils/validations', () => ({
   ],
 }));
 
+const payerBudget = {
+  gasTank: false,
+  maximumFeeWei: '21000000000000',
+  maximumPrefundWei: '0',
+  maximumPrefundFeeWei: '0',
+};
 const feePayer = {
   address: '0x4444444444444444444444444444444444444444',
   id: 2,
@@ -239,15 +244,23 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockHandleTransactionError.mockReturnValue(false);
   (prepareSmartAccountFeeQuote as jest.Mock).mockImplementation(
-    async ({ feeOverrides }: any) => ({
-      feePayer,
-      gasUnits: '650000',
-      maximumFeeWei: BigNumber.from(
+    async ({ feeOverrides, nativeMaximum }: any) => {
+      const maximumFee = BigNumber.from(
         feeOverrides?.gasPrice ?? feeOverrides?.maxFeePerGas ?? '1000000000'
-      )
-        .mul(650000)
-        .toString(),
-    })
+      ).mul(650000);
+      return {
+        feePayer,
+        payerBudget,
+        gasUnits: '650000',
+        maximumFeeWei: maximumFee.toString(),
+        ...(nativeMaximum && {
+          nativeAmountWei: BigNumber.from('100000000000000000000')
+            .sub(maximumFee)
+            .sub('1000000000000')
+            .toString(),
+        }),
+      };
+    }
   );
   mockPublishedAuth = undefined;
   mockEip1559Compatible = false;
@@ -432,7 +445,9 @@ it.each(
       symbol: 'TEST',
       isNft: type !== TransactionType.ERC20,
     };
-    const error = new Error('Synthetic token rejection');
+    const error = Object.assign(new Error('Synthetic token rejection'), {
+      transactionNotBroadcast: true,
+    });
     const prior = mockControllerEmitter.getMockImplementation()!;
     mockControllerEmitter.mockImplementation((path: string[], args: any[]) => {
       if (path.at(-1) === 'sendAndSaveTokenTransaction')
@@ -827,6 +842,7 @@ it.each([
       };
     (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
       feePayer,
+      payerBudget,
       gasUnits: '863456',
       maximumFeeWei: '43172800000000000',
     });
@@ -835,11 +851,14 @@ it.each([
       expect(screen.getAllByText('0.0431728 TSYS').length).toBeGreaterThan(0)
     );
     expect(screen.getByText('send.smartAccountMaxFee')).toBeTruthy();
-    expect(screen.getByText('send.smartAccountFeeDetails')).toBeTruthy();
+    expect(screen.getByText('send.smartAccountFeeReimbursement')).toBeTruthy();
     expect(screen.getByText('transactions.feePayer')).toBeTruthy();
     expect(screen.getByText(feePayer.address)).toBeTruthy();
     expect(screen.getAllByText('0.0431728 TSYS').length).toBeGreaterThan(0);
-    expect(screen.queryByText('0.000021 TSYS')).toBeNull();
+    expect(screen.getByText('transactions.replay.maximumFee')).toBeTruthy();
+    expect(screen.getByText('0.000021 TSYS')).toBeTruthy();
+    if (transactionType === TransactionType.NATIVE_ETH)
+      expect(screen.getByText('send.smartAccountTotal')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
     await waitFor(() =>
       expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
@@ -850,8 +869,19 @@ it.each([
       -1
     )[0];
     expect(sent.approvedFeeQuote).toEqual(
-      expect.objectContaining({ maximumFeeWei: '43172800000000000', feePayer })
+      expect.objectContaining({
+        maximumFeeWei: '43172800000000000',
+        feePayer,
+        payerBudget,
+      })
     );
+    expect(quoted.includePayerBudget).toBe(true);
+    expect(sent).not.toHaveProperty('feeConsent');
+    expect(
+      screen.queryByRole('dialog', {
+        name: 'settings.smartAccountFeeReviewTitle',
+      })
+    ).toBeNull();
     expect(sent.executions).toEqual(quoted.executions);
     expect(sent.expectedContext).toEqual(quoted.expectedContext);
     expect(
@@ -866,15 +896,30 @@ it('quotes and displays the exact native MAX net before signing, without a submi
   prepareSmartAccountConfirmation(true);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
     feePayer,
+    payerBudget,
     gasUnits: '863456',
     maximumFeeWei: '43172800000000000',
+    nativeAmountWei: '99956826200000000000',
   });
   render(<SendConfirm />);
   await waitFor(() => expect(screen.getByText('99.9568262 TSYS')).toBeTruthy());
-  const quote = (prepareSmartAccountFeeQuote as jest.Mock).mock.calls.at(-1)[0];
-  expect(BigNumber.from(quote.executions[0].value).toString()).toBe(
-    '99956826200000000000'
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(1);
+  const requestedExecution = {
+    target: mockLocation.state.tx.receivingAddress,
+    data: '0x',
+    value: '0x0',
+  };
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledWith(
+    expect.objectContaining({
+      nativeMaximum: true,
+      executions: [requestedExecution],
+    })
   );
+  expect(
+    mockControllerEmitter.mock.calls.some(
+      ([path]) => path.at(-1) === 'refreshActiveAccountBalances'
+    )
+  ).toBe(false);
   const reads = mockControllerEmitter.mock.calls.length;
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   await waitFor(() =>
@@ -883,7 +928,13 @@ it('quotes and displays the exact native MAX net before signing, without a submi
   expect(
     (signAndSubmitSmartAccountExecutions as jest.Mock).mock.calls[0][0]
       .executions
-  ).toEqual(quote.executions);
+  ).toEqual([
+    {
+      ...requestedExecution,
+      value: BigNumber.from('99956826200000000000').toHexString(),
+    },
+  ]);
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(1);
   expect(
     mockControllerEmitter.mock.calls
       .slice(reads)
@@ -900,6 +951,7 @@ it('adds a native 1-wei amount to the full charge without rounding the displayed
   mockLocation.state.tx.amount = '0.000000000000000001';
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
     feePayer,
+    payerBudget,
     gasUnits: '863456',
     maximumFeeWei: '43172800000000000',
   });
@@ -932,6 +984,7 @@ it('requires explicit refresh after a proven fee increase, and never auto-resubm
   expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
     feePayer,
+    payerBudget,
     gasUnits: '900000',
     maximumFeeWei: '900000000000000',
   });
@@ -941,211 +994,71 @@ it('requires explicit refresh after a proven fee increase, and never auto-resubm
   expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
 });
 
-it('retires the consumed Smart Account quote after a definite payer-fee decline and requires a fresh review', async () => {
+it('opens Activity after the payer fee exceeds the approved cap without offering to sign again', async () => {
   prepareSmartAccountConfirmation();
   render(<SendConfirm />);
   await waitFor(() => expect(screen.getByText('0.00065 TSYS')).toBeTruthy());
   (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
     async (params) => {
       await params.onBeforeSubmit({ executionContextId: 'consumed' });
-      throw Object.assign(new Error('Transaction fee approval was cancelled'), {
-        code: 4001,
-        transactionNotBroadcast: true,
-      });
+      throw Object.assign(
+        new Error('PALI_SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED'),
+        {
+          transactionNotBroadcast: true,
+        }
+      );
     }
   );
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  await waitFor(() =>
-    expect(
-      screen.getByRole('button', { name: 'send.refreshFeeQuote' })
-    ).toBeEnabled()
-  );
+  const activity = await screen.findByRole('button', {
+    name: 'buttons.activity',
+  });
+  expect(screen.getByText('send.smartAccountPayerFeeExceeded')).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'send.refreshFeeQuote' })
+  ).toBeNull();
   expect(
     screen.getByRole('button', { name: 'buttons.confirm' })
   ).toBeDisabled();
   expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
-  const prepared = (prepareSmartAccountFeeQuote as jest.Mock).mock.calls.length;
-  (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
-    feePayer,
-    gasUnits: '900000',
-    maximumFeeWei: '900000000000000',
-    executionContextId: 'fresh-context',
+  fireEvent.click(activity);
+  expect(mockNavigate).toHaveBeenCalledWith('/home?tab=activity', {
+    replace: true,
   });
-  fireEvent.click(screen.getByRole('button', { name: 'send.refreshFeeQuote' }));
-  await waitFor(() => expect(screen.getByText('0.0009 TSYS')).toBeTruthy());
-  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(prepared + 1);
-  expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  await waitFor(() =>
-    expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(2)
-  );
-  expect(
-    (signAndSubmitSmartAccountExecutions as jest.Mock).mock.calls[1][0]
-      .approvedFeeQuote.executionContextId
-  ).toBe('fresh-context');
 });
 
-it('keeps the actual payer review in its original submission owner after the router installs the inert marker', async () => {
+it('requires a payer fee cap before enabling Confirm', async () => {
   prepareSmartAccountConfirmation();
-  mockNavigate.mockImplementation((path, options) => {
-    if (!options?.state?.submissionStarted) return;
-    mockLocation = {
-      ...mockLocation,
-      pathname: path,
-      key: 'owned-submission-marker',
-      state: options.state,
-    };
-    window.history.replaceState({ key: mockLocation.key }, '', path);
+  (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValueOnce({
+    feePayer,
+    gasUnits: '650000',
+    maximumFeeWei: '650000000000000',
   });
-  const payerReview = {
-    id: 'payer-envelope',
-    validForMs: 90000,
-    transaction: {
-      from: feePayer.address,
-      to: mockLocation.state.tx.receivingAddress,
-      chainId: '5700',
-      nonce: '1',
-      value: '0',
-      gasLimit: '21000',
-      type: 0,
-      gasPrice: '1000000000',
-      data: '0x',
-    },
-    maximumFeeUnits: '21000000000000',
-    maximumTotalUnits: '21000000000000',
-  };
-  let accepted = false;
-  (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
-    async (params) => {
-      await params.onBeforeSubmit({ executionContextId: 'owned-operation' });
-      expect(
-        await params.feeConsent.confirmFee(
-          payerReview,
-          new AbortController().signal
-        )
-      ).toBe(payerReview.id);
-      accepted = true;
-      return { hash: 'owned-operation-hash' };
-    }
-  );
-  try {
-    render(<SendConfirm />);
-    await waitFor(() => expect(screen.getByText('0.00065 TSYS')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-    await waitFor(() =>
-      expect(
-        screen.getByRole('dialog', {
-          name: 'settings.smartAccountFeeReviewTitle',
-        })
-      ).toBeTruthy()
-    );
-    expect(mockLocation.state.submissionStarted).toBe(true);
-    expect(mockLocation.state.tx).toBeUndefined();
-    expect(
-      within(screen.getByRole('dialog')).getByText(feePayer.address)
-    ).toBeTruthy();
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'buttons.confirm',
-      })
-    );
-    await waitFor(() => expect(accepted).toBe(true));
-    expect(mockAlert.error).not.toHaveBeenCalled();
-    expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
-  } finally {
-    mockNavigate.mockReset();
-  }
+  render(<SendConfirm />);
+  await screen.findByText('send.unableToCalculateFees');
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
 });
 
-it.each(['route', 'account', 'unmount'])(
-  'does not present a late payer fee after genuine %s departure from the marker-owned attempt',
-  async (departure) => {
-    prepareSmartAccountConfirmation();
-    mockNavigate.mockImplementation((path, options) => {
-      if (!options?.state?.submissionStarted) return;
-      mockLocation = {
-        ...mockLocation,
-        pathname: path,
-        key: 'owned-submission-marker',
-        state: options.state,
-      };
-      window.history.replaceState({ key: mockLocation.key }, '', path);
-    });
-    let release!: () => void;
-    const waiting = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let finished = false;
-    (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementationOnce(
-      async (params) => {
-        await params.onBeforeSubmit({ executionContextId: 'owned-operation' });
-        await waiting;
-        try {
-          await params.feeConsent.confirmFee(
-            {
-              id: 'late-fee',
-              validForMs: 90000,
-              transaction: {
-                from: feePayer.address,
-                to: '0x2222222222222222222222222222222222222222',
-                chainId: '5700',
-                nonce: '1',
-                value: '0',
-                gasLimit: '21000',
-                type: 0,
-                gasPrice: '1000000000',
-                data: '0x',
-              },
-              maximumFeeUnits: '21000000000000',
-              maximumTotalUnits: '21000000000000',
-            },
-            new AbortController().signal
-          );
-        } finally {
-          finished = true;
-        }
-      }
-    );
-    const view = render(<SendConfirm />);
-    try {
-      await waitFor(() =>
-        expect(screen.getByText('0.00065 TSYS')).toBeTruthy()
-      );
-      fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-      await waitFor(() =>
-        expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
-      );
-      if (departure === 'route') {
-        mockLocation = {
-          ...mockLocation,
-          key: 'genuine-other-entry',
-          pathname: '/home',
-          state: null,
-        };
-        window.history.replaceState({ key: mockLocation.key }, '', '/home');
-        view.rerender(<SendConfirm />);
-      } else if (departure === 'account') {
-        mockNavigationScope = {
-          ...mockNavigationScope,
-          account: 'different-account',
-        };
-        view.rerender(<SendConfirm />);
-      } else view.unmount();
-      await act(async () => release());
-      await waitFor(() => expect(finished).toBe(true));
-      expect(screen.queryByRole('dialog')).toBeNull();
-    } finally {
-      mockNavigate.mockReset();
-    }
-  }
-);
+it('cancels from the combined review without authorizing either fee', async () => {
+  prepareSmartAccountConfirmation();
+  render(<SendConfirm />);
+  await waitFor(() => expect(screen.getByText('0.00065 TSYS')).toBeTruthy());
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
 
 it('uses trusted zero account-charge tank mode for native MAX without subtracting outer payer fees', async () => {
   prepareSmartAccountConfirmation(true);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
     feePayer,
+    payerBudget: { ...payerBudget, gasTank: true },
     gasUnits: '863456',
     maximumFeeWei: '0',
+    nativeAmountWei: '99999999000000000000',
   });
   render(<SendConfirm />);
   await waitFor(() =>
@@ -1182,8 +1095,13 @@ it.each([undefined, false, true])(
     await waitFor(() => expect(screen.getByText('0.00065 TSYS')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
     await waitFor(() =>
-      expect(screen.getByText('send.submissionStatusUnknown')).toBeTruthy()
+      expect(mockAlert.error).toHaveBeenCalledWith(
+        'transactions.replay.unknown'
+      )
     );
+    expect(mockNavigate).toHaveBeenLastCalledWith('/home?tab=activity', {
+      replace: true,
+    });
     expect(
       screen.queryByRole('button', { name: 'send.refreshFeeQuote' })
     ).toBeNull();
@@ -1229,7 +1147,7 @@ it.each(['preparation refused', 'fee quote malformed'])(
     expect(screen.getByText('send.smartAccountMaxFee')).toHaveTextContent(
       'send.feeUnavailable'
     );
-    const total = screen.getByText('send.total (send.amountAndFee)');
+    const total = screen.getByText('send.smartAccountTotal');
     expect(total).toHaveTextContent('send.feeUnavailable');
     expect(total).not.toHaveTextContent('1.00000000 TSYS');
     expect(
@@ -1258,9 +1176,9 @@ it.each([
     expect(
       screen.getByRole('button', { name: 'buttons.confirm' })
     ).toBeDisabled();
-    expect(
-      screen.getByText('send.total (send.amountAndFee)')
-    ).toHaveTextContent('send.feeUnavailable');
+    expect(screen.getByText('send.smartAccountTotal')).toHaveTextContent(
+      'send.feeUnavailable'
+    );
     fireEvent.click(screen.getByRole('button', { name: 'buttons.activity' }));
     expect(mockNavigate).toHaveBeenCalledWith('/home?tab=activity', {
       replace: true,
@@ -1326,7 +1244,7 @@ it('keeps Smart account fee and total unavailable until a fresh retry succeeds',
     );
   render(<SendConfirm />);
   await screen.findByText('send.unableToCalculateFees');
-  const total = screen.getByText('send.total (send.amountAndFee)');
+  const total = screen.getByText('send.smartAccountTotal');
   expect(total).toHaveTextContent('send.feeUnavailable');
   expect(screen.queryAllByText('send.calculating')).toHaveLength(0);
   expect(
@@ -1347,18 +1265,10 @@ it('keeps Smart account fee and total unavailable until a fresh retry succeeds',
   await act(async () =>
     resolveQuote({
       feePayer,
+      payerBudget,
       gasUnits: '650000',
       maximumFeeWei: '650000000000000',
-    })
-  );
-  await waitFor(() =>
-    expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(3)
-  );
-  await act(async () =>
-    resolveQuote({
-      feePayer,
-      gasUnits: '650000',
-      maximumFeeWei: '650000000000000',
+      nativeAmountWei: '99999349000000000000',
     })
   );
   await waitFor(() =>
@@ -1366,6 +1276,7 @@ it('keeps Smart account fee and total unavailable until a fresh retry succeeds',
       screen.getByRole('button', { name: 'buttons.confirm' })
     ).toBeEnabled()
   );
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(2);
   expect(total).toHaveTextContent('99.999999 TSYS');
   expect(screen.queryAllByText('send.feeUnavailable')).toHaveLength(0);
   expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
@@ -1390,7 +1301,7 @@ it('shows an unavailable Smart token fee without an amount-only total', async ()
   expect(screen.getByText('send.smartAccountMaxFee')).toHaveTextContent(
     'send.feeUnavailable'
   );
-  expect(screen.getByText('send.total (send.amountAndFee)')).toHaveTextContent(
+  expect(screen.getByText('send.smartAccountTotal')).toHaveTextContent(
     'send.feeUnavailable'
   );
   expect(
@@ -1399,32 +1310,27 @@ it('shows an unavailable Smart token fee without an amount-only total', async ()
   expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
 });
 
-it('bounds MAX refinement and refuses to display or sign a nonconverging fee quote', async () => {
+it('refuses to sign when the backend rejects bounded MAX refinement', async () => {
   prepareSmartAccountConfirmation(true);
-  let quote = 0;
-  (prepareSmartAccountFeeQuote as jest.Mock).mockImplementation(async () => ({
-    feePayer,
-    gasUnits: '650000',
-    maximumFeeWei: String(++quote * 1000000000000),
-  }));
+  (prepareSmartAccountFeeQuote as jest.Mock).mockRejectedValue(
+    new Error('Smart account maximum amount did not stabilize')
+  );
   render(<SendConfirm />);
   await waitFor(() =>
     expect(screen.getByText('send.unableToCalculateFees')).toBeTruthy()
   );
-  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(3);
+  expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(1);
   expect(
     screen.getByRole('button', { name: 'buttons.confirm' })
   ).toBeDisabled();
   expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
 });
 
-it('refuses MAX when the full account charge exceeds the refreshed balance', async () => {
+it('refuses MAX when the backend reports insufficient balance', async () => {
   prepareSmartAccountConfirmation(true);
-  (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
-    feePayer,
-    gasUnits: '650000',
-    maximumFeeWei: '100000000000000000000',
-  });
+  (prepareSmartAccountFeeQuote as jest.Mock).mockRejectedValue(
+    new Error('Insufficient funds for smart account fee')
+  );
   render(<SendConfirm />);
   await waitFor(() =>
     expect(screen.getByText('send.unableToCalculateFees')).toBeTruthy()
@@ -1600,8 +1506,10 @@ it.each(['network', 'fee'])(
     await act(async () =>
       finishReserve({
         feePayer,
+        payerBudget,
         gasUnits: '650000',
         maximumFeeWei: '650000000000000',
+        nativeAmountWei: '99999349000000000000',
       })
     );
     expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
@@ -1947,6 +1855,39 @@ it.each([
   }
 );
 
+it('offers a fresh fee quote after a rejected reviewed nonce without showing an idle calculation', async () => {
+  prepareEvmRecipientConfirmation('0x2222222222222222222222222222222222222222');
+  const normal = mockControllerEmitter.getMockImplementation()!;
+  mockControllerEmitter.mockImplementation(async (path, ...args) => {
+    if (path.at(-1) === 'sendAndSaveEthTransaction') {
+      throw Object.assign(
+        new Error('EVM nonce changed. Review this transaction again.'),
+        {
+          transactionNotBroadcast: true,
+        }
+      );
+    }
+    return normal(path, ...args);
+  });
+  render(<SendConfirm />);
+  const confirm = screen.getByRole('button', { name: 'buttons.confirm' });
+  await waitFor(() => expect(confirm).toBeEnabled());
+  fireEvent.click(confirm);
+  const refresh = await screen.findByRole('button', {
+    name: 'send.refreshFeeQuote',
+  });
+  expect(confirm).toBeDisabled();
+  expect(screen.getAllByText('send.feeUnavailable')).toHaveLength(2);
+  expect(screen.queryByText('send.calculating')).toBeNull();
+  fireEvent.click(refresh);
+  await waitFor(() => expect(confirm).toBeEnabled());
+  expect(
+    mockControllerEmitter.mock.calls.filter(
+      ([path]) => path.at(-1) === 'sendAndSaveEthTransaction'
+    )
+  ).toHaveLength(1);
+});
+
 it.each(['undeployed smart account', 'EOA'])(
   'allows confirmation to send to a compatible %s using the normal transaction path',
   async (kind) => {
@@ -2158,7 +2099,7 @@ it.each(['isLoading', 'connectionUnavailable'] as const)(
   }
 );
 
-it('an ambiguous attempt returns only to its public caller after trust recovers', async () => {
+it('an ambiguous attempt opens Activity without restoring its draft after trust recovers', async () => {
   mockLocation.state.returnContext.returnContext = {
     returnRoute: '/home?tab=activity',
     walletScope: mockNavigationScope,
@@ -2179,19 +2120,16 @@ it('an ambiguous attempt returns only to its public caller after trust recovers'
   view.rerender(<SendConfirm />);
   mockAuth.connectionUnavailable = false;
   view.rerender(<SendConfirm />);
-  expect(screen.getByRole('status').textContent).toBe(
-    'send.submissionStatusUnknown'
-  );
   expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
-  const close = screen.getByRole('button', { name: 'buttons.close' });
-  expect(close.getAttribute('data-variant')).toBe('secondary');
-  fireEvent.click(close);
-  expect(mockNavigate).toHaveBeenCalledWith('/home?tab=activity');
-  const context = mockNavigateBack.mock.calls[0][1].state.returnContext;
-  expect(JSON.stringify(context)).not.toContain('/send/sys');
-  expect(JSON.stringify(context)).not.toContain('private-history-payload');
+  expect(screen.queryByRole('button', { name: 'buttons.close' })).toBeNull();
+  expect(mockAlert.error).toHaveBeenCalledWith('transactions.replay.unknown');
+  expect(mockNavigate).toHaveBeenLastCalledWith('/home?tab=activity', {
+    replace: true,
+  });
+  expect(mockNavigateBack).not.toHaveBeenCalled();
   await act(async () => finishSend({ txid: 'synthetic-txid' }));
   expect(mockAlert.success).not.toHaveBeenCalled();
+  expect(mockAlert.error).toHaveBeenCalledTimes(1);
 });
 
 it.each([
@@ -2272,7 +2210,7 @@ it('storage discard failure stays on the active confirmation with a recoverable 
   await waitFor(() => expect(mockControllerEmitter).toHaveBeenCalled());
 });
 
-it('does not save a confirmation again when submission outcome is unknown', async () => {
+it('opens Activity and does not save the confirmation again when the send outcome is unknown', async () => {
   mockControllerEmitter.mockImplementation(async ([, method]: string[]) => {
     if (method === 'refreshActiveAccountBalances')
       return { nativeBalance: '100' };
@@ -2280,7 +2218,9 @@ it('does not save a confirmation again when submission outcome is unknown', asyn
   });
   render(<SendConfirm />);
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+  await waitFor(() =>
+    expect(mockAlert.error).toHaveBeenCalledWith('transactions.replay.unknown')
+  );
   expect(mockClearNavigationState).toHaveBeenCalledTimes(1);
   expect(mockSaveNavigationState).not.toHaveBeenCalled();
   expect(
@@ -2288,9 +2228,7 @@ it('does not save a confirmation again when submission outcome is unknown', asyn
       .getByRole('button', { name: 'buttons.confirm' })
       .hasAttribute('disabled')
   ).toBe(true);
-  expect(screen.getByRole('status').textContent).toBe(
-    'send.submissionStatusUnknown'
-  );
+  expect(screen.queryByRole('status')).toBeNull();
   expect(mockNavigate).toHaveBeenCalledWith('/send/confirm', {
     replace: true,
     state: {
@@ -2298,6 +2236,9 @@ it('does not save a confirmation again when submission outcome is unknown', asyn
       walletScope: mockNavigationScope,
       returnContext: undefined,
     },
+  });
+  expect(mockNavigate).toHaveBeenLastCalledWith('/home?tab=activity', {
+    replace: true,
   });
 });
 
@@ -2370,21 +2311,46 @@ it('a marker recreated by native Forward or a new document cannot confirm again'
   expect(mockNavigate).toHaveBeenCalledWith('/home');
 });
 
-it('even an older consumed history entry cannot recreate an ambiguous confirmation', async () => {
-  mockControllerEmitter.mockImplementation(async ([, method]: string[]) => {
-    if (method === 'refreshActiveAccountBalances')
-      return { nativeBalance: '100' };
-    throw new Error('Synthetic response lost after submission');
-  });
+it('a Smart Account send with an ambiguous 502 opens Activity and consumes the old confirmation', async () => {
+  prepareSmartAccountConfirmation();
+  (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementation(
+    async (options) => {
+      await options.onBeforeSubmit();
+      throw Object.assign(new Error('Unexpected HTTP status code: 502'), {
+        transactionNotBroadcast: false,
+      });
+    }
+  );
   const first = render(<SendConfirm />);
+  await screen.findByText('0.00065 TSYS');
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  await waitFor(() => expect(screen.getByRole('status')).toBeTruthy());
+  await waitFor(() =>
+    expect(mockNavigate).toHaveBeenLastCalledWith('/home?tab=activity', {
+      replace: true,
+    })
+  );
+  first.rerender(<SendConfirm />);
+  expect(mockAlert.error.mock.calls).toEqual([['transactions.replay.unknown']]);
   first.unmount();
   mockControllerEmitter.mockClear();
+  mockNavigate.mockClear();
+  const reopened = render(<SendConfirm />);
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+  expect(mockControllerEmitter).not.toHaveBeenCalled();
+  expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
+  expect(mockSaveNavigationState).not.toHaveBeenCalled();
+  expect(mockNavigate.mock.calls).toEqual([
+    ['/home?tab=activity', { replace: true }],
+  ]);
+  reopened.unmount();
+  mockNavigate.mockClear();
+  mockAlert.error.mockClear();
+  mockNavigationScope = { ...mockNavigationScope, account: 'other-account' };
   render(<SendConfirm />);
   expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
   expect(mockControllerEmitter).not.toHaveBeenCalled();
-  expect(mockNavigate).toHaveBeenCalledWith('/home');
+  expect(mockNavigate.mock.calls).toEqual([['/home']]);
+  expect(mockAlert.error).not.toHaveBeenCalled();
 });
 
 it('allows retry only after an explicitly safe pre-broadcast rejection', async () => {
@@ -2418,29 +2384,35 @@ it('allows retry only after an explicitly safe pre-broadcast rejection', async (
   );
 });
 
-it('an early failure settling after departure cannot navigate back to confirmation', async () => {
-  let rejectSend!: (error: Error) => void;
-  mockControllerEmitter.mockImplementation(async ([, method]: string[]) => {
-    if (method === 'refreshActiveAccountBalances')
-      return { nativeBalance: '100' };
-    return new Promise((_, reject) => {
-      rejectSend = reject;
+it.each([true, false])(
+  'a failure settling after departure leaves navigation alone (transactionNotBroadcast=%s)',
+  async (transactionNotBroadcast) => {
+    let rejectSend!: (error: Error) => void;
+    mockControllerEmitter.mockImplementation(async ([, method]: string[]) => {
+      if (method === 'refreshActiveAccountBalances')
+        return { nativeBalance: '100' };
+      return new Promise((_, reject) => {
+        rejectSend = reject;
+      });
     });
-  });
-  const view = render(<SendConfirm />);
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  await waitFor(() => expect(rejectSend).toBeDefined());
-  view.unmount();
-  mockNavigate.mockClear();
-  await act(async () =>
-    rejectSend(
-      Object.assign(new Error('Synthetic pre-broadcast failure'), {
-        transactionNotBroadcast: true,
-      })
-    )
-  );
-  expect(mockNavigate).not.toHaveBeenCalled();
-});
+    const view = render(<SendConfirm />);
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() => expect(rejectSend).toBeDefined());
+    view.unmount();
+    mockNavigate.mockClear();
+    await act(async () =>
+      rejectSend(
+        Object.assign(new Error('Synthetic submission failure'), {
+          transactionNotBroadcast,
+        })
+      )
+    );
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockAlert.error).not.toHaveBeenCalledWith(
+      'transactions.replay.unknown'
+    );
+  }
+);
 
 it.each(['account', 'network'])(
   'an idle confirmation exits when its %s scope changes',

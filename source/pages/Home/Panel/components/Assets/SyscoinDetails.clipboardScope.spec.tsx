@@ -354,10 +354,13 @@ it('keeps the visible copied toast during an ordinary balance and label refresh'
   mockWrite.mockReturnValue(write.promise);
   mount();
   render(<ToastContainer autoClose={false} />);
+  const { toast } = jest.requireActual('react-toastify');
+  act(() => toast.warn('Transaction status needs attention'));
   fireEvent.click(screen.getByTitle('send.copyContractAddress'));
   await settle(write, 'success');
-  expect(screen.getByRole('alert')).toHaveTextContent('home.contractCopied');
-  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('home.contractCopied')).toBeVisible();
+  expect(screen.getByText('Transaction status needs attention')).toBeVisible();
+  expect(mockDismiss).not.toHaveBeenCalled();
   expect(mockInfo).toHaveBeenCalledTimes(1);
   act(() => {
     mockStore.dispatch(
@@ -371,13 +374,8 @@ it('keeps the visible copied toast during an ordinary balance and label refresh'
   });
   await act(async () => jest.advanceTimersByTimeAsync(0));
   expect(screen.getByText('REFRESHED (Syscoin Testnet)')).toBeInTheDocument();
-  expect({
-    dismissCalls: mockDismiss.mock.calls.length,
-    visibleToast: screen.queryByRole('alert')?.textContent,
-  }).toEqual({
-    dismissCalls: 1,
-    visibleToast: expect.stringContaining('home.contractCopied'),
-  });
+  expect(mockDismiss).not.toHaveBeenCalled();
   expect(mockInfo).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('alert')).toHaveTextContent('home.contractCopied');
+  expect(screen.getByText('home.contractCopied')).toBeVisible();
+  expect(screen.getByText('Transaction status needs attention')).toBeVisible();
 });

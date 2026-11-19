@@ -14,12 +14,16 @@ import SentryOperation from './SentryOperation';
 
 const mockEmitter = jest.fn();
 const mockDispatch = jest.fn();
+const mockAlertError = jest.fn();
 const mockQuery = {
   sentryApprovalId: 'scoped-approval',
   host: 'https://sysnode.test',
   eventName: 'sentryOperationSigned',
 };
-jest.mock('hooks/index', () => ({ useQueryData: () => mockQuery }));
+jest.mock('hooks/index', () => ({
+  useQueryData: () => mockQuery,
+  useUtils: () => ({ alert: { error: mockAlertError } }),
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) =>
@@ -97,7 +101,12 @@ it('does not forward an error-only or malformed authorization result to the dapp
     target: { value: 'synthetic-password' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Authorize update' }));
-  await screen.findByRole('alert');
+  await waitFor(() =>
+    expect(mockAlertError).toHaveBeenCalledWith(
+      mockEnglish.sentry.unableToAuthorizeSentryUpdate
+    )
+  );
+  expect(screen.queryByRole('alert')).toBeNull();
   expect(mockDispatch).not.toHaveBeenCalled();
 });
 it('reviews the background-verified NEVM diff and sends only opaque approval id, key id and password to signing', async () => {
@@ -209,4 +218,37 @@ it('ignores a late response from a retired approval route', async () => {
   await act(async () => resolveOld(approval));
   expect(screen.getByText('https://new-node.test')).toBeTruthy();
   expect(screen.queryByText('https://sysnode.test')).toBeNull();
+});
+
+it('keeps approval-load errors visible on the page', async () => {
+  mockEmitter.mockRejectedValue(new Error('Approval unavailable'));
+  render(<SentryOperation />);
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'Approval unavailable'
+  );
+  expect(mockAlertError).not.toHaveBeenCalled();
+});
+
+it('does not show a late submit error after the approval route changes', async () => {
+  let reject!: (error: Error) => void;
+  const submitted = new Promise((_resolve, rejectSubmission) => {
+    reject = rejectSubmission;
+  });
+  mockEmitter.mockImplementation(([, method], args) =>
+    method === 'signSentryApproval'
+      ? submitted
+      : Promise.resolve({ ...approval, origin: args[0] + '.test' })
+  );
+  const view = render(<SentryOperation />);
+  await screen.findByText('scoped-approval.test');
+  fireEvent.change(screen.getByLabelText('Wallet password'), {
+    target: { value: 'synthetic-password' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Authorize update' }));
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
+  mockQuery.sentryApprovalId = 'new-approval';
+  view.rerender(<SentryOperation />);
+  await screen.findByText('new-approval.test');
+  await act(async () => reject(new Error('Retired submission')));
+  expect(mockAlertError).not.toHaveBeenCalled();
 });

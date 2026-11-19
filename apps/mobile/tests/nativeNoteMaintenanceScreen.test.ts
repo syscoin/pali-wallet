@@ -8,20 +8,21 @@ import { isOperationAuthenticationCancellation, operationAuthenticationCancellat
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const notes: IPrivateNoteView[] = Array.from({ length: 41 }, (_, index) => ({ id: String(index + 1), amount: '1', createdAt: Date.UTC(2026, 0, index + 1), poolId: 'eth-1', phase: 'verified' }));
 
-function fixture(fail = false, recover = false, count = 7, unresolved = false) {
-  let reads = 0, clears = 0, recoveries = 0, backs = 0;
+function fixture(fail = false, withHistory = false, count = 7, unresolved = false) {
+  let reads = 0, clears = 0, backs = 0;
   const idsChecked: string[][] = [];
+  const selections: ('earlier' | undefined)[] = [];
   let pending: Promise<void> | undefined;
   let runtimeSource = 0;
   const listeners = new Map<string, (next: string) => void>();
   let refusal: Error | undefined;
   const appState = { currentState: 'active', addEventListener: (event: string, listener: (next: string) => void) => { listeners.set(event, listener); return { remove() { listeners.delete(event); } }; } };
-  let shown: IPrivateNoteView[] = recover ? [{ ...notes[0]!, withdrawal: { canCheckRecovery: true, mode: 'direct', phase: 'submitted' } }] : notes.slice(0, count);
+  let shown: IPrivateNoteView[] = withHistory ? [{ ...notes[0]!, archiveEarlierAttempts: 1, withdrawal: { mode: 'direct', phase: 'submitted' } }] : notes.slice(0, count);
   const runtime = {
     async dispose() {},
     async getNotes() { reads++; return { notes: shown }; },
-    async clearCompletedNotes(ids, check, progress, reload) {
-      clears++; idsChecked.push([...ids]); assert.equal(ids.length, 1); check();
+    async clearCompletedNotes(ids, check, progress, reload, selection) {
+      clears++; idsChecked.push([...ids]); selections.push(selection); assert.equal(ids.length, 1); check();
       if (refusal) { const error = refusal; refusal = undefined; throw error; }
       if (pending) await pending; check();
       progress({ checked: 1, total: 1 });
@@ -30,7 +31,6 @@ function fixture(fail = false, recover = false, count = 7, unresolved = false) {
       if (fail) throw Error('Synthetic late failure');
       return { removed: unresolved ? [] : [...ids], unresolved: unresolved ? [...ids] : [] };
     },
-    async recoverFailedWithdrawal(_id, check, reload) { recoveries++; check(); reload({ notes: [] }); },
   } satisfies NativeNoteMaintenanceRuntime;
   const f = screenFixture(new URL('../src/screens/NativeNoteMaintenance.tsx', import.meta.url), 'NativeNoteMaintenance', {
     'react-native': { AppState: appState, View: 'View',
@@ -40,7 +40,7 @@ function fixture(fail = false, recover = false, count = 7, unresolved = false) {
     '../custody/privateAuthentication': { createNativePrivateAuthenticationScope: () => ({ retire() {}, isAuthenticating: () => false }) },
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption: () => false },
     '../core/operationAuthentication': { isOperationAuthenticationCancellation },
-    '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Row: 'Row', Screen: 'Screen', Text: 'Text', colors: {}, styles: {} },
+    '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Notice: 'Notice', Row: 'Row', Screen: 'Screen', Text: 'Text', colors: {}, styles: {} },
   }, { AbortController });
   const open = async () => runtime, replacementOpen = async () => runtime, onBack = () => { backs++; };
   const render = () => screenElements(f.render({ open: runtimeSource ? replacementOpen : open, onBack }));
@@ -48,7 +48,7 @@ function fixture(fail = false, recover = false, count = 7, unresolved = false) {
     const button = render().find(element => element.props.title === title); assert(button); button.props.onPress();
   };
   const select = (number = 7) => { const row = render().find(element => element.props.icon === 'trash' && element.props.subtitle?.startsWith(`Note ${number} ·`)); assert(row); row.props.onPress(); };
-  return { render, press, select, idsChecked, backs: () => backs, pause(value: Promise<void>) { pending = value; }, replaceSource() { runtimeSource++; }, reads: () => reads, clears: () => clears, recoveries: () => recoveries,
+  return { render, press, select, idsChecked, selections, backs: () => backs, pause(value: Promise<void>) { pending = value; }, replaceSource() { runtimeSource++; }, reads: () => reads, clears: () => clears,
     refuse(error: Error) { refusal = error; }, background(notify = false) { appState.currentState = 'background'; if (notify) listeners.get('change')?.('background'); }, close: f.close };
 }
 
@@ -67,12 +67,35 @@ for (const fail of [false, true]) test(`maintenance screen targets the last of s
   } finally { f.close(); }
 });
 
-test('maintenance recovery consumes its action inventory without a second reload', async () => {
+test('maintenance keeps a cleanup choice for notes with prior history', async () => {
   const f = fixture(false, true);
   try {
-    f.render(); await settle(); f.press('privacy.recovery.action'); f.press('privacy.recovery.confirm'); await settle();
-    assert.equal(f.recoveries(), 1); assert.equal(f.reads(), 1);
-    assert(!f.render().some(element => element.props.title === 'privacy.recovery.confirm'));
+    f.render(); await settle(); f.select(1);
+    assert.equal(f.reads(), 1);
+    assert(f.render().some(element => element.props.title === 'privacy.capacity.confirmClear'));
+  } finally { f.close(); }
+});
+
+test('earlier attempts require an unresolved newest check and a separate confirmed press', async () => {
+  const f = fixture(false, true, 1, true);
+  try {
+    f.render(); await settle(); f.select(1);
+    assert(f.render().some(element => element.children.includes('privacy.capacity.earlierAttempts')));
+    assert(!f.render().some(element => element.props.title === 'privacy.capacity.checkEarlier'));
+    f.press('privacy.capacity.confirmClear'); await settle();
+    assert.deepEqual(f.idsChecked, [['1']]);
+    assert.deepEqual(f.selections, [undefined]);
+    assert(f.render().some(element => element.props.title === 'privacy.capacity.checkEarlierHelp'));
+    const earlier = f.render().find(element => element.props.title === 'privacy.capacity.checkEarlier');
+    assert(earlier);
+    f.press('buttons.cancel');
+    earlier.props.onPress(); await settle();
+    assert.deepEqual(f.selections, [undefined], 'A cancelled confirmation cannot be replayed');
+    f.select(1); f.press('privacy.capacity.confirmClear'); await settle();
+    f.press('privacy.capacity.checkEarlier'); await settle();
+    assert.deepEqual(f.idsChecked, [['1'], ['1'], ['1']]);
+    assert.deepEqual(f.selections, [undefined, undefined, 'earlier']);
+    assert(!f.render().some(element => element.props.title === 'privacy.capacity.checkEarlier'));
   } finally { f.close(); }
 });
 
@@ -109,7 +132,8 @@ test('choosing a note shows amount and date without invoking cleanup; cancel can
   try {
     f.render(); await settle(); f.select(1);
     assert(f.render().some(element => element.props.title === '1 ETH pool' && element.props.subtitle?.startsWith('Note 1 ·')));
-    assert(f.render().some(element => element.children.includes('mobile.noteFlows.maintenance.clearHelp')));
+    const warning = f.render().find(element => element.type === 'Notice' && element.props.title === 'privacy.capacity.clearHelp');
+    assert(warning?.props.compact && warning.props.tone === 'amber');
     assert.deepEqual(f.idsChecked, []); f.press('buttons.cancel'); f.select();
     f.press('privacy.capacity.confirmClear'); await settle(); assert.deepEqual(f.idsChecked, [['7']]);
   } finally { f.close(); }

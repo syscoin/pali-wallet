@@ -7,6 +7,7 @@ import { ISyscoinVIn, ISyscoinVOut } from '@sidhujag/sysweb3-utils';
 import { IAccountTransactions } from 'state/vault/types';
 import { BigNumber } from 'utils/ethersV6Compat';
 
+import type { EvmTransactionHistorySource } from '../../../../shared/evmHistory';
 import type { UtxoActivityParticipants } from '../../../../shared/utxoActivityParticipants';
 
 //------------------------- EVM TYPES / INTERFACES -------------------------//
@@ -96,6 +97,7 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
   // Not optional (as it is in Transaction)
   from: string;
   hash: string;
+  historySource?: EvmTransactionHistorySource;
   input?: string;
 
   isCanceled?: boolean;
@@ -247,7 +249,8 @@ export interface ISysTransactionsController {
   pollingSysTransactions: (
     xpub: string,
     networkUrl: string,
-    isRapidPolling?: boolean
+    isRapidPolling?: boolean,
+    signal?: AbortSignal
   ) => Promise<ISysTransaction[]>;
 }
 

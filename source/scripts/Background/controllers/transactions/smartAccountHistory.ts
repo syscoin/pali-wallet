@@ -76,7 +76,7 @@ const isLogRangeFailure = (error: any): boolean => {
     )
   )
     return false;
-  return /block[ -]?range.{0,80}(?:limit|exceed|too (?:large|wide))|range (?:too (?:large|wide)|exceed)|(?:maximum|limited to).*blocks|query returned more than|too many (?:results|logs)|log response size exceeded/i.test(
+  return /exceeds? (?:the )?max(?:imum)? block[ -]?range\b|block[ -]?range.{0,80}(?:limit|exceed|too (?:large|wide))|range (?:too (?:large|wide)|exceed)|(?:maximum|limited to).*blocks|query returned more than|too many (?:results|logs)|log response size exceeded/i.test(
     message
   );
 };

@@ -467,11 +467,12 @@ test('all four labels remain whole, operable and unclipped at 320px with large b
       expect(metrics.fullWidth).toBeLessThanOrEqual(metrics.width + 1);
       expect(metrics.scroll).toBeLessThanOrEqual(metrics.client + 1);
     }
-    expect(await page.getByRole('heading', { name: name === 'Wallet' ? 'Pali Wallet' : name, exact: true }).evaluate((element) => getComputedStyle(element).fontSize)).toBe('24px');
+    expect(await page.getByRole('heading', { name: name === 'Wallet' ? 'Pali' : name, exact: true }).evaluate((element) => getComputedStyle(element).fontSize)).toBe('24px');
     await page.screenshot({ path: testInfo.outputPath(`${name.toLowerCase()}-320-large.png`), fullPage: true });
     if (name === 'Settings') {
       await page.getByRole('button', { name: 'Help & about', exact: false }).click();
       await expect(page.getByRole('heading', { name: 'Help & about', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Pali', exact: true })).toBeVisible();
       await expect(page.getByText('Native features are under qualification. Use only test wallets and testnet funds.', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Copy support link', exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
@@ -543,7 +544,7 @@ test('watch portfolio keeps toolbar targets and full-width Receive at 320px with
   await expect(subtitle).toBeVisible();
   await scaleVisibleText(page);
 
-  const heading = page.getByRole('heading', { name: 'Pali Wallet', exact: true });
+  const heading = page.getByRole('heading', { name: 'Pali', exact: true });
   const headerBottom = await heading.evaluate((element) => element.parentElement!.parentElement!.getBoundingClientRect().bottom);
   const accounts = page.getByRole('button', { name: 'Accounts', exact: true });
   const accountsBox = (await accounts.boundingBox())!;
@@ -583,7 +584,7 @@ test('watch portfolio retains its icon toolbar and full-width Receive at normal 
   await openWatch(page);
   expect(await page.evaluate(() => window.__watchFixture.fontScale())).toBe(1);
   const accounts = (await page.getByRole('button', { name: 'Accounts', exact: true }).boundingBox())!;
-  const title = (await page.getByRole('heading', { name: 'Pali Wallet', exact: true }).boundingBox())!;
+  const title = (await page.getByRole('heading', { name: 'Pali', exact: true }).boundingBox())!;
   expect(accounts.y).toBeLessThan(title.y + title.height + 30);
   const receive = (await page.getByRole('button', { name: 'Receive', exact: true }).boundingBox())!;
   const refresh = (await page.getByRole('button', { name: 'Refresh', exact: true }).boundingBox())!;

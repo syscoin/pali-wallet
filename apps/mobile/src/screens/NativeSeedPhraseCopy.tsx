@@ -49,10 +49,10 @@ export function NativeSeedPhraseCopy({ presentation, isCurrent }: {
     }
   };
   return <>
-    <Text style={styles.muted}>{t('secretClipboard.warning')}</Text>
+    <Text style={styles.warningText}>{t('secretClipboard.warning')}</Text>
     <Button title={t('secretClipboard.copyPhrase')} icon={state === 'copied' ? 'check' : 'copy'}
       variant="secondary" size="compact" disabled={state === 'copying'} onPress={copy} />
     {state === 'copied' && <Text accessibilityLiveRegion="polite">{t('components.copied')}</Text>}
-    {state === 'failed' && <Text accessibilityRole="alert" accessibilityLiveRegion="polite">{t('transactions.copyFailed')}</Text>}
+    {state === 'failed' && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.errorText}>{t('transactions.copyFailed')}</Text>}
   </>;
 }

@@ -3,6 +3,7 @@ import React, { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SecretCopyButton } from '../SecretCopyButton';
+import { SecretQrDisplay } from '../SecretQrDisplay';
 
 interface ISeedPhraseDisplayProps {
   /**
@@ -82,26 +83,39 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
     ) : null;
 
   if (displayMode === 'textarea') {
+    const field = (
+      <textarea
+        id={fieldId}
+        className={`${
+          !isEnabled
+            ? 'opacity-50 cursor-not-allowed bg-gray-800'
+            : 'opacity-100 bg-fields-input-primary'
+        } ${
+          showEyeToggle && !visible ? 'filter blur-sm' : ''
+        } block p-2 pl-4 pr-12 w-full h-[90px] text-brand-graylight text-sm border-0 rounded-[10px] outline-none resize-none select-none`}
+        placeholder={!isEnabled ? t('settings.enterYourPassword') : ''}
+        value={displayPhrase}
+        readOnly={true}
+      />
+    );
     // Copy is absent unless this is an explicitly authorized Settings disclosure.
     return (
       <div className={`w-full md:max-w-md ${className}`}>
         <label htmlFor={fieldId} className="mb-2 block text-left text-sm">
           {t('createPhrase.recoveryPhrase')}
         </label>
-        <div className="relative rounded-[10px] border border-border-default focus-within:border-fields-input-borderfocus">
-          <textarea
-            id={fieldId}
-            className={`${
-              !isEnabled
-                ? 'opacity-50 cursor-not-allowed bg-gray-800'
-                : 'opacity-100 bg-fields-input-primary'
-            } ${
-              showEyeToggle && !visible ? 'filter blur-sm' : ''
-            } block p-2 pl-4 pr-12 w-full h-[90px] text-brand-graylight text-sm border-0 rounded-[10px] outline-none resize-none select-none`}
-            placeholder={!isEnabled ? t('settings.enterYourPassword') : ''}
-            value={displayPhrase}
-            readOnly={true}
-          />
+        <div
+          className={`relative rounded-[10px] border border-border-default focus-within:border-fields-input-borderfocus ${
+            copyAuthorization && visible ? 'pt-7' : ''
+          }`}
+        >
+          {copyAuthorization && visible && seedPhrase ? (
+            <SecretQrDisplay secret={seedPhrase} isCurrent={copyAuthorization}>
+              {field}
+            </SecretQrDisplay>
+          ) : (
+            field
+          )}
 
           {/* Visibility is separate from the optional explicit Copy action. */}
           <div className="absolute top-2 right-2 flex items-center">

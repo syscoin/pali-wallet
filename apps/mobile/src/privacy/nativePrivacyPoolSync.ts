@@ -3,12 +3,18 @@ import { normalizePrivacyServiceOrigin } from '../../../../source/shared/privacy
 import {
   createOwnedSnapshotAnchor,
   type AnchorBinding,
+  nextOwnedPrivacyRequestId,
 } from '../../../../source/utils/privacy/ownedAnchor.ts';
 import {
   privacyRpcResponseLimit,
   readPrivacyPoolSnapshot,
+  readPrivacyProofCheckpoint,
+  readPrivacyRpcResponse,
+  verifyPrivacyProofCheckpoint,
   type PrivacyAnchorRead,
   type PrivacyJsonResponse,
+  type PrivacyProofCheckpoint,
+  type PrivacyProofCheckpointRead,
 } from '../../../../source/utils/privacy/publicSyncProtocol.ts';
 import {
   getPrivacyPool,
@@ -72,6 +78,12 @@ export type OwnedPrivacyPullTransport = Readonly<{
   prepareAnchor(
     binding: AnchorBinding,
     read: PrivacyAnchorRead,
+    id: number,
+    signal: AbortSignal
+  ): Handle;
+  prepareProofCheckpoint?(
+    binding: AnchorBinding,
+    read: PrivacyProofCheckpointRead,
     id: number,
     signal: AbortSignal
   ): Handle;
@@ -216,6 +228,8 @@ export function createNativePrivacyPoolSync(
   if (!rpcUrl.startsWith('https:')) throw unavailable();
   const prepareSnapshot = transport.prepareSnapshot.bind(transport);
   const prepareAnchor = transport.prepareAnchor.bind(transport);
+  const prepareProofCheckpoint =
+    transport.prepareProofCheckpoint?.bind(transport);
   const executeMerkleBatch = options.executeMerkleBatch;
   const storage = createSessionCache(poolId, checkRun);
   let closed = false;
@@ -310,7 +324,7 @@ export function createNativePrivacyPoolSync(
         check();
         if (started) throw cancelled();
         started = true;
-        const { status, byteCount } = await abortable(
+        const { status, byteCount } = await waitForHandle(
           handle.start(check),
           signal
         );
@@ -377,23 +391,37 @@ export function createNativePrivacyPoolSync(
     };
   }
 
-  async function fetchSnapshot(id: PrivacyPoolId, requestSignal: AbortSignal) {
+  async function withRunSignal<T>(
+    requestSignal: AbortSignal,
+    read: (active: Run, signal: AbortSignal) => Promise<T>
+  ) {
     const active = checkRun();
-    if (id !== poolId || requestSignal.aborted) throw cancelled();
+    if (requestSignal.aborted) throw cancelled();
     const local = new AbortController();
     const abort = () => local.abort();
     requestSignal.addEventListener('abort', abort, { once: true });
     active.abort.signal.addEventListener('abort', abort, { once: true });
     try {
-      return await readPrivacyPoolSnapshot(
+      return await read(active, local.signal);
+    } finally {
+      requestSignal.removeEventListener('abort', abort);
+      active.abort.signal.removeEventListener('abort', abort);
+      local.abort();
+    }
+  }
+
+  function fetchSnapshot(id: PrivacyPoolId, requestSignal: AbortSignal) {
+    return withRunSignal(requestSignal, (active, signal) => {
+      if (id !== poolId) throw cancelled();
+      return readPrivacyPoolSnapshot(
         id,
-        local.signal,
+        signal,
         async (_url, _init, responseLimit, readResponse) => {
           const limit = (status: number) =>
             responseLimit({ status, ok: status === 200 });
           const operation = reserve(
-            () => prepareSnapshot(id, serviceOrigin, local.signal),
-            local.signal,
+            () => prepareSnapshot(id, serviceOrigin, signal),
+            signal,
             limit
           );
           try {
@@ -402,16 +430,12 @@ export function createNativePrivacyPoolSync(
             checkRun(active);
             return { data, status: response.status };
           } finally {
-            await waitForHandle(operation.release(), local.signal);
+            await waitForHandle(operation.release(), signal);
           }
         },
         serviceOrigin
       );
-    } finally {
-      requestSignal.removeEventListener('abort', abort);
-      active.abort.signal.removeEventListener('abort', abort);
-      local.abort();
-    }
+    });
   }
 
   async function verifyAnchor(
@@ -450,6 +474,57 @@ export function createNativePrivacyPoolSync(
     return active.anchor.owner.verify(signal);
   }
 
+  function checkpointReader(
+    id: PrivacyPoolId,
+    url: string,
+    active: Run,
+    signal: AbortSignal
+  ) {
+    if (id !== poolId || url !== rpcUrl || !prepareProofCheckpoint)
+      throw cancelled();
+    const prepare = prepareProofCheckpoint;
+    const check = () => {
+      checkRun(active);
+      if (signal.aborted) throw cancelled();
+    };
+    return async (
+      read: PrivacyProofCheckpointRead,
+      blockNumber: number,
+      root: string
+    ) => {
+      check();
+      const requestId = nextOwnedPrivacyRequestId();
+      const block = read === 'block' || read === 'finalized';
+      const operation = reserve(
+        () =>
+          prepare(
+            {
+              rpcUrl,
+              poolAddress: getPrivacyPool(id).address,
+              blockNumber,
+              root,
+            },
+            read,
+            requestId,
+            signal
+          ),
+        signal,
+        (status) => {
+          if (status !== 200) throw new Error('privacy_rpc_unavailable');
+          return privacyRpcResponseLimit(block);
+        }
+      );
+      try {
+        const response = await operation.start(check);
+        const value = await readPrivacyRpcResponse(response, requestId, block);
+        check();
+        return value;
+      } finally {
+        await waitForHandle(operation.release(), signal);
+      }
+    };
+  }
+
   let readVerifiedNote!: IPrivacyNoteReader;
   let readVerifiedSnapshot!: IPrivacySnapshotReader;
   const controller = createPrivacyPoolSync(
@@ -458,6 +533,27 @@ export function createNativePrivacyPoolSync(
       cache: storage.cache,
       fetchSnapshot,
       verifyAnchor,
+      selectProofCheckpoint: prepareProofCheckpoint
+        ? (id, url, signal) =>
+            withRunSignal(signal, (active, ownedSignal) =>
+              readPrivacyProofCheckpoint(
+                id,
+                checkpointReader(id, url, active, ownedSignal)
+              )
+            )
+        : undefined,
+      verifyProofCheckpoint: (
+        id,
+        checkpoint: PrivacyProofCheckpoint,
+        url,
+        signal
+      ) =>
+        withRunSignal(signal, (active, ownedSignal) =>
+          verifyPrivacyProofCheckpoint(
+            checkpoint,
+            checkpointReader(id, url, active, ownedSignal)
+          )
+        ),
       now: Date.now,
       // Only CPU continuations are driven by the explicit refresh call below.
       // No restart, watchdog, automatic progress polling or periodic refresh.

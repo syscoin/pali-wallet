@@ -46,6 +46,11 @@ export const useConfirmSubmission = ({
   const stateRef = useRef(
     consumed || !validInitialScope ? undefined : location.state
   );
+  const draftId = useRef<string | undefined>(
+    internal && typeof location.state?.sendDraftId === 'string'
+      ? location.state.sendDraftId
+      : undefined
+  ).current;
   const entryRef = useRef(location.key);
   const scopeRef = useRef(currentScope);
   const walletScopeRef = useRef(getWalletNavigationScope());
@@ -122,9 +127,9 @@ export const useConfirmSubmission = ({
     const live = liveRef.current;
     const fresh = getControllerStatus();
     const attempt = attemptRef.current;
-    // Returning from a hardware window refreshes renderer status. A live
-    // review Port already owns its one pending attempt in the background.
-    const ownedHardwareAttempt =
+    // A focus refresh can make the renderer temporarily unavailable while the
+    // same live review Port still owns the attempt in the background.
+    const ownedPortAttempt =
       attempt?.ownsPendingTransport &&
       (attempt.successful ||
         attempt.definitelyNotBroadcast ||
@@ -135,7 +140,7 @@ export const useConfirmSubmission = ({
       fresh.isUnlocked &&
       !fresh.isLoading &&
       ((!live.connectionUnavailable && !fresh.connectionUnavailable) ||
-        ownedHardwareAttempt);
+        ownedPortAttempt);
     if (!trusted && attempt) departedRef.current = true;
     return Boolean(trusted);
   };
@@ -174,7 +179,9 @@ export const useConfirmSubmission = ({
       if (attemptRef.current) {
         setPending(false);
         setUnknown(
-          attemptRef.current.mayBroadcast && !attemptRef.current.successful
+          attemptRef.current.mayBroadcast &&
+            !attemptRef.current.successful &&
+            !attemptRef.current.definitelyNotBroadcast
         );
       }
     }
@@ -184,6 +191,15 @@ export const useConfirmSubmission = ({
       throw Object.assign(new Error('Confirmation is no longer active.'), {
         transactionNotBroadcast: true,
       });
+  };
+
+  const hasUnconfirmedSubmission = () => {
+    const attempt = attemptRef.current;
+    return Boolean(
+      attempt?.mayBroadcast &&
+        !attempt.successful &&
+        !attempt.definitelyNotBroadcast
+    );
   };
 
   const recordError = (error: any) => {
@@ -235,6 +251,7 @@ export const useConfirmSubmission = ({
     // Back/Forward or a recreated document sees an inert marker, never a send.
     markerRef.current = {
       submissionStarted: true,
+      ...(draftId && { sendDraftId: draftId }),
       walletScope: walletScopeRef.current,
       returnContext: getTransactionReturnContext(
         stateRef.current?.returnContext,
@@ -249,6 +266,7 @@ export const useConfirmSubmission = ({
     try {
       await clearTransactionNavigationState({
         requireDiscard: true,
+        ...(draftId && { draftId }),
         assertCurrent: isCurrent,
       });
       if (!isCurrent()) return;
@@ -257,7 +275,11 @@ export const useConfirmSubmission = ({
       if (!isCurrent()) {
         if (ownsRoute()) {
           setPending(false);
-          setUnknown(attempt.mayBroadcast && !attempt.successful);
+          setUnknown(
+            attempt.mayBroadcast &&
+              !attempt.successful &&
+              !attempt.definitelyNotBroadcast
+          );
         }
         return;
       }
@@ -284,6 +306,10 @@ export const useConfirmSubmission = ({
     blocked: blocked || scopeChanged || !trustedAuth,
     pending,
     unknown,
+    hasUnconfirmedSubmission,
+    draftId,
+    canOpenActivity:
+      internalRef.current && validInitialScope && !scopeChanged && trustedAuth,
     interrupted: Boolean(departedRef.current && attemptRef.current),
     hasUsableEntry: Boolean(stateRef.current?.tx) && !scopeChanged,
     isActive: isCurrent,

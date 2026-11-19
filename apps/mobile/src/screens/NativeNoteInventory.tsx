@@ -289,16 +289,20 @@ export function NativeNoteInventory({ readInventory, onBack, onLock, onExport }:
             ? checked?.status ? undefined : t('mobile.noteFlows.inventory.paliHasntCheckedThisNoteAgainstItsEthereum')
             : t('mobile.noteFlows.inventory.observedBlock', { block: checked.status.blockNumber })} last />}
         </Card>
-        {!archived && note.reconciliation === 'restored-note' && <Notice title={t('mobile.noteFlows.inventory.restoredNoteNeedsReview')}
-          body={t('mobile.noteFlows.inventory.thisNoteCameFromABackupAndStill')} tone="amber" />}
-        {!archived && note.reconciliation === 'withdrawal-history' && <Notice title={t('mobile.noteFlows.inventory.savedWithdrawalHistory')}
-          body={t('mobile.noteFlows.inventory.thisNoteHasASavedWithdrawalRecordThat')} tone="amber" />}
+        {!archived && note.withdrawalPending && (
+          <Notice compact tone="amber" title={t('privacy.withdrawal.pendingActivity')} />
+        )}
+        {!archived && !inventory?.openWithdrawal && note.reconciliation === 'withdrawal-history' && (
+          <Notice title={t('mobile.noteFlows.inventory.savedWithdrawalHistory')}
+            body={t('mobile.noteFlows.inventory.thisNoteHasASavedWithdrawalRecordThat')} tone="amber" />
+        )}
         {!archived && inventory?.checkNote && <Button title={checked?.phase === 'checking' ? t('mobile.noteFlows.import.checkingPool') : checked?.status ? t('mobile.noteFlows.inventory.checkStatusAgain') : t('mobile.noteFlows.inventory.checkPoolStatus')}
           variant="secondary" disabled={checked?.phase === 'checking'} onPress={() => { void checkNote(); }} />}
         {checked?.phase === 'failed' && <Text accessibilityRole="alert" style={s.error}>{t('mobile.noteFlows.inventory.couldNotCheckThisNoteTryAgain')}</Text>}
-        {!archived && inventory?.openWithdrawal && (checked?.status?.phase === 'verified' || note.reconciliation === 'withdrawal-history') && <Button
-          title={note.reconciliation === 'withdrawal-history' ? t('mobile.noteFlows.inventory.viewWithdrawalStatus') : t('transactions.methodNames.withdraw')}
-          disabled={checked?.phase === 'checking'} onPress={() => updateReady({ withdrawing: true })} />}
+        {!archived && inventory?.openWithdrawal && (checked?.status?.phase === 'verified' || note.withdrawalPending || note.withdrawalStatusAvailable) && <Button
+          title={!note.withdrawalPending && note.withdrawalStatusAvailable && checked?.status?.phase !== 'verified'
+            ? t('mobile.noteFlows.inventory.viewWithdrawalStatus') : t('transactions.methodNames.withdraw')}
+          disabled={note.withdrawalPending || checked?.phase === 'checking'} onPress={() => { if (!note.withdrawalPending) updateReady({ withdrawing: true }); }} />}
         <Button title={t('mobile.noteFlows.reveal.backUpThisNote')} icon={archived ? 'eye' : undefined} variant="secondary" disabled={archiveBusy || checked?.phase === 'checking'} onPress={() => updateReady({ revealing: true })} />
         {archived && <Button title={t('privacy.archive.restore')} icon="refresh" variant="secondary" disabled={archiveBusy} onPress={() => { setArchiveAction('restore'); setArchiveError(null); }} />}
       </> : <>

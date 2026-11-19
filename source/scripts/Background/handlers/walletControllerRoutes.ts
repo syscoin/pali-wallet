@@ -30,6 +30,14 @@ export function assertWalletControllerRoute(
     throw new Error('Invalid controller route');
   const [controller, member, method, operation] = methods;
   if (controller !== 'wallet') return;
+  if (
+    member === 'captureReplacementSigning' ||
+    member === 'captureSavedEvmActivity' ||
+    member === 'observeCapturedRetainedUtxo' ||
+    member === 'readUtxoReplacementCandidate' ||
+    member === 'signReviewedSyscoinPsbt'
+  )
+    throw new Error('Use the approved wallet operation');
   if (methods.length === 2 && member !== 'getActiveKeyring') return;
   if (member === 'ethereumTransaction') {
     if (methods.length === 3 && rendererEvmMethods.has(method)) return;

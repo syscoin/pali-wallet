@@ -1,1 +1,4 @@
-export { TransactionOptions } from './TransactionOptions';
+export {
+  SmartAccountSignedOperationOptions,
+  TransactionOptions,
+} from './TransactionOptions';

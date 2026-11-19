@@ -32,7 +32,7 @@ const smartAccount = await window.ethereum.request({
   method: 'wallet_prepareSmartAccount',
   params: [
     {
-      label: 'Pali Wallet Passkey',
+      label: 'Pali Passkey',
       authenticator: { id: 'p256-webauthn' },
     },
   ],
@@ -107,4 +107,4 @@ La recuperación de Pali funciona bajo autocustodia. No es una puerta trasera de
   <figcaption>La recuperación y la ejecución requieren una aserción WebAuthn de la credencial de passkey correspondiente.</figcaption>
 </figure>
 
-El navegador controla el RP ID efectivo de WebAuthn en el origen de la extensión, salvo que el flujo de la billetera proporcione uno. Pali etiqueta la credencial compartida predeterminada como `Pali Wallet Passkey` y usa la etiqueta de cuenta solicitada para mostrar al usuario la asociación con la cuenta.
+El navegador controla el RP ID efectivo de WebAuthn en el origen de la extensión, salvo que el flujo de la billetera proporcione uno. Pali usa la etiqueta de cuenta solicitada como nombre y nombre visible de la credencial WebAuthn.

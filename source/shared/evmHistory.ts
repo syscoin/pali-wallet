@@ -1,7 +1,25 @@
 import { isTransactionInBlock as isHistoryTransactionInBlock } from './transactionBlockStatus.ts';
 
+export const EVM_ACTIVITY_CURSOR_STALE = 'EVM_ACTIVITY_CURSOR_STALE';
+
 const orphanedPlacement = Symbol('orphanedPlacement');
 const incompleteHistory = Symbol('incompleteHistory');
+const explorerHasMore = Symbol('explorerHasMore');
+
+export const markEvmExplorerHasMore = <T>(
+  transactions: T[],
+  hasMore: boolean
+): T[] =>
+  Object.defineProperty(transactions, explorerHasMore, { value: hasMore });
+
+export const getEvmExplorerHasMore = (
+  transactions: unknown
+): boolean | undefined =>
+  Array.isArray(transactions)
+    ? (transactions as unknown[] & { [explorerHasMore]?: boolean })[
+        explorerHasMore
+      ]
+    : undefined;
 
 export const markEvmHistoryIncomplete = <T>(transactions: T[]): T[] =>
   Object.defineProperty(transactions, incompleteHistory, { value: true });

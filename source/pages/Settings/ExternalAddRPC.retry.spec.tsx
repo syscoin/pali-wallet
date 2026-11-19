@@ -12,6 +12,10 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import {
+  NETWORK_SWITCH_REVIEW_CHANGED,
+  networkRegistrationFingerprint,
+} from 'utils/networkRegistration';
 
 import ExternalAddRPC from './ExternalAddRPC';
 
@@ -138,12 +142,16 @@ beforeEach(() => {
         // Match MainController: once saved, adding the chain again rejects.
         if (mockSavedNetworks[params.chainId])
           throw new Error('network already exists, remove or edit it');
-        mockSavedNetworks[params.chainId] = { ...params, default: false };
+        mockSavedNetworks[params.chainId] = {
+          ...params,
+          default: false,
+          coingeckoId: 'fixture-coin',
+        };
         if (!mockDeferRegistry) {
           mockNetworks.ethereum[params.chainId] =
             mockSavedNetworks[params.chainId];
         }
-        return params;
+        return mockSavedNetworks[params.chainId];
       }
       if (method === 'testExplorerApi') return { success: true };
       return undefined;
@@ -183,10 +191,13 @@ it('retries switching after a successful add without trying to add the saved net
   expect(methodCalls('getRpc')).toHaveLength(2);
   expect(methodCalls('testExplorerApi')).toHaveLength(2);
   expect(methodCalls('getState')).toEqual([[['wallet', 'getState'], []]]);
-  expect(methodCalls('setActiveNetwork')[1]).toEqual([
-    ['wallet', 'setActiveNetwork'],
-    [network, false],
-  ]);
+  const saved = mockSavedNetworks[network.chainId];
+  expect(methodCalls('setActiveNetwork')).toEqual(
+    Array(2).fill([
+      ['wallet', 'setActiveNetwork'],
+      [saved, false, networkRegistrationFingerprint(saved)],
+    ])
+  );
   expect(mockAlert.success).toHaveBeenCalledWith(
     'settings.rpcSuccessfullyAdded'
   );
@@ -251,10 +262,11 @@ it('keeps a healthy overlapping form submission to one validation, add, switch a
   expect(methodCalls('getRpc')).toHaveLength(1);
   expect(methodCalls('getState')).toHaveLength(0);
   expect(methodCalls('addCustomRpc')).toHaveLength(1);
+  const saved = mockSavedNetworks[network.chainId];
   expect(methodCalls('setActiveNetwork')).toEqual([
     [
       ['wallet', 'setActiveNetwork'],
-      [network, false],
+      [saved, false, networkRegistrationFingerprint(saved)],
     ],
   ]);
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1), {
@@ -364,11 +376,52 @@ it('refuses to switch a saved registration that was edited before its popup broa
   add();
   await waitFor(() => expect(mockAlert.error).toHaveBeenCalledTimes(2));
   expect(methodCalls('getState')).toHaveLength(1);
-  expect(methodCalls('addCustomRpc')).toHaveLength(2);
+  expect(methodCalls('addCustomRpc')).toHaveLength(1);
+  expect(mockAlert.error).toHaveBeenLastCalledWith(
+    'settings.unknownNetwork',
+    expect.any(Object)
+  );
   expect(methodCalls('setActiveNetwork')).toHaveLength(1);
   expect(mockSavedNetworks[network.chainId].url).toBe(
     'https://edited-rpc.invalid'
   );
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+});
+
+it('cannot approve a replacement that lands before the first switch after add', async () => {
+  const normal = mockEmitter.getMockImplementation()!;
+  const replacementUrl = 'https://edited-before-switch.invalid';
+  mockEmitter.mockImplementation(async (path, args) => {
+    const result = await normal(path, args);
+    if (path[1] === 'addCustomRpc') {
+      mockSavedNetworks[network.chainId] = { ...result, url: replacementUrl };
+    } else if (path[1] === 'setActiveNetwork') {
+      const expected = args[2];
+      if (
+        networkRegistrationFingerprint(mockSavedNetworks[network.chainId]) !==
+        expected
+      )
+        throw new Error(NETWORK_SWITCH_REVIEW_CHANGED);
+    }
+    return result;
+  });
+  mount();
+  add();
+
+  await waitFor(() =>
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      'settings.unknownNetwork',
+      expect.any(Object)
+    )
+  );
+  const activation = methodCalls('setActiveNetwork')[0][1];
+  expect(activation[0]).toMatchObject({
+    url: network.url,
+    coingeckoId: 'fixture-coin',
+  });
+  expect(activation[2]).toBe(networkRegistrationFingerprint(activation[0]));
+  expect(mockSavedNetworks[network.chainId].url).toBe(replacementUrl);
+  expect(mockAlert.success).not.toHaveBeenCalled();
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
 });
 

@@ -1,6 +1,7 @@
 /** @jest-environment node */
 /* eslint-disable @typescript-eslint/no-var-requires, camelcase */
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -11,6 +12,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+
+import { CANARY_EXTENSION_ID } from '../../source/shared/extensionReleaseChannel';
 
 const {
   buildExtension,
@@ -314,11 +317,20 @@ test.each([
     });
     const action = manifest.action || manifest.browser_action;
     expect(action.default_icon).toEqual(manifest.icons);
-    expect(action.default_title).toBe('Pali Wallet Canary');
+    expect(action.default_title).toBe('Pali Canary');
     expect(existsSync(resolve('source', manifest.icons[128]))).toBe(true);
-    if (store || manifestType === 'MV2')
+    if (store || manifestType === 'MV2') {
       expect(manifest).not.toHaveProperty('key');
-    else expect(manifest.key).toMatch(/^MIIB/);
+    } else {
+      const id = createHash('sha256')
+        .update(Buffer.from(manifest.key, 'base64'))
+        .digest('hex')
+        .slice(0, 32)
+        .replace(/./g, (digit) =>
+          String.fromCharCode(97 + parseInt(digit, 16))
+        );
+      expect(id).toBe(CANARY_EXTENSION_ID);
+    }
     expect(readFileSync(resolve('manifest.json')).equals(tracked)).toBe(true);
   }
 );

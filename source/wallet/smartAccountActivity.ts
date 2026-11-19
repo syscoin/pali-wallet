@@ -17,7 +17,6 @@ import {
 } from '../shared/nftTransfer.ts';
 import {
   ERC7579_MODE_SINGLE_DEFAULT,
-  getSmartAccountUserOpRequiredPrefund,
   type SmartAccountPackedUserOperation,
 } from '../utils/smartAccount/account.ts';
 import {
@@ -30,7 +29,26 @@ import {
 import { decodeSmartAccountUserOperationEvent } from '../utils/smartAccount/userOperationEvent.ts';
 import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHash.ts';
 
-import type { EvmRetainedSignedRecord } from './evmSignedRecords.ts';
+import type {
+  EvmRetainedRecord,
+  EvmRetainedSignedRecord,
+  EvmRetainedSmartAccountRecord,
+} from './evmSignedRecords.ts';
+
+/** A fee replacement can carry forward an authenticated single operation. */
+export function canSpeedUpSmartAccountOuter(
+  record: EvmRetainedSmartAccountRecord,
+  account: string
+): boolean {
+  const { entry, operations } = record;
+  return (
+    !record.cancellation &&
+    !entry.metadata?.smartAccountOperationCancellation &&
+    operations.length === 1 &&
+    operations[0]?.account.toLowerCase() === account.toLowerCase() &&
+    ['signed', 'attempted', 'submitted'].includes(entry.phase)
+  );
+}
 
 const tokenPolicy = createErc20Policy(getAddress);
 const executeSelector =
@@ -69,7 +87,6 @@ export type RetainedSmartAccountTransfer = Readonly<{
   collectibleTransfer?: NftTransferIntent;
   contractInteraction?: true;
   entry: EvmRetainedSignedRecord;
-  maximumAccountCharge: string;
   operationHash: string;
   operationNonce: string;
   recipient: string;
@@ -270,8 +287,9 @@ export function decodeSmartAccountOperations(
 
 /** Authenticate the outer envelope independently of the inner execution mode. */
 export function decodeRetainedSmartAccountOperations(
-  entry: EvmRetainedSignedRecord
+  entry: EvmRetainedRecord
 ): readonly RetainedSmartAccountOperation[] {
+  if (entry.payloadKind === 'unsigned-eoa') return [];
   try {
     const tx = Transaction.from(entry.rawTransaction);
     if (
@@ -400,8 +418,6 @@ export function decodeRetainedSmartAccountTransfer(
       ...(token ? { token } : {}),
       ...(collectibleTransfer ? { collectibleTransfer } : {}),
       ...(contractInteraction ? { contractInteraction: true as const } : {}),
-      maximumAccountCharge:
-        getSmartAccountUserOpRequiredPrefund(operation).toString(),
     });
   } catch {
     return null;

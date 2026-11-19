@@ -1,3 +1,4 @@
+import { SecretQrReveal } from './SecretQr';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
@@ -18,6 +19,8 @@ type Props = {
 };
 type State = { phase: 'protected'; feedback?: 'failed' | 'expired' } |
   { phase: 'working' } | { phase: 'shown'; secret: string };
+type RevealAuthority = Pick<Props, 'inventory' | 'note' | 'authentication' | 'onSecretVisibilityChange'>;
+const protectedState: State = { phase: 'protected' };
 type Attempt = { timer?: ReturnType<typeof setTimeout>; authentication: NativePrivateAuthenticationScope };
 type Owner = { live: boolean; attempt?: Attempt };
 const REVEAL_MS = 30_000;
@@ -31,7 +34,16 @@ function clearAttempt(owner: Owner) {
 export function NativeNoteReveal({ inventory, note, authentication, onSecretVisibilityChange, onBack, onLock }: Props) {
   const { t } = useNativeTranslation();
   const life = useRef<Owner>({ live: false });
-  const [state, setState] = useState<State>({ phase: 'protected' });
+  const [authority, setAuthority] = useState<RevealAuthority>({ inventory, note, authentication, onSecretVisibilityChange });
+  const [storedState, setState] = useState<State>(protectedState);
+  const authorityChanged = authority.inventory !== inventory || authority.note !== note ||
+    authority.authentication !== authentication || authority.onSecretVisibilityChange !== onSecretVisibilityChange;
+  const state = authorityChanged ? protectedState : storedState;
+  if (authorityChanged) {
+    // Discard the previous reveal before rendering the replacement authority.
+    setAuthority({ inventory, note, authentication, onSecretVisibilityChange });
+    setState(protectedState);
+  }
 
   const clear = useCallback(() => {
     const owner = life.current;
@@ -116,7 +128,9 @@ export function NativeNoteReveal({ inventory, note, authentication, onSecretVisi
         <Header title={t('mobile.noteFlows.reveal.backUpThisNote')} onBack={back} />
         <Notice title={t('mobile.noteFlows.reveal.anyoneWithThisNoteCanWithdraw')} body={t('mobile.noteFlows.reveal.keepYourBackupPrivateYourRecoveryPhraseCant')} tone="amber" />
         {state.phase === 'shown' ? <>
-          <Card style={s.secret}><Text style={s.note}>{state.secret}</Text></Card>
+          <SecretQrReveal value={state.secret} isCurrent={() => life.current.live && !!life.current.attempt}>
+            <Card style={s.secret}><Text style={s.note}>{state.secret}</Text></Card>
+          </SecretQrReveal>
           <Text style={styles.muted}>{t('mobile.noteFlows.reveal.thisNoteIsHiddenAfter30Seconds')}</Text>
         </> : <>
           {state.phase === 'protected' && state.feedback === 'failed' && <Text accessibilityRole="alert" style={s.error}>

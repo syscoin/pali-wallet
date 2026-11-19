@@ -1,8 +1,11 @@
+import { getPrivacyPoolActivity } from '../../../../source/shared/privacyPoolActivity.ts';
 import { Transaction } from 'ethers/transaction';
 import { getAddress } from 'ethers/address';
-import { EvmSignedRecords, type EvmSignedRecordSession, type EvmRetainedSignedRecord, type EvmRetainedSmartAccountRecord } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, retainedEvmTransaction, type EvmSignedRecordSession, type EvmRetainedRecord, type EvmRetainedSmartAccountRecord } from '../../../../source/wallet/evmSignedRecords.ts';
 import { projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { projectSmartAccountSavedTransaction } from '../../../../source/wallet/smartAccountSignedReplay.ts';
+import { decodeSmartAccountCancellation } from '../../../../source/wallet/smartAccountCancellation.ts';
+import { canSpeedUpSmartAccountOuter } from '../../../../source/wallet/smartAccountActivity.ts';
 import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope } from '../../../../source/shared/nftTransfer.ts';
 import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import type { NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
@@ -12,13 +15,16 @@ import { TransferJournalError, type TransferJournalEntry, type TransferJournalPh
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { LOCAL_ACTIVITY_LIMIT, type LocalActivityRecord } from '../activity/types.ts';
 
-const maySpeedUp = (entry: EvmRetainedSignedRecord, type: number | null | undefined) =>
-  entry.operation !== 'cancel' && (type === 0 || type === 2) &&
+export const supportsRetainedSpeedUpIntent = (transactions: object) =>
+  'supportsRetainedSpeedUpIntent' in transactions && transactions.supportsRetainedSpeedUpIntent === true;
+
+const maySpeedUp = (entry: EvmRetainedRecord, type: number | null | undefined) =>
+  entry.payloadKind !== 'unsigned-eoa' && entry.operation !== 'cancel' && (type === 0 || type === 2) &&
   !Object.hasOwn(entry.metadata ?? {}, 'privateDeposit') && !Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal');
 
 /** Address aliases never substitute for the signer that owns retained bytes. */
 export function findRetainedSignerAccount<T extends { type: NativeAccountType; index: number; slip44: number; address: string }>(
-  accounts: readonly T[], entry: Pick<EvmRetainedSignedRecord, 'signer' | 'from'>
+  accounts: readonly T[], entry: Pick<EvmRetainedRecord, 'signer' | 'from'>
 ): T | undefined {
   return accounts.find(account => account.slip44 === 60 &&
     ['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(account.type) &&
@@ -42,7 +48,8 @@ export function createNativeAutomaticNoncePlanner(
 /** Presentation adapter only. Canonical storage, ownership and retention are shared. */
 export function createNativeSignedRecordView(
   records: EvmSignedRecords, session: EvmSignedRecordSession, walletBindingId: string,
-  account: Readonly<{ index: number; type: NativeAccountType; address: string }>, network: NativeNetworkRegistration
+  account: Readonly<{ index: number; type: NativeAccountType; address: string }>, network: NativeNetworkRegistration, unsignedSpeedUpSupported = false,
+  smartActivityAfter?: number,
 ) {
   const scope = Object.freeze({ walletFingerprint: walletBindingId, address: account.address, chainId: network.chainId });
   const checked = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -50,31 +57,38 @@ export function createNativeSignedRecordView(
     catch (error) { if (records.requiresReopen) throw new TransferJournalError('REOPEN_REQUIRED'); throw error; }
   };
   const planAutomaticNonce = createNativeAutomaticNoncePlanner(records, session, network.chainId, account.address, network.rpcUrl);
-  const map = (entry: EvmRetainedSignedRecord): TransferJournalEntry => {
-    const tx = Transaction.from(entry.rawTransaction);
+  const map = (entry: EvmRetainedRecord): TransferJournalEntry => {
+    const tx = retainedEvmTransaction(entry);
     const collectible = decodeRetainedNftTransfer(entry, tx);
-    const inspectionOnly = (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
+    const inspectionOnly = entry.payloadKind === 'unsigned-eoa' || (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
       (!collectible || !isRetainedNftReplayEnvelope(tx));
     const intent = entry.metadata?.intent === undefined ? undefined : snapshotErc20TransferIntent(entry.metadata.intent);
     if (intent) assertTransferIntentEnvelope({ chainId: tx.chainId.toString(), to: tx.to ?? '', value: tx.value.toString(), data: tx.data }, intent);
     return Object.freeze({
-    version: 1, scope, phase: entry.phase, rawTransaction: entry.rawTransaction, hash: entry.hash,
+    version: 1, scope, phase: entry.phase, hash: entry.hash,
+    ...(entry.payloadKind !== 'unsigned-eoa' ? { rawTransaction: entry.rawTransaction } : {}),
     nonce: entry.nonce, createdAt: entry.createdAt,
     ...(intent ? { intent } : {}),
     ...(collectible ? { collectible } : {}),
     ...(inspectionOnly ? { inspectionOnly: true as const } : {}),
   }); };
-  const activity = (entry: EvmRetainedSignedRecord): LocalActivityRecord => {
+  const activity = (entry: EvmRetainedRecord): LocalActivityRecord => {
     const saved=projectSavedEvmTransaction(entry), token=saved.tokenTransfer?.token;
-    const inspectionOnly = (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
-      (!saved.collectibleTransfer || !isRetainedNftReplayEnvelope(Transaction.from(entry.rawTransaction)));
-    const speedUpEligible = maySpeedUp(entry, saved.type);
+    const inspectionOnly = entry.payloadKind === 'unsigned-eoa' || (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
+      (!saved.collectibleTransfer || !isRetainedNftReplayEnvelope(retainedEvmTransaction(entry)));
+    const unsignedSpeedUp = unsignedSpeedUpSupported && account.type !== 'SmartAccount' &&
+      entry.payloadKind === 'unsigned-eoa' && saved.speedUpAvailable && entry.signer.id === account.index && entry.signer.type === account.type &&
+      (saved.type === 0 || saved.type === 2);
+    const speedUpEligible = unsignedSpeedUp || maySpeedUp(entry, saved.type);
+    const privacyActivity = getPrivacyPoolActivity(saved.chainId, saved.to, saved.selector);
     return Object.freeze({walletFingerprint:walletBindingId,accountId:nativeAccountId(account.type,account.index),address:account.address,networkId:network.id,registrationHash:network.registrationHash,chainId:network.chainId,hash:entry.hash,phase:entry.phase,nonce:entry.nonce,createdAt:entry.createdAt,
       recipient:saved.collectibleTransfer?.recipient??saved.tokenTransfer?.recipient??saved.to,amountUnits:token?saved.tokenTransfer!.amountUnits:saved.value,maximumFeeUnits:saved.maximumFee,...(token?{token}:{}),
       operation: saved.operation, transactionType: saved.type, ...(saved.originalHash ? { originalHash: saved.originalHash } : {}),
+      ...(privacyActivity ? { privacyActivity } : {}),
       ...(saved.cancellationUnavailable ? { cancellationUnavailable: true as const } : {}),
       ...(saved.value === '0' && saved.dataBytes > 0 && !saved.tokenTransfer && !saved.collectibleTransfer ? { contractInteraction: true as const } : {}),
       ...(inspectionOnly ? { inspectionOnly: true as const } : {}),
+      ...(unsignedSpeedUp ? { unsignedSpeedUp: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
       ...(speedUpEligible ? { speedUpEligible: true as const } : {}),
       ...(saved.collectibleTransfer ? { collectibleTransfer: saved.collectibleTransfer } : {})});
   };
@@ -83,6 +97,9 @@ export function createNativeSignedRecordView(
     const single = smart.executions?.length === 1 ? smart.executions[0] : undefined;
     if (record.cancellation) return Object.freeze({ ...activity(record.entry), inspectionOnly: true,
       smartAccount: Object.freeze({ payer: record.cancellation.original.payer, operations: [Object.freeze({ operationHash: record.cancellation.original.operationHash, operationNonce: record.cancellation.original.operationNonce })], cancellation: true }) });
+    const cancellation = smart.cancellation ? decodeSmartAccountCancellation(record.entry) : null;
+    const originalHash = cancellation?.originalKind === 'transaction' ? cancellation.originalHash : saved.originalHash;
+    const retainedSmartSpeedUp = maySpeedUp(record.entry, saved.type) && canSpeedUpSmartAccountOuter(record, account.address);
     return Object.freeze({
     walletFingerprint: walletBindingId, accountId: nativeAccountId(account.type, account.index),
     address: account.address, networkId: network.id, registrationHash: network.registrationHash,
@@ -93,18 +110,21 @@ export function createNativeSignedRecordView(
     ...(transfer?.collectibleTransfer ? { collectibleTransfer: transfer.collectibleTransfer } : {}),
     ...(!transfer || transfer.contractInteraction ? { contractInteraction: true as const } : {}),
     // The outer transaction's terminal status does not establish the UserOperation outcome.
-    phase: 'submitted', ...(!smart.replayable ? { inspectionOnly: true as const } : {}),
-    operation: saved.operation, transactionType: saved.type ?? undefined,
-    ...(saved.originalHash ? { originalHash: saved.originalHash } : {}),
-    ...(maySpeedUp(record.entry, saved.type) && !!transfer ? { speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
+    phase: 'submitted', ...(smart.operationCount !== 1 ? { inspectionOnly: true as const } : {}),
+    operation: cancellation ? 'cancel' : saved.operation, transactionType: saved.type ?? undefined,
+    ...(smart.cancellationRetry ? { cancellationRetry: smart.cancellationRetry } : {}),
+    ...(originalHash ? { originalHash } : {}),
+    ...(retainedSmartSpeedUp ? { retainedSmartSpeedUp: true as const, speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
     smartAccount: Object.freeze({ payer: getAddress(saved.from), operations: smart.operations }),
   }); };
+  const smartActivityByHash = async (hash: string) => {
+    const record = await records.readSmartAccountReplayExact(session, network.chainId, account.address, hash);
+    return record && (smartActivityAfter === undefined || record.entry.createdAt > smartActivityAfter)
+      ? smartActivity(record) : null;
+  };
   return Object.freeze({
     smartActivity(hash: string) {
-      return checked(async () => {
-        const record = await records.readSmartAccountReplayExact(session, network.chainId, account.address, hash);
-        return record ? smartActivity(record) : null;
-      });
+      return checked(() => smartActivityByHash(hash));
     },
     planAutomaticNonce: (...args: Parameters<NativeAutomaticNoncePlanner>) => checked(() => planAutomaticNonce(...args)),
     assertSpendingNonce(nonce: number) {
@@ -134,7 +154,7 @@ export function createNativeSignedRecordView(
     async activities():Promise<Readonly<{records: readonly LocalActivityRecord[]; truncated: boolean}>> {
       return checked(async () => {
         if (account.type === 'SmartAccount') {
-          const page = await records.readSmartAccountReplayPage(session, network.chainId, account.address, { maximum: LOCAL_ACTIVITY_LIMIT });
+          const page = await records.readSmartAccountReplayPage(session, network.chainId, account.address, { after: smartActivityAfter, maximum: LOCAL_ACTIVITY_LIMIT });
           return Object.freeze({ records: Object.freeze(page.entries.map(smartActivity)), truncated: page.nextCursor !== null });
         }
         const recent=await records.readRecent(session,network.chainId,account.address,LOCAL_ACTIVITY_LIMIT);
@@ -142,11 +162,18 @@ export function createNativeSignedRecordView(
         return Object.freeze({records:Object.freeze(projected),truncated:recent.total>projected.length});
       });
     },
+    activityByHash(hash: string) {
+      return checked(async () => {
+        if (account.type === 'SmartAccount') return smartActivityByHash(hash);
+        const retained = await records.readExact(session, network.chainId, account.address, hash);
+        return retained ? activity(retained) : null;
+      });
+    },
     pendingActivities(beforeHash?: string) {
       return checked(async () => {
         if (account.type === 'SmartAccount') {
           const page = await records.readSmartAccountReplayPage(session, network.chainId, account.address,
-            { beforeHash, maximum: 20 });
+            { after: smartActivityAfter, beforeHash, maximum: 20 });
           return Object.freeze({ records: Object.freeze(page.entries.map(smartActivity)), nextCursor: page.nextCursor });
         }
         const page = await records.readPage(session, network.chainId, account.address,

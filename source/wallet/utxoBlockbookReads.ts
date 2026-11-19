@@ -3,6 +3,7 @@ import {
   cancelResponseBody,
   ResponseSizeLimitError,
 } from '../shared/boundedHttp.ts';
+import { UTXO_REVIEW_FUNDING_CHANGED } from '../shared/utxoSendErrors.ts';
 import { UTXO_DETAIL_RESPONSE_BYTES } from '../shared/utxoTransactionDetailCache.ts';
 
 import { fetchUtxoRead } from './utxoReadRetry.ts';
@@ -56,12 +57,14 @@ export function createOwnedUtxoBlockbookRead(
     allowed.add(FEE);
   }
   let addressDiscovery: string | undefined;
+  let walletFunding: string | undefined;
   if (scope.kind === 'wallet') {
     if (scope.address)
       allowed.add(`/api/v2/utxo/${encodeURIComponent(scope.address)}`);
     if (scope.xpub) {
       const xpub = encodeURIComponent(scope.xpub);
-      allowed.add(`/api/v2/utxo/${xpub}`);
+      walletFunding = `/api/v2/utxo/${xpub}`;
+      allowed.add(walletFunding);
       const path = `/api/v2/xpub/${xpub}?tokens=used&details=tokens`;
       allowed.add(path);
       if (scope.reuseAddressDiscovery) addressDiscovery = path;
@@ -75,7 +78,7 @@ export function createOwnedUtxoBlockbookRead(
   };
   check();
 
-  async function read(url: string) {
+  async function read(url: string, retry = true) {
     const controller = new AbortController();
     const cancel = () => controller.abort();
     signal.addEventListener('abort', cancel, { once: true });
@@ -95,7 +98,8 @@ export function createOwnedUtxoBlockbookRead(
           signal: controller.signal,
         },
         check,
-        deadline
+        deadline,
+        retry
       );
       check();
       if (response.redirected || response.url !== url) {
@@ -143,6 +147,44 @@ export function createOwnedUtxoBlockbookRead(
   return Object.freeze({
     signal,
     assertCurrent: check,
+    async assertReviewedInputsAvailable(outpoints: readonly string[]) {
+      check();
+      try {
+        if (walletFunding && outpoints.length) {
+          // Confirm uses one fresh read against the same account as the quote.
+          const { body } = await read(base + walletFunding, false);
+          const rows: unknown = body === null ? null : JSON.parse(body);
+          if (Array.isArray(rows)) {
+            const missing = new Set(outpoints);
+            for (const row of rows) {
+              const { txid, txId, vout } = row ?? {};
+              const hash = txid ?? txId;
+              if (
+                typeof hash === 'string' &&
+                /^[0-9a-fA-F]{64}$/.test(hash) &&
+                (txid === undefined ||
+                  txId === undefined ||
+                  (typeof txid === 'string' &&
+                    typeof txId === 'string' &&
+                    txid.toLowerCase() === txId.toLowerCase())) &&
+                Number.isSafeInteger(vout)
+              ) {
+                missing.delete(`${hash.toLowerCase()}:${vout}`);
+              }
+            }
+            check();
+            if (!missing.size) return;
+          }
+        }
+      } catch {
+        // A failed or malformed read cannot establish that an input was spent.
+        check();
+      }
+      throw Object.assign(new Error(UTXO_REVIEW_FUNDING_CHANGED), {
+        code: UTXO_REVIEW_FUNDING_CHANGED,
+        transactionNotBroadcast: true,
+      });
+    },
     async fetch(
       input: RequestInfo | URL,
       init?: RequestInit

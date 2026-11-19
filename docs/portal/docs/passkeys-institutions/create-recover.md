@@ -32,7 +32,7 @@ const smartAccount = await window.ethereum.request({
   method: 'wallet_prepareSmartAccount',
   params: [
     {
-      label: 'Pali Wallet Passkey',
+      label: 'Pali Passkey',
       authenticator: { id: 'p256-webauthn' },
     },
   ],
@@ -107,4 +107,4 @@ Pali recovery is self-custodial. It is not a server backdoor and it cannot bypas
   <figcaption>Recovery and execution require a WebAuthn assertion from the relevant passkey credential.</figcaption>
 </figure>
 
-The browser controls the effective RP ID for extension-origin WebAuthn unless an RP ID is provided by the wallet path. Pali labels the default shared credential as `Pali Wallet Passkey` and uses the requested account label for user-facing account association.
+The browser controls the effective RP ID for extension-origin WebAuthn unless an RP ID is provided by the wallet path. Pali uses the requested account label as the WebAuthn credential name and display name.

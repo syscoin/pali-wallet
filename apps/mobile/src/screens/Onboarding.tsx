@@ -68,7 +68,7 @@ export function Welcome({
       >
         <View style={[styles.welcomeBrand, { transform: [{ translateY: compact ? 8 : 52 }] }]}>
           <PaliMark size={compact ? 96 : 128} />
-          <Text accessibilityRole="header" style={styles.welcomeName}>Pali Wallet</Text>
+          <Text accessibilityRole="header" style={styles.welcomeName}>Pali</Text>
         </View>
 
         {!onCreateWallet && !onImportWallet && (

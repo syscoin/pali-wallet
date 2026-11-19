@@ -99,6 +99,42 @@ async function compile(source: string, deduplicate = true) {
   return { resources, dependencies, packageMetadata, result: result.exports };
 }
 
+it('shares identical browser streams while preserving a different installed major', async () => {
+  const browserEntry = (anchor?: string) =>
+    path.join(
+      path.dirname(installed('readable-stream/package.json', anchor)),
+      'readable-browser.js'
+    );
+  const modern = browserEntry('stream-browserify');
+  const legacy = browserEntry('level-iterator-stream');
+  const source = `
+    const streams = [${[
+      'keccak',
+      'merkle-patricia-tree',
+      'stream-http',
+      'stream-browserify',
+    ]
+      .map((anchor) => `require(${JSON.stringify(browserEntry(anchor))})`)
+      .join(',')}];
+    const legacy = require(${JSON.stringify(legacy)});
+    const pipe = new streams[0].PassThrough();
+    pipe.write('wallet');
+    export default {
+      value: pipe.read().toString(),
+      shared: streams.every(stream => stream.Readable === streams[0].Readable),
+      separateMajor: legacy.Readable !== streams[0].Readable
+    };
+  `;
+  const built = await compile(source);
+  expect(built.result).toEqual({
+    value: 'wallet',
+    shared: true,
+    separateMajor: true,
+  });
+  expect(built.resources).toContain(modern);
+  expect(built.resources).toContain(legacy);
+});
+
 it('deduplicates the installed identical versions while preserving BN5 and newer byte tools', async () => {
   // Yarn may already hoist identical copies to one path. Materialize exact
   // copies so this regression still exercises webpack deduplication itself.

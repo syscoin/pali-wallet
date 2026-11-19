@@ -14,7 +14,7 @@ title: События
 | `chainChanged` | `window.ethereum` | EVM chain изменилась. |
 | `message` | `window.ethereum` | Provider message. |
 
-## Уведомления Pali wallet
+## Уведомления Pali {#уведомления-pali-wallet}
 
 | Событие | Значение |
 | --- | --- |

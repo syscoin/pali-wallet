@@ -50,6 +50,7 @@ export type EvmDappReviewPorts<NonceContext, Result> = Readonly<{
   chainId: string;
   nonceContext: NonceContext;
   now(): number;
+  onPreSendRefreshFailure?(error: unknown, submission: EvmDappSubmission): void;
   prepare(
     request: EvmDappTransactionRequest,
     assertCurrent: () => void,
@@ -211,8 +212,16 @@ async function createEvmDappReview<NonceContext, Result>(
         now()
       );
     };
-    if (refreshBeforeSend || ports.prepareDisplay)
-      await refresh(ports.nonceContext, current);
+    if (refreshBeforeSend || ports.prepareDisplay) {
+      try {
+        await refresh(ports.nonceContext, current);
+      } catch (error) {
+        // Dispatch may call refresh again after signing. Only this first
+        // refresh can certify that the send path was never entered.
+        ports.onPreSendRefreshFailure?.(error, submission);
+        throw error;
+      }
+    }
     current();
     return ports.send(
       quote.transaction,

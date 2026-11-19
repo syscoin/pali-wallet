@@ -9,12 +9,12 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { decodeAssetTransfer } from '../../shared/assetTransfer';
 import { createSmartAccountCallsExecutions } from '../../shared/dappCalls';
+import { SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED } from '../../shared/smartAccountFeeQuote';
 import { createEoaCallsSequence } from '../../wallet/evmCallsSequence';
-import { useSmartAccountFeeConfirmation } from '../Settings/SmartAccountFeeConfirmation';
 import { Button, Icon, Tooltip } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
-import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
+import { SmartAccountPayerFee } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -355,9 +355,11 @@ export const SendCalls = () => {
     : '';
   const hasCurrentFeeQuote =
     !requestSmartAccount.supportsAtomicBatch ||
-    Boolean(feeQuote?.key === feeQuoteKey && !feeQuoteNeedsRefresh);
-  const { forExecution, feeConfirmation } =
-    useSmartAccountFeeConfirmation(feeQuoteKey);
+    Boolean(
+      feeQuote?.payerBudget &&
+        feeQuote.key === feeQuoteKey &&
+        !feeQuoteNeedsRefresh
+    );
   const currentFeeQuoteKeyRef = React.useRef(feeQuoteKey);
   currentFeeQuoteKeyRef.current = feeQuoteKey;
   const assetTransfers = useAssetTransferSummaries(
@@ -421,6 +423,7 @@ export const SendCalls = () => {
         controllerEmitter,
         executions,
         expectedContext: approvedContext,
+        includePayerBudget: true,
       });
       if (!cancelled) {
         const destinations = Object.freeze(
@@ -636,13 +639,12 @@ export const SendCalls = () => {
         statuses[index] = {
           status: 'unknown',
           txHash,
-          error: t('send.submissionStatusUnknown'),
         };
       return statuses;
     });
     setLoading(false);
     setProcessingIndex(-1);
-    alert.error(t('send.submissionStatusUnknown'));
+    alert.error(t('transactions.replay.unknown'));
   };
   useEffect(() => {
     if (!transactionStatuses || !callsData.bundleId) return;
@@ -742,6 +744,9 @@ export const SendCalls = () => {
       Boolean(feeQuoteError)
     )
       return;
+    const submittedMessage = t(
+      'mobile.recoveryStatusViews.operation.callsSubmitted'
+    );
     submissionInFlightRef.current = true;
     const generation = eoaLifetimeRef.current;
     try {
@@ -878,14 +883,6 @@ export const SendCalls = () => {
             executions: approvedQuote.executions,
             expectedContext: approvedContext,
             approvedFeeQuote: approvedQuote,
-            feeConsent: forExecution({
-              account: approvedContext.account.address,
-              smartAccount: approvedContext.account.address,
-              chainId: activeNetwork.chainId,
-              symbol: activeNetwork.currency,
-              label: t('buttons.send'),
-              assertCurrent: assertApprovedQuoteCurrent,
-            }),
             onBeforeAuthentication: assertApprovedQuoteCurrent,
             onPrepared: assertApprovedQuoteCurrent,
             onAssertionResolved: () => {
@@ -953,7 +950,7 @@ export const SendCalls = () => {
           });
           setProcessingIndex(-1);
           setLoading(false);
-          alert.success(t('send.txSuccessfull'));
+          alert.success(submittedMessage);
           return;
         } catch (error) {
           if (
@@ -1014,7 +1011,9 @@ export const SendCalls = () => {
           }
           const legacyKey = legacyEvmNonceErrorKey(error);
           const errorMessage = unknown
-            ? t('send.submissionStatusUnknown')
+            ? t('transactions.replay.unknown')
+            : error?.message === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+            ? t('send.smartAccountPayerFeeExceeded')
             : legacyKey
             ? t(legacyKey)
             : getSafeSmartAccountCallErrorMessage(
@@ -1027,14 +1026,18 @@ export const SendCalls = () => {
               const newStatuses = [...prev];
               newStatuses[index] = {
                 status: txHash ? 'success' : unknown ? 'unknown' : 'error',
-                ...(txHash ? { txHash } : { error: errorMessage }),
+                ...(txHash
+                  ? { txHash }
+                  : unknown
+                  ? {}
+                  : { error: errorMessage }),
               };
               return newStatuses;
             });
           });
           setLoading(false);
           setProcessingIndex(-1);
-          if (txHash) alert.success(t('send.txSuccessfull'));
+          if (txHash) alert.success(submittedMessage);
           else alert.error(errorMessage);
           return;
         } finally {
@@ -1217,14 +1220,15 @@ export const SendCalls = () => {
         return;
       setProcessingIndex(-1);
       setLoading(false);
-      if (outcome.hashes.length) {
+      const submittedCount = acknowledgedCallsRef.current.size;
+      if (submittedCount) {
         alert.success(
           outcome.failed
-            ? t('send.partialSuccess', {
-                count: outcome.hashes.length,
-                total: selectedCallsData.length,
+            ? t('send.partialSubmission', {
+                count: submittedCount,
+                total: callsData.calls.length,
               })
-            : t('send.txSuccessfull')
+            : submittedMessage
         );
       } else alert.error(t('send.allTransactionsFailed'));
     } catch (error) {
@@ -1391,7 +1395,6 @@ export const SendCalls = () => {
 
   return (
     <div className="h-screen flex flex-col">
-      {feeConfirmation}
       {/* Header */}
       <div className="bg-brand-blue600 p-4">
         <p className="text-sm text-brand-white break-all">{host}</p>
@@ -1407,10 +1410,12 @@ export const SendCalls = () => {
         </p>
       </div>
 
-      {/* Warning for atomic requirement */}
       {hasUnknownSubmission && (
-        <p role="status" className="p-4 text-sm text-brand-yellow">
-          {t('send.submissionStatusUnknown')}
+        <p
+          role="status"
+          className="mx-4 mt-4 rounded-lg border border-brand-yellowInfo p-3 text-center text-sm text-white"
+        >
+          {t('transactions.replay.unknown')}
         </p>
       )}
       {callsData.atomicRequired &&
@@ -1497,8 +1502,8 @@ export const SendCalls = () => {
                           </span>
                         )}
                         {transactionStatuses[index].status === 'unknown' && (
-                          <span className="text-xs text-brand-yellow ml-2">
-                            {t('send.pending')}
+                          <span className="ml-2 text-xs text-brand-yellowInfo">
+                            {t('components.unknown')}
                           </span>
                         )}
                       </>
@@ -1691,11 +1696,19 @@ export const SendCalls = () => {
                 ? t('send.feeUnavailable')
                 : t('send.calculating')}
             </p>
-            {hasCurrentFeeQuote && feeQuote && (
-              <SmartAccountFeePayer address={feeQuote.feePayer.address} />
+            {hasCurrentFeeQuote && feeQuote?.payerBudget && (
+              <SmartAccountPayerFee
+                address={feeQuote.feePayer.address}
+                budget={feeQuote.payerBudget}
+                currency={activeNetwork.currency}
+              />
             )}
             <p className="text-xs text-brand-gray200 mt-1">
-              {t('send.smartAccountFeeDetails')}
+              {t(
+                hasCurrentFeeQuote && feeQuote?.payerBudget?.gasTank === false
+                  ? 'send.smartAccountFeeReimbursement'
+                  : 'send.smartAccountFeeDetails'
+              )}
             </p>
             {feeQuoteError && (
               <div role="alert" className="mt-2 text-sm text-brand-red">

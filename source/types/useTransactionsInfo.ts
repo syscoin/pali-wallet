@@ -16,6 +16,7 @@ export interface ITransactionInfoEvm {
   accessList: any[];
   blockHash: string;
   blockNumber: string;
+  cancellationUnavailable?: true;
   chainId: number;
   confirmations: number;
   from: string;
@@ -28,9 +29,11 @@ export interface ITransactionInfoEvm {
   isError?: string | null;
   maxFeePerGas: string;
   maxPriorityFeePerGas: string;
+  methodSelector?: string;
   nonce: string;
   r: string;
   s: string;
+  speedUpAvailable?: true;
   timestamp: number;
   to: string;
   transactionIndex: string;

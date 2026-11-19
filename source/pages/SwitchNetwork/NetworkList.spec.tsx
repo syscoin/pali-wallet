@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import { NetworkList } from './NetworkList';
 
@@ -122,7 +123,13 @@ describe('network picker controls', () => {
     await connect(changed).props.onClick();
     expect(mockControllerEmitter).toHaveBeenCalledWith(
       ['wallet', 'setActiveNetwork'],
-      [mockState.vaultGlobal.networks.syscoin[5700], false]
+      [
+        mockState.vaultGlobal.networks.syscoin[5700],
+        false,
+        networkRegistrationFingerprint(
+          mockState.vaultGlobal.networks.syscoin[5700]
+        ),
+      ]
     );
     expect(mockNavigate).toHaveBeenCalledWith('/home');
   });

@@ -232,7 +232,8 @@ const runtime: NativeActivityRuntime = {
   async load() {
     return {
       scope,
-      locals: freshStatus?.locals ?? collectibleLocals,
+      locals: freshStatus?.locals ?? (savedPending ? pendingLocals.slice(0, 1) : collectibleLocals),
+      olderRetained: savedPending,
       saved: {
         archived: [],
         candidates: [],
@@ -392,11 +393,6 @@ function Fixture() {
           controller={controller}
           accountLabel="Public test account"
           onBack={() => setOpen(false)}
-          onReplay={savedPending ? (selected) => {
-            if (selected !== pendingLocals[1]!.hash) throw new Error('Expected the selected saved hash');
-            setOpen(false);
-          } : retainedCollectible !== null ? () => { throw new Error('Read-only collectible cannot replay'); }
-            : freshStatus?.hasSavedSpeedUp ? () => setOpen(false) : undefined}
           onCancelPending={freshStatus ? () => setOpen(false) : undefined}
           onCancelSaved={freshStatus ? (hash) => {
             if (!freshStatus.locals.some((record) => record.hash === hash))

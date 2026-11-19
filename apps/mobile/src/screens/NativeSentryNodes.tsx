@@ -369,7 +369,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                   Keyboard.dismiss();
                   void run(async (owner, check) => {
                     if (!snapshot) throw new Error('CANCELLED');
-                    const review = await owner.manager!.prepareLink({ version: 1, proTxHash: value, genesisHash: SENTRY_NETWORKS[snapshot.network].genesisHash }, 'Pali Wallet');
+                    const review = await owner.manager!.prepareLink({ version: 1, proTxHash: value, genesisHash: SENTRY_NETWORKS[snapshot.network].genesisHash }, 'Pali');
                     check();
                     navigate(owner, { kind: 'link', review });
                   }, step);

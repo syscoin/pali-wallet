@@ -1,3 +1,5 @@
+import { PasswordCooldownError } from '../wallet/localPasskeyTypes';
+
 import { createLocalPasskeyController } from './localPasskeyController';
 
 const originalConnect = Object.getOwnPropertyDescriptor(
@@ -80,6 +82,90 @@ it('keeps enrollment and assertion on one port and closes after completion', asy
   expect(port.disconnect).toHaveBeenCalledTimes(1);
   await f.controller.dispose();
 });
+
+it.each(['beginEnrollment', 'disable'] as const)(
+  'preserves the cooldown on %s and releases the connection',
+  async (method) => {
+    const f = fixture();
+    const result = f.controller[method]('wallet-password');
+    const port = f.ports[0];
+    port.onMessage.emit({
+      id: 1,
+      error: 'LOCAL_PASSKEY_PASSWORD_COOLDOWN',
+      retryAfterSeconds: 42,
+    });
+    await expect(result).rejects.toBeInstanceOf(PasswordCooldownError);
+    await expect(result).rejects.toHaveProperty('retryAfterSeconds', 42);
+    expect(port.disconnect).toHaveBeenCalledTimes(1);
+    const retry = f.controller[method]('wallet-password');
+    expect(f.ports[1].postMessage).toHaveBeenCalledWith({
+      id: 1,
+      method,
+      params: ['wallet-password'],
+    });
+    f.ports[1].onMessage.emit({ id: 1, error: 'LOCAL_PASSKEY_UNAVAILABLE' });
+    await expect(retry).rejects.toThrow('LOCAL_PASSKEY_UNAVAILABLE');
+    await f.controller.dispose();
+  }
+);
+
+it.each([undefined, 0, -1, 1.5, '42', Infinity])(
+  'rejects an invalid cooldown duration (%p) as a generic failure',
+  async (retryAfterSeconds) => {
+    const f = fixture();
+    const result = f.controller.disable('wallet-password');
+    f.ports[0].onMessage.emit({
+      id: 1,
+      error: 'LOCAL_PASSKEY_PASSWORD_COOLDOWN',
+      retryAfterSeconds,
+    });
+    await expect(result).rejects.toThrow('LOCAL_PASSKEY_UNAVAILABLE');
+    await f.controller.dispose();
+  }
+);
+
+it('refuses a cooldown in an unlock reply', async () => {
+  const f = fixture();
+  const result = f.controller.beginUnlock();
+  f.ports[0].onMessage.emit({
+    id: 1,
+    error: 'LOCAL_PASSKEY_PASSWORD_COOLDOWN',
+    retryAfterSeconds: 42,
+  });
+  await expect(result).rejects.toThrow('LOCAL_PASSKEY_UNAVAILABLE');
+  await f.controller.dispose();
+});
+
+it('refuses a combined success and cooldown reply', async () => {
+  const f = fixture();
+  const result = f.controller.disable('wallet-password');
+  f.ports[0].onMessage.emit({
+    id: 1,
+    result: null,
+    error: 'LOCAL_PASSKEY_PASSWORD_COOLDOWN',
+    retryAfterSeconds: 42,
+  });
+  await expect(result).rejects.toThrow('LOCAL_PASSKEY_UNAVAILABLE');
+  await f.controller.dispose();
+});
+
+it('retires a malformed cooldown reply without leaving a pending waiter', async () => {
+  const f = fixture();
+  const result = f.controller.disable('wallet-password');
+  const getter = jest.fn(() => 42);
+  f.ports[0].onMessage.emit(
+    Object.defineProperty(
+      { id: 1, error: 'LOCAL_PASSKEY_PASSWORD_COOLDOWN' },
+      'retryAfterSeconds',
+      { get: getter }
+    )
+  );
+  await expect(result).rejects.toThrow('LOCAL_PASSKEY_UNAVAILABLE');
+  expect(getter).not.toHaveBeenCalled();
+  expect(f.ports[0].disconnect).toHaveBeenCalledTimes(1);
+  await f.controller.dispose();
+});
+
 it('a stale operation id cannot cancel a newer begin', async () => {
   const f = fixture();
   const first = f.controller.beginUnlock();
@@ -168,5 +254,14 @@ it('an already-delivered old success is refused after cancel and a new begin', a
   await rejected;
   await next;
   expect(f.ports[1].disconnect).not.toHaveBeenCalled();
+  await f.controller.dispose();
+});
+
+it('rejects cooldown metadata without the error tag', async () => {
+  const f = fixture();
+  const disabling = f.controller.disable('wallet-password');
+  f.ports[0].onMessage.emit({ id: 1, retryAfterSeconds: 89 });
+  await expect(disabling).rejects.toThrow('LOCAL_PASSKEY_UNAVAILABLE');
+  expect(f.ports[0].disconnect).toHaveBeenCalledTimes(1);
   await f.controller.dispose();
 });

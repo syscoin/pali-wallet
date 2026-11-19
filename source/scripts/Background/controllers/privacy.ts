@@ -3,6 +3,8 @@ import { privacyCache, type PrivacyCache } from 'utils/privacy/cache';
 import {
   createSnapshotAnchorVerifier,
   fetchPrivacySnapshot,
+  selectSnapshotProofCheckpoint,
+  verifySnapshotProofCheckpoint,
   type verifySnapshotAnchor,
 } from 'utils/privacy/client';
 import type { IPrivacyNoteReader } from 'utils/privacy/privateVaultTypes';
@@ -18,8 +20,10 @@ type Dependencies = {
   fetchSnapshot?: typeof fetchPrivacySnapshot;
   now?: () => number;
   schedule?: (poolId: PrivacyPoolId, delay: number) => void;
+  selectProofCheckpoint?: typeof selectSnapshotProofCheckpoint;
   stop?: (poolId: PrivacyPoolId) => void;
   verifyAnchor?: typeof verifySnapshotAnchor;
+  verifyProofCheckpoint?: typeof verifySnapshotProofCheckpoint;
 };
 
 /** Extension composition root. Keep Chrome alarms and cache outside the verifier. */
@@ -62,6 +66,11 @@ export function createPrivacyController(
       cache: dependencies.cache || privacyCache,
       fetchSnapshot: dependencies.fetchSnapshot || fetchPrivacySnapshot,
       verifyAnchor: dependencies.verifyAnchor || createSnapshotAnchorVerifier(),
+      selectProofCheckpoint:
+        dependencies.selectProofCheckpoint ??
+        (dependencies.verifyAnchor ? undefined : selectSnapshotProofCheckpoint),
+      verifyProofCheckpoint:
+        dependencies.verifyProofCheckpoint ?? verifySnapshotProofCheckpoint,
       now,
       schedule,
       stop,

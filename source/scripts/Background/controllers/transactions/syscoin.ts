@@ -1,7 +1,10 @@
 import clone from 'lodash/clone';
 import * as sys from 'syscoinjs-lib';
 
-import { createBlockbookAccountHistory } from '../../../../shared/blockbookAccountHistory';
+import {
+  createBlockbookAccountHistory,
+  readHistoryCount,
+} from '../../../../shared/blockbookAccountHistory';
 import { mergeFreshBlockbookHistory } from '../../../../shared/blockbookHistoryMerge';
 import {
   UTXO_DETAIL_OBSERVATION,
@@ -20,10 +23,34 @@ import { treatAndSortTransactions } from './utils';
 // `details=basic` probe before paying for transaction history.
 interface IAccountActivitySnapshot {
   balance: string;
+  hasMore?: boolean;
   txs: number;
   unconfirmedBalance: string;
   unconfirmedTxs: number;
 }
+
+// Keep pagination evidence alongside the exact read, outside persisted wallet rows.
+const pageContinuation = new WeakMap<ISysTransaction[], boolean>();
+export const getBlockbookHistoryHasMore = (rows: unknown) =>
+  Array.isArray(rows) ? pageContinuation.get(rows) : undefined;
+const withContinuation = (rows: ISysTransaction[], hasMore?: boolean) => {
+  if (hasMore !== undefined) pageContinuation.set(rows, hasMore);
+  return rows;
+};
+const historyRows = (data: any, page: number) => {
+  const rows = Array.isArray(data?.transactions) ? data.transactions : [];
+  const total = readHistoryCount(data?.totalPages);
+  const reportedPage = readHistoryCount(data?.page);
+  // Blockbook clamps requests beyond the end to its final page.
+  const matchesPage =
+    data?.page === undefined ||
+    reportedPage === page ||
+    (reportedPage === total && total !== null && page > total);
+  return withContinuation(
+    rows,
+    total !== null && matchesPage ? page < total : undefined
+  );
+};
 
 const MAX_SNAPSHOT_ENTRIES = 20;
 const accountActivitySnapshots = new Map<string, IAccountActivitySnapshot>();
@@ -59,6 +86,13 @@ const { getHistoryRequestOptions, fetchAccountHistory } =
       }));
     }
   );
+
+const assertHistoryReadCurrent = (signal?: AbortSignal) => {
+  if (signal?.aborted)
+    throw Object.assign(new Error('History read cancelled'), {
+      name: 'AbortError',
+    });
+};
 
 const getSnapshotKey = (networkUrl: string, xpubOrAddress: string) =>
   `${networkUrl}::${xpubOrAddress}`;
@@ -123,32 +157,41 @@ const SysTransactionController = (): ISysTransactionsController => {
 
   const getInitialUserTransactionsByXpub = async (
     xpubOrAddress: string,
-    networkUrl: string
+    networkUrl: string,
+    signal?: AbortSignal
   ): Promise<ISysTransaction[]> => {
     const accountData = await fetchAccountHistory(
       networkUrl,
       xpubOrAddress,
-      getHistoryRequestOptions(networkUrl, xpubOrAddress)
+      getHistoryRequestOptions(networkUrl, xpubOrAddress),
+      false,
+      signal && {
+        assertCurrent: () => assertHistoryReadCurrent(signal),
+        fetch: (url, identifier, options, parseData) =>
+          fetchBackendAccountCached(
+            url,
+            identifier,
+            options,
+            parseData,
+            signal
+          ),
+      }
     );
+    assertHistoryReadCurrent(signal);
 
-    // Record the account summary so rapid polling can detect changes cheaply
-    storeActivitySnapshot(
-      getSnapshotKey(networkUrl, xpubOrAddress),
-      buildActivitySnapshot(accountData)
-    );
-
-    const transactions = (accountData as any)?.transactions as
-      | ISysTransaction[]
-      | undefined;
-
-    // Ensure we always return an array, even if transactions is falsy
-    return Array.isArray(transactions) ? transactions : [];
+    const rows = historyRows(accountData, 1);
+    storeActivitySnapshot(getSnapshotKey(networkUrl, xpubOrAddress), {
+      ...buildActivitySnapshot(accountData),
+      hasMore: getBlockbookHistoryHasMore(rows),
+    });
+    return rows;
   };
 
   const pollingSysTransactions = async (
     xpubOrAddress: string,
     networkUrl: string,
-    isRapidPolling = false
+    isRapidPolling = false,
+    signal?: AbortSignal
   ): Promise<ISysTransaction[]> => {
     const { activeAccount, activeNetwork, accountTransactions } =
       store.getState().vault;
@@ -175,17 +218,21 @@ const SysTransactionController = (): ISysTransactionsController => {
             networkUrl,
             xpubOrAddress,
             'details=basic&pageSize=0',
-            true
+            true,
+            signal
           );
+          assertHistoryReadCurrent(signal);
           const currentSnapshot = buildActivitySnapshot(basicData);
 
           if (snapshotsEqual(previousSnapshot, currentSnapshot)) {
             // Nothing changed on the backend - keep current local state
-            return Array.isArray(syscoinUserTransactions)
-              ? syscoinUserTransactions
-              : [];
+            return withContinuation(
+              syscoinUserTransactions,
+              previousSnapshot.hasMore
+            );
           }
         } catch (error) {
+          assertHistoryReadCurrent(signal);
           // Probe failed - fall through to the history fetch below
           console.warn(
             '[SysTransactionController] Rapid poll basic probe failed, falling back to history fetch:',
@@ -197,7 +244,8 @@ const SysTransactionController = (): ISysTransactionsController => {
 
     const getSysTxs = await getInitialUserTransactionsByXpub(
       xpubOrAddress,
-      networkUrl
+      networkUrl,
+      signal
     );
 
     // Ensure both values are arrays before spreading
@@ -219,7 +267,7 @@ const SysTransactionController = (): ISysTransactionsController => {
 
       // If no unconfirmed transactions, trust the backend's empty response
       if (!hasUnconfirmedLocal) {
-        return [];
+        return withContinuation([], getBlockbookHistoryHasMore(getSysTxs));
       }
     }
 
@@ -229,7 +277,10 @@ const SysTransactionController = (): ISysTransactionsController => {
     );
 
     // Use the optimized function that deduplicates, sorts, and limits in one go
-    return treatAndSortTransactions(mergedArrays, 30) as ISysTransaction[];
+    return withContinuation(
+      treatAndSortTransactions(mergedArrays, 30) as ISysTransaction[],
+      getBlockbookHistoryHasMore(getSysTxs)
+    );
   };
 
   const fetchTransactionsPageFromBlockbook = async (
@@ -250,10 +301,7 @@ const SysTransactionController = (): ISysTransactionsController => {
       requestOptions,
       page > 1
     );
-    const transactions = (accountData as any)?.transactions as
-      | ISysTransaction[]
-      | undefined;
-    return Array.isArray(transactions) ? transactions : [];
+    return historyRows(accountData, page);
   };
 
   return {

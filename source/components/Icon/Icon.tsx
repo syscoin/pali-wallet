@@ -65,6 +65,7 @@ const icons = {
   info: AntIcons.InfoCircleOutlined,
   link: AntIcons.LinkOutlined,
   question: AntIcons.QuestionCircleOutlined,
+  'qr-code': AntIcons.QrcodeOutlined,
   reload: AntIcons.ReloadOutlined,
   select: AntIcons.SelectOutlined,
   'select-down': AntIcons.CaretDownOutlined,
@@ -130,6 +131,7 @@ export const CloseCircleOutlined = AntIcons.CloseCircleOutlined;
 export const ExclamationCircleOutlined = AntIcons.ExclamationCircleOutlined;
 export const InfoCircleOutlined = AntIcons.InfoCircleOutlined;
 export const CopyOutlined = AntIcons.CopyOutlined;
+export const QrcodeOutlined = AntIcons.QrcodeOutlined;
 export const WarningOutlined = AntIcons.WarningOutlined;
 export const ClockCircleOutlined = AntIcons.ClockCircleOutlined;
 export const DownOutlined = AntIcons.DownOutlined;

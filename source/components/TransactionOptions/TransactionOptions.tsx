@@ -1,11 +1,14 @@
 import { Menu } from '@headlessui/react';
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../shared/evmHistory';
+import { isTransactionInBlock } from '../../shared/transactionBlockStatus';
 import { ExternalLinkSvg, TrashIconSvg } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { getWalletNavigationScope } from 'utils/navigationState';
@@ -18,6 +21,7 @@ import {
 import { ITransactionOptions } from 'utils/types';
 
 import { useSmartAccountCancellation } from './useSmartAccountCancellation';
+import type { SmartAccountCancellationRequest } from '../../wallet/smartAccountCancellation';
 
 // Memoize frequently used transaction option icons
 const EditTxIcon = React.memo(() => (
@@ -46,13 +50,130 @@ const ACTIVE_ITEM_CLASS_NAME = 'bg-brand-blue400 bg-opacity-50';
 const ITEM_TEXT_CLASS_NAME = 'text-sm text-brand-white';
 const CANCEL_ITEM_CLASS_NAME = MENU_ITEM_CLASS_NAME.replace('mb-2 ', '');
 
-const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
+const CancelTransactionMenuItem = ({
+  busy,
+  checkLive,
+  hash,
+  onClick,
+  retry,
+  scope,
+}: {
+  busy: boolean;
+  checkLive: boolean;
+  hash: string;
+  onClick: () => void;
+  retry: boolean;
+  scope: ReturnType<typeof getWalletNavigationScope>;
+}) => {
+  const { t } = useTranslation();
+  const [canCancel, setCanCancel] = useState(false);
+  const { account, network } = scope;
+  useEffect(() => {
+    if (!checkLive) return;
+    let current = true;
+    void controllerEmitter(
+      ['wallet', 'canCancelSavedSmartAccountTransaction'],
+      [hash, { account, network }, ...(retry ? [true] : [])]
+    ).then(
+      (eligible) => {
+        if (current) setCanCancel(eligible === true);
+      },
+      () => {
+        if (current) setCanCancel(false);
+      }
+    );
+    return () => {
+      current = false;
+    };
+  }, [checkLive, hash, account, network, retry]);
+  if (checkLive && !canCancel) return null;
+  return (
+    <Menu.Item disabled={busy}>
+      {({ active }) => (
+        <li
+          className={`${
+            active ? ACTIVE_ITEM_CLASS_NAME : ''
+          } ${CANCEL_ITEM_CLASS_NAME}`}
+          aria-disabled={busy}
+          onClick={() => {
+            if (!busy) onClick();
+          }}
+        >
+          <div className="w-5 mr-3">
+            <CancelIcon />
+          </div>
+          <span className={ITEM_TEXT_CLASS_NAME}>
+            {t(
+              retry
+                ? 'transactions.retrySmartAccountCancellation'
+                : 'buttons.cancel'
+            )}
+          </span>
+        </li>
+      )}
+    </Menu.Item>
+  );
+};
+
+export const SmartAccountSignedOperationOptions = ({
+  operationHash,
+}: {
+  operationHash: string;
+}) => {
+  const { t } = useTranslation();
+  const cancellation = useSmartAccountCancellation(
+    operationHash,
+    operationHash
+  );
+  if (!cancellation.available) return null;
+  return (
+    <>
+      <Menu as="div" className="relative inline-block text-left">
+        <Menu.Button
+          aria-label={t('transactions.transactionOptions')}
+          className="inline-flex w-5 justify-center rounded-full text-white hover:text-button-primaryhover"
+        >
+          <EditTxIcon />
+        </Menu.Button>
+        <Menu.Items className="absolute right-0 z-10 w-max rounded-lg bg-brand-blue500 p-2 shadow-2xl ring-1 ring-black ring-opacity-5 focus:outline-none">
+          <Menu.Item as={React.Fragment} disabled={cancellation.busy}>
+            {({ active }) => (
+              <button
+                type="button"
+                className={`${CANCEL_ITEM_CLASS_NAME} ${
+                  active ? ACTIVE_ITEM_CLASS_NAME : ''
+                }`}
+                onClick={() => void cancellation.request()}
+              >
+                <span aria-hidden="true" className="mr-3 w-5">
+                  <CancelIcon />
+                </span>
+                <span className={ITEM_TEXT_CLASS_NAME}>
+                  {t('buttons.cancel')}
+                </span>
+              </button>
+            )}
+          </Menu.Item>
+        </Menu.Items>
+      </Menu>
+      {cancellation.content}
+    </>
+  );
+};
+
+type TransactionOptionsProps = ITransactionOptions & {
+  cancellationRetry?: Required<SmartAccountCancellationRequest>;
+};
+
+const TransactionOptionsBase: React.FC<TransactionOptionsProps> = ({
   handleUpdateTransaction,
   transaction,
   alert,
   chainId,
   setIsOpenModal,
   setModalData,
+  canCancelSmart = false,
+  cancellationRetry,
 }) => {
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
@@ -65,10 +186,30 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     (state: RootState) => state.vault.activeNetwork.currency
   );
   const scope = useSelector(() => getWalletNavigationScope());
-  const smartCancellation = useSmartAccountCancellation(transaction.hash);
+  const smartCancellation = useSmartAccountCancellation(
+    cancellationRetry?.originalHash ?? transaction.hash,
+    cancellationRetry?.operationHash
+  );
+  const signerAddress = smartCancellation.available
+    ? transaction.feePayer ?? transaction.from
+    : transaction.from;
+  const local =
+    'historySource' in transaction &&
+    transaction.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned;
+  const mined = isTransactionInBlock(transaction);
+  const speedUpAvailable =
+    !mined &&
+    (!local ||
+      ('speedUpAvailable' in transaction &&
+        transaction.speedUpAvailable === true));
   const cancellationUnavailable =
     (transaction as { cancellationUnavailable?: unknown })
-      .cancellationUnavailable === true;
+      .cancellationUnavailable === true ||
+    (smartCancellation.available &&
+      transaction.isCancel === true &&
+      !cancellationRetry) ||
+    ((mined || local || cancellationRetry !== undefined) &&
+      !(canCancelSmart && smartCancellation.available));
   const preview = useRef<{
     cancel: () => void;
     close: () => void;
@@ -81,12 +222,13 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     scope.account,
     scope.network,
     transaction.hash,
-    transaction.from,
+    signerAddress,
     transaction.nonce,
     transaction.type,
     transaction.chainId,
     transaction.isReplaced,
     transaction.status,
+    mined,
     chainId,
   ]);
 
@@ -127,7 +269,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
           txHash: transaction.hash,
           updateType: actionType,
           nonce: transaction.nonce,
-          signerAddress: transaction.from,
+          signerAddress,
           approvedMaximumFee: maximumFee,
           walletScope: startingScope,
         },
@@ -170,14 +312,14 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
             isLegacyTransaction,
             chainId,
             transaction.nonce,
-            transaction.from,
+            signerAddress,
             startingScope
           )
         : await previewSpeedUpTransaction(
             transaction.hash,
             isLegacyTransaction,
             chainId,
-            transaction.from,
+            signerAddress,
             startingScope
           );
       if (!current()) return;
@@ -201,6 +343,10 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
         if (!current()) return;
         close();
         alert.error(t('transactions.speedUpAmountWouldChange'));
+      } else if (error?.code === 'INSUFFICIENT_BALANCE') {
+        if (!current()) return;
+        close();
+        alert.error(t('send.insufficientFunds'));
       } else {
         fail();
       }
@@ -208,10 +354,13 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   };
 
   const handleOnClick = (actionType: UpdateTxAction) => {
-    if (actionType === UpdateTxAction.Cancel && smartCancellation.available) {
-      void smartCancellation.request();
-      return;
-    }
+    if (actionType === UpdateTxAction.Cancel) {
+      if (cancellationUnavailable) return;
+      if (smartCancellation.available) {
+        void smartCancellation.request();
+        return;
+      }
+    } else if (!speedUpAvailable) return;
     void previewReplacement(actionType);
   };
 
@@ -241,8 +390,9 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
         {({ open }) => (
           <>
             <Menu.Button
-              className="inline-flex justify-center w-full 
-          hover:text-button-primaryhover text-white text-sm font-medium 
+              aria-label={t('transactions.transactionOptions')}
+              className="inline-flex justify-center w-full
+          hover:text-button-primaryhover text-white text-sm font-medium
           hover:bg-opacity-30 rounded-full w-5"
             >
               <EditTxIcon />
@@ -252,12 +402,14 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
               {open && (
                 <Menu.Items
                   as="div"
-                  className={`p-4 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
+                  className={`p-4 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1
                   max-w-[calc(100vw-2rem)] font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out transform opacity-100 scale-100 pointer-events-auto`}
                 >
-                  <h1 className="text-sm font-semibold text-brand-gray200 pb-2 px-2">
-                    {t('transactions.pendingTransaction')}
-                  </h1>
+                  {!mined && (
+                    <h1 className="text-sm font-semibold text-brand-gray200 pb-2 px-2">
+                      {t('transactions.pendingTransaction')}
+                    </h1>
+                  )}
                   <Menu.Item>
                     {({ active }) => (
                       <li
@@ -296,47 +448,42 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                       )}
                     </Menu.Item>
                   )}
-                  <Menu.Item>
-                    {({ active }) => (
-                      <li
-                        className={`
-                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
-                    ${MENU_ITEM_CLASS_NAME}
-                    `}
-                        onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
-                      >
-                        <div className="w-5 mr-3">
-                          <SpeedUpIcon />
-                        </div>
-                        <span className={ITEM_TEXT_CLASS_NAME}>
-                          {t('header.speedUp')}
-                        </span>
-                      </li>
-                    )}
-                  </Menu.Item>
-                  {!cancellationUnavailable && (
+                  {speedUpAvailable && (
                     <Menu.Item>
                       {({ active }) => (
                         <li
                           className={`
-                  ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
-                  ${CANCEL_ITEM_CLASS_NAME}
-                  `}
-                          aria-disabled={smartCancellation.busy}
-                          onClick={() => {
-                            if (!smartCancellation.busy)
-                              handleOnClick(UpdateTxAction.Cancel);
-                          }}
+                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
+                    ${MENU_ITEM_CLASS_NAME}
+                    `}
+                          onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
                         >
                           <div className="w-5 mr-3">
-                            <CancelIcon />
+                            <SpeedUpIcon />
                           </div>
                           <span className={ITEM_TEXT_CLASS_NAME}>
-                            {t('buttons.cancel')}
+                            {t('header.speedUp')}
                           </span>
                         </li>
                       )}
                     </Menu.Item>
+                  )}
+                  {!cancellationUnavailable && (
+                    <CancelTransactionMenuItem
+                      key={JSON.stringify([
+                        transaction.hash,
+                        scope.account,
+                        scope.network,
+                        mined,
+                        cancellationRetry?.operationHash,
+                      ])}
+                      busy={smartCancellation.busy}
+                      checkLive={mined || cancellationRetry !== undefined}
+                      hash={transaction.hash}
+                      onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+                      retry={cancellationRetry !== undefined}
+                      scope={scope}
+                    />
                   )}
                 </Menu.Items>
               )}
@@ -356,6 +503,10 @@ export const TransactionOptions = React.memo(
     const nextTx: any = next.transaction as any;
     return (
       prev.chainId === next.chainId &&
+      prev.canCancelSmart === next.canCancelSmart &&
+      prev.cancellationRetry === next.cancellationRetry &&
+      isTransactionInBlock(prevTx) === isTransactionInBlock(nextTx) &&
+      prevTx?.isCancel === nextTx?.isCancel &&
       prev.alert === next.alert &&
       prevTx?.hash === nextTx?.hash &&
       prevTx?.from === nextTx?.from &&
@@ -364,6 +515,10 @@ export const TransactionOptions = React.memo(
       prevTx?.chainId === nextTx?.chainId &&
       prevTx?.isReplaced === nextTx?.isReplaced &&
       prevTx?.status === nextTx?.status &&
+      prevTx?.historySource === nextTx?.historySource &&
+      prevTx?.feePayer === nextTx?.feePayer &&
+      prevTx?.speedUpAvailable === nextTx?.speedUpAvailable &&
+      prevTx?.cancellationUnavailable === nextTx?.cancellationUnavailable &&
       prevTx?.isCanceled === nextTx?.isCanceled
     );
   }

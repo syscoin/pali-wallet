@@ -1,5 +1,6 @@
 import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 
+import { SMART_ACCOUNT_CONTROLLER_PORT } from '../../../shared/smartAccountControllerAuthority';
 import { isValidMethod } from '../controllers/message-handler/method-registry';
 import * as sendCallsBundles from '../controllers/message-handler/sendCallsBundles';
 
@@ -11,60 +12,6 @@ import {
   controllerErrorResponse,
   handleMasterControllerResponses,
 } from './handleMasterControllerResponses';
-
-describe('restored-note review authority', () => {
-  it.each([
-    ['https://example.com', 'pali-extension', false],
-    ['chrome-extension://other/app.html', 'other', false],
-    ['chrome-extension://pali-extension/app.html', 'pali-extension', true],
-  ])(
-    'admits %s only as a trusted extension action',
-    async (url, id, allowed) => {
-      Object.assign(chrome.runtime, {
-        getURL: (path = '') => `chrome-extension://pali-extension/${path}`,
-        id: 'pali-extension',
-      });
-      const reviewRestoredNote = jest.fn(async () => undefined);
-      const sendResponse = jest.fn();
-      const logging = jest.spyOn(console, 'error').mockImplementation();
-      try {
-        handleMasterControllerResponses({
-          privateVault: { reviewRestoredNote },
-        } as any);
-        const add = chrome.runtime.onMessage.addListener as jest.Mock;
-        const listener = add.mock.calls[add.mock.calls.length - 1][0];
-        const result = listener(
-          {
-            type: 'CONTROLLER_ACTION',
-            data: {
-              methods: ['privateVault', 'reviewRestoredNote'],
-              params: ['note', 'synthetic-password'],
-            },
-          },
-          { id, url },
-          sendResponse
-        );
-        expect(result).toBe(allowed);
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(reviewRestoredNote).toHaveBeenCalledTimes(allowed ? 1 : 0);
-        if (allowed)
-          expect(reviewRestoredNote).toHaveBeenCalledWith(
-            'note',
-            'synthetic-password'
-          );
-        else
-          expect(sendResponse).toHaveBeenCalledWith({
-            success: false,
-            error: 'Controller actions are not available from connected sites',
-          });
-        expect(isValidMethod('reviewRestoredNote')).toBe(false);
-        expect(isValidMethod('privateVault.reviewRestoredNote')).toBe(false);
-      } finally {
-        logging.mockRestore();
-      }
-    }
-  );
-});
 
 describe('explicit activity reset sender authorization', () => {
   it.each([
@@ -306,6 +253,24 @@ describe('controller action sender authorization', () => {
       },
     });
   });
+
+  it.each([true, false])(
+    'forwards the UTXO funding-change code only before broadcast (%s)',
+    async (transactionNotBroadcast) => {
+      const code = 'UTXO_REVIEW_FUNDING_CHANGED';
+      await rejectControllerAction(
+        Object.assign(new Error(code), { code, transactionNotBroadcast })
+      );
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          message: code,
+          transactionNotBroadcast,
+          ...(transactionNotBroadcast ? { code } : {}),
+        },
+      });
+    }
+  );
 
   it.each([true, false])(
     'preserves the exact submission boolean %s alongside the normalized message',
@@ -1386,3 +1351,71 @@ it('does not serialize forged capacity codes or messages as a local storage refu
     );
   }
 });
+
+it.each([undefined, 7])(
+  'binds UTXO replacement approval to the application document and actual browser tab %s',
+  async (tabId) => {
+    Object.assign(chrome.runtime, {
+      getURL: (path = '') => `chrome-extension://pali-extension/${path}`,
+      id: 'pali-extension',
+    });
+    const txid = 'aa'.repeat(32);
+    const sender = {
+      id: 'pali-extension',
+      url: 'chrome-extension://pali-extension/app.html',
+      ...(tabId !== undefined && { tab: { id: tabId } }),
+    };
+    const request = {
+      type: 'CONTROLLER_ACTION',
+      data: {
+        methods: ['wallet', 'confirmUtxoReplacement'],
+        params: ['review-id'],
+      },
+    };
+    const confirmUtxoReplacement = jest.fn(async (_id, authority) => {
+      authority.assertCurrent();
+      expect(authority.signal.aborted).toBe(false);
+      expect(authority.attachedTab).toBe(
+        tabId === undefined ? undefined : true
+      );
+      return { txid };
+    });
+    const logging = jest.spyOn(console, 'error').mockImplementation();
+    try {
+      handleMasterControllerResponses({
+        wallet: { confirmUtxoReplacement },
+      } as any);
+      const messages = chrome.runtime.onMessage.addListener as jest.Mock;
+      const listener = messages.mock.lastCall![0];
+      const reply = jest.fn();
+      expect(listener(request, sender, reply)).toBe(false);
+      expect(confirmUtxoReplacement).not.toHaveBeenCalled();
+      expect(reply).toHaveBeenCalledWith({
+        error: expect.objectContaining({ transactionNotBroadcast: true }),
+        success: false,
+      });
+
+      const connections = chrome.runtime.onConnect.addListener as jest.Mock;
+      const connect = connections.mock.lastCall![0];
+      const port = {
+        name: SMART_ACCOUNT_CONTROLLER_PORT,
+        sender,
+        onDisconnect: { addListener: jest.fn(), removeListener: jest.fn() },
+        onMessage: { addListener: jest.fn(), removeListener: jest.fn() },
+        disconnect: jest.fn(),
+        postMessage: jest.fn(),
+      };
+      connect(port);
+      port.onMessage.addListener.mock.lastCall![0](request);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(port.postMessage).toHaveBeenCalledWith({ txid });
+      expect(confirmUtxoReplacement).toHaveBeenCalledTimes(1);
+      const [reviewId, authority] = confirmUtxoReplacement.mock.lastCall!;
+      expect(reviewId).toEqual('review-id');
+      expect(authority.signal.aborted).toBe(true);
+    } finally {
+      logging.mockRestore();
+    }
+  }
+);

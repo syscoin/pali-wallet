@@ -266,7 +266,7 @@ test('short-window navigation keeps actions, instructions and errors unobscured'
     });
     await listPage.goto(wallet.appUrl('#/settings/networks/connected-sites'));
     await expect(
-      listPage.getByText('24 sites are connected to Pali Wallet')
+      listPage.getByText('24 sites are connected to Pali')
     ).toBeVisible();
     for (const height of [360, 480, 620]) {
       await listPage.setViewportSize({ width: 400, height });

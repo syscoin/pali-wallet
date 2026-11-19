@@ -556,7 +556,7 @@ it.each([
     expect(window.close).not.toHaveBeenCalled();
     if (scopeChange === 'approvalId')
       expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
-    expect(screen.queryByText('Old selection failed')).toBeNull();
+    expect(mockAlert.error).not.toHaveBeenCalled();
     await act(async () => mockConfirm());
     expect(mockEmitter).toHaveBeenCalledTimes(4);
     await act(async () => {

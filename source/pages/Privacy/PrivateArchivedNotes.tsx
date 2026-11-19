@@ -85,15 +85,20 @@ export default function PrivateArchivedNotes({
   >();
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
-  const owner = useRef({ live: true, revision: 0, busy: false });
+  const owner = useRef({
+    live: true,
+    readRevision: 0,
+    actionRevision: 0,
+    busy: false,
+  });
   const callbacks = useRef({ onCount, onRestored });
   callbacks.current = { onCount, onRestored };
-  const current = (request: number) =>
+  const current = (request: number, kind: 'readRevision' | 'actionRevision') =>
     owner.current.live &&
-    owner.current.revision === request &&
+    owner.current[kind] === request &&
     document.visibilityState !== 'hidden';
   const refresh = useCallback(async () => {
-    const request = ++owner.current.revision;
+    const request = ++owner.current.readRevision;
     setLoading(true);
     try {
       const value = readArchive(
@@ -104,24 +109,25 @@ export default function PrivateArchivedNotes({
           false
         )
       );
-      if (!current(request)) return;
+      if (!current(request, 'readRevision')) return;
       setArchive(value);
       setPage(0);
       callbacks.current.onCount(value.notes.length);
     } catch {
-      if (current(request)) {
+      if (current(request, 'readRevision')) {
         setArchive(undefined);
         setError('privacy.archive.loadError');
       }
     } finally {
-      if (current(request)) setLoading(false);
+      if (current(request, 'readRevision')) setLoading(false);
     }
   }, [controllerEmitter]);
   useEffect(() => {
     owner.current.live = true;
     return () => {
       owner.current.live = false;
-      owner.current.revision++;
+      owner.current.readRevision++;
+      owner.current.actionRevision++;
     };
   }, []);
   useEffect(() => {
@@ -130,15 +136,15 @@ export default function PrivateArchivedNotes({
   }, [expanded, refresh, revision]);
   const close = () => {
     if (owner.current.busy) return;
-    owner.current.revision++;
+    owner.current.actionRevision++;
     setAction(undefined);
     setAcknowledged(false);
     setError(undefined);
     form.resetFields();
   };
   const choose = (next: typeof action) => {
+    if (loading || owner.current.busy) return;
     close();
-    if (owner.current.busy) return;
     setAction(next);
     setResult(undefined);
   };
@@ -158,6 +164,7 @@ export default function PrivateArchivedNotes({
           aria-controls="privacy-archive-list"
           onClick={() => {
             if (!owner.current.busy) {
+              owner.current.readRevision++;
               close();
               setExpanded((value) => !value);
             }
@@ -237,7 +244,7 @@ export default function PrivateArchivedNotes({
                     className="rounded-lg border border-alpha-whiteAlpha300 p-3 space-y-2"
                   >
                     <p>
-                      {t('mobile.noteFlows.inventory.poolAmount', {
+                      {t('privacy.poolAmount', {
                         amount: note.amount,
                       })}{' '}
                       · {new Date(note.archivedAt).toLocaleDateString()}
@@ -256,6 +263,7 @@ export default function PrivateArchivedNotes({
                       <button
                         type="button"
                         className={actionClass}
+                        disabled={loading}
                         onClick={() => choose({ kind: 'restore', id: note.id })}
                       >
                         <span aria-hidden="true">
@@ -278,7 +286,7 @@ export default function PrivateArchivedNotes({
                     <span aria-hidden="true">
                       <Icon name="arrow-left" size={18} />
                     </span>
-                    {t('mobile.noteFlows.inventory.previous')}
+                    {t('privacy.archive.previous')}
                   </button>
                   <span>
                     {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + rows.length} /{' '}
@@ -353,9 +361,9 @@ export default function PrivateArchivedNotes({
                     placeholder={t('settings.enterYourPassword')}
                     errorMessage={t(error || 'privacy.archive.actionError')}
                     onValidate={async (password) => {
-                      const request = owner.current.revision;
+                      const request = owner.current.actionRevision;
                       if (
-                        !current(request) ||
+                        !current(request, 'actionRevision') ||
                         !archive ||
                         loading ||
                         owner.current.busy ||
@@ -379,7 +387,8 @@ export default function PrivateArchivedNotes({
                           30000,
                           false
                         );
-                        if (!current(request)) return undefined;
+                        if (!current(request, 'actionRevision'))
+                          return undefined;
                         if (
                           action.kind === 'clear' &&
                           (!value ||
@@ -403,7 +412,7 @@ export default function PrivateArchivedNotes({
                                 },
                         };
                       } catch (failure) {
-                        if (current(request)) {
+                        if (current(request, 'actionRevision')) {
                           setError(
                             failure instanceof Error &&
                               failure.message === 'privacy_note_limit'
@@ -434,7 +443,8 @@ export default function PrivateArchivedNotes({
                       }
                     }}
                     onValidationSuccess={(value) => {
-                      if (!value || !current(value.request)) return;
+                      if (!value || !current(value.request, 'actionRevision'))
+                        return;
                       setResult(value.result);
                       setAction(undefined);
                       setAcknowledged(false);

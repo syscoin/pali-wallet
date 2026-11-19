@@ -16,19 +16,25 @@ import type { WalletIdentityRead } from '../storage/types.ts';
 import type { NativeAccountRecord } from './walletCatalogue.ts';
 
 export const NATIVE_PUBLIC_SESSION_KEY = PUBLIC_SESSION_RECORD_KEY;
-export const NATIVE_PUBLIC_RECORD_DOMAINS = Object.freeze([
+const LEGACY_NATIVE_PUBLIC_RECORD_DOMAINS = Object.freeze([
   'org.syscoin.pali.evm.signed.root.v1',
   'org.syscoin.pali.evm.signed.chunk.v1',
   'org.syscoin.pali.utxo.signed.root.v1',
   'org.syscoin.pali.utxo.signed.chunk.v1',
 ]);
+const NATIVE_PUBLIC_RECORD_DOMAINS = Object.freeze([
+  ...LEGACY_NATIVE_PUBLIC_RECORD_DOMAINS,
+  'org.syscoin.pali.evm.unsigned.chunk.v1',
+]);
+export const nativePublicRecordDomains = (version: NativePublicSessionRecord['version']) =>
+  version === 2 ? NATIVE_PUBLIC_RECORD_DOMAINS : LEGACY_NATIVE_PUBLIC_RECORD_DOMAINS;
 type PublicStateRow = Readonly<{
   keyId: string;
   state: NativeSlhPublicState;
   seal: string;
 }>;
 export type NativePublicSessionRecord = Readonly<{
-  version: 1;
+  version: 1 | 2;
   checkpoint: IEncryptedPrivateRecord;
   slhStates: readonly PublicStateRow[];
 }>;
@@ -76,7 +82,7 @@ export function captureNativePublicSessionRecord(
     'slhStates',
   ]);
   if (
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     !Array.isArray(value.slhStates) ||
     value.slhStates.length > 4096
   )
@@ -139,7 +145,7 @@ export function captureNativePublicSessionRecord(
     });
   });
   return Object.freeze({
-    version: 1,
+    version: value.version,
     checkpoint: Object.freeze(checkpoint) as IEncryptedPrivateRecord,
     slhStates: Object.freeze(slhStates),
   });
@@ -208,7 +214,8 @@ export async function createNativePublicSessionRecord(
   identity: WalletIdentityRead,
   states: NativeSlhPublicStates,
   wrappingKey: Uint8Array,
-  guard: () => void
+  guard: () => void,
+  version: NativePublicSessionRecord['version'] = 1
 ): Promise<NativePublicSessionRecord> {
   assertSynchronousEvmFeeGuard(guard);
   const slhStates = publicRows(states),
@@ -218,14 +225,14 @@ export async function createNativePublicSessionRecord(
       {
         walletBindingId: identity.walletBindingId,
         publicState,
-        recordDomains: NATIVE_PUBLIC_RECORD_DOMAINS,
+        recordDomains: nativePublicRecordDomains(version),
       },
       wrappingKey,
       guard
     );
     assertSynchronousEvmFeeGuard(guard);
     return captureNativePublicSessionRecord({
-      version: 1,
+      version,
       checkpoint,
       slhStates,
     });
@@ -246,7 +253,7 @@ export function nativePublicSessionRestoreRequest(
       identity,
       record.slhStates
     ),
-    recordDomains: NATIVE_PUBLIC_RECORD_DOMAINS,
+    recordDomains: nativePublicRecordDomains(record.version),
   });
 }
 /** Only use after SDK authenticated the exact manifest including these public rows. */

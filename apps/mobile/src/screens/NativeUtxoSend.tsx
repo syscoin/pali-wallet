@@ -1,5 +1,6 @@
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
+import { SubmissionLeavePrompt } from './SubmissionLeavePrompt';
 import { AUTOMATIC_FEE, snapshotUtxoFeeChoice, type UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
@@ -16,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount } from '../../../../source/utils/syscoinAssetAmount';
+import { UTXO_REVIEW_FUNDING_CHANGED } from '../../../../source/shared/utxoSendErrors';
 import { snapshotUtxoRbf } from '../../../../source/shared/utxoTransactionOptions';
 
 import { formatBaseUnits } from '../core/amounts';
@@ -41,6 +43,7 @@ import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 import type { UtxoNetwork } from '../core/utxoNetworks';
 import type {
   NativeUtxoAsset,
+  NativeUtxoReplacement,
   NativeUtxoReview,
   NativeUtxoSend,
 } from '../custody/utxoSend';
@@ -55,27 +58,22 @@ type ReviewedTransferSummary = Readonly<{
 
 type Outcome = Readonly<{
   txid: string;
-  phase: 'submitted' | 'seen' | 'confirmed' | 'unknown';
+  phase: 'submitted' | 'unknown';
   summary?: ReviewedTransferSummary;
 }>;
 
 function summarizeReview(review: NativeUtxoReview): ReviewedTransferSummary {
   const recipient = review.outputs[0]!;
   return Object.freeze({
-    recipientLabel: review.retryTxid ? t('mobile.sendAssetViews.utxo.output1') : t('assetTransfer.recipient'),
+    recipientLabel: review.replacement?.mode === 'cancel' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('assetTransfer.recipient'),
     recipient: Object.freeze({
+      address: recipient.address,
       amountSatoshis: recipient.amountSatoshis,
       ...(recipient.asset ? { asset: Object.freeze({ ...recipient.asset }) } : {}),
-      ...(recipient.script ? { script: Object.freeze({ ...recipient.script }) } : { address: recipient.address }),
     }),
     ...(review.assetDisplay ? { assetDisplay: Object.freeze({ ...review.assetDisplay }) } : {}),
     feeSatoshis: review.feeSatoshis,
   });
-}
-
-function outputScriptLabel(output: NativeUtxoReview['outputs'][number]): string | undefined {
-  if (!output.script) return;
-  return t(output.script.kind === 'data' ? 'transactions.opReturnData' : 'transactions.outputScript');
 }
 
 function describe(error: unknown): string {
@@ -85,7 +83,11 @@ function describe(error: unknown): string {
   if (code === 'AUTH_THROTTLED') return t('mobile.sendAssetViews.utxo.tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesThen');
   if (code === 'INVALID_INPUT')
     return t('mobile.sendAssetViews.utxo.enterAValidAddressAndAmountForThisNetwork');
-  if (code === 'CANCELLED' || code === 'NOT_READY')
+  if (
+    code === 'CANCELLED' ||
+    code === 'NOT_READY' ||
+    code === UTXO_REVIEW_FUNDING_CHANGED
+  )
     return t('mobile.sendAssetViews.utxo.thisReviewIsNoLongerAvailableOpenANewReview');
   if (code === 'UTXO_OPTIONS_CHANGED') return t('mobile.sendAssetViews.utxo.transactionOptionsChangedReviewANewQuote');
   if (error && typeof error === 'object' && 'code' in error) {
@@ -111,6 +113,8 @@ export function NativeUtxoSendScreen({
   onChangeNetwork,
   draftNotice,
   onViewTransaction,
+  replacement,
+  initialReplacementFeeChoice,
 }: {
   accountLabel: string;
   ledgerConnection?: NativeLedgerConnectionView;
@@ -120,6 +124,8 @@ export function NativeUtxoSendScreen({
   onChangeNetwork?(draft: Extract<NativeUnsignedSendDraft, { kind: 'utxo' }>): void;
   draftNotice?: string;
   onViewTransaction?(txid: string): void;
+  replacement?: NativeUtxoReplacement;
+  initialReplacementFeeChoice?: UtxoFeeChoice;
   beforeClose?(): Promise<void>;
   asset?: NativeUtxoAsset;
   network: UtxoNetwork;
@@ -143,7 +149,7 @@ export function NativeUtxoSendScreen({
     isAssetAmountEqualToBalance(amount, maximumAmount, asset.decimals));
   const [rbf, setRbf] = useState(snapshotUtxoRbf(initialDraft?.rbf));
   const [advanced, setAdvanced] = useState(false);
-  const [feeSelection, setFeeSelection] = useState({ open, network, choice: snapshotUtxoFeeChoice(initialDraft?.feeChoice ?? AUTOMATIC_FEE) });
+  const [feeSelection, setFeeSelection] = useState({ open, network, choice: snapshotUtxoFeeChoice(initialReplacementFeeChoice ?? initialDraft?.feeChoice ?? AUTOMATIC_FEE) });
   const feeChoice = feeSelection.open === open && feeSelection.network === network ? feeSelection.choice : AUTOMATIC_FEE;
   const [feeDialog, setFeeDialog] = useState<{ open: typeof open; network: UtxoNetwork } | null>(null);
   const feeOpen = feeDialog?.open === open && feeDialog.network === network;
@@ -152,10 +158,6 @@ export function NativeUtxoSendScreen({
   const busy = working || closingHardware;
   const [review, setReview] = useState<NativeUtxoReview | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [saved, setSaved] = useState<
-    readonly Readonly<{ txid: string; accepted: boolean }>[]
-  >([]);
-  const [savedLimit, setSavedLimit] = useState(6);
   const [error, setError] = useState('');
   const currentReview = useRef<NativeUtxoReview | null>(null);
   useLayoutEffect(() => {
@@ -167,6 +169,10 @@ export function NativeUtxoSendScreen({
   const owner = useRef({ revision: 0 });
   const draftRevision = useRef(0);
   const inFlight = useRef(false);
+  const confirmation = useRef<symbol | null>(null);
+  const [leavePrompt, setLeavePrompt] = useState<{
+    attempt: symbol; open: typeof open; replacement: typeof replacement;
+  } | null>(null);
   const closing = useRef(false);
   type ScanOwner = { network: UtxoNetwork; open: typeof open; revision: number; draft: number };
   const [scanner, setScanner] = useState<ScanOwner | null>(null);
@@ -187,16 +193,13 @@ export function NativeUtxoSendScreen({
       if (lifetime.revision !== revision) throw new Error('CANCELLED');
     };
     void open(check)
-      .then(async (opened) => {
+      .then((opened) => {
         local = opened;
         if (lifetime.revision !== revision) {
           opened.cancel();
           return;
         }
         setSend(opened);
-        const records = await opened.refreshSaved();
-        check();
-        setSaved([...records].reverse());
       })
       .catch((cause) => {
         if (lifetime.revision === revision) setError(describe(cause));
@@ -206,10 +209,11 @@ export function NativeUtxoSendScreen({
       });
     return () => {
       scannerOwner.current = null;
+      confirmation.current = null;
       lifetime.revision++;
       local?.cancel();
     };
-  }, [open]);
+  }, [open, replacement]);
   const leave = (done: () => void) => {
     if (closing.current) return;
     closeScanner(); Keyboard.dismiss();
@@ -232,6 +236,7 @@ export function NativeUtxoSendScreen({
   };
   const close = () => {
     if (scannerOwner.current) { closeScanner(); return; }
+    if (confirmation.current) { setLeavePrompt({ attempt: confirmation.current, open, replacement }); return; }
     if (review && !busy) {
       closeScanner(); send?.cancel(); setReview(null); setError(''); return;
     }
@@ -269,7 +274,10 @@ export function NativeUtxoSendScreen({
           setOutcome({ phase: 'unknown', txid: cause.txid, ...(summary ? { summary } : {}) });
           return;
         }
-        setError(describe(cause));
+        const code = cause instanceof Error ? cause.message : '';
+        setError(replacement && (code === 'NOT_READY' || code === 'CANCELLED')
+          ? t(code === 'NOT_READY' ? 'transactions.utxoReplacement.unavailable' : 'transactions.utxoReplacement.reviewExpired')
+          : describe(cause));
       })
       .finally(() => {
         inFlight.current = false;
@@ -319,39 +327,52 @@ export function NativeUtxoSendScreen({
       </Text>
     </View>
   );
+  const replacementTitle = replacement && t(replacement.mode === 'cancel' ? 'mobile.activityViews.nativeActivity.cancelPendingTransaction' : 'header.speedUp');
+  const replacementInfo = replacement && <Card style={s.insetCard}>
+    <Text style={styles.muted}>{t('transactions.utxoReplacement.originalTransaction')}</Text>
+    <Text selectable style={s.address}>{replacement.txid}</Text>
+    {review?.replacement && <>
+      <Text style={styles.muted}>{t('transactions.utxoReplacement.originalFee')}</Text>
+      <Text>{units(review.replacement.previousFeeSatoshis)}</Text>
+    </>}
+    <Text>{t(replacement.mode === 'cancel' ? 'transactions.utxoReplacement.cancelDescription' : 'transactions.utxoReplacement.speedUpDescription')}</Text>
+  </Card>;
+  const feeButton = <Button title={`${t('send.networkFee')} · ${t(feeChoice.kind === 'custom' ? 'mobile.feeChoice.custom' : feeChoice.kind === 'automatic' ? 'mobile.sendAssetViews.evm.automatic' : `send.${feeChoice.kind}`)}`}
+    variant="secondary" size="compact" icon="settings" disabled={busy || !send} onPress={() => { closeScanner(); setFeeDialog({ open, network }); }} />;
   const subtitle = `${accountLabel} · ${network.name}${network.testnet ? ` · ${t('mobile.common.testNetwork')}` : ''}`;
-  const checkStatus = (txid: string) =>
-    run(async (current) => {
-      const phase = await send!.check(txid);
-      if (!current()) return;
-      setOutcome(previous => ({ txid, phase, ...(previous?.txid === txid && previous.summary ? { summary: previous.summary } : {}) }));
-      const records = await send!.list();
-      if (current()) setSaved([...records].reverse());
-    });
   const confirmAuthenticated = (credential: NativeOperationCredential) => {
     if (!review || !send || currentReview.current !== review) return;
     const approved = review;
     const summary = summarizeReview(approved);
     run(async (current) => {
+      const attempt = Symbol();
+      confirmation.current = attempt;
       try {
         const { txid } = await send.confirm(approved, credential);
         if (current()) { setReview(null); setOutcome({ txid, phase: 'submitted', summary }); }
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : '';
-        if (current() && !['INVALID_CREDENTIAL', 'DEVICE_UNLOCK_UNAVAILABLE', 'AUTH_THROTTLED'].includes(code)) {
-          setReview(null);
-          void send.list().then(records => { if (current()) setSaved([...records].reverse()); }).catch(() => undefined);
+        if (!current()) throw cause;
+        if (!send.isReviewCurrent(approved)) setReview(null);
+        else if (code === 'CANCELLED') {
+          setError(t('mobile.recoveryCopy.requestCancelled'));
+          return;
         }
         throw cause;
+      } finally {
+        if (confirmation.current === attempt) {
+          confirmation.current = null;
+          setLeavePrompt(null);
+        }
       }
     }, summary);
   };
   const confirm = review && (
     <Button
-      title={review.retryTxid ? t('mobile.sendAssetViews.utxo.resendSavedTransfer') : t('mobile.sendAssetViews.evm.confirmAndSend')}
-      disabled={busy || !review.retryTxid && !ledgerReady}
+      title={t(replacement?.mode === 'cancel' ? 'mobile.sendAssetViews.evm.submitCancellation' : replacement ? 'mobile.sendAssetViews.evm.submitSpeedUp' : 'mobile.sendAssetViews.evm.confirmAndSend')}
+      disabled={busy || !ledgerReady}
       onPress={() => {
-        if (!review.retryTxid && ledgerConnection && !ledgerConnection.isConnected()) return;
+        if (ledgerConnection && !ledgerConnection.isConnected()) return;
         setError(''); confirmAuthenticated({ method: 'device' });
       }}
       testID="native-utxo-confirm"
@@ -359,18 +380,27 @@ export function NativeUtxoSendScreen({
   );
   const footer = outcome ? (
     <View style={s.card}>
-      {onViewTransaction && outcome.phase !== 'unknown' && <Button title={t('mobile.sendAssetViews.evm.viewTransaction')} disabled={busy} onPress={() => {
+      {onViewTransaction && <Button title={t('mobile.sendAssetViews.evm.viewTransaction')} disabled={busy} onPress={() => {
         if (!screenActive.current || inFlight.current || currentOutcome.current !== outcome || currentNetwork.current.network !== network) return;
         onViewTransaction(outcome.txid);
       }} />}
-      <Button title={t('privacy.deposit.done')} variant={onViewTransaction && outcome.phase !== 'unknown' ? 'secondary' : 'primary'} onPress={close} />
+      <Button title={t('privacy.deposit.done')} variant={onViewTransaction ? 'secondary' : 'primary'} onPress={close} />
     </View>
   ) : review ? confirm : (
     <Button
       title={t('mobile.smartSendViews.reviewTransfer')}
-      disabled={!send || busy || !address.trim() || !(amount || max)}
+      disabled={!send || busy || (!replacement && (!address.trim() || !(amount || max)))}
       onPress={() => {
         run(async (current) => {
+          if (replacement) {
+            try {
+              const next = await send!.prepareReplacement(replacement, feeChoice);
+              if (current()) setReview(next);
+            } catch {
+              if (current()) setError(t('transactions.utxoReplacement.unavailable'));
+            }
+            return;
+          }
           const next = await send!.prepare({
             recipient: address,
             amount,
@@ -397,14 +427,14 @@ export function NativeUtxoSendScreen({
         style={s.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen footer={footer} scrollResetKey={outcome ? `outcome:${outcome.txid}` : review ? `review:${review.retryTxid ?? 'new'}` : 'draft'} gap={16}>
+        <Screen footer={footer} scrollResetKey={outcome ? `outcome:${outcome.txid}` : review ? 'review' : 'draft'} gap={16}>
           <Header
             title={
               outcome
                 ? t('mobile.sendAssetViews.evm.transferStatus')
-                : review
+                : replacementTitle ?? (review
                 ? t('mobile.smartSendViews.reviewTransfer')
-                : t('mobile.smartSendViews.sendSymbol', { symbol })
+                : t('mobile.smartSendViews.sendSymbol', { symbol }))
             }
             subtitle={subtitle}
             onBack={close}
@@ -416,11 +446,11 @@ export function NativeUtxoSendScreen({
             />
           )}
           {!!error && (
-            <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.errorText}>
               {error}
             </Text>
           )}
-          {ledgerConnection && !ledgerReady && review && !review.retryTxid && !outcome && <Button
+          {ledgerConnection && !ledgerReady && review && !outcome && <Button
             title={t('mobile.accounts.connectLedger')} disabled={busy}
             onPress={() => { Keyboard.dismiss(); setLedgerPicker(ledgerConnection); }}
           />}
@@ -429,25 +459,24 @@ export function NativeUtxoSendScreen({
               {outcome.summary && amountHero(outcome.summary, true)}
               <Notice
                 title={
-                  outcome.phase === 'confirmed'
-                    ? t('send.confirmed')
-                    : outcome.phase === 'unknown'
+                  outcome.phase === 'unknown'
                     ? t('mobile.connections.psbt.submissionTitle')
+                    : replacement?.mode === 'cancel'
+                    ? t('mobile.sendAssetViews.evm.cancellationSubmitted')
+                    : replacement ? t('transactions.utxoReplacement.submitted')
                     : t('mobile.sendAssetViews.utxo.submitted')
                 }
-                body={
-                  outcome.phase === 'unknown'
-                    ? t('mobile.sendAssetViews.utxo.thisTransferIsSavedCheckItsStatusBeforeSendingIt')
-                    : t('mobile.sendAssetViews.utxo.youCanCheckTheLatestNetworkStatusHere')
-                }
+                body={outcome.phase === 'unknown'
+                  ? t(replacement ? 'transactions.utxoReplacement.unknown' : 'mobile.sendAssetViews.evm.thisTransactionMayAlreadyHaveBeenSentCheckActivityBefore')
+                  : replacement?.mode === 'cancel' ? t('transactions.transactionCancelSubmitted')
+                  : onViewTransaction ? t('mobile.sendAssetViews.evm.viewThisTransactionInActivityToTrackConfirmation') : undefined}
                 tone={outcome.phase === 'unknown' ? 'amber' : undefined}
               />
               <Card>
                 {outcome.summary && <>
                   <Text style={styles.muted}>{outcome.summary.recipientLabel}</Text>
-                  {outcome.summary.recipient.script && <Text style={styles.muted}>{outputScriptLabel(outcome.summary.recipient)}</Text>}
                   <Text selectable style={s.address} testID="native-utxo-outcome-recipient">
-                    {outcome.summary.recipient.address ?? outcome.summary.recipient.script?.hex}
+                    {outcome.summary.recipient.address}
                   </Text>
                   {outcome.summary.recipient.asset && <>
                     <Text style={styles.muted}>{t('mobile.activityViews.utxoActivityScreen.assetId')}</Text>
@@ -463,43 +492,21 @@ export function NativeUtxoSendScreen({
                   {outcome.txid}
                 </Text>
               </Card>
-              <Button
-                title={t('settings.smartAccountInfrastructureCheckStatus')}
-                variant="secondary"
-                disabled={busy}
-                onPress={() => checkStatus(outcome.txid)}
-              />
-              {outcome.phase === 'unknown' && (
-                <Button
-                  title={t('send.savedUtxo.review')}
-                variant="secondary" size="compact"
-                  disabled={busy}
-                  onPress={() => {
-                    run(async (current) => {
-                      const next = await send!.prepareRetry(outcome.txid);
-                      if (current()) {
-                        setOutcome(null);
-                        setReview(next);
-                      }
-                    });
-                  }}
-                />
-              )}
             </>
           ) : review ? (
             <>
               {amountHero(summarizeReview(review))}
+              {replacementInfo}
               <Card style={s.insetCard}>
                 <Text style={styles.muted}>
-                  {review.retryTxid ? t('mobile.sendAssetViews.utxo.output1') : t('assetTransfer.recipient')}
+                  {summarizeReview(review).recipientLabel}
                 </Text>
-                {recipient?.script && <Text style={styles.muted}>{outputScriptLabel(recipient)}</Text>}
                 <Text
                   selectable
                   style={s.address}
                   testID="native-utxo-recipient"
                 >
-                  {recipient!.address ?? recipient!.script?.hex}
+                  {recipient!.address}
                 </Text>
                 {recipient?.asset && (
                   <>
@@ -508,14 +515,6 @@ export function NativeUtxoSendScreen({
                     <Text style={styles.muted}>
                       {t('mobile.sendAssetViews.utxo.nativeAmountSentWithAsset')}</Text>
                     <Text>{units(recipient.amountSatoshis)}</Text>
-                  </>
-                )}
-                {review.retryProviderOrigin && (
-                  <>
-                    <Text style={styles.muted}>{t('mobile.sendAssetViews.utxo.originalProvider')}</Text>
-                    <Text selectable style={s.address}>
-                      {review.retryProviderOrigin}
-                    </Text>
                   </>
                 )}
                 <Text style={styles.muted}>{t('send.networkFee')}</Text>
@@ -533,17 +532,21 @@ export function NativeUtxoSendScreen({
                 {review.outputs.slice(1).map((output, index) => (
                   <View key={index} style={s.card}>
                     <Text style={styles.muted}>
-                      {review.retryTxid ? t('mobile.sendAssetViews.utxo.outputIndex', { index: index + 2 }) : t('buttons.change')} ·{' '}
+                      {t('buttons.change')} ·{' '}
                       {units(output.amountSatoshis)}
                     </Text>
                     {output.asset && <Text>{assetUnits(output.asset)}</Text>}
-                    {output.script && <Text style={styles.muted}>{outputScriptLabel(output)}</Text>}
                     <Text selectable style={s.address}>
-                      {output.address ?? output.script?.hex}
+                      {output.address}
                     </Text>
                   </View>
                 ))}
               </Card>
+            </>
+          ) : replacement ? (
+            <>
+              {replacementInfo}
+              {feeButton}
             </>
           ) : (
             <>
@@ -616,8 +619,7 @@ export function NativeUtxoSendScreen({
                   onSubmitEditing={() => Keyboard.dismiss()}
                 />
               </Card>
-              <Button title={`${t('send.networkFee')} · ${t(feeChoice.kind === 'custom' ? 'mobile.feeChoice.custom' : feeChoice.kind === 'automatic' ? 'mobile.sendAssetViews.evm.automatic' : `send.${feeChoice.kind}`)}`}
-                variant="secondary" size="compact" icon="settings" disabled={busy || !send} onPress={() => { closeScanner(); setFeeDialog({ open, network }); }} />
+              {feeButton}
               <Button title={advanced ? t('mobile.sendAssetViews.evm.hideAdvancedOptions') : t('mobile.sendAssetViews.evm.advancedOptions')} variant="secondary" size="compact" icon={advanced ? 'chevron-up' : 'chevron-down'}
                 disabled={busy} expanded={advanced} onPress={() => setAdvanced(!advanced)} />
               {advanced && <Card style={s.insetCard}>
@@ -628,30 +630,6 @@ export function NativeUtxoSendScreen({
                   ? t('mobile.sendAssetViews.utxo.enableZDAGForFasterAssetTransfersAvoidUsingItFor')
                   : t('mobile.sendAssetViews.utxo.replacebyfeeAllowsThisTransactionToBeReplacedWithAHigher')}</Text>
               </Card>}
-              {saved.length > 0 && (
-                <Card style={s.insetCard}>
-                  <Text style={styles.muted}>{t('send.savedUtxo.title')}</Text>
-                  {saved.slice(0, savedLimit).map(({ txid, accepted }) => (
-                    <Button
-                      key={txid}
-                      title={`${
-                        accepted ? t('mobile.sendAssetViews.utxo.submitted') : t('send.savedUtxo.check')
-                      } ${txid.slice(0, 8)}…`}
-                      variant="secondary" size="compact"
-                      disabled={busy}
-                      onPress={() => checkStatus(txid)}
-                    />
-                  ))}
-                  {saved.length > savedLimit && (
-                    <Button
-                      title={t('mobile.sendAssetViews.utxo.showMore')}
-                      variant="secondary" size="compact"
-                      disabled={busy}
-                      onPress={() => setSavedLimit(savedLimit + 6)}
-                    />
-                  )}
-                </Card>
-              )}
             </>
           )}
         </Screen>
@@ -669,6 +647,14 @@ export function NativeUtxoSendScreen({
           setLedgerPicker(null);
         }}
       />}
+      {leavePrompt?.open === open && leavePrompt.replacement === replacement && <SubmissionLeavePrompt visible
+        onStay={() => setLeavePrompt(null)}
+        onLeave={() => {
+          if (screenActive.current && confirmation.current === leavePrompt.attempt) {
+            setLeavePrompt(null);
+            leave(onBack);
+          }
+        }} />}
     </SafeAreaView>
   );
 }

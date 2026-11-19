@@ -52,6 +52,7 @@ jest.mock('utils/navigationState', () => ({
 jest.mock('components/Icon/Icon', () => ({
   LoadingSvg: () => <svg />,
   FiCopy: () => <svg aria-hidden="true" />,
+  QrcodeOutlined: () => <svg aria-hidden="true" />,
 }));
 jest.mock('components/index', () => ({
   Card: ({ children }: any) => <div>{children}</div>,

@@ -55,7 +55,7 @@ export function AutoLockSettings({ mode, save, onBack, lockUnavailable }: { mode
       {draft === String(option.value) && <Icon name="check" size={20} color={colors.blue} />}
     </IdlePressable>)}</Card>
     <Text>{t('mobile.viewLock.autoCustom')}</Text><IdleTextInput accessibilityLabel={t('mobile.viewLock.autoInput')} value={draft} onChangeText={change} keyboardType="number-pad" maxLength={3} editable={!busy} style={{ borderWidth: 1, borderColor: colors.border, color: colors.text, borderRadius: 12, padding: 16 }} />
-    {minutes === null && <Text accessibilityRole="alert">{t('mobile.viewLock.autoInvalid')}</Text>}
+    {minutes === null && <Text accessibilityRole="alert" style={styles.errorText}>{t('mobile.viewLock.autoInvalid')}</Text>}
     {minutes === 0 && <><Notice title={t('mobile.viewLock.autoOffTitle')} body={t('mobile.viewLock.autoOffBody')} tone="amber" /><Button title={t(confirmed ? 'mobile.viewLock.autoAcknowledged' : 'mobile.viewLock.autoAcknowledge')} variant="secondary" disabled={busy} onPress={() => setConfirmed(true)} /></>}
     <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>{t('mobile.viewLock.autoLifecycle')}</Text>
     {!!feedback && <Text accessibilityLiveRegion="polite">{feedback}</Text>}

@@ -1,6 +1,8 @@
 import currency from 'currency.js';
 import format from 'date-fns/format';
 
+import { isRecoveryPhraseWordCount } from '../shared/recoveryPhrase';
+
 // Local constant to avoid heavy dependency chain from constants.ts
 const ONE_MILLION = 1000000;
 
@@ -244,8 +246,7 @@ export const formatSeedPhrase = (seed: string) => {
   const formattedSeed = normalizedSeed.trim();
   const seedLength = formattedSeed.split(' ').length;
 
-  const allowedWordCounts = new Set([12, 15, 18, 21, 24]);
-  if (allowedWordCounts.has(seedLength)) {
+  if (isRecoveryPhraseWordCount(seedLength)) {
     return formattedSeed;
   } else {
     return { seedLength, seedLengthError: true };

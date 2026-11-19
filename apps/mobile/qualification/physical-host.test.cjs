@@ -115,9 +115,10 @@ function report(phase, scenario, runId, lockfileSha256) {
         ? '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A'
         : '0x' + '22'.repeat(20),
     erc20TransferHash: '0x' + 'c'.repeat(64),
+    erc20ReplacementHash: phase === 'create' ? null : '0x' + '5'.repeat(64),
     erc20IntentHash: '0x' + 'd'.repeat(64),
-    erc20Signatures: phase === 'create' ? 1 : 0,
-    erc20Authorizations: phase === 'create' ? 0 : 1,
+    erc20Signatures: 1,
+    erc20Authorizations: 1,
     erc20InjectedBroadcasts: 1,
     erc20RestoredFromJournal: phase === 'restart',
     nativeNevmVerified: true,

@@ -5,6 +5,7 @@ import type { WalletAuthentication } from '../../shared/walletAuthentication.ts'
 export interface IPrivateNoteStatus {
   blockNumber?: number;
   phase: 'verified' | 'spent' | 'waiting' | 'not-found';
+  withdrawalPending?: true;
 }
 
 // This callback stays in the background. It never sends a note-specific RPC.
@@ -14,13 +15,14 @@ export type IPrivacyNoteReader = (
 
 export interface IPrivateNoteView extends Omit<IPrivateNoteStatus, 'phase'> {
   amount: string;
+  archiveEarlierAttempts?: number;
+  archiveEligible?: true;
   createdAt: number;
   id: string;
   phase: IPrivateNoteStatus['phase'] | 'prepared';
   poolId: PrivacyPoolId;
   restoration?: 'review-required' | 'reviewed' | 'withdrawal-pending';
   withdrawal?: {
-    canCheckRecovery?: true;
     jobId?: string;
     mode: 'direct' | 'relayed';
     phase: 'unknown' | 'submitted';
@@ -57,31 +59,26 @@ export interface IPrivateVaultView {
   notes: IPrivateNoteView[];
 }
 
+export type PrivateVaultArchiveSelection = 'earlier';
+
 export interface IPrivateVaultController {
   clearArchive: (
     password: WalletAuthentication
   ) => Promise<{ removed: number }>;
   clearCompletedNotes: (
-    ids: string[]
+    ids: string[],
+    selection?: PrivateVaultArchiveSelection
   ) => Promise<{ removed: string[]; unresolved: string[] }>;
   createDepositNote: (poolId: PrivacyPoolId) => Promise<IPrivateNoteView>;
   getArchivedNotes: () => Promise<IPrivateVaultArchiveView>;
   getCapacity: () => Promise<IPrivateVaultCapacity>;
   getNotes: (includeArchiveSummary?: boolean) => Promise<IPrivateVaultView>;
   importNote: (note: string) => Promise<IPrivateNoteView>;
-  recoverFailedWithdrawal: (
-    id: string,
-    password: WalletAuthentication
-  ) => Promise<void>;
   restoreArchivedNote: (
     id: string,
     password: WalletAuthentication
   ) => Promise<void>;
   revealNote: (id: string, password: WalletAuthentication) => Promise<string>;
-  reviewRestoredNote: (
-    id: string,
-    password: WalletAuthentication
-  ) => Promise<void>;
   setCapacity: (
     capacity: PrivateVaultCapacity
   ) => Promise<IPrivateVaultCapacity>;

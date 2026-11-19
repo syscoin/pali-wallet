@@ -4,7 +4,6 @@ import {
   createSnapshotAnchorVerifier,
   fetchPrivacySnapshot,
   readCompletionRpc,
-  readWithdrawalRecoveryRpc,
   validateSnapshot,
   verifySnapshotAnchor,
 } from './client';
@@ -37,78 +36,6 @@ const signal = () => new AbortController().signal;
 const originalFetch = global.fetch;
 afterEach(() => {
   global.fetch = originalFetch;
-});
-
-it('bounds explicit recovery reads to pinned-pool root/nullifier queries at numeric blocks', async () => {
-  const recovery = new Interface([
-    'function isKnownRoot(bytes32) view returns(bool)',
-    'function isSpent(bytes32) view returns(bool)',
-  ]);
-  global.fetch = jest.fn(async (_url, init) => {
-    const req = JSON.parse(String(init?.body));
-    return new Response(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: req.id,
-        result: recovery.encodeFunctionResult('isSpent', [false]),
-      })
-    );
-  });
-  for (const method of ['isKnownRoot', 'isSpent']) {
-    const params = [
-      {
-        to: getPrivacyPool(id).address,
-        data: recovery.encodeFunctionData(method, [hash(1)]),
-      },
-      '0x123',
-    ];
-    await expect(
-      readWithdrawalRecoveryRpc(
-        'https://rpc.example',
-        'eth_call',
-        params,
-        signal()
-      )
-    ).resolves.toBe('0x' + '0'.repeat(64));
-  }
-  expect(global.fetch).toHaveBeenCalledTimes(2);
-  for (const params of [
-    [
-      {
-        to: '0x' + '11'.repeat(20),
-        data: recovery.encodeFunctionData('isSpent', [hash(1)]),
-      },
-      '0x123',
-    ],
-    [
-      {
-        to: getPrivacyPool(id).address,
-        data: recovery.encodeFunctionData('isSpent', [hash(1)]),
-      },
-      'latest',
-    ],
-    [
-      {
-        to: getPrivacyPool(id).address,
-        data: recovery.encodeFunctionData('isSpent', [hash(1)]),
-        from: '0x' + '11'.repeat(20),
-      },
-      '0x123',
-    ],
-    [
-      { to: getPrivacyPool(id).address, data: '0xdeadbeef' + '0'.repeat(64) },
-      '0x123',
-    ],
-  ])
-    await expect(
-      readWithdrawalRecoveryRpc(
-        'https://rpc.example',
-        'eth_call',
-        params,
-        signal()
-      )
-    ).rejects.toThrow('privacy_rpc_unavailable');
-  expect(global.fetch).toHaveBeenCalledTimes(2);
 });
 
 function mockRpc(
@@ -590,45 +517,4 @@ test('completion RPC bounds receipt response before parsing and rejects mismatch
       signal()
     )
   ).rejects.toThrow();
-});
-
-it('permits finalized numeric-block payer nonce recovery reads but no pending/latest or arbitrary account query', async () => {
-  const payer = '0x' + '12'.repeat(20);
-  global.fetch = jest.fn(async (_url, init) => {
-    const request = JSON.parse(String(init?.body));
-    return Response.json({ jsonrpc: '2.0', id: request.id, result: '0x2' });
-  });
-  await expect(
-    readWithdrawalRecoveryRpc(
-      'https://rpc.example',
-      'eth_getTransactionCount',
-      [payer, '0x10'],
-      signal()
-    )
-  ).resolves.toBe('0x2');
-  for (const params of [
-    [payer, 'latest'],
-    [payer, 'pending'],
-    [payer, 'finalized'],
-    [payer, '0x010'],
-    ['wrong-address', '0x10'],
-    [payer, '0x10', 'extra'],
-  ])
-    await expect(
-      readWithdrawalRecoveryRpc(
-        'https://rpc.example',
-        'eth_getTransactionCount',
-        params,
-        signal()
-      )
-    ).rejects.toThrow('privacy_rpc_unavailable');
-  await expect(
-    readCompletionRpc(
-      'https://rpc.example',
-      'eth_getTransactionCount',
-      [payer, '0x10'],
-      signal()
-    )
-  ).rejects.toThrow('privacy_rpc_unavailable');
-  expect(global.fetch).toHaveBeenCalledTimes(1);
 });

@@ -15,6 +15,20 @@ export const PUBLIC_POOL_PATH_DIGESTS = Object.freeze([
   '0x0d11b7a72636fdb715eda36e664882dab8ce4942fa14e116cc22199a94c1057e',
   '0x7273698ce2e9f495d1b302ea540727c86fa9747e616a19282c02ce65b5bc6a65',
 ]);
+// The independent finalized checkpoint precedes the service snapshot by one
+// bucket and one leaf. Its root and paths use the same offline reference.
+export const PUBLIC_POOL_PROOF_BLOCK = PUBLIC_POOL_BLOCK - 8;
+export const PUBLIC_POOL_PROOF_BLOCK_HASH = '0x' + '36'.repeat(32);
+export const PUBLIC_POOL_PROOF_LEAVES = PUBLIC_POOL_LEAVES - 1;
+export const PUBLIC_POOL_PROOF_ROOT = '0x0b29e66eaa6946e71479231fe4458b78a36f933996de7478f6f9bda27f26b198';
+export const PUBLIC_POOL_PROOF_PATH_DIGESTS = Object.freeze([
+  '0xbf1f2b899d1b11b93eb30a6d2a1e5125929b86ca8c9405ae7b81a4eb969bc789',
+  '0xf7d526e766fbe99c944577ef349cb20589de250dab8b5e0819b20d78ab8636ef',
+]);
+export const PUBLIC_POOL_PROOF_SELECTION = Object.freeze([
+  'chainId', 'finalized', 'block', 'nextIndex', 'getLastRoot', 'block',
+] as const);
+export const PUBLIC_POOL_PROOF_RECHECK = Object.freeze(['chainId', 'block', 'isKnownRoot'] as const);
 export const PUBLIC_POOL_ANCHOR_READS = Object.freeze([
   'chainId', 'block', 'nextIndex', 'getLastRoot', 'levels', 'denomination', 'block', 'isKnownRoot',
 ] as const);

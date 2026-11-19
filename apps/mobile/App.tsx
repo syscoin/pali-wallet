@@ -255,8 +255,27 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   }, [snapshot.status, viewLock.phase]);
   const [watchAuthority, setWatchAuthority] = useState<WatchOnlyAuthority | null>(null);
   const [watchConnection, setWatchConnection] = useState<'opening' | 'ready' | 'unavailable'>('opening');
-  const notificationSnapshot = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
+  const { pendingEventId, tapRevision } = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
   const routedNotification = useRef<string | null>(null);
+  const watchNotificationUnlock = useRef<{ eventId: string; tapRevision: number; accountId: string } | null>(null);
+  const [notificationRouteWake, wakeNotificationRoute] = useState(0);
+  const notificationNavigationBlocked = useRef<(() => boolean) | null>(null);
+  const registerNotificationNavigationGuard = useCallback((isBlocked: () => boolean, subscribe: (listener: () => void) => () => void) => {
+    // In-flight lookups read the controller directly. Release wakes a deferred tap.
+    notificationNavigationBlocked.current = isBlocked;
+    let blocked = isBlocked();
+    const unsubscribe = subscribe(() => {
+      const next = isBlocked();
+      if (blocked && !next) wakeNotificationRoute(value => value + 1);
+      blocked = next;
+    });
+    return () => {
+      unsubscribe();
+      if (notificationNavigationBlocked.current !== isBlocked) return;
+      notificationNavigationBlocked.current = null;
+      if (blocked) wakeNotificationRoute(value => value + 1);
+    };
+  }, []);
   const route: Route =
     !preview && viewLock.phase !== 'unlocked' ? 'locked' : !preview &&
     !['welcome', 'add', 'locked', 'design', 'native', 'accounts'].includes(requestedRoute) &&
@@ -347,7 +366,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     setRequestedHdId(undefined); setInitialSetup(kind);
     authority.current?.lock(); setSheet(null); setPreview(false); go('native');
   };
-  const openWatch = useCallback(async (selection: AccountSelection, resumingPermission = false) => {
+  const openWatch = useCallback(async (selection: AccountSelection, resumingPermission = false, assertRequestCurrent?: () => void) => {
     const local = authority.current, navigation = navigationGeneration.current, lifecycle = lifecycleGeneration.current;
     const saved = watchAccounts.getSnapshot();
     if (openingView.current || !foreground.current || selection.kind !== 'watch' || saved.status !== 'ready' || saved.busy || !local?.getSnapshot().accounts.some((account) => account.id === selection.id) || JSON.stringify(local.getSnapshot().accounts) !== JSON.stringify(saved.accounts)) return;
@@ -355,6 +374,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     const check = () => {
       if (authority.current !== local || navigationGeneration.current !== navigation || lifecycleGeneration.current !== lifecycle ||
           (!foreground.current && !isNativeCredentialPromptActive())) throw Error('CANCELLED');
+      assertRequestCurrent?.();
     };
     try {
       check();
@@ -368,6 +388,33 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     } catch { setViewError(true); }
     finally { openingView.current = false; setViewBusy(false); }
   }, [watchAccounts, rememberSelection, go, setSheet]);
+  const openWatchNotification = useCallback((target: NonNullable<typeof watchNotificationUnlock.current>) => {
+    let deferredForReview = false;
+    const check = () => {
+      const pending = nativeActivityNotifications.getSnapshot();
+      if (pending.pendingEventId !== target.eventId || pending.tapRevision !== target.tapRevision) throw Error('CANCELLED');
+      if (notificationNavigationBlocked.current?.()) {
+        deferredForReview = true;
+        throw Error('CANCELLED');
+      }
+    };
+    return openWatch({ kind: 'watch', id: target.accountId }, false, check).then(opened => {
+      if (opened && watchNotificationUnlock.current === target) watchNotificationUnlock.current = null;
+      if (deferredForReview && routedNotification.current === `${target.eventId}:${target.tapRevision}`) {
+        routedNotification.current = null;
+        wakeNotificationRoute(value => value + 1);
+      }
+    });
+  }, [openWatch]);
+  const retirePendingNotificationTap = useCallback(() => {
+    const { pendingEventId, tapRevision } = nativeActivityNotifications.getSnapshot();
+    watchNotificationUnlock.current = null;
+    if (pendingEventId && tapRevision !== undefined) nativeActivityNotifications.consumeTap(pendingEventId, tapRevision);
+  }, []);
+  const selectWatchAccount = (selection: AccountSelection) => {
+    retirePendingNotificationTap();
+    void openWatch(selection);
+  };
   useEffect(() => {
     let current = true;
     void Promise.resolve().then(() => {
@@ -394,28 +441,36 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     finally { openingView.current = false; setViewBusy(false); }
   };
   useEffect(() => {
-    const eventId = notificationSnapshot.pendingEventId;
-    if (!eventId || Platform.OS === 'web' || !foreground.current || routedNotification.current === eventId || loading) return;
+    const eventId = pendingEventId;
+    const tap = `${eventId}:${tapRevision}`;
+    if (!eventId || tapRevision === undefined || Platform.OS === 'web' || !foreground.current || routedNotification.current === tap ||
+        loading || addingAccount.current || notificationNavigationBlocked.current?.()) return;
     let current = true;
     const navigation = navigationGeneration.current, lifecycle = lifecycleGeneration.current;
     void nativeActivityNotifications.getPendingOwner().then(owner => {
+      const pending = nativeActivityNotifications.getSnapshot();
       if (!current || !owner || !foreground.current || navigationGeneration.current !== navigation || lifecycleGeneration.current !== lifecycle ||
-          nativeActivityNotifications.getSnapshot().pendingEventId !== eventId) return;
+          pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision || addingAccount.current || notificationNavigationBlocked.current?.()) return;
       if (owner.accountType === 'watch') {
-        if (watchAccounts.getSnapshot().status !== 'ready' || !authority.current?.getSnapshot().accounts.some(account => account.id === owner.accountId)) return;
-        routedNotification.current = eventId;
-        if (route !== 'home' || preview || authority.current.getSnapshot().status !== 'ready' || authority.current.getSnapshot().selectedAccountId !== owner.accountId)
-          openWatch({ kind: 'watch', id: owner.accountId });
+        const saved = watchAccounts.getSnapshot(), local = authority.current?.getSnapshot();
+        if (openingView.current || saved.status !== 'ready' || saved.busy || !local?.accounts.some(account => account.id === owner.accountId) ||
+            JSON.stringify(local.accounts) !== JSON.stringify(saved.accounts)) return;
+        routedNotification.current = tap;
+        if (route !== 'home' || preview || local.status !== 'ready' || local.selectedAccountId !== owner.accountId) {
+          const target = { eventId, tapRevision, accountId: owner.accountId };
+          if (publicViewLock.getSnapshot().phase === 'locked') watchNotificationUnlock.current = target;
+          void openWatchNotification(target);
+        }
       } else {
         // Cold-start native membership is checked after unlock against its complete catalogue.
         try { nativeAccountSelection(owner.accountId); } catch { return; }
-        routedNotification.current = eventId;
+        routedNotification.current = tap;
         if (route !== 'native' || preview)
           openWallet(catalogue?.accounts.some(account => account.id === owner.accountId) ? owner.accountId : undefined);
       }
     }).catch(() => undefined);
     return () => { current = false; };
-  }, [notificationSnapshot.pendingEventId, loading, watchState.status, watchAuthority, route, preview, catalogue, openWallet, openWatch, watchAccounts]);
+  }, [pendingEventId, tapRevision, notificationRouteWake, loading, viewBusy, watchState.status, watchState.busy, watchAuthority, route, preview, catalogue, openWallet, openWatchNotification, watchAccounts]);
   const announce = (message: string) => {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -522,18 +577,28 @@ function AppContent({ availableWatchNetworks }: AppProps) {
         if (opened) notificationReturn.resume(watchNotificationContext()); else notificationReturn.discard();
       });
     };
+    const activate = () => {
+      if (!foreground.current) {
+        foreground.current = true;
+        // Native can deliver the tap before the app becomes active.
+        const pending = nativeActivityNotifications.getSnapshot();
+        if (pending.pendingEventId && routedNotification.current !== `${pending.pendingEventId}:${pending.tapRevision}`)
+          wakeNotificationRoute(value => value + 1);
+      }
+      resume();
+    };
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
       if (isNotificationPermissionPromptActive() || isNativeCredentialPromptActive() || isCameraPermissionPromptActive()) return;
       foreground.current = false; hide();
     }) : null;
     const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', () => {
       if (AppState.currentState !== 'active') return;
-      foreground.current = true; resume();
+      activate();
     }) : null;
     const sub = AppState.addEventListener('change', (state) => {
-      foreground.current = state === 'active';
-      if (state === 'inactive' && (isNotificationPermissionPromptActive() || isCameraPermissionPromptActive()) || state !== 'active' && isNativeCredentialPromptActive()) return;
-      if (state === 'active') { resume(); return; }
+      if (state === 'active') { activate(); return; }
+      foreground.current = false;
+      if (state === 'inactive' && (isNotificationPermissionPromptActive() || isCameraPermissionPromptActive()) || isNativeCredentialPromptActive()) return;
       hide();
       if (requestedRoute !== 'native' && !preview && authority.current?.getSnapshot().accounts.length)
         go('locked', true);
@@ -653,6 +718,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const addAccount = async ({ name, address, network }: { name: string; address: string; network?: WatchAccountNetwork }) => {
     if (addingAccount.current) throw new Error(nativeI18n.t('mobile.shellViews.app.anotherAccountIsStillSavingPleaseWait'));
     addingAccount.current = true;
+    retirePendingNotificationTap();
     const startNavigation = navigationGeneration.current;
     const startLifecycle = lifecycleGeneration.current;
     const startPrivacy = publicViewLock.getSnapshot();
@@ -662,8 +728,11 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       const next = await changeWatch({ kind: 'add', id, name, address, ...(network ? { network } : {}) });
       if (!foreground.current || startNavigation !== navigationGeneration.current || startLifecycle !== lifecycleGeneration.current || publicViewLock.getSnapshot() !== startPrivacy) return;
       if (!next) { go('accounts'); return; }
-      openWatch({ kind: 'watch', id });
-    } finally { addingAccount.current = false; }
+      await openWatch({ kind: 'watch', id });
+    } finally {
+      addingAccount.current = false;
+      if (nativeActivityNotifications.getSnapshot().pendingEventId) wakeNotificationRoute(value => value + 1);
+    }
   };
   const renameWatch = async (id: string, name: string) => { await changeWatch({ kind: 'rename', id, name }); };
   const removeWatch = async (id: string) => { await nativeActivityNotifications.disableOwner('watch', id); await changeWatch({ kind: 'remove', id }); };
@@ -729,13 +798,23 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   } : {};
   const accountActions = { ...watchNetworkActions, watch: watchState, watchConnection: { status: watchConnection, accountIds: watchAuthority?.getSnapshot().accounts.map(account => account.id) ?? [] }, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
   const selectionNotice = selectionError ? <Notice title={nativeI18n.t('mobile.shellViews.app.accountChoiceNotSaved')} body={selectionError} tone="amber" /> : null;
-  if (route === 'native') return <><NativeWalletScreen onExit={exit} incomingPairing={incomingPairing} onPairingHandled={pairingHandled} initialAccountId={requestedHdId} initialSetup={initialSetup} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
+  if (route === 'native') return <><NativeWalletScreen onExit={exit} incomingPairing={incomingPairing} onPairingHandled={pairingHandled}
+    initialAccountId={requestedHdId} initialSetup={initialSetup} onWalletRemoved={walletRemoved}
+    registerNotificationNavigationGuard={registerNotificationNavigationGuard} onExplicitNavigation={retirePendingNotificationTap}
+    onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }}
+    accounts={{ ...accountActions, onSelectWatch: selectWatchAccount, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
   if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}
     active={snapshot.selectedAccountId ? { kind: 'watch', id: snapshot.selectedAccountId } : null}
-    onSelect={(selection) => { if (selection.kind !== 'watch') openWallet(selection.id); else openWatch(selection); }}
-    onBack={() => go(snapshot.status === 'ready' ? 'home' : snapshot.accounts.length ? 'locked' : 'welcome')}
-    onOpenWallet={Platform.OS !== 'web' ? () => openWallet() : undefined} />{selectionNotice}</>;
-  if (!preview && route === 'home' && watchAuthority && !startupError) return <><WatchSession key={snapshot.selectedAccountId} authority={watchAuthority} onAccounts={() => go('accounts')} onExit={exit}
+    onSelect={(selection) => {
+      if (selection.kind === 'watch') return selectWatchAccount(selection);
+      retirePendingNotificationTap();
+      openWallet(selection.id);
+    }}
+    onBack={() => { retirePendingNotificationTap(); go(snapshot.status === 'ready' ? 'home' : snapshot.accounts.length ? 'locked' : 'welcome'); }}
+    onOpenWallet={Platform.OS !== 'web' ? () => { retirePendingNotificationTap(); openWallet(); } : undefined} />{selectionNotice}</>;
+  if (!preview && route === 'home' && watchAuthority && !startupError) return <><WatchSession key={snapshot.selectedAccountId} authority={watchAuthority}
+    onAccounts={() => { retirePendingNotificationTap(); go('accounts'); }} onExit={() => { retirePendingNotificationTap(); exit(); }}
+    registerNotificationNavigationGuard={registerNotificationNavigationGuard} onExplicitNavigation={retirePendingNotificationTap}
     notificationReturn={watchNotificationReturn} cancelNotificationReturn={cancelNotificationReturn} discardPendingNotificationReturn={notificationReturn.discard}
     onNotificationPermissionPresentation={(scope: NativeNotificationScope, result: Promise<NotificationPermissionResult>) => {
       if (AppState.currentState !== 'active' || preview) return;
@@ -819,6 +898,12 @@ function AppContent({ availableWatchNetworks }: AppProps) {
               icon="eye"
               disabled={viewBusy || viewLock.phase === 'opening' || viewLock.phase === 'unavailable'}
               onPress={() => {
+                const target = watchNotificationUnlock.current;
+                const pending = nativeActivityNotifications.getSnapshot(), saved = watchAccounts.getSnapshot();
+                if (requestedRoute !== 'native' && target && pending.pendingEventId === target.eventId && pending.tapRevision === target.tapRevision &&
+                    saved.status === 'ready' && saved.accounts.some(account => account.id === target.accountId)) {
+                  void openWatchNotification(target); return;
+                }
                 const id = snapshot.selectedAccountId ?? snapshot.accounts[0]?.id;
                 if (requestedRoute !== 'native' && id) void openWatch({ kind: 'watch', id });
                 else void unlockRequestedView();

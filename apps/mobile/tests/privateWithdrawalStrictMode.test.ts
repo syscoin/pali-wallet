@@ -72,7 +72,8 @@ test('real React StrictMode gives Withdrawal a fresh effect scope and preserves 
     '../ui': { Button: ({ title, onPress, disabled }: any) => React.createElement('button', { onClick: onPress, disabled }, title),
       Header: ({ title, onBack }: any) => React.createElement('header', null, React.createElement('button', { onClick: onBack }, 'Back'), title),
       Screen: ({ children, footer }: any) => React.createElement('section', null, children, footer),
-      Card: children, Text: children, colors: {}, styles: {} },
+      Card: children, Text: children, colors: {}, styles: {},
+      Notice: ({ title, body }: { title: string; body?: string }) => React.createElement('div', null, title, body) },
   };
   const module = { exports: {} as { NativePrivateWithdrawal: React.ComponentType<any> } };
   const code = ts.transpileModule(readFileSync(fileURLToPath(new NodeURL('../src/screens/NativePrivateWithdrawal.tsx', import.meta.url)), 'utf8'), {
@@ -117,15 +118,14 @@ test('real React StrictMode gives Withdrawal a fresh effect scope and preserves 
     await React.act(async()=>{snapshot={...snapshot,status:{noteId:'owned-note',phase:'unknown',transactionHash:oldHash},noteStatus:{phase:'verified'}};renders.forEach(render=>render());});
     assert.match(container.textContent,/Recipient address/,'saved history does not replace the fresh withdrawal form');
     assert.match(container.textContent,new RegExp(oldHash),'the earlier instruction remains visible');
-    await React.act(async()=>{snapshot={...snapshot,phase:'review',review:{intentId:'owned-intent',noteId:'owned-note',poolId:'eth-1',amount:'1',poolAddress:'0x'+'11'.repeat(20),mode:'direct',recipient:nextRecipient,account:{id:0,type:KeyringAccountType.HDAccount,address:nextRecipient},chainId:1,expiresAt:Date.now()+60000,feeWei:'0',receiveWei:'1000000000000000000',gasLimit:'650000',maxNetworkFeeWei:'3900000',serviceFeeWei:'0',previousWithdrawals:[{mode:'direct',outcome:'unknown',transactionHash:oldHash}]}};renders.forEach(render=>render());});
-    const competing = Array.from(container.querySelectorAll('button')).find((button:any)=>button.textContent==='Submit competing withdrawal') as HTMLButtonElement;
-    assert(competing); assert.equal(competing.disabled,false);
+    await React.act(async()=>{snapshot={...snapshot,phase:'review',review:{intentId:'owned-intent',noteId:'owned-note',poolId:'eth-1',amount:'1',poolAddress:'0x'+'11'.repeat(20),mode:'direct',recipient:nextRecipient,account:{id:0,type:KeyringAccountType.HDAccount,address:nextRecipient},chainId:1,expiresAt:Date.now()+60000,feeWei:'0',receiveWei:'1000000000000000000',gasLimit:'650000',maxNetworkFeeWei:'3900000',serviceFeeWei:'0'}};renders.forEach(render=>render());});
+    const confirm = Array.from(container.querySelectorAll('button')).find((button:any)=>button.textContent==='Confirm withdrawal') as HTMLButtonElement;
+    assert(confirm); assert.equal(confirm.disabled,false);
     await React.act(async()=>{snapshot={...snapshot,noteStatus:{phase:'spent'}};renders.forEach(render=>render());});
-    assert.equal(competing.disabled,true); await React.act(async()=>competing.click()); assert.deepEqual(confirmations,[]);
+    assert.equal(confirm.disabled,true); await React.act(async()=>confirm.click()); assert.deepEqual(confirmations,[]);
     await React.act(async()=>{snapshot={...snapshot,noteStatus:{phase:'verified'}};renders.forEach(render=>render());});
-    assert.match(container.textContent,/Any earlier withdrawal may still complete/);
-    assert.match(container.textContent,/Previous withdrawals/);
-    await React.act(async()=>competing.click()); assert.deepEqual(confirmations,['owned-intent']);
+    assert.doesNotMatch(container.textContent,/Previous withdrawals|Submit competing withdrawal/);
+    await React.act(async()=>confirm.click()); assert.deepEqual(confirmations,['owned-intent']);
     await React.act(async()=>{snapshot={...snapshot,phase:'submitted',status:null,result:{intentId:'owned-intent',noteId:'owned-note',phase:'submitted',jobId:'new-relayer-job'}};renders.forEach(render=>render());});
     assert.match(container.textContent,/Relayer accepted the request/);
     assert.doesNotMatch(container.textContent,new RegExp(oldHash),'the new result must not display the earlier transaction as its own');

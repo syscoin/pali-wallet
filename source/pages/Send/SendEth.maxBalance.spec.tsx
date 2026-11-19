@@ -23,8 +23,12 @@ const mockStatus = {
   connectionUnavailable: false,
 };
 let mockState: any;
+let mockStoredNavigation: unknown;
 let mockAssets: any[];
-const mockLocation = { key: 'send', pathname: '/send/eth', state: undefined };
+const mockLocation: { key: string; pathname: string; state?: any } = {
+  key: 'send',
+  pathname: '/send/eth',
+};
 const RECIPIENT = '0x2222222222222222222222222222222222222222';
 const QUOTE = {
   maxFeePerGas: '1000000000',
@@ -59,6 +63,17 @@ jest.mock('hooks/index', () => ({
 }));
 jest.mock('hooks/useAdjustedExplorer', () => ({
   useAdjustedExplorer: () => 'https://explorer.invalid',
+}));
+jest.mock('utils/storageAPI', () => ({
+  chromeStorage: {
+    getItem: async () => mockStoredNavigation,
+    setItem: async (_key: string, value: unknown) => {
+      mockStoredNavigation = JSON.parse(JSON.stringify(value));
+    },
+    removeItem: async () => {
+      mockStoredNavigation = undefined;
+    },
+  },
 }));
 jest.mock('utils/navigationState', () => ({
   ...jest.requireActual('utils/navigationState'),
@@ -166,6 +181,8 @@ afterAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   window.history.replaceState(null, '', '/app.html');
+  mockLocation.state = undefined;
+  mockStoredNavigation = undefined;
   mockAssets = [];
   mockState = {
     vault: {
@@ -233,6 +250,109 @@ const mountMax = async () => {
   clickMax();
   return view;
 };
+
+describe('MAX draft ownership', () => {
+  const getNavigation = () =>
+    jest.requireActual<typeof import('utils/navigationState')>(
+      'utils/navigationState'
+    );
+
+  const originalLocks = Object.getOwnPropertyDescriptor(navigator, 'locks');
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    let lockTail = Promise.resolve();
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: (
+          _name: string,
+          _options: object,
+          task: () => Promise<void>
+        ) => {
+          const result = lockTail.then(task);
+          lockTail = result.catch(() => undefined);
+          return result;
+        },
+      },
+    });
+    mockSave.mockImplementation(getNavigation().saveNavigationState);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    if (originalLocks) Object.defineProperty(navigator, 'locks', originalLocks);
+    else Reflect.deleteProperty(navigator, 'locks');
+  });
+
+  it.each(['clicked', 'restored'])(
+    'preserves a newer document draft after %s MAX',
+    async (mode) => {
+      const navigationA = getNavigation();
+      let navigationB!: typeof navigationA;
+      jest.isolateModules(() => {
+        navigationB = getNavigation();
+      });
+      expect(navigationB.saveNavigationState).not.toBe(
+        navigationA.saveNavigationState
+      );
+
+      if (mode === 'restored') {
+        mockLocation.state = {
+          walletScope: navigationA.getWalletNavigationScope(),
+          sendDraftId: '00000000-0000-4000-8000-000000000001',
+          isMaxSend: true,
+          formValues: { amount: '8', receiver: RECIPIENT },
+        };
+        await navigationA.saveNavigationState(
+          '/send/eth',
+          undefined,
+          mockLocation.state
+        );
+      }
+      render(<SendEth />);
+      await flush();
+      if (mode === 'clicked') {
+        setRecipient();
+        clickMax();
+      }
+      await flush();
+      expect(screen.getByPlaceholderText('send.amount')).toHaveValue(10);
+      const earlier = (await navigationA.loadNavigationState())?.state;
+      const newer = {
+        sendDraftId: '00000000-0000-4000-8000-000000000002',
+        formValues: { amount: '2', receiver: RECIPIENT },
+      };
+      await act(async () => {
+        expect(
+          await navigationB.saveNavigationState('/send/eth', undefined, newer)
+        ).toBe(true);
+      });
+      await act(async () => {
+        jest.runOnlyPendingTimers();
+      });
+      expect((await navigationA.loadNavigationState())?.state).toMatchObject(
+        newer
+      );
+
+      if (mode === 'clicked') {
+        expect(earlier).toMatchObject({
+          isMaxSend: true,
+          formValues: { amount: '10', receiver: RECIPIENT },
+        });
+      }
+
+      // A subsequent deliberate edit still claims the shared draft.
+      fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+        target: { value: '3' },
+      });
+      await flush();
+      expect(
+        (await navigationA.loadNavigationState())?.state.formValues
+      ).toEqual({ amount: '3', receiver: RECIPIENT });
+    }
+  );
+});
 
 describe('native MAX classification after balance changes', () => {
   it('preserves a small decimal receipt balance through affordable native MAX', async () => {

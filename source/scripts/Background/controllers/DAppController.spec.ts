@@ -42,6 +42,10 @@ jest.mock('./message-handler/provider-cache', () => ({
 import { runInNewContext } from 'vm';
 
 import { smartAccountAddressFixture } from '../../../../tests/fixtures/smartAccountAddress';
+import {
+  DAPP_GRANT_REVIEW_CHANGED,
+  dappGrantIdentity,
+} from '../../../shared/dappTypes';
 import { notificationManager } from '../notification-manager';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
@@ -604,6 +608,48 @@ describe('DAppController idempotent permission revocation', () => {
       );
     }
   );
+
+  it('rechecks the reviewed grant after an earlier revocation settles', async () => {
+    const grant = {
+      host,
+      accountId: 0,
+      accountType: KeyringAccountType.HDAccount,
+      chain: INetworkType.Ethereum,
+      chainId: 57057,
+      date: 1,
+    };
+    state.dapp.dapps[host] = grant;
+    const controller = DAppController(
+      () => false,
+      () => 0
+    );
+    let release!: () => void;
+    permissionWriteMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    const first = controller.revoke(host, options);
+    await Promise.resolve();
+    const reviewed = { ...grant, date: 2 };
+    await connect(controller, reviewed);
+
+    const queued = controller.revoke(host, {
+      ...options,
+      expectedGrant: dappGrantIdentity(reviewed),
+    });
+    const checked = expect(queued).rejects.toThrow(DAPP_GRANT_REVIEW_CHANGED);
+    const replacement = { ...grant, date: 3 };
+    try {
+      await connect(controller, replacement);
+    } finally {
+      release();
+    }
+    await first;
+    await checked;
+    expect(controller.get(host)).toEqual(replacement);
+  });
 
   it.each(['revoke', 'reset'])(
     'does not stage a candidate after reentrant %s during marker publication',

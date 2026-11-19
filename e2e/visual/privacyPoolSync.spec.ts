@@ -33,6 +33,8 @@ const POOL_ID = 'eth-1';
 const POOL_ADDRESS = '0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936';
 const DEPLOYMENT_BLOCK = 9117609;
 const BLOCK_NUMBER = 20000000;
+// Finalized height minus four, rounded down to the shared eight-block bucket.
+const PROOF_BLOCK_NUMBER = BLOCK_NUMBER - 8;
 const BLOCK_HASH = '0x' + '42'.repeat(32);
 const BLOCK_TIMESTAMP = toQuantity(Math.floor(Date.now() / 1000) - 900);
 const FUNDED_NOTE = `tornado-eth-1-1-0x${'00'.repeat(62)}`;
@@ -471,7 +473,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           expect(depositNote).not.toBe('');
           expect(signed.nonce).toBe(7);
           expect(signed.value).toBe(parseEther('1'));
-          expect(signed.gasLimit).toBe(BigInt(120000));
+          expect(signed.gasLimit).toBe(BigInt(1400000));
           expect(decoded.args[0]).toBe(depositCommitment);
           expect(
             await auditEncryptedNotes(wallet!.page, [depositNote])
@@ -664,13 +666,15 @@ test('privacy pool preparation verifies local note imports and preserves a good 
                 typeof call.params[1] !== 'boolean' ||
                 (call.params[0] !== 'latest' &&
                   call.params[0] !== 'pending' &&
+                  call.params[0] !== 'finalized' &&
                   !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(call.params[0]))
               )
                 return undefined;
-              const height =
-                call.params[0] === 'latest' || call.params[0] === 'pending'
-                  ? BLOCK_NUMBER
-                  : Number(BigInt(call.params[0]));
+              const height = ['latest', 'pending', 'finalized'].includes(
+                call.params[0]
+              )
+                ? BLOCK_NUMBER
+                : Number(BigInt(call.params[0]));
               if (
                 !Number.isSafeInteger(height) ||
                 height < 0 ||
@@ -726,7 +730,12 @@ test('privacy pool preparation verifies local note imports and preserves a good 
                 }
                 result = ABI.encodeFunctionResult('isKnownRoot', [true]);
               } else {
-                if (call.params[1] !== toQuantity(BLOCK_NUMBER))
+                const tag = call.params[1];
+                if (
+                  tag !== toQuantity(BLOCK_NUMBER) &&
+                  (tag !== toQuantity(PROOF_BLOCK_NUMBER) ||
+                    !['nextIndex', 'getLastRoot'].includes(parsed.name))
+                )
                   return undefined;
                 const values: Record<string, unknown> = {
                   nextIndex: 2,
@@ -930,7 +939,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           },
           candidate: null,
         });
-        expect(knownRootCalls).toBe(2);
+        expect(knownRootCalls).toBe(3);
         await capture('ready');
       }
     );
@@ -972,7 +981,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
               };
             })
             .toEqual({
-              anchors: beforeAnchors + 2,
+              anchors: beforeAnchors + 3,
               phase: 'ready',
               candidate: null,
             });
@@ -992,7 +1001,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           .getByRole('button', { name: en.privacy.resume, exact: true })
           .click();
         await expect(poolStatus(wallet!.page)).toContainText(en.privacy.ready);
-        expect(knownRootCalls).toBe(beforeResumeAnchors + 2);
+        expect(knownRootCalls).toBe(beforeResumeAnchors + 3);
         expect(snapshots).toHaveLength(beforeResumeSnapshots + 1);
         observations.resumeVerification = {
           beforeAnchors: beforeResumeAnchors,
@@ -1113,6 +1122,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           'section[aria-labelledby="privacy-notes-title"]'
         );
         const snapshotsBefore = snapshots.length;
+        const readsBefore = rpcReads.length;
         await notes
           .getByRole('button', { name: en.privacy.deposit.title, exact: true })
           .click();
@@ -1140,11 +1150,9 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         await expect(detail(en.privacy.deposit.pool)).toHaveText(POOL_ADDRESS);
         await expect(detail(en.privacy.deposit.amount)).toHaveText('1 ETH');
         await expect(detail(en.privacy.deposit.networkFee)).toHaveText(
-          '0.00042 ETH'
+          '0.0049 ETH'
         );
-        await expect(detail(en.privacy.deposit.total)).toHaveText(
-          '1.00042 ETH'
-        );
+        await expect(detail(en.privacy.deposit.total)).toHaveText('1.0049 ETH');
         const confirm = deposit.getByRole('button', {
           name: en.privacy.deposit.confirm,
           exact: true,
@@ -1171,6 +1179,15 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         depositCommitment = identifyClassicNote(depositNote).commitment;
         expect([FUNDED_COMMITMENT, SPENT_COMMITMENT]).not.toContain(
           depositCommitment
+        );
+        const preConfirmationReads = rpcReads.slice(readsBefore);
+        expect(
+          preConfirmationReads.some(
+            ({ method }) => method === 'eth_estimateGas'
+          )
+        ).toBe(false);
+        expect(JSON.stringify(preConfirmationReads)).not.toContain(
+          depositCommitment.slice(2)
         );
         expect(await auditEncryptedNotes(wallet!.page, [depositNote])).toEqual({
           count: 1,
@@ -1221,6 +1238,15 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           })
         ).toHaveCount(0);
         expect(depositBroadcastAttempts).toBe(1);
+        const confirmedEstimates = rpcReads
+          .slice(readsBefore + preConfirmationReads.length)
+          .filter(({ method }) => method === 'eth_estimateGas');
+        expect(confirmedEstimates.length).toBeGreaterThan(0);
+        expect(
+          confirmedEstimates.every(({ params }) =>
+            JSON.stringify(params).includes(depositCommitment.slice(2))
+          )
+        ).toBe(true);
         expect(snapshots.length).toBe(snapshotsBefore);
         expect(await auditEncryptedNotes(wallet!.page, [depositNote])).toEqual({
           count: 1,
@@ -1295,11 +1321,6 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           '0.00195 ETH'
         );
         await expect(detail(en.privacy.withdrawal.receive)).toHaveText('1 ETH');
-        await expect(
-          withdrawal.getByText(en.privacy.withdrawal.pendingProofWarning, {
-            exact: true,
-          })
-        ).toBeVisible();
         await expect(
           withdrawal.getByRole('button', {
             name: en.privacy.withdrawal.confirm,
@@ -1379,7 +1400,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
       }
     );
     await wallet.step(
-      'privacy: an unresolved payer remains blocked and a different payer can explicitly confirm a competing withdrawal',
+      'privacy: a pending withdrawal pauses its payer and a different payer can use normal confirmation',
       async () => {
         const page = wallet!.page;
         const notes = page.locator(
@@ -1411,17 +1432,19 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         const unchanged = await encryptedNotesFingerprint(page);
         const lookupsBefore = retainedHashLookups;
         const snapshotsBefore = snapshots.length;
-        await openReview(COMPETING_RECIPIENT);
-        await expect(withdrawal.getByRole('alert')).toHaveText(
-          en.send.savedNonceConflict
-        );
-        expect(retainedHashLookups).toBe(lookupsBefore + 1);
+        await expect(
+          note.getByRole('button', {
+            name: en.privacy.withdrawal.open,
+            exact: true,
+          })
+        ).toBeDisabled();
+        await expect(
+          note.getByText(en.privacy.withdrawal.pendingActivity)
+        ).toBeVisible();
+        expect(retainedHashLookups).toBe(lookupsBefore);
         expect(withdrawalBroadcastAttempts).toBe(1);
         expect(snapshots.length).toBe(snapshotsBefore);
         expect(await encryptedNotesFingerprint(page)).toBe(unchanged);
-        await withdrawal
-          .getByRole('button', { name: en.buttons.cancel, exact: true })
-          .click();
         await page
           .getByRole('button', { name: en.buttons.back, exact: true })
           .click();
@@ -1469,27 +1492,14 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         await expect(detail(en.privacy.withdrawal.gasPayer)).toHaveText(
           fixture.evmAddresses[1]
         );
-        await expect(
-          withdrawal.getByText(en.privacy.withdrawal.pendingProofWarning, {
-            exact: true,
-          })
-        ).toBeVisible();
-        const prior = withdrawal.getByRole('region', {
-          name: en.privacy.withdrawal.previousAttempts,
-        });
-        await expect(prior).toContainText(WITHDRAWAL_RECIPIENT);
-        await expect(
-          detail(en.privacy.withdrawal.recipient).first()
-        ).toHaveText(COMPETING_RECIPIENT);
-        await expect(prior).toContainText(en.privacy.withdrawal.unknown);
-        await expect(
-          prior.getByText(en.privacy.deposit.txHash, { exact: true })
-        ).toHaveCount(0);
         const confirmCompeting = withdrawal.getByRole('button', {
-          name: en.privacy.withdrawal.competingConfirm,
+          name: en.privacy.withdrawal.confirm,
           exact: true,
         });
         await expect(confirmCompeting).toBeEnabled();
+        await expect(
+          detail(en.privacy.withdrawal.recipient).first()
+        ).toHaveText(COMPETING_RECIPIENT);
         await captureReview('withdrawal');
         await withdrawal
           .getByRole('button', { name: en.buttons.cancel, exact: true })
@@ -1498,7 +1508,6 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         expect(await encryptedNotesFingerprint(page)).toBe(beforeReview);
         await openReview(COMPETING_RECIPIENT);
         await expect(confirmCompeting).toBeEnabled({ timeout: 120000 });
-        await expect(prior).toContainText(WITHDRAWAL_RECIPIENT);
         await expect(
           detail(en.privacy.withdrawal.recipient).first()
         ).toHaveText(COMPETING_RECIPIENT);

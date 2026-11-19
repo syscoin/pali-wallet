@@ -46,7 +46,7 @@ export function NativePreferences({ onBack, assertCurrent }: { onBack(): void; a
       <Text style={styles.muted}>{t('mobile.language.fallback')}</Text>
       {preference.status === 'opening' && <Text accessibilityLiveRegion="polite">{t('mobile.language.loading')}</Text>}
       {(preference.status === 'unavailable' || failed) && <>
-        <Text accessibilityRole="alert">{t('settings.preferencesSaveFailed')}</Text>
+        <Text accessibilityRole="alert" style={styles.errorText}>{t('settings.preferencesSaveFailed')}</Text>
         <Button title={t('mobile.language.reload')} variant="secondary" disabled={saving}
           onPress={() => { setChoice(null); setFailed(false); void nativeLanguagePreferences.load().catch(() => undefined); }} />
       </>}

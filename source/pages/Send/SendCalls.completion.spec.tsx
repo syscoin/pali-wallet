@@ -10,6 +10,7 @@ import {
 import { Transaction, Wallet } from 'ethers';
 import React from 'react';
 
+import en from '../../assets/locales/en.json';
 import { captureSmartAccountCallsIdentity } from '../../shared/dappCallsStatus';
 import { buildSmartAccountUserOperation } from '../../utils/smartAccount/account';
 import {
@@ -61,7 +62,17 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t(key: string, values?: { count: number; total: number }) {
+      if (key === 'mobile.recoveryStatusViews.operation.callsSubmitted')
+        return en.mobile.recoveryStatusViews.operation.callsSubmitted;
+      if (key === 'send.partialSubmission' && values)
+        return en.send.partialSubmission
+          .replace('{{count}}', String(values.count))
+          .replace('{{total}}', String(values.total));
+      return key;
+    },
+  }),
 }));
 jest.mock('hooks/index', () => ({
   useQueryData: () => mockQuery,
@@ -104,6 +115,12 @@ jest.mock('utils/smartAccount', () => ({
     feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
     gasUnits: '860000',
     maximumFeeWei: '4300000',
+    payerBudget: {
+      gasTank: false,
+      maximumFeeWei: '1100000000000000',
+      maximumPrefundWei: '0',
+      maximumPrefundFeeWei: '0',
+    },
   }),
   SMART_ACCOUNT_FEE_QUOTE_CHANGED: 'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED',
   isSmartAccountFeeQuoteChanged: (error: any) =>
@@ -296,19 +313,22 @@ const finishDelay = () =>
   act(async () => {
     jest.advanceTimersByTime(2100);
   });
-const status = async () =>
+const status = async (mined = true) =>
   (
     await resolveCallsStatus(
       () => ({
         getBlock: async () => ({ hash: HASH_A }),
-        getTransactionReceipt: async (hash) => ({
-          hash,
-          status: 1,
-          blockHash: HASH_A,
-          blockNumber: 1,
-          gasUsed: 21000,
-          logs: [],
-        }),
+        getTransactionReceipt: async (hash) =>
+          mined
+            ? {
+                hash,
+                status: 1,
+                blockHash: HASH_A,
+                blockNumber: 1,
+                gasUsed: 21000,
+                logs: [],
+              }
+            : null,
       }),
       mockQuery.host,
       mockQuery.bundleId
@@ -353,12 +373,38 @@ it('keeps atomic-required smart calls mandatory and returns the reserved ID', as
   expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
 });
 
+it.each(['EOA', 'Smart', 'Smart with an acknowledged hash on error'])(
+  'reports %s calls as submitted while their receipts are pending',
+  async (kind) => {
+    await prepare(kind !== 'EOA');
+    if (kind === 'Smart with an acknowledged hash on error')
+      mockSmartSubmit.mockImplementationOnce(async (params) => {
+        await params.onBeforeSubmit({
+          executionContextId: 'prepared-smart-context',
+        });
+        throw Object.assign(new Error('Follow-up after submission failed'), {
+          transactionHash: HASH_A,
+        });
+      });
+    await approve();
+    expect(screen.getAllByText('✓ send.sent')).toHaveLength(2);
+    expect(mockAlert.success.mock.calls).toEqual([['Calls submitted']]);
+    expect(await status(false)).toBe(100);
+  }
+);
+
 it('returns the durable ID on explicit Close after one acknowledged call and one definite rejection', async () => {
   await prepare(false, (index) => {
     if (index === 1) throw safeFailure();
     return { hash: HASH_A };
   });
   await approve();
+  expect(screen.getByText('✓ send.sent')).toBeTruthy();
+  expect(screen.getByText('⚠ send.failed')).toBeTruthy();
+  expect(mockAlert.success.mock.calls).toEqual([
+    ['1 of 2 transactions submitted'],
+  ]);
+  expect(await status(false)).toBe(100);
   expect(await status()).toBe(600);
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: 'buttons.close' })).toBeTruthy();
@@ -402,7 +448,17 @@ it('retains known hashes when a later retry has no new hash and closes with the 
   await approve();
   await approve();
   expect(sends()).toHaveLength(3);
+  expect(mockAlert.success.mock.calls).toEqual([
+    ['1 of 2 transactions submitted'],
+    ['1 of 2 transactions submitted'],
+  ]);
+  expect(mockAlert.error).not.toHaveBeenCalledWith(
+    'send.allTransactionsFailed'
+  );
   expect(await status()).toBe(600);
+  expect(mockStored[mockQuery.host][mockQuery.bundleId].txHashes).toEqual([
+    HASH_A,
+  ]);
   await close();
   expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
     'sendCalls.' + mockQuery.host,

@@ -1,5 +1,8 @@
 import type { TFunction } from 'i18next';
 
+export const TRANSACTION_APPROVAL_EXPIRED = 'TRANSACTION_APPROVAL_EXPIRED';
+export const TRANSACTION_APPROVAL_LOADING = 'TRANSACTION_APPROVAL_LOADING';
+
 export const APPROVAL_REGISTER = 'PALI_APPROVAL_REGISTER';
 export const APPROVAL_CLIENT_READY = 'pali-approval-client-ready';
 export const APPROVAL_HANDSHAKE_TIMEOUT_MS = 1800;

@@ -3,9 +3,6 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 // Replay has separate actual consent tests; isolate unrelated detail decoding here.
-jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
-  RetainedTransactionReplay: () => null,
-}));
 
 import { Interface } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
@@ -344,3 +341,7 @@ it('allows a changed payload to decode after the prior payload failed in the sam
     log.mockRestore();
   }
 });
+
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: jest.fn().mockResolvedValue(null),
+}));

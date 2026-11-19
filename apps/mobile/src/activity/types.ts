@@ -1,5 +1,7 @@
+import type { PrivacyPoolActivity } from '../../../../source/shared/privacyPoolActivity.ts';
 import type { EvmDisplayTransaction } from '../../../../source/shared/evmTransactionDisplay.ts';
 import type { SmartAccountActivityGroupIdentity } from '../../../../source/wallet/smartAccountActivity.ts';
+import type { SmartAccountCancellationRequest } from '../../../../source/wallet/smartAccountCancellation.ts';
 import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
@@ -58,9 +60,13 @@ export type LocalActivityRecord = Omit<
 > &
   Readonly<{
     recipient: string | null;
+    privacyActivity?: PrivacyPoolActivity;
     inspectionOnly?: true;
     cancellationUnavailable?: true;
+    cancellationRetry?: Required<SmartAccountCancellationRequest>;
     speedUpEligible?: true;
+    unsignedSpeedUp?: true;
+    retainedSmartSpeedUp?: true;
     /** Public navigation hint only; the selected-network host rebuilds every review. */
     reviewNavigation?: Readonly<{ speedUp: boolean }>;
     operation?: import('../../../../source/wallet/evmSignedRecords.ts').EvmSignedRecordSummary['operation'];
@@ -87,6 +93,7 @@ export type IndexedActivityTransaction = EvmDisplayTransaction &
     from: string;
     to: string | null;
     tokenRecipient?: string;
+    privacyActivity?: PrivacyPoolActivity;
     timestamp: number;
     confirmations: number;
     blockNumber?: number;

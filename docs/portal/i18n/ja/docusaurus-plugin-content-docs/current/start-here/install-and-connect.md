@@ -77,7 +77,7 @@ try {
 
 <figure>
   <a className="pali-media-link" href="/img/screens/install-unlocked-wallet.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/install-unlocked-wallet.png" alt="Pali Wallet installed and unlocked in a clean browser profile" />
+  <img src="/img/screens/install-unlocked-wallet.png" alt="Pali installed and unlocked in a clean browser profile" />
 </a>
   <figcaption>インストールとロック解除のフローを記録するときは、クリーンなテストプロファイルを使用してください。</figcaption>
 </figure>

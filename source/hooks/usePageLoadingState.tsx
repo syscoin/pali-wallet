@@ -71,7 +71,12 @@ export const usePageLoadingState = (
   );
   const isNetworkChanging = networkStatus === 'switching';
   const isConnecting = networkStatus === 'connecting';
-  const isNonPollingBalanceLoad = isLoadingBalances && !isPollingUpdate;
+  // A balance-only refresh on reopen must not interrupt a Send draft.
+  const isSendRoute = /^(?:\/external)?\/send(?:\/|$)/.test(
+    normalizeWalletPathname(pathname)
+  );
+  const isNonPollingBalanceLoad =
+    isLoadingBalances && !isPollingUpdate && !isSendRoute;
   const isContextChanging =
     isNetworkChanging || isConnecting || isSwitchingAccount;
   const isLoading =

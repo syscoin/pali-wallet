@@ -8,6 +8,7 @@ import {
   buildSmartAccountUserOperation,
   encodeSmartAccountGasLimits,
   getSmartAccountUserOpGasFees,
+  getSmartAccountUserOpRequiredPrefund,
 } from './account.ts';
 import { toPaliSmartAccount } from './adapter.ts';
 import { requireSmartAccountAddressIdentity } from './addressIdentity.ts';
@@ -28,6 +29,7 @@ import {
   getSmartAccountValidatorProfile,
   type SmartAccountUserOpGasEstimate,
 } from './gas.ts';
+import { prepareSmartAccountNativeMaximum } from './nativeMaximum.ts';
 import type { SmartAccountPendingState } from './pendingState.ts';
 import { getSmartAccountUserOpHash } from './userOperationHash.ts';
 import type {
@@ -100,6 +102,7 @@ export async function prepareSmartAccountOperation({
   expectedErc20Transfers,
   feeOverrides = {},
   knownDeployed,
+  nativeMaximum,
   pending,
   selectGasPayer,
   assertCurrent,
@@ -113,6 +116,7 @@ export async function prepareSmartAccountOperation({
   expectedErc20Transfers?: readonly SmartAccountExpectedErc20Transfer[];
   feeOverrides?: SmartAccountFeeOverrides;
   knownDeployed: boolean;
+  nativeMaximum?: true;
   pending: SmartAccountPendingState;
   provider: any;
   selectGasPayer(
@@ -123,20 +127,49 @@ export async function prepareSmartAccountOperation({
   expectedErc20Transfers = snapshotSmartAccountExpectedErc20Transfers(
     expectedErc20Transfers
   );
-  return pending.withReadPhase((phase) =>
-    prepareOperation({
-      account,
-      chainId,
-      executions,
-      expectedErc20Transfers,
-      feeOverrides,
-      knownDeployed,
-      pending: phase,
-      provider: phase.provider,
-      selectGasPayer,
+  const maxTransfer = nativeMaximum === true ? executions[0] : undefined;
+  if (
+    nativeMaximum &&
+    (!maxTransfer ||
+      executions.length !== 1 ||
+      (maxTransfer.data && maxTransfer.data !== '0x') ||
+      maxTransfer.value !== '0x0' ||
+      expectedErc20Transfers?.length)
+  )
+    throw new Error('Invalid smart account maximum transfer');
+  return pending.withReadPhase(async (phase) => {
+    const quote = (candidate: typeof executions) =>
+      prepareOperation({
+        account,
+        chainId,
+        executions: candidate,
+        expectedErc20Transfers,
+        feeOverrides,
+        knownDeployed,
+        pending: phase,
+        provider: phase.provider,
+        selectGasPayer,
+        assertCurrent,
+      });
+    if (!maxTransfer) return quote(executions);
+    const maximum = await prepareSmartAccountNativeMaximum({
       assertCurrent,
-    })
-  );
+      target: maxTransfer.target,
+      async readBalance() {
+        return (await phase.provider.getBalance(account.address)).toString();
+      },
+      async quote(execution) {
+        const prepared = await quote([{ ...execution }]);
+        return {
+          quote: prepared,
+          maximumFeeUnits: getSmartAccountUserOpRequiredPrefund(
+            prepared.userOperation
+          ).toString(),
+        };
+      },
+    });
+    return maximum.quote;
+  });
 }
 
 async function prepareOperation({

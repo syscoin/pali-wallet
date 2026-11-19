@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { HDNodeWallet, Wallet } from 'ethers/wallet';
+import { HDNodeWallet, Mnemonic, Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import type { EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { openNativeConnectionRepository, NATIVE_CONNECTION_STORAGE_KEY, NATIVE_CONNECTION_ADMISSION_KEY } from '../src/connections/storage.ts';
@@ -41,6 +41,7 @@ import { readPrivateVaultBundle, envelopeHash } from '../../../source/wallet/pri
 import { digest, INSTALLATION, nodeConnection, validPair, type SqlHook } from './storageHelpers.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY, UtxoSignedRecords } from '../../../source/wallet/utxoSignedRecords.ts';
+import { observeRetainedUtxo } from '../../../source/wallet/utxoSubmission.ts';
 import { ROOT_DOMAIN as UTXO_ROOT_DOMAIN } from '../../../source/wallet/utxoSignedBundle.ts';
 import { utxoInputOutpoints } from '../../../source/utils/utxoAcknowledgedInputs.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
@@ -87,7 +88,8 @@ async function fixture(
   clocks?: { wall: () => number; monotonic: () => number },
   readUtxoAccount?: Parameters<typeof createKeyringRuntimeFactory>[0]['readUtxoAccount'],
   utxoFetch?: typeof globalThis.fetch,
-  deriveSentryPublicKey?: DeriveSentryPublicKey
+  deriveSentryPublicKey?: DeriveSentryPublicKey,
+  phrase = PHRASE
 ) {
   let operationRequests = 0;
   const protectedPort: NativeCredentialPort = { ...credentialPort,
@@ -160,7 +162,7 @@ async function fixture(
     return authority;
   };
   let owner = await newOwner();
-  await owner.importPhrase(PHRASE);
+  await owner.importPhrase(phrase);
   if (confirmed) { await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata(); }
   const coordinator = (loadSdk?: () => Promise<typeof sdk>, monotonicMilliseconds?: () => number) => new NativeRecoveryCoordinator({ isAuthenticationActive: () => false, credentialPort: protectedPort, owner,
     async retireControllers() { retires++; }, ensureCryptoReady: async () => undefined, openStorage: open, loadSdk, monotonicMilliseconds: monotonicMilliseconds ?? clocks?.monotonic });
@@ -290,7 +292,35 @@ function retained(
   };
 }
 
-test('real SDK recovery preserves imported ciphertext, account IDs and three-chain signed bytes through repeated protected credential replacement', async () => {
+for (const bytes of [16, 20, 24, 28, 32]) {
+  test(`protected phrase backup preserves a ${bytes * 3 / 4}-word wallet after import, reopen and recovery`, async () => {
+    const phrase = Mnemonic.fromEntropy(new Uint8Array(bytes)).phrase;
+    const f = await fixture(undefined, false, undefined, undefined, undefined, undefined, phrase);
+    let recovery: NativeRecoveryCoordinator | undefined;
+    const verifyBackup = async () => {
+      const words = await f.runtime.backup.readPhrase({ method: 'device' });
+      assert.equal(words.join(' '), phrase);
+    };
+    try {
+      await verifyBackup();
+      await f.reopen();
+      await f.owner.unlock();
+      await verifyBackup();
+      f.owner.lock();
+      recovery = f.coordinator();
+      const proof = await prepareRecoveryCredential(recovery, phrase, () => undefined);
+      assert.equal(await recovery.commit(proof), 'committed-locked');
+      await f.reopen();
+      await f.owner.unlock();
+      await verifyBackup();
+    } finally {
+      await recovery?.dispose();
+      await f.close();
+    }
+  });
+}
+
+test('real SDK recovery preserves imported ciphertext, account IDs and three-chain transactions through repeated protected credential replacement', async () => {
   const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
   const collection = { contractAddress: `0x${'33'.repeat(20)}`, tokenStandard: 'ERC-721' as const };
   const item = { contractAddress: `0x${'44'.repeat(20)}`, tokenStandard: 'ERC-1155' as const, tokenId: ((1n << 256n) - 1n).toString() };
@@ -318,10 +348,12 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     f.write(ACTIVITY_STORAGE_KEY, { version: 1, revision: 0, walletFingerprint: fingerprint, truncated: false, archived: [],
       cached: [{ sourceId: activityScope.sourceId, scopeKey: activityScope.key, candidates: [{ hash: `0x${'a'.repeat(64)}`, blockNumber: '1', timestamp: 1, tokenHint: false }] }],
       views: [{ sourceId: activityScope.sourceId, view: { filter: 'sent', showZero: false, anchor: null, offset: 7 } }] });
+    const signedTransactions: Transaction[] = [];
     for (const id of ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet']) {
       const network = getNativeNetwork(id);
       const raw = await sourceWallet.signTransaction({ type: 2, chainId: Number(network.chainId), nonce: 0, to: importedWallet.address, value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
       const transaction = Transaction.from(raw);
+      signedTransactions.push(transaction);
       await new EvmSignedRecords(f.store.signedRecords, () => 1000).append({ keyring: f.keyring, assertCurrent() {} }, {
         rawTransaction: raw, hash: transaction.hash!, from: sourceWallet.address, chainId: network.chainId, nonce: 0, type: 2,
         context: { account: { id: 0, type: 'HDAccount', address: sourceWallet.address }, operation: 'send',
@@ -355,9 +387,16 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     assert.equal(await f.runtime.keyExport!.readSelected({ authorityRevision: f.owner.getSnapshot().revision, catalogueRevision: f.owner.getCatalogue()!.revision,
       accountId: 'imported:60:1', index: 1, address: importedWallet2.address, networkId: 'ethereum', registrationHash: ethereum.registrationHash }, new AbortController().signal, () => undefined, createTestPrivateAuthentication(() => undefined)), KEY2);
     const rootBinding = await f.store.recovery.readIdentity(); assert.equal(rootBinding?.root?.address, sourceWallet.address);
+    const records = new EvmSignedRecords(f.store.signedRecords);
+    for (const tx of signedTransactions) {
+      const restored = await records.readExact({ keyring: f.keyring, assertCurrent() {} }, tx.chainId.toString(), sourceWallet.address, tx.hash!);
+      assert.equal(restored?.payloadKind, 'unsigned-eoa');
+      assert.equal(restored?.unsignedTransaction, tx.unsignedSerialized);
+    }
+    const afterMigration = retained(f.read());
     f.owner.lock(); await recovery.dispose(); recovery = f.coordinator();
     const again = await prepareRecoveryCredential(recovery, PHRASE, () => undefined); await recovery.commit(again);
-    assert.deepEqual(retained(f.read()), retained(before));
+    assert.deepEqual(retained(f.read()), afterMigration);
     await f.reopen(); await f.owner.unlock();
     assert.equal((await f.store.recovery.readIdentity())?.walletBindingId, fingerprint);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
@@ -640,7 +679,7 @@ test('unknown saved data refuses preserving recovery without overwriting records
   } finally { await recovery.dispose(); await f.close(); }
 });
 
-test('mobile dispatch rejects missing or changed approval before retaining or broadcasting signed bytes', async () => {
+test('mobile dispatch rejects missing or changed approval before retaining or broadcasting a transaction', async () => {
   const f = await fixture();
   try {
     const approval = {
@@ -664,7 +703,9 @@ test('mobile dispatch rejects missing or changed approval before retaining or br
       const record = await new EvmSignedRecords(f.store.signedRecords).readExact(
         { keyring: f.keyring, assertCurrent: guard }, approval.chainId, approval.from, hash
       );
-      assert.equal(record?.rawTransaction, raw);
+      assert.equal(record?.payloadKind, 'unsigned-eoa');
+      assert.equal(record?.unsignedTransaction, Transaction.from(raw).unsignedSerialized);
+      assert.equal(record?.rawTransaction, undefined);
       return hash;
     });
     const guard = () => undefined;
@@ -688,7 +729,7 @@ test('mobile dispatch rejects missing or changed approval before retaining or br
   }
 });
 
-test('retired imported signed bytes survive recovery without resurrecting an account or granting replay', async () => {
+test('retired imported transaction survives recovery without resurrecting an account or granting replay', async () => {
   const f = await fixture();
   let recovery: NativeRecoveryCoordinator | undefined;
   try {
@@ -713,7 +754,9 @@ test('retired imported signed bytes survive recovery without resurrecting an acc
     await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.accounts.some((account) => account.type === 'Imported'), false);
     const restored = await new EvmSignedRecords(f.store.signedRecords).readExact({ keyring: f.keyring, assertCurrent() {} }, '1', importedWallet.address, transaction.hash!);
-    assert.equal(restored?.rawTransaction, raw);
+    assert.equal(restored?.payloadKind, 'unsigned-eoa');
+    assert.equal(restored?.unsignedTransaction, transaction.unsignedSerialized);
+    assert.equal(restored?.rawTransaction, undefined);
     let broadcasts = 0;
     await assert.rejects(f.runtime.transfers!.submit(raw, transaction.hash!, () => undefined,
       { broadcast: ({ admit }) => admit(async () => { broadcasts++; return transaction.hash!; }), verifyChain: async () => undefined }, undefined, {
@@ -1894,13 +1937,26 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     account = (await accountRecord(f)).groups.find((group) => group.key === '0')!.accounts.HDAccount[1]!;
     previous.addOutput(bitcoin.address.toOutputScript(account.address, network.addressNetwork), 100000n);
     const recipient = bitcoin.payments.p2wpkh({ hash: Buffer.alloc(20, 9), network: network.addressNetwork }).address!;
-    let send = await f.runtime.openUtxoSend!(current);
+    const send = await f.runtime.openUtxoSend!(current);
     const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }), { method: 'device' });
+    const records = new UtxoSignedRecords(f.store.utxoSignedRecords!, f.store.utxoSignedRecords!);
+    const owner = { chainId: network.chainId, genesisHash: network.genesisHash, slip44: network.slip44,
+      account: { id: 1, type: 'HDAccount', xpub: account.xpub } };
+    const recordSession = () => ({ keyring: f.keyring, assertCurrent: current });
+    const observe = () => observeRetainedUtxo({
+      backendChain: network.backendChain,
+      fetch: fetcher,
+      owner,
+      records,
+      session: recordSession(),
+      signal: new AbortController().signal,
+      txid,
+    });
     assert.equal(txid, posted?.txid);
     const identity = ['/api/v2/', '/api/v2/block-index/0'];
     assert.deepEqual(observationPaths.splice(0), [...identity, ...identity, ...identity]);
     const observation = ['/api/v2/', '/api/v2/block-index/0', `/api/v2/tx/${txid}`];
-    assert.equal(await send.check(txid), 'seen');
+    assert.equal(await observe(), 'seen');
     assert.deepEqual(observationPaths, observation);
 
     await manage({ kind: 'select', id: primary });
@@ -1910,10 +1966,9 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     assert(f.owner.getCatalogue()!.accounts.some(({ id }) => id === sending));
 
     await manage({ kind: 'select', id: sending });
-    send = await f.runtime.openUtxoSend!(current);
-    assert.deepEqual((await send.list()).map((entry) => entry.txid), [txid]);
+    assert.deepEqual((await records.list(recordSession(), owner)).map((entry) => entry.txid), [txid]);
     confirmed = true;
-    assert.equal(await send.check(txid), 'confirmed');
+    assert.equal(await observe(), 'confirmed');
     assert.deepEqual(observationPaths, [...observation, ...observation]);
     await manage({ kind: 'select', id: primary });
     await manage(remove);

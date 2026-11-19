@@ -131,6 +131,7 @@ export interface IPrivateVaultDepositJournal {
   from: string;
   intentId: string;
   nonce: string;
+  nonceResetGeneration?: number;
   phase: 'unknown' | 'submitted';
   transactionHash?: string;
 }
@@ -232,6 +233,7 @@ export function journal(
     'createdAt',
     'from',
     'nonce',
+    'nonceResetGeneration',
     'phase',
     'transactionHash',
   ]);
@@ -248,6 +250,9 @@ export function journal(
     typeof value.nonce !== 'string' ||
     !/^(?:0|[1-9][0-9]{0,19})$/.test(value.nonce) ||
     BigInt(value.nonce) >= BigInt(1) << BigInt(64) ||
+    (value.nonceResetGeneration !== undefined &&
+      (!Number.isSafeInteger(value.nonceResetGeneration) ||
+        value.nonceResetGeneration <= 0)) ||
     !['unknown', 'submitted'].includes(value.phase) ||
     (value.phase === 'submitted'
       ? typeof value.transactionHash !== 'string' ||
@@ -261,6 +266,9 @@ export function journal(
     createdAt: value.createdAt,
     from: value.from.toLowerCase(),
     nonce: value.nonce,
+    ...(value.nonceResetGeneration
+      ? { nonceResetGeneration: value.nonceResetGeneration }
+      : {}),
     phase: value.phase,
     ...(value.transactionHash
       ? { transactionHash: value.transactionHash }
@@ -279,6 +287,7 @@ const WITHDRAWAL_JOURNAL_KEYS = [
   'jobId',
   'mode',
   'nonce',
+  'nonceResetGeneration',
   'phase',
   'proofHash',
   'publicInputs',
@@ -290,7 +299,7 @@ const WITHDRAWAL_JOURNAL_KEYS = [
   'unsigned',
 ];
 const MAX_RETIRED_WITHDRAWALS = NOTE_BACKUP_MAX_HISTORY_HINTS - 1;
-export function recoveryReceipt(value: IPrivacyWithdrawalRecoveryReceipt) {
+function recoveryReceipt(value: IPrivacyWithdrawalRecoveryReceipt) {
   if (
     !value ||
     typeof value !== 'object' ||
@@ -320,7 +329,7 @@ export function recoveryReceipt(value: IPrivacyWithdrawalRecoveryReceipt) {
     blockHash: value.blockHash,
   };
 }
-export function withdrawalRecovery(value: IPrivacyWithdrawalRecovery) {
+function withdrawalRecovery(value: IPrivacyWithdrawalRecovery) {
   if (
     !value ||
     typeof value !== 'object' ||
@@ -448,6 +457,10 @@ export function withdrawalJournal(
     !Number.isSafeInteger(value.createdAt) ||
     value.createdAt < 0 ||
     !['direct', 'relayed'].includes(value.mode) ||
+    (value.nonceResetGeneration !== undefined &&
+      (value.mode !== 'direct' ||
+        !Number.isSafeInteger(value.nonceResetGeneration) ||
+        value.nonceResetGeneration <= 0)) ||
     !['unknown', 'submitted'].includes(value.phase) ||
     (value.mode === 'direct'
       ? typeof value.from !== 'string' ||
@@ -567,6 +580,9 @@ export function withdrawalJournal(
     ...(value.mode === 'direct'
       ? { from: value.from!.toLowerCase(), nonce: value.nonce }
       : { endpoint: value.endpoint, ensHash: value.ensHash }),
+    ...(value.nonceResetGeneration
+      ? { nonceResetGeneration: value.nonceResetGeneration }
+      : {}),
     ...(value.transactionHash
       ? { transactionHash: value.transactionHash }
       : {}),
@@ -604,7 +620,6 @@ const PUBLIC_ERRORS = new Set([
   'privacy_withdrawal_attempt_exists',
   'privacy_withdrawal_nonce_conflict',
   'privacy_withdrawal_attempt_invalid',
-  'privacy_withdrawal_recovery_unavailable',
   'privacy_proof_cancelled',
   'privacy_proof_failed',
   'privacy_proof_busy',

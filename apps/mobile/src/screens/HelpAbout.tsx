@@ -9,7 +9,7 @@ import { Button, Card, colors, Header, Row, Screen, Text } from '../ui';
 import { mobileUpdates } from '../updates/service';
 
 /** Public information only: actions never receive an account, key or wallet authority. */
-export function HelpAbout({ onBack, onUpdates, onResetActivity }: { onBack(): void; onUpdates?(): void; onResetActivity?(): void }) {
+export function HelpAbout({ onBack, onUpdates, onResetActivity, resetUtxoActivity }: { onBack(): void; onUpdates?(): void; onResetActivity?(): void; resetUtxoActivity?: boolean }) {
   const { t } = useNativeTranslation();
   const update = useSyncExternalStore(mobileUpdates.subscribe, mobileUpdates.getSnapshot, mobileUpdates.getSnapshot);
   const life = useRef({ mounted: false, focused: true, epoch: 0, pending: null as object | null });
@@ -47,7 +47,7 @@ export function HelpAbout({ onBack, onUpdates, onResetActivity }: { onBack(): vo
     ? <Text testID={`help-${action}-feedback`} accessibilityLiveRegion="polite">{t(feedback.message)}</Text> : null;
   return <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen footer={<Button title={t('privacy.deposit.done')} variant="secondary" onPress={onBack} />}>
     <Header title={t('mobile.settings.helpTitle')} onBack={onBack} />
-    <Card style={{ padding: 18, gap: 8 }}><Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: '600' }}>Pali Wallet</Text>
+    <Card style={{ padding: 18, gap: 8 }}><Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: '600' }}>Pali</Text>
       <Text>{t('mobile.generalViews.version', { version: app.expo.version })}{typeof __DEV__ !== 'undefined' && __DEV__ ? t('mobile.generalViews.developmentBuild') : ''}</Text>
       <Text style={{ color: colors.muted, lineHeight: 22 }}>{t('mobile.generalViews.qualificationNotice')}</Text></Card>
     {onUpdates && <Card><Row icon="refresh" title={update.release ? t('mobile.generalViews.updateAvailable', { version: update.release.version }) : t('mobile.generalViews.appUpdates')}
@@ -59,7 +59,7 @@ export function HelpAbout({ onBack, onUpdates, onResetActivity }: { onBack(): vo
       <Button icon="external" title={t('mobile.generalViews.documentation')} variant="secondary" disabled={busy} onPress={() => void act('documentation')} />{feedbackFor('documentation')}</View>
     {onResetActivity && <View style={{ gap: 12 }}>
       <Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600' }}>{t('mobile.settings.maintenanceTitle')}</Text>
-      <Card><Row icon="activity" title={t('mobile.settings.activityTitle')} subtitle={t('mobile.settings.activitySubtitle')} onPress={onResetActivity} dense last /></Card>
+      <Card><Row icon="activity" title={t(resetUtxoActivity ? 'settings.clearUtxoActivity' : 'mobile.settings.activityTitle')} subtitle={resetUtxoActivity ? undefined : t('mobile.settings.activitySubtitle')} onPress={onResetActivity} dense last /></Card>
     </View>}
     <View style={{ gap: 12 }}><Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600' }}>{t('mobile.generalViews.dataProvider')}</Text>
       <Button title={PALI_INFORMATION.dataProvider.name} variant="quiet" disabled={busy} onPress={() => void act('provider')} />{feedbackFor('provider')}</View>

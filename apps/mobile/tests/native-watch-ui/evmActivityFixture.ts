@@ -217,7 +217,7 @@ export async function evmActivityFetch(
     owner = requestUrl.searchParams.get('address');
   if (
     requestUrl.searchParams.get('module') !== 'account' ||
-    !['txlist', 'tokentx'].includes(action ?? '') ||
+    !['txlist', 'tokentx', 'pendingtxlist'].includes(action ?? '') ||
     !owner ||
     !/^0x[0-9a-f]{40}$/i.test(owner) ||
     requestUrl.searchParams.get('offset') !== '20' ||
@@ -228,6 +228,10 @@ export async function evmActivityFetch(
   const capturedMode = mode;
   await gate(init?.signal);
   const page = Number(requestUrl.searchParams.get('page'));
+  if (action === 'pendingtxlist') {
+    if (page !== 1) throw Error('Unexpected pending explorer page');
+    return json({ status: '0', message: 'No transactions found', result: [] });
+  }
   if (capturedMode === 'token-placeholder' || capturedMode === 'mixed-case') {
     const mixed = capturedMode === 'mixed-case';
     const raw = (index: number, token: boolean) => ({

@@ -407,11 +407,7 @@ export class EvmTransferReadRpc {
         return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
       return this.operation(signal, guard, read => read('eth_chainId', []), 'endpoint');
     }
-    if (method === 'eth_getTransactionCount' && (!Array.isArray(params) || params.length !== 2 ||
-        typeof params[0] !== 'string' || !/^0x[\da-f]{40}$/i.test(params[0]) ||
-        typeof params[1] !== 'string' || params[1].length > 66 || !/^0x(?:0|[1-9a-f][\da-f]*)$/.test(params[1])))
-      return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
-    if (!['eth_getBlockByNumber', 'eth_getTransactionReceipt', 'eth_getTransactionByHash', 'eth_getTransactionCount', 'eth_call'].includes(method))
+    if (!['eth_getBlockByNumber', 'eth_getTransactionReceipt', 'eth_getTransactionByHash'].includes(method))
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     const normalized = normalizeDappRpcRequest(method, params);
     return this.operation(signal, guard, read => read(normalized.method, normalized.params), 'endpoint');
@@ -623,16 +619,17 @@ export class EvmTransferReadRpc {
   }
 
   prepareCancellation(original: Transaction, rates: EvmReplacementRates, source: 'pending' | 'saved',
-    signal: AbortSignal, guard: () => void, approved?: EvmUnsignedTransfer): Promise<EvmCancellationQuote> {
-    const { from, to, hash, nonce, chainId } = original;
-    if (!from || !hash || rates.type !== original.type || chainId.toString() !== this.network.chainId)
+    signal: AbortSignal, guard: () => void, approved?: EvmUnsignedTransfer, retainedPayer?: string): Promise<EvmCancellationQuote> {
+    const { to, hash, nonce, chainId } = original;
+    const from = original.from ?? retainedPayer;
+    if (!from || (!hash && (source !== 'pending' || !retainedPayer)) || rates.type !== original.type || chainId.toString() !== this.network.chainId)
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     if (approved) approved = snapshotReplacementTransfer(approved, this.network);
     return this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const verifyPayer = source === 'saved'
-        ? assertRetainedEvmCancellationReady({ from, to, hash, nonce: String(nonce), chainId: this.network.chainId }, read, read.assertCurrent)
+        ? assertRetainedEvmCancellationReady({ from, to, hash: hash!, nonce: String(nonce), chainId: this.network.chainId }, read, read.assertCurrent)
         : assertEvmCancellationPayerReady(from, nonce, (method, address, tag) =>
           read(method, [address, tag]), read.assertCurrent);
       const [rawBalance, fees] = await Promise.all([
@@ -684,8 +681,9 @@ export class EvmTransferReadRpc {
     });
   }
 
-  prepareSpeedUp(original: Transaction, rates: EvmReplacementRates, signal: AbortSignal, guard: () => void, asset?: EvmTransferAsset, expectedDecimals?: number): Promise<EvmPreparedQuote> {
-    const { from, to, nonce, value, data, gasLimit, chainId } = original;
+  prepareSpeedUp(original: Transaction, rates: EvmReplacementRates, signal: AbortSignal, guard: () => void, asset?: EvmTransferAsset, expectedDecimals?: number, retainedPayer?: string, balanceSnapshot?: EvmAutoNonceSnapshot): Promise<EvmPreparedQuote> {
+    const { to, nonce, value, data, gasLimit, chainId } = original;
+    const from = original.from ?? retainedPayer;
     if (!from || rates.type !== original.type || chainId.toString() !== this.network.chainId)
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.readPhaseOperation(signal, guard, async (read) => {
@@ -696,14 +694,18 @@ export class EvmTransferReadRpc {
         if (assetState.balanceUnits < BigInt(assetState.asset.amountUnits)) throw new EvmAssetStateError('INSUFFICIENT_ASSET');
         if (expectedDecimals !== undefined) await this.assertTokenDecimals(read, assetState, expectedDecimals);
       }
-      const [rawBalance, rawNonce] = await Promise.all([
-        read('eth_getBalance', [from, 'latest']),
-        read('eth_getTransactionCount', [from, 'latest']),
+      const tag = balanceSnapshot ? hex(BigInt(sampled.number)) : 'latest';
+      const [rawBalance, rawNonce, pendingBalance, pendingNonce] = await Promise.all([
+        read('eth_getBalance', [from, tag]).then(quantity),
+        read('eth_getTransactionCount', [from, tag]).then(quantity),
+        balanceSnapshot ? read('eth_getBalance', [from, 'pending']).then(quantity) : undefined,
+        balanceSnapshot ? read('eth_getTransactionCount', [from, 'pending']).then(quantity) : undefined,
       ]);
       read.assertCurrent();
-      if (quantity(rawNonce) > BigInt(nonce) || (rates.type === 2 && sampled.baseFee === null))
+      if (rawNonce > BigInt(nonce) || (rates.type === 2 && sampled.baseFee === null))
         return rejectRead('REVIEW_REQUIRED');
-      const bounds = { chainId, gasLimit, sampledBlockGasLimit: sampled.gasLimit, sampledBaseFeePerGas: sampled.baseFee };
+      const bounds = { chainId, gasLimit, sampledBlockGasLimit: sampled.gasLimit, sampledBaseFeePerGas: sampled.baseFee,
+        ...(retainedPayer ? { preserveOriginalGasLimit: true } : {}) };
       const fees = rates.type === 2 && rates.maxFeePerGas === 0n ? await this.feeData(read, sampled, signal) : undefined;
       const gasPrice = rates.type === 0 && rates.gasPrice === 0n ? quantity(await read('eth_gasPrice', [])) : undefined;
       read.assertCurrent();
@@ -714,6 +716,7 @@ export class EvmTransferReadRpc {
           : planEvmSpeedUpFees({ ...bounds, type: 2, maxFeePerGas: fees?.maxFeePerGas ?? rates.maxFeePerGas,
             maxPriorityFeePerGas: fees?.maxPriorityFeePerGas ?? rates.maxPriorityFeePerGas });
       } catch { return rejectRead('REVIEW_REQUIRED'); }
+      if (retainedPayer && plan.gasLimit !== gasLimit) return rejectRead('REVIEW_REQUIRED');
       const rate = plan.type === 0 ? plan.gasPrice : plan.maxFeePerGas;
       if (rate === 0n || (sampled.baseFee !== null && rate < sampled.baseFee)) return rejectRead('REVIEW_REQUIRED');
       const transaction = snapshotReplacementTransfer({
@@ -723,11 +726,18 @@ export class EvmTransferReadRpc {
           type: 2, accessList: original.accessList ?? [], maxFeePerGas: plan.maxFeePerGas.toString(), maxPriorityFeePerGas: plan.maxPriorityFeePerGas.toString(),
         }),
       }, this.network);
-      const balance = quantity(rawBalance);
       const now = this.monotonicMilliseconds();
       const approval = captureEvmFeeApproval(transaction, this.network.registrationHash, now + EVM_FEE_APPROVAL_LIFETIME_MS);
+      const balance = balanceSnapshot
+        ? await availableEvmReplacementBalance(balanceSnapshot, this.network.chainId, from,
+          Number(rawNonce), Number(pendingNonce), nonce, BigInt(approval.maximumTotalUnits),
+          { canonical: rawBalance, pending: pendingBalance! }, read.assertCurrent)
+        : rawBalance;
       try {
-        assertEvmFeeEstimateApproved(approval, { estimatedGas: gasLimit, balance, sampledBlockGasLimit: sampled.gasLimit,
+        const estimatedGas = retainedPayer
+          ? quantity(await read('eth_estimateGas', [evmEstimateRequest(transaction), hex(BigInt(sampled.number))]))
+          : gasLimit;
+        assertEvmFeeEstimateApproved(approval, { estimatedGas, balance, sampledBlockGasLimit: sampled.gasLimit,
           ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, now, captureNativeEvmFeeCoverage(approval));
       } catch (error) {
         return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
@@ -941,7 +951,7 @@ export class EvmTransferReadRpc {
 
   /** Holdings and affordability for an exact retained replacement, without selecting a new nonce. */
   verifyReplacementForDispatch(input: EvmUnsignedTransfer, signal: AbortSignal, guard: () => void,
-    snapshot: EvmAutoNonceSnapshot, asset?: EvmTransferAsset, expectedDecimals?: number, mode: 'speed-up' | 'cancel' = 'speed-up', signedRaw?: string): Promise<void> {
+    snapshot: EvmAutoNonceSnapshot, asset?: EvmTransferAsset, expectedDecimals?: number, mode: 'speed-up' | 'cancel' = 'speed-up', signedRaw?: string, unsignedSpeedUp = false): Promise<void> {
     const envelope = snapshotReplacementTransfer(input, this.network);
     if (mode === 'cancel' && !isEvmProtectedEmptySelfCall({ ...envelope, value: BigInt(envelope.value) }, 'cancel'))
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
@@ -967,7 +977,10 @@ export class EvmTransferReadRpc {
         Number(latest), Number(pending), Number(envelope.nonce), BigInt(approval.maximumTotalUnits),
         { canonical: canonicalBalance, pending: pendingBalance }, read.assertCurrent, mode === 'cancel' ? 'cancellation' : 'replacement');
       try {
-        assertEvmFeeEstimateApproved(approval, { balance, estimatedGas: BigInt(envelope.gasLimit), sampledBlockGasLimit: sampled.gasLimit,
+        const estimatedGas = unsignedSpeedUp
+          ? quantity(await read('eth_estimateGas', [evmEstimateRequest(envelope), tag]))
+          : BigInt(envelope.gasLimit);
+        assertEvmFeeEstimateApproved(approval, { balance, estimatedGas, sampledBlockGasLimit: sampled.gasLimit,
           ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval));
       } catch (error) { return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED'); }
       if (mode === 'speed-up' && signedRaw) {

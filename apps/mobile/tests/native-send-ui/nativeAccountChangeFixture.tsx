@@ -8,7 +8,7 @@ export function NativeAccountChangeFixture() {
   const [result, setResult] = useState('');
   const [review, setReview] = useState<Review>(() => ({ id: 'account-gallery', revision: 1,
     appName: 'Example staking app', origin: 'https://app.example.test', verification: { validation: 'UNKNOWN', isScam: false },
-    networkLabel: 'Ethereum', chainId: 'eip155:1', expiresAt: Date.now() + 300000, busy: false, error: null,
+    networkLabel: 'Ethereum', chainId: 'eip155:1', expiresAt: Date.now() + 300000, busy: false, committing: false, error: null,
     currentAccountId: 'daily', selectedAccountId: 'daily', accounts: [
       { id: 'daily', type: 'HDAccount', label: 'Daily wallet', address: '0x1111111111111111111111111111111111111111' },
       { id: 'ledger', type: 'Ledger', label: 'Ledger savings', address: '0x2222222222222222222222222222222222222222' },

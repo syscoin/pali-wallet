@@ -55,6 +55,18 @@ test('native encryption confirms without preview and treats empty preview as a v
   f.close();
 });
 
+test('uncertain encryption delivery uses Close and describes the result without calling it a signature', async () => {
+  const f = fixture();
+  try {
+    Object.assign(f.review, { dispatched: true, error: 'DELIVERY_UNCERTAIN' });
+    assert(!f.button('buttons.confirm'));
+    assert(!f.button('buttons.cancel'));
+    assert(f.render().some(node => node.type === 'Notice' && node.props.body === 'mobile.connections.psbt.deliveryBody'));
+    f.button('buttons.close').props.onPress(); await f.tick();
+    assert.deepEqual(f.rejected, ['encryption-1']);
+  } finally { f.close(); }
+});
+
 for (const event of ['background', 'blur', 'back', 'unmount', 'source']) test(`late native plaintext is suppressed after ${event}`, async () => {
   const f = fixture(); let release!: (text: string) => void;
   f.hold(new Promise(resolve => { release = resolve; }));
