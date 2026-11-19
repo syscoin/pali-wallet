@@ -139,3 +139,31 @@ export function hasSubmittedWithdrawalHash(
     /^0x[0-9a-fA-F]{64}$/.test(withdrawal.transactionHash)
   );
 }
+
+/** A hash covered by the newest submitted attempt belongs to its check only. */
+export function submittedWithdrawalAttempts(
+  journal: IPrivacyWithdrawalJournal
+) {
+  const [newest, ...older] = [
+    journal,
+    ...(journal.retired ?? []).slice().reverse(),
+  ]
+    .filter(hasSubmittedWithdrawalHash)
+    .map((entry) => ({
+      entry,
+      hashes: (entry.mode === 'relayed' && entry.transactionHashes) || [
+        entry.transactionHash,
+      ],
+    }));
+  if (!newest) return [];
+  const newestHashes = new Set(newest.hashes.map((hash) => hash.toLowerCase()));
+  return [
+    newest,
+    ...older
+      .map(({ entry, hashes }) => ({
+        entry,
+        hashes: hashes.filter((hash) => !newestHashes.has(hash.toLowerCase())),
+      }))
+      .filter(({ hashes }) => hashes.length),
+  ];
+}

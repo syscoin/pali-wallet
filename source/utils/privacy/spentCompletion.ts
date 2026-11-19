@@ -1,7 +1,8 @@
 import { Interface } from 'ethers';
 
+import type { PrivateVaultArchiveSelection } from './privateVaultTypes.ts';
 import {
-  hasSubmittedWithdrawalHash,
+  submittedWithdrawalAttempts,
   MAX_PRIVACY_RELAY_TRANSACTIONS,
   MAX_PRIVACY_WITHDRAWAL_ATTEMPTS,
   type IPrivacyWithdrawalJournal,
@@ -63,35 +64,38 @@ const validAccount = (from: unknown, nonce: unknown): boolean =>
 
 /** Project only submitted transaction evidence from the selected encrypted note. */
 export function spentCompletionWithdrawals(
-  journal: IPrivacyWithdrawalJournal
+  journal: IPrivacyWithdrawalJournal,
+  selection?: PrivateVaultArchiveSelection
 ): Pick<SpentCompletionRequest, 'withdrawal' | 'retainedWithdrawals'> {
-  const attempts = [journal, ...(journal.retired ?? []).slice().reverse()]
-    .filter(hasSubmittedWithdrawalHash)
-    .map((entry): SubmittedWithdrawal => {
-      const { mode, phase, transactionHash } = entry;
-      if (mode === 'direct' && validAccount(entry.from, entry.nonce))
-        return {
-          mode,
-          phase,
-          transactionHash,
-          from: entry.from!,
-          nonce: entry.nonce!,
-        };
-      if (
-        mode === 'relayed' &&
-        entry.from === undefined &&
-        entry.nonce === undefined
-      )
-        return {
-          mode,
-          phase,
-          transactionHash,
-          ...(entry.transactionHashes
-            ? { transactionHashes: entry.transactionHashes }
-            : {}),
-        };
-      throw new Error('privacy_spent_proof_unavailable');
-    });
+  if (selection !== undefined && selection !== 'earlier')
+    throw new Error('privacy_spent_proof_unavailable');
+  const candidates = submittedWithdrawalAttempts(journal);
+  const scoped =
+    selection === 'earlier' ? candidates.slice(1) : candidates.slice(0, 1);
+  const attempts = scoped.map(({ entry, hashes }): SubmittedWithdrawal => {
+    const { mode, phase } = entry;
+    const transactionHash = hashes[0]!;
+    if (mode === 'direct' && validAccount(entry.from, entry.nonce))
+      return {
+        mode,
+        phase,
+        transactionHash,
+        from: entry.from!,
+        nonce: entry.nonce!,
+      };
+    if (
+      mode === 'relayed' &&
+      entry.from === undefined &&
+      entry.nonce === undefined
+    )
+      return {
+        mode,
+        phase,
+        transactionHash,
+        ...(entry.transactionHashes ? { transactionHashes: hashes } : {}),
+      };
+    throw new Error('privacy_spent_proof_unavailable');
+  });
   const [withdrawal, ...retainedWithdrawals] = attempts;
   if (!withdrawal) throw new Error('privacy_spent_proof_unavailable');
   return {

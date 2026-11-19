@@ -5,10 +5,13 @@ import { InlineFeedback } from 'components/InlineFeedback';
 import { useUtils } from 'hooks/useUtils';
 
 const isVisible = () => document.visibilityState !== 'hidden';
+const actionClass =
+  'rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50';
 
 export default function PrivateVaultClearCompleted({
   confirming,
   controllerEmitter,
+  earlierAttempts,
   noteId,
   onCancel,
   onComplete,
@@ -17,6 +20,7 @@ export default function PrivateVaultClearCompleted({
 }: {
   confirming: boolean;
   controllerEmitter: (...args: any[]) => Promise<unknown>;
+  earlierAttempts?: number;
   noteId: string;
   onCancel: () => void;
   onComplete: () => void;
@@ -25,7 +29,7 @@ export default function PrivateVaultClearCompleted({
 }) {
   const { t } = useTranslation();
   const { alert } = useUtils();
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<'latest' | 'earlier' | null>(null);
   const [unresolved, setUnresolved] = useState(false);
   const owner = useRef({ active: true, busy: false });
   useEffect(() => {
@@ -34,15 +38,14 @@ export default function PrivateVaultClearCompleted({
       owner.current.active = false;
     };
   }, []);
-  const clear = async () => {
+  const clear = async (selection?: 'earlier') => {
     if (owner.current.busy || !confirming || !isVisible()) return;
     owner.current.busy = true;
-    setPending(true);
-    setUnresolved(false);
+    setPending(selection ?? 'latest');
     try {
       const value = (await controllerEmitter(
         ['privateVault', 'clearCompletedNotes'],
-        [[noteId]],
+        selection ? [[noteId], selection] : [[noteId]],
         120000,
         false
       )) as { removed?: unknown; unresolved?: unknown } | null;
@@ -68,17 +71,17 @@ export default function PrivateVaultClearCompleted({
         );
     } finally {
       owner.current.busy = false;
-      if (owner.current.active) setPending(false);
+      if (owner.current.active) setPending(null);
       onComplete();
     }
   };
   return (
-    <div className="space-y-2 text-xs" aria-busy={pending}>
+    <div className="space-y-2 text-xs" aria-busy={!!pending}>
       {!confirming ? (
         <button
           type="button"
-          className="rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
-          disabled={pending}
+          className={actionClass}
+          disabled={!!pending}
           onClick={() => {
             setUnresolved(false);
             onSelect();
@@ -95,23 +98,53 @@ export default function PrivateVaultClearCompleted({
           <InlineFeedback>{t('privacy.capacity.clearHelp')}</InlineFeedback>
           <button
             type="button"
-            className="rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
-            disabled={pending}
+            className={actionClass}
+            disabled={!!pending}
             onClick={() => void clear()}
           >
-            {t(pending ? 'privacy.checking' : 'privacy.capacity.confirmClear')}
+            {t(
+              pending === 'latest'
+                ? 'privacy.checking'
+                : 'privacy.capacity.confirmClear'
+            )}
           </button>{' '}
           <button
             type="button"
-            className="rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
-            disabled={pending}
+            className={actionClass}
+            disabled={!!pending}
             onClick={onCancel}
           >
             {t('buttons.cancel')}
           </button>
+          {!!earlierAttempts && (
+            <div className="space-y-1">
+              <p>
+                {t('privacy.capacity.earlierAttempts', {
+                  count: earlierAttempts,
+                })}
+              </p>
+              {unresolved && (
+                <>
+                  <p>{t('privacy.capacity.checkEarlierHelp')}</p>
+                  <button
+                    type="button"
+                    className={actionClass}
+                    disabled={!!pending}
+                    onClick={() => void clear('earlier')}
+                  >
+                    {t(
+                      pending === 'earlier'
+                        ? 'privacy.checking'
+                        : 'privacy.capacity.checkEarlier'
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
-      {confirming && unresolved && (
+      {confirming && unresolved && !pending && (
         <p role="status">
           {t('privacy.capacity.clearResult', { removed: 0, unresolved: 1 })}
         </p>

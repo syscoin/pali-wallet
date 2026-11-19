@@ -15,6 +15,7 @@ export type IPrivacyNoteReader = (
 
 export interface IPrivateNoteView extends Omit<IPrivateNoteStatus, 'phase'> {
   amount: string;
+  archiveEarlierAttempts?: number;
   archiveEligible?: true;
   createdAt: number;
   id: string;
@@ -58,12 +59,15 @@ export interface IPrivateVaultView {
   notes: IPrivateNoteView[];
 }
 
+export type PrivateVaultArchiveSelection = 'earlier';
+
 export interface IPrivateVaultController {
   clearArchive: (
     password: WalletAuthentication
   ) => Promise<{ removed: number }>;
   clearCompletedNotes: (
-    ids: string[]
+    ids: string[],
+    selection?: PrivateVaultArchiveSelection
   ) => Promise<{ removed: string[]; unresolved: string[] }>;
   createDepositNote: (poolId: PrivacyPoolId) => Promise<IPrivateNoteView>;
   getArchivedNotes: () => Promise<IPrivateVaultArchiveView>;

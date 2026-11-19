@@ -34,7 +34,8 @@ export type NativeNoteMaintenanceRuntime = Readonly<{
   getNotes(assertCurrent: () => void): ReturnType<IPrivateVaultController['getNotes']>;
   clearCompletedNotes(ids: readonly string[], assertCurrent: () => void,
     onProgress: (progress: Readonly<{ checked: number; total: number }>) => void,
-    onReload: (inventory: Awaited<ReturnType<IPrivateVaultController['getNotes']>>) => void): ReturnType<IPrivateVaultController['clearCompletedNotes']>;
+    onReload: (inventory: Awaited<ReturnType<IPrivateVaultController['getNotes']>>) => void,
+    selection?: Parameters<IPrivateVaultController['clearCompletedNotes']>[1]): ReturnType<IPrivateVaultController['clearCompletedNotes']>;
 }>;
 export type NativeNoteCapacityRuntime = Readonly<Pick<IPrivateVaultController, 'getCapacity' | 'setCapacity'>>;
 export type NativeSavedNote = Readonly<{
@@ -388,15 +389,16 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       return Object.freeze({
         dispose: () => drain.close(() => { closed = true; }, []),
         getNotes: (guard) => run(guard, owner => withSession(owner, operational.getNotes)),
-        clearCompletedNotes: (ids, guard, onProgress, onReload) => {
-          if (!Array.isArray(ids) || ids.length !== 1 ||
+        clearCompletedNotes: (ids, guard, onProgress, onReload, selection) => {
+          if ((selection !== undefined && selection !== 'earlier') ||
+              !Array.isArray(ids) || ids.length !== 1 ||
               typeof ids[0] !== 'string' || !UUID.test(ids[0]) ||
               typeof onProgress !== 'function' || typeof onReload !== 'function') throw Error('privacy_vault_unavailable');
           const id = ids[0];
           return runWithReload(guard, onReload, async owner => {
             owner.assertCurrent();
             // One explicitly selected note cannot be starved by earlier unresolved proofs.
-            const value = await withSession(owner, () => operational.clearCompletedNotes([id]));
+            const value = await withSession(owner, () => operational.clearCompletedNotes([id], selection));
             owner.assertCurrent();
             const resultIds = [...value.removed, ...value.unresolved];
             if (resultIds.length !== 1 || resultIds[0] !== id) throw Error('privacy_vault_unavailable');

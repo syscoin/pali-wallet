@@ -19,7 +19,7 @@ import {
   createPrivateWithdrawalJournal,
 } from '../utils/privacy/withdrawalMetadata.ts';
 import {
-  hasSubmittedWithdrawalHash,
+  submittedWithdrawalAttempts,
   MAX_PRIVACY_RELAY_TRANSACTIONS,
 } from '../utils/privacy/withdrawalTransactionTypes.ts';
 import {
@@ -91,6 +91,7 @@ import type {
   IPrivateNoteView,
   IPrivateVaultView,
   IPrivateVaultController,
+  PrivateVaultArchiveSelection,
   PrivateVaultCapacity,
 } from '../utils/privacy/privateVaultTypes';
 import type { IPrivacyDepositAttempt } from '../utils/privacy/transactionTypes';
@@ -107,14 +108,14 @@ import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
 const restoreEpochs = new WeakMap<IPrivateVaultMutex, Map<string, object>>();
 
-function archiveEligible(note: IStoredNote): boolean {
-  return (
-    (!note.deposit ||
-      (note.deposit.phase === 'submitted' && !!note.deposit.transactionHash)) &&
-    !!note.withdrawal &&
-    (hasSubmittedWithdrawalHash(note.withdrawal) ||
-      (note.withdrawal.retired ?? []).some(hasSubmittedWithdrawalHash))
-  );
+function archiveAttemptCount(note: IStoredNote): number {
+  if (
+    !note.withdrawal ||
+    (note.deposit &&
+      (note.deposit.phase !== 'submitted' || !note.deposit.transactionHash))
+  )
+    return 0;
+  return submittedWithdrawalAttempts(note.withdrawal).length;
 }
 
 export interface IPrivateVaultDepositController {
@@ -259,11 +260,12 @@ export interface IPrivateVaultHost {
   ) => Promise<string>;
   captureSession: () => IPrivateVaultSession;
   // The host receives the public note identity and withdrawal journal and
-  // must bind its bounded RPC to the active session.
+  // must scope it to the selected attempts and bind its RPC to the active session.
   prepareCompletionProof?: (
     identity: IClassicNoteIdentity,
     withdrawal: IPrivacyWithdrawalJournal,
-    session: IPrivateVaultSession
+    session: IPrivateVaultSession,
+    selection?: PrivateVaultArchiveSelection
   ) => Promise<{ revalidate: () => Promise<void> }>;
   readNote: IPrivacyNoteReader;
 }
@@ -708,40 +710,50 @@ export function createPrivateVaultController(
     note: IStoredNote,
     identity: IClassicNoteIdentity,
     status: IPrivateNoteStatus
-  ): IPrivateNoteView => ({
-    id: note.id,
-    poolId: identity.poolId,
-    amount: getPrivacyPool(identity.poolId).amount,
-    createdAt: note.createdAt,
-    ...status,
-    ...(archiveEligible(note) ? { archiveEligible: true as const } : {}),
-    ...(note.withdrawal && !note.withdrawal.recovery
-      ? {
-          withdrawal: {
-            mode: note.withdrawal.mode,
-            phase: note.withdrawal.phase,
-            ...(note.withdrawal.jobId ? { jobId: note.withdrawal.jobId } : {}),
-            ...(note.withdrawal.transactionHash
-              ? { transactionHash: note.withdrawal.transactionHash }
-              : {}),
-          },
-        }
-      : {}),
-    ...(note.restoreGuard
-      ? {
-          restoration: restoredNoteBlocksWithdrawal(note.restoreGuard)
-            ? hasImportedWithdrawalHistory(note.restoreGuard)
-              ? ('withdrawal-pending' as const)
-              : ('review-required' as const)
-            : ('reviewed' as const),
-        }
-      : {}),
-    ...(note.deposit && status.phase !== 'verified' && status.phase !== 'spent'
-      ? { phase: 'waiting' as const }
-      : note.origin === 'generated' && status.phase === 'not-found'
-      ? { phase: 'prepared' as const }
-      : {}),
-  });
+  ): IPrivateNoteView => {
+    const archiveAttempts = archiveAttemptCount(note);
+    return {
+      id: note.id,
+      poolId: identity.poolId,
+      amount: getPrivacyPool(identity.poolId).amount,
+      createdAt: note.createdAt,
+      ...status,
+      ...(archiveAttempts ? { archiveEligible: true as const } : {}),
+      ...(archiveAttempts > 1
+        ? { archiveEarlierAttempts: archiveAttempts - 1 }
+        : {}),
+      ...(note.withdrawal && !note.withdrawal.recovery
+        ? {
+            withdrawal: {
+              mode: note.withdrawal.mode,
+              phase: note.withdrawal.phase,
+              ...(note.withdrawal.jobId
+                ? { jobId: note.withdrawal.jobId }
+                : {}),
+              ...(note.withdrawal.transactionHash
+                ? { transactionHash: note.withdrawal.transactionHash }
+                : {}),
+            },
+          }
+        : {}),
+      ...(note.restoreGuard
+        ? {
+            restoration: restoredNoteBlocksWithdrawal(note.restoreGuard)
+              ? hasImportedWithdrawalHistory(note.restoreGuard)
+                ? ('withdrawal-pending' as const)
+                : ('review-required' as const)
+              : ('reviewed' as const),
+          }
+        : {}),
+      ...(note.deposit &&
+      status.phase !== 'verified' &&
+      status.phase !== 'spent'
+        ? { phase: 'waiting' as const }
+        : note.origin === 'generated' && status.phase === 'not-found'
+        ? { phase: 'prepared' as const }
+        : {}),
+    };
+  };
 
   const noteViews = async (
     context: IContext,
@@ -1989,9 +2001,10 @@ export function createPrivateVaultController(
       }),
     // One explicitly user-triggered record per call. A storage acknowledgement
     // can be ambiguous; callers must refresh the list after every error.
-    clearCompletedNotes: async (ids) => {
+    clearCompletedNotes: async (ids, selection) => {
       try {
         if (
+          (selection !== undefined && selection !== 'earlier') ||
           !Array.isArray(ids) ||
           ids.length > 1 ||
           ids.some((id) => typeof id !== 'string' || !UUID.test(id)) ||
@@ -2011,7 +2024,7 @@ export function createPrivateVaultController(
               !note ||
               note.archivedAt !== undefined ||
               !note.withdrawal ||
-              !archiveEligible(note)
+              archiveAttemptCount(note) <= (selection === 'earlier' ? 1 : 0)
             )
               return undefined;
             await assertProfile(context);
@@ -2039,7 +2052,8 @@ export function createPrivateVaultController(
             proof = await host.prepareCompletionProof(
               { ...candidate.identity },
               candidate.withdrawal,
-              context.session
+              context.session,
+              selection
             );
             context.session.assertCurrent();
             if (!proof || typeof proof.revalidate !== 'function')

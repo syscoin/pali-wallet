@@ -832,7 +832,7 @@ export function createNativeWalletControllers() {
     return Object.freeze({
       dispose: value.dispose,
       getNotes: guard => observeFailure(() => value.getNotes(guard)),
-      clearCompletedNotes: (ids, guard, progress, reload) => observeFailure(() => value.clearCompletedNotes(ids, guard, progress, reload)),
+      clearCompletedNotes: (ids, guard, progress, reload, selection) => observeFailure(() => value.clearCompletedNotes(ids, guard, progress, reload, selection)),
     });
   };
   const openPrivacyControls = async (signal: AbortSignal, assertOwner: () => void): Promise<NativePrivacyControls> => {

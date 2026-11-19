@@ -1003,10 +1003,11 @@ it('completion proof wiring binds selected RPC and routes only the explicit clea
   };
   (vault as any).clearCompletedNotes = jest.fn(async () => expectedResult);
   await expect(
-    wallet.clearPrivateVaultCompletedNotes(expectedResult.removed)
+    wallet.clearPrivateVaultCompletedNotes(expectedResult.removed, 'earlier')
   ).resolves.toEqual(expectedResult);
   expect((vault as any).clearCompletedNotes).toHaveBeenCalledWith(
-    expectedResult.removed
+    expectedResult.removed,
+    'earlier'
   );
   const rpc = jest
     .spyOn(privacyClient, 'readCompletionRpc')

@@ -55,6 +55,24 @@ test('native completion uses the shared finalized event/nonce verifier and reche
     call.method === 'eth_getTransactionByHash').map(call => call.params), [[hash], [hash], [hash], [hash]]);
   f.reorg(); await assert.rejects(lease.revalidate(), /privacy_spent_proof_unavailable/);
 });
+test('the newest attempt and its relay replacements are scoped separately from earlier attempts', async () => {
+  const f = fixture();
+  const newest = word(30), replacement = word(31);
+  const relay = { ...withdrawal, mode: 'relayed', from: undefined, nonce: undefined,
+    transactionHash: newest, transactionHashes: [newest, replacement] } as const;
+  const journal = { ...relay, retired: [withdrawal, { ...relay, transactionHash: replacement, transactionHashes: [replacement] }] };
+  const receiptHashes = () => f.calls.filter(call => call.method === 'eth_getTransactionReceipt').map(call => call.params[0]);
+  await assert.rejects(f.ports.prepareCompletionProof(identity, journal, f.session), /privacy_spent_proof_unavailable/);
+  assert.deepEqual(receiptHashes(), [newest, replacement]);
+  f.calls.length = 0;
+  const lease = await f.ports.prepareCompletionProof(identity, journal, f.session, 'earlier');
+  await lease.revalidate();
+  assert.deepEqual(receiptHashes(), [hash, hash]);
+  f.calls.length = 0;
+  await assert.rejects(f.ports.prepareCompletionProof(identity, journal, f.session, 'all' as never), /privacy_spent_proof_unavailable/);
+  assert.deepEqual(f.calls, []);
+});
+
 test('each maintenance run rechecks chain identity before disclosing a transaction', async () => {
   const f = fixture();
   const lease = await f.ports.prepareCompletionProof(identity, withdrawal, f.session);

@@ -24,6 +24,7 @@ const NOTE_ID = '00000000-0000-4000-8000-000000000001';
 
 function ArchiveRow({
   controllerEmitter,
+  earlierAttempts,
   onComplete = jest.fn(),
   onRemoved = jest.fn(),
 }: Pick<
@@ -33,7 +34,7 @@ function ArchiveRow({
   Partial<
     Pick<
       React.ComponentProps<typeof PrivateVaultClearCompleted>,
-      'onComplete' | 'onRemoved'
+      'earlierAttempts' | 'onComplete' | 'onRemoved'
     >
   >) {
   const [confirming, setConfirming] = React.useState(false);
@@ -41,6 +42,7 @@ function ArchiveRow({
     <PrivateVaultClearCompleted
       confirming={confirming}
       controllerEmitter={controllerEmitter}
+      earlierAttempts={earlierAttempts}
       noteId={NOTE_ID}
       onCancel={() => setConfirming(false)}
       onSelect={() => setConfirming(true)}
@@ -74,6 +76,39 @@ it('asks before checking the selected note and reports an unresolved withdrawal'
     false
   );
   expect(done).toHaveBeenCalledTimes(1);
+});
+
+it('checks older attempts only after an explicit action in the same confirmation', async () => {
+  const emit = jest
+    .fn()
+    .mockResolvedValueOnce({ removed: [], unresolved: [NOTE_ID] })
+    .mockResolvedValueOnce({ removed: [NOTE_ID], unresolved: [] });
+  const removed = jest.fn();
+  render(
+    <ArchiveRow
+      controllerEmitter={emit}
+      earlierAttempts={2}
+      onRemoved={removed}
+    />
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.clear })
+  );
+  expect(screen.getByText('Earlier withdrawal attempts (2)')).toBeVisible();
+  expect(
+    screen.queryByRole('button', { name: en.privacy.capacity.checkEarlier })
+  ).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+  );
+  const earlier = await screen.findByRole('button', {
+    name: en.privacy.capacity.checkEarlier,
+  });
+  expect(emit).toHaveBeenCalledTimes(1);
+  expect(emit.mock.calls[0][1]).toEqual([[NOTE_ID]]);
+  fireEvent.click(earlier);
+  await waitFor(() => expect(removed).toHaveBeenCalledWith(NOTE_ID));
+  expect(emit.mock.calls[1][1]).toEqual([[NOTE_ID], 'earlier']);
 });
 
 it('rejects a response for a different note and refreshes after the error', async () => {

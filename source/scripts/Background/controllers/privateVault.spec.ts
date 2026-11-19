@@ -2653,7 +2653,8 @@ it.each(['direct', 'relayed'] as const)(
         phase: 'unknown',
         retired: [expect.objectContaining({ mode, transactionHash: TX_HASH })],
       }),
-      expect.any(Object)
+      expect.any(Object),
+      undefined
     );
     expect(f.revalidateCompletion).toHaveBeenCalledTimes(1);
     const archived = (await f.controller.getArchivedNotes()).notes;
@@ -2745,6 +2746,68 @@ it('clear completed refuses a journal changed while proof is pending', async () 
   ).toBe(true);
 });
 
+it('reports only the count of earlier submitted attempts and passes explicit archive selection to the proof adapter', async () => {
+  const { f, note, session, attempt } = await failedWithdrawalFixture(
+    'relayed'
+  );
+  const { approval } = await competingApproval(f, note.id, session);
+  const successor = competingAttempt(attempt);
+  await f.controller.reserveWithdrawalAttempt(
+    successor,
+    session,
+    competingLifetime,
+    undefined,
+    approval
+  );
+  await f.controller.consumeUnsignedWithdrawal(
+    successor,
+    session,
+    competingLifetime,
+    approval
+  );
+  const newest = '0x' + 'dc'.repeat(32);
+  await f.controller.recordWithdrawalSubmission(
+    successor,
+    { transactionHash: newest },
+    session
+  );
+
+  const view = (await f.controller.getNotes()).notes[0];
+  expect(view).toMatchObject({
+    archiveEligible: true,
+    archiveEarlierAttempts: 1,
+  });
+  expect(JSON.stringify(view)).not.toContain(TX_HASH);
+  expect(JSON.stringify(view)).not.toContain('proofHash');
+  expect(JSON.stringify(view)).not.toContain('retired');
+  expect(f.prepareCompletionProof).not.toHaveBeenCalled();
+
+  f.prepareCompletionProof.mockRejectedValueOnce(new Error('unresolved'));
+  expect(await f.controller.clearCompletedNotes([note.id])).toEqual({
+    removed: [],
+    unresolved: [note.id],
+  });
+  expect(f.prepareCompletionProof).toHaveBeenNthCalledWith(
+    1,
+    expect.any(Object),
+    expect.any(Object),
+    expect.any(Object),
+    undefined
+  );
+  expect(await f.controller.clearCompletedNotes([note.id], 'earlier')).toEqual({
+    removed: [note.id],
+    unresolved: [],
+  });
+  expect(f.prepareCompletionProof).toHaveBeenNthCalledWith(
+    2,
+    expect.any(Object),
+    expect.any(Object),
+    expect.any(Object),
+    'earlier'
+  );
+  expect(f.revalidateCompletion).toHaveBeenCalledTimes(1);
+});
+
 it('clear completed rejects duplicate, malformed and oversized requests', async () => {
   const f = fixture();
   await expect(
@@ -2755,6 +2818,9 @@ it('clear completed rejects duplicate, malformed and oversized requests', async 
   ).rejects.toThrow();
   await expect(
     f.controller.clearCompletedNotes(['not-a-uuid'])
+  ).rejects.toThrow();
+  await expect(
+    f.controller.clearCompletedNotes([UUID], 'all' as never)
   ).rejects.toThrow();
   await expect(
     f.controller.clearCompletedNotes(
@@ -2869,7 +2935,8 @@ it('clear completed keeps the recorded deposit hash out of verification', async 
   expect(f.prepareCompletionProof).toHaveBeenCalledWith(
     expect.objectContaining({ poolId: 'eth-1' }),
     expect.objectContaining({ transactionHash: TX_HASH }),
-    expect.any(Object)
+    expect.any(Object),
+    undefined
   );
 });
 

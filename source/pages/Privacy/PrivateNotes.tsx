@@ -592,6 +592,7 @@ function NotesView() {
                   <PrivateVaultClearCompleted
                     confirming={archiveNote === note.id}
                     controllerEmitter={controllerEmitter}
+                    earlierAttempts={note.archiveEarlierAttempts}
                     noteId={note.id}
                     onCancel={() => setArchiveNote(null)}
                     onSelect={() => setArchiveNote(note.id)}

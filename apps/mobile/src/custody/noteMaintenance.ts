@@ -42,11 +42,11 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
     }
   };
   return Object.freeze<NativeNoteMaintenanceProofs>({
-    async prepareCompletionProof(identity, withdrawal, session) {
+    async prepareCompletionProof(identity, withdrawal, session, selection) {
       const guard = () => { check(); assertSynchronousEvmFeeGuard(session.assertCurrent); };
       guard();
       return prepareSpentCompletion({ poolAddress: getPrivacyPool(identity.poolId).address,
-        nullifierHash: identity.nullifierHash, ...spentCompletionWithdrawals(withdrawal),
+        nullifierHash: identity.nullifierHash, ...spentCompletionWithdrawals(withdrawal, selection),
         assertCurrent: guard, rpc: read(guard) });
     },
   });

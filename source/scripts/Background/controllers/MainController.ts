@@ -380,6 +380,7 @@ import type { INoteBackupController } from 'utils/privacy/noteBackupTypes';
 import type {
   IPrivacyNoteReader,
   IPrivateVaultController,
+  PrivateVaultArchiveSelection,
 } from 'utils/privacy/privateVaultTypes';
 import type { IPrivacyRelayerClient } from 'utils/privacy/relayers';
 import {
@@ -4225,11 +4226,17 @@ class MainController {
           createPrivateVaultController(
             {
               captureSession: () => this.capturePrivateVaultSession(),
-              prepareCompletionProof: (identity, withdrawal, session) =>
+              prepareCompletionProof: (
+                identity,
+                withdrawal,
+                session,
+                selection
+              ) =>
                 this.preparePrivateVaultCompletionProof(
                   identity,
                   withdrawal,
-                  session
+                  session,
+                  selection
                 ),
               readNote: (identity) =>
                 this.privateVaultNoteReader
@@ -4324,7 +4331,8 @@ class MainController {
   private async preparePrivateVaultCompletionProof(
     identity: IClassicNoteIdentity,
     withdrawal: IPrivacyWithdrawalJournal,
-    session: IPrivateVaultSession
+    session: IPrivateVaultSession,
+    selection?: PrivateVaultArchiveSelection
   ): Promise<{ revalidate: () => Promise<void> }> {
     session.assertCurrent();
     const state = store.getState();
@@ -4387,15 +4395,20 @@ class MainController {
     return prepareSpentCompletion({
       poolAddress: getPrivacyPool(identity.poolId).address,
       nullifierHash: identity.nullifierHash,
-      ...spentCompletionWithdrawals(withdrawal),
+      ...spentCompletionWithdrawals(withdrawal, selection),
       assertCurrent,
       rpc: (method, params, signal) =>
         readCompletionRpc(rpcUrl, method, params, signal),
     });
   }
 
-  public clearPrivateVaultCompletedNotes(ids: string[]) {
-    return this.usePrivateVault((vault) => vault.clearCompletedNotes(ids));
+  public clearPrivateVaultCompletedNotes(
+    ids: string[],
+    selection?: PrivateVaultArchiveSelection
+  ) {
+    return this.usePrivateVault((vault) =>
+      vault.clearCompletedNotes(ids, selection)
+    );
   }
 
   public getArchivedPrivateVaultNotes() {

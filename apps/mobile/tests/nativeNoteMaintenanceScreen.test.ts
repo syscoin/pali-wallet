@@ -11,17 +11,18 @@ const notes: IPrivateNoteView[] = Array.from({ length: 41 }, (_, index) => ({ id
 function fixture(fail = false, withHistory = false, count = 7, unresolved = false) {
   let reads = 0, clears = 0, backs = 0;
   const idsChecked: string[][] = [];
+  const selections: ('earlier' | undefined)[] = [];
   let pending: Promise<void> | undefined;
   let runtimeSource = 0;
   const listeners = new Map<string, (next: string) => void>();
   let refusal: Error | undefined;
   const appState = { currentState: 'active', addEventListener: (event: string, listener: (next: string) => void) => { listeners.set(event, listener); return { remove() { listeners.delete(event); } }; } };
-  let shown: IPrivateNoteView[] = withHistory ? [{ ...notes[0]!, withdrawal: { mode: 'direct', phase: 'submitted' } }] : notes.slice(0, count);
+  let shown: IPrivateNoteView[] = withHistory ? [{ ...notes[0]!, archiveEarlierAttempts: 1, withdrawal: { mode: 'direct', phase: 'submitted' } }] : notes.slice(0, count);
   const runtime = {
     async dispose() {},
     async getNotes() { reads++; return { notes: shown }; },
-    async clearCompletedNotes(ids, check, progress, reload) {
-      clears++; idsChecked.push([...ids]); assert.equal(ids.length, 1); check();
+    async clearCompletedNotes(ids, check, progress, reload, selection) {
+      clears++; idsChecked.push([...ids]); selections.push(selection); assert.equal(ids.length, 1); check();
       if (refusal) { const error = refusal; refusal = undefined; throw error; }
       if (pending) await pending; check();
       progress({ checked: 1, total: 1 });
@@ -47,7 +48,7 @@ function fixture(fail = false, withHistory = false, count = 7, unresolved = fals
     const button = render().find(element => element.props.title === title); assert(button); button.props.onPress();
   };
   const select = (number = 7) => { const row = render().find(element => element.props.icon === 'trash' && element.props.subtitle?.startsWith(`Note ${number} ·`)); assert(row); row.props.onPress(); };
-  return { render, press, select, idsChecked, backs: () => backs, pause(value: Promise<void>) { pending = value; }, replaceSource() { runtimeSource++; }, reads: () => reads, clears: () => clears,
+  return { render, press, select, idsChecked, selections, backs: () => backs, pause(value: Promise<void>) { pending = value; }, replaceSource() { runtimeSource++; }, reads: () => reads, clears: () => clears,
     refuse(error: Error) { refusal = error; }, background(notify = false) { appState.currentState = 'background'; if (notify) listeners.get('change')?.('background'); }, close: f.close };
 }
 
@@ -72,6 +73,29 @@ test('maintenance keeps a cleanup choice for notes with prior history', async ()
     f.render(); await settle(); f.select(1);
     assert.equal(f.reads(), 1);
     assert(f.render().some(element => element.props.title === 'privacy.capacity.confirmClear'));
+  } finally { f.close(); }
+});
+
+test('earlier attempts require an unresolved newest check and a separate confirmed press', async () => {
+  const f = fixture(false, true, 1, true);
+  try {
+    f.render(); await settle(); f.select(1);
+    assert(f.render().some(element => element.children.includes('privacy.capacity.earlierAttempts')));
+    assert(!f.render().some(element => element.props.title === 'privacy.capacity.checkEarlier'));
+    f.press('privacy.capacity.confirmClear'); await settle();
+    assert.deepEqual(f.idsChecked, [['1']]);
+    assert.deepEqual(f.selections, [undefined]);
+    assert(f.render().some(element => element.props.title === 'privacy.capacity.checkEarlierHelp'));
+    const earlier = f.render().find(element => element.props.title === 'privacy.capacity.checkEarlier');
+    assert(earlier);
+    f.press('buttons.cancel');
+    earlier.props.onPress(); await settle();
+    assert.deepEqual(f.selections, [undefined], 'A cancelled confirmation cannot be replayed');
+    f.select(1); f.press('privacy.capacity.confirmClear'); await settle();
+    f.press('privacy.capacity.checkEarlier'); await settle();
+    assert.deepEqual(f.idsChecked, [['1'], ['1'], ['1']]);
+    assert.deepEqual(f.selections, [undefined, undefined, 'earlier']);
+    assert(!f.render().some(element => element.props.title === 'privacy.capacity.checkEarlier'));
   } finally { f.close(); }
 });
 

@@ -4,6 +4,7 @@ import { MAX_ARCHIVED_NOTES } from '../../wallet/privateVaultEnvelope';
 import { useController } from 'hooks/useController';
 import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
 import { PRIVACY_POOLS } from 'utils/privacy/registry';
+import { MAX_PRIVACY_WITHDRAWAL_ATTEMPTS } from 'utils/privacy/withdrawalTransactionTypes';
 
 // Keep only the non-secret projection returned by the background vault.
 export function readPrivateNote(value: unknown): IPrivateNoteView {
@@ -23,6 +24,11 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
       note.phase
     ) ||
     (note.archiveEligible !== undefined && note.archiveEligible !== true) ||
+    (note.archiveEarlierAttempts !== undefined &&
+      (!note.archiveEligible ||
+        !Number.isSafeInteger(note.archiveEarlierAttempts) ||
+        note.archiveEarlierAttempts < 1 ||
+        note.archiveEarlierAttempts >= MAX_PRIVACY_WITHDRAWAL_ATTEMPTS)) ||
     (note.withdrawalPending !== undefined && note.withdrawalPending !== true) ||
     (note.restoration !== undefined &&
       !['review-required', 'reviewed', 'withdrawal-pending'].includes(
@@ -51,6 +57,9 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
     createdAt: note.createdAt,
     phase: note.phase,
     ...(note.archiveEligible ? { archiveEligible: true as const } : {}),
+    ...(note.archiveEarlierAttempts
+      ? { archiveEarlierAttempts: note.archiveEarlierAttempts }
+      : {}),
     ...(note.withdrawalPending ? { withdrawalPending: true as const } : {}),
     ...(note.restoration ? { restoration: note.restoration } : {}),
     ...(withdrawal

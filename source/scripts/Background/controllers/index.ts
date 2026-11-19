@@ -381,7 +381,8 @@ const MasterController = (
       getArchivedNotes: () => wallet.getArchivedPrivateVaultNotes(),
       restoreArchivedNote: (id, password) =>
         wallet.restoreArchivedPrivateVaultNote(id, extensionPassword(password)),
-      clearCompletedNotes: (ids) => wallet.clearPrivateVaultCompletedNotes(ids),
+      clearCompletedNotes: (ids, selection) =>
+        wallet.clearPrivateVaultCompletedNotes(ids, selection),
       createDepositNote: (poolId) =>
         wallet.createPrivateVaultDepositNote(poolId),
       getNotes: () => wallet.getPrivateVaultNotes(),

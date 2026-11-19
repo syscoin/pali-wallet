@@ -2,7 +2,7 @@ import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { IPrivateNoteView } from '../../../../source/utils/privacy/privateVaultTypes';
+import type { IPrivateNoteView, PrivateVaultArchiveSelection } from '../../../../source/utils/privacy/privateVaultTypes';
 import type { NativeNoteMaintenanceRuntime } from '../custody/noteBackupRuntime';
 import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
@@ -17,7 +17,8 @@ type Props = {
 const PAGE_SIZE = 20;
 const recordedDate = (createdAt: number) => new Date(createdAt).toLocaleDateString();
 
-type Owner = { live: boolean; abort: AbortController; busy: boolean; request?: object; authentication: NativePrivateAuthenticationScope };
+type Confirmation = { id: string; selection?: PrivateVaultArchiveSelection };
+type Owner = { live: boolean; abort: AbortController; busy: boolean; request?: object; confirmation?: Confirmation; authentication: NativePrivateAuthenticationScope };
 
 /** Only the real bound vault adapter can enter this screen. Opening performs no note-specific RPC. */
 export function NativeNoteMaintenance({ open, onBack }: Props) {
@@ -27,7 +28,7 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
   const [notes, setNotes] = useState<readonly IPrivateNoteView[]>([]);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Confirmation | null>(null);
   const [page, setPage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ removed: number; unresolved: number } | null>(null);
@@ -49,7 +50,7 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
         const value = await open(current.abort.signal, check, current.authentication); check();
         const inventory = await value.getNotes(check); check();
         if (AppState.currentState !== 'active') throw Error('CANCELLED');
-        setNotes(inventory.notes); setSelected(null); setPage(0);
+        setNotes(inventory.notes); setSelected(null); setPage(0); setError(null); setResult(null);
         setRuntime({ source: open, value }); setReady(true);
       } catch { if (current.live && AppState.currentState === 'active') setError('privacy.capacity.loadError'); }
       finally { current.busy = false; }
@@ -60,12 +61,11 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
     return () => { current.live = false; current.authentication.retire(); current.abort.abort(); change.remove(); blur?.remove(); back.remove(); };
   }, [close, open]);
   const activeRuntime = runtime?.source === open ? runtime.value : undefined;
-  const clear = async () => {
+  const clear = async (confirmation: Confirmation) => {
     const current = owner.current;
-    const note = notes.find(value => value.id === selected);
+    const { id, selection } = confirmation;
     if (!activeRuntime || !ready || !current.live || current.busy || AppState.currentState !== 'active' ||
-        !note) return;
-    const selectedId = note.id;
+        current.confirmation !== confirmation || !notes.some(note => note.id === id)) return;
     current.busy = true; setBusy(true); setError(null); setResult(null);
     const request = {}; current.request = request;
     const check = () => {
@@ -73,18 +73,24 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
           (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState))) throw Error('CANCELLED');
     };
     Keyboard.dismiss();
-    let reloaded = false;
+    let reloaded: Awaited<ReturnType<NativeNoteMaintenanceRuntime['getNotes']>> | undefined;
     let cancelledBeforeAccess = false;
     const reload = (inventory: Awaited<ReturnType<NativeNoteMaintenanceRuntime['getNotes']>>) => {
       check(); if (AppState.currentState !== 'active') throw Error('CANCELLED');
-      setNotes(inventory.notes); setSelected(null); setPage(0); reloaded = true;
+      current.confirmation = undefined;
+      setNotes(inventory.notes); setSelected(null); setPage(0); reloaded = inventory;
     };
     try {
       setProgress({ checked: 0, total: 1 });
-      const value = await activeRuntime.clearCompletedNotes([selectedId], check,
-        value => { check(); setProgress(value); }, reload);
+      const value = await activeRuntime.clearCompletedNotes([id], check,
+        value => { check(); setProgress(value); }, reload, selection);
       check(); if (AppState.currentState !== 'active') throw Error('CANCELLED');
       setResult({ removed: value.removed.length, unresolved: value.unresolved.length });
+      if (!selection && value.unresolved.includes(id) &&
+          reloaded?.notes.find(note => note.id === id)?.archiveEarlierAttempts) {
+        current.confirmation = { id, selection: 'earlier' };
+        setSelected(current.confirmation);
+      }
     } catch (error) {
       if (!reloaded && isOperationAuthenticationCancellation(error)) {
         try { check(); cancelledBeforeAccess = AppState.currentState === 'active'; } catch { /* Retired owners stay fail-closed. */ }
@@ -97,20 +103,28 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
         check();
         if (!reloaded && !cancelledBeforeAccess) throw Error('Maintenance inventory unavailable');
       }
-      catch { if (current.live) { setReady(false); setNotes([]); setSelected(null); setError('privacy.capacity.clearError'); } }
+      catch { if (current.live) { current.confirmation = undefined; setReady(false); setNotes([]); setSelected(null); setError('privacy.capacity.clearError'); } }
       current.busy = false;
       if (current.live) { setBusy(false); setProgress(null); }
     }
   };
   const shownReady = ready && !!activeRuntime;
-  const selectedNote = notes.find(note => note.id === selected);
+  const selectedNote = notes.find(note => note.id === selected?.id);
+  const earlier = selected?.selection === 'earlier';
   const start = page * PAGE_SIZE;
   const rows = notes.slice(start, start + PAGE_SIZE);
+  const visibleOwner = owner.current;
   const choose = (note: IPrivateNoteView) => {
-    if (!shownReady || !owner.current.live || owner.current.busy || AppState.currentState !== 'active') return;
-    setSelected(note.id); setError(null); setResult(null);
+    if (!shownReady || owner.current !== visibleOwner || !visibleOwner.live || visibleOwner.busy || AppState.currentState !== 'active') return;
+    const confirmation = { id: note.id };
+    visibleOwner.confirmation = confirmation;
+    setSelected(confirmation); setError(null); setResult(null);
   };
-  const cancel = () => { if (!owner.current.busy) { setSelected(null); setError(null); } };
+  const cancel = () => {
+    if (owner.current !== visibleOwner || visibleOwner.busy) return;
+    visibleOwner.confirmation = undefined;
+    setSelected(null); setError(null);
+  };
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen footer={<Button title={t('buttons.close')} variant="secondary" onPress={close} />}>
@@ -135,11 +149,16 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
             </View>}
           </>}
         </>}
-        {shownReady && selectedNote && <>
+        {shownReady && selected && selectedNote && <>
           <Card><Row title={t('mobile.noteFlows.inventory.poolAmount', { amount: selectedNote.amount })}
             subtitle={t('mobile.noteFlows.inventory.noteDate', { number: notes.indexOf(selectedNote) + 1, date: recordedDate(selectedNote.createdAt) })} last /></Card>
-          <Notice compact tone="amber" title={t('privacy.capacity.clearHelp')} />
-          <Button title={t('privacy.capacity.confirmClear')} icon="trash" disabled={busy} onPress={() => { void clear(); }} />
+          {!!selectedNote.archiveEarlierAttempts && <Text style={styles.muted}>
+            {t('privacy.capacity.earlierAttempts', { count: selectedNote.archiveEarlierAttempts })}
+          </Text>}
+          <Notice compact tone="amber" title={t(earlier ? 'privacy.capacity.checkEarlierHelp' : 'privacy.capacity.clearHelp')} />
+          <Button title={t(earlier ? 'privacy.capacity.checkEarlier' : 'privacy.capacity.confirmClear')}
+            icon={earlier ? undefined : "trash"} variant={earlier ? 'secondary' : undefined}
+            disabled={busy} onPress={() => { void clear(selected); }} />
           <Button title={t('buttons.cancel')} variant="secondary" disabled={busy} onPress={cancel} />
         </>}
         {progress && <Text accessibilityLiveRegion="polite" style={styles.muted}>{t('privacy.capacity.clearProgress', progress)}</Text>}

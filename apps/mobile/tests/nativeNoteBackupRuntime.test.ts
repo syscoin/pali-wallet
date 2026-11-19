@@ -302,11 +302,14 @@ async function maintenanceFixture() {
   } catch (error) { route.abort(); await f.dispose(); throw error; }
 }
 
-test('maintenance refuses implicit multi-note batches before authorizing', async () => {
+test('maintenance refuses implicit multi-note batches and malformed selections before authorizing', async () => {
   const { f, route, maintenance, ids } = await maintenanceFixture();
   try {
     const before = f.unlockCalls;
-    assert.throws(() => maintenance.clearCompletedNotes(ids, current, () => assert.fail('No progress'), () => assert.fail('No reload')));
+    const noProgress = () => assert.fail('No progress');
+    const noReload = () => assert.fail('No reload');
+    assert.throws(() => maintenance.clearCompletedNotes(ids, current, noProgress, noReload));
+    assert.throws(() => maintenance.clearCompletedNotes([ids[0]!], current, noProgress, noReload, 'all' as never));
     assert.equal(f.unlockCalls, before);
   } finally { route.abort(); await maintenance.dispose(); await f.dispose(); }
 });
