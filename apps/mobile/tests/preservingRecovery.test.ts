@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { HDNodeWallet, Wallet } from 'ethers/wallet';
+import { HDNodeWallet, Mnemonic, Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import type { EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { openNativeConnectionRepository, NATIVE_CONNECTION_STORAGE_KEY, NATIVE_CONNECTION_ADMISSION_KEY } from '../src/connections/storage.ts';
@@ -88,7 +88,8 @@ async function fixture(
   clocks?: { wall: () => number; monotonic: () => number },
   readUtxoAccount?: Parameters<typeof createKeyringRuntimeFactory>[0]['readUtxoAccount'],
   utxoFetch?: typeof globalThis.fetch,
-  deriveSentryPublicKey?: DeriveSentryPublicKey
+  deriveSentryPublicKey?: DeriveSentryPublicKey,
+  phrase = PHRASE
 ) {
   let operationRequests = 0;
   const protectedPort: NativeCredentialPort = { ...credentialPort,
@@ -161,7 +162,7 @@ async function fixture(
     return authority;
   };
   let owner = await newOwner();
-  await owner.importPhrase(PHRASE);
+  await owner.importPhrase(phrase);
   if (confirmed) { await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata(); }
   const coordinator = (loadSdk?: () => Promise<typeof sdk>, monotonicMilliseconds?: () => number) => new NativeRecoveryCoordinator({ isAuthenticationActive: () => false, credentialPort: protectedPort, owner,
     async retireControllers() { retires++; }, ensureCryptoReady: async () => undefined, openStorage: open, loadSdk, monotonicMilliseconds: monotonicMilliseconds ?? clocks?.monotonic });
@@ -289,6 +290,34 @@ function retained(
     notes: state.notes,
     signedRecords: state.signedRecords,
   };
+}
+
+for (const bytes of [16, 20, 24, 28, 32]) {
+  test(`protected phrase backup preserves a ${bytes * 3 / 4}-word wallet after import, reopen and recovery`, async () => {
+    const phrase = Mnemonic.fromEntropy(new Uint8Array(bytes)).phrase;
+    const f = await fixture(undefined, false, undefined, undefined, undefined, undefined, phrase);
+    let recovery: NativeRecoveryCoordinator | undefined;
+    const verifyBackup = async () => {
+      const words = await f.runtime.backup.readPhrase({ method: 'device' });
+      assert.equal(words.join(' '), phrase);
+    };
+    try {
+      await verifyBackup();
+      await f.reopen();
+      await f.owner.unlock();
+      await verifyBackup();
+      f.owner.lock();
+      recovery = f.coordinator();
+      const proof = await prepareRecoveryCredential(recovery, phrase, () => undefined);
+      assert.equal(await recovery.commit(proof), 'committed-locked');
+      await f.reopen();
+      await f.owner.unlock();
+      await verifyBackup();
+    } finally {
+      await recovery?.dispose();
+      await f.close();
+    }
+  });
 }
 
 test('real SDK recovery preserves imported ciphertext, account IDs and three-chain transactions through repeated protected credential replacement', async () => {
