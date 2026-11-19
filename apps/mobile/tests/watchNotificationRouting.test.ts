@@ -18,7 +18,9 @@ async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locke
   const accountId = differentOwner ? 'watch-2' : 'watch-1';
   const scope = { id: `watch:${accountId}:base`, accountId, accountType: 'watch', accountAddress: address, network, guardian: true };
   let choices = [{ scope, label: 'Watch account', networkName: 'Base', symbol: 'ETH' }];
-  let tab = 'wallet', resolutions = 0, ownerLookups = 0;
+  let tab = 'wallet', resolutions = 0, ownerLookups = 0, immersive = false;
+  let guard: (() => boolean) | undefined;
+  const guardChanges: boolean[] = [];
   let pending: Promise<void> | undefined;
   let ownerPending: Promise<void> | undefined;
   const selections: string[] = [];
@@ -59,14 +61,25 @@ async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locke
     '../notifications/choices': { watchNotificationChoices: () => choices },
     './useRealShell': { useRealShell: (_identity: unknown, _current: unknown, _exit: unknown, onNavigation: (explicit: boolean) => void) => {
       const select = (next: string) => { onNavigation(true); tab = next; };
-      return { tab, immersive: false, navigation: {}, goBack() { select('wallet'); }, select,
+      return { tab, immersive, navigation: {}, goBack() { select('wallet'); }, select,
         restoreRoot(next: string) { tab = next; } };
     } },
   });
-  const render = () => screenElements(screen.render({ authority, onAccounts() {}, onExit() {} }));
+  const registerNotificationNavigationGuard = (isBlocked: () => boolean, subscribe: (listener: () => void) => () => void) => {
+    guard = isBlocked;
+    let blocked = isBlocked();
+    const unsubscribe = subscribe(() => {
+      const next = isBlocked();
+      if (blocked !== next) { guardChanges.push(next); blocked = next; }
+    });
+    return () => { unsubscribe(); guard = undefined; };
+  };
+  const render = () => screenElements(screen.render({ authority, onAccounts() {}, onExit() {}, registerNotificationNavigationGuard }));
   return { render, close: screen.close, selections, tab: () => tab, resolutions: () => resolutions, ownerLookups: () => ownerLookups,
     pendingEvent: () => notification.pendingEventId,
     selectTab(next: string) { tab = next; },
+    setImmersive(value: boolean) { immersive = value; },
+    blocked: () => guard?.(), guardChanges,
     tap(id = `pali-alert-${'ab'.repeat(16)}`) { notification.pendingEventId = id; notification.tapRevision++; },
     newGeneration() { state = { ...state, generation: state.generation + 1 }; },
     holdOwner(value: Promise<void>) { ownerPending = value; },
@@ -139,6 +152,45 @@ test('watch catalogue changes retire pending tap resolution', async () => {
   try {
     f.render(); await settle(); f.replace(); held.resolve(); await settle();
     assert.deepEqual(f.selections, []); assert.equal(f.tab(), 'wallet');
+  } finally { f.close(); }
+});
+
+test('a watch alert interrupted by an immersive view retries when the view releases navigation', async () => {
+  const f = await fixture('transaction-confirmed'), held = Promise.withResolvers<void>();
+  f.hold(held.promise);
+  try {
+    f.render(); await settle();
+    assert.equal(f.resolutions(), 1);
+    assert.equal(f.blocked(), false);
+
+    f.setImmersive(true); f.render();
+    assert.equal(f.blocked(), true);
+    held.resolve(); await settle();
+    assert.ok(f.pendingEvent());
+    assert.equal(f.tab(), 'wallet');
+
+    f.setImmersive(false); f.render(); await settle();
+    assert.equal(f.blocked(), false);
+    assert.deepEqual(f.guardChanges, [true, false]);
+    assert.equal(f.resolutions(), 2);
+    assert.equal(f.pendingEvent(), null);
+    assert.equal(f.tab(), 'activity');
+  } finally { held.resolve(); f.close(); }
+});
+
+test('explicit watch tab navigation retires a pending alert after its failed lookup has settled', async () => {
+  const f = await fixture('transaction-confirmed', false, true);
+  try {
+    const shell = f.render().find(node => node.type === 'RealAppShell')!;
+    await settle();
+    assert.equal(f.ownerLookups(), 1);
+    assert.ok(f.pendingEvent());
+
+    shell.props.onTab('settings');
+    assert.equal(f.pendingEvent(), null);
+    f.newGeneration(); f.render(); await settle();
+    assert.equal(f.ownerLookups(), 1);
+    assert.equal(f.tab(), 'settings');
   } finally { f.close(); }
 });
 

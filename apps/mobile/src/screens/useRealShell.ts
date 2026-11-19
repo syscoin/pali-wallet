@@ -39,7 +39,8 @@ export function useRealShell(scope: string | null, currentScope: () => string | 
   const setImmersive = useCallback((value: boolean) => { if (value) navigationObserver.current?.(false); setView((previous) => previous.immersive === value ? previous : { ...previous, immersive: value }); }, []);
   const navigation = useMemo<ShellLeafNavigation>(() => ({ registerBack, registerLeave, setImmersive, beginNavigation }), [registerBack, registerLeave, setImmersive, beginNavigation]);
   const goBack = () => {
-    if (back.current?.()) { navigationObserver.current?.(true); return; }
+    // Dismissing a pane releases its navigation hold, including any queued alert.
+    if (back.current?.()) { navigationObserver.current?.(!immersive); return; }
     if (current.current() && tab !== 'wallet') select('wallet');
     else { navigationObserver.current?.(true); onExit.current(); }
   };

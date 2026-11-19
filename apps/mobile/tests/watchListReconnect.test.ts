@@ -190,6 +190,25 @@ for (const action of ['Accounts Back', 'Choosing a different account']) test(`${
   } finally { held.resolve(); f.close(); }
 });
 
+test('opening Accounts from a watch session retires the held alert before it can reopen over the chooser', async () => {
+  const f = await started();
+  const held = f.holdNotificationOwner();
+  try {
+    await f.add(); await f.start();
+    f.tapSameAlert(); f.render(); await tick();
+    assert.equal(f.record.notificationReads, 1);
+
+    f.showAccounts();
+    held.resolve(); await f.start();
+    assert(f.render().some(element => element.type === 'WalletAccounts'));
+    assert.equal(f.pendingNotification(), null);
+    assert.equal(f.record.notificationReads, 1);
+
+    f.tapSameAlert(); f.render(); await f.start();
+    assert.equal(f.render().find(node => node.type === 'WatchSession')?.props.authority.getSnapshot().selectedAccountId, f.saved().accounts[0]!.id);
+  } finally { held.resolve(); f.close(); }
+});
+
 for (const timing of ['before the tap', 'during the lookup']) test(`a native navigation owner acquired ${timing} defers a parent watch alert`, async () => {
   const f = await started();
   const held = f.holdNotificationOwner();
@@ -216,6 +235,33 @@ for (const timing of ['before the tap', 'during the lookup']) test(`a native nav
     await f.start();
     assert.equal(wallet(), undefined);
     assert.equal(f.render().find(element => element.type === 'WatchSession')?.props.authority.getSnapshot().selectedAccountId, f.saved().accounts[0]!.id);
+  } finally { unregister(); held.resolve(); f.close(); }
+});
+
+for (const destination of ['watch', 'native'] as const) test(`a watch navigation owner defers a parent alert for another ${destination} account`, async () => {
+  const f = await started();
+  const held = f.holdNotificationOwner();
+  let blocked = false, publish = () => {}, unregister = () => {};
+  try {
+    await f.add(); await f.start();
+    const watchSession = () => f.render().find(node => node.type === 'WatchSession');
+    const selected = () => watchSession()?.props.authority.getSnapshot().selectedAccountId;
+    unregister = watchSession()!.props.registerNotificationNavigationGuard(() => blocked, (listener: () => void) => {
+      publish = listener;
+      return () => { publish = () => {}; };
+    });
+    f.tapSameAlert(destination); f.render(); await tick();
+    assert.equal(f.record.notificationReads, 1);
+
+    blocked = true; publish();
+    held.resolve(); await f.start();
+    assert.equal(selected(), f.saved().accounts[1]!.id);
+    assert.ok(f.pendingNotification());
+
+    blocked = false; publish();
+    await f.start();
+    if (destination === 'watch') assert.equal(selected(), f.saved().accounts[0]!.id);
+    else assert(f.render().some(node => node.type === 'NativeWalletScreen'));
   } finally { unregister(); held.resolve(); f.close(); }
 });
 

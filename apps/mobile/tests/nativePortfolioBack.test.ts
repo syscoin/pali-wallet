@@ -22,7 +22,7 @@ function elements(value: unknown): Element[] {
 }
 
 /** Actual overview, portfolio and shell handlers with public data and native event ports. */
-function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', unbacked = false, receiveAcknowledged = true, onNavigation?: () => void) {
+function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', unbacked = false, receiveAcknowledged = true, onNavigation?: (explicit: boolean) => void) {
   const cells = new Map<unknown, Cell[]>(), nativeBacks = new Set<() => boolean>();
   const componentKeys = new Map<unknown, unknown>(), childComponents = new Map<unknown, Set<unknown>>(), componentStack: unknown[] = [];
   const renderedComponents = new Set<unknown>();
@@ -30,6 +30,8 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
   let exits = 0, sends = 0, backups = 0, consumed = 0, shell: any, currentAccount = true;
   let metadataRefreshes = 0, balanceRefreshes = 0;
   const copied: string[] = [];
+  const warningChanges: boolean[] = [];
+  const onReceiveWarningChange = (active: boolean) => { warningChanges.push(active); };
   const cell = () => current[cursor++] ?? (current[cursor - 1] = {});
   const react = {
     createElement: (type: unknown, props: object | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }),
@@ -129,7 +131,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
   let continuation = receiveEntry === 'continuation' ? { account, backupAcknowledged: receiveAcknowledged } : undefined;
   function Root() {
     shell = useRealShell(scope(), scope, exit, onNavigation);
-    const portfolio = { source, reader, tokenView, accountLabel: 'Account 1', onExit: exit, onLock() {}, onViewRecovery() { backups++; },
+    const portfolio = { source, reader, tokenView, onReceiveWarningChange, accountLabel: 'Account 1', onExit: exit, onLock() {}, onViewRecovery() { backups++; },
       onReceiveIntentConsumed() { consumed++; if (detail) detail = { ...detail, receive: false }; continuation = undefined; dirty = true; },
       initialReceive: continuation, onSend, navigation: shell.navigation, async onRefreshSmartAccount() { metadataRefreshes++; } };
     if (receiveEntry) return react.createElement(NativePortfolioRoute, { ...portfolio, overview: overview || receiveEntry === 'detail' ? controller : undefined,
@@ -169,7 +171,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     for (let pass = 0; pass < 20; pass++) { dirty = false; const tree = renderOne(Root, {}); if (!dirty) return tree; }
     throw Error('Portfolio layout did not settle');
   };
-  return { render, copied, retireAccount() { currentAccount = false; },
+  return { render, copied, warningChanges, retireAccount() { currentAccount = false; },
     publishRevision() { account = { ...account, revision: account.revision + 1 }; },
     changeAccount() { account = { ...account, address: '0x' + '22'.repeat(20), revision: account.revision + 1 }; },
     changeNetwork() { account = { ...account, network: 'syscoin-nevm', revision: account.revision + 1 }; },
@@ -196,6 +198,24 @@ for (const overview of [false, true]) test(`manual ${overview ? 'all-network ove
     const button = elements(f.render()).find(value => value.props.testID === 'native-portfolio-refresh' || value.type === 'IconButton' && value.props.icon === 'refresh');
     assert(button); button.props.onPress();
     assert.deepEqual(f.refreshes(), { metadata: 1, balance: 1 });
+  } finally { f.close(); }
+});
+
+test('Android shell Back dismisses an immersive pane without discarding a queued alert', () => {
+  let queued = false;
+  const f = fixture(false, undefined, false, true, explicit => { if (explicit) queued = false; });
+  try {
+    const receive = elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Receive');
+    assert(receive); receive.props.onPress();
+    assert(elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
+    queued = true;
+    f.back();
+    assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
+    assert.equal(queued, true);
+    assert.equal(f.exits, 0);
+    f.back();
+    assert.equal(queued, false, 'Back that leaves the root still supersedes the alert');
+    assert.equal(f.exits, 1);
   } finally { f.close(); }
 });
 
@@ -328,11 +348,13 @@ test('cancelled Receive warning stays cancelled across remount and stale acknowl
   try {
     const oldContinue = elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Receive Anyway');
     assert(oldContinue);
+    assert.deepEqual(f.warningChanges, [true]);
     f.back();
     oldContinue.props.onPress();
     f.remountPortfolio();
     assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address' || value.props.title === 'Receive Anyway'));
     assert.equal(f.consumed, 1);
+    assert.deepEqual(f.warningChanges, [true, false]);
     elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Receive')!.props.onPress();
     oldContinue.props.onPress();
     assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address'));

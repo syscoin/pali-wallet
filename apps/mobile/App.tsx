@@ -259,10 +259,10 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const routedNotification = useRef<string | null>(null);
   const watchNotificationUnlock = useRef<{ eventId: string; tapRevision: number; accountId: string } | null>(null);
   const [notificationRouteWake, wakeNotificationRoute] = useState(0);
-  const nativeNotificationNavigationBlocked = useRef<(() => boolean) | null>(null);
+  const notificationNavigationBlocked = useRef<(() => boolean) | null>(null);
   const registerNotificationNavigationGuard = useCallback((isBlocked: () => boolean, subscribe: (listener: () => void) => () => void) => {
     // In-flight lookups read the controller directly. Release wakes a deferred tap.
-    nativeNotificationNavigationBlocked.current = isBlocked;
+    notificationNavigationBlocked.current = isBlocked;
     let blocked = isBlocked();
     const unsubscribe = subscribe(() => {
       const next = isBlocked();
@@ -271,8 +271,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     });
     return () => {
       unsubscribe();
-      if (nativeNotificationNavigationBlocked.current !== isBlocked) return;
-      nativeNotificationNavigationBlocked.current = null;
+      if (notificationNavigationBlocked.current !== isBlocked) return;
+      notificationNavigationBlocked.current = null;
       if (blocked) wakeNotificationRoute(value => value + 1);
     };
   }, []);
@@ -393,7 +393,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     const check = () => {
       const pending = nativeActivityNotifications.getSnapshot();
       if (pending.pendingEventId !== target.eventId || pending.tapRevision !== target.tapRevision) throw Error('CANCELLED');
-      if (nativeNotificationNavigationBlocked.current?.()) {
+      if (notificationNavigationBlocked.current?.()) {
         deferredForReview = true;
         throw Error('CANCELLED');
       }
@@ -444,13 +444,13 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     const eventId = pendingEventId;
     const tap = `${eventId}:${tapRevision}`;
     if (!eventId || tapRevision === undefined || Platform.OS === 'web' || !foreground.current || routedNotification.current === tap ||
-        loading || addingAccount.current || nativeNotificationNavigationBlocked.current?.()) return;
+        loading || addingAccount.current || notificationNavigationBlocked.current?.()) return;
     let current = true;
     const navigation = navigationGeneration.current, lifecycle = lifecycleGeneration.current;
     void nativeActivityNotifications.getPendingOwner().then(owner => {
       const pending = nativeActivityNotifications.getSnapshot();
       if (!current || !owner || !foreground.current || navigationGeneration.current !== navigation || lifecycleGeneration.current !== lifecycle ||
-          pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision || addingAccount.current || nativeNotificationNavigationBlocked.current?.()) return;
+          pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision || addingAccount.current || notificationNavigationBlocked.current?.()) return;
       if (owner.accountType === 'watch') {
         const saved = watchAccounts.getSnapshot(), local = authority.current?.getSnapshot();
         if (openingView.current || saved.status !== 'ready' || saved.busy || !local?.accounts.some(account => account.id === owner.accountId) ||
@@ -812,7 +812,9 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     }}
     onBack={() => { retirePendingNotificationTap(); go(snapshot.status === 'ready' ? 'home' : snapshot.accounts.length ? 'locked' : 'welcome'); }}
     onOpenWallet={Platform.OS !== 'web' ? () => { retirePendingNotificationTap(); openWallet(); } : undefined} />{selectionNotice}</>;
-  if (!preview && route === 'home' && watchAuthority && !startupError) return <><WatchSession key={snapshot.selectedAccountId} authority={watchAuthority} onAccounts={() => go('accounts')} onExit={exit}
+  if (!preview && route === 'home' && watchAuthority && !startupError) return <><WatchSession key={snapshot.selectedAccountId} authority={watchAuthority}
+    onAccounts={() => { retirePendingNotificationTap(); go('accounts'); }} onExit={() => { retirePendingNotificationTap(); exit(); }}
+    registerNotificationNavigationGuard={registerNotificationNavigationGuard} onExplicitNavigation={retirePendingNotificationTap}
     notificationReturn={watchNotificationReturn} cancelNotificationReturn={cancelNotificationReturn} discardPendingNotificationReturn={notificationReturn.discard}
     onNotificationPermissionPresentation={(scope: NativeNotificationScope, result: Promise<NotificationPermissionResult>) => {
       if (AppState.currentState !== 'active' || preview) return;
