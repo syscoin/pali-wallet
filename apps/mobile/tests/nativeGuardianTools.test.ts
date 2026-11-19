@@ -206,6 +206,33 @@ for (const available of [false, true])
     tools.dispose();
   });
 
+test('a Guardian alert opens the matching recovery pane in already mounted Tools', () => {
+  let opened = 0;
+  const props = {
+    accountLabel: 'Smart account', networkLabel: 'Ethereum', watchOnly: false,
+    navigation, onAccounts() {}, onBack() {},
+    initialGuardianScope: null as string | null,
+    onGuardianOpened() { opened++; props.initialGuardianScope = null; },
+    guardianRecovery: { scope: 'guardian-owner', address: '0x' + '11'.repeat(20), async read() { return { status: 'no-compatible-policy' }; } },
+  };
+  const tools = screen('RealTools', props);
+  try {
+    assert.notEqual(tools.render().type, 'WatchGuardianRecovery');
+    props.initialGuardianScope = 'other-owner';
+    tools.render();
+    assert.notEqual(tools.render().type, 'WatchGuardianRecovery');
+    assert.equal(opened, 0);
+    props.initialGuardianScope = props.guardianRecovery.scope;
+    tools.render();
+    const guardian = tools.render();
+    assert.equal(guardian.type, 'WatchGuardianRecovery');
+    assert.equal(guardian.props.initialRecovery, true);
+    assert.equal(opened, 1);
+    guardian.props.onBack();
+    assert.notEqual(tools.render().type, 'WatchGuardianRecovery');
+  } finally { tools.dispose(); }
+});
+
 test('actual status screen reports absent policy and a closed pane discards its late read', async () => {
   let resolve!: (value: unknown) => void;
   let signal!: AbortSignal;

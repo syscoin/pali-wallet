@@ -887,9 +887,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const attemptKey = `${eventId}:${tapRevision}:${capturedEpoch}:${snapshot.revision}`;
     if (!eventId || tapRevision === undefined || !local || !protectedScreen || snapshot.phase !== 'ready' || stage !== 'choose' || busy || shell.immersive ||
         rootOrigin.current || notificationTransition.current || lastNotificationAttempt.current === attemptKey || AppState.currentState !== 'active') return;
-    const connections = local.connections.getSnapshot();
-    if (connections.status !== 'ready' || connections.proposals.length || connections.accountChangeReview || connections.preparationReview || connections.controlReview ||
-        connections.sentryReview || connections.psbtReview || connections.signingReview) return;
+    const connectionsBlockNavigation = () => {
+      const connections = local.connections.getSnapshot();
+      return connections.status !== 'ready' || connections.proposals.length > 0 || !!connections.accountChangeReview ||
+        !!connections.preparationReview || !!connections.controlReview || !!connections.sentryReview || !!connections.psbtReview || !!connections.signingReview;
+    };
+    if (connectionsBlockNavigation()) return;
+    let deferredForReview = false;
     const token = { eventId, tapRevision };
     notificationTransition.current = token; lastNotificationAttempt.current = attemptKey;
     const check = () => {
@@ -897,6 +901,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || notificationTransition.current !== token ||
           pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision || AppState.currentState !== 'active' ||
           view.stage !== 'choose' || view.busy || view.immersive || rootOrigin.current) throw Error('CANCELLED');
+      if (connectionsBlockNavigation()) {
+        deferredForReview = true;
+        throw Error('CANCELLED');
+      }
     };
     void (async () => {
       const owner = await nativeActivityNotifications.getPendingOwner();
@@ -941,8 +949,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     })().catch(() => undefined).finally(() => {
       if (notificationTransition.current !== token) return;
       notificationTransition.current = null;
+      if (deferredForReview) lastNotificationAttempt.current = '';
       const pending = nativeActivityNotifications.getSnapshot();
-      if (mounted.current && pending.pendingEventId && (pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision || epoch.current !== capturedEpoch)) setNotificationWake(value => value + 1);
+      if (mounted.current && pending.pendingEventId && (pending.pendingEventId !== eventId || pending.tapRevision !== tapRevision ||
+          epoch.current !== capturedEpoch || deferredForReview && !connectionsBlockNavigation())) setNotificationWake(value => value + 1);
     });
   }, [notificationSnapshot.pendingEventId, notificationSnapshot.tapRevision, notificationWake, snapshot.phase, snapshot.revision, protectedScreen, stage, busy, shell.immersive, connectionSnapshot, controllersRef, readyContext, restoreRoot]);
   useEffect(() => {

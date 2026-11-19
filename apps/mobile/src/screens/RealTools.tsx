@@ -27,9 +27,12 @@ export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, o
   const immersive = lookup || !!guardian || connectedApps;
   const closePane = useCallback(() => { if (pane?.kind === 'guardian') { pane.lifetime.abort(); onGuardianClose?.(); } if (pane?.kind === 'connections') onScanFinished?.(); setPane(null); }, [pane, onScanFinished, onGuardianClose]);
   useLayoutEffect(() => {
-    if (!initialGuardianScope || pane?.kind !== 'guardian' || pane.scope !== initialGuardianScope) return;
-    onGuardianOpened?.();
-  }, [initialGuardianScope, guardianRecovery?.scope, pane, onGuardianOpened]);
+    if (!initialGuardianScope || initialGuardianScope !== guardianRecovery?.scope) return;
+    if (guardian) { onGuardianOpened?.(); return; }
+    if (pane && pane.kind !== 'guardian') return;
+    if (pane?.kind === 'guardian') pane.lifetime.abort();
+    setPane({ kind: 'guardian', scope: initialGuardianScope, lifetime: new AbortController(), resumeRecovery: true });
+  }, [initialGuardianScope, guardianRecovery?.scope, guardian, pane, onGuardianOpened]);
   useLayoutEffect(() => navigation.registerBack(() => {
     if (guardian && guardianBack.current) guardianBack.current(); else if (immersive) closePane(); else onBack();
     return true;

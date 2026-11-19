@@ -389,6 +389,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let shellTab: string = networkLifecycle?.tab ?? (depositMode ? 'tools' : 'wallet');
   const lifecycle: string[] = [];
   const notificationRoutes: { tab: string; identity: string }[] = [];
+  let connectionState = { status: 'ready', signingReview: null as { id: string; kind: string } | null, proposals: [] };
+  let connectionObserver = () => {};
   const enrollments: { enabled: boolean; password?: string }[] = [];
   const configurations: { enabled: boolean; signal: AbortSignal; authentication: NativePrivateAuthenticationScope }[] = [];
   let biometricsEnabled = deviceUnlock && (setting?.enabled ?? !empty);
@@ -472,7 +474,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       catalogue = { ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, accountId: request.id } };
       publish({ phase: 'ready', revision: state.revision + 1, account: { address: selected.address, network: networkId } });
     } }, balanceReader: {}, transfers: { cancel() {} }, tokens: {}, activity: {},
-    trezor: trezorLifecycle(), connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
+    trezor: trezorLifecycle(), connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => connectionState,
+      subscribe(listener: () => void) { connectionObserver = listener; return () => { connectionObserver = () => {}; }; }, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     async saveIdlePreference() { assert.fail('Navigation must not change auto-lock preferences'); },
     keyExport: { cancel() {}, dispose() {} }, backup: {
@@ -615,7 +618,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, noteRestore, notificationRoutes, publicViewLock: root.idle.security.publicViewLock,
+  return { render, unlock, publish, noteRestore, notificationRoutes,
+    setSigningReview(signingReview: typeof connectionState.signingReview) { connectionState = { ...connectionState, signingReview }; connectionObserver(); }, publicViewLock: root.idle.security.publicViewLock,
     exits: () => exits, state: () => state, setExit(action: () => void) { props.onExit = action; }, listeners: root.listeners,
     holdSetup(operation: () => Promise<void>) { setupOperation = operation; },
     prompt(operation: () => Promise<void>) { return authentication.run(null, operation); },
@@ -1831,6 +1835,27 @@ test('a failed post-lookup network selection keeps its alert pending without loo
     assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
     assert.equal(tap.port.getSnapshot().pendingEventId, null);
   } finally { f.dispose(); }
+});
+
+test('a review arriving during an alert lookup keeps the active network until the review closes', async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('transaction-confirmed', held.promise);
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.render(); await settle();
+    assert.equal(tap.resolutions(), 1);
+    f.setSigningReview({ id: 'incoming-request', kind: 'transaction' });
+    f.render();
+    held.resolve(); await settle(); f.render(); await settle();
+    assert.equal(f.selectedNetwork(), 'ethereum');
+    assert.ok(tap.port.getSnapshot().pendingEventId);
+    assert.deepEqual(f.notificationRoutes, []);
+    assert.equal(tap.resolutions(), 1);
+    f.setSigningReview(null); f.render(); await settle();
+    assert.equal(f.selectedNetwork(), 'syscoin-nevm');
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
+  } finally { held.resolve(); f.dispose(); }
 });
 
 test('native tap resolution cannot select a network after background revocation', async () => {
