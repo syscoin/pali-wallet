@@ -206,7 +206,7 @@ for (const available of [false, true])
     tools.dispose();
   });
 
-test('a Guardian alert opens the matching recovery pane in already mounted Tools', () => {
+test('a Guardian alert opens the matching recovery pane in already mounted Tools', async () => {
   let opened = 0;
   const props = {
     accountLabel: 'Smart account', networkLabel: 'Ethereum', watchOnly: false,
@@ -224,6 +224,13 @@ test('a Guardian alert opens the matching recovery pane in already mounted Tools
     assert.equal(opened, 0);
     props.initialGuardianScope = props.guardianRecovery.scope;
     tools.render();
+    props.initialGuardianScope = null;
+    tools.render();
+    await Promise.resolve();
+    assert.notEqual(tools.render().type, 'WatchGuardianRecovery');
+    props.initialGuardianScope = props.guardianRecovery.scope;
+    tools.render();
+    await Promise.resolve();
     const guardian = tools.render();
     assert.equal(guardian.type, 'WatchGuardianRecovery');
     assert.equal(guardian.props.initialRecovery, true);

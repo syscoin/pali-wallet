@@ -30,8 +30,13 @@ export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, o
     if (!initialGuardianScope || initialGuardianScope !== guardianRecovery?.scope) return;
     if (guardian) { onGuardianOpened?.(); return; }
     if (pane && pane.kind !== 'guardian') return;
-    if (pane?.kind === 'guardian') pane.lifetime.abort();
-    setPane({ kind: 'guardian', scope: initialGuardianScope, lifetime: new AbortController(), resumeRecovery: true });
+    let current = true;
+    void Promise.resolve().then(() => {
+      if (!current) return;
+      if (pane?.kind === 'guardian') pane.lifetime.abort();
+      setPane({ kind: 'guardian', scope: initialGuardianScope, lifetime: new AbortController(), resumeRecovery: true });
+    });
+    return () => { current = false; };
   }, [initialGuardianScope, guardianRecovery?.scope, guardian, pane, onGuardianOpened]);
   useLayoutEffect(() => navigation.registerBack(() => {
     if (guardian && guardianBack.current) guardianBack.current(); else if (immersive) closePane(); else onBack();

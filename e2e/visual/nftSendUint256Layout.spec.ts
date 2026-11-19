@@ -75,6 +75,35 @@ const scenarios: { assets: Asset[]; standard: Standard }[] = [
   },
 ];
 
+async function expectImportedNft(page: Page, asset: Asset, standard: Standard) {
+  await expect
+    .poll(() =>
+      page.evaluate(async (contract) => {
+        const { vault } = await chrome.runtime.sendMessage({
+          type: 'getCurrentState',
+        });
+        const ref = vault.activeAccount;
+        const tokens = vault.accountAssets[ref.type]?.[ref.id]?.ethereum ?? [];
+        return tokens.filter(
+          (token: { chainId: number; contractAddress: string }) =>
+            token.chainId === vault.activeNetwork.chainId &&
+            token.contractAddress.toLowerCase() === contract
+        );
+      }, asset.contract)
+    )
+    .toMatchObject([
+      {
+        isNft: true,
+        tokenStandard: standard,
+        tokenSymbol: asset.symbol,
+        ...(standard === 'ERC-1155' && {
+          tokenId: asset.tokenId,
+          rawBalance: asset.quantity,
+        }),
+      },
+    ]);
+}
+
 async function publicState(page: Page) {
   return page.evaluate(async () => {
     const { vault } = await chrome.runtime.sendMessage({
@@ -536,7 +565,7 @@ for (const { standard, assets } of scenarios) {
                   });
                   await expect(importButton).toBeEnabled();
                   await importButton.click();
-                  await expect(importButton).toBeDisabled();
+                  await expectImportedNft(page, asset, standard);
                 }
               } else {
                 await wallet!.ensureOnHome();
@@ -560,7 +589,7 @@ for (const { standard, assets } of scenarios) {
                   });
                   await expect(importButton).toBeEnabled();
                   await importButton.click();
-                  await expect(importButton).toBeDisabled();
+                  await expectImportedNft(page, asset, standard);
                 }
               }
             }
