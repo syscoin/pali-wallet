@@ -268,7 +268,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const [stage, setStage] = useState<Stage>('choose');
   const trezorVisit = useRef<object | null>(null);
   const notificationSnapshot = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
-  const notificationTransition = useRef<object | null>(null);
+  const notificationTransition = useRef<{ eventId: string; tapRevision: number } | null>(null);
   const [notificationWake, setNotificationWake] = useState(0);
   const lastNotificationAttempt = useRef('');
   const notificationView = useRef({ stage, busy: false, immersive: false });
@@ -543,7 +543,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId) === PRIVACY_CHAIN_ID;
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
-  const shell = useRealShell(shellIdentity, currentShellScope, exit, cancelNotificationReturn);
+  const onShellNavigation = useCallback((explicit: boolean) => {
+    cancelNotificationReturn();
+    const tap = notificationTransition.current;
+    if (explicit && tap) nativeActivityNotifications.consumeTap(tap.eventId, tap.tapRevision);
+  }, [cancelNotificationReturn]);
+  const shell = useRealShell(shellIdentity, currentShellScope, exit, onShellNavigation);
   const restoreRoot = shell.restoreRoot;
   useLayoutEffect(() => {
     permissionReturnContext.current = () => {
@@ -885,7 +890,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const connections = local.connections.getSnapshot();
     if (connections.status !== 'ready' || connections.proposals.length || connections.accountChangeReview || connections.preparationReview || connections.controlReview ||
         connections.sentryReview || connections.psbtReview || connections.signingReview) return;
-    const token = {};
+    const token = { eventId, tapRevision };
     notificationTransition.current = token; lastNotificationAttempt.current = attemptKey;
     const check = () => {
       const view = notificationView.current, pending = nativeActivityNotifications.getSnapshot();
@@ -2185,7 +2190,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         },
       } : undefined}
       onLock={lockWallet} onUpdate={openWalletUpdate} onBack={() => shell.select('wallet')} />;
-    return <RealAppShell tab={shell.tab} onTab={tab => { cancelNotificationReturn(); cancelAccountNavigation(); notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive}>
+    return <RealAppShell tab={shell.tab} onTab={tab => { cancelAccountNavigation(); shell.select(tab); }} immersive={shell.immersive}>
       {recoveryActivity && recoveryActivity.context === guardianContext && <Button title={t("mobile.walletViews.returnToRecovery")} variant="secondary" onPress={() => void returnToRecovery().catch(() => undefined)} />}
       {snapshot.error && <SafeAreaView edges={['top']} style={{ paddingHorizontal: 24, paddingBottom: 8 }}><NativeCustodyFeedback error={snapshot.error} /></SafeAreaView>}
       {content}

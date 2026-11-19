@@ -57,6 +57,7 @@ const make = (networkId: string, incoming: boolean, timestamp: number, valueUnit
     },
     async loadTarget(value: string) {
       if (query.has('delay-target')) await delayedTarget;
+      if (query.has('miss-target')) return;
       if (value === '0x' + 'cc'.repeat(32) && savedPage === 0) await child.loadMore();
     },
     inspect(value: string) { if (!snapshot.rows.some(row => row.hash === value)) throw Error('Unexpected hash'); inspections.push(network.id); }, setView: async () => undefined,

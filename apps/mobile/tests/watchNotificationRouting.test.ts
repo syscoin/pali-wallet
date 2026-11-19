@@ -57,8 +57,11 @@ async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locke
     './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen' }, '../activity/watchActivity': { createWatchEvmActivity: () => ({}) },
     '../platform/http': {}, '../notifications/service': { nativeActivityNotifications: service },
     '../notifications/choices': { watchNotificationChoices: () => choices },
-    './useRealShell': { useRealShell: () => ({ tab, immersive: false, navigation: {}, goBack() {}, select() {},
-      restoreRoot(next: string) { tab = next; } }) },
+    './useRealShell': { useRealShell: (_identity: unknown, _current: unknown, _exit: unknown, onNavigation: (explicit: boolean) => void) => {
+      const select = (next: string) => { onNavigation(true); tab = next; };
+      return { tab, immersive: false, navigation: {}, goBack() { select('wallet'); }, select,
+        restoreRoot(next: string) { tab = next; } };
+    } },
   });
   const render = () => screenElements(screen.render({ authority, onAccounts() {}, onExit() {} }));
   return { render, close: screen.close, selections, tab: () => tab, resolutions: () => resolutions, ownerLookups: () => ownerLookups,
@@ -137,6 +140,26 @@ test('watch catalogue changes retire pending tap resolution', async () => {
     f.render(); await settle(); f.replace(); held.resolve(); await settle();
     assert.deepEqual(f.selections, []); assert.equal(f.tab(), 'wallet');
   } finally { f.close(); }
+});
+
+test('Back from watch Settings declines the held alert until a new tap', async () => {
+  const f = await fixture('transaction-confirmed'), held = Promise.withResolvers<void>();
+  f.hold(held.promise);
+  f.selectTab('settings');
+  try {
+    const settings = f.render().find(node => node.type === 'RealSettings')!;
+    await settle();
+    assert.equal(f.resolutions(), 1);
+    settings.props.onBack(); f.render();
+    held.resolve(); await settle(); f.render(); f.newGeneration(); f.render(); await settle();
+    assert.equal(f.pendingEvent(), null);
+    assert.deepEqual(f.selections, []);
+    assert.equal(f.tab(), 'wallet');
+    f.tap(); f.render(); await settle(); f.render();
+    assert.equal(f.resolutions(), 2);
+    assert.deepEqual(f.selections, ['network:base']);
+    assert.equal(f.tab(), 'activity');
+  } finally { held.resolve(); f.close(); }
 });
 
 test('a newer same-ID tap retires an older watch route during its lookup', async () => {

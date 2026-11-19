@@ -64,6 +64,16 @@ test('an older explicit target loads only the requested network before opening d
   await expect.poll(() => page.evaluate(() => window.__allActivityFixture.inspections())).toEqual(['base']);
 });
 
+test('an unresolved target shows the Activity warning and still allows paging', async ({ page }) => {
+  await page.goto('/?all-networks=1&filter=base&target=base&older-target=1&miss-target=1');
+  const warning = page.getByText('Activity could not be opened. Refresh and try again.');
+  await expect(warning).toBeVisible();
+  await page.getByRole('button', { name: 'Load older activity', exact: true }).click();
+  await expect(warning).toHaveCount(0);
+  await page.getByTestId(`account-activity-row-base-0x${'cc'.repeat(32)}`).click();
+  await expect(page.getByRole('heading', { name: 'Transaction details' })).toBeVisible();
+});
+
 test('an explicit target opens even when the direction filter excludes its row', async ({ page }) => {
   await page.goto('/?all-networks=1&direction=received&target=base');
   await expect(page.getByRole('heading', { name: 'Transaction details' })).toBeVisible();

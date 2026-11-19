@@ -356,7 +356,7 @@ test('recovery renders controller errors in the chosen language without English 
 });
 
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
-  networkLifecycle?: { wait?: Promise<void>; onSelectingNetwork?(): Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number; wait: Promise<void> }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }, idleClock?: { minutes: number; time: number }) {
+  networkLifecycle?: { wait?: Promise<void>; onSelectingNetwork?(): Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity' | 'settings'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number; wait: Promise<void> }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }, idleClock?: { minutes: number; time: number }) {
   const root = setup();
   if (idleClock) {
     await root.idle.ready;
@@ -569,7 +569,11 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './NativeRecovery': { NativeRecovery: 'NativeRecovery' }, './NativeNoteRestore': { NoteRestoreUnconfirmedNotice: 'NoteRestoreUnconfirmedNotice' },
     '../custody/networkView': { createNativeNetworkView: networkMode ? createNativeNetworkView : () => ({}) },
     './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore },
-    './useRealShell': { useRealShell: () => ({ tab: shellTab, navigation: {}, goBack() {}, select(tab: string) { shellTab = tab; notificationRoutes.push({ tab, identity: 'tab-switch' }); }, restoreRoot(tab: string, identity: string) { shellTab = tab; notificationRoutes.push({ tab, identity }); } }) },
+    './useRealShell': { useRealShell: (_identity: unknown, _current: unknown, _exit: unknown, onNavigation: (explicit: boolean) => void) => {
+      const select = (tab: string) => { onNavigation(true); shellTab = tab; notificationRoutes.push({ tab, identity: 'tab-switch' }); };
+      return { tab: shellTab, navigation: {}, goBack() { select('wallet'); }, select, finishLeave: select,
+        restoreRoot(tab: string, identity: string) { shellTab = tab; notificationRoutes.push({ tab, identity }); } };
+    } },
     './AllNetworksActivity': { AllNetworksActivity: 'AllNetworksActivity' },
   });
   if (idleClock) dependencies['../platform/credential'] = {
@@ -1837,6 +1841,24 @@ test('native tap resolution cannot select a network after background revocation'
     f.emit('change', 'background'); held.resolve(); await new Promise(resolve => setImmediate(resolve)); f.render();
     assert.equal(f.selectedNetwork(), 'ethereum'); assert.deepEqual(f.notificationRoutes, []);
   } finally { f.dispose(); }
+});
+
+test('Back from native Settings declines the held alert until a new tap', async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('transaction-confirmed', held.promise);
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port, { tab: 'settings' });
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    f.render(); await settle();
+    assert.equal(tap.resolutions(), 1);
+    f.hardware(); f.render();
+    held.resolve(); await settle(); f.render();
+    assert.equal(tap.port.getSnapshot().pendingEventId, null);
+    assert.equal(f.selectedNetwork(), 'ethereum');
+    assert.deepEqual(f.notificationRoutes, [{ tab: 'wallet', identity: 'tab-switch' }]);
+    tap.tapAgain(); f.render(); await settle(); f.render();
+    assert.equal(tap.resolutions(), 2);
+    assert.deepEqual(f.notificationRoutes.at(-1), { tab: 'activity', identity: 'hd:60:0:syscoin-nevm' });
+  } finally { held.resolve(); f.dispose(); }
 });
 
 test('a newer same-ID guardian tap retires the earlier native route before selecting its network', async () => {

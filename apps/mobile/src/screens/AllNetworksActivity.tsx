@@ -64,6 +64,12 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   };
   useEffect(() => {
     let live = true;
+    const failTarget = (attempt: string) => {
+      if (!live || targetOwner.current.key !== targetKey || controller.getSnapshot().accountId !== snapshot.accountId ||
+          arrival.current !== attempt) return;
+      arrival.current = `failed:${targetKey}`;
+      setError(t('mobile.activityViews.allNetworksActivity.activityCouldNotBeOpenedRefreshAndTryAgain'));
+    };
     const update = () => {
       if (!live || targetOwner.current.key !== targetKey) return;
       if (!targetNetworkId || !targetHash) { arrival.current = ''; return; }
@@ -74,17 +80,13 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
           current.choices.some(choice => choice.scope.network.id === targetNetworkId) &&
           arrival.current !== `pending:${key}` && arrival.current !== `failed:${key}`) {
         arrival.current = `pending:${key}`;
-        void controller.selectFilter(targetNetworkId).catch(() => {
-          if (live && controller.getSnapshot().accountId === snapshot.accountId && arrival.current === `pending:${key}`) {
-            arrival.current = `failed:${key}`;
-            setError(t('mobile.activityViews.allNetworksActivity.activityCouldNotBeOpenedRefreshAndTryAgain'));
-          }
-        });
+        void controller.selectFilter(targetNetworkId).catch(() => failTarget(`pending:${key}`));
         return;
       }
       const row = controller.findRow(targetNetworkId, targetHash);
       if (row) {
         arrival.current = key; scrollPosition.current.restore = true; scrollPosition.current.height = 0; setSelection(row);
+        setError('');
         targetOwner.current.opened?.();
         return;
       }
@@ -93,11 +95,9 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
         arrival.current = `locating:${key}`;
         void child.loadTarget(targetHash).then(() => {
           if (!live || arrival.current !== `locating:${key}`) return;
-          if (!controller.findRow(targetNetworkId, targetHash)) arrival.current = `failed:${key}`;
+          if (!controller.findRow(targetNetworkId, targetHash)) failTarget(`locating:${key}`);
           else update();
-        }).catch(() => {
-          if (live && arrival.current === `locating:${key}`) arrival.current = `failed:${key}`;
-        });
+        }).catch(() => failTarget(`locating:${key}`));
       }
     };
     const unsubscribe = controller.subscribe(update);

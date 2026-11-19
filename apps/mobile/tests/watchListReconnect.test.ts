@@ -61,8 +61,13 @@ function fixture(platform: 'ios' | 'android' = 'ios') {
     AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, Linking: {}, Share: {} };
   const idle = { allowNewInput() {}, invalidate() {}, begin() {}, stop() {}, check: () => true, pause: () => () => true };
   let privacy: { phase: 'unlocked' | 'locked' } = { phase: 'unlocked' };
+  let approvePublicUnlock: (() => void) | undefined;
   const publicViewLock = { subscribe: () => () => {}, getSnapshot: () => privacy, load: async () => {}, assertUnlocked() { assert.equal(privacy.phase, 'unlocked'); },
-    async unlock() { record.credentials++; assert.fail('Public reconnect must not request authentication'); }, cancelUnlock() {}, lock: async () => {} };
+    async unlock(_authorize: unknown, check: () => void) {
+      record.credentials++;
+      assert(approvePublicUnlock, 'Public reconnect must not request authentication');
+      check(); approvePublicUnlock(); check(); privacy = { phase: 'unlocked' };
+    }, cancelUnlock() {}, lock: async () => {} };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'IconButton', 'Notice', 'Screen', 'Text', 'Icon', 'Coin', 'PaliMark', 'Row', 'Label'].map(name => [name, name])), colors: {}, styles: {} };
   const accounts = screenFixture(new URL('../src/screens/WalletAccounts.tsx', import.meta.url), 'WalletAccounts', {
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
@@ -114,6 +119,7 @@ function fixture(platform: 'ios' | 'android' = 'ios') {
     waitForOpen() { openStarted = deferred(); return openStarted.promise; }, holdOpen() { heldOpen = deferred(); return heldOpen; },
     waitForWrite() { writeStarted = deferred(); return writeStarted.promise; }, holdWrite() { heldWrite = deferred(); return heldWrite; },
     lockPublic() { privacy = { phase: 'locked' }; },
+    publicUnlock(action: () => void) { approvePublicUnlock = action; },
     background() { appState.currentState = 'background'; for (const listener of listeners.get('change') ?? []) listener('background'); },
     foreground() { appState.currentState = 'active'; for (const listener of listeners.get('change') ?? []) listener('active'); },
     blur() { for (const listener of listeners.get('blur') ?? []) listener(); },
@@ -181,6 +187,29 @@ test('a tap for another watch account selects its session after foreground resum
     f.foreground(); await f.start();
     assert.equal(selected(), f.saved().accounts[0]!.id);
     assert.equal(f.record.credentials, 0);
+  } finally { f.close(); }
+});
+
+test('explicit unlock resumes the pending watch alert after cancelled device authentication', async () => {
+  const f = await started();
+  const selected = () => f.render().find(element => element.type === 'WatchSession')?.props.authority.getSnapshot().selectedAccountId;
+  try {
+    await f.add(); await f.start();
+    assert.equal(selected(), f.saved().accounts[1]!.id);
+    f.lockPublic();
+    f.publicUnlock(() => { throw new Error('Cancelled authentication'); });
+    f.tapSameAlert(); await f.start();
+    assert.equal(selected(), undefined);
+    assert.equal(f.record.credentials, 1);
+
+    f.background(); await f.start(); f.foreground(); await f.start();
+    assert.equal(f.record.credentials, 1);
+
+    f.publicUnlock(() => undefined);
+    f.button(f.render(), 'Unlock wallet').props.onPress();
+    await f.start();
+    assert.equal(f.record.credentials, 2);
+    assert.equal(selected(), f.saved().accounts[0]!.id);
   } finally { f.close(); }
 });
 

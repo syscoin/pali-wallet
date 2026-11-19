@@ -57,7 +57,15 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
   }, [authority]);
 
   const identity = snapshot.status === 'ready' ? `${snapshot.selectedAccountId}:${snapshot.selectedNetworkId}` : null;
-  const shell = useRealShell(identity, currentScope, onExit, discardPendingNotificationReturn);
+  const notificationTransition = useRef<{ eventId: string; tapRevision: number } | null>(null);
+  const onShellNavigation = useCallback((explicit: boolean) => {
+    if (explicit) {
+      (cancelNotificationReturn ?? discardPendingNotificationReturn)?.();
+      const tap = notificationTransition.current;
+      if (tap) nativeActivityNotifications.consumeTap(tap.eventId, tap.tapRevision);
+    } else discardPendingNotificationReturn?.();
+  }, [cancelNotificationReturn, discardPendingNotificationReturn]);
+  const shell = useRealShell(identity, currentScope, onExit, onShellNavigation);
   const restoreRoot = shell.restoreRoot;
   const returned = useRef<NotificationReturn | null>(null);
   useLayoutEffect(() => {
@@ -79,7 +87,6 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
     setNotificationActivity(current => current === activityTarget ? null : current);
   }, [activityTarget]);
   const [notificationGuardian, setNotificationGuardian] = useState<string | null>(null);
-  const notificationTransition = useRef<object | null>(null);
   const [notificationWake, setNotificationWake] = useState(0);
   const lastNotificationAttempt = useRef('');
   const lifetime = useRef({ alive: true, authority, immersive: shell.immersive, autoLockScope });
@@ -124,7 +131,7 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
     const eventId = notifications.pendingEventId, tapRevision = notifications.tapRevision, attemptKey = `${eventId}:${tapRevision}:${liveScope}`;
     if (!eventId || tapRevision === undefined || !liveScope || autoLockScope || shell.immersive || notificationTransition.current ||
         lastNotificationAttempt.current === attemptKey || AppState.currentState !== 'active') return;
-    const token = {};
+    const token = { eventId, tapRevision };
     notificationTransition.current = token; lastNotificationAttempt.current = attemptKey;
     const check = () => {
       const owner = lifetime.current, pending = nativeActivityNotifications.getSnapshot();
@@ -216,5 +223,5 @@ export function WatchSession({ authority, onAccounts, onExit, notificationReturn
   else content = <RealSettings key={liveScope} navigation={shell.navigation} notifications={notificationSettings} notificationReturn={notificationReturn} accountLabel={label} watchOnly onAutoLock={() => {
     if (liveScope && AppState.currentState === 'active' && currentScope() === liveScope) setAutoLockScope(liveScope);
   }} onLock={lockView} onBack={() => shell.select('wallet')} />;
-  return <RealAppShell tab={shell.tab} onTab={tab => { cancelNotificationReturn?.(); notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;
+  return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;
 }
