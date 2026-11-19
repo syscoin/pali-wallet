@@ -186,6 +186,15 @@ test('RPC budget and receipts for local wallet transfers', async () => {
     chromium.launchPersistentContext = originalLaunch;
     const observations = new Map<Request, any>();
     const bodies: Promise<void>[] = [];
+    const fixtureResponseBytes = new WeakMap<Request, number>();
+    const fulfillRpcResponse = (route: Route, body: string) => {
+      fixtureResponseBytes.set(route.request(), Buffer.byteLength(body));
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body,
+      });
+    };
     wallet.context.on('request', (request) => {
       if (request.url() !== chain.url && request.url() !== chain.url + '/')
         return;
@@ -239,7 +248,19 @@ test('RPC budget and receipts for local wallet transfers', async () => {
                 .map((result) => result.transactionHash.toLowerCase());
             }
           } catch (error) {
-            item.responseFailure = String(error);
+            const fixtureBytes = fixtureResponseBytes.get(response.request());
+            // Chromium can discard a response body after reporting its headers
+            // when the request is canceled. Charge the full fixture body.
+            if (
+              item.responseBytes === undefined &&
+              response.request().failure()?.errorText === 'net::ERR_ABORTED' &&
+              fixtureBytes !== undefined
+            ) {
+              item.responseBytes = fixtureBytes;
+              item.responseBytesFromFixture = true;
+            } else {
+              item.responseFailure = String(error);
+            }
           }
           item.finished = Date.now();
         })()
@@ -271,18 +292,17 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         if (Array.isArray(raw) && process.env.PALI_RPC_REJECT_BATCH === '1') {
           const observation = observations.get(request);
           if (observation) observation.batchCapabilityProbe = true;
-          return route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({
+          return fulfillRpcResponse(
+            route,
+            JSON.stringify({
               jsonrpc: '2.0',
               id: null,
               error: {
                 code: -32600,
                 message: 'Batch requests are not supported',
               },
-            }),
-          });
+            })
+          );
         }
         if (phase.startsWith('public-reads:'))
           await new Promise((resolve) => setTimeout(resolve, 75));
@@ -343,11 +363,10 @@ test('RPC budget and receipts for local wallet transfers', async () => {
             }
           })
         );
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(Array.isArray(raw) ? replies : replies[0]),
-        });
+        return fulfillRpcResponse(
+          route,
+          JSON.stringify(Array.isArray(raw) ? replies : replies[0])
+        );
       }
       if (
         url.origin === 'https://blockbook-dev.syscoin.org' ||
