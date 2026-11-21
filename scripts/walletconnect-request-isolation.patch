@@ -1,7 +1,14 @@
 diff --git a/packages/core/src/controllers/history.ts b/packages/core/src/controllers/history.ts
 --- a/packages/core/src/controllers/history.ts
 +++ b/packages/core/src/controllers/history.ts
-@@ -84 +84,11 @@
+@@ -14,0 +15,6 @@
++export class JsonRpcHistoryTopicMismatchError extends Error {
++  constructor() {
++    super(getInternalError("MISMATCHED_TOPIC").message);
++  }
++}
++
+@@ -84 +90,11 @@
 -    if (this.records.has(request.id)) return Promise.resolve();
 +    const existing = this.records.get(request.id);
 +    if (existing) {
@@ -10,48 +17,63 @@ diff --git a/packages/core/src/controllers/history.ts b/packages/core/src/contro
 +        existing.topic !== topic &&
 +        (existing.request.method === "wc_sessionRequest" || request.method === "wc_sessionRequest")
 +      ) {
-+        throw new Error(getInternalError("MISMATCHED_TOPIC").message);
++        throw new JsonRpcHistoryTopicMismatchError();
 +      }
 +      return Promise.resolve();
 +    }
-@@ -98 +108 @@
+@@ -98 +114 @@
 -  public resolve: IJsonRpcHistory["resolve"] = async (response) => {
 +  public resolve: IJsonRpcHistory["resolve"] = async (response, topic) => {
-@@ -102,3 +112,3 @@
+@@ -102,3 +118,3 @@
 -    if (!this.records.has(response.id)) return;
 -    const record = await this.getRecord(response.id);
 -    this.core.assertActive();
 +    const record = this.records.get(response.id);
 +    if (!record) return;
 +    assertSessionRequestTopic(record, topic);
-@@ -119 +129,2 @@
+@@ -119 +135,2 @@
 -    const record = await this.getRecord(id);
 +    const record = this.getRecord(id);
 +    assertSessionRequestTopic(record, topic);
-@@ -260,0 +272,7 @@
+@@ -260,0 +278,7 @@
 +
 +function assertSessionRequestTopic(record: JsonRpcRecord, topic: string) {
 +  // Authentication history can legitimately use a different response topic.
 +  if (record.request.method === "wc_sessionRequest" && record.topic !== topic) {
-+    throw new Error(getInternalError("MISMATCHED_TOPIC").message);
++    throw new JsonRpcHistoryTopicMismatchError();
 +  }
 +}
 diff --git a/packages/core/src/controllers/pairing.ts b/packages/core/src/controllers/pairing.ts
 --- a/packages/core/src/controllers/pairing.ts
 +++ b/packages/core/src/controllers/pairing.ts
-@@ -347 +347 @@
+@@ -55,0 +56 @@
++import { JsonRpcHistoryTopicMismatchError } from "./history.js";
+@@ -347 +348 @@
 -    await this.core.history.resolve(payload);
 +    await this.core.history.resolve(payload, topic);
-@@ -361 +361 @@
+@@ -361 +362 @@
 -    await this.core.history.resolve(payload);
 +    await this.core.history.resolve(payload, topic);
-@@ -431 +431 @@
+@@ -431 +432 @@
 -          await this.core.history.resolve(payload);
 +          await this.core.history.resolve(payload, topic);
+@@ -433,0 +435,5 @@
++        }
++      } catch (error) {
++        if (!(error instanceof JsonRpcHistoryTopicMismatchError)) {
++          this.logger.error(error);
++          return;
+@@ -434,0 +441,4 @@
++      }
++
++      // Deliberate history rejections are terminal for this relay message.
++      try {
 diff --git a/packages/sign-client/src/controllers/engine.ts b/packages/sign-client/src/controllers/engine.ts
 --- a/packages/sign-client/src/controllers/engine.ts
 +++ b/packages/sign-client/src/controllers/engine.ts
-@@ -1961,0 +1962,7 @@
+@@ -8,0 +9 @@
++  JsonRpcHistoryTopicMismatchError,
+@@ -1961,0 +1963,7 @@
 +  private pendingRequestTopic(id: number): string | undefined {
 +    if (this.client.pendingRequest.keys.includes(id)) {
 +      return this.client.pendingRequest.get(id).topic;
@@ -59,7 +81,7 @@ diff --git a/packages/sign-client/src/controllers/engine.ts b/packages/sign-clie
 +    return undefined;
 +  }
 +
-@@ -1968,7 +1975,2 @@
+@@ -1968,7 +1976,2 @@
 -    await this.client.runMutation(() => this.client.core.expirer.set(id, expiry));
 -    await this.client.pendingRequest.set(id, {
 -      id,
@@ -69,13 +91,13 @@ diff --git a/packages/sign-client/src/controllers/engine.ts b/packages/sign-clie
 -    });
 +    await this.client.core.expirer.set(id, expiry);
 +    await this.client.pendingRequest.set(id, { id, topic, params, verifyContext });
-@@ -2205 +2207 @@
+@@ -2205 +2208 @@
 -    await this.client.runMutation(() => this.client.core.history.resolve(payload));
 +    await this.client.runMutation(() => this.client.core.history.resolve(payload, topic));
-@@ -2246 +2248 @@
+@@ -2246 +2249 @@
 -    await this.client.runMutation(() => this.client.core.history.resolve(payload));
 +    await this.client.runMutation(() => this.client.core.history.resolve(payload, topic));
-@@ -2334,7 +2336,5 @@
+@@ -2334,7 +2337,5 @@
 -        await this.client.runMutation(() => this.client.core.history.set(topic, payload));
 -        await this.onRelayEventRequest({
 -          topic,
@@ -88,7 +110,7 @@ diff --git a/packages/sign-client/src/controllers/engine.ts b/packages/sign-clie
 +          if ((this.pendingRequestTopic(payload.id) ?? topic) !== topic) return false;
 +          await this.client.core.history.set(topic, payload);
 +          return true;
-@@ -2341,0 +2342,9 @@
+@@ -2341,0 +2343,9 @@
 +        if (admitted) {
 +          await this.onRelayEventRequest({
 +            topic,
@@ -98,12 +120,29 @@ diff --git a/packages/sign-client/src/controllers/engine.ts b/packages/sign-clie
 +            encryptedId: hashMessage(message),
 +          });
 +        }
-@@ -2343 +2352 @@
+@@ -2343 +2353 @@
 -        await this.client.runMutation(() => this.client.core.history.resolve(payload));
 +        await this.client.runMutation(() => this.client.core.history.resolve(payload, topic));
-@@ -2389,0 +2399 @@
+@@ -2349,0 +2360,12 @@
++    } catch (error) {
++      if (!(error instanceof JsonRpcHistoryTopicMismatchError)) {
++        this.client.logger.error(
++          `onRelayMessage() -> failed to process an inbound message: ${message}`,
++        );
++        this.client.logger.error((error as Error)?.message);
++        return;
++      }
++    }
++
++    // Discard a deliberate history rejection from local replay after restart.
++    try {
+@@ -2352,3 +2373,0 @@
+-      this.client.logger.error(
+-        `onRelayMessage() -> failed to process an inbound message: ${message}`,
+-      );
+@@ -2389,0 +2409 @@
 +    if ((this.pendingRequestTopic(payload.id) ?? topic) !== topic) return;
-@@ -2879 +2889,9 @@
+@@ -2879 +2899,9 @@
 -      await this.setPendingSessionRequest(request);
 +      const admitted = await this.client.runMutation(async () => {
 +        const historical = this.client.core.history.records.get(id);
@@ -114,7 +153,7 @@ diff --git a/packages/sign-client/src/controllers/engine.ts b/packages/sign-clie
 +        return true;
 +      });
 +      if (!admitted) return;
-@@ -3049,0 +3068 @@
+@@ -3049,0 +3078 @@
 +    if (this.pendingRequestTopic(params.response.id) !== params.topic) return;
 diff --git a/packages/types/src/core/history.ts b/packages/types/src/core/history.ts
 --- a/packages/types/src/core/history.ts

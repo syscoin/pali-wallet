@@ -273,7 +273,7 @@ test('actual SDK account update requires its encrypted peer ACK and retains the 
   } finally { await transport.close(); }
 });
 
-async function encryptedRequests() {
+async function encryptedRequests(cacheInbound = false) {
   const f = await fixture(false, true), transport = await openWalletConnectTransport(f.options);
   const published: unknown[] = [];
   // Only network boundaries are replaced. Receive, decrypt, history, validation,
@@ -287,10 +287,15 @@ async function encryptedRequests() {
   const receive = async (id: number, chainId = 'eip155:1') => {
     const params = { chainId, request: { method: 'personal_sign', params: ['fresh'], expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
     const message = await f.core.crypto.encode(f.topic, { id, jsonrpc: '2.0', method: 'wc_sessionRequest', params });
+    if (cacheInbound) {
+      const { MESSAGE_DIRECTION } = await import('@walletconnect/core');
+      await f.core.relayer.messages.set(f.topic, message, MESSAGE_DIRECTION.inbound);
+    }
     // Exercise the actual encrypted receive entry without connecting a relay.
     const engine = f.client!.engine as unknown as { onRelayMessage(event: { topic: string; message: string; transportType: 'relay' }): Promise<void> };
     await engine.onRelayMessage({ topic: f.topic, message, transportType: 'relay' });
     await new Promise<void>(resolve => setImmediate(resolve));
+    return message;
   };
   return { ...f, transport, published, receive };
 }
@@ -363,6 +368,25 @@ test('actual SDK binds session request history to its topic', async () => {
     assert.deepEqual((await history.get(f.topic, 17)).response, { result: 'approved' });
     assert.equal((await history.get(otherTopic, 85)).response, undefined);
   } finally { await transport.close(); }
+});
+
+test('actual SDK acknowledges a terminal history rejection and keeps a failed write retryable', async () => {
+  const { JsonRpcHistoryTopicMismatchError } = await import('@walletconnect/core');
+  const f = await encryptedRequests(true);
+  try {
+    const messages = f.core.relayer.messages;
+
+    f.core.history.set = () => { throw new JsonRpcHistoryTopicMismatchError(); };
+    const rejected = await f.receive(86);
+    assert.deepEqual(messages.getWithoutAck([f.topic])[f.topic], []);
+    assert.equal(messages.has(f.topic, rejected), true);
+    assert.equal(f.events.length, 0);
+
+    f.core.history.set = async () => { throw Error('History write unavailable'); };
+    const retryable = await f.receive(87);
+    assert.deepEqual(messages.getWithoutAck([f.topic])[f.topic], [retryable]);
+    assert.equal(f.events.length, 0);
+  } finally { await f.transport.close(); }
 });
 
 for (const [operation, boundary] of [['pending', 'final-storage'], ['pending', 'history-lookup'], ['respond', 'history-lookup']] as const)
