@@ -243,6 +243,29 @@ test('waiting and failed deployment screens expose no stale signing button', () 
 });
 
 
+test('stopped deployment reports confirmed funding separately from submission status', () => {
+  const f = fixture();
+  const hash = '0x' + 'ad'.repeat(32);
+  const error = 'Authorization ended. Check the account and Activity before starting again.';
+  const notice = (tree: Element) => all(tree).find((node) => node.type === 'Notice' && node.props.tone === 'amber');
+
+  f.update({ phase: 'failed', transactionHash: hash, error });
+  let tree = f.render();
+  assert.equal(notice(tree)?.props.body, error, 'a funding hash alone does not confirm funding');
+  assert.match(text(tree), /Funding transaction/);
+
+  f.update({ fundingConfirmed: true });
+  tree = f.render();
+  assert.equal(notice(tree)?.props.title, 'Deployment not submitted');
+  assert.equal(notice(tree)?.props.body, 'Funding confirmed. Return to your saved Smart Account to continue.');
+  assert.match(text(tree), new RegExp(hash));
+
+  f.update({ userOperationSubmissionStarted: true });
+  tree = f.render();
+  assert.equal(notice(tree)?.props.body, error, 'a possibly submitted deployment must keep its status guidance');
+  assert.doesNotMatch(text(tree), /Funding transaction/);
+});
+
 test('native Smart transfer review binds the recipient and exact amount to authorization', () => {
   const f = fixture();
   const recipient = '0x4444444444444444444444444444444444444444';

@@ -3921,6 +3921,9 @@
         "checkTransferStatus": "Verificar estado da transferência",
         "unsubmittedOperationQuoteUnavailable": "A Pali não enviou a transação. A instrução assinada da conta inteligente ainda pode ser executada.",
         "fundedOperationQuoteUnavailable": "O financiamento da conta foi confirmado. A operação solicitada não foi enviada. Consulte a Atividade antes de tentar novamente.",
+        "deploymentNotSubmitted": "Implantação não enviada",
+        "confirmedFundingReturnToAccount": "Financiamento confirmado. Volte para sua conta inteligente salva para continuar.",
+        "fundingTransaction": "Transação de financiamento",
         "checkDeploymentStatus": "Verificar estado da implantação",
         "confirmedTransaction": "Transação confirmada",
         "latestTransaction": "Última transação"

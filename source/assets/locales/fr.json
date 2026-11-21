@@ -3921,6 +3921,9 @@
         "checkTransferStatus": "Vérifier l’état du transfert",
         "unsubmittedOperationQuoteUnavailable": "Pali n’a pas envoyé la transaction. L’instruction signée du compte intelligent peut encore être exécutée.",
         "fundedOperationQuoteUnavailable": "L’approvisionnement du compte a été confirmé. L’opération demandée n’a pas été envoyée. Consultez l’activité avant de réessayer.",
+        "deploymentNotSubmitted": "Déploiement non envoyé",
+        "confirmedFundingReturnToAccount": "L’approvisionnement a été confirmé. Revenez à votre compte intelligent enregistré pour continuer.",
+        "fundingTransaction": "Transaction d’approvisionnement",
         "checkDeploymentStatus": "Vérifier l’état du déploiement",
         "confirmedTransaction": "Transaction confirmée",
         "latestTransaction": "Dernière transaction"

@@ -1,0 +1,124 @@
+diff --git a/packages/core/src/controllers/history.ts b/packages/core/src/controllers/history.ts
+--- a/packages/core/src/controllers/history.ts
++++ b/packages/core/src/controllers/history.ts
+@@ -84 +84,11 @@
+-    if (this.records.has(request.id)) return Promise.resolve();
++    const existing = this.records.get(request.id);
++    if (existing) {
++      // Pending session requests and their expiry timers share this numeric ID.
++      if (
++        existing.topic !== topic &&
++        (existing.request.method === "wc_sessionRequest" || request.method === "wc_sessionRequest")
++      ) {
++        throw new Error(getInternalError("MISMATCHED_TOPIC").message);
++      }
++      return Promise.resolve();
++    }
+@@ -98 +108 @@
+-  public resolve: IJsonRpcHistory["resolve"] = async (response) => {
++  public resolve: IJsonRpcHistory["resolve"] = async (response, topic) => {
+@@ -102,3 +112,3 @@
+-    if (!this.records.has(response.id)) return;
+-    const record = await this.getRecord(response.id);
+-    this.core.assertActive();
++    const record = this.records.get(response.id);
++    if (!record) return;
++    assertSessionRequestTopic(record, topic);
+@@ -119 +129,2 @@
+-    const record = await this.getRecord(id);
++    const record = this.getRecord(id);
++    assertSessionRequestTopic(record, topic);
+@@ -260,0 +272,7 @@
++
++function assertSessionRequestTopic(record: JsonRpcRecord, topic: string) {
++  // Authentication history can legitimately use a different response topic.
++  if (record.request.method === "wc_sessionRequest" && record.topic !== topic) {
++    throw new Error(getInternalError("MISMATCHED_TOPIC").message);
++  }
++}
+diff --git a/packages/core/src/controllers/pairing.ts b/packages/core/src/controllers/pairing.ts
+--- a/packages/core/src/controllers/pairing.ts
++++ b/packages/core/src/controllers/pairing.ts
+@@ -347 +347 @@
+-    await this.core.history.resolve(payload);
++    await this.core.history.resolve(payload, topic);
+@@ -361 +361 @@
+-    await this.core.history.resolve(payload);
++    await this.core.history.resolve(payload, topic);
+@@ -431 +431 @@
+-          await this.core.history.resolve(payload);
++          await this.core.history.resolve(payload, topic);
+diff --git a/packages/sign-client/src/controllers/engine.ts b/packages/sign-client/src/controllers/engine.ts
+--- a/packages/sign-client/src/controllers/engine.ts
++++ b/packages/sign-client/src/controllers/engine.ts
+@@ -1961,0 +1962,7 @@
++  private pendingRequestTopic(id: number): string | undefined {
++    if (this.client.pendingRequest.keys.includes(id)) {
++      return this.client.pendingRequest.get(id).topic;
++    }
++    return undefined;
++  }
++
+@@ -1968,7 +1975,2 @@
+-    await this.client.runMutation(() => this.client.core.expirer.set(id, expiry));
+-    await this.client.pendingRequest.set(id, {
+-      id,
+-      topic,
+-      params,
+-      verifyContext,
+-    });
++    await this.client.core.expirer.set(id, expiry);
++    await this.client.pendingRequest.set(id, { id, topic, params, verifyContext });
+@@ -2205 +2207 @@
+-    await this.client.runMutation(() => this.client.core.history.resolve(payload));
++    await this.client.runMutation(() => this.client.core.history.resolve(payload, topic));
+@@ -2246 +2248 @@
+-    await this.client.runMutation(() => this.client.core.history.resolve(payload));
++    await this.client.runMutation(() => this.client.core.history.resolve(payload, topic));
+@@ -2334,7 +2336,5 @@
+-        await this.client.runMutation(() => this.client.core.history.set(topic, payload));
+-        await this.onRelayEventRequest({
+-          topic,
+-          payload,
+-          attestation,
+-          transportType,
+-          encryptedId: hashMessage(message),
++        const admitted = await this.client.runMutation(async () => {
++          // Pending and history are restored independently.
++          if ((this.pendingRequestTopic(payload.id) ?? topic) !== topic) return false;
++          await this.client.core.history.set(topic, payload);
++          return true;
+@@ -2341,0 +2342,9 @@
++        if (admitted) {
++          await this.onRelayEventRequest({
++            topic,
++            payload,
++            attestation,
++            transportType,
++            encryptedId: hashMessage(message),
++          });
++        }
+@@ -2343 +2352 @@
+-        await this.client.runMutation(() => this.client.core.history.resolve(payload));
++        await this.client.runMutation(() => this.client.core.history.resolve(payload, topic));
+@@ -2389,0 +2399 @@
++    if ((this.pendingRequestTopic(payload.id) ?? topic) !== topic) return;
+@@ -2879 +2889,9 @@
+-      await this.setPendingSessionRequest(request);
++      const admitted = await this.client.runMutation(async () => {
++        const historical = this.client.core.history.records.get(id);
++        if (historical?.topic !== topic || (this.pendingRequestTopic(id) ?? topic) !== topic) {
++          return false;
++        }
++        await this.setPendingSessionRequest(request);
++        return true;
++      });
++      if (!admitted) return;
+@@ -3049,0 +3068 @@
++    if (this.pendingRequestTopic(params.response.id) !== params.topic) return;
+diff --git a/packages/types/src/core/history.ts b/packages/types/src/core/history.ts
+--- a/packages/types/src/core/history.ts
++++ b/packages/types/src/core/history.ts
+@@ -53 +53 @@
+-  public abstract resolve(response: JsonRpcResponse): Promise<void>;
++  public abstract resolve(response: JsonRpcResponse, topic: string): Promise<void>;

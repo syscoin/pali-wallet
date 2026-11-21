@@ -3921,6 +3921,9 @@
         "checkTransferStatus": "送金の状態を確認",
         "unsubmittedOperationQuoteUnavailable": "Pali はトランザクションを送信していません。署名済みのスマートアカウントの指示は引き続き実行される可能性があります。",
         "fundedOperationQuoteUnavailable": "アカウントへの入金は確認されました。要求された操作は送信されませんでした。再試行する前にアクティビティを確認してください。",
+        "deploymentNotSubmitted": "デプロイは送信されていません",
+        "confirmedFundingReturnToAccount": "入金が確認されました。保存済みのスマートアカウントに戻って続行してください。",
+        "fundingTransaction": "入金トランザクション",
         "checkDeploymentStatus": "デプロイの状態を確認",
         "confirmedTransaction": "確認済みトランザクション",
         "latestTransaction": "最新のトランザクション"
