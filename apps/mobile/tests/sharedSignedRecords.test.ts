@@ -1268,8 +1268,38 @@ for (const marker of ['ordinary', 'privateDeposit', 'privateWithdrawal'] as cons
   } else {
     assert(evidence?.binding, 'ordinary EOA and private-deposit payer cancellation remain available');
     const rawTransaction = await signer.signTransaction({ type: 2, chainId: 7654321, nonce: input.nonce, to: signer.address, value: 0, data: '0x', gasLimit: 21000, maxFeePerGas: 6, maxPriorityFeePerGas: 2 });
-    await f.store.append(session, { ...input, rawTransaction, hash: Transaction.from(rawTransaction).hash!,
-      context: { ...input.context, operation: 'cancel', originalHash: input.hash } }, undefined, evidence.binding);
+    const hash = Transaction.from(rawTransaction).hash!;
+    const context = { ...input.context, operation: 'cancel' as const, originalHash: input.hash };
+    const lifecycle = createEvmSignedRecordLifecycle(f.store, session, {
+      metadata: evidence.original.metadata, replacement: evidence.binding, retirementReadForChain: null,
+    });
+    const boundary = captureEvmSubmission(context, session.assertCurrent, () => lifecycle);
+    await submitSignedEvmTransaction(rawTransaction, ({ admit }) => admit(async () => hash),
+      boundary, undefined, Transaction.from(rawTransaction).unsignedSerialized);
+    assert.equal((await f.store.readExact(session, input.chainId, signer.address, hash))!.metadata, undefined);
+    assert.deepEqual((await f.store.readExact(session, input.chainId, signer.address, input.hash))!.metadata, metadata);
+
+    if (marker === 'privateDeposit') {
+      // An authenticated pre-fix record copied the original note marker.
+      const stored = JSON.parse(f.value()!);
+      stored.entries[1].metadata = metadata;
+      const rootContext = { domain: stored.root.domain, recordId: 'manifest' };
+      const plain = await session.keyring.decryptPrivateRecord({ ...rootContext, envelope: stored.root });
+      const root = JSON.parse(new TextDecoder().decode(plain));
+      plain.fill(0);
+      root.entriesHash = '0x' + createHash('sha256').update(JSON.stringify(stored.entries)).digest('hex');
+      stored.root = await session.keyring.encryptPrivateRecord({
+        ...rootContext, plaintext: new TextEncoder().encode(JSON.stringify(root)),
+      });
+      f.replace(JSON.stringify(stored));
+
+      const reopened = new EvmSignedRecords(f.port);
+      const scope = { chainId: input.chainId, from: signer.address, nonce: input.nonce, originalHash: hash };
+      assert.equal(await reopened.readPendingCancellation(f.session(), scope), rawTransaction);
+      await reopened.captureVerifiedReplacement(f.session(), { ...scope, operation: 'speed-up' });
+      assert.equal((await reopened.readExact(f.session(), input.chainId, signer.address, hash))!.metadata, undefined);
+      assert.deepEqual((await reopened.readExact(f.session(), input.chainId, signer.address, input.hash))!.metadata, metadata);
+    }
   }
   if (marker !== 'ordinary') assert.equal(await f.store.readReplacement(session, input.chainId, signer.address, input.hash, 'speed-up'), null);
 });

@@ -542,8 +542,12 @@ function replacementMetadata(
 ) {
   const fields = { ...metadata };
   delete fields.nftTransfer;
-  // Cancellation is an empty self-call; the original asset intent is not its consent.
-  if (operation === 'cancel') delete fields.intent;
+  // An empty self-call carries none of the original payment or note intent.
+  if (operation === 'cancel') {
+    delete fields.intent;
+    delete fields.privateDeposit;
+    delete fields.privateWithdrawal;
+  }
   const nftTransfer =
     operation === 'speed-up' &&
     original &&
@@ -1213,8 +1217,25 @@ export class EvmSignedRecords {
     } finally {
       plaintext.fill(0);
     }
+    // Strip inherited intent from older cancellation records only after the
+    // manifest authenticates the stored entries. The original note keeps it.
+    const entries = parsed.entries.map((entry) => {
+      if (
+        entry.operation !== 'cancel' ||
+        (!Object.hasOwn(entry.metadata ?? {}, 'privateDeposit') &&
+          !Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal'))
+      )
+        return entry;
+      const { metadata, ...record } = entry;
+      const clean = replacementMetadata(metadata, undefined, 'cancel');
+      return Object.freeze({
+        ...record,
+        ...(clean ? { metadata: clean } : {}),
+      });
+    });
     const bundle: Bundle = Object.freeze({
       ...parsed,
+      entries: Object.freeze(entries),
       nonceFloors: floors,
       resetGeneration,
       privateNonceResets,
