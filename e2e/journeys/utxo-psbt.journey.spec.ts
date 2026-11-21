@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { E2E_CONFIG } from '../harness/config';
+import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
 import { PaliWallet } from '../harness/pali';
 import { inspectPsbtReviewHeader } from '../harness/psbtReviewHeader';
 import {
@@ -120,10 +121,12 @@ test('offline UTXO: normal sign, cancel, and mixed-owner sponsor boundary', asyn
         const popup = await popupFor(wallet!.context, dapp, id);
         await inspectPsbtReviewHeader(popup, info);
         await capture(popup);
-        await popup
-          .getByRole('button', { name: 'Cancel', exact: true })
-          .click();
-        const cancelled = await settle(dapp, id);
+        const cancelled = await dismissRejectedApproval({
+          click: () =>
+            popup.getByRole('button', { name: 'Cancel', exact: true }).click(),
+          isClosed: () => popup.isClosed(),
+          settle: () => settle(dapp, id),
+        });
         expect(cancelled.error?.code).toBe(4001);
         expect(cancelled.result).toBeUndefined();
         expect(routes.deniedWrites).toEqual([]);
