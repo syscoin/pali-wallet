@@ -3921,6 +3921,9 @@
         "checkTransferStatus": "Check transfer status",
         "unsubmittedOperationQuoteUnavailable": "Pali did not submit the transaction. The signed Smart Account instruction may still execute.",
         "fundedOperationQuoteUnavailable": "Account funding confirmed. The requested operation was not submitted. Check Activity before trying again.",
+        "deploymentNotSubmitted": "Deployment not submitted",
+        "confirmedFundingReturnToAccount": "Funding confirmed. Return to your saved Smart Account to continue.",
+        "fundingTransaction": "Funding transaction",
         "checkDeploymentStatus": "Check deployment status",
         "confirmedTransaction": "Confirmed transaction",
         "latestTransaction": "Latest transaction"

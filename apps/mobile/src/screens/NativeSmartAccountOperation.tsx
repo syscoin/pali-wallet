@@ -421,6 +421,9 @@ export function NativeSmartAccountOperationContent({
   ) : null;
   const viewableHash = state.transactionHash && /^0x[0-9a-f]{64}$/i.test(state.transactionHash) &&
     (state.phase === 'complete' || state.userOperationSubmissionStarted) ? state.transactionHash : null;
+  const deploymentFundingOnly = state.intent.kind === 'deploy' && state.phase !== 'complete' &&
+    Boolean(state.transactionHash) && !state.userOperationSubmissionStarted;
+  const fundedDeploymentStopped = state.phase === 'failed' && deploymentFundingOnly && state.fundingConfirmed;
   const insufficientAsset = state.phase === 'failed' && state.preparationFailure === 'INSUFFICIENT_ASSET' &&
     !state.transactionHash && !state.userOperationSubmissionStarted;
   return (
@@ -937,6 +940,8 @@ export function NativeSmartAccountOperationContent({
                 ? t('send.insufficientFunds')
                 : state.payerQuoteUnavailable
                 ? t('send.feeUnavailable')
+                : fundedDeploymentStopped
+                ? t('mobile.recoveryStatusViews.operation.deploymentNotSubmitted')
                 : modules
                 ? t('mobile.smartAccountModules.checkStatus')
                 : authenticator
@@ -956,6 +961,10 @@ export function NativeSmartAccountOperationContent({
               ? state.transactionHash
                 ? t('mobile.recoveryStatusViews.operation.fundedOperationQuoteUnavailable')
                 : t('mobile.recoveryStatusViews.operation.unsubmittedOperationQuoteUnavailable')
+              : fundedDeploymentStopped
+              ? t(state.error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED
+                ? 'mobile.dappConsent.smartTransactionReview.fundedOperationNotSent'
+                : 'mobile.recoveryStatusViews.operation.confirmedFundingReturnToAccount')
               : state.error === SMART_ACCOUNT_PAYER_BUDGET_EXCEEDED ? t('send.smartAccountPayerFeeExceeded') : state.error}
             tone="amber"
           />
@@ -963,7 +972,9 @@ export function NativeSmartAccountOperationContent({
         {state.transactionHash && (
           <Card style={s.card}>
             <Text style={s.label}>
-              {(authenticator || modules) && state.phase === 'complete'
+              {deploymentFundingOnly
+                ? t('mobile.recoveryStatusViews.operation.fundingTransaction')
+                : (authenticator || modules) && state.phase === 'complete'
                 ? t('mobile.recoveryStatusViews.operation.confirmedTransaction')
                 : t('mobile.recoveryStatusViews.operation.latestTransaction')}
             </Text>

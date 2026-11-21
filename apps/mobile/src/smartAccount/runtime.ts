@@ -641,7 +641,8 @@ export function createNativeSmartOperation(
       signal,
       assertCurrent,
       reviewPayer,
-      onBroadcast
+      onBroadcast,
+      onFundingConfirmed
     ) {
       if (prepared !== issued || combinedFeeReview && !payerBudget) throw new Error('SMART_OPERATION_EXPIRED');
       const provider = pending.provider;
@@ -757,8 +758,8 @@ export function createNativeSmartOperation(
         guard();
         return {
           hash,
-          wait: () =>
-            ports.waitForReceipt(
+          wait: async () => {
+            const receipt = await ports.waitForReceipt(
               hash,
               quote.transaction,
               signal,
@@ -770,7 +771,13 @@ export function createNativeSmartOperation(
                     payer: quote.transaction.from,
                   }
                 : undefined
-            ),
+            );
+            if (funding) {
+              guard();
+              onFundingConfirmed(hash);
+            }
+            return receipt;
+          },
         };
       };
       const submit = async () => {

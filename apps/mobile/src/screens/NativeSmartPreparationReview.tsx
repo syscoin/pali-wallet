@@ -53,7 +53,11 @@ export function NativeSmartPreparationReview({ review, controller }: { review: R
     <DappSiteStatus verification={review.verification} />
     <Text>{review.networkLabel}</Text><Text>{t('connections.prepareSmartAccountNetwork', { chainId: review.chainId })}</Text>
   </Card>;
-  const error = review.error && <Notice title={t(review.error === 'DELIVERY_UNCERTAIN' ? 'mobile.connections.psbt.deliveryTitle' : 'settings.unavailable')}
+  const operationExplainsFailure = review.operation?.phase === 'failed' &&
+    review.operation.fundingConfirmed && review.operation.intent.kind === 'deploy' &&
+    !review.operation.userOperationSubmissionStarted && review.operation.error;
+  const error = review.error && !(review.error === 'PREPARATION_UNAVAILABLE' && operationExplainsFailure) &&
+    <Notice title={t(review.error === 'DELIVERY_UNCERTAIN' ? 'mobile.connections.psbt.deliveryTitle' : 'settings.unavailable')}
     body={t(review.error === 'BLOCKED_SITE' ? 'mobile.connections.blocked' : review.error === 'DELIVERY_UNCERTAIN' ? 'mobile.connections.psbt.deliveryBody' : 'connections.smartAccountPrepareFailed')} tone="amber" />;
   const retry = review.canRetry && <Button title={t('settings.smartAccountMetadataRetry')} disabled={blocked} onPress={approve} />;
   if (review.operation) return <NativeSmartAccountOperationContent authentication={authentication} state={review.operation} onBack={reject} disabled={blocked && review.operation.phase === 'authorize' || !!review.error}

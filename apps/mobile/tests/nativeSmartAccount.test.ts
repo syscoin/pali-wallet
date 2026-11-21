@@ -1633,8 +1633,11 @@ test('real smart deployment uses the owned payer, separate consent and durable S
     const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
     deployment = await f.runtime.openSmartAccountDeployment(() => undefined, null);
     const submissionAtWire: boolean[] = [];
+    const fundingConfirmationAtWire: (true | undefined)[] = [];
     f.onBroadcast(async () => {
-      submissionAtWire.push(deployment!.getSnapshot().userOperationSubmissionStarted);
+      const snapshot = deployment!.getSnapshot();
+      submissionAtWire.push(snapshot.userOperationSubmissionStarted);
+      fundingConfirmationAtWire.push(snapshot.fundingConfirmed);
       if (f.submitted.length === 1) await new Promise(resolve => setTimeout(resolve, 1750));
     });
     await deployment.prepare();
@@ -1662,6 +1665,7 @@ test('real smart deployment uses the owned payer, separate consent and durable S
     assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
     assert.equal(f.submitted.length, 2);
     assert.deepEqual(submissionAtWire, [false, true], 'funding must not retire the UserOperation review');
+    assert.deepEqual(fundingConfirmationAtWire, [undefined, true], 'only the funding receipt confirms funding');
     const funding = Transaction.from(f.submitted[0]!);
     const execution = Transaction.from(f.submitted[1]!);
     assert.equal(funding.from, owner);
@@ -3258,19 +3262,35 @@ test('guardian policy binds an acknowledged pending recovery and refuses a chang
   } finally { operation?.dispose(); await f.close(); }
 });
 
-test('an unsuccessful UserOperation cannot report a completed guardian policy from its successful outer receipt', async () => {
+test('an unsuccessful UserOperation cannot report a completed guardian policy from its successful outer receipt', { timeout: 45_000 }, async ({ signal }) => {
   const f = await fixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
     await f.change({ kind: 'create-smart', label: 'Reverted guardian policy',});
     f.fundedSmart(); f.guardianStatus('no-policy'); f.showReceipts(false);
     operation = await f.runtime.openGuardianPolicy({ action: 'set', guardian: '0x' + '77'.repeat(20), delaySeconds: 259200,
-      acknowledgedPendingOperationId: null }, new AbortController().signal, () => undefined, null);
+      acknowledgedPendingOperationId: null }, signal, () => undefined, null);
     await operation.prepare();
-    const sending = operation.authorize(operation.getSnapshot().revision);
-    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
-    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
-    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await sending;
+    const current = operation;
+    const payerReviews: string[] = [];
+    const unsubscribe = current.subscribe(() => {
+      const review = current.getSnapshot().payerReview;
+      if (!review) return;
+      payerReviews.push(review.purpose);
+      if (payerReviews.length === 1 && review.purpose === 'submit-operation') current.confirmPayer(review.id);
+      else current.cancel();
+    });
+    const cancel = () => current.cancel();
+    signal.addEventListener('abort', cancel, { once: true });
+    try {
+      signal.throwIfAborted();
+      await current.authorize(current.getSnapshot().revision);
+      signal.throwIfAborted();
+    } finally {
+      signal.removeEventListener('abort', cancel);
+      unsubscribe();
+    }
+    assert.deepEqual(payerReviews, ['submit-operation'], JSON.stringify(current.getSnapshot()));
     assert.equal(f.submitted.length, 1);
     assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(operation.getSnapshot().metadataRefresh, undefined);
