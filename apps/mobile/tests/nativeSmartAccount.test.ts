@@ -1795,12 +1795,10 @@ test('Smart Activity speeds up the exact outer transaction using its original lo
     const original = Transaction.from(f.submitted[0]!);
     const ownerProofs = f.signatures.length;
     transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    // The pending balance already reflects the original payer transaction.
     f.pendingPayerBalance(1n);
-    await assert.rejects(transfers.prepareSpeedUp(original.hash!), { code: 'INSUFFICIENT_BALANCE' });
-    assert.equal(transfers.getSnapshot().review, null);
-    assert.equal(f.submitted.length, 1);
-    f.pendingPayerBalance(undefined);
     await transfers.prepareSpeedUp(original.hash!);
+    assert.equal(f.submitted.length, 1, 'review must not broadcast the replacement');
     const review = transfers.getSnapshot().review;
     assert(review, JSON.stringify(transfers.getSnapshot()));
     assert.equal(review.from, payer);
