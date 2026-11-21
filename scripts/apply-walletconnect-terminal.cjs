@@ -1,5 +1,5 @@
-// Temporary adoption of reviewed public disposal APIs from Core #7391 and Utils #283.
-// Remove this file and its manifest after adopting the corresponding official releases.
+// Temporary adoption of the reviewed disposal APIs and session request isolation fix.
+// Remove this overlay after adopting official releases containing both changes.
 /* eslint-disable @typescript-eslint/no-var-requires -- This install script runs directly in Node CommonJS. */
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');
@@ -9,6 +9,9 @@ const { inflateRawSync } = require('node:zlib');
 const manifest = require('./walletconnect-terminal.json');
 const manifestFile = path.join(__dirname, 'walletconnect-terminal.json');
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const isolationPatch = path.join(__dirname, 'walletconnect-request-isolation.patch');
+if (digest(fs.readFileSync(isolationPatch)) !== manifest.requestIsolationPatchSha256)
+  throw Error('Unexpected WalletConnect request isolation patch');
 const identity = `core.${manifest.coreSource}.utils.${
   manifest.utilsSource
 }.sha256.${digest(fs.readFileSync(manifestFile))}`;

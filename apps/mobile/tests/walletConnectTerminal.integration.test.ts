@@ -333,6 +333,38 @@ test('actual SDK fresh encrypted request still permits one response and no repea
   } finally { await f.transport.close(); }
 });
 
+test('actual SDK binds session request history to its topic', async () => {
+  const f = await fixture(false, true);
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const history = f.core.history;
+    const otherTopic = 'f6'.repeat(32);
+    const original = await history.get(f.topic, 17);
+    await history.set(otherTopic, {
+      id: 85,
+      jsonrpc: '2.0',
+      method: 'wc_sessionRequest',
+      params: original.request.params,
+    });
+    assert.equal((await history.get(otherTopic, 85)).topic, otherTopic);
+    const result = { id: 17, jsonrpc: '2.0' as const, result: 'approved' };
+    assert.throws(() =>
+      history.set(otherTopic, {
+        id: 17,
+        jsonrpc: '2.0',
+        method: 'wc_sessionRequest',
+        params: original.request.params,
+      })
+    );
+    await assert.rejects(history.get(otherTopic, 17));
+    await assert.rejects(history.resolve(result, otherTopic));
+    assert.equal((await history.get(f.topic, 17)).response, undefined);
+    await history.resolve(result, f.topic);
+    assert.deepEqual((await history.get(f.topic, 17)).response, { result: 'approved' });
+    assert.equal((await history.get(otherTopic, 85)).response, undefined);
+  } finally { await transport.close(); }
+});
+
 for (const [operation, boundary] of [['pending', 'final-storage'], ['pending', 'history-lookup'], ['respond', 'history-lookup']] as const)
 test(`actual SDK terminalization during ${boundary} cannot authorize ${operation}`, async () => {
   const f = await encryptedRequests(), entered = deferred(), held = deferred();
