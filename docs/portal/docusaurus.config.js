@@ -82,6 +82,9 @@ const config = {
             'https://github.com/syscoin/pali-wallet/tree/master/docs/portal/',
         },
         blog: false,
+        sitemap: {
+          ignorePatterns: ['/search', '/*/search'],
+        },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),
         },
