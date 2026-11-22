@@ -461,6 +461,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     let baseFee = 150;
     let blockGasLimit = 30_000_000;
     let confirmedNonce = 8;
+    let pendingNonce: number | undefined;
     let assetState: 'erc20' | 'erc721' | undefined;
     let smartOperation: any;
     const reads: string[] = [];
@@ -485,7 +486,10 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       let result: unknown;
       if (method === 'eth_chainId') result = `0x${CHAIN.toString(16)}`;
       else if (method === 'eth_getTransactionCount')
-        result = `0x${confirmedNonce.toString(16)}`;
+        result = `0x${(params[1] === 'pending'
+          ? pendingNonce ?? confirmedNonce
+          : confirmedNonce
+        ).toString(16)}`;
       else if (method === 'eth_getBalance')
         result = `0x${(params[1] === 'pending'
           ? pendingBalance ?? balance
@@ -608,12 +612,15 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       setConfirmedNonce(value: number) {
         confirmedNonce = value;
       },
+      setPendingNonce(value: number) {
+        pendingNonce = value;
+      },
       dispose: () => rpc.destroy(),
     };
   };
 
   it.each(['EOA', 'Smart outer'])(
-    'rejects an existing pending debit before displaying a %s Speed Up review',
+    'keeps earlier pending debits for queued %s Speed Up reviews',
     async (kind) => {
       const fixture = await setupDurableReplacement();
       try {
@@ -635,6 +642,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
             previewOnly: true,
             walletScope,
           });
+        fixture.setConfirmedNonce(7);
+        fixture.setPendingNonce(9);
         fixture.setPendingBalance(BigInt(1));
         await expect(preview()).resolves.toMatchObject({
           error: true,
@@ -645,7 +654,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           previewSpeedUpTransaction(ORIGINAL, true, CHAIN, PAYER, walletScope)
         ).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
         expect(fixture.posts).toHaveLength(0);
-        fixture.setPendingBalance(BigInt('1000000000'));
+        fixture.setConfirmedNonce(8);
         await expect(preview()).resolves.toMatchObject({
           isSpeedUp: false,
           maximumFee: expect.any(String),
@@ -666,9 +675,14 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
   )(
     'checks ordinary replacement affordability at dispatch ($boundary, legacy $legacy)',
     async ({ legacy, boundary }) => {
+      const fixture = await setupDurableReplacement(undefined, legacy);
       const { journal, journalSession, posts, reads, setBalance, dispose } =
-        await setupDurableReplacement(undefined, legacy);
+        fixture;
       try {
+        if (boundary === 'healthy') {
+          fixture.setPendingNonce(9);
+          fixture.setPendingBalance(BigInt(1));
+        }
         const walletScope = getWalletNavigationScope();
         const preview = await wallet.speedUpEvmTransaction(
           ORIGINAL,

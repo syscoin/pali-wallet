@@ -976,13 +976,33 @@ it('replacement admission reserves same-nonce alternatives once and preserves ot
   expect(available).toBe(BigInt(200));
   // Original + sibling are a mutually exclusive maximum, not a sum.
   expect(available >= BigInt(150)).toBe(true);
-  const externalDebit = await availableEvmReplacementBalance(
+  const nextNonceAfterOriginalDebit = await availableEvmReplacementBalance(
     fixture.snapshot,
     scope.chainId,
     scope.from,
     0,
     1,
     0,
+    BigInt(150),
+    { canonical: BigInt(300), pending: BigInt(25) },
+    () => undefined
+  );
+  expect(nextNonceAfterOriginalDebit).toBe(BigInt(200));
+
+  // A queued replacement may depend on earlier external transactions.
+  const queuedSnapshot = {
+    ...fixture.snapshot,
+    retained: fixture.snapshot.retained.map((entry) =>
+      entry.nonce === 0 ? { ...entry, nonce: 1 } : entry
+    ),
+  };
+  const externalDebit = await availableEvmReplacementBalance(
+    queuedSnapshot,
+    scope.chainId,
+    scope.from,
+    0,
+    2,
+    1,
     BigInt(150),
     { canonical: BigInt(300), pending: BigInt(175) },
     () => undefined

@@ -3921,6 +3921,9 @@
         "checkTransferStatus": "Übertragungsstatus prüfen",
         "unsubmittedOperationQuoteUnavailable": "Pali hat die Transaktion nicht gesendet. Die signierte Smart Account-Anweisung kann weiterhin ausgeführt werden.",
         "fundedOperationQuoteUnavailable": "Die Kontofinanzierung wurde bestätigt. Der angeforderte Vorgang wurde nicht gesendet. Prüfe vor einem weiteren Versuch die Aktivitäten.",
+        "deploymentNotSubmitted": "Bereitstellung nicht gesendet",
+        "confirmedFundingReturnToAccount": "Finanzierung bestätigt. Kehre zu deinem gespeicherten Smart Account zurück, um fortzufahren.",
+        "fundingTransaction": "Finanzierungstransaktion",
         "checkDeploymentStatus": "Bereitstellungsstatus prüfen",
         "confirmedTransaction": "Bestätigte Transaktion",
         "latestTransaction": "Neueste Transaktion"

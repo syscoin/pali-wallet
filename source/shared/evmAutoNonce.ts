@@ -151,7 +151,7 @@ async function nativeReservations(
   return Object.freeze({ canonical: canonicalCost, pending: pendingCost });
 }
 
-/** Replacement alternatives share a nonce; retain other commitments and external pending debits. */
+/** Replacement alternatives share a nonce. Reserve other local commitments separately. */
 export async function availableEvmReplacementBalance(
   snapshot: EvmAutoNonceSnapshot,
   chainId: string,
@@ -201,15 +201,16 @@ export async function availableEvmReplacementBalance(
     pending,
     assertCurrent
   );
-  // Cancellation uses canonical funds after removing the superseded nonce.
-  // Other replacements keep pending funds without crediting an unproven original debit.
+  // The next nonce executes before any later debit from this sender. The
+  // pending balance may already include the original at this same nonce.
+  // A queued replacement still needs to account for earlier pending debits.
   return availableEvmNativeBalance(
     balances,
     {
       canonical: reservations.canonical + sameNonceMaximum - candidateCost,
       pending: reservations.pending,
     },
-    mode === 'cancellation' || pending < latest ? 'latest' : 'pending'
+    candidateNonce === latest || pending < latest ? 'latest' : 'pending'
   );
 }
 

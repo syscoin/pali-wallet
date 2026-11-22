@@ -142,6 +142,7 @@ export type NativeSmartAccountOperationSnapshot = Readonly<{
   }> | null;
   payerReview: SmartAccountPayerReview | null;
   transactionHash: string | null;
+  fundingConfirmed?: true;
   userOperationSubmissionStarted: boolean;
   payerQuoteUnavailable?: true;
   metadataRefresh?: 'refreshing' | 'failed' | 'complete';
@@ -177,7 +178,8 @@ export type NativeSmartAccountOperationHost = Readonly<{
       review: Omit<SmartAccountPayerReview, 'id'>,
       authorize: () => void
     ) => Promise<void>,
-    onBroadcast: (hash: string, purpose: SmartAccountPayerReview['purpose']) => void
+    onBroadcast: (hash: string, purpose: SmartAccountPayerReview['purpose']) => void,
+    onFundingConfirmed: (hash: string) => void
   ): Promise<string>;
 }>;
 
@@ -532,6 +534,12 @@ export class NativeSmartAccountOperation {
               payerReview: null,
             });
           }
+        },
+        (hash) => {
+          if (!this.lifetime.signal.aborted &&
+              !this.snapshot.userOperationSubmissionStarted &&
+              this.snapshot.transactionHash === hash)
+            this.publish({ fundingConfirmed: true });
         }
       );
       this.check();

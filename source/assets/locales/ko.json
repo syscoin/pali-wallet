@@ -3921,6 +3921,9 @@
         "checkTransferStatus": "전송 상태 확인",
         "unsubmittedOperationQuoteUnavailable": "Pali가 트랜잭션을 제출하지 않았습니다. 서명된 스마트 계정 지시는 여전히 실행될 수 있습니다.",
         "fundedOperationQuoteUnavailable": "계정 자금 입금이 확인되었습니다. 요청한 작업은 제출되지 않았습니다. 다시 시도하기 전에 활동을 확인하세요.",
+        "deploymentNotSubmitted": "배포가 제출되지 않음",
+        "confirmedFundingReturnToAccount": "자금 충전이 확인되었습니다. 계속하려면 저장된 스마트 계정으로 돌아가세요.",
+        "fundingTransaction": "자금 충전 트랜잭션",
         "checkDeploymentStatus": "배포 상태 확인",
         "confirmedTransaction": "확인된 트랜잭션",
         "latestTransaction": "최근 트랜잭션"

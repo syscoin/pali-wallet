@@ -273,7 +273,7 @@ test('actual SDK account update requires its encrypted peer ACK and retains the 
   } finally { await transport.close(); }
 });
 
-async function encryptedRequests() {
+async function encryptedRequests(cacheInbound = false) {
   const f = await fixture(false, true), transport = await openWalletConnectTransport(f.options);
   const published: unknown[] = [];
   // Only network boundaries are replaced. Receive, decrypt, history, validation,
@@ -287,10 +287,15 @@ async function encryptedRequests() {
   const receive = async (id: number, chainId = 'eip155:1') => {
     const params = { chainId, request: { method: 'personal_sign', params: ['fresh'], expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
     const message = await f.core.crypto.encode(f.topic, { id, jsonrpc: '2.0', method: 'wc_sessionRequest', params });
+    if (cacheInbound) {
+      const { MESSAGE_DIRECTION } = await import('@walletconnect/core');
+      await f.core.relayer.messages.set(f.topic, message, MESSAGE_DIRECTION.inbound);
+    }
     // Exercise the actual encrypted receive entry without connecting a relay.
     const engine = f.client!.engine as unknown as { onRelayMessage(event: { topic: string; message: string; transportType: 'relay' }): Promise<void> };
     await engine.onRelayMessage({ topic: f.topic, message, transportType: 'relay' });
     await new Promise<void>(resolve => setImmediate(resolve));
+    return message;
   };
   return { ...f, transport, published, receive };
 }
@@ -330,6 +335,57 @@ test('actual SDK fresh encrypted request still permits one response and no repea
     assert.equal(await f.transport.pending(wire.session.binding, 82, () => {}), null);
     await assert.rejects(f.transport.respond(wire.session.binding, 82, { result: 'repeat' }, () => {}, () => { dispatched++; }));
     assert.equal(dispatched, 1); assert.equal(f.published.length, 1);
+  } finally { await f.transport.close(); }
+});
+
+test('actual SDK binds session request history to its topic', async () => {
+  const f = await fixture(false, true);
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const history = f.core.history;
+    const otherTopic = 'f6'.repeat(32);
+    const original = await history.get(f.topic, 17);
+    await history.set(otherTopic, {
+      id: 85,
+      jsonrpc: '2.0',
+      method: 'wc_sessionRequest',
+      params: original.request.params,
+    });
+    assert.equal((await history.get(otherTopic, 85)).topic, otherTopic);
+    const result = { id: 17, jsonrpc: '2.0' as const, result: 'approved' };
+    assert.throws(() =>
+      history.set(otherTopic, {
+        id: 17,
+        jsonrpc: '2.0',
+        method: 'wc_sessionRequest',
+        params: original.request.params,
+      })
+    );
+    await assert.rejects(history.get(otherTopic, 17));
+    await assert.rejects(history.resolve(result, otherTopic));
+    assert.equal((await history.get(f.topic, 17)).response, undefined);
+    await history.resolve(result, f.topic);
+    assert.deepEqual((await history.get(f.topic, 17)).response, { result: 'approved' });
+    assert.equal((await history.get(otherTopic, 85)).response, undefined);
+  } finally { await transport.close(); }
+});
+
+test('actual SDK acknowledges a terminal history rejection and keeps a failed write retryable', async () => {
+  const { JsonRpcHistoryTopicMismatchError } = await import('@walletconnect/core');
+  const f = await encryptedRequests(true);
+  try {
+    const messages = f.core.relayer.messages;
+
+    f.core.history.set = () => { throw new JsonRpcHistoryTopicMismatchError(); };
+    const rejected = await f.receive(86);
+    assert.deepEqual(messages.getWithoutAck([f.topic])[f.topic], []);
+    assert.equal(messages.has(f.topic, rejected), true);
+    assert.equal(f.events.length, 0);
+
+    f.core.history.set = async () => { throw Error('History write unavailable'); };
+    const retryable = await f.receive(87);
+    assert.deepEqual(messages.getWithoutAck([f.topic])[f.topic], [retryable]);
+    assert.equal(f.events.length, 0);
   } finally { await f.transport.close(); }
 });
 

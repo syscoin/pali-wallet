@@ -3921,6 +3921,9 @@
         "checkTransferStatus": "Проверить статус перевода",
         "unsubmittedOperationQuoteUnavailable": "Pali не отправил транзакцию. Подписанная инструкция смарт-аккаунта всё ещё может быть выполнена.",
         "fundedOperationQuoteUnavailable": "Пополнение аккаунта подтверждено. Запрошенная операция не была отправлена. Перед повторной попыткой проверьте активность.",
+        "deploymentNotSubmitted": "Развёртывание не отправлено",
+        "confirmedFundingReturnToAccount": "Пополнение подтверждено. Чтобы продолжить, вернитесь к сохранённому смарт-аккаунту.",
+        "fundingTransaction": "Транзакция пополнения",
         "checkDeploymentStatus": "Проверить статус развёртывания",
         "confirmedTransaction": "Подтверждённая транзакция",
         "latestTransaction": "Последняя транзакция"

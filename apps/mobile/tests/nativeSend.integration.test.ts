@@ -371,7 +371,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true, star
   let nativeBalance = '0x10000000000000000';
   let pendingBalance: string | undefined;
   let ownsNft = true;
-  const replacement = { pending: false, delegated: false, baseFee: '0x1', substituteHash: undefined as string | undefined };
+  const replacement = { pending: false, pendingNonce: undefined as string | undefined, delegated: false, baseFee: '0x1', substituteHash: undefined as string | undefined };
   const largeReceipt = {
     oversized: false,
     repeated: false,
@@ -417,7 +417,7 @@ async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true, star
             (largeReceipt.repeated && largeReceipt.receiptReads === 1)
             ? '0x1'
             : '0x0'
-          : recovery?.nonce ?? '0x0';
+          : (request.params[1] === 'pending' ? replacement.pendingNonce : undefined) ?? recovery?.nonce ?? '0x0';
       } else if (request.method === 'eth_getBalance')
         result = request.params[1] === 'pending' ? pendingBalance ?? nativeBalance : nativeBalance;
       else if (['eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'].includes(request.method) && execution.feesUnavailable)
@@ -2047,22 +2047,27 @@ async function prepareTokenTransfer(f: Awaited<ReturnType<typeof cancellationFix
   await f.transfers.prepareToken(TOKEN_CONTRACT, RECIPIENT, '1');
 }
 
-test('Speed Up review accounts for an existing unrelated pending debit', async () => {
+test('Speed Up can replace the next nonce when pending balance already debits the original', async () => {
   const f = await cancellationFixture();
   try {
+    const balance = 1000000001000000n;
+    f.setBalance(balance);
     await f.transfers.prepare(RECIPIENT, '0.001');
     await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
-    const original = f.transfers.getSnapshot().hash!;
+    const original = Transaction.from(f.broadcasts[0]!);
     f.replacement.pending = true;
-    f.setPendingBalance(1n);
-    await assert.rejects(f.transfers.prepareSpeedUp(original), { code: 'INSUFFICIENT_BALANCE' });
-    assert.equal(f.transfers.getSnapshot().review, null);
-    assert.equal(f.signatures, 1);
-    assert.equal(f.broadcasts.length, 1);
-    f.setPendingBalance(10n ** 18n);
-    await f.transfers.prepareSpeedUp(original);
-    assert.equal(f.transfers.getSnapshot().review?.replacement?.mode, 'speed-up');
-    assert.equal(f.broadcasts.length, 1);
+    f.replacement.pendingNonce = '0x1';
+    f.setPendingBalance(balance - original.value - original.gasLimit * original.maxFeePerGas!);
+    await f.transfers.prepareSpeedUp(original.hash!);
+    const review = f.transfers.getSnapshot().review!;
+    assert.equal(review.replacement?.mode, 'speed-up');
+    await f.transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.broadcasts.length, 2);
+    const replacement = Transaction.from(f.broadcasts[1]!);
+    assert.equal(replacement.nonce, original.nonce);
+    assert.equal(replacement.to, original.to);
+    assert.equal(replacement.value, original.value);
+    assert(replacement.maxFeePerGas! > original.maxFeePerGas!);
   } finally { await f.close(); }
 });
 
