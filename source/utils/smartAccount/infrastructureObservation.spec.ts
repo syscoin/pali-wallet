@@ -5,8 +5,14 @@ import {
 import {
   projectSmartAccountInfrastructureObservation,
   createSmartAccountInfrastructureReader,
+  infrastructureCodeAddresses,
   SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES,
 } from './infrastructureObservation';
+import {
+  LEGACY_FACTORY_ADDRESS,
+  LEGACY_COMPOSITE_VALIDATOR,
+  LEGACY_ECDSA_VALIDATOR,
+} from './legacyDeployment';
 
 function observationFixture() {
   let head = { number: '0x10', hash: `0x${'ab'.repeat(32)}` };
@@ -180,4 +186,28 @@ it('rejects missing or malformed code replies rather than reporting missing depl
   expect(
     projectSmartAccountInfrastructureObservation(1, codes)
   ).toBeUndefined();
+});
+
+it('reads the original deployment catalogue for prefunded accounts at the same block', async () => {
+  const fixture = observationFixture();
+  await fixture.read();
+  const legacy = await fixture.read({ factoryAddress: LEGACY_FACTORY_ADDRESS });
+  expect(fixture.readCodes).toHaveBeenCalledTimes(2);
+  expect(infrastructureCodeAddresses(LEGACY_FACTORY_ADDRESS)).toEqual([
+    legacy.create2Deployer.address,
+    ...legacy.contracts.map((contract) => contract.address),
+  ]);
+  expect(
+    legacy.contracts
+      .filter((contract) =>
+        ['factory', 'ecdsaValidator', 'compositeValidator'].includes(
+          contract.id
+        )
+      )
+      .map((contract) => contract.address)
+  ).toEqual([
+    LEGACY_ECDSA_VALIDATOR,
+    LEGACY_COMPOSITE_VALIDATOR,
+    LEGACY_FACTORY_ADDRESS,
+  ]);
 });

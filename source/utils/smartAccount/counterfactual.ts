@@ -14,6 +14,10 @@ import {
   PALI_CANONICAL_FACTORY_ADDRESS,
   PALI_INFRASTRUCTURE_METADATA_BY_ID,
 } from './deploymentMetadata.ts';
+import {
+  LEGACY_ACCOUNT_IMPLEMENTATION,
+  LEGACY_FACTORY_ADDRESS,
+} from './legacyDeployment.ts';
 
 const moduleTuple = 'tuple(address module,bytes data)';
 const initializer = new Interface([
@@ -33,7 +37,8 @@ export function derivePaliSmartAccountDeployment({
   validator: string;
 }) {
   const factory = getAddress(factoryAddress);
-  if (factory !== getAddress(PALI_CANONICAL_FACTORY_ADDRESS))
+  const legacy = factory === getAddress(LEGACY_FACTORY_ADDRESS);
+  if (!legacy && factory !== getAddress(PALI_CANONICAL_FACTORY_ADDRESS))
     throw new Error('Smart account factory has no trusted deployment artifact');
 
   const initCode = defaultAbiCoder.encode(
@@ -45,7 +50,9 @@ export function derivePaliSmartAccountDeployment({
     defaultAbiCoder.encode(
       ['address', 'bytes'],
       [
-        PALI_INFRASTRUCTURE_METADATA_BY_ID.accountImplementation.address,
+        legacy
+          ? LEGACY_ACCOUNT_IMPLEMENTATION
+          : PALI_INFRASTRUCTURE_METADATA_BY_ID.accountImplementation.address,
         initializer.encodeFunctionData('initializeAccount', [initCode]),
       ]
     ),

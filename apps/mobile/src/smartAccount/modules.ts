@@ -2,6 +2,7 @@ import { AddressZero, getAddress, isHexString } from '../../../../source/utils/e
 import { encodeCompositeValidatorInitData, encodeEcdsaValidatorInitData, encodeSLHDSAValidatorInitData, getSmartAccountAuthHash, type SmartAccountExecution } from '../../../../source/utils/smartAccount/account.ts';
 import { encodeP256WebAuthnAuthData } from '../../../../source/utils/passkey/account.ts';
 import { getAvailablePaliModules } from '../../../../source/utils/smartAccount/capabilities.ts';
+import { LEGACY_ECDSA_VALIDATOR, LEGACY_FACTORY_ADDRESS } from '../../../../source/utils/smartAccount/legacyDeployment.ts';
 import { getPaliModuleAddress } from '../../../../source/utils/smartAccount/contracts.ts';
 import { buildCompositeValidatorExecutions, buildCustomValidatorInstallExecutions, buildValidatorUninstallExecutions, canRemoveValidatorModule, type ValidatorModuleRemovalPolicy } from '../../../../source/utils/smartAccount/moduleCommands.ts';
 import { getInstalledValidatorModuleByAddress, listInstalledValidatorModules } from '../../../../source/utils/smartAccount/modules.ts';
@@ -107,7 +108,8 @@ function source(metadata: ISmartAccountMetadata, deploymentAdmission: NativeSmar
   const active = getInstalledValidatorModuleByAddress(metadata, auth.validator);
   if (!active || active.id !== (auth.module ?? auth.scheme) || (active.data ?? '0x').toLowerCase() !== auth.data.toLowerCase()) throw changed();
   const hash = getSmartAccountAuthHash(auth);
-  if (!metadata.isDeployed && (active.id === 'custom' || !metadata.deploymentAuth || getSmartAccountAuthHash(metadata.deploymentAuth) !== hash || getAddress(getPaliModuleAddress(metadata.chainId, active.id)) !== getAddress(active.address) || constructorData(active).toLowerCase() !== auth.data.toLowerCase())) throw changed();
+  const legacyBootstrap = active.id === 'ecdsa' && metadata.descriptor?.factoryAddress.toLowerCase() === LEGACY_FACTORY_ADDRESS && active.address.toLowerCase() === LEGACY_ECDSA_VALIDATOR;
+  if (!metadata.isDeployed && (active.id === 'custom' || !metadata.deploymentAuth || getSmartAccountAuthHash(metadata.deploymentAuth) !== hash || (!legacyBootstrap && getAddress(getPaliModuleAddress(metadata.chainId, active.id)) !== getAddress(active.address)) || constructorData(active).toLowerCase() !== auth.data.toLowerCase())) throw changed();
   return { active, hash, module };
 }
 
@@ -132,9 +134,8 @@ export function buildNativeSmartModuleCommand({ accountAddress, metadata, draft:
     targetAddress = draft.address;
     executions = buildValidatorUninstallExecutions({ accountAddress: account, validatorAddress: draft.address });
   } else {
-    const installed = listInstalledValidatorModules(metadata).find(module => module.id === 'composite');
     const supported = getAvailablePaliModules(metadata.chainId).some(module => module.id === 'composite' && module.supported);
-    targetAddress = installed?.address ?? getPaliModuleAddress(metadata.chainId, 'composite');
+    targetAddress = getPaliModuleAddress(metadata.chainId, 'composite');
     executions = buildCompositeValidatorExecutions({ accountAddress: account, metadata, children: draft.children, threshold: draft.threshold, compositeValidatorAddress: supported ? targetAddress : null, isAlgorithmAvailable });
   }
   return Object.freeze({ draft, accountAddress: account, chainId: metadata.chainId, deploymentAdmission, removalPolicy, sourceIsDeployed: metadata.isDeployed, sourceAuthHash: before.hash, sourceAuthModule: before.module, sourceModuleFingerprint: fingerprint(metadata), targetAddress: getAddress(targetAddress), executions: Object.freeze(executions.map(execution => Object.freeze({ ...execution }))) });

@@ -10,6 +10,32 @@ import {
   PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
   PALI_INFRASTRUCTURE_METADATA,
 } from './deploymentMetadata.ts';
+import {
+  LEGACY_FACTORY_ADDRESS,
+  LEGACY_ECDSA_VALIDATOR,
+  LEGACY_COMPOSITE_VALIDATOR,
+} from './legacyDeployment.ts';
+
+const legacyAddresses: Partial<
+  Record<(typeof PALI_INFRASTRUCTURE_METADATA)[number]['id'], string>
+> = {
+  factory: LEGACY_FACTORY_ADDRESS,
+  ecdsaValidator: LEGACY_ECDSA_VALIDATOR,
+  compositeValidator: LEGACY_COMPOSITE_VALIDATOR,
+};
+const legacyInfrastructure = PALI_INFRASTRUCTURE_METADATA.map((contract) => {
+  const address = legacyAddresses[contract.id];
+  return address ? { ...contract, address } : contract;
+});
+const legacyCodeAddresses = Object.freeze([
+  PALI_CREATE2_DEPLOYER_ADDRESS,
+  ...legacyInfrastructure.map((contract) => contract.address),
+]);
+export function infrastructureCodeAddresses(factoryAddress?: string) {
+  return factoryAddress?.toLowerCase() === LEGACY_FACTORY_ADDRESS
+    ? legacyCodeAddresses
+    : SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES;
+}
 
 /** Request order for the code observations. The caller owns the RPC context. */
 export const SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES = Object.freeze([
@@ -33,10 +59,15 @@ function isInfrastructureCodeVector(
 /** Reports observed code presence. This does not attest deployment identity. */
 export function projectSmartAccountInfrastructureObservation(
   chainId: number,
-  codes: unknown
+  codes: unknown,
+  factoryAddress?: string
 ) {
   if (!isInfrastructureCodeVector(codes)) return undefined;
-  const contracts = PALI_INFRASTRUCTURE_METADATA.map((contract, index) => ({
+  const contracts = (
+    factoryAddress?.toLowerCase() === LEGACY_FACTORY_ADDRESS
+      ? legacyInfrastructure
+      : PALI_INFRASTRUCTURE_METADATA
+  ).map((contract, index) => ({
     address: contract.address,
     deployed: codes[index + 1] !== '0x',
     displayName: contract.displayName,
@@ -77,9 +108,11 @@ export function createSmartAccountInfrastructureReader() {
     readCodes,
     assertCurrent,
     forceRefresh = false,
+    factoryAddress,
   }: {
     assertCurrent(): void;
     chainId: number;
+    factoryAddress?: string;
     forceRefresh?: boolean;
     provider: {
       send(method: string, params: unknown[]): Promise<any>;
@@ -99,7 +132,13 @@ export function createSmartAccountInfrastructureReader() {
     const number = readEvmRpcQuantity(head?.number);
     const hash = readEvmRpcHash(head?.hash);
     const blockTag = `0x${number.toString(16)}`;
-    const key = JSON.stringify([chainId, url, blockTag, hash]);
+    const key = JSON.stringify([
+      chainId,
+      url,
+      blockTag,
+      hash,
+      factoryAddress?.toLowerCase(),
+    ]);
     const cached = forceRefresh ? undefined : entries.get(key);
     const codes = cached?.codes ?? (await readCodes(blockTag));
     check();
@@ -135,7 +174,11 @@ export function createSmartAccountInfrastructureReader() {
         entries.delete(first);
       }
     }
-    return projectSmartAccountInfrastructureObservation(chainId, codes)!;
+    return projectSmartAccountInfrastructureObservation(
+      chainId,
+      codes,
+      factoryAddress
+    )!;
   };
 }
 

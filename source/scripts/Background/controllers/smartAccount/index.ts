@@ -167,9 +167,10 @@ import {
   assertSmartAccountInfrastructureReady,
   createSmartAccountInfrastructureReader,
   projectSmartAccountInfrastructureObservation,
-  SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES,
+  infrastructureCodeAddresses,
   type SmartAccountInfrastructureObservation,
 } from 'utils/smartAccount/infrastructureObservation';
+import { LEGACY_FACTORY_ADDRESS } from 'utils/smartAccount/legacyDeployment';
 import {
   hasGuardianRecoveryNotReadyRevert,
   hasGuardianRecoveryAlreadyScheduledRevert,
@@ -1002,7 +1003,8 @@ class SmartAccountController {
   private async readInfrastructureStatus(
     context: ReturnType<SmartAccountController['infrastructureContext']>,
     assertCurrent: () => void,
-    forceRefresh = false
+    forceRefresh = false,
+    factoryAddress?: string
   ): Promise<SmartAccountInfrastructureStatus> {
     const deadline = Date.now() + 18000;
     const withinDeadline = <T>(
@@ -1030,7 +1032,7 @@ class SmartAccountController {
     const journal = await withinDeadline(() =>
       readInfrastructureJournal(context, assertCurrent)
     );
-    const addresses = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES;
+    const addresses = infrastructureCodeAddresses(factoryAddress);
     const status: SmartAccountInfrastructureStatus =
       await this.readInfrastructureCodes({
         chainId: context.chainId,
@@ -1049,6 +1051,7 @@ class SmartAccountController {
         },
         assertCurrent,
         forceRefresh,
+        factoryAddress,
         readCodes: async (blockTag) => {
           try {
             const batched = await withinDeadline(
@@ -1078,6 +1081,8 @@ class SmartAccountController {
           );
         },
       });
+    // Pending deployments belong to the current catalogue, not to a legacy bootstrap check.
+    if (factoryAddress) return status;
     if (
       journal &&
       !status.contracts.some((contract) => contract.id === journal.contractId)
@@ -2191,7 +2196,19 @@ class SmartAccountController {
           active.metadata.isDeployed &&
           hasUsableSmartAccountAuthMetadata(active.metadata);
         if (!useDeployedMetadata) {
-          await this.assertInfrastructureSupported(snapshot, assertContext);
+          const factory = active.metadata.descriptor?.factoryAddress;
+          if (factory?.toLowerCase() === LEGACY_FACTORY_ADDRESS) {
+            assertSmartAccountInfrastructureReady(
+              await this.readInfrastructureStatus(
+                snapshot,
+                assertContext,
+                false,
+                factory
+              )
+            );
+          } else {
+            await this.assertInfrastructureSupported(snapshot, assertContext);
+          }
           assertContext();
         }
         cancellationPayer = cancellation

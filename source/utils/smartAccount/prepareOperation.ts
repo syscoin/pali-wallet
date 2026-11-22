@@ -15,6 +15,7 @@ import { requireSmartAccountAddressIdentity } from './addressIdentity.ts';
 import { assertSmartAccountSpendability } from './assetSpendability.ts';
 import {
   getPaliEntryPointAddress,
+  getPaliModuleAddress,
   getPaliSmartAccountFactoryAddress,
   paliSmartAccountInterface,
 } from './contracts.ts';
@@ -29,6 +30,7 @@ import {
   getSmartAccountValidatorProfile,
   type SmartAccountUserOpGasEstimate,
 } from './gas.ts';
+import { LEGACY_FACTORY_ADDRESS } from './legacyDeployment.ts';
 import { prepareSmartAccountNativeMaximum } from './nativeMaximum.ts';
 import type { SmartAccountPendingState } from './pendingState.ts';
 import { getSmartAccountUserOpHash } from './userOperationHash.ts';
@@ -207,6 +209,40 @@ async function prepareOperation({
     throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
       transactionNotBroadcast: true,
     });
+  // A legacy catalogue can be ready before the corrected validators exist on this chain.
+  if (
+    metadata.descriptor?.factoryAddress.toLowerCase() === LEGACY_FACTORY_ADDRESS
+  ) {
+    const corrected = new Set(
+      (['ecdsa', 'composite'] as const).map((id) =>
+        getPaliModuleAddress(chainId, id).toLowerCase()
+      )
+    );
+    const installing = new Set<string>();
+    const selector =
+      paliSmartAccountInterface.getFunction('installModule')!.selector;
+    for (const execution of executions) {
+      if (
+        execution.target.toLowerCase() !== account.address.toLowerCase() ||
+        execution.data?.slice(0, 10).toLowerCase() !== selector
+      )
+        continue;
+      const [type, target] = paliSmartAccountInterface.decodeFunctionData(
+        'installModule',
+        execution.data
+      );
+      if (type === BigInt(1) && corrected.has(target.toLowerCase()))
+        installing.add(target);
+    }
+    for (const target of installing) {
+      const code = await provider.getCode(target);
+      assertSynchronousEvmFeeGuard(assertCurrent);
+      if (smartAccountDeploymentStateFromCode(code) !== 'deployed')
+        throw new Error(
+          'The selected validator is not deployed on this network.'
+        );
+    }
+  }
   const legacyGasPrice = getExplicitSmartAccountGasPrice(feeOverrides);
   const auth = requireSmartAccountAuthenticator(metadata);
   const deploySalt =
@@ -218,7 +254,9 @@ async function prepareOperation({
     chainId,
     deploySalt,
     factoryAddress:
-      metadata.factoryAddress || getPaliSmartAccountFactoryAddress(chainId),
+      metadata.factoryAddress ||
+      metadata.descriptor?.factoryAddress ||
+      getPaliSmartAccountFactoryAddress(chainId),
     provider,
   });
   assertSynchronousEvmFeeGuard(assertCurrent);

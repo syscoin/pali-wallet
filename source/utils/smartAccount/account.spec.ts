@@ -39,11 +39,12 @@ import {
   paliSmartAccountFactoryInterface,
 } from './contracts';
 import { derivePaliSmartAccountDeployment } from './counterfactual';
-import {
-  PALI_CANONICAL_FACTORY_ADDRESS,
-  PALI_INFRASTRUCTURE_METADATA_BY_ID,
-} from './deploymentMetadata';
+import { PALI_CANONICAL_FACTORY_ADDRESS } from './deploymentMetadata';
 import { encodeSmartAccountAuthenticatorSignature } from './execution';
+import {
+  LEGACY_ECDSA_VALIDATOR,
+  LEGACY_FACTORY_ADDRESS,
+} from './legacyDeployment';
 
 describe('ERC-7579 smart account helpers', () => {
   const auth = {
@@ -578,14 +579,14 @@ describe('ERC-7579 smart account helpers', () => {
       '0xc08f6ee4e88037b1a376908ac44004aacfe8cdccb1092652f4cfa2893f0232e2',
     ],
   ])(
-    'matches the canonical factory and deployed proxy for %s and salt %s',
+    'matches the predecessor factory and deployed proxy for %s and salt %s',
     (owner, deploySalt, address, initHash) => {
-      // Independent vectors from actual canonical factory calls and CREATE2 proxy deployments.
+      // Independent vectors from actual predecessor factory calls and CREATE2 proxy deployments.
       const deployment = derivePaliSmartAccountDeployment({
-        validator: PALI_INFRASTRUCTURE_METADATA_BY_ID.ecdsaValidator.address,
+        validator: LEGACY_ECDSA_VALIDATOR,
         data: encodeEcdsaValidatorInitData([owner], 1),
         deploySalt,
-        factoryAddress: PALI_CANONICAL_FACTORY_ADDRESS,
+        factoryAddress: LEGACY_FACTORY_ADDRESS,
       });
       expect(deployment.address).toBe(address);
       expect(keccak256(deployment.initCode)).toBe(initHash);

@@ -27,6 +27,10 @@ import {
   paliCompositeValidatorInterface,
   paliSlhDsaValidatorInterface,
 } from './contracts.ts';
+import {
+  LEGACY_COMPOSITE_VALIDATOR,
+  LEGACY_ECDSA_VALIDATOR,
+} from './legacyDeployment.ts';
 import type { ISmartAccountMetadata } from '../../types/network.ts';
 
 export function hasUsableSmartAccountAuthMetadata(
@@ -76,8 +80,8 @@ export async function readSmartAccountValidatorMetadata({
     chainId,
     'p256-webauthn'
   );
-  const ecdsaAddress = getConfiguredAuthenticatorAddress(chainId, 'ecdsa');
-  const compositeAddress = getConfiguredAuthenticatorAddress(
+  const canonicalEcdsa = getConfiguredAuthenticatorAddress(chainId, 'ecdsa');
+  const canonicalComposite = getConfiguredAuthenticatorAddress(
     chainId,
     'composite'
   );
@@ -100,14 +104,10 @@ export async function readSmartAccountValidatorMetadata({
     (record) => record.moduleType === ERC7579_MODULE_TYPE_VALIDATOR
   );
 
-  const calls: AggregateCallRequest[] = [
-    isModuleInstalledCall(p256Address),
-    {
-      args: [account.address],
-      fn: 'authData',
-      iface: paliP256WebAuthnValidatorInterface,
-      target: p256Address,
-    },
+  const validatorCalls = (
+    ecdsaAddress: string,
+    compositeAddress: string
+  ): AggregateCallRequest[] => [
     isModuleInstalledCall(ecdsaAddress),
     {
       args: [account.address],
@@ -134,6 +134,19 @@ export async function readSmartAccountValidatorMetadata({
       iface: paliCompositeValidatorInterface,
       target: compositeAddress,
     },
+  ];
+  const includeLegacy =
+    getAddress(canonicalEcdsa) !== getAddress(LEGACY_ECDSA_VALIDATOR) ||
+    getAddress(canonicalComposite) !== getAddress(LEGACY_COMPOSITE_VALIDATOR);
+  const calls: AggregateCallRequest[] = [
+    isModuleInstalledCall(p256Address),
+    {
+      args: [account.address],
+      fn: 'authData',
+      iface: paliP256WebAuthnValidatorInterface,
+      target: p256Address,
+    },
+    ...validatorCalls(canonicalEcdsa, canonicalComposite),
     ...(includeSlhDsa
       ? ([
           isModuleInstalledCall(slhDsaAddress),
@@ -154,6 +167,9 @@ export async function readSmartAccountValidatorMetadata({
     ...customRecords.map((record) =>
       isModuleInstalledCall(record.address, record.moduleType)
     ),
+    ...(includeLegacy
+      ? validatorCalls(LEGACY_ECDSA_VALIDATOR, LEGACY_COMPOSITE_VALIDATOR)
+      : []),
   ];
 
   const [code, results] = await Promise.all([
@@ -264,52 +280,68 @@ export async function readSmartAccountValidatorMetadata({
     installedModules.push(...(built.metadata.installedModules || []));
   }
 
-  const [ecdsaInstalled] = requireAggregateResult(
-    results[2],
-    'ecdsa isModuleInstalled'
-  );
-  if (ecdsaInstalled) {
-    const [rawOwners] = requireAggregateResult(
-      results[3],
-      'ecdsa owners'
-    ) as unknown as [string[]];
-    const owners = rawOwners.map((owner: string) => getAddress(owner));
-    const threshold = Number(
-      requireAggregateResult(results[4], 'ecdsa threshold')[0]
+  const observeValidators = (
+    start: number,
+    ecdsaAddress: string,
+    compositeAddress: string
+  ) => {
+    const [ecdsaInstalled] = requireAggregateResult(
+      results[start],
+      'ecdsa isModuleInstalled'
     );
-    installedModules.push({
-      address: getAddress(ecdsaAddress),
-      config: { owners, threshold },
-      data: encodeEcdsaValidatorInitData(owners, threshold),
-      id: 'ecdsa',
-      type: 'validator',
-    });
-  }
+    if (
+      ecdsaInstalled &&
+      !installedModules.some(
+        (module) => module.address === getAddress(ecdsaAddress)
+      )
+    ) {
+      const [rawOwners] = requireAggregateResult(
+        results[start + 1],
+        'ecdsa owners'
+      ) as unknown as [string[]];
+      const owners = rawOwners.map((owner: string) => getAddress(owner));
+      const threshold = Number(
+        requireAggregateResult(results[start + 2], 'ecdsa threshold')[0]
+      );
+      installedModules.push({
+        address: getAddress(ecdsaAddress),
+        config: { owners, threshold },
+        data: encodeEcdsaValidatorInitData(owners, threshold),
+        id: 'ecdsa',
+        type: 'validator',
+      });
+    }
 
-  const [compositeInstalled] = requireAggregateResult(
-    results[5],
-    'composite isModuleInstalled'
-  );
-  if (compositeInstalled) {
-    const [rawChildren] = requireAggregateResult(
-      results[6],
-      'composite childValidators'
-    ) as unknown as [string[]];
-    const childValidators = rawChildren.map((child: string) =>
-      getAddress(child)
+    const [compositeInstalled] = requireAggregateResult(
+      results[start + 3],
+      'composite isModuleInstalled'
     );
-    const threshold = Number(
-      requireAggregateResult(results[7], 'composite threshold')[0]
-    );
-    installedModules.push({
-      address: getAddress(compositeAddress),
-      config: { childValidators, threshold },
-      data: encodeCompositeValidatorInitData(childValidators, threshold),
-      id: 'composite',
-      type: 'validator',
-    });
-  }
-
+    if (
+      compositeInstalled &&
+      !installedModules.some(
+        (module) => module.address === getAddress(compositeAddress)
+      )
+    ) {
+      const [rawChildren] = requireAggregateResult(
+        results[start + 4],
+        'composite childValidators'
+      ) as unknown as [string[]];
+      const childValidators = rawChildren.map((child: string) =>
+        getAddress(child)
+      );
+      const threshold = Number(
+        requireAggregateResult(results[start + 5], 'composite threshold')[0]
+      );
+      installedModules.push({
+        address: getAddress(compositeAddress),
+        config: { childValidators, threshold },
+        data: encodeCompositeValidatorInitData(childValidators, threshold),
+        id: 'composite',
+        type: 'validator',
+      });
+    }
+  };
+  observeValidators(2, canonicalEcdsa, canonicalComposite);
   const activeValidatorResultIndex = 8 + (includeSlhDsa ? 2 : 0);
 
   if (includeSlhDsa) {
@@ -335,6 +367,12 @@ export async function readSmartAccountValidatorMetadata({
   // probes (e.g. module self-destructed) simply drop the module from the
   // installed list; the durable record remains for later re-probing.
   const customBaseIndex = activeValidatorResultIndex + 1;
+  if (includeLegacy)
+    observeValidators(
+      customBaseIndex + customRecords.length,
+      LEGACY_ECDSA_VALIDATOR,
+      LEGACY_COMPOSITE_VALIDATOR
+    );
   const installedValidatorAddresses = new Set(
     installedModules.map((module) => module.address.toLowerCase())
   );

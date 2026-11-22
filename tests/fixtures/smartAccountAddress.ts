@@ -13,9 +13,12 @@ import { derivePaliSmartAccountDeployment } from 'utils/smartAccount/counterfact
 
 export function smartAccountAddressFixture(
   chainId = 1,
-  owner = '0x0000000000000000000000000000000000000001'
+  owner = '0x0000000000000000000000000000000000000001',
+  {
+    factoryAddress = getPaliSmartAccountFactoryAddress(chainId),
+    validator = getConfiguredAuthenticatorAddress(chainId, 'ecdsa'),
+  } = {}
 ) {
-  const factoryAddress = getPaliSmartAccountFactoryAddress(chainId);
   const descriptor = getPaliSmartAccountDescriptor({
     accountIndex: 0,
     accountVersion: PALI_SMART_ACCOUNT_VERSION,
@@ -25,7 +28,7 @@ export function smartAccountAddressFixture(
   });
   const deploymentAuth = {
     data: encodeEcdsaValidatorInitData([owner], 1),
-    validator: getConfiguredAuthenticatorAddress(chainId, 'ecdsa'),
+    validator,
   };
   const { address, factory, factoryData } = derivePaliSmartAccountDeployment({
     ...deploymentAuth,

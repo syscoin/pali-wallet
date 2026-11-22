@@ -112,30 +112,26 @@ export function captureCompositePolicyChange(
       decoded?.name !== 'rotateValidator'
     )
       continue;
-    if (target === undefined) {
-      try {
-        target = getAddress(
-          installed.find((module) => module.id === 'composite')?.address ??
-            getPaliModuleAddress(metadata.chainId, 'composite')
-        );
-      } catch {
-        continue;
-      }
-    }
     if (
-      decoded?.name === 'installModule' &&
-      BigInt(decoded.args[0]) === BigInt(1) &&
-      getAddress(decoded.args[1]) === target
-    ) {
-      if (initData !== undefined) return invalid();
-      initData = decoded.args[2];
-    } else if (
-      decoded?.name === 'rotateValidator' &&
-      getAddress(decoded.args[0]) === target
-    ) {
-      if (initData !== undefined) return invalid();
-      initData = decoded.args[2];
-    }
+      decoded.name === 'installModule' &&
+      BigInt(decoded.args[0]) !== BigInt(1)
+    )
+      continue;
+    const candidate = getAddress(
+      decoded.args[decoded.name === 'installModule' ? 1 : 0]
+    );
+    if (
+      candidate !==
+        getAddress(getPaliModuleAddress(metadata.chainId, 'composite')) &&
+      !installed.some(
+        (module) =>
+          module.id === 'composite' && getAddress(module.address) === candidate
+      )
+    )
+      continue;
+    if (initData !== undefined) return invalid();
+    target = candidate;
+    initData = decoded.args[2];
   }
   if (initData === undefined) return null;
   if (!target) return invalid();

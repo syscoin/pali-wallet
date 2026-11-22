@@ -82,7 +82,7 @@ import {
   type PreparedSmartAccountOperation,
 } from './operation.ts';
 import { createNativeSmartAccountProvider } from './provider.ts';
-import { createSmartAccountInfrastructureReader, SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES,
+import { createSmartAccountInfrastructureReader, infrastructureCodeAddresses,
   assertSmartAccountInfrastructureReady } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
 
 const infrastructureReaders = new WeakMap<SmartAccountPayerWallet, ReturnType<typeof createSmartAccountInfrastructureReader>>();
@@ -350,10 +350,12 @@ export function createNativeSmartOperation(
         // A deployed transfer uses its observed account and installed validator.
         // Deployment and management retain the complete infrastructure check.
         if (!deployedTransfer) {
+          const factoryAddress = metadata.descriptor?.factoryAddress;
           const infrastructure = await readInfrastructureCodes({
+            factoryAddress,
             chainId, url: ports.network.rpcUrl, provider, assertCurrent,
             readCodes: async blockTag => {
-              const codeResults = await provider.readMany(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => ({
+              const codeResults = await provider.readMany(infrastructureCodeAddresses(factoryAddress).map(address => ({
                 method: 'eth_getCode', params: [address, blockTag],
               })));
               return codeResults.map((result: PromiseSettledResult<unknown>) => {

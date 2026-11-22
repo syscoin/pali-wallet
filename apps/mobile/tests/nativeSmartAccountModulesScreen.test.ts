@@ -48,6 +48,7 @@ function fixture(passkeys = false, observed = metadata()) {
   const open = async (_signal: AbortSignal, check: () => void, scope: privateAuthentication.NativePrivateAuthenticationScope) => { authentication = scope; guard = check; guard(); opens++; return manager; };
   const screen = screenFixture(new URL('../src/screens/NativeSmartAccountModules.tsx', import.meta.url), 'NativeSmartAccountModulesScreen', {
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
+    '../../../../source/utils/smartAccount/contracts': { getPaliModuleAddress: () => ownerAddress },
     '../../../../source/utils/smartAccount/custom': { listCompositeChildCandidates },
     '../../../../source/utils/smartAccount/moduleCommands': { canRemoveValidatorModule },
     '../custody/privateAuthentication': privateAuthentication,
