@@ -2,8 +2,10 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import { ENS_RECIPIENT_TTL_MS } from '../../shared/ensRecipient';
 import { IGlobalState } from '../vault/types';
+import type { RootState } from 'state/store';
 import { INetwork, INetworkType } from 'types/network';
 import { PALI_NETWORKS_STATE } from 'utils/constants';
+import type { IWalletNavigationScope } from 'utils/navigationState';
 
 // ENS cache TTL: 5 minutes (300,000 ms)
 // ENS names can change, so we don't cache them indefinitely for security
@@ -99,12 +101,19 @@ const vaultGlobalSlice = createSlice({
         isLoadingBalances: false,
       };
       delete state.transactionHistoryStatus;
+      delete state.utxoActivityReplacements;
     },
     setTransactionHistoryStatus(
       state: IGlobalState,
       action: PayloadAction<IGlobalState['transactionHistoryStatus']>
     ) {
       state.transactionHistoryStatus = action.payload;
+    },
+    setUtxoActivityReplacements(
+      state: IGlobalState,
+      action: PayloadAction<IGlobalState['utxoActivityReplacements']>
+    ) {
+      state.utxoActivityReplacements = action.payload;
     },
     setIsLoadingBalances(state: IGlobalState, action: PayloadAction<boolean>) {
       state.loadingStates.isLoadingBalances = action.payload;
@@ -256,12 +265,16 @@ const vaultGlobalSlice = createSlice({
     },
     setHasEncryptedVault(state: IGlobalState, action: PayloadAction<boolean>) {
       state.hasEncryptedVault = action.payload;
-      if (!action.payload) delete state.transactionHistoryStatus;
+      if (!action.payload) {
+        delete state.transactionHistoryStatus;
+        delete state.utxoActivityReplacements;
+      }
     },
     setHasEthProperty(state: IGlobalState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
     },
     startSwitchNetwork(state: IGlobalState, action: PayloadAction<INetwork>) {
+      delete state.utxoActivityReplacements;
       state.networkStatus = 'switching';
       state.networkTarget = action.payload;
       state.isPostNetworkSwitchLoading = true;
@@ -432,6 +445,7 @@ export const {
   rehydrate,
   resetLoadingStates,
   setTransactionHistoryStatus,
+  setUtxoActivityReplacements,
   setIsLoadingBalances,
   setActiveSlip44,
   setAdvancedSettings,
@@ -459,5 +473,34 @@ export const {
   clearExpiredEnsCache,
   clearAllEnsCache,
 } = vaultGlobalSlice.actions;
+
+export const selectIsUtxoActivityReplaced = (
+  state: RootState,
+  scope: IWalletNavigationScope,
+  txid: string
+): boolean => {
+  const settlement = state.vaultGlobal?.utxoActivityReplacements;
+  if (
+    !settlement ||
+    settlement.scope.account !== scope.account ||
+    settlement.scope.network !== scope.network
+  )
+    return false;
+  const { activeAccount, activeNetwork, accountTransactions } = state.vault;
+  const rows =
+    accountTransactions[activeAccount.type]?.[activeAccount.id]?.syscoin?.[
+      activeNetwork.chainId
+    ];
+  return Object.entries(settlement.winners).some(([winner, observation]) => {
+    if (!observation.replacedTxids.includes(txid)) return false;
+    const current = rows?.find((row) => row.txid === winner);
+    // A contradictory account row can arrive before the next journal check.
+    // An absent winner may simply be outside the account history window.
+    return (
+      !current ||
+      (current.confirmations > 0 && current.blockHash === observation.blockHash)
+    );
+  });
+};
 
 export default vaultGlobalSlice.reducer;

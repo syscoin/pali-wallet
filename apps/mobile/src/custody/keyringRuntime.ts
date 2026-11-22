@@ -189,6 +189,7 @@ import { NativeWalletCatalogue, WalletCatalogueError,
   catalogueEvmNetworks,
   catalogueUtxoNetworks,
   captureNativeInfrastructurePayerReference,
+  getNativeGuardianRecoveryIntent,
   previewNativeNetworkSelection,
   createNativeAccountRecord,
   recoveryVerificationRecords,
@@ -1358,6 +1359,12 @@ export function createKeyringRuntimeFactory(
             ),
             metadata, replacement, retainUnsignedNative: retention?.retainUnsignedNative,
             onUnsentDappDiscarded: retention?.onUnsentDappDiscarded,
+            // Signed simulation can disclose the UserOperation, so only the
+            // separate, undispatched payer envelope can be retracted.
+            smartPayerCleanupSession: selected.type === 'SmartAccount' && assertSmartAdmission &&
+              metadata?.smartAccountExecution === true
+              ? { keyring: transactionRecordKeyring(keyring, checkWalletOwner), assertCurrent: checkWalletOwner }
+              : undefined,
             walletSendCleanupSession: (retention?.walletSend || retention?.onUnsentDappDiscarded) && selected.type !== 'SmartAccount'
               ? { keyring: transactionRecordKeyring(keyring, checkWalletOwner), assertCurrent: checkWalletOwner }
               : undefined,
@@ -4691,12 +4698,7 @@ export function createKeyringRuntimeFactory(
         };
         const getGuardianRecoveryIntent = () => {
           if (!catalogueSnapshot || !keyring.hasPublicSession()) return null;
-          const selected = selectedAccount();
-          return (
-            catalogue.privateRecords.guardianRecoveryIntents?.find(
-              (entry) => entry.accountId === selected.id
-            ) ?? null
-          );
+          return getNativeGuardianRecoveryIntent(catalogue.privateRecords, selectedAccount().id);
         };
         const readLocalInfrastructureScope = (wallet: string): LocalSigningResumeScope => {
           const snapshot = catalogueSnapshot, selected = snapshot && selectedAccount();

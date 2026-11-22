@@ -1,3 +1,10 @@
+export class ExecutionSimulationEvidenceError extends Error {
+  constructor() {
+    super('Unable to verify smart account execution');
+    this.name = 'ExecutionSimulationEvidenceError';
+  }
+}
+
 export class ExecutionSimulationUnsupportedError extends Error {
   readonly code = 'SMART_ACCOUNT_SIMULATION_UNSUPPORTED';
 

@@ -103,6 +103,16 @@
     padding-top: 0.5rem;
   }
 
+  [data-navigation-scroll='wallet-layout'] .faucet-footer {
+    padding-top: 0.5rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .faucet-feedback > img {
+    width: 36px;
+    height: 36px;
+  }
+
   .faucet-feedback h1 {
     margin-top: 0.5rem;
   }

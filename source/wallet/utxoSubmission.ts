@@ -6,14 +6,19 @@ import {
   cancelResponseBody,
   checkAborted,
 } from '../shared/boundedHttp.ts';
+import type { UtxoActivityReplacement } from '../shared/utxoActivityStatus.ts';
 
 import { fetchUtxoRead } from './utxoReadRetry.ts';
-import { RAW_BYTES } from './utxoSignedBundle.ts';
-import { snapshotUtxoSubmission } from './utxoSignedRecords.ts';
+import { HASH, RAW_BYTES } from './utxoSignedBundle.ts';
+import {
+  matchesUtxoSignedDigest,
+  snapshotUtxoSubmission,
+} from './utxoSignedRecords.ts';
 import type {
   UtxoDurableSubmission,
   UtxoRecordOwner,
   UtxoRecordSession,
+  UtxoRetainedSubmission,
   UtxoSignedRecords,
 } from './utxoSignedRecords.ts';
 import type { ISyscoinTransactions } from '@sidhujag/sysweb3-keyring';
@@ -158,6 +163,7 @@ export function observeRetainedUtxo({
   backendChain,
   fetch,
   signal,
+  onReplacementObservation,
 }: Readonly<{
   backendChain: string;
   fetch: typeof globalThis.fetch;
@@ -166,16 +172,24 @@ export function observeRetainedUtxo({
   session: UtxoRecordSession;
   signal: AbortSignal;
   txid: string;
+  onReplacementObservation?: (
+    txid: string,
+    replacement: UtxoActivityReplacement | undefined
+  ) => void;
 }>) {
-  return records.observeRetained(
-    {
-      ...session,
-      assertCurrent() {
-        checkAborted(signal);
-        session.assertCurrent();
-        checkAborted(signal);
-      },
+  const currentSession = {
+    ...session,
+    assertCurrent() {
+      checkAborted(signal);
+      session.assertCurrent();
+      checkAborted(signal);
     },
+  };
+  let canonical:
+    | { record: UtxoRetainedSubmission; blockHash: string }
+    | undefined;
+  return records.observeRetained(
+    currentSession,
     owner,
     txid,
     async (retained, assertCurrent) => {
@@ -223,7 +237,7 @@ export function observeRetainedUtxo({
         if (verified.coin.hashGenesisBlock !== retained.owner.genesisHash)
           throw new Error('Retained UTXO network changed');
         verified.assertCurrent();
-        return await readRetainedJson(
+        const transaction = await readRetainedJson(
           fetch,
           statusUrl + 'tx/' + retained.txid,
           owned,
@@ -231,12 +245,58 @@ export function observeRetainedUtxo({
           STATUS_BYTES,
           deadline
         );
+        if (onReplacementObservation && retained.replacementOf) {
+          const observed = transaction as {
+            txid?: unknown;
+            hex?: unknown;
+            confirmations?: number;
+            blockHash?: string;
+            blockHeight?: number;
+          } | null;
+          if (
+            observed?.txid === retained.txid &&
+            matchesUtxoSignedDigest(retained, observed.hex) &&
+            Number.isSafeInteger(observed.confirmations) &&
+            observed.confirmations! > 0 &&
+            typeof observed.blockHash === 'string' &&
+            HASH.test(observed.blockHash) &&
+            Number.isSafeInteger(observed.blockHeight) &&
+            observed.blockHeight! > 0
+          ) {
+            // Keep canonicality checks for presentation independent of the
+            // existing exact-byte journal observation and its phase policy.
+            const block = (await readRetainedJson(
+              fetch,
+              statusUrl + 'block-index/' + observed.blockHeight,
+              owned,
+              verified.assertCurrent,
+              IDENTITY_BYTES,
+              deadline
+            ).catch(() => null)) as { blockHash?: unknown } | null;
+            if (block?.blockHash === observed.blockHash)
+              canonical = { record: retained, blockHash: observed.blockHash };
+          }
+        }
+        return transaction;
       } finally {
         clearTimeout(timeout);
         signal.removeEventListener('abort', abort);
         abort();
       }
-    }
+    },
+    onReplacementObservation &&
+      (async (status, observation) => {
+        let replacement: UtxoActivityReplacement | undefined;
+        if (status === 'confirmed' && canonical) {
+          const { record, blockHash } = canonical;
+          const replacedTxids = await records
+            .activityReplacementAncestors(observation, owner, record)
+            .catch(() => []);
+          if (replacedTxids.length) replacement = { blockHash, replacedTxids };
+        }
+        observation.assertCurrent();
+        onReplacementObservation(txid, replacement);
+      })
   );
 }
 

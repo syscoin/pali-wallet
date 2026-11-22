@@ -1,5 +1,5 @@
 import { Wallet } from 'ethers/wallet';
-import { captureNativePublicSessionRecord, nativePublicRecordDomains, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
+import { captureNativePublicSessionRecord, createNativePublicSessionRecord, nativePublicRecordDomains, nativePublicSessionSlhStates, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
 import { TypedDataEncoder } from 'ethers/hash';
 import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
@@ -12,7 +12,7 @@ import { createTestCredentialRecordKeyring, withTestCredentialOperation } from '
 import { createSlhDsaProfileStateCrypto } from '../../../source/wallet/slhDsaStateCrypto.ts';
 import { qualifyNativeHdAccounts } from '../qualification/hd-accounts.ts';
 import { createTestCredentialPort } from './fixtures/credential.ts';
-import type { NativeCredentialPort } from '../src/custody/credentialVault.ts';
+import { createNativeCredentialVault, type NativeCredentialPort } from '../src/custody/credentialVault.ts';
 import { normalizeSmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { nativeSmartTrezorDevice } from './nativeSmartTrezorDevice.ts';
@@ -37,7 +37,9 @@ import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts
 import { decodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { encodePasskeyWebAuthnProof } from '../../../source/utils/passkey/validation.ts';
 import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
-import { encodeEcdsaValidatorInitData, encodeSmartAccountValidatorNonceKey, getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
+import { encodeEcdsaValidatorInitData, encodeSmartAccountValidatorNonceKey, getConfiguredAuthenticatorAddress, getPaliSmartAccountDescriptor } from '../../../source/utils/smartAccount/account.ts';
+import { captureGuardianRecoveryIntent } from '../../../source/utils/smartAccount/guardianRecoveryIntent.ts';
+import { buildSmartAccountGuardianRecoveryOperation } from '../../../source/utils/smartAccount/recovery.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -58,7 +60,7 @@ import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
-import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeInfrastructurePending } from '../src/custody/walletCatalogue.ts';
+import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeAccountRecord, type NativeInfrastructurePending } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import { ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
@@ -96,6 +98,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const possessionViews: { validator: string; hash: string; proof: string }[] = [];
   const signedDisclosures: { operationHash: string; signature: string }[] = [];
   let checkAuthorizationAtDisclosure = false;
+  let invalidSimulationParent = false;
+  let smartSendGatewayError: 'before-forwarding' | 'after-acceptance' | undefined;
   let nextPayerEstimate: (() => void | Promise<void>) | undefined;
   let payerGasEstimate = '0x186a0';
   const externalFinancialProofs: {hash:string;signature:string}[] = [];
@@ -128,6 +132,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let onInnerNonceRead: ((tag: string) => void) | undefined;
   let wrongChain = false;
   let blockedRecipient = false;
+  let beforeRecipientPolicy: (() => Promise<void>) | undefined;
   let smartBalance = '0x0';
   let payerBalance = '0x1000000000000000';
   let pendingPayerBalance: string | undefined;
@@ -275,7 +280,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             body: JSON.stringify({jsonrpc:'2.0', id:request.id, method:'eth_getBlockByNumber', params:[request.params[1], false]}),
           });
           const simulationParent = guardianParent ? (await guardianParent.json()).result : observedHead;
-          result = [{parentHash: simulationParent.hash, number: `0x${(BigInt(simulationParent.number)+1n).toString(16)}`,
+          result = [{parentHash: invalidSimulationParent ? '0x' + '00'.repeat(32) : simulationParent.hash,
+            number: invalidSimulationParent ? simulationParent.number : `0x${(BigInt(simulationParent.number)+1n).toString(16)}`,
             transactions: calls.map((call: any) => ({...call, input: call.data})),
             calls: calls.map((call: any) => {
               if (call.to.toLowerCase() !== getPaliEntryPointAddress(Number(network.chainId)).toLowerCase()) return {status:'0x1', gasUsed:'0x5208', logs:[]};
@@ -329,6 +335,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const inventory = inspectEvmSignedBundle(saved, identity.profileId);
           const authorizations = JSON.parse(saved).authorizations?.length ?? 0;
           assert.equal(inventory.transactions, submitted.length + 1 + authorizations);
+          const smartExecution = Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId));
+          if (smartExecution && smartSendGatewayError === 'before-forwarding')
+            return new Response(null, { status: 502 });
           if (Transaction.from(request.params[0]).to?.toLowerCase() === PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase()) {
             const signed = Transaction.from(request.params[0]);
             assert(readPreparedRecord);
@@ -340,9 +349,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             infrastructureBroadcasts.push({ rawTransaction: request.params[0], pending: structuredClone(pending) });
           }
           submitted.push(request.params[0]);
-          if (Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId))) { if (!deployed) deployedByBroadcast = true; deployed = true; }
+          if (smartExecution) { if (!deployed) deployedByBroadcast = true; deployed = true; }
           result = Transaction.from(request.params[0]).hash;
           await afterBroadcast?.();
+          if (smartExecution && smartSendGatewayError === 'after-acceptance')
+            return new Response(null, { status: 502 });
           if (failInfrastructureBroadcast && Transaction.from(request.params[0]).to?.toLowerCase() === PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase())
             throw Error('connection lost after infrastructure submission');
         }
@@ -560,7 +571,10 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         }
       } };
     } } : {}),
-    checkSmartAccountAddress: async () => ({ isBlacklisted: blockedRecipient, severity: 'high' }),
+    async checkSmartAccountAddress() {
+      await beforeRecipientPolicy?.();
+      return { isBlacklisted: blockedRecipient, severity: 'high' };
+    },
     ensureCryptoReady: async () => undefined, readEvmRetirement: null, openStorage,
     connectionFetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init),
     async observeActivity(network, expected, signal, guard) {
@@ -589,6 +603,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     get completedSecretLeases() { return completedSecretLeases; },
     signedDisclosures,
     checkAuthorizationAtDisclosure() {checkAuthorizationAtDisclosure=true;},
+    rejectSimulationParent() { invalidSimulationParent = true; },
+    rejectSmartSendAcknowledgement(stage: 'before-forwarding' | 'after-acceptance') { smartSendGatewayError = stage; },
     onNextPayerEstimate(check: () => void | Promise<void>) { nextPayerEstimate = check; },
     holdNextPayerEstimate() {
       const ready = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
@@ -668,6 +684,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
     reorg() { readReceipts = false; nonceReset = true; },
     blockRecipient() { blockedRecipient = true; },
+    onRecipientPolicy(hook: () => Promise<void>) { beforeRecipientPolicy = hook; },
     undeployed() { deployed = false; },
     deployed(code = '0x01') { deployed = true; deployedCode = code; guardian = undefined; },
     interruptAfterReceipt() { interruptAfterReceipt = true; },
@@ -1391,6 +1408,115 @@ test('real SDK smart account creation, selection and cold unlock retain the orig
   } finally { await f.close(); }
 });
 
+for (const predecessor of [
+  { factory: '0x9ee1ab16e273fec939b82541b6fa17e55797f7bc', validator: '0xbe057b217a1e17ffdc27c5262db790f0aaaa9133', implicitBootstrapAuth: true },
+  { factory: '0x47d8929b686468eed298e3533199a066530cad90', validator: '0x9c868733647f7e6feaa3cf3ff22814c0d59480c2', implicitBootstrapAuth: false },
+]) test(`native cold reopen keeps the predecessor Smart account at ${predecessor.factory} without selecting it`, async () => {
+  const f = await fixture({}, true);
+  try {
+    const storage = f.storage;
+    const ring = f.sdkHost;
+    const identity = await storage.recovery.readIdentity();
+    assert(identity?.root);
+    const ownerAddress = identity.root.address;
+    await f.change({ kind: 'create', label: 'Replacement owner' });
+    if (predecessor.implicitBootstrapAuth) await f.change({ kind: 'create', label: 'Guardian' });
+    await f.change({ kind: 'create-smart', label: 'Predecessor Smart account' });
+    const original = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    const records = structuredClone(original);
+    const group = records.groups.find(entry => entry.key === '60')!;
+    const predecessorAccount = group.accounts.SmartAccount[0]!;
+    const metadata = predecessorAccount.smartAccount!;
+    const descriptor = getPaliSmartAccountDescriptor({ ...metadata.descriptor!, factoryAddress: predecessor.factory });
+    const data = encodeEcdsaValidatorInitData([ownerAddress], 1);
+    const initCode = coder.encode([`${moduleTuple}[]`, `${moduleTuple}[]`, moduleTuple, `${moduleTuple}[]`],
+      [[[predecessor.validator, data]], [], ['0x' + '00'.repeat(20), '0x'], []]);
+    const initializer = new Interface(['function initializeAccount(bytes initCode)']).encodeFunctionData('initializeAccount', [initCode]);
+    const proxy = concat([PALI_ACCOUNT_PROXY_CREATION_CODE,
+      coder.encode(['address', 'bytes'], ['0x7e072ef1cb48e3b6763502a03e8e74ef88a6f032', initializer])]);
+    const address = getCreate2Address(predecessor.factory, descriptor.deploymentSalt, keccak256(proxy));
+    predecessorAccount.address = address;
+    predecessorAccount.xpub = address;
+    metadata.descriptor = descriptor;
+    metadata.deploymentSalt = descriptor.deploymentSalt;
+    metadata.factoryAddress = descriptor.factoryAddress;
+    metadata.auth = { module: 'ecdsa', validator: predecessor.validator, data };
+    metadata.installedModules = [{ type: 'validator', id: 'ecdsa', address: predecessor.validator,
+      config: { owners: [ownerAddress], threshold: 1 }, data }];
+    if (predecessor.implicitBootstrapAuth) delete metadata.deploymentAuth;
+    else metadata.deploymentAuth = { validator: predecessor.validator, data };
+
+    let recoveryIntents: NativeAccountRecord['guardianRecoveryIntents'];
+    if (predecessor.implicitBootstrapAuth) {
+      metadata.isDeployed = true;
+      const accountRef = (index: number) => {
+        const account = group.accounts.HDAccount[index]!;
+        return { id: `hd:60:${index}`, address: account.address, xpub: account.xpub.toLowerCase() };
+      };
+      const payer = accountRef(0), replacement = accountRef(1);
+      const target = { auth: { module: 'ecdsa' as const, validator: predecessor.validator,
+        data: encodeEcdsaValidatorInitData([replacement.address], 1) } };
+      const operation = buildSmartAccountGuardianRecoveryOperation({
+        account: address, chainId: descriptor.chainId, target, policyEpoch: '1',
+        recoveryModule: getConfiguredAuthenticatorAddress(descriptor.chainId, 'guardian-recovery'),
+        salt: '0x' + '77'.repeat(32), replaceExistingValidator: true,
+      });
+      recoveryIntents = [{ accountId: original.active.accountId, ...captureGuardianRecoveryIntent({ operation, target }),
+        guardian: accountRef(2), payer, replacement: { kind: 'software', account: replacement } }];
+    }
+    const stored: NativeAccountRecord = { ...records,
+      ...(recoveryIntents ? { guardianRecoveryIntents: recoveryIntents } : {}) };
+    const checkpoint = captureNativePublicSessionRecord(await storage.keyringStorage.get(NATIVE_PUBLIC_SESSION_KEY));
+    const check = () => { assert.equal(f.sdkHost, ring); assert(ring.hasPublicSession()); };
+    const credential = createNativeCredentialVault(storage.credential, credentialPort);
+    // Seal the predecessor catalogue as the old installation would before exercising public cold restore.
+    await withTestCredentialOperation(storage.credential, credentialPort, ring, check, async () => {
+      const sealed = await credential.withPublicKey(check, key => createNativePublicSessionRecord(
+        ring, stored, identity, nativePublicSessionSlhStates(checkpoint), key, check, checkpoint.version));
+      assert.equal(await storage.keyringStorage.compareAndSetMany([
+        { key: WALLET_CATALOGUE_KEY, expected: original, value: stored },
+        { key: NATIVE_PUBLIC_SESSION_KEY, expected: checkpoint, value: sealed },
+      ], check), true);
+    });
+    const storedRows = async () => (await f.storage.recovery.readSnapshot()).records.filter(({ key }) =>
+      key === WALLET_CATALOGUE_KEY || key === NATIVE_PUBLIC_SESSION_KEY);
+    const before = await storedRows();
+    const protectedReads = f.credentialReads;
+
+    await f.reopen();
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+    assert.equal(f.owner.getSnapshot().backup, 'confirmed');
+    assert.deepEqual(f.owner.getSnapshot().account, { network: original.active.networkId, address: ownerAddress });
+    assert.equal(f.credentialReads, protectedReads);
+    assert.deepEqual(await storedRows(), before);
+
+    const catalogue = f.owner.getCatalogue()!;
+    assert.deepEqual(catalogue.active, { accountId: 'hd:60:0', networkId: original.active.networkId });
+    assert.equal(catalogue.accounts.some(account => account.id === original.active.accountId), false);
+    const control = f.runtime.catalogue.getControlSnapshot()!;
+    assert.deepEqual(control.active, catalogue.active);
+    assert.equal(control.accounts.some(account => account.id === original.active.accountId), false);
+    const connection = (await f.runtime.openConnectionHost()).context();
+    assert.equal(connection.activeAccountId, catalogue.active.accountId);
+    assert.equal(connection.accounts.some(account => account.id === original.active.accountId), false);
+    assert.equal(f.runtime.canSignSmartAccount(), false);
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    await assert.rejects(f.change({ kind: 'select', id: original.active.accountId }), { code: 'INVALID_INPUT' });
+    assert.deepEqual(await storedRows(), before);
+
+    await f.change({ kind: 'create-smart', label: 'Current Smart account' });
+    assert.equal(f.owner.getCatalogue()!.active.accountId, 'smart:60:1');
+    const updated = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    const smartAccounts = updated.groups.find(entry => entry.key === '60')!.accounts.SmartAccount;
+    assert.deepEqual(smartAccounts[0], predecessorAccount);
+    assert.equal(smartAccounts[1]!.smartAccount!.descriptor!.accountIndex, 1);
+    assert.equal(smartAccounts[1]!.smartAccount!.factoryAddress!.toLowerCase(), PALI_CANONICAL_FACTORY_ADDRESS.toLowerCase());
+    assert.deepEqual(updated.guardianRecoveryIntents, recoveryIntents);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
 test('wallet authenticator recognizes an already configured owner without signing or submission', async () => {
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
@@ -2007,6 +2133,50 @@ test('smart native sends reject invalid input and blocked recipients before auth
 });
 
 
+for (const outcome of ['allow', 'cancel'] as const) {
+  test(`Smart MAX waits for recipient policy before starting RPC reads (${outcome})`, async () => {
+    const f = await fixture();
+    let operation: NativeSmartAccountOperation | undefined;
+    const policyStarted = Promise.withResolvers<void>();
+    const policyResult = Promise.withResolvers<void>();
+    try {
+      await f.change({ kind: 'create-smart', label: 'Smart sender' });
+      f.fundedSmart();
+      f.onRecipientPolicy(() => {
+        policyStarted.resolve();
+        return policyResult.promise;
+      });
+      operation = await f.runtime.openSmartAccountSend(
+        '0x2222222222222222222222222222222222222222', { kind: 'maximum' }, () => undefined, null
+      );
+      const before = f.calls.length;
+      const prepare = operation.prepare();
+      await Promise.race([
+        policyStarted.promise,
+        prepare.then(() => { throw new Error('Recipient policy was not checked'); }),
+      ]);
+      assert.deepEqual(f.calls.slice(before), []);
+      if (outcome === 'cancel') {
+        await operation.dispose();
+        await prepare;
+        policyResult.resolve();
+        assert.deepEqual(f.calls.slice(before), []);
+      } else {
+        policyResult.resolve();
+        await prepare;
+        assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+        assert(f.calls.slice(before).includes('eth_chainId'));
+      }
+      assert.equal(f.signatures.length, 0);
+      assert.equal(f.submitted.length, 0);
+    } finally {
+      policyResult.resolve();
+      await operation?.dispose();
+      await f.close();
+    }
+  });
+}
+
 test('locking a native Smart send during its payer quote stops broadcast', async () => {
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
@@ -2020,6 +2190,82 @@ test('locking a native Smart send during its payer quote stops broadcast', async
     assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(f.submitted.length, 0);
   } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const failure of ['simulation', 'before-forwarding', 'after-acceptance'] as const)
+test(`native Smart payer reservation distinguishes simulation refusal from a gateway error (${failure})`, async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  let transfers: NativeTransfers | undefined;
+  try {
+    const recipient = '0x' + '22'.repeat(20);
+    await f.change({ kind: 'create-smart', label: 'Smart payer refusal' });
+    f.fundedSmart(); f.deployed(); f.checkAuthorizationAtDisclosure();
+    if (failure === 'simulation') f.rejectSimulationParent();
+    else f.rejectSmartSendAcknowledgement(failure);
+    operation = await f.runtime.openSmartAccountSend(recipient, { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    const prepared = operation.getSnapshot();
+    assert.equal(prepared.phase, 'authorize');
+    await operation.authorize(prepared.revision);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.payerSignatures.length, 1);
+    assert(f.calls.includes('eth_simulateV1'));
+    assert.equal(f.calls.includes('eth_sendRawTransaction'), failure !== 'simulation');
+    assert.equal(f.submitted.length, failure === 'after-acceptance' ? 1 : 0);
+
+    await operation.dispose();
+    operation = undefined;
+    await f.reopen();
+    await f.owner.unlock();
+    const signal = new AbortController().signal;
+    const activity = await f.runtime.activity!.load(() => undefined, signal);
+    assert.deepEqual(activity.locals.map(row => row.hash), failure === 'simulation'
+      ? [] : [Transaction.from(f.payerSignatures[0]!).hash]);
+    assert.deepEqual(activity.smartAuthorizations?.entries.map(entry => entry.operationHash), [prepared.userOperationHash]);
+    assert.deepEqual(activity.smartAuthorizations?.withOuterOperationHashes, failure === 'simulation'
+      ? [] : [prepared.userOperationHash]);
+
+    if (failure === 'simulation') {
+      await f.change({ kind: 'select', id: 'hd:60:0' });
+      transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+      await transfers.prepare(recipient, '0.000000000000000001');
+      assert.equal(transfers.getSnapshot().review?.nonce, '0', 'the payer can review another send at its unused nonce');
+    }
+  } finally { transfers?.dispose(); await operation?.dispose(); await f.close(); }
+});
+
+test('native deployment simulation refusal preserves its confirmed prefund and inner authorization', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Deployment simulation refusal' });
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined, null);
+    await operation.prepare();
+    const prepared = operation.getSnapshot();
+    assert.equal(prepared.phase, 'authorize');
+    assert.notEqual(prepared.authorization?.initCode, '0x');
+    f.rejectSimulationParent();
+    const stop = operation.subscribe(() => {
+      const review = operation!.getSnapshot().payerReview;
+      if (review) operation!.confirmPayer(review.id);
+    });
+    try { await operation.authorize(prepared.revision); } finally { stop(); }
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(operation.getSnapshot().fundingConfirmed, true);
+    assert.equal(f.payerSignatures.length, 2);
+    assert.deepEqual(f.submitted, [f.payerSignatures[0]]);
+    const signal = new AbortController().signal;
+    const smartActivity = await f.runtime.activity!.load(() => undefined, signal);
+    assert.deepEqual(smartActivity.smartAuthorizations?.entries.map(row => row.operationHash), [prepared.userOperationHash]);
+    assert.deepEqual(smartActivity.smartAuthorizations?.withOuterOperationHashes, []);
+
+    await operation.dispose();
+    operation = undefined;
+    await f.change({ kind: 'select', id: 'hd:60:0' });
+    const payerActivity = await f.runtime.activity!.load(() => undefined, signal);
+    assert.deepEqual(payerActivity.locals.map(row => row.hash), [Transaction.from(f.submitted[0]!).hash]);
+  } finally { await operation?.dispose(); await f.close(); }
 });
 
 test('native standalone authorization is encrypted before signed RPC disclosure and survives interrupted payer quoting', async () => {
@@ -6938,24 +7184,45 @@ for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`Sm
     if (kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records')) afterPersist?.();
   } }, true);
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  let transfers: NativeTransfers | undefined;
   try {
+    const recipient = '0x2222222222222222222222222222222222222222';
     await f.change({ kind: 'create-smart', label: 'Inner gas admission' });
     f.fundedSmart(); f.deployed(); f.holdReceipts();
     f.mutateSelectedSmart(account => {
       account.smartAccount!.isDeployed = true;
       account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(Number(account.smartAccount!.chainId), 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
     });
-    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    operation = await f.runtime.openSmartAccountSend(recipient, { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
     await operation.prepare();
-    assert.equal(operation.getSnapshot().phase, 'authorize');
+    const prepared = operation.getSnapshot();
+    assert.equal(prepared.phase, 'authorize');
     if (boundary === 'payer-signing') f.onPayerSignature(f.increaseInnerGas);
     else f.onNextPayerEstimate(() => { afterPersist = f.increaseInnerGas; });
-    await operation.authorize(operation.getSnapshot().revision);
+    const beforeAdmission = f.calls.length;
+    await operation.authorize(prepared.revision);
     assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.signatures.length, 1);
     assert.equal(f.payerSignatures.length, 1);
     assert.equal(f.submitted.length, 0);
-    await assertRetainedSmartSendRecords(f, 1);
-  } finally { operation?.dispose(); await f.close(); }
+    const admissionCalls = f.calls.slice(beforeAdmission);
+    assert(admissionCalls.includes('eth_simulateV1'));
+    assert.equal(admissionCalls.includes('eth_sendRawTransaction'), false);
+
+    await operation.dispose();
+    operation = undefined;
+    await f.reopen();
+    await f.owner.unlock();
+    const activity = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.deepEqual(activity.locals, []);
+    assert.deepEqual(activity.smartAuthorizations?.entries.map(entry => entry.operationHash), [prepared.userOperationHash]);
+    assert.deepEqual(activity.smartAuthorizations?.withOuterOperationHashes, []);
+
+    await f.change({ kind: 'select', id: 'hd:60:0' });
+    transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    await transfers.prepare(recipient, '0.000000000000000001');
+    assert.equal(transfers.getSnapshot().review?.nonce, String(Transaction.from(f.payerSignatures[0]!).nonce));
+  } finally { transfers?.dispose(); await operation?.dispose(); await f.close(); }
 });
 
 for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const)

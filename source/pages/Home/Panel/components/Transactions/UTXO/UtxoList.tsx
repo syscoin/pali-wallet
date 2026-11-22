@@ -24,6 +24,7 @@ import {
   selectActiveAccountAssets,
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
+import { selectIsUtxoActivityReplaced } from 'state/vaultGlobal';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
 import {
   formatDisplayValue,
@@ -80,6 +81,11 @@ const UtxoTransactionsListComponentBase = ({
   );
   const activeAssets = useSelector(selectActiveAccountAssets);
   const walletScope = useSelector(getWalletNavigationScope);
+  const isReplaced = useSelector(
+    (state: RootState) =>
+      !isTransactionInBlock(tx) &&
+      selectIsUtxoActivityReplaced(state, walletScope, tx.txid.toLowerCase())
+  );
   const scope = `${walletScope.account}:${
     walletScope.network
   }:${tx.txid.toLowerCase()}`;
@@ -249,7 +255,11 @@ const UtxoTransactionsListComponentBase = ({
           </Tooltip>
         </div>
         <div>
-          {isZdagConfirmed ? (
+          {isReplaced ? (
+            <p className="text-xs font-normal text-brand-gray300">
+              {t('transactions.replaced')}
+            </p>
+          ) : isZdagConfirmed ? (
             <Tooltip
               content={
                 confirmationETA

@@ -1886,9 +1886,50 @@ function SecurityGate(props: AppProps) {
   useNativeTranslation();
   const state = useSyncExternalStore(securityPreferences.subscribe, securityPreferences.getSnapshot, securityPreferences.getSnapshot);
   const viewLock = useSyncExternalStore(publicViewLock.subscribe, publicViewLock.getSnapshot, publicViewLock.getSnapshot);
-  useEffect(() => { if (state.status !== 'ready') { custodyIdle.allowNewInput(); watchIdle.allowNewInput(); } }, [state.status]);
-  useEffect(() => { void securityPreferences.load().catch(() => undefined); void publicViewLock.load().catch(() => undefined); return () => { custodyIdle.invalidate(); watchIdle.invalidate(); }; }, []);
-  return state.status === 'ready' && (viewLock.phase === 'unlocked' || viewLock.phase === 'locked') ? <IdleActivityBoundary><WalletModalHost><AppContent {...props} /></WalletModalHost></IdleActivityBoundary> : <Screen><Header title={nativeI18n.t('mobile.shellViews.app.securitySettings')} /><Notice title={state.status === 'opening' || viewLock.phase === 'opening' ? nativeI18n.t('mobile.shellViews.app.openingSecuritySettings') : nativeI18n.t('mobile.shellViews.app.securitySettingsUnavailable')} body={nativeI18n.t('mobile.shellViews.app.yourSavedDataHasNotBeenReplacedRetry')} />{(state.status === 'unavailable' || viewLock.phase === 'unavailable') && <Button title={nativeI18n.t('mobile.shellViews.app.retrySecuritySettings')} onPress={() => { void securityPreferences.load().catch(() => undefined); void publicViewLock.load().catch(() => undefined); }} />}</Screen>;
+  const [checking, setChecking] = useState(false);
+  const pending = useRef<Promise<unknown> | null>(null);
+  const ready = state.status === 'ready' && (viewLock.phase === 'unlocked' || viewLock.phase === 'locked');
+  const unavailable = !checking && (state.status === 'unavailable' || viewLock.phase === 'unavailable');
+  const loadSettings = useCallback(() => {
+    if (pending.current) return;
+    setChecking(true);
+    const attempt = Promise.allSettled([securityPreferences.load(), publicViewLock.load()]);
+    pending.current = attempt;
+    void attempt.then(() => {
+      if (pending.current !== attempt) return;
+      pending.current = null;
+      setChecking(false);
+    });
+  }, []);
+  useEffect(() => {
+    if (ready) return;
+    custodyIdle.allowNewInput();
+    watchIdle.allowNewInput();
+  }, [ready, state.status]);
+  useEffect(() => {
+    loadSettings();
+    return () => {
+      pending.current = null;
+      custodyIdle.invalidate();
+      watchIdle.invalidate();
+    };
+  }, [loadSettings]);
+  if (ready && !checking) {
+    return <IdleActivityBoundary><WalletModalHost><AppContent {...props} /></WalletModalHost></IdleActivityBoundary>;
+  }
+  return (
+    <SafeAreaView style={s.securityGate} edges={['top', 'bottom']}>
+      <Screen>
+        <Header title={nativeI18n.t('mobile.shellViews.app.securitySettings')} />
+        <Notice
+          title={nativeI18n.t(unavailable ? 'mobile.shellViews.app.securitySettingsUnavailable' : 'mobile.shellViews.app.openingSecuritySettings')}
+          body={unavailable ? nativeI18n.t('mobile.shellViews.app.yourSavedDataHasNotBeenReplacedRetry') : undefined}
+          announce
+        />
+        {unavailable && <Button title={nativeI18n.t('mobile.shellViews.app.retrySecuritySettings')} onPress={loadSettings} />}
+      </Screen>
+    </SafeAreaView>
+  );
 }
 export default function App(props: AppProps = {}) {
   return (
@@ -1898,6 +1939,7 @@ export default function App(props: AppProps = {}) {
   );
 }
 const s = StyleSheet.create({
+  securityGate: { flex: 1, backgroundColor: colors.bg },
   appOuter: { flex: 1, backgroundColor: '#040b16', alignItems: 'center' },
   app: { width: '100%', maxWidth: 520, flex: 1, backgroundColor: colors.bg },
   center: {

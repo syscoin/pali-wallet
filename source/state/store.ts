@@ -128,6 +128,7 @@ let lastPersistedState: any | null = null;
 const getPersistedGlobalState = (state: IGlobalState) => {
   const persisted = { ...state };
   delete persisted.transactionHistoryStatus;
+  delete persisted.utxoActivityReplacements;
   return persisted;
 };
 

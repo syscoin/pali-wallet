@@ -18,7 +18,10 @@ const mockHost = {
     return () => undefined;
   }),
   getStatus: () => ({ connected: mockConnected }),
-  evm: { getAddress: jest.fn(async () => ({ address: 'public' })) },
+  evm: {
+    getAddress: jest.fn(async () => ({ address: 'public' })),
+    signTransaction: jest.fn(),
+  },
   utxo: { signPsbt: jest.fn() },
 };
 const mockPort = {
@@ -107,6 +110,29 @@ it('requires a fresh decision, shows exact text, and cancels consent on page dep
   expect(mockHost.disconnect).toHaveBeenCalled();
   expect(mockPort.disconnect).toHaveBeenCalledTimes(1);
 });
+
+it.each([
+  [{ errorCode: '6985' }, 'HARDWARE_REQUEST_CANCELLED'],
+  [{ errorCode: '6982' }, 'LEDGER_DEVICE_ERROR'],
+  [{ message: 'Device error 6985' }, 'LEDGER_DEVICE_ERROR'],
+])(
+  'maps only typed firmware refusals to cancellation (%j)',
+  async (error, code) => {
+    mockHost.evm.signTransaction.mockRejectedValueOnce(error);
+    await mockListeners[0]({
+      type: 'request',
+      id: 2,
+      method: 'evm.signTransaction',
+      request: { unsignedTxHex: 'fixture' },
+    });
+    expect(mockPort.postMessage).toHaveBeenCalledWith({
+      id: 2,
+      ok: false,
+      code,
+      message: 'ledgerHost.operationFailed',
+    });
+  }
+);
 
 it('revokes the visible PSBT device authority when its Port owner closes', async () => {
   let release!: () => void;

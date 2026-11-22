@@ -52,7 +52,12 @@ function fixture() {
     const fs = require('node:fs');
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
       fs.writeFileSync(${JSON.stringify(join(temporary, 'signalled'))}, signal);
-      setTimeout(() => { fs.writeFileSync(${JSON.stringify(join(temporary, 'drained'))}, 'yes'); process.exit(0); }, 200);
+      const drain = setInterval(() => {
+        if (!fs.existsSync(${JSON.stringify(join(temporary, 'allow-drain'))})) return;
+        clearInterval(drain);
+        fs.writeFileSync(${JSON.stringify(join(temporary, 'drained'))}, 'yes');
+        process.exit(0);
+      }, 10);
     });
     let heartbeat = 0;
     setInterval(() => fs.writeFileSync(${JSON.stringify(join(temporary, 'heartbeat'))}, String(++heartbeat)), 20);
@@ -89,6 +94,7 @@ function fixture() {
   };
   return { temporary, root, start, lock: join(root, '.pali-build/inflight'),
     file: (name: string) => join(temporary, name),
+    allowDrain: () => writeFileSync(join(temporary, 'allow-drain'), ''),
     close() {
       if (!existsSync(join(temporary, 'drained')) && existsSync(join(temporary, 'ready'))) {
         const pids = JSON.parse(readFileSync(join(temporary, 'ready'), 'utf8'));
@@ -111,6 +117,8 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
         await waitFor(f.file('signalled'));
         assert(existsSync(f.lock), 'lock must remain while the owned grandchild drains');
         assert.equal(first.child.exitCode, null);
+        assert.equal(first.child.signalCode, null);
+        f.allowDrain();
         const [code] = await first.closed;
         assert.equal(code, signal === 'SIGINT' ? 130 : 143, first.output());
         assert(existsSync(f.file('drained')));
@@ -151,7 +159,10 @@ for (const abandon of ['0', '7', 'signal']) {
     const f = fixture(), build = f.start('prebuild', abandon);
     try {
       await waitFor(f.file('signalled'));
-      assert(existsSync(f.lock));
+      assert(existsSync(f.lock), 'lock must remain while the owned grandchild drains');
+      assert.equal(build.child.exitCode, null);
+      assert.equal(build.child.signalCode, null);
+      f.allowDrain();
       assert.equal((await build.closed)[0], 1, build.output());
       assert(existsSync(f.file('drained')));
       assert(!existsSync(f.lock));
@@ -181,6 +192,8 @@ test('terminal suspend and resume also stop and continue the owned child group',
       await new Promise(resolve => setTimeout(resolve, 10));
     }
     build.child.kill('SIGTERM');
+    await waitFor(f.file('signalled'));
+    f.allowDrain();
     assert.equal((await build.closed)[0], 143, build.output());
     assert(!existsSync(f.lock));
     assert.deepEqual(JSON.parse(readFileSync(f.file('listeners'), 'utf8')), [0, 0, 0, 0]);
@@ -203,3 +216,67 @@ test('an interrupted platform without provable descendant drainage keeps the loc
   await assert.rejects(waiting, (error: unknown) => (error as { preserveLock: boolean }).preserveLock === true);
   assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
 });
+
+for (const nextError of ['ESRCH', 'EPERM', 'EIO']) {
+  test(`Darwin group cleanup after EPERM follows ${nextError} without further signals`, async () => {
+    const controller = new AbortController();
+    const child = Object.assign(new EventEmitter(), { pid: 321, unref() {} });
+    const signals: string[] = [];
+    let probes = 0;
+    let now = 0;
+    let force: ReturnType<typeof setTimeout> | undefined;
+    let forceCleared = false;
+    const host = Object.assign(new EventEmitter(), {
+      platform: 'darwin',
+      kill(pid: number, signal: string | number) {
+        assert.equal(pid, -child.pid);
+        if (typeof signal === 'string') {
+          signals.push(signal);
+          return;
+        }
+        assert.equal(signal, 0);
+        if (++probes === 1) return;
+        if (probes === 2) queueMicrotask(() => host.emit('SIGCONT'));
+        const code = probes === 2 ? 'EPERM' : nextError;
+        throw Object.assign(new Error(code), { code });
+      },
+    });
+    const exports = { exports: {} as { runOwnedBuildChild(...args: unknown[]): Promise<unknown> } };
+    runInNewContext(readFileSync(join(scripts, 'owned-build-child.cjs'), 'utf8'), {
+      module: exports,
+      process: host,
+      Date: { now: () => now },
+      performance: { now: () => now },
+      setTimeout(callback: () => void, delay: number) {
+        const timer = delay === 50
+          ? setTimeout(() => { now += delay; callback(); }, 0)
+          : setTimeout(callback, delay);
+        if (delay === 5000) force = timer;
+        return timer;
+      },
+      clearTimeout(timer: ReturnType<typeof setTimeout>) {
+        if (timer === force && probes === 2) forceCleared = true;
+        clearTimeout(timer);
+      },
+      require(name: string) { assert.equal(name, 'node:child_process'); return { spawn: () => child }; },
+    });
+
+    const waiting = exports.exports.runOwnedBuildChild('node', [], { signal: controller.signal });
+    child.emit('close', null, 'SIGTERM');
+    await assert.rejects(waiting, (error: unknown) => {
+      const failure = error as { message: string; preserveLock?: boolean };
+      if (nextError === 'ESRCH') {
+        assert.match(failure.message, /abandoned work was stopped/);
+        assert.equal(failure.preserveLock, undefined);
+      } else {
+        assert.equal(failure.preserveLock, true);
+      }
+      return true;
+    });
+    assert.deepEqual(signals, ['SIGTERM']);
+    assert(forceCleared);
+    assert(probes >= 3);
+    assert.equal(host.listenerCount('SIGCONT'), 0);
+    assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
+  });
+}

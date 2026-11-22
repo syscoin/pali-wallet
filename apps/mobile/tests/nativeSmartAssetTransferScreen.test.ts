@@ -63,17 +63,31 @@ test('Smart instruction cancellation reviews a no-op reference and both fees wit
 const text = (nodes: ReturnType<ReturnType<typeof fixture>['render']>) => nodes.flatMap(node => node.children.filter(value => typeof value === 'string')).join(' ');
 const payerBudget = { address: owner, gasTank: false, maximumFeeWei: '2000', maximumPrefundFeeWei: '0', maximumPrefundWei: '0' };
 
-test('Smart Send shows the EntryPoint and payer limits before one confirmation', () => {
+test('Smart Send puts the exact fee limits before explanatory copy and offers one confirmation', () => {
   const f = fixture();
   try {
-    const state = { ...f.state({ kind: 'native-transfer', recipient, amountUnits: '5' }), payerBudget };
-    const nodes = f.render(state), copy = text(nodes);
-    assert(copy.includes(englishI18n.t('send.smartAccountMaxFee')));
-    assert(copy.includes(englishI18n.t('transactions.replay.maximumFee')));
-    assert(copy.includes(formatBaseUnits(state.maximumPrefundUnits!, state.network.decimals)));
-    assert(copy.includes(formatBaseUnits(payerBudget.maximumFeeWei, state.network.decimals)));
-    assert(copy.includes(payerBudget.address));
-    nodes.find(node => node.type === 'Button' && node.props.title === 'Confirm transfer')!.props.onPress();
+    const state = { ...f.state({ kind: 'native-transfer', recipient, amountUnits: '997234708011541600' }),
+      maximumPrefundUnits: '437727454458400', payerBudget: { ...payerBudget, address: contract, maximumFeeWei: '604891626744800' } };
+    const nodes = f.render(state);
+    const expected = [
+      recipient,
+      '0.9972347080115416',
+      englishI18n.t('send.smartAccountMaxFee'),
+      '0.0004377274544584',
+      englishI18n.t('transactions.replay.maximumFee'),
+      '0.0006048916267448',
+      contract,
+      englishI18n.t('send.smartAccountFeeDetails'),
+    ];
+    let previous = -1;
+    for (const value of expected) {
+      const index = nodes.findIndex(node => node.type === 'Text' && node.children.join('') === value);
+      assert(index > previous, `${value} must follow the previous review fact`);
+      previous = index;
+    }
+    const confirmation = nodes.filter(node => node.type === 'Button' && node.props.title === 'Confirm transfer');
+    assert.equal(confirmation.length, 1);
+    confirmation[0]!.props.onPress();
     assert.deepEqual(f.calls, [['authorize', false]]);
     assert(!f.render({ ...state, phase: 'preparing-fee' }).some(node => node.type === 'Button' && node.props.title === 'Confirm transfer'));
   } finally { f.close(); }

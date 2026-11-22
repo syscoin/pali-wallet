@@ -1,3 +1,8 @@
+export type UtxoActivityReplacement = Readonly<{
+  blockHash: string;
+  replacedTxids: readonly string[];
+}>;
+
 /** Require a sequence for every input before showing the non-RBF status. */
 export function hasNonReplaceableUtxoSequences(inputs: unknown): boolean {
   return (

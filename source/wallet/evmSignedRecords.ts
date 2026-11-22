@@ -27,6 +27,10 @@ import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
 } from '../utils/smartAccount/contracts.ts';
+import {
+  ExecutionSimulationEvidenceError,
+  ExecutionSimulationUnsupportedError,
+} from '../utils/smartAccount/executionSimulationError.ts';
 import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHash.ts';
 
 import {
@@ -2344,7 +2348,7 @@ export class EvmSignedRecords {
       | EvmVerifiedReplacementBinding
       | EvmVerifiedSmartAccountReplacement,
     retainUnsignedNative = false,
-    trackDappCleanup = false
+    trackUnsent?: 'dapp' | 'smart-payer'
   ): Promise<EvmRetainedSignedRecord> {
     guard(session);
     const raw = signed.rawTransaction,
@@ -2638,11 +2642,13 @@ export class EvmSignedRecords {
           if (
             reconstructable ||
             (context.operation === 'cancel' && !retainedMetadata) ||
-            (trackDappCleanup &&
+            (trackUnsent &&
               context.operation === 'send' &&
               !replacement &&
               !source.origin &&
-              !retainedMetadata)
+              (trackUnsent === 'dapp'
+                ? !retainedMetadata
+                : retainedMetadata?.smartAccountExecution === true))
           ) {
             this.freshAppends.set(result, {
               profileId: id,
@@ -4683,6 +4689,9 @@ export function createEvmSignedRecordLifecycle(
     retainAssetPreflightFailure?: boolean;
     retainUnsignedNative?: boolean;
     retirementReadForChain: EvmSignedRetirementReadForChain | null;
+    // The inner authorization may already be visible to estimate/simulation RPCs.
+    // Retire only the fresh outer envelope when simulation rejects before initiation.
+    smartPayerCleanupSession?: EvmSignedRecordSession;
     walletSendCleanupSession?: EvmSignedRecordSession;
   }>
 ) {
@@ -4694,15 +4703,20 @@ export function createEvmSignedRecordLifecycle(
   )
     throw new Error('EVM_SIGNED_RECORD_RETIREMENT_CONTEXT_REQUIRED');
   const retirementReadForChain = options.retirementReadForChain;
-  const cleanupSession =
-    options.walletSendCleanupSession &&
-    records.captureSession(options.walletSendCleanupSession);
+  const cleanupOwner =
+    options.smartPayerCleanupSession ?? options.walletSendCleanupSession;
+  const cleanupSession = cleanupOwner && records.captureSession(cleanupOwner);
+  const trackUnsent = options.smartPayerCleanupSession
+    ? 'smart-payer'
+    : cleanupSession && options.onUnsentDappDiscarded
+    ? 'dapp'
+    : undefined;
   let metadata =
     options.metadata === undefined
       ? undefined
       : snapshotMetadata(options.metadata);
   let smartReplacementOriginalHash: string | undefined;
-  let freshWalletSend: EvmRetainedSignedRecord | undefined;
+  let freshUnsentSend: EvmRetainedSignedRecord | undefined;
   // Starting another lifecycle invalidates any unconsumed earlier refusal.
   // Concurrent sends may fall back to generic guidance, never stale guidance.
   currentPersistToken = undefined;
@@ -4740,15 +4754,14 @@ export function createEvmSignedRecordLifecycle(
           metadata,
           replacement,
           options.retainUnsignedNative,
-          cleanupSession !== undefined &&
-            options.onUnsentDappDiscarded !== undefined
+          trackUnsent
         );
         if (
           cleanupSession &&
           !signed.context.origin &&
           !isEvmVerifiedSmartAccountReplacement(replacement)
         ) {
-          freshWalletSend = retained;
+          freshUnsentSend = retained;
         }
         if (isEvmVerifiedSmartAccountReplacement(replacement)) {
           smartReplacementOriginalHash = retained.originalHash;
@@ -4910,8 +4923,11 @@ export function createEvmSignedRecordLifecycle(
         if (
           !wireStarted &&
           cleanupSession &&
-          freshWalletSend?.hash === record.hash &&
-          (await records[discardUndispatched](cleanupSession, freshWalletSend))
+          freshUnsentSend?.hash === record.hash &&
+          (!options.smartPayerCleanupSession ||
+            error instanceof ExecutionSimulationEvidenceError ||
+            error instanceof ExecutionSimulationUnsupportedError) &&
+          (await records[discardUndispatched](cleanupSession, freshUnsentSend))
         ) {
           if (options.retainAssetPreflightFailure)
             throw Object.assign(new Error(EVM_ASSET_REVIEW_MESSAGE), {

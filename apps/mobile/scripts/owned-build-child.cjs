@@ -9,15 +9,19 @@ function interruptedError(signal, preserveLock = false) {
   });
 }
 
+function unconfirmedChildTree() {
+  return Object.assign(new Error('Native child-tree shutdown could not be confirmed.'), { preserveLock: true });
+}
+
 /** Only the new child's process group is signalled; never the caller's terminal group. */
 async function runOwnedBuildChild(command, args, { cwd, env, signal }) {
   if (signal.aborted) throw interruptedError(signal.reason);
   const grouped = process.platform !== 'win32';
   const child = spawn(command, args, { cwd, env, stdio: 'inherit', detached: grouped });
   let spawnError, forceTimer, timeoutTimer, signallingError, closed = false, rejectClose;
-  let deadline, retiring = false;
+  let deadline, unverifiedUntil, retiring = false;
   const send = value => {
-    if (!child.pid) return;
+    if (!child.pid || unverifiedUntil !== undefined) return;
     try {
       if (grouped) process.kill(-child.pid, value);
       else child.kill(value);
@@ -59,17 +63,26 @@ async function runOwnedBuildChild(command, args, { cwd, env, signal }) {
     let abandoned = false;
     if (grouped && child.pid) {
       for (;;) {
+        if (unverifiedUntil !== undefined && performance.now() >= unverifiedUntil)
+          throw unconfirmedChildTree();
         try { process.kill(-child.pid, 0); }
         catch (error) {
           if (error.code === 'ESRCH') break;
-          throw Object.assign(new Error('Native child-tree shutdown could not be confirmed.'), { preserveLock: true });
+          if (process.platform !== 'darwin' || error.code !== 'EPERM' || !retiring)
+            throw unconfirmedChildTree();
+          if (unverifiedUntil === undefined) {
+            // Darwin can briefly report EPERM as a process group disappears.
+            // Recheck without targeting a group we can no longer verify.
+            unverifiedUntil = performance.now() + Math.min(250, deadline - Date.now());
+            clearTimeout(forceTimer);
+          }
         }
         // A direct child exit is not proof that its descendants stopped. Retire
         // abandoned work even on exit zero; it must not overlap the next phase.
         abandoned = true;
         retire('SIGTERM');
         if (signallingError || Date.now() >= deadline)
-          throw Object.assign(new Error('Native child-tree shutdown could not be confirmed.'), { preserveLock: true });
+          throw unconfirmedChildTree();
         await new Promise(resolve => setTimeout(resolve, 50));
       }
     }

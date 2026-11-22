@@ -415,6 +415,7 @@ export function captureGenericEvmFeeDispatch(
   };
   return Object.freeze({
     preflight,
+    smartPayer: value.authority.kind === 'smart-payer',
     walletSend: value.authority.kind === 'wallet' && !entry.privateNote,
     smartAccountCancellation:
       value.authority.kind === 'smart-payer'

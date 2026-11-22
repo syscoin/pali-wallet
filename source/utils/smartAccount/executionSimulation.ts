@@ -19,7 +19,10 @@ import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
 } from './contracts.ts';
-import { normalizeExecutionSimulationError } from './executionSimulationError.ts';
+import {
+  ExecutionSimulationEvidenceError,
+  normalizeExecutionSimulationError,
+} from './executionSimulationError.ts';
 import type { EvmAutoNonceSnapshot } from '../../shared/evmAutoNonce.ts';
 
 type RpcTransaction = Readonly<
@@ -38,8 +41,7 @@ type SimulationBlock = Readonly<{
   number: bigint;
 }>;
 
-const requireExecutionEvidence = () =>
-  new Error('Unable to verify smart account execution');
+const requireExecutionEvidence = () => new ExecutionSimulationEvidenceError();
 
 const quantity = (value: number | bigint) => `0x${BigInt(value).toString(16)}`;
 

@@ -16,7 +16,8 @@ import { ACCOUNT_RECORD_KEY, decodeAccountRecord as decodeStorageValue, encodeAc
 import type { KeyringStoragePort } from '../storage/types.ts';
 import { getFirstCompatibleAccountForNetwork, isAccountCompatibleWithNetwork } from '../../../../source/utils/accountCompatibility.ts';
 import { requireSmartAccountAddressIdentity } from '../../../../source/utils/smartAccount/addressIdentity.ts';
-import { encodeEcdsaValidatorInitData, getConfiguredAuthenticatorAddress, type PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
+import { encodeEcdsaValidatorInitData, getConfiguredAuthenticatorAddress, getPaliSmartAccountDescriptor, type PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
+import { PALI_SMART_ACCOUNT_VERSION } from '../../../../source/utils/smartAccount/contracts.ts';
 import type { SmartAccountGuardianRecoveryOperation } from '../../../../source/utils/smartAccount/recovery.ts';
 import { captureGuardianRecoveryIntent } from '../../../../source/utils/smartAccount/guardianRecoveryIntent.ts';
 import { parseInfrastructureJournalEntry, type InfrastructureJournalEntry } from '../../../../source/wallet/infrastructureJournal.ts';
@@ -52,6 +53,36 @@ const KeyringAccountType =
   SdkAccountType as unknown as typeof import('../../../../source/types/network.ts').KeyringAccountType;
 
 export const WALLET_CATALOGUE_KEY = ACCOUNT_RECORD_KEY;
+const retiredSmartAccountFactories = new Set([
+  '0x9ee1ab16e273fec939b82541b6fa17e55797f7bc',
+  '0x47d8929b686468eed298e3533199a066530cad90',
+]);
+const retiredEcdsaValidator = '0xbe057b217a1e17ffdc27c5262db790f0aaaa9133';
+
+// Preserve preproduction records in the authenticated catalogue so their
+// ordinals stay reserved. Neither factory is eligible for use by the wallet.
+function isRetiredSmartAccount(account: IKeyringAccountState | undefined): boolean {
+  const factory = account?.smartAccount?.descriptor?.factoryAddress;
+  return account?.isSmartAccount === true && typeof factory === 'string' && retiredSmartAccountFactories.has(factory.toLowerCase());
+}
+
+function validateRetiredSmartAccount(account: IKeyringAccountState): void {
+  const metadata = account.smartAccount!;
+  const descriptor = metadata.descriptor!;
+  const anchor = /^pali:eip155:(\d+):0x[0-9a-f]{40}:smart-account-v1$/.exec(descriptor.anchor);
+  const factory = getAddress(descriptor.factoryAddress);
+  if (anchor?.[1] !== String(metadata.chainId) ||
+      descriptor.chainId !== metadata.chainId || metadata.contractVersion !== PALI_SMART_ACCOUNT_VERSION ||
+      descriptor.accountVersion !== metadata.contractVersion ||
+      !Number.isSafeInteger(descriptor.accountIndex) || descriptor.accountIndex < 0 ||
+      (metadata.factoryAddress && getAddress(metadata.factoryAddress) !== factory) ||
+      getAddress(account.address) !== getAddress(account.xpub)) return invalid();
+  const canonical = getPaliSmartAccountDescriptor(descriptor);
+  if (canonical.anchorHash !== descriptor.anchorHash ||
+      canonical.deploymentSalt !== descriptor.deploymentSalt ||
+      canonical.deploymentSalt !== metadata.deploymentSalt) return invalid();
+}
+
 export type NativeCatalogueAccount = Readonly<{
   id: string;
   type: NativeAccountType;
@@ -241,14 +272,16 @@ function softwareGroup(record: NativeAccountRecord): RecoveryAccountGroup {
   return group ?? invalid();
 }
 
-function recoveryAccountReference(value: unknown, record: NativeAccountRecord, role: 'guardian' | 'software', chainId: number): NativeGuardianRecoveryAccountRef {
+function recoveryAccountReference(value: unknown, record: NativeAccountRecord, role: 'guardian' | 'software', chainId: number, readingStoredIntent = false): NativeGuardianRecoveryAccountRef {
   const raw = object(value, ['id', 'address', 'xpub']);
   const identity = parseNativeAccountId(raw.id);
   if (identity.slip44 !== 60 || !['HDAccount', 'Imported', ...(role === 'guardian' ? ['SmartAccount'] : [])].includes(identity.type)) return invalid();
   const account = softwareGroup(record).accounts[identity.type]?.[identity.index];
   if (identity.type === 'SmartAccount') {
     if (!account?.smartAccount || typeof raw.xpub !== 'string') return invalid();
-    requireSmartAccountAddressIdentity(account, chainId);
+    if (readingStoredIntent && isRetiredSmartAccount(account)) {
+      if (account.smartAccount.chainId !== chainId) return invalid();
+    } else requireSmartAccountAddressIdentity(account, chainId);
     if (getAddress(raw.address) !== getAddress(account.address) || raw.xpub.toLowerCase() !== account.xpub.toLowerCase()) return invalid();
     return Object.freeze({ id: identity.id, address: getAddress(account.address), xpub: account.xpub.toLowerCase() });
   }
@@ -275,23 +308,28 @@ export function captureNativeInfrastructurePayerReference(value: unknown, record
   return Object.freeze({ id: identity.id, address: publicKey.address, xpub: publicKey.publicKey });
 }
 
-function snapshotGuardianRecoveryIntent(value: unknown, record: NativeAccountRecord): NativeGuardianRecoveryIntent {
+function snapshotGuardianRecoveryIntent(value: unknown, record: NativeAccountRecord, readingStoredIntent = false): NativeGuardianRecoveryIntent {
   const raw = object(value, ['accountId', 'operation', 'target', 'guardian', 'replacement', 'payer']);
   const identity = parseNativeAccountId(raw.accountId);
   if (identity.type !== 'SmartAccount' || identity.slip44 !== 60) return invalid();
   const account = softwareGroup(record).accounts.SmartAccount[identity.index];
   if (!account?.smartAccount) return invalid();
   const { operation, target } = captureGuardianRecoveryIntent({ operation: raw.operation, target: raw.target });
-  requireSmartAccountAddressIdentity(account, operation.chainId);
+  const retiredTarget = readingStoredIntent && isRetiredSmartAccount(account);
+  if (retiredTarget) {
+    if (account.smartAccount.chainId !== operation.chainId) return invalid();
+  } else requireSmartAccountAddressIdentity(account, operation.chainId);
   if (getAddress(account.address) !== operation.account) return invalid();
-  const guardian = recoveryAccountReference(raw.guardian, record, 'guardian', operation.chainId);
+  const guardian = recoveryAccountReference(raw.guardian, record, 'guardian', operation.chainId, readingStoredIntent);
   const kind = raw.replacement && typeof raw.replacement === 'object' ? Object.getOwnPropertyDescriptor(raw.replacement, 'kind')?.value : undefined;
   let replacement: NativeGuardianRecoveryReplacement;
   if (kind === 'software') {
     const input = object(raw.replacement, ['kind', 'account']);
     const account = recoveryAccountReference(input.account, record, 'software', operation.chainId);
+    const validator = getAddress(target.auth.validator).toLowerCase();
+    const currentValidator = getConfiguredAuthenticatorAddress(operation.chainId, 'ecdsa').toLowerCase();
     if (target.auth.module !== 'ecdsa' ||
-        getAddress(target.auth.validator) !== getAddress(getConfiguredAuthenticatorAddress(operation.chainId, 'ecdsa')) ||
+        (validator !== currentValidator && !(retiredTarget && validator === retiredEcdsaValidator)) ||
         target.auth.data.toLowerCase() !== encodeEcdsaValidatorInitData([account.address], 1).toLowerCase()) return invalid();
     replacement = Object.freeze({ kind, account });
   } else if (kind === 'passkey') {
@@ -304,6 +342,18 @@ function snapshotGuardianRecoveryIntent(value: unknown, record: NativeAccountRec
   } else return invalid();
   const payer = recoveryAccountReference(raw.payer, record, 'software', operation.chainId);
   return Object.freeze({ accountId: identity.id, operation, target, guardian, replacement, payer });
+}
+
+function isRetiredGuardianRecoveryIntent(record: NativeAccountRecord, intent: NativeGuardianRecoveryIntent): boolean {
+  const accounts = softwareGroup(record).accounts.SmartAccount;
+  const guardian = parseNativeAccountId(intent.guardian.id);
+  return isRetiredSmartAccount(accounts[parseNativeAccountId(intent.accountId).index]) ||
+    (guardian.type === 'SmartAccount' && isRetiredSmartAccount(accounts[guardian.index]));
+}
+
+export function getNativeGuardianRecoveryIntent(record: NativeAccountRecord, accountId: string): NativeGuardianRecoveryIntent | null {
+  const intent = record.guardianRecoveryIntents?.find(entry => entry.accountId === accountId);
+  return intent && !isRetiredGuardianRecoveryIntent(record, intent) ? intent : null;
 }
 function snapshotInfrastructurePending(value: unknown, record: NativeAccountRecord): NativeInfrastructurePending {
   const raw = object(value, ['chainId', 'networkId', 'registrationHash', 'payer', 'entry']);
@@ -356,7 +406,10 @@ function networkAccountSelection(record: NativeAccountRecord, networkId: string,
   if (!utxo) {
     const network = { kind: 'ethereum' as INetworkType, chainId: Number(getNativeNetwork(networkId, catalogueEvmNetworks(record)).chainId), slip44: 60 };
     if (!isAccountCompatibleWithNetwork(target.accounts[selection.type][selection.index], selection.type, network)) {
-      const compatible = getFirstCompatibleAccountForNetwork(target.accounts, network) ?? invalid();
+      const smartAccounts = Object.fromEntries(
+        Object.entries(target.accounts.SmartAccount).filter(([, account]) => !isRetiredSmartAccount(account))
+      );
+      const compatible = getFirstCompatibleAccountForNetwork({ ...target.accounts, SmartAccount: smartAccounts }, network) ?? invalid();
       selection = { type: compatible.type, index: compatible.id };
     }
   }
@@ -480,7 +533,8 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
           if (network.kind !== 'ethereum' || !account.isSmartAccount || account.isImported || account.isLedgerWallet || account.isTrezorWallet || account.xprv !== '' ||
               !Number.isSafeInteger(account.smartAccount?.chainId) || account.smartAccount!.chainId < 1)
             return invalid();
-          requireSmartAccountAddressIdentity({ address: account.address, xpub: account.xpub, smartAccount: account.smartAccount }, account.smartAccount!.chainId);
+          if (isRetiredSmartAccount(account)) validateRetiredSmartAccount(account);
+          else requireSmartAccountAddressIdentity(account, account.smartAccount!.chainId);
         }
         if (
           network.kind === 'ethereum' &&
@@ -503,11 +557,13 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
         }
       }
     }
-    if (!group.accounts[group.activeAccount.type]?.[group.activeAccount.id])
-      return invalid();
+    const selected = group.accounts[group.activeAccount.type]?.[group.activeAccount.id] ?? invalid();
+    const activeAccount = isRetiredSmartAccount(selected)
+      ? { type: KeyringAccountType.HDAccount, id: 0 }
+      : group.activeAccount;
     // The group stores chain identity. Its saved endpoint cannot configure
     // custody or recovery after the shared default changes.
-    groups.push(currentNetwork ? { ...group, activeNetwork: currentNetwork } : group);
+    groups.push({ ...group, activeNetwork: currentNetwork ?? group.activeNetwork, activeAccount });
   }
   const recoveries = raw.recovery.map((entry: unknown) =>
     snapshotImportedRecoveryEntry(entry)
@@ -546,7 +602,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     if (!Array.isArray(raw.guardianRecoveryIntents) || raw.guardianRecoveryIntents.length > smartAccounts.length) return invalid();
     const scopes = new Set<string>();
     record.guardianRecoveryIntents = Object.freeze(raw.guardianRecoveryIntents.map((value: unknown) => {
-      const intent = snapshotGuardianRecoveryIntent(value, record);
+      const intent = snapshotGuardianRecoveryIntent(value, record, true);
       const scope = `${intent.operation.chainId}:${intent.operation.account}`;
       if (scopes.has(scope)) return invalid();
       scopes.add(scope);
@@ -583,7 +639,10 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
   return Object.freeze({
     ...record,
     networks: Object.freeze(networks),
-    active: Object.freeze({ ...active }),
+    active: Object.freeze({
+      ...active,
+      accountId: isRetiredSmartAccount(account) ? nativeAccountId('HDAccount', 0) : active.accountId,
+    }),
   });
 }
 function publicAccounts(group: RecoveryAccountGroup, chainId?: number): NativeCatalogueAccount[] {
@@ -597,7 +656,7 @@ function publicAccounts(group: RecoveryAccountGroup, chainId?: number): NativeCa
   );
   for (const account of Object.values(group.accounts.SmartAccount)) {
     const metadata = account.smartAccount!;
-    if (chainId !== undefined && metadata.chainId !== chainId) continue;
+    if (isRetiredSmartAccount(account) || (chainId !== undefined && metadata.chainId !== chainId)) continue;
     const managementAddress = /^pali:eip155:\d+:(0x[0-9a-f]{40}):smart-account-v1$/.exec(metadata.descriptor!.anchor)![1]!;
     accounts.push(Object.freeze({ id: nativeAccountId('SmartAccount', account.id), type: 'SmartAccount', index: account.id,
       slip44: 60, address: account.address, label: account.label,
@@ -839,7 +898,10 @@ export class NativeWalletCatalogue {
         const type =
           mutation.kind === 'create' ? KeyringAccountType.HDAccount
             : mutation.kind === 'create-smart' ? KeyringAccountType.SmartAccount : mutation.kind === 'import-ledger' ? KeyringAccountType.Ledger : mutation.kind === 'import-trezor' ? KeyringAccountType.Trezor : KeyringAccountType.Imported;
-        if (type === KeyringAccountType.SmartAccount && (group.activeNetwork.kind !== 'ethereum' || mutation.account.smartAccount?.chainId !== Number(getNativeNetwork(active.networkId, catalogueEvmNetworks(next)).chainId))) return invalid();
+        if (type === KeyringAccountType.SmartAccount) {
+          if (group.activeNetwork.kind !== 'ethereum') return invalid();
+          requireSmartAccountAddressIdentity(mutation.account, Number(getNativeNetwork(active.networkId, catalogueEvmNetworks(next)).chainId));
+        }
         assertAccountCreationAvailable(
           group.accounts,
           type,
@@ -926,7 +988,7 @@ export class NativeWalletCatalogue {
       } else {
         const selected = parseNativeAccountId(mutation.id),
           account = group.accounts[selected.type]?.[selected.index];
-        if (!account || selected.slip44 !== group.activeNetwork.slip44) return changed();
+        if (!account || selected.slip44 !== group.activeNetwork.slip44 || isRetiredSmartAccount(account)) return changed();
         if (mutation.kind === 'select') {
           active = { ...active, accountId: mutation.id };
           setActiveAccountRecord(
@@ -937,7 +999,7 @@ export class NativeWalletCatalogue {
           if (selected.type !== 'SmartAccount' || mutation.id !== active.accountId ||
               group.activeNetwork.kind !== 'ethereum' || !account.smartAccount ||
               account.smartAccount.chainId !== Number(getNativeNetwork(active.networkId, catalogueEvmNetworks(next)).chainId)) return invalid();
-          const previous = guardianRecoveryIntents?.find(intent => intent.accountId === mutation.id);
+          const previous = getNativeGuardianRecoveryIntent(next, mutation.id);
           if (mutation.kind === 'store-guardian-recovery') {
             if ((previous?.operation.hash ?? null) !== mutation.expectedOperationHash) return changed();
             const intent = snapshotGuardianRecoveryIntent(mutation.intent, next);
@@ -945,7 +1007,10 @@ export class NativeWalletCatalogue {
             if (previous) {
               if (encodeStorageValue(previous) !== encodeStorageValue(intent)) return changed();
             } else {
-              guardianRecoveryIntents = [...(guardianRecoveryIntents ?? []), intent];
+              guardianRecoveryIntents = [
+                ...(guardianRecoveryIntents ?? []).filter(entry => entry.accountId !== mutation.id),
+                intent,
+              ];
             }
           } else {
             if (!previous || previous.operation.hash !== mutation.operationHash) return changed();
@@ -1001,15 +1066,19 @@ export class NativeWalletCatalogue {
             mutation.label
           );
         else if (mutation.kind === 'remove') {
+          const dependsOnAccount = (intent: NativeGuardianRecoveryIntent) =>
+            intent.accountId === mutation.id || intent.guardian.id === mutation.id ||
+            (intent.replacement.kind === 'software' && intent.replacement.account.id === mutation.id) ||
+            intent.payer.id === mutation.id;
           if (
             (selected.type === 'HDAccount' && selected.index === 0) ||
             active.accountId === mutation.id ||
             projection(record).accounts.length <= 1 ||
-            guardianRecoveryIntents?.some(intent => intent.accountId === mutation.id ||
-              intent.guardian.id === mutation.id || intent.replacement.kind === 'software' && intent.replacement.account.id === mutation.id || intent.payer.id === mutation.id) ||
+            guardianRecoveryIntents?.some(intent => dependsOnAccount(intent) && !isRetiredGuardianRecoveryIntent(next, intent)) ||
             infrastructurePending?.some(pending => pending.payer.id === mutation.id)
           )
             throw new WalletCatalogueError('CATALOGUE_NOT_REMOVABLE');
+          guardianRecoveryIntents = guardianRecoveryIntents?.filter(intent => !dependsOnAccount(intent));
           removeAccountRecord(
             group.accounts,
             selected.type as SharedAccountType,

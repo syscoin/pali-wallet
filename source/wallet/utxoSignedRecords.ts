@@ -80,6 +80,8 @@ export type UtxoRetainedSubmission = Omit<
 > &
   Readonly<{ signedDigest: string; unsignedTransaction: string; version: 2 }>;
 
+type RetainedObservation = 'confirmed' | 'seen' | 'unknown';
+
 export function matchesUtxoSignedDigest(
   record: UtxoRetainedSubmission,
   raw: unknown
@@ -1014,6 +1016,44 @@ export class UtxoSignedRecords {
       : undefined;
   }
 
+  /** Resolve only the locally authenticated, same-input predecessor chain. */
+  async activityReplacementAncestors(
+    session: UtxoRecordSession,
+    owner: UtxoRecordOwner,
+    winner: UtxoRetainedSubmission
+  ): Promise<readonly string[]> {
+    const { entries } = await this.load(session);
+    const identity = ownerId(owner);
+    const family = new Map(
+      entries
+        .filter(
+          (entry) =>
+            entry.owner === identity &&
+            sameInputs(entry.outpoints, winner.outpoints)
+        )
+        .map((entry) => [entry.txid, entry])
+    );
+    const entry = family.get(winner.txid);
+    if (!entry) return [];
+    let record = await this.readEntry(session, entry);
+    if (
+      record.signedDigest !== winner.signedDigest ||
+      record.url !== winner.url
+    )
+      return [];
+    const ancestors: string[] = [];
+    family.delete(winner.txid);
+    while (record.replacementOf) {
+      const predecessor = family.get(record.replacementOf);
+      if (!predecessor) break;
+      family.delete(predecessor.txid);
+      record = await this.readEntry(session, predecessor);
+      if (record.operation !== 'wallet' || record.url !== winner.url) break;
+      ancestors.push(predecessor.txid);
+    }
+    return ancestors;
+  }
+
   private async readMatching(
     session: UtxoRecordSession,
     owner: UtxoRecordOwner,
@@ -1306,8 +1346,12 @@ export class UtxoSignedRecords {
     read: (
       record: UtxoRetainedSubmission,
       assertCurrent: () => void
-    ) => Promise<unknown>
-  ): Promise<'confirmed' | 'seen' | 'unknown'> {
+    ) => Promise<unknown>,
+    publish?: (
+      status: RetainedObservation,
+      observation: UtxoRecordSession
+    ) => Promise<void>
+  ): Promise<RetainedObservation> {
     guard(session);
     const key = recordKey(chainKey(owner), txid),
       request = {};
@@ -1323,7 +1367,10 @@ export class UtxoSignedRecords {
     try {
       const { entries } = await this.load(observation);
       const match = await this.readMatching(observation, owner, txid, entries);
-      if (!match) return 'unknown';
+      if (!match) {
+        if (publish) await publish('unknown', observation);
+        return 'unknown';
+      }
       const retained = match.record;
       guard(observation);
       let response: unknown = null;
@@ -1363,7 +1410,9 @@ export class UtxoSignedRecords {
           confirmed ? retained.issuedPaths : undefined
         )
       );
-      return confirmed ? 'confirmed' : seen ? 'seen' : 'unknown';
+      const status = confirmed ? 'confirmed' : seen ? 'seen' : 'unknown';
+      if (publish) await publish(status, observation);
+      return status;
     } finally {
       if (this.observations.get(key) === request) this.observations.delete(key);
     }

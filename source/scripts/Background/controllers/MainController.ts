@@ -305,6 +305,7 @@ import {
   setPostNetworkSwitchLoading,
   setEnsName,
   setTransactionHistoryStatus,
+  setUtxoActivityReplacements,
 } from 'state/vaultGlobal';
 import {
   INetworkType,
@@ -1465,12 +1466,18 @@ class MainController {
     return records;
   }
 
-  private async reconcileRetainedUtxoTransfers(): Promise<void> {
+  private async reconcileRetainedUtxoTransfers(txid?: string): Promise<void> {
     // Public history polling also runs while locked. It must never open the
     // encrypted journal or acquire a private-record session in that state.
     if (!this.isUnlocked()) return;
     const signing = this.captureUtxoSigningContext();
-    const assertCurrent = signing.assertWalletReviewCurrent;
+    const scope = getWalletNavigationScope();
+    const assertCurrent = () => {
+      signing.assertWalletReviewCurrent();
+      const current = getWalletNavigationScope();
+      if (current.account !== scope.account || current.network !== scope.network)
+        throw new Error('Saved UTXO status changed');
+    };
     assertCurrent();
     const { vault, vaultGlobal } = store.getState();
     const network = vault.activeNetwork;
@@ -1481,13 +1488,30 @@ class MainController {
     );
     if (!backendChain)
       throw new Error('Verify this UTXO network before checking transfers');
-    await this.withUtxoReadOwner(assertCurrent, (signal) =>
-      reconcileRetainedUtxo({
+    await this.withUtxoReadOwner(assertCurrent, async (signal) => {
+      const request: Omit<Parameters<typeof observeRetainedUtxo>[0], 'txid'> = {
         records: this.getRetainedUtxoRecords(),
         session: { keyring: signing.keyring, assertCurrent },
         owner,
         backendChain,
         signal,
+        onReplacementObservation(txid, replacement) {
+          assertCurrent();
+          const previous =
+            store.getState().vaultGlobal.utxoActivityReplacements;
+          const winners =
+            previous?.scope.account === scope.account &&
+            previous.scope.network === scope.network
+              ? previous.winners
+              : {};
+          if (isEqual(winners[txid], replacement)) return;
+          const updated = { ...winners };
+          if (replacement) updated[txid] = replacement;
+          else delete updated[txid];
+          store.dispatch(
+            setUtxoActivityReplacements({ scope, winners: updated })
+          );
+        },
         async fetch(input, init) {
           if (typeof input !== 'string' || init?.method !== 'GET')
             throw new Error('Invalid saved UTXO status request');
@@ -1498,8 +1522,10 @@ class MainController {
             return globalThis.fetch(input, init);
           });
         },
-      })
-    );
+      };
+      if (txid) await observeRetainedUtxo({ ...request, txid });
+      else await reconcileRetainedUtxo(request);
+    });
   }
 
   public checkRetainedUtxoTransfer(txid: string) {
@@ -2472,6 +2498,7 @@ class MainController {
         ...(replacement ? { replacement } : {}),
         automaticNonceEndpoint: context.network.url,
         retainAssetPreflightFailure: assetOperation,
+        smartPayerCleanupSession: feePreflight?.smartPayer ? session : undefined,
         walletSendCleanupSession:
           selected.type !== KeyringAccountType.SmartAccount &&
           (!feePreflight || feePreflight.walletSend) &&
@@ -4110,6 +4137,8 @@ class MainController {
     this.smartOwnerInvalidators?.forEach((retire) => retire());
     this.postSwitchHistorySave = undefined;
     this.activeUtxoReads?.forEach((operation) => operation.abort());
+    if (store.getState().vaultGlobal?.utxoActivityReplacements)
+      store.dispatch(setUtxoActivityReplacements(undefined));
     this.utxoFeeCache = undefined;
     this.retainedEvmRecords = undefined;
     utxoRecordsByWallet.delete(this);
@@ -14748,6 +14777,14 @@ class MainController {
 
           // Check if transaction is already confirmed
           if (tx && isTransactionInBlock(tx)) {
+            if (
+              isBitcoinBased &&
+              accountInfo.id === latestActiveAccount.id &&
+              accountInfo.type === latestActiveAccount.type
+            )
+              void this.reconcileRetainedUtxoTransfers(txHash).catch(
+                () => undefined
+              );
             const blockInfo = getTransactionBlockInfo(tx);
             console.log(
               `[RapidPoll] Transaction ${txHash} confirmed! In block: ${blockInfo}. Stopping rapid poll.`
