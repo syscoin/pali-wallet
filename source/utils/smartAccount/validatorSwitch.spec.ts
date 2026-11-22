@@ -13,7 +13,6 @@ import {
 } from './authenticators';
 import type { SmartAccountAuthenticatorBuildResult } from './authenticators';
 import { PALI_MODULE_REGISTRY, paliSmartAccountInterface } from './contracts';
-import { LEGACY_ECDSA_VALIDATOR } from './legacyDeployment';
 import {
   assertSmartAccountValidatorSwitchApplied,
   assertSmartAccountValidatorSwitchCurrent,
@@ -96,24 +95,6 @@ it('rotates the same ECDSA validator with the exact owner and threshold ABI', ()
   expect(decoded[2]).toBe(encodeEcdsaValidatorInitData([ownerAddress], 1));
   expect(Object.isFrozen(command.executions)).toBe(true);
   expect(Object.isFrozen(call)).toBe(true);
-});
-
-it('builds a reviewed replacement from the original ECDSA address with the same owner', () => {
-  const source = metadata(ownerAddress);
-  source.auth!.validator = LEGACY_ECDSA_VALIDATOR;
-  source.installedModules![0]!.address = LEGACY_ECDSA_VALIDATOR;
-  const command = build(source);
-  assertSmartAccountValidatorSwitchCurrent(command, source);
-  const calls = command.executions.map(
-    (call) => paliSmartAccountInterface.parseTransaction({ data: call.data })!
-  );
-  expect(calls.map((call) => call.name)).toEqual([
-    'installModule',
-    'uninstallModule',
-  ]);
-  expect(calls[0].args[1]).toBe(validator);
-  expect(calls[1].args[1]).toBe(getAddress(LEGACY_ECDSA_VALIDATOR));
-  expect(source.auth!.validator).toBe(LEGACY_ECDSA_VALIDATOR);
 });
 
 it('returns an exact no-op for an already configured owner', () => {

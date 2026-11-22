@@ -903,7 +903,8 @@ const SmartAccountHub = () => {
         compositeValidatorAddress: marketplaceModules.some(
           (module) => module.id === 'composite'
         )
-          ? getPaliModuleAddress(activeNetwork.chainId, 'composite')
+          ? installedComposite?.address ??
+            getPaliModuleAddress(activeNetwork.chainId, 'composite')
           : null,
         isAlgorithmAvailable: isPaliValidatorAlgorithmSupported,
       });
@@ -965,6 +966,7 @@ const SmartAccountHub = () => {
     assertCurrentScope,
     compositeBuilder,
     controllerEmitter,
+    installedComposite?.address,
     marketplaceModules,
     metadata,
     isCurrentScope,
@@ -1131,14 +1133,7 @@ const SmartAccountHub = () => {
             .filter((module) => module.id !== 'composite')
             .map((module) => {
               const installed = installedModules.some(
-                (candidate) =>
-                  candidate.id === module.id &&
-                  (module.id !== 'ecdsa' ||
-                    candidate.address.toLowerCase() ===
-                      getPaliModuleAddress(
-                        activeNetwork.chainId,
-                        module.id
-                      ).toLowerCase())
+                (candidate) => candidate.id === module.id
               );
               return (
                 <li

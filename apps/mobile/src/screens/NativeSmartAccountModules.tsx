@@ -5,7 +5,6 @@ import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, StyleSheet
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ISmartAccountMetadata, SmartAccountValidatorModule } from '../../../../source/types/network';
 import { listCompositeChildCandidates, type CustomValidatorPreflightResult } from '../../../../source/utils/smartAccount/custom';
-import { getPaliModuleAddress } from '../../../../source/utils/smartAccount/contracts';
 import { canRemoveValidatorModule, type SmartAccountAuthenticatorPurpose } from '../../../../source/utils/smartAccount/moduleCommands';
 import { useNativeTranslation } from '../platform/localization';
 import type { NativeSmartModuleManagement } from '../smartAccount/moduleManagement';
@@ -157,7 +156,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
           </Card>)}
           {manager?.passkeysAvailable && <Button title={t('settings.passkeyAuthenticator')} icon="fingerprint" variant="secondary" size="compact" disabled={blocked} onPress={() => openPasskey(false, 'replace')} />}
           {manager?.passkeysAvailable && !validators.some(module => module.id === 'p256-webauthn') && <Button title={t('settings.addPasskeyToCombinedApprovals')} icon="fingerprint" variant="secondary" size="compact" disabled={blocked} onPress={() => openPasskey(false, 'add-to-combined')} />}
-          {!validators.some(module => module.id === 'ecdsa' && module.address.toLowerCase() === getPaliModuleAddress(metadata.chainId, 'ecdsa').toLowerCase()) && <Button title={t('settings.addWalletToCombinedApprovals')} icon="wallet" variant="secondary" size="compact" disabled={blocked} onPress={() => action(async (owner, value) => {
+          {!validators.some(module => module.id === 'ecdsa') && <Button title={t('settings.addWalletToCombinedApprovals')} icon="wallet" variant="secondary" size="compact" disabled={blocked} onPress={() => action(async (owner, value) => {
             const next = await value.openWalletAuthenticator(owner.abort.signal, () => check(owner));
             try { check(owner); owner.operation = next; setOperationAuthentication(owner.authentication); setOperation(next); }
             catch (error) { await next.dispose(); throw error; }

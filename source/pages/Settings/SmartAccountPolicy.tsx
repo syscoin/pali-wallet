@@ -635,6 +635,9 @@ const SmartAccountPolicy = () => {
     setWalletAuthenticatorPending(null);
   }, [scopeKey, selectedAccountKey]);
   const modules = getAvailablePaliModules(activeNetwork.chainId);
+  const installedModuleIds = new Set(
+    metadata?.installedModules?.map((module) => module.id) || []
+  );
   const isUndeployedSmartAccount =
     Boolean(account?.isSmartAccount && metadata) && !metadata?.isDeployed;
   const isSLHDSASetupRunning = slhDsaSetupStatus?.status === 'running';
@@ -3411,14 +3414,9 @@ const SmartAccountPolicy = () => {
       return '';
     }
     const activePaliWalletModule = metadata.installedModules?.find(
-      (module) =>
-        module.type === 'validator' &&
-        module.id === 'ecdsa' &&
-        module.address.toLowerCase() === metadata.auth?.validator.toLowerCase()
+      (module) => module.type === 'validator' && module.id === 'ecdsa'
     );
-    return activePaliWalletModule?.id === 'ecdsa'
-      ? activePaliWalletModule.config.owners[0] || ''
-      : '';
+    return activePaliWalletModule?.config.owners[0] || '';
   })();
   const guardianPolicyUpdateConfirmDescription = hasPendingGuardianRecovery
     ? t('settings.smartAccountGuardianRecoveryUpdatePendingWarning')
@@ -3882,16 +3880,10 @@ const SmartAccountPolicy = () => {
             <div className="flex flex-col gap-3">
               {modules.map((module) => {
                 const installedModule = metadata?.installedModules?.find(
-                  (candidate) =>
-                    candidate.id === module.id &&
-                    (!['ecdsa', 'composite'].includes(module.id) ||
-                      candidate.address.toLowerCase() ===
-                        getConfiguredAuthenticatorAddress(
-                          activeNetwork.chainId,
-                          module.id
-                        ).toLowerCase())
+                  (candidate) => candidate.id === module.id
                 );
-                const installed = Boolean(installedModule);
+                const installed =
+                  Boolean(installedModule) || installedModuleIds.has(module.id);
                 const isActiveValidator =
                   installedModule?.type === 'validator' &&
                   metadata?.auth?.validator?.toLowerCase() ===

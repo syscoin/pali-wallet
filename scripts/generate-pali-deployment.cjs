@@ -219,16 +219,6 @@ for (const id of [
   addresses[id] = create2(deployer, salt(names[id]), generated[id]);
 }
 
-// The factory binds the deployed predecessor and the corrected composite.
-generated.factory = appendAddresses(
-  artifactBytecode('PaliSmartAccountFactory', 'PaliSmartAccountFactory'),
-  addresses.accountImplementation,
-  entryPoint,
-  '0x85b6218f5ef96e8e33bed1b08ba6d021bd574bd9',
-  addresses.compositeValidator
-);
-addresses.factory = create2(deployer, salt(names.factory), generated.factory);
-
 const verifierRuntimeHash = keccak(
   artifactBytecode('SLHDSASHA212824Verifier', 'SLHDSASHA212824Verifier', true)
 );
@@ -240,6 +230,16 @@ addresses.slhDsaValidator = create2(
   salt(names.slhDsaValidator),
   slhDsaValidatorInitCode
 );
+
+generated.factory = appendAddresses(
+  artifactBytecode('PaliSmartAccountFactory', 'PaliSmartAccountFactory'),
+  addresses.accountImplementation,
+  entryPoint,
+  addresses.ecdsaValidator,
+  addresses.p256WebAuthnValidator,
+  addresses.slhDsaValidator
+);
+addresses.factory = create2(deployer, salt(names.factory), generated.factory);
 
 let nextSource = originalSource;
 for (const [key, bytecode] of Object.entries(generated)) {

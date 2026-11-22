@@ -7,10 +7,6 @@ import {
   hasVerifiedSmartAccountAddress,
 } from './addressIdentity';
 import { derivePaliSmartAccountDeployment } from './counterfactual';
-import {
-  LEGACY_ECDSA_VALIDATOR,
-  LEGACY_FACTORY_ADDRESS,
-} from './legacyDeployment';
 
 it('verifies the original address without requiring deployment or a currently configured signer', () => {
   const { account } = smartAccountAddressFixture();
@@ -30,34 +26,27 @@ it('verifies the original address without requiring deployment or a currently co
   ).toBe(true);
 });
 
-it.each([false, true])(
-  'preserves older ECDSA bootstrap identities (deployed %s)',
-  (isDeployed) => {
-    const { account } = smartAccountAddressFixture(1, undefined, {
-      factoryAddress: LEGACY_FACTORY_ADDRESS,
-      validator: LEGACY_ECDSA_VALIDATOR,
-    });
-    expect(account.address).toBe('0x53624aA1F2221EC6573aAA1828d5c1F68E2c5A71');
-    const rotated = smartAccountAddressFixture(
-      1,
-      '0x0000000000000000000000000000000000000002'
-    );
-    expect(
-      hasVerifiedSmartAccountAddress(
-        {
-          ...account,
-          smartAccount: {
-            ...account.smartAccount,
-            deploymentAuth: undefined,
-            auth: rotated.account.smartAccount.auth,
-            isDeployed,
-          },
+it('keeps a valid older ECDSA bootstrap address across active validator rotation', () => {
+  const { account } = smartAccountAddressFixture();
+  const rotated = smartAccountAddressFixture(
+    1,
+    '0x0000000000000000000000000000000000000002'
+  );
+  expect(
+    hasVerifiedSmartAccountAddress(
+      {
+        ...account,
+        smartAccount: {
+          ...account.smartAccount,
+          deploymentAuth: undefined,
+          auth: rotated.account.smartAccount.auth,
+          isDeployed: true,
         },
-        1
-      )
-    ).toBe(true);
-  }
-);
+      },
+      1
+    )
+  ).toBe(true);
+});
 
 it('never lets mutable auth or a deployed claim establish a different saved address', () => {
   const { account } = smartAccountAddressFixture();

@@ -306,11 +306,7 @@ export function buildCompositeValidatorExecutions({
   if (!compositeValidatorAddress)
     throw new SmartAccountModuleCommandError('COMPOSITE_UNAVAILABLE');
   const initData = encodeCompositeValidatorInitData(normalized, threshold);
-  const installed = validators.find(
-    (module) =>
-      module.id === 'composite' &&
-      getAddress(module.address) === getAddress(compositeValidatorAddress)
-  );
+  const installed = validators.find((module) => module.id === 'composite');
   if (!installed)
     return [
       execution(

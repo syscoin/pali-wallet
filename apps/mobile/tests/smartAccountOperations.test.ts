@@ -10,7 +10,6 @@ import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
 import { encodeEcdsaValidatorInitData, getPaliSmartAccountDescriptor , getConfiguredAuthenticatorAddress, getSmartAccountUserOpRequiredPrefund, encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
 import { derivePaliSmartAccountDeployment } from '../../../source/utils/smartAccount/counterfactual.ts';
 import { getPaliSmartAccountFactoryAddress, PALI_SMART_ACCOUNT_VERSION, paliSmartAccountInterface } from '../../../source/utils/smartAccount/contracts.ts';
-import { LEGACY_FACTORY_ADDRESS, LEGACY_ECDSA_VALIDATOR } from '../../../source/utils/smartAccount/legacyDeployment.ts';
 import { prepareSmartAccountOperation } from '../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountGasPayerCandidates, selectSmartAccountGasPayer, ensureSmartAccountDeploymentPrefund } from '../../../source/utils/smartAccount/payerPolicy.ts';
 import { signSmartAccountEcdsaOperation } from '../../../source/utils/smartAccount/signOperation.ts';
@@ -22,13 +21,13 @@ Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: tr
 const owner = '0x1111111111111111111111111111111111111111';
 const payer = { id: 0, type: 'HDAccount' as KeyringAccountType, address: owner };
 const chainId = 1;
-function fixture(legacy = false) {
+function fixture() {
   const funds = { balance: BigInt(0), deposit: BigInt(0), failEstimate: false, balanceReads: 0, depositReads: 0 };
   const feeReads = { recommendations: 0, headers: 0, baseFee: '0x1' as string | null };
-  const factoryAddress = legacy ? LEGACY_FACTORY_ADDRESS : getPaliSmartAccountFactoryAddress(chainId);
+  const factoryAddress = getPaliSmartAccountFactoryAddress(chainId);
   const descriptor = getPaliSmartAccountDescriptor({ accountIndex: 0, chainId, factoryAddress, accountVersion: PALI_SMART_ACCOUNT_VERSION,
     anchor: `pali:eip155:${chainId}:${owner}:smart-account-v1` });
-  const auth = { validator: legacy ? LEGACY_ECDSA_VALIDATOR : getConfiguredAuthenticatorAddress(chainId, 'ecdsa'), data: encodeEcdsaValidatorInitData([owner], 1), module: 'ecdsa' as const };
+  const auth = { validator: getConfiguredAuthenticatorAddress(chainId, 'ecdsa'), data: encodeEcdsaValidatorInitData([owner], 1), module: 'ecdsa' as const };
   const deployment = derivePaliSmartAccountDeployment({ ...auth, deploySalt: descriptor.deploymentSalt, factoryAddress });
   const metadata = { chainId, contractVersion: PALI_SMART_ACCOUNT_VERSION, isDeployed: false, deploymentSalt: descriptor.deploymentSalt,
     descriptor, factoryAddress, deploymentAuth: { data: auth.data, validator: auth.validator }, auth };
@@ -65,24 +64,6 @@ async function prepareNative(f: ReturnType<typeof fixture>, value: string, asser
     executions: [{ target: nativeRecipient, value, data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending,
     async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent });
 }
-
-test('deployed predecessor management uses existing infrastructure and checks only a requested corrected installation', async () => {
-  const f = fixture(true), target = getConfiguredAuthenticatorAddress(chainId, 'ecdsa');
-  const reads: string[] = []; let present = false;
-  const send = f.rawProvider.send;
-  f.rawProvider.send = async (method, params) => {
-    if (method === 'eth_getCode') { reads.push(params[0].toLowerCase()); return present && params[0].toLowerCase() === target.toLowerCase() ? '0x6000' : '0x'; }
-    return send(method, params);
-  };
-  const prepare = (data: string) => prepareSmartAccountOperation({ account: { ...f.account, smartAccount: f.metadata }, chainId, knownDeployed: true, pending: f.pending, provider: f.provider,
-    executions: [{target: f.account.address, data, value: '0x0'}], selectGasPayer: async () => ({ gasPayer: payer, useGasTank: false }), assertCurrent() {} });
-  await prepare(paliSmartAccountInterface.encodeFunctionData('rotateValidator', [LEGACY_ECDSA_VALIDATOR, '0x', f.metadata.auth.data]));
-  assert.deepEqual(reads, []);
-  const install = paliSmartAccountInterface.encodeFunctionData('installModule', [1, target, f.metadata.auth.data]);
-  await assert.rejects(prepare(install), /selected validator is not deployed/);
-  present = true; await prepare(install);
-  assert.deepEqual(reads, [target.toLowerCase(), target.toLowerCase()]);
-});
 
 async function nativeSubmitHost(f: ReturnType<typeof fixture>, prepared: Awaited<ReturnType<typeof prepareNative>>, send: (...args: any[]) => Promise<any>) {
   // Issue a real encrypted journal receipt: the submit boundary must never be

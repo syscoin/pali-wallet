@@ -6,16 +6,12 @@ jest.mock('./aggregate', () => ({
 import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import { getConfiguredAuthenticatorAddress } from './account';
-import { aggregateContractCalls, type AggregateCallRequest } from './aggregate';
+import { aggregateContractCalls } from './aggregate';
 import { buildP256WebAuthnAuthenticator } from './authenticators';
 import {
   readSmartAccountValidatorMetadata,
   hasUsableSmartAccountAuthMetadata,
 } from './executionMetadata';
-import {
-  LEGACY_ECDSA_VALIDATOR,
-  LEGACY_FACTORY_ADDRESS,
-} from './legacyDeployment';
 
 describe('shared Smart validator metadata boundary', () => {
   const identity = smartAccountAddressFixture(1);
@@ -65,46 +61,6 @@ describe('shared Smart validator metadata boundary', () => {
         },
       })
     ).rejects.toThrow('owner ended');
-  });
-
-  it('hydrates the predecessor validator by its on-chain address without changing bootstrap identity', async () => {
-    const owner = '0x0000000000000000000000000000000000000001';
-    const { account } = smartAccountAddressFixture(1, owner, {
-      factoryAddress: LEGACY_FACTORY_ADDRESS,
-      validator: LEGACY_ECDSA_VALIDATOR,
-    });
-    (aggregateContractCalls as jest.Mock).mockImplementation(
-      async (_provider, _chain, calls: AggregateCallRequest[]) =>
-        calls.map((call) => {
-          if (call.fn === 'isModuleInstalled')
-            return {
-              success: true,
-              result: [
-                String(call.args?.[1]).toLowerCase() === LEGACY_ECDSA_VALIDATOR,
-              ],
-            };
-          if (call.fn === 'activeValidator')
-            return { success: true, result: [LEGACY_ECDSA_VALIDATOR] };
-          if (call.target.toLowerCase() === LEGACY_ECDSA_VALIDATOR)
-            return {
-              success: true,
-              result: [call.fn === 'owners' ? [owner] : 1],
-            };
-          return { success: false };
-        })
-    );
-    const hydrated = await readSmartAccountValidatorMetadata({
-      account,
-      chainId: 1,
-      provider: { getCode: async () => '0x01' } as any,
-      assertCurrent: jest.fn(),
-    });
-    expect(hydrated.auth?.validator.toLowerCase()).toBe(LEGACY_ECDSA_VALIDATOR);
-    expect(hydrated.auth?.module).toBe('ecdsa');
-    expect(hydrated.deploymentAuth).toEqual(
-      account.smartAccount.deploymentAuth
-    );
-    expect(hydrated.descriptor).toEqual(account.smartAccount.descriptor);
   });
 
   it('only treats the configured installed validator as usable cached auth', () => {
@@ -172,10 +128,6 @@ describe('shared Smart validator metadata boundary', () => {
         success: true,
         result: [getConfiguredAuthenticatorAddress(1, 'ecdsa')],
       },
-      ...[false, [], 0, false, [], 0].map((value) => ({
-        success: true,
-        result: [value],
-      })),
     ]);
   }
   it('retains only known public credential fields for an exact installed P256 configuration under another active method', async () => {

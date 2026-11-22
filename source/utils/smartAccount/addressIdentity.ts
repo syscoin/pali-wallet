@@ -2,14 +2,14 @@ import { getAddress } from '../ethersV6Compat.ts';
 
 import {
   encodeEcdsaValidatorInitData,
+  getConfiguredAuthenticatorAddress,
   getPaliSmartAccountDescriptor,
 } from './account.ts';
-import { PALI_SMART_ACCOUNT_VERSION } from './contracts.ts';
-import { derivePaliSmartAccountDeployment } from './counterfactual.ts';
 import {
-  LEGACY_ECDSA_VALIDATOR,
-  LEGACY_FACTORY_ADDRESS,
-} from './legacyDeployment.ts';
+  getPaliSmartAccountFactoryAddress,
+  PALI_SMART_ACCOUNT_VERSION,
+} from './contracts.ts';
+import { derivePaliSmartAccountDeployment } from './counterfactual.ts';
 import type {
   KeyringAccountType,
   IKeyringAccountState,
@@ -45,10 +45,10 @@ export function requireSmartAccountAddressIdentity(
     descriptor.anchor
   );
   if (!anchor || anchor[1] !== String(chainId)) return fail();
-  const factory = getAddress(descriptor.factoryAddress);
+  const factory = getAddress(getPaliSmartAccountFactoryAddress(chainId));
   if (
-    metadata.factoryAddress &&
-    getAddress(metadata.factoryAddress) !== factory
+    getAddress(descriptor.factoryAddress) !== factory ||
+    (metadata.factoryAddress && getAddress(metadata.factoryAddress) !== factory)
   )
     return fail();
 
@@ -69,14 +69,9 @@ export function requireSmartAccountAddressIdentity(
   // Earlier ordinary records used the management owner at the descriptor
   // anchor and the canonical threshold-one ECDSA validator. Active auth can
   // be overwritten by hydration or rotated on-chain and never proves origin.
-  if (
-    !metadata.deploymentAuth &&
-    factory !== getAddress(LEGACY_FACTORY_ADDRESS)
-  )
-    return fail();
   const auth = metadata.deploymentAuth ?? {
     data: encodeEcdsaValidatorInitData([anchor[2]!], 1),
-    validator: LEGACY_ECDSA_VALIDATOR,
+    validator: getConfiguredAuthenticatorAddress(chainId, 'ecdsa'),
   };
   const deployment = derivePaliSmartAccountDeployment({
     ...auth,

@@ -39,12 +39,11 @@ import {
   paliSmartAccountFactoryInterface,
 } from './contracts';
 import { derivePaliSmartAccountDeployment } from './counterfactual';
-import { PALI_CANONICAL_FACTORY_ADDRESS } from './deploymentMetadata';
-import { encodeSmartAccountAuthenticatorSignature } from './execution';
 import {
-  LEGACY_ECDSA_VALIDATOR,
-  LEGACY_FACTORY_ADDRESS,
-} from './legacyDeployment';
+  PALI_CANONICAL_FACTORY_ADDRESS,
+  PALI_INFRASTRUCTURE_METADATA_BY_ID,
+} from './deploymentMetadata';
+import { encodeSmartAccountAuthenticatorSignature } from './execution';
 
 describe('ERC-7579 smart account helpers', () => {
   const auth = {
@@ -563,30 +562,30 @@ describe('ERC-7579 smart account helpers', () => {
     [
       '0xfFC854565ff83a49d3302821c0AD23822ca1A50C',
       '0xe4897f193cd6a810057530a5163274f74470c450bdb1d329ebde0d4c7897a766',
-      '0x51A1459ad911dE3b4BD9ae8A8AD324480519f81F',
-      '0xc08f6ee4e88037b1a376908ac44004aacfe8cdccb1092652f4cfa2893f0232e2',
+      '0xB466da401405063877b70665Ff42f22Bd2f6dade',
+      '0x85162a664af16624a46f9d574e332f043766521a4d5b81c611492728b387ff60',
     ],
     [
       '0x1111111111111111111111111111111111111111',
       '0xe4897f193cd6a810057530a5163274f74470c450bdb1d329ebde0d4c7897a766',
-      '0x4e7CbEB3dA4e5ff8f1d927B161E0B4c23CAEf0Df',
-      '0xd9508ef507c2d63ed19a825e28b5858e52d13273eb4dbdb9f1383abe298f8d7f',
+      '0x1ead2253716DF2971DF6EB2F263A063Ea4704433',
+      '0xd9ee1c72a1a97d8f618bdf93bb41ab8af8b4db9dc99cb6f963081e58f4476b93',
     ],
     [
       '0xfFC854565ff83a49d3302821c0AD23822ca1A50C',
       '0x1e136f70a7a4e1b5161304a375665d380b832103d742eab1b3fb4c2f400aac52',
-      '0xe2944dC461ecCda7a3589255EF68d7826847E1a8',
-      '0xc08f6ee4e88037b1a376908ac44004aacfe8cdccb1092652f4cfa2893f0232e2',
+      '0x57706434f99F4862108aFd1e817920dF35037CA6',
+      '0x85162a664af16624a46f9d574e332f043766521a4d5b81c611492728b387ff60',
     ],
   ])(
-    'matches the predecessor factory and deployed proxy for %s and salt %s',
+    'matches the canonical factory and deployed proxy for %s and salt %s',
     (owner, deploySalt, address, initHash) => {
-      // Independent vectors from actual predecessor factory calls and CREATE2 proxy deployments.
+      // Independent vectors from actual canonical factory calls and CREATE2 proxy deployments.
       const deployment = derivePaliSmartAccountDeployment({
-        validator: LEGACY_ECDSA_VALIDATOR,
+        validator: PALI_INFRASTRUCTURE_METADATA_BY_ID.ecdsaValidator.address,
         data: encodeEcdsaValidatorInitData([owner], 1),
         deploySalt,
-        factoryAddress: LEGACY_FACTORY_ADDRESS,
+        factoryAddress: PALI_CANONICAL_FACTORY_ADDRESS,
       });
       expect(deployment.address).toBe(address);
       expect(keccak256(deployment.initCode)).toBe(initHash);

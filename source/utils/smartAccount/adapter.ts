@@ -129,7 +129,7 @@ export const toPaliSmartAccount = async ({
     if (!factory && !provider)
       throw new Error('Smart account factory requires a provider');
     const accountFactory: PaliSmartAccountFactoryLike =
-      factory || getPaliSmartAccountFactory(chainId, provider, factoryAddress);
+      factory || getPaliSmartAccountFactory(chainId, provider);
     const deploymentAuth = requireAuth(auth);
     const observedInitCode = await accountFactory['getInitData(address,bytes)'](
       deploymentAuth.validator,

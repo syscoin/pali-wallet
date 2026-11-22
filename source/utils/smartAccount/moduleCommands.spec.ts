@@ -296,18 +296,3 @@ it('refuses unavailable catalogue support and nested composite children', () => 
     SmartAccountModuleCommandError
   );
 });
-
-it('installs the selected composite at its new address when the predecessor is active', () => {
-  const value = metadata();
-  value.auth = { module: 'composite', validator: address(9), data: '0x' };
-  value.installedModules!.push({
-    type: 'validator',
-    id: 'composite',
-    address: address(9),
-    config: { childValidators: [address(1)], threshold: 1 },
-    data: '0x',
-  });
-  const [command] = decode(build(value));
-  expect(command.name).toBe('installModule');
-  expect(command.args[1]).toBe(builtin);
-});
