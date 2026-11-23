@@ -42,6 +42,8 @@ Wenn Pali meldet, dass der lokale Signierer fehlt oder nicht zum aktiven Validat
 
 Die Grenze von `2^24` Signaturen gilt über die gesamte Lebensdauer des Schlüssels für alle Nutzungen und Kopien zusammen. Pali reserviert `1,000` Signaturen für die Rotation; normales Signieren endet bei `2^24 - 1,000` lokal erfassten Signaturen. Die Neuerzeugung erhält lokal verfügbare Nutzungsdaten; eine Wiederherstellung nur aus der Seed-Phrase oder einem älteren Backup stellt fehlende Daten nicht wieder her, und Geräte synchronisieren ihre Zähler nicht. Die globale Grenze ist in diesen Fällen daher nicht sichergestellt.
 
+Wenn du die Gesamtzahl der Signaturen dieses Schlüssels nicht kennst, verwende ihn auf keinem Gerät mehr für reguläre Signaturen. Richte vor dem nächsten regulären Signieren einen neuen SLH-DSA-Schlüssel in einem neuen Pali-Smart-Account mit einem bisher unbenutzten Kontoindex ein. Mit derselben Seed-Phrase und demselben Kontoindex erzeugt die Wiederherstellung des Signierers wieder den ursprünglichen Schlüssel.
+
 Wenn das normale Budget erschoepft ist, signiert Pali keine normalen Operationen mehr mit diesem Schluessel und bewahrt die Reserve fuer Validator-Rotationsversuche auf. Pali signiert nicht stillschweigend mit einem erschoepften Signierer.
 
 ## Referenzen

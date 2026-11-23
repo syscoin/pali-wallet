@@ -97,6 +97,8 @@ Pali's current SLH-DSA signer profile requires a lifetime limit of `2^24` signat
 
 Regenerating the same key preserves usage history available in local encrypted or runtime state and rejects unreadable or invalid existing records. Seed-only restores, older browser-profile backups and separate devices do not recover or coordinate unknown lifetime usage. The local counter therefore does not establish the lifetime bound across those cases; that remains a production acceptance requirement.
 
+If you cannot account for all signatures made with the key, stop using it for normal signing on every device. Set up a fresh SLH-DSA key in a new Pali smart account with a previously unused account index before resuming normal signing. Regenerating a signer with the same seed phrase and account index produces the original key.
+
 The limit is part of this draft profile's security assumptions. The local cache is sized for this profile, and the resulting SLH-DSA signature is `3,856` bytes. The signature is much larger than ECDSA or WebAuthn signatures, so Pali uses validator-aware gas budgets before signing the `UserOperation`.
 
 Current wallet constants:

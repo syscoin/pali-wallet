@@ -6,6 +6,8 @@ As contas inteligentes da Pali aceitam validadores modulares. O validador pós-q
 
 O assinador local usa **SLH-DSA-SHA2-128-24**, um perfil experimental de assinaturas limitadas proposto no rascunho inicial [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd). Ele não é um conjunto de parâmetros de uso geral aprovado no FIPS 205. O limite de `2^24` assinaturas vale por toda a vida da chave, somando todos os usos e cópias. A Pali reserva `1,000` assinaturas para rotação; a assinatura normal para em `2^24 - 1,000` assinaturas registradas localmente. A regeneração preserva o histórico disponível localmente, mas uma restauração apenas da frase-semente ou de um backup antigo não recupera o histórico ausente, e dispositivos não sincronizam contadores. Portanto, o limite global não fica garantido nesses casos.
 
+Se você não souber o número total de assinaturas feitas com essa chave, deixe de usá-la para assinar operações normais em todos os dispositivos. Antes de voltar a assinar, configure uma nova chave SLH-DSA em uma nova conta inteligente da Pali com um índice de conta nunca usado. Regenerar o assinador com a mesma frase-semente e o mesmo índice de conta produz a chave original.
+
 :::caution Nota alfa
 As contas inteligentes da Pali e o SLH-DSA ainda são infraestrutura inicial. Use redes de teste compatíveis ou contas com pequenos saldos, mantenha recuperação ou um validador alternativo e não crie UX de dapp baseada em tempos fixos de configuração ou assinatura.
 :::

@@ -6,6 +6,8 @@ Pali Smart Accounts unterstuetzen modulare Validatoren. Der Post-Quantum-Validat
 
 Der lokale Signierer verwendet **SLH-DSA-SHA2-128-24**, ein experimentelles Profil mit begrenzter Signaturzahl aus dem ersten Entwurf von [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd). Es ist kein in FIPS 205 für allgemeine Verwendung zugelassener Parametersatz. Die Grenze von `2^24` Signaturen gilt über die gesamte Lebensdauer des Schlüssels für alle Nutzungen und Kopien zusammen. Pali reserviert `1,000` Signaturen für die Rotation; normales Signieren endet bei `2^24 - 1,000` lokal erfassten Signaturen. Die Neuerzeugung erhält lokal verfügbare Nutzungsdaten; eine Wiederherstellung nur aus der Seed-Phrase oder einem älteren Backup stellt fehlende Daten nicht wieder her, und Geräte synchronisieren ihre Zähler nicht. Die globale Grenze ist in diesen Fällen daher nicht sichergestellt.
 
+Wenn du die Gesamtzahl der Signaturen dieses Schlüssels nicht kennst, verwende ihn auf keinem Gerät mehr für reguläre Signaturen. Richte vor dem nächsten regulären Signieren einen neuen SLH-DSA-Schlüssel in einem neuen Pali-Smart-Account mit einem bisher unbenutzten Kontoindex ein. Mit derselben Seed-Phrase und demselben Kontoindex erzeugt die Wiederherstellung des Signierers wieder den ursprünglichen Schlüssel.
+
 :::caution Alpha-Hinweis
 Pali Smart Accounts und SLH-DSA sind fruehe Infrastruktur. Nutze zuerst unterstuetzte Testnetze oder kleine Betraege, behalte Wiederherstellung oder einen Ersatzvalidator bei und baue keine Dapp-UX auf festen Einrichtungs- oder Signaturzeiten auf.
 :::

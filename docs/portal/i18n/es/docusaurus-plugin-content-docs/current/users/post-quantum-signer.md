@@ -42,6 +42,8 @@ Si Pali indica que falta el firmante local o no coincide con el validador activo
 
 El límite de `2^24` firmas se aplica durante toda la vida de la clave, sumando todos sus usos y copias. Pali reserva `1,000` firmas para la rotación; la firma normal se detiene en `2^24 - 1,000` firmas registradas localmente. Regenerar conserva el historial disponible localmente, pero restaurar solo la frase semilla o una copia antigua no recupera el historial perdido y los dispositivos no sincronizan sus contadores. Por ello el límite global no queda garantizado en estos casos.
 
+Si desconoces el número total de firmas realizadas con esa clave, deja de usarla para firmar operaciones normales en todos tus dispositivos. Antes de volver a firmar, configura una clave SLH-DSA nueva en una cuenta inteligente de Pali con un índice de cuenta que nunca hayas usado. Regenerar el firmante con la misma frase semilla y el mismo índice de cuenta produce la clave original.
+
 Si se agota el presupuesto normal, Pali deja de firmar operaciones normales con esa clave y conserva la reserva para reintentos de rotación del validador. No firma silenciosamente con un firmante agotado.
 
 ## Referencias

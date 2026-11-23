@@ -59,6 +59,8 @@ Backup status is a signal to help you choose between convenience and security. I
 
 ## Recovering smart accounts
 
+If you cannot verify a restored SLH-DSA key’s lifetime signature count, [switch to a fresh signing key](./post-quantum-signer#signature-limit) before using SLH-DSA for normal signing again.
+
 **Restoring wallet records and replacing account control are different operations.** Restoring a seed or discovering an existing smart account brings records back into Pali; it does not bypass the account's current signing policy or undo a completed guardian recovery.
 
 Pali smart-account recovery depends on the installed modules. A passkey-controlled account needs the relevant WebAuthn credential to approve future actions. A guardian recovery module can replace the active validator after the configured timelock if the guardian threshold signs the recovery intent. The recovery flow may:

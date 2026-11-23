@@ -6,6 +6,8 @@ Las cuentas inteligentes de Pali admiten validadores modulares. El validador pos
 
 El firmante local usa **SLH-DSA-SHA2-128-24**, un perfil experimental de firmas limitadas propuesto en el borrador inicial [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd). No es un conjunto de parámetros de uso general aprobado en FIPS 205. El límite de `2^24` firmas se aplica durante toda la vida de la clave, sumando todos sus usos y copias. Pali reserva `1,000` firmas para la rotación; la firma normal se detiene en `2^24 - 1,000` firmas registradas localmente. Regenerar conserva el historial disponible localmente, pero restaurar solo la frase semilla o una copia antigua no recupera el historial perdido y los dispositivos no sincronizan sus contadores. Por ello el límite global no queda garantizado en estos casos.
 
+Si desconoces el número total de firmas realizadas con esa clave, deja de usarla para firmar operaciones normales en todos tus dispositivos. Antes de volver a firmar, configura una clave SLH-DSA nueva en una cuenta inteligente de Pali con un índice de cuenta que nunca hayas usado. Regenerar el firmante con la misma frase semilla y el mismo índice de cuenta produce la clave original.
+
 :::caution Nota alfa
 Las cuentas inteligentes de Pali y SLH-DSA son infraestructura temprana. Usa redes de prueba compatibles o cuentas con saldos pequeños, conserva una ruta de recuperación o validador alternativo y no diseñes UX de dapp basada en tiempos fijos de configuración o firma.
 :::

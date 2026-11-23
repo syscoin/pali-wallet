@@ -51,6 +51,8 @@ L'état de sauvegarde est un signal pour vous aider à choisir entre commodité 
 
 ## Récupérer des comptes intelligents
 
+Si vous ne pouvez pas vérifier le nombre total de signatures effectuées avec une clé SLH-DSA restaurée, [passez à une nouvelle clé](./post-quantum-signer) avant de reprendre les signatures courantes avec SLH-DSA.
+
 La récupération des comptes intelligents Pali dépend des modules installés. Un compte contrôlé par passkey a besoin de l’information d’identification WebAuthn correspondante pour approuver de futures actions. Un module de récupération par gardiens peut remplacer le validateur actif après le délai de verrouillage configuré si le seuil requis de gardiens signe l’intention de récupération. Le parcours de récupération peut :
 
 1. Reconstruire les enregistrements déterministes des comptes Pali à partir des métadonnées du portefeuille.
