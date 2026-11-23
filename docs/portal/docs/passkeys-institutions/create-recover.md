@@ -20,7 +20,7 @@ The factory account parameters include:
 | Parameter | Meaning |
 | --- | --- |
 | `salt` | Deterministic deployment salt derived by Pali from wallet anchor, account index, chain, and account version. |
-| `initialValidator` | Validator module used for bootstrap deployment. Pali uses a wallet-owned ECDSA validator for deterministic setup. |
+| `initialValidator` | Choose one of the factory’s configured ECDSA, P-256 WebAuthn or SLH-DSA modules. When supplying a list of initial validators, any order is allowed and the last one becomes active. Pali’s `wallet_prepareSmartAccount` flow starts with wallet-owned ECDSA. |
 | `initData` | Encoded validator initialization data. |
 
 After deployment, Pali can install the requested validator and remove the bootstrap validator in one smart-account batch. That is why a dapp can request a passkey-controlled account while Pali still keeps the first deployment path deterministic.

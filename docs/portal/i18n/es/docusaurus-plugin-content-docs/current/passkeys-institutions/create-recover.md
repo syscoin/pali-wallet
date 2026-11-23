@@ -20,7 +20,7 @@ Los parámetros de cuenta de la fábrica incluyen:
 | Parámetro | Significado |
 | --- | --- |
 | `salt` | Sal de despliegue determinista que Pali deriva del ancla de la billetera, el índice de la cuenta, la cadena y la versión de la cuenta. |
-| `initialValidator` | Módulo validador usado para el despliegue inicial. Pali usa un validador ECDSA controlado por la billetera para una configuración determinista. |
+| `initialValidator` | Elige uno de los módulos de ECDSA, P-256 WebAuthn o SLH-DSA configurados en la fábrica. Si se proporciona una lista de validadores iniciales, se admite cualquier orden y queda activo el último. En `wallet_prepareSmartAccount`, Pali comienza con un validador ECDSA controlado por la billetera. |
 | `initData` | Datos codificados de inicialización del validador. |
 
 Después del despliegue, Pali puede instalar el validador solicitado y eliminar el inicial en un solo lote de la cuenta inteligente. Por eso una dapp puede solicitar una cuenta controlada por passkey mientras Pali mantiene determinista la ruta del primer despliegue.

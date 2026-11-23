@@ -22,7 +22,7 @@ The current Pali account design is based on ERC-7579-style modules and ERC-4337-
 - Executor modules add account features that are not ordinary signatures. Pali currently uses a guardian recovery executor.
 - Pali stores durable account metadata locally so it can reconstruct deterministic accounts by wallet anchor, account index, chain, factory, and module configuration.
 
-The factory creates the account with a bootstrap wallet-owned ECDSA validator first. If a dapp requested a passkey or another supported validator, Pali deploys the account and then performs a wallet-signed module replacement. This keeps deployment deterministic and gives Pali a known local signer for the first on-chain setup action.
+The factory accepts its configured ECDSA, P-256 WebAuthn and SLH-DSA modules as initial validators. The account installs them in the supplied order and makes the last one active. The extension’s `wallet_prepareSmartAccount` flow deploys with wallet-owned ECDSA so the wallet can authorize the switch to a different authenticator requested by the dapp.
 
 ## Two roles: validators sign, guardians recover
 

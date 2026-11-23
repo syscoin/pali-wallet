@@ -20,7 +20,7 @@ Zu den Kontoparametern der Factory gehören:
 | Parameter | Bedeutung |
 | --- | --- |
 | `salt` | Deterministischer Deployment-Salt, den Pali aus Wallet-Anker, Kontoindex, Chain und Kontoversion ableitet. |
-| `initialValidator` | Validator-Modul für das Bootstrap-Deployment. Pali verwendet einen von der Wallet kontrollierten ECDSA-Validator für die deterministische Einrichtung. |
+| `initialValidator` | Wählen Sie eines der in der Factory konfigurierten Module für ECDSA, P-256 WebAuthn oder SLH-DSA. Bei einer Liste von Anfangsvalidatoren ist jede Reihenfolge zulässig. Der letzte Validator wird aktiv. Pali verwendet bei `wallet_prepareSmartAccount` zunächst einen von der Wallet kontrollierten ECDSA-Validator. |
 | `initData` | Kodierte Initialisierungsdaten des Validators. |
 
 Nach dem Deployment kann Pali den angeforderten Validator installieren und den Bootstrap-Validator in einem einzigen Smart-Account-Batch entfernen. Deshalb kann eine Dapp ein von einem Passkey kontrolliertes Konto anfordern, während der erste Deployment-Pfad in Pali deterministisch bleibt.
