@@ -8,6 +8,8 @@ El firmante local usa **SLH-DSA-SHA2-128-24**, un perfil experimental de firmas 
 
 Si desconoces el número total de firmas realizadas con esa clave, deja de usarla para firmar operaciones normales en todos tus dispositivos. Antes de volver a firmar, configura una clave SLH-DSA nueva en una cuenta inteligente de Pali con un índice de cuenta que nunca hayas usado. Regenerar el firmante con la misma frase semilla y el mismo índice de cuenta produce la clave original.
 
+Tras una restauración, Pali puede ofrecerte un índice de cuenta que ya usaste. Si no puedes verificar que un índice nunca se ha usado con esta frase de recuperación, crea una cartera independiente con una frase de recuperación recién generada y configura allí el firmante SLH-DSA. Usa otro perfil del navegador u otro dispositivo para conservar el acceso a la cartera original y a sus opciones de recuperación mientras transfieres los activos y actualizas los permisos vinculados a la cuenta anterior.
+
 :::caution Nota alfa
 Las cuentas inteligentes de Pali y SLH-DSA son infraestructura temprana. Usa redes de prueba compatibles o cuentas con saldos pequeños, conserva una ruta de recuperación o validador alternativo y no diseñes UX de dapp basada en tiempos fijos de configuración o firma.
 :::

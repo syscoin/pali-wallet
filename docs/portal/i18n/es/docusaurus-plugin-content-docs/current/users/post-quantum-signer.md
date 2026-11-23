@@ -44,6 +44,8 @@ El límite de `2^24` firmas se aplica durante toda la vida de la clave, sumando 
 
 Si desconoces el número total de firmas realizadas con esa clave, deja de usarla para firmar operaciones normales en todos tus dispositivos. Antes de volver a firmar, configura una clave SLH-DSA nueva en una cuenta inteligente de Pali con un índice de cuenta que nunca hayas usado. Regenerar el firmante con la misma frase semilla y el mismo índice de cuenta produce la clave original.
 
+Tras una restauración, Pali puede ofrecerte un índice de cuenta que ya usaste. Si no puedes verificar que un índice nunca se ha usado con esta frase de recuperación, crea una cartera independiente con una frase de recuperación recién generada y configura allí el firmante SLH-DSA. Usa otro perfil del navegador u otro dispositivo para conservar el acceso a la cartera original y a sus opciones de recuperación mientras transfieres los activos y actualizas los permisos vinculados a la cuenta anterior.
+
 Si se agota el presupuesto normal, Pali deja de firmar operaciones normales con esa clave y conserva la reserva para reintentos de rotación del validador. No firma silenciosamente con un firmante agotado.
 
 ## Referencias

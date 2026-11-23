@@ -44,6 +44,8 @@ Die Grenze von `2^24` Signaturen gilt über die gesamte Lebensdauer des Schlüss
 
 Wenn du die Gesamtzahl der Signaturen dieses Schlüssels nicht kennst, verwende ihn auf keinem Gerät mehr für reguläre Signaturen. Richte vor dem nächsten regulären Signieren einen neuen SLH-DSA-Schlüssel in einem neuen Pali-Smart-Account mit einem bisher unbenutzten Kontoindex ein. Mit derselben Seed-Phrase und demselben Kontoindex erzeugt die Wiederherstellung des Signierers wieder den ursprünglichen Schlüssel.
 
+Nach einer Wiederherstellung kann Pali einen Kontoindex vorschlagen, den du schon verwendet hast. Wenn du nicht feststellen kannst, ob ein Index für diese Seed-Phrase noch unbenutzt ist, erstelle eine separate Wallet mit einer neu generierten Seed-Phrase und richte dort den SLH-DSA-Signierer ein. Verwende ein anderes Browserprofil oder Gerät, damit du während der Übertragung deiner Vermögenswerte und der Aktualisierung der Berechtigungen des alten Kontos weiterhin auf die ursprüngliche Wallet und ihre Wiederherstellungsoptionen zugreifen kannst.
+
 Wenn das normale Budget erschoepft ist, signiert Pali keine normalen Operationen mehr mit diesem Schluessel und bewahrt die Reserve fuer Validator-Rotationsversuche auf. Pali signiert nicht stillschweigend mit einem erschoepften Signierer.
 
 ## Referenzen

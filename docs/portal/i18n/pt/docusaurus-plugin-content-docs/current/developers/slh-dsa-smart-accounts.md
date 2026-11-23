@@ -8,6 +8,8 @@ O assinador local usa **SLH-DSA-SHA2-128-24**, um perfil experimental de assinat
 
 Se você não souber o número total de assinaturas feitas com essa chave, deixe de usá-la para assinar operações normais em todos os dispositivos. Antes de voltar a assinar, configure uma nova chave SLH-DSA em uma nova conta inteligente da Pali com um índice de conta nunca usado. Regenerar o assinador com a mesma frase-semente e o mesmo índice de conta produz a chave original.
 
+Após uma restauração, a Pali pode sugerir um índice de conta que você já usou. Se não conseguir confirmar que um índice nunca foi usado com essa frase de recuperação, crie uma carteira separada com uma nova frase de recuperação gerada para ela e configure o assinador SLH-DSA nessa carteira. Use outro perfil de navegador ou outro dispositivo para manter o acesso à carteira original e aos seus meios de recuperação enquanto transfere os ativos e atualiza as permissões vinculadas à conta anterior.
+
 :::caution Nota alfa
 As contas inteligentes da Pali e o SLH-DSA ainda são infraestrutura inicial. Use redes de teste compatíveis ou contas com pequenos saldos, mantenha recuperação ou um validador alternativo e não crie UX de dapp baseada em tempos fixos de configuração ou assinatura.
 :::

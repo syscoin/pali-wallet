@@ -99,6 +99,8 @@ Regenerating the same key preserves usage history available in local encrypted o
 
 If you cannot account for all signatures made with the key, stop using it for normal signing on every device. Set up a fresh SLH-DSA key in a new Pali smart account with a previously unused account index before resuming normal signing. Regenerating a signer with the same seed phrase and account index produces the original key.
 
+After a restore, Pali can offer an account index you used before. If you cannot verify that an index is unused for this recovery phrase, create a separate wallet with a newly generated recovery phrase and set up its SLH-DSA signer there. Use another browser profile or device to keep the original wallet and its recovery access available while you transfer assets and update permissions tied to the old account.
+
 The limit is part of this draft profile's security assumptions. The local cache is sized for this profile, and the resulting SLH-DSA signature is `3,856` bytes. The signature is much larger than ECDSA or WebAuthn signatures, so Pali uses validator-aware gas budgets before signing the `UserOperation`.
 
 Current wallet constants:

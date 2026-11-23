@@ -8,6 +8,8 @@ Le signataire local utilise **SLH-DSA-SHA2-128-24**, un profil expérimental à 
 
 Si vous ignorez le nombre total de signatures effectuées avec cette clé, cessez de l’utiliser pour les signatures courantes sur tous vos appareils. Avant de reprendre la signature, configurez une nouvelle clé SLH-DSA dans un nouveau compte intelligent Pali avec un indice de compte encore jamais utilisé. Régénérer le signataire avec la même phrase de récupération et le même indice de compte reproduit la clé d’origine.
 
+Après une restauration, Pali peut proposer un indice de compte que vous avez déjà utilisé. Si vous ne pouvez pas vérifier qu’un indice n’a jamais servi avec cette phrase de récupération, créez un portefeuille distinct avec une nouvelle phrase de récupération et configurez-y le signataire SLH-DSA. Utilisez un autre profil de navigateur ou un autre appareil pour conserver l’accès au portefeuille d’origine et à ses options de récupération pendant le transfert de vos actifs et la mise à jour des autorisations liées à l’ancien compte.
+
 :::caution Note alpha
 Les comptes intelligents Pali et SLH-DSA sont encore une infrastructure précoce. Utilisez d'abord des réseaux de test compatibles ou de petits soldes, gardez une récupération ou un validateur de secours, et ne basez pas l'UX dapp sur des temps fixes de configuration ou de signature.
 :::
