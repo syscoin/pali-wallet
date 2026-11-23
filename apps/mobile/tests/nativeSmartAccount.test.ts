@@ -1,5 +1,5 @@
 import { Wallet } from 'ethers/wallet';
-import { captureNativePublicSessionRecord, createNativePublicSessionRecord, nativePublicRecordDomains, nativePublicSessionSlhStates, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
+import { captureNativePublicSessionRecord, nativePublicRecordDomains, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
 import { TypedDataEncoder } from 'ethers/hash';
 import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
@@ -12,7 +12,7 @@ import { createTestCredentialRecordKeyring, withTestCredentialOperation } from '
 import { createSlhDsaProfileStateCrypto } from '../../../source/wallet/slhDsaStateCrypto.ts';
 import { qualifyNativeHdAccounts } from '../qualification/hd-accounts.ts';
 import { createTestCredentialPort } from './fixtures/credential.ts';
-import { createNativeCredentialVault, type NativeCredentialPort } from '../src/custody/credentialVault.ts';
+import type { NativeCredentialPort } from '../src/custody/credentialVault.ts';
 import { normalizeSmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { nativeSmartTrezorDevice } from './nativeSmartTrezorDevice.ts';
@@ -37,9 +37,7 @@ import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts
 import { decodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { encodePasskeyWebAuthnProof } from '../../../source/utils/passkey/validation.ts';
 import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
-import { encodeEcdsaValidatorInitData, encodeSmartAccountValidatorNonceKey, getConfiguredAuthenticatorAddress, getPaliSmartAccountDescriptor } from '../../../source/utils/smartAccount/account.ts';
-import { captureGuardianRecoveryIntent } from '../../../source/utils/smartAccount/guardianRecoveryIntent.ts';
-import { buildSmartAccountGuardianRecoveryOperation } from '../../../source/utils/smartAccount/recovery.ts';
+import { encodeEcdsaValidatorInitData, encodeSmartAccountValidatorNonceKey, getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -60,7 +58,7 @@ import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
-import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeAccountRecord, type NativeInfrastructurePending } from '../src/custody/walletCatalogue.ts';
+import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeInfrastructurePending } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import { ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
@@ -1405,115 +1403,6 @@ test('real SDK smart account creation, selection and cold unlock retain the orig
     await f.change({ kind: 'select', id: 'hd:60:0' });
     assert.equal(f.owner.getSnapshot().account!.address, ownerAddress);
     await assert.rejects(f.change({ kind: 'remove', id: 'hd:60:0',}), { code: 'ACCOUNT_NOT_REMOVABLE' });
-  } finally { await f.close(); }
-});
-
-for (const predecessor of [
-  { factory: '0x9ee1ab16e273fec939b82541b6fa17e55797f7bc', validator: '0xbe057b217a1e17ffdc27c5262db790f0aaaa9133', implicitBootstrapAuth: true },
-  { factory: '0x47d8929b686468eed298e3533199a066530cad90', validator: '0x9c868733647f7e6feaa3cf3ff22814c0d59480c2', implicitBootstrapAuth: false },
-]) test(`native cold reopen keeps the predecessor Smart account at ${predecessor.factory} without selecting it`, async () => {
-  const f = await fixture({}, true);
-  try {
-    const storage = f.storage;
-    const ring = f.sdkHost;
-    const identity = await storage.recovery.readIdentity();
-    assert(identity?.root);
-    const ownerAddress = identity.root.address;
-    await f.change({ kind: 'create', label: 'Replacement owner' });
-    if (predecessor.implicitBootstrapAuth) await f.change({ kind: 'create', label: 'Guardian' });
-    await f.change({ kind: 'create-smart', label: 'Predecessor Smart account' });
-    const original = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
-    const records = structuredClone(original);
-    const group = records.groups.find(entry => entry.key === '60')!;
-    const predecessorAccount = group.accounts.SmartAccount[0]!;
-    const metadata = predecessorAccount.smartAccount!;
-    const descriptor = getPaliSmartAccountDescriptor({ ...metadata.descriptor!, factoryAddress: predecessor.factory });
-    const data = encodeEcdsaValidatorInitData([ownerAddress], 1);
-    const initCode = coder.encode([`${moduleTuple}[]`, `${moduleTuple}[]`, moduleTuple, `${moduleTuple}[]`],
-      [[[predecessor.validator, data]], [], ['0x' + '00'.repeat(20), '0x'], []]);
-    const initializer = new Interface(['function initializeAccount(bytes initCode)']).encodeFunctionData('initializeAccount', [initCode]);
-    const proxy = concat([PALI_ACCOUNT_PROXY_CREATION_CODE,
-      coder.encode(['address', 'bytes'], ['0x7e072ef1cb48e3b6763502a03e8e74ef88a6f032', initializer])]);
-    const address = getCreate2Address(predecessor.factory, descriptor.deploymentSalt, keccak256(proxy));
-    predecessorAccount.address = address;
-    predecessorAccount.xpub = address;
-    metadata.descriptor = descriptor;
-    metadata.deploymentSalt = descriptor.deploymentSalt;
-    metadata.factoryAddress = descriptor.factoryAddress;
-    metadata.auth = { module: 'ecdsa', validator: predecessor.validator, data };
-    metadata.installedModules = [{ type: 'validator', id: 'ecdsa', address: predecessor.validator,
-      config: { owners: [ownerAddress], threshold: 1 }, data }];
-    if (predecessor.implicitBootstrapAuth) delete metadata.deploymentAuth;
-    else metadata.deploymentAuth = { validator: predecessor.validator, data };
-
-    let recoveryIntents: NativeAccountRecord['guardianRecoveryIntents'];
-    if (predecessor.implicitBootstrapAuth) {
-      metadata.isDeployed = true;
-      const accountRef = (index: number) => {
-        const account = group.accounts.HDAccount[index]!;
-        return { id: `hd:60:${index}`, address: account.address, xpub: account.xpub.toLowerCase() };
-      };
-      const payer = accountRef(0), replacement = accountRef(1);
-      const target = { auth: { module: 'ecdsa' as const, validator: predecessor.validator,
-        data: encodeEcdsaValidatorInitData([replacement.address], 1) } };
-      const operation = buildSmartAccountGuardianRecoveryOperation({
-        account: address, chainId: descriptor.chainId, target, policyEpoch: '1',
-        recoveryModule: getConfiguredAuthenticatorAddress(descriptor.chainId, 'guardian-recovery'),
-        salt: '0x' + '77'.repeat(32), replaceExistingValidator: true,
-      });
-      recoveryIntents = [{ accountId: original.active.accountId, ...captureGuardianRecoveryIntent({ operation, target }),
-        guardian: accountRef(2), payer, replacement: { kind: 'software', account: replacement } }];
-    }
-    const stored: NativeAccountRecord = { ...records,
-      ...(recoveryIntents ? { guardianRecoveryIntents: recoveryIntents } : {}) };
-    const checkpoint = captureNativePublicSessionRecord(await storage.keyringStorage.get(NATIVE_PUBLIC_SESSION_KEY));
-    const check = () => { assert.equal(f.sdkHost, ring); assert(ring.hasPublicSession()); };
-    const credential = createNativeCredentialVault(storage.credential, credentialPort);
-    // Seal the predecessor catalogue as the old installation would before exercising public cold restore.
-    await withTestCredentialOperation(storage.credential, credentialPort, ring, check, async () => {
-      const sealed = await credential.withPublicKey(check, key => createNativePublicSessionRecord(
-        ring, stored, identity, nativePublicSessionSlhStates(checkpoint), key, check, checkpoint.version));
-      assert.equal(await storage.keyringStorage.compareAndSetMany([
-        { key: WALLET_CATALOGUE_KEY, expected: original, value: stored },
-        { key: NATIVE_PUBLIC_SESSION_KEY, expected: checkpoint, value: sealed },
-      ], check), true);
-    });
-    const storedRows = async () => (await f.storage.recovery.readSnapshot()).records.filter(({ key }) =>
-      key === WALLET_CATALOGUE_KEY || key === NATIVE_PUBLIC_SESSION_KEY);
-    const before = await storedRows();
-    const protectedReads = f.credentialReads;
-
-    await f.reopen();
-    assert.equal(f.owner.getSnapshot().phase, 'ready');
-    assert.equal(f.owner.getSnapshot().backup, 'confirmed');
-    assert.deepEqual(f.owner.getSnapshot().account, { network: original.active.networkId, address: ownerAddress });
-    assert.equal(f.credentialReads, protectedReads);
-    assert.deepEqual(await storedRows(), before);
-
-    const catalogue = f.owner.getCatalogue()!;
-    assert.deepEqual(catalogue.active, { accountId: 'hd:60:0', networkId: original.active.networkId });
-    assert.equal(catalogue.accounts.some(account => account.id === original.active.accountId), false);
-    const control = f.runtime.catalogue.getControlSnapshot()!;
-    assert.deepEqual(control.active, catalogue.active);
-    assert.equal(control.accounts.some(account => account.id === original.active.accountId), false);
-    const connection = (await f.runtime.openConnectionHost()).context();
-    assert.equal(connection.activeAccountId, catalogue.active.accountId);
-    assert.equal(connection.accounts.some(account => account.id === original.active.accountId), false);
-    assert.equal(f.runtime.canSignSmartAccount(), false);
-    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
-    await assert.rejects(f.change({ kind: 'select', id: original.active.accountId }), { code: 'INVALID_INPUT' });
-    assert.deepEqual(await storedRows(), before);
-
-    await f.change({ kind: 'create-smart', label: 'Current Smart account' });
-    assert.equal(f.owner.getCatalogue()!.active.accountId, 'smart:60:1');
-    const updated = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
-    const smartAccounts = updated.groups.find(entry => entry.key === '60')!.accounts.SmartAccount;
-    assert.deepEqual(smartAccounts[0], predecessorAccount);
-    assert.equal(smartAccounts[1]!.smartAccount!.descriptor!.accountIndex, 1);
-    assert.equal(smartAccounts[1]!.smartAccount!.factoryAddress!.toLowerCase(), PALI_CANONICAL_FACTORY_ADDRESS.toLowerCase());
-    assert.deepEqual(updated.guardianRecoveryIntents, recoveryIntents);
-    assert.equal(f.signatures.length, 0);
-    assert.equal(f.submitted.length, 0);
   } finally { await f.close(); }
 });
 

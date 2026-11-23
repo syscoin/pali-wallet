@@ -189,7 +189,6 @@ import { NativeWalletCatalogue, WalletCatalogueError,
   catalogueEvmNetworks,
   catalogueUtxoNetworks,
   captureNativeInfrastructurePayerReference,
-  getNativeGuardianRecoveryIntent,
   previewNativeNetworkSelection,
   createNativeAccountRecord,
   recoveryVerificationRecords,
@@ -4698,7 +4697,12 @@ export function createKeyringRuntimeFactory(
         };
         const getGuardianRecoveryIntent = () => {
           if (!catalogueSnapshot || !keyring.hasPublicSession()) return null;
-          return getNativeGuardianRecoveryIntent(catalogue.privateRecords, selectedAccount().id);
+          const selected = selectedAccount();
+          return (
+            catalogue.privateRecords.guardianRecoveryIntents?.find(
+              (entry) => entry.accountId === selected.id
+            ) ?? null
+          );
         };
         const readLocalInfrastructureScope = (wallet: string): LocalSigningResumeScope => {
           const snapshot = catalogueSnapshot, selected = snapshot && selectedAccount();
